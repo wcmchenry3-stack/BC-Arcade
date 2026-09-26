@@ -21,10 +21,8 @@ jest.mock("../gameEventClient", () => ({
   },
 }));
 
-jest.mock("../scoreQueue", () => ({
-  scoreQueue: {
-    flush: jest.fn().mockResolvedValue(undefined),
-  },
+jest.mock("../legacyScoreQueue", () => ({
+  clearLegacyScoreQueue: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock("../testHooks", () => ({
@@ -50,7 +48,7 @@ jest.mock("../displayNameSync", () => ({
 // ---------------------------------------------------------------------------
 
 import { syncWorker } from "../syncWorker";
-import { scoreQueue } from "../scoreQueue";
+import { clearLegacyScoreQueue } from "../legacyScoreQueue";
 import { useNetworkStatus } from "../useNetworkStatus";
 import {
   flushDisplayNameSync,
@@ -172,7 +170,12 @@ describe("NetworkContext — display name sync (#2624)", () => {
     expect(syncDisplayNameOnLaunch).toHaveBeenCalledTimes(1);
   });
 
-  it("flushes the pending name with the score queue on reconnect", async () => {
+  it("clears the removed score queue's leftovers once on launch (#2644)", async () => {
+    await renderProvider();
+    expect(clearLegacyScoreQueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("flushes the pending name with SyncWorker on reconnect", async () => {
     (useNetworkStatus as jest.Mock).mockImplementation(() => ({
       isOnline: false,
       isInitialized: true,
@@ -189,7 +192,7 @@ describe("NetworkContext — display name sync (#2624)", () => {
         <></>
       </NetworkProvider>
     );
-    expect(scoreQueue.flush).toHaveBeenCalledTimes(1);
+    expect(syncWorker.flush).toHaveBeenCalledTimes(1);
     expect(flushDisplayNameSync).toHaveBeenCalledTimes(1);
   });
 

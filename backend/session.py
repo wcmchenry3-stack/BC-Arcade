@@ -22,7 +22,7 @@ def get_session_id(request: Request) -> str:
 def optional_session_id(request: Request) -> str | None:
     """The X-Session-ID header if present and a valid UUID, else ``None``.
 
-    For routes that accept requests without one (the legacy score routes).
+    For routes that accept requests without one (e.g. a free leaderboard).
     """
     try:
         return get_session_id(request)

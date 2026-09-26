@@ -249,13 +249,13 @@ async def test_stats_me_counts_a_swept_game_as_played_but_it_earns_no_xp(
         final_score=150,
     )
     baseline = client.get("/stats/me", headers=_headers(sid)).json()
-    assert baseline["by_game"]["yacht"]["played"] == 1
+    assert baseline["by_game"]["yacht"]["sessions"] == 1
 
     await _add(sid, started_ago=timedelta(hours=25))
     body = client.get("/stats/me", headers=_headers(sid)).json()
     assert body["total_games"] == 2
-    assert body["by_game"]["yacht"]["played"] == 2
-    assert body["by_game"]["yacht"]["best"] == 150
+    assert body["by_game"]["yacht"]["sessions"] == 2
+    assert body["by_game"]["yacht"]["best_value"] == 150
     assert body["arcade_xp"] == baseline["arcade_xp"]
 
 
@@ -293,8 +293,8 @@ async def test_a_swept_older_session_never_supplies_the_latest_metadata(
         metadata={"total_runs": 4, "current_table": "low"},
     )
     bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
-    assert bj["played"] == 2
-    assert (bj["total_runs"], bj["current_table"]) == (5, "high")
+    assert bj["sessions"] == 2
+    assert (bj["extras"]["total_runs"], bj["extras"]["current_table"]) == (5, "high")
 
 
 async def test_a_swept_newest_session_still_supplies_the_latest_metadata(
@@ -320,10 +320,10 @@ async def test_a_swept_newest_session_still_supplies_the_latest_metadata(
         metadata={"total_runs": 4, "current_table": "high"},
     )
     bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
-    assert bj["played"] == 2
-    assert (bj["total_runs"], bj["current_table"]) == (4, "high")
+    assert bj["sessions"] == 2
+    assert (bj["extras"]["total_runs"], bj["extras"]["current_table"]) == (4, "high")
     # ...while the live chip balance still skips the swept (abandoned) table.
-    assert bj["current_chips"] == 1200
+    assert bj["extras"]["current_chips"] == 1200
 
 
 async def test_last_played_at_ignores_a_swept_rows_synthetic_completed_at(
@@ -341,7 +341,7 @@ async def test_last_played_at_ignores_a_swept_rows_synthetic_completed_at(
     # Swept to completed_at = now − 1 h: later than the real play, but not one.
     await _add(sid, started_ago=timedelta(hours=25))
     yacht = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["yacht"]
-    assert yacht["played"] == 2
+    assert yacht["sessions"] == 2
     last = _utc(datetime.fromisoformat(yacht["last_played_at"]))
     assert abs(last - played_at) < timedelta(milliseconds=1)
 
@@ -350,7 +350,7 @@ async def test_last_played_at_is_null_when_every_row_was_swept(client: TestClien
     sid = str(uuid.uuid4())
     await _add(sid, started_ago=timedelta(hours=25))
     yacht = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["yacht"]
-    assert (yacht["played"], yacht["last_played_at"]) == (1, None)
+    assert (yacht["sessions"], yacht["last_played_at"]) == (1, None)
 
 
 async def test_games_me_sweeps_on_the_first_page_only(client: TestClient) -> None:
@@ -443,7 +443,7 @@ async def test_a_failing_sweep_never_breaks_the_read(
         r = client.get(path, headers=_headers(sid))
     assert r.status_code == 200, r.text
     if path == "/stats/me":
-        assert r.json()["by_game"]["yacht"]["played"] == 1
+        assert r.json()["by_game"]["yacht"]["sessions"] == 1
     else:
         assert len(r.json()["items"]) == 1
 
@@ -513,7 +513,7 @@ async def test_only_json_true_marks_a_row_swept(client: TestClient) -> None:
 
     r = client.get("/stats/me", headers=_headers(sid))
     assert r.status_code == 200, r.text
-    assert r.json()["by_game"]["yacht"]["played"] == len(values) + 1
+    assert r.json()["by_game"]["yacht"]["sessions"] == len(values) + 1
     # A spoofed non-boolean flag does not make a finished row overwritable.
     r = client.patch(
         f"/games/{ids['yes']}/complete",

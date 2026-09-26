@@ -10,11 +10,13 @@
  * After playing A♥ the hand ends: detectMoon fires for player 0,
  * cumulativeScores → [0, 26, 26, 26].
  *
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "./fixtures";
-import { mockHeartsApi, injectHeartsState } from "./helpers/hearts";
+import { injectHeartsState } from "./helpers/hearts";
 
 const c = (suit: string, rank: number) => ({ suit, rank });
 
@@ -53,7 +55,6 @@ const NEAR_MOON_STATE = {
 test("shoot-the-moon: play final heart, verify moon message and zero score", async ({
   page,
 }) => {
-  await mockHeartsApi(page);
   await injectHeartsState(page, NEAR_MOON_STATE);
 
   await page.getByRole("button", { name: "Play Hearts" }).click();

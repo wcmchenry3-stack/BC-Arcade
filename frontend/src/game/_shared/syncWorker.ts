@@ -31,8 +31,9 @@
  *          and preserve events (they'll retry on the next flush)
  *        - 413 → split batch in half, retry halves; single-row 413 →
  *          dead-letter that row
- *        - 409 "Game is already completed." → the server closed the game
- *          before these events arrived (e.g. its stale-session sweep, #2621).
+ *        - 409 "Game is already completed." → the game was completed before
+ *          these events arrived (a completion that got there first). Not the
+ *          stale-session sweep: a swept row still accepts events (#2621).
  *          Expected: drop the rows quietly — no Sentry error, no dead-letter.
  *          The completion still goes out in step 3.
  *        - 400/403 → dead-letter those rows; Sentry with high severity
@@ -337,9 +338,10 @@ export class SyncWorker {
       return true;
     }
     if (isAlreadyCompleted(res)) {
-      // The row was closed before these events arrived — by the server's
-      // stale-session sweep (#2621), or a completion that got there first.
-      // Nothing is wrong and retrying can't help: drop them quietly.
+      // The row was completed before these events arrived — a completion that
+      // got there first (a row the stale-session sweep closed still accepts
+      // events, #2621). Nothing is wrong and retrying can't help: drop them
+      // quietly.
       Sentry.addBreadcrumb({
         category: "syncWorker",
         message: `events for completed game ${gameId} dropped (409)`,

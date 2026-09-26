@@ -9,16 +9,6 @@ from fastapi.testclient import TestClient
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from db.base import get_session_factory
-from db.models import GameEntitlement
-
-
-async def _grant(session_id: str, game_slug: str) -> None:
-    factory = get_session_factory()
-    async with factory() as db:
-        db.add(GameEntitlement(session_id=session_id, game_slug=game_slug))
-        await db.commit()
-
 
 @pytest.fixture()
 def client_default():
@@ -48,10 +38,6 @@ def _sid() -> str:
     return str(uuid.uuid4())
 
 
-def _fake_game_id() -> str:
-    return str(uuid.uuid4())
-
-
 # ---------------------------------------------------------------------------
 # Security headers
 # ---------------------------------------------------------------------------
@@ -77,9 +63,9 @@ def test_csp_header_present_on_get(client_default):
 @pytest.mark.security
 def test_csp_header_present_on_post(client_default):
     sid = _sid()
-    res = client_default.patch(
-        f"/cascade/score/{_fake_game_id()}",
-        json={"player_name": "tester"},
+    res = client_default.put(
+        "/players/me",
+        json={"display_name": "tester"},
         headers={"X-Session-ID": sid},
     )
     csp = res.headers.get("content-security-policy", "")
@@ -140,9 +126,9 @@ def test_cors_prod_blocks_localhost(client_prod):
 
 @pytest.mark.security
 def test_cors_post_allowed_origin(client_default):
-    res = client_default.patch(
-        f"/cascade/score/{_fake_game_id()}",
-        json={"player_name": "tester"},
+    res = client_default.put(
+        "/players/me",
+        json={"display_name": "tester"},
         headers={"Origin": "http://localhost:8081", "X-Session-ID": _sid()},
     )
     assert res.headers.get("access-control-allow-origin") == "http://localhost:8081"
@@ -150,9 +136,9 @@ def test_cors_post_allowed_origin(client_default):
 
 @pytest.mark.security
 def test_cors_post_blocked_origin(client_default):
-    res = client_default.patch(
-        f"/cascade/score/{_fake_game_id()}",
-        json={"player_name": "tester"},
+    res = client_default.put(
+        "/players/me",
+        json={"display_name": "tester"},
         headers={"Origin": "https://evil.example.com", "X-Session-ID": _sid()},
     )
     assert "access-control-allow-origin" not in res.headers
@@ -166,7 +152,7 @@ def test_cors_post_blocked_origin(client_default):
 @pytest.mark.security
 def test_cors_preflight_allowed_origin(client_default):
     res = client_default.options(
-        "/cascade/score/fake-id",
+        f"/games/{_sid()}/complete",
         headers={
             "Origin": "http://localhost:8081",
             "Access-Control-Request-Method": "PATCH",
@@ -180,7 +166,7 @@ def test_cors_preflight_allowed_origin(client_default):
 @pytest.mark.security
 def test_cors_preflight_blocked_origin(client_default):
     res = client_default.options(
-        "/cascade/score/fake-id",
+        f"/games/{_sid()}/complete",
         headers={
             "Origin": "https://attacker.example.com",
             "Access-Control-Request-Method": "PATCH",
@@ -206,8 +192,8 @@ def test_cors_null_origin_blocked(client_default):
 @pytest.mark.security
 def test_oversized_body_returns_413(client_default):
     sid = _sid()
-    res = client_default.patch(
-        f"/cascade/score/{_fake_game_id()}",
+    res = client_default.put(
+        "/players/me",
         content=b"x" * 2000,
         headers={
             "Content-Type": "application/json",
@@ -221,9 +207,9 @@ def test_oversized_body_returns_413(client_default):
 @pytest.mark.security
 def test_normal_body_not_rejected(client_default):
     sid = _sid()
-    res = client_default.patch(
-        f"/cascade/score/{_fake_game_id()}",
-        json={"player_name": "tester"},
+    res = client_default.put(
+        "/players/me",
+        json={"display_name": "tester"},
         headers={"X-Session-ID": sid},
     )
     assert res.status_code != 413
@@ -235,15 +221,13 @@ def test_normal_body_not_rejected(client_default):
 
 
 @pytest.mark.security
-async def test_rate_limit_returns_429_after_threshold(client_default):
-    """PATCH /cascade/score has a 10/minute per-session limit; 11th request must be 429."""
+def test_rate_limit_returns_429_after_threshold(client_default):
+    """PUT /players/me has a 10/minute per-session limit; 11th request must be 429."""
     sid = _sid()
-    await _grant(sid, "cascade")
-    game_id = _fake_game_id()
     responses = [
-        client_default.patch(
-            f"/cascade/score/{game_id}",
-            json={"player_name": "tester"},
+        client_default.put(
+            "/players/me",
+            json={"display_name": "tester"},
             headers={"X-Session-ID": sid},
         )
         for _ in range(11)
@@ -252,15 +236,13 @@ async def test_rate_limit_returns_429_after_threshold(client_default):
 
 
 @pytest.mark.security
-async def test_rate_limit_429_has_retry_after(client_default):
+def test_rate_limit_429_has_retry_after(client_default):
     """429 responses must include Retry-After header."""
     sid = _sid()
-    await _grant(sid, "cascade")
-    game_id = _fake_game_id()
     responses = [
-        client_default.patch(
-            f"/cascade/score/{game_id}",
-            json={"player_name": "tester"},
+        client_default.put(
+            "/players/me",
+            json={"display_name": "tester"},
             headers={"X-Session-ID": sid},
         )
         for _ in range(11)
@@ -269,26 +251,6 @@ async def test_rate_limit_429_has_retry_after(client_default):
     assert rate_limited, "Expected at least one 429"
     for r in rate_limited:
         assert "retry-after" in r.headers
-
-
-@pytest.mark.security
-async def test_cascade_score_strict_limit(client_default):
-    """PATCH /cascade/score/:id has a 10/minute limit per (session, URL).
-
-    All 11 requests target the same game_id so they share one rate-limit bucket.
-    """
-    fake_id = str(uuid.uuid4())
-    sid = _sid()
-    await _grant(sid, "cascade")
-    responses = [
-        client_default.patch(
-            f"/cascade/score/{fake_id}",
-            json={"player_name": "tester"},
-            headers={"X-Session-ID": sid},
-        )
-        for _ in range(11)
-    ]
-    assert any(r.status_code == 429 for r in responses)
 
 
 # ---------------------------------------------------------------------------
@@ -320,14 +282,14 @@ def test_invalid_uuid_session_id_returns_400(client_default):
     deadline=2000,
     suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
-def test_cascade_score_string_input_never_500(client_default, player_name):
-    """Arbitrary string values for player_name must never produce 5xx errors."""
+def test_display_name_string_input_never_500(client_default, player_name):
+    """Arbitrary string values for a display name must never produce 5xx errors."""
     from limiter import limiter
 
     limiter.reset()
-    res = client_default.patch(
-        f"/cascade/score/{_fake_game_id()}",
-        json={"player_name": player_name},
+    res = client_default.put(
+        "/players/me",
+        json={"display_name": player_name},
         headers={"X-Session-ID": _sid()},
     )
     assert res.status_code < 500, f"5xx for player_name={player_name!r}: {res.text}"

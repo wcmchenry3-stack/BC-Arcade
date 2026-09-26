@@ -1,10 +1,10 @@
 """Generic leaderboards, driven by each module's ``BoardDefinition`` (#2618).
 
-One query, one rank calculation (``player_standing``, behind both
-``PATCH /games/{id}/name`` and ``GET /games/{id}/rank``, and ``viewer_entry``,
-the caller's own entry on ``GET /games/leaderboard``) and one name
-operation serve every game. They replace the per-game leaderboard routers, which stay in place
-(unchanged) until #2644 because v1.0 clients still call them.
+One query and one rank calculation (``player_standing``, behind
+``GET /games/{id}/rank``, and ``viewer_entry``, the caller's own entry on
+``GET /games/leaderboard``) serve every game. They replaced the per-game
+leaderboard routers and the ``PATCH /games/{id}/name`` route, which #2644
+removed; a name is set with ``PUT /players/me``.
 
 Rules every board follows
 -------------------------
@@ -21,9 +21,11 @@ Rules every board follows
   ``metadata.player_name`` plays no part in ranking.
 - **Excluded**: abandoned rows (``not_abandoned()``), rows whose outcome is
   not in ``qualifying_outcomes`` (when the board sets it), and every sentinel
-  ``*-anon`` session. Old clients keep writing those rows through
-  ``POST /<game>/score`` until #2644, so this must hold without #2622 having
-  deleted them.
+  ``*-anon`` session. The legacy ``POST /<game>/score`` routes that wrote
+  those rows are gone (#2644) and migrations 0026/0029 deleted the rows
+  (#2622), but a deploy runs 0029 while the old instance still serves the
+  routes, so rows written in that window survive it. This filter keeps them
+  off every board.
 - **Only sane values rank**: the metric must be an integer from 0 to the
   row's effective cap (``board.max_value_for``, or ``MAX_BOARD_VALUE`` when
   uncapped). A tie-break that isn't an integer in ``[0, MAX_BOARD_VALUE]``
@@ -72,7 +74,6 @@ from games.filters import not_abandoned
 from games.protocol import GameModule
 from games.ranking import compute_rank
 from games.registry import get_module
-from players import service as players_service
 from players.names import display_name_of, has_display_name, session_has_display_name
 from vocab import GameOutcome
 
@@ -82,7 +83,7 @@ DEFAULT_LIMIT = 10
 MAX_LIMIT = 100
 
 SENTINEL_SESSION_SUFFIX = "-anon"
-"""Sessions like ``solitaire-anon``, written by the legacy ``POST /<game>/score``."""
+"""Sessions like ``solitaire-anon``, written by the removed legacy ``POST /<game>/score``."""
 
 MAX_PARTITION_VALUE_LENGTH = 64
 
@@ -570,9 +571,8 @@ async def player_standing(
 ) -> Standing | None:
     """The player's standing in ``game``'s partition (``session_id`` owns ``game``).
 
-    The one standing calculation: ``PATCH /games/{id}/name`` and
-    ``GET /games/{id}/rank`` both call it, so they can't disagree, and it uses
-    the board's own filters and order, so it agrees with the listed board.
+    The one standing calculation, behind ``GET /games/{id}/rank``. It uses the
+    board's own filters and order, so it agrees with the listed board.
     Returns the exact rank of the player's best entry in that partition and
     whether ``game`` is that entry, or ``None`` when the player has no entry
     there (no display name, or no eligible row). Reads only; a DB error is a
@@ -619,51 +619,12 @@ async def _best_row_rank(
     )
 
 
-async def set_player_name(
-    db: AsyncSession, *, game: Game, session_id: str, player_name: str
-) -> Standing:
-    """``PATCH /games/{id}/name``: set the player's display name, return their standing.
-
-    Kept for installed builds (#2624): the name is the player's, not the
-    game's, so this is ``PUT /players/me`` plus a rank. ``game`` must be
-    loaded with its ``game_type`` and owned by ``session_id`` (the router
-    checks both), and must be able to rank (else 400, as before). Returns
-    ``player_standing`` once the name is saved.
-
-    The name is also written to ``metadata.player_name`` on ``game``: the
-    legacy per-game ``GET /<game>/scores`` routes still read it from session
-    rows until #2644 removes them. The generic boards never read it.
-    """
-    game_type = game.game_type.name
-    board = enabled_board(game_type)
-    if board is None:
-        raise LeaderboardError(404, f"{game_type} has no leaderboard.")
-    reason = _unrankable_reason(board, game)
-    if reason is not None:
-        raise LeaderboardError(400, reason)
-
-    # Reassign (never mutate in place): the JSONB column isn't a MutableDict.
-    game.game_metadata = {**(game.game_metadata or {}), "player_name": player_name}
-    try:
-        await players_service.set_display_name(db, session_id, player_name)
-        await db.commit()
-    except SQLAlchemyError as exc:
-        await db.rollback()
-        _log_db_error("player name commit", game_type, exc)
-        raise LeaderboardError(500, "Failed to save player name.") from exc
-
-    standing = await player_standing(db, board=board, game=game, session_id=session_id)
-    if standing is None:  # pragma: no cover - the row just named is eligible
-        raise LeaderboardError(500, "Failed to calculate rank.")
-    return standing
-
-
 async def game_rank(db: AsyncSession, *, game: Game, session_id: str) -> GameRank:
     """``GET /games/{id}/rank``: where ``game`` puts its player (#2677). Writes nothing.
 
     ``game`` must be loaded with its ``game_type`` and owned by ``session_id``
     (the router checks both). 404 when the game has no board definition at
-    all. Otherwise the standing ``PATCH /games/{id}/name`` would report, or
+    all. Otherwise the player's standing (``player_standing``), or
     ``ranked: false`` with the first reason that applies:
 
     - ``board_disabled``: the game has no leaderboard (Blackjack, Daily Word);

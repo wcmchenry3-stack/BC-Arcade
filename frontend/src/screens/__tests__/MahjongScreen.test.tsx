@@ -115,16 +115,6 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
   },
 }));
 
-jest.mock("../../game/_shared/scoreQueue", () => ({
-  scoreQueue: {
-    enqueue: jest.fn().mockResolvedValue({ id: "q-1" }),
-    flush: jest.fn().mockResolvedValue({ attempted: 0, succeeded: 0, failed: 0, remaining: 0 }),
-    registerHandler: jest.fn(),
-  },
-}));
-
-import { scoreQueue } from "../../game/_shared/scoreQueue";
-
 // The app-wide foreground-time counter behind useGameSync's active-play window
 // (#2684) is held still by the shared mock jest.setup.ts pins (#2710):
 // Mahjong's own play timer is what the summaries carry.
@@ -230,15 +220,6 @@ beforeEach(async () => {
   mockEnqueueEvent.mockReset();
   mockCompleteGame.mockReset();
   mockClose.mockClear();
-  (scoreQueue.enqueue as jest.Mock).mockReset();
-  (scoreQueue.enqueue as jest.Mock).mockResolvedValue({ id: "q-1" });
-  (scoreQueue.flush as jest.Mock).mockReset();
-  (scoreQueue.flush as jest.Mock).mockResolvedValue({
-    attempted: 0,
-    succeeded: 0,
-    failed: 0,
-    remaining: 0,
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -364,7 +345,6 @@ describe("MahjongScreen — win result card (#2510)", () => {
       expect(mockGetGameRank).toHaveBeenCalledTimes(1);
       expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
       expect(card.getByText("New best")).toBeTruthy();
-      expect(scoreQueue.enqueue).not.toHaveBeenCalled();
       const urls = fetchSpy.mock.calls.map(([url]) => String(url));
       expect(urls.filter((u) => u.includes("/mahjong/score"))).toEqual([]);
     } finally {
@@ -435,7 +415,6 @@ describe("MahjongScreen — win result card (#2510)", () => {
     const api = await winNow();
     const card = within(await api.findByTestId("mahjong-result"));
     await waitFor(() => expect(card.getByTestId("result-name-prompt")).toBeTruthy());
-    expect(scoreQueue.enqueue).not.toHaveBeenCalled();
   });
 
   it("does not look up a rank for a won game resumed from storage", async () => {

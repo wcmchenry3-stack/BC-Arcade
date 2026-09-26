@@ -9,7 +9,9 @@
  * through the `__starswarm_endRun(score, wave)` test hook (EXPO_PUBLIC_TEST_HOOKS
  * builds only), which drives the screen's real game-over path.
  *
- * API endpoints are mocked so tests are hermetic.
+ * No running backend is needed: the routes this spec depends on (the game
+ * sync included) are intercepted with page.route(), and any other call
+ * fails, which the app handles like being offline.
  */
 
 import { test, expect } from "./fixtures";
@@ -21,7 +23,7 @@ const DISPLAY_NAME_KEY = "player_display_name";
 const API_BASE = "http://localhost:8000";
 
 interface RoutedApi {
-  /** Bodies posted to the legacy POST /starswarm/score — the app sends none (#2626). */
+  /** Bodies posted to the removed POST /starswarm/score (#2644) — the app sends none (#2626). */
   legacyPosts: Record<string, unknown>[];
   /** PATCH /games/{id}/complete bodies, as SyncWorker uploads them. */
   completions: Record<string, unknown>[];
@@ -30,7 +32,7 @@ interface RoutedApi {
 }
 
 /**
- * Intercepts the legacy Star Swarm routes and the session pipeline: the run's
+ * Intercepts the removed Star Swarm routes (#2644) and the session pipeline: the run's
  * games row (create, events, complete), its rank, and the display name.
  */
 async function routeStarswarmApi(page: Page): Promise<RoutedApi> {
@@ -44,7 +46,7 @@ async function routeStarswarmApi(page: Page): Promise<RoutedApi> {
     if (route.request().method() === "POST") {
       api.legacyPosts.push(JSON.parse(route.request().postData() ?? "{}"));
     }
-    await route.fulfill(json({ scores: [] }));
+    await route.fulfill(json({ detail: "Not Found" }, 404));
   });
   await page.route(new RegExp(`^${API_BASE}/games(/.*)?$`), async (route) => {
     const req = route.request();
@@ -164,7 +166,7 @@ test.describe("Star Swarm — result card", () => {
       },
     });
     expect(api.rankRequests).toHaveLength(1);
-    // Nothing goes to the legacy POST /starswarm/score any more.
+    // Nothing goes to the removed POST /starswarm/score.
     expect(api.legacyPosts).toHaveLength(0);
   });
 

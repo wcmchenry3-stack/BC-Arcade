@@ -5,19 +5,6 @@
 import { Page } from "@playwright/test";
 import { installEntitlementsMock } from "./api-mock";
 
-const API_BASE = "http://localhost:8000";
-
-/** Mock all mahjong API endpoints so tests don't depend on a running backend. */
-export async function mockMahjongApi(page: Page): Promise<void> {
-  await page.route(`${API_BASE}/mahjong/**`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ scores: [] }),
-    });
-  });
-}
-
 /** Navigate from Home to Mahjong and wait for the board canvas to be ready. */
 export async function gotoMahjong(page: Page): Promise<void> {
   await installEntitlementsMock(page);

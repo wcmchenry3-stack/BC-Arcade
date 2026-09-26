@@ -5,11 +5,13 @@
  * 8♠ on column 2. Two taps: first selects 7♥, second on 8♠ executes move.
  * (Smart single-tap auto-move was reverted in #2128.)
  *
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "@playwright/test";
-import { mockSolitaireApi, injectSolitaireState } from "./helpers/solitaire";
+import { injectSolitaireState } from "./helpers/solitaire";
 
 // 7♥ is alone in column 1; 8♠ is the face-up top of column 2.
 // All other 50 cards sit in the stock so the state is structurally valid.
@@ -53,7 +55,6 @@ const TABLEAU_MOVE_STATE = {
 test("tableau-to-tableau: move 7♥ from column 1 onto 8♠ in column 2", async ({
   page,
 }) => {
-  await mockSolitaireApi(page);
   await injectSolitaireState(page, TABLEAU_MOVE_STATE);
 
   await page.getByRole("button", { name: "Play Solitaire" }).click();

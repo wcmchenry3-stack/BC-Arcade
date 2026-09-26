@@ -3,8 +3,7 @@
 Registering the module turns on metadata and result validation for the
 session rows ``useGameSync("starswarm")`` has written since #2516. The payload
 replays below mirror ``StarSwarmScreen.tsx`` on ``dev``; a rejection there
-would dead-letter the run. The named leaderboard (``POST /starswarm/score``)
-is covered by ``test_starswarm_api.py`` and does not use these models.
+would dead-letter the run.
 """
 
 from __future__ import annotations
@@ -33,7 +32,6 @@ from starswarm.models import (
     StarSwarmResult,
 )
 from starswarm.module import module as starswarm_module
-from starswarm.router import ScoreRequest
 from vocab import GameType
 
 client = TestClient(app)
@@ -118,12 +116,9 @@ def test_the_allow_list_is_exactly_the_clients_tiers() -> None:
     assert sorted(DIFFICULTY_TIERS) == sorted(_type_tiers())
 
 
-def test_a_row_without_a_tier_counts_as_the_legacy_default() -> None:
-    # POST /starswarm/score defaults a missing tier to LieutenantJG, and so does
-    # its leaderboard when it reads a row.
+def test_a_row_without_a_tier_counts_as_the_default() -> None:
+    # The engine's default tier, which the board uses for a row with none.
     assert DEFAULT_DIFFICULTY_TIER == "LieutenantJG"
-    assert ScoreRequest.model_fields["difficulty_tier"].default == DEFAULT_DIFFICULTY_TIER
-    assert ScoreRequest(player_id="A", score=1, wave_reached=1).difficulty_tier == "LieutenantJG"
     assert starswarm_module.board.partition_default("difficulty_tier") == DEFAULT_DIFFICULTY_TIER
 
 
@@ -137,10 +132,8 @@ def test_there_is_no_winner() -> None:
 
 
 def test_stats_shape_is_pass_through_without_latest_score() -> None:
-    raw = {"played": 2, "best": None, "avg": None, "last_played_at": None, "latest_score": None}
-    shaped = starswarm_module.stats_shape(raw)
-    assert "latest_score" not in shaped
-    assert shaped["played"] == 2
+    raw = {"best": None, "last_played_at": None, "latest_score": None}
+    assert starswarm_module.stats_shape(raw) == {"last_played_at": None}
 
 
 # ---------------------------------------------------------------------------
@@ -289,19 +282,6 @@ def test_creation_with_unknown_metadata_is_rejected() -> None:
     assert r.status_code == 422
 
 
-def test_session_runs_do_not_reach_the_named_leaderboard() -> None:
-    sid = _SID
-    gid = _start(sid, "Captain")
-    client.patch(
-        f"/games/{gid}/complete",
-        headers=_headers(sid),
-        json={"outcome": "completed", "result": {"wave_reached": 9, "difficulty_tier": "Captain"}},
-    )
-    r = client.get("/starswarm/leaderboard", headers=_headers(sid))
-    assert r.status_code == 200, r.text
-    assert r.json()["scores"] == []
-
-
 # ---------------------------------------------------------------------------
 # every tier the client sends is accepted over HTTP; nothing else is
 # ---------------------------------------------------------------------------
@@ -328,7 +308,7 @@ def test_every_client_tier_is_accepted_at_creation_and_completion(tier: str) -> 
 def test_a_run_on_an_unknown_tier_is_kept_but_never_ranks() -> None:
     """A tier the backend doesn't know (a forged value, or one a newer app
     added first) is stored, so the run isn't dead-lettered, but it has no
-    board: naming it is refused and its board can't be requested."""
+    board: it never ranks and its board can't be requested."""
     r = client.post(
         "/games",
         headers=_headers(_SID),
@@ -351,9 +331,9 @@ def test_a_run_on_an_unknown_tier_is_kept_but_never_ranks() -> None:
         == "Cadet"
     )
 
-    r = client.patch(f"/games/{gid}/name", headers=_headers(_SID), json={"player_name": "Ace"})
-    assert r.status_code == 400
-    assert r.json()["detail"] == "This game's board does not exist."
+    r = client.get(f"/games/{gid}/rank", headers=_headers(_SID))
+    assert r.status_code == 200, r.text
+    assert r.json()["reason"] == "not_rankable"
     r = client.get("/games/leaderboard/starswarm?difficulty_tier=Cadet", headers=_headers(_SID))
     assert r.status_code == 400
 
@@ -400,7 +380,7 @@ def test_a_null_creation_tier_takes_the_tier_from_the_result() -> None:
     metadata = client.get(f"/games/{gid}", headers=_headers(_SID)).json()["metadata"]
     assert metadata["difficulty_tier"] == "Captain"
 
-    r = client.patch(f"/games/{gid}/name", headers=_headers(_SID), json={"player_name": "Ace"})
+    r = client.put("/players/me", headers=_headers(_SID), json={"display_name": "Ace"})
     assert r.status_code == 200, r.text
     assert _names(_board("?difficulty_tier=Captain")) == [("Ace", 5000)]
     assert _board("?difficulty_tier=LieutenantJG")["entries"] == []

@@ -70,12 +70,7 @@ const SAMPLE_STATS: StatsResponse = {
   total_games: 19,
   by_game: {
     yacht: {
-      played: 7,
-      best: 280,
-      avg: 240,
       last_played_at: "2026-04-12T12:00:00Z",
-      best_chips: null,
-      current_chips: null,
       sessions: 7,
       completed: 2,
       won: null,
@@ -86,12 +81,7 @@ const SAMPLE_STATS: StatsResponse = {
       best_label_key: "score",
     },
     twenty48: {
-      played: 2,
-      best: 15240,
-      avg: 12000,
       last_played_at: "2026-04-10T08:00:00Z",
-      best_chips: null,
-      current_chips: null,
       sessions: 2,
       completed: 2,
       won: 1,
@@ -102,12 +92,7 @@ const SAMPLE_STATS: StatsResponse = {
       best_label_key: "score",
     },
     blackjack: {
-      played: 4,
-      best: null,
-      avg: null,
       last_played_at: "2026-04-09T20:00:00Z",
-      best_chips: 1450,
-      current_chips: 1450,
       sessions: 4,
       completed: 4,
       won: 3,
@@ -118,12 +103,7 @@ const SAMPLE_STATS: StatsResponse = {
       best_label_key: "chips",
     },
     freecell: {
-      played: 6,
-      best: 87,
-      avg: 110,
       last_played_at: "2026-04-11T09:00:00Z",
-      best_chips: null,
-      current_chips: null,
       sessions: 6,
       completed: 5,
       won: null,
@@ -425,19 +405,10 @@ describe("ProfileScreen", () => {
     expect(screen.getByRole("progressbar").props.accessibilityValue.now).toBe(80);
   });
 
-  it("renders from a server that predates the XP and comparable fields (#2391, #2620)", async () => {
+  it("renders from a server that predates the XP fields (#2391)", async () => {
     const legacy = {
       total_games: 3,
-      by_game: {
-        yacht: {
-          played: 3,
-          best: 280,
-          avg: 240,
-          last_played_at: "2026-04-12T12:00:00Z",
-          best_chips: null,
-          current_chips: null,
-        },
-      },
+      by_game: { yacht: SAMPLE_STATS.by_game.yacht },
       favorite_game: "yacht",
     };
     mockGetMyStats.mockResolvedValue(legacy as unknown as StatsResponse);
@@ -446,15 +417,6 @@ describe("ProfileScreen", () => {
       expect(screen.getByTestId("profile-tile-sessions")).toBeTruthy();
     });
     expect(screen.queryByRole("progressbar")).toBeNull();
-    // `played` is an honest session count…
-    expect(tileValue("sessions").getByText("3")).toBeTruthy();
-    // …but includes abandons, so it never stands in for `completed`.
-    expect(tileValue("completed").getByText("—")).toBeTruthy();
-    expect(tileValue("completionRate").getByText("—")).toBeTruthy();
-    expect(tileValue("completionRate").queryByText("100%")).toBeNull();
-    expect(tileValue("favorite").getByText("—")).toBeTruthy();
-    expect(tileValue("favorite").queryByText("Yacht")).toBeNull();
-    expect(within(screen.getByTestId("profile-game-yacht")).getAllByText("—")).toHaveLength(2);
   });
 
   it("breaks a favourite tie like the Your Games list: completed, sessions, then slug", async () => {

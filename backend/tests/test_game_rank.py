@@ -3,7 +3,7 @@
 It reports the caller's standing on the game's board without setting
 anything: the rank of their best entry in that game's partition and whether
 this game is that entry, or ``ranked: false`` with a reason. The standing
-is the one ``PATCH /games/{id}/name`` and the board itself report.
+is the one the board itself reports.
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ async def test_rank_is_the_named_players_best_entry(client: TestClient) -> None:
     assert _rank(client, worse, sid) == _ranked(2, False)
 
 
-async def test_rank_agrees_with_the_name_route_and_the_board(client: TestClient) -> None:
+async def test_rank_agrees_with_the_board(client: TestClient) -> None:
     for i, score in enumerate((950, 700, 400, 150)):
         await _seed("freecell", _sid(), score=score, name=f"P{i}", minutes=i)
     sid = _sid()
@@ -95,14 +95,7 @@ async def test_rank_agrees_with_the_name_route_and_the_board(client: TestClient)
     board_rank = next(e["rank"] for e in board if e["player_name"] == "Me")
 
     for game_id in ids:
-        got = _rank(client, game_id, sid)
-        r = client.patch(
-            f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "Me"}
-        )
-        assert r.status_code == 200, r.text
-        named = r.json()
-        assert got == _ranked(named["rank"], named["is_best"])
-        assert got["rank"] == board_rank == 2  # FreeCell: fewer moves; only 150 beats 300
+        assert _rank(client, game_id, sid)["rank"] == board_rank == 2  # only 150 beats 300
     assert [_rank(client, g, sid)["is_best"] for g in ids] == [False, True, False]
 
 
@@ -298,12 +291,18 @@ async def test_a_non_qualifying_outcome_is_not_rankable(
     assert _rank(client, done, sid) == _ranked(1, True)
 
 
-async def test_a_named_row_the_board_still_excludes_is_not_rankable(client: TestClient) -> None:
-    # A sentinel ``*-anon`` session passes the row check and has a name, but
-    # the board never shows it. (Not reachable over HTTP: the header must be
-    # a UUID.) The rank follows the board, not the row check.
-    sid = "solitaire-anon"
-    game_id = await _seed("solitaire", sid, score=100, name="Anon")
+async def test_a_named_row_the_board_still_excludes_is_not_rankable(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Should the row check and the board ever disagree (a named, rankable row
+    # the board doesn't show), the rank follows the board, not the row check.
+    sid = _sid()
+    game_id = await _seed("solitaire", sid, score=100, name="Me")
+
+    async def off_the_board(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(leaderboard, "player_standing", off_the_board)
     factory = get_session_factory()
     async with factory() as db:
         game = await leaderboard.load_game(db, game_id)

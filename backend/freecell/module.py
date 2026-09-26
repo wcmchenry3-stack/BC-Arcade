@@ -6,8 +6,7 @@ structural subtyping — no inheritance required.
 Registering FreeCell lets the app record a per-session ``games`` row
 (``POST /games`` + ``PATCH /games/{id}/complete``) like every other game, so a
 player's FreeCell plays earn Arcade XP, show in Profile history and can be
-measured by the daily challenge. Its wins rank on the generic board (#2632); the
-legacy routes (``freecell/router.py``) stay for installed builds until #2644.
+measured by the daily challenge. Its wins rank on the generic board (#2632).
 """
 
 from __future__ import annotations
@@ -31,8 +30,7 @@ class FreeCellModule:
     has_winner = False
     # Fewest moves wins. qualifying_outcomes stays None: every non-abandoned
     # FreeCell completion is a won game (a game given up is abandoned, with no
-    # score). Since #2632 the app's win sends ``final_score = moveCount``; the
-    # legacy POST /freecell/score rows (``freecell-anon``) never rank here.
+    # score). Since #2632 the app's win sends ``final_score = moveCount``.
     board = BoardDefinition(metric=SCORE_METRIC, direction="asc", label_key="moves")
 
     def stats_shape(self, raw_stats: dict) -> dict:

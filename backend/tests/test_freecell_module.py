@@ -1,8 +1,8 @@
 """FreeCell records a per-session game via the shared path (#2452).
 
-The legacy leaderboard routes are covered by ``test_freecell.py``; these tests
-cover the GameModule, its result model, and — the load-bearing part — how the
-session rows rank. Since #2632 a win sends its move count as ``final_score``
+These tests cover the GameModule, its result model, and — the load-bearing
+part — how the session rows rank (the legacy leaderboard routes were removed
+in #2644). Since #2632 a win sends its move count as ``final_score``
 and ranks on the generic board (fewest moves first, once per player); an
 abandon never carries a score.
 """
@@ -47,9 +47,8 @@ def test_result_model_is_separate_from_the_metadata_model() -> None:
 
 
 def test_stats_shape_strips_latest_score() -> None:
-    raw = {"played": 2, "best": None, "avg": None, "last_played_at": None, "latest_score": None}
-    assert "latest_score" not in freecell_module.stats_shape(raw)
-    assert freecell_module.stats_shape(raw)["played"] == 2
+    raw = {"best": None, "last_played_at": None, "latest_score": None}
+    assert freecell_module.stats_shape(raw) == {"last_played_at": None}
 
 
 # ---------------------------------------------------------------------------
@@ -184,24 +183,9 @@ def test_a_named_players_win_ranks_once_and_an_abandon_never() -> None:
     assert _generic_board(sid) == [("Alice", 88)]
 
 
-def test_an_installed_builds_named_submission_does_not_duplicate_the_entry() -> None:
-    # An older build keeps posting to POST /freecell/score after its win. Its
-    # ``freecell-anon`` row stays off the generic board, so the player is
-    # still listed once.
-    sid = str(uuid.uuid4())
-    r = client.put("/players/me", headers=_headers(sid), json={"display_name": "Alice"})
-    assert r.status_code == 200, r.text
-    _play(sid, won=True, moves=88)
-    r = client.post(
-        "/freecell/score", headers=_headers(sid), json={"player_id": "Alice", "move_count": 88}
-    )
-    assert r.status_code == 201
-    assert _generic_board(sid) == [("Alice", 88)]
-
-
 def test_a_session_game_earns_xp_and_counts_as_played() -> None:
     sid = str(uuid.uuid4())
     _play(sid, won=True, moves=88)
     stats = client.get("/stats/me", headers=_headers(sid)).json()
-    assert stats["by_game"]["freecell"]["played"] == 1
+    assert stats["by_game"]["freecell"]["sessions"] == 1
     assert stats["arcade_xp"] > 0

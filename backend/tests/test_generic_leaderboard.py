@@ -1,6 +1,6 @@
-"""Generic leaderboard, rank and name routes (#2618).
+"""Generic leaderboard and rank routes (#2618).
 
-``GET /games/leaderboard/{game_type}`` and ``PATCH /games/{id}/name`` serve
+``GET /games/leaderboard/{game_type}`` and ``GET /games/{id}/rank`` serve
 every game from its ``BoardDefinition``. One entry per player (#2519 decision
 12): each named player's best row only, under their current display name
 (#2624); abandoned rows and sentinel ``*-anon`` sessions never rank; ranks are
@@ -148,6 +148,21 @@ async def _set_name(session_id: str, name: str) -> None:
 
 def _sid() -> str:
     return str(uuid.uuid4())
+
+
+def _name_and_rank(client: TestClient, sid: str, game_id: Any, name: str) -> dict:
+    """Name the player (``PUT /players/me``), then ``GET /games/{id}/rank``.
+
+    Returns ``{rank, is_best}`` for a ranked game, else ``{reason}``.
+    """
+    r = client.put("/players/me", headers=_headers(sid), json={"display_name": name})
+    assert r.status_code == 200, r.text
+    r = client.get(f"/games/{game_id}/rank", headers=_headers(sid))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    if body["ranked"]:
+        return {"rank": body["rank"], "is_best": body["is_best"]}
+    return {"reason": body["reason"]}
 
 
 def _board(client: TestClient, path: str, sid: str | None = None) -> dict:
@@ -298,16 +313,9 @@ async def test_null_outcome_rows_still_rank(client: TestClient) -> None:
     assert _pairs(_board(client, "solitaire")) == [("Legacy", 100)]
 
 
-async def test_sentinel_sessions_excluded(client: TestClient) -> None:
-    await _seed("solitaire", "solitaire-anon", score=1000, name="OldClient")
-    await _seed("sort", "sort-anon", score=23, name="OldClient", meta={"level_reached": 23})
-    await _seed("solitaire", _sid(), score=100, name="Real")
-    assert _pairs(_board(client, "solitaire")) == [("Real", 100)]
-    assert _board(client, "sort")["entries"] == []
-
-
-# Every game whose legacy `POST /<game>/score` route writes a `<game>-anon`
-# row (#2622). Old clients keep writing them until #2644 removes the routes.
+# Every game whose legacy `POST /<game>/score` route wrote a `<game>-anon` row
+# (#2622). The routes are gone (#2644), but the old instance still serves them
+# during a deploy, after migration 0029 has run: the board filter is the guard.
 _LEGACY_SENTINEL_GAMES = (
     "freecell",
     "hearts",
@@ -339,13 +347,6 @@ async def test_sentinel_rows_never_rank(client: TestClient, game_type: str) -> N
     await _grant_all(viewer)  # three of the seven boards are premium
     body = _board(client, game_type + PARTITION_QUERY.get(game_type, ""), viewer)
     assert [e["player_name"] for e in body["entries"]] == ["Real"]
-
-
-async def test_legacy_post_score_rows_never_appear(client: TestClient) -> None:
-    """A v1.0 client's ``POST /solitaire/score`` row stays off the generic board."""
-    r = client.post("/solitaire/score", json={"player_name": "Old", "score": 400})
-    assert r.status_code == 201, r.text
-    assert _board(client, "solitaire")["entries"] == []
 
 
 async def test_players_without_a_display_name_are_excluded(client: TestClient) -> None:
@@ -438,12 +439,9 @@ async def test_rank_counts_sessions_not_rows(client: TestClient) -> None:
     body = _board(client, "solitaire")
     assert [(e["player_name"], e["rank"]) for e in body["entries"]] == [("A", 1), ("B", 2)]
 
-    # Naming B's worst row still reports B's best rank: 2, not 6.
-    r = client.patch(f"/games/{b_ids[2]}/name", headers=_headers(b), json={"player_name": "B"})
-    assert r.status_code == 200, r.text
-    assert r.json() == {"rank": 2, "is_best": False}
-    r = client.patch(f"/games/{a_ids[1]}/name", headers=_headers(a), json={"player_name": "A"})
-    assert r.json() == {"rank": 1, "is_best": False}
+    # B's worst row still reports B's best rank: 2, not 6.
+    assert _name_and_rank(client, b, b_ids[2], "B") == {"rank": 2, "is_best": False}
+    assert _name_and_rank(client, a, a_ids[1], "A") == {"rank": 1, "is_best": False}
 
 
 async def test_exact_rank_outside_the_top_ten(client: TestClient) -> None:
@@ -452,9 +450,7 @@ async def test_exact_rank_outside_the_top_ten(client: TestClient) -> None:
     sid = _sid()
     game_id = await _seed("solitaire", sid, score=5, name=None, minutes=50)
 
-    r = client.patch(f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "Me"})
-    assert r.status_code == 200, r.text
-    assert r.json() == {"rank": 13, "is_best": True}
+    assert _name_and_rank(client, sid, game_id, "Me") == {"rank": 13, "is_best": True}
 
     assert len(_board(client, "solitaire")["entries"]) == 10
     full = _board(client, "solitaire?limit=20")["entries"]
@@ -468,8 +464,7 @@ async def test_rank_honours_asc_direction_and_tiebreak(client: TestClient) -> No
     await _seed("freecell", _sid(), score=120, name="Worse")
     sid = _sid()
     game_id = await _seed("freecell", sid, score=100, name=None, minutes=1)
-    r = client.patch(f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "Me"})
-    assert r.json() == {"rank": 2, "is_best": True}
+    assert _name_and_rank(client, sid, game_id, "Me") == {"rank": 2, "is_best": True}
 
     # Sort: same level, fewer total moves ahead; missing total_moves behind.
     await _seed("sort", _sid(), name="Fewer", meta={"level_reached": 5, "total_moves": 10})
@@ -478,8 +473,7 @@ async def test_rank_honours_asc_direction_and_tiebreak(client: TestClient) -> No
     game_id = await _seed(
         "sort", sid, name=None, minutes=1, meta={"level_reached": 5, "total_moves": 20}
     )
-    r = client.patch(f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "Me"})
-    assert r.json() == {"rank": 2, "is_best": True}
+    assert _name_and_rank(client, sid, game_id, "Me") == {"rank": 2, "is_best": True}
 
 
 # ---------------------------------------------------------------------------
@@ -603,105 +597,12 @@ async def test_invalid_session_header_is_ignored_on_a_free_board(client: TestCli
 
 
 # ---------------------------------------------------------------------------
-# PATCH /games/{id}/name
-# ---------------------------------------------------------------------------
-
-
-async def test_name_route_sets_name_and_puts_game_on_board(client: TestClient) -> None:
-    sid = _sid()
-    game_id = await _seed("solitaire", sid, score=321, name=None)
-    assert _board(client, "solitaire")["entries"] == []
-
-    r = client.patch(
-        f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "  Ada  "}
-    )
-    assert r.status_code == 200, r.text
-    assert r.json() == {"rank": 1, "is_best": True}
-    assert _pairs(_board(client, "solitaire")) == [("Ada", 321)]
-
-    detail = client.get(f"/games/{game_id}", headers=_headers(sid)).json()
-    assert detail["metadata"]["player_name"] == "Ada"
-
-
-async def test_name_route_is_owner_only(client: TestClient) -> None:
-    game_id = await _seed("solitaire", _sid(), score=100, name=None)
-    r = client.patch(f"/games/{game_id}/name", headers=_headers(_sid()), json={"player_name": "X"})
-    assert r.status_code == 403
-
-
-def test_name_route_unknown_game_is_404(client: TestClient) -> None:
-    r = client.patch(
-        f"/games/{uuid.uuid4()}/name", headers=_headers(_sid()), json={"player_name": "X"}
-    )
-    assert r.status_code == 404
-
-
-def test_name_route_requires_session(client: TestClient) -> None:
-    r = client.patch(f"/games/{uuid.uuid4()}/name", json={"player_name": "X"})
-    assert r.status_code == 400
-
-
-async def test_name_route_unscored_is_400(client: TestClient) -> None:
-    sid = _sid()
-    unscored = await _seed("solitaire", sid, score=None, name=None)
-    r = client.patch(f"/games/{unscored}/name", headers=_headers(sid), json={"player_name": "X"})
-    assert r.status_code == 400
-
-    # An open (never completed) session row.
-    r = client.post("/games", headers=_headers(sid), json={"game_type": "solitaire"})
-    open_id = r.json()["id"]
-    r = client.patch(f"/games/{open_id}/name", headers=_headers(sid), json={"player_name": "X"})
-    assert r.status_code == 400
-
-    # Sort without its metric is unscored too.
-    no_level = await _seed("sort", sid, name=None, meta={"total_moves": 3})
-    r = client.patch(f"/games/{no_level}/name", headers=_headers(sid), json={"player_name": "X"})
-    assert r.status_code == 400
-
-
-async def test_name_route_abandoned_is_400(client: TestClient) -> None:
-    sid = _sid()
-    game_id = await _seed("solitaire", sid, score=100, name=None, outcome="abandoned")
-    r = client.patch(f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "X"})
-    assert r.status_code == 400
-
-
-async def test_name_route_disabled_board_is_404(client: TestClient) -> None:
-    sid = _sid()
-    await _grant_all(sid)
-    game_id = await _seed("blackjack", sid, score=1500, name=None)
-    r = client.patch(f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "X"})
-    assert r.status_code == 404
-
-
-@pytest.mark.parametrize("name", ["", "   ", "x" * 33])
-async def test_name_route_validates_length(client: TestClient, name: str) -> None:
-    sid = _sid()
-    game_id = await _seed("solitaire", sid, score=100, name=None)
-    r = client.patch(f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": name})
-    assert r.status_code == 422
-
-
-async def test_name_route_uses_the_rows_partition(client: TestClient) -> None:
-    await _seed("sudoku", _sid(), score=290, name="HardPro", meta={"difficulty": "hard"})
-    sid = _sid()
-    game_id = await _seed("sudoku", sid, score=100, name=None, meta={"difficulty": "easy"})
-    r = client.patch(f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "Me"})
-    assert r.json() == {"rank": 1, "is_best": True}
-
-
-# ---------------------------------------------------------------------------
 # Rate limits
 # ---------------------------------------------------------------------------
 
 
 def _limits(handler: str) -> list:
     return limiter._route_limits[f"games.router.{handler}"]
-
-
-def test_name_route_rate_limit_keyed_by_session() -> None:
-    limits = _limits("set_player_name")
-    assert limits and all(lim.key_func is session_key for lim in limits)
 
 
 def test_leaderboard_rate_limit_keyed_by_session_with_ip_backstop() -> None:
@@ -745,12 +646,11 @@ async def test_premium_board_requires_entitlement(client: TestClient) -> None:
     assert client.get(f"/games/leaderboard/{game_type}", headers=_headers(sid)).status_code == 403
 
     score_game = await _seed(game_type, sid, score=1, name=None, meta={"level_reached": 1})
-    r = client.patch(f"/games/{score_game}/name", headers=_headers(sid), json={"player_name": "X"})
-    assert r.status_code == 403
+    assert client.get(f"/games/{score_game}/rank", headers=_headers(sid)).status_code == 403
 
     await _grant_all(sid)
     assert client.get(f"/games/leaderboard/{game_type}", headers=_headers(sid)).status_code == 200
-    r = client.patch(f"/games/{score_game}/name", headers=_headers(sid), json={"player_name": "X"})
+    r = client.get(f"/games/{score_game}/rank", headers=_headers(sid))
     assert r.status_code == 200, r.text
 
 
@@ -908,11 +808,7 @@ async def test_named_session_row_appears_exactly_once(client: TestClient, game_t
         else:
             r = _complete(client, sid, game_id, result={board.metric: value})
         assert r.status_code == 200, r.text
-        r = client.patch(
-            f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "Solo"}
-        )
-        assert r.status_code == 200, r.text
-        return r.json()
+        return _name_and_rank(client, sid, game_id, "Solo")
 
     assert play(5) == {"rank": 1, "is_best": True}
     entries = _board(client, path, sid)["entries"]
@@ -1009,29 +905,24 @@ async def test_negative_score_never_ranks_on_asc_board(client: TestClient) -> No
 
     sid = _sid()
     game_id = await _seed("freecell", sid, score=80, name=None, minutes=1)
-    r = client.patch(f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "Me"})
-    assert r.json() == {"rank": 1, "is_best": True}
+    assert _name_and_rank(client, sid, game_id, "Me") == {"rank": 1, "is_best": True}
 
 
-async def test_negative_final_score_completes_but_cannot_be_named(client: TestClient) -> None:
+async def test_negative_final_score_completes_but_never_ranks(client: TestClient) -> None:
     """Rejecting the completion would dead-letter the game and lose its stats."""
     sid = _sid()
     await _grant_all(sid)
     game_id = _create(client, sid, "freecell")
     r = _complete(client, sid, game_id, final_score=-5)
     assert r.status_code == 200, r.text
-    r = client.patch(f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "X"})
-    assert r.status_code == 400, r.text
+    assert _name_and_rank(client, sid, game_id, "X") == {"reason": "not_rankable"}
 
 
 @pytest.mark.parametrize("level", ["12", 3.5, -1])
-async def test_name_route_rejects_non_integer_or_negative_metric(
-    client: TestClient, level: Any
-) -> None:
+async def test_a_non_integer_or_negative_metric_never_ranks(client: TestClient, level: Any) -> None:
     sid = _sid()
     game_id = await _seed("sort", sid, name=None, meta={"level_reached": level})
-    r = client.patch(f"/games/{game_id}/name", headers=_headers(sid), json={"player_name": "X"})
-    assert r.status_code == 400, r.text
+    assert _name_and_rank(client, sid, game_id, "X") == {"reason": "not_rankable"}
 
 
 async def test_stored_rows_above_the_cap_never_rank(client: TestClient) -> None:
@@ -1056,8 +947,7 @@ async def test_sudoku_per_difficulty_caps_apply_to_stored_rows(client: TestClien
 
     sid = _sid()
     over = await _seed("sudoku", sid, score=150, name=None, meta={"difficulty": "easy"})
-    r = client.patch(f"/games/{over}/name", headers=_headers(sid), json={"player_name": "X"})
-    assert r.status_code == 400, r.text
+    assert _name_and_rank(client, sid, over, "X") == {"reason": "not_rankable"}
 
 
 async def test_complete_uses_the_rows_partition_cap(client: TestClient) -> None:
@@ -1121,8 +1011,7 @@ async def test_qualifying_outcomes_are_honoured(
 
     sid = _sid()
     other = await _seed("solitaire", sid, score=50, name=None, outcome="kept_playing")
-    r = client.patch(f"/games/{other}/name", headers=_headers(sid), json={"player_name": "X"})
-    assert r.status_code == 400, r.text
+    assert _name_and_rank(client, sid, other, "X") == {"reason": "not_rankable"}
 
 
 async def test_stored_names_are_shown_trimmed(client: TestClient) -> None:
@@ -1158,32 +1047,13 @@ class _NoRow:
 class _FailingDB:
     bind = None
 
-    def __init__(
-        self,
-        *,
-        fail_commit: bool = False,
-        fail_execute: bool = False,
-        fail_execute_after_commit: bool = False,
-    ) -> None:
-        self.fail_commit = fail_commit
+    def __init__(self, *, fail_execute: bool = False) -> None:
         self.fail_execute = fail_execute
-        self.fail_execute_after_commit = fail_execute_after_commit
-        self.committed = False
-        self.rolled_back = False
 
     async def execute(self, *_: Any, **__: Any) -> Any:
-        if self.fail_execute or (self.fail_execute_after_commit and self.committed):
+        if self.fail_execute:
             raise _db_error()
-        # The display-name upsert (#2624), before the commit.
         return _NoRow()
-
-    async def commit(self) -> None:
-        if self.fail_commit:
-            raise _db_error()
-        self.committed = True
-
-    async def rollback(self) -> None:
-        self.rolled_back = True
 
 
 def _assert_logged_safely(caplog: pytest.LogCaptureFixture, game_type: str) -> None:
@@ -1245,42 +1115,6 @@ def _finished_game(game_type: str) -> Game:
         outcome="completed",
         completed_at=T0,
     )
-
-
-async def test_set_player_name_commit_error_rolls_back_and_logs(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    from sqlalchemy.exc import OperationalError
-
-    db = _FailingDB(fail_commit=True)
-    with caplog.at_level("ERROR"), pytest.raises(leaderboard.LeaderboardError) as info:
-        await leaderboard.set_player_name(
-            db,  # type: ignore[arg-type]
-            game=_finished_game("solitaire"),
-            session_id=SECRET_SID,
-            player_name="Me",
-        )
-    assert info.value.status_code == 500
-    assert isinstance(info.value.__cause__, OperationalError)
-    assert db.rolled_back
-    _assert_logged_safely(caplog, "solitaire")
-
-
-async def test_set_player_name_rank_error_is_logged_and_chained(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    from sqlalchemy.exc import OperationalError
-
-    with caplog.at_level("ERROR"), pytest.raises(leaderboard.LeaderboardError) as info:
-        await leaderboard.set_player_name(
-            _FailingDB(fail_execute_after_commit=True),  # type: ignore[arg-type]
-            game=_finished_game("solitaire"),
-            session_id=SECRET_SID,
-            player_name="Me",
-        )
-    assert info.value.status_code == 500
-    assert isinstance(info.value.__cause__, OperationalError)
-    _assert_logged_safely(caplog, "solitaire")
 
 
 # ---------------------------------------------------------------------------

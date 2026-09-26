@@ -330,9 +330,6 @@ async def sweep_stale_games_safely(session: AsyncSession, *, session_id: str) ->
 
 @dataclass
 class GameTypeStats:
-    played: int
-    best: int | None
-    avg: float | None
     last_played_at: datetime | None
     # Completed-only count behind Arcade XP (#2472). Set straight from the
     # aggregate query, never through stats_shape(): a game module must not be
@@ -352,14 +349,6 @@ class GameTypeStats:
     best_label_key: str | None = None
     # Game-specific figures from stats_shape()'s "extras" (Blackjack's chips).
     extras: dict[str, Any] = field(default_factory=dict)
-    # Deprecated top-level aliases of Blackjack's extras, kept for app builds
-    # that read them (Profile reads best_chips) until #2644 removes them.
-    best_chips: int | None = None
-    current_chips: int | None = None
-    best_run_chips: int | None = None
-    total_runs: int | None = None
-    runs_completed: int | None = None
-    current_table: str | None = None
 
 
 @dataclass
@@ -541,16 +530,17 @@ def _comparable_fields(
 async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> StatsSummary:
     """Aggregate per-game-type stats for a single session.
 
-    Only counts completed games — in-progress games are excluded from
-    played/best/avg so the leaderboard stays stable until a game finishes.
+    Only counts finished games (``completed_at`` set); in-progress games are
+    left out.
 
-    Abandoned games (#2468 / #2472) are counted but not scored. ``played`` and
-    ``last_played_at`` are lifecycle facts and still include them (though not
-    ``last_played_at`` for a row the stale-session sweep closed); every score
-    aggregate (``best`` / ``avg`` / ``latest_score``) and ``completed_played``
-    — the count XP is derived from — excludes them, because the frontend
-    abandon paths do send a ``final_score`` (Sudoku sends the full completion
-    formula, so a 0-error abandon on Hard scores 300).
+    Abandoned games (#2468 / #2472) are counted but not scored. ``sessions``
+    and ``last_played_at`` are lifecycle facts and still include them (though
+    not ``last_played_at`` for a row the stale-session sweep closed); every
+    score aggregate (``best_value`` and the ``best`` / ``latest_score`` inputs
+    to ``stats_shape()``) and ``completed_played`` — the count XP is derived
+    from — excludes them, because the frontend abandon paths do send a
+    ``final_score`` (Sudoku sends the full completion formula, so a 0-error
+    abandon on Hard scores 300).
 
     Per-game stat shaping is delegated to each module's ``stats_shape()``
     method via the registry (#541).  No game-name branches live here.
@@ -571,10 +561,9 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
                 GameType.name,
                 func.count(Game.id).label("played"),
                 func.count(case((not_abandoned(), Game.id))).label("completed_played"),
+                # The highest score: the ``best`` input to stats_shape()
+                # (Blackjack's best_chips).
                 func.max(scored).label("best"),
-                # The legacy ``best`` of an ascending board (FreeCell's moves).
-                func.min(scored).label("best_asc"),
-                func.avg(scored).label("avg"),
                 # Swept rows (#2621) carry a synthetic completed_at
                 # (started_at + 24 h), not a time the player played.
                 func.max(case((not_swept(), Game.completed_at))).label("last_played_at"),
@@ -671,18 +660,11 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
                 f"/stats: no GameModule for game type {name!r}; left out", level="error"
             )
             continue
-        # The deprecated ``best`` is the best final_score in the board's
-        # direction (#2632): FreeCell's session rows carry moves, fewer is
-        # better, so its highest final_score is the player's worst game.
-        best = row.best_asc if game_module.board.direction == "asc" else row.best
-        avg, last_played = row.avg, row.last_played_at
         total += played
 
         raw: dict = {
-            "played": played,
-            "best": int(best) if best is not None else None,
-            "avg": round(float(avg), 1) if avg is not None else None,
-            "last_played_at": last_played,
+            "best": int(row.best) if row.best is not None else None,
+            "last_played_at": row.last_played_at,
             "latest_score": latest_score_by_name.get(name),
             "metadata": latest_meta_by_name.get(name, {}),
         }
@@ -692,17 +674,8 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
         extras: dict[str, Any] = dict(shaped.get("extras") or {})
 
         by_game[name] = GameTypeStats(
-            played=shaped.get("played", 0),
-            best=shaped.get("best"),
-            avg=shaped.get("avg"),
             last_played_at=shaped.get("last_played_at"),
             extras=extras,
-            best_chips=extras.get("best_chips"),
-            current_chips=extras.get("current_chips"),
-            best_run_chips=extras.get("best_run_chips"),
-            total_runs=extras.get("total_runs"),
-            runs_completed=extras.get("runs_completed"),
-            current_table=extras.get("current_table"),
             completed_played=completed_played,
             **_comparable_fields(row, game_module.board, streaks.get(name)),
         )

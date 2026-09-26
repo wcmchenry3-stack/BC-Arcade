@@ -28,7 +28,7 @@ In a second terminal:
 ```bash
 cd backend
 
-# Game flow — single user, sequential (correct for global game state)
+# Game flow — one Yacht game through /games, sequential
 locust -f perf/locustfile.py \
   --headless --users 1 --spawn-rate 1 --run-time 60s \
   --host http://localhost:8000 --csv perf-gameflow \
@@ -40,7 +40,7 @@ locust -f perf/locustfile.py \
   --host http://localhost:8000 --csv perf-leaderboard \
   LeaderboardUser
 
-# Read-only polling — 20 users
+# Read-only (catalog, stats, history) — 20 users
 locust -f perf/locustfile.py \
   --headless --users 20 --spawn-rate 5 --run-time 60s \
   --host http://localhost:8000 --csv perf-readonly \
@@ -114,11 +114,9 @@ Artifacts (Locust CSVs and Lighthouse HTML reports) are retained for 30 days.
 
 ## Known Limitations
 
-### Single global game instance
+### Game flow is the sync path, not gameplay
 
-The Yacht backend has one global `game` variable. It is **not concurrent-safe**. Running the game flow with more than 1 user will cause state collisions (mixed round counts, wrong phase errors). This is expected and documented, not a bug in the tests.
-
-The `YachtGameUser` class must always be run with `--users 1`. Concurrent stress testing only applies to the leaderboard endpoints.
+Yacht runs on the device; the server only records games. `YachtGameUser` replays what the app's `SyncWorker` sends for one solo game (`POST /games`, 13 `POST /games/{id}/events` batches, `PATCH /games/{id}/complete`, `GET /games/{id}/rank`), with a fresh `X-Session-ID` per game so it stays under the per-session write limits (10/minute for create and complete). The old server-side `/yacht/*` routes it used to drive were removed in #2630. Every request is session-scoped, so it can run with more than one user.
 
 ### Render free-tier cold starts
 

@@ -12,7 +12,8 @@ module registry, not a hand-written list: registering a game with an enabled
   ``me`` / ``is_me`` (#2633) report that entry's rank.
 - Entries rank in the declared direction, then the tie-break, then the
   earliest completion.
-- No board lists an unnamed player or a sentinel ``*-anon`` session.
+- No board lists an unnamed player or a sentinel ``*-anon`` session, and no
+  board, in any partition, lists an abandoned game (#2468).
 - ``/stats/me`` win streaks (#2620): ``push`` and ``abandoned`` neither extend
   nor break a run, a ``loss`` ends it, and score-only games report ``null``.
 """
@@ -23,6 +24,7 @@ import os
 import uuid
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
+from itertools import product
 from typing import Any
 from urllib.parse import urlencode
 
@@ -406,6 +408,78 @@ async def test_no_board_lists_an_unnamed_or_sentinel_row(client: TestClient, gam
     ]
     assert body["me"] is None
     assert not any(e["is_me"] for e in body["entries"])
+
+
+def _every_partition(board: BoardDefinition) -> list[dict[str, str]]:
+    """Every board of the game: each partition key over its allowed values,
+    else the values it has caps for (Sudoku's difficulties), else its default."""
+    choices: list[list[str]] = []
+    for key in board.partitions:
+        values = list(board.allowed_values(key) or ())
+        if not values:
+            values = [v for k, v, _ in board.partition_max_values if k == key]
+        if not values:
+            default = board.partition_default(key)
+            assert default is not None, f"pick test values for partition {key!r}"
+            values = [default]
+        choices.append(values)
+    return [dict(zip(board.partitions, combo, strict=True)) for combo in product(*choices)]
+
+
+_EVERY_BOARD = [
+    (game, partition)
+    for game in ENABLED_BOARDS
+    for partition in _every_partition(_definition(game))
+]
+
+
+@pytest.mark.parametrize(
+    ("game", "partition"),
+    _EVERY_BOARD,
+    ids=[f"{g}-{'-'.join(p.values()) or 'all'}" for g, p in _EVERY_BOARD],
+)
+async def test_abandoned_rows_excluded(
+    client: TestClient, game: str, partition: dict[str, str]
+) -> None:
+    """An abandoned game never ranks, on every board (#2468). The app's abandon
+    paths send a score (Sudoku sends the full completion formula), so each
+    abandoned row here would otherwise be first on its board."""
+    board = _definition(game)
+
+    def row(value: int) -> tuple[int | None, dict[str, Any]]:
+        meta: dict[str, Any] = dict(partition)
+        if board.metric == SCORE_METRIC:
+            return value, meta
+        meta[board.metric] = value
+        return None, meta
+
+    kept_score, kept_meta = row(_better(board, 0))
+    await _seed(
+        game,
+        _sid(),
+        score=kept_score,
+        name="Kept",
+        minutes=0,
+        outcome=_outcome(board),
+        meta=kept_meta,
+    )
+    quit_score, quit_meta = row(_better(board, 9))
+    await _seed(
+        game,
+        _sid(),
+        score=quit_score,
+        name="Quit",
+        minutes=1,
+        outcome="abandoned",
+        meta=quit_meta,
+    )
+
+    viewer = _sid()
+    await _grant_all(viewer)
+    body = _board(client, f"{game}?limit=100&{urlencode(partition)}".rstrip("&"), viewer)
+    assert [(e["player_name"], e["value"]) for e in body["entries"]] == [
+        ("Kept", _better(board, 0))
+    ]
 
 
 # ---------------------------------------------------------------------------

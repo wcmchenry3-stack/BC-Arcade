@@ -4,7 +4,8 @@
  * The card no longer submits anything: it reads where the synced game ranks
  * with GET /games/{id}/rank, and a display name the player types is sent with
  * PUT /players/me. `legacyPattern` records any call to the game's old
- * per-game leaderboard routes, which the app must no longer make.
+ * per-game leaderboard routes, which were removed in #2644 (they answer 404
+ * here, as on the server): the app must not make one.
  */
 
 import type { Page } from "@playwright/test";
@@ -12,7 +13,7 @@ import type { Page } from "@playwright/test";
 export interface SessionBoardCalls {
   /** Game ids whose rank the card asked for. */
   rankLookups: string[];
-  /** "METHOD path" of every call to the legacy per-game routes. */
+  /** "METHOD path" of every call to the removed per-game routes. */
   legacyCalls: string[];
 }
 
@@ -44,9 +45,9 @@ export async function routeSessionBoard(
       `${request.method()} ${new URL(request.url()).pathname}`,
     );
     await route.fulfill({
-      status: 200,
+      status: 404,
       contentType: "application/json",
-      body: JSON.stringify({ scores: [] }),
+      body: JSON.stringify({ detail: "Not Found" }),
     });
   });
   return calls;

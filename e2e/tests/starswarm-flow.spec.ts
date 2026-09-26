@@ -8,17 +8,14 @@
  *   - Accessibility labels (canvas role, charge shot button)
  *   - App stability under pointer and keyboard input
  *
- * API endpoints are mocked so tests are hermetic (no running backend required).
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "./fixtures";
-import { mockStarswarmApi } from "./helpers/starswarm";
 
 test.describe("Star Swarm — navigation and smoke tests", () => {
-  test.beforeEach(async ({ page }) => {
-    await mockStarswarmApi(page);
-  });
-
   test("navigates from Home to Star Swarm screen", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("button", { name: "Play Star Swarm" }).click();

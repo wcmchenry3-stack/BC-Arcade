@@ -312,26 +312,12 @@ def test_partition_values_fill_every_board_and_nothing_else_ranks(game: str) -> 
 
 
 def test_sudoku_variant_defaults_to_classic_like_the_legacy_route() -> None:
-    """Rows from before #748 have no ``variant``; ``_top_scores`` counts them as classic."""
+    """Rows from before #748 have no ``variant``; the board counts them as classic."""
     from sudoku.models import SudokuMetadata
 
     board = _board("sudoku")
     assert board.partition_defaults == (("variant", "classic"),)
     assert SudokuMetadata.model_fields["variant"].default == "classic"
-
-
-def test_existing_request_bounds_match_max_value() -> None:
-    """The per-game submit bounds that exist today agree with the boards.
-
-    Yacht has no submit route: its legacy ``POST /yacht/score`` was removed
-    (#2630), and its 1575 cap is recomputed from the engine below.
-    """
-    from sort.models import ScoreSubmitRequest as SortSubmit
-
-    def le(model, field: str) -> int:
-        return next(m.le for m in model.model_fields[field].metadata if hasattr(m, "le"))
-
-    assert le(SortSubmit, "level_reached") == _board("sort").max_value
 
 
 # ---------------------------------------------------------------------------

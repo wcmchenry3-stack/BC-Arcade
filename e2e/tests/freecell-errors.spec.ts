@@ -13,11 +13,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import {
-  mockFreecellApi,
-  gotoFreecell,
-  injectFreecellState,
-} from "./helpers/freecell";
+import { gotoFreecell, injectFreecellState } from "./helpers/freecell";
 
 const API_BASE = "http://localhost:8000";
 
@@ -56,7 +52,6 @@ test.describe("FreeCell — error paths", () => {
   // ---------------------------------------------------------------------------
 
   test("navigating away from FreeCell returns to Home", async ({ page }) => {
-    await mockFreecellApi(page);
     await gotoFreecell(page);
 
     await page.goto("/");
@@ -72,7 +67,6 @@ test.describe("FreeCell — error paths", () => {
   test("moving a card to a wrong-rank tableau slot does not increment move counter", async ({
     page,
   }) => {
-    await mockFreecellApi(page);
     await injectFreecellState(page, BOARD_STATE);
 
     await page.getByRole("button", { name: "Play FreeCell" }).click();
@@ -114,7 +108,6 @@ test.describe("FreeCell — error paths", () => {
   // ---------------------------------------------------------------------------
 
   test("board is usable after an invalid move attempt", async ({ page }) => {
-    await mockFreecellApi(page);
     await injectFreecellState(page, BOARD_STATE);
 
     await page.getByRole("button", { name: "Play FreeCell" }).click();
@@ -138,7 +131,6 @@ test.describe("FreeCell — error paths", () => {
   test("corrupted freecell_game localStorage — fresh game loads", async ({
     page,
   }) => {
-    await mockFreecellApi(page);
     // Inject corrupted storage before navigating; do NOT call gotoFreecell
     // because it clears the storage key before loading.
     await page.goto("/");

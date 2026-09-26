@@ -1,6 +1,6 @@
 """Where a board finds a player's display name (#2624, #2519 decisions 17-18).
 
-Every board, the rank query and the name route resolve names through
+Every board and the rank query resolve names through
 :func:`name_lookup` and nothing else. Today a player is one session id and the
 name is that session's ``players`` row. Accounts (#1047) will map several
 session ids to one account and its name: that is a change to ``name_lookup``

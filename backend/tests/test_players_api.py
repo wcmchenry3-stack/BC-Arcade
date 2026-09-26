@@ -2,8 +2,8 @@
 
 ``PUT/GET/DELETE /players/me`` keep the caller's one display name. Every board
 ranks only players who have one, counts all of their finished games, and shows
-the current name, so a rename applies to all history. ``PATCH /games/{id}/name``
-stays for installed builds and sets the same name.
+the current name, so a rename applies to all history. (``PATCH /games/{id}/name``,
+which set the same name, was removed in #2644.)
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import event, func, select
+from sqlalchemy import event, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from db.base import get_engine, get_session_factory, is_configured
@@ -302,135 +302,15 @@ async def test_a_rename_does_not_touch_other_players(client: TestClient) -> None
 
 
 # ---------------------------------------------------------------------------
-# PATCH /games/{id}/name — the compat route for installed builds
-# ---------------------------------------------------------------------------
-
-
-async def test_compat_name_route_sets_the_display_name_and_ranks(client: TestClient) -> None:
-    better, worse, me = _sid(), _sid(), _sid()
-    _play(client, better, "solitaire", 900)
-    _put(client, better, "Better")
-    _play(client, worse, "solitaire", 100)
-    _put(client, worse, "Worse")
-    game_id = _play(client, me, "solitaire", 500)
-
-    r = client.patch(
-        f"/games/{game_id}/name", headers=_headers(me), json={"player_name": "  Ada  "}
-    )
-    assert r.status_code == 200, r.text
-    assert r.json() == {"rank": 2, "is_best": True}
-    assert _get(client, me) == {"display_name": "Ada"}
-    assert _entries(client, "solitaire", me) == [("Better", 900), ("Ada", 500), ("Worse", 100)]
-
-
-async def test_compat_name_route_ranks_the_players_best_entry(client: TestClient) -> None:
-    me = _sid()
-    _play(client, me, "solitaire", 800)
-    worse = _play(client, me, "solitaire", 200)
-    r = client.patch(f"/games/{worse}/name", headers=_headers(me), json={"player_name": "Me"})
-    assert r.json() == {"rank": 1, "is_best": False}
-    assert _entries(client, "solitaire", me) == [("Me", 800)]
-
-
-async def test_compat_name_route_renames_everywhere(client: TestClient) -> None:
-    me = _sid()
-    await _grant_all(me)
-    solitaire = _play(client, me, "solitaire", 300)
-    _play(client, me, "sort", 4)
-    client.patch(f"/games/{solitaire}/name", headers=_headers(me), json={"player_name": "Old"})
-    sort_game = _play(client, me, "sort", 9)
-    r = client.patch(f"/games/{sort_game}/name", headers=_headers(me), json={"player_name": "New"})
-    assert r.status_code == 200, r.text
-    assert _entries(client, "solitaire", me) == [("New", 300)]
-    assert _entries(client, "sort", me) == [("New", 9)]
-
-
-async def test_compat_name_route_still_writes_the_row_for_legacy_boards(
-    client: TestClient,
-) -> None:
-    """``GET /cascade/scores`` (and every legacy per-game board) reads
-    ``metadata.player_name`` from session rows until #2644 removes them."""
-    me = _sid()
-    await _grant_all(me)
-    game_id = _play(client, me, "cascade", 1234)
-    r = client.patch(f"/games/{game_id}/name", headers=_headers(me), json={"player_name": "Ada"})
-    assert r.status_code == 200, r.text
-    detail = client.get(f"/games/{game_id}", headers=_headers(me)).json()
-    assert detail["metadata"]["player_name"] == "Ada"
-    scores = client.get("/cascade/scores", headers=_headers(me)).json()["scores"]
-    assert [(s["player_name"], s["score"]) for s in scores] == [("Ada", 1234)]
-
-
-async def test_compat_name_route_400s_write_no_name(client: TestClient) -> None:
-    me = _sid()
-    await _grant_all(me)
-    # A tier the board doesn't allow (#2665).
-    r = client.post(
-        "/games",
-        headers=_headers(me),
-        json={"game_type": "starswarm", "metadata": {"difficulty_tier": "Cadet"}},
-    )
-    gid = r.json()["id"]
-    r = client.patch(
-        f"/games/{gid}/complete",
-        headers=_headers(me),
-        json={"final_score": 900, "outcome": "completed", "result": {"wave_reached": 2}},
-    )
-    assert r.status_code == 200, r.text
-    r = client.patch(f"/games/{gid}/name", headers=_headers(me), json={"player_name": "Ace"})
-    assert r.status_code == 400
-    assert r.json()["detail"] == "This game's board does not exist."
-
-    # An unfinished game.
-    r = client.post("/games", headers=_headers(me), json={"game_type": "solitaire"})
-    open_id = r.json()["id"]
-    r = client.patch(f"/games/{open_id}/name", headers=_headers(me), json={"player_name": "Ace"})
-    assert r.status_code == 400
-
-    assert _get(client, me) == {"display_name": None}
-
-
-# ---------------------------------------------------------------------------
 # Safe replays
 # ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
-# Legacy name paths still name the player (#2624 review): builds from before
-# #2624 never call PUT /players/me.
+# A name in POST /games metadata still names the player (#2624 review): builds
+# from before #2624 never call PUT /players/me. (The name routes that did the
+# same, PATCH /games/{id}/name and the per-game ones, were removed in #2644.)
 # ---------------------------------------------------------------------------
-
-
-async def test_legacy_cascade_name_route_sets_the_display_name(client: TestClient) -> None:
-    me, viewer = _sid(), _sid()
-    await _grant_all(me)
-    await _grant_all(viewer)
-    gid = _play(client, me, "cascade", 500)
-    r = client.patch(f"/cascade/score/{gid}", headers=_headers(me), json={"player_name": "Old"})
-    assert r.status_code == 200, r.text
-    assert _get(client, me) == {"display_name": "Old"}
-    assert _entries(client, "cascade", viewer) == [("Old", 500)]
-
-
-async def test_legacy_post_score_names_the_caller(client: TestClient) -> None:
-    """The sentinel row itself never ranks, but the caller's own session
-    rows do once the name they submitted is their display name."""
-    me, viewer = _sid(), _sid()
-    await _grant_all(viewer)
-    _play(client, me, "solitaire", 300)
-    r = client.post(
-        "/solitaire/score", headers=_headers(me), json={"player_name": " Old ", "score": 300}
-    )
-    assert r.status_code == 201, r.text
-    assert _get(client, me) == {"display_name": "Old"}
-    assert _entries(client, "solitaire", viewer) == [("Old", 300)]
-
-
-async def test_legacy_post_score_without_a_session_names_no_one(client: TestClient) -> None:
-    r = client.post("/solitaire/score", json={"player_name": "Old", "score": 300})
-    assert r.status_code == 201, r.text
-    async with get_session_factory()() as db:
-        assert (await db.execute(select(func.count()).select_from(Player))).scalar_one() == 0
 
 
 async def test_a_name_in_creation_metadata_sets_the_display_name(client: TestClient) -> None:

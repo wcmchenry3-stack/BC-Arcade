@@ -1,12 +1,10 @@
 """Solitaire, Sudoku, FreeCell and Cascade report through the session rows (#2632).
 
 The app records each game with ``POST /games`` + ``PATCH /games/{id}/complete``
-and its result card reads ``GET /games/{id}/rank``; it no longer calls the
-legacy ``POST /solitaire/score``, ``POST /freecell/score`` or
-``PATCH /<sudoku|cascade>/score/{id}``. These tests drive exactly what the
-current app sends, per game, and check that a named player appears once per
-board (and partition), that the abandon the ``useGameSync`` hook sends never
-ranks, and that an installed build's legacy call adds no second entry.
+and its result card reads ``GET /games/{id}/rank`` (the per-game score routes
+were removed in #2644). These tests drive exactly what the current app sends,
+per game, and check that a named player appears once per board (and
+partition) and that the abandon the ``useGameSync`` hook sends never ranks.
 """
 
 from __future__ import annotations
@@ -166,34 +164,6 @@ async def test_a_named_player_appears_once_per_board(client: TestClient, flow: A
     assert _entries(client, sid, flow) == [("Solo", flow.best)]
 
 
-@pytest.mark.parametrize("flow", FLOWS, ids=[f.game_type for f in FLOWS])
-async def test_an_installed_builds_legacy_call_adds_no_second_entry(
-    client: TestClient, flow: AppFlow
-) -> None:
-    """A player on an older build still calls the legacy route after the game."""
-    sid = str(uuid.uuid4())
-    await _grant_all(sid)
-    _set_display_name(client, sid, "Solo")
-    game_id = _win(client, sid, flow, flow.best)
-
-    headers = _headers(sid)
-    if flow.game_type == "solitaire":
-        r = client.post(
-            "/solitaire/score", headers=headers, json={"player_name": "Solo", "score": flow.best}
-        )
-    elif flow.game_type == "freecell":
-        r = client.post(
-            "/freecell/score", headers=headers, json={"player_id": "Solo", "move_count": flow.best}
-        )
-    else:
-        r = client.patch(
-            f"/{flow.game_type}/score/{game_id}", headers=headers, json={"player_name": "Solo"}
-        )
-    assert r.status_code in (200, 201), r.text
-
-    assert _entries(client, sid, flow) == [("Solo", flow.best)]
-
-
 async def test_solitaire_records_the_draw_mode_on_the_session_row(client: TestClient) -> None:
     sid = str(uuid.uuid4())
     flow = FLOWS[0]
@@ -225,13 +195,9 @@ async def test_freecell_best_value_is_the_fewest_moves(client: TestClient) -> No
     assert freecell["best_value"] == 88
     assert freecell["best_label_key"] == "moves"
     assert freecell["completed"] == 3
-    # The deprecated `best` (Profile's "Top score" in store builds) too, not 140.
-    assert freecell["best"] == 88
 
 
-async def test_a_descending_games_legacy_best_is_still_its_highest_score(
-    client: TestClient,
-) -> None:
+async def test_a_descending_games_best_value_is_its_highest_score(client: TestClient) -> None:
     sid = str(uuid.uuid4())
     await _grant_all(sid)
     flow = FLOWS[3]  # Cascade
@@ -239,5 +205,4 @@ async def test_a_descending_games_legacy_best_is_still_its_highest_score(
     _win(client, sid, flow, 4200)
     _win(client, sid, flow, 900)
     cascade = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["cascade"]
-    assert cascade["best"] == 4200
     assert cascade["best_value"] == 4200

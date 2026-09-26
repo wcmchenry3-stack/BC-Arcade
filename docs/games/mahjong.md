@@ -37,7 +37,7 @@ When no matching free pair remains and shuffles are left, a Shuffle prompt is of
   - Any other exit is `abandoned`, with `result: { won: false, pairs }` and no score.
   - Builds before #2627 sent `completed`. The server stores one with `won: true` as `win` (`backend/games/legacy_outcomes.py`); the rest stay `completed`, a finish with no winner.
 - **Duration:** Mahjong's own play timer (`elapsedMs` in `engine.ts`). It wins over `useGameSync`'s window. The timer stops at a win or a deadlock and pauses while another screen covers the game (navigation `blur`, `MahjongScreen.tsx`). It does **not** pause when the app goes to the background: `pauseGame` is only called on `blur`, and a relaunch restores the saved `startedAt` (`frontend/src/game/mahjong/storage.ts`), so backgrounded time and time between an app kill and the relaunch are counted (#2750).
-- **How it reaches the server:** the `useGameSync("mahjong")` session row, opened at the first tile tap. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. The engine runs client-side and the board persists to AsyncStorage, so a game finished offline uploads when the device is back online. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best win once. The app no longer calls the legacy `POST /mahjong/score`, which stays for installed builds until #2644. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
+- **How it reaches the server:** the `useGameSync("mahjong")` session row, opened at the first tile tap. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. The engine runs client-side and the board persists to AsyncStorage, so a game finished offline uploads when the device is back online. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best win once. The legacy `POST /mahjong/score` was removed in #2644. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the win card shows the rank through `sessionBoardAdapter` (`GET /games/{id}/rank`), or asks once for a display name. The deadlock card shows no rank. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu. Store builds hide Mahjong (`HIDDEN_GAMES`, `frontend/src/entitlements/gameVisibility.ts`), so there it has no leaderboard or stats entry point.
 
 ## Client-Side Engine
@@ -49,7 +49,7 @@ When no matching free pair remains and shuffles are left, a Shuffle prompt is of
 ## Backend
 
 - Module: `backend/mahjong/module.py`
-- Endpoints: `backend/mahjong/router.py`, legacy. `POST /mahjong/score` and `GET /mahjong/scores` stay for installed builds until #2644; the app no longer calls them.
+- Endpoints: none of its own — the generic `/games` routes. The legacy `POST /mahjong/score` and `GET /mahjong/scores` were removed in #2644.
 - Metadata model: `MahjongMetadata` — `player_name: str = ""` (max 64 chars), `layout: str | None` (layout id)
 - Result model: `MahjongResult` — `won: bool`, `pairs: int`
 - Scoring: see [Scoring](#scoring-persistence)

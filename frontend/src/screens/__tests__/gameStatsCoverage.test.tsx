@@ -39,12 +39,7 @@ jest.mock("../../game/_shared/NetworkContext", () => ({
 
 function gameStats(gameType: GameType): GameTypeStats {
   return {
-    played: 6,
-    best: null,
-    avg: null,
     last_played_at: "2026-09-20T12:00:00Z",
-    best_chips: null,
-    current_chips: null,
     sessions: 6,
     completed: 5,
     won: 3,

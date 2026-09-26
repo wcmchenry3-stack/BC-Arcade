@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from games.leaderboard import RankReason
 from games.registry import get_module
-from players.schemas import DisplayName
 
 # ---------------------------------------------------------------------------
 # Shared sub-models
@@ -79,16 +78,6 @@ class CompleteGameRequest(BaseModel):
         return {} if v is None else v
 
 
-class SetPlayerNameRequest(BaseModel):
-    """``PATCH /games/{id}/name`` (#2618). Surrounding whitespace is dropped.
-
-    Validated exactly like ``PUT /players/me``, since it now sets the same
-    per-player display name (#2624).
-    """
-
-    player_name: DisplayName
-
-
 # ---------------------------------------------------------------------------
 # Response models
 # ---------------------------------------------------------------------------
@@ -141,19 +130,12 @@ class LeaderboardResponse(BaseModel):
     me: LeaderboardEntryOut | None = None
 
 
-class SetPlayerNameResponse(BaseModel):
-    """The rank of the caller's best entry, and whether this game is that entry."""
-
-    rank: int
-    is_best: bool
-
-
 class GameRankResponse(BaseModel):
     """``GET /games/{id}/rank`` (#2677): the caller's standing on the game's board.
 
     When ``ranked`` is true, ``rank`` is the exact rank of the caller's best
     entry in the game's partition and ``is_best`` says whether this game is
-    that entry (the values ``PATCH /games/{id}/name`` reports). When it is
+    that entry. When it is
     false, both are null and ``reason`` says why.
     """
 
@@ -201,16 +183,10 @@ class GameTypeStatsResponse(BaseModel):
       Blackjack's ``best_chips``, ``current_chips``, ``best_run_chips``,
       ``total_runs``, ``runs_completed``, ``current_table``.
 
-    Deprecated (kept for app builds already in the stores; #2644 removes them
-    once #2637 ships): ``played`` (= ``sessions``), ``best`` (the best
-    ``final_score`` in the board's direction: the lowest for an ascending
-    board such as FreeCell's moves, #2632, else the highest), ``avg``, and the
-    top-level Blackjack fields, which mirror ``extras``.
+    The deprecated aliases (``played``, ``best``, ``avg`` and the top-level
+    Blackjack fields) were removed in #2644.
     """
 
-    played: int
-    best: int | None = None
-    avg: float | None = None
     last_played_at: datetime | None = None
     sessions: int = 0
     completed: int = 0
@@ -223,12 +199,6 @@ class GameTypeStatsResponse(BaseModel):
     best_value: int | float | None = None
     best_label_key: str | None = None
     extras: dict[str, Any] = Field(default_factory=dict)
-    best_chips: int | None = None
-    current_chips: int | None = None
-    best_run_chips: int | None = None
-    total_runs: int | None = None
-    runs_completed: int | None = None
-    current_table: str | None = None
 
 
 class StatsResponse(BaseModel):

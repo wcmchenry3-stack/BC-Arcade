@@ -21,7 +21,7 @@ python -m pytest tests/ -v
 # By file
 python -m pytest tests/test_game.py -v       # Yacht game logic
 python -m pytest tests/test_api.py -v        # Yacht API endpoints
-python -m pytest tests/test_cascade_api.py -v  # Cascade leaderboard API
+python -m pytest tests/test_generic_leaderboard.py -v  # Leaderboard API (every game)
 
 # With coverage
 python -m pytest tests/ -v --cov=. --cov-report=term-missing
@@ -34,7 +34,7 @@ backend/tests/
 ├── __init__.py
 ├── test_game.py              # YachtGame unit tests — all 13 scoring categories
 ├── test_api.py               # Yacht FastAPI endpoints via TestClient
-└── test_cascade_api.py   # Cascade leaderboard endpoints via TestClient
+└── test_generic_leaderboard.py  # GET /games/leaderboard/{game_type} via TestClient
 ```
 
 ### What's Tested
@@ -52,10 +52,12 @@ backend/tests/
 
 - `POST /yacht/new`, `GET /yacht/state`, `POST /yacht/roll`, `POST /yacht/score`, `GET /yacht/possible-scores`
 
-**test_cascade_api.py**
+**test_generic_leaderboard.py**
 
-- `POST /cascade/score` — valid submission (201), invalid payloads (422)
-- `GET /cascade/scores` — empty initially, sorted descending, capped at 10
+- `GET /games/leaderboard/{game_type}` — one entry per named player, ranked by
+  each game's `BoardDefinition`; abandoned rows never rank. (The per-game
+  leaderboard routes were removed in #2644; `test_legacy_leaderboard_routes_removed.py`
+  checks that each answers 404.)
 
 ### Notes
 

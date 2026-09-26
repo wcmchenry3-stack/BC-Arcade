@@ -70,7 +70,7 @@ A `cascadeCombo` event is emitted when ≥3 merges occur within `COMBO_WINDOW_TI
 ## Backend
 
 - Module: `backend/cascade/module.py`
-- Endpoints: `backend/cascade/router.py`, legacy. `PATCH /cascade/score/{game_id}` and `GET /cascade/scores` stay for installed builds until #2644; the app no longer calls them.
+- Endpoints: none of its own — the generic `/games` routes. The legacy `PATCH /cascade/score/{game_id}` and `GET /cascade/scores` were removed in #2644.
 - Metadata model: `CascadeMetadata` — `player_name: str = ""` (max 64 chars). Current builds send no metadata.
 - Result model: none (`result_model = None`): the result block is stored as sent.
 - Scoring: see [Scoring](#scoring-persistence)

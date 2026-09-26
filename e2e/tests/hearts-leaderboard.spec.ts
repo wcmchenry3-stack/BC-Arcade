@@ -7,14 +7,17 @@
  * game. The finished game syncs itself (`POST /games`, `PATCH
  * /games/{id}/complete`) and the card shows where it ranks
  * (`GET /games/{id}/rank`) under the player's display name — or asks for
- * one once when none is set. Nothing goes to `POST /hearts/score` (#2629).
+ * one once when none is set. Nothing goes to `POST /hearts/score` (#2629),
+ * which was removed in #2644.
  * A finished game resumed from storage shows the card without sending
  * anything.
  *
  * final_score recorded = Math.max(0, 100 − cumulativeScores[0]).
  * The human discards ♥5 onto East's winning ♦9 and ends on 45: 55.
  *
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on (the game
+ * sync included) are intercepted with page.route(), and any other call
+ * fails, which the app handles like being offline.
  */
 
 import { test, expect } from "./fixtures";
@@ -78,7 +81,7 @@ const LAST_TRICK_STATE = {
 const DISPLAY_NAME_KEY = "player_display_name";
 
 interface Traffic {
-  /** Requests to the legacy Hearts routes (`/hearts/...`). */
+  /** Requests to the removed Hearts routes (`/hearts/...`, #2644). */
   hearts: string[];
   /** `POST /games` bodies. */
   creates: Record<string, unknown>[];
@@ -88,7 +91,7 @@ interface Traffic {
   ranks: string[];
 }
 
-/** Intercepts the game sync, rank, player and legacy Hearts routes. */
+/** Intercepts the game sync, rank and player routes, and records any `/hearts/` call. */
 async function routeApi(page: Page): Promise<Traffic> {
   const traffic: Traffic = {
     hearts: [],
@@ -103,7 +106,7 @@ async function routeApi(page: Page): Promise<Traffic> {
   });
   await page.route("**/hearts/**", async (route) => {
     traffic.hearts.push(`${route.request().method()} ${route.request().url()}`);
-    await route.fulfill(json({ scores: [] }));
+    await route.fulfill({ ...json({ detail: "Not Found" }), status: 404 });
   });
   await page.route("**/players/me", async (route) => {
     const body = JSON.parse(route.request().postData() ?? "{}");

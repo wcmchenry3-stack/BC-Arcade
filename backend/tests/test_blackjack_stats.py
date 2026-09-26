@@ -2,8 +2,7 @@
 
 A run that reached its goal records ``win``, a run whose chips ran out before
 the goal ``loss``, and a run left before the goal ``abandoned``. The run
-summary stays in ``extras``, with the old top-level fields as deprecated
-aliases until #2644.
+summary is in ``extras`` only (the deprecated top-level aliases went in #2644).
 """
 
 from __future__ import annotations
@@ -24,8 +23,8 @@ pytestmark = pytest.mark.skipif(
     reason="DATABASE_URL not set — skipping live API tests",
 )
 
-# Every figure stats_shape() puts in extras, each mirrored by a deprecated
-# top-level field of the same name.
+# Every figure stats_shape() puts in extras. The deprecated top-level aliases
+# of the same names were removed in #2644.
 _EXTRAS_KEYS = {
     "best_chips",
     "current_chips",
@@ -136,10 +135,9 @@ async def test_stats_me_counts_blackjack_wins_and_losses(client: TestClient) -> 
     assert bj["extras"]["total_runs"] == 3
     assert bj["extras"]["runs_completed"] == 2
     assert bj["extras"]["current_table"] == "intermediate"
-    # ...and the deprecated top-level aliases still mirror it (#2644 removes them).
-    for key in _EXTRAS_KEYS:
-        assert key in bj
-        assert bj[key] == bj["extras"][key]
+    # ...and only there: the deprecated top-level aliases are gone (#2644).
+    assert _EXTRAS_KEYS.isdisjoint(bj)
+    assert {"played", "best", "avg"}.isdisjoint(bj)
 
 
 async def test_stats_me_blackjack_extras_carry_chips_when_a_score_is_sent(
@@ -154,8 +152,6 @@ async def test_stats_me_blackjack_extras_carry_chips_when_a_score_is_sent(
     bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
     assert bj["extras"]["best_chips"] == 2700
     assert bj["extras"]["current_chips"] == 0
-    assert bj["best_chips"] == 2700
-    assert bj["current_chips"] == 0
     assert (bj["won"], bj["lost"]) == (1, 1)
 
 

@@ -1,11 +1,10 @@
 import { test, expect } from "@playwright/test";
-import { mockSudokuApi, gotoSudoku } from "./helpers/sudoku";
+import { gotoSudoku } from "./helpers/sudoku";
 
 test.describe("Sudoku — difficulty select", () => {
   test("selecting Easy and starting renders the 9×9 grid with pre-filled clue cells", async ({
     page,
   }) => {
-    await mockSudokuApi(page);
     await gotoSudoku(page);
 
     await page.getByRole("radio", { name: "Easy" }).click();

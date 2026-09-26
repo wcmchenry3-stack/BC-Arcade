@@ -32,7 +32,7 @@ Undo steps back through the last 50 moves (`UNDO_CAP`). An undo restores the boa
 - **Max value:** 1245, recomputed from the engine's scoring constants in `backend/tests/test_board_definitions.py`.
 - **Outcomes:** `has_winner = False`. Only a won game records `completed`: there is no loss. A new deal during a game, or leaving the screen, records `abandoned` with `{ won: false, moves }` and no score, once a move has been made.
 - **Duration:** Solitaire's own timer (`startedAt` / `accumulatedMs` on the engine state, `applyTimer` in `engine.ts`). It wins over `useGameSync`'s window. It runs from the first move to the win and pauses while another screen covers the game (`pauseGame` / `resumeGame` on navigation `blur` / `focus`, #2743). It does **not** pause when the app goes to the background, and a relaunch restores the saved `startedAt` unchanged (`loadGame` in `frontend/src/game/solitaire/storage.ts`), so a two-day break counts as two days of play (#2750).
-- **How it reaches the server:** the `useGameSync("solitaire")` session row, one per deal, with `draw_mode` as creation metadata. `SyncWorker` sends `POST /games` once the first move is made, and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best win once. The app no longer calls the legacy `POST /solitaire/score`. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
+- **How it reaches the server:** the `useGameSync("solitaire")` session row, one per deal, with `draw_mode` as creation metadata. `SyncWorker` sends `POST /games` once the first move is made, and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best win once. The legacy `POST /solitaire/score` was removed in #2644. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the win card shows the rank through `sessionBoardAdapter` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu.
 
 ## Client-Side Engine
@@ -43,7 +43,7 @@ Undo steps back through the last 50 moves (`UNDO_CAP`). An undo restores the boa
 ## Backend
 
 - Module: `backend/solitaire/module.py`
-- Endpoints: `backend/solitaire/router.py`, legacy. `POST /solitaire/score` and `GET /solitaire/scores` stay for installed builds until #2644; the app no longer calls them.
+- Endpoints: none of its own — the generic `/games` routes. The legacy `POST /solitaire/score` and `GET /solitaire/scores` were removed in #2644.
 - Metadata model: `SolitaireMetadata` — `player_name: str = ""` (max 64 chars), `draw_mode: 1 | 3 | None`
 - Result model: `SolitaireResult` — `won: bool`, `moves: int`
 - Scoring: see [Scoring](#scoring-persistence)

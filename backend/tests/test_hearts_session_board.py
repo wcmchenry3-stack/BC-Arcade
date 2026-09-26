@@ -156,18 +156,3 @@ async def test_a_players_games_make_one_board_entry(client: TestClient) -> None:
     r = client.get(f"/games/{worse}/rank", headers=_headers(sid))
     assert r.status_code == 200, r.text
     assert r.json()["is_best"] is False
-
-
-async def test_a_legacy_score_post_adds_no_second_entry(client: TestClient) -> None:
-    """An installed build still posts ``/hearts/score`` too: it never ranks twice."""
-    sid = await _entitled_sid()
-    r = client.put("/players/me", headers=_headers(sid), json={"display_name": "Riley"})
-    assert r.status_code == 200, r.text
-    _play(client, sid, penalty=46, outcome="win")
-
-    r = client.post(
-        "/hearts/score", headers=_headers(sid), json={"player_name": "Riley", "score": 54}
-    )
-    assert r.status_code == 201, r.text
-
-    assert _board(client, sid) == [("Riley", 54)]

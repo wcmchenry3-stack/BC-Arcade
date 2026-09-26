@@ -534,9 +534,8 @@ async def test_get_stats_aggregates_completed_games(db):
     assert stats.total_games == 2
     assert "yacht" in stats.by_game
     ys = stats.by_game["yacht"]
-    assert ys.played == 2
-    assert ys.best == 300
-    assert ys.avg == 200.0
+    assert ys.sessions == 2
+    assert ys.best_value == 300
     assert stats.favorite_game == "yacht"
 
 
@@ -558,7 +557,7 @@ async def test_get_stats_multi_game_type_favorite(db):
     stats = await get_stats_for_session(db, session_id=sid)
     assert stats.total_games == 4
     assert stats.favorite_game == "yacht"
-    assert stats.by_game["twenty48"].played == 1
+    assert stats.by_game["twenty48"].sessions == 1
 
 
 # ---------------------------------------------------------------------------

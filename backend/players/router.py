@@ -25,8 +25,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Keyed by session, like the games write routes. The write limit matches
-# PATCH /games/{id}/name, which also sets the name.
+# Keyed by session, like the games write routes.
 PLAYER_READ_RATE_LIMIT = "60/minute"
 PLAYER_WRITE_RATE_LIMIT = "10/minute"
 

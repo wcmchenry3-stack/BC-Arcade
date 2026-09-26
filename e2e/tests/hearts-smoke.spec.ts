@@ -2,16 +2,17 @@
  * hearts-smoke.spec.ts — GH #1142
  *
  * Smoke tests: navigation, difficulty picker, hand render, and trick area visibility.
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "@playwright/test";
-import { mockHeartsApi, gotoHearts } from "./helpers/hearts";
+import { gotoHearts } from "./helpers/hearts";
 import { installEntitlementsMock } from "./helpers/api-mock";
 
 test.describe("Hearts — smoke tests", () => {
   test("pre-game difficulty selector is visible on first load", async ({ page }) => {
-    await mockHeartsApi(page);
     await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() => localStorage.removeItem("hearts_game"));
@@ -24,7 +25,6 @@ test.describe("Hearts — smoke tests", () => {
 
   test.describe("after starting game", () => {
     test.beforeEach(async ({ page }) => {
-      await mockHeartsApi(page);
       // gotoHearts clears storage, navigates to Hearts, and clicks "Start Game"
       await gotoHearts(page);
     });

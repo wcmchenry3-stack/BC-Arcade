@@ -35,11 +35,6 @@ jest.mock("../../game/blackjack/storage", () => ({ clearGame: () => mockClearBla
 jest.mock("../../game/sudoku/storage", () => ({ clearGame: () => mockClearSudoku() }));
 // cascade/storage was removed in v2 teardown (#1747); EntitlementContext uses an inline no-op.
 
-const mockDropByGameType = jest.fn().mockResolvedValue(undefined);
-jest.mock("../../game/_shared/scoreQueue", () => ({
-  scoreQueue: { dropByGameType: (...args: unknown[]) => mockDropByGameType(...args) },
-}));
-
 // ---------------------------------------------------------------------------
 // Imports after mocks
 // ---------------------------------------------------------------------------
@@ -119,7 +114,6 @@ beforeEach(async () => {
   mockClearHearts.mockResolvedValue(undefined);
   mockClearBlackjack.mockResolvedValue(undefined);
   mockClearSudoku.mockResolvedValue(undefined);
-  mockDropByGameType.mockResolvedValue(undefined);
 });
 
 // ---------------------------------------------------------------------------
@@ -466,25 +460,15 @@ describe("revocation flow", () => {
     });
     await triggerForegroundWith([]);
     expect(mockClearBlackjack).toHaveBeenCalledTimes(1);
-    expect(mockDropByGameType).toHaveBeenCalledWith("blackjack");
-  });
-
-  it("drops queue entries for the revoked game", async () => {
-    mockRequest.mockResolvedValue({
-      token: makeToken(makePayload(["starswarm"])),
-      expires_at: "2099-01-01T00:00:00Z",
-    });
-    await triggerForegroundWith([]);
-    expect(mockDropByGameType).toHaveBeenCalledWith("starswarm");
   });
 
   it("does not clear storage when entitlements are unchanged", async () => {
     mockRequest.mockResolvedValue({
-      token: makeToken(makePayload(["cascade"])),
+      token: makeToken(makePayload(["hearts"])),
       expires_at: "2099-01-01T00:00:00Z",
     });
-    await triggerForegroundWith(["cascade"]);
-    expect(mockDropByGameType).not.toHaveBeenCalledWith("cascade");
+    await triggerForegroundWith(["hearts"]);
+    expect(mockClearHearts).not.toHaveBeenCalled();
   });
 
   it("does not clear storage on first load (no prior entitlements)", async () => {
@@ -509,16 +493,17 @@ describe("revocation flow", () => {
       expires_at: "2099-01-01T00:00:00Z",
     });
     await triggerForegroundWith([]);
-    expect(mockDropByGameType).toHaveBeenCalledWith("starswarm");
+    expect(mockClearHearts).not.toHaveBeenCalled();
+    expect(mockClearBlackjack).not.toHaveBeenCalled();
   });
 
-  it("does not affect free games when premium revocation occurs", async () => {
+  it("clears only the revoked game's storage", async () => {
     mockRequest.mockResolvedValue({
       token: makeToken(makePayload(["hearts"])),
       expires_at: "2099-01-01T00:00:00Z",
     });
     await triggerForegroundWith([]);
-    expect(mockDropByGameType).not.toHaveBeenCalledWith("yacht");
-    expect(mockDropByGameType).not.toHaveBeenCalledWith("twenty48");
+    expect(mockClearHearts).toHaveBeenCalledTimes(1);
+    expect(mockClearBlackjack).not.toHaveBeenCalled();
   });
 });

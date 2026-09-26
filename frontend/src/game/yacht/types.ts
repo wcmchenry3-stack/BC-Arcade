@@ -2,8 +2,6 @@
  * Yacht API response shapes.
  */
 
-import type { GameSession } from "../_shared/types";
-
 /** Difficulty tier for the Yacht AI opponent. Governs hold and scoring strategy. */
 export type AiDifficulty = "easy" | "medium" | "hard";
 
@@ -37,5 +35,3 @@ export interface GameState {
 export interface PossibleScores {
   possible_scores: Record<string, number>;
 }
-
-export type YachtSession = GameSession<GameState>;

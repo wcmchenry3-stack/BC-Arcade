@@ -6,15 +6,16 @@
  *
  * Canvas layout is non-deterministic, so assertions target HUD visibility
  * and crash-freedom rather than specific tile-match outcomes.
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "@playwright/test";
-import { gotoMahjong, mockMahjongApi } from "./helpers/mahjong";
+import { gotoMahjong } from "./helpers/mahjong";
 
 test.describe("Mahjong — tile interaction", () => {
   test.beforeEach(async ({ page }) => {
-    await mockMahjongApi(page);
     await page.goto("/");
     await page.evaluate(() => {
       localStorage.removeItem("mahjong_game");

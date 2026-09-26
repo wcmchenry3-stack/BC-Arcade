@@ -5,11 +5,13 @@
  * to Mahjong, verify the HUD reflects the injected values, navigate away,
  * return, and confirm the values are unchanged.
  *
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "@playwright/test";
-import { mockMahjongApi, injectMahjongState } from "./helpers/mahjong";
+import { injectMahjongState } from "./helpers/mahjong";
 
 const MID_GAME_STATE = {
   _v: 1,
@@ -27,7 +29,6 @@ const MID_GAME_STATE = {
 };
 
 test("SCORE and PAIRS persist after navigating away and back", async ({ page }) => {
-  await mockMahjongApi(page);
   await injectMahjongState(page, MID_GAME_STATE);
 
   await page.getByRole("button", { name: "Play Mahjong Solitaire" }).click();

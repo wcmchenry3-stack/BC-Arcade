@@ -97,10 +97,10 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
 
 Nothing else writes a game's result. The result card submits nothing: it only
 asks `GET /games/{id}/rank` where the synced game landed (#2677; §14). There
-is no per-game "name attach" either — the name is the player's (below).
-`ScoreQueue` (`game/_shared/scoreQueue.ts`) is **dead code**: no game registers
-a handler since Phase 2 of #2519, so its reconnect flush sends nothing and an
-item an older build queued stays unsent; #2644 removes it. Daily Word's
+is no per-game "name attach" either — the name is the player's (below). The
+old offline score queue is gone (#2644); what older builds left under its
+AsyncStorage key is cleared at launch and by "Delete my data"
+(`game/_shared/legacyScoreQueue.ts`). Daily Word's
 `POST /daily-word/guess` checks each guess against the server's answer during
 play; it is not a result write.
 
@@ -137,14 +137,11 @@ can't be completed again — the first completion wins and a replayed
 one exception being a row the stale-session sweep closed (#2621, below), which
 a real completion replaces. `PUT /players/me` with the current name writes
 nothing, and `DELETE /players/me` without one deletes nothing (#2624). With the
-name on the player there is no per-game name left to duplicate. The legacy
-per-game `POST /<game>/score` routes still insert a row per call, but only
-installed v1.0 builds call them (the current app has no `ScoreQueue`
-handlers), and their rows sit under sentinel `*-anon` sessions. The generic
-boards exclude those sessions; the legacy per-game leaderboard routes, which
-v1.0-era builds still call, list them (e.g. `_top_scores` in
-`backend/solitaire/router.py` filters only on game type, `final_score` and
-`not_abandoned()`). #2644 removes both kinds of legacy route.
+name on the player there is no per-game name left to duplicate. The per-game
+`POST /<game>/score` routes, which inserted a row per call, were removed in
+#2644, and migrations 0026 and 0029 deleted the unattributable `*-anon` rows
+they wrote (#2622). Rows the old instance writes during a deploy, after 0029
+has run, are kept off the boards by their `*-anon` filter.
 
 What we log:
 
@@ -407,9 +404,9 @@ ranked, so a replay that doesn't beat it never appears. Only players with a
 display name rank (decisions 17–18). The rules and routes are in
 [GAME-CONTRACT.md — Leaderboard routes](GAME-CONTRACT.md#leaderboard-routes-2618);
 each game's board (metric, direction, partitions, cap) is in §1.3 there and
-in its own page under [`docs/games/`](games/). The legacy per-game score and
+in its own page under [`docs/games/`](games/). The per-game score and
 leaderboard routes (e.g. `POST /solitaire/score`, `GET /solitaire/scores`,
-`GET /freecell/leaderboard`) stay only for installed v1.0 builds until #2644.
+`GET /freecell/leaderboard`) were removed in #2644; they now answer 404.
 
 ## 10. Premium entitlements
 

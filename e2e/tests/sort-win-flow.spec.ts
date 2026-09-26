@@ -39,7 +39,7 @@ const NEAR_SOLVED = {
 const DISPLAY_NAME_KEY = "player_display_name";
 
 interface Captured {
-  /** POST /sort/score bodies: the app must send none (#2625). */
+  /** POST /sort/score bodies (removed in #2644): the app must send none (#2625). */
   legacyPosts: Record<string, unknown>[];
   /** PATCH /games/{id}/complete bodies. */
   completions: Record<string, unknown>[];
@@ -58,9 +58,7 @@ async function captureSync(page: Page): Promise<Captured> {
   });
   await page.route("**/sort/score", async (route) => {
     captured.legacyPosts.push(JSON.parse(route.request().postData() ?? "{}"));
-    await route.fulfill(
-      ok({ player_name: "Tester", level_reached: 1, rank: 3 }),
-    );
+    await route.fulfill({ ...ok({ detail: "Not Found" }), status: 404 });
   });
   await page.route("**/players/me", (route) => route.fulfill(ok()));
   await page.route(

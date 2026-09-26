@@ -10,7 +10,9 @@
  * through `GET /games/{id}/rank`, is covered by MahjongScreen.test.tsx:
  * winning live on web means hitting canvas tiles.)
  *
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "@playwright/test";
@@ -40,20 +42,20 @@ const DEADLOCK_STATE = {
 };
 
 /**
- * Intercepts the legacy Mahjong API and the rank route; returns the URLs of
- * every leaderboard call the app makes (none are expected here).
+ * Intercepts the removed Mahjong routes (#2644) and the rank route; returns the
+ * URLs of every leaderboard call the app makes.
  */
 async function routeMahjongApi(
   page: import("@playwright/test").Page,
 ): Promise<string[]> {
   const calls: string[] = [];
   await page.route("**/mahjong/**", async (route) => {
-    // Only POSTs count: `POST /mahjong/score` is the legacy submit.
+    // Only POSTs count: `POST /mahjong/score` was the removed legacy submit.
     if (route.request().method() === "POST") calls.push(route.request().url());
     await route.fulfill({
-      status: 200,
+      status: 404,
       contentType: "application/json",
-      body: JSON.stringify({ scores: [] }),
+      body: JSON.stringify({ detail: "Not Found" }),
     });
   });
   await page.route("**/games/*/rank", async (route) => {

@@ -31,9 +31,6 @@ class YachtModule:
     # (recomputed from engine.ts in test_board_definitions.py).
     # qualifying_outcomes stays None: a solo game is ``completed`` and a game
     # lost to the computer still has a real total, so every outcome counts.
-    # Legacy rows: the removed POST /yacht/score (#2630) stored ``400 - raw``
-    # in ``final_score`` under the ``yacht-anon`` session. The generic board
-    # (#2657) excludes all ``*-anon`` rows, so those values never rank.
     board = BoardDefinition(
         metric=SCORE_METRIC, direction="desc", label_key="score", max_value=1575
     )

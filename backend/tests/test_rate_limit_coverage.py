@@ -97,9 +97,10 @@ def test_audit_internals_still_mean_what_the_audit_assumes() -> None:
 
 def test_every_api_route_has_a_rate_limit() -> None:
     routes, _ = _walk_routes(main.app.routes)
-    # ~35 routes today; a floor keeps a FastAPI routing change from making the
-    # audit pass vacuously (the first version of this test did exactly that).
-    assert len(routes) >= 30, f"only {len(routes)} API routes found — is the walk broken?"
+    # ~25 routes today (the per-game leaderboard routes went in #2644); a floor
+    # keeps a FastAPI routing change from making the audit pass vacuously (the
+    # first version of this test did exactly that).
+    assert len(routes) >= 20, f"only {len(routes)} API routes found — is the walk broken?"
 
     limited = _limited_handlers()
     unthrottled = sorted(_route_key(r) for r in routes if _route_key(r) not in limited)
