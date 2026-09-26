@@ -37,7 +37,6 @@ jest.mock("react-i18next", () => ({
     t: (key: string) => {
       const map: Record<string, string> = {
         "nav.lobby": "Lobby",
-        "nav.ranks": "Ranks",
         "nav.profile": "Profile",
         "nav.settings": "Settings",
       };
@@ -51,7 +50,6 @@ jest.mock("@expo/vector-icons/MaterialIcons", () => "MockMaterialIcons");
 function buildProps(activeIndex = 0): BottomTabBarProps {
   const routes = [
     { key: "lobby", name: "Lobby" },
-    { key: "ranks", name: "Ranks" },
     { key: "profile", name: "Profile" },
     { key: "settings", name: "Settings" },
   ] as BottomTabBarProps["state"]["routes"];
@@ -64,10 +62,9 @@ function buildProps(activeIndex = 0): BottomTabBarProps {
 }
 
 describe("BottomTabBar", () => {
-  it("renders all four tab labels", async () => {
+  it("renders all three tab labels", async () => {
     await render(<BottomTabBar {...buildProps()} />);
     expect(screen.getByText("Lobby")).toBeTruthy();
-    expect(screen.getByText("Ranks")).toBeTruthy();
     expect(screen.getByText("Profile")).toBeTruthy();
     expect(screen.getByText("Settings")).toBeTruthy();
   });
@@ -89,7 +86,7 @@ describe("BottomTabBar", () => {
   it("each tab has accessibilityRole tab", async () => {
     const { getAllByRole } = await render(<BottomTabBar {...buildProps()} />);
     const tabs = getAllByRole("tab");
-    expect(tabs).toHaveLength(4);
+    expect(tabs).toHaveLength(3);
   });
 
   it("active tab has accessibilityState selected=true", async () => {
@@ -103,7 +100,6 @@ describe("BottomTabBar", () => {
     const tabs = getAllByRole("tab");
     expect(tabs[1].props.accessibilityState.selected).toBe(false);
     expect(tabs[2].props.accessibilityState.selected).toBe(false);
-    expect(tabs[3].props.accessibilityState.selected).toBe(false);
   });
 
   it("calls navigate with route name on press", async () => {
@@ -111,8 +107,8 @@ describe("BottomTabBar", () => {
     const props = buildProps(0);
     props.navigation.navigate = navigate;
     await render(<BottomTabBar {...props} />);
-    await fireEvent.press(screen.getByText("Ranks"));
-    expect(navigate).toHaveBeenCalledWith("Ranks");
+    await fireEvent.press(screen.getByText("Profile"));
+    expect(navigate).toHaveBeenCalledWith("Profile");
   });
 
   it("does not render any emoji characters", async () => {

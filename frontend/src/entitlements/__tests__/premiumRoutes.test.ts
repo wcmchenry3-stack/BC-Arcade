@@ -1,23 +1,18 @@
 /**
- * premiumRoutes (#2390) — App.tsx registers premium routes and tabs from this
- * registry, so these assertions are the automated guard that a store build has
- * no route to a hidden game and no Star Swarm-only Ranks tab.
+ * premiumRoutes (#2390) — App.tsx registers premium routes from this registry,
+ * so these assertions are the automated guard that a store build has no route
+ * to a hidden game. (Tabs are the same in every build: mainTabs.test.tsx.)
  */
 import { PREMIUM_GAMES } from "../EntitlementContext";
 import { __forceStoreBuildForTests } from "../gameVisibility";
-import {
-  PREMIUM_ROUTES,
-  PREMIUM_TABS,
-  visiblePremiumRoutes,
-  visiblePremiumTabs,
-} from "../premiumRoutes";
+import { PREMIUM_ROUTES, visiblePremiumRoutes } from "../premiumRoutes";
 
 describe("premiumRoutes", () => {
   afterEach(() => {
     __forceStoreBuildForTests(false);
   });
 
-  it("dev build registers every premium route and the Ranks tab", () => {
+  it("dev build registers every premium route", () => {
     expect(visiblePremiumRoutes().map((r) => r.route)).toEqual([
       "BlackjackBetting",
       "BlackjackTable",
@@ -28,13 +23,11 @@ describe("premiumRoutes", () => {
       "Hearts",
       "Mahjong",
     ]);
-    expect(visiblePremiumTabs().map((t) => t.tab)).toEqual(["Ranks"]);
   });
 
-  it("store build registers no premium route and no Ranks tab", () => {
+  it("store build registers no premium route", () => {
     __forceStoreBuildForTests(true);
     expect(visiblePremiumRoutes()).toEqual([]);
-    expect(visiblePremiumTabs()).toEqual([]);
   });
 
   it("every premium route belongs to a premium game, every premium game has at least one route, and route names are unique", () => {
@@ -47,9 +40,5 @@ describe("premiumRoutes", () => {
     }
     const routeNames = PREMIUM_ROUTES.map((r) => r.route);
     expect(new Set(routeNames).size).toBe(routeNames.length);
-  });
-
-  it("every premium tab belongs to a premium game", () => {
-    for (const { slug } of PREMIUM_TABS) expect(PREMIUM_GAMES.has(slug)).toBe(true);
   });
 });

@@ -6,22 +6,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { MAIN_TABS, type MainTab } from "../../navigation/mainTabs";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 
-type MaterialIconName = React.ComponentProps<typeof MaterialIcons>["name"];
-
-interface TabConfig {
-  icon: MaterialIconName;
-  labelKey: string;
-}
-
-const TAB_CONFIG: Record<string, TabConfig> = {
-  Lobby: { icon: "sports-esports", labelKey: "nav.lobby" },
-  Ranks: { icon: "leaderboard", labelKey: "nav.ranks" },
-  Profile: { icon: "person", labelKey: "nav.profile" },
-  Settings: { icon: "settings", labelKey: "nav.settings" },
-};
+/** A route the navigator hands us that isn't in `MAIN_TABS`. */
+const UNKNOWN_TAB_ICON: MainTab["icon"] = "circle";
 
 export default function BottomTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -76,10 +66,9 @@ export default function BottomTabBar({ state, navigation }: BottomTabBarProps) {
         <View style={styles.tabs}>
           {state.routes.map((route, index) => {
             const focused = state.index === index;
-            const config = TAB_CONFIG[route.name] ?? {
-              icon: "circle" as MaterialIconName,
-              labelKey: route.name,
-            };
+            const config: Omit<MainTab, "name"> = MAIN_TABS.find(
+              (tab) => tab.name === route.name
+            ) ?? { icon: UNKNOWN_TAB_ICON, labelKey: route.name };
             const label = t(config.labelKey as Parameters<typeof t>[0]);
 
             return (

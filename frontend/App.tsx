@@ -30,10 +30,9 @@ import { EntitlementProvider, useEntitlements } from "./src/entitlements/Entitle
 import {
   PREMIUM_ROUTES,
   visiblePremiumRoutes,
-  visiblePremiumTabs,
   type PremiumRouteName,
-  type PremiumTabName,
 } from "./src/entitlements/premiumRoutes";
+import { MAIN_TABS, type MainTabName } from "./src/navigation/mainTabs";
 import { SoundProvider } from "./src/game/_shared/SoundContext";
 import { CardDeckProvider } from "./src/game/_shared/decks/CardDeckContext";
 import { BlackjackGameProvider } from "./src/game/blackjack/BlackjackGameContext";
@@ -219,9 +218,6 @@ const LazyMahjongLayoutDetailScreen = withSuspense(
 );
 const LazyDailyWordScreen = withSuspense(LazyScreens.DailyWord, "daily_word");
 const LazyLeaderboardScreen = withSuspense(LazyScreens.Leaderboard, "leaderboard");
-const PREMIUM_TAB_SCREENS: Record<PremiumTabName, React.ComponentType<object>> = {
-  Ranks: LazyLeaderboardScreen,
-};
 const LazyGameDetailScreen = withSuspense(LazyScreens.GameDetail, "game_detail");
 const LazySettingsScreen = withSuspense(LazyScreens.Settings, "settings");
 const LazyScoreboardScreen = withSuspense(LazyScreens.Scoreboard, "scoreboard");
@@ -269,19 +265,23 @@ function ProfileStack() {
   );
 }
 
+// One screen per tab in MAIN_TABS (mainTabs.ts), which is the whole tab bar:
+// the same three tabs in every build (#2634). Leaderboards live in LobbyStack.
+const TAB_SCREENS: Record<MainTabName, React.ComponentType<object>> = {
+  Lobby: LobbyStack,
+  Profile: ProfileStack,
+  Settings: LazySettingsScreen,
+};
+
 function MainTabs() {
   return (
     <Tab.Navigator
       tabBar={(props) => <BottomTabBar {...props} />}
       screenOptions={{ headerShown: false, tabBarPosition: "bottom" }}
     >
-      <Tab.Screen name="Lobby" component={LobbyStack} />
-      {/* The leaderboard is Star Swarm-only — a dead tab while that game is hidden. */}
-      {visiblePremiumTabs().map(({ tab }) => (
-        <Tab.Screen key={tab} name={tab} component={PREMIUM_TAB_SCREENS[tab]} />
+      {MAIN_TABS.map(({ name }) => (
+        <Tab.Screen key={name} name={name} component={TAB_SCREENS[name]} />
       ))}
-      <Tab.Screen name="Profile" component={ProfileStack} />
-      <Tab.Screen name="Settings" component={LazySettingsScreen} />
     </Tab.Navigator>
   );
 }
