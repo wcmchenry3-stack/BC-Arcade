@@ -37,13 +37,13 @@ Play one quick game to the end. A 2048 loss, an easy Sudoku or a solo Yacht game
 
 Open each game's ⋯ menu and check its items.
 
-| Game | Stats | Leaderboard | Scorecard |
-|---|---|---|---|
-| Yacht | ✔ | ✔ | ✔ (#2742) |
-| Solitaire, FreeCell, 2048, Sudoku, Sort | ✔ | ✔ | — |
-| Daily Word | ✔ | — (board disabled) | — |
-| Pre-launch builds only: Hearts, Blackjack | ✔ | Hearts ✔, Blackjack — | ✔ |
-| Pre-launch builds only: Cascade, Mahjong, Star Swarm | ✔ | ✔ | — |
+| Game                                                 | Stats | Leaderboard           | Scorecard |
+| ---------------------------------------------------- | ----- | --------------------- | --------- |
+| Yacht                                                | ✔     | ✔                     | ✔ (#2742) |
+| Solitaire, FreeCell, 2048, Sudoku, Sort              | ✔     | ✔                     | —         |
+| Daily Word                                           | ✔     | — (board disabled)    | —         |
+| Pre-launch builds only: Hearts, Blackjack            | ✔     | Hearts ✔, Blackjack — | ✔         |
+| Pre-launch builds only: Cascade, Mahjong, Star Swarm | ✔     | ✔                     | —         |
 
 - [ ] Every item in the table is present, and nothing else unexpected is there.
 - [ ] No menu says **"Scoreboard"**. After #2742, the live view is called **Scorecard**.
