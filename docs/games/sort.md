@@ -45,7 +45,7 @@ Every level played is its own session row (#2625): progress is not carried in on
 
 - Module: `backend/sort/module.py`
 - Endpoints: `backend/sort/router.py`. `GET /sort/levels` serves the levels. The legacy `POST /sort/score` and `GET /sort/scores` were removed in #2644.
-- Level data: generated per request by `backend/sort/generate_levels.py` (`build_levels`); nothing is saved to disk. `python -m sort.verify_levels [--seed N] [--runs N]` (from `backend/`) BFS-checks freshly built sets for solvability.
+- Level data: generated per request by `backend/sort/generate_levels.py` (`build_levels`); nothing is saved to disk. `python -m sort.verify_levels [--seed N] [--runs N]` (from `backend/`) BFS-checks freshly built sets for solvability. In CI, `backend/tests/test_sort_levels_solvable.py` proves the levels that are cheap to search solvable for fixed seeds; levels with two empty bottles and five or more colors are not covered (#2764).
 - Metadata model: `SortMetadata` — `player_name: str = ""` (max 32 chars). Current builds send no metadata.
 - Result model: `SortResult` — `level`, `moves`, `undos`, `level_reached`, `total_moves`, `won`, `outcome`, all optional
 - Scoring: see [Scoring](#scoring-persistence)
@@ -57,3 +57,4 @@ Free: no entitlement check.
 ## Known Issues / Limitations
 
 - Levels are random per request, so players on the same level are not ranked by moves, only by who got there first (#2746; see [Scoring](#scoring-persistence), Tie-break)
+- #2764: levels with 10 to 14 colors are assumed solvable, not checked, and some generated ones are not (e.g. level 21 of `build_levels(42)`)

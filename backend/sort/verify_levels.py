@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """BFS script asserting every level ``build_levels()`` generates is solvable.
 
 ``GET /sort/levels`` builds a new random set on every request (#2746), so this
@@ -103,6 +102,8 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=None, help="seed of the first set")
     parser.add_argument("--runs", type=int, default=1, help="number of sets to build")
     args = parser.parse_args()
+    if args.runs < 1:
+        parser.error("--runs must be at least 1")
     # Every run gets its own seed, printed so a failing set can be rebuilt.
     first = args.seed if args.seed is not None else random.randrange(2**32)
     failures: list[str] = []
