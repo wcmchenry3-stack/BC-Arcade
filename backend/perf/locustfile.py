@@ -64,7 +64,8 @@ class LeaderboardUser(HttpUser):
     """
 
     tasks = [LeaderboardTasks]
-    wait_time = between(0.5, 2)
+    # 3-4 s: keeps 10 users under 70% of the per-IP limit (scenarios/leaderboard.py).
+    wait_time = between(3, 4)
 
 
 class ReadOnlyUser(HttpUser):
@@ -74,7 +75,8 @@ class ReadOnlyUser(HttpUser):
     """
 
     tasks = [StatelessReadTasks]
-    wait_time = between(1, 3)
+    # 2-3 s: keeps 20 users under 70% of the limits (scenarios/stateless_reads.py).
+    wait_time = between(2, 3)
 
 
 class RateLimitVerifyUser(HttpUser):

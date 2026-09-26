@@ -11,6 +11,18 @@ drive were removed in #2630.
 Each game uses a fresh session id: ``POST /games`` and ``/complete`` are
 limited to 10/minute per session, and a looping user would otherwise measure
 its own 429s.
+
+Rate limits (``games/router.py``), with perf.yml's 1 user:
+
+  POST /games:                 10/minute per session
+  POST /games/{id}/events:     60/minute per session
+  PATCH /games/{id}/complete:  10/minute per session
+  GET /games/{id}/rank:        60/minute per session, 300/minute per IP
+
+A game is four tasks with a 0.5-1.5 s wait after each (``YachtGameUser``), so
+it takes at least 2 s: at most 30 games a minute. Per session (one game):
+create 1/10 = 10%, events 13/60 = 22%, complete 1/10 = 10%, rank 1/60 = 2%.
+Per IP, only the rank route has a limit: 30/300 = 10%.
 """
 
 import random
