@@ -8,9 +8,20 @@ interface AnimationOverlayProps {
   visible: boolean;
   onDismiss: () => void;
   children?: React.ReactNode;
+  /**
+   * testID for the dismiss backdrop, set only while the overlay is shown (it
+   * stays mounted when hidden), so a native E2E flow can tell "celebration
+   * on screen" from "overlay idle" (#2643).
+   */
+  dismissTestID?: string;
 }
 
-export function AnimationOverlay({ visible, onDismiss, children }: AnimationOverlayProps) {
+export function AnimationOverlay({
+  visible,
+  onDismiss,
+  children,
+  dismissTestID,
+}: AnimationOverlayProps) {
   const { t } = useTranslation("result");
   const reduceMotion = useReduceMotion();
   const opacity = useSharedValue(0);
@@ -31,6 +42,7 @@ export function AnimationOverlay({ visible, onDismiss, children }: AnimationOver
   // the skip button (#2711).
   const backdrop = (
     <Pressable
+      testID={visible ? dismissTestID : undefined}
       style={StyleSheet.absoluteFill}
       onPress={onDismiss}
       accessibilityRole="button"

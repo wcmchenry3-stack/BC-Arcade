@@ -1,0 +1,189 @@
+appId: com.buffingchi.games
+# Safety net: if the flow fails after typing the bot's display name and
+# before removing it, take the name off the dev boards anyway. `output.named`
+# / `output.cleanedUp` are set below; on a pass this is a no-op.
+onFlowComplete:
+  - runFlow:
+      when:
+        true: ${output.named === true && output.cleanedUp !== true}
+      file: ../_shared/remove-leaderboard-name.yaml
+---
+# Result submission, end to end on a native build (#2643, epic #2519):
+# finish a solo Yacht game → the result card's one-time name prompt → the
+# card's rank line → "View leaderboard" with the player's own row
+# highlighted → back → Home (exactly three bottom tabs, #2634) → Profile →
+# "Remove my name from leaderboards" (#2637).
+#
+# Runs against the REAL dev API (the mobile-smoke builds set
+# EXPO_PUBLIC_API_URL=https://dev-games-api.buffingchi.com): the game syncs
+# through SyncWorker, the name through PUT /players/me, and the rank comes
+# from GET /games/{id}/rank. The dev API must be reachable from the runner.
+# Full suite only (detect-maestro-scope.yml) — see e2e/maestro/README.md.
+#
+# Yacht because a solo game always ends after exactly 13 roll+score turns,
+# whatever the dice — no test hook or fixed deal needed. Categories are
+# scored in a fixed order (upper first, `yacht` second to last, `chance`
+# last): the Joker rule can then never reject a tap (it needs a 50 already in
+# the Yacht box plus a second Yacht), and only the 12th turn (the Yacht box)
+# can raise a celebration before the game ends — see _shared/yacht-turn.yaml.
+- runFlow: ../_shared/launch.yaml
+- runFlow:
+    file: ../_shared/navigate-to.yaml
+    env:
+      gameSlug: "yacht"
+      screenLabel: "Yacht"
+# clearState means a fresh game, so the mode picker shows; optional like
+# yacht/smoke.yaml in case a saved game ever survives.
+- tapOn:
+    id: "yacht-mode-solo"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "yacht-roll-button"
+    timeout: 8000
+
+# ── Play all 13 turns ──────────────────────────────────────────────────────
+- runFlow:
+    file: ../_shared/yacht-turn.yaml
+    env: { category: "ones", tab: "upper", celebrate: "false" }
+- runFlow:
+    file: ../_shared/yacht-turn.yaml
+    env: { category: "twos", tab: "upper", celebrate: "false" }
+- runFlow:
+    file: ../_shared/yacht-turn.yaml
+    env: { category: "threes", tab: "upper", celebrate: "false" }
+- runFlow:
+    file: ../_shared/yacht-turn.yaml
+    env: { category: "fours", tab: "upper", celebrate: "false" }
+- runFlow:
+    file: ../_shared/yacht-turn.yaml
+    env: { category: "fives", tab: "upper", celebrate: "false" }
+- runFlow:
+    file: ../_shared/yacht-turn.yaml
+    env: { category: "sixes", tab: "upper", celebrate: "false" }
+- runFlow:
+    file: ../_shared/yacht-turn.yaml
+    env: { category: "three_of_a_kind", tab: "lower", celebrate: "false" }
+- runFlow:
+    file: ../_shared/yacht-turn.yaml
+    env: { category: "four_of_a_kind", tab: "lower", celebrate: "false" }
+- runFlow:
+    file: ../_shared/yacht-turn.yaml
+    env: { category: "full_house", tab: "lower", celebrate: "false" }
+- runFlow:
+    file: ../_shared/yacht-turn.yaml
+    env: { category: "small_straight", tab: "lower", celebrate: "false" }
+- runFlow:
+    file: ../_shared/yacht-turn.yaml
+    env: { category: "large_straight", tab: "lower", celebrate: "false" }
+- runFlow:
+    file: ../_shared/yacht-turn.yaml
+    env: { category: "yacht", tab: "lower", celebrate: "true" }
+# Last turn: a joker here is never tapped away (the result card is open).
+- runFlow:
+    file: ../_shared/yacht-turn.yaml
+    env: { category: "chance", tab: "lower", celebrate: "false" }
+
+# ── Result card: one-time name prompt ─────────────────────────────────────
+- extendedWaitUntil:
+    visible:
+      id: "yacht-result"
+    timeout: 15000
+# A fresh install has no display name, so the card asks for one (needsName).
+# The card scrolls (Yacht's final scorecard sits above the prompt).
+- scrollUntilVisible:
+    element:
+      id: "result-name-prompt-input"
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+- tapOn:
+    id: "result-name-prompt-input"
+# Unique-ish, ≤32 chars, no spaces (Android text input), e.g. "Maestro48213".
+- evalScript: ${output.botName = 'Maestro' + (Date.now() % 100000)}
+# Arm the onFlowComplete cleanup before the name can reach the server.
+- evalScript: ${output.named = true}
+- inputText: ${output.botName}
+# Return submits (DisplayNameField's onSubmitEditing → Save) and dismisses the
+# keyboard. The Save tap is a fallback; once the name is saved it is disabled
+# (unchanged name) or gone (the card moved on), so it can't double-submit.
+- pressKey: Enter
+- tapOn:
+    id: "result-name-prompt-save"
+    optional: true
+
+# ── Result card: the rank line ────────────────────────────────────────────
+# `-ranked` = saved with a "#N" / "Your best: #N" rank (top 10); `-saved` =
+# saved but outside the top 10, where the card shows no rank (topTenRank in
+# useLeaderboardSubmit.ts). The dev board is shared with testers, so either
+# is a pass here; the rank itself is then asserted on the leaderboard, which
+# always shows the player's row (in the list, or pinned as "Your best").
+# Generous timeout: the rank lookup retries (5s/15s/60s backoff) while
+# SyncWorker uploads the game and displayNameSync the name.
+- extendedWaitUntil:
+    visible:
+      id: "yacht-result-submission-(ranked|saved)"
+    timeout: 120000
+- takeScreenshot: result-submission-card
+
+# ── Leaderboard: own row highlighted ──────────────────────────────────────
+- scrollUntilVisible:
+    element:
+      id: "yacht-result-leaderboard"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "yacht-result-leaderboard"
+- extendedWaitUntil:
+    visible:
+      id: "leaderboard-list"
+    timeout: 30000
+# `leaderboard-row-me` is the highlighted row inside the top-10 list, and can
+# sit below the fold; `leaderboard-row-pinned` is the highlighted "Your best"
+# row fixed under the list when the player is outside the top 10. Scroll the
+# list until either shows (a no-op when it already does).
+- scrollUntilVisible:
+    element:
+      id: "leaderboard-row-(me|pinned)"
+    direction: DOWN
+    timeout: 20000
+- takeScreenshot: result-submission-leaderboard
+- tapOn:
+    id: "nav-back"
+
+# ── Back to the card, then Home ───────────────────────────────────────────
+- scrollUntilVisible:
+    element:
+      id: "yacht-result-home"
+    direction: DOWN
+    timeout: 15000
+- tapOn:
+    id: "yacht-result-home"
+- extendedWaitUntil:
+    visible:
+      id: "game-tile-yacht"
+    timeout: 10000
+# Regression guard (#2634): exactly three bottom tabs; Ranks is retired.
+- assertVisible:
+    id: "tab-lobby"
+- assertVisible:
+    id: "tab-profile"
+- assertVisible:
+    id: "tab-settings"
+- assertNotVisible:
+    id: "tab-ranks"
+
+# ── Cleanup: take the bot off the dev boards (#2637) ──────────────────────
+# First prove Profile offers the removal (the shared subflow's own check is
+# tolerant, for its onFlowComplete use), then run it and assert the result.
+- tapOn:
+    id: "tab-profile"
+- extendedWaitUntil:
+    visible:
+      id: "profile-remove-name"
+    timeout: 15000
+- runFlow: ../_shared/remove-leaderboard-name.yaml
+- assertVisible:
+    id: "profile-not-on-boards"
+- evalScript: ${output.cleanedUp = true}
+- takeScreenshot: result-submission-cleanup

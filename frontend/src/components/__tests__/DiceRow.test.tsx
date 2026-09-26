@@ -83,6 +83,20 @@ describe("DiceRow", () => {
     // held=true re-render does not crash — die still rendered
     expect(diceAfter[0]).toBeTruthy();
   });
+
+  // Maestro (#2643) waits on these ids instead of the translated hint copy.
+  it("keys the hint's testID to whether this turn has rolled", async () => {
+    const before = await renderDiceRow({ rollsUsed: 0 });
+    expect(before.getByTestId("yacht-dice-hint-ready")).toHaveTextContent(
+      "Press Roll to start your turn"
+    );
+    expect(before.queryByTestId("yacht-dice-hint-rolled")).toBeNull();
+    before.unmount();
+
+    const after = await renderDiceRow({ rollsUsed: 2 });
+    expect(after.getByTestId("yacht-dice-hint-rolled")).toHaveTextContent("Tap dice to hold");
+    expect(after.queryByTestId("yacht-dice-hint-ready")).toBeNull();
+  });
 });
 
 describe("DiceRow roll label plural forms (#2754)", () => {

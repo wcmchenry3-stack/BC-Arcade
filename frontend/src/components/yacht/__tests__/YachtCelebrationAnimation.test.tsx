@@ -1,6 +1,6 @@
 import React from "react";
 import { AccessibilityInfo } from "react-native";
-import { act, render } from "@testing-library/react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 import { useReducedMotion } from "react-native-reanimated";
 import { YachtCelebrationAnimation } from "../YachtCelebrationAnimation";
 
@@ -52,4 +52,22 @@ describe("YachtCelebrationAnimation (#2606)", () => {
     });
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
+});
+
+describe("YachtCelebrationAnimation — E2E id (#2643)", () => {
+  it.each(["yacht", "joker"] as const)(
+    "exposes `yacht-celebration` only while the %s celebration shows",
+    async (variant) => {
+      const onDismiss = jest.fn();
+      const r = await render(
+        <YachtCelebrationAnimation visible={false} onDismiss={onDismiss} variant={variant} />
+      );
+      expect(r.queryByTestId("yacht-celebration", { includeHiddenElements: true })).toBeNull();
+      await r.rerender(
+        <YachtCelebrationAnimation visible onDismiss={onDismiss} variant={variant} />
+      );
+      await fireEvent.press(r.getByTestId("yacht-celebration"));
+      expect(onDismiss).toHaveBeenCalledTimes(1);
+    }
+  );
 });
