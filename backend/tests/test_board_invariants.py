@@ -33,18 +33,23 @@ from sqlalchemy import select
 from db.base import get_session_factory, is_configured
 from db.models import Game, GameType
 from games.board import SCORE_METRIC, BoardDefinition
-from games.leaderboard import SENTINEL_SESSION_SUFFIX
-from games.registry import _REGISTRY
-from tests.test_generic_leaderboard import _grant_all, _headers, _seed, _sid
+from games.leaderboard import SENTINEL_SESSION_SUFFIX, enabled_board
+from games.registry import get_module
+from tests.test_generic_leaderboard import ENABLED_BOARDS, _board, _grant_all, _headers, _seed, _sid
+from vocab import GameType as GameTypeEnum
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping live API tests",
 )
 
-ENABLED = sorted(name for name, mod in _REGISTRY.items() if mod.board.enabled)
-HAS_WINNER = sorted(name for name, mod in _REGISTRY.items() if mod.has_winner)
-SCORE_ONLY = sorted(name for name, mod in _REGISTRY.items() if not mod.has_winner)
+# Every game type's module; a type with none fails
+# test_every_game_type_is_registered rather than dropping out of these lists.
+_MODULES = {gt.value: get_module(gt.value) for gt in GameTypeEnum}
+HAS_WINNER = sorted(name for name, mod in _MODULES.items() if mod is not None and mod.has_winner)
+SCORE_ONLY = sorted(
+    name for name, mod in _MODULES.items() if mod is not None and not mod.has_winner
+)
 
 
 @pytest.fixture()
@@ -56,11 +61,18 @@ def client() -> Iterator[TestClient]:
         yield c
 
 
-def test_the_registry_drives_these_tests() -> None:
-    # A registry refactor that empties these lists would pass every test below.
-    assert len(ENABLED) >= 8, ENABLED
+def test_every_game_type_is_registered() -> None:
+    # The lists below come from the registry: a game type without a module
+    # would silently drop out of every test in this file.
+    assert [name for name, mod in _MODULES.items() if mod is None] == []
+    assert set(HAS_WINNER) | set(SCORE_ONLY) == {gt.value for gt in GameTypeEnum}
     assert HAS_WINNER and SCORE_ONLY
-    assert set(HAS_WINNER) | set(SCORE_ONLY) == set(_REGISTRY)
+    # ENABLED_BOARDS (shared with test_generic_leaderboard) is every game type
+    # whose module declares an enabled board.
+    assert ENABLED_BOARDS == sorted(
+        name for name, mod in _MODULES.items() if mod is not None and mod.board.enabled
+    )
+    assert len(ENABLED_BOARDS) >= 8, ENABLED_BOARDS
 
 
 # ---------------------------------------------------------------------------
@@ -68,8 +80,10 @@ def test_the_registry_drives_these_tests() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _board(game: str) -> BoardDefinition:
-    return _REGISTRY[game].board
+def _definition(game: str) -> BoardDefinition:
+    board = enabled_board(game)
+    assert board is not None, f"{game} has no enabled board"
+    return board
 
 
 def _partition(board: BoardDefinition) -> dict[str, str]:
@@ -89,7 +103,7 @@ def _partition(board: BoardDefinition) -> dict[str, str]:
 
 
 def _board_path(game: str) -> str:
-    query = urlencode(_partition(_board(game)))
+    query = urlencode(_partition(_definition(game)))
     return f"{game}?limit=100&{query}" if query else f"{game}?limit=100"
 
 
@@ -137,7 +151,7 @@ async def _seed_row(
     tiebreak: int | None = None,
     meta: dict[str, Any] | None = None,
 ) -> uuid.UUID:
-    board = _board(game)
+    board = _definition(game)
     score, row_meta = _row(board, value, tiebreak)
     return await _seed(
         game,
@@ -160,7 +174,7 @@ def _play(
     tiebreak: int | None = None,
 ) -> str:
     """Create and complete one game through the API; returns its id."""
-    board = _board(game)
+    board = _definition(game)
     r = client.post(
         "/games",
         headers=_headers(sid),
@@ -188,9 +202,7 @@ def _set_display_name(client: TestClient, sid: str, name: str) -> None:
 
 
 def _leaderboard(client: TestClient, game: str, sid: str) -> dict:
-    r = client.get(f"/games/leaderboard/{_board_path(game)}", headers=_headers(sid))
-    assert r.status_code == 200, r.text
-    return r.json()
+    return _board(client, _board_path(game), sid)
 
 
 def _rank(client: TestClient, game_id: Any, sid: str) -> dict:
@@ -221,13 +233,13 @@ def _parse(stamp: str) -> datetime:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("game", ENABLED)
+@pytest.mark.parametrize("game", ENABLED_BOARDS)
 async def test_a_finished_game_ranks_once_its_player_has_a_name(
     client: TestClient, game: str
 ) -> None:
     sid = _sid()
     await _grant_all(sid)
-    game_id = _play(client, sid, game, _better(_board(game), 0), completed_at=_recent(0))
+    game_id = _play(client, sid, game, _better(_definition(game), 0), completed_at=_recent(0))
 
     # Unnamed: on no board, and the rank route says why.
     body = _leaderboard(client, game, sid)
@@ -239,7 +251,7 @@ async def test_a_finished_game_ranks_once_its_player_has_a_name(
 
     body = _leaderboard(client, game, sid)
     assert [(e["player_name"], e["value"], e["is_me"]) for e in body["entries"]] == [
-        ("Solo", _better(_board(game), 0), True)
+        ("Solo", _better(_definition(game), 0), True)
     ]
     assert body["me"] == body["entries"][0]
     assert _rank(client, game_id, sid) == {
@@ -250,11 +262,11 @@ async def test_a_finished_game_ranks_once_its_player_has_a_name(
     }
 
 
-@pytest.mark.parametrize("game", ENABLED)
+@pytest.mark.parametrize("game", ENABLED_BOARDS)
 async def test_a_session_with_several_games_appears_once_with_its_best(
     client: TestClient, game: str
 ) -> None:
-    board = _board(game)
+    board = _definition(game)
     tb = board.tiebreak is not None
     # Rivals either side, so the player's rank (2) is not trivially 1. Top has
     # two better rows: a rank counts players, not rows.
@@ -312,11 +324,11 @@ async def test_a_session_with_several_games_appears_once_with_its_best(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("game", ENABLED)
+@pytest.mark.parametrize("game", ENABLED_BOARDS)
 async def test_entries_rank_in_the_declared_direction_then_the_tiebreak(
     client: TestClient, game: str
 ) -> None:
-    board = _board(game)
+    board = _definition(game)
     tb = board.tiebreak is not None
     good_tb = _better_tiebreak(board, 9) if tb else None
     poor_tb = _better_tiebreak(board, 0) if tb else None
@@ -368,9 +380,9 @@ async def test_entries_rank_in_the_declared_direction_then_the_tiebreak(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("game", ENABLED)
+@pytest.mark.parametrize("game", ENABLED_BOARDS)
 async def test_no_board_lists_an_unnamed_or_sentinel_row(client: TestClient, game: str) -> None:
-    board = _board(game)
+    board = _definition(game)
     await _seed_row(game, _sid(), _better(board, 0), name="Shown", minutes=0)
 
     # Better rows that must never show:
@@ -437,8 +449,17 @@ def _game_stats(client: TestClient, sid: str, game: str) -> dict:
         (["win", "push", "win"], 2, 2),
         (["win", "win", "loss"], 0, 2),
         (["win", "loss", "win"], 1, 1),
+        (["win", "win", "abandoned"], 2, 2),
+        (["win", "win", "push"], 2, 2),
     ],
-    ids=["abandon-skipped", "push-skipped", "loss-ends-run", "loss-resets"],
+    ids=[
+        "abandon-skipped",
+        "push-skipped",
+        "loss-ends-run",
+        "loss-resets",
+        "trailing-abandon",
+        "trailing-push",
+    ],
 )
 @pytest.mark.parametrize("game", HAS_WINNER)
 async def test_win_streaks(
