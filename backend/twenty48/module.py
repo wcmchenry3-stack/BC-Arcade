@@ -25,8 +25,10 @@ class Twenty48Module:
     # One global board by score (#2519 decision 1); no natural ceiling (decision 14).
     board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score")
     # Reaching 2048 records ``win`` and a game over before it records ``loss``
-    # (#2631). Older builds' ``completed`` / ``kept_playing`` rows stay valid:
-    # finishes with no winner, not wins.
+    # (#2631). Older builds send ``completed`` / ``kept_playing``: the session
+    # in which 2048 was first reached is stored as ``win`` (#2703,
+    # games.legacy_outcomes); every other one stays as sent, a finish with no
+    # winner.
     has_winner = True
 
     def stats_shape(self, raw_stats: dict) -> dict:
