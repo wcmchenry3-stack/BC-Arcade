@@ -114,3 +114,13 @@ class GameOutcome(str, Enum):
     COMPLETED = "completed"
     ABANDONED = "abandoned"
     KEPT_PLAYING = "kept_playing"
+
+
+RESULT_OUTCOMES: tuple[GameOutcome, ...] = (GameOutcome.WIN, GameOutcome.LOSS, GameOutcome.PUSH)
+"""The result vocabulary: outcomes that say who won. Only a game whose module
+has ``has_winner`` true records them (exported to the app, #2642)."""
+
+LIFECYCLE_OUTCOMES: tuple[GameOutcome, ...] = tuple(
+    o for o in GameOutcome if o not in RESULT_OUTCOMES
+)
+"""The lifecycle vocabulary: every other outcome. All a game with no winner records."""

@@ -1,13 +1,14 @@
 /**
  * Shared vocabulary constants — DO NOT edit by hand.
  *
- * Source of truth: backend/vocab.py (GameType, GameOutcome enums) and each
- * backend GameModule's `board` (backend/games/board.py).
+ * Source of truth: backend/vocab.py (GameType, GameOutcome enums and the
+ * outcome sets) and each backend GameModule's `board` (backend/games/board.py)
+ * and `has_winner`.
  * To update: edit those, then run:
  *   python backend/scripts/gen_vocab_ts.py > frontend/src/api/vocab.ts
  *
  * The backend CI test (tests/test_vocab.py) will fail if this file
- * drifts from the Python enums (GameType, GameOutcome) or the boards.
+ * drifts from the Python enums (GameType, GameOutcome), the boards or has_winner.
  */
 
 export const GAME_TYPES = [
@@ -37,6 +38,32 @@ export const GAME_OUTCOMES = [
 ] as const;
 
 export type GameOutcome = (typeof GAME_OUTCOMES)[number];
+
+/** Outcomes that say who won. Only a game with a winner (`HAS_WINNER`) records them. */
+export const RESULT_OUTCOMES = ["win", "loss", "push"] as const satisfies readonly GameOutcome[];
+
+/** Every other outcome: all a game with no winner ever records. */
+export const LIFECYCLE_OUTCOMES = [
+  "completed",
+  "abandoned",
+  "kept_playing",
+] as const satisfies readonly GameOutcome[];
+
+/** Whether each game can record a result outcome (its backend module's `has_winner`). */
+export const HAS_WINNER: Readonly<Record<GameType, boolean>> = {
+  yacht: true,
+  twenty48: true,
+  blackjack: true,
+  cascade: false,
+  solitaire: false,
+  hearts: true,
+  sudoku: false,
+  mahjong: true,
+  starswarm: false,
+  freecell: false,
+  sort: false,
+  daily_word: true,
+};
 
 /** How one game is ranked on its leaderboard (backend/games/board.py). */
 export interface BoardDefinition {
