@@ -29,7 +29,15 @@ All 3000 puzzles in the bank have been validated: every puzzle is solvable, has 
 
 ## Scoring (Persistence)
 
-`final_score` = derived from completion time and difficulty. A completed puzzle is `COMPLETED`; an abandoned one is `ABANDONED`. Leaderboard ranks by score per difficulty.
+- **Metric and direction:** `final_score`, higher is better, labelled `score` (`board` in `backend/sudoku/module.py`; `BOARDS.sudoku` in `frontend/src/api/vocab.ts`). Time plays no part: a solved puzzle scores its difficulty's base (easy 100, medium 200, hard 300) minus 10 per wrong digit entered, floored at 0 (`DIFFICULTY_BASE` and `computeScore` in `frontend/src/screens/SudokuScreen.tsx`). Undo restores the error count as it was before the move, so an undone error costs nothing.
+- **Tie-break:** none declared. Equal scores go to the earlier `completed_at`, the last tie-break on every board.
+- **Partitions:** `difficulty` × `variant`: six boards (`easy` / `medium` / `hard` × `classic` / `mini`). A row with no `variant` (from before #748) counts as `classic` (`partition_defaults`).
+- **Recorded, not partitioned:** result (`SudokuResult`): `won` and `errors`.
+- **Max value:** 300 overall, and per difficulty 100 (easy), 200 (medium) and 300 (hard) (`partition_max_values`). A completion above its difficulty's cap is rejected with 400.
+- **Outcomes:** `has_winner = False`. A solved puzzle records `completed`; there is no loss. A new puzzle or a change of difficulty during play, or leaving the screen, records `abandoned` with `{ won: false, errors }` and no score, once a digit has been entered.
+- **Duration:** Sudoku's own timer, from the first input, with backgrounded time taken out. It wins over `useGameSync`'s window.
+- **How it reaches the server:** the `useGameSync("sudoku")` session row, one per puzzle, with `difficulty` and `variant` as creation metadata. `SyncWorker` sends `POST /games` once the player enters a digit, and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. Each board shows each named player's best game on that board once. The app no longer calls the legacy `PATCH /sudoku/score/{game_id}`. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
+- **Where the player sees it:** the win card shows the rank on the puzzle's (difficulty, variant) board through `sessionBoardAdapter` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu.
 
 ## Client-Side Engine
 
@@ -40,12 +48,13 @@ All 3000 puzzles in the bank have been validated: every puzzle is solvable, has 
 ## Backend
 
 - Module: `backend/sudoku/module.py`
-- Endpoints: `backend/sudoku/router.py`
+- Endpoints: `backend/sudoku/router.py`, legacy. `PATCH /sudoku/score/{game_id}` and `GET /sudoku/scores/{difficulty}` stay for installed builds until #2644; the app no longer calls them.
 - Metadata model: `SudokuMetadata`
   - `player_name: str = ""` (max 64 chars)
   - `difficulty: Literal["easy","medium","hard"]` (required)
   - `variant: Literal["classic","mini"] = "classic"`
-- Scoring: `final_score` = time/difficulty score at completion
+- Result model: `SudokuResult` — `won: bool`, `errors: int`
+- Scoring: `final_score` = difficulty base − 10 × errors; see [Scoring](#scoring-persistence)
 
 ## Entitlement
 
