@@ -421,7 +421,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         height,
         opts?.wave ?? 1,
         (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
-        opts?.difficulty ?? difficultyRef.current
+        opts?.difficulty ?? difficultyRef.current,
+        opts?.stragglerEnabled
       );
       sfRef.current = initStarfield(width, height);
       countdownMsRef.current = WAVE_COUNTDOWN_MS;
