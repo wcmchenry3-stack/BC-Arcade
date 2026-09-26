@@ -1,8 +1,8 @@
 """FreeCell records a per-session game via the shared path (#2452).
 
-The legacy leaderboard routes are covered by ``test_freecell.py``; these tests
-cover the GameModule, its result model, and — the load-bearing part — how the
-session rows rank. Since #2632 a win sends its move count as ``final_score``
+These tests cover the GameModule, its result model, and — the load-bearing
+part — how the session rows rank (the legacy leaderboard routes were removed
+in #2644). Since #2632 a win sends its move count as ``final_score``
 and ranks on the generic board (fewest moves first, once per player); an
 abandon never carries a score.
 """

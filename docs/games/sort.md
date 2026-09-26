@@ -32,7 +32,7 @@ Every level played is its own session row (#2625): progress is not carried in on
 - **Max value:** 23, the number of levels. `level_reached` and `total_moves` must be integers (`StrictInt`).
 - **Outcomes:** `has_winner = False`. Every solve, a replay included, records `completed` scored with the player's standing after it (`SortScreen.tsx`). A replay that lowers a best move count improves the tie-break, and the board keeps each player's best row. Leaving a level unsolved records `abandoned` with `{ won: false, level, moves }` and no score: going back to the level grid, resetting the level, or leaving the screen.
 - **Duration:** `useGameSync`'s active-play window; Sort sends no duration of its own. Entering or restarting a level restarts the window (`resetPlayWindow`), so time on the level grid is not counted.
-- **How it reaches the server:** the `useGameSync("sort")` session row, opened at the level's first pour. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best row once. The app no longer calls the legacy `POST /sort/score`. Rows it wrote (`sort-anon`, with the level in `final_score`) never rank on the generic board. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
+- **How it reaches the server:** the `useGameSync("sort")` session row, opened at the level's first pour. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best row once. The legacy `POST /sort/score` was removed in #2644, and the unattributable rows it wrote (`sort-anon`) were deleted (#2622). Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the level's win card shows the rank through `sessionBoardAdapter` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu; "Best" there is the highest level reached.
 
 ## Client-Side Engine
@@ -44,7 +44,7 @@ Every level played is its own session row (#2625): progress is not carried in on
 ## Backend
 
 - Module: `backend/sort/module.py`
-- Endpoints: `backend/sort/router.py`. `GET /sort/levels` serves the levels. `POST /sort/score` and `GET /sort/scores` are legacy; they stay for installed builds until #2644 and the app no longer calls them.
+- Endpoints: `backend/sort/router.py`. `GET /sort/levels` serves the levels. The legacy `POST /sort/score` and `GET /sort/scores` were removed in #2644.
 - Level data: generated per request by `backend/sort/generate_levels.py` (`build_levels`). `backend/sort/levels.json` holds a saved set, used by `verify_levels.py`; the route does not read it.
 - Metadata model: `SortMetadata` — `player_name: str = ""` (max 32 chars). Current builds send no metadata.
 - Result model: `SortResult` — `level`, `moves`, `undos`, `level_reached`, `total_moves`, `won`, `outcome`, all optional

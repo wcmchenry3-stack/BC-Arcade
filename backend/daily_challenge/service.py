@@ -127,8 +127,10 @@ async def resolve_slate(session: AsyncSession, session_id: str, day: date) -> Sl
     refreshed on every Home focus. Otherwise one statement: the template's games
     joined to this session's entitlements.
 
-    Live means a mid-day entitlement change swaps the day's challenge on the next
-    call — nothing is stored to pin it (the feature is stateless by design).
+    Only the slate choice is live. Each (day, slate) template is frozen the first
+    time it is requested (``schedule.get_or_create_template``, #2493), so a
+    mid-day entitlement change swaps the session to the other slate's frozen
+    template on the next call; the slate choice itself is not stored.
     """
     premium_template = template_for(day, "premium")
     if premium_template == template_for(day, "free"):

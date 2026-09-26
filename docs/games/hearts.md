@@ -35,7 +35,7 @@ Play continues until at least one player reaches 100 points. The player with the
 - **Max value:** 100.
 - **Outcomes:** `has_winner = True`. Game over records who won (`heartsResult`): `win` when the player alone has the lowest total, `push` when they share it, `loss` otherwise. All three rank. New Game, Change Difficulty and leaving the screen record `abandoned` (`hands_played`, no score) once a card has been played.
 - **Duration:** Hearts' own play clock (#2629): active time while an unfinished game is on screen with the app in front. It wins over `useGameSync`'s window.
-- **How it reaches the server:** the `useGameSync("hearts")` session row, opened at the player's first card. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best game once. The app no longer calls the legacy `POST /hearts/score`. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
+- **How it reaches the server:** the `useGameSync("hearts")` session row, opened at the player's first card. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best game once. The legacy `POST /hearts/score` was removed in #2644. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the result card shows the rank through `sessionBoardAdapter` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu. Store builds hide Hearts (`HIDDEN_GAMES`, `frontend/src/entitlements/gameVisibility.ts`), so there it has no leaderboard or stats entry point.
 
 ## Client-Side Engine
@@ -46,7 +46,7 @@ Play continues until at least one player reaches 100 points. The player with the
 ## Backend
 
 - Module: `backend/hearts/module.py`
-- Endpoints: `backend/hearts/router.py`, legacy. `POST /hearts/score` and `GET /hearts/scores` stay for installed builds until #2644; the app no longer calls them.
+- Endpoints: none of its own — the generic `/games` routes. The legacy `POST /hearts/score` and `GET /hearts/scores` were removed in #2644.
 - Metadata model: `HeartsMetadata` — `player_name: str = ""` (max 64 chars), `ai_difficulty: str | None` (max 32 chars)
 - Scoring: `final_score` = 100 − penalty points, higher is better; see [Scoring](#scoring-persistence)
 

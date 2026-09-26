@@ -36,7 +36,7 @@ All 3000 puzzles in the bank have been validated: every puzzle is solvable, has 
 - **Max value:** 300 overall, and per difficulty 100 (easy), 200 (medium) and 300 (hard) (`partition_max_values`). A completion above its difficulty's cap is rejected with 400.
 - **Outcomes:** `has_winner = False`. A solved puzzle records `completed`; there is no loss. A new puzzle or a change of difficulty during play, or leaving the screen, records `abandoned` with `{ won: false, errors }` and no score, once a digit has been entered.
 - **Duration:** Sudoku's own timer, from the first input, with backgrounded time taken out (`AppState` handling in `SudokuScreen.tsx`). It wins over `useGameSync`'s window. The elapsed time is not saved: a relaunch restarts it from 0 (intentional, per the comment in `SudokuScreen.tsx`), so time played before an app kill is not counted.
-- **How it reaches the server:** the `useGameSync("sudoku")` session row, one per puzzle, with `difficulty` and `variant` as creation metadata. `SyncWorker` sends `POST /games` once the player enters a digit, and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. Each board shows each named player's best game on that board once. The app no longer calls the legacy `PATCH /sudoku/score/{game_id}`. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
+- **How it reaches the server:** the `useGameSync("sudoku")` session row, one per puzzle, with `difficulty` and `variant` as creation metadata. `SyncWorker` sends `POST /games` once the player enters a digit, and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. Each board shows each named player's best game on that board once. The legacy `PATCH /sudoku/score/{game_id}` was removed in #2644. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the win card shows the rank on the puzzle's (difficulty, variant) board through `sessionBoardAdapter` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu.
 
 ## Client-Side Engine
@@ -48,7 +48,7 @@ All 3000 puzzles in the bank have been validated: every puzzle is solvable, has 
 ## Backend
 
 - Module: `backend/sudoku/module.py`
-- Endpoints: `backend/sudoku/router.py`, legacy. `PATCH /sudoku/score/{game_id}` and `GET /sudoku/scores/{difficulty}` stay for installed builds until #2644; the app no longer calls them.
+- Endpoints: none of its own — the generic `/games` routes. The legacy `PATCH /sudoku/score/{game_id}` and `GET /sudoku/scores/{difficulty}` were removed in #2644.
 - Metadata model: `SudokuMetadata`
   - `player_name: str = ""` (max 64 chars)
   - `difficulty: Literal["easy","medium","hard"]` (required)

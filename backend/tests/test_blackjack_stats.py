@@ -2,8 +2,7 @@
 
 A run that reached its goal records ``win``, a run whose chips ran out before
 the goal ``loss``, and a run left before the goal ``abandoned``. The run
-summary stays in ``extras``, with the old top-level fields as deprecated
-aliases until #2644.
+summary is in ``extras`` only (the deprecated top-level aliases went in #2644).
 """
 
 from __future__ import annotations

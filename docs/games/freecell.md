@@ -39,7 +39,7 @@ Double-tapping a card (within a 300 ms window) triggers auto-move to foundation 
 - **Max value:** none (`max_value` unset).
 - **Outcomes:** `has_winner = False`. A won deal records `completed`: FreeCell has no loss, so every non-abandoned row is a win. New Game during a deal, or leaving the screen, records `abandoned` with `{ won: false, moves }` and no score. The daily challenge still counts an abandon's moves.
 - **Duration:** `useGameSync`'s active-play window; FreeCell sends no duration of its own. New Game restarts the window (`resetPlayWindow`), so time on the previous board is not counted.
-- **How it reaches the server:** the `useGameSync("freecell")` session row, opened at the first move of a deal. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best (fewest-move) win once. Installed builds from before #2632 send no `final_score`, so their rows never rank. The app no longer calls the legacy `POST /freecell/score`. Rows it wrote (`freecell-anon`) never rank on the generic board. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
+- **How it reaches the server:** the `useGameSync("freecell")` session row, opened at the first move of a deal. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best (fewest-move) win once. Installed builds from before #2632 send no `final_score`, so their rows never rank. The legacy `POST /freecell/score` was removed in #2644, and the unattributable rows it wrote (`freecell-anon`) were deleted (#2622). Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the win card shows the rank through `sessionBoardAdapter` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu; "Best" there is the fewest moves.
 
 ## Client-Side Engine
@@ -50,7 +50,7 @@ Double-tapping a card (within a 300 ms window) triggers auto-move to foundation 
 ## Backend
 
 - Module: `backend/freecell/module.py` (#2452), registered in `backend/games/registry.py`
-- Endpoints: `backend/freecell/router.py`, legacy. `POST /freecell/score` and `GET /freecell/leaderboard` stay for installed builds until #2644; the app no longer calls them.
+- Endpoints: none of its own — the generic `/games` routes. The legacy `POST /freecell/score` and `GET /freecell/leaderboard` were removed in #2644.
 - Metadata model: `FreeCellMetadata` — empty (extra keys forbidden)
 - Result model: `FreeCellResult` — `won: bool`, `moves: int`
 - Scoring: see [Scoring](#scoring-persistence)
