@@ -20,7 +20,7 @@ export type Color =
   | "gold"
   | "indigo";
 
-/** Max units per bottle — must match DEPTH in backend/sort/generate_levels.py. */
+/** Max units per bottle — must match DEPTH in backend/sort/fast_solver.py. */
 export const BOTTLE_DEPTH = 4;
 
 /** A bottle is a stack of colors, bottom-first. Length <= BOTTLE_DEPTH. */
