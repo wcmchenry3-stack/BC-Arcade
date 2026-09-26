@@ -316,6 +316,22 @@ describe("GameResultModal — View leaderboard (#2633)", () => {
     expect(screen.getByRole("button", { name: "Change Difficulty" })).toBeTruthy();
   });
 
+  it.each([
+    ["submitting", true],
+    ["offline", true],
+    ["idle", true],
+    ["saved", false],
+    ["unranked", false],
+  ] as const)(
+    "with the rank %s, asks the board to refetch after the sync: %s",
+    async (status, pendingSync) => {
+      const onViewLeaderboard = jest.fn();
+      await renderCard({ onViewLeaderboard, submission: { status, playerName: "Riley" } });
+      await fireEvent.press(screen.getByRole("link", { name: "View leaderboard" }));
+      expect(onViewLeaderboard).toHaveBeenCalledWith({ pendingSync });
+    }
+  );
+
   it("shows the link even when the game has no submission line", async () => {
     await renderCard({ onViewLeaderboard: jest.fn(), submission: { status: "unranked" } });
     expect(screen.getByRole("link", { name: "View leaderboard" })).toBeTruthy();

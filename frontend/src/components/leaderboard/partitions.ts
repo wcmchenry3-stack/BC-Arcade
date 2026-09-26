@@ -13,8 +13,9 @@ import type { BoardDefinition, GameType } from "../../api/vocab";
 import { DIFFICULTIES, VARIANTS } from "../../game/sudoku/types";
 import { difficultyLabel } from "../../game/starswarm/engine";
 import type { DifficultyTier } from "../../game/starswarm/types";
+import type { Partition } from "../../game/_shared/boardPartition";
 
-export type Partition = Readonly<Record<string, string>>;
+export type { Partition };
 
 interface PartitionMeta {
   /** Values in display order, when the board doesn't list them. */

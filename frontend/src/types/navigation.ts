@@ -14,6 +14,11 @@ import type { GameType } from "../api/vocab";
 export type LeaderboardParams = {
   gameType: GameType;
   partition?: Readonly<Record<string, string>>;
+  /**
+   * Opened from a result card whose rank was still pending: the board is
+   * fetched again once local games (and the display name) have synced.
+   */
+  refreshAfterSync?: boolean;
 };
 
 export type RootStackParamList = {

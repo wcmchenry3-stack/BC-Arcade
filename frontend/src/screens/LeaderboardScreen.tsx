@@ -1,5 +1,13 @@
-import React, { useCallback, useMemo, useState } from "react";
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -12,11 +20,13 @@ import {
   partitionChoices,
   partitionGroupLabel,
   partitionValueLabel,
-  type Partition,
 } from "../components/leaderboard/partitions";
+import { partitionKey, type Partition } from "../game/_shared/boardPartition";
+import { flushDisplayNameSync } from "../game/_shared/displayNameSync";
+import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
 import { openableBoard } from "../game/_shared/leaderboardAvailability";
 import { useLeaderboardData } from "../hooks/useLeaderboardData";
-import { GAME_TITLE_NAMESPACES, gameTitle } from "../i18n/gameTitle";
+import { gameTitle } from "../i18n/gameTitle";
 import { useTheme, type Colors } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import type { LeaderboardParams } from "../types/navigation";
@@ -34,7 +44,10 @@ const METRIC_LABEL_KEYS = new Set(["score", "moves", "level"]);
 export interface LeaderboardScreenProps {
   /** `Leaderboard` in the Home stack; absent on the Ranks tab. */
   route?: { params?: LeaderboardParams };
-  navigation?: { goBack: () => void };
+  navigation?: {
+    goBack: () => void;
+    addListener?: (event: "focus" | "blur", callback: () => void) => () => void;
+  };
 }
 
 /**
@@ -51,7 +64,9 @@ export interface LeaderboardScreenProps {
 export default function LeaderboardScreen({ route, navigation }: LeaderboardScreenProps) {
   const gameType = route?.params?.gameType ?? DEFAULT_GAME;
   const board = openableBoard(gameType);
-  const { t } = useTranslation(["leaderboard", ...GAME_TITLE_NAMESPACES]);
+  // The screen's strings and the game's own (its title; Sudoku's partition
+  // labels are in it), not every game's bundle.
+  const { t } = useTranslation(["leaderboard", gameType]);
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -79,10 +94,12 @@ export default function LeaderboardScreen({ route, navigation }: LeaderboardScre
       {board ? (
         <Board
           // New params (the same route opened for another board) start afresh.
-          key={`${gameType}:${JSON.stringify(route?.params?.partition ?? {})}`}
+          key={`${gameType}:${partitionKey(route?.params?.partition)}`}
           gameType={gameType}
           board={board}
           requested={route?.params?.partition}
+          refreshAfterSync={!!route?.params?.refreshAfterSync}
+          navigation={navigation}
           t={t}
           colors={colors}
         />
@@ -97,19 +114,62 @@ function Board({
   gameType,
   board,
   requested,
+  refreshAfterSync,
+  navigation,
   t,
   colors,
 }: {
   gameType: GameType;
   board: BoardDefinition;
   requested?: Partition;
+  refreshAfterSync: boolean;
+  navigation?: LeaderboardScreenProps["navigation"];
   t: TFunction;
   colors: Colors;
 }) {
   const [partition, setPartition] = useState<Partition>(() =>
     initialPartition(gameType, board, requested)
   );
-  const { status, entries, me, retry } = useLeaderboardData(gameType, partition);
+  const { status, entries, me, refreshing, retry, refresh } = useLeaderboardData(
+    gameType,
+    partition
+  );
+  // Timers and listeners below call the latest refresh (the current partition's).
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+
+  // Coming back to the board (from a game, or to the Ranks tab) shows it as
+  // it is now. Only a return counts: the mount's own focus is its first load.
+  useEffect(() => {
+    const addListener = navigation?.addListener;
+    if (!addListener) return;
+    let left = false;
+    const offBlur = addListener("blur", () => {
+      left = true;
+    });
+    const offFocus = addListener("focus", () => {
+      if (!left) return;
+      left = false;
+      refreshRef.current();
+    });
+    return () => {
+      offBlur?.();
+      offFocus?.();
+    };
+  }, [navigation]);
+
+  // Opened from a card whose rank was still pending: the game (or the
+  // player's name) may not be on the server yet. Ask again once they are.
+  useEffect(() => {
+    if (!refreshAfterSync) return;
+    let alive = true;
+    void Promise.all([flushQueuedGames(), flushDisplayNameSync().catch(() => false)]).then(() => {
+      if (alive) refreshRef.current();
+    });
+    return () => {
+      alive = false;
+    };
+  }, [refreshAfterSync]);
 
   const metricLabel = t(
     `leaderboard:metric.${METRIC_LABEL_KEYS.has(board.labelKey) ? board.labelKey : "score"}`
@@ -143,6 +203,9 @@ function Board({
           keyExtractor={(e, i) => `${e.rank}-${i}`}
           renderItem={renderItem}
           accessibilityRole="list"
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.accent} />
+          }
           ListHeaderComponent={
             entries.length > 0 ? (
               <ColumnHeader metricLabel={metricLabel} t={t} colors={colors} />

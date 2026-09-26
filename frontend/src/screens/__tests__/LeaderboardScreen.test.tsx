@@ -38,12 +38,40 @@ function board(
   return { game_type: "x", partition: {}, label_key: "score", entries, me };
 }
 
+// The card's sync before a post-sync refetch (#2633): held open by tests.
+const mockFlushQueuedGames = jest.fn(() => Promise.resolve());
+jest.mock("../../game/_shared/flushQueuedGames", () => ({
+  flushQueuedGames: () => mockFlushQueuedGames(),
+}));
+jest.mock("../../game/_shared/displayNameSync", () => ({
+  flushDisplayNameSync: () => Promise.resolve(true),
+}));
+
 const goBack = jest.fn();
+// Live navigation listeners, so a test can leave and come back.
+const navListeners = new Map<string, Set<() => void>>();
+const navigation = {
+  goBack,
+  addListener: (event: "focus" | "blur", cb: () => void) => {
+    const set = navListeners.get(event) ?? new Set();
+    set.add(cb);
+    navListeners.set(event, set);
+    return () => {
+      set.delete(cb);
+    };
+  },
+};
+
+async function emitNav(event: "focus" | "blur") {
+  await act(async () => {
+    for (const cb of [...(navListeners.get(event) ?? [])]) cb();
+  });
+}
 
 async function renderScreen(params?: LeaderboardParams) {
   const result = await render(
     <ThemeProvider>
-      <LeaderboardScreen route={params ? { params } : undefined} navigation={{ goBack }} />
+      <LeaderboardScreen route={params ? { params } : undefined} navigation={navigation} />
     </ThemeProvider>
   );
   await act(async () => {});
@@ -56,6 +84,7 @@ async function renderBoard(gameType: GameType, partition?: Record<string, string
 
 beforeEach(() => {
   jest.clearAllMocks();
+  navListeners.clear();
   mockGetLeaderboard.mockReset();
   mockGetLeaderboard.mockResolvedValue(board([]));
   mockNetwork.isOnline = true;
@@ -115,7 +144,7 @@ describe("LeaderboardScreen — header and states", () => {
     mockNetwork.isOnline = true;
     await rerender(
       <ThemeProvider>
-        <LeaderboardScreen route={{ params: { gameType: "solitaire" } }} navigation={{ goBack }} />
+        <LeaderboardScreen route={{ params: { gameType: "solitaire" } }} navigation={navigation} />
       </ThemeProvider>
     );
     expect(await screen.findByText("Alice")).toBeTruthy();
@@ -337,5 +366,56 @@ describe("LeaderboardScreen — Ranks tab (until #2634)", () => {
     expect(
       screen.getAllByRole("header").some((h) => h.props.children === "Star Swarm Leaderboard")
     ).toBe(true);
+  });
+});
+
+describe("LeaderboardScreen — staying current", () => {
+  it("fetches the board again when the player comes back to it", async () => {
+    mockGetLeaderboard.mockResolvedValueOnce(board([entry(1, "Alice", 900)]));
+    await renderBoard("solitaire");
+    await screen.findByText("Alice");
+    // The mount's own focus is its first load, not a second one.
+    await emitNav("focus");
+    expect(mockGetLeaderboard).toHaveBeenCalledTimes(1);
+
+    mockGetLeaderboard.mockResolvedValueOnce(board([entry(1, "Alice", 900), entry(2, "Bob", 800)]));
+    await emitNav("blur");
+    await emitNav("focus");
+    // The rows stay on screen while it refreshes.
+    expect(screen.getByText("Alice")).toBeTruthy();
+    expect(await screen.findByText("Bob")).toBeTruthy();
+    expect(mockGetLeaderboard).toHaveBeenCalledTimes(2);
+  });
+
+  it("opened from a card whose rank was pending, fetches again once the game has synced", async () => {
+    let synced!: () => void;
+    mockFlushQueuedGames.mockReturnValueOnce(new Promise<void>((r) => (synced = r)));
+    mockGetLeaderboard.mockResolvedValueOnce(board([entry(1, "Alice", 900)]));
+    await renderScreen({ gameType: "solitaire", refreshAfterSync: true });
+    await screen.findByText("Alice");
+    expect(mockGetLeaderboard).toHaveBeenCalledTimes(1);
+
+    mockGetLeaderboard.mockResolvedValueOnce(
+      board([entry(1, "Me", 950, { is_me: true }), entry(2, "Alice", 900)])
+    );
+    await act(async () => synced());
+    expect(await screen.findByTestId("leaderboard-row-me")).toBeTruthy();
+    expect(mockGetLeaderboard).toHaveBeenCalledTimes(2);
+  });
+
+  it("doesn't wait for a sync when the card's rank had settled", async () => {
+    await renderBoard("solitaire");
+    await act(async () => {});
+    expect(mockFlushQueuedGames).not.toHaveBeenCalled();
+    expect(mockGetLeaderboard).toHaveBeenCalledTimes(1);
+  });
+
+  it("pull to refresh fetches the board again", async () => {
+    mockGetLeaderboard.mockResolvedValue(board([entry(1, "Alice", 900)]));
+    await renderBoard("solitaire");
+    await screen.findByText("Alice");
+    const list = screen.getByTestId("leaderboard-list");
+    await act(async () => list.props.refreshControl.props.onRefresh());
+    expect(mockGetLeaderboard).toHaveBeenCalledTimes(2);
   });
 });

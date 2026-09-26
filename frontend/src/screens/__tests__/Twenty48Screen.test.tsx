@@ -882,7 +882,11 @@ describe("Twenty48Screen — result card (#2513)", () => {
     await act(async () => {
       await fireEvent.press(r.getByRole("link", { name: "View leaderboard" }));
     });
-    expect(nav.navigate).toHaveBeenCalledWith("Leaderboard", { gameType: "twenty48" });
+    // No rank has settled on this card, so the board refetches after the sync.
+    expect(nav.navigate).toHaveBeenCalledWith("Leaderboard", {
+      gameType: "twenty48",
+      refreshAfterSync: true,
+    });
   });
 
   it("the ⋯ menu's Leaderboard opens 2048's board (#2633)", async () => {

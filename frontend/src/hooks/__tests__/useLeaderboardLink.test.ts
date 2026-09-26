@@ -2,6 +2,7 @@ import { renderHook } from "@testing-library/react-native";
 import { GAME_TYPES, type GameType } from "../../api/vocab";
 import { __forceStoreBuildForTests, HIDDEN_GAMES } from "../../entitlements/gameVisibility";
 import { hasLeaderboard } from "../../game/_shared/leaderboardAvailability";
+import { partitionKey } from "../../game/_shared/boardPartition";
 import { useLeaderboardLink } from "../useLeaderboardLink";
 
 const navigate = jest.fn();
@@ -83,5 +84,26 @@ describe("useLeaderboardLink", () => {
     expect(result.current).toBe(first);
     await rerender({ difficulty: "medium" });
     expect(result.current).not.toBe(first);
+  });
+
+  it("asks the board to refetch after the sync when the card's rank is pending", async () => {
+    const { result } = await renderHook(() => useLeaderboardLink(navigation, "freecell"));
+    result.current?.({ pendingSync: true });
+    expect(navigate).toHaveBeenLastCalledWith("Leaderboard", {
+      gameType: "freecell",
+      refreshAfterSync: true,
+    });
+    result.current?.({ pendingSync: false });
+    expect(navigate).toHaveBeenLastCalledWith("Leaderboard", { gameType: "freecell" });
+  });
+});
+
+describe("partitionKey", () => {
+  it("is the same whatever order the keys were written in", () => {
+    expect(partitionKey({ difficulty: "hard", variant: "mini" })).toBe(
+      partitionKey({ variant: "mini", difficulty: "hard" })
+    );
+    expect(partitionKey({ difficulty: "hard" })).not.toBe(partitionKey({ difficulty: "easy" }));
+    expect(partitionKey()).toBe(partitionKey({}));
   });
 });

@@ -68,6 +68,8 @@ import {
   getAllFreePairs,
   getAnyFreePair,
   hasFreePairs,
+  pauseGame,
+  resumeGame,
   selectTile,
   shuffleBoard,
   undoMove,
@@ -810,6 +812,28 @@ export default function MahjongScreen() {
     });
     return unsub;
   }, [navigation, recordDeadlockLoss]);
+
+  // Another screen covering the game (⋯ → Leaderboard, #2633) stops its clock,
+  // so the finish and best times count only play. Only a clock this pauses is
+  // restarted on return: a board with no move yet keeps waiting for its first.
+  const pausedOnBlurRef = useRef(false);
+  useEffect(() => {
+    const offBlur = navigation.addListener("blur", () => {
+      const s = stateRef.current;
+      if (!s || s.startedAt === null) return;
+      pausedOnBlurRef.current = true;
+      setState(pauseGame(s));
+    });
+    const offFocus = navigation.addListener("focus", () => {
+      if (!pausedOnBlurRef.current) return;
+      pausedOnBlurRef.current = false;
+      setState((s) => (s ? resumeGame(s) : s));
+    });
+    return () => {
+      offBlur?.();
+      offFocus?.();
+    };
+  }, [navigation]);
 
   const ensureSyncStarted = useCallback(
     (s: MahjongState) => {

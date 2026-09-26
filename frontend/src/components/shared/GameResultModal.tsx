@@ -85,7 +85,7 @@ export interface GameResultModalProps {
    * the submission line, whatever its status. Pass `useLeaderboardLink`'s
    * result, which is undefined (no link) for a game without an openable board.
    */
-  onViewLeaderboard?: () => void;
+  onViewLeaderboard?: (options?: { pendingSync?: boolean }) => void;
   /** Defaults to Play Again when `onPlayAgain` is given. */
   primaryAction?: ResultAction;
   onPlayAgain?: () => void;
@@ -102,6 +102,13 @@ export interface GameResultModalProps {
   celebration?: (done: () => void) => React.ReactNode;
   testID?: string;
 }
+
+/** Submission states where this game's rank isn't known yet (#2633). */
+const RANK_PENDING: ReadonlySet<LeaderboardSubmitStatus> = new Set([
+  "idle",
+  "submitting",
+  "offline",
+]);
 
 /** Safety net so a celebration that never calls `done` can't hide the card. */
 export const CELEBRATION_MAX_MS = 4000;
@@ -376,7 +383,13 @@ export function ResultCard({
       {onViewLeaderboard ? (
         <Pressable
           testID={`${testID}-leaderboard`}
-          onPress={onViewLeaderboard}
+          // While the rank is still pending the game may not be on the
+          // server yet: the board refetches once it has synced.
+          onPress={() =>
+            onViewLeaderboard({
+              pendingSync: submission ? RANK_PENDING.has(submission.status) : false,
+            })
+          }
           accessibilityRole="link"
           accessibilityLabel={t("action.viewLeaderboard")}
           hitSlop={8}

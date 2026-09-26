@@ -38,8 +38,12 @@ function board(
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => (resolve = r));
-  return { promise, resolve };
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 beforeEach(() => {
@@ -92,28 +96,94 @@ describe("useLeaderboardData (#2633)", () => {
     expect(result.current.status).toBe("ready");
   });
 
-  it("is offline after the retries run out, and fetches again on reconnect", async () => {
+  it("a network failure while online ends in error with Retry, not offline", async () => {
     jest.useFakeTimers();
     mockGetLeaderboard.mockRejectedValue(new TypeError("Network request failed"));
-    const { result, rerender } = await renderHook(() => useLeaderboardData("freecell", {}));
+    const { result } = await renderHook(() => useLeaderboardData("freecell", {}));
     await act(async () => {
       await jest.runAllTimersAsync();
     });
-    expect(result.current.status).toBe("offline");
+    // NetInfo still says online, so no reconnect will ever come to refetch it.
+    expect(result.current.status).toBe("error");
     expect(result.current.entries).toEqual([]);
+    expect(Sentry.captureException).not.toHaveBeenCalled();
 
-    // NetInfo notices the drop, then the connection comes back.
+    mockGetLeaderboard.mockReset();
+    mockGetLeaderboard.mockResolvedValue(board([ALICE]));
+    await act(async () => result.current.retry());
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+    expect(result.current.status).toBe("ready");
+  });
+
+  it("a failure after NetInfo has gone offline is offline, and reconnecting fetches", async () => {
+    const answer = deferred<GameLeaderboardResponse>();
+    mockGetLeaderboard.mockReturnValueOnce(answer.promise);
+    const { result, rerender } = await renderHook(() => useLeaderboardData("freecell", {}));
     mockNetwork.isOnline = false;
     await rerender({});
-    mockGetLeaderboard.mockReset();
+    await act(async () => {
+      answer.reject(new ApiError("x", 503));
+    });
+    expect(result.current.status).toBe("offline");
+
     mockGetLeaderboard.mockResolvedValue(board([ALICE]));
     mockNetwork.isOnline = true;
     await rerender({});
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+  });
+
+  it("a superseded request stops retrying: switching chips asks once for the new board", async () => {
+    jest.useFakeTimers();
+    mockGetLeaderboard.mockImplementation((_game: string, partition: Record<string, string>) =>
+      partition.difficulty === "easy"
+        ? Promise.reject(new TypeError("Network request failed"))
+        : Promise.resolve(board([ALICE]))
+    );
+    const { result, rerender } = await renderHook(
+      ({ difficulty }: { difficulty: string }) =>
+        useLeaderboardData("sudoku", { difficulty, variant: "classic" }),
+      { initialProps: { difficulty: "easy" } }
+    );
+    // The easy request failed once and is waiting to retry; the player moves on.
+    await rerender({ difficulty: "hard" });
     await act(async () => {
       await jest.runAllTimersAsync();
     });
-    expect(mockGetLeaderboard).toHaveBeenCalledTimes(1);
+    const calls = mockGetLeaderboard.mock.calls.map(
+      ([, p]) => (p as { difficulty: string }).difficulty
+    );
+    expect(calls).toEqual(["easy", "hard"]);
     expect(result.current.status).toBe("ready");
+  });
+
+  it("refresh() keeps the rows on screen and swaps in the new ones", async () => {
+    mockGetLeaderboard.mockResolvedValueOnce(board([ALICE]));
+    const { result } = await renderHook(() => useLeaderboardData("freecell", {}));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    const next = deferred<GameLeaderboardResponse>();
+    mockGetLeaderboard.mockReturnValueOnce(next.promise);
+    await act(async () => result.current.refresh());
+    expect(result.current.status).toBe("ready");
+    expect(result.current.refreshing).toBe(true);
+    expect(result.current.entries).toEqual([ALICE]);
+
+    await act(async () => next.resolve(board([ALICE], ME)));
+    expect(result.current.refreshing).toBe(false);
+    expect(result.current.me).toEqual(ME);
+  });
+
+  it("a failed refresh keeps the rows it had", async () => {
+    mockGetLeaderboard.mockResolvedValueOnce(board([ALICE]));
+    const { result } = await renderHook(() => useLeaderboardData("freecell", {}));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    mockGetLeaderboard.mockRejectedValueOnce(new ApiError("x", 500));
+    await act(async () => result.current.refresh());
+    expect(result.current.status).toBe("ready");
+    expect(result.current.refreshing).toBe(false);
+    expect(result.current.entries).toEqual([ALICE]);
   });
 
   it("offline: requests nothing, then loads the board once back online", async () => {
