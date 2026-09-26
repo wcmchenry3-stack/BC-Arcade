@@ -19,7 +19,6 @@ import { act, render, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Twenty48Screen from "../Twenty48Screen";
 import { ThemeProvider } from "../../theme/ThemeContext";
-import { Twenty48ScoreboardProvider } from "../../game/twenty48/Twenty48ScoreboardContext";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import { HAS_WINNER } from "../../api/vocab";
 import type { TileData, Twenty48State } from "../../game/twenty48/types";
@@ -201,15 +200,7 @@ async function openTwenty48(saved: Twenty48State | null) {
     popToTop: jest.fn(),
   } as unknown as React.ComponentProps<typeof Twenty48Screen>["navigation"];
   const r = await render(
-    React.createElement(
-      ThemeProvider,
-      null,
-      React.createElement(
-        Twenty48ScoreboardProvider,
-        null,
-        React.createElement(Twenty48Screen, { navigation })
-      )
-    )
+    React.createElement(ThemeProvider, null, React.createElement(Twenty48Screen, { navigation }))
   );
   await act(async () => {
     await Promise.resolve();
