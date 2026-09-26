@@ -5,6 +5,17 @@ import type { AppStateStatus } from "react-native";
 /** The part of a screen's navigation object this hook listens to. */
 export interface FocusEventSource {
   addListener(type: "focus" | "blur", callback: () => void): () => void;
+  /** Read at mount, so a screen that opens already covered starts paused. */
+  isFocused?(): boolean;
+}
+
+/**
+ * Whether an `AppState` status means the app isn't in the foreground. iOS can
+ * report `unknown` (or nothing) before its first transition: that counts as
+ * the foreground, so a clock is never held by a state no event will clear.
+ */
+function isAwayStatus(status: AppStateStatus | null | undefined): boolean {
+  return status === "background" || status === "inactive";
 }
 
 /**
@@ -16,10 +27,11 @@ export interface FocusEventSource {
  * - the app leaves the foreground: `AppState` is `background`, or `inactive`
  *   on iOS (#2750).
  *
- * `onPause` runs when the first reason starts; `onResume` runs once both have
- * ended. So returning to the foreground while another screen still covers the
- * game doesn't resume the clock, and neither does closing that screen while
- * the app is still in the background.
+ * `onPause` runs when the first reason starts, including at mount when the
+ * app is already in the background or the screen already covered; `onResume`
+ * runs once both have ended. So returning to the foreground while another
+ * screen still covers the game doesn't resume the clock, and neither does
+ * closing that screen while the app is still in the background.
  *
  * The returned ref is `true` while the player is away. Screens use it to hold
  * work they schedule themselves (an Auto-Complete step, a queued move) that
@@ -28,6 +40,9 @@ export interface FocusEventSource {
  * The handlers are read from a ref, so they may change on every render
  * without re-subscribing. On web, React Native Web maps `AppState` to the page
  * visibility API, so the same code covers a hidden browser tab.
+ *
+ * Games that keep their clock in React state use `usePausableClock`, which
+ * builds on this hook.
  */
 export function usePauseWhileAway(
   navigation: FocusEventSource,
@@ -50,14 +65,23 @@ export function usePauseWhileAway(
   }, []);
 
   useEffect(() => {
+    // A screen can mount while the app isn't active (a launch into the
+    // background, say): pause from the start, or the later switch to
+    // `active` would look like no change.
+    backgroundedRef.current = isAwayStatus(AppState.currentState);
+    update();
     const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
-      backgroundedRef.current = next !== "active";
+      backgroundedRef.current = isAwayStatus(next);
       update();
     });
     return () => sub?.remove();
   }, [update]);
 
   useEffect(() => {
+    if (navigation.isFocused) {
+      blurredRef.current = !navigation.isFocused();
+      update();
+    }
     const offBlur = navigation.addListener("blur", () => {
       blurredRef.current = true;
       update();

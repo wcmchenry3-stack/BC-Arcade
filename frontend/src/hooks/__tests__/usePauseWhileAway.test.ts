@@ -44,6 +44,46 @@ describe("usePauseWhileAway (#2750)", () => {
     return { ...nav, onPause, onResume, hook };
   }
 
+  describe("at mount", () => {
+    const original = Object.getOwnPropertyDescriptor(AppState, "currentState");
+    const setCurrentState = (value: string | null) =>
+      Object.defineProperty(AppState, "currentState", { value, configurable: true });
+    afterEach(() => {
+      if (original) Object.defineProperty(AppState, "currentState", original);
+      else delete (AppState as { currentState?: unknown }).currentState;
+    });
+
+    it("starts paused when the app isn't active, and resumes on the switch to active", async () => {
+      setCurrentState("background");
+      const { onPause, onResume, hook } = await setup();
+      expect(onPause).toHaveBeenCalledTimes(1);
+      expect(hook.result.current.current).toBe(true);
+
+      await act(async () => setAppState("active"));
+      expect(onResume).toHaveBeenCalledTimes(1);
+      expect(hook.result.current.current).toBe(false);
+    });
+
+    it("treats an unknown launch state as the foreground", async () => {
+      setCurrentState("unknown");
+      const { onPause } = await setup();
+      expect(onPause).not.toHaveBeenCalled();
+    });
+
+    it("starts paused when the screen opens already covered", async () => {
+      setCurrentState("active");
+      const nav = fakeNavigation();
+      const onPause = jest.fn();
+      const onResume = jest.fn();
+      await renderHook(() =>
+        usePauseWhileAway({ ...nav.navigation, isFocused: () => false }, onPause, onResume)
+      );
+      expect(onPause).toHaveBeenCalledTimes(1);
+      await act(async () => nav.emit("focus"));
+      expect(onResume).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("pauses when the app goes to the background and resumes when it returns", async () => {
     const { onPause, onResume, hook } = await setup();
     expect(hook.result.current.current).toBe(false);
