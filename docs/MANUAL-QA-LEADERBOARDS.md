@@ -85,4 +85,4 @@ Open each game's ⋯ menu and check its items.
 ## Known issues (not blockers for v1.0)
 
 - **Game timers:** Solitaire, 2048, Cascade and Mahjong count time while the app is in the background, and Solitaire, 2048 and Mahjong mis-time a game resumed after an app kill (#2750). Time spent on Stats, Leaderboard or Scorecard is no longer counted (#2743).
-- **Sort levels** differ per player, so the moves tie-break compares different puzzles (#2746).
+- **Sort levels** differ per player, so players on the same level rank by who got there first, not by moves (#2746).

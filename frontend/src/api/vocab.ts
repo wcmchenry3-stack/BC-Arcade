@@ -249,7 +249,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
   sort: {
     metric: "level_reached",
     direction: "desc",
-    tiebreak: ["total_moves", "asc"],
+    tiebreak: null,
     labelKey: "level",
     partitions: [],
     partitionDefaults: {},

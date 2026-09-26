@@ -105,8 +105,9 @@ export default function SortScreen() {
   // One `games` row per level played (#2512): XP, Profile history, stats and
   // the leaderboard (#2625). Every solve, replays included, is scored with the
   // player's standing after it (see the solve effect); the board keeps each
-  // named player's best row. Levels are random per fetch, not seeded, so
-  // `total_moves` compares different puzzles (#2746).
+  // named player's best row. Levels are random per fetch, not seeded, so the
+  // board doesn't rank `total_moves`: a tie on level goes to the earliest
+  // completion (#2746).
   const {
     start: syncStart,
     resume: syncResume,
@@ -269,9 +270,10 @@ export default function SortScreen() {
       // read never overwrites the stored bests.
       if (solve.isNewBest && bestsStoredRef.current) void saveBestMoves(bests);
       // Every solve is scored with the player's standing after it (#2625): the
-      // highest level solved, and the sum of best moves up to it. A replay that
-      // lowers a best improves the tie-break; the board keeps each player's
-      // best row. `level`/`moves`/`undos` are the level actually played.
+      // highest level solved, and the sum of best moves up to it (recorded,
+      // not ranked: #2746). The board keeps each player's best row, their
+      // first solve of their highest level. `level`/`moves`/`undos` are the
+      // level actually played.
       const frontier = Math.min(
         Math.max(
           solvedLevel,

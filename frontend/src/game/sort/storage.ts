@@ -46,7 +46,8 @@ export async function loadLevelsCache(): Promise<LevelsResponse | null> {
 
 // ---------------------------------------------------------------------------
 // Best moves per level (#2512) — shown as "Best" on the result card, and
-// summed into the leaderboard's `total_moves` tie-break (#2625).
+// summed into the result's `total_moves` (#2625), which the server records but
+// no longer ranks (#2746).
 //
 // The screen keeps the bests in memory (loaded with it, merged on Retry) and
 // decides every solve from there; storage only mirrors them. Nothing reads
@@ -143,10 +144,11 @@ export function highestSolvedLevel(bests: BestMoves): number {
 }
 
 /**
- * The leaderboard tie-break (#2625): the sum of the best moves of every level
+ * The result's `total_moves` (#2625): the sum of the best moves of every level
  * from 1 to `throughLevel`. `null` when one of them has no best on record
- * (progress made before #2512 kept bests): a partial sum would rank ahead of
- * players who played every level, while a missing tie-break ranks last.
+ * (progress made before #2512 kept bests), so a partial sum is never sent.
+ * It was the leaderboard tie-break until #2746; the server now records it
+ * without ranking it, since levels are random per request.
  */
 export function totalBestMoves(bests: BestMoves, throughLevel: number): number | null {
   let total = 0;

@@ -23,7 +23,8 @@ Ordering a board
 ----------------
 1. ``metric`` in ``direction`` (``desc``: higher is better; ``asc``: lower is
    better).
-2. ``tiebreak``, when set, e.g. ``("total_moves", "asc")`` for Sort.
+2. ``tiebreak``, when set, e.g. ``("total_moves", "asc")``. No board sets one
+   today: Sort's was dropped because its levels are random per request (#2746).
 3. ``FINAL_TIEBREAK``: ``completed_at asc`` (the earlier entry wins). It is
    always applied last and is never declared on a board.
 
@@ -58,6 +59,11 @@ SCORE_METRIC = "final_score"
 
 FINAL_TIEBREAK: tuple[str, Direction] = ("completed_at", "asc")
 """Breaks the last tie on every board: the earlier entry ranks higher."""
+
+MAX_BOARD_VALUE = 2**31 - 1
+"""Upper bound for any metric or tie-break value (the ``games.final_score``
+column is a 32-bit integer). Bounds uncapped boards and every tie-break.
+Defined here, with no heavy imports, so result models can share it."""
 
 _COUNTABLE_OUTCOMES = frozenset(o.value for o in GameOutcome) - {GameOutcome.ABANDONED.value}
 
