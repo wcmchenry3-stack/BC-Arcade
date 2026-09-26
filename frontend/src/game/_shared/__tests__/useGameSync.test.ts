@@ -204,6 +204,81 @@ describe("useGameSync", () => {
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
   });
 
+  // #2706: callers used to read getGameId() before complete() closed the
+  // session, so a later edit moving that read below complete() silently got
+  // null. complete() now hands back the id it closed, so there is nothing to
+  // read beforehand.
+  describe("complete() return value (#2706)", () => {
+    it("returns the id of the session it closed", async () => {
+      const { result } = await renderHook(() => useGameSync("yacht"));
+      let closedId: string | null = null;
+      await act(() => {
+        result.current.start();
+        closedId = result.current.complete({ outcome: "completed" });
+      });
+      expect(closedId).toBe("test-game-id");
+      expect(result.current.getGameId()).toBeNull();
+    });
+
+    it("returns null when no session is open", async () => {
+      const { result } = await renderHook(() => useGameSync("yacht"));
+      let closedId: string | null = "unset";
+      await act(() => {
+        closedId = result.current.complete({ outcome: "completed" });
+      });
+      expect(closedId).toBeNull();
+      expect(mockCompleteGame).not.toHaveBeenCalled();
+    });
+
+    it("returns null on a second call — the session is already completed", async () => {
+      const { result } = await renderHook(() => useGameSync("yacht"));
+      let firstId: string | null = null;
+      let secondId: string | null = "unset";
+      await act(() => {
+        result.current.start();
+        firstId = result.current.complete({ outcome: "completed" });
+        secondId = result.current.complete({ outcome: "completed" });
+      });
+      expect(firstId).toBe("test-game-id");
+      expect(secondId).toBeNull();
+    });
+  });
+
+  describe("getLastCompletedGameId()", () => {
+    it("is null before anything has completed", async () => {
+      const { result } = await renderHook(() => useGameSync("yacht"));
+      expect(result.current.getLastCompletedGameId()).toBeNull();
+      await act(() => {
+        result.current.start();
+      });
+      expect(result.current.getLastCompletedGameId()).toBeNull();
+    });
+
+    it("returns the id complete() closed, for a caller that isn't the one calling it", async () => {
+      const { result } = await renderHook(() => useGameSync("yacht"));
+      await act(() => {
+        result.current.start();
+        result.current.complete({ outcome: "completed" });
+      });
+      expect(result.current.getLastCompletedGameId()).toBe("test-game-id");
+    });
+
+    it("is unaffected by the hook's own abandon (unmount), only by complete()", async () => {
+      const { result, unmount } = await renderHook(() => useGameSync("yacht"));
+      await act(() => {
+        result.current.start();
+        result.current.markStarted();
+      });
+      await unmount();
+      expect(mockCompleteGame).toHaveBeenCalledWith(
+        "test-game-id",
+        { outcome: "abandoned" },
+        { outcome: "abandoned" }
+      );
+      expect(result.current.getLastCompletedGameId()).toBeNull();
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // unmount cleanup
   // ---------------------------------------------------------------------------

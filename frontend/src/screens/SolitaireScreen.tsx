@@ -298,9 +298,7 @@ export default function SolitaireScreen() {
       return;
     }
     if (state.isComplete && !prevCompleteRef.current) {
-      // complete() closes the session: read its id first, for the rank lookup.
-      const gameId = syncGetGameId();
-      syncComplete(
+      const gameId = syncComplete(
         {
           finalScore: state.score,
           outcome: "completed",
@@ -348,7 +346,7 @@ export default function SolitaireScreen() {
       }
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, syncGetGameId, submitScore]);
+  }, [state, syncComplete, submitScore]);
 
   useEffect(() => {
     if (!state?.events) return;

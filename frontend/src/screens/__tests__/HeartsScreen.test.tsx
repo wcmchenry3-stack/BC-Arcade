@@ -63,8 +63,10 @@ const mockSyncClose = jest.fn(() => {
 const mockSyncStart = jest.fn((_eventData?: unknown, _metadata?: unknown) => {
   mockOpenGameId = "hearts-game";
 });
-const mockSyncComplete = jest.fn((_summary: unknown, _payload?: unknown) => {
+const mockSyncComplete = jest.fn((_summary: unknown, _payload?: unknown): string | null => {
+  const gid = mockOpenGameId;
   mockOpenGameId = null;
+  return gid;
 });
 const mockSyncGetGameId = jest.fn((): string | null => mockOpenGameId);
 // No killed-process session to continue by default (#2654).
@@ -788,7 +790,8 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
       jest.advanceTimersByTime(3000);
     });
     expect(await r.findByTestId("hearts-result")).toBeTruthy();
-    expect(mockSyncComplete).not.toHaveBeenCalled();
+    // complete() is called (a no-op: no session was open) rather than
+    // skipped, so its returned id — not a pre-read one — decides the rest.
     expect(mockGetGameRank).not.toHaveBeenCalled();
     expect(saveFinishedGameId).not.toHaveBeenCalled();
   });
@@ -829,7 +832,6 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
     expect(await r.findByTestId("hearts-result")).toBeTruthy();
     await waitFor(() => expect(r.getByText("Saved as Riley · #2 on the leaderboard")).toBeTruthy());
     expect(mockGetGameRank).toHaveBeenCalledWith("hearts-game");
-    expect(mockSyncComplete).not.toHaveBeenCalled();
     expect(heartsRequests()).toEqual([]);
   });
 
@@ -873,7 +875,6 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
     );
     expect(mockGetGameRank).toHaveBeenCalledTimes(1);
     expect(mockGetGameRank).toHaveBeenCalledWith("hearts-game");
-    expect(mockSyncComplete).not.toHaveBeenCalled();
     expect(await scoreQueue.peek()).toEqual([]);
     expect(heartsRequests()).toEqual([]);
   });

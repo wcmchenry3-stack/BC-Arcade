@@ -443,17 +443,22 @@ export default function GameScreen({ navigation, route }: Props) {
         },
       });
       if (next.game_over) {
-        // The card's rank lookup needs this game's id (#2630).
-        setFinishedGameId(syncGetGameId());
         if (aiDifficultyRef.current && aiGameStateRef.current) {
           // VS mode: the CPU takes its last turn first; the session completes
           // with the result once it has (see the effect on gameReallyOver).
+          // The card's rank lookup needs this game's id (#2630), and the
+          // session isn't closed yet for complete() to hand it back — read
+          // the still-open id now, before the CPU (or an unmount/background,
+          // via completeIfCpuStillPlayingRef) closes it.
+          setFinishedGameId(syncGetGameId());
           setIsAiTurn(true);
         } else {
           const payload = endedPayload(next, "completed");
-          syncComplete(
-            { finalScore: next.total_score, outcome: "completed", result: payload },
-            payload
+          setFinishedGameId(
+            syncComplete(
+              { finalScore: next.total_score, outcome: "completed", result: payload },
+              payload
+            )
           );
         }
       } else if (aiDifficultyRef.current && aiGameStateRef.current) {

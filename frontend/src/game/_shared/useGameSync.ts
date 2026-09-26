@@ -173,8 +173,13 @@ export interface UseGameSyncReturn {
    *
    * `summary.durationMs` > 0 (the game's own active time) is sent as given;
    * otherwise the hook's active-play window is sent in its place (#2684).
+   *
+   * Returns the id of the session it closed, or `null` if none was open (or
+   * it was already completed) — so a caller that needs the id for a rank
+   * lookup reads it here instead of via `getGameId()` beforehand, which
+   * silently breaks if the read ever moves below this call (#2706).
    */
-  complete: (summary: CompleteSummary, payload?: Record<string, unknown>) => void;
+  complete: (summary: CompleteSummary, payload?: Record<string, unknown>) => string | null;
   /**
    * End the current session and immediately start a fresh one. If the old
    * session is still open, it is abandoned when the player started it
@@ -211,6 +216,13 @@ export interface UseGameSyncReturn {
   /** Return the current game ID, or null if no session is open. */
   getGameId: () => string | null;
   /**
+   * Return the id `complete()` most recently closed, or `null` if nothing
+   * has completed yet. For a caller that isn't the one calling `complete()`
+   * — e.g. a background completion that runs elsewhere (Yacht's CPU turn,
+   * #2706) — and so cannot use its return value directly.
+   */
+  getLastCompletedGameId: () => string | null;
+  /**
    * Register a getter the hook calls when it abandons the session itself
    * (unmount or `restart()`), so the abandon carries the result block instead
    * of only `{ outcome: "abandoned" }`. The getter must read from refs (it runs
@@ -224,6 +236,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   const gameIdRef = useRef<string | null>(null);
   const completedRef = useRef(false);
   const startedRef = useRef(false);
+  const lastCompletedGameIdRef = useRef<string | null>(null);
   const snapshotRef = useRef<() => ProgressSnapshot>(() => ({}));
   // Keep gameType in a ref so restart() always uses the current value even if
   // the consumer passes a runtime-derived type (shouldn't change, but safe).
@@ -382,9 +395,9 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   );
 
   const complete = useCallback(
-    (summary: CompleteSummary, payload?: Record<string, unknown>) => {
+    (summary: CompleteSummary, payload?: Record<string, unknown>): string | null => {
       const gid = gameIdRef.current;
-      if (!gid || completedRef.current) return;
+      if (!gid || completedRef.current) return null;
       // The game's own durationMs > 0 wins; otherwise the active-play window
       // (#2684), once it has counted anything.
       ping();
@@ -402,7 +415,9 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       }
       completedRef.current = true;
       gameIdRef.current = null;
+      lastCompletedGameIdRef.current = gid;
       pauseWindow();
+      return gid;
     },
     [ping, readWindow, pauseWindow]
   );
@@ -423,6 +438,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   );
 
   const getGameId = useCallback(() => gameIdRef.current, []);
+  const getLastCompletedGameId = useCallback(() => lastCompletedGameIdRef.current, []);
 
   const setProgressSnapshot = useCallback((getSnapshot: () => ProgressSnapshot) => {
     snapshotRef.current = getSnapshot;
@@ -439,6 +455,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     resetPlayWindow: restartWindow,
     reportBug,
     getGameId,
+    getLastCompletedGameId,
     setProgressSnapshot,
   };
 }

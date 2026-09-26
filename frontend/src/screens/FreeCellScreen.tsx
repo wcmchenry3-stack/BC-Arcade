@@ -237,9 +237,7 @@ export default function FreeCellScreen() {
       return;
     }
     if (state.isComplete && !prevCompleteRef.current) {
-      // complete() closes the session: read its id first, for the rank lookup.
-      const gameId = syncGetGameId();
-      syncComplete(
+      const gameId = syncComplete(
         {
           finalScore: state.moveCount,
           outcome: "completed",
@@ -273,7 +271,7 @@ export default function FreeCellScreen() {
       }
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, syncGetGameId, submitScore]);
+  }, [state, syncComplete, submitScore]);
 
   const handleMove = useCallback(
     (move: Move) => {

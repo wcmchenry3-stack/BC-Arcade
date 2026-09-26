@@ -460,20 +460,21 @@ export default function HeartsScreen() {
     if (gameState?.phase !== "game_over") return;
     // The game is over: its clock stops at its play time.
     clockRef.current = pauseClock(clockRef.current);
-    // complete() closes the session, so read its id first.
-    const gameId = syncGetGameId();
-    if (!gameId) return;
     const finalScore = heartsLeaderboardScore(gameState.cumulativeScores[HUMAN] ?? 0);
     // #2517: record who won — the same outcome the result card shows.
     const { outcome } = heartsResult(gameState.cumulativeScores, HUMAN);
     const result = { final_score: finalScore, vs_result: outcome };
     // The play clock's active time (#2629); a 0 goes out as unknown (resolveDurationMs).
     const durationMs = clockMs(clockRef.current);
-    syncComplete({ outcome: recordedOutcome(outcome), finalScore, durationMs, result }, result);
+    const gameId = syncComplete(
+      { outcome: recordedOutcome(outcome), finalScore, durationMs, result },
+      result
+    );
+    if (!gameId) return;
     // Kept beside the saved game-over state, so a reopened card asks again.
     void saveFinishedGameId(gameId);
     void submitRank({ gameId });
-  }, [gameState?.phase, gameState?.cumulativeScores, syncComplete, syncGetGameId, submitRank]);
+  }, [gameState?.phase, gameState?.cumulativeScores, syncComplete, submitRank]);
 
   useEffect(() => {
     if (gameState?.phase === "game_over" && !gameOverFiredRef.current) {

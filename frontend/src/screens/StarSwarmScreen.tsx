@@ -326,9 +326,7 @@ function StarSwarmGame() {
       // keeps no play clock, and a made-up 0 would read as a real time.
       const outcome = recordedOutcome("ended");
       const payload = { outcome, wave_reached: wave, difficulty_tier: tier };
-      // complete() clears the id — read it first.
-      const gameId = syncGetGameId();
-      syncComplete({ outcome, finalScore, result: payload }, payload);
+      const gameId = syncComplete({ outcome, finalScore, result: payload }, payload);
       // The card reads the run's rank on its tier's board (shown when it is the player's best).
       if (gameId) {
         void submitRank({ gameId });
@@ -348,7 +346,7 @@ function StarSwarmGame() {
         }
       }
     },
-    [playGameOver, difficulty, syncComplete, syncGetGameId, syncReportBug, submitRank]
+    [playGameOver, difficulty, syncComplete, syncReportBug, submitRank]
   );
 
   // #2490: a boss wave has no on-screen text beyond the banner — play the sting and speak it.
