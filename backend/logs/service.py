@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.dialect import dialect_insert
 from db.models import BugLog
 
 
@@ -19,12 +20,7 @@ class BugLogResult:
 
 
 def _upsert_ignore(session: AsyncSession, table, rows: list[dict]):
-    dialect = session.bind.dialect.name if session.bind else "postgresql"
-    if dialect == "sqlite":
-        from sqlalchemy.dialects.sqlite import insert as _insert
-    else:
-        from sqlalchemy.dialects.postgresql import insert as _insert
-    return _insert(table).values(rows).on_conflict_do_nothing()
+    return dialect_insert(session, table).values(rows).on_conflict_do_nothing()
 
 
 async def append_bug_logs(

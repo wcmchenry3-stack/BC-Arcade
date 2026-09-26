@@ -1146,6 +1146,11 @@ def _db_error() -> Exception:
 
 
 class _NoRow:
+    # ``set_display_name`` (#2675) reads its upsert's rowcount instead of a
+    # pre-read; these tests only exercise the commit/execute failure paths,
+    # so the value itself is irrelevant.
+    rowcount = 0
+
     def scalar_one_or_none(self) -> None:
         return None
 
