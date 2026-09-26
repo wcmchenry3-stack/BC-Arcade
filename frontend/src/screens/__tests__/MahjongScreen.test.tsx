@@ -399,6 +399,38 @@ describe("MahjongScreen — win result card (#2510)", () => {
     });
   });
 
+  // #2704: the card's Time is the real play time, not the banked-on-pause 0.
+  it("shows the real play time for a board cleared in one sitting", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify({
+        ...makeLastPairState(),
+        accumulatedMs: 0,
+        startedAt: Date.now() - 90_000,
+      })
+    );
+    const api = await mount();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-0"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-1"));
+    });
+    const card = within(await api.findByTestId("mahjong-result"));
+    expect(card.getByText("1:30")).toBeTruthy();
+  });
+
+  // #2704: a won board restored from storage keeps the time it was won with.
+  it("doesn't grow the time on a won board restored from storage", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify(makeWinState({ accumulatedMs: 90_000, startedAt: Date.now() - 600_000 }))
+    );
+    const api = await mount();
+    const card = within(await api.findByTestId("mahjong-result"));
+    expect(card.getByText("1:30")).toBeTruthy();
+  });
+
   it("asks for a display name on the card when none is set", async () => {
     const api = await winNow();
     const card = within(await api.findByTestId("mahjong-result"));

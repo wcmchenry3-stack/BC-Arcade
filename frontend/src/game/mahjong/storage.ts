@@ -61,7 +61,10 @@ export async function loadGame(): Promise<MahjongState | null> {
       await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
       return null;
     }
-    parsed.startedAt = parsed.startedAt ?? null;
+    // A cleared board has a frozen clock. Saves from before the engine banked
+    // time on completion can still carry a running startedAt, which would make
+    // the win card's time grow — drop it.
+    parsed.startedAt = parsed.isComplete ? null : (parsed.startedAt ?? null);
     // dealId added in #943 — fall back gracefully for saves from older builds
     if (typeof parsed.dealId !== "string") parsed.dealId = "0000";
     // currentLayoutId added in #1688 — resolveLayoutId() defaults to "turtle" for old saves

@@ -437,6 +437,62 @@ describe("selectTile", () => {
     expect(s2.score).toBe(10 + 500); // SCORE_PER_PAIR + SCORE_COMPLETE_BONUS
     expect(s2.tiles.length).toBe(0);
   });
+
+  it("freezes the clock when the board is cleared", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    const state: MahjongState = {
+      ...createGame(TURTLE_LAYOUT),
+      tiles: [a, b],
+      startedAt: 1_000,
+      accumulatedMs: 500,
+    };
+    jest.spyOn(Date, "now").mockReturnValue(61_000);
+    try {
+      const done = selectTile(selectTile(state, a.id), b.id);
+      expect(done.isComplete).toBe(true);
+      expect(done.startedAt).toBeNull();
+      expect(done.accumulatedMs).toBe(60_500);
+      // Frozen: the elapsed time doesn't grow after the win.
+      expect(elapsedMs(done, 999_999)).toBe(60_500);
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+
+  it("freezes the clock when the last pair leaves the board deadlocked", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    // Left behind: a stack of two non-matching tiles — only one is free.
+    const c: SlotTile = { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 10, row: 0, layer: 0 };
+    const d: SlotTile = { id: 3, suit: "bamboos", rank: 2, faceId: 27, col: 10, row: 0, layer: 1 };
+    const state: MahjongState = {
+      ...createGame(TURTLE_LAYOUT),
+      tiles: [a, b, c, d],
+      shufflesLeft: 0,
+      startedAt: 1_000,
+      accumulatedMs: 500,
+    };
+    jest.spyOn(Date, "now").mockReturnValue(61_000);
+    try {
+      const dead = selectTile(selectTile(state, a.id), b.id);
+      expect(dead.isComplete).toBe(false);
+      expect(dead.isDeadlocked).toBe(true);
+      expect(dead.startedAt).toBeNull();
+      expect(elapsedMs(dead, 999_999)).toBe(60_500);
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+
+  it("keeps the clock running for a non-clearing pair", () => {
+    const state = createGame(TURTLE_LAYOUT);
+    const [a, b] = firstFreePair(state);
+    const next = selectTile(selectTile({ ...state, startedAt: 1_000 }, a.id), b.id);
+    expect(next.isComplete).toBe(false);
+    expect(next.startedAt).toBe(1_000);
+    expect(next.accumulatedMs).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -745,6 +801,34 @@ describe("shuffleBoard", () => {
       expect(result.tiles).toEqual(state.tiles);
       // Undo snapshot pushed so user can back out.
       expect(result.undoStack.length).toBe(1);
+    }
+  });
+
+  it("geometric deadlock freezes the clock, and undo resumes it", () => {
+    const tiles: SlotTile[] = [
+      { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 },
+      { id: 1, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 1 },
+      { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 2 },
+      { id: 3, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 3 },
+    ];
+    const state: MahjongState = {
+      ...createGame(TURTLE_LAYOUT),
+      tiles,
+      shufflesLeft: 2,
+      startedAt: 1_000,
+      accumulatedMs: 500,
+    };
+    jest.spyOn(Date, "now").mockReturnValue(61_000);
+    try {
+      const dead = shuffleBoard(state);
+      expect(dead.isDeadlocked).toBe(true);
+      expect(dead.startedAt).toBeNull();
+      expect(dead.accumulatedMs).toBe(60_500);
+      expect(elapsedMs(dead, 999_999)).toBe(60_500);
+      // Backing out of the deadlock puts the running clock back.
+      expect(undoMove(dead).startedAt).toBe(1_000);
+    } finally {
+      jest.restoreAllMocks();
     }
   });
 });
