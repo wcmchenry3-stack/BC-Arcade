@@ -209,12 +209,15 @@ export default function SolitaireScreen() {
   // applyMove's timer would otherwise treat a paused (`startedAt: null`)
   // state as "not yet started" and restart the clock from a step that lands
   // while away, defeating the pause.
-  const { awayRef, adoptLoaded } = usePausableClock({
+  const { awayRef, adoptLoaded, pauseIfAway } = usePausableClock({
     navigation,
     state,
     setState,
     pauseGame,
     resumeGame,
+    saveOnLeave: (paused) => {
+      if (hasLoadedRef.current) saveGame(paused).catch(() => {});
+    },
   });
 
   // #597 — mount load. Restores a saved game silently; on a clean slot the
@@ -360,12 +363,12 @@ export default function SolitaireScreen() {
       const next = applyMove(state, move);
       if (next.events?.includes("invalidMove")) return false;
       ensureSyncStarted(next);
-      setState(next);
+      setState(pauseIfAway(next));
       setMoves((m) => m + 1);
       setSelection(null);
       return true;
     },
-    [state, ensureSyncStarted]
+    [state, ensureSyncStarted, pauseIfAway]
   );
 
   const handleWastePress = useCallback(() => {
@@ -393,10 +396,10 @@ export default function SolitaireScreen() {
     const next = state.stock.length > 0 ? drawFromStock(state) : recycleWaste(state);
     if (next === state) return;
     ensureSyncStarted(next);
-    setState(next);
+    setState(pauseIfAway(next));
     setMoves((m) => m + 1);
     setSelection(null);
-  }, [state, autoCompleting, ensureSyncStarted]);
+  }, [state, autoCompleting, ensureSyncStarted, pauseIfAway]);
 
   const handleFoundationPress = useCallback(
     (suit: Suit) => {
@@ -601,15 +604,15 @@ export default function SolitaireScreen() {
   const handleUndo = useCallback(() => {
     if (state === null || autoCompleting) return;
     if (state.undoStack.length === 0) return;
-    setState(undo(state));
+    setState(pauseIfAway(undo(state)));
     setSelection(null);
     setMoves((m) => Math.max(0, m - 1));
-  }, [state, autoCompleting]);
+  }, [state, autoCompleting, pauseIfAway]);
 
   const handleHint = useCallback(() => {
     if (state === null || state.isComplete || autoCompleting) return;
-    setState(applyHint(state));
-  }, [state, autoCompleting]);
+    setState(pauseIfAway(applyHint(state)));
+  }, [state, autoCompleting, pauseIfAway]);
 
   const handleAutoComplete = useCallback(() => {
     if (state === null || autoCompleting) return;

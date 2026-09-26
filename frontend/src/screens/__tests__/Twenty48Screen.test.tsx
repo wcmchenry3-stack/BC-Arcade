@@ -1475,6 +1475,7 @@ describe("Twenty48Screen — app background and relaunch (#2750)", () => {
       await new Promise((resolve) => setTimeout(resolve, 200)); // the move lock lets go
     });
     now += 20_000;
+    const savesBefore = (saveGame as jest.Mock).mock.calls.length;
     await act(() => {
       dispatchKey("ArrowLeft"); // right-aligned tiles always slide left
       for (const [type, listener] of appStateSpy.mock.calls.slice(appStateBase)) {
@@ -1482,12 +1483,43 @@ describe("Twenty48Screen — app background and relaunch (#2750)", () => {
       }
     });
     const saves = (saveGame as jest.Mock).mock.calls.map((c) => c[0] as Twenty48State);
-    const moved = saves.at(-2)!; // the ArrowLeft move's own save
-    const paused = saves.at(-1)!; // the pause's
+    const moved = saves[savesBefore]!; // the ArrowLeft move's own save
+    const paused = saves.at(-1)!; // the committed pause's
     expect(paused.board).toEqual(moved.board);
     expect(paused).toEqual(expect.objectContaining({ startedAt: null, accumulatedMs: 20_000 }));
 
     now += 60 * 60_000;
+    await setAppState("active");
+    now += 5_000;
+    mockCompleteGame.mockClear();
+    await unmount();
+    expect(abandonDuration()).toBe(25_000);
+  });
+
+  // The reverse order: the move is built from the board rendered before the
+  // pause, so it carries the running clock. It must not replace the paused
+  // state with a running one.
+  it("keeps the clock paused for a move applied right after the app goes to the background", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const { unmount } = await mountAndSettle();
+    await act(() => {
+      dispatchKey("ArrowRight"); // starts the board's timer
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200)); // the move lock lets go
+    });
+    now += 20_000;
+    await act(() => {
+      for (const [type, listener] of appStateSpy.mock.calls.slice(appStateBase)) {
+        if (type === "change") (listener as (s: AppStateStatus) => void)("background");
+      }
+      dispatchKey("ArrowLeft"); // right-aligned tiles always slide left
+    });
+    expect((saveGame as jest.Mock).mock.calls.at(-1)![0]).toEqual(
+      expect.objectContaining({ startedAt: null, accumulatedMs: 20_000, paused: true })
+    );
+
+    now += 60 * 60_000; // an hour away
     await setAppState("active");
     now += 5_000;
     mockCompleteGame.mockClear();

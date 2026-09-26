@@ -613,6 +613,12 @@ export default function MahjongScreen() {
     setState,
     pauseGame,
     resumeGame,
+    // Level Select pauses the clock too: coming back to the app there
+    // mustn't start it; CONTINUE does.
+    hold: view === "select",
+    saveOnLeave: (paused) => {
+      if (hasLoadedRef.current) saveGame(paused).catch(() => {});
+    },
   });
 
   // Mount: restore saved game or show layout select.
@@ -918,16 +924,14 @@ export default function MahjongScreen() {
 
   // Navigates directly to level select without an abandon confirmation or server
   // abandon event — the in-progress game is preserved locally so CONTINUE works.
-  // Level Select isn't play: the clock stops here and CONTINUE starts it again
-  // (#2750). Only a clock this stopped is restarted.
-  const pausedForSelectRef = useRef(false);
+  // Level Select isn't play: the clock pauses here and CONTINUE resumes it
+  // (#2750). The clock's own state decides: only a running clock pauses, and
+  // only a paused one on an unfinished board resumes.
   const goToLevelSelect = useCallback(() => {
     const s = stateRef.current;
     setHasSavedGame(s !== null && !s.isComplete);
-    if (s !== null && s.startedAt !== null) {
-      pausedForSelectRef.current = true;
-      setState((prev) => (prev ? pauseGame(prev) : prev));
-    }
+    const now = Date.now();
+    setState((prev) => (prev ? pauseGame(prev, now) : prev));
     setView("select");
   }, []);
 
@@ -975,10 +979,8 @@ export default function MahjongScreen() {
       // clock stopped: carry on from it (#2750). Reloading the save would drop
       // the play since the last save, and a resume would reopen the session.
       setHasSavedGame(false);
-      if (pausedForSelectRef.current) {
-        pausedForSelectRef.current = false;
-        setState((prev) => (prev ? resumeGame(prev) : prev));
-      }
+      const now = Date.now();
+      setState((prev) => (prev ? resumeGame(prev, now) : prev));
       setView("play");
       return;
     }

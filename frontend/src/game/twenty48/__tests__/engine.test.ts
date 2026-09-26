@@ -669,10 +669,31 @@ describe("pauseGame / resumeGame", () => {
     expect(pauseGame(s, 5000)).toBe(s);
   });
 
-  it("resumeGame sets startedAt", () => {
-    const s = stateWith(emptyBoard, { startedAt: null, accumulatedMs: 200 });
+  it("resumeGame sets startedAt on a paused clock", () => {
+    const s = stateWith(emptyBoard, { startedAt: null, accumulatedMs: 200, paused: true });
     const resumed = resumeGame(s, 5000);
     expect(resumed.startedAt).toBe(5000);
+    expect(resumed.paused).toBeUndefined();
+  });
+
+  // #2750: not started (waiting for the first move) isn't paused.
+  it("resumeGame doesn't start a clock that isn't paused", () => {
+    const s = stateWith(emptyBoard, { startedAt: null, accumulatedMs: 0 });
+    expect(resumeGame(s, 5000)).toBe(s);
+  });
+
+  it("a move leaves a paused clock paused", () => {
+    const board = [
+      [0, 0, 0, 2],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+      [0, 0, 0, 0],
+    ];
+    const paused = pauseGame(stateWith(board, { startedAt: 1000, accumulatedMs: 0 }), 1600);
+    const moved = move(paused, "left");
+    expect(moved.startedAt).toBeNull();
+    expect(moved.paused).toBe(true);
+    expect(moved.accumulatedMs).toBe(600);
   });
 
   it("resumeGame is a no-op when already running", () => {

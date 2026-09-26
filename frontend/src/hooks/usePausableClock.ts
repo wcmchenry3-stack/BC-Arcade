@@ -5,16 +5,31 @@ import { usePauseWhileAway, type FocusEventSource } from "./usePauseWhileAway";
 
 export interface PausableClockOptions<T extends PlayClock> {
   navigation: FocusEventSource;
-  /** The game state holding the clock, as last committed. */
+  /** The game state holding the clock, as last rendered. */
   state: T | null;
   setState: Dispatch<SetStateAction<T | null>>;
-  /** The game's own `pauseGame` / `resumeGame` (a finished game never resumes). */
-  pauseGame: (state: T) => T;
-  resumeGame: (state: T) => T;
   /**
-   * Runs once with each state this hook paused, after it is committed. A game
-   * that saves only on a move (2048) saves here, so a kill while the app is
-   * in the background keeps the play up to the pause.
+   * The game's own `pauseGame` / `resumeGame`: pause only a running clock,
+   * resume only a paused one, and never resume a finished game.
+   */
+  pauseGame: (state: T, now: number) => T;
+  resumeGame: (state: T, now: number) => T;
+  /**
+   * While true, returning doesn't resume the clock: the game paused it for a
+   * reason of its own that still holds (Mahjong's Level Select).
+   */
+  hold?: boolean;
+  /**
+   * Called in the pause event's own handler with the latest rendered state
+   * paused at the event's time, so the save doesn't wait for a render that
+   * may never come once the app is in the background. Best effort: a move
+   * not yet rendered is missing from it, and `onPaused` or the game's own
+   * save of the committed state follows.
+   */
+  saveOnLeave?: (paused: T) => void;
+  /**
+   * Called once with each committed state whose clock is paused. A game that
+   * saves only on a move (2048) saves here as well as in `saveOnLeave`.
    */
   onPaused?: (paused: T) => void;
 }
@@ -30,65 +45,72 @@ export interface PausableClock<T> {
    * resumed with everything else on return.
    */
   adoptLoaded: (loaded: T) => T;
+  /**
+   * Pass a state computed from a rendered one (a move built from the
+   * screen's `state`) through this before applying it with a plain
+   * `setState(next)`. If the player left in between, `next` still carries
+   * the running clock from before the pause and would replace the paused
+   * state: it is paused here instead.
+   */
+  pauseIfAway: (next: T) => T;
 }
 
 /**
- * The play clock of a game that keeps it on its React state (`startedAt` /
- * `accumulatedMs`): Solitaire, Mahjong and 2048 (#2750). It pauses the clock
- * while the player is away — another screen covers the game, or the app is in
- * the background — and resumes it on return, through `usePauseWhileAway`.
+ * The play clock of a game that keeps it on its React state (a `PlayClock`):
+ * Solitaire, Mahjong and 2048 (#2750). It pauses the clock while the player is
+ * away — another screen covers the game, or the app is in the background —
+ * and resumes it on return, through `usePauseWhileAway`.
  *
- * Both run as functional updates, so they apply to the latest state, not the
- * last committed one: a move still waiting to commit (a queued 2048 move, an
- * Auto-Complete step) is paused with the rest of the state instead of being
- * overwritten by a copy from before it.
+ * Both are functional updates at the event's time, so they apply to the
+ * latest state, not the last rendered one: a move still waiting to commit (a
+ * queued 2048 move, an Auto-Complete step) is paused with the rest of the
+ * state instead of being overwritten by a copy from before it.
  *
- * Only a clock this hook paused is restarted on return: a board with no move
- * yet keeps waiting for its first, and a clock the game stopped for its own
- * reasons (Mahjong's Level Select) stays stopped. The paused states are
- * recognised by identity; if one is replaced while the player is away, the
- * engine's next move restarts the clock instead.
+ * The clock's own state decides what happens (`PlayClock`): a pause stops
+ * only a running clock, a resume restarts only a paused one, and an engine
+ * move never restarts a paused one. So a board with no move yet keeps waiting
+ * for its first, a finished game stays frozen, and a state replaced while the
+ * player is away (a move that landed meanwhile) is still resumed on return.
  */
 export function usePausableClock<T extends PlayClock>(
   options: PausableClockOptions<T>
 ): PausableClock<T> {
   const optionsRef = useRef(options);
   optionsRef.current = options;
-  const pausedWhileAwayRef = useRef(new WeakSet<T>());
   const notifiedRef = useRef<T | null>(null);
 
   const awayRef = usePauseWhileAway(
     options.navigation,
-    () =>
+    () => {
+      const now = Date.now();
+      const o = optionsRef.current;
+      o.setState((s) => (s === null ? s : o.pauseGame(s, now)));
+      const latest = o.state;
+      if (o.saveOnLeave && latest !== null) {
+        const paused = o.pauseGame(latest, now);
+        if (paused !== latest) o.saveOnLeave(paused);
+      }
+    },
+    () => {
+      const now = Date.now();
       optionsRef.current.setState((s) => {
-        if (s === null || s.startedAt === null) return s;
-        const paused = optionsRef.current.pauseGame(s);
-        pausedWhileAwayRef.current.add(paused);
-        return paused;
-      }),
-    () =>
-      optionsRef.current.setState((s) =>
-        s !== null && pausedWhileAwayRef.current.has(s) ? optionsRef.current.resumeGame(s) : s
-      )
+        const o = optionsRef.current;
+        return s === null || o.hold ? s : o.resumeGame(s, now);
+      });
+    }
   );
 
   const { state } = options;
   useEffect(() => {
-    if (state === null || !pausedWhileAwayRef.current.has(state)) return;
-    if (notifiedRef.current === state) return;
+    if (state === null || state.paused !== true || notifiedRef.current === state) return;
     notifiedRef.current = state;
     optionsRef.current.onPaused?.(state);
   }, [state]);
 
-  const adoptLoaded = useCallback(
-    (loaded: T): T => {
-      if (!awayRef.current || loaded.startedAt === null) return loaded;
-      const paused = optionsRef.current.pauseGame(loaded);
-      pausedWhileAwayRef.current.add(paused);
-      return paused;
-    },
+  const pauseIfAway = useCallback(
+    (next: T): T => (awayRef.current ? optionsRef.current.pauseGame(next, Date.now()) : next),
     [awayRef]
   );
 
-  return { awayRef, adoptLoaded };
+  return { awayRef, adoptLoaded: pauseIfAway, pauseIfAway };
 }

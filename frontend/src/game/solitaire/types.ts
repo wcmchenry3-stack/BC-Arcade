@@ -50,6 +50,8 @@ export interface SolitaireState {
   readonly startedAt: number | null;
   /** Total elapsed milliseconds accumulated across all sessions before the current one. */
   readonly accumulatedMs: number;
+  /** The clock is paused (the player is away), not merely stopped: see `PlayClock`. */
+  readonly paused?: boolean;
   readonly events?: readonly GameEvent[];
   /** Active hint move. Set by applyHint(), cleared after any real move. */
   readonly hint?: Move;

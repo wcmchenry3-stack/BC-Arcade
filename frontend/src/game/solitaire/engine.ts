@@ -29,7 +29,13 @@ import type {
   Suit,
 } from "./types";
 import { cardColor, RANKS, SUITS } from "./types";
-import { pauseClock, resumeClock } from "../_shared/playClock";
+import {
+  pauseClock,
+  resumeClock,
+  startClockOnMove,
+  stopClock,
+  withClock,
+} from "../_shared/playClock";
 
 // ---------------------------------------------------------------------------
 // Scoring constants (PRODUCT.md — no timers)
@@ -309,27 +315,20 @@ function clampScore(score: number): number {
  * it to `prev.undoStack`, cap at UNDO_CAP, and attach to `next`. */
 function withUndo(
   prev: SolitaireState,
-  next: Omit<SolitaireState, "undoStack" | "startedAt" | "accumulatedMs">
+  next: Omit<SolitaireState, "undoStack" | "startedAt" | "accumulatedMs" | "paused">
 ): SolitaireState {
   const snapshot: SolitaireState = { ...prev, undoStack: [], events: undefined };
   const stack = [...prev.undoStack, snapshot];
   const capped = stack.length > UNDO_CAP ? stack.slice(stack.length - UNDO_CAP) : stack;
-  return {
-    ...next,
-    undoStack: capped,
-    startedAt: prev.startedAt,
-    accumulatedMs: prev.accumulatedMs,
-  };
+  return withClock({ ...next, undoStack: capped, startedAt: null, accumulatedMs: 0 }, prev);
 }
 
 /** Start, advance, or freeze the timer. Called after every state mutation. */
 function applyTimer(prev: SolitaireState, next: SolitaireState): SolitaireState {
   const now = Date.now();
-  if (next.isComplete && !prev.isComplete) {
-    const activeStart = prev.startedAt ?? now;
-    return { ...next, accumulatedMs: prev.accumulatedMs + (now - activeStart), startedAt: null };
-  }
-  return { ...next, startedAt: prev.startedAt ?? now, accumulatedMs: prev.accumulatedMs };
+  // The first move starts the clock; a move while it is paused leaves it so.
+  const clock = startClockOnMove(prev, now);
+  return withClock(next, next.isComplete && !prev.isComplete ? stopClock(clock, now) : clock);
 }
 
 /**
@@ -372,7 +371,10 @@ function isWin(foundations: Foundations): boolean {
 
 function finalizeAfterMove(
   prev: SolitaireState,
-  next: Omit<SolitaireState, "undoStack" | "isComplete" | "startedAt" | "accumulatedMs" | "hint">
+  next: Omit<
+    SolitaireState,
+    "undoStack" | "isComplete" | "startedAt" | "accumulatedMs" | "paused" | "hint"
+  >
 ): SolitaireState {
   const wasComplete = prev.isComplete;
   const nowComplete = isWin(next.foundations);
@@ -613,12 +615,7 @@ export function undo(state: SolitaireState): SolitaireState {
   if (last === undefined) return state;
   const remaining = state.undoStack.slice(0, -1);
   // Preserve the live timer — don't restore the older timer snapshot from the undo entry.
-  return {
-    ...last,
-    undoStack: remaining,
-    startedAt: state.startedAt,
-    accumulatedMs: state.accumulatedMs,
-  };
+  return withClock({ ...last, undoStack: remaining }, state);
 }
 
 // ---------------------------------------------------------------------------

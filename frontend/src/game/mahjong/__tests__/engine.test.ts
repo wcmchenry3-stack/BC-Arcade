@@ -1098,10 +1098,29 @@ describe("timer helpers", () => {
     expect(paused.accumulatedMs).toBe(800);
   });
 
-  it("resumeGame sets startedAt", () => {
-    const state = createGame(TURTLE_LAYOUT);
+  it("resumeGame sets startedAt on a paused clock", () => {
+    const state = { ...createGame(TURTLE_LAYOUT), accumulatedMs: 200, paused: true };
     const resumed = resumeGame(state, 5000);
     expect(resumed.startedAt).toBe(5000);
+    expect(resumed.paused).toBeUndefined();
+  });
+
+  // #2750: not started (waiting for the first tap) isn't paused, and a
+  // finished board never runs again.
+  it("resumeGame doesn't start a clock that isn't paused, or a finished board's", () => {
+    const fresh = createGame(TURTLE_LAYOUT);
+    expect(resumeGame(fresh, 5000)).toBe(fresh);
+    const deadlocked = { ...fresh, isDeadlocked: true, accumulatedMs: 200, paused: true };
+    expect(resumeGame(deadlocked, 5000)).toBe(deadlocked);
+  });
+
+  it("a tap leaves a paused clock paused", () => {
+    const state = { ...createGame(TURTLE_LAYOUT), startedAt: 1000, accumulatedMs: 0 };
+    const [a] = firstFreePair(state);
+    const tapped = selectTile(pauseGame(state, 1600), a.id);
+    expect(tapped.startedAt).toBeNull();
+    expect(tapped.paused).toBe(true);
+    expect(tapped.accumulatedMs).toBe(600);
   });
 
   it("resumeGame is a no-op when already running", () => {

@@ -11,7 +11,13 @@
  */
 
 import { Twenty48State, TileData, GameEvent } from "./types";
-import { pauseClock, resumeClock } from "../_shared/playClock";
+import {
+  pauseClock,
+  resumeClock,
+  startClockOnMove,
+  stopClock,
+  withClock,
+} from "../_shared/playClock";
 
 export const SIZE = 4;
 
@@ -453,26 +459,23 @@ export function move(state: Twenty48State, direction: Direction): Twenty48State 
   if (game_over) emittedEvents.push("gameOver");
 
   // --- Timer tracking ---
+  // The first move starts the clock (a move while it is paused leaves it
+  // so), and the game ending freezes it.
   const now = Date.now();
-  // Start timer on first move of a session.
-  const activeStartedAt = state.startedAt ?? now;
-  let nextStartedAt: number | null = activeStartedAt;
-  let nextAccumulatedMs = state.accumulatedMs;
-  // Freeze when the game ends.
-  if (game_over) {
-    nextAccumulatedMs = nextAccumulatedMs + (now - activeStartedAt);
-    nextStartedAt = null;
-  }
+  const clock = startClockOnMove(state, now);
 
-  return {
-    board: nextBoard,
-    tiles,
-    score: state.score + gained,
-    scoreDelta: gained,
-    game_over,
-    has_won,
-    startedAt: nextStartedAt,
-    accumulatedMs: nextAccumulatedMs,
-    events: emittedEvents.length > 0 ? emittedEvents : undefined,
-  };
+  return withClock(
+    {
+      board: nextBoard,
+      tiles,
+      score: state.score + gained,
+      scoreDelta: gained,
+      game_over,
+      has_won,
+      startedAt: null,
+      accumulatedMs: 0,
+      events: emittedEvents.length > 0 ? emittedEvents : undefined,
+    },
+    game_over ? stopClock(clock, now) : clock
+  );
 }

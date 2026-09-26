@@ -384,13 +384,15 @@ function CascadeGame() {
   // callbacks read it outside a render.
   const clockRef = useRef<PlayClock>({ startedAt: Date.now(), accumulatedMs: 0 });
   /**
-   * Start the clock over with `accumulatedMs` banked, keeping it stopped if
+   * Start the clock over with `accumulatedMs` banked, keeping it paused if
    * the player is away: a session can open, or a save load land, while the
    * app is in the background or another screen covers the board.
    */
   const restartClock = useCallback((accumulatedMs: number) => {
-    const running = clockRef.current.startedAt !== null;
-    clockRef.current = { accumulatedMs, startedAt: running ? Date.now() : null };
+    clockRef.current =
+      clockRef.current.paused === true
+        ? { accumulatedMs, startedAt: null, paused: true }
+        : { accumulatedMs, startedAt: Date.now() };
   }, []);
   /** Play time so far. */
   const playedMs = useCallback(() => clockElapsedMs(clockRef.current), []);

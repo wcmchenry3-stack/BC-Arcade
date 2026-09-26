@@ -4,7 +4,7 @@ describe("playClock (#2750)", () => {
   describe("pauseClock / resumeClock / clockElapsedMs", () => {
     it("banks the running segment on pause, and runs again from the resume", () => {
       const paused = pauseClock({ startedAt: 1_000, accumulatedMs: 500 }, 4_000);
-      expect(paused).toEqual({ startedAt: null, accumulatedMs: 3_500 });
+      expect(paused).toEqual({ startedAt: null, accumulatedMs: 3_500, paused: true });
       expect(clockElapsedMs(paused, 99_000)).toBe(3_500);
       const resumed = resumeClock(paused, 10_000);
       expect(clockElapsedMs(resumed, 12_000)).toBe(5_500);

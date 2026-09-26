@@ -1349,6 +1349,79 @@ describe("MahjongScreen — app background and relaunch (#2750)", () => {
     );
   });
 
+  // #2750 review: CONTINUE resumes only a clock Level Select paused. A new
+  // layout played to a deadlock, then Level Select and CONTINUE, must leave
+  // the deadlocked board's clock stopped.
+  it("CONTINUE doesn't start a deadlocked board's clock after a layout switch", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify(
+        makeWinState({
+          isComplete: false,
+          pairsRemoved: 70,
+          accumulatedMs: PLAY_MS,
+          startedAt: null,
+          tiles: [
+            { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+            { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+            { id: 2, suit: "bamboos", rank: 2, faceId: 27, col: 20, row: 0, layer: 0 },
+            { id: 3, suit: "bamboos", rank: 2, faceId: 27, col: 30, row: 0, layer: 0 },
+          ],
+        } as Partial<MahjongState>)
+      )
+    );
+    // The next deal: one matching pair, then two tiles that don't match and
+    // no shuffles left, so clearing the pair deadlocks the board.
+    const nearDeadlock = makeWinState({
+      isComplete: false,
+      pairsRemoved: 70,
+      shufflesLeft: 0,
+      startedAt: null,
+      accumulatedMs: 0,
+      tiles: [
+        { id: 10, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
+        { id: 11, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+        { id: 12, suit: "bamboos", rank: 2, faceId: 27, col: 20, row: 0, layer: 0 },
+        { id: 13, suit: "bamboos", rank: 3, faceId: 28, col: 30, row: 0, layer: 0 },
+      ],
+    } as Partial<MahjongState>);
+    const createGame = jest.spyOn(mahjongEngine, "createGame").mockReturnValue(nearDeadlock);
+    const openLevelSelect = async (api: Awaited<ReturnType<typeof mount>>) => {
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("More options"));
+      });
+      await act(async () => {
+        await fireEvent.press(api.getByText("Level Select"));
+      });
+    };
+    try {
+      const api = await mount();
+      await tap(api, 0); // the first board's clock runs
+      now += 10_000;
+      await openLevelSelect(api); // …and pauses
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("Turtle")); // a new deal
+      });
+      await tap(api, 10);
+      now += 30_000;
+      await tap(api, 11); // the pair: the board deadlocks, its clock stops at 30 s
+      await openLevelSelect(api);
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText(/continue/i));
+      });
+      now += 10 * 60_000; // ten more minutes on the deadlocked board
+      mockCompleteGame.mockClear();
+      await act(async () => {
+        mockNavListeners.get("beforeRemove")?.forEach((h) => h()); // leaving records the loss
+      });
+      expect(lastSummary()).toEqual(
+        expect.objectContaining({ outcome: "loss", durationMs: 30_000 })
+      );
+    } finally {
+      createGame.mockRestore();
+    }
+  });
+
   // A save from an older build: a raw running startedAt and, in the oldest,
   // no accumulatedMs. When the app was closed is unknown, so the game counts
   // from the load. It must load, not crash or discard the game.
