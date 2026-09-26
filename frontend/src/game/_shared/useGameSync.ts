@@ -291,6 +291,10 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   // Abandon the open session, attaching the game's progress snapshot if it
   // registered one. A throwing getter degrades to a bare abandon. The
   // duration is the snapshot's own when > 0, otherwise the active-play window.
+  // A registered "win" (#2682) records a win instead — this same-process
+  // unmount is otherwise the same loss the killed-process sweep guards
+  // against (e.g. an ErrorBoundary elsewhere unmounting the game mid-session
+  // after its run already reached its goal).
   const abandon = useCallback(
     (gid: string) => {
       let snapshot: ProgressSnapshot = {};
@@ -299,12 +303,13 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
       } catch {
         // Isolation: a broken getter must not lose the abandon.
       }
-      const summary: CompleteSummary = { outcome: "abandoned" };
+      const outcome = snapshot.outcome === "win" ? "win" : "abandoned";
+      const summary: CompleteSummary = { outcome };
       if (snapshot.result) summary.result = snapshot.result;
       const durationMs = isKnownDuration(snapshot.durationMs) ? snapshot.durationMs : readWindow();
       if (isKnownDuration(durationMs)) summary.durationMs = durationMs;
       try {
-        gameEventClient.completeGame(gid, summary, { ...snapshot.result, outcome: "abandoned" });
+        gameEventClient.completeGame(gid, summary, { ...snapshot.result, outcome });
       } catch {
         // Isolation.
       }

@@ -311,6 +311,24 @@ describe("useGameSync", () => {
     );
   });
 
+  it("unmount abandon records a win when the snapshot already reports one (#2682)", async () => {
+    const { result, unmount } = await renderHook(() => useGameSync("blackjack"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.setProgressSnapshot(() => ({
+        result: { hands_won: 3 },
+        outcome: "win",
+      }));
+    });
+    await unmount();
+    expect(mockCompleteGame).toHaveBeenCalledWith(
+      "test-game-id",
+      { outcome: "win", result: { hands_won: 3 } },
+      { hands_won: 3, outcome: "win" }
+    );
+  });
+
   it("a hook-driven abandon never carries a score, so it cannot rank on a leaderboard", async () => {
     const { result, unmount } = await renderHook(() => useGameSync("cascade"));
     await act(() => {
