@@ -144,7 +144,14 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
     []
   );
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({ result: sessionResult() }));
+    // #2682 — once the run has reached its goal it stays a win however the
+    // session ends (§8.8), including a kill the player never comes back to:
+    // the outcome override tells the killed-process sweep to record `win`
+    // instead of `abandoned` if it closes this session unresumed.
+    syncSetProgressSnapshot(() => ({
+      result: sessionResult(),
+      outcome: goalReachedRef.current ? "win" : undefined,
+    }));
   }, [syncSetProgressSnapshot, sessionResult]);
 
   const startSession = useCallback(

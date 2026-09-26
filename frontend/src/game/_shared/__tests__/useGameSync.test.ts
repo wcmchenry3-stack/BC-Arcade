@@ -12,6 +12,7 @@ const mockReportBug = jest.fn();
 const mockDiscardGame = jest.fn();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockResumeGame = jest.fn<string | null, any[]>(() => null);
+const mockSetProgressOutcome = jest.fn();
 
 jest.mock("../gameEventClient", () => ({
   gameEventClient: {
@@ -22,6 +23,7 @@ jest.mock("../gameEventClient", () => ({
     reportBug: (...args: unknown[]) => mockReportBug(...args),
     discardGame: (...args: unknown[]) => mockDiscardGame(...args),
     resumeGame: (...args: unknown[]) => mockResumeGame(...args),
+    setProgressOutcome: (...args: unknown[]) => mockSetProgressOutcome(...args),
   },
 }));
 
@@ -347,6 +349,58 @@ describe("useGameSync", () => {
     await unmount();
     const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
     expect(summary).not.toHaveProperty("result");
+  });
+
+  // ---------------------------------------------------------------------------
+  // progress outcome override (#2682) — mirrored to the device for the
+  // killed-process sweep, so a "win" the snapshot reports survives a kill.
+  // ---------------------------------------------------------------------------
+
+  it("markStarted mirrors a win outcome the snapshot already reports", async () => {
+    const { result } = await renderHook(() => useGameSync("blackjack"));
+    await act(() => {
+      result.current.start();
+      result.current.setProgressSnapshot(() => ({ outcome: "win" }));
+      result.current.markStarted();
+    });
+    expect(mockSetProgressOutcome).toHaveBeenCalledWith("test-game-id", "win");
+  });
+
+  it("enqueue mirrors a win outcome reported after the session already started", async () => {
+    const { result } = await renderHook(() => useGameSync("blackjack"));
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+    });
+    mockSetProgressOutcome.mockClear();
+    await act(() => {
+      result.current.setProgressSnapshot(() => ({ outcome: "win" }));
+      result.current.enqueue({ type: "hand_won" });
+    });
+    expect(mockSetProgressOutcome).toHaveBeenCalledWith("test-game-id", "win");
+  });
+
+  it("mirrors nothing while the snapshot reports no outcome", async () => {
+    const { result } = await renderHook(() => useGameSync("blackjack"));
+    await act(() => {
+      result.current.start();
+      result.current.setProgressSnapshot(() => ({ result: {} }));
+      result.current.markStarted();
+      result.current.enqueue({ type: "hand_dealt" });
+    });
+    expect(mockSetProgressOutcome).not.toHaveBeenCalled();
+  });
+
+  it("a throwing snapshot getter is isolated from the win mirror", async () => {
+    const { result } = await renderHook(() => useGameSync("blackjack"));
+    await act(() => {
+      result.current.start();
+      result.current.setProgressSnapshot(() => {
+        throw new Error("state gone");
+      });
+      result.current.markStarted();
+    });
+    expect(mockSetProgressOutcome).not.toHaveBeenCalled();
   });
 
   it("unmount after complete does not call completeGame again", async () => {

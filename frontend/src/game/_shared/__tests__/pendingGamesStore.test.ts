@@ -70,6 +70,36 @@ describe("PendingGamesStore", () => {
     expect(store.all()).toEqual([]);
   });
 
+  describe("setProgressOutcome (#2682)", () => {
+    it("sets and persists the override", async () => {
+      await store.create("g1", "yacht", {});
+      await store.setProgressOutcome("g1", "win");
+      expect(store.get("g1")?.progressOutcome).toBe("win");
+
+      const fresh = new PendingGamesStore();
+      await fresh.init();
+      expect(fresh.get("g1")?.progressOutcome).toBe("win");
+    });
+
+    it("clears the override when set to null", async () => {
+      await store.create("g1", "yacht", {});
+      await store.setProgressOutcome("g1", "win");
+      await store.setProgressOutcome("g1", null);
+      expect(store.get("g1")?.progressOutcome).toBeNull();
+    });
+
+    it("no-ops on a completed game", async () => {
+      await store.create("g1", "yacht", {});
+      await store.complete("g1", { outcome: "abandoned" });
+      await store.setProgressOutcome("g1", "win");
+      expect(store.get("g1")?.progressOutcome).toBeUndefined();
+    });
+
+    it("no-ops on an unknown game", async () => {
+      await expect(store.setProgressOutcome("nope", "win")).resolves.toBeUndefined();
+    });
+  });
+
   it("markStartedSynced / markCompleteSynced flip the flags", async () => {
     await store.create("g1", "yacht", {});
     await store.markStartedSynced("g1");

@@ -80,6 +80,14 @@ export interface PendingGame {
   completedAt: number | null;
   completeSummary: CompleteSummary | null;
   completeSynced: boolean;
+  /**
+   * Outcome override for the killed-process sweep (#2682): when a game's
+   * progress snapshot reports it already locked in a win (e.g. Blackjack's
+   * run goal), the sweep records this instead of `abandoned` if the session
+   * is never resumed. Only "win" is valid — `abandonOrphan` re-checks it, so
+   * a corrupted or older-build value on disk is never trusted blindly.
+   */
+  progressOutcome?: "win" | null;
 }
 
 /**
@@ -353,6 +361,19 @@ export class PendingGamesStore {
     }
     if (bestId !== null) this.fromPreviousProcess.delete(bestId);
     return bestId;
+  }
+
+  /**
+   * Record the outcome override a killed-process sweep should use for this
+   * game in place of `abandoned` (#2682) — set from the game's registered
+   * progress snapshot while it plays, so it survives the process that set it.
+   * No-op on a completed game (nothing left to sweep).
+   */
+  setProgressOutcome(gameId: string, outcome: "win" | null): Promise<void> {
+    const game = this.games.get(gameId);
+    if (!game || game.completed || game.progressOutcome === outcome) return Promise.resolve();
+    game.progressOutcome = outcome;
+    return this.persist();
   }
 
   /** SyncWorker marks the server-side game created. */

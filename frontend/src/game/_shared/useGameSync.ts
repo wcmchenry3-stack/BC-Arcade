@@ -118,6 +118,15 @@ export interface ProgressSnapshot {
    * over the hook's active-play window (#2684); anything else uses the window.
    */
   durationMs?: number | null;
+  /**
+   * Outcome override for the killed-process sweep (#2682): "win" once the
+   * game has locked in a win that survives however the session ends (e.g.
+   * Blackjack's run goal). The hook mirrors this to the device's persisted
+   * session record on every player-activity ping, so a process kill before
+   * the player reopens the game still closes it as a win, not `abandoned`.
+   * Anything but "win" is ignored — an in-progress game reports nothing here.
+   */
+  outcome?: "win";
 }
 
 /**
@@ -241,6 +250,18 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   if (fgAtLastPingRef.current === null) fgAtLastPingRef.current = foregroundNow();
 
   const ping = useCallback(() => {
+    // Mirror a "win" outcome override to the device (#2682), so a process
+    // kill before the next ping still closes an unresumed session as a win.
+    // A throwing getter, or anything but "win", is ignored; there is nothing
+    // to persist for a game that never registered a snapshot.
+    const gid = gameIdRef.current;
+    if (gid) {
+      try {
+        if (snapshotRef.current().outcome === "win") gameEventClient.setProgressOutcome(gid, "win");
+      } catch {
+        // Isolation: a broken getter must not block the window update.
+      }
+    }
     if (!windowRunningRef.current) return;
     windowBankedRef.current += cappedGap(fgAtLastPingRef.current ?? foregroundNow());
     fgAtLastPingRef.current = foregroundNow();

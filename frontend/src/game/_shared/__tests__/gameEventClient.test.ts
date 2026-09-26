@@ -372,6 +372,61 @@ describe("GameEventClient", () => {
       expect(after.games.get(id)).toBeUndefined();
     });
 
+    describe("progress outcome override (#2682)", () => {
+      it("a session that reported a win before the kill is closed as a win, not abandoned", async () => {
+        const id = client.startGame("yacht");
+        client.markStarted(id);
+        client.setProgressOutcome(id, "win");
+        now.mockReturnValue(1_090_000);
+        client.enqueueEvent(id, { type: "roll" });
+        now.mockReturnValue(1_000_000 + DAY);
+
+        const next = await relaunch();
+        await next.client.init();
+
+        const g = next.games.get(id);
+        expect(g?.completeSummary).toEqual({ outcome: "win" });
+        expect(g?.completedAt).toBe(1_090_000);
+      });
+
+      it("a session with no override is still swept as abandoned", async () => {
+        const id = client.startGame("yacht");
+        client.markStarted(id);
+        now.mockReturnValue(1_000_000 + DAY);
+
+        const next = await relaunch();
+        await next.client.init();
+
+        expect(next.games.get(id)?.completeSummary).toEqual({ outcome: "abandoned" });
+      });
+
+      it("ignores a bad override and sweeps as abandoned", async () => {
+        const id = client.startGame("yacht");
+        client.markStarted(id);
+        await flushMicrotasks();
+        // Bypass the client's own "win"-only type to simulate corrupt/older
+        // data on disk — the sweep must not trust it blindly.
+        const raw = JSON.parse((await AsyncStorage.getItem("pending_games_v1")) ?? "{}");
+        raw[id].progressOutcome = "loss";
+        await AsyncStorage.setItem("pending_games_v1", JSON.stringify(raw));
+        now.mockReturnValue(1_000_000 + DAY);
+
+        const next = await relaunch();
+        await next.client.init();
+
+        expect(next.games.get(id)?.completeSummary).toEqual({ outcome: "abandoned" });
+      });
+
+      it("a completed game's override no-ops (nothing left to sweep)", async () => {
+        const id = client.startGame("yacht");
+        client.completeGame(id, { outcome: "completed" });
+        client.setProgressOutcome(id, "win");
+        await flushMicrotasks();
+
+        expect(games.get(id)?.progressOutcome).toBeUndefined();
+      });
+    });
+
     describe("an older build's record, which has no `started`", () => {
       async function loadLegacy(extra: Record<string, unknown>) {
         await AsyncStorage.setItem(
