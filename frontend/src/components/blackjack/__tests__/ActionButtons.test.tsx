@@ -2,6 +2,7 @@ import React from "react";
 import { render } from "@testing-library/react-native";
 import ActionButtons from "../ActionButtons";
 import { ThemeProvider } from "../../../theme/ThemeContext";
+import { calculateBlackjackLayout } from "../../../game/blackjack/layout";
 
 // ---------------------------------------------------------------------------
 // Mock icon libraries — string mocks are the safest approach for Expo
@@ -10,6 +11,8 @@ import { ThemeProvider } from "../../../theme/ThemeContext";
 // ---------------------------------------------------------------------------
 jest.mock("@expo/vector-icons/MaterialIcons", () => "MockMaterialIcons");
 jest.mock("@expo/vector-icons/MaterialCommunityIcons", () => "MockMaterialCommunityIcons");
+
+const defaultLayout = calculateBlackjackLayout({ availableWidth: 390, availableHeight: 812 });
 
 async function renderButtons(
   opts: {
@@ -28,6 +31,7 @@ async function renderButtons(
         doubleDownAvailable={doubleDownAvailable}
         splitAvailable={splitAvailable}
         loading={false}
+        layout={defaultLayout}
       />
     </ThemeProvider>
   );
