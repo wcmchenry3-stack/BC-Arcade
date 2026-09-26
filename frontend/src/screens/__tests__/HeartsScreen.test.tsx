@@ -414,6 +414,38 @@ describe("HeartsScreen — AI loop frozen regression (race condition)", () => {
     // → "Hand Complete" modal rendered.
     await waitFor(() => expect(getByText("Hand Complete")).toBeTruthy());
   });
+
+  it("reads gameStateRef.current as the state-write base so concurrent changes survive (#2705)", async () => {
+    // With the fix, each AI move calls playCard twice: once locally (to advance
+    // the AI's working copy `s`) and once to compute the state write on top of
+    // gameStateRef.current (cleared of prior events to avoid re-firing handlers).
+    // This double-call is the observable signal that the fix is in place; it
+    // ensures any setGameState that lands concurrently during await delay() —
+    // such as the events cleanup from useGameEvents.onClear — is incorporated
+    // rather than overwritten by a stale snapshot.
+    //
+    // 3 AI moves × 2 playCard calls each = 6 total. The old direct setGameState(s)
+    // would produce 3, causing this test to fail and expose the regression.
+    const playSpy = jest.spyOn(engine, "playCard");
+
+    const { getByText } = await renderScreen();
+    await waitFor(() => expect(loadGame).toHaveBeenCalled());
+
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+
+    // Each AI's delay(400) is created dynamically as the loop iterates, so only
+    // the first timer fires within the initial advanceTimersByTime. waitFor
+    // advances fake timers by 50 ms per retry until "Hand Complete" appears,
+    // firing the remaining timers and letting all 3 AI turns complete.
+    await waitFor(() => expect(getByText("Hand Complete")).toBeTruthy());
+
+    // 3 AIs each have one card — 3 AI moves, each producing 2 playCard calls.
+    expect(playSpy).toHaveBeenCalledTimes(6);
+
+    playSpy.mockRestore();
+  });
 });
 
 // ---------------------------------------------------------------------------

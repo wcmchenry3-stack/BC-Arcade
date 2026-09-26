@@ -210,6 +210,13 @@ jest.mock("@react-native-async-storage/async-storage", () => {
   };
 });
 
+// useGameSync's foreground clock (#2684) is pinned for every test file to the
+// shared manual mock (src/game/_shared/__mocks__/foregroundClock.ts, #2710), so
+// its active-play window only moves when a test moves it and an exact
+// completion summary can't pick up real test time. Tests of the real clock opt
+// out with jest.unmock().
+jest.mock("./src/game/_shared/foregroundClock");
+
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 

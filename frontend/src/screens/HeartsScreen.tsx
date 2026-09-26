@@ -391,18 +391,26 @@ export default function HeartsScreen() {
           await delay(400);
           if (unmountedRef.current) return;
 
+          // Read the latest committed React state after the await. If the game was
+          // reset mid-loop (handleStartGame sets loopActiveRef=false and a fresh
+          // non-null state), our stale card is no longer in that state's hands —
+          // bail rather than throwing "Invalid play" inside the state write.
+          const latestState = gameStateRef.current;
+          if (!latestState || latestState.currentPlayerIndex !== s.currentPlayerIndex) return;
+
+          const playerIndex = s.currentPlayerIndex;
           const card = selectCardToPlay(
-            s.playerHands[s.currentPlayerIndex] as Card[],
+            s.playerHands[playerIndex] as Card[],
             s.currentTrick as TrickCard[],
             s,
-            s.currentPlayerIndex,
-            resolvePersona(s.aiDifficulty, s.currentPlayerIndex)
+            playerIndex,
+            resolvePersona(s.aiDifficulty, playerIndex)
           );
           const completedTrick: readonly TrickCard[] | null = willComplete
-            ? [...s.currentTrick, { card, playerIndex: s.currentPlayerIndex }]
+            ? [...s.currentTrick, { card, playerIndex }]
             : null;
 
-          s = playCard(s, s.currentPlayerIndex, card);
+          s = playCard(s, playerIndex, card);
           playCardPlay();
 
           if (completedTrick) {
@@ -412,8 +420,14 @@ export default function HeartsScreen() {
               trickLogBufferRef.current.push(buildDebugTrick(completedTrick, s.currentLeaderIndex));
             }
           }
-          setGameState(s);
-          // Clear events so the next playCard call doesn't re-emit them via a new array reference.
+          // Apply the card play on top of the latest React state, with events
+          // cleared first so prior-turn events don't accumulate in prev and cause
+          // useGameEvents to re-fire already-processed handlers (e.g. duplicate
+          // heartsBroken animation). The local `s` is still advanced above for the
+          // AI's own decision-making in subsequent iterations.
+          setGameState(
+            playCard({ ...latestState, events: [] as HeartsState["events"] }, playerIndex, card)
+          );
           s = { ...s, events: [] };
 
           if (completedTrick && s.phase === "playing") {

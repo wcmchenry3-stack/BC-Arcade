@@ -16,3 +16,13 @@ configure({ asyncUtilTimeout: 5000 });
 // letting slow tests pass: a waitFor that fails still fails after 5 s, with
 // its real message. It lives in the config, not in a jest.setTimeout() call
 // here, so a --testTimeout flag (yacht-sim-gate.yml) still takes precedence.
+
+// The pinned foreground clock (jest.setup.ts, #2710) starts every test at 0,
+// so a test that moves it can't leak time into the next one.
+beforeEach(() => {
+  jest
+    .requireMock<typeof import("./src/game/_shared/__mocks__/foregroundClock")>(
+      "./src/game/_shared/foregroundClock"
+    )
+    .__resetForegroundClockForTests();
+});

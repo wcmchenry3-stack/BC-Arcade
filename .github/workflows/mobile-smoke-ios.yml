@@ -91,7 +91,7 @@ jobs:
             build \
             -quiet
         env:
-          EXPO_PUBLIC_API_URL: https://gaming-app-api-dev.onrender.com
+          EXPO_PUBLIC_API_URL: https://dev-games-api.buffingchi.com
           EXPO_PUBLIC_TEST_HOOKS: "1"
 
       - name: Verify JS bundle was embedded

@@ -17,6 +17,7 @@ import FreeCellScreen from "../FreeCellScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import type { FreeCellState } from "../../game/freecell/types";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
+import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
 // ---------------------------------------------------------------------------
 // Global setup: expo-blur, navigation, storage
@@ -49,6 +50,21 @@ jest.mock("../../game/freecell/storage", () => ({
 }));
 
 import { loadGame, loadStats } from "../../game/freecell/storage";
+
+// The real engine; one test swaps in a fixed deal for New Game / Play Again.
+const mockDealGame = jest.fn();
+jest.mock("../../game/freecell/engine", () => {
+  const actual = jest.requireActual("../../game/freecell/engine");
+  return {
+    ...actual,
+    dealGame: (...args: unknown[]) =>
+      mockDealGame.getMockImplementation() ? mockDealGame(...args) : actual.dealGame(...args),
+  };
+});
+
+// useGameSync's play clock (#2684) is pinned for every test by jest.setup.ts
+// (#2710); the duration tests move it forward.
+const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregroundClock");
 
 // The result card reads the synced game's rank (#2632, sessionBoardAdapter).
 const mockGetGameRank = jest.fn();
@@ -84,6 +100,7 @@ beforeEach(() => {
   mockStartGame.mockReturnValue("game-uuid-test");
   mockEnqueueEvent.mockReset();
   mockCompleteGame.mockReset();
+  mockDealGame.mockReset();
 });
 
 // ---------------------------------------------------------------------------
@@ -274,9 +291,11 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     (loadGame as jest.Mock).mockResolvedValue(nearlyWon(11)); // two auto-steps to go
     const { getByLabelText } = await renderScreen();
     await waitFor(() => getByLabelText("Hint"));
+    clock.advanceForegroundNow(7_000);
     await act(async () => {
       jest.advanceTimersByTime(AUTO_STEP_MS); // first move opens the session
     });
+    clock.advanceForegroundNow(2_000);
     await act(async () => {
       jest.advanceTimersByTime(AUTO_STEP_MS); // second move wins
     });
@@ -284,7 +303,7 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
     await waitFor(() => expect(mockCompleteGame).toHaveBeenCalledTimes(1));
     const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
     expect(summary["outcome"]).toBe("completed");
-    expect(summary["durationMs"]).toBeGreaterThan(0);
+    expect(summary["durationMs"]).toBe(9_000);
   });
 
   it("New Game after a move abandons the session with the moves so far, and no score", async () => {
@@ -465,6 +484,41 @@ describe("FreeCellScreen — result card (#2508)", () => {
     });
     expect(r.queryByTestId("freecell-result")).toBeNull();
     expect(r.getByLabelText("Moves: 0")).toBeTruthy();
+  });
+
+  // #2710 — the next deal's session opens at its first move; its play time
+  // starts at the deal, not when the last game ended.
+  it("leaves time on the win card out of the next deal's duration", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(nearlyWon(12));
+    const r = await renderScreen();
+    await waitFor(() => r.getByLabelText("Hint"));
+    clock.advanceForegroundNow(9_000);
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS); // the winning move
+    });
+    await r.findByTestId("freecell-result");
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+
+    clock.advanceForegroundNow(3 * 60_000); // on the win card
+    mockDealGame.mockImplementation(() => nearlyWon(12));
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+    clock.advanceForegroundNow(6_000);
+    // Double-tap K♠ to the foundation: the new deal's first move wins it.
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("K of Spades"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText(/^K of Spades/));
+    });
+
+    await waitFor(() => expect(mockCompleteGame).toHaveBeenCalledTimes(2));
+    const first = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
+    const second = mockCompleteGame.mock.calls[1]![1] as Record<string, unknown>;
+    expect(first["durationMs"]).toBe(9_000);
+    expect(second["outcome"]).toBe("completed");
+    expect(second["durationMs"]).toBe(6_000);
   });
 
   // The app closed after a win but before the save was cleared.

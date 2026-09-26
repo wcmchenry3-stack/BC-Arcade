@@ -183,6 +183,7 @@ export default function GameScreen({ navigation, route }: Props) {
     enqueue: syncEnqueue,
     complete: syncComplete,
     getGameId: syncGetGameId,
+    resetPlayWindow: syncResetPlayWindow,
   } = useGameSync("yacht");
 
   // Result card leaderboard line (#2630): the finished session row ranks on
@@ -537,12 +538,22 @@ export default function GameScreen({ navigation, route }: Props) {
     void startNewGame();
   }, [startNewGame]);
 
+  /**
+   * The game begins once a mode is chosen: time on the mode picker is not play
+   * (#2710). With a session open, syncStart() closes it and starts the window
+   * over itself, so the window is only reset when none is.
+   */
+  function startChosenGame(difficulty: AiDifficulty | null) {
+    if (!syncGetGameId()) syncResetPlayWindow();
+    syncStart(undefined, sessionMetadata(difficulty));
+  }
+
   // VS mode: choose Solo or VS difficulty before first roll.
   function handleChooseSolo() {
     // Keep the last VS difficulty played, so the next VS game still opens on it (#1129).
     void saveLastMode("solo", lastVsDiffRef.current);
     setDifficultyChosen(true);
-    syncStart(undefined, sessionMetadata(null));
+    startChosenGame(null);
   }
 
   function handleChooseVs() {
@@ -551,7 +562,7 @@ export default function GameScreen({ navigation, route }: Props) {
     setAiDifficulty(pendingDiff);
     setAiGameState(newGame());
     setDifficultyChosen(true);
-    syncStart(undefined, sessionMetadata(pendingDiff));
+    startChosenGame(pendingDiff);
   }
 
   // VS result computed when both games are complete.

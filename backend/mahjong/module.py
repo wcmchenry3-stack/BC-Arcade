@@ -17,8 +17,9 @@ class MahjongModule:
     metadata_model = MahjongMetadata
     result_model = MahjongResult
     # A cleared board records ``win`` (#2627) and a deadlock the player leaves
-    # records ``loss`` (#2592). Rows from builds before #2627 are
-    # ``completed``: no winner.
+    # records ``loss`` (#2592). Builds before #2627 send ``completed``; one with
+    # ``won: true`` (a cleared board) is stored as ``win`` (#2703,
+    # games.legacy_outcomes), the rest stay ``completed``: no winner.
     has_winner = True
     # 72 pairs x SCORE_PER_PAIR (10) + SCORE_COMPLETE_BONUS (500); every layout
     # is 144 tiles. Recomputed from the engine in tests/test_board_definitions.py.

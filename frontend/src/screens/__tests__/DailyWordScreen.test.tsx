@@ -16,6 +16,7 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import DailyWordScreen from "../DailyWordScreen";
 import { ApiError } from "../../game/_shared/httpClient";
 import type { DailyWordState } from "../../game/daily_word/types";
+import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -69,11 +70,9 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
 }));
 
 // The app-wide foreground-time counter behind useGameSync's active-play window
-// (#2684), held still unless a test moves it — so summaries stay exact.
-let mockForegroundMs = 0;
-jest.mock("../../game/_shared/foregroundClock", () => ({
-  foregroundNow: () => mockForegroundMs,
-}));
+// (#2684) is pinned for every test by jest.setup.ts (#2710), held still unless
+// a test moves it — so summaries stay exact.
+const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregroundClock");
 
 jest.mock("expo-haptics", () => ({
   impactAsync: jest.fn().mockResolvedValue(undefined),
@@ -350,7 +349,7 @@ describe("DailyWordScreen — offline today-meta cache (#1886)", () => {
     // CodedError. Verbatim BC_GAMES-4W message.
     dailyWordApi.getToday.mockRejectedValue(
       new Error(
-        'fetch failed: java.net.UnknownHostException: Unable to resolve host "gaming-app-api-dev.onrender.com": No address associated with hostname'
+        'fetch failed: java.net.UnknownHostException: Unable to resolve host "games-api.buffingchi.com": No address associated with hostname'
       )
     );
     storage.loadTodayMeta.mockResolvedValue(TODAY_META);
@@ -650,7 +649,7 @@ describe("DailyWordScreen — session game reporting (#2451)", () => {
     dailyWordApi.submitGuess.mockResolvedValue({ tiles: tilesFor("crane", "correct") });
     const api = await renderScreen();
     await api.findByTestId("tile-0-0");
-    mockForegroundMs += 45_000; // reading the board before the first guess
+    clock.advanceForegroundNow(45_000); // reading the board before the first guess
     await typeAndSubmit(api, "crane");
 
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);

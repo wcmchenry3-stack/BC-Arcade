@@ -29,7 +29,9 @@ class BlackjackModule:
     # A run records ``win`` when it reached its goal (even if the player kept
     # playing and later ran out of chips), ``loss`` when the chips ran out
     # before the goal, and ``abandoned`` when left before the goal (#2628).
-    # Rows from app builds before #2628 are ``completed``: no winner.
+    # Builds before #2628 send ``completed``; a Cash Out (``final_chips`` > 0)
+    # is stored as ``win`` (#2703, games.legacy_outcomes), the rest stay
+    # ``completed``: no winner.
     has_winner = True
     # No leaderboard: chips are a balance, not a score (#2519 §4.2).
     # qualifying_outcomes stays None: every non-abandoned session's closing

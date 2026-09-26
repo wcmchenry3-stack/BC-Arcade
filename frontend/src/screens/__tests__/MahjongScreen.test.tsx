@@ -126,10 +126,8 @@ jest.mock("../../game/_shared/scoreQueue", () => ({
 import { scoreQueue } from "../../game/_shared/scoreQueue";
 
 // The app-wide foreground-time counter behind useGameSync's active-play window
-// (#2684), held still: Mahjong's own play timer is what the summaries carry.
-jest.mock("../../game/_shared/foregroundClock", () => ({
-  foregroundNow: () => 0,
-}));
+// (#2684) is held still by the shared mock jest.setup.ts pins (#2710):
+// Mahjong's own play timer is what the summaries carry.
 
 // The real hook, with close() counted so tests can tell the screen closed its
 // session through the hook instead of building the abandon itself (#2679).
