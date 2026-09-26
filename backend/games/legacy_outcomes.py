@@ -6,13 +6,13 @@ Mahjong (#2627), Blackjack (#2628) and Twenty48 (#2631) record ``win`` /
 keep doing so. Where the stored result proves that such a game was won, the row
 is stored as ``win``, so win counts and streaks in ``/stats/me`` include it.
 
-The rules live here once, as SQL, and have two users:
-
-* migration ``0028_backfill_win_outcomes`` runs :func:`win_update` once per
-  game type over every stored row;
-* ``games.service.complete_game`` runs it for the one row it just completed,
-  in the same transaction, so rows from older builds that arrive later are
-  stored the same way.
+This is the live copy of the rules, as SQL: ``games.service.complete_game``
+runs :func:`win_update` for the one row it just completed, in the same
+transaction, so rows from older builds that arrive later are stored as ``win``.
+Migration ``0028_backfill_win_outcomes`` applied the same rules once to every
+row stored before it, from its own frozen copy (a migration must keep meaning
+what it meant when written). ``tests/test_legacy_outcomes_parity.py`` checks
+that the two compile to the same SQL; see it before changing a rule here.
 
 The rules (the result block a build sends is merged into ``games.metadata``):
 
