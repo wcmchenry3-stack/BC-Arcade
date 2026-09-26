@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
+from db.dialect import dialect_insert, dialect_name
 from db.models import EventType, Game, GameEvent, GameType
 from games.board import SCORE_METRIC, BoardDefinition
 from games.filters import SWEPT_KEY, is_swept, not_abandoned, not_swept, without_swept
@@ -162,15 +163,10 @@ def _upsert_ignore(session: AsyncSession, table, rows: list[dict]):
     """Dialect-aware INSERT ... ON CONFLICT DO NOTHING.
 
     Postgres and SQLite both support on_conflict_do_nothing via their
-    dialect-specific insert() constructors. We branch on bind.dialect.name
-    so the API test suite can run against either backend.
+    dialect-specific insert() constructors, so the API test suite can run
+    against either backend.
     """
-    dialect = session.bind.dialect.name if session.bind else "postgresql"
-    if dialect == "sqlite":
-        from sqlalchemy.dialects.sqlite import insert as _insert
-    else:
-        from sqlalchemy.dialects.postgresql import insert as _insert
-    return _insert(table).values(rows).on_conflict_do_nothing()
+    return dialect_insert(session, table).values(rows).on_conflict_do_nothing()
 
 
 async def append_events(
@@ -273,7 +269,7 @@ async def sweep_stale_games(
     rows; leaderboards never read open rows, so that gap only affects analytics.
     """
     now = now or datetime.now(timezone.utc)
-    dialect = session.bind.dialect.name if session.bind else "postgresql"
+    dialect = dialect_name(session)
     if dialect == "sqlite":
         # SQLite stores DateTime as text, and the ORM writes it as
         # 'YYYY-MM-DD HH:MM:SS.ffffff'. Build exactly that, so text comparisons
@@ -385,10 +381,6 @@ MAX_TIME_PLAYED_PER_GAME_MS = 24 * 60 * 60 * 1000
 _WIN = GameOutcome.WIN.value
 _LOSS = GameOutcome.LOSS.value
 _PUSH = GameOutcome.PUSH.value
-
-
-def _dialect_name(session: AsyncSession) -> str:
-    return session.bind.dialect.name if session.bind else "postgresql"
 
 
 def _registered_module(name: str) -> GameModule:
@@ -586,7 +578,7 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
                 # Swept rows (#2621) carry a synthetic completed_at
                 # (started_at + 24 h), not a time the player played.
                 func.max(case((not_swept(), Game.completed_at))).label("last_played_at"),
-                *_comparable_columns(_dialect_name(session)),
+                *_comparable_columns(dialect_name(session)),
             )
             .select_from(Game)
             .join(GameType, Game.game_type_id == GameType.id)
@@ -882,7 +874,7 @@ async def complete_game(
         # UPDATE on this row, in this transaction, after the completion above
         # is flushed; the refresh below reads back what it stored.
         await session.flush()
-        await session.execute(win_update(name, _dialect_name(session), game_id=game.id))
+        await session.execute(win_update(name, dialect_name(session), game_id=game.id))
     await session.commit()
     await session.refresh(game)
     return game

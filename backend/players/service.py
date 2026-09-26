@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.dialect import dialect_insert
 from db.models import Player
 from players.schemas import clean_display_name
 
@@ -27,18 +28,13 @@ async def set_display_name(db: AsyncSession, session_id: str, name: str) -> bool
     """Make ``name`` the player's display name. Does not commit.
 
     Returns False, having written nothing, when it already is. The upsert's
-    ``WHERE`` keeps a concurrent identical write from touching ``updated_at``.
+    ``WHERE`` keeps a concurrent identical write from touching ``updated_at``;
+    the same clause makes the statement's affected-row count tell a real
+    change from a no-op, so this needs no read before the write.
     """
-    if await get_display_name(db, session_id) == name:
-        return False
     now = datetime.now(timezone.utc)
-    dialect = db.bind.dialect.name if db.bind else "postgresql"
-    if dialect == "sqlite":
-        from sqlalchemy.dialects.sqlite import insert as _insert
-    else:
-        from sqlalchemy.dialects.postgresql import insert as _insert
     stmt = (
-        _insert(Player)
+        dialect_insert(db, Player)
         .values(session_id=session_id, display_name=name, created_at=now, updated_at=now)
         .on_conflict_do_update(
             index_elements=[Player.session_id],
@@ -46,8 +42,8 @@ async def set_display_name(db: AsyncSession, session_id: str, name: str) -> bool
             where=Player.display_name != name,
         )
     )
-    await db.execute(stmt)
-    return True
+    result = await db.execute(stmt)
+    return result.rowcount > 0
 
 
 async def clear_display_name(db: AsyncSession, session_id: str) -> None:

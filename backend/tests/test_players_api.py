@@ -138,27 +138,31 @@ async def test_put_replaces_the_name(client: TestClient) -> None:
 
 
 async def test_put_of_the_same_name_writes_nothing(client: TestClient) -> None:
+    """A repeated name still issues one upsert (#2675 drops the pre-read that
+    used to short-circuit it), but its ``WHERE display_name != :name`` keeps
+    the conflict branch from matching, so the statement provably changes
+    nothing — checked here via the cursor's own rowcount, not its absence."""
     sid = _sid()
     first = _put(client, sid, "Ada")
     before = await _player(sid)
     assert before is not None
 
-    statements: list[str] = []
+    rowcounts: list[int] = []
 
-    def record(_conn, _cursor, statement, *_args) -> None:  # type: ignore[no-untyped-def]
-        statements.append(statement)
+    def record(_conn, cursor, statement, *_args) -> None:  # type: ignore[no-untyped-def]
+        if statement.lstrip().upper().startswith(("INSERT", "UPDATE")):
+            rowcounts.append(cursor.rowcount)
 
     engine = get_engine().sync_engine
-    event.listen(engine, "before_cursor_execute", record)
+    event.listen(engine, "after_cursor_execute", record)
     try:
         # Surrounding whitespace is trimmed first, so this is the same name too.
         replays = [_put(client, sid, "Ada"), _put(client, sid, " Ada ")]
     finally:
-        event.remove(engine, "before_cursor_execute", record)
+        event.remove(engine, "after_cursor_execute", record)
 
     assert all(r.status_code == 200 and r.json() == first.json() for r in replays)
-    writes = [s for s in statements if s.lstrip().upper().startswith(("INSERT", "UPDATE"))]
-    assert writes == []
+    assert rowcounts and all(count == 0 for count in rowcounts)
     after = await _player(sid)
     assert after is not None and after.updated_at == before.updated_at
 
