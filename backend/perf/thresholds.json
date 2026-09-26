@@ -15,11 +15,11 @@
       ]
     },
     "leaderboard": {
-      "description": "Concurrent leaderboard read/write (10 users)",
+      "description": "Concurrent leaderboard reads (10 users)",
       "users": 10,
       "p95_ms": 300,
       "error_rate_pct": 1.0,
-      "endpoints": ["POST /cascade/score", "GET /cascade/scores"]
+      "endpoints": ["GET /games/leaderboard/{game_type}"]
     },
     "stateless_reads": {
       "description": "Read-only polling (20 users)",

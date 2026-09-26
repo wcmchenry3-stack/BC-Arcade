@@ -3,16 +3,11 @@
 ``compute_rank`` is the generic, direction-aware rank used by the
 ``/games/leaderboard`` and ``/games/{id}/name`` routes (#2618). It counts
 players (distinct sessions), not rows, and always returns the exact rank.
-
-``compute_legacy_rank`` and ``ensure_scored`` serve the per-game
-``PATCH /<game>/score/{game_id}`` routes (cascade, sudoku) until those routers
-are deleted in #2644. The legacy rank counts rows, higher-is-better only.
 """
 
 from __future__ import annotations
 
 import logging
-import uuid
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
@@ -24,15 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Game
 from games.board import Direction
-from games.filters import not_abandoned
 
 logger = logging.getLogger(__name__)
-
-
-def ensure_scored(game: Game) -> None:
-    """Raise 400 if `game` hasn't been completed with a final_score yet."""
-    if game.final_score is None:
-        raise HTTPException(status_code=400, detail="Game has no final score.")
 
 
 def beats(expr: ColumnElement, value: Any, direction: Direction) -> ColumnElement[bool]:
@@ -87,47 +75,4 @@ async def compute_rank(
         # Class name only: the exception text carries bound parameters.
         logger.error("%s rank query failed: %s", game_label, type(exc).__name__)
         raise HTTPException(status_code=500, detail="Failed to calculate rank.") from exc
-    return int(count or 0) + 1
-
-
-async def compute_legacy_rank(
-    db: AsyncSession,
-    *,
-    game_type_id: int,
-    score_val: int,
-    completed_at: datetime,
-    game_id: uuid.UUID,
-    game_label: str,
-    extra_filters: Sequence[ColumnElement] = (),
-) -> int:
-    """1-based rank of a completed game among same-type scored games (legacy).
-
-    Used only by the per-game ``PATCH /<game>/score/{game_id}`` routes until
-    #2644. Counts rows, higher-is-better. Tie-break: equal scores rank older
-    ``completed_at`` first (same order as those routers' GET), so a game
-    ranks below existing tied entries. ``extra_filters`` scopes the partition
-    further (e.g. sudoku's difficulty/variant). Raises a clean 500 on a DB
-    error rather than letting it bubble up unhandled.
-    """
-    try:
-        count = (
-            await db.execute(
-                select(func.count()).where(
-                    Game.game_type_id == game_type_id,
-                    Game.final_score.is_not(None),
-                    not_abandoned(),
-                    *extra_filters,
-                    or_(
-                        Game.final_score > score_val,
-                        and_(
-                            Game.final_score == score_val,
-                            Game.completed_at < completed_at,
-                        ),
-                    ),
-                )
-            )
-        ).scalar()
-    except SQLAlchemyError as exc:
-        logger.error("%s rank query failed for game %s: %s", game_label, game_id, exc)
-        raise HTTPException(status_code=500, detail="Failed to calculate rank.")
     return int(count or 0) + 1

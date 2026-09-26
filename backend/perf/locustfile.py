@@ -4,7 +4,7 @@ BC Arcade — Locust performance test entry point.
 User classes:
 
   YachtGameUser     — full 13-round game flow (session-isolated; safe with multiple users)
-  LeaderboardUser   — concurrent leaderboard read/write (--users 10)
+  LeaderboardUser   — concurrent leaderboard reads (--users 10)
   ReadOnlyUser      — polling GET endpoints (--users 20)
   RateLimitVerifyUser — intentionally exhausts rate limits to verify 429 + Retry-After
 
@@ -57,7 +57,7 @@ class YachtGameUser(HttpUser):
 
 class LeaderboardUser(HttpUser):
     """
-    Simulates concurrent players submitting and reading leaderboard scores.
+    Simulates concurrent players reading the generic leaderboards.
     These endpoints are the safest to test with multiple concurrent users.
     Run with --users 10 as the baseline.
     """

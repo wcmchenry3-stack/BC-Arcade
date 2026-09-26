@@ -3,8 +3,7 @@
 Registering the module turns on metadata and result validation for the
 session rows ``useGameSync("starswarm")`` has written since #2516. The payload
 replays below mirror ``StarSwarmScreen.tsx`` on ``dev``; a rejection there
-would dead-letter the run. The named leaderboard (``POST /starswarm/score``)
-is covered by ``test_starswarm_api.py`` and does not use these models.
+would dead-letter the run.
 """
 
 from __future__ import annotations
@@ -33,7 +32,6 @@ from starswarm.models import (
     StarSwarmResult,
 )
 from starswarm.module import module as starswarm_module
-from starswarm.router import ScoreRequest
 from vocab import GameType
 
 client = TestClient(app)
@@ -118,12 +116,9 @@ def test_the_allow_list_is_exactly_the_clients_tiers() -> None:
     assert sorted(DIFFICULTY_TIERS) == sorted(_type_tiers())
 
 
-def test_a_row_without_a_tier_counts_as_the_legacy_default() -> None:
-    # POST /starswarm/score defaults a missing tier to LieutenantJG, and so does
-    # its leaderboard when it reads a row.
+def test_a_row_without_a_tier_counts_as_the_default() -> None:
+    # The engine's default tier, which the board uses for a row with none.
     assert DEFAULT_DIFFICULTY_TIER == "LieutenantJG"
-    assert ScoreRequest.model_fields["difficulty_tier"].default == DEFAULT_DIFFICULTY_TIER
-    assert ScoreRequest(player_id="A", score=1, wave_reached=1).difficulty_tier == "LieutenantJG"
     assert starswarm_module.board.partition_default("difficulty_tier") == DEFAULT_DIFFICULTY_TIER
 
 
@@ -287,19 +282,6 @@ def test_creation_with_unknown_metadata_is_rejected() -> None:
         json={"game_type": "starswarm", "metadata": {"difficulty_tier": "Captain", "wave": 1}},
     )
     assert r.status_code == 422
-
-
-def test_session_runs_do_not_reach_the_named_leaderboard() -> None:
-    sid = _SID
-    gid = _start(sid, "Captain")
-    client.patch(
-        f"/games/{gid}/complete",
-        headers=_headers(sid),
-        json={"outcome": "completed", "result": {"wave_reached": 9, "difficulty_tier": "Captain"}},
-    )
-    r = client.get("/starswarm/leaderboard", headers=_headers(sid))
-    assert r.status_code == 200, r.text
-    assert r.json()["scores"] == []
 
 
 # ---------------------------------------------------------------------------

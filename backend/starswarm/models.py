@@ -4,10 +4,8 @@ Star Swarm records a session row per run through the shared ``/games``
 pipeline (``useGameSync("starswarm")``, #2516). Since #2626 the app completes
 that row with the run's ``final_score``, and the row is the leaderboard entry
 on its ``difficulty_tier``'s board, under the player's display name. These
-models describe what the app sends, so no current build is rejected. Installed
-builds from before #2626 send a score-less session row and still post the
-named entry to the legacy ``POST /starswarm/score`` (``router.py``, until
-#2644), which writes its row directly and does not use these models.
+models describe what the app sends, so no current build is rejected. Builds
+from before #2626 send a score-less session row, which never ranks.
 """
 
 from __future__ import annotations
@@ -41,8 +39,8 @@ be added here, in the same release, or its runs stay off the leaderboard.
 DIFFICULTY_TIERS: tuple[str, ...] = get_args(DifficultyTier)
 
 DEFAULT_DIFFICULTY_TIER: DifficultyTier = "LieutenantJG"
-"""The tier of a row that has none: the legacy ``POST /starswarm/score`` default
-and the engine's default (``initStarSwarm``, ``GameCanvas``)."""
+"""The tier of a row that has none: the engine's default (``initStarSwarm``,
+``GameCanvas``)."""
 
 
 class StarSwarmMetadata(BaseModel):

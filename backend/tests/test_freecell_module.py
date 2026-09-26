@@ -184,21 +184,6 @@ def test_a_named_players_win_ranks_once_and_an_abandon_never() -> None:
     assert _generic_board(sid) == [("Alice", 88)]
 
 
-def test_an_installed_builds_named_submission_does_not_duplicate_the_entry() -> None:
-    # An older build keeps posting to POST /freecell/score after its win. Its
-    # ``freecell-anon`` row stays off the generic board, so the player is
-    # still listed once.
-    sid = str(uuid.uuid4())
-    r = client.put("/players/me", headers=_headers(sid), json={"display_name": "Alice"})
-    assert r.status_code == 200, r.text
-    _play(sid, won=True, moves=88)
-    r = client.post(
-        "/freecell/score", headers=_headers(sid), json={"player_id": "Alice", "move_count": 88}
-    )
-    assert r.status_code == 201
-    assert _generic_board(sid) == [("Alice", 88)]
-
-
 def test_a_session_game_earns_xp_and_counts_as_played() -> None:
     sid = str(uuid.uuid4())
     _play(sid, won=True, moves=88)

@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import event, func, select
+from sqlalchemy import event, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from db.base import get_engine, get_session_factory, is_configured
@@ -345,11 +345,8 @@ async def test_compat_name_route_renames_everywhere(client: TestClient) -> None:
     assert _entries(client, "sort", me) == [("New", 9)]
 
 
-async def test_compat_name_route_still_writes_the_row_for_legacy_boards(
-    client: TestClient,
-) -> None:
-    """``GET /cascade/scores`` (and every legacy per-game board) reads
-    ``metadata.player_name`` from session rows until #2644 removes them."""
+async def test_compat_name_route_still_writes_the_row(client: TestClient) -> None:
+    """The route still records the name on the game row, as it always did."""
     me = _sid()
     await _grant_all(me)
     game_id = _play(client, me, "cascade", 1234)
@@ -357,8 +354,6 @@ async def test_compat_name_route_still_writes_the_row_for_legacy_boards(
     assert r.status_code == 200, r.text
     detail = client.get(f"/games/{game_id}", headers=_headers(me)).json()
     assert detail["metadata"]["player_name"] == "Ada"
-    scores = client.get("/cascade/scores", headers=_headers(me)).json()["scores"]
-    assert [(s["player_name"], s["score"]) for s in scores] == [("Ada", 1234)]
 
 
 async def test_compat_name_route_400s_write_no_name(client: TestClient) -> None:
@@ -396,41 +391,10 @@ async def test_compat_name_route_400s_write_no_name(client: TestClient) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Legacy name paths still name the player (#2624 review): builds from before
-# #2624 never call PUT /players/me.
+# A name in POST /games metadata still names the player (#2624 review): builds
+# from before #2624 never call PUT /players/me. (The per-game name routes that
+# did the same were removed in #2644.)
 # ---------------------------------------------------------------------------
-
-
-async def test_legacy_cascade_name_route_sets_the_display_name(client: TestClient) -> None:
-    me, viewer = _sid(), _sid()
-    await _grant_all(me)
-    await _grant_all(viewer)
-    gid = _play(client, me, "cascade", 500)
-    r = client.patch(f"/cascade/score/{gid}", headers=_headers(me), json={"player_name": "Old"})
-    assert r.status_code == 200, r.text
-    assert _get(client, me) == {"display_name": "Old"}
-    assert _entries(client, "cascade", viewer) == [("Old", 500)]
-
-
-async def test_legacy_post_score_names_the_caller(client: TestClient) -> None:
-    """The sentinel row itself never ranks, but the caller's own session
-    rows do once the name they submitted is their display name."""
-    me, viewer = _sid(), _sid()
-    await _grant_all(viewer)
-    _play(client, me, "solitaire", 300)
-    r = client.post(
-        "/solitaire/score", headers=_headers(me), json={"player_name": " Old ", "score": 300}
-    )
-    assert r.status_code == 201, r.text
-    assert _get(client, me) == {"display_name": "Old"}
-    assert _entries(client, "solitaire", viewer) == [("Old", 300)]
-
-
-async def test_legacy_post_score_without_a_session_names_no_one(client: TestClient) -> None:
-    r = client.post("/solitaire/score", json={"player_name": "Old", "score": 300})
-    assert r.status_code == 201, r.text
-    async with get_session_factory()() as db:
-        assert (await db.execute(select(func.count()).select_from(Player))).scalar_one() == 0
 
 
 async def test_a_name_in_creation_metadata_sets_the_display_name(client: TestClient) -> None:

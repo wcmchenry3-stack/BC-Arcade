@@ -20,20 +20,6 @@ class SudokuMetadata(BaseModel):
     variant: Variant = "classic"
 
 
-class SetPlayerNameRequest(BaseModel):
-    player_name: str = Field(..., min_length=1, max_length=32)
-
-
-class ScoreEntry(BaseModel):
-    player_name: str
-    score: int
-    rank: int
-
-
-class LeaderboardResponse(BaseModel):
-    scores: list[ScoreEntry]
-
-
 class SudokuResult(BaseModel):
     """Validated result block sent on ``PATCH /games/{id}/complete`` (#2449).
 

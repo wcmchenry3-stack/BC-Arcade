@@ -12,7 +12,7 @@ module registry, not a hand-written list: registering a game with an enabled
   ``me`` / ``is_me`` (#2633) report that entry's rank.
 - Entries rank in the declared direction, then the tie-break, then the
   earliest completion.
-- No board lists an unnamed player or a sentinel ``*-anon`` session.
+- No board lists an unnamed player or an abandoned game (#2468).
 - ``/stats/me`` win streaks (#2620): ``push`` and ``abandoned`` neither extend
   nor break a run, a ``loss`` ends it, and score-only games report ``null``.
 """
@@ -33,7 +33,7 @@ from sqlalchemy import select
 from db.base import get_session_factory, is_configured
 from db.models import Game, GameType
 from games.board import SCORE_METRIC, BoardDefinition
-from games.leaderboard import SENTINEL_SESSION_SUFFIX, enabled_board
+from games.leaderboard import enabled_board
 from games.registry import get_module
 from tests.test_generic_leaderboard import ENABLED_BOARDS, _board, _grant_all, _headers, _seed, _sid
 from vocab import GameType as GameTypeEnum
@@ -381,7 +381,7 @@ async def test_entries_rank_in_the_declared_direction_then_the_tiebreak(
 
 
 @pytest.mark.parametrize("game", ENABLED_BOARDS)
-async def test_no_board_lists_an_unnamed_or_sentinel_row(client: TestClient, game: str) -> None:
+async def test_no_board_lists_an_unnamed_or_abandoned_row(client: TestClient, game: str) -> None:
     board = _definition(game)
     await _seed_row(game, _sid(), _better(board, 0), name="Shown", minutes=0)
 
@@ -390,9 +390,12 @@ async def test_no_board_lists_an_unnamed_or_sentinel_row(client: TestClient, gam
     await _seed_row(
         game, unnamed, _better(board, 5), name=None, minutes=1, meta={"player_name": "Ghost"}
     )
-    # Sentinel sessions, even with a players row naming them.
-    for sentinel in (f"{game}{SENTINEL_SESSION_SUFFIX}", f"{_sid()}{SENTINEL_SESSION_SUFFIX}"):
-        await _seed_row(game, sentinel, _better(board, 6), name="Anon", minutes=2)
+    # A named player's abandoned game, though it carries a better value (the
+    # app's abandon paths send a score, #2468).
+    score, row_meta = _row(board, _better(board, 6))
+    await _seed(
+        game, _sid(), score=score, name="Quit", minutes=2, outcome="abandoned", meta=row_meta
+    )
     # A player who clears their name leaves every board.
     cleared = _sid()
     await _seed_row(game, cleared, _better(board, 7), name="Gone", minutes=3)

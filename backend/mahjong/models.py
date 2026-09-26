@@ -4,9 +4,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class MahjongMetadata(BaseModel):
     """Validated metadata shape for Mahjong Solitaire game rows (#871).
 
-    ``player_name`` is optional here because the generic ``POST /games``
-    endpoint may be called without a name; the Mahjong-specific
-    ``POST /mahjong/score`` route always supplies it internally.
+    ``player_name`` is optional: older builds sent it on ``POST /games``;
+    since #2624 the name lives on the player (``PUT /players/me``).
     ``layout`` is the id of the layout played (``turtle``, ``pyramid``, ...),
     sent by the app since #2627; rows from older builds have none. Every
     layout is 144 tiles, so there is one board for all of them (#2519
@@ -17,21 +16,6 @@ class MahjongMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
     player_name: str = Field(default="", max_length=64)
     layout: str | None = Field(default=None, min_length=1, max_length=32, pattern=r"^[a-z0-9_]+$")
-
-
-class ScoreSubmitRequest(BaseModel):
-    player_name: str = Field(..., min_length=1, max_length=32)
-    score: int = Field(..., ge=0)
-
-
-class ScoreEntry(BaseModel):
-    player_name: str
-    score: int
-    rank: int
-
-
-class LeaderboardResponse(BaseModel):
-    scores: list[ScoreEntry]
 
 
 class MahjongResult(BaseModel):

@@ -2,9 +2,9 @@
 
 Since #2627 the app records a cleared board as ``win`` (a deadlock the player
 leaves stays ``loss``, #2592), sends the layout played as creation metadata,
-and stops calling ``POST /mahjong/score``. The finished session row is the
-leaderboard entry: a named player's best win ranks once, under their display
-name, however many games they win or legacy rows an older build writes.
+and stops calling the (since removed, #2644) ``POST /mahjong/score``. The
+finished session row is the leaderboard entry: a named player's best win ranks
+once, under their display name, however many games they win.
 """
 
 from __future__ import annotations
@@ -159,18 +159,13 @@ async def test_a_win_is_recorded_as_a_win_and_ranks(client: TestClient) -> None:
 
 @live
 async def test_one_player_appears_once(client: TestClient) -> None:
-    """Several wins, a loss, and an older build's ``POST /mahjong/score`` row
-    for the same player leave one entry: their best win."""
+    """Several wins and a loss leave one entry: the player's best win."""
     sid = _sid()
     await _grant_all(sid)
     await _set_name(sid, "Riley")
     best = _win(client, sid, 1100, layout="turtle")
     worse = _win(client, sid, 900, layout="spider")
     _lose(client, sid)
-    r = client.post(
-        "/mahjong/score", headers=_headers(sid), json={"player_name": "Riley", "score": 1100}
-    )
-    assert r.status_code == 201, r.text
 
     assert _board(client, sid) == [("Riley", 1100)]
     assert _rank(client, best, sid)["is_best"] is True

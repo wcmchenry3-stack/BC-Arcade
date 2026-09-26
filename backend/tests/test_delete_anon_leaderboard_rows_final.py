@@ -1,12 +1,9 @@
-"""Migration 0026 — delete legacy ``*-anon`` leaderboard rows (#2622).
+"""Migration 0029 — the final ``*-anon`` cleanup, after the legacy routes are gone (#2644).
 
-* The migration test (``_alembic`` against its own scratch SQLite file, the
-  pattern ``test_outcome_migration.py`` uses) upgrades from the prior head,
-  seeds sentinel rows with events plus real rows including named Cascade and
-  Sudoku rows, upgrades through 0026, and asserts only the sentinel games and
-  their events are gone. It also covers the documented no-op downgrade.
-* The rows the legacy routes wrote after this migration, until #2644 removed
-  them, are deleted by 0029 (``test_delete_anon_leaderboard_rows_final.py``).
+Mirrors ``test_delete_anon_leaderboard_rows.py`` (0026, #2622). The legacy
+``POST /<game>/score`` routes kept writing sentinel rows after 0026 ran, so
+these tests seed them *after* 0026 (at 0028, the prior head), as the routes
+did, and assert that 0029 removes them and their events, and nothing else.
 """
 
 from __future__ import annotations
@@ -21,11 +18,10 @@ from pathlib import Path
 import pytest
 
 _BACKEND = Path(__file__).resolve().parent.parent
-_BEFORE = "0025_merge_0024_heads"
-_REVISION = "0026_delete_anon_leaderboard"
+_BEFORE = "0028_backfill_win_outcomes"
+_REVISION = "0029_delete_anon_rows_final"
 
-# The seven legacy sentinels (#2622 context), each written by its game's
-# `POST /<game>/score` route, which predates the generic board (#2618).
+# The seven sentinels the removed routes wrote (#2622 context).
 _LEGACY_GAMES = ("solitaire", "mahjong", "hearts", "freecell", "sort", "starswarm", "yacht")
 _SENTINELS = tuple(f"{game}-anon" for game in _LEGACY_GAMES)
 
@@ -78,20 +74,15 @@ def _event_game_ids(conn: sqlite3.Connection) -> set[str]:
 
 @pytest.fixture
 def db_path(tmp_path: Path) -> Path:
-    return tmp_path / "delete_anon_migration.db"
+    return tmp_path / "delete_anon_final_migration.db"
 
 
-# ---------------------------------------------------------------------------
-# Migration test
-# ---------------------------------------------------------------------------
-
-
-def test_upgrade_deletes_only_sentinel_rows_and_their_events(db_path: Path) -> None:
+def test_upgrade_deletes_sentinel_rows_written_after_0026(db_path: Path) -> None:
+    # 0026 has already run: these rows are the ones the routes wrote since.
     _alembic(db_path, "upgrade", _BEFORE)
     with sqlite3.connect(db_path) as conn:
         sentinel_ids = []
         for game, session_id in zip(_LEGACY_GAMES, _SENTINELS, strict=True):
-            # Each under its own game type, as the legacy route wrote it.
             gid = _insert_game(
                 conn, session_id, game_type_id=_type_id(conn, game), name="OldClient"
             )
@@ -99,8 +90,7 @@ def test_upgrade_deletes_only_sentinel_rows_and_their_events(db_path: Path) -> N
             _insert_event(conn, gid, index=1)
             sentinel_ids.append(gid)
 
-        # Real rows, including named Cascade/Sudoku rows, are untouched (Test
-        # coverage > Regression).
+        # Real rows, including named Cascade/Sudoku rows, are untouched.
         cascade_id = _insert_game(
             conn, str(uuid.uuid4()), game_type_id=_type_id(conn, "cascade"), name="Cascade"
         )
@@ -109,8 +99,7 @@ def test_upgrade_deletes_only_sentinel_rows_and_their_events(db_path: Path) -> N
             conn, str(uuid.uuid4()), game_type_id=_type_id(conn, "sudoku"), name="Sudoku"
         )
         _insert_event(conn, sudoku_id)
-        # A real session whose id happens to *contain* "anon" but doesn't end
-        # in "-anon" must survive: this is a sentinel deletion, not a substring ban.
+        # Only the seven exact ids go, not every id containing "anon".
         lookalike_id = _insert_game(conn, "anonymous-player-42", name="Lookalike")
         real_ids = {cascade_id, sudoku_id, lookalike_id}
 
@@ -119,15 +108,12 @@ def test_upgrade_deletes_only_sentinel_rows_and_their_events(db_path: Path) -> N
         remaining = _game_ids(conn)
         assert remaining.isdisjoint(sentinel_ids)
         assert real_ids <= remaining
-        # Every sentinel's events are gone; the real rows' events survive.
         remaining_event_games = _event_game_ids(conn)
         assert remaining_event_games.isdisjoint(sentinel_ids)
         assert {cascade_id, sudoku_id} <= remaining_event_games
 
 
 def test_upgrade_is_a_noop_when_no_sentinel_rows_exist(db_path: Path) -> None:
-    """A fresh/clean DB (e.g. the one the rest of the suite runs against)
-    upgrades cleanly with nothing to delete."""
     _alembic(db_path, "upgrade", _BEFORE)
     with sqlite3.connect(db_path) as conn:
         kept = _insert_game(conn, str(uuid.uuid4()), name="Real")
@@ -137,8 +123,6 @@ def test_upgrade_is_a_noop_when_no_sentinel_rows_exist(db_path: Path) -> None:
 
 
 def test_downgrade_is_a_documented_noop(db_path: Path) -> None:
-    """Downgrade does not restore the deleted rows — there is nothing to
-    revert, only a comment explaining why (Test coverage: downgrade)."""
     _alembic(db_path, "upgrade", _BEFORE)
     with sqlite3.connect(db_path) as conn:
         sentinel_id = _insert_game(conn, _SENTINELS[0], name="OldClient")
@@ -149,8 +133,8 @@ def test_downgrade_is_a_documented_noop(db_path: Path) -> None:
     with sqlite3.connect(db_path) as conn:
         assert sentinel_id not in _game_ids(conn)
 
-    # Downgrading (schema-wise, a no-op) and re-upgrading must not resurrect
-    # the sentinel row or error on an already-clean table.
+    # Downgrading (a no-op) and upgrading again neither restores the row nor
+    # fails on an already-clean table.
     _alembic(db_path, "downgrade", _BEFORE)
     _alembic(db_path, "upgrade", _REVISION)
     with sqlite3.connect(db_path) as conn:

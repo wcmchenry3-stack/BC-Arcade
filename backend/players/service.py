@@ -52,14 +52,14 @@ async def clear_display_name(db: AsyncSession, session_id: str) -> None:
 
 
 async def remember_legacy_name(db: AsyncSession, session_id: str | None, raw: object) -> None:
-    """Make a name an installed build sent through a legacy route the player's
-    display name (#2624 review). Does not commit.
+    """Make a name an older build sent in ``POST /games`` metadata the
+    player's display name (#2624 review). Does not commit.
 
-    Builds from before #2624 name players only through the per-game routes
-    (``PATCH /sudoku/score/{id}``, ``PATCH /cascade/score/{id}``, the seven
-    ``POST /<game>/score`` routes, a ``player_name`` in ``POST /games``
-    metadata). Without this, a player who never updates would never appear on
-    the generic boards. Silently skipped without a valid player id or name.
+    Builds from before #2624 never call ``PUT /players/me``; some send a
+    ``player_name`` in the creation metadata instead. Without this, a player
+    who never updates would never appear on the generic boards. (The per-game
+    name routes that also fed it were removed in #2644.) Silently skipped
+    without a valid player id or name.
     """
     if not session_id:
         return

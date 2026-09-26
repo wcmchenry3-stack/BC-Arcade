@@ -17,9 +17,6 @@ class SortModule:
     # players' ``total_moves`` cover the same level numbers, not identical
     # puzzles (#2746). qualifying_outcomes stays None: a solved level is
     # recorded ``completed``, the only non-abandoned outcome.
-    # Legacy rows: POST /sort/score stored the level in ``final_score`` under
-    # the ``sort-anon`` session. The generic board (#2657) excludes all
-    # ``*-anon`` rows, so those values never meet this declaration.
     # The app sends both keys on every solve, replays included (#2625,
     # ``SortResult``): the player's standing after it. The board keeps each
     # player's best row, so a replay that lowers a best improves their rank.

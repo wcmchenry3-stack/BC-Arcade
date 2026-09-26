@@ -29,7 +29,7 @@ class StarSwarmModule:
     result_model = StarSwarmResult
     # One board per difficulty tier (plan §4.2); no natural ceiling (#2519 decision 14).
     # Only the app's tiers have a board, and a row with no tier counts as
-    # LieutenantJG, as on the legacy GET /starswarm/leaderboard.
+    # LieutenantJG (``DEFAULT_DIFFICULTY_TIER``).
     board = BoardDefinition(
         metric=SCORE_METRIC,
         direction="desc",

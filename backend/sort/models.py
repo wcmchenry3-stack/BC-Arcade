@@ -38,21 +38,6 @@ class SortResult(BaseModel):
     won: bool | None = None
 
 
-class ScoreSubmitRequest(BaseModel):
-    player_name: str = Field(..., min_length=1, max_length=32)
-    level_reached: int = Field(..., ge=1, le=23)
-
-
-class ScoreEntry(BaseModel):
-    player_name: str
-    level_reached: int
-    rank: int
-
-
-class LeaderboardResponse(BaseModel):
-    scores: list[ScoreEntry]
-
-
 class LevelData(BaseModel):
     id: int
     bottles: list[list[str]]

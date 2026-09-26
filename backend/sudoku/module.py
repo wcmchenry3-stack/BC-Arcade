@@ -27,7 +27,7 @@ class SudokuModule:
     # (DIFFICULTY_BASE in SudokuScreen.tsx: 100/200/300) minus 10 per error, so
     # each difficulty has its own cap and 300 is the overall one (recomputed in
     # tests/test_board_definitions.py). Rows from before #748 carry no
-    # ``variant`` and belong to ``classic``, as in sudoku/router.py _top_scores.
+    # ``variant`` and belong to ``classic`` (``partition_defaults``).
     # qualifying_outcomes stays None: every Sudoku row's outcome is
     # ``completed`` (a solved puzzle) or ``abandoned`` (never counts).
     board = BoardDefinition(

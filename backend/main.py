@@ -21,26 +21,19 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from cascade.router import router as cascade_router
 from daily_challenge.router import router as daily_challenge_router
 from daily_word.router import router as daily_word_router
 from db.base import DATABASE_URL, get_engine, is_configured
 from entitlements.dependencies import EntitlementError
 from entitlements.router import router as entitlements_router
 from entitlements.service import is_dev_override_active
-from freecell.router import router as freecell_router
 from games.router import router as games_router
-from hearts.router import router as hearts_router
 from limiter import _real_ip, limiter
 from logs.router import router as logs_router
-from mahjong.router import router as mahjong_router
 from me.router import router as me_router
 from players.router import router as players_router
-from solitaire.router import router as solitaire_router
 from sort.router import router as sort_router
-from starswarm.router import router as starswarm_router
 from stats.router import router as stats_router
-from sudoku.router import router as sudoku_router
 
 # ---------------------------------------------------------------------------
 # Audit logger — emits JSON lines; Render's log aggregator handles timestamps
@@ -130,16 +123,9 @@ app = FastAPI(
     openapi_url=None if _is_production else "/openapi.json",
 )
 app.include_router(entitlements_router, prefix="/entitlements")
-app.include_router(cascade_router, prefix="/cascade")
 app.include_router(daily_challenge_router, prefix="/daily-challenge")
 app.include_router(daily_word_router, prefix="/daily-word")
-app.include_router(freecell_router, prefix="/freecell")
-app.include_router(hearts_router, prefix="/hearts")
-app.include_router(mahjong_router, prefix="/mahjong")
-app.include_router(solitaire_router, prefix="/solitaire")
 app.include_router(sort_router, prefix="/sort")
-app.include_router(starswarm_router, prefix="/starswarm")
-app.include_router(sudoku_router, prefix="/sudoku")
 app.include_router(games_router, prefix="/games")
 app.include_router(logs_router, prefix="/logs")
 app.include_router(me_router, prefix="/me")

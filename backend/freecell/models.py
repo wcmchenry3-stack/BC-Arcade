@@ -5,10 +5,9 @@ class FreeCellMetadata(BaseModel):
     """Validated creation-time metadata for FreeCell game rows (#2452).
 
     Deliberately empty: the session row the app opens with ``POST /games`` carries
-    no creation-time fields. The name-gated leaderboard submission
-    (``POST /freecell/score``) writes its own row — with ``player_name`` — and
-    never goes through this model, so a name here would read as feeding the
-    leaderboard when it does not. ``extra="forbid"`` rejects anything sent.
+    no creation-time fields. The board shows the player's display name
+    (``PUT /players/me``, #2624), never a name on the row.
+    ``extra="forbid"`` rejects anything sent.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -21,24 +20,9 @@ class FreeCellResult(BaseModel):
     moves" goal, which an abandoned game still counts; ``won`` and ``moves`` for
     the win goals). Unknown keys are ignored so a newer app build never fails
     completion. Since #2632 a won session also sends its move count as
-    ``final_score`` (the generic board ranks it, fewest first); installed
-    builds still leave it null.
+    ``final_score`` (the generic board ranks it, fewest first); older builds
+    leave it null.
     """
 
     won: bool
     moves: int = Field(ge=0)
-
-
-class ScoreSubmitRequest(BaseModel):
-    player_id: str = Field(..., min_length=1, max_length=64)
-    move_count: int = Field(..., gt=0)
-
-
-class ScoreEntry(BaseModel):
-    player_id: str
-    move_count: int
-    rank: int
-
-
-class LeaderboardResponse(BaseModel):
-    scores: list[ScoreEntry]
