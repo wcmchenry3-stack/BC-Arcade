@@ -12,6 +12,27 @@ from sort.verify_levels import bfs_solvable
 
 _COLORS = [chr(97 + i) for i in range(8)]
 
+# Level 21 of build_levels(42) before #2764: 14 colours, 2 empty bottles, no
+# solution. The generator now rejects deals like it, so it is kept here.
+_DEAD_14C = [
+    ["teal", "blue", "purple", "indigo"],
+    ["red", "teal", "gold", "green"],
+    ["navy", "orange", "orange", "brown"],
+    ["purple", "yellow", "indigo", "gold"],
+    ["navy", "pink", "blue", "green"],
+    ["red", "yellow", "lime", "pink"],
+    ["gold", "maroon", "yellow", "indigo"],
+    ["purple", "pink", "green", "blue"],
+    ["brown", "orange", "maroon", "red"],
+    ["lime", "navy", "indigo", "maroon"],
+    ["maroon", "teal", "gold", "orange"],
+    ["green", "purple", "teal", "brown"],
+    ["red", "pink", "blue", "yellow"],
+    ["lime", "lime", "navy", "brown"],
+    ["", "", "", ""],
+    ["", "", "", ""],
+]
+
 
 def _deal(rng: random.Random, n_colors: int, n_empty: int) -> list[list[str]]:
     units = [c for c in _COLORS[:n_colors] for _ in range(4)]
@@ -19,28 +40,27 @@ def _deal(rng: random.Random, n_colors: int, n_empty: int) -> list[list[str]]:
     return [units[i * 4 : (i + 1) * 4] for i in range(n_colors)] + [[] for _ in range(n_empty)]
 
 
-def test_agrees_with_reference_bfs_on_small_deals() -> None:
-    # One empty bottle and up to six colours: the plain BFS decides every one,
-    # and roughly half are unsolvable, so both verdicts are exercised.
-    rng = random.Random(2764)
+@pytest.mark.parametrize(("sizes", "n_empty"), [([3, 4, 5, 6], 1), ([3, 4], 2)])
+def test_agrees_with_reference_bfs_on_small_deals(sizes: list[int], n_empty: int) -> None:
+    # Small enough for the plain BFS to decide every deal. With one empty
+    # bottle roughly half are unsolvable, so both verdicts are exercised; two
+    # empty bottles exercise the pruning of equivalent empty targets.
+    rng = random.Random(2764 + n_empty)
     verdicts = set()
-    for _ in range(150):
-        bottles = _deal(rng, rng.choice([3, 4, 5, 6]), 1)
+    for _ in range(150 if n_empty == 1 else 40):
+        bottles = _deal(rng, rng.choice(sizes), n_empty)
         expected, _ = bfs_solvable([list(b) for b in bottles])
         assert expected is not None
         got, _ = solve(bottles)
         assert got == expected, bottles
         verdicts.add(got)
-    assert verdicts == {True, False}
+    assert verdicts == ({True, False} if n_empty == 1 else {True})
 
 
 def test_proves_the_known_dead_level_unsolvable() -> None:
-    # build_levels(42) level 21: 14 colours, 2 empty bottles (#2764).
-    level = build_levels(42)[20]
-    assert level["id"] == 21
-    verdict, seen = solve(level["bottles"])
+    verdict, seen = solve(_DEAD_14C)
     assert verdict is False
-    assert seen < 50_000
+    assert seen == 13_960  # the whole reachable space, bottle order ignored
 
 
 def test_solves_a_fourteen_colour_level() -> None:
@@ -50,8 +70,7 @@ def test_solves_a_fourteen_colour_level() -> None:
 
 
 def test_budget_exhausted_is_unknown() -> None:
-    level = build_levels(42)[20]
-    assert solve(level["bottles"], budget=10) == (None, 10)
+    assert solve(_DEAD_14C, budget=10) == (None, 10)
 
 
 @pytest.mark.parametrize(

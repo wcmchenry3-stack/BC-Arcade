@@ -1,8 +1,9 @@
 """Fast exhaustive solver for Sort Puzzle levels (#2764).
 
-Decides whether a level can be solved, with a node budget. The rules are the
-game's own (``generate_levels._apply``, ``frontend/src/game/sort/engine.ts``):
-a pour moves the whole same-colour run on top of the source, or as much of it
+Decides whether a level can be solved, with a node budget. ``generate_levels``
+deals each level again until this proves it solvable. The rules are the game's
+own (``applyPour`` in ``frontend/src/game/sort/engine.ts``, and the reference
+BFS in ``verify_levels.py``): a pour moves the whole same-colour run on top of the source, or as much of it
 as fits, onto an empty bottle or onto the same colour. A level is solved when
 every bottle is empty or full of one colour.
 
@@ -58,49 +59,57 @@ def _canon(bottles: list[str]) -> State:
     return tuple(sorted(b for b in bottles if not _full(b)))
 
 
+_RUNS: dict[str, int] = {}
+
+
+def _runs(s: str) -> int:
+    """Same-colour runs in one bottle (memoised: there are few distinct bottles)."""
+    n = _RUNS.get(s)
+    if n is None:
+        n = sum(1 for i, ch in enumerate(s) if i == 0 or ch != s[i - 1])
+        _RUNS[s] = n
+    return n
+
+
 def heuristic(state: State) -> int:
     """Runs on top of each other minus colours left: a lower bound on moves."""
-    runs = 0
-    colours: set[str] = set()
-    for s in state:
-        if s:
-            colours.update(s)
-            prev = ""
-            for ch in s:
-                if ch != prev:
-                    runs += 1
-                    prev = ch
-    return runs - len(colours)
+    return sum(map(_runs, state)) - len(set("".join(state)))
 
 
 def successors(state: State) -> list[tuple[int, int, State]]:
     """Every distinct state one pour away, as (from, to, state) with indices into ``state``."""
     out = []
-    n = len(state)
-    first_empty = next((i for i, s in enumerate(state) if not s), -1)
-    for i in range(n):
-        src = state[i]
+    # Bottles with room, by top colour: the only places a run can go besides
+    # the empty bottle.
+    by_top: dict[str, list[int]] = {}
+    for j, s in enumerate(state):
+        if s and len(s) < DEPTH:
+            by_top.setdefault(s[-1], []).append(j)
+    # Sorted, so any empty bottle comes first; the others are the same target.
+    has_empty = bool(state) and not state[0]
+    for i, src in enumerate(state):
         if not src:
             continue
         c = src[-1]
         rest = src.rstrip(c)
         run = len(src) - len(rest)
-        uniform = not rest
-        for j in range(n):
-            if j == i:
-                continue
+        targets = [j for j in by_top.get(c, ()) if j != i]
+        if has_empty and rest:
+            # A single-colour bottle poured into the empty one would only move.
+            targets.append(0)
+        for j in targets:
             dst = state[j]
-            if dst:
-                if dst[-1] != c or len(dst) == DEPTH:
-                    continue
-            else:
-                if uniform or j != first_empty:
-                    continue
             k = min(run, DEPTH - len(dst))
+            new_dst = dst + c * k
             bottles = list(state)
             bottles[i] = src[:-k]
-            bottles[j] = dst + c * k
-            out.append((i, j, _canon(bottles)))
+            # Only the destination can fill up; a full single-colour bottle is inert.
+            if len(new_dst) == DEPTH and new_dst.count(c) == DEPTH:
+                del bottles[j]
+            else:
+                bottles[j] = new_dst
+            bottles.sort()
+            out.append((i, j, tuple(bottles)))
     return out
 
 
