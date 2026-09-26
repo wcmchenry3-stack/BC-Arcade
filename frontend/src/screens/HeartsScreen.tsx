@@ -422,7 +422,9 @@ export default function HeartsScreen() {
           // useGameEvents to re-fire already-processed handlers (e.g. duplicate
           // heartsBroken animation). The local `s` is still advanced above for the
           // AI's own decision-making in subsequent iterations.
-          setGameState(playCard({ ...latestState, events: [] as HeartsState["events"] }, playerIndex, card));
+          setGameState(
+            playCard({ ...latestState, events: [] as HeartsState["events"] }, playerIndex, card)
+          );
           s = { ...s, events: [] };
 
           if (completedTrick && s.phase === "playing") {
