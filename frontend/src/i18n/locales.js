@@ -19,3 +19,11 @@ export const LOCALES = [
 ];
 
 export const RTL_LOCALES = new Set(LOCALES.filter((l) => l.dir === "rtl").map((l) => l.code));
+
+/**
+ * Locales offered on iOS/Android. RTL locales (ar, he) are excluded: native layout
+ * mirroring (I18nManager) is not implemented, so they would render RTL text in an LTR
+ * layout. They remain available on web, where the DOM `dir` attribute handles RTL.
+ * Remove this filter once native RTL support lands (see #2212).
+ */
+export const NATIVE_LOCALES = LOCALES.filter((l) => l.dir !== "rtl");
