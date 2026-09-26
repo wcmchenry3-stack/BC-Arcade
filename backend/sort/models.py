@@ -1,7 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
-# ``games.leaderboard.MAX_BOARD_VALUE``, the int32 bound on stored board values.
-_MAX_TOTAL_MOVES = 2**31 - 1
+from games.board import MAX_BOARD_VALUE
 
 
 class SortMetadata(BaseModel):
@@ -36,7 +35,7 @@ class SortResult(BaseModel):
     moves: int | None = Field(default=None, ge=0)
     undos: int | None = Field(default=None, ge=0)
     level_reached: StrictInt | None = Field(default=None, ge=0)
-    total_moves: StrictInt | None = Field(default=None, ge=0, le=_MAX_TOTAL_MOVES)
+    total_moves: StrictInt | None = Field(default=None, ge=0, le=MAX_BOARD_VALUE)
     # Sent by the #2512 builds; kept so their rows store what they always did.
     outcome: str | None = Field(default=None, max_length=32)
     won: bool | None = None

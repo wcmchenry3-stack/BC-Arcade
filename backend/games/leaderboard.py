@@ -69,7 +69,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.expression import FunctionElement
 
 from db.models import PLAYER_DISPLAY_NAME_MAX_LENGTH, Game, GameType
-from games.board import SCORE_METRIC, BoardDefinition, Direction
+from games.board import MAX_BOARD_VALUE, SCORE_METRIC, BoardDefinition, Direction
 from games.filters import not_abandoned
 from games.protocol import GameModule
 from games.ranking import compute_rank
@@ -86,10 +86,6 @@ SENTINEL_SESSION_SUFFIX = "-anon"
 """Sessions like ``solitaire-anon``, written by the removed legacy ``POST /<game>/score``."""
 
 MAX_PARTITION_VALUE_LENGTH = 64
-
-MAX_BOARD_VALUE = 2**31 - 1
-"""Upper bound for any metric or tie-break value (the ``games.final_score``
-column is a 32-bit integer). Bounds uncapped boards and every tie-break."""
 
 MAX_NAME_LENGTH = PLAYER_DISPLAY_NAME_MAX_LENGTH
 """Longest name a board shows. Every write path enforces it; names are also

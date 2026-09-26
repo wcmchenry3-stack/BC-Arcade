@@ -60,6 +60,11 @@ SCORE_METRIC = "final_score"
 FINAL_TIEBREAK: tuple[str, Direction] = ("completed_at", "asc")
 """Breaks the last tie on every board: the earlier entry ranks higher."""
 
+MAX_BOARD_VALUE = 2**31 - 1
+"""Upper bound for any metric or tie-break value (the ``games.final_score``
+column is a 32-bit integer). Bounds uncapped boards and every tie-break.
+Defined here, with no heavy imports, so result models can share it."""
+
 _COUNTABLE_OUTCOMES = frozenset(o.value for o in GameOutcome) - {GameOutcome.ABANDONED.value}
 
 
