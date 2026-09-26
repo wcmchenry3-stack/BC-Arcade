@@ -655,6 +655,65 @@ describe("SolitaireScreen — sessions across games (#2690)", () => {
     expect(mockStartGame).not.toHaveBeenCalled();
     expect(mockCompleteGame.mock.calls[0]![0]).toBe("orphan-draw-3");
   });
+
+  // #2735 code review: Auto-Complete's self-scheduled steps aren't gated by
+  // screen focus, so a step scheduled before a blur could otherwise land
+  // mid-blur and restart the paused clock (applyTimer treats a paused
+  // `startedAt: null` the same as "never started").
+  it("holds a scheduled Auto-Complete step during a blur instead of restarting the clock", async () => {
+    jest.useFakeTimers({ now: 1_700_000_000_000 });
+    try {
+      // Two clubs left on the waste (Queen under King): the first step (sync,
+      // on tap) moves the Queen and schedules a second step for the King.
+      const twoLeft: SolitaireState = {
+        ...nearWin(3),
+        foundations: {
+          spades: foundation("spades"),
+          hearts: foundation("hearts"),
+          diamonds: foundation("diamonds"),
+          clubs: foundation("clubs").slice(0, 11),
+        },
+        waste: [
+          { suit: "clubs", rank: 13, faceUp: true },
+          { suit: "clubs", rank: 12, faceUp: true },
+        ],
+      };
+      await AsyncStorage.setItem("solitaire_game", JSON.stringify(twoLeft));
+      const api = await mount();
+
+      await act(async () => {
+        await fireEvent.press(api.getByLabelText("Auto-Complete"));
+      });
+      expect(api.queryByTestId("solitaire-result")).toBeNull(); // one step left
+
+      await act(async () => {
+        mockNavListeners.get("blur")?.forEach((h) => h());
+      });
+      // The pause held: a move applied right after would otherwise treat
+      // `startedAt: null` as "not yet started" and set a fresh one.
+      const pausedSave = JSON.parse((await AsyncStorage.getItem("solitaire_game"))!);
+      expect(pausedSave.startedAt).toBeNull();
+
+      await act(() => {
+        jest.advanceTimersByTime(200); // past AUTO_STEP_MS, still blurred
+      });
+      // The deferred step did not apply while blurred: still one card short,
+      // and the pause still holds.
+      expect(api.queryByTestId("solitaire-result")).toBeNull();
+      const stillPausedSave = JSON.parse((await AsyncStorage.getItem("solitaire_game"))!);
+      expect(stillPausedSave.startedAt).toBeNull();
+
+      await act(async () => {
+        mockNavListeners.get("focus")?.forEach((h) => h());
+      });
+      await act(() => {
+        jest.advanceTimersByTime(200);
+      });
+      expect(api.getByTestId("solitaire-result")).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 describe("SolitaireScreen — result card (#2509)", () => {

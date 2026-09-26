@@ -283,16 +283,22 @@ export default function SolitaireScreen() {
   // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
   // #2735) stops its clock, so the finish time counts only play. Only a
   // clock this pauses is restarted on return: a deal with no move yet keeps
-  // waiting for its first.
+  // waiting for its first. `screenFocusedRef` also gates Auto Complete's
+  // self-scheduled steps below: applyMove's timer would otherwise treat a
+  // paused (`startedAt: null`) state as "not yet started" and restart the
+  // clock from a step that lands mid-blur, defeating the pause.
   const pausedOnBlurRef = useRef(false);
+  const screenFocusedRef = useRef(true);
   useEffect(() => {
     const offBlur = navigation.addListener("blur", () => {
+      screenFocusedRef.current = false;
       const s = stateRef.current;
       if (!s || s.startedAt === null) return;
       pausedOnBlurRef.current = true;
       setState(pauseGame(s));
     });
     const offFocus = navigation.addListener("focus", () => {
+      screenFocusedRef.current = true;
       if (!pausedOnBlurRef.current) return;
       pausedOnBlurRef.current = false;
       setState((s) => (s ? resumeGame(s) : s));
@@ -662,6 +668,13 @@ export default function SolitaireScreen() {
     setSelection(null);
     let current = state;
     const step = () => {
+      // Another screen is covering the game (#2735): hold off applying the
+      // next step until focus returns, instead of letting a step scheduled
+      // before the blur land while the clock is paused.
+      if (!screenFocusedRef.current) {
+        autoStepTimeoutRef.current = setTimeout(step, AUTO_STEP_MS);
+        return;
+      }
       const next = autoComplete(current);
       if (next === current) {
         setAutoCompleting(false);
