@@ -16,8 +16,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, AppState, Pressable, StyleSheet, Text, View } from "react-native";
-import type { AppStateStatus } from "react-native";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -28,6 +27,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import {
   ModalActions,
@@ -250,44 +250,17 @@ export default function SudokuScreen() {
   // Pause on background or blur, resume once neither holds it. Two
   // independent reasons (#2735: a pushed Stats/Leaderboard/Scoreboard screen,
   // alongside the app itself backgrounding) can overlap, so the timer only
-  // actually resumes once both have cleared.
-  const backgroundedRef = useRef(false);
-  const blurredRef = useRef(false);
+  // actually resumes once both have cleared: usePauseWhileAway tracks both.
   const pauseTimer = useCallback(() => {
     if (startMsRef.current === null || isComplete || pausedAtRef.current !== null) return;
     pausedAtRef.current = Date.now();
   }, [isComplete]);
-  const resumeTimerIfIdle = useCallback(() => {
-    if (backgroundedRef.current || blurredRef.current) return;
+  const resumeTimer = useCallback(() => {
     if (pausedAtRef.current === null || startMsRef.current === null) return;
     startMsRef.current += Date.now() - pausedAtRef.current;
     pausedAtRef.current = null;
   }, []);
-
-  useEffect(() => {
-    const handleChange = (next: AppStateStatus) => {
-      backgroundedRef.current = next !== "active";
-      if (backgroundedRef.current) pauseTimer();
-      else resumeTimerIfIdle();
-    };
-    const sub = AppState.addEventListener("change", handleChange);
-    return () => sub.remove();
-  }, [pauseTimer, resumeTimerIfIdle]);
-
-  useEffect(() => {
-    const offBlur = navigation.addListener("blur", () => {
-      blurredRef.current = true;
-      pauseTimer();
-    });
-    const offFocus = navigation.addListener("focus", () => {
-      blurredRef.current = false;
-      resumeTimerIfIdle();
-    });
-    return () => {
-      offBlur?.();
-      offFocus?.();
-    };
-  }, [navigation, pauseTimer, resumeTimerIfIdle]);
+  usePauseWhileAway(navigation, pauseTimer, resumeTimer);
 
   // Complete the gameSync session exactly once on the completion
   // transition; clear the saved game so the next mount starts fresh.
