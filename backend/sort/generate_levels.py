@@ -1,103 +1,60 @@
-"""Generate 23 solvable Sort Puzzle levels.
+"""Generate the 23 Sort Puzzle levels, each proven solvable.
 
 ``build_levels`` is what ``GET /sort/levels`` serves: it runs on every request
 with no seed, so each fetch gets new random mixtures of the same
-``LEVEL_SPECS`` (#2746). Nothing is saved to disk; ``verify_levels.py`` checks
-a freshly built set for solvability.
+``LEVEL_SPECS`` (#2746). Nothing is saved to disk.
 
-Levels are produced by randomly distributing colors across bottles and
-BFS-verifying solvability. For 5–9 colors the state space is too large for
-full BFS; those levels are generated with a lightweight deadlock check
-(_FAST_BFS_CAP). For 10–14 colors even the lightweight check is too slow to
-filter reliably, so only 2-empty levels are generated for those tiers
-(assumed solvable).
+Every level is a uniform random shuffle of its colours, dealt again until
+``sort.fast_solver`` proves it has a solution (#2764). A deal the solver proves
+dead, or can't decide within ``SOLVER_BUDGET`` states, is thrown away, so no
+level is ever served on an assumption. If ``MAX_ATTEMPTS`` deals of one level
+all fail, ``build_levels`` logs and raises ``LevelGenerationError`` rather than
+serve an unverified level; with the measured solvable rates that is
+practically unreachable (see ``MAX_ATTEMPTS``).
 """
 
+from __future__ import annotations
+
+import logging
 import random
-from collections import deque
-from itertools import takewhile
 
-DEPTH = 4
-BFS_CAP = 200_000
-_FAST_BFS_CAP = 5_000  # cap for the lightweight deadlock check in _is_likely_solvable
+from sort.fast_solver import DEPTH, solve
+
+logger = logging.getLogger(__name__)
 
 
-def _top_color(bottle: list[str]) -> str | None:
-    return bottle[-1] if bottle else None
+# Distinct states the solver may visit per deal before giving up (verdict
+# "unknown", which is rejected like a dead deal). Across 5,000 raw shuffles of
+# every configuration in LEVEL_SPECS the most any deal needed was 40,340 (a dead
+# 14-colour deal); solvable ones were decided in at most 27,914. Five times the
+# observed maximum, and it only bounds the time spent on a pathological deal:
+# the budget can never let an undecided level through.
+SOLVER_BUDGET = 200_000
+
+# Deals tried per level before giving up. The hardest configuration is 9
+# colours with one empty bottle, where about 1% of random shuffles are
+# solvable (52 of 5,000 measured): the chance that 5,000 deals in a row fail is
+# about (1 - 0.0104) ** 5000, around 1e-23. The other configurations are far
+# likelier to succeed.
+MAX_ATTEMPTS = 5_000
 
 
-def _space(bottle: list[str]) -> int:
-    return DEPTH - len(bottle)
-
-
-def _moves(state: list[list[str]]) -> list[tuple[int, int]]:
-    result = []
-    for i, src in enumerate(state):
-        if not src:
-            continue
-        color = src[-1]
-        for j, dst in enumerate(state):
-            if i == j or _space(dst) == 0:
-                continue
-            top_j = _top_color(dst)
-            if top_j is None or top_j == color:
-                result.append((i, j))
-    return result
-
-
-def _apply(state: list[list[str]], frm: int, to: int) -> list[list[str]]:
-    new = [list(b) for b in state]
-    color = new[frm][-1]
-    run = sum(1 for _ in takewhile(lambda c: c == color, reversed(new[frm])))
-    n_pour = min(run, _space(new[to]))
-    for _ in range(n_pour):
-        new[frm].pop()
-        new[to].append(color)
-    return new
-
-
-def _compact(state: list[list[str]]) -> tuple:
-    return tuple(tuple(b) for b in state)
+class LevelGenerationError(RuntimeError):
+    """No solvable deal of a level was found within ``MAX_ATTEMPTS``."""
 
 
 def _solved(state: list[list[str]]) -> bool:
-    for b in state:
-        if b and (len(b) < DEPTH or len(set(b)) > 1):
-            return False
-    return True
+    """True when every non-empty bottle is full of one colour."""
+    return all(not b or (len(b) == DEPTH and len(set(b)) == 1) for b in state)
 
 
-def _is_trivial(state: list[list[str]]) -> bool:
-    """True when every non-empty bottle is already pure (already solved)."""
-    return _solved(state)
-
-
-def bfs_solvable(state: list[list[str]]) -> bool:
-    """Return True if solvable, or True if BFS cap hit (assumed solvable)."""
-    if _solved(state):
-        return True
-    visited = {_compact(state)}
-    queue = deque([state])
-    while queue:
-        if len(visited) >= BFS_CAP:
-            return True  # too large to verify; empirically solvable
-        cur = queue.popleft()
-        for frm, to in _moves(cur):
-            nxt = _apply(cur, frm, to)
-            key = _compact(nxt)
-            if key in visited:
-                continue
-            if _solved(nxt):
-                return True
-            visited.add(key)
-            queue.append(nxt)
-    return False
-
-
-def generate_level(
-    colors: list[str], n_empty: int, rng: random.Random, max_attempts: int = 1000
+def deal_level(
+    colors: list[str],
+    n_empty: int,
+    rng: random.Random,
+    max_attempts: int = MAX_ATTEMPTS,
 ) -> list[list[str]]:
-    """Return a non-trivial, solvable starting state."""
+    """A random, non-trivial deal of ``colors`` that the solver proves solvable."""
     units = [c for c in colors for _ in range(DEPTH)]
     for _ in range(max_attempts):
         rng.shuffle(units)
@@ -105,10 +62,18 @@ def generate_level(
             list(units[i * DEPTH : (i + 1) * DEPTH]) for i in range(len(colors))
         ]
         state += [[] for _ in range(n_empty)]
-        if not _is_trivial(state) and bfs_solvable(state):
+        if _solved(state):
+            continue
+        if solve(state, SOLVER_BUDGET).solvable is True:
             return state
-    raise RuntimeError(
-        f"No solvable level found after {max_attempts} attempts "
+    logger.error(
+        "sort: no provably solvable deal in %d attempts (%d colors, %d empty)",
+        max_attempts,
+        len(colors),
+        n_empty,
+    )
+    raise LevelGenerationError(
+        f"No provably solvable level found after {max_attempts} attempts "
         f"({len(colors)} colors, {n_empty} empty)"
     )
 
@@ -132,10 +97,9 @@ COLORS_13 = [*COLORS_12, "gold"]
 COLORS_14 = [*COLORS_13, "indigo"]
 
 # 23-level progression: 3→14 colors.
-# Tiers 3–9c: alternating tight (1 empty) / relaxed (2 empties); 1-empty
-# states are verified by _not_proven_unsolvable at generation time.
-# Tiers 10–14c: 2 empties only — random 1-empty states at ≥10 colors fail
-# too often within the generation budget to be reliable.
+# Tiers 3–9c: alternating tight (1 empty) / relaxed (2 empties).
+# Tiers 10–14c: 2 empties only. Random 1-empty deals at 9 colors are already
+# ~99% dead, so 10+ colors with one empty bottle would take too many deals.
 # No two consecutive levels share the same (colors, n_empty) pair.
 LEVEL_SPECS = [
     # (id, colors, n_empty)
@@ -168,76 +132,14 @@ LEVEL_SPECS = [
 ]
 
 
-def _is_likely_solvable(state: list[list[str]]) -> bool:
-    """Return False only when BFS exhausts all reachable states without solving.
-
-    Uses _FAST_BFS_CAP so the check is cheap: for large state spaces the cap is
-    hit immediately and True is returned; only provably-dead starting positions
-    (small reachable state space, no solution path) return False. This filters
-    the constrained deadlock arrangements that occur with 1 empty bottle.
-    """
-    if _solved(state):
-        return True
-    visited = {_compact(state)}
-    queue = deque([state])
-    while queue:
-        if len(visited) >= _FAST_BFS_CAP:
-            return True
-        cur = queue.popleft()
-        for frm, to in _moves(cur):
-            nxt = _apply(cur, frm, to)
-            key = _compact(nxt)
-            if key in visited:
-                continue
-            if _solved(nxt):
-                return True
-            visited.add(key)
-            queue.append(nxt)
-    return False
-
-
-def _build_level_fast(
-    colors: list[str], n_empty: int, rng: random.Random, max_attempts: int = 1000
-) -> list[list[str]]:
-    """Generate a non-trivial level for 5+ colors.
-
-    For n_empty == 1 applies _not_proven_unsolvable to discard deadlocked starts
-    (the 1-empty constraint can leave some random arrangements with no solution
-    path). For n_empty >= 2 the assumption that non-trivial balanced distributions
-    are solvable is well-validated and the BFS check is skipped for speed.
-    """
-    units = [c for c in colors for _ in range(DEPTH)]
-    for _ in range(max_attempts):
-        rng.shuffle(units)
-        state: list[list[str]] = [
-            list(units[i * DEPTH : (i + 1) * DEPTH]) for i in range(len(colors))
-        ]
-        state += [[] for _ in range(n_empty)]
-        if _is_trivial(state):
-            continue
-        if n_empty == 1 and not _is_likely_solvable(state):
-            continue
-        return state
-    raise RuntimeError(
-        f"No solvable level found after {max_attempts} attempts "
-        f"({len(colors)} colors, {n_empty} empty)"
-    )
-
-
 def build_levels(seed: int | None = None) -> list[dict]:
-    """Generate 23 levels with fresh randomisation. seed=None uses a random seed.
+    """Deal the 23 levels, each proven solvable. seed=None uses a random seed.
 
-    Levels with ≤4 colors are BFS-verified solvable. Levels with 5–9 colors
-    use _build_level_fast with a lightweight deadlock filter for 1-empty tiers;
-    levels with 10–14 colors use 2 empties and skip the deadlock check (assumed
-    solvable for non-trivial balanced distributions with 2+ empty bottles).
+    Raises ``LevelGenerationError`` (after logging) if a level has no provably
+    solvable deal within ``MAX_ATTEMPTS``; an unverified level is never served.
     """
     rng = random.Random(seed)
-    levels = []
-    for level_id, colors, n_empty in LEVEL_SPECS:
-        if len(colors) <= 4:
-            state = generate_level(colors, n_empty, rng)
-        else:
-            state = _build_level_fast(colors, n_empty, rng)
-        levels.append({"id": level_id, "bottles": to_json_bottles(state)})
-    return levels
+    return [
+        {"id": level_id, "bottles": to_json_bottles(deal_level(colors, n_empty, rng))}
+        for level_id, colors, n_empty in LEVEL_SPECS
+    ]

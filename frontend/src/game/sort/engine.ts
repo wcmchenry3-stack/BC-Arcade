@@ -5,9 +5,11 @@
  * side-effect imports. The UI replaces the entire SortState object on
  * each transition — state is immutable.
  *
- * Pour mechanics mirror the backend BFS in backend/sort/generate_levels.py:
- * a pour moves the maximal same-color run from the top of the source
- * bottle, up to the available space in the destination.
+ * Pour mechanics match the backend's level solver (`successors` in
+ * backend/sort/fast_solver.py) and its reference pour simulator (`_moves` /
+ * `_apply` in backend/sort/verify_levels.py): a pour moves the maximal
+ * same-color run from the top of the source bottle, up to the available
+ * space in the destination.
  */
 
 import type { Bottle, Color, SortState } from "./types";

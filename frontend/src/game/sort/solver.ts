@@ -1,11 +1,12 @@
 /**
  * Sort Puzzle BFS solver (#1176).
  *
- * Pure TypeScript. No side effects. Mirrors the backend BFS in
- * backend/sort/generate_levels.py but returns the move sequence rather
- * than a boolean.
+ * Pure TypeScript. No side effects. Uses the same pour rules as the backend's
+ * level solver (`successors` in backend/sort/fast_solver.py) and its
+ * reference pour simulator (`_moves` / `_apply` in
+ * backend/sort/verify_levels.py), and returns the move sequence.
  *
- * Performance: capped at 200 000 visited states (matches backend generator).
+ * Performance: capped at 200 000 visited states.
  * States beyond the cap return null — the puzzle is assumed solvable but the
  * path is too long to compute client-side in real time. In practice only
  * levels 16–20 (7–8 colors) approach this limit.
