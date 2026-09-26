@@ -484,7 +484,7 @@ describe("httpClient — Sentry reporting (#513)", () => {
       mockFetch.mockRejectedValueOnce(
         new CodedError(
           "ERR_NETWORK",
-          'fetch failed: java.net.UnknownHostException: Unable to resolve host "gaming-app-api-dev.onrender.com"'
+          'fetch failed: java.net.UnknownHostException: Unable to resolve host "games-api.buffingchi.com"'
         )
       );
       const request = makeRequest();
@@ -667,7 +667,7 @@ describe("httpClient — Sentry reporting (#513)", () => {
     const nativeFailures = [
       [
         "Android",
-        'java.net.UnknownHostException: Unable to resolve host "gaming-app-api-dev.onrender.com": No address associated with hostname',
+        'java.net.UnknownHostException: Unable to resolve host "games-api.buffingchi.com": No address associated with hostname',
       ],
       ["iOS", "UnexpectedException: A server with the specified hostname could not be found."],
     ];

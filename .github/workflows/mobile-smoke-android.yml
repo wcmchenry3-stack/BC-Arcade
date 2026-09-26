@@ -120,7 +120,7 @@ jobs:
         run: cd android && ./gradlew assembleDebug --no-daemon -PreactNativeArchitectures=x86_64 -Pandroid.bundleDebugForCI=true
         working-directory: frontend
         env:
-          EXPO_PUBLIC_API_URL: https://gaming-app-api-dev.onrender.com
+          EXPO_PUBLIC_API_URL: https://dev-games-api.buffingchi.com
           EXPO_PUBLIC_TEST_HOOKS: "1"
 
       - name: Run Maestro flows on Android emulator
