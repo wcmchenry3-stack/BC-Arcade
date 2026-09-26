@@ -8,6 +8,8 @@
 import {
   newGame,
   move,
+  pauseGame,
+  resumeGame,
   slideAndMerge,
   isGameOver,
   setRng,
@@ -640,5 +642,46 @@ describe("game events", () => {
   it("newGame returns state with no events", () => {
     const s = newGame();
     expect(s.events).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pauseGame, resumeGame (#2735)
+// ---------------------------------------------------------------------------
+
+describe("pauseGame / resumeGame", () => {
+  const emptyBoard = [
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
+  ];
+
+  it("pauseGame accumulates time and clears startedAt", () => {
+    const s = stateWith(emptyBoard, { startedAt: 1000, accumulatedMs: 200 });
+    const paused = pauseGame(s, 1600);
+    expect(paused.startedAt).toBeNull();
+    expect(paused.accumulatedMs).toBe(800);
+  });
+
+  it("pauseGame is a no-op before the first move", () => {
+    const s = stateWith(emptyBoard, { startedAt: null, accumulatedMs: 0 });
+    expect(pauseGame(s, 5000)).toBe(s);
+  });
+
+  it("resumeGame sets startedAt", () => {
+    const s = stateWith(emptyBoard, { startedAt: null, accumulatedMs: 200 });
+    const resumed = resumeGame(s, 5000);
+    expect(resumed.startedAt).toBe(5000);
+  });
+
+  it("resumeGame is a no-op when already running", () => {
+    const s = stateWith(emptyBoard, { startedAt: 1000 });
+    expect(resumeGame(s, 2000).startedAt).toBe(1000);
+  });
+
+  it("resumeGame is a no-op on a finished game", () => {
+    const s = stateWith(emptyBoard, { startedAt: null, game_over: true });
+    expect(resumeGame(s, 2000).startedAt).toBeNull();
   });
 });

@@ -331,6 +331,27 @@ function applyTimer(prev: SolitaireState, next: SolitaireState): SolitaireState 
   return { ...next, startedAt: prev.startedAt ?? now, accumulatedMs: prev.accumulatedMs };
 }
 
+/**
+ * Freeze the timer while the screen is covered by another (Stats,
+ * Leaderboard, Scoreboard, #2735), so that time doesn't count as play. A
+ * no-op once the game has no running timer to freeze (not yet started, or
+ * already complete).
+ */
+export function pauseGame(state: SolitaireState, now: number = Date.now()): SolitaireState {
+  if (state.startedAt === null) return state;
+  return {
+    ...state,
+    accumulatedMs: state.accumulatedMs + (now - state.startedAt),
+    startedAt: null,
+  };
+}
+
+/** Resume a timer `pauseGame` froze. A no-op on a finished or unstarted game. */
+export function resumeGame(state: SolitaireState, now: number = Date.now()): SolitaireState {
+  if (state.startedAt !== null || state.isComplete) return state;
+  return { ...state, startedAt: now };
+}
+
 /** If the top card of `col` exists and is face-down, flip it and return
  * the (updated column, +reveal score) pair. Otherwise the column is
  * unchanged and the score delta is 0. */

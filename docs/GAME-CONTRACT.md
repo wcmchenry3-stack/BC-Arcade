@@ -384,6 +384,12 @@ at 10 minutes; a game's own measured duration wins.
 
 - Foreground time comes from `foregroundClock.foregroundNow()`, one app-wide
   counter that stops while `AppState` is `background` or `inactive`.
+- Screen focus (#2735): the window also stops counting while a screen is
+  pushed on top of the game's own (Stats, Leaderboard, Scoreboard) — it isn't
+  backgrounded, so `foregroundClock` alone doesn't cover it. `useGameSync`
+  tracks the screen's own navigation focus (`useIsScreenFocused`) and banks
+  time up to the blur, then resumes counting from the moment focus returns;
+  outside a navigator (and in tests) the screen is always focused.
 - The window is running or paused (#2710):
   - It starts **running** when the hook mounts, so the thinking time before
     the first move counts (Daily Word's puzzle is on screen from mount) and a

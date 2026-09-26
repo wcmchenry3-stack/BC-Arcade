@@ -247,21 +247,47 @@ export default function SudokuScreen() {
     };
   }, [state, isComplete, tickTimer]);
 
-  // Pause on background, resume on foreground.
+  // Pause on background or blur, resume once neither holds it. Two
+  // independent reasons (#2735: a pushed Stats/Leaderboard/Scoreboard screen,
+  // alongside the app itself backgrounding) can overlap, so the timer only
+  // actually resumes once both have cleared.
+  const backgroundedRef = useRef(false);
+  const blurredRef = useRef(false);
+  const pauseTimer = useCallback(() => {
+    if (startMsRef.current === null || isComplete || pausedAtRef.current !== null) return;
+    pausedAtRef.current = Date.now();
+  }, [isComplete]);
+  const resumeTimerIfIdle = useCallback(() => {
+    if (backgroundedRef.current || blurredRef.current) return;
+    if (pausedAtRef.current === null || startMsRef.current === null) return;
+    startMsRef.current += Date.now() - pausedAtRef.current;
+    pausedAtRef.current = null;
+  }, []);
+
   useEffect(() => {
     const handleChange = (next: AppStateStatus) => {
-      if (startMsRef.current === null) return;
-      if (isComplete) return;
-      if (next !== "active") {
-        pausedAtRef.current = Date.now();
-      } else if (pausedAtRef.current !== null && startMsRef.current !== null) {
-        startMsRef.current += Date.now() - pausedAtRef.current;
-        pausedAtRef.current = null;
-      }
+      backgroundedRef.current = next !== "active";
+      if (backgroundedRef.current) pauseTimer();
+      else resumeTimerIfIdle();
     };
     const sub = AppState.addEventListener("change", handleChange);
     return () => sub.remove();
-  }, [isComplete]);
+  }, [pauseTimer, resumeTimerIfIdle]);
+
+  useEffect(() => {
+    const offBlur = navigation.addListener("blur", () => {
+      blurredRef.current = true;
+      pauseTimer();
+    });
+    const offFocus = navigation.addListener("focus", () => {
+      blurredRef.current = false;
+      resumeTimerIfIdle();
+    });
+    return () => {
+      offBlur?.();
+      offFocus?.();
+    };
+  }, [navigation, pauseTimer, resumeTimerIfIdle]);
 
   // Complete the gameSync session exactly once on the completion
   // transition; clear the saved game so the next mount starts fresh.

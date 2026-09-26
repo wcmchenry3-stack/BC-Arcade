@@ -9,7 +9,13 @@ import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { Twenty48State } from "../game/twenty48/types";
-import { newGame, move as engineMove, Direction } from "../game/twenty48/engine";
+import {
+  newGame,
+  move as engineMove,
+  pauseGame,
+  resumeGame,
+  Direction,
+} from "../game/twenty48/engine";
 import {
   saveGame,
   loadGame,
@@ -104,6 +110,34 @@ export default function Twenty48Screen({ navigation }: Props) {
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
+  // #2735) stops its clock, so the reported duration counts only play. Only
+  // a clock this pauses is restarted on return: a board with no move yet
+  // keeps waiting for its first. `screenFocusedRef` also gates the queued
+  // move below: applying it while blurred would run move()'s timer logic
+  // on a paused (`startedAt: null`) state, restarting the clock mid-blur.
+  const pausedOnBlurRef = useRef(false);
+  const screenFocusedRef = useRef(true);
+  useEffect(() => {
+    const offBlur = navigation.addListener("blur", () => {
+      screenFocusedRef.current = false;
+      const s = stateRef.current;
+      if (!s || s.startedAt === null) return;
+      pausedOnBlurRef.current = true;
+      setState(pauseGame(s));
+    });
+    const offFocus = navigation.addListener("focus", () => {
+      screenFocusedRef.current = true;
+      if (!pausedOnBlurRef.current) return;
+      pausedOnBlurRef.current = false;
+      setState((s) => (s ? resumeGame(s) : s));
+    });
+    return () => {
+      offBlur?.();
+      offFocus?.();
+    };
+  }, [navigation]);
 
   // #2450 / #2619 — the board's result block. The hook's own abandon (unmount)
   // and the New Game abandon both build it here. final_score goes in the result
@@ -268,8 +302,11 @@ export default function Twenty48Screen({ navigation }: Props) {
       setTimeout(() => {
         movingRef.current = false;
         // A move queued during the winning move would play behind the win
-        // card (handleMove's guard only sees moves made after it shows): drop it.
-        const queued = justWon ? null : pendingMove.current;
+        // card (handleMove's guard only sees moves made after it shows): drop
+        // it. One queued during a blur is dropped too (#2735): another screen
+        // is covering the board by the time this fires, and applying it would
+        // restart the paused clock mid-blur.
+        const queued = justWon || !screenFocusedRef.current ? null : pendingMove.current;
         pendingMove.current = null;
         if (queued) {
           setState((s) => {
