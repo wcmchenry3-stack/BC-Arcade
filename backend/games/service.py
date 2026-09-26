@@ -33,6 +33,7 @@ from db.models import EventType, Game, GameEvent, GameType
 from games.board import SCORE_METRIC, BoardDefinition
 from games.filters import SWEPT_KEY, is_swept, not_abandoned, not_swept, without_swept
 from games.leaderboard import check_completion_limits, merge_result_metadata
+from games.legacy_outcomes import might_be_legacy_win, win_update
 from games.protocol import GameModule
 from games.registry import get_module
 from players.service import remember_legacy_name
@@ -875,6 +876,13 @@ async def complete_game(
     # still leave the row finished and unflagged. A real completion replaces a
     # sweep and puts the row back under "first completion wins" (#2621).
     flag_modified(game, "game_metadata")
+    if might_be_legacy_win(name, outcome):
+        # An older build's certain win is stored as ``win`` (#2703), by the
+        # same rule migration 0028 applied to the rows stored before it. One
+        # UPDATE on this row, in this transaction, after the completion above
+        # is flushed; the refresh below reads back what it stored.
+        await session.flush()
+        await session.execute(win_update(name, _dialect_name(session), game_id=game.id))
     await session.commit()
     await session.refresh(game)
     return game

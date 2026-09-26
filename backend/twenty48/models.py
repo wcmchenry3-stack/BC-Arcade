@@ -32,8 +32,9 @@ class Twenty48Result(BaseModel):
     Every field is optional and unknown keys are ignored, so no build the
     stores already have can fail completion and dead-letter the game.
     ``outcome`` repeats the row's outcome: ``win`` / ``loss`` since #2631, and
-    ``completed`` / ``kept_playing`` from older builds; it is a plain string
-    so none of them is rejected. A ``duration_ms`` of zero or less (a skewed clock) is
+    ``completed`` / ``kept_playing`` from older builds (set to ``win`` with
+    the row when ``games.legacy_outcomes`` finds a certain win, #2703); it is a
+    plain string so none of them is rejected. A ``duration_ms`` of zero or less (a skewed clock) is
     stored as ``null``, "unknown", as the sync worker sends it on the row
     itself (``resolveDurationMs``): rejecting it would dead-letter the game.
     """

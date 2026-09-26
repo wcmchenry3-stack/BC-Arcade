@@ -64,21 +64,25 @@ class GameOutcome(str, Enum):
     * Daily Word — ``win`` when the word is solved, ``loss`` when the guesses
       run out.
     * Mahjong — ``win`` when the board is cleared (#2627), ``loss`` when the
-      player leaves a deadlocked board (#2592). Builds before #2627 recorded
-      a cleared board as ``completed``; migration 0028 rewrote the rows
-      already stored with ``metadata.won`` true to ``win`` (#2703).
+      player leaves a deadlocked board (#2592). Builds before #2627 send
+      ``completed``; one with ``metadata.won`` true (a cleared board) is
+      stored as ``win`` (#2703).
     * Blackjack — per run (#2628): ``win`` when the run reached its goal, at
       any point (Keep Playing and a later bust-out is still a win); ``loss``
       when the chips ran out before the goal; ``abandoned`` when the player
-      left before the goal. Builds before #2628 recorded ``completed``;
-      migration 0028 rewrote the stored Cash Outs (``metadata.final_chips``
-      > 0) to ``win``. A bust after Keep Playing can't be told from a plain
-      bust, so it stays ``completed`` (#2703).
+      left before the goal. Builds before #2628 send ``completed``; a Cash
+      Out (``metadata.final_chips`` > 0) is stored as ``win``. A bust after
+      Keep Playing can't be told from a plain bust, so it stays
+      ``completed`` (#2703).
     * Twenty48 — ``win`` when the 2048 tile appears (the row keeps the score
       at that moment; Keep Playing after it is untracked), ``loss`` on a game
-      over without it (#2631). Older builds' ``completed`` / ``kept_playing``
-      rows stay valid; migration 0028 rewrote the stored ones with
-      ``metadata.highest_tile`` >= 2048 to ``win`` (#2703).
+      over without it (#2631). Older builds send ``completed`` /
+      ``kept_playing``; the session in which 2048 was first reached is
+      stored as ``win`` (#2703).
+
+    "Stored as ``win``" for older builds is ``games.legacy_outcomes``: migration
+    0028 applied it to the rows stored before it, and ``complete_game``
+    applies it to each completion since. Only a certain win is rewritten.
 
     The client maps its result card to these values in one function,
     ``frontend/src/game/_shared/recordedOutcome.ts`` (win→win, loss→loss,
@@ -91,8 +95,9 @@ class GameOutcome(str, Enum):
       Win rate for these games is "—", never 0 %.
     * ``kept_playing`` — legacy: Twenty48 builds before #2631 closed the
       session this way when the player kept going past 2048. New builds record
-      ``win`` instead; older rows and builds that still send it stay valid,
-      and it counts as a finish with no winner.
+      ``win`` instead. An older build's ``kept_playing`` is stored as ``win``
+      when it closed the session that first reached 2048 (#2703); any other
+      stays valid and counts as a finish with no winner.
     * ``abandoned`` — the player quit. Excluded from leaderboards, stats and
       XP by ``games.filters.not_abandoned()``.
 
