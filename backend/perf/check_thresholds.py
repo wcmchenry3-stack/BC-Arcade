@@ -19,13 +19,15 @@ from pathlib import Path
 
 # Map Locust request name substrings → threshold scenario key.
 # Order matters: more specific patterns first.
-ENDPOINT_TO_SCENARIO: list[tuple[str, str]] = [
+# A pattern mapped to None is left unchecked (the rate-limit run expects 429s).
+ENDPOINT_TO_SCENARIO: list[tuple[str, str | None]] = [
+    ("(rate test)", None),
     ("/games/leaderboard/", "leaderboard"),
-    ("/yacht/new", "game_flow"),
-    ("/yacht/roll", "game_flow"),
-    ("/yacht/score", "game_flow"),
-    ("/yacht/state", "stateless_reads"),
-    ("/yacht/possible-scores", "stateless_reads"),
+    ("/games/{id}/", "game_flow"),
+    ("POST /games", "game_flow"),
+    ("GET /games/catalog", "stateless_reads"),
+    ("GET /games/me", "stateless_reads"),
+    ("GET /stats/me", "stateless_reads"),
 ]
 
 

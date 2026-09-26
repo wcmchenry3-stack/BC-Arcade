@@ -3,9 +3,9 @@ BC Arcade — Locust performance test entry point.
 
 User classes:
 
-  YachtGameUser     — full 13-round game flow (session-isolated; safe with multiple users)
+  YachtGameUser     — one Yacht game through /games (session-isolated; safe with multiple users)
   LeaderboardUser   — concurrent leaderboard reads (--users 10)
-  ReadOnlyUser      — polling GET endpoints (--users 20)
+  ReadOnlyUser      — catalog, stats and history reads (--users 20)
   RateLimitVerifyUser — intentionally exhausts rate limits to verify 429 + Retry-After
 
 Usage examples:
@@ -47,8 +47,9 @@ from scenarios.stateless_reads import StatelessReadTasks
 
 class YachtGameUser(HttpUser):
     """
-    Simulates one player completing a full 13-round game.
-    Session isolation allows multiple concurrent users without state collisions.
+    Simulates the app syncing one finished Yacht game (create, 13 event
+    batches, complete, rank lookup). A fresh session per game keeps users
+    apart and under the per-session write limits.
     """
 
     tasks = [GameFlowTasks]
@@ -68,7 +69,7 @@ class LeaderboardUser(HttpUser):
 
 class ReadOnlyUser(HttpUser):
     """
-    Simulates a client polling game state. Establishes the latency floor.
+    Simulates the reads behind Home and Profile. Establishes the latency floor.
     Run with --users 20 to measure read throughput.
     """
 

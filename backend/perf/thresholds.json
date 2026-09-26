@@ -2,16 +2,15 @@
   "_comment": "SLOs for Render free-tier deployment. Warm-up must complete before timing starts. See docs/PERFORMANCE.md.",
   "scenarios": {
     "game_flow": {
-      "description": "Full 13-round game (single user, sequential)",
+      "description": "One Yacht game through the session pipeline (single user, sequential)",
       "users": 1,
       "p95_ms": 500,
       "error_rate_pct": 0.0,
       "endpoints": [
-        "POST /yacht/new",
-        "POST /yacht/roll",
-        "GET /yacht/possible-scores",
-        "POST /yacht/score",
-        "GET /yacht/state (final)"
+        "POST /games",
+        "POST /games/{id}/events",
+        "PATCH /games/{id}/complete",
+        "GET /games/{id}/rank"
       ]
     },
     "leaderboard": {
@@ -26,7 +25,11 @@
       "users": 20,
       "p95_ms": 200,
       "error_rate_pct": 0.0,
-      "endpoints": ["GET /yacht/state", "GET /yacht/possible-scores"]
+      "endpoints": [
+        "GET /games/catalog",
+        "GET /stats/me",
+        "GET /games/me"
+      ]
     }
   }
 }

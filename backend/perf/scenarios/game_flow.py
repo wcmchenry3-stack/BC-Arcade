@@ -1,17 +1,25 @@
 """
-Scenario A: Full Yacht game flow (sequential, single user).
+Scenario A: One Yacht game through the session pipeline (sequential).
 
-Each user generates a unique session ID so multiple concurrent users
-don't collide on shared game state.
+Yacht's engine runs on the device; the server only records the game. This
+replays what the app's SyncWorker sends for one solo game: ``POST /games``,
+one ``POST /games/{id}/events`` batch per round (a roll and a score),
+``PATCH /games/{id}/complete``, then the result card's
+``GET /games/{id}/rank``. The old server-side ``/yacht/*`` routes it used to
+drive were removed in #2630.
+
+Each game uses a fresh session id: ``POST /games`` and ``/complete`` are
+limited to 10/minute per session, and a looping user would otherwise measure
+its own 429s.
 """
 
+import random
 import uuid
 
 from locust import SequentialTaskSet, task
 
-# All 13 scoring categories in order. The flow picks one per round regardless
-# of dice values — the goal is latency measurement, not game strategy.
-CATEGORIES = [
+ROUNDS = 13
+_CATEGORIES = (
     "ones",
     "twos",
     "threes",
@@ -25,108 +33,80 @@ CATEGORIES = [
     "large_straight",
     "yacht",
     "chance",
-]
+)
+
+
+def _check(resp) -> None:
+    """Mark a response failed unless it is a 2xx (locust needs catch_response)."""
+    if resp.ok:
+        resp.success()
+    else:
+        resp.failure(f"HTTP {resp.status_code}")
 
 
 class GameFlowTasks(SequentialTaskSet):
-    """Complete a full 13-round Yacht game sequentially."""
-
-    def on_start(self):
-        self._round = 0
-        self._session_id = str(uuid.uuid4())
-        self._headers = {"X-Session-ID": self._session_id}
+    """Create, fill, complete and rank one Yacht game, then start over."""
 
     @task
-    def new_game(self):
-        with self.client.post("/yacht/new", headers=self._headers, name="POST /yacht/new") as resp:
-            resp.raise_for_status()
-        self._round = 0
-
-    @task
-    def play_round_1(self):
-        self._play_round(0)
-
-    @task
-    def play_round_2(self):
-        self._play_round(1)
-
-    @task
-    def play_round_3(self):
-        self._play_round(2)
-
-    @task
-    def play_round_4(self):
-        self._play_round(3)
-
-    @task
-    def play_round_5(self):
-        self._play_round(4)
-
-    @task
-    def play_round_6(self):
-        self._play_round(5)
-
-    @task
-    def play_round_7(self):
-        self._play_round(6)
-
-    @task
-    def play_round_8(self):
-        self._play_round(7)
-
-    @task
-    def play_round_9(self):
-        self._play_round(8)
-
-    @task
-    def play_round_10(self):
-        self._play_round(9)
-
-    @task
-    def play_round_11(self):
-        self._play_round(10)
-
-    @task
-    def play_round_12(self):
-        self._play_round(11)
-
-    @task
-    def play_round_13(self):
-        self._play_round(12)
-
-    @task
-    def verify_game_over(self):
-        with self.client.get(
-            "/yacht/state", headers=self._headers, name="GET /yacht/state (final)"
-        ) as resp:
-            resp.raise_for_status()
-            data = resp.json()
-            if not data.get("game_over"):
-                resp.failure("Expected game_over=true after 13 rounds")
-
-    def _play_round(self, round_index: int):
-        """Roll once, check possible scores, then score the given category."""
-        held = [False, False, False, False, False]
-
+    def create_game(self):
+        self._headers = {"X-Session-ID": str(uuid.uuid4())}
+        self._game_id = str(uuid.uuid4())
+        self._total = 0
         with self.client.post(
-            "/yacht/roll",
-            json={"held": held},
+            "/games",
+            json={"id": self._game_id, "game_type": "yacht", "metadata": {"mode": "solo"}},
             headers=self._headers,
-            name="POST /yacht/roll",
+            name="POST /games",
+            catch_response=True,
         ) as resp:
-            resp.raise_for_status()
+            _check(resp)
 
+    @task
+    def play_rounds(self):
+        for round_index in range(ROUNDS):
+            value = random.randint(0, 30)
+            self._total += value
+            dice = [random.randint(1, 6) for _ in range(5)]
+            events = [
+                {
+                    "event_index": 2 * round_index,
+                    "event_type": "roll",
+                    "data": {"held": [False] * 5, "dice": dice, "rolls_used_after": 1},
+                },
+                {
+                    "event_index": 2 * round_index + 1,
+                    "event_type": "score",
+                    "data": {"category": _CATEGORIES[round_index], "value": value},
+                },
+            ]
+            with self.client.post(
+                f"/games/{self._game_id}/events",
+                json={"events": events},
+                headers=self._headers,
+                name="POST /games/{id}/events",
+                catch_response=True,
+            ) as resp:
+                _check(resp)
+
+    @task
+    def complete_game(self):
+        with self.client.patch(
+            f"/games/{self._game_id}/complete",
+            json={"final_score": self._total, "outcome": "completed"},
+            headers=self._headers,
+            name="PATCH /games/{id}/complete",
+            catch_response=True,
+        ) as resp:
+            _check(resp)
+
+    @task
+    def read_rank(self):
+        # No display name for this session: the answer is `ranked: false`,
+        # `reason: no_name`, which still runs the board checks.
         with self.client.get(
-            "/yacht/possible-scores",
+            f"/games/{self._game_id}/rank",
             headers=self._headers,
-            name="GET /yacht/possible-scores",
+            name="GET /games/{id}/rank",
+            catch_response=True,
         ) as resp:
-            resp.raise_for_status()
-
-        with self.client.post(
-            "/yacht/score",
-            json={"category": CATEGORIES[round_index]},
-            headers=self._headers,
-            name="POST /yacht/score",
-        ) as resp:
-            resp.raise_for_status()
+            _check(resp)
