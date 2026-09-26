@@ -209,7 +209,7 @@ export default function SolitaireScreen() {
   // applyMove's timer would otherwise treat a paused (`startedAt: null`)
   // state as "not yet started" and restart the clock from a step that lands
   // while away, defeating the pause.
-  const { awayRef, adoptLoaded, pauseIfAway } = usePausableClock({
+  const { awayRef, adoptLoaded, matchPresence } = usePausableClock({
     navigation,
     state,
     setState,
@@ -363,12 +363,12 @@ export default function SolitaireScreen() {
       const next = applyMove(state, move);
       if (next.events?.includes("invalidMove")) return false;
       ensureSyncStarted(next);
-      setState(pauseIfAway(next));
+      setState(matchPresence(next));
       setMoves((m) => m + 1);
       setSelection(null);
       return true;
     },
-    [state, ensureSyncStarted, pauseIfAway]
+    [state, ensureSyncStarted, matchPresence]
   );
 
   const handleWastePress = useCallback(() => {
@@ -396,10 +396,10 @@ export default function SolitaireScreen() {
     const next = state.stock.length > 0 ? drawFromStock(state) : recycleWaste(state);
     if (next === state) return;
     ensureSyncStarted(next);
-    setState(pauseIfAway(next));
+    setState(matchPresence(next));
     setMoves((m) => m + 1);
     setSelection(null);
-  }, [state, autoCompleting, ensureSyncStarted, pauseIfAway]);
+  }, [state, autoCompleting, ensureSyncStarted, matchPresence]);
 
   const handleFoundationPress = useCallback(
     (suit: Suit) => {
@@ -604,15 +604,15 @@ export default function SolitaireScreen() {
   const handleUndo = useCallback(() => {
     if (state === null || autoCompleting) return;
     if (state.undoStack.length === 0) return;
-    setState(pauseIfAway(undo(state)));
+    setState(matchPresence(undo(state)));
     setSelection(null);
     setMoves((m) => Math.max(0, m - 1));
-  }, [state, autoCompleting, pauseIfAway]);
+  }, [state, autoCompleting, matchPresence]);
 
   const handleHint = useCallback(() => {
     if (state === null || state.isComplete || autoCompleting) return;
-    setState(pauseIfAway(applyHint(state)));
-  }, [state, autoCompleting, pauseIfAway]);
+    setState(matchPresence(applyHint(state)));
+  }, [state, autoCompleting, matchPresence]);
 
   const handleAutoComplete = useCallback(() => {
     if (state === null || autoCompleting) return;
@@ -636,11 +636,14 @@ export default function SolitaireScreen() {
         setAutoCompleting(false);
         return;
       }
-      const next = autoComplete(current);
-      if (next === current) {
+      const computed = autoComplete(current);
+      if (computed === current) {
         setAutoCompleting(false);
         return;
       }
+      // The committed state can still hold the clock from before a return
+      // (#2750): match it to the player being here.
+      const next = matchPresence(computed);
       ensureSyncStarted(next);
       // Until the commit catches up, so a step that comes due first builds on
       // this one instead of repeating it.
@@ -654,7 +657,7 @@ export default function SolitaireScreen() {
       autoStepTimeoutRef.current = setTimeout(step, AUTO_STEP_MS);
     };
     step();
-  }, [state, autoCompleting, ensureSyncStarted, awayRef]);
+  }, [state, autoCompleting, ensureSyncStarted, awayRef, matchPresence]);
 
   /** Tears down the current game (board, timers, result) and shows the draw-mode picker. */
   const resetToPreGame = useCallback(() => {

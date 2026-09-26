@@ -1307,6 +1307,26 @@ describe("MahjongScreen — app background and relaunch (#2750)", () => {
     );
   });
 
+  // A first tap that lands while the player is away mustn't start the clock
+  // running: it starts paused, and the return starts it.
+  it("a first tap while away leaves the clock paused until the return", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify({ ...lastPairState(), accumulatedMs: 0, startedAt: null })
+    );
+    const api = await mount(); // nothing played yet: the clock waits
+    await setAppState("background");
+    await tap(api, 0); // lands while away, and opens the session
+    now += 60 * 60_000; // an hour away
+    await setAppState("active");
+    now += 5_000;
+    mockCompleteGame.mockClear();
+    await api.unmount();
+    expect(lastSummary()).toEqual(
+      expect.objectContaining({ outcome: "abandoned", durationMs: 5_000 })
+    );
+  });
+
   // CONTINUE from Level Select carries on from the board still in memory: the
   // play since the last save is kept, and the time on Level Select isn't play.
   it("CONTINUE from Level Select keeps the unsaved play and skips the time on Level Select", async () => {

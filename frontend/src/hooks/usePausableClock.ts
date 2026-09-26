@@ -20,11 +20,12 @@ export interface PausableClockOptions<T extends PlayClock> {
    */
   hold?: boolean;
   /**
-   * Called in the pause event's own handler with the latest rendered state
+   * Called in the pause event's own handler with the latest known state
    * paused at the event's time, so the save doesn't wait for a render that
-   * may never come once the app is in the background. Best effort: a move
-   * not yet rendered is missing from it, and `onPaused` or the game's own
-   * save of the committed state follows.
+   * may never come once the app is in the background. The latest known state
+   * is the newest one passed through `matchPresence` (a move computed but
+   * not yet rendered) or rendered since, so this never writes a board older
+   * than the move the screen last saved.
    */
   saveOnLeave?: (paused: T) => void;
   /**
@@ -46,13 +47,15 @@ export interface PausableClock<T> {
    */
   adoptLoaded: (loaded: T) => T;
   /**
-   * Pass a state computed from a rendered one (a move built from the
-   * screen's `state`) through this before applying it with a plain
-   * `setState(next)`. If the player left in between, `next` still carries
-   * the running clock from before the pause and would replace the paused
-   * state: it is paused here instead.
+   * Pass every state the screen computes (a move, an undo, a draw) through
+   * this before applying it. It sets the clock to match whether the player
+   * is here: a move built from a board rendered before the player left still
+   * carries the running clock, and is paused; one built from a board
+   * rendered before they came back still carries the paused clock, and is
+   * resumed (unless `hold`), so the play from the return on counts. It also
+   * records the result as the latest known state for `saveOnLeave`.
    */
-  pauseIfAway: (next: T) => T;
+  matchPresence: (next: T) => T;
 }
 
 /**
@@ -79,24 +82,37 @@ export function usePausableClock<T extends PlayClock>(
   optionsRef.current = options;
   const notifiedRef = useRef<T | null>(null);
 
+  // The latest known state: the newest one computed (matchPresence) or
+  // rendered. A state the screen sets directly (a deal, a load) arrives by
+  // the render; one it computes is recorded before it is even set.
+  const latestRef = useRef<T | null>(options.state);
+  const renderedRef = useRef<T | null>(options.state);
+  if (options.state !== renderedRef.current) {
+    renderedRef.current = options.state;
+    latestRef.current = options.state;
+  }
+
   const awayRef = usePauseWhileAway(
     options.navigation,
     () => {
       const now = Date.now();
       const o = optionsRef.current;
       o.setState((s) => (s === null ? s : o.pauseGame(s, now)));
-      const latest = o.state;
-      if (o.saveOnLeave && latest !== null) {
-        const paused = o.pauseGame(latest, now);
-        if (paused !== latest) o.saveOnLeave(paused);
-      }
+      const latest = latestRef.current;
+      if (latest === null) return;
+      const paused = o.pauseGame(latest, now);
+      latestRef.current = paused;
+      if (o.saveOnLeave && paused !== latest) o.saveOnLeave(paused);
     },
     () => {
       const now = Date.now();
-      optionsRef.current.setState((s) => {
-        const o = optionsRef.current;
-        return s === null || o.hold ? s : o.resumeGame(s, now);
+      const o = optionsRef.current;
+      o.setState((s) => {
+        const current = optionsRef.current;
+        return s === null || current.hold ? s : current.resumeGame(s, now);
       });
+      const latest = latestRef.current;
+      if (latest !== null && !o.hold) latestRef.current = o.resumeGame(latest, now);
     }
   );
 
@@ -107,10 +123,18 @@ export function usePausableClock<T extends PlayClock>(
     optionsRef.current.onPaused?.(state);
   }, [state]);
 
-  const pauseIfAway = useCallback(
-    (next: T): T => (awayRef.current ? optionsRef.current.pauseGame(next, Date.now()) : next),
+  const matchPresence = useCallback(
+    (next: T): T => {
+      const o = optionsRef.current;
+      const now = Date.now();
+      let settled = next;
+      if (awayRef.current) settled = o.pauseGame(next, now);
+      else if (!o.hold) settled = o.resumeGame(next, now);
+      latestRef.current = settled;
+      return settled;
+    },
     [awayRef]
   );
 
-  return { awayRef, adoptLoaded: pauseIfAway, pauseIfAway };
+  return { awayRef, adoptLoaded: matchPresence, matchPresence };
 }

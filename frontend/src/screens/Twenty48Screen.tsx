@@ -119,7 +119,7 @@ export default function Twenty48Screen({ navigation }: Props) {
   // backgrounded keeps the time played since the last move. `awayRef` also
   // gates the queued move below: applying it while away would run move()'s
   // timer logic on a paused (`startedAt: null`) state, restarting the clock.
-  const { awayRef, adoptLoaded, pauseIfAway } = usePausableClock({
+  const { awayRef, adoptLoaded, matchPresence } = usePausableClock({
     navigation,
     state,
     setState,
@@ -255,9 +255,9 @@ export default function Twenty48Screen({ navigation }: Props) {
       movingRef.current = true;
       let next: Twenty48State;
       try {
-        // `currentState` is the rendered board: if the player left since, its
-        // clock is from before the pause, so pause the result (#2750).
-        next = pauseIfAway(engineMove(currentState, direction));
+        // `currentState` is the rendered board: if the player left or came
+        // back since, its clock doesn't match, so match it (#2750).
+        next = matchPresence(engineMove(currentState, direction));
       } catch {
         // "no effect" or game over — release lock immediately.
         movingRef.current = false;
@@ -307,7 +307,7 @@ export default function Twenty48Screen({ navigation }: Props) {
         }
       }, MOVE_LOCK_MS);
     },
-    [finishSession, syncEnqueue, syncMarkStarted, awayRef, pauseIfAway]
+    [finishSession, syncEnqueue, syncMarkStarted, awayRef, matchPresence]
   );
 
   const handleMove = useCallback(

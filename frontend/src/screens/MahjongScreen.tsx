@@ -607,7 +607,7 @@ export default function MahjongScreen() {
   // going to the background (#2750) stops its clock, so the finish and best
   // times count only play (usePausableClock). The pause is saved like any
   // state change, so a kill while backgrounded keeps the play banked.
-  const { adoptLoaded } = usePausableClock({
+  const { adoptLoaded, matchPresence } = usePausableClock({
     navigation,
     state,
     setState,
@@ -851,13 +851,16 @@ export default function MahjongScreen() {
       setHintIds(new Set());
       setState((prev) => {
         if (!prev) return prev;
-        const next = selectTile(prev, tileId);
-        if (next === prev) return prev;
+        const moved = selectTile(prev, tileId);
+        if (moved === prev) return prev;
+        // A first tap that lands while the player is away mustn't start the
+        // clock running (#2750).
+        const next = matchPresence(moved);
         ensureSyncStarted(next);
         return next;
       });
     },
-    [ensureSyncStarted]
+    [ensureSyncStarted, matchPresence]
   );
 
   const handleHint = useCallback(() => {
@@ -885,19 +888,20 @@ export default function MahjongScreen() {
   const handleShuffle = useCallback(() => {
     setState((prev) => {
       if (!prev) return prev;
-      const next = shuffleBoard(prev);
-      if (next === prev) return prev;
+      const shuffled = shuffleBoard(prev);
+      if (shuffled === prev) return prev;
+      const next = matchPresence(shuffled);
       ensureSyncStarted(next);
       return next;
     });
-  }, [ensureSyncStarted]);
+  }, [ensureSyncStarted, matchPresence]);
 
   const handleUndo = useCallback(() => {
     setState((prev) => {
       if (!prev) return prev;
-      return undoMove(prev);
+      return matchPresence(undoMove(prev));
     });
-  }, []);
+  }, [matchPresence]);
 
   /**
    * Closes an open session: a loss for a deadlocked board, otherwise the

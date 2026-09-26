@@ -1484,6 +1484,14 @@ describe("Twenty48Screen — app background and relaunch (#2750)", () => {
     });
     const saves = (saveGame as jest.Mock).mock.calls.map((c) => c[0] as Twenty48State);
     const moved = saves[savesBefore]!; // the ArrowLeft move's own save
+    // The save written in the background event's own handler, before any
+    // render: if iOS suspends the app right there, this is what relaunches.
+    // It must be the move's board paused, not the board rendered before it.
+    const leaving = saves[savesBefore + 1]!;
+    expect(leaving.board).toEqual(moved.board);
+    expect(leaving).toEqual(
+      expect.objectContaining({ startedAt: null, accumulatedMs: 20_000, paused: true })
+    );
     const paused = saves.at(-1)!; // the committed pause's
     expect(paused.board).toEqual(moved.board);
     expect(paused).toEqual(expect.objectContaining({ startedAt: null, accumulatedMs: 20_000 }));
@@ -1522,6 +1530,33 @@ describe("Twenty48Screen — app background and relaunch (#2750)", () => {
     now += 60 * 60_000; // an hour away
     await setAppState("active");
     now += 5_000;
+    mockCompleteGame.mockClear();
+    await unmount();
+    expect(abandonDuration()).toBe(25_000);
+  });
+
+  // The return's resume is queued; a move made before the re-render is built
+  // from the rendered, still-paused board. It must resume the clock, not
+  // replace the resumed state with a paused one.
+  it("a move made right after the return, before a render, resumes the clock", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const { unmount } = await mountAndSettle();
+    await act(() => {
+      dispatchKey("ArrowRight"); // starts the board's timer
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200)); // the move lock lets go
+    });
+    now += 20_000;
+    await setAppState("background");
+    now += 60 * 60_000; // an hour away
+    await act(() => {
+      for (const [type, listener] of appStateSpy.mock.calls.slice(appStateBase)) {
+        if (type === "change") (listener as (s: AppStateStatus) => void)("active");
+      }
+      dispatchKey("ArrowLeft"); // right-aligned tiles always slide left
+    });
+    now += 5_000; // this play counts
     mockCompleteGame.mockClear();
     await unmount();
     expect(abandonDuration()).toBe(25_000);

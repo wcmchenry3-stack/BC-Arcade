@@ -208,4 +208,51 @@ describe("usePausableClock (#2750)", () => {
     await act(async () => setAppState("active"));
     expect(hook.result.current.state!.paused).toBe(true);
   });
+
+  // #2750 review: symmetric. A state built from the board rendered before
+  // the return still carries the paused clock, and is resumed.
+  it("matchPresence pauses a state built while away and resumes one built after the return", async () => {
+    const { hook } = await setup({ startedAt: now, accumulatedMs: 0, moves: 1, over: false });
+    now += 3_000;
+    await act(async () => setAppState("background"));
+    const running: Game = { startedAt: now - 3_000, accumulatedMs: 0, moves: 2, over: false };
+    expect(hook.result.current.matchPresence(running)).toEqual(
+      expect.objectContaining({ startedAt: null, accumulatedMs: 3_000, paused: true })
+    );
+    await act(async () => setAppState("active"));
+    const stale: Game = {
+      startedAt: null,
+      accumulatedMs: 3_000,
+      paused: true,
+      moves: 3,
+      over: false,
+    };
+    expect(hook.result.current.matchPresence(stale)).toEqual(
+      expect.objectContaining({ startedAt: now, accumulatedMs: 3_000 })
+    );
+  });
+
+  it("saves on leave from the latest computed state, not the last rendered one", async () => {
+    const saveOnLeave = jest.fn();
+    const { hook } = await setup(
+      { startedAt: now, accumulatedMs: 0, moves: 1, over: false },
+      { saveOnLeave }
+    );
+    now += 2_000;
+    await act(async () => {
+      // A move computed and set, then the app leaves before any render.
+      hook.result.current.setState(
+        hook.result.current.matchPresence({
+          startedAt: now - 2_000,
+          accumulatedMs: 0,
+          moves: 2,
+          over: false,
+        })
+      );
+      setAppState("background");
+    });
+    expect(saveOnLeave).toHaveBeenCalledWith(
+      expect.objectContaining({ moves: 2, accumulatedMs: 2_000, paused: true })
+    );
+  });
 });

@@ -1469,6 +1469,36 @@ describe("SolitaireScreen — app background and relaunch (#2750)", () => {
   });
 
   // The issue's example: one move, a two-day break, then the win.
+  // The return's resume is queued; a move made before the re-render is built
+  // from the rendered, still-paused board. It must resume the clock, not
+  // leave it paused until the next trip away.
+  it("a move made right after the return, before a render, resumes the clock", async () => {
+    await AsyncStorage.setItem(
+      "solitaire_game",
+      JSON.stringify({ ...twoFromWin(), accumulatedMs: 20_000, startedAt: null })
+    );
+    const api = await mount(); // the clock runs from the load
+    await setAppState("background");
+    now += 60 * 60_000; // an hour away
+    const queen = api.getByLabelText("Q of Clubs");
+    await act(async () => {
+      await fireEvent.press(queen); // selects it
+    });
+    await act(async () => {
+      // One synchronous batch, so no render falls between the two.
+      for (const [type, listener] of appStateSpy.mock.calls.slice(appStateBase)) {
+        if (type === "change") (listener as (s: AppStateStatus) => void)("active");
+      }
+      await fireEvent.press(queen); // the double tap: the Queen goes up
+    });
+    now += 5_000; // this play counts
+    await playToFoundation(api, "K of Clubs"); // the win
+    await api.findByTestId("solitaire-result");
+    expect(mockCompleteGame.mock.calls.at(-1)![1]).toEqual(
+      expect.objectContaining({ outcome: "completed", durationMs: 25_000 })
+    );
+  });
+
   it("a relaunch keeps the play before the kill and drops the time the app was closed", async () => {
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(twoFromWin()));
     const first = await mount();
