@@ -103,9 +103,10 @@ export default function SortScreen() {
   const openLeaderboard = useLeaderboardLink(navigation, "sort");
 
   // One `games` row per level played (#2512): XP, Profile history, stats and
-  // the leaderboard (#2625). Only the first solve of the player's frontier
-  // level is scored (see the solve effect); the board ranks those rows, one
-  // entry per named player.
+  // the leaderboard (#2625). Every solve, replays included, is scored with the
+  // player's standing after it (see the solve effect); the board keeps each
+  // named player's best row. Levels are random per fetch, not seeded, so
+  // `total_moves` compares different puzzles (#2746).
   const {
     start: syncStart,
     resume: syncResume,

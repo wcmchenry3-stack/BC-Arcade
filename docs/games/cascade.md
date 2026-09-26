@@ -10,9 +10,9 @@ Cascade is a physics-based piece-drop game. Pieces fall from the top of the scre
 
 ### Piece Progression
 
-Pieces evolve through 10 fixed tiers. The lowest-tier pieces are droppable (tiers 0–4); higher tiers are only reachable via merging. The highest tier is the **Watermelon** (jackpot merge). Definitions are in `frontend/src/game/cascade/pieceDefs.ts`.
+Pieces evolve through 10 fixed tiers. The lowest-tier pieces are droppable (tiers 0–4); higher tiers are only reachable via merging. The highest tier is the **Watermelon**; two Watermelons do not merge (`MAX_TIER`). Definitions are in `frontend/src/game/cascade/pieceDefs.ts`.
 
-Merge scores follow powers of two: `2^(tier+1)` per merge, plus a +256 jackpot bonus on a tier-9 (Watermelon) merge.
+A merge scores the new piece's `scoreValue` (`pieceDefs.ts`). The values follow the triangular numbers 1, 3, 6, 10, 15, 21, 28, 36, 45, 55 for tiers 0–9, so a merge into the Watermelon scores 55. There is no jackpot bonus.
 
 ### Gameplay
 
@@ -24,7 +24,7 @@ Merge scores follow powers of two: `2^(tier+1)` per merge, plus a +256 jackpot b
 
 ## Client-Side Engine
 
-All game logic is client-side and offline-capable. The backend receives only the final score.
+All game logic is client-side and offline-capable. Each game reaches the backend as a session row with its events; see [Scoring](#scoring-persistence).
 
 ### Module Map
 
@@ -35,11 +35,9 @@ All game logic is client-side and offline-capable. The backend receives only the
 | `constants.ts`      | All tunable physics & gameplay parameters                                    |
 | `pieceQueue2.ts`    | Current + next piece queue (preview UI data)                                 |
 | `spawnSelector2.ts` | Weighted random tier selection with drought correction & danger suppression  |
-| `scoring.ts`        | Merge score calculator (isolated, reused by engine + UI)                     |
+| `scoring.ts`        | Unused merge score calculator; the engine scores with `pieceDefs.ts`         |
 | `storage2.ts`       | AsyncStorage save/load — versioned `SavedState` (v3)                         |
-| `scoreSync.ts`      | Registers Cascade handler in the global offline score queue                  |
-| `api.ts`            | HTTP wrapper for leaderboard submission and score fetching                   |
-| `types.ts`          | API response shapes and `GameEvent` union type                               |
+| `types.ts`          | `CascadeSession` and the `GameEvent` union type                              |
 
 ### Physics
 
@@ -72,9 +70,22 @@ A `cascadeCombo` event is emitted when ≥3 merges occur within `COMBO_WINDOW_TI
 ## Backend
 
 - Module: `backend/cascade/module.py`
-- Endpoints: `backend/cascade/router.py`
-- Metadata model: `CascadeMetadata` — `player_name: str = ""` (max 64 chars)
-- Scoring: `final_score` = total points at game over (submitted by `scoreSync.ts` via the offline score queue)
+- Endpoints: `backend/cascade/router.py`, legacy. `PATCH /cascade/score/{game_id}` and `GET /cascade/scores` stay for installed builds until #2644; the app no longer calls them.
+- Metadata model: `CascadeMetadata` — `player_name: str = ""` (max 64 chars). Current builds send no metadata.
+- Result model: none (`result_model = None`): the result block is stored as sent.
+- Scoring: see [Scoring](#scoring-persistence)
+
+## Scoring (Persistence)
+
+- **Metric and direction:** `final_score`, higher is better, labelled `score` (`board` in `backend/cascade/module.py`; `BOARDS.cascade` in `frontend/src/api/vocab.ts`). It is the points at game over: for each merge the engine (`engine2.ts`) adds the new piece's `scoreValue` from `pieceDefs.ts`.
+- **Tie-break:** none declared. Equal scores go to the earlier `completed_at`, the last tie-break on every board.
+- **Partitions:** none: one board.
+- **Recorded, not partitioned:** the result block from `progressResult` in `frontend/src/screens/CascadeScreen.tsx`: `final_score`, `duration_ms`, `theme`, `total_drops`, `total_merges`, and `outcome` on a finish. The fruit set is in the `game_started` event (`fruit_set`, `theme`), not in metadata.
+- **Max value:** none (#2519 decision 14). Any integer up to 2³¹−1 is accepted.
+- **Outcomes:** `has_winner = False`. Game over records `completed`. Restart during play records `abandoned` (`handleRestart`), and so does switching the fruit set mid-game (the fruit-set effect in `CascadeScreen.tsx` calls `endInstrumentedSession("abandoned")` and starts a new game). Leaving the screen records `abandoned` too (`useGameSync`'s unmount abandon), once a piece has been dropped. The Restart and fruit-set abandons carry the score so far in `final_score`, but abandoned rows never rank or count toward "best".
+- **Duration:** Cascade's own `duration_ms`: wall-clock time since the session opened (`Date.now() - gameStartTimeRef`). Because it is > 0 it wins over `useGameSync`'s active-play window, so backgrounded time is counted. A game continued after an app kill counts from the relaunch, so the time before the kill is lost (#2735).
+- **How it reaches the server:** the `useGameSync("cascade")` session row. `SyncWorker` sends `POST /games` after the first drop (`markStarted`) and `PATCH /games/{id}/complete` at game over. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best game once. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
+- **Where the player sees it:** the result card shows the rank through `sessionBoardAdapter` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu. Store builds hide Cascade (`HIDDEN_GAMES`, `frontend/src/entitlements/gameVisibility.ts`), so there it has no leaderboard or stats entry point.
 
 ## Accessibility
 
@@ -89,3 +100,7 @@ See [`docs/ACCESSIBILITY.md §4`](../ACCESSIBILITY.md#4-screen-readers) for the 
 ## Entitlement
 
 Tier TBD. If premium: requires a valid entitlement JWT; see [`docs/ARCHITECTURE.md §10`](../ARCHITECTURE.md#10-premium-entitlements).
+
+## Known Issues / Limitations
+
+- #2735: the reported play time is wall-clock time since the session opened, so backgrounded time is counted (see [Scoring](#scoring-persistence), Duration)

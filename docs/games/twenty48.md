@@ -21,12 +21,19 @@ Each merge scores points equal to the value of the new (merged) tile. A 2+2 merg
 
 ## Scoring (Persistence)
 
-Sessions are recorded through the shared `/games` pipeline (`useGameSync("twenty48")`) and validated by the backend module (see [Backend](#backend)). One session per game, closed as (#2631):
-
-- `win` when the 2048 tile appears; `final_score` = the score at that moment. Keep Playing after it is untracked, so later points are not ranked.
-- `loss` on a game over without 2048; `final_score` = the score at game over.
-
-Older builds sent `completed` (game over) and `kept_playing` (Keep Playing); those rows stay valid. The result card shows the game's rank through the shared `sessionBoardAdapter` (`GET /games/{id}/rank`), once per session, never on an abandon.
+- **Metric and direction:** `final_score`, higher is better, labelled `score` (`board` in `backend/twenty48/module.py`; `BOARDS.twenty48` in `frontend/src/api/vocab.ts`). It is the score when the session closes: at the 2048 tile, or at game over.
+- **Tie-break:** none declared. Equal scores go to the earlier `completed_at`, the last tie-break on every board.
+- **Partitions:** none: one global board (#2519 decision 1).
+- **Recorded, not partitioned:** result (`Twenty48Result`): `final_score`, `highest_tile`, `move_count`, `duration_ms`, `outcome`. The opening board is event data (`game_started`'s `initial_board`), not metadata. The daily challenge reads `final_score` and `highest_tile` from the result.
+- **Max value:** none (#2519 decision 14).
+- **Outcomes:** `has_winner = True` (#2631). One session per game, closed as:
+  - `win` when the 2048 tile appears, with `final_score` = the score at that moment. Keep Playing after it is untracked, so later points are not ranked.
+  - `loss` on a game over without 2048, with `final_score` = the score at game over.
+  - `abandoned` on New Game during play, or on leaving the screen, with the result block (its `final_score` included, for the daily challenge) but no `final_score` column, so it never ranks.
+  - Older builds sent `completed` (game over) and `kept_playing` (Keep Playing); those rows stay valid. The server stores one as `win` when it closed the session that first reached 2048, i.e. its `highest_tile` is 2048 or more and its `initial_board` is below 2048 (`backend/games/legacy_outcomes.py`, #2703). The rest stay as sent, a finish with no winner.
+- **Duration:** 2048's own timer (`startedAt` / `accumulatedMs` on the game state, `computeDurationMs` in `Twenty48Screen.tsx`). It wins over `useGameSync`'s window. It is wall-clock time from the session's first move: nothing pauses it when the app goes to the background, so backgrounded time is counted. `accumulatedMs` is only added to at game over (`applySwipe` in `engine.ts`), and a relaunch resets `startedAt` to the relaunch time (`Twenty48Screen.tsx`), so time played before an app kill is lost (#2735).
+- **How it reaches the server:** the `useGameSync("twenty48")` session row, validated by the backend module (see [Backend](#backend)). `SyncWorker` sends `POST /games` once the player has moved, and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best game once. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
+- **Where the player sees it:** the win and game-over cards show the game's rank through `sessionBoardAdapter` (`GET /games/{id}/rank`), once per session, or ask once for a display name; never on an abandon. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu.
 
 ## Client-Side Engine
 
@@ -51,4 +58,4 @@ Tier TBD. If free: no entitlement check — game is always accessible.
 
 ## Known Issues / Limitations
 
-- The result card shows the rank, but the app has no Twenty48 leaderboard view yet
+- #2735: the play timer counts backgrounded time and loses the time played before an app kill (see [Scoring](#scoring-persistence), Duration)
