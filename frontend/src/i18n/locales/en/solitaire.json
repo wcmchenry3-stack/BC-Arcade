@@ -30,12 +30,5 @@
   "a11y.boardRegion": "Solitaire board",
   "a11y.invalidMove": "Invalid move",
   "error.saveFailed": "Could not save your game.",
-  "error.loadFailed": "Could not resume the saved game.",
-  "scoreboard.heroLabel": "TIME",
-  "scoreboard.heroSub": "{{moves}} moves · {{foundations}} of 4 complete",
-  "scoreboard.heroSubEmpty": "No games played yet",
-  "scoreboard.bestTime": "Best Time",
-  "scoreboard.bestMoves": "Best Moves",
-  "scoreboard.gamesPlayed": "Games Played",
-  "scoreboard.gamesWon": "Games Won"
+  "error.loadFailed": "Could not resume the saved game."
 }

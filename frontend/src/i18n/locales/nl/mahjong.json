@@ -44,10 +44,5 @@
   "layout.concentric_squares": "Concentrische vierkanten",
   "layoutSelect.title": "Kies een opstelling",
   "layoutSelect.continue": "Doorgaan",
-  "layoutSelect.lockedLayout": "{{name}} — vergrendeld",
-  "scoreboard.title": "Topscores",
-  "scoreboard.rank": "Rang",
-  "scoreboard.player": "Speler",
-  "scoreboard.score": "Score",
-  "scoreboard.empty": "Nog geen scores — wees de eerste!"
+  "layoutSelect.lockedLayout": "{{name}} — vergrendeld"
 }

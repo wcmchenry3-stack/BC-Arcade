@@ -30,12 +30,5 @@
   "a11y.boardRegion": "לוח סוליטר",
   "a11y.invalidMove": "מהלך לא חוקי",
   "error.saveFailed": "לא ניתן לשמור את המשחק.",
-  "error.loadFailed": "לא ניתן לטעון את המשחק השמור.",
-  "scoreboard.heroLabel": "זמן",
-  "scoreboard.heroSub": "{{moves}} מהלכים · {{foundations}} מתוך 4 הושלמו",
-  "scoreboard.heroSubEmpty": "עדיין לא שוחקו משחקים",
-  "scoreboard.bestTime": "הזמן הטוב ביותר",
-  "scoreboard.bestMoves": "הכי מעט מהלכים",
-  "scoreboard.gamesPlayed": "משחקים ששוחקו",
-  "scoreboard.gamesWon": "משחקים שנוצחו"
+  "error.loadFailed": "לא ניתן לטעון את המשחק השמור."
 }

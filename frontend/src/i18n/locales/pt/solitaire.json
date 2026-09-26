@@ -30,12 +30,5 @@
   "a11y.boardRegion": "Tabuleiro de paciência",
   "a11y.invalidMove": "Jogada inválida",
   "error.saveFailed": "Não foi possível salvar o jogo.",
-  "error.loadFailed": "Não foi possível retomar o jogo salvo.",
-  "scoreboard.heroLabel": "TEMPO",
-  "scoreboard.heroSub": "{{moves}} jogadas · {{foundations}} de 4 completas",
-  "scoreboard.heroSubEmpty": "Nenhuma partida jogada ainda",
-  "scoreboard.bestTime": "Melhor tempo",
-  "scoreboard.bestMoves": "Menos jogadas",
-  "scoreboard.gamesPlayed": "Partidas jogadas",
-  "scoreboard.gamesWon": "Partidas vencidas"
+  "error.loadFailed": "Não foi possível retomar o jogo salvo."
 }

@@ -44,10 +44,5 @@
   "layout.concentric_squares": "Konzentrische Quadrate",
   "layoutSelect.title": "Layout wählen",
   "layoutSelect.continue": "Weiter",
-  "layoutSelect.lockedLayout": "{{name}} — gesperrt",
-  "scoreboard.title": "Bestenliste",
-  "scoreboard.rank": "Rang",
-  "scoreboard.player": "Spieler",
-  "scoreboard.score": "Punkte",
-  "scoreboard.empty": "Noch keine Punkte — sei der Erste!"
+  "layoutSelect.lockedLayout": "{{name}} — gesperrt"
 }

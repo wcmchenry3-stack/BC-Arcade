@@ -44,10 +44,5 @@
   "layout.concentric_squares": "ריבועים קונצנטריים",
   "layoutSelect.title": "בחרו סידור",
   "layoutSelect.continue": "המשך",
-  "layoutSelect.lockedLayout": "{{name}} — נעול",
-  "scoreboard.title": "השיאים",
-  "scoreboard.rank": "דירוג",
-  "scoreboard.player": "שחקן",
-  "scoreboard.score": "ניקוד",
-  "scoreboard.empty": "עדיין אין ניקוד — היו הראשונים!"
+  "layoutSelect.lockedLayout": "{{name}} — נעול"
 }

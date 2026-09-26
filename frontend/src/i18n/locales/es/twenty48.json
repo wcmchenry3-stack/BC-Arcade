@@ -14,12 +14,5 @@
   "win.body": "¡Llegaste a 2048! Puedes seguir jugando para una puntuación más alta.",
   "controls.keyboardHint": "O usa las flechas del teclado",
   "stats.highestTile": "Ficha Más Alta",
-  "stats.timePlayed": "Tiempo Jugado",
-  "scoreboard.heroLabel": "PUNTUACIÓN",
-  "scoreboard.heroSub": "Mejor ficha: {{bestTile}} · {{moves}} movimientos",
-  "scoreboard.heroSubEmpty": "Aún no hay partidas jugadas",
-  "scoreboard.bestScore": "Mejor Puntuación",
-  "scoreboard.bestTile": "Mejor Ficha",
-  "scoreboard.gamesPlayed": "Partidas Jugadas",
-  "scoreboard.gamesWon": "Partidas Ganadas"
+  "stats.timePlayed": "Tiempo Jugado"
 }

@@ -1,6 +1,7 @@
 import React from "react";
 import { render, act } from "@testing-library/react-native";
-import ScoreboardScreen from "../ScoreboardScreen";
+import ScorecardScreen, { SCORECARD_VIEWS } from "../ScorecardScreen";
+import { SCORECARD_GAMES } from "../../navigation/scorecards";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { HeartsRoundsProvider, useHeartsRounds } from "../../game/hearts/RoundsContext";
 import { YachtScorecardProvider, useYachtScorecard } from "../../game/yacht/ScorecardContext";
@@ -28,7 +29,7 @@ async function renderScreen() {
     <ThemeProvider>
       <HeartsRoundsProvider>
         <YachtScorecardProvider>
-          <ScoreboardScreen />
+          <ScorecardScreen />
         </YachtScorecardProvider>
       </HeartsRoundsProvider>
     </ThemeProvider>
@@ -36,7 +37,7 @@ async function renderScreen() {
 }
 
 // Tiny seed component so we can populate the rounds context before
-// ScoreboardScreen reads from it.
+// ScorecardScreen reads from it.
 function Seed({
   cumulativeScores,
   scoreHistory,
@@ -63,7 +64,7 @@ async function renderWithSeed(seedProps: {
       <HeartsRoundsProvider>
         <YachtScorecardProvider>
           <Seed {...seedProps} />
-          <ScoreboardScreen />
+          <ScorecardScreen />
         </YachtScorecardProvider>
       </HeartsRoundsProvider>
     </ThemeProvider>
@@ -96,14 +97,14 @@ async function renderYachtWithSeed(scores: Record<string, number | null>, totalS
       <HeartsRoundsProvider>
         <YachtScorecardProvider>
           <YachtSeed scores={scores} totalScore={totalScore} />
-          <ScoreboardScreen />
+          <ScorecardScreen />
         </YachtScorecardProvider>
       </HeartsRoundsProvider>
     </ThemeProvider>
   );
 }
 
-describe("ScoreboardScreen", () => {
+describe("ScorecardScreen", () => {
   beforeEach(() => {
     useRoute.mockReset();
   });
@@ -160,9 +161,38 @@ describe("ScoreboardScreen", () => {
     expect(getByText("8")).toBeTruthy();
   });
 
-  it("renders a fallback for an entirely unknown gameKey", async () => {
-    useRoute.mockReturnValue({ params: { gameKey: "no-such-game" } });
-    const { getByText } = await renderScreen();
-    expect(getByText(/No scoreboard available for/)).toBeTruthy();
+  it.each(["hearts", "yacht", "blackjack"])(
+    "titles the %s live view Scorecard (#2636)",
+    async (k) => {
+      useRoute.mockReturnValue({ params: { gameKey: k } });
+      useBlackjackSessionStats.mockReturnValue(initialSessionStats(1000));
+      const { getByText, queryByText } = await renderScreen();
+      expect(getByText("Scorecard")).toBeTruthy();
+      expect(queryByText(/Scoreboard/)).toBeNull();
+    }
+  );
+
+  // #2636: Cascade, Solitaire, Sudoku and Twenty48 lost their device-local
+  // Hero stat cards (the Stats screen replaced them), and with them the
+  // untranslated "No scoreboard available" fallback. Only live views remain.
+  it("has a live view for Hearts, Yacht and Blackjack only", () => {
+    expect([...SCORECARD_GAMES].sort()).toEqual(["blackjack", "hearts", "yacht"]);
+    expect(Object.keys(SCORECARD_VIEWS).sort()).toEqual([...SCORECARD_GAMES].sort());
+  });
+
+  // Navigation state can still carry a key with no live view (an untyped
+  // navigate, or state from an older build): a translated message and the
+  // back button, not a crash.
+  it.each([
+    ["a game without a live view", { gameKey: "cascade" }],
+    ["an unknown key", { gameKey: "no-such-game" }],
+    ["no params", undefined],
+  ])("shows a message with a back button for %s", async (_label, params) => {
+    useRoute.mockReturnValue({ params });
+    const { getByText, getByTestId, getByLabelText } = await renderScreen();
+    expect(getByText("Scorecard")).toBeTruthy();
+    expect(getByTestId("scorecard-unavailable")).toBeTruthy();
+    expect(getByText("This game has no scorecard.")).toBeTruthy();
+    expect(getByLabelText("Go back to home screen")).toBeTruthy();
   });
 });

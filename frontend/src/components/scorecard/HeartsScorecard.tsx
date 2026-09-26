@@ -21,7 +21,7 @@ interface Props {
   compact?: boolean;
 }
 
-export default function HeartsScoreboard({
+export default function HeartsScorecard({
   playerLabels,
   cumulativeScores,
   scoreHistory,

@@ -25,13 +25,6 @@
   "hud.errors": "{{count}} أخطاء",
   "hud.errorsOne": "خطأ واحد",
   "hud.elapsed": "الوقت المنقضي {{time}}",
-  "scoreboard.heroLabel": "الوقت المنقضي",
-  "scoreboard.heroSub": "{{difficulty}} · {{errors}} أخطاء",
-  "scoreboard.heroSubEmpty": "لم تُلعب أي مباراة بعد",
-  "scoreboard.easyBestTime": "أفضل وقت (سهل)",
-  "scoreboard.mediumBestTime": "أفضل وقت (متوسط)",
-  "scoreboard.hardBestTime": "أفضل وقت (صعب)",
-  "scoreboard.gamesSolved": "الألغاز المحلولة",
   "action.quickRestart": "إعادة بدء سريعة",
   "newGame.title": "لعبة جديدة"
 }

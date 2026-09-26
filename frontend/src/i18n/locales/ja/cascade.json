@@ -11,12 +11,5 @@
   "preview.comingUp": "次に来る: {{name}}",
   "theme.groupLabel": "フルーツテーマ",
   "theme.optionLabel": "{{label}}テーマ",
-  "event.merged": "合体！{{fruit}}ができた！",
-  "scoreboard.heroLabel": "スコア",
-  "scoreboard.heroSub": "最高フルーツ: {{bestFruit}} · 合体{{merges}}回",
-  "scoreboard.heroSubEmpty": "まだプレイしていません",
-  "scoreboard.bestScore": "歴代最高",
-  "scoreboard.bestFruit": "最高フルーツ",
-  "scoreboard.gamesPlayed": "プレイ回数",
-  "scoreboard.totalMerges": "合体回数"
+  "event.merged": "合体！{{fruit}}ができた！"
 }

@@ -38,11 +38,6 @@ import { CardDeckProvider } from "./src/game/_shared/decks/CardDeckContext";
 import { BlackjackGameProvider } from "./src/game/blackjack/BlackjackGameContext";
 import { HeartsRoundsProvider } from "./src/game/hearts/RoundsContext";
 import { YachtScorecardProvider } from "./src/game/yacht/ScorecardContext";
-import { Twenty48ScoreboardProvider } from "./src/game/twenty48/Twenty48ScoreboardContext";
-import { SolitaireScoreboardProvider } from "./src/game/solitaire/SolitaireScoreboardContext";
-import { SudokuScoreboardProvider } from "./src/game/sudoku/SudokuScoreboardContext";
-import { CascadeScoreboardProvider } from "./src/game/cascade/CascadeScoreboardContext";
-import { MahjongScoreboardProvider } from "./src/game/mahjong/MahjongScoreboardContext";
 import { SessionLogger } from "./src/components/FeedbackWidget/SessionLogger";
 import { installSentryConsoleErrorCapture } from "./src/utils/sentryConsoleError";
 import {
@@ -221,7 +216,7 @@ const LazyLeaderboardScreen = withSuspense(LazyScreens.Leaderboard, "leaderboard
 const LazyGameStatsScreen = withSuspense(LazyScreens.GameStats, "game_stats");
 const LazyGameDetailScreen = withSuspense(LazyScreens.GameDetail, "game_detail");
 const LazySettingsScreen = withSuspense(LazyScreens.Settings, "settings");
-const LazyScoreboardScreen = withSuspense(LazyScreens.Scoreboard, "scoreboard");
+const LazyScorecardScreen = withSuspense(LazyScreens.Scorecard, "scorecard");
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
@@ -254,7 +249,7 @@ function LobbyStack() {
       <HomeStack.Screen name="Leaderboard" component={LazyLeaderboardScreen} />
       {/* One game's stats from /stats/me (#2635), from every game's ⋯ menu. */}
       <HomeStack.Screen name="GameStats" component={LazyGameStatsScreen} />
-      <HomeStack.Screen name="Scoreboard" component={LazyScoreboardScreen} />
+      <HomeStack.Screen name="Scorecard" component={LazyScorecardScreen} />
     </HomeStack.Navigator>
   );
 }
@@ -311,21 +306,11 @@ function AppInner() {
               <BlackjackGameProvider>
                 <HeartsRoundsProvider>
                   <YachtScorecardProvider>
-                    <Twenty48ScoreboardProvider>
-                      <SolitaireScoreboardProvider>
-                        <SudokuScoreboardProvider>
-                          <CascadeScoreboardProvider>
-                            <MahjongScoreboardProvider>
-                              <NavigationContainer>
-                                <Stack.Navigator screenOptions={{ headerShown: false }}>
-                                  <Stack.Screen name="MainTabs" component={MainTabs} />
-                                </Stack.Navigator>
-                              </NavigationContainer>
-                            </MahjongScoreboardProvider>
-                          </CascadeScoreboardProvider>
-                        </SudokuScoreboardProvider>
-                      </SolitaireScoreboardProvider>
-                    </Twenty48ScoreboardProvider>
+                    <NavigationContainer>
+                      <Stack.Navigator screenOptions={{ headerShown: false }}>
+                        <Stack.Screen name="MainTabs" component={MainTabs} />
+                      </Stack.Navigator>
+                    </NavigationContainer>
                   </YachtScorecardProvider>
                 </HeartsRoundsProvider>
               </BlackjackGameProvider>

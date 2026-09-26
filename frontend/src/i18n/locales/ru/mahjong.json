@@ -44,10 +44,5 @@
   "layout.concentric_squares": "Концентрические квадраты",
   "layoutSelect.title": "Выберите раскладку",
   "layoutSelect.continue": "Продолжить",
-  "layoutSelect.lockedLayout": "{{name}} — закрыто",
-  "scoreboard.title": "Рекорды",
-  "scoreboard.rank": "Место",
-  "scoreboard.player": "Игрок",
-  "scoreboard.score": "Очки",
-  "scoreboard.empty": "Результатов пока нет — будьте первым!"
+  "layoutSelect.lockedLayout": "{{name}} — закрыто"
 }

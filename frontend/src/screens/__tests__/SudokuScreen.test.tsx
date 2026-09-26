@@ -12,7 +12,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import SudokuScreen from "../SudokuScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
-import { SudokuScoreboardProvider } from "../../game/sudoku/SudokuScoreboardContext";
 import * as sudokuEngine from "../../game/sudoku/engine";
 import { enterDigit, loadPuzzle, selectCell } from "../../game/sudoku/engine";
 import { saveGame, saveStats, EMPTY_SUDOKU_STATS } from "../../game/sudoku/storage";
@@ -109,9 +108,7 @@ function fillAllExcept(state: SudokuState, skip: { row: number; col: number }): 
 async function renderScreen() {
   return await render(
     <ThemeProvider>
-      <SudokuScoreboardProvider>
-        <SudokuScreen />
-      </SudokuScoreboardProvider>
+      <SudokuScreen />
     </ThemeProvider>
   );
 }
@@ -638,12 +635,39 @@ describe("SudokuScreen — result card (#2511)", () => {
       ...EMPTY_SUDOKU_STATS,
       classic: {
         ...EMPTY_SUDOKU_STATS.classic,
-        easy: { bestTimeS: 120, gamesSolved: 1 },
+        easy: { bestTimeS: 120 },
       },
     });
     const r = await solvePuzzle({ elapsedMs: 65_000 });
     const card = within(r.getByTestId("sudoku-result"));
     expect(card.getByText("New best")).toBeTruthy();
+  });
+
+  // #2636: the device keeps only each puzzle kind's best time, for the card.
+  it("caches a better time as the best, without the old counters", async () => {
+    await AsyncStorage.setItem(
+      "sudoku_stats_v1",
+      JSON.stringify({ classic: { easy: { bestTimeS: 120, gamesSolved: 4 } } })
+    );
+    await solvePuzzle({ elapsedMs: 65_000 });
+    await waitFor(async () => {
+      const stored = JSON.parse((await AsyncStorage.getItem("sudoku_stats_v1")) ?? "{}");
+      expect(stored.classic.easy).toEqual({ bestTimeS: 65 });
+    });
+  });
+
+  it("writes nothing when the solve is slower than the best", async () => {
+    // An older build's record, counters and all: it must be left as it is.
+    const stored = JSON.stringify({ classic: { easy: { bestTimeS: 30, gamesSolved: 4 } } });
+    await AsyncStorage.setItem("sudoku_stats_v1", stored);
+    const r = await solvePuzzle({ elapsedMs: 65_000 });
+    const card = within(r.getByTestId("sudoku-result"));
+    expect(card.queryByText("New best")).toBeNull();
+    expect(card.getByText("00:30")).toBeTruthy(); // the best, read from the old record
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(await AsyncStorage.getItem("sudoku_stats_v1")).toBe(stored);
   });
 
   it("reports the real play time to game sync instead of 0", async () => {
@@ -760,5 +784,16 @@ describe("SudokuScreen — stats (#2635)", () => {
       await fireEvent.press(r.getByText("Stats"));
     });
     expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "sudoku" });
+  });
+
+  it("the ⋯ menu has no Scorecard: Stats replaced the old Scoreboard (#2636)", async () => {
+    await saveGame(loadPuzzle("hard", "mini", () => 0));
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("More options"));
+    });
+    expect(r.getByText("Stats")).toBeTruthy();
+    expect(r.queryByText(/Scoreboard|Scorecard/)).toBeNull();
   });
 });

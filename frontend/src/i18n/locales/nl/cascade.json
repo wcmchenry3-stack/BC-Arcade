@@ -11,12 +11,5 @@
   "preview.comingUp": "Komt eraan: {{name}}",
   "theme.groupLabel": "Fruitset thema",
   "theme.optionLabel": "{{label}} thema",
-  "event.merged": "Versmolten! {{fruit}} gemaakt.",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Beste fruit: {{bestFruit}} · {{merges}} combo's",
-  "scoreboard.heroSubEmpty": "Nog geen spellen gespeeld",
-  "scoreboard.bestScore": "Beste ooit",
-  "scoreboard.bestFruit": "Beste fruit",
-  "scoreboard.gamesPlayed": "Aantal spellen",
-  "scoreboard.totalMerges": "Totaal combo's"
+  "event.merged": "Versmolten! {{fruit}} gemaakt."
 }

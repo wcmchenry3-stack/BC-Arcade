@@ -14,12 +14,5 @@
   "win.body": "Vous avez atteint 2048 ! Vous pouvez continuer pour un meilleur score.",
   "controls.keyboardHint": "Ou utilise les touches fléchées",
   "stats.highestTile": "Tuile max.",
-  "stats.timePlayed": "Temps de jeu",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Meilleure tuile : {{bestTile}} · {{moves}} coups",
-  "scoreboard.heroSubEmpty": "Aucune partie jouée",
-  "scoreboard.bestScore": "Meilleur score",
-  "scoreboard.bestTile": "Meilleure tuile",
-  "scoreboard.gamesPlayed": "Parties jouées",
-  "scoreboard.gamesWon": "Parties gagnées"
+  "stats.timePlayed": "Temps de jeu"
 }

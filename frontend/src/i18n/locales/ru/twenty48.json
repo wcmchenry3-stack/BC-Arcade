@@ -14,12 +14,5 @@
   "win.body": "Вы достигли 2048! Можете продолжить игру для более высокого счёта.",
   "controls.keyboardHint": "Или используйте клавиши со стрелками",
   "stats.highestTile": "Макс. плитка",
-  "stats.timePlayed": "Время игры",
-  "scoreboard.heroLabel": "СЧЁТ",
-  "scoreboard.heroSub": "Лучшая плитка: {{bestTile}} · ходов: {{moves}}",
-  "scoreboard.heroSubEmpty": "Игр пока не было",
-  "scoreboard.bestScore": "Лучший счёт",
-  "scoreboard.bestTile": "Лучшая плитка",
-  "scoreboard.gamesPlayed": "Игр сыграно",
-  "scoreboard.gamesWon": "Игр выиграно"
+  "stats.timePlayed": "Время игры"
 }

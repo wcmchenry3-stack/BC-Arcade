@@ -44,10 +44,5 @@
   "layout.concentric_squares": "संकेंद्रित वर्ग",
   "layoutSelect.title": "लेआउट चुनें",
   "layoutSelect.continue": "जारी रखें",
-  "layoutSelect.lockedLayout": "{{name}} — लॉक",
-  "scoreboard.title": "शीर्ष स्कोर",
-  "scoreboard.rank": "रैंक",
-  "scoreboard.player": "खिलाड़ी",
-  "scoreboard.score": "स्कोर",
-  "scoreboard.empty": "अभी कोई स्कोर नहीं — पहले बनें!"
+  "layoutSelect.lockedLayout": "{{name}} — लॉक"
 }

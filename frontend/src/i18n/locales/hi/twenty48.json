@@ -14,12 +14,5 @@
   "win.body": "आप 2048 तक पहुँच गए! उच्च स्कोर के लिए खेलना जारी रख सकते हैं।",
   "controls.keyboardHint": "या तीर कुंजियों का उपयोग करें",
   "stats.highestTile": "सबसे बड़ी टाइल",
-  "stats.timePlayed": "खेलने का समय",
-  "scoreboard.heroLabel": "स्कोर",
-  "scoreboard.heroSub": "सर्वश्रेष्ठ टाइल: {{bestTile}} · {{moves}} मूव्स",
-  "scoreboard.heroSubEmpty": "अभी तक कोई गेम नहीं खेला",
-  "scoreboard.bestScore": "सर्वश्रेष्ठ स्कोर",
-  "scoreboard.bestTile": "सर्वश्रेष्ठ टाइल",
-  "scoreboard.gamesPlayed": "खेले गए गेम",
-  "scoreboard.gamesWon": "जीते गए गेम"
+  "stats.timePlayed": "खेलने का समय"
 }

@@ -30,12 +30,5 @@
   "a11y.boardRegion": "Tablero de solitario",
   "a11y.invalidMove": "Movimiento inválido",
   "error.saveFailed": "No se pudo guardar tu partida.",
-  "error.loadFailed": "No se pudo reanudar la partida guardada.",
-  "scoreboard.heroLabel": "TIEMPO",
-  "scoreboard.heroSub": "{{moves}} movimientos · {{foundations}} de 4 completas",
-  "scoreboard.heroSubEmpty": "Aún no has jugado ninguna partida",
-  "scoreboard.bestTime": "Mejor tiempo",
-  "scoreboard.bestMoves": "Menos movimientos",
-  "scoreboard.gamesPlayed": "Partidas jugadas",
-  "scoreboard.gamesWon": "Partidas ganadas"
+  "error.loadFailed": "No se pudo reanudar la partida guardada."
 }

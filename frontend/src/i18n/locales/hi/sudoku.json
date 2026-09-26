@@ -25,13 +25,6 @@
   "hud.errors": "{{count}} गलतियाँ",
   "hud.errorsOne": "1 गलती",
   "hud.elapsed": "समय बीता {{time}}",
-  "scoreboard.heroLabel": "समय बीता",
-  "scoreboard.heroSub": "{{difficulty}} · {{errors}} गलतियाँ",
-  "scoreboard.heroSubEmpty": "अभी तक कोई गेम नहीं खेला",
-  "scoreboard.easyBestTime": "सबसे अच्छा समय (आसान)",
-  "scoreboard.mediumBestTime": "सबसे अच्छा समय (मध्यम)",
-  "scoreboard.hardBestTime": "सबसे अच्छा समय (कठिन)",
-  "scoreboard.gamesSolved": "सुलझाए गए पज़ल",
   "action.quickRestart": "त्वरित पुनः आरंभ",
   "newGame.title": "नया खेल"
 }

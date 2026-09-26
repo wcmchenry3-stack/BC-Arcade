@@ -720,8 +720,8 @@
     "notes": null
   },
   "score.heroLabel": {
-    "component": "BlackjackScoreboard",
-    "description": "Hero label above the primary scoreboard stat (net chip profit/loss for the session).",
+    "component": "BlackjackScorecard",
+    "description": "Hero label above the primary scorecard stat (net chip profit/loss for the session).",
     "tone": "neutral",
     "characterLimit": 14,
     "placeholders": [],
@@ -729,8 +729,8 @@
     "notes": null
   },
   "score.plLine": {
-    "component": "BlackjackScoreboard",
-    "description": "Displays the session's net profit/loss in chips as the scoreboard hero value.",
+    "component": "BlackjackScorecard",
+    "description": "Displays the session's net profit/loss in chips as the scorecard hero value.",
     "tone": "neutral",
     "characterLimit": 28,
     "placeholders": ["{{amount}}"],
@@ -738,8 +738,8 @@
     "notes": null
   },
   "score.subLine": {
-    "component": "BlackjackScoreboard",
-    "description": "Subtitle under the scoreboard hero showing hands played and win rate.",
+    "component": "BlackjackScorecard",
+    "description": "Subtitle under the scorecard hero showing hands played and win rate.",
     "tone": "neutral",
     "characterLimit": 65,
     "placeholders": ["{{handsPlayed}}", "{{winRate}}"],
@@ -747,7 +747,7 @@
     "notes": null
   },
   "score.subLineEmpty": {
-    "component": "BlackjackScoreboard",
+    "component": "BlackjackScorecard",
     "description": "Subtitle shown when no hands have been played yet this session.",
     "tone": "neutral",
     "characterLimit": 28,
@@ -756,7 +756,7 @@
     "notes": null
   },
   "score.chipBalance": {
-    "component": "BlackjackScoreboard",
+    "component": "BlackjackScorecard",
     "description": "Stat tile label for the player's current chip balance.",
     "tone": "neutral",
     "characterLimit": 22,
@@ -765,7 +765,7 @@
     "notes": null
   },
   "score.biggestWin": {
-    "component": "BlackjackScoreboard",
+    "component": "BlackjackScorecard",
     "description": "Stat tile label for the biggest single-hand win this session.",
     "tone": "neutral",
     "characterLimit": 26,
@@ -774,7 +774,7 @@
     "notes": null
   },
   "score.handsWon": {
-    "component": "BlackjackScoreboard",
+    "component": "BlackjackScorecard",
     "description": "Stat tile label for the number of hands won this session.",
     "tone": "neutral",
     "characterLimit": 22,
@@ -783,7 +783,7 @@
     "notes": null
   },
   "score.handsLost": {
-    "component": "BlackjackScoreboard",
+    "component": "BlackjackScorecard",
     "description": "Stat tile label for the number of hands lost this session.",
     "tone": "neutral",
     "characterLimit": 24,
@@ -792,7 +792,7 @@
     "notes": null
   },
   "score.blackjacks": {
-    "component": "BlackjackScoreboard",
+    "component": "BlackjackScorecard",
     "description": "Stat tile label for the number of natural blackjacks dealt this session.",
     "tone": "neutral",
     "characterLimit": 18,
@@ -801,7 +801,7 @@
     "notes": null
   },
   "score.busts": {
-    "component": "BlackjackScoreboard",
+    "component": "BlackjackScorecard",
     "description": "Stat tile label for the number of hands that busted this session.",
     "tone": "neutral",
     "characterLimit": 16,

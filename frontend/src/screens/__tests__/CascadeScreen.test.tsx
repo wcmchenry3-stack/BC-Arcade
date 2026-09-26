@@ -11,7 +11,6 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
 import CascadeScreen from "../CascadeScreen";
-import { CascadeScoreboardProvider } from "../../game/cascade/CascadeScoreboardContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
 
@@ -204,11 +203,7 @@ afterEach(() => {
 async function renderScreen() {
   let renderer!: ReturnType<typeof create>;
   await act(() => {
-    renderer = create(
-      <CascadeScoreboardProvider>
-        <CascadeScreen />
-      </CascadeScoreboardProvider>
-    );
+    renderer = create(<CascadeScreen />);
   });
 
   // Trigger onLayout so scale > 0 and the game area renders
@@ -727,5 +722,19 @@ describe("CascadeScreen — ⋯ menu (#2635)", () => {
       shell?.props.onOpenStats();
     });
     expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "cascade" });
+  });
+
+  it("has no Scorecard item: Stats replaced the old Scoreboard (#2636)", async () => {
+    const renderer = await renderScreen();
+    const more = renderer.root.findAll(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (node: any) =>
+        node.props.accessibilityLabel === "More options" && typeof node.props.onPress === "function"
+    )[0];
+    await act(() => {
+      more?.props.onPress();
+    });
+    expect(renderer.root.findAllByProps({ testID: "nav-menu-stats" }).length).toBeGreaterThan(0);
+    expect(JSON.stringify(renderer.toJSON())).not.toMatch(/Scoreboard|Scorecard/);
   });
 });

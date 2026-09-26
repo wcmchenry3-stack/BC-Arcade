@@ -10,7 +10,7 @@ import {
   winnerColumn,
 } from "./yachtScorecardModel";
 
-export interface YachtScoreboardSide {
+export interface YachtScorecardSide {
   readonly scores: Readonly<Record<string, number | null>>;
   readonly upperSubtotal: number;
   readonly upperBonus: number;
@@ -19,9 +19,9 @@ export interface YachtScoreboardSide {
 }
 
 interface Props {
-  readonly you: YachtScoreboardSide;
+  readonly you: YachtScorecardSide;
   /** Opponent side. When null/undefined the variant renders a single-column "You" layout. */
-  readonly opponent?: YachtScoreboardSide | null;
+  readonly opponent?: YachtScorecardSide | null;
   /** Display label for "You" — defaults to the i18n key "yacht:score.you". */
   readonly youLabel?: string;
   /** Display label for the opponent — only rendered when `opponent` is provided. */
@@ -55,7 +55,7 @@ const CATEGORY_KEY: Record<string, string> = {
   chance: "yacht:category.chance",
 };
 
-export default function YachtScoreboard({ you, opponent, youLabel, opponentLabel }: Props) {
+export default function YachtScorecard({ you, opponent, youLabel, opponentLabel }: Props) {
   const { t } = useTranslation(["yacht", "common"]);
   const { colors } = useTheme();
   const hasOpponent = !!opponent;

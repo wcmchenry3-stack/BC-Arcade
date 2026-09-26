@@ -44,10 +44,5 @@
   "layout.concentric_squares": "Carrés concentriques",
   "layoutSelect.title": "Disposition",
   "layoutSelect.continue": "Continuer",
-  "layoutSelect.lockedLayout": "{{name}} — verrouillé",
-  "scoreboard.title": "Records",
-  "scoreboard.rank": "Rang",
-  "scoreboard.player": "Joueur",
-  "scoreboard.score": "Pointage",
-  "scoreboard.empty": "Aucun pointage — soyez le premier!"
+  "layoutSelect.lockedLayout": "{{name}} — verrouillé"
 }

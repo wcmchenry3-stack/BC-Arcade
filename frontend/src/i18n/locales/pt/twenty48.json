@@ -14,12 +14,5 @@
   "win.body": "Você alcançou 2048! Você pode continuar jogando para uma pontuação maior.",
   "controls.keyboardHint": "Ou use as setas do teclado",
   "stats.highestTile": "Maior Peça",
-  "stats.timePlayed": "Tempo Jogado",
-  "scoreboard.heroLabel": "PONTUAÇÃO",
-  "scoreboard.heroSub": "Melhor peça: {{bestTile}} · {{moves}} movimentos",
-  "scoreboard.heroSubEmpty": "Nenhum jogo jogado ainda",
-  "scoreboard.bestScore": "Melhor Pontuação",
-  "scoreboard.bestTile": "Melhor Peça",
-  "scoreboard.gamesPlayed": "Jogos Jogados",
-  "scoreboard.gamesWon": "Jogos Vencidos"
+  "stats.timePlayed": "Tempo Jogado"
 }
