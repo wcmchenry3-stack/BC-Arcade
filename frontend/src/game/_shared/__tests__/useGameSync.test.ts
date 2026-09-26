@@ -1081,7 +1081,7 @@ describe("useGameSync", () => {
       await act(() => {
         result.current.start();
         result.current.markStarted();
-        result.current.complete({ outcome: "loss" });
+        result.current.complete({ outcome: "completed" });
       });
       await advance(5 * MIN);
       await act(() => {
@@ -1095,7 +1095,7 @@ describe("useGameSync", () => {
       await advance(7_000);
       await act(() => {
         result.current.markStarted();
-        result.current.complete({ outcome: "loss" });
+        result.current.complete({ outcome: "completed" });
       });
       expect(sentSummary(1).durationMs).toBe(7_000);
     });

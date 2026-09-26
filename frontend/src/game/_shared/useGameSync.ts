@@ -98,6 +98,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { foregroundNow } from "./foregroundClock";
+import { assertOutcomeAllowed } from "./outcomeGuard";
 import { gameEventClient, EnqueueEventInput } from "./gameEventClient";
 import { CompleteSummary } from "./pendingGamesStore";
 import type { GameType } from "./types";
@@ -261,10 +262,20 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     // to persist for a game that never registered a snapshot.
     const gid = gameIdRef.current;
     if (gid) {
+      let won = false;
       try {
-        if (snapshotRef.current().outcome === "win") gameEventClient.setProgressOutcome(gid, "win");
+        won = snapshotRef.current().outcome === "win";
       } catch {
         // Isolation: a broken getter must not block the window update.
+      }
+      if (won) {
+        // A game with no winner must never leave a "win" for the sweep (#2642).
+        assertOutcomeAllowed(gameTypeRef.current, "win", "progressSnapshot");
+        try {
+          gameEventClient.setProgressOutcome(gid, "win");
+        } catch {
+          // Isolation.
+        }
       }
     }
     if (!windowRunningRef.current) return;
@@ -309,6 +320,8 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
         // Isolation: a broken getter must not lose the abandon.
       }
       const outcome = snapshot.outcome === "win" ? "win" : "abandoned";
+      // Outside the isolation below, like complete()'s (#2642).
+      assertOutcomeAllowed(gameTypeRef.current, outcome, "abandon");
       const summary: CompleteSummary = { outcome };
       if (snapshot.result) summary.result = snapshot.result;
       const durationMs = isKnownDuration(snapshot.durationMs) ? snapshot.durationMs : readWindow();
@@ -414,6 +427,8 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
 
   const complete = useCallback(
     (summary: CompleteSummary, payload?: Record<string, unknown>): string | null => {
+      // Outside the isolation below: in development a wrong outcome must fail loudly (#2642).
+      assertOutcomeAllowed(gameTypeRef.current, summary.outcome, "complete");
       const gid = gameIdRef.current;
       if (!gid || completedRef.current) return null;
       // The game's own durationMs > 0 wins; otherwise the active-play window

@@ -1,26 +1,30 @@
 /**
- * Reporting rules, played on one screen (#2642, epic #2519 decisions 11 and 12).
+ * Reporting rules, played on real screens (#2642, epic #2519 decisions 11 and 12).
  *
- * `game/_shared/__tests__/reportingInvariants.test.ts` checks every game's
- * reporting from its source. This is its sanity check on a real screen, one
- * check per path: FreeCell, a game with no winner, is played to a win, and
- * restarted and left (unmounted) mid-game.
+ * The rule "a game with no winner never records win / loss / push" is
+ * enforced where every outcome is written (`game/_shared/outcomeGuard.ts`,
+ * run by `useGameSync` and `gameEventClient`), so every screen suite that
+ * drives a finish path checks it. This suite and its sibling
+ * `reportingInvariants.twenty48.screen.test.ts` (a game with a winner; it
+ * needs the jsdom environment for the keyboard) check the rest, one check
+ * per path:
  *
- *   - A game with no winner records only `completed` / `kept_playing` /
- *     `abandoned`, and a win is never `abandoned`.
- *   - Restart and unmount record `abandoned`.
- *   - The result card asks for a rank (`GET /games/{id}/rank`, #2677) after
- *     the win, and never after an abandon.
+ *   - FreeCell (no winner): a win records `completed` and the result card
+ *     asks for its rank; New Game and leaving (unmount) mid-game record
+ *     `abandoned` and never ask.
+ *
+ * "Never asks" is checked on the rank lookup itself (`GET /games/{id}/rank`),
+ * so it holds whichever way the screen got the id: from `complete()`, or
+ * from `getGameId()` before the abandon (FreeCell's New Game reads it there).
  */
 
-import * as fs from "fs";
-import * as path from "path";
 import React from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import FreeCellScreen from "../FreeCellScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
+import { HAS_WINNER, LIFECYCLE_OUTCOMES } from "../../api/vocab";
 import type { FreeCellState } from "../../game/freecell/types";
 
 jest.mock("expo-blur", () => ({
@@ -30,6 +34,7 @@ jest.mock("expo-linear-gradient", () => ({
   LinearGradient: ({ children }: { children?: React.ReactNode }) => children,
 }));
 jest.mock("@react-navigation/native", () => ({
+  ...jest.requireActual("@react-navigation/native"),
   useNavigation: () => ({
     popToTop: jest.fn(),
     goBack: jest.fn(),
@@ -44,8 +49,7 @@ jest.mock("../../game/freecell/storage", () => ({
   loadStats: jest.fn().mockResolvedValue({ bestMoves: 0, gamesPlayed: 0, gamesWon: 0 }),
   saveStats: jest.fn().mockResolvedValue(undefined),
 }));
-
-import { loadGame } from "../../game/freecell/storage";
+import { loadGame as loadFreeCell } from "../../game/freecell/storage";
 
 // The result card's rank lookup (sessionBoardAdapter, #2677).
 const mockGetGameRank = jest.fn();
@@ -58,8 +62,12 @@ jest.mock("../../api/players", () => ({
 jest.mock("../../game/_shared/flushQueuedGames", () => ({
   flushQueuedGames: jest.fn(() => Promise.resolve()),
 }));
+jest.mock("../../game/_shared/displayNameSync", () => ({
+  ...jest.requireActual("../../game/_shared/displayNameSync"),
+  flushDisplayNameSync: jest.fn(() => Promise.resolve(true)),
+}));
 
-// useGameSync is real; the client it records through is not.
+// useGameSync (and its outcome guard) is real; the client it records through is not.
 const mockStartGame = jest.fn();
 const mockCompleteGame = jest.fn();
 jest.mock("../../game/_shared/gameEventClient", () => ({
@@ -78,10 +86,34 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
   },
 }));
 
-/** What a game with no winner may record (backend `vocab.GameOutcome`). */
-const NO_WINNER_OUTCOMES = ["completed", "kept_playing", "abandoned"];
+const GAME_ID = "session-under-test";
 
-const GAME_ID = "freecell-game";
+function recordedOutcomes(): unknown[] {
+  return mockCompleteGame.mock.calls.map((call) => (call[1] as { outcome: unknown }).outcome);
+}
+
+/** The card never asked for this session's rank, nor any other. */
+function expectNoRankLookup() {
+  expect(mockGetGameRank.mock.calls.map(([id]) => id)).not.toContain(GAME_ID);
+  expect(mockGetGameRank).not.toHaveBeenCalled();
+}
+
+beforeEach(async () => {
+  mockStartGame.mockReset();
+  mockStartGame.mockReturnValue(GAME_ID);
+  mockCompleteGame.mockReset();
+  mockGetGameRank.mockReset();
+  mockGetGameRank.mockResolvedValue({ ranked: true, rank: 2, is_best: true, reason: null });
+  await AsyncStorage.clear();
+  resetDisplayNameCacheForTests();
+  // A named player: the card asks for the rank as soon as a game ends.
+  await AsyncStorage.setItem("player_display_name", "Riley");
+});
+
+// ---------------------------------------------------------------------------
+// FreeCell: no winner
+// ---------------------------------------------------------------------------
+
 /** FreeCell's auto-complete plays one move per step. */
 const AUTO_STEP_MS = 120;
 
@@ -113,7 +145,7 @@ function nearlyWon(spadesDone: number): FreeCellState {
 
 /** Loads a board `steps` auto-complete moves from a win and plays one move. */
 async function playFreeCell(steps: number) {
-  (loadGame as jest.Mock).mockResolvedValue(nearlyWon(13 - steps));
+  (loadFreeCell as jest.Mock).mockResolvedValue(nearlyWon(13 - steps));
   const r = await render(
     React.createElement(ThemeProvider, null, React.createElement(FreeCellScreen))
   );
@@ -125,59 +157,40 @@ async function playFreeCell(steps: number) {
 }
 
 /** Lets any rank lookup, and every retry it could schedule, run. */
-async function settle() {
+async function settleFakeTimers() {
   await act(async () => {
     jest.advanceTimersByTime(120_000);
   });
 }
 
-function recordedOutcomes(): unknown[] {
-  return mockCompleteGame.mock.calls.map((call) => (call[1] as { outcome: unknown }).outcome);
-}
-
-describe("reporting invariants: FreeCell, played", () => {
+describe("FreeCell (no winner)", () => {
   beforeAll(() => {
     jest.useFakeTimers();
   });
   afterAll(() => {
     jest.useRealTimers();
   });
-
-  beforeEach(async () => {
-    mockStartGame.mockReset();
-    mockStartGame.mockReturnValue(GAME_ID);
-    mockCompleteGame.mockReset();
-    mockGetGameRank.mockReset();
-    mockGetGameRank.mockResolvedValue({ ranked: true, rank: 2, is_best: true, reason: null });
-    await AsyncStorage.clear();
-    resetDisplayNameCacheForTests();
-    // A named player: the card asks for the rank as soon as a game ends.
-    await AsyncStorage.setItem("player_display_name", "Riley");
-  });
-
   afterEach(async () => {
     await act(async () => {
       jest.runOnlyPendingTimers();
     });
-    (loadGame as jest.Mock).mockResolvedValue(null);
+    (loadFreeCell as jest.Mock).mockResolvedValue(null);
   });
 
-  it("is a game with no winner (backend freecell module)", () => {
-    const module = path.resolve(__dirname, "../../../../backend/freecell/module.py");
-    expect(fs.readFileSync(module, "utf8")).toMatch(/^\s*has_winner\s*=\s*False\b/m);
+  it("is a game with no winner", () => {
+    expect(HAS_WINNER.freecell).toBe(false);
   });
 
-  it("a win records a no-winner outcome, never abandoned, and asks for its rank", async () => {
+  it("a win records completed and asks for its rank", async () => {
     await playFreeCell(1);
     await waitFor(() => expect(mockCompleteGame).toHaveBeenCalledTimes(1));
-    const [outcome] = recordedOutcomes();
-    expect(NO_WINNER_OUTCOMES).toContain(outcome);
-    expect(outcome).not.toBe("abandoned");
-    await settle();
+    expect(recordedOutcomes()).toEqual(["completed"]);
+    expect(LIFECYCLE_OUTCOMES).toContain(recordedOutcomes()[0]);
+    await settleFakeTimers();
     expect(mockGetGameRank).toHaveBeenCalledWith(GAME_ID);
   });
 
-  it("a restart mid-game records abandoned and asks for no rank", async () => {
+  it("New Game mid-game records abandoned and asks for no rank", async () => {
     const r = await playFreeCell(2);
     await act(async () => {
       await fireEvent.press(r.getByLabelText("More options"));
@@ -189,8 +202,8 @@ describe("reporting invariants: FreeCell, played", () => {
       await fireEvent.press(r.getByLabelText("Start New"));
     });
     expect(recordedOutcomes()).toEqual(["abandoned"]);
-    await settle();
-    expect(mockGetGameRank).not.toHaveBeenCalled();
+    await settleFakeTimers();
+    expectNoRankLookup();
   });
 
   it("leaving mid-game (unmount) records abandoned and asks for no rank", async () => {
@@ -198,7 +211,7 @@ describe("reporting invariants: FreeCell, played", () => {
     expect(mockStartGame).toHaveBeenCalledTimes(1);
     await r.unmount();
     expect(recordedOutcomes()).toEqual(["abandoned"]);
-    await settle();
-    expect(mockGetGameRank).not.toHaveBeenCalled();
+    await settleFakeTimers();
+    expectNoRankLookup();
   });
 });
