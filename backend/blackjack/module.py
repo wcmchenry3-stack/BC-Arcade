@@ -14,13 +14,10 @@ from vocab import GameType
 class BlackjackModule:
     """GameModule implementation for Blackjack.
 
-    Stats shape differences from the generic pattern:
-    - ``best``  → moved to ``extras.best_chips``
-    - ``avg``   → dropped (chip counts don't aggregate meaningfully)
-    - ``extras.current_chips`` ← ``latest_score`` (chips at end of last session)
-    - ``extras`` also carries the run aggregates from the latest row's metadata
-      (#2620). ``games/service.py`` mirrors ``extras`` onto the deprecated
-      top-level ``best_chips`` … ``current_table`` fields until #2644.
+    Stats shape: Blackjack's figures are all in ``extras``:
+    - ``best_chips`` ← ``best`` (the highest closing balance)
+    - ``current_chips`` ← ``latest_score`` (chips at end of last session)
+    - the run aggregates from the latest row's metadata (#2620)
     """
 
     game_type = GameType.BLACKJACK
@@ -41,9 +38,6 @@ class BlackjackModule:
     def stats_shape(self, raw_stats: dict) -> dict:
         meta: dict = raw_stats.get("metadata") or {}
         return {
-            "played": raw_stats["played"],
-            "best": None,
-            "avg": None,
             "last_played_at": raw_stats["last_played_at"],
             "extras": {
                 "best_chips": raw_stats["best"],

@@ -97,10 +97,9 @@ async def test_stats_me_aggregates_per_game(client: TestClient) -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["total_games"] == 3
-    assert body["by_game"]["yacht"]["played"] == 2
-    assert body["by_game"]["yacht"]["best"] == 300
-    assert body["by_game"]["yacht"]["avg"] == 200.0
-    assert body["by_game"]["twenty48"]["played"] == 1
+    assert body["by_game"]["yacht"]["sessions"] == 2
+    assert body["by_game"]["yacht"]["best_value"] == 300
+    assert body["by_game"]["twenty48"]["sessions"] == 1
     assert body["favorite_game"] == "yacht"
 
 
@@ -114,9 +113,9 @@ async def test_stats_me_blackjack_uses_chip_shape(client: TestClient) -> None:
     r = client.get("/stats/me", headers=_headers(sid))
     body = r.json()
     bj = body["by_game"]["blackjack"]
-    assert bj["played"] == 2
-    assert bj["best_chips"] == 2400
-    assert bj["current_chips"] == 2400
+    assert bj["sessions"] == 2
+    assert bj["extras"]["best_chips"] == 2400
+    assert bj["extras"]["current_chips"] == 2400
     # non-blackjack fields should be absent or null on this entry
     assert bj.get("best") is None
     assert bj.get("avg") is None
@@ -181,9 +180,8 @@ async def test_abandoned_game_is_played_but_not_scored(client: TestClient) -> No
     body = client.get("/stats/me", headers=_headers(sid)).json()
     sudoku = body["by_game"]["sudoku"]
 
-    assert sudoku["played"] == 2, "abandons are a lifecycle fact and still count as played"
-    assert sudoku["best"] == 100, "the abandoned 300 must not become the best score"
-    assert sudoku["avg"] == 100.0, "the abandoned 300 must not drag the average"
+    assert sudoku["sessions"] == 2, "abandons are a lifecycle fact and still count as played"
+    assert sudoku["best_value"] == 100, "the abandoned 300 must not become the best score"
 
 
 @pytest.mark.asyncio
@@ -203,7 +201,7 @@ async def test_abandoned_game_earns_no_xp_over_the_wire(client: TestClient) -> N
 
     after = client.get("/stats/me", headers=_headers(sid)).json()
     assert after["arcade_xp"] == baseline, "quitting five games must earn nothing"
-    assert after["by_game"]["sudoku"]["played"] == 6
+    assert after["by_game"]["sudoku"]["sessions"] == 6
 
 
 @pytest.mark.asyncio
@@ -234,7 +232,7 @@ async def test_non_abandoned_outcomes_still_score(client: TestClient, outcome: s
     _create_and_complete(client, sid, game_type="twenty48", final_score=2048, outcome=outcome)
 
     body = client.get("/stats/me", headers=_headers(sid)).json()
-    assert body["by_game"]["twenty48"]["best"] == 2048
+    assert body["by_game"]["twenty48"]["best_value"] == 2048
     assert body["arcade_xp"] == BASE_XP_PER_GAME + VARIETY_BONUS_PER_GAME_TYPE
 
 
@@ -274,7 +272,7 @@ async def test_games_with_a_winner_record_it_and_still_count(
     assert r.json()["outcome"] == outcome
 
     stats = client.get("/stats/me", headers=_headers(sid)).json()
-    assert stats["by_game"][game_type]["played"] == 1
+    assert stats["by_game"][game_type]["sessions"] == 1
     assert stats["arcade_xp"] == BASE_XP_PER_GAME + VARIETY_BONUS_PER_GAME_TYPE
 
 
@@ -293,8 +291,8 @@ async def test_abandoned_session_does_not_blank_blackjack_current_chips(
     _create_and_complete(client, sid, game_type="blackjack", final_score=50, outcome="abandoned")
 
     bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
-    assert bj["current_chips"] == 2400
-    assert bj["best_chips"] == 2400
+    assert bj["extras"]["current_chips"] == 2400
+    assert bj["extras"]["best_chips"] == 2400
 
 
 @pytest.mark.asyncio
@@ -331,11 +329,13 @@ async def test_abandoned_session_still_supplies_blackjack_run_metadata(
     )
 
     bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
-    assert bj["total_runs"] == 2, "run history must come from the newest row, abandoned or not"
-    assert bj["runs_completed"] == 1
-    assert bj["best_run_chips"] == 2400
+    assert (
+        bj["extras"]["total_runs"] == 2
+    ), "run history must come from the newest row, abandoned or not"
+    assert bj["extras"]["runs_completed"] == 1
+    assert bj["extras"]["best_run_chips"] == 2400
     # ...while the live chip balance still ignores the abandoned table.
-    assert bj["current_chips"] == 2400
+    assert bj["extras"]["current_chips"] == 2400
 
 
 # ---------------------------------------------------------------------------

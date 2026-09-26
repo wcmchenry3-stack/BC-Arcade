@@ -41,12 +41,7 @@ const navigation = { navigate, goBack } as unknown as React.ComponentProps<
 
 function gameStats(overrides: Partial<GameTypeStats> = {}): GameTypeStats {
   return {
-    played: 10,
-    best: null,
-    avg: null,
     last_played_at: "2026-09-20T12:00:00Z",
-    best_chips: null,
-    current_chips: null,
     sessions: 10,
     completed: 8,
     won: null,
@@ -273,32 +268,6 @@ describe("GameStatsScreen — no games yet", () => {
     ).toBeTruthy();
     expect(screen.queryByTestId("game-stats-tile-sessions")).toBeNull();
     expect(screen.getByRole("link", { name: "View leaderboard" })).toBeTruthy();
-  });
-});
-
-describe("GameStatsScreen — a server older than #2620", () => {
-  it("falls back to played for sessions and shows — for what it doesn't send", async () => {
-    mockGetMyStats.mockResolvedValue(
-      response({
-        hearts: {
-          played: 7,
-          best: 40,
-          avg: 30,
-          last_played_at: null,
-          best_chips: null,
-          current_chips: null,
-        },
-      })
-    );
-    await renderStats("hearts");
-    expect(tile("sessions")).toBe("7");
-    expect(tile("completed")).toBe("—");
-    expect(tile("wins")).toBe("—");
-    expect(tile("winRate")).toBe("—");
-    expect(tile("best")).toBe("—");
-    expect(tile("timePlayed")).toBe("—");
-    expect(tile("lastPlayed")).toBe("—");
-    expect(screen.queryByTestId("game-stats-tile-currentStreak")).toBeNull();
   });
 });
 

@@ -22,20 +22,11 @@ export type GameStatsExtras = Record<string, number | string | boolean | null>;
  * in backend/games/schemas.py.
  */
 export interface GameTypeStats {
-  // Deprecated aliases (#2620), kept for current store builds until #2644:
-  // `played` (= `sessions`), `best` (the best final_score in the board's
-  // direction: FreeCell's fewest moves, #2632; the highest elsewhere), `avg`,
-  // and Blackjack's `best_chips` / `current_chips`, which
-  // mirror `extras`. New code reads the comparable fields below.
-  played: number;
-  best: number | null;
-  avg: number | null;
   last_played_at: string | null;
-  best_chips: number | null;
-  current_chips: number | null;
 
-  // Comparable fields (#2620). Optional only because a server older than
-  // #2620 omits them; a current server always sends them.
+  // Comparable fields (#2620). A current server always sends them; they stay
+  // optional so a partial response renders "—" rather than failing. (The
+  // deprecated `played` / `best` / `avg` / Blackjack aliases went in #2644.)
   /** Finished games, abandons included. */
   sessions?: number;
   /** Finished games minus abandons (the Arcade XP input). */

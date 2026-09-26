@@ -96,8 +96,6 @@ async def test_sessions_count_abandons_and_completed_does_not() -> None:
     s = await _game(sid, "cascade")
     assert s.sessions == 4
     assert s.completed_played == 3
-    # The deprecated alias keeps its meaning.
-    assert s.played == 4
 
 
 async def test_open_games_are_not_sessions() -> None:
@@ -270,9 +268,6 @@ async def test_freecell_best_value_is_fewest_moves() -> None:
     s = await _game(sid, "freecell")
     assert s.best_value == 87
     assert s.best_label_key == "moves"
-    # The deprecated alias follows the board direction too (#2632): FreeCell's
-    # session rows carry moves, so its highest final_score is its worst game.
-    assert s.best == 87
 
 
 async def test_desc_board_best_value_is_highest_score() -> None:
@@ -284,8 +279,6 @@ async def test_desc_board_best_value_is_highest_score() -> None:
     s = await _game(sid, "cascade")
     assert s.best_value == 900
     assert s.best_label_key == "score"
-    # The deprecated alias is unchanged for a descending board.
-    assert s.best == 900
 
 
 async def test_metadata_metric_best_value_uses_the_board_metric_and_direction() -> None:
@@ -298,7 +291,6 @@ async def test_metadata_metric_best_value_uses_the_board_metric_and_direction() 
     s = await _game(sid, "daily_word")
     assert s.best_value == 3
     assert s.best_label_key == "guesses"
-    assert s.best is None
 
 
 async def test_daily_word_best_ignores_losses() -> None:
@@ -458,7 +450,6 @@ async def test_stats_shape_cannot_change_xp_or_comparable_fields(
     def greedy_shape(raw: dict) -> dict:
         return {
             **raw,
-            "played": 99,
             "completed_played": 99,
             "sessions": 99,
             "completed": 99,
@@ -556,16 +547,15 @@ async def test_stats_me_returns_the_comparable_fields(client: TestClient) -> Non
     assert freecell["best_value"] == 90
     assert freecell["best_label_key"] == "moves"
     assert freecell["extras"] == {}
-    # Deprecated aliases are still there for current app builds.
-    assert freecell["played"] == 2
-    assert freecell["best"] == 90
+    # The deprecated aliases are gone (#2644).
+    assert {"played", "best", "avg"}.isdisjoint(freecell)
 
     hearts = body["by_game"]["hearts"]
     assert (hearts["won"], hearts["lost"], hearts["tied"]) == (3, 1, 0)
     assert (hearts["current_win_streak"], hearts["best_win_streak"]) == (2, 2)
 
 
-async def test_stats_me_blackjack_chips_are_in_extras_and_the_old_fields(
+async def test_stats_me_blackjack_chips_are_in_extras_only(
     client: TestClient,
 ) -> None:
     sid = _sid()
@@ -582,9 +572,8 @@ async def test_stats_me_blackjack_chips_are_in_extras_and_the_old_fields(
         "runs_completed": 2,
         "current_table": None,
     }
-    for key, value in bj["extras"].items():
-        assert bj[key] == value
+    # The deprecated top-level aliases are gone (#2644).
+    assert set(bj["extras"]).isdisjoint(bj)
+    assert {"played", "best", "avg"}.isdisjoint(bj)
     assert bj["best_value"] == 2400
     assert bj["best_label_key"] == "chips"
-    assert bj["best"] is None
-    assert bj["avg"] is None

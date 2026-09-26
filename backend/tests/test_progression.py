@@ -24,10 +24,8 @@ def _game_stats(played: int, completed_played: int | None = None) -> GameTypeSta
     explicitly to model a game type with abandoned sessions (#2472).
     """
     return GameTypeStats(
-        played=played,
-        best=None,
-        avg=None,
         last_played_at=None,
+        sessions=played,
         completed_played=played if completed_played is None else completed_played,
     )
 

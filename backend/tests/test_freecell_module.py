@@ -47,9 +47,8 @@ def test_result_model_is_separate_from_the_metadata_model() -> None:
 
 
 def test_stats_shape_strips_latest_score() -> None:
-    raw = {"played": 2, "best": None, "avg": None, "last_played_at": None, "latest_score": None}
-    assert "latest_score" not in freecell_module.stats_shape(raw)
-    assert freecell_module.stats_shape(raw)["played"] == 2
+    raw = {"best": None, "last_played_at": None, "latest_score": None}
+    assert freecell_module.stats_shape(raw) == {"last_played_at": None}
 
 
 # ---------------------------------------------------------------------------
@@ -188,5 +187,5 @@ def test_a_session_game_earns_xp_and_counts_as_played() -> None:
     sid = str(uuid.uuid4())
     _play(sid, won=True, moves=88)
     stats = client.get("/stats/me", headers=_headers(sid)).json()
-    assert stats["by_game"]["freecell"]["played"] == 1
+    assert stats["by_game"]["freecell"]["sessions"] == 1
     assert stats["arcade_xp"] > 0

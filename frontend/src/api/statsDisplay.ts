@@ -7,14 +7,12 @@
 import i18next, { type TFunction } from "i18next";
 import type { GameTypeStats } from "./types";
 
-// A server from before #2620 omits the comparable fields. Its `played` is an
-// honest session count, but it includes abandons, so it is no stand-in for
-// `completed`: those figures show "—" instead.
+// A missing comparable field shows "—" (or 0 sessions) rather than failing.
 
 /** Finished games, abandons included. */
-export const sessionsOf = (s: GameTypeStats): number => s.sessions ?? s.played;
+export const sessionsOf = (s: GameTypeStats): number => s.sessions ?? 0;
 
-/** Finished games minus abandons; null from a server that predates #2620. */
+/** Finished games minus abandons; null when the response omits it. */
 export const completedOf = (s: GameTypeStats): number | null => s.completed ?? null;
 
 /** won / (won + lost + tied), or null when the game records no results for this player. */

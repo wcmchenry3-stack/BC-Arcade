@@ -49,9 +49,6 @@ async def get_my_stats(
         total_games=summary.total_games,
         by_game={
             name: GameTypeStatsResponse(
-                played=s.played,
-                best=s.best,
-                avg=s.avg,
                 last_played_at=s.last_played_at,
                 sessions=s.sessions,
                 completed=s.completed_played,
@@ -64,12 +61,6 @@ async def get_my_stats(
                 best_value=s.best_value,
                 best_label_key=s.best_label_key,
                 extras=s.extras,
-                best_chips=s.best_chips,
-                current_chips=s.current_chips,
-                best_run_chips=s.best_run_chips,
-                total_runs=s.total_runs,
-                runs_completed=s.runs_completed,
-                current_table=s.current_table,
             )
             for name, s in summary.by_game.items()
         },

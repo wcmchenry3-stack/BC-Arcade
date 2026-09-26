@@ -132,10 +132,8 @@ def test_there_is_no_winner() -> None:
 
 
 def test_stats_shape_is_pass_through_without_latest_score() -> None:
-    raw = {"played": 2, "best": None, "avg": None, "last_played_at": None, "latest_score": None}
-    shaped = starswarm_module.stats_shape(raw)
-    assert "latest_score" not in shaped
-    assert shaped["played"] == 2
+    raw = {"best": None, "last_played_at": None, "latest_score": None}
+    assert starswarm_module.stats_shape(raw) == {"last_played_at": None}
 
 
 # ---------------------------------------------------------------------------

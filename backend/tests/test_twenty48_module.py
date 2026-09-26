@@ -133,10 +133,8 @@ def test_has_a_winner_now_that_the_app_records_win_or_loss() -> None:
 
 
 def test_stats_shape_is_pass_through_without_latest_score() -> None:
-    raw = {"played": 3, "best": 2048, "avg": 900.0, "last_played_at": None, "latest_score": 400}
-    shaped = twenty48_module.stats_shape(raw)
-    assert "latest_score" not in shaped
-    assert shaped == {"played": 3, "best": 2048, "avg": 900.0, "last_played_at": None}
+    raw = {"best": 2048, "last_played_at": None, "latest_score": 400}
+    assert twenty48_module.stats_shape(raw) == {"last_played_at": None}
 
 
 # ---------------------------------------------------------------------------
@@ -278,8 +276,8 @@ def test_a_kept_playing_completion_from_an_older_build_still_counts() -> None:
     )
     assert r.status_code == 200, r.text
     stats = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["twenty48"]
-    assert stats["played"] == 1
-    assert stats["best"] == 20_480
+    assert stats["sessions"] == 1
+    assert stats["best_value"] == 20_480
 
 
 def test_a_win_and_a_loss_count_as_won_and_lost() -> None:
@@ -293,7 +291,7 @@ def test_a_win_and_a_loss_count_as_won_and_lost() -> None:
         assert r.status_code == 200, r.text
     stats = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["twenty48"]
     assert (stats["won"], stats["lost"]) == (1, 1)
-    assert stats["best"] == 20_480
+    assert stats["best_value"] == 20_480
 
 
 def test_a_named_players_win_and_loss_leave_one_board_entry() -> None:

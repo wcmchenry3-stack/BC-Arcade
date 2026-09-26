@@ -216,9 +216,7 @@ def test_module_without_board_fails_protocol() -> None:
 # ---------------------------------------------------------------------------
 
 _RAW_BJ = {
-    "played": 5,
     "best": 2400,
-    "avg": 1800.0,
     "last_played_at": None,
     "latest_score": 2100,
 }
@@ -227,12 +225,7 @@ _RAW_BJ = {
 def test_blackjack_stats_shape_renames_best_to_best_chips() -> None:
     shaped = blackjack_module.stats_shape(_RAW_BJ)
     assert shaped["extras"]["best_chips"] == 2400
-    assert shaped.get("best") is None
-
-
-def test_blackjack_stats_shape_drops_avg() -> None:
-    shaped = blackjack_module.stats_shape(_RAW_BJ)
-    assert shaped.get("avg") is None
+    assert "best" not in shaped
 
 
 def test_blackjack_stats_shape_maps_latest_score_to_current_chips() -> None:
@@ -240,9 +233,9 @@ def test_blackjack_stats_shape_maps_latest_score_to_current_chips() -> None:
     assert shaped["extras"]["current_chips"] == 2100
 
 
-def test_blackjack_stats_shape_preserves_played_and_last_played_at() -> None:
+def test_blackjack_stats_shape_is_last_played_at_and_extras_only() -> None:
     shaped = blackjack_module.stats_shape(_RAW_BJ)
-    assert shaped["played"] == 5
+    assert set(shaped) == {"last_played_at", "extras"}
     assert shaped["last_played_at"] is None
 
 
@@ -284,165 +277,38 @@ def test_blackjack_stats_shape_empty_metadata_returns_none_run_fields() -> None:
 
 
 # ---------------------------------------------------------------------------
-# CascadeModule.stats_shape — pass-through, strips latest_score
-# ---------------------------------------------------------------------------
-
-_RAW_CASCADE = {
-    "played": 3,
-    "best": 9500,
-    "avg": 7000.0,
-    "last_played_at": None,
-    "latest_score": 8000,
-}
-
-
-def test_cascade_stats_shape_preserves_aggregate_fields() -> None:
-    shaped = cascade_module.stats_shape(_RAW_CASCADE)
-    assert shaped["played"] == 3
-    assert shaped["best"] == 9500
-    assert shaped["avg"] == 7000.0
-
-
-def test_cascade_stats_shape_strips_latest_score() -> None:
-    shaped = cascade_module.stats_shape(_RAW_CASCADE)
-    assert "latest_score" not in shaped
-
-
-# ---------------------------------------------------------------------------
-# SolitaireModule.stats_shape — pass-through, strips latest_score
-# ---------------------------------------------------------------------------
-
-_RAW_SOLITAIRE = {
-    "played": 4,
-    "best": 1200,
-    "avg": 650.0,
-    "last_played_at": None,
-    "latest_score": 780,
-}
-
-
-def test_solitaire_stats_shape_preserves_aggregate_fields() -> None:
-    shaped = solitaire_module.stats_shape(_RAW_SOLITAIRE)
-    assert shaped["played"] == 4
-    assert shaped["best"] == 1200
-    assert shaped["avg"] == 650.0
-
-
-def test_solitaire_stats_shape_strips_latest_score() -> None:
-    shaped = solitaire_module.stats_shape(_RAW_SOLITAIRE)
-    assert "latest_score" not in shaped
-
-
-# ---------------------------------------------------------------------------
-# HeartsModule.stats_shape — pass-through, strips latest_score
-# ---------------------------------------------------------------------------
-
-_RAW_HEARTS = {
-    "played": 7,
-    "best": 95,
-    "avg": 72.0,
-    "last_played_at": None,
-    "latest_score": 80,
-}
-
-
-def test_hearts_stats_shape_preserves_aggregate_fields() -> None:
-    shaped = hearts_module.stats_shape(_RAW_HEARTS)
-    assert shaped["played"] == 7
-    assert shaped["best"] == 95
-    assert shaped["avg"] == 72.0
-
-
-def test_hearts_stats_shape_strips_latest_score() -> None:
-    shaped = hearts_module.stats_shape(_RAW_HEARTS)
-    assert "latest_score" not in shaped
-
-
-# ---------------------------------------------------------------------------
-# SudokuModule.stats_shape — pass-through, strips latest_score
-# ---------------------------------------------------------------------------
-
-_RAW_SUDOKU = {
-    "played": 6,
-    "best": 290,
-    "avg": 180.0,
-    "last_played_at": None,
-    "latest_score": 200,
-}
-
-
-def test_sudoku_stats_shape_preserves_aggregate_fields() -> None:
-    shaped = sudoku_module.stats_shape(_RAW_SUDOKU)
-    assert shaped["played"] == 6
-    assert shaped["best"] == 290
-    assert shaped["avg"] == 180.0
-
-
-def test_sudoku_stats_shape_strips_latest_score() -> None:
-    shaped = sudoku_module.stats_shape(_RAW_SUDOKU)
-    assert "latest_score" not in shaped
-
-
-# ---------------------------------------------------------------------------
-# MahjongModule.stats_shape — pass-through, strips latest_score
-# ---------------------------------------------------------------------------
-
-_RAW_MAHJONG = {
-    "played": 2,
-    "best": 4500,
-    "avg": 3200.0,
-    "last_played_at": None,
-    "latest_score": 4100,
-}
-
-
-def test_mahjong_stats_shape_preserves_aggregate_fields() -> None:
-    shaped = mahjong_module.stats_shape(_RAW_MAHJONG)
-    assert shaped["played"] == 2
-    assert shaped["best"] == 4500
-    assert shaped["avg"] == 3200.0
-
-
-def test_mahjong_stats_shape_strips_latest_score() -> None:
-    shaped = mahjong_module.stats_shape(_RAW_MAHJONG)
-    assert "latest_score" not in shaped
-
-
-# ---------------------------------------------------------------------------
-# DailyWordModule.stats_shape — pass-through, strips latest_score
-# ---------------------------------------------------------------------------
-
-_RAW_DAILY_WORD = {
-    "played": 10,
-    "best": 6,
-    "avg": 4.5,
-    "last_played_at": None,
-    "latest_score": 5,
-}
-
-
-def test_daily_word_stats_shape_preserves_aggregate_fields() -> None:
-    shaped = daily_word_module.stats_shape(_RAW_DAILY_WORD)
-    assert shaped["played"] == 10
-    assert shaped["best"] == 6
-    assert shaped["avg"] == 4.5
-
-
-def test_daily_word_stats_shape_strips_latest_score() -> None:
-    shaped = daily_word_module.stats_shape(_RAW_DAILY_WORD)
-    assert "latest_score" not in shaped
-
-
-# ---------------------------------------------------------------------------
 # default_stats_shape — the one shared pass-through
 # ---------------------------------------------------------------------------
 
+_RAW = {
+    "best": 9500,
+    "last_played_at": None,
+    "latest_score": 8000,
+    "metadata": {"k": 1},
+}
 
-def test_default_stats_shape_strips_latest_score_only() -> None:
-    raw = {**_RAW_CASCADE, "metadata": {"k": 1}}
-    shaped = default_stats_shape(raw)
-    assert shaped == {k: v for k, v in raw.items() if k != "latest_score"}
-    assert raw["latest_score"] == 8000  # the input is not mutated
+
+def test_default_stats_shape_passes_last_played_at_only() -> None:
+    """``best``, ``latest_score`` and ``metadata`` are inputs, not API fields;
+    the deprecated ``played`` / ``best`` / ``avg`` aliases are gone (#2644)."""
+    shaped = default_stats_shape(dict(_RAW))
+    assert shaped == {"last_played_at": None}
+
+
+@pytest.mark.parametrize(
+    "mod",
+    [
+        cascade_module,
+        daily_word_module,
+        hearts_module,
+        mahjong_module,
+        solitaire_module,
+        sudoku_module,
+    ],
+    ids=["cascade", "daily_word", "hearts", "mahjong", "solitaire", "sudoku"],
+)
+def test_pass_through_stats_shape(mod) -> None:
+    assert mod.stats_shape(dict(_RAW)) == {"last_played_at": None}
 
 
 _PASS_THROUGH = sorted(name for name in _REGISTRY if name != "blackjack")
@@ -462,7 +328,7 @@ def test_pass_through_modules_use_the_shared_stats_shape(
     monkeypatch.setattr(
         sys.modules[type(mod).__module__], "default_stats_shape", lambda raw: shaped
     )
-    assert mod.stats_shape(dict(_RAW_CASCADE)) is shaped
+    assert mod.stats_shape(dict(_RAW)) is shaped
 
 
 # ---------------------------------------------------------------------------

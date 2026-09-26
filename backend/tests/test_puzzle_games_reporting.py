@@ -195,13 +195,9 @@ async def test_freecell_best_value_is_the_fewest_moves(client: TestClient) -> No
     assert freecell["best_value"] == 88
     assert freecell["best_label_key"] == "moves"
     assert freecell["completed"] == 3
-    # The deprecated `best` (Profile's "Top score" in store builds) too, not 140.
-    assert freecell["best"] == 88
 
 
-async def test_a_descending_games_legacy_best_is_still_its_highest_score(
-    client: TestClient,
-) -> None:
+async def test_a_descending_games_best_value_is_its_highest_score(client: TestClient) -> None:
     sid = str(uuid.uuid4())
     await _grant_all(sid)
     flow = FLOWS[3]  # Cascade
@@ -209,5 +205,4 @@ async def test_a_descending_games_legacy_best_is_still_its_highest_score(
     _win(client, sid, flow, 4200)
     _win(client, sid, flow, 900)
     cascade = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["cascade"]
-    assert cascade["best"] == 4200
     assert cascade["best_value"] == 4200
