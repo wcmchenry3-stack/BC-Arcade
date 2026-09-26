@@ -6,7 +6,14 @@
  */
 
 import { createGameClient } from "../game/_shared/httpClient";
-import type { StatsResponse, GameHistoryResponse, GameDetailResponse } from "./types";
+import type { GameType } from "../game/_shared/types";
+import type {
+  StatsResponse,
+  GameHistoryResponse,
+  GameDetailResponse,
+  GameLeaderboardResponse,
+  GameRankResponse,
+} from "./types";
 
 const request = createGameClient({ apiTag: "stats" });
 
@@ -29,7 +36,42 @@ export const statsApi = {
   getGameDetail: (gameId: string, includeEvents = false): Promise<GameDetailResponse> =>
     request<GameDetailResponse>(`/games/${gameId}?include_events=${includeEvents ? 1 : 0}`),
 
+  /**
+   * `GET /games/{id}/rank` (#2677). Read-only. Rejects with an `ApiError`:
+   * 404 until the game has synced (or it has no board), 403 for another
+   * player's game.
+   */
+  getGameRank: (gameId: string): Promise<GameRankResponse> =>
+    request<GameRankResponse>(`/games/${encodeURIComponent(gameId)}/rank`),
+
+  /**
+   * `GET /games/leaderboard/{gameType}` (#2618): the top players on one board,
+   * one entry each. `partition` holds the board's partition query params
+   * (e.g. `{ difficulty: "easy" }`); a board without partitions takes none.
+   * `limit` is the server's top N (1–100, default 10). The caller's own
+   * entry comes back as `me` (#2633).
+   */
+  getLeaderboard: (
+    gameType: GameType,
+    partition: Readonly<Record<string, string>> = {},
+    { limit }: { limit?: number } = {}
+  ): Promise<GameLeaderboardResponse> => {
+    const params = new URLSearchParams(partition as Record<string, string>);
+    if (limit !== undefined) params.set("limit", String(limit));
+    const query = params.toString();
+    const path = `/games/leaderboard/${encodeURIComponent(gameType)}`;
+    return request<GameLeaderboardResponse>(query ? `${path}?${query}` : path);
+  },
+
   deleteMyData: (): Promise<void> => request<void>("/me", { method: "DELETE" }),
 };
 
-export type { StatsResponse, GameHistoryResponse, GameDetailResponse } from "./types";
+export type {
+  StatsResponse,
+  GameHistoryResponse,
+  GameDetailResponse,
+  GameLeaderboardEntry,
+  GameLeaderboardResponse,
+  GameRankReason,
+  GameRankResponse,
+} from "./types";

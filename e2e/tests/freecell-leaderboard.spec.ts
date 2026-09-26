@@ -1,139 +1,156 @@
 /**
- * freecell-leaderboard.spec.ts — GH #2035
+ * freecell-leaderboard.spec.ts — GH #2035, #2508, #2632
  *
- * Leaderboard integration: inject a completed game (all 52 cards in
- * foundations, isComplete = true), intercept POST /freecell/score, enter a
- * name, submit, and verify the rank confirmation.
+ * Result card + leaderboard: inject a game one card from winning (the King
+ * of Spades alone in column 0), which auto-completes on load. Verify the
+ * shared result card shows where the synced game ranks (GET /games/{id}/rank;
+ * the win's move count is its score) under the player's display name with no
+ * name entry (or asks for one once when none is set). Nothing goes to POST
+ * /freecell/score (#2632; removed in #2644). A resumed, already-won save shows
+ * the card without looking its rank up again.
  *
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { injectFreecellState } from "./helpers/freecell";
-
-const FREECELL_ROUTE = "**/freecell/**";
+import { routeSessionBoard } from "./helpers/sessionBoard";
 
 const allRanks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+const pile = (suit: string, ranks: number[]) =>
+  ranks.map((rank) => ({ suit, rank }));
 
-const WIN_STATE = {
+const WON_STATE = {
   _v: 1,
   tableau: [[], [], [], [], [], [], [], []],
   freeCells: [null, null, null, null],
   foundations: {
-    spades: allRanks.map((r) => ({ suit: "spades", rank: r })),
-    hearts: allRanks.map((r) => ({ suit: "hearts", rank: r })),
-    diamonds: allRanks.map((r) => ({ suit: "diamonds", rank: r })),
-    clubs: allRanks.map((r) => ({ suit: "clubs", rank: r })),
+    spades: pile("spades", allRanks),
+    hearts: pile("hearts", allRanks),
+    diamonds: pile("diamonds", allRanks),
+    clubs: pile("clubs", allRanks),
   },
   undoStack: [],
   isComplete: true,
   moveCount: 52,
 };
 
-test.describe("FreeCell — leaderboard", () => {
-  test("POST /freecell/score intercepted and rank confirmation shown after submit", async ({
-    page,
-  }) => {
-    let capturedBody: Record<string, unknown> | null = null;
+const NEAR_WIN_STATE = {
+  ...WON_STATE,
+  tableau: [[{ suit: "spades", rank: 13 }], [], [], [], [], [], [], []],
+  foundations: {
+    ...WON_STATE.foundations,
+    spades: pile("spades", allRanks.slice(0, 12)),
+  },
+  isComplete: false,
+  moveCount: 51,
+};
 
-    await page.route(FREECELL_ROUTE, async (route) => {
-      if (route.request().method() === "POST") {
-        capturedBody = JSON.parse(route.request().postData() ?? "{}");
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            player_id: "Tester",
-            move_count: 52,
-            rank: 1,
-          }),
-        });
-      } else {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ scores: [] }),
-        });
-      }
-    });
+const DISPLAY_NAME_KEY = "player_display_name";
 
-    await injectFreecellState(page, WIN_STATE);
-    await page.getByRole("button", { name: "Play FreeCell" }).click();
-    await page
-      .getByRole("heading", { name: "FreeCell", exact: true })
-      .waitFor({ timeout: 10_000 });
+/** Mocks the rank lookup and records any legacy FreeCell call. */
+const routeFreecellApi = (page: Page) =>
+  routeSessionBoard(page, { legacyPattern: "**/freecell/**" });
 
-    // Win modal appears because isComplete = true.
-    await expect(page.getByRole("heading", { name: "You Win!" })).toBeVisible({
-      timeout: 5_000,
-    });
+/** Opens a saved game, optionally under a display name. */
+async function openGame(
+  page: Page,
+  state: Record<string, unknown>,
+  displayName?: string,
+): Promise<void> {
+  await injectFreecellState(page, state);
+  if (displayName) {
+    await page.evaluate(([key, name]) => localStorage.setItem(key, name), [
+      DISPLAY_NAME_KEY,
+      displayName,
+    ] as const);
+    await page.goto("/");
+  }
+  await page.getByRole("button", { name: "Play FreeCell" }).click();
+  await page
+    .getByRole("heading", { name: "FreeCell", exact: true })
+    .waitFor({ timeout: 10_000 });
+}
 
-    await page.getByLabel("Your name").fill("Tester");
+/** Wins on load (the last card auto-completes) and waits out the celebration. */
+async function winGame(page: Page, displayName?: string): Promise<void> {
+  await openGame(page, NEAR_WIN_STATE, displayName);
+  await expect(page.getByTestId("freecell-result")).toBeVisible({
+    timeout: 10_000,
+  });
+}
 
-    const submitBtn = page.getByRole("button", { name: "Submit Score" });
-    await expect(submitBtn).toBeEnabled({ timeout: 2_000 });
-    await submitBtn.click();
+test.describe("FreeCell — result card + leaderboard", () => {
+  test("shows the rank under the saved display name", async ({ page }) => {
+    const calls = await routeFreecellApi(page);
+    await winGame(page, "Tester");
 
-    await expect(page.getByText("Saved! #1")).toBeVisible({ timeout: 5_000 });
-
-    expect(capturedBody).not.toBeNull();
-    expect(capturedBody!["player_id"]).toBe("Tester");
-    expect(capturedBody!["move_count"]).toBe(52);
+    const card = page.getByTestId("freecell-result");
+    await expect(card.getByText("You Win!")).toBeVisible();
+    await expect(card.getByText("Completed in 52 moves")).toBeVisible();
+    await expect(
+      page.getByText("Saved as Tester · #1 on the leaderboard"),
+    ).toBeVisible({ timeout: 15_000 });
+    expect(calls.rankLookups).toHaveLength(1);
+    expect(calls.legacyCalls).toEqual([]);
+    await expect(
+      card.getByRole("button", { name: "Play Again" }),
+    ).toBeVisible();
+    await expect(card.getByRole("button", { name: "Home" })).toBeVisible();
   });
 
-  test("Submit Score button disabled when name field is empty", async ({
+  test("asks for a display name once when none is set, then shows the rank", async ({
     page,
   }) => {
-    await page.route(FREECELL_ROUTE, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ scores: [] }),
-      });
-    });
+    const calls = await routeFreecellApi(page);
+    await winGame(page);
 
-    await injectFreecellState(page, WIN_STATE);
-    await page.getByRole("button", { name: "Play FreeCell" }).click();
-    await page
-      .getByRole("heading", { name: "FreeCell", exact: true })
-      .waitFor({ timeout: 10_000 });
+    const nameInput = page.getByLabel("Pick a display name for leaderboards");
+    await expect(nameInput).toBeVisible({ timeout: 5_000 });
+    const save = page.getByRole("button", { name: "Save" });
+    await expect(save).toBeDisabled();
+    expect(calls.rankLookups).toEqual([]);
 
-    await expect(page.getByRole("heading", { name: "You Win!" })).toBeVisible({
-      timeout: 5_000,
-    });
+    await nameInput.fill("Tester");
+    await save.click();
 
     await expect(
-      page.getByRole("button", { name: "Submit Score" }),
-    ).toBeDisabled({ timeout: 2_000 });
+      page.getByText("Saved as Tester · #1 on the leaderboard"),
+    ).toBeVisible({ timeout: 15_000 });
+    expect(calls.rankLookups).toHaveLength(1);
+    expect(calls.legacyCalls).toEqual([]);
   });
 
-  test("New Game dismisses the win modal and starts a fresh game", async ({
+  test("Play Again dismisses the card and starts a fresh game", async ({
     page,
   }) => {
-    await page.route(FREECELL_ROUTE, async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ scores: [] }),
-      });
-    });
+    await routeFreecellApi(page);
+    await winGame(page, "Tester");
 
-    await injectFreecellState(page, WIN_STATE);
-    await page.getByRole("button", { name: "Play FreeCell" }).click();
     await page
-      .getByRole("heading", { name: "FreeCell", exact: true })
-      .waitFor({ timeout: 10_000 });
+      .getByTestId("freecell-result")
+      .getByRole("button", { name: "Play Again" })
+      .click();
 
-    await expect(page.getByRole("heading", { name: "You Win!" })).toBeVisible({
-      timeout: 5_000,
+    await expect(page.getByTestId("freecell-result")).not.toBeVisible({
+      timeout: 3_000,
     });
-
-    await page.getByRole("button", { name: "New Game" }).click();
-
-    // Win modal dismissed; move counter resets to 0.
-    await expect(
-      page.getByRole("heading", { name: "You Win!" }),
-    ).not.toBeVisible({ timeout: 3_000 });
     await expect(page.getByText("Moves: 0")).toBeVisible({ timeout: 3_000 });
+  });
+
+  test("a resumed, already-won game shows the card without a rank lookup", async ({
+    page,
+  }) => {
+    const calls = await routeFreecellApi(page);
+    await openGame(page, WON_STATE, "Tester");
+
+    await expect(page.getByTestId("freecell-result")).toBeVisible({
+      timeout: 5_000,
+    });
+    await page.waitForTimeout(1_000);
+    expect(calls.rankLookups).toEqual([]);
+    expect(calls.legacyCalls).toEqual([]);
   });
 });

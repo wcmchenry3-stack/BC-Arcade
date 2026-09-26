@@ -5,15 +5,16 @@
  * and crash-free interaction.
  *
  * FreeCell's board is DOM-based (React Native View components), not canvas.
- * All backend API calls are intercepted via page.route() — no backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "@playwright/test";
-import { mockFreecellApi, gotoFreecell } from "./helpers/freecell";
+import { gotoFreecell } from "./helpers/freecell";
 
 test.describe("FreeCell — smoke tests", () => {
   test.beforeEach(async ({ page }) => {
-    await mockFreecellApi(page);
     await gotoFreecell(page);
   });
 

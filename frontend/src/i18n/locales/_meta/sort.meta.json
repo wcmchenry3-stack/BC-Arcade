@@ -71,51 +71,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "action.reset": {
-    "component": "SortScreen header",
-    "description": "Reset button label — opens a dialog to reset or start a new game.",
-    "tone": "functional",
-    "characterLimit": 10,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "action.resetPrompt": {
-    "component": "SortScreen reset dialog",
-    "description": "Body message of the reset/new-game alert dialog.",
-    "tone": "functional",
-    "characterLimit": 60,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "action.resetLevel": {
-    "component": "SortScreen reset dialog",
-    "description": "Alert button that restarts the current level from scratch.",
-    "tone": "functional",
-    "characterLimit": 16,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "action.cancel": {
-    "component": "SortScreen reset dialog",
-    "description": "Alert dismiss button.",
-    "tone": "functional",
-    "characterLimit": 10,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "action.newGame": {
-    "component": "SortScreen header",
-    "description": "New Game button.",
-    "tone": "functional",
-    "characterLimit": 12,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "action.colorblindToggle": {
     "component": "SortScreen header",
     "description": "Button label for toggling colorblind symbol overlay.",
@@ -125,30 +80,12 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "win.title": {
-    "component": "SortScreen win overlay",
-    "description": "Header shown when the puzzle is solved.",
-    "tone": "celebratory",
-    "characterLimit": 20,
+  "action.backToLevels": {
+    "component": "SortScreen",
+    "description": "Accessibility label for the header's back button, returning to the level-select screen.",
+    "tone": "functional",
+    "characterLimit": 22,
     "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "win.movesUsed": {
-    "component": "SortScreen win overlay",
-    "description": "Total moves used, shown on the win screen.",
-    "tone": "neutral",
-    "characterLimit": 30,
-    "placeholders": ["{{moves}}"],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "win.undosUsed": {
-    "component": "SortScreen win overlay",
-    "description": "Total undos used, shown on the win screen.",
-    "tone": "neutral",
-    "characterLimit": 30,
-    "placeholders": ["{{undos}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -218,6 +155,60 @@
   "color.teal": {
     "component": "BallView (accessibilityLabel)",
     "description": "Name of the teal color used in a ball.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "color.brown": {
+    "component": "BallView (accessibilityLabel)",
+    "description": "Name of the brown color used in a ball.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "color.lime": {
+    "component": "BallView (accessibilityLabel)",
+    "description": "Name of the lime color used in a ball.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "color.navy": {
+    "component": "BallView (accessibilityLabel)",
+    "description": "Name of the navy color used in a ball.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "color.maroon": {
+    "component": "BallView (accessibilityLabel)",
+    "description": "Name of the maroon color used in a ball.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "color.gold": {
+    "component": "BallView (accessibilityLabel)",
+    "description": "Name of the gold color used in a ball.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "color.indigo": {
+    "component": "BallView (accessibilityLabel)",
+    "description": "Name of the indigo color used in a ball.",
     "tone": "neutral",
     "characterLimit": 16,
     "placeholders": [],
@@ -296,21 +287,48 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "error.submitFailed": {
-    "component": "SortScreen win overlay",
-    "description": "Error message when submitting the score to the leaderboard fails.",
-    "tone": "apologetic, clear",
-    "characterLimit": 60,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "error.submitRetry": {
     "component": "SortScreen win overlay",
     "description": "Button label to retry a failed leaderboard submission.",
     "tone": "action",
     "characterLimit": 12,
     "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "levelSelect.title": {
+    "component": "LevelSelectScreen",
+    "description": "Heading of the level-select grid screen.",
+    "tone": "casual",
+    "characterLimit": 19,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "levelSelect.continue": {
+    "component": "LevelSelectScreen",
+    "description": "Button (and its accessibility label) to resume the in-progress level.",
+    "tone": "action",
+    "characterLimit": 31,
+    "placeholders": ["{{level}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "levelSelect.locked": {
+    "component": "LevelSelectScreen",
+    "description": "Short label meaning a level is not yet unlocked.",
+    "tone": "functional",
+    "characterLimit": 13,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "The locked tile currently shows a 🔒 icon; this is the text/accessible form of that state."
+  },
+  "levelSelect.lockedLevel": {
+    "component": "LevelSelectScreen",
+    "description": "Accessibility label for a locked level tile in the grid.",
+    "tone": "functional",
+    "characterLimit": 33,
+    "placeholders": ["{{level}}"],
     "doNotTranslate": [],
     "notes": null
   }

@@ -104,15 +104,16 @@ describe("prefetchLobbyGameScreens", () => {
     }).not.toThrow();
   });
 
-  it("queries canPlay for each of the four premium slugs", () => {
+  it("queries canPlay for each premium slug", () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { prefetchLobbyGameScreens } = require("../lazyScreens");
     const canPlay = jest.fn().mockReturnValue(false);
     prefetchLobbyGameScreens(canPlay);
+    expect(canPlay).toHaveBeenCalledWith("blackjack");
     expect(canPlay).toHaveBeenCalledWith("cascade");
     expect(canPlay).toHaveBeenCalledWith("starswarm");
     expect(canPlay).toHaveBeenCalledWith("hearts");
-    expect(canPlay).toHaveBeenCalledWith("sudoku");
+    expect(canPlay).toHaveBeenCalledWith("mahjong");
   });
 
   it("does not query canPlay for free game slugs", () => {
@@ -120,11 +121,11 @@ describe("prefetchLobbyGameScreens", () => {
     const { prefetchLobbyGameScreens } = require("../lazyScreens");
     const canPlay = jest.fn().mockReturnValue(false);
     prefetchLobbyGameScreens(canPlay);
-    expect(canPlay).not.toHaveBeenCalledWith("blackjack");
     expect(canPlay).not.toHaveBeenCalledWith("twenty48");
     expect(canPlay).not.toHaveBeenCalledWith("solitaire");
     expect(canPlay).not.toHaveBeenCalledWith("freecell");
-    expect(canPlay).not.toHaveBeenCalledWith("mahjong");
+    expect(canPlay).not.toHaveBeenCalledWith("sort");
+    expect(canPlay).not.toHaveBeenCalledWith("sudoku");
   });
 });
 

@@ -32,6 +32,8 @@ async def get_my_stats(
     sid = get_session_id(request)
     factory = get_session_factory()
     async with factory() as db:
+        # Close this player's games left open > 24 h before counting them (#2621).
+        await games_service.sweep_stale_games_safely(db, session_id=sid)
         summary = await games_service.get_stats_for_session(db, session_id=sid)
         try:
             streak_days = await compute_streak(db, sid, tz_offset_minutes)
@@ -47,16 +49,18 @@ async def get_my_stats(
         total_games=summary.total_games,
         by_game={
             name: GameTypeStatsResponse(
-                played=s.played,
-                best=s.best,
-                avg=s.avg,
                 last_played_at=s.last_played_at,
-                best_chips=s.best_chips,
-                current_chips=s.current_chips,
-                best_run_chips=s.best_run_chips,
-                total_runs=s.total_runs,
-                runs_completed=s.runs_completed,
-                current_table=s.current_table,
+                sessions=s.sessions,
+                completed=s.completed_played,
+                won=s.won,
+                lost=s.lost,
+                tied=s.tied,
+                current_win_streak=s.current_win_streak,
+                best_win_streak=s.best_win_streak,
+                time_played_ms=s.time_played_ms,
+                best_value=s.best_value,
+                best_label_key=s.best_label_key,
+                extras=s.extras,
             )
             for name, s in summary.by_game.items()
         },

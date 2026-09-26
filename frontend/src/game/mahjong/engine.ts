@@ -10,6 +10,14 @@
  */
 
 import type { Layout, MahjongState, Slot, SlotTile, Suit, Rank } from "./types";
+import {
+  clockElapsedMs,
+  pauseClock,
+  resumeClock,
+  startClockOnMove,
+  stopClock,
+  withClock,
+} from "../_shared/playClock";
 
 // ---------------------------------------------------------------------------
 // Scoring / limits
@@ -143,8 +151,7 @@ export function getAnyFreePair(tiles: readonly SlotTile[]): [number, number] | n
 // ---------------------------------------------------------------------------
 
 export function elapsedMs(state: MahjongState, now: number = Date.now()): number {
-  if (state.startedAt === null) return state.accumulatedMs;
-  return state.accumulatedMs + (now - state.startedAt);
+  return clockElapsedMs(state, now);
 }
 
 // ---------------------------------------------------------------------------
@@ -472,10 +479,12 @@ export function selectTile(state: MahjongState, tileId: number): MahjongState {
   const tile = state.tiles.find((t) => t.id === tileId);
   if (!tile || !isFreeTile(tile, state.tiles)) return state;
 
-  const startedAt = state.startedAt ?? Date.now();
+  const now = Date.now();
+  // The first tap starts the clock; a tap while it is paused leaves it so.
+  const clock = startClockOnMove(state, now);
 
   if (!state.selected) {
-    return { ...state, selected: tile, startedAt };
+    return withClock({ ...state, selected: tile }, clock);
   }
 
   if (state.selected.id === tile.id) {
@@ -483,7 +492,7 @@ export function selectTile(state: MahjongState, tileId: number): MahjongState {
   }
 
   if (!tilesMatch(state.selected, tile)) {
-    return { ...state, selected: tile, startedAt };
+    return withClock({ ...state, selected: tile }, clock);
   }
 
   // Matched pair — remove both tiles.
@@ -493,21 +502,26 @@ export function selectTile(state: MahjongState, tileId: number): MahjongState {
   const isComplete = newTiles.length === 0;
   const score = state.score + SCORE_PER_PAIR + (isComplete ? SCORE_COMPLETE_BONUS : 0);
   const isDeadlocked = !isComplete && !hasFreePairs(newTiles) && state.shufflesLeft === 0;
+  const ended = isComplete || isDeadlocked;
 
   const snapshot: MahjongState = { ...state, selected: null, undoStack: [] };
   const undoStack = [...state.undoStack.slice(-(UNDO_CAP - 1)), snapshot];
 
-  return {
-    ...state,
-    tiles: newTiles,
-    pairsRemoved,
-    score,
-    selected: null,
-    undoStack,
-    isComplete,
-    isDeadlocked,
-    startedAt,
-  };
+  // Clearing or deadlocking the board stops the clock: bank the running
+  // segment so the elapsed time is frozen and the result card can't tick.
+  return withClock(
+    {
+      ...state,
+      tiles: newTiles,
+      pairsRemoved,
+      score,
+      selected: null,
+      undoStack,
+      isComplete,
+      isDeadlocked,
+    },
+    ended ? stopClock(clock, now) : clock
+  );
 }
 
 /**
@@ -671,13 +685,10 @@ export function shuffleBoard(state: MahjongState): MahjongState {
     const shufflesLeft = state.shufflesLeft - 1;
     const snapshot: MahjongState = { ...state, undoStack: [] };
     const undoStack = [...state.undoStack.slice(-(UNDO_CAP - 1)), snapshot];
-    return {
-      ...state,
-      selected: null,
-      shufflesLeft,
-      isDeadlocked: true,
-      undoStack,
-    };
+    return stopClock(
+      { ...state, selected: null, shufflesLeft, isDeadlocked: true, undoStack },
+      Date.now()
+    );
   }
 
   const snapshot: MahjongState = { ...state, undoStack: [] };
@@ -694,26 +705,32 @@ export function shuffleBoard(state: MahjongState): MahjongState {
 }
 
 /** Undo the last pair removal or shuffle. */
-export function undoMove(state: MahjongState): MahjongState {
+export function undoMove(state: MahjongState, now: number = Date.now()): MahjongState {
   if (state.undoStack.length === 0) return state;
   const prev = state.undoStack[state.undoStack.length - 1]!;
   // Restore the snapshot but give it the remaining undo history so that
   // further undos can continue to chain without exponential nesting.
-  return { ...prev, undoStack: state.undoStack.slice(0, -1) };
+  // The live clock stays (#2750): the snapshot's own startedAt predates any
+  // pause or relaunch since, and restoring it would count that gap as play.
+  // Backing out of a deadlock, which stopped the clock, starts it again.
+  const live =
+    state.isDeadlocked && state.startedAt === null && state.paused !== true
+      ? { startedAt: now, accumulatedMs: state.accumulatedMs }
+      : state;
+  return withClock({ ...prev, undoStack: state.undoStack.slice(0, -1) }, live);
 }
 
-/** Accumulate elapsed time when the session is paused (app goes to background). */
+/**
+ * Freeze the timer while the player is away: another screen covers the game
+ * (Leaderboard, #2633) or the app is in the background (#2750). The screen
+ * drives both through `usePauseWhileAway`. A no-op once the game has no
+ * running timer to freeze (not yet started, or already finished).
+ */
 export function pauseGame(state: MahjongState, now: number = Date.now()): MahjongState {
-  if (state.startedAt === null) return state;
-  return {
-    ...state,
-    accumulatedMs: state.accumulatedMs + (now - state.startedAt),
-    startedAt: null,
-  };
+  return pauseClock(state, now);
 }
 
-/** Resume the timer when the app returns to the foreground. */
+/** Resume a timer `pauseGame` froze. A no-op on a finished or unstarted game. */
 export function resumeGame(state: MahjongState, now: number = Date.now()): MahjongState {
-  if (state.startedAt !== null || state.isComplete) return state;
-  return { ...state, startedAt: now };
+  return state.isComplete || state.isDeadlocked ? state : resumeClock(state, now);
 }

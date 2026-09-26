@@ -7,29 +7,16 @@
  *      backgrounded or force-killed app resumes at the exact puzzle
  *      state; cleared on New Puzzle / Change Difficulty.
  *   3. Instrumentation (#619) — `useGameSync("sudoku")` session started
- *      on the first `enterDigit`, completed on win, abandoned on
- *      unmount or back-navigation when at least one digit was placed
- *      and the puzzle is unfinished.
- *   4. Leaderboard (#619) — `POST /sudoku/score` on win with an
- *      in-modal retry affordance; POST failures never block the rest
- *      of the modal.
+ *      on the first `enterDigit`, completed on win, and otherwise
+ *      abandoned by the hook on unmount (back-navigation included) with
+ *      its progress snapshot and no score (#2632).
+ *   4. Result + leaderboard (#2511) — the shared GameResultModal shows
+ *      where the synced game ranks on its (difficulty, variant) board
+ *      (`sessionBoardAdapter`, #2677).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Animated,
-  AppState,
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  ViewStyle,
-} from "react-native";
-import type { AppStateStatus } from "react-native";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -39,6 +26,16 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
+import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
+import { HudStatRow } from "../components/shared/HudStatRow";
+import {
+  ModalActions,
+  ModalCard,
+  ModalPrimaryButton,
+  ModalSecondaryButton,
+} from "../components/shared/ModalCard";
+import { PillButton } from "../components/shared/PillButton";
 import SudokuGrid from "../components/sudoku/SudokuGrid";
 import NumberPad from "../components/sudoku/NumberPad";
 import DifficultySelector from "../components/sudoku/DifficultySelector";
@@ -51,7 +48,7 @@ import {
   undo,
 } from "../game/sudoku/engine";
 import type { CellValue, Difficulty, SudokuState, Variant } from "../game/sudoku/types";
-import { VARIANTS, variantConfig } from "../game/sudoku/types";
+import { DIFFICULTIES, VARIANTS, variantConfig } from "../game/sudoku/types";
 import { useSound } from "../game/_shared/useSound";
 import { SUDOKU_SOUNDS } from "../game/sudoku/sounds";
 import {
@@ -63,14 +60,16 @@ import {
   EMPTY_SUDOKU_STATS,
   type SudokuStats,
 } from "../game/sudoku/storage";
-import { useSudokuScoreboard } from "../game/sudoku/SudokuScoreboardContext";
-import { scoreQueue } from "../game/_shared/scoreQueue";
 import { useGameSync } from "../game/_shared/useGameSync";
-import { useNetwork } from "../game/_shared/NetworkContext";
-import { OfflineBanner } from "../components/shared/OfflineBanner";
+import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
+import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
+import { useLastDifficulty } from "../game/_shared/lastDifficulty";
+import GameResultModal from "../components/shared/GameResultModal";
 
 const FLASH_MS = 200;
-const MAX_NAME_LENGTH = 32;
+
+/** The result card reads the synced game's rank on the session board (#2632). */
+const sudokuBoard = sessionBoardAdapter("sudoku");
 const DIFFICULTY_BASE: Record<Difficulty, number> = {
   easy: 100,
   medium: 200,
@@ -92,18 +91,36 @@ function formatElapsed(seconds: number): string {
 
 export default function SudokuScreen() {
   const { t } = useTranslation("sudoku");
+  const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
-  const [difficulty, setDifficulty] = useState<Difficulty>("easy");
+  // Opens on the difficulty of the last puzzle started (#1129).
+  const { difficulty, setDifficulty, rememberDifficulty } = useLastDifficulty<Difficulty>(
+    "sudoku",
+    DIFFICULTIES,
+    "easy"
+  );
   const [variant, setVariant] = useState<Variant>("classic");
   const [state, setState] = useState<SudokuState | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [loading, setLoading] = useState(true);
   const [newGameModalVisible, setNewGameModalVisible] = useState(false);
-  // Game ID captured at completion time (before syncComplete clears it).
-  const [completedGameId, setCompletedGameId] = useState<string | null>(null);
+  // What the result card shows, captured when the puzzle is solved.
+  const [result, setResult] = useState<{
+    elapsedS: number;
+    bestTimeS: number;
+    isNewBest: boolean;
+  } | null>(null);
+  const leaderboard = useLeaderboardSubmit(sudokuBoard);
+  const { submit: submitScore, reset: resetScore } = leaderboard;
+  // The card's "View leaderboard" link and the ⋯ menu item (#2633) open the
+  // board of the puzzle on screen, else of the picker's choice.
+  const openLeaderboard = useLeaderboardLink(navigation, "sudoku", {
+    difficulty: state?.difficulty ?? difficulty,
+    variant: state?.variant ?? variant,
+  });
 
   // Timer bookkeeping.  `startMs` is the wall-clock at which play began,
   // shifted forward while the app sits in the background so elapsed
@@ -116,9 +133,11 @@ export default function SudokuScreen() {
   // clobber a resumable save still being read off disk.
   const hasLoadedRef = useRef(false);
   const stateRef = useRef<SudokuState | null>(null);
-  const digitCountRef = useRef(0);
   const prevCompleteRef = useRef(false);
 
+  // The device's cached best time per puzzle kind (`sudoku_stats_v1`), for the
+  // result card's best time and "New best" badge only (#2636): the player's
+  // history is the Stats screen, fed by the server.
   const statsRef = useRef<SudokuStats>(EMPTY_SUDOKU_STATS);
 
   const flashOpacity = useRef(new Animated.Value(0)).current;
@@ -129,32 +148,47 @@ export default function SudokuScreen() {
 
   const {
     start: syncStart,
+    restart: syncRestart,
+    close: syncClose,
+    resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
     getGameId: syncGetGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("sudoku");
 
-  // #2450 — what the hook attaches if it abandons the session itself (unmount).
+  // #2450 / #2619 — the abandon result block (backend SudokuResult), sent by
+  // the hook's own abandon (unmount). Back-navigation needs nothing more: the
+  // screen unmounts, and that abandon carries no score (#2632).
+  const progressResult = useCallback(
+    () => ({ won: false, errors: stateRef.current?.errorCount ?? 0 }),
+    []
+  );
+  // The puzzle's own play timer (#2684), which wins over the hook's foreground
+  // clock: time since the first input, with backgrounded time taken out (the
+  // start moves forward on resume, and a pause in progress stops the count).
+  const playedMs = useCallback((): number | null => {
+    if (startMsRef.current === null) return null;
+    return (pausedAtRef.current ?? Date.now()) - startMsRef.current;
+  }, []);
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({
-      result: { won: false, errors: stateRef.current?.errorCount ?? 0 },
-    }));
-  }, [syncSetProgressSnapshot]);
+    syncSetProgressSnapshot(() => ({ result: progressResult(), durationMs: playedMs() }));
+  }, [syncSetProgressSnapshot, progressResult, playedMs]);
 
-  const { setSnapshot: setScoreboardSnapshot } = useSudokuScoreboard();
-
-  useEffect(() => {
-    if (!state) return;
-    setScoreboardSnapshot({
-      elapsed,
-      difficulty: state.difficulty,
-      variant: state.variant,
-      errorCount: state.errorCount,
-      hasGame: true,
-      stats: statsRef.current,
-    });
-  }, [state, elapsed, setScoreboardSnapshot]);
+  // Pause on background or blur, resume once neither holds it. Two
+  // independent reasons (#2735: a pushed Stats/Leaderboard/Scoreboard screen,
+  // alongside the app itself backgrounding) can overlap, so the timer only
+  // actually resumes once both have cleared: usePauseWhileAway tracks both.
+  const pauseTimer = useCallback(() => {
+    if (startMsRef.current === null || isComplete || pausedAtRef.current !== null) return;
+    pausedAtRef.current = Date.now();
+  }, [isComplete]);
+  const resumeTimer = useCallback(() => {
+    if (pausedAtRef.current === null || startMsRef.current === null) return;
+    startMsRef.current += Date.now() - pausedAtRef.current;
+    pausedAtRef.current = null;
+  }, []);
+  const awayRef = usePauseWhileAway(navigation, pauseTimer, resumeTimer);
 
   // Mount load — restores a saved game silently; on a clean slot the
   // pre-game picker shows.
@@ -169,6 +203,12 @@ export default function SudokuScreen() {
           setState(saved);
           setDifficulty(saved.difficulty);
           setVariant(saved.variant);
+          // A restored game continues the session a killed app left open
+          // (#2654) — only one for the same puzzle settings, so a restore never
+          // adopts another difficulty's or variant's session.
+          if (!saved.isComplete) {
+            syncResume({ difficulty: saved.difficulty, variant: saved.variant });
+          }
           // Treat any resumed state that already has moves as "timer
           // already started" — the player wants to see it ticking
           // immediately on return.  Elapsed resets to 0 because we
@@ -177,7 +217,12 @@ export default function SudokuScreen() {
             saved.errorCount > 0 ||
             saved.undoStack.length > 0 ||
             saved.grid.some((row) => row.some((c) => !c.given && c.value !== 0));
-          if (anyMoves) startMsRef.current = Date.now();
+          if (anyMoves) {
+            startMsRef.current = Date.now();
+            // A load that lands while the player is away (#2750) starts
+            // paused, and resumes with everything else on return.
+            if (awayRef.current) pausedAtRef.current = startMsRef.current;
+          }
         }
       })
       .finally(() => {
@@ -186,7 +231,7 @@ export default function SudokuScreen() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [syncResume, setDifficulty, awayRef]);
 
   // Persist on every state change after the initial load has resolved.
   // Suppressed pre-load to protect the disk copy; `state === null`
@@ -222,22 +267,6 @@ export default function SudokuScreen() {
     };
   }, [state, isComplete, tickTimer]);
 
-  // Pause on background, resume on foreground.
-  useEffect(() => {
-    const handleChange = (next: AppStateStatus) => {
-      if (startMsRef.current === null) return;
-      if (isComplete) return;
-      if (next !== "active") {
-        pausedAtRef.current = Date.now();
-      } else if (pausedAtRef.current !== null && startMsRef.current !== null) {
-        startMsRef.current += Date.now() - pausedAtRef.current;
-        pausedAtRef.current = null;
-      }
-    };
-    const sub = AppState.addEventListener("change", handleChange);
-    return () => sub.remove();
-  }, [isComplete]);
-
   // Complete the gameSync session exactly once on the completion
   // transition; clear the saved game so the next mount starts fresh.
   useEffect(() => {
@@ -247,91 +276,78 @@ export default function SudokuScreen() {
     }
     if (state.isComplete && !prevCompleteRef.current) {
       const score = computeScore(state.difficulty, state.errorCount);
-      const gid = syncGetGameId();
+      const finalElapsed =
+        startMsRef.current !== null ? Math.floor((Date.now() - startMsRef.current) / 1000) : 0;
+      const gid = syncComplete(
+        {
+          finalScore: score,
+          outcome: "completed",
+          durationMs: finalElapsed * 1000,
+          result: { won: true, errors: state.errorCount },
+        },
+        {
+          final_score: score,
+          outcome: "completed",
+          won: true,
+          difficulty: state.difficulty,
+          variant: state.variant,
+          errors: state.errorCount,
+        }
+      );
       if (gid) {
-        setCompletedGameId(gid);
-        syncComplete(
-          { finalScore: score, outcome: "completed", durationMs: 0 },
-          {
-            final_score: score,
-            outcome: "completed",
-            won: true,
-            difficulty: state.difficulty,
-            variant: state.variant,
-            errors: state.errorCount,
-          }
-        );
+        // The card shows where this game ranks on its board.
+        void submitScore({ gameId: gid });
       }
       clearGame().catch(() => {});
 
-      const finalElapsed =
-        startMsRef.current !== null ? Math.floor((Date.now() - startMsRef.current) / 1000) : 0;
       const diff = state.difficulty;
       const variantKey = state.variant;
       const prev = statsRef.current[variantKey][diff];
-      const updatedStats: SudokuStats = {
-        ...statsRef.current,
-        [variantKey]: {
-          ...statsRef.current[variantKey],
-          [diff]: {
-            bestTimeS:
-              prev.bestTimeS === 0 || finalElapsed < prev.bestTimeS ? finalElapsed : prev.bestTimeS,
-            gamesSolved: prev.gamesSolved + 1,
-          },
-        },
-      };
-      statsRef.current = updatedStats;
-      saveStats(updatedStats).catch(() => {});
-      setScoreboardSnapshot({
-        elapsed: finalElapsed,
-        difficulty: state.difficulty,
-        variant: state.variant,
-        errorCount: state.errorCount,
-        hasGame: true,
-        stats: updatedStats,
+      const improved = prev.bestTimeS === 0 || finalElapsed < prev.bestTimeS;
+      // The cache is written only when this puzzle kind's best improves.
+      if (improved) {
+        statsRef.current = {
+          ...statsRef.current,
+          [variantKey]: { ...statsRef.current[variantKey], [diff]: { bestTimeS: finalElapsed } },
+        };
+        saveStats(statsRef.current).catch(() => {});
+      }
+      setElapsed(finalElapsed);
+      setResult({
+        elapsedS: finalElapsed,
+        bestTimeS: improved ? finalElapsed : prev.bestTimeS,
+        // Only a beaten previous time is a "new best" — not a first solve.
+        isNewBest: prev.bestTimeS > 0 && finalElapsed < prev.bestTimeS,
       });
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, syncGetGameId, setCompletedGameId, setScoreboardSnapshot]);
-
-  // Abandon on back-navigation when a digit has been placed and the
-  // puzzle isn't finished.  useGameSync's own unmount handler provides
-  // a second line of defense; calling complete here first makes the
-  // unmount path a no-op for the same session.
-  useEffect(() => {
-    const unsub = navigation.addListener("beforeRemove", () => {
-      const s = stateRef.current;
-      if (!syncGetGameId()) return;
-      if (s !== null && s.isComplete) return;
-      if (digitCountRef.current < 1) return;
-      syncComplete(
-        {
-          outcome: "abandoned",
-          finalScore: s !== null ? computeScore(s.difficulty, s.errorCount) : 0,
-          durationMs: 0,
-        },
-        {
-          outcome: "abandoned",
-          won: false,
-          difficulty: s?.difficulty,
-          variant: s?.variant,
-          errors: s?.errorCount ?? 0,
-        }
-      );
-    });
-    return unsub;
-  }, [navigation, syncComplete, syncGetGameId]);
+  }, [state, syncComplete, submitScore]);
 
   const ensureSyncStarted = useCallback(
     (next: SudokuState) => {
-      if (syncGetGameId()) return;
-      syncStart(
-        { difficulty: next.difficulty, variant: next.variant },
-        { difficulty: next.difficulty, variant: next.variant }
-      );
+      // A new puzzle opened its session already (`openPuzzleSession`); a
+      // restored one whose session couldn't be resumed opens one now.
+      if (!syncGetGameId()) {
+        const settings = { difficulty: next.difficulty, variant: next.variant };
+        syncStart(settings, settings);
+      }
       syncMarkStarted();
     },
     [syncGetGameId, syncStart, syncMarkStarted]
+  );
+
+  /**
+   * #2690: every new puzzle gets its own session, with its own difficulty and
+   * variant. The restart closes whatever is still open (abandoned with the
+   * snapshot if the player started it, discarded if not) while `stateRef`
+   * still holds the old puzzle; the new session is sent on the first digit.
+   */
+  const openPuzzleSession = useCallback(
+    (fresh: SudokuState) => {
+      const settings = { difficulty: fresh.difficulty, variant: fresh.variant };
+      syncRestart(settings, settings);
+    },
+    [syncRestart]
   );
 
   const flashError = useCallback(() => {
@@ -369,26 +385,33 @@ export default function SudokuScreen() {
 
   const handleStart = useCallback(() => {
     clearGame().catch(() => {});
-    digitCountRef.current = 0;
-    const fresh = loadPuzzle(difficulty, variant);
+    const fresh = loadPuzzle(rememberDifficulty(difficulty), variant);
+    openPuzzleSession(fresh);
     setState(fresh);
     setElapsed(0);
+    setResult(null);
+    resetScore();
     startMsRef.current = null;
     pausedAtRef.current = null;
-  }, [difficulty, variant]);
+  }, [difficulty, variant, resetScore, rememberDifficulty, openPuzzleSession]);
 
-  const handleStartWithSettings = useCallback((d: Difficulty, v: Variant) => {
-    setNewGameModalVisible(false);
-    setDifficulty(d);
-    setVariant(v);
-    clearGame().catch(() => {});
-    digitCountRef.current = 0;
-    const fresh = loadPuzzle(d, v);
-    setState(fresh);
-    setElapsed(0);
-    startMsRef.current = null;
-    pausedAtRef.current = null;
-  }, []);
+  const handleStartWithSettings = useCallback(
+    (d: Difficulty, v: Variant) => {
+      setNewGameModalVisible(false);
+      setVariant(v);
+      clearGame().catch(() => {});
+      // A premium level starts at the default instead (#1129).
+      const fresh = loadPuzzle(rememberDifficulty(d), v);
+      openPuzzleSession(fresh);
+      setState(fresh);
+      setElapsed(0);
+      setResult(null);
+      resetScore();
+      startMsRef.current = null;
+      pausedAtRef.current = null;
+    },
+    [resetScore, rememberDifficulty, openPuzzleSession]
+  );
 
   const handleNewGameRequest = useCallback(() => {
     setNewGameModalVisible(true);
@@ -408,7 +431,6 @@ export default function SudokuScreen() {
         // Timer + session start on the first input that actually
         // changes state.
         if (startMsRef.current === null) startMsRef.current = Date.now();
-        digitCountRef.current += 1;
         ensureSyncStarted(next);
 
         return next;
@@ -430,24 +452,27 @@ export default function SudokuScreen() {
   }, []);
 
   const handleChangeDifficulty = useCallback(() => {
+    // #2690: close this puzzle's session now, while the snapshot still reads
+    // it (abandoned if started, discarded if not). The next puzzle opens its own.
+    syncClose();
     clearGame().catch(() => {});
-    digitCountRef.current = 0;
     setState(null);
     setElapsed(0);
+    setResult(null);
+    resetScore();
     startMsRef.current = null;
     pausedAtRef.current = null;
-  }, []);
+  }, [resetScore, syncClose]);
 
   const handleHint = useCallback(() => {
     setState((s) => {
       if (!s || s.selectedRow === null || s.selectedCol === null) return s;
-      const cell = s.grid[s.selectedRow][s.selectedCol];
-      if (cell.given || cell.value !== 0) return s;
+      const cell = s.grid[s.selectedRow]?.[s.selectedCol];
+      if (!cell || cell.given || cell.value !== 0) return s;
       const { size } = variantConfig(s.variant);
       const idx = s.selectedRow * size + s.selectedCol;
       const hintDigit = (s.solution.charCodeAt(idx) - 48) as CellValue;
       if (startMsRef.current === null) startMsRef.current = Date.now();
-      digitCountRef.current += 1;
       ensureSyncStarted(s);
       return enterDigit(s, hintDigit);
     });
@@ -455,29 +480,24 @@ export default function SudokuScreen() {
 
   const headerRight = useMemo(() => {
     if (!state) return null;
-    const undoDisabled = state.undoStack.length === 0;
     return (
-      <Pressable
+      <PillButton
+        label={t("action.undo")}
         onPress={handleUndo}
-        disabled={undoDisabled}
-        style={[styles.headerBtn, { borderColor: colors.accent, opacity: undoDisabled ? 0.4 : 1 }]}
-        accessibilityRole="button"
-        accessibilityLabel={t("action.undo")}
-        accessibilityState={{ disabled: undoDisabled }}
-      >
-        <Text style={[styles.headerBtnText, { color: colors.accent }]}>{t("action.undo")}</Text>
-      </Pressable>
+        disabled={state.undoStack.length === 0}
+      />
     );
-  }, [state, colors, handleUndo, t]);
+  }, [state, handleUndo, t]);
 
   return (
     <GameShell
+      gameType="sudoku"
       title={t("game.title")}
       requireBack
       loading={loading}
       onBack={() => navigation.popToTop()}
       onNewGame={state !== null ? handleNewGameRequest : undefined}
-      onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "sudoku" })}
+      onOpenLeaderboard={openLeaderboard}
       rightSlot={headerRight}
       style={{
         paddingBottom: Math.max(insets.bottom, 16),
@@ -495,24 +515,26 @@ export default function SudokuScreen() {
         />
       ) : (
         <View style={styles.body}>
-          <View style={styles.hudRow} accessibilityRole="summary">
-            <Text style={[styles.hudText, { color: colors.text }]}>
-              {t(`difficulty.${state.difficulty}`)}
-            </Text>
-            <Text style={[styles.hudText, { color: colors.textMuted }]}>
-              {state.errorCount === 1
-                ? t("hud.errorsOne")
-                : t("hud.errors", { count: state.errorCount })}
-            </Text>
-            <Text
-              style={[styles.hudText, { color: colors.textMuted }]}
-              accessibilityLabel={t("hud.elapsed", {
-                time: formatElapsed(elapsed),
-              })}
-            >
-              {formatElapsed(elapsed)}
-            </Text>
-          </View>
+          <HudStatRow
+            style={styles.hudTight}
+            stats={[
+              { key: "difficulty", text: t(`difficulty.${state.difficulty}`) },
+              {
+                key: "errors",
+                text:
+                  state.errorCount === 1
+                    ? t("hud.errorsOne")
+                    : t("hud.errors", { count: state.errorCount }),
+                muted: true,
+              },
+              {
+                key: "elapsed",
+                text: formatElapsed(elapsed),
+                muted: true,
+                accessibilityLabel: t("hud.elapsed", { time: formatElapsed(elapsed) }),
+              },
+            ]}
+          />
 
           <View style={styles.gridWrap}>
             <SudokuGrid
@@ -565,15 +587,41 @@ export default function SudokuScreen() {
         </View>
       )}
 
-      {state !== null && isComplete ? (
-        <WinModal
-          difficulty={state.difficulty}
-          errors={state.errorCount}
-          elapsed={elapsed}
-          score={computeScore(state.difficulty, state.errorCount)}
-          gameId={completedGameId ?? undefined}
-          onNewPuzzle={handleStart}
-          onChangeDifficulty={handleChangeDifficulty}
+      {state !== null ? (
+        <GameResultModal
+          visible={isComplete}
+          outcome="win"
+          eyebrow={`${t("game.title")} · ${t(`difficulty.${state.difficulty}`)}`}
+          subtitle={t(`variant.${state.variant}`)}
+          hero={{
+            kind: "score",
+            label: tResult("stat.time"),
+            value: formatElapsed(result?.elapsedS ?? elapsed),
+          }}
+          isNewBest={result?.isNewBest ?? false}
+          stats={[
+            {
+              label: tResult("stat.score"),
+              value: computeScore(state.difficulty, state.errorCount),
+            },
+            { label: tResult("stat.errors"), value: state.errorCount },
+            ...(result && result.bestTimeS > 0
+              ? [{ label: tResult("stat.best"), value: formatElapsed(result.bestTimeS) }]
+              : []),
+          ]}
+          submission={{
+            status: leaderboard.status,
+            rank: leaderboard.rank,
+            isBest: leaderboard.isBest,
+            playerName: leaderboard.playerName,
+            onProvideName: leaderboard.provideName,
+            onRetry: leaderboard.retry,
+          }}
+          onViewLeaderboard={openLeaderboard}
+          onPlayAgain={handleStart}
+          secondaryAction={{ label: t("action.changeDifficulty"), onPress: handleChangeDifficulty }}
+          onHome={() => navigation.popToTop()}
+          testID="sudoku-result"
         />
       ) : null}
 
@@ -608,12 +656,6 @@ function PreGame({
 }) {
   const { t } = useTranslation("sudoku");
   const { colors } = useTheme();
-  const gradient: ViewStyle =
-    Platform.OS === "web"
-      ? ({
-          backgroundImage: `linear-gradient(135deg, ${colors.accent}, ${colors.accentBright})`,
-        } as ViewStyle)
-      : { backgroundColor: colors.accentBright };
 
   return (
     <View style={styles.preGameWrap}>
@@ -633,17 +675,11 @@ function PreGame({
         <View style={[styles.preGameSelector, { marginTop: 8 }]}>
           <DifficultySelector value={difficulty} onChange={onChange} />
         </View>
-        <Pressable
+        <ModalPrimaryButton
           testID="sudoku-pregame-start"
+          label={t("action.start")}
           onPress={onStart}
-          style={[styles.preGameStart, gradient]}
-          accessibilityRole="button"
-          accessibilityLabel={t("action.start")}
-        >
-          <Text style={[styles.preGameStartText, { color: colors.textOnAccent }]}>
-            {t("action.start")}
-          </Text>
-        </Pressable>
+        />
       </View>
     </View>
   );
@@ -701,181 +737,6 @@ function VariantSelector({
 }
 
 // ---------------------------------------------------------------------------
-// Win modal — name entry + score POST with retry
-// ---------------------------------------------------------------------------
-
-function WinModal({
-  difficulty,
-  errors,
-  elapsed,
-  score,
-  gameId,
-  onNewPuzzle,
-  onChangeDifficulty,
-}: {
-  readonly difficulty: Difficulty;
-  readonly errors: number;
-  readonly elapsed: number;
-  readonly score: number;
-  readonly gameId?: string;
-  readonly onNewPuzzle: () => void;
-  readonly onChangeDifficulty: () => void;
-}) {
-  const { t } = useTranslation("sudoku");
-  const { colors } = useTheme();
-  const { isOnline, isInitialized } = useNetwork();
-
-  const [name, setName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const offline = isInitialized && !isOnline;
-
-  const gradient: ViewStyle =
-    Platform.OS === "web"
-      ? ({
-          backgroundImage: `linear-gradient(135deg, ${colors.accent}, ${colors.accentBright})`,
-        } as ViewStyle)
-      : { backgroundColor: colors.accentBright };
-
-  const trimmed = name.trim();
-  const canSubmit = !submitting && !offline && trimmed.length > 0;
-
-  async function handleSubmit() {
-    if (!canSubmit || !gameId) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await scoreQueue.enqueue("sudoku", { game_id: gameId, player_name: trimmed });
-      setSubmitted(true);
-      // Kick off a background flush; failures are retried on next reconnect.
-      scoreQueue.flush().catch(() => undefined);
-    } catch {
-      setError(t("win.submitFailed", { defaultValue: "Couldn't save your score. Tap to retry." }));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const submitLabel = error
-    ? t("win.submitRetry", { defaultValue: "Retry submit" })
-    : t("action.submitScore");
-
-  return (
-    <Modal visible transparent animationType="fade" accessibilityViewIsModal>
-      <View style={styles.modalOverlay}>
-        <View
-          style={[
-            styles.modalCard,
-            { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-          ]}
-        >
-          <Text style={[styles.modalTitle, { color: colors.text }]} accessibilityRole="header">
-            {t("win.title")}
-          </Text>
-          <Text style={[styles.modalBody, { color: colors.textMuted }]}>
-            {t(`difficulty.${difficulty}`)}
-          </Text>
-          <Text style={[styles.modalBody, { color: colors.text }]}>
-            {t("win.score", { score })}
-          </Text>
-          <Text style={[styles.modalBody, { color: colors.textMuted }]}>
-            {t("win.errors", { count: errors })}
-          </Text>
-          <Text style={[styles.modalBody, { color: colors.textMuted }]}>
-            {t("win.elapsed", { time: formatElapsed(elapsed) })}
-          </Text>
-
-          {!submitted ? (
-            <>
-              <TextInput
-                style={[
-                  styles.nameInput,
-                  {
-                    backgroundColor: colors.surfaceAlt,
-                    borderColor: colors.border,
-                    color: colors.text,
-                  },
-                ]}
-                placeholder={t("win.namePlaceholder", {
-                  defaultValue: "Enter your name",
-                })}
-                placeholderTextColor={colors.textMuted}
-                value={name}
-                onChangeText={setName}
-                maxLength={MAX_NAME_LENGTH}
-                editable={!submitting}
-                accessibilityLabel={t("win.nameLabel", {
-                  defaultValue: "Your name",
-                })}
-              />
-              {offline ? (
-                <OfflineBanner />
-              ) : (
-                error !== null && (
-                  <Text
-                    style={[styles.winError, { color: colors.error }]}
-                    accessibilityLiveRegion="assertive"
-                    accessibilityRole="alert"
-                  >
-                    {error}
-                  </Text>
-                )
-              )}
-              <Pressable
-                style={[styles.modalPrimary, gradient, !canSubmit && styles.modalPrimaryDisabled]}
-                onPress={handleSubmit}
-                disabled={!canSubmit}
-                accessibilityRole="button"
-                accessibilityLabel={submitLabel}
-                accessibilityState={{ disabled: !canSubmit, busy: submitting }}
-              >
-                {submitting ? (
-                  <ActivityIndicator color={colors.textOnAccent} />
-                ) : (
-                  <Text style={[styles.modalPrimaryText, { color: colors.textOnAccent }]}>
-                    {submitLabel}
-                  </Text>
-                )}
-              </Pressable>
-            </>
-          ) : (
-            <Text
-              style={[styles.winSaved, { color: colors.bonus }]}
-              accessibilityLiveRegion="polite"
-            >
-              {t("win.saved", { defaultValue: "Saved! Score submitted." })}
-            </Text>
-          )}
-
-          <Pressable
-            style={[styles.modalSecondary, { borderColor: colors.accent }]}
-            onPress={onNewPuzzle}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.newGame")}
-          >
-            <Text style={[styles.modalSecondaryText, { color: colors.accent }]}>
-              {t("action.newGame")}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.modalSecondary, { borderColor: colors.accent }]}
-            onPress={onChangeDifficulty}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.changeDifficulty")}
-          >
-            <Text style={[styles.modalSecondaryText, { color: colors.accent }]}>
-              {t("action.changeDifficulty")}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // New Game modal — settings selection after abandon confirmation
 // ---------------------------------------------------------------------------
 
@@ -891,58 +752,29 @@ function NewGameModal({
   readonly onStart: (d: Difficulty, v: Variant) => void;
 }) {
   const { t } = useTranslation("sudoku");
-  const { colors } = useTheme();
   const [pendingDifficulty, setPendingDifficulty] = useState(currentDifficulty);
   const [pendingVariant, setPendingVariant] = useState(currentVariant);
 
-  const gradient: ViewStyle =
-    Platform.OS === "web"
-      ? ({
-          backgroundImage: `linear-gradient(135deg, ${colors.accent}, ${colors.accentBright})`,
-        } as ViewStyle)
-      : { backgroundColor: colors.accentBright };
-
   return (
-    <Modal visible transparent animationType="fade" accessibilityViewIsModal>
-      <View style={styles.modalOverlay}>
-        <View
-          style={[
-            styles.modalCard,
-            { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-          ]}
-        >
-          <Text style={[styles.modalTitle, { color: colors.text }]} accessibilityRole="header">
-            {t("newGame.title")}
-          </Text>
-          <View style={styles.newGameSelector}>
-            <VariantSelector value={pendingVariant} onChange={setPendingVariant} />
-          </View>
-          <View style={[styles.newGameSelector, { marginTop: 8 }]}>
-            <DifficultySelector value={pendingDifficulty} onChange={setPendingDifficulty} />
-          </View>
-          <Pressable
-            style={[styles.modalPrimary, gradient]}
-            onPress={() => onStart(pendingDifficulty, pendingVariant)}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.start")}
-          >
-            <Text style={[styles.modalPrimaryText, { color: colors.textOnAccent }]}>
-              {t("action.start")}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.modalSecondary, { borderColor: colors.accent }]}
-            onPress={onQuickRestart}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.quickRestart")}
-          >
-            <Text style={[styles.modalSecondaryText, { color: colors.accent }]}>
-              {t("action.quickRestart")}
-            </Text>
-          </Pressable>
-        </View>
+    <ModalCard visible title={t("newGame.title")}>
+      <View style={styles.newGameSelector}>
+        <VariantSelector value={pendingVariant} onChange={setPendingVariant} />
       </View>
-    </Modal>
+      <View style={[styles.newGameSelector, { marginTop: 8 }]}>
+        <DifficultySelector value={pendingDifficulty} onChange={setPendingDifficulty} />
+      </View>
+      <ModalActions style={styles.newGameActions}>
+        <ModalPrimaryButton
+          label={t("action.start")}
+          onPress={() => onStart(pendingDifficulty, pendingVariant)}
+        />
+        <ModalSecondaryButton
+          tone="accent"
+          label={t("action.quickRestart")}
+          onPress={onQuickRestart}
+        />
+      </ModalActions>
+    </ModalCard>
   );
 }
 
@@ -959,31 +791,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
-  headerBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    minHeight: 32,
-    justifyContent: "center",
-  },
-  headerBtnText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
-  hudRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 4,
+  // Sudoku's grid fills the height, so its HUD keeps the tighter padding.
+  hudTight: {
     paddingVertical: 4,
-  },
-  hudText: {
-    fontFamily: typography.heading,
-    fontSize: 14,
-    letterSpacing: 0.5,
   },
   gridWrap: {
     alignSelf: "stretch",
@@ -1048,103 +858,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
   },
-  preGameStart: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 999,
-    minWidth: 180,
-    alignItems: "center",
-  },
-  preGameStartText: {
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
   newGameSelector: {
     alignSelf: "stretch",
     marginBottom: 4,
   },
-  modalOverlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#000000bf",
-  },
-  modalCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 24,
-    alignItems: "center",
-    width: "86%",
-    maxWidth: 360,
-  },
-  modalTitle: {
-    fontFamily: typography.heading,
-    fontSize: 20,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  modalBody: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 6,
-    textAlign: "center",
-  },
-  modalPrimary: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 999,
+  newGameActions: {
     marginTop: 14,
-    marginBottom: 8,
-    alignItems: "center",
-    minWidth: 180,
-  },
-  modalPrimaryDisabled: {
-    opacity: 0.5,
-  },
-  modalPrimaryText: {
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
-  modalSecondary: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    marginTop: 8,
-    minWidth: 180,
-    alignItems: "center",
-  },
-  modalSecondaryText: {
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  nameInput: {
-    width: "100%",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    fontSize: 15,
-    marginTop: 10,
-    marginBottom: 6,
-  },
-  winError: {
-    fontSize: 13,
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  winSaved: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginTop: 12,
-    marginBottom: 6,
   },
 });

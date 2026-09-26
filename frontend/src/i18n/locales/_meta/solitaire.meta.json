@@ -89,28 +89,19 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "action.hint": {
+    "component": "SolitaireScreen",
+    "description": "Button label that highlights a possible next move.",
+    "tone": "action",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "action.autoComplete": {
     "component": "SolitaireScreen",
     "description": "Button that finishes a trivially-winnable deal in one tap.",
     "tone": "functional",
-    "characterLimit": 18,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "action.newGame": {
-    "component": "SolitaireScreen header",
-    "description": "New Game button in the header.",
-    "tone": "functional",
-    "characterLimit": 12,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "action.submitScore": {
-    "component": "SolitaireScreen win modal",
-    "description": "Primary CTA on the win modal — submits the score to the leaderboard.",
-    "tone": "confident",
     "characterLimit": 18,
     "placeholders": [],
     "doNotTranslate": [],
@@ -121,60 +112,6 @@
     "description": "Button label to deal a fresh game after finishing one.",
     "tone": "casual",
     "characterLimit": 14,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "win.title": {
-    "component": "SolitaireScreen win modal",
-    "description": "Header of the win modal — celebrates the win.",
-    "tone": "celebratory",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "win.score": {
-    "component": "SolitaireScreen win modal",
-    "description": "Line showing the final score on the win modal.",
-    "tone": "neutral",
-    "characterLimit": 30,
-    "placeholders": ["{{score}}"],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "win.rank": {
-    "component": "SolitaireScreen win modal",
-    "description": "Confirmation after a successful leaderboard submit.",
-    "tone": "celebratory",
-    "characterLimit": 20,
-    "placeholders": ["{{rank}}"],
-    "doNotTranslate": [],
-    "notes": "Keep the '#' literal."
-  },
-  "win.namePlaceholder": {
-    "component": "SolitaireScreen win modal",
-    "description": "Placeholder inside the name text field.",
-    "tone": "neutral",
-    "characterLimit": 22,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "win.nameLabel": {
-    "component": "SolitaireScreen win modal",
-    "description": "Accessibility label for the name text field.",
-    "tone": "functional",
-    "characterLimit": 16,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "win.nameHint": {
-    "component": "SolitaireScreen win modal",
-    "description": "Accessibility hint explaining what the name is used for.",
-    "tone": "functional",
-    "characterLimit": 80,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -291,7 +228,7 @@
     "component": "CardView",
     "description": "Accessibility label for a face-down card that is currently selected.",
     "tone": "functional",
-    "characterLimit": 32,
+    "characterLimit": 35,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -346,24 +283,6 @@
     "description": "Error message when restoring a saved game fails.",
     "tone": "apologetic, clear",
     "characterLimit": 60,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "error.submitFailed": {
-    "component": "SolitaireScreen win modal",
-    "description": "Error message when submitting the score to the leaderboard fails.",
-    "tone": "apologetic, clear",
-    "characterLimit": 60,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "error.submitRetry": {
-    "component": "SolitaireScreen win modal",
-    "description": "Button label that retries a failed leaderboard submit.",
-    "tone": "action",
-    "characterLimit": 12,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null

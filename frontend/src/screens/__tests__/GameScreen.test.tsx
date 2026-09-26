@@ -3,7 +3,15 @@ import { render, fireEvent, act, waitFor } from "@testing-library/react-native";
 import GameScreen from "../GameScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
-import { saveGame, clearGame } from "../../game/yacht/storage";
+import { saveGame, clearGame, loadLastMode, saveLastMode } from "../../game/yacht/storage";
+
+// GameShell's Stats item (#2635) navigates through useNavigation; these
+// screens take their navigation as a prop, so the hook gets its own mock.
+const mockShellNavigate = jest.fn();
+jest.mock("@react-navigation/native", () => ({
+  ...jest.requireActual("@react-navigation/native"),
+  useNavigation: () => ({ navigate: mockShellNavigate }),
+}));
 
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
@@ -75,9 +83,11 @@ function makeState(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const mockNavigation = { navigate: jest.fn(), goBack: jest.fn() } as unknown as Parameters<
-  typeof GameScreen
->[0]["navigation"];
+const mockNavigation = {
+  navigate: jest.fn(),
+  goBack: jest.fn(),
+  popToTop: jest.fn(),
+} as unknown as Parameters<typeof GameScreen>[0]["navigation"];
 
 async function renderScreen(stateOverrides: Record<string, unknown> = {}) {
   const initialState = makeState(stateOverrides);
@@ -165,24 +175,49 @@ describe("GameScreen", () => {
     expect(getByText(/round.*1/i)).toBeTruthy();
   });
 
-  it("dismiss button navigates back to HomeScreen", async () => {
-    const { getByRole } = await renderScreen({ game_over: true, total_score: 200 });
+  it("the result card's Home button returns to the lobby (#2505)", async () => {
+    (mockNavigation.popToTop as jest.Mock).mockClear();
+    const { getByTestId } = await renderScreen({ game_over: true, total_score: 200 });
     await act(async () => {
-      await fireEvent.press(getByRole("button", { name: /dismiss/i }));
+      await fireEvent.press(getByTestId("yacht-result-home"));
     });
-    expect(mockNavigation.goBack).toHaveBeenCalledTimes(1);
+    expect(mockNavigation.popToTop).toHaveBeenCalledTimes(1);
   });
 
-  it("⋯ menu Scoreboard item navigates to ScoreboardScreen with yacht gameKey", async () => {
-    (mockNavigation.navigate as jest.Mock).mockClear();
+  it("⋯ menu Scorecard item (#2636) opens the yacht live view", async () => {
+    mockShellNavigate.mockClear();
     const { getByLabelText, getByText } = await renderScreen();
     await act(async () => {
       await fireEvent.press(getByLabelText("More options")); // open ⋯ menu
     });
     await act(async () => {
-      await fireEvent.press(getByText("Scoreboard")); // tap Scoreboard item
+      await fireEvent.press(getByText("Scorecard")); // tap Scorecard item
     });
-    expect(mockNavigation.navigate).toHaveBeenCalledWith("Scoreboard", { gameKey: "yacht" });
+    expect(mockShellNavigate).toHaveBeenCalledWith("Scorecard", { gameKey: "yacht" });
+  });
+
+  it("⋯ menu Leaderboard item opens Yacht's board (#2633)", async () => {
+    (mockNavigation.navigate as jest.Mock).mockClear();
+    const { getByLabelText, getByText } = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByText("Leaderboard"));
+    });
+    expect(mockNavigation.navigate).toHaveBeenCalledWith("Leaderboard", { gameType: "yacht" });
+  });
+
+  it("⋯ menu Stats item opens Yacht's stats (#2635)", async () => {
+    mockShellNavigate.mockClear();
+    const { getByLabelText, getByText } = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByText("Stats"));
+    });
+    expect(mockShellNavigate).toHaveBeenCalledWith("GameStats", { gameType: "yacht" });
   });
 });
 
@@ -223,6 +258,55 @@ function makeGameOverState(): Record<string, unknown> {
 // ---------------------------------------------------------------------------
 // GH #225 — "Play Again" reset correctness
 // ---------------------------------------------------------------------------
+
+describe("GameScreen — last difficulty (#1129)", () => {
+  it("playing Solo keeps the last VS difficulty for next time", async () => {
+    (loadLastMode as jest.Mock).mockResolvedValueOnce({ mode: "vs", difficulty: "hard" });
+    const result = await render(
+      <ThemeProvider>
+        <YachtScorecardProvider>
+          <GameScreen
+            navigation={mockNavigation}
+            route={
+              { params: { initialState: makeState() } } as unknown as Parameters<
+                typeof GameScreen
+              >[0]["route"]
+            }
+          />
+        </YachtScorecardProvider>
+      </ThemeProvider>
+    );
+    await act(async () => {});
+    expect(result.getByTestId("yacht-difficulty-hard").props.accessibilityState).toEqual(
+      expect.objectContaining({ checked: true })
+    );
+
+    await fireEvent.press(result.getByTestId("yacht-mode-solo"));
+    expect(saveLastMode).toHaveBeenCalledWith("solo", "hard");
+  });
+
+  it("a VS difficulty tapped but not played is not remembered by Solo", async () => {
+    (loadLastMode as jest.Mock).mockResolvedValueOnce({ mode: "vs", difficulty: "easy" });
+    const result = await render(
+      <ThemeProvider>
+        <YachtScorecardProvider>
+          <GameScreen
+            navigation={mockNavigation}
+            route={
+              { params: { initialState: makeState() } } as unknown as Parameters<
+                typeof GameScreen
+              >[0]["route"]
+            }
+          />
+        </YachtScorecardProvider>
+      </ThemeProvider>
+    );
+    await act(async () => {});
+    await fireEvent.press(result.getByTestId("yacht-difficulty-hard"));
+    await fireEvent.press(result.getByTestId("yacht-mode-solo"));
+    expect(saveLastMode).toHaveBeenCalledWith("solo", "easy");
+  });
+});
 
 describe("GameScreen — Play Again reset (GH #225)", () => {
   beforeEach(() => {
@@ -397,7 +481,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
   it("calls startGame('yacht') on mount", async () => {
     await renderScreen();
     expect(mockStartGame).toHaveBeenCalledTimes(1);
-    expect(mockStartGame).toHaveBeenCalledWith("yacht", {}, {});
+    expect(mockStartGame).toHaveBeenCalledWith("yacht", { mode: "solo" }, {});
   });
 
   it("does not start a new session when mounted with a game_over state", async () => {
@@ -558,7 +642,7 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
       const soloBtn = queryByRole("button", { name: /^solo$/i });
       if (soloBtn) fireEvent.press(soloBtn);
     });
-    expect(mockStartGame).toHaveBeenCalledWith("yacht", {}, {});
+    expect(mockStartGame).toHaveBeenCalledWith("yacht", { mode: "solo" }, {});
   });
 
   it("client failures do not block gameplay (enqueueEvent throws)", async () => {

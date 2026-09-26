@@ -188,6 +188,69 @@ describe("httpClient — error handling", () => {
     }
   });
 
+  // #2541 — structured fields beside `detail` reach the caller, while
+  // `message` stays the bare code every existing call site compares against.
+  it("carries the parsed error body on ApiError", async () => {
+    const { ApiError } = require("../httpClient") as typeof import("../httpClient");
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      statusText: "Forbidden",
+      json: () => Promise.resolve({ detail: "already_solved", guesses_used: 5, solved: true }),
+    } as Response);
+    try {
+      await request("/x");
+      fail("expected request to throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      const err = e as InstanceType<typeof ApiError>;
+      expect(err.message).toBe("already_solved");
+      expect(err.body).toEqual({ detail: "already_solved", guesses_used: 5, solved: true });
+    }
+  });
+
+  it("leaves ApiError.body as the statusText fallback when the body is not JSON", async () => {
+    const { ApiError } = require("../httpClient") as typeof import("../httpClient");
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 502,
+      statusText: "Bad Gateway",
+      json: () => Promise.reject(new Error("parse error")),
+    } as Response);
+    try {
+      await request("/x");
+      fail("expected request to throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      const err = e as InstanceType<typeof ApiError>;
+      expect(err.message).toBe("Bad Gateway");
+      expect(err.body).toEqual({ detail: "Bad Gateway" });
+    }
+  });
+
+  // #2541 review — `res.json()` resolving to `null` (a proxy or edge error
+  // page) used to throw a TypeError reading `.detail`, so callers matching
+  // `instanceof ApiError` never saw the status.
+  it("throws ApiError, not a TypeError, when the error body is JSON null", async () => {
+    const { ApiError } = require("../httpClient") as typeof import("../httpClient");
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      statusText: "Forbidden",
+      json: () => Promise.resolve(null),
+    } as Response);
+    try {
+      await request("/x");
+      fail("expected request to throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      const err = e as InstanceType<typeof ApiError>;
+      expect(err.status).toBe(403);
+      expect(err.message).toBe("Request failed");
+      expect(err.body).toBeUndefined();
+    }
+  });
+
   it("throws ApiError with status 500 for server errors", async () => {
     const { ApiError } = require("../httpClient") as typeof import("../httpClient");
     mockFetch.mockResolvedValueOnce({
@@ -257,7 +320,7 @@ describe("httpClient — Sentry reporting (#513)", () => {
       json: () => Promise.resolve({ detail: "rate limited" }),
     } as Response);
     const request = makeRequest();
-    await expect(request("/cascade/score", { method: "POST" })).rejects.toThrow("rate limited");
+    await expect(request("/games", { method: "POST" })).rejects.toThrow("rate limited");
     const apiErrorCrumb = Sentry.addBreadcrumb.mock.calls.find(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (c: any[]) => c[0]?.category === "api.error"
@@ -421,7 +484,7 @@ describe("httpClient — Sentry reporting (#513)", () => {
       mockFetch.mockRejectedValueOnce(
         new CodedError(
           "ERR_NETWORK",
-          'fetch failed: java.net.UnknownHostException: Unable to resolve host "gaming-app-api-dev.onrender.com"'
+          'fetch failed: java.net.UnknownHostException: Unable to resolve host "games-api.buffingchi.com"'
         )
       );
       const request = makeRequest();
@@ -499,7 +562,7 @@ describe("httpClient — Sentry reporting (#513)", () => {
     it("a different endpoint, or the same path with another method, still reports", async () => {
       const request = makeRequest();
       await fail(request, "/entitlements");
-      await fail(request, "/starswarm/leaderboard");
+      await fail(request, "/games/leaderboard/starswarm");
       await fail(request, "/entitlements", "POST");
       expect(Sentry.captureMessage).toHaveBeenCalledTimes(3);
     });
@@ -604,7 +667,7 @@ describe("httpClient — Sentry reporting (#513)", () => {
     const nativeFailures = [
       [
         "Android",
-        'java.net.UnknownHostException: Unable to resolve host "gaming-app-api-dev.onrender.com": No address associated with hostname',
+        'java.net.UnknownHostException: Unable to resolve host "games-api.buffingchi.com": No address associated with hostname',
       ],
       ["iOS", "UnexpectedException: A server with the specified hostname could not be found."],
     ];

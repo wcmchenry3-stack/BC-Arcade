@@ -22,11 +22,27 @@ export interface RunRecord {
   startingChips: number;
   finalChips: number;
   runGoal: number | null;
-  /** True when the run ended in victory (chips >= runGoal). */
+  /**
+   * True when the run reached its goal at any point (#2628), even if the player
+   * chose Keep Playing and later ran out of chips.
+   */
   completed: boolean;
+  /**
+   * What the run recorded on the server (#2628): `win` (goal reached), `loss`
+   * (out of chips before the goal) or `abandoned` (left before the goal).
+   * Absent on runs saved by older builds.
+   */
+  outcome?: "win" | "loss" | "abandoned";
   handsPlayed: number;
   biggestWin: number;
   lowestChips: number;
+  /**
+   * The lowest chip count before the run reached its goal (#2628). A run that
+   * kept playing past its goal and then busted has `lowestChips` 0, which says
+   * nothing about a comeback to the goal. Absent before the goal is reached,
+   * and on runs saved by older builds.
+   */
+  lowestChipsBeforeGoal?: number;
   /** Unix ms timestamp when the session started. */
   startedAt: number;
   /** Unix ms timestamp when the session ended. */

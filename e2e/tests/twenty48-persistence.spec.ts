@@ -164,8 +164,8 @@ test.describe("2048 — state persistence", () => {
     await page.getByText("You Win!").waitFor();
 
     await page
-      .getByRole("button", { name: "Start a new 2048 game" })
-      .nth(1)
+      .getByTestId("twenty48-result")
+      .getByRole("button", { name: "Play Again" })
       .click();
 
     await expect(page.locator('[aria-label="Current score: 0"]')).toBeVisible({
@@ -190,8 +190,8 @@ test.describe("2048 — state persistence", () => {
     await page.getByText("Game Over").waitFor();
 
     await page
-      .getByRole("button", { name: "Start a new 2048 game" })
-      .nth(1)
+      .getByTestId("twenty48-result")
+      .getByRole("button", { name: "Play Again" })
       .click();
 
     await expect(page.locator('[aria-label="Current score: 0"]')).toBeVisible({

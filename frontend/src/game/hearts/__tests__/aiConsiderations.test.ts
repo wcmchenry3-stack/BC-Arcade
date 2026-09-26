@@ -16,10 +16,12 @@ import {
   computePWin,
   rateMinimizeImmediatePoints,
   rateMoonAttemptProgress,
+  MOON_DEFENSE,
   rateMoonThreat,
   ratePassingQuality,
   rateQueenSpadesRisk,
   rateSuitVoidingUtility,
+  rateTactics,
 } from "../aiConsiderations";
 import { buildHeartsInfoSet } from "../aiInfoSet";
 import { createSeededRng, dealGame, getValidPlays, playCard, setRng } from "../engine";
@@ -417,67 +419,287 @@ describe("rateQueenSpadesRisk", () => {
 // rateMoonThreat
 // ---------------------------------------------------------------------------
 
-describe("rateMoonThreat", () => {
-  it("returns 0.5 when there is no moon threat (no points taken)", () => {
-    const info = mkInfo([c("clubs", 5)], []);
-    expect(rateMoonThreat(info, c("clubs", 5))).toBe(0.5);
-  });
+describe("rateMoonThreat (#2235)", () => {
+  // Seat 1 is the would-be shooter throughout: it holds every point taken.
+  // Tricks are seated in turn order: the leader, then the next seats, then us.
+  const shooterPts = (pts: number) => [0, pts, 0, 0];
 
-  it("returns 0.5 when points are spread across multiple players", () => {
-    const state = mkState({ handScores: [5, 3, 0, 0] });
-    const info = buildHeartsInfoSet([c("clubs", 5)], [], state, 0);
-    expect(rateMoonThreat(info, c("clubs", 5))).toBe(0.5);
-  });
-
-  it("returns > 0.5 for off-suit point dump onto shooter's trick", () => {
-    // P1 has all 6 points (moon threat). We're void in clubs, discarding Q♠.
-    const trick = [tc("clubs", 5, 1)]; // shooter is winning
-    const hand = [c("spades", 12)]; // Q♠ to dump
-    const state = mkState({
-      handScores: [0, 6, 0, 0],
-      currentTrick: trick,
+  describe("detection", () => {
+    it("is neutral with no points taken, points spread, or when this player holds them", () => {
+      expect(rateMoonThreat(mkInfo([c("hearts", 5)], []), c("hearts", 5))).toBe(0.5);
+      const spread = mkInfo([c("hearts", 5)], [], { handScores: [0, 5, 3, 0] });
+      expect(rateMoonThreat(spread, c("hearts", 5))).toBe(0.5);
+      const mine = mkInfo([c("hearts", 5)], [], { handScores: [6, 0, 0, 0] });
+      expect(rateMoonThreat(mine, c("hearts", 5))).toBe(0.5); // not a threat to ourselves
     });
-    const info = buildHeartsInfoSet(hand, trick, state, 0);
-    const score = rateMoonThreat(info, c("spades", 12)); // off-suit Q♠ dump
-    expect(score).toBeGreaterThan(0.7);
+
+    it("is neutral when no points are at stake in the trick", () => {
+      // Shooter (P1) led 5♣, P2 and P3 followed low; we (P0, last) play a club.
+      const trick = [tc("clubs", 5, 1), tc("clubs", 3, 2), tc("clubs", 2, 3)];
+      const info = mkInfo([c("clubs", 9)], trick, {
+        handScores: shooterPts(13),
+        currentTrick: trick,
+      });
+      expect(rateMoonThreat(info, c("clubs", 9))).toBe(0.5);
+    });
+
+    it("reacts before the old 4-point gate, growing from the threshold to full", () => {
+      // Shooter (P1) led the winning 5♣; P2, P3 followed low; we (P0, last) are void.
+      const trick = [tc("clubs", 5, 1), tc("clubs", 3, 2), tc("clubs", 2, 3)];
+      const score = (pts: number) =>
+        rateMoonThreat(
+          mkInfo([c("hearts", 3)], trick, { handScores: shooterPts(pts), currentTrick: trick }),
+          c("hearts", 3)
+        );
+      expect(score(MOON_DEFENSE.minThreatPoints - 1)).toBe(0.5); // below the threshold: neutral
+      const early = score(MOON_DEFENSE.minThreatPoints); // 2 pts: the old gate (4) was off here
+      const full = score(MOON_DEFENSE.fullThreatPoints);
+      expect(early).toBeLessThan(0.5); // feeding the shooter is already discouraged...
+      expect(early).toBeGreaterThan(full); // ...less than at a full threat
+      expect(score(20)).toBeCloseTo(full, 10); // capped at full threat
+    });
   });
 
-  it("returns < 0.5 for leading hearts during a moon threat (feeds the shooter)", () => {
-    const hand = [c("hearts", 10)];
-    const state = mkState({ handScores: [0, 6, 0, 0] });
-    const info = buildHeartsInfoSet(hand, [], state, 0);
-    expect(rateMoonThreat(info, c("hearts", 10))).toBeLessThan(0.5);
+  describe("where the points go", () => {
+    it("penalises discarding points onto a trick the shooter will take — keep the stoppers", () => {
+      // Shooter's 5♣ is winning and we're last: a dumped heart or Q♠ feeds the moon.
+      const trick = [tc("clubs", 5, 1), tc("clubs", 3, 2), tc("clubs", 2, 3)];
+      const hand = [c("hearts", 3), c("spades", 12), c("diamonds", 4)];
+      const info = mkInfo(hand, trick, { handScores: shooterPts(6), currentTrick: trick });
+      expect(rateMoonThreat(info, c("diamonds", 4))).toBe(0.5); // safe discard
+      expect(rateMoonThreat(info, c("hearts", 3))).toBeLessThan(0.2);
+      expect(rateMoonThreat(info, c("spades", 12))).toBeLessThan(
+        rateMoonThreat(info, c("hearts", 3))
+      );
+    });
+
+    it("counts on later players to overtake the shooter", () => {
+      // The shooter (P1) led 5♣; we (P2) are void; P3 and P0 still play, and
+      // eight higher clubs are out — most likely one of them takes the trick.
+      const trick = [tc("clubs", 5, 1)];
+      const info = mkInfo(
+        [c("hearts", 3)],
+        trick,
+        {
+          handScores: shooterPts(6),
+          currentTrick: trick,
+          currentLeaderIndex: 1,
+        },
+        2
+      );
+      const last = [tc("clubs", 5, 1), tc("clubs", 3, 2), tc("clubs", 2, 3)];
+      const lastInfo = mkInfo([c("hearts", 3)], last, {
+        handScores: shooterPts(6),
+        currentTrick: last,
+      });
+      expect(rateMoonThreat(info, c("hearts", 3))).toBeGreaterThan(0.5);
+      expect(rateMoonThreat(lastInfo, c("hearts", 3))).toBeLessThan(0.2); // nobody left to overtake
+    });
+
+    it("rewards discarding points onto a trick the shooter has already lost", () => {
+      // Shooter played 5♣ but P3's K♣ is winning, and we're last: points go to P3.
+      const trick = [tc("clubs", 5, 1), tc("clubs", 3, 2), tc("clubs", 13, 3)];
+      const hand = [c("hearts", 3), c("spades", 12)];
+      const info = mkInfo(hand, trick, { handScores: shooterPts(6), currentTrick: trick });
+      expect(rateMoonThreat(info, c("hearts", 3))).toBeGreaterThan(0.8);
+      expect(rateMoonThreat(info, c("spades", 12))).toBeGreaterThan(
+        rateMoonThreat(info, c("hearts", 3))
+      );
+    });
+
+    it("extends to in-suit forced choices: a losing heart is a block only if the shooter can't take the trick", () => {
+      const hand = [c("hearts", 2)];
+      const st = (trick: TrickCard[]) => ({
+        handScores: shooterPts(6),
+        currentTrick: trick,
+        heartsBroken: true,
+      });
+      const blocked = [tc("hearts", 9, 1), tc("hearts", 13, 2), tc("hearts", 4, 3)]; // P2 winning
+      const fed = [tc("hearts", 13, 1), tc("hearts", 4, 2), tc("hearts", 3, 3)]; // shooter winning
+      expect(rateMoonThreat(mkInfo(hand, blocked, st(blocked)), c("hearts", 2))).toBeGreaterThan(
+        0.8
+      );
+      expect(rateMoonThreat(mkInfo(hand, fed, st(fed)), c("hearts", 2))).toBeLessThan(0.2);
+    });
+
+    it("credits winning a trick that already holds points, even with a non-point card", () => {
+      // Shooter led 10♣, P2 dumped 5♥, P3 followed low; our A♣ takes the heart.
+      const trick = [tc("clubs", 10, 1), tc("hearts", 5, 2), tc("clubs", 3, 3)];
+      const hand = [c("clubs", 1), c("clubs", 2)];
+      const info = mkInfo(hand, trick, {
+        handScores: shooterPts(6),
+        currentTrick: trick,
+        heartsBroken: true,
+      });
+      expect(rateMoonThreat(info, c("clubs", 1))).toBeGreaterThan(0.8); // breaks the moon
+      expect(rateMoonThreat(info, c("clubs", 2))).toBeLessThan(0.2); // lets the shooter have it
+    });
+
+    it("rewards taking a point ourselves — one heart is cheap against 26", () => {
+      // Shooter led 5♥, P2 and P3 followed low; our A♥ wins and breaks the moon.
+      const trick = [tc("hearts", 5, 1), tc("hearts", 3, 2), tc("hearts", 2, 3)];
+      const hand = [c("hearts", 1), c("hearts", 4)];
+      const info = mkInfo(hand, trick, {
+        handScores: shooterPts(6),
+        currentTrick: trick,
+        heartsBroken: true,
+      });
+      expect(rateMoonThreat(info, c("hearts", 1))).toBeGreaterThan(0.8);
+      expect(rateMoonThreat(info, c("hearts", 4))).toBeLessThan(0.2); // loses to the shooter's 5♥
+    });
+
+    it("estimates the shooter's overtake from where the higher cards can be", () => {
+      // P2 leads K♥, P3 follows, we (P0) play next; the shooter (P1) plays last.
+      const trick = [tc("hearts", 13, 2), tc("hearts", 3, 3)];
+      const hand = [c("hearts", 2)];
+      const base = {
+        handScores: shooterPts(6),
+        currentTrick: trick,
+        heartsBroken: true,
+        currentLeaderIndex: 2,
+      };
+      const score = (extra: Partial<HeartsState>) =>
+        rateMoonThreat(mkInfo(hand, trick, { ...base, ...extra }), c("hearts", 2));
+      const aceOut = score({});
+      expect(aceOut).toBeGreaterThan(0.5); // the shooter holds A♥ ~1/3 of the time
+      expect(score({ wonCards: [[], [c("hearts", 1)], [], []] })).toBeGreaterThan(aceOut); // A♥ gone
+      expect(score({ knownVoids: [[], ["hearts"], [], []] })).toBeGreaterThan(aceOut); // shooter void
+      // We passed A♥ to the shooter this hand: it certainly overtakes.
+      const passedAce = score({
+        passedAwayByPlayer: [[c("hearts", 1), c("clubs", 9), c("clubs", 8)], [], [], []],
+      });
+      expect(passedAce).toBeLessThan(0.2);
+    });
+
+    it("leading: a winning heart blocks, and a low heart blocks only if the shooter can't follow", () => {
+      const hand = [c("hearts", 1), c("hearts", 2)];
+      const st = { handScores: shooterPts(6), heartsBroken: true };
+      const info = mkInfo(hand, [], st);
+      expect(rateMoonThreat(info, c("hearts", 1))).toBeGreaterThan(0.8); // A♥ can't be beaten
+      expect(rateMoonThreat(info, c("hearts", 2))).toBeLessThan(0.5); // the shooter likely takes it
+      const voidInfo = mkInfo(hand, [], { ...st, knownVoids: [[], ["hearts"], [], []] });
+      expect(rateMoonThreat(voidInfo, c("hearts", 2))).toBeGreaterThan(0.8);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// rateTactics (#2236)
+// ---------------------------------------------------------------------------
+
+describe("rateTactics (#2236)", () => {
+  describe("(a) duck high", () => {
+    it("prefers the highest card that is already beaten", () => {
+      // 10♠ leads the trick; 5♠ and 9♠ are beaten.
+      const trick = [tc("spades", 10, 1)];
+      const hand = [c("spades", 5), c("spades", 9), c("spades", 11)];
+      const info = mkInfo(hand, trick, { currentTrick: trick }, 2);
+      expect(rateTactics(info, c("spades", 9))).toBeGreaterThan(rateTactics(info, c("spades", 5)));
+    });
+
+    it("gives no duck bonus to a card that still beats the current winner", () => {
+      // J♠ beats the 10♠ even though Q/K/A♠ are out (computePWin says 0 here).
+      const trick = [tc("spades", 10, 1)];
+      const hand = [c("spades", 9), c("spades", 11)];
+      const info = mkInfo(hand, trick, { currentTrick: trick }, 2);
+      expect(computePWin(c("spades", 11), info)).toBe(0);
+      expect(rateTactics(info, c("spades", 11))).toBe(0.5);
+      expect(rateTactics(info, c("spades", 9))).toBeGreaterThan(0.5);
+    });
+
+    it("keeps its high cards while a lone opponent holds every point (moon stoppers)", () => {
+      // P1 holds all 3 points so far: shedding A♦/A♥ now throws away cards
+      // needed to take a point and break a moon (#2235).
+      const trick = [tc("clubs", 5, 1)];
+      const hand = [c("diamonds", 3), c("diamonds", 1), c("hearts", 1)];
+      const info = mkInfo(hand, trick, { currentTrick: trick, handScores: [0, 3, 0, 0] }, 2);
+      for (const card of hand) expect(rateTactics(info, card)).toBe(0.5);
+    });
+
+    it("duck high stays on while the lone point-holder has under minThreatPoints", () => {
+      const trick = [tc("clubs", 5, 1)];
+      const hand = [c("diamonds", 3), c("diamonds", 13)];
+      const info = mkInfo(hand, trick, { currentTrick: trick, handScores: [0, 1, 0, 0] }, 2);
+      expect(rateTactics(info, c("diamonds", 13))).toBeGreaterThan(
+        rateTactics(info, c("diamonds", 3))
+      );
+    });
+
+    it("ranks an off-suit point card by rank like any other shed", () => {
+      // Keeping A♦ to shed 2♥ costs more than the heart saves.
+      const trick = [tc("clubs", 5, 1)];
+      const hand = [c("hearts", 2), c("diamonds", 1)];
+      const info = mkInfo(hand, trick, { currentTrick: trick, heartsBroken: true }, 2);
+      expect(rateTactics(info, c("diamonds", 1))).toBeGreaterThan(
+        rateTactics(info, c("hearts", 2))
+      );
+    });
+
+    it("sheds the highest off-suit card when void", () => {
+      const trick = [tc("clubs", 5, 1)];
+      const hand = [c("diamonds", 3), c("diamonds", 13)];
+      const info = mkInfo(hand, trick, { currentTrick: trick }, 2);
+      expect(rateTactics(info, c("diamonds", 13))).toBeGreaterThan(
+        rateTactics(info, c("diamonds", 3))
+      );
+    });
   });
 
-  it("Q♠ dump scores higher than a single heart dump", () => {
-    const trick = [tc("clubs", 5, 1)]; // shooter winning
-    const hand = [c("spades", 12), c("hearts", 3)];
-    const state = mkState({ handScores: [0, 4, 0, 0], currentTrick: trick });
-    const info = buildHeartsInfoSet(hand, trick, state, 0);
-    const qScore = rateMoonThreat(info, c("spades", 12));
-    const hScore = rateMoonThreat(info, c("hearts", 3));
-    expect(qScore).toBeGreaterThan(hScore);
+  describe("(b) forced or free win", () => {
+    it("wins with the highest card when every card of the suit wins (last to play)", () => {
+      const trick = [tc("hearts", 2, 1), tc("hearts", 3, 2), tc("hearts", 4, 3)];
+      const hand = [c("hearts", 8), c("hearts", 13)];
+      const info = mkInfo(hand, trick, { currentTrick: trick, heartsBroken: true }, 0);
+      expect(rateTactics(info, c("hearts", 13))).toBeGreaterThan(rateTactics(info, c("hearts", 8)));
+    });
+
+    it("plays the highest card of the suit when the trick holds no points (a free win)", () => {
+      // Last to play in a pointless club trick: A♣ wins for free, 9♣ would duck.
+      const trick = [tc("clubs", 2, 1), tc("clubs", 7, 2), tc("clubs", 11, 3)];
+      const hand = [c("clubs", 1), c("clubs", 9), c("clubs", 4)];
+      const info = mkInfo(hand, trick, { currentTrick: trick }, 0);
+      expect(rateTactics(info, c("clubs", 1))).toBeGreaterThan(rateTactics(info, c("clubs", 9)));
+    });
+
+    it("never gives Q♠ the forced-win bonus", () => {
+      const trick = [tc("spades", 2, 1), tc("spades", 3, 2), tc("spades", 4, 3)];
+      const hand = [c("spades", 9), c("spades", 12)];
+      const info = mkInfo(hand, trick, { currentTrick: trick }, 0);
+      expect(rateTactics(info, c("spades", 12))).toBe(0.5);
+      expect(rateTactics(info, c("spades", 9))).toBeGreaterThan(0.5);
+    });
+
+    it("computePWin is 1 for a card that wins as last to play", () => {
+      const trick = [tc("clubs", 2, 1), tc("clubs", 7, 2), tc("clubs", 11, 3)];
+      const info = mkInfo([c("clubs", 12)], trick, { currentTrick: trick }, 0);
+      expect(computePWin(c("clubs", 12), info)).toBe(1);
+    });
+
+    it("ducks instead when the trick holds points and a card can lose", () => {
+      const trick = [tc("clubs", 10, 1), tc("hearts", 5, 2), tc("clubs", 3, 3)];
+      const hand = [c("clubs", 1), c("clubs", 9)];
+      const info = mkInfo(hand, trick, { currentTrick: trick, heartsBroken: true }, 0);
+      expect(rateTactics(info, c("clubs", 9))).toBeGreaterThan(rateTactics(info, c("clubs", 1)));
+      expect(rateTactics(info, c("clubs", 1))).toBe(0.5); // A♣ wins: no bonus
+    });
   });
 
-  it("does not misidentify self as threat (uses playerIndex)", () => {
-    // We (P0) have all points — we're not a threat to ourselves
-    const state = mkState({ handScores: [6, 0, 0, 0] });
-    const info = buildHeartsInfoSet([c("clubs", 5)], [], state, 0);
-    expect(rateMoonThreat(info, c("clubs", 5))).toBe(0.5); // no opponent threat
-  });
+  describe("(c) spade flush", () => {
+    it("rewards leading a low spade while Q♠ is out and we hold none of Q/K/A♠", () => {
+      const hand = [c("spades", 4), c("diamonds", 4)];
+      const info = mkInfo(hand, []);
+      expect(rateTactics(info, c("spades", 4))).toBeGreaterThan(0.5);
+      expect(rateTactics(info, c("diamonds", 4))).toBe(0.5);
+    });
 
-  it("following in-suit point card that probably loses scores near 0.95", () => {
-    // Hearts led. We have K♥ (rank 13, ace-high=13). A♥ is in seenKeys → K♥ is top.
-    // P_win = 1.0 → score = 0.5 + (1 - 1.0) * 0.45 = 0.5. That's not right for this case.
-    // Actually we want: following in-suit point card that LOSES (low pWin) → score near 0.5+0.45=0.95.
-    // Use 2♥ following a hearts trick where K♥ is already winning — 2♥ cannot win.
-    const trick = [tc("hearts", 13, 3)]; // K♥ leading / winning
-    const hand = [c("hearts", 2)]; // 2♥ cannot beat K♥
-    const state = mkState({ handScores: [0, 6, 0, 0], currentTrick: trick, heartsBroken: true });
-    const info = buildHeartsInfoSet(hand, trick, state, 0);
-    // 2♥: pWin=0 (beaten by K♥) → score = 0.5 + (1-0)*0.45 = 0.95
-    const score = rateMoonThreat(info, c("hearts", 2));
-    expect(score).toBeCloseTo(0.95, 2);
+    it("does not flush when Q♠ is gone, ours, or could land on our A♠/K♠", () => {
+      const lead = (hand: Card[], extra: Partial<HeartsState> = {}) =>
+        rateTactics(mkInfo(hand, [], extra), c("spades", 4));
+      expect(lead([c("spades", 4)], { wonCards: [[], [c("spades", 12)], [], []] })).toBe(0.5);
+      expect(lead([c("spades", 4), c("spades", 12)])).toBe(0.5);
+      expect(lead([c("spades", 4), c("spades", 13)])).toBe(0.5);
+      expect(lead([c("spades", 4), c("spades", 1)])).toBe(0.5);
+    });
   });
 });
 

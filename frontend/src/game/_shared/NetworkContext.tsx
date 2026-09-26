@@ -3,18 +3,21 @@
  *
  * Wraps the tree so any component can call `useNetwork()` to get
  * `{ isOnline, isInitialized }`. Internally watches for offline→online
- * transitions and flushes the pending score queue exactly once per
- * reconnect edge.
+ * transitions and flushes `SyncWorker` and the display-name sync (#2624)
+ * exactly once per reconnect edge. Both also flush on foreground, and the
+ * name sync once at launch.
  */
 
 import React, { createContext, useContext, useEffect, useRef } from "react";
 import { AppState, AppStateStatus } from "react-native";
 import * as Sentry from "@sentry/react-native";
 import { NetworkStatus, useNetworkStatus } from "./useNetworkStatus";
-import { scoreQueue } from "./scoreQueue";
-import { registerCascadeScoreHandler } from "../cascade/scoreSync";
-import { registerSudokuScoreHandler } from "../sudoku/scoreSync";
-import { registerMahjongScoreHandler } from "../mahjong/scoreSync";
+import { clearLegacyScoreQueue } from "./legacyScoreQueue";
+import {
+  flushDisplayNameSync,
+  registerDisplayNameSync,
+  syncDisplayNameOnLaunch,
+} from "./displayNameSync";
 import { gameEventClient } from "./gameEventClient";
 import { syncWorker } from "./syncWorker";
 import { registerLogstoreTestHooks } from "./testHooks";
@@ -25,10 +28,14 @@ const NetworkContext = createContext<NetworkStatus>({
   isInitialized: false,
 });
 
-// Register per-game handlers exactly once, module-load time.
-registerCascadeScoreHandler();
-registerSudokuScoreHandler();
-registerMahjongScoreHandler();
+// Every saved display name is also sent to the server (#2624).
+registerDisplayNameSync();
+
+function flushNameSync(op: string): void {
+  flushDisplayNameSync().catch((e) => {
+    Sentry.captureException(e, { tags: { subsystem: "displayNameSync", op } });
+  });
+}
 
 export function NetworkProvider({ children }: { children: React.ReactNode }) {
   const status = useNetworkStatus();
@@ -44,6 +51,13 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
       });
     });
     syncWorker.start();
+    // What an older build left in the removed score queue (#2644).
+    void clearLegacyScoreQueue();
+    // A stored name the server has never been sent (set before #2624) is
+    // synced once; any pending name sync is retried.
+    syncDisplayNameOnLaunch().catch((e) => {
+      Sentry.captureException(e, { tags: { subsystem: "displayNameSync", op: "launch" } });
+    });
     const unregisterTestHooks = registerLogstoreTestHooks();
     const appStateSub = AppState.addEventListener("change", (next: AppStateStatus) => {
       if (next === "background" || next === "inactive") {
@@ -60,6 +74,7 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
             tags: { subsystem: "syncWorker", op: "flush-on-foreground" },
           });
         });
+        flushNameSync("flush-on-foreground");
         Sentry.addBreadcrumb({
           category: "syncWorker",
           message: "resumed (active)",
@@ -80,12 +95,10 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
     // Trigger flush on the offline → online edge (only after init so the
     // initial "true → true" mount isn't misread as a reconnect).
     if (status.isInitialized && !prev && status.isOnline) {
-      scoreQueue.flush().catch((e) => {
-        Sentry.captureException(e, { tags: { subsystem: "scoreQueue", op: "flush-on-reconnect" } });
-      });
       syncWorker.flush().catch((e) => {
         Sentry.captureException(e, { tags: { subsystem: "syncWorker", op: "flush-on-reconnect" } });
       });
+      flushNameSync("flush-on-reconnect");
     }
   }, [status.isOnline, status.isInitialized]);
 

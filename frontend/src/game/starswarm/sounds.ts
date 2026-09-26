@@ -8,8 +8,6 @@ export const STARSWARM_SOUNDS: Record<string, number> = {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "starswarm.playerhit": require("../../../assets/sounds/starswarm-playerhit.ogg"),
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  "starswarm.freefirezone": require("../../../assets/sounds/starswarm-freefirezone.ogg"),
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   "starswarm.gameover": require("../../../assets/sounds/starswarm-gameover.ogg"),
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "starswarm.waveclear": require("../../../assets/sounds/starswarm-waveclear.ogg"),
@@ -24,9 +22,26 @@ export const STARSWARM_SOUNDS: Record<string, number> = {
   "starswarm.powerupbuddy": require("../../../assets/sounds/starswarm-powerup-buddy.ogg"),
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "starswarm.powerupbomb": require("../../../assets/sounds/starswarm-powerup-bomb.ogg"),
-  // perfectbonus reuses the win fanfare (same file as hearts-moon-shot)
+  // #2490 boss wave sighted — the old stage-start sting file, kept (reinforce reuses it too)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  "starswarm.perfectbonus": require("../../../assets/sounds/hearts-moon-shot.mp3"),
+  "starswarm.bosswave": require("../../../assets/sounds/starswarm-freefirezone.ogg"),
+  // #2485 Carrier actions — reuse existing Kenney CC0 files until dedicated SFX land (#2492)
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "starswarm.beamcharge": require("../../../assets/sounds/starswarm-chargeshot.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "starswarm.beamfire": require("../../../assets/sounds/starswarm-laser.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "starswarm.reinforce": require("../../../assets/sounds/starswarm-freefirezone.ogg"),
+  // #2488 in-run upgrades — reuse existing Kenney CC0 files until dedicated SFX land (#2492)
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "starswarm.salvage": require("../../../assets/sounds/starswarm-powerup-lightning.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "starswarm.hullup": require("../../../assets/sounds/starswarm-powerup-shield.ogg"),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "starswarm.hullhit": require("../../../assets/sounds/starswarm-playerhit.ogg"),
+  // #2489 grunt rout — the stage sting again until a dedicated one lands (#2492)
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  "starswarm.rout": require("../../../assets/sounds/starswarm-freefirezone.ogg"),
   // Background music tracks
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   "starswarm.bg1": require("../../../assets/sounds/starswarm-bg-1.mp3"),

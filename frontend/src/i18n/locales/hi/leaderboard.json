@@ -1,0 +1,22 @@
+{
+  "title": "{{game}} लीडरबोर्ड",
+  "column.rank": "#",
+  "column.player": "खिलाड़ी",
+  "column.date": "तारीख़",
+  "metric.score": "स्कोर",
+  "metric.moves": "चालें",
+  "metric.level": "लेवल",
+  "direction.asc": "कम बेहतर है",
+  "partition.tier": "श्रेणी",
+  "you": "आप",
+  "yourBest": "आपका सर्वश्रेष्ठ",
+  "empty": "इस लीडरबोर्ड पर अभी कोई नहीं है। गेम पूरा करें और पहला स्थान पाएँ।",
+  "error": "लीडरबोर्ड लोड नहीं हो सका।",
+  "offline": "आप ऑफ़लाइन हैं। दोबारा कनेक्ट होने पर लीडरबोर्ड लोड होगा।",
+  "retry": "पुनः प्रयास करें",
+  "unavailable": "इस गेम का कोई लीडरबोर्ड नहीं है।",
+  "a11y.row": "रैंक {{rank}}, {{name}}, {{metric}} {{value}}, {{date}}",
+  "a11y.rowYou": "रैंक {{rank}}, {{name}}, आप, {{metric}} {{value}}, {{date}}",
+  "a11y.yourBest": "आपका सर्वश्रेष्ठ: रैंक {{rank}}, {{metric}} {{value}}, {{date}}",
+  "a11y.back": "{{game}} पर वापस जाएँ"
+}

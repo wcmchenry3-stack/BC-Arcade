@@ -54,12 +54,12 @@ The rule engine lives in `frontend/src/game/<name>/engine.ts` and is fully headl
 
 ### Reference implementations
 
-| Game | Engine | Notes |
-|---|---|---|
-| Solitaire | `frontend/src/game/solitaire/engine.ts` | `validateMove` + `applyMove` pure functions |
-| FreeCell | `frontend/src/game/freecell/engine.ts` | Same pattern; auto-move candidates computed separately |
-| Mahjong | `frontend/src/game/mahjong/engine.ts` | Tile matching, shuffle, deadlock detection all headless |
-| Bottle Sort | `frontend/src/game/sort/engine.ts` | `validatePour` + `applyPour` pure; no animation coupling |
+| Game        | Engine                                  | Notes                                                    |
+| ----------- | --------------------------------------- | -------------------------------------------------------- |
+| Solitaire   | `frontend/src/game/solitaire/engine.ts` | `validateMove` + `applyMove` pure functions              |
+| FreeCell    | `frontend/src/game/freecell/engine.ts`  | Same pattern; auto-move candidates computed separately   |
+| Mahjong     | `frontend/src/game/mahjong/engine.ts`   | Tile matching, shuffle, deadlock detection all headless  |
+| Bottle Sort | `frontend/src/game/sort/engine.ts`      | `validatePour` + `applyPour` pure; no animation coupling |
 
 ---
 
@@ -97,12 +97,12 @@ function calculate<Name>Layout(input: <Name>LayoutInput): <Name>Layout { ... }
 
 ### Reference implementations
 
-| Game | Layout Function | Notes |
-|---|---|---|
-| Solitaire | `useResponsiveCardSize()` in `CardSizeContext` | `scale = min(1, effectiveWidth / naturalBoardWidth)` |
-| FreeCell | Same `CardSizeContext` | Smaller default card (40×57) for 8-column fit |
-| Bottle Sort | Inline in `SortBoard.tsx` | `bottleH = min(defaultH, maxBottleH)` from `availableHeight` |
-| Mahjong | **Pending** (Epic [#1331](https://github.com/wcmchenry3-stack/BC-Arcade/issues/1331)) | Currently hardcoded — `calculateMahjongLayout()` to be extracted |
+| Game        | Layout Function                                                                       | Notes                                                            |
+| ----------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Solitaire   | `useResponsiveCardSize()` in `CardSizeContext`                                        | `scale = min(1, effectiveWidth / naturalBoardWidth)`             |
+| FreeCell    | Same `CardSizeContext`                                                                | Smaller default card (40×57) for 8-column fit                    |
+| Bottle Sort | Inline in `SortBoard.tsx`                                                             | `bottleH = min(defaultH, maxBottleH)` from `availableHeight`     |
+| Mahjong     | **Pending** (Epic [#1331](https://github.com/wcmchenry3-stack/BC-Arcade/issues/1331)) | Currently hardcoded — `calculateMahjongLayout()` to be extracted |
 
 ---
 
@@ -136,12 +136,12 @@ Use `Gesture.Tap()` from `react-native-gesture-handler` inside `<GestureDetector
 
 ### Reference implementations
 
-| Game | Pattern | File |
-|---|---|---|
-| Solitaire | `DraggableCard` (Pan + Tap via shared system) | `frontend/src/game/_shared/drag/DraggableCard.tsx` |
-| FreeCell | Same shared system + double-tap (300ms window) | `frontend/src/components/freecell/FreeCellBoard.tsx` |
-| Bottle Sort | `Gesture.Tap()` per bottle | `frontend/src/game/sort/components/SortBoard.tsx` |
-| Mahjong | `onPress` → canvas hit-test | `frontend/src/components/mahjong/GameCanvas.tsx` |
+| Game        | Pattern                                        | File                                                 |
+| ----------- | ---------------------------------------------- | ---------------------------------------------------- |
+| Solitaire   | `DraggableCard` (Pan + Tap via shared system)  | `frontend/src/game/_shared/drag/DraggableCard.tsx`   |
+| FreeCell    | Same shared system + double-tap (300ms window) | `frontend/src/components/freecell/FreeCellBoard.tsx` |
+| Bottle Sort | `Gesture.Tap()` per bottle                     | `frontend/src/game/sort/components/SortBoard.tsx`    |
+| Mahjong     | `onPress` → canvas hit-test                    | `frontend/src/components/mahjong/GameCanvas.tsx`     |
 
 ---
 
@@ -160,23 +160,23 @@ All per-frame animation uses `react-native-reanimated` shared values and worklet
 
 ### Animation types by purpose
 
-| Purpose | Tool | Notes |
-|---|---|---|
-| Drag ghost position | `useSharedValue` + `useAnimatedStyle` | UI-thread only; no setState per frame |
-| Card selection lift/glow | `withSpring` | Short spring, ~200ms |
-| Invalid move shake | `withSequence` of `withTiming` translations | X-axis only |
-| Pour/tilt sequence | `withSequence` + `withDelay` | Completion commits game state |
-| Win/match burst particles | `FlyingPair` or equivalent overlay component | Separate from game state |
-| Snap-back on failed drop | `withSpring` to `originX/Y` | In `snapBackAndClear` in DragContext |
+| Purpose                   | Tool                                         | Notes                                 |
+| ------------------------- | -------------------------------------------- | ------------------------------------- |
+| Drag ghost position       | `useSharedValue` + `useAnimatedStyle`        | UI-thread only; no setState per frame |
+| Card selection lift/glow  | `withSpring`                                 | Short spring, ~200ms                  |
+| Invalid move shake        | `withSequence` of `withTiming` translations  | X-axis only                           |
+| Pour/tilt sequence        | `withSequence` + `withDelay`                 | Completion commits game state         |
+| Win/match burst particles | `FlyingPair` or equivalent overlay component | Separate from game state              |
+| Snap-back on failed drop  | `withSpring` to `originX/Y`                  | In `snapBackAndClear` in DragContext  |
 
 ### Reference implementations
 
-| Game | Animation | File |
-|---|---|---|
-| Solitaire | Win cascade, card lift/glow, shake | `frontend/src/game/solitaire/components/SolitaireWinCascade.tsx` |
-| FreeCell | Foundation complete, game win, auto-complete | `frontend/src/components/freecell/FreeCellGameWinAnimation.tsx` |
-| Bottle Sort | Pour choreography (lift, travel, tilt, stream) | `frontend/src/game/sort/components/SortBoard.tsx` |
-| Mahjong | Match burst (FlyingPair), shuffle pulse, deadlock shake | `frontend/src/screens/MahjongScreen.tsx` |
+| Game        | Animation                                               | File                                                             |
+| ----------- | ------------------------------------------------------- | ---------------------------------------------------------------- |
+| Solitaire   | Win cascade, card lift/glow, shake                      | `frontend/src/game/solitaire/components/SolitaireWinCascade.tsx` |
+| FreeCell    | Foundation complete, game win, auto-complete            | `frontend/src/components/freecell/FreeCellGameWinAnimation.tsx`  |
+| Bottle Sort | Pour choreography (lift, travel, tilt, stream)          | `frontend/src/game/sort/components/SortBoard.tsx`                |
+| Mahjong     | Match burst (FlyingPair), shuffle pulse, deadlock shake | `frontend/src/screens/MahjongScreen.tsx`                         |
 
 ---
 
@@ -191,9 +191,12 @@ Rendering is the output of the layers above it. Components in this layer are pur
 **React Native views** — default for all games. Cards, piles, bottles are standard RN components styled by the layout layer and animated by Reanimated `useAnimatedStyle`.
 
 **Skia Canvas** — used by Mahjong on native (iOS/Android) via `@shopify/react-native-skia`. Required when the number of individual elements would create thousands of React views (Mahjong has 144 tiles across 4 layers). If you use Skia, you must:
+
 - Maintain a parallel web implementation (`GameCanvas.web.tsx`) using Canvas2D.
 - Keep the same hit-test coordinate math in both files.
 - Drive both from the same layout calculation function.
+
+**Skia Picture for per-frame scenes** — Star Swarm (`frontend/src/components/starswarm/GameCanvas.tsx`, #2562). When the whole scene changes every frame, don't rebuild a declarative Skia tree through React state. Build a plain-data display list in a pure, tested function on the JS thread (`game/starswarm/render/frame.ts`), write it to one shared value, and replay it in a worklet into a `Picture` (`createPicture` inside `useDerivedValue`, drawn by `game/starswarm/render/drawFrame.ts`). The worklet makes no decisions, so all drawing rules stay unit-testable without a canvas.
 
 ### Conventions
 
@@ -209,13 +212,13 @@ The shared drag system lives in `frontend/src/game/_shared/drag/`. Use it for **
 
 ### Components
 
-| File | Purpose |
-|---|---|
-| `DragContainer.tsx` | Root wrapper; owns `onLayout` measurement of the container bounds |
-| `DragContext.tsx` | Provider holding all drag state and shared values; registers drop zones |
+| File                | Purpose                                                                        |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `DragContainer.tsx` | Root wrapper; owns `onLayout` measurement of the container bounds              |
+| `DragContext.tsx`   | Provider holding all drag state and shared values; registers drop zones        |
 | `DraggableCard.tsx` | Wraps a card; handles Pan gesture → `startDrag`, `endDrag`, `snapBackAndClear` |
-| `DropTarget.tsx` | Registers a drop zone with an `id`, bounds measurement, and `onDrop` handler |
-| `DragOverlay.tsx` | Absolute-positioned ghost rendering the dragged card(s) above all piles |
+| `DropTarget.tsx`    | Registers a drop zone with an `id`, bounds measurement, and `onDrop` handler   |
+| `DragOverlay.tsx`   | Absolute-positioned ghost rendering the dragged card(s) above all piles        |
 
 ### How to use
 
@@ -276,20 +279,20 @@ The shared drag system lives in `frontend/src/game/_shared/drag/`. Use it for **
 export type DragSource =
   | { game: "solitaire"; type: "tableau"; col: number; fromIndex: number }
   | { game: "freecell"; type: "freecell"; cell: number }
-  | { game: "mygame"; type: "pile"; col: number; fromIndex: number }  // ← add
-  // ...
+  | { game: "mygame"; type: "pile"; col: number; fromIndex: number }; // ← add
+// ...
 ```
 
 Update `isCardInDragStack()` in the same file to handle the new variant.
 
 ### Known iOS pitfalls
 
-| Pitfall | Symptom | Fix |
-|---|---|---|
-| `GestureHandlerRootView` not at app root | Pan gesture silently fails on iOS | Ensure it wraps `<App />` once, at the top |
-| Parent `overflow: hidden` | Ghost card invisible during drag | Remove `overflow: hidden` from any ancestor of `DragContainer` |
-| `activeOffsetX/Y` too small | Drag fires on every tap | Keep threshold at `[-12, 12]` — the current value was tuned for this |
-| Testing only on simulator | Works in sim, fails on device | iOS UIGestureRecognizer priority differs from simulator; test on physical device |
+| Pitfall                                  | Symptom                           | Fix                                                                              |
+| ---------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------- |
+| `GestureHandlerRootView` not at app root | Pan gesture silently fails on iOS | Ensure it wraps `<App />` once, at the top                                       |
+| Parent `overflow: hidden`                | Ghost card invisible during drag  | Remove `overflow: hidden` from any ancestor of `DragContainer`                   |
+| `activeOffsetX/Y` too small              | Drag fires on every tap           | Keep threshold at `[-12, 12]` — the current value was tuned for this             |
+| Testing only on simulator                | Works in sim, fails on device     | iOS UIGestureRecognizer priority differs from simulator; test on physical device |
 
 ---
 
@@ -298,29 +301,45 @@ Update `isCardInDragStack()` in the same file to handle the new variant.
 This supplements the backend checklist in [`GAME-CONTRACT.md §3`](GAME-CONTRACT.md#3-new-game-checklist).
 
 ### Logic layer
+
 - [ ] `frontend/src/game/<name>/engine.ts` is headless — no React, no AsyncStorage, no animation imports
 - [ ] Rule engine is covered by unit tests runnable in Node (no React Native environment needed)
 - [ ] `validateMove` and `applyMove` (or equivalent) are pure functions — same input always produces same output
 
 ### Layout layer
+
 - [ ] A `calculate<Name>Layout()` function exists in `frontend/src/game/<name>/layout.ts`
 - [ ] All tile/card/piece dimensions are derived from this function — no pixel constants in child components
 - [ ] Minimum readable size is clamped (cards ≥ 36px wide, tiles ≥ 28px wide)
 - [ ] Validated on iPhone SE (375pt wide) and at least one tablet size
 
 ### Gesture layer
+
 - [ ] Card games: uses shared `DragProvider` + `DraggableCard` + `DropTarget`
 - [ ] Board games: uses `Gesture.Tap()` inside `<GestureDetector>`, not `Pressable`/`TouchableOpacity`
 - [ ] Tap fallback works independently of drag (test with drag disabled)
 - [ ] Tested on a physical iOS device (not only simulator)
 
 ### Animation layer
+
 - [ ] No `setState` called on every gesture frame — position tracked via `useSharedValue`
 - [ ] Game state committed in animation completion callback, not before animation starts
 - [ ] `useReduceMotion()` path skips intermediate steps but still commits game state
 - [ ] Every animation sequence uses `withSequence`/`withDelay` — no `setTimeout` chains
 
 ### Rendering layer
+
 - [ ] Pile/tile/piece components are purely presentational (no logic, no gesture detection)
 - [ ] If using Skia Canvas: web fallback (`GameCanvas.web.tsx`) exists with identical hit-test logic
 - [ ] Overlays (ghost, burst, highlights) rendered as absolute-positioned siblings inside the game root
+
+### Reporting
+
+How a finished game reaches the server and the player. The rules are in [`ARCHITECTURE.md §4`](ARCHITECTURE.md#4-persistence-and-offline-contract) and the screens in [`ARCHITECTURE.md §14`](ARCHITECTURE.md#14-result-leaderboard-and-stats-screens); this game's own page goes in [`docs/games/`](games/).
+
+- [ ] The screen records its session through `useGameSync("<game>")` only: `markStarted()` on the player's first real action, `complete()` on game over, `setProgressSnapshot()` so the hook's own abandons carry the result block, and `resume()` when it restores saved progress. No direct `/games` calls and no queue of its own.
+- [ ] The outcome comes from `recordedOutcome()` (`game/_shared/recordedOutcome.ts`). `win` / `loss` / `push` only if the game has a winner — its backend module sets `has_winner = True`, which reaches the app as `HAS_WINNER` in `api/vocab.ts`. Every other game records `completed`. The outcome guard (`game/_shared/outcomeGuard.ts`) fails the screen tests if it doesn't.
+- [ ] Duration: pass `durationMs` only if the game measures its own active play time (paused while backgrounded or idle); otherwise pass nothing and `useGameSync`'s active-play window fills it in. Never send wall-clock start-to-end time. A screen that shows a picker or a new board before its session opens calls `resetPlayWindow()` when play begins — **only with no session open**, because it drops what the window has counted. Guard it with `if (!syncGetGameId())` (Yacht's `GameScreen`, Star Swarm, Blackjack) or close the session first (FreeCell's New Game, Sort's level select); with a session open, `start()` / `restart()` reset the window themselves.
+- [ ] `summary.result` matches the backend module's `result_model`, including any fields the game's daily-challenge goals read (`backend/daily_challenge/definitions.py`).
+- [ ] The result card is `GameResultModal`. For a game with a board, `useLeaderboardSubmit(sessionBoardAdapter("<game>"))` and `submit({ gameId })` once at game end: the card only reads the rank (`GET /games/{id}/rank`); it submits no score. Pass `onViewLeaderboard` from `useLeaderboardLink` so "View leaderboard" appears when the board is openable.
+- [ ] Stats entry: every `GameShell` on one of the game's play screens gets `gameType="<game>"`, which adds the ⋯ menu's "Stats" item (and "Scorecard" for a game in `SCORECARD_GAMES`). A screen of the game that is not a play screen — a run history (`BlackjackStatsScreen`), a detail or inspector screen (`MahjongLayoutDetailScreen`, `MahjongLayoutInspectorScreen`), the scorecard (`ScorecardScreen`) — passes `gameType={null}` (ARCHITECTURE §14). Add the game to `SCORECARD_GAMES` (`navigation/scorecards.ts`) only if it has a live in-match view.

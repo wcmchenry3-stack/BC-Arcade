@@ -4,25 +4,24 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import { createGameClient, isNetworkError } from "../game/_shared/httpClient";
 import { clearGame as clearHearts } from "../game/hearts/storage";
-import { clearGame as clearYacht } from "../game/yacht/storage";
+import { clearGame as clearBlackjack } from "../game/blackjack/storage";
 import { clearGame as clearSudoku } from "../game/sudoku/storage";
 import { clearGame as clearSort } from "../game/sort/storage";
-import { scoreQueue } from "../game/_shared/scoreQueue";
-import type { GameType } from "../api/vocab";
 
 // Maps premium game slugs to their AsyncStorage clear functions.
 // starswarm has no local game state, so it is intentionally absent.
 // cascade storage was removed in the v2 teardown (#1747); rewired in #1751.
 const GAME_STORAGE_CLEARERS: Partial<Record<string, () => Promise<void>>> = {
   hearts: clearHearts,
-  yacht: clearYacht,
+  blackjack: clearBlackjack,
   sudoku: clearSudoku,
   cascade: () => Promise.resolve(),
   sort: clearSort,
 };
 
-// Premium games — sourced from backend migration 0014_game_types_premium_cat
-export const PREMIUM_GAMES = new Set(["yacht", "cascade", "hearts", "sudoku", "starswarm", "sort"]);
+// Premium games — sourced from backend migrations 0014_game_types_premium_cat,
+// 0020_swap_yacht_blackjack, 0022_swap_mahjong_sort, 0023_sudoku_free
+export const PREMIUM_GAMES = new Set(["blackjack", "cascade", "hearts", "starswarm", "mahjong"]);
 
 export const OFFLINE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -191,7 +190,6 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
         try {
           const clear = GAME_STORAGE_CLEARERS[slug];
           if (clear) await clear();
-          await scoreQueue.dropByGameType(slug as GameType);
           console.log(`entitlement revoked: ${slug} — local state cleared`);
         } catch (e) {
           Sentry.captureException(e, {

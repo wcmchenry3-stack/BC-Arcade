@@ -206,50 +206,14 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "score.board": {
-    "component": "ScorePanel header",
-    "description": "Label for the scores panel / scoreboard.",
-    "tone": "neutral",
-    "characterLimit": 15,
+  "score.footnote": {
+    "component": "HeartsScorecard",
+    "description": "Footnote under the score history table explaining the shoot-the-moon rule.",
+    "tone": "functional, concise",
+    "characterLimit": 75,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": null
-  },
-  "score.player": {
-    "component": "ScoreBoard column header",
-    "description": "Column header for the player name column.",
-    "tone": "neutral",
-    "characterLimit": 12,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "score.total": {
-    "component": "ScoreBoard column header",
-    "description": "Column header for the cumulative score column.",
-    "tone": "neutral",
-    "characterLimit": 12,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "score.hand": {
-    "component": "ScoreBoard column header",
-    "description": "Column header for the per-hand score column.",
-    "tone": "neutral",
-    "characterLimit": 12,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "score.close": {
-    "component": "ScorePanel close button",
-    "description": "Accessibility label for the close button on the score panel.",
-    "tone": "functional",
-    "characterLimit": 10,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
+    "notes": "Keep the ★ symbol and the number (26)."
   },
   "pass.direction.left": {
     "component": "PassBanner",
@@ -300,7 +264,7 @@
     "component": "PassBanner counter",
     "description": "Shows how many cards are currently selected out of 3.",
     "tone": "functional",
-    "characterLimit": 20,
+    "characterLimit": 23,
     "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": null
@@ -386,83 +350,164 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "game_over.title": {
-    "component": "GameOverOverlay modal",
-    "description": "Title of the game-over screen.",
-    "tone": "casual",
-    "characterLimit": 15,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "game_over.winner": {
-    "component": "GameOverOverlay modal",
-    "description": "Announces who won the game.",
-    "tone": "celebratory, punchy",
-    "characterLimit": 30,
-    "placeholders": ["{{label}}"],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "game_over.submit": {
-    "component": "GameOverOverlay score submit button",
-    "description": "Button label to submit score to leaderboard.",
-    "tone": "casual",
+  "settings.rename": {
+    "component": "HeartsScreen",
+    "description": "Short label for the control that opens the rename-players modal.",
+    "tone": "casual, functional",
     "characterLimit": 20,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
   },
-  "game_over.name_placeholder": {
-    "component": "GameOverOverlay name input",
-    "description": "Placeholder text in the player name input field.",
-    "tone": "casual, inviting",
-    "characterLimit": 25,
+  "settings.rename_title": {
+    "component": "HeartsScreen (rename players modal)",
+    "description": "Title of the modal for editing the four seats' player names.",
+    "tone": "neutral",
+    "characterLimit": 22,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
   },
-  "game_over.submitting": {
-    "component": "GameOverOverlay submit button (loading state)",
-    "description": "Button label while score is being submitted.",
+  "settings.player_label": {
+    "component": "HeartsScreen (rename players modal)",
+    "description": "Label and accessibility label for one seat's name input in the rename modal.",
     "tone": "functional",
-    "characterLimit": 20,
-    "placeholders": [],
+    "characterLimit": 45,
+    "placeholders": ["{{n}}", "{{default}}"],
     "doNotTranslate": [],
-    "notes": "Trailing ellipsis (…) is standard in English — adapt to locale convention."
+    "notes": "{{n}} is the seat number 1-4; {{default}} is that seat's default name (e.g. \"You\" or \"West\")."
   },
-  "game_over.submitted": {
-    "component": "GameOverOverlay (success state)",
-    "description": "Confirmation shown after score is successfully submitted.",
-    "tone": "positive, brief",
-    "characterLimit": 25,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "game_over.submit_error": {
-    "component": "GameOverOverlay (error state)",
-    "description": "Error message shown when score submission fails.",
-    "tone": "neutral, brief",
-    "characterLimit": 25,
+  "settings.save": {
+    "component": "HeartsScreen (rename players modal)",
+    "description": "Save button in the rename-players modal.",
+    "tone": "functional",
+    "characterLimit": 13,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
   },
-  "game_over.retry": {
-    "component": "GameOverOverlay retry button",
-    "description": "Button to retry a failed score submission.",
-    "tone": "casual",
-    "characterLimit": 12,
+  "settings.cancel": {
+    "component": "HeartsScreen (rename players modal)",
+    "description": "Cancel button in the rename-players modal.",
+    "tone": "functional",
+    "characterLimit": 11,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
   },
-  "game_over.again": {
-    "component": "GameOverOverlay play-again button",
-    "description": "Button to start a new game after game over.",
-    "tone": "casual, energetic",
-    "characterLimit": 20,
+  "events.heartsBroken": {
+    "component": "HeartsBrokenAnimation",
+    "description": "Accessibility label for the animation announcing that Hearts have been broken (a Heart has been played and can now lead a trick).",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "events.moonShot": {
+    "component": "HeartsMoonShotAnimation",
+    "description": "Text and accessibility label for the celebration animation when a player shoots the moon.",
+    "tone": "celebratory",
+    "characterLimit": 35,
+    "placeholders": ["{{name}}"],
+    "doNotTranslate": [],
+    "notes": "{{name}} is the shooting player's display name."
+  },
+  "events.queenOfSpades": {
+    "component": "HeartsQueenOfSpadesAnimation",
+    "description": "Accessibility label for the animation when a player takes the Queen of Spades.",
+    "tone": "neutral",
+    "characterLimit": 38,
+    "placeholders": ["{{name}}"],
+    "doNotTranslate": [],
+    "notes": "{{name}} is the taking player's display name."
+  },
+  "difficulty.groupLabel": {
+    "component": "HeartsAiDifficultySelector",
+    "description": "Accessibility group label for the AI opponent-style radio group.",
+    "tone": "functional",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.cautious": {
+    "component": "HeartsAiDifficultySelector",
+    "description": "Label for the 'Cautious' AI opponent-style option.",
+    "tone": "functional, concise",
+    "characterLimit": 13,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.cautious.desc": {
+    "component": "HeartsAiDifficultySelector",
+    "description": "One-line description of the 'Cautious' AI opponent style.",
+    "tone": "functional",
+    "characterLimit": 46,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.schemer": {
+    "component": "HeartsAiDifficultySelector",
+    "description": "Label for the 'Schemer' AI opponent-style option.",
+    "tone": "functional, concise",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.schemer.desc": {
+    "component": "HeartsAiDifficultySelector",
+    "description": "One-line description of the 'Schemer' AI opponent style.",
+    "tone": "functional",
+    "characterLimit": 57,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.daring": {
+    "component": "HeartsAiDifficultySelector",
+    "description": "Label for the 'Daring' AI opponent-style option.",
+    "tone": "functional, concise",
+    "characterLimit": 11,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.daring.desc": {
+    "component": "HeartsAiDifficultySelector",
+    "description": "One-line description of the 'Daring' AI opponent style.",
+    "tone": "functional",
+    "characterLimit": 61,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.mixed": {
+    "component": "HeartsAiDifficultySelector",
+    "description": "Label for the 'Mixed Table' option (one of each AI opponent style).",
+    "tone": "functional, concise",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.mixed.desc": {
+    "component": "HeartsAiDifficultySelector",
+    "description": "One-line description of the 'Mixed Table' option, naming the seating of the three AI styles.",
+    "tone": "functional",
+    "characterLimit": 82,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "References the three persona names (Cautious, Schemer, Daring) — keep them consistent with difficulty.cautious/schemer/daring."
+  },
+  "game.startGame": {
+    "component": "HeartsScreen",
+    "description": "Button (and its accessibility label) to start a new Hearts game from the pre-game opponent-style picker.",
+    "tone": "action, concise",
+    "characterLimit": 15,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null

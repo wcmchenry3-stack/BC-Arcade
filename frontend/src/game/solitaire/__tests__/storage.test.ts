@@ -102,32 +102,78 @@ describe("solitaire storage", () => {
   });
 });
 
+// #2750: the save banks the running clock and the load restarts it, so the
+// time the app was closed never counts.
+describe("solitaire storage — play clock across a relaunch (#2750)", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it("keeps the play before the save and drops the time until the load", async () => {
+    const nowSpy = jest.spyOn(Date, "now").mockReturnValue(40_000);
+    await saveGame({ ...seedState(), startedAt: 10_000, accumulatedMs: 5_000 });
+    nowSpy.mockReturnValue(40_000 + 2 * 86_400_000);
+    const loaded = await loadGame();
+    expect(loaded!.accumulatedMs).toBe(35_000);
+    expect(loaded!.startedAt).toBe(40_000 + 2 * 86_400_000);
+  });
+
+  it("loads an older build's running startedAt without counting the gap", async () => {
+    const old = { ...seedState(), startedAt: 1_000 } as Record<string, unknown>;
+    delete old["accumulatedMs"];
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(old));
+    jest.spyOn(Date, "now").mockReturnValue(172_800_000);
+    const loaded = await loadGame();
+    expect(loaded!.accumulatedMs).toBe(0);
+    expect(loaded!.startedAt).toBe(172_800_000);
+  });
+
+  it("keeps a won game's clock frozen", async () => {
+    await AsyncStorage.setItem(
+      GAME_KEY,
+      JSON.stringify({ ...seedState(), isComplete: true, startedAt: 1_000, accumulatedMs: 9_000 })
+    );
+    const loaded = await loadGame();
+    expect(loaded!.startedAt).toBeNull();
+    expect(loaded!.accumulatedMs).toBe(9_000);
+  });
+});
+
 describe("solitaire stats storage", () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     (Sentry.captureException as jest.Mock).mockClear();
   });
 
-  it("returns zero defaults when no stats saved", async () => {
-    const stats = await loadStats();
-    expect(stats).toEqual({ bestTimeMs: 0, bestMoves: 0, gamesPlayed: 0, gamesWon: 0 });
+  it("returns a zero best when nothing is saved", async () => {
+    expect(await loadStats()).toEqual({ bestTimeMs: 0 });
   });
 
-  it("saves and loads stats round-trip", async () => {
-    await saveStats({ bestTimeMs: 95000, bestMoves: 42, gamesPlayed: 7, gamesWon: 3 });
-    const loaded = await loadStats();
-    expect(loaded).toEqual({ bestTimeMs: 95000, bestMoves: 42, gamesPlayed: 7, gamesWon: 3 });
+  it("saves and loads the best round-trip, storing only the best", async () => {
+    await saveStats({ bestTimeMs: 95000 });
+    expect(await loadStats()).toEqual({ bestTimeMs: 95000 });
+    expect(JSON.parse((await AsyncStorage.getItem("solitaire_stats_v1"))!)).toEqual({
+      bestTimeMs: 95000,
+    });
   });
 
-  it("returns zero defaults on corrupt stats payload", async () => {
+  it("returns a zero best on a corrupt payload", async () => {
     await AsyncStorage.setItem("solitaire_stats_v1", "not-json{");
-    const stats = await loadStats();
-    expect(stats).toEqual({ bestTimeMs: 0, bestMoves: 0, gamesPlayed: 0, gamesWon: 0 });
+    expect(await loadStats()).toEqual({ bestTimeMs: 0 });
   });
 
-  it("coerces missing numeric fields to 0 on partial payload", async () => {
+  // #2636: the counters are gone; an older build's record still loads.
+  it("loads the best from a record with the old counters", async () => {
+    await AsyncStorage.setItem(
+      "solitaire_stats_v1",
+      JSON.stringify({ bestTimeMs: 81000, bestMoves: 99, gamesPlayed: 12, gamesWon: 4 })
+    );
+    expect(await loadStats()).toEqual({ bestTimeMs: 81000 });
+  });
+
+  it("coerces a missing best to 0 on a partial payload", async () => {
     await AsyncStorage.setItem("solitaire_stats_v1", JSON.stringify({ gamesPlayed: 5 }));
-    const stats = await loadStats();
-    expect(stats).toEqual({ bestTimeMs: 0, bestMoves: 0, gamesPlayed: 5, gamesWon: 0 });
+    expect(await loadStats()).toEqual({ bestTimeMs: 0 });
   });
 });

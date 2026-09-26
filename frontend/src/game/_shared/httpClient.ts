@@ -19,10 +19,17 @@ import { getOrCreateSessionId } from "./session";
 /** Error subclass that preserves the HTTP status code from the API response. */
 export class ApiError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  /**
+   * The parsed JSON error body, when there was one (#2541). `message` stays
+   * the bare `detail` code that call sites compare against; this carries any
+   * structured fields alongside it, e.g. Daily Word's 403 `guesses_used`.
+   */
+  readonly body?: Readonly<Record<string, unknown>>;
+  constructor(message: string, status: number, body?: Readonly<Record<string, unknown>>) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -231,8 +238,14 @@ export function createGameClient(options: HttpClientOptions) {
         ...options,
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        const msg = err.detail ?? "Request failed";
+        const parsed: unknown = await res.json().catch(() => ({ detail: res.statusText }));
+        // A JSON body can be `null`, an array or a scalar (a proxy or edge
+        // error page): only a plain object has fields to read (#2541 review).
+        const body =
+          parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+            ? (parsed as Record<string, unknown>)
+            : undefined;
+        const msg = body?.detail ?? "Request failed";
         // 4xx and 5xx are HTTP-layer outcomes, not JS exceptions. Emit a
         // breadcrumb only — never `captureMessage` (which attaches a
         // synthetic stack and creates a grouped Sentry issue per status
@@ -256,7 +269,7 @@ export function createGameClient(options: HttpClientOptions) {
             extra: { url, detail: msg, platform: Platform.OS },
           });
         }
-        throw new ApiError(msg, res.status);
+        throw new ApiError(String(msg), res.status, body);
       }
       if (res.status === 204) {
         return undefined as unknown as T;

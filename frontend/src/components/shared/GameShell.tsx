@@ -1,7 +1,13 @@
-import React from "react";
-import { View, ActivityIndicator, Text, StyleSheet, StyleProp, ViewStyle } from "react-native";
+import React, { useCallback } from "react";
+import { View, Text, StyleSheet, StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { GameType } from "../../api/vocab";
+import type { HomeStackParamList } from "../../types/navigation";
+import { hasScorecard } from "../../navigation/scorecards";
 import { useSafeBottomTabBarHeight } from "../../hooks/useSafeBottomTabBarHeight";
+import { EmptyState } from "./EmptyState";
 import { useTheme } from "../../theme/ThemeContext";
 import { AppHeader, APP_HEADER_HEIGHT, AppHeaderProps } from "./AppHeader";
 
@@ -10,19 +16,35 @@ export interface GameShellProps extends Pick<
   | "title"
   | "onBack"
   | "requireBack"
+  | "backAccessibilityLabel"
   | "rightSlot"
-  | "onOpenScoreboard"
+  | "onOpenLeaderboard"
   | "onNewGame"
   | "onLevelSelect"
   | "onEditPlayerNames"
 > {
-  /** When true renders a full-screen loading spinner instead of children. */
+  /**
+   * The game this screen plays (#2635). Its ⋯ menu gets a "Stats" item that
+   * opens the shared `GameStats` screen for it and, for a game with a live
+   * view (`SCORECARD_GAMES`, #2636), a "Scorecard" item. `null` for a screen
+   * that is not one game's play screen (a scorecard, a run history, a dev
+   * tool): neither item. Required, so a new game screen can't leave it out.
+   */
+  gameType: GameType | null;
+  /**
+   * When true renders a loading spinner instead of children. The header keeps
+   * its title and back button so a slow load never strands the player; the ⋯
+   * menu is hidden until the game is ready.
+   */
   loading?: boolean;
   /** When non-empty renders an error banner above the game content. */
   error?: string | null;
-  /** Additional styles merged onto the outer container (e.g. paddingBottom). */
+  /**
+   * Additional styles merged onto the outer container. A `paddingBottom` here
+   * is a minimum: the container always clears the tab bar.
+   */
   style?: StyleProp<ViewStyle>;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 /**
@@ -32,11 +54,13 @@ export interface GameShellProps extends Pick<
  * game screen only needs to provide its game-specific content as children.
  */
 export function GameShell({
+  gameType,
   title,
   onBack,
   requireBack,
+  backAccessibilityLabel,
   rightSlot,
-  onOpenScoreboard,
+  onOpenLeaderboard,
   onNewGame,
   onLevelSelect,
   onEditPlayerNames,
@@ -48,14 +72,15 @@ export function GameShell({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useSafeBottomTabBarHeight();
-
-  if (loading) {
-    return (
-      <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <ActivityIndicator color={colors.accent} size="large" />
-      </View>
-    );
-  }
+  const flatPaddingBottom = StyleSheet.flatten(style)?.paddingBottom;
+  const callerPaddingBottom = typeof flatPaddingBottom === "number" ? flatPaddingBottom : 0;
+  const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
+  const openStats = useCallback(() => {
+    if (gameType) navigation.navigate("GameStats", { gameType });
+  }, [navigation, gameType]);
+  const openScorecard = useCallback(() => {
+    if (hasScorecard(gameType)) navigation.navigate("Scorecard", { gameKey: gameType });
+  }, [navigation, gameType]);
 
   return (
     <View
@@ -66,19 +91,31 @@ export function GameShell({
           paddingTop: APP_HEADER_HEIGHT + insets.top,
         },
         style,
-        { paddingBottom: tabBarHeight },
+        { paddingBottom: Math.max(tabBarHeight, callerPaddingBottom) },
       ]}
     >
-      <AppHeader
-        title={title}
-        onBack={onBack}
-        requireBack={requireBack}
-        rightSlot={rightSlot}
-        onOpenScoreboard={onOpenScoreboard}
-        onNewGame={onNewGame}
-        onLevelSelect={onLevelSelect}
-        onEditPlayerNames={onEditPlayerNames}
-      />
+      {loading ? (
+        <AppHeader
+          title={title}
+          onBack={onBack}
+          requireBack={requireBack}
+          backAccessibilityLabel={backAccessibilityLabel}
+        />
+      ) : (
+        <AppHeader
+          title={title}
+          onBack={onBack}
+          requireBack={requireBack}
+          backAccessibilityLabel={backAccessibilityLabel}
+          rightSlot={rightSlot}
+          onOpenScorecard={hasScorecard(gameType) ? openScorecard : undefined}
+          onOpenStats={gameType ? openStats : undefined}
+          onOpenLeaderboard={onOpenLeaderboard}
+          onNewGame={onNewGame}
+          onLevelSelect={onLevelSelect}
+          onEditPlayerNames={onEditPlayerNames}
+        />
+      )}
       {!!error && (
         <Text
           style={[styles.errorBanner, { color: colors.error }]}
@@ -88,17 +125,12 @@ export function GameShell({
           {error}
         </Text>
       )}
-      {children}
+      {loading ? <EmptyState kind="loading" /> : children}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   container: {
     flex: 1,
   },

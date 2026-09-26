@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Image, StyleSheet, Platform, Pressable, Modal, ViewStyle } from "react-native";
+import { View, Text, Image, StyleSheet, Platform, Pressable, Modal } from "react-native";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -8,6 +8,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import FeedbackWidget from "../FeedbackWidget/FeedbackWidget";
+import { ConfirmModal } from "./ConfirmModal";
 import logoSource from "../../../assets/logo.png";
 
 export const APP_HEADER_HEIGHT = 64;
@@ -23,8 +24,27 @@ export interface AppHeaderProps {
    * instead of stranding users on the screen. See GH #498.
    */
   requireBack?: boolean;
-  /** When provided, shows the ⋯ menu with a Scoreboard item. See GH #711. */
-  onOpenScoreboard?: () => void;
+  /**
+   * Screen-reader label for the back button when it does not go home, e.g.
+   * "Back to levels". Defaults to common:nav.backLabel.
+   */
+  backAccessibilityLabel?: string;
+  /**
+   * When provided, shows the ⋯ menu with a Scorecard item: the live view of
+   * the match in progress (Hearts, Yacht, Blackjack). GameShell sets it from
+   * its `gameType` prop (`SCORECARD_GAMES`). See GH #711, #2636.
+   */
+  onOpenScorecard?: () => void;
+  /**
+   * When provided, shows the ⋯ menu with a Stats item (#2635): the game's
+   * shared stats screen. GameShell sets it from its `gameType` prop.
+   */
+  onOpenStats?: () => void;
+  /**
+   * When provided, shows the ⋯ menu with a Leaderboard item (#2633). Pass
+   * `useLeaderboardLink`'s result: undefined for games without an openable board.
+   */
+  onOpenLeaderboard?: () => void;
   /** When provided, shows the ⋯ menu with a New Game item (with abandon confirmation). See GH #711. */
   onNewGame?: () => void;
   /** When provided, shows the ⋯ menu with a Level Select item (no confirmation — goes directly to layout picker). */
@@ -38,7 +58,10 @@ export function AppHeader({
   rightSlot,
   onBack,
   requireBack = false,
-  onOpenScoreboard,
+  backAccessibilityLabel,
+  onOpenScorecard,
+  onOpenStats,
+  onOpenLeaderboard,
   onNewGame,
   onLevelSelect,
   onEditPlayerNames,
@@ -51,7 +74,13 @@ export function AppHeader({
   const [abandonVisible, setAbandonVisible] = useState(false);
 
   const totalHeight = APP_HEADER_HEIGHT + insets.top;
-  const showMenu = !!onOpenScoreboard || !!onNewGame || !!onLevelSelect || !!onEditPlayerNames;
+  const showMenu =
+    !!onOpenScorecard ||
+    !!onOpenStats ||
+    !!onOpenLeaderboard ||
+    !!onNewGame ||
+    !!onLevelSelect ||
+    !!onEditPlayerNames;
 
   // #498 — mount-time telemetry: record whether the back affordance is wired
   // up so we can detect regressions where a screen silently drops onBack.
@@ -89,9 +118,19 @@ export function AppHeader({
       }
     : undefined;
 
-  const handleMenuScoreboard = () => {
+  const handleMenuScorecard = () => {
     setMenuOpen(false);
-    onOpenScoreboard?.();
+    onOpenScorecard?.();
+  };
+
+  const handleMenuStats = () => {
+    setMenuOpen(false);
+    onOpenStats?.();
+  };
+
+  const handleMenuLeaderboard = () => {
+    setMenuOpen(false);
+    onOpenLeaderboard?.();
   };
 
   const handleMenuNewGame = () => {
@@ -109,18 +148,20 @@ export function AppHeader({
     onEditPlayerNames?.();
   };
 
+  // #2481 — the ⋯ menu replaces the "?" button outright, so before this every
+  // gameplay screen had no way to send feedback: exactly where a player is
+  // most likely to hit something worth reporting. Reuses the widget the "?"
+  // opens, and `feedback:title` rather than a new key, so no locale needs a
+  // new string.
+  const handleMenuFeedback = () => {
+    setMenuOpen(false);
+    setHelpOpen(true);
+  };
+
   const handleAbandonConfirm = () => {
     setAbandonVisible(false);
     onNewGame?.();
   };
-
-  // Gradient "Start New" button uses secondary → accent on web; fallback on native.
-  const startNewBg: ViewStyle =
-    Platform.OS === "web"
-      ? ({
-          backgroundImage: `linear-gradient(135deg, ${colors.secondary}, ${colors.accent})`,
-        } as ViewStyle)
-      : { backgroundColor: colors.secondary };
 
   return (
     <View
@@ -163,7 +204,7 @@ export function AppHeader({
           <Pressable
             onPress={handleBackPress}
             accessibilityRole="button"
-            accessibilityLabel={t("common:nav.backLabel")}
+            accessibilityLabel={backAccessibilityLabel ?? t("common:nav.backLabel")}
             style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
             hitSlop={12}
             testID="nav-back"
@@ -254,23 +295,68 @@ export function AppHeader({
             },
           ]}
         >
-          {!!onOpenScoreboard && (
+          {!!onOpenScorecard && (
             <Pressable
-              onPress={handleMenuScoreboard}
+              onPress={handleMenuScorecard}
               accessibilityRole="menuitem"
+              testID="nav-menu-scorecard"
               style={(state) => [
                 styles.dropdownItem,
                 state.pressed && { backgroundColor: colors.surfaceAlt },
               ]}
             >
               <MaterialIcons
-                name="leaderboard"
+                name="scoreboard"
                 size={18}
                 color={colors.accent}
                 style={styles.itemIcon}
               />
               <Text style={[styles.itemLabel, { color: colors.text }]}>
-                {t("common:overflow.menu.scoreboard")}
+                {t("common:overflow.menu.scorecard")}
+              </Text>
+            </Pressable>
+          )}
+
+          {!!onOpenStats && (
+            <Pressable
+              onPress={handleMenuStats}
+              accessibilityRole="menuitem"
+              testID="nav-menu-stats"
+              style={(state) => [
+                styles.dropdownItem,
+                state.pressed && { backgroundColor: colors.surfaceAlt },
+              ]}
+            >
+              <MaterialIcons
+                name="insights"
+                size={18}
+                color={colors.accent}
+                style={styles.itemIcon}
+              />
+              <Text style={[styles.itemLabel, { color: colors.text }]}>
+                {t("common:overflow.menu.stats")}
+              </Text>
+            </Pressable>
+          )}
+
+          {!!onOpenLeaderboard && (
+            <Pressable
+              onPress={handleMenuLeaderboard}
+              accessibilityRole="menuitem"
+              testID="nav-menu-leaderboard"
+              style={(state) => [
+                styles.dropdownItem,
+                state.pressed && { backgroundColor: colors.surfaceAlt },
+              ]}
+            >
+              <MaterialIcons
+                name="emoji-events"
+                size={18}
+                color={colors.accent}
+                style={styles.itemIcon}
+              />
+              <Text style={[styles.itemLabel, { color: colors.text }]}>
+                {t("common:overflow.menu.leaderboard")}
               </Text>
             </Pressable>
           )}
@@ -332,71 +418,40 @@ export function AppHeader({
               </Text>
             </Pressable>
           )}
+
+          {/* #2481 — always last, and always present: the one menu item that
+              does not depend on which handlers the screen passed in. */}
+          <Pressable
+            onPress={handleMenuFeedback}
+            accessibilityRole="menuitem"
+            testID="nav-menu-feedback"
+            style={(state) => [
+              styles.dropdownItem,
+              state.pressed && { backgroundColor: colors.surfaceAlt },
+            ]}
+          >
+            <MaterialIcons
+              name="feedback"
+              size={18}
+              color={colors.accent}
+              style={styles.itemIcon}
+            />
+            <Text style={[styles.itemLabel, { color: colors.text }]}>{t("title")}</Text>
+          </Pressable>
         </View>
       </Modal>
 
       {/* ─── Abandon dialog ────────────────────────────────────────────────── */}
-      <Modal
+      <ConfirmModal
         visible={abandonVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAbandonVisible(false)}
-        accessibilityViewIsModal
-      >
-        <View
-          style={[
-            styles.abandonOverlay,
-            Platform.select({
-              web: {
-                backdropFilter: "blur(4px)",
-                WebkitBackdropFilter: "blur(4px)",
-              } as object,
-            }),
-          ]}
-        >
-          <View
-            style={[
-              styles.abandonCard,
-              { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-            ]}
-          >
-            <Text style={[styles.abandonTitle, { color: colors.text }]} accessibilityRole="header">
-              {t("common:overflow.abandon.title")}
-            </Text>
-            <Text style={[styles.abandonBody, { color: colors.textMuted }]}>
-              {t("common:overflow.abandon.body")}
-            </Text>
-
-            {/* Keep Playing — outline pill (safe action first) */}
-            <Pressable
-              style={[styles.keepPlayingBtn, { borderColor: colors.border }]}
-              onPress={() => setAbandonVisible(false)}
-              accessibilityRole="button"
-              accessibilityLabel={t("common:overflow.abandon.keepPlaying")}
-            >
-              <Text style={[styles.keepPlayingText, { color: colors.text }]}>
-                {t("common:overflow.abandon.keepPlaying")}
-              </Text>
-            </Pressable>
-
-            {/* Start New — gradient pill */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.startNewBtn,
-                startNewBg,
-                { transform: [{ scale: pressed ? 0.96 : 1 }] },
-              ]}
-              onPress={handleAbandonConfirm}
-              accessibilityRole="button"
-              accessibilityLabel={t("common:overflow.abandon.startNew")}
-            >
-              <Text style={[styles.startNewText, { color: colors.textOnAccent }]}>
-                {t("common:overflow.abandon.startNew")}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+        title={t("common:overflow.abandon.title")}
+        body={t("common:overflow.abandon.body")}
+        confirmLabel={t("common:overflow.abandon.startNew")}
+        cancelLabel={t("common:overflow.abandon.keepPlaying")}
+        cancelFirst
+        onConfirm={handleAbandonConfirm}
+        onCancel={() => setAbandonVisible(false)}
+      />
     </View>
   );
 }
@@ -509,63 +564,5 @@ const styles = StyleSheet.create({
   itemLabel: {
     fontFamily: typography.bodyMedium,
     fontSize: 13,
-  },
-  // ── Abandon dialog ──────────────────────────────────────────────────────
-  abandonOverlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.6)",
-  },
-  abandonCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 20,
-    alignItems: "center",
-    width: "86%",
-    maxWidth: 320,
-  },
-  abandonTitle: {
-    fontFamily: typography.heading,
-    fontSize: 17,
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  abandonBody: {
-    fontFamily: typography.body,
-    fontSize: 13,
-    lineHeight: 19.5,
-    marginBottom: 20,
-    textAlign: "center",
-  },
-  keepPlayingBtn: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    marginBottom: 10,
-    width: "100%",
-    alignItems: "center",
-  },
-  keepPlayingText: {
-    fontFamily: typography.label,
-    fontSize: 13,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
-  startNewBtn: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 999,
-    width: "100%",
-    alignItems: "center",
-  },
-  startNewText: {
-    fontFamily: typography.label,
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
   },
 });

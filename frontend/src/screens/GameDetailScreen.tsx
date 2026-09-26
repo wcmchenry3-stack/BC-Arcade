@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, ActivityIndicator, ScrollView } from "react-native";
+import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { GAME_TITLE_NAMESPACES, gameTitle } from "../i18n/gameTitle";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RouteProp } from "@react-navigation/native";
+import { EmptyState } from "../components/shared/EmptyState";
 import { useTheme } from "../theme/ThemeContext";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { statsApi } from "../api/stats";
 import type { GameDetailResponse } from "../api/types";
+import { formatMetric, gameMetric, outcomeLabel } from "../api/outcomeDisplay";
 import type { ProfileStackParamList } from "../types/navigation";
 import { formatTimestamp } from "../utils/formatTimestamp";
 
@@ -59,18 +61,11 @@ export default function GameDetailScreen({ navigation, route }: Props) {
 
   let body: React.ReactNode;
   if (loading) {
-    body = (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.accent} size="large" accessibilityLabel="Loading" />
-      </View>
-    );
+    body = <EmptyState kind="loading" />;
   } else if (error || !detail) {
-    body = (
-      <View style={styles.center}>
-        <Text style={[styles.errorText, { color: colors.error }]}>{t("detail.loadError")}</Text>
-      </View>
-    );
+    body = <EmptyState kind="error" message={t("detail.loadError")} />;
   } else {
+    const metric = gameMetric(detail);
     body = (
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={[styles.card, { backgroundColor: colors.surfaceAlt }]}>
@@ -81,10 +76,15 @@ export default function GameDetailScreen({ navigation, route }: Props) {
           />
           <DetailRow
             label={t("detail.score")}
-            value={detail.final_score != null ? detail.final_score.toLocaleString() : "—"}
+            // The board's metric with its label, as Profile's recent games show it.
+            value={formatMetric(t, metric.labelKey, metric.value)}
             colors={colors}
           />
-          <DetailRow label={t("detail.outcome")} value={detail.outcome ?? "—"} colors={colors} />
+          <DetailRow
+            label={t("detail.outcome")}
+            value={outcomeLabel(t, detail.outcome)}
+            colors={colors}
+          />
           <DetailRow
             label={t("detail.duration")}
             value={formatDuration(detail.duration_ms)}
@@ -92,12 +92,12 @@ export default function GameDetailScreen({ navigation, route }: Props) {
           />
           <DetailRow
             label={t("detail.startedAt")}
-            value={formatTimestamp(detail.started_at)}
+            value={formatTimestamp(t, detail.started_at)}
             colors={colors}
           />
           <DetailRow
             label={t("detail.completedAt")}
-            value={formatTimestamp(detail.completed_at)}
+            value={formatTimestamp(t, detail.completed_at)}
             colors={colors}
             isLast
           />
@@ -152,8 +152,6 @@ function DetailRow({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
-  errorText: { fontSize: 14, textAlign: "center" },
   scrollContent: { padding: 16 },
   card: {
     borderRadius: 16,

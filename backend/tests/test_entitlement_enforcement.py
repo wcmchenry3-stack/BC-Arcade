@@ -3,10 +3,10 @@
 Acceptance criteria:
 - POST /games with a premium game_type and no entitlement → 403
 - POST /games with a free game_type → proceeds normally
-- Any route on /cascade/*, /hearts/*, /sudoku/*, /starswarm/* without
+- A premium game's board (GET /games/leaderboard/{game_type}) without
   entitlement → 403
 - Entitled session passes through without error
-- Free game routes are unaffected
+- Free game boards are unaffected
 """
 
 from __future__ import annotations
@@ -88,10 +88,10 @@ def test_create_game_premium_hearts_no_entitlement_returns_403(
 def test_create_game_free_no_entitlement_proceeds(client: TestClient, session_id: str) -> None:
     r = client.post(
         "/games",
-        json={"game_type": "blackjack"},
+        json={"game_type": "yacht"},
         headers=_headers(session_id),
     )
-    # blackjack is free — should not be gated (201 or 200, not 403)
+    # yacht is free (since 2026-09-23) — should not be gated (201 or 200, not 403)
     assert r.status_code != 403
 
 
@@ -112,121 +112,41 @@ async def test_create_game_entitled_premium_proceeds(client: TestClient, session
 
 
 # ---------------------------------------------------------------------------
-# /cascade/* — gated
+# Premium boards — gated. The per-game routers these tests used to hit
+# (/cascade/*, /hearts/*, /mahjong/*, /starswarm/*) were removed in #2644;
+# every board is GET /games/leaderboard/{game_type}.
 # ---------------------------------------------------------------------------
 
-
-def test_cascade_scores_no_entitlement_returns_403(client: TestClient, session_id: str) -> None:
-    r = client.get("/cascade/scores", headers=_headers(session_id))
-    assert r.status_code == 403
-    assert r.json()["game"] == "cascade"
+_PREMIUM_BOARDS = ("cascade", "hearts", "mahjong", "starswarm")
+_FREE_BOARDS = ("freecell", "solitaire", "sudoku")
 
 
-def test_cascade_patch_no_entitlement_returns_403(client: TestClient, session_id: str) -> None:
-    game_id = str(uuid.uuid4())
-    r = client.patch(
-        f"/cascade/score/{game_id}",
-        json={"player_name": "Alice"},
-        headers=_headers(session_id),
-    )
-    assert r.status_code == 403
-
-
-@pytest.mark.anyio
-async def test_cascade_entitled_session_passes(client: TestClient, session_id: str) -> None:
-    await _grant(session_id, "cascade")
-    r = client.get("/cascade/scores", headers=_headers(session_id))
-    assert r.status_code != 403
-
-
-# ---------------------------------------------------------------------------
-# /hearts/* — gated
-# ---------------------------------------------------------------------------
-
-
-def test_hearts_scores_no_entitlement_returns_403(client: TestClient, session_id: str) -> None:
-    r = client.get("/hearts/scores", headers=_headers(session_id))
-    assert r.status_code == 403
-    assert r.json()["game"] == "hearts"
-
-
-def test_hearts_submit_no_entitlement_returns_403(client: TestClient, session_id: str) -> None:
-    r = client.post(
-        "/hearts/score",
-        json={"player_name": "Bob", "score": 42},
-        headers=_headers(session_id),
-    )
-    assert r.status_code == 403
-
-
-@pytest.mark.anyio
-async def test_hearts_entitled_session_passes(client: TestClient, session_id: str) -> None:
-    await _grant(session_id, "hearts")
-    r = client.get("/hearts/scores", headers=_headers(session_id))
-    assert r.status_code != 403
-
-
-# ---------------------------------------------------------------------------
-# /sudoku/* — gated
-# ---------------------------------------------------------------------------
-
-
-def test_sudoku_scores_no_entitlement_returns_403(client: TestClient, session_id: str) -> None:
-    r = client.get("/sudoku/scores/easy", headers=_headers(session_id))
-    assert r.status_code == 403
-    assert r.json()["game"] == "sudoku"
-
-
-@pytest.mark.anyio
-async def test_sudoku_entitled_session_passes(client: TestClient, session_id: str) -> None:
-    await _grant(session_id, "sudoku")
-    r = client.get("/sudoku/scores/easy", headers=_headers(session_id))
-    assert r.status_code != 403
-
-
-# ---------------------------------------------------------------------------
-# /starswarm/* — gated
-# ---------------------------------------------------------------------------
-
-
-def test_starswarm_leaderboard_no_entitlement_returns_403(
-    client: TestClient, session_id: str
+@pytest.mark.parametrize("game", _PREMIUM_BOARDS)
+def test_premium_board_no_entitlement_returns_403(
+    client: TestClient, session_id: str, game: str
 ) -> None:
-    r = client.get("/starswarm/leaderboard", headers=_headers(session_id))
+    r = client.get(f"/games/leaderboard/{game}", headers=_headers(session_id))
     assert r.status_code == 403
-    assert r.json()["game"] == "starswarm"
-
-
-def test_starswarm_submit_no_entitlement_returns_403(client: TestClient, session_id: str) -> None:
-    r = client.post(
-        "/starswarm/score",
-        json={
-            "player_id": "Carol",
-            "score": 100,
-            "wave_reached": 3,
-        },
-        headers=_headers(session_id),
-    )
-    assert r.status_code == 403
+    assert r.json()["game"] == game
 
 
 @pytest.mark.anyio
-async def test_starswarm_entitled_session_passes(client: TestClient, session_id: str) -> None:
-    await _grant(session_id, "starswarm")
-    r = client.get("/starswarm/leaderboard", headers=_headers(session_id))
-    assert r.status_code != 403
+@pytest.mark.parametrize("game", _PREMIUM_BOARDS)
+async def test_premium_board_entitled_session_passes(
+    client: TestClient, session_id: str, game: str
+) -> None:
+    await _grant(session_id, game)
+    r = client.get(f"/games/leaderboard/{game}", headers=_headers(session_id))
+    assert r.status_code == 200, r.text
 
 
 # ---------------------------------------------------------------------------
-# Free game routes — unaffected
+# Free boards — unaffected
 # ---------------------------------------------------------------------------
 
 
-def test_freecell_not_gated(client: TestClient, session_id: str) -> None:
-    r = client.get("/freecell/scores", headers=_headers(session_id))
-    assert r.status_code != 403
-
-
-def test_solitaire_not_gated(client: TestClient, session_id: str) -> None:
-    r = client.get("/solitaire/scores", headers=_headers(session_id))
-    assert r.status_code != 403
+@pytest.mark.parametrize("game", _FREE_BOARDS)
+def test_free_board_not_gated(client: TestClient, session_id: str, game: str) -> None:
+    query = "?difficulty=easy" if game == "sudoku" else ""
+    r = client.get(f"/games/leaderboard/{game}{query}", headers=_headers(session_id))
+    assert r.status_code == 200, r.text

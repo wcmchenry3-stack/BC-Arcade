@@ -6,6 +6,8 @@ structural subtyping — no inheritance required.
 
 from __future__ import annotations
 
+from games.board import SCORE_METRIC, BoardDefinition
+from games.protocol import default_stats_shape
 from sudoku.models import SudokuMetadata, SudokuResult
 from vocab import GameType
 
@@ -20,9 +22,30 @@ class SudokuModule:
     game_type = GameType.SUDOKU
     metadata_model = SudokuMetadata
     result_model = SudokuResult
+    has_winner = False
+    # One board per (difficulty, variant). A game scores its difficulty's base
+    # (DIFFICULTY_BASE in SudokuScreen.tsx: 100/200/300) minus 10 per error, so
+    # each difficulty has its own cap and 300 is the overall one (recomputed in
+    # tests/test_board_definitions.py). Rows from before #748 carry no
+    # ``variant`` and belong to ``classic`` (``partition_defaults``).
+    # qualifying_outcomes stays None: every Sudoku row's outcome is
+    # ``completed`` (a solved puzzle) or ``abandoned`` (never counts).
+    board = BoardDefinition(
+        metric=SCORE_METRIC,
+        direction="desc",
+        label_key="score",
+        partitions=("difficulty", "variant"),
+        partition_defaults=(("variant", "classic"),),
+        max_value=300,
+        partition_max_values=(
+            ("difficulty", "easy", 100),
+            ("difficulty", "medium", 200),
+            ("difficulty", "hard", 300),
+        ),
+    )
 
     def stats_shape(self, raw_stats: dict) -> dict:
-        return {k: v for k, v in raw_stats.items() if k != "latest_score"}
+        return default_stats_shape(raw_stats)
 
 
 module = SudokuModule()

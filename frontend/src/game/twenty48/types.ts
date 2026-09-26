@@ -2,8 +2,6 @@
  * Twenty48 state types.
  */
 
-import type { GameOutcome, GameSession } from "../_shared/types";
-
 export interface TileData {
   id: number;
   value: number;
@@ -32,14 +30,8 @@ export interface Twenty48State {
   startedAt: number | null;
   /** Total elapsed milliseconds accumulated across all sessions before the current one. */
   accumulatedMs: number;
+  /** The clock is paused (the player is away), not merely stopped: see `PlayClock`. */
+  paused?: boolean;
   /** One-shot events emitted on the move that caused them; undefined otherwise. */
   events?: readonly GameEvent[];
-}
-
-export type Twenty48Session = GameSession<Twenty48State>;
-
-/** Outcome for a completed Twenty48 game. */
-export interface Twenty48Outcome extends GameOutcome {
-  /** Whether the player reached the 2048 tile. */
-  hasWon: boolean;
 }

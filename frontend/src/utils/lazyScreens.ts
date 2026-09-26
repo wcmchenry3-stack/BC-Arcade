@@ -21,9 +21,10 @@ const factories = {
   Sort: () => import("../screens/SortScreen"),
   DailyWord: () => import("../screens/DailyWordScreen"),
   Leaderboard: () => import("../screens/LeaderboardScreen"),
+  GameStats: () => import("../screens/GameStatsScreen"),
   GameDetail: () => import("../screens/GameDetailScreen"),
   Settings: () => import("../screens/SettingsScreen"),
-  Scoreboard: () => import("../screens/ScoreboardScreen"),
+  Scorecard: () => import("../screens/ScorecardScreen"),
 } as const;
 
 export const LazyScreens = {
@@ -44,18 +45,19 @@ export const LazyScreens = {
   Sort: React.lazy(factories.Sort),
   DailyWord: React.lazy(factories.DailyWord),
   Leaderboard: React.lazy(factories.Leaderboard),
+  GameStats: React.lazy(factories.GameStats),
   GameDetail: React.lazy(factories.GameDetail),
   Settings: React.lazy(factories.Settings),
-  Scoreboard: React.lazy(factories.Scoreboard),
+  Scorecard: React.lazy(factories.Scorecard),
 } as const;
 
 // Slugs for premium games that have lazy screens.
 const PREMIUM_LAZY: Array<[keyof typeof factories, string]> = [
+  ["BlackjackBetting", "blackjack"],
   ["Cascade", "cascade"],
   ["StarSwarm", "starswarm"],
   ["Hearts", "hearts"],
-  ["Sudoku", "sudoku"],
-  ["Sort", "sort"],
+  ["Mahjong", "mahjong"],
 ];
 
 // Max simultaneous Metro bundle requests. Windows Node.js defaults to 512 fds;
@@ -70,7 +72,7 @@ function runThrottled(tasks: Array<() => Promise<unknown>>): void {
   function next(): void {
     while (running < PREFETCH_CONCURRENCY && index < tasks.length) {
       running++;
-      const task = tasks[index++];
+      const task = tasks[index++]!;
       task().then(
         () => {
           running--;
@@ -104,11 +106,11 @@ function runThrottled(tasks: Array<() => Promise<unknown>>): void {
  */
 export function prefetchLobbyGameScreens(canPlay: (slug: string) => boolean): void {
   const tasks: Array<() => Promise<unknown>> = [
-    factories.BlackjackBetting,
     factories.Twenty48,
     factories.Solitaire,
     factories.FreeCell,
-    factories.Mahjong,
+    factories.Sort,
+    factories.Sudoku,
     factories.DailyWord,
     ...PREMIUM_LAZY.filter(([, slug]) => canPlay(slug)).map(([key]) => factories[key]),
   ];

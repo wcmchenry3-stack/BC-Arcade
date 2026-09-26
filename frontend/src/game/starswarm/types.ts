@@ -1,6 +1,20 @@
-export type EnemyTier = "Grunt" | "Elite" | "Boss";
+/** #2484: Carrier — one per wave, top row, never dives, armored while its Boss escorts live. */
+export type EnemyTier = "Grunt" | "Elite" | "Boss" | "Carrier";
 
-export type PowerUpType = "lightning" | "shield" | "buddy" | "bomb";
+/** Pickups. lightning/shield are 5 s buffs, buddy/bomb are instant (#980–#1035); salvage and hull
+ * are #2488 in-run upgrades: salvage raises the gun level, hull adds plating. */
+export type PowerUpType = "lightning" | "shield" | "buddy" | "bomb" | "salvage" | "hull";
+
+/** #2488: in-run upgrade ladders. Guns: single → twin → twin + spread. Hull: extra hits absorbed. */
+export type GunsLevel = 1 | 2 | 3;
+export type HullLevel = 0 | 1 | 2;
+
+/** #2488: an upgrade-ladder change the screen reacts to (sound + spoken cue). */
+export interface UpgradeEvent {
+  readonly kind: "gunsUp" | "gunsDown" | "hullUp" | "hullHit";
+  readonly guns: GunsLevel;
+  readonly hull: HullLevel;
+}
 
 /** Starfleet difficulty tiers (#1037) — ordered easiest to hardest. */
 export type DifficultyTier =
@@ -22,12 +36,12 @@ export type EnemyPhase =
   | "Wiggling" // pre-dive telegraph: oscillates ±6px for ~350ms (#975)
   | "Diving" // following Bézier arc toward player (#977)
   | "Circling" // looping around a fixed center point
-  | "Returning"; // following Bézier path back to formation slot
+  | "Returning" // following Bézier path back to formation slot
+  | "Fleeing"; // #2489: grunt rout — Bézier path off the top edge; no shooting, diving or ramming
 
 export type GamePhase =
   | "SwoopIn" // wave intro — enemies filling the grid
   | "Playing" // normal combat
-  | "FreeFireZone" // non-hostile bonus wave
   | "WaveClear" // brief pause before next wave (legacy / backward-compat)
   | "GameOver";
 
@@ -85,7 +99,63 @@ export interface Enemy {
   readonly wiggleTimer: number;
   /** Shots remaining in the active Boss burst; 0 = start a new burst (#979). */
   readonly burstShotsLeft: number;
+  /** #2485: Carrier sweep-beam state; "idle" for every other tier. */
+  readonly beamPhase: BeamPhase;
+  /** #2485: ms left in the current beam phase (idle = until the next charge). */
+  readonly beamTimer: number;
+  /** #2487: an in-progress formation sidestep away from an asteroid; null when not dodging. */
+  readonly dodge: { readonly dir: 1 | -1; readonly t: number; readonly dur: number } | null;
+  /** #2487: asteroids this ship has already rolled against — one roll per rock per ship. */
+  readonly rolledAsteroidIds: readonly number[];
+  /** #2487: ms until this ship may fire flak at an asteroid again. */
+  readonly flakCooldown: number;
 }
+
+/** #2487: per-tier asteroid-response counters (carried across waves, reset on a new game). */
+export interface TierStats {
+  /** Dodge rolls taken. */
+  readonly rolls: number;
+  /** Rolls that succeeded. */
+  readonly dodged: number;
+  /** Rolls taken while on a path (swoop-in, dive, return), a subset of `rolls`. */
+  readonly pathRolls: number;
+  /** Path rolls that succeeded, a subset of `dodged`. */
+  readonly pathDodged: number;
+  /** Times a rock actually hit a ship of this tier. */
+  readonly struck: number;
+  /** Flak shots fired at rocks. */
+  readonly flak: number;
+}
+
+/**
+ * #2491: whole-run counters — carried across waves, reset on a new game. The dev panel shows
+ * them live and one Sentry breadcrumb rolls them up at game over. Counts only, never anything
+ * that identifies the player.
+ */
+export interface RunStats {
+  /** Grunts the Carrier launched as reinforcements. */
+  readonly reinforced: number;
+  /** Ordinary shots spent on the escorted Carrier's force field. */
+  readonly armorDeflects: number;
+  /** Carrier beam sweeps that cost hull plating or a life (a shield-absorbed sweep isn't one). */
+  readonly beamHits: number;
+  /** #2489: fleeing grunts the player shot down (or bombed). */
+  readonly routCaught: number;
+  /** #2489: fleeing grunts that reached the top edge and got away. */
+  readonly routEscaped: number;
+  /** Rocks that entered play — timed spawns and dev-panel throws alike. */
+  readonly rocksSpawned: number;
+  /** Rocks the player's shots broke (a bomb or a hull shatter isn't counted). */
+  readonly rocksBrokenByPlayer: number;
+  /** Rocks enemy shots broke, flak included. */
+  readonly rocksBrokenByEnemy: number;
+}
+
+/** #2485: the Carrier's sweep beam — telegraph, then a vertical beam it drags across the lane. */
+export type BeamPhase = "idle" | "charge" | "fire";
+
+/** #2485: Carrier moments the screen reacts to (sound, haptics, screen-reader announcements). */
+export type CarrierEvent = "beamCharge" | "beamFire" | "reinforce";
 
 export interface Bullet {
   readonly id: number;
@@ -99,10 +169,16 @@ export interface Bullet {
   readonly damage: number;
   /** Charge shot: passes through all enemies in its lane instead of stopping on first hit. */
   readonly piercing?: boolean;
+  /** Enemy ids this piercing bullet has already damaged, across its whole flight — piercing
+   * bullets aren't consumed on hit, so without this a slow bullet overlapping a big hitbox
+   * (e.g. the Carrier) for several ticks would re-deal damage every tick it stays inside it. */
+  readonly hitEnemyIds?: readonly number[];
   /** Enemy bullet already in flight when the wave it was fired in cleared — keeps moving and
    * rendering normally until it exits the screen, but can no longer hit the player (see #2352
    * follow-up: the wave-clear autopilot dodge was removed, this replaces it non-blockingly). */
   readonly harmless?: boolean;
+  /** #2487: an enemy shot fired at an asteroid — outside bulletCap(), drawn in a distinct colour. */
+  readonly flak?: boolean;
 }
 
 export interface Player {
@@ -115,6 +191,12 @@ export interface Player {
   readonly invincibleTimer: number;
   /** ms until player can fire again. */
   readonly shootCooldown: number;
+  /** #2488: gun level for this run — lost one step per life lost, never persisted. */
+  readonly guns: GunsLevel;
+  /** #2488: hull plating — each level absorbs one hit that would otherwise cost a life. */
+  readonly hull: HullLevel;
+  /** #2488: ms remaining for the plating's force-field flash; 0 when not flashing. */
+  readonly hullFlashTimer: number;
 }
 
 export interface Explosion {
@@ -159,6 +241,30 @@ export interface BuddyShip {
   readonly fromLeft: boolean;
 }
 
+/** #2486: errant asteroid — a neutral hazard both sides can hit and be hit by. */
+export type AsteroidKind = "large" | "small";
+
+export interface Asteroid {
+  readonly id: number;
+  readonly kind: AsteroidKind;
+  readonly x: number;
+  readonly y: number;
+  /** Velocity in px/ms. */
+  readonly vx: number;
+  readonly vy: number;
+  readonly radius: number;
+  readonly hp: number;
+  /** Cosmetic spin: current angle (rad) and rate (rad/ms). */
+  readonly rotation: number;
+  readonly spin: number;
+  /** ms remaining for the hit flash; 0 when not flashing. */
+  readonly hitFlashTimer: number;
+  /** Enemies this rock has already struck — one hit per enemy per rock. */
+  readonly hitEnemyIds: readonly number[];
+  /** Set when destroyed by an impact (hull or force field): it shatters without splitting. */
+  readonly shattered?: boolean;
+}
+
 export interface StarSwarmState {
   readonly phase: GamePhase;
   readonly wave: number;
@@ -170,12 +276,28 @@ export interface StarSwarmState {
   readonly explosions: readonly Explosion[];
   readonly powerUps: readonly PowerUp[];
   readonly buddyShips: readonly BuddyShip[];
+  /** #2486: asteroids in flight (neutral hazard). */
+  readonly asteroids: readonly Asteroid[];
+  /** ms until the next timed asteroid spawn; only counts down in the Playing phase. */
+  readonly nextAsteroidTimer: number;
+  /** Dev: suppress timed asteroid spawns (dev-panel throws still work). */
+  readonly asteroidsDisabled: boolean;
+  /** #2485: ms until the Carrier's next reinforcement launch (Playing phase only). */
+  readonly reinforceTimer: number;
+  /** #2485: grunts launched by the Carrier this wave — capped at half the wave's grunt slots. */
+  readonly reinforcedThisWave: number;
+  /** #2487: asteroid-response counters per tier (see TierStats). */
+  readonly tierStats: Readonly<Record<EnemyTier, TierStats>>;
+  /** #2491: whole-run counters (see RunStats). */
+  readonly runStats: RunStats;
+  /** Dev (#2491): enemies never roll to dodge a rock — collisions become the baseline. */
+  readonly dodgeDisabled: boolean;
+  /** Dev (#2491): enemies never fire flak at a rock. */
+  readonly flakDisabled: boolean;
   /** General-purpose countdown timer (WaveClear pause, etc.). */
   readonly phaseTimer: number;
   readonly canvasW: number;
   readonly canvasH: number;
-  /** Hits accumulated during the current Free Fire Zone. */
-  readonly freeFireHits: number;
   /** ms until the next dive-AI trigger fires. */
   readonly nextDiveTimer: number;
   /** Current left/right sway offset applied to all Formation enemies (px). */
@@ -209,12 +331,14 @@ export interface StarSwarmState {
   readonly stragglerEnabled: boolean;
   /** When true (dev panel), straggler aggression is suppressed regardless of enemy count (#1039). */
   readonly pauseStraggler: boolean;
+  /** #2489: latched once the wave's grunts have routed (no Elite, Boss or Carrier left alive). */
+  readonly routed: boolean;
+  /** Dev (#2489): grunts never rout — the old hunt-the-last-three ending, for comparison. */
+  readonly routDisabled: boolean;
   /** ms remaining for the Smart Bomb full-screen flash overlay; 0 when inactive (#1034). */
   readonly bombFlashTimer: number;
   /** Active difficulty tier; drives score multiplier and AI param scaling (#1037). */
   readonly difficulty: DifficultyTier;
-  /** True when the player hit all enemies in a Free Fire Zone (#1022). */
-  readonly freeFirePerfect: boolean;
   /** Dev: suppress player fire (bullets never spawn, cooldown still ticks). */
   readonly playerFireDisabled: boolean;
   /** Dev: enemy bullets are never pushed to the bullet list. */

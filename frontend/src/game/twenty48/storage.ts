@@ -6,26 +6,28 @@
  *
  * Storage key bumped to v2 because Twenty48State now includes `tiles` and
  * `scoreDelta` — v1 payloads are silently discarded on first load.
+ *
+ * The play clock is saved banked and restarted on load (`clockForSave`,
+ * `clockOnLoad`, #2750): time played before an app kill is kept, and the
+ * time the app was closed never counts.
+ *
+ * The old `twenty48_stats_v1` counters (best tile, games played, games won)
+ * are no longer read or written (#2636): the Stats screen reads the server.
+ * What a device already stored there is left alone.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import { Twenty48State } from "./types";
 import { seedNextTileId } from "./engine";
+import { clockForSave, clockOnLoad } from "../_shared/playClock";
 
 const GAME_KEY = "twenty48_game_v2";
 const BEST_SCORE_KEY = "twenty48_best_score_v1";
-const STATS_KEY = "twenty48_stats_v1";
-
-export interface Twenty48Stats {
-  bestTile: number;
-  gamesPlayed: number;
-  gamesWon: number;
-}
 
 export async function saveGame(state: Twenty48State): Promise<void> {
   try {
-    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(state));
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(clockForSave(state)));
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "twenty48.storage", op: "save" } });
   }
@@ -88,7 +90,7 @@ export async function loadGame(): Promise<Twenty48State | null> {
     // reload. Strip any that slipped into storage from saves written before
     // Twenty48Screen stripped them at the call site.
     parsed.events = undefined;
-    return parsed;
+    return clockOnLoad(parsed, parsed.game_over);
   } catch (e) {
     // Corrupt payload: recovery is complete (we remove the bad entry and
     // return null, so the caller starts a fresh game). This is not an
@@ -130,29 +132,5 @@ export async function loadBestScore(): Promise<number> {
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "twenty48.storage", op: "loadBest" } });
     return 0;
-  }
-}
-
-export async function loadStats(): Promise<Twenty48Stats> {
-  try {
-    const raw = await AsyncStorage.getItem(STATS_KEY);
-    if (!raw) return { bestTile: 0, gamesPlayed: 0, gamesWon: 0 };
-    const parsed = JSON.parse(raw);
-    return {
-      bestTile: typeof parsed.bestTile === "number" ? parsed.bestTile : 0,
-      gamesPlayed: typeof parsed.gamesPlayed === "number" ? parsed.gamesPlayed : 0,
-      gamesWon: typeof parsed.gamesWon === "number" ? parsed.gamesWon : 0,
-    };
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "twenty48.storage", op: "loadStats" } });
-    return { bestTile: 0, gamesPlayed: 0, gamesWon: 0 };
-  }
-}
-
-export async function saveStats(stats: Twenty48Stats): Promise<void> {
-  try {
-    await AsyncStorage.setItem(STATS_KEY, JSON.stringify(stats));
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "twenty48.storage", op: "saveStats" } });
   }
 }

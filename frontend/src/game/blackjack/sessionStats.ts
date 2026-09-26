@@ -1,4 +1,4 @@
-// Per-session counters that drive the Blackjack scoreboard variant. Counters
+// Per-session counters that drive the Blackjack scorecard (live view). Counters
 // are derived in BlackjackGameContext at hand-resolved transitions and reset
 // on session boundaries (startSession + handlePlayAgain). Persistence is
 // intentionally out of scope here — sessionStats are an in-memory derivation

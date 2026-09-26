@@ -11,9 +11,17 @@ interface Props {
   concealed?: boolean;
   /** "player" renders the large neon-glow pill; "dealer" renders the compact glass badge. */
   variant: "player" | "dealer";
+  /** Override font size for the player score text (default 32). */
+  fontSize?: number;
 }
 
-export default function ScorePill({ value, soft = false, concealed = false, variant }: Props) {
+export default function ScorePill({
+  value,
+  soft = false,
+  concealed = false,
+  variant,
+  fontSize,
+}: Props) {
   const { colors } = useTheme();
   const label = concealed ? "?" : soft ? `${value}*` : String(value);
 
@@ -42,7 +50,9 @@ export default function ScorePill({ value, soft = false, concealed = false, vari
             { backgroundColor: colors.surface, borderColor: colors.accent },
           ]}
         >
-          <Text style={[styles.playerText, { color: colors.accent }]}>{label}</Text>
+          <Text style={[styles.playerText, { color: colors.accent, fontSize: fontSize ?? 32 }]}>
+            {label}
+          </Text>
         </View>
       </View>
     </View>
@@ -79,7 +89,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   playerText: {
-    fontSize: 32,
     fontWeight: "900",
     letterSpacing: -0.5,
   },

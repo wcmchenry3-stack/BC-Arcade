@@ -10,6 +10,9 @@
  * engine already guarantees nested stacks are `[]` at write time — this
  * is defensive belt-and-suspenders.
  *
+ * The play clock is saved banked and restarted on load (`clockForSave`,
+ * `clockOnLoad`, #2750), so the time the app was closed never counts.
+ *
  * `loadGame` enforces `_v: 1` so future schema bumps reject incompatible
  * payloads rather than crashing the screen. Corrupt payloads are deleted
  * and reported as a warning (not an exception) — the caller recovers by
@@ -19,15 +22,19 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import type { SolitaireState } from "./types";
+import { clockForSave, clockOnLoad } from "../_shared/playClock";
 
 const GAME_KEY = "solitaire_game";
 const STATS_KEY = "solitaire_stats_v1";
 
+/**
+ * The device's cached best, for the result card's best time and "New best"
+ * badge only (#2636); the player's history is the Stats screen, fed by the
+ * server. Older builds also kept `bestMoves`, `gamesPlayed` and `gamesWon`
+ * here: a stored record with them still loads, and the next save drops them.
+ */
 export interface SolitaireStats {
   bestTimeMs: number;
-  bestMoves: number;
-  gamesPlayed: number;
-  gamesWon: number;
 }
 
 function stripNestedUndo(state: SolitaireState): SolitaireState {
@@ -39,7 +46,7 @@ function stripNestedUndo(state: SolitaireState): SolitaireState {
 
 export async function saveGame(state: SolitaireState): Promise<void> {
   try {
-    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(stripNestedUndo(state)));
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(stripNestedUndo(clockForSave(state))));
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "solitaire.storage", op: "save" } });
   }
@@ -49,7 +56,7 @@ export async function loadGame(): Promise<SolitaireState | null> {
   try {
     const raw = await AsyncStorage.getItem(GAME_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<SolitaireState>;
+    const parsed = JSON.parse(raw) as { -readonly [K in keyof SolitaireState]?: SolitaireState[K] };
     if (
       parsed._v !== 1 ||
       (parsed.drawMode !== 1 && parsed.drawMode !== 3) ||
@@ -70,7 +77,8 @@ export async function loadGame(): Promise<SolitaireState | null> {
     // Normalize timer fields — absent in saves created before timer tracking was added.
     parsed.startedAt = parsed.startedAt ?? null;
     parsed.accumulatedMs = parsed.accumulatedMs ?? 0;
-    return parsed as SolitaireState;
+    const loaded = parsed as SolitaireState;
+    return clockOnLoad(loaded, loaded.isComplete);
   } catch (e) {
     Sentry.captureMessage("solitaire.storage: corrupt game payload, discarding", {
       level: "warning",
@@ -90,19 +98,14 @@ export async function clearGame(): Promise<void> {
   }
 }
 
-const EMPTY_STATS: SolitaireStats = { bestTimeMs: 0, bestMoves: 0, gamesPlayed: 0, gamesWon: 0 };
+const EMPTY_STATS: SolitaireStats = { bestTimeMs: 0 };
 
 export async function loadStats(): Promise<SolitaireStats> {
   try {
     const raw = await AsyncStorage.getItem(STATS_KEY);
     if (!raw) return { ...EMPTY_STATS };
     const parsed = JSON.parse(raw);
-    return {
-      bestTimeMs: typeof parsed.bestTimeMs === "number" ? parsed.bestTimeMs : 0,
-      bestMoves: typeof parsed.bestMoves === "number" ? parsed.bestMoves : 0,
-      gamesPlayed: typeof parsed.gamesPlayed === "number" ? parsed.gamesPlayed : 0,
-      gamesWon: typeof parsed.gamesWon === "number" ? parsed.gamesWon : 0,
-    };
+    return { bestTimeMs: typeof parsed?.bestTimeMs === "number" ? parsed.bestTimeMs : 0 };
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "solitaire.storage", op: "loadStats" } });
     return { ...EMPTY_STATS };
@@ -111,7 +114,7 @@ export async function loadStats(): Promise<SolitaireStats> {
 
 export async function saveStats(stats: SolitaireStats): Promise<void> {
   try {
-    await AsyncStorage.setItem(STATS_KEY, JSON.stringify(stats));
+    await AsyncStorage.setItem(STATS_KEY, JSON.stringify({ bestTimeMs: stats.bestTimeMs }));
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "solitaire.storage", op: "saveStats" } });
   }

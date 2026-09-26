@@ -1,6 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import { saveGame, loadGame, clearGame, looksValid } from "../storage2";
+import {
+  saveGame,
+  loadGame,
+  clearGame,
+  looksValid,
+  loadBestScore,
+  saveBestScore,
+} from "../storage2";
 import type { SavedState } from "../storage2";
 
 const STORAGE_KEY = "cascade_game_v3";
@@ -62,6 +69,20 @@ describe("cascade storage2 — looksValid", () => {
 
   it("returns false for a plain string", () => {
     expect(looksValid("not-an-object")).toBe(false);
+  });
+});
+
+describe("cascade storage2 — playedMs (#2750)", () => {
+  it("accepts a save with its play time", () => {
+    expect(looksValid(makeSavedState({ playedMs: 20_000 }))).toBe(true);
+  });
+
+  it("accepts an older build's save without it", () => {
+    expect(looksValid(makeSavedState())).toBe(true);
+  });
+
+  it("rejects a play time that isn't a number", () => {
+    expect(looksValid({ ...makeSavedState(), playedMs: "20" })).toBe(false);
   });
 });
 
@@ -155,5 +176,30 @@ describe("cascade storage2 — save / load roundtrip", () => {
     const loaded = await loadGame();
     expect(loaded?.score).toBe(9999);
     expect(loaded?.savedAt).toBe(1750000000000);
+  });
+});
+
+describe("cascade storage2 — best score (#2515)", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it("returns 0 when no best score is stored", async () => {
+    await expect(loadBestScore()).resolves.toBe(0);
+  });
+
+  it("round-trips a saved best score", async () => {
+    await saveBestScore(1234);
+    await expect(loadBestScore()).resolves.toBe(1234);
+  });
+
+  it("treats a corrupt stored value as no best score", async () => {
+    await AsyncStorage.setItem("cascade_best_score", "not-a-number");
+    await expect(loadBestScore()).resolves.toBe(0);
+  });
+
+  it("returns 0 when storage fails", async () => {
+    (AsyncStorage.getItem as jest.Mock).mockRejectedValueOnce(new Error("disk"));
+    await expect(loadBestScore()).resolves.toBe(0);
   });
 });

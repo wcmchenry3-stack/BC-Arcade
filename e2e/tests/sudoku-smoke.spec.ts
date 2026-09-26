@@ -1,9 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { mockSudokuApi, gotoSudoku } from "./helpers/sudoku";
+import { gotoSudoku } from "./helpers/sudoku";
 
 test.describe("Sudoku — smoke tests", () => {
   test.beforeEach(async ({ page }) => {
-    await mockSudokuApi(page);
     await gotoSudoku(page);
   });
 

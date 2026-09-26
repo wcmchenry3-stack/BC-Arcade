@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ActivityIndicator, Pressable } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
@@ -9,12 +7,13 @@ import { useTheme } from "../theme/ThemeContext";
 import { placeBet as enginePlaceBet, toViewState, DEFAULT_RULES } from "../game/blackjack/engine";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
 import { loadRuns, RunRecord } from "../game/blackjack/storage";
-import { TABLE_CONFIGS } from "../game/blackjack/tables";
+import { TABLE_CONFIGS, tableForBetLimits } from "../game/blackjack/tables";
 import BettingPanel from "../components/blackjack/BettingPanel";
 import TableSelectPanel from "../components/blackjack/TableSelectPanel";
 import HudSidebar from "../components/blackjack/HudSidebar";
 import BlackjackTable from "../components/blackjack/BlackjackTable";
-import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
+import { useBlackjackLayout } from "../hooks/useBlackjackLayout";
+import { GameShell } from "../components/shared/GameShell";
 
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "BlackjackBetting">;
@@ -23,10 +22,9 @@ type Props = {
 export default function BlackjackBettingScreen({ navigation }: Props) {
   const { t } = useTranslation(["blackjack", "common"]);
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  const tabBarHeight = useSafeBottomTabBarHeight();
   const { engine, loading, error, apply, handleRulesChange, handlePlayAgain, handleTableSelect } =
     useBlackjackGame();
+  const layout = useBlackjackLayout();
   const [runs, setRuns] = useState<RunRecord[]>([]);
 
   useEffect(() => {
@@ -44,9 +42,7 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
     engine.bet === 0;
 
   // Derive active table config from engine's betMin/betMax (set by handleTableSelect).
-  const activeTable =
-    TABLE_CONFIGS.find((t) => t.betMin === engine?.betMin && t.betMax === engine?.betMax) ??
-    TABLE_CONFIGS[0]!;
+  const activeTable = tableForBetLimits(engine) ?? TABLE_CONFIGS[0]!;
   const tableAccentColor = colors[activeTable.accentKey];
 
   // Redirect when loaded mid-hand or into victory (app restart, injected state).
@@ -59,36 +55,18 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
     }
   }, [loading, engine, navigation]);
 
-  if (!engine && loading) {
-    return (
-      <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <ActivityIndicator color={colors.accent} size="large" />
-      </View>
-    );
-  }
-
   const state = engine ? toViewState(engine) : null;
   const handleDeal = (amount: number) => apply((s) => enginePlaceBet(s, amount));
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.background,
-          paddingTop: APP_HEADER_HEIGHT + insets.top,
-          paddingBottom: Math.max(tabBarHeight, 16),
-        },
-      ]}
+    <GameShell
+      gameType="blackjack"
+      title={t("game.title")}
+      requireBack
+      onBack={() => navigation.popToTop()}
+      onNewGame={handlePlayAgain}
+      loading={!engine && loading}
     >
-      <AppHeader
-        title={t("game.title")}
-        requireBack
-        onBack={() => navigation.popToTop()}
-        onNewGame={handlePlayAgain}
-        onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "blackjack" })}
-      />
-
       {/* Full-width run HUD — shown once a table is selected */}
       {state && !showTableSelect && engine?.runGoal != null && (
         <View style={styles.hudContainer}>
@@ -117,7 +95,7 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
               playerHands={state.player_hands}
               activeHandIndex={state.active_hand_index}
               handBets={state.hand_bets}
-              handOutcomes={state.hand_outcomes}
+              layout={layout}
             />
           </View>
         </View>
@@ -160,19 +138,11 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
           </Text>
         </Pressable>
       )}
-    </View>
+    </GameShell>
   );
 }
 
 const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  container: {
-    flex: 1,
-  },
   hudContainer: {
     paddingHorizontal: 12,
     paddingTop: 6,

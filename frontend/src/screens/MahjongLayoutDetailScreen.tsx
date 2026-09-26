@@ -96,6 +96,7 @@ export default function MahjongLayoutDetailScreen() {
 
   return (
     <GameShell
+      gameType={null}
       title={meta?.name ?? layoutId}
       requireBack
       onBack={() => navigation.goBack()}
@@ -122,13 +123,7 @@ export default function MahjongLayoutDetailScreen() {
             <Animated.View
               style={[{ width: camera.boardWidth, height: camera.boardHeight }, gestureAnimStyle]}
             >
-              <GameCanvas
-                state={state}
-                camera={camera}
-                onTilePress={NOOP}
-                onShufflePress={NOOP}
-                onNewGamePress={NOOP}
-              />
+              <GameCanvas state={state} camera={camera} onTilePress={NOOP} />
             </Animated.View>
           </GestureDetector>
         </View>

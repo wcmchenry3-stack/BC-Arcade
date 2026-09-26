@@ -53,15 +53,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "theme.system": {
-    "component": "SettingsScreen",
-    "description": "Segmented-control option that follows the OS light/dark preference.",
-    "tone": "functional",
-    "characterLimit": 8,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": "Short — fits a compact 3-way segmented control alongside 'Light' and 'Dark'."
-  },
   "theme.dark": {
     "component": "HomeScreen",
     "description": "Theme toggle button text for switching to dark mode.",
@@ -70,6 +61,15 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "theme.system": {
+    "component": "SettingsScreen",
+    "description": "Segmented-control option that follows the OS light/dark preference.",
+    "tone": "functional",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Short — fits a compact 3-way segmented control alongside 'Light' and 'Dark'."
   },
   "theme.switchTo": {
     "component": "HomeScreen/GameScreen/CascadeScreen",
@@ -107,6 +107,105 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "network.offlineBanner": {
+    "component": "OfflineBanner",
+    "description": "Banner shown app-wide when the device is offline, explaining that scores will sync later.",
+    "tone": "informational",
+    "characterLimit": 90,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "a11y.loading": {
+    "component": "EmptyState",
+    "description": "Screen-reader label for the loading spinner shown while a screen fetches data. Not shown visually.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Spoken by VoiceOver and TalkBack. Use the short progressive form, e.g. 'Loading'."
+  },
+  "brand.wordmark": {
+    "component": "AppHeader",
+    "description": "Compact app wordmark intended for use in screen headers.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": ["BC Arcade"],
+    "notes": "Currently unused in the app; do not translate the app name."
+  },
+  "nav.lobby": {
+    "component": "BottomTabBar",
+    "description": "Bottom tab bar label for the games lobby/home tab.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "nav.profile": {
+    "component": "BottomTabBar",
+    "description": "Bottom tab bar label for the profile tab.",
+    "tone": "neutral",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "nav.settings": {
+    "component": "BottomTabBar",
+    "description": "Bottom tab bar label for the settings tab; also reused as the Settings screen's header title.",
+    "tone": "neutral",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "newGame.button": {
+    "component": "GameScreen/BlackjackTableScreen",
+    "description": "Button label to start a new game from within an active game.",
+    "tone": "action",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "newGame.confirm.title": {
+    "component": "NewGameConfirmModal",
+    "description": "Title of the confirmation dialog shown before starting a new game.",
+    "tone": "neutral",
+    "characterLimit": 42,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "newGame.confirm.body": {
+    "component": "NewGameConfirmModal",
+    "description": "Body text of the new-game confirmation dialog, warning that current progress will be lost.",
+    "tone": "neutral",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "newGame.confirm.confirm": {
+    "component": "NewGameConfirmModal",
+    "description": "Confirm button label on the new-game confirmation dialog.",
+    "tone": "action",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "newGame.confirm.cancel": {
+    "component": "NewGameConfirmModal",
+    "description": "Cancel button label on the new-game confirmation dialog; also the default cancel label for the shared ConfirmModal component.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "settings.soundEffects": {
     "component": "SettingsScreen",
     "description": "Label for the global sound effects toggle in Settings.",
@@ -116,21 +215,363 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "clearLogs.label": {
+    "component": "SettingsScreen",
+    "description": "Row label in Settings for clearing locally queued logs and events.",
+    "tone": "neutral",
+    "characterLimit": 36,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "clearLogs.description": {
+    "component": "SettingsScreen",
+    "description": "Explanatory text under the Clear local logs row in Settings.",
+    "tone": "neutral",
+    "characterLimit": 120,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "clearLogs.button": {
+    "component": "SettingsScreen",
+    "description": "Button label to clear local logs in Settings.",
+    "tone": "action",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "clearLogs.confirm.title": {
+    "component": "SettingsScreen",
+    "description": "Title of the confirmation dialog shown before clearing local logs.",
+    "tone": "neutral",
+    "characterLimit": 38,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "clearLogs.confirm.body": {
+    "component": "SettingsScreen",
+    "description": "Body text of the clear-logs confirmation dialog, warning the action can't be undone.",
+    "tone": "neutral",
+    "characterLimit": 230,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "clearLogs.confirm.confirm": {
+    "component": "SettingsScreen",
+    "description": "Confirm button label on the clear-logs confirmation dialog.",
+    "tone": "action",
+    "characterLimit": 28,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "clearLogs.confirm.cancel": {
+    "component": "SettingsScreen",
+    "description": "Cancel button label on the clear-logs confirmation dialog.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "clearLogs.success": {
+    "component": "SettingsScreen",
+    "description": "Success message shown after local logs are cleared.",
+    "tone": "neutral",
+    "characterLimit": 36,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "capacityWarning.title": {
+    "component": "CapacityWarningToast",
+    "description": "Title of the toast warning that queued offline game data is filling local storage.",
+    "tone": "neutral",
+    "characterLimit": 55,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "capacityWarning.body": {
+    "component": "CapacityWarningToast",
+    "description": "Body text of the capacity warning toast, directing the player to Settings.",
+    "tone": "neutral",
+    "characterLimit": 95,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "capacityWarning.dismiss": {
+    "component": "CapacityWarningToast",
+    "description": "Button and accessibility label to dismiss the capacity warning toast.",
+    "tone": "functional",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "deck.label": {
+    "component": "SettingsScreen",
+    "description": "Row label in Settings for the card deck (skin) picker.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "deck.select": {
+    "component": "SettingsScreen",
+    "description": "Accessibility label for a selectable card deck option in Settings.",
+    "tone": "functional",
+    "characterLimit": 42,
+    "placeholders": ["{{name}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "deck.selected": {
+    "component": "SettingsScreen",
+    "description": "Accessibility label for the currently selected card deck option in Settings.",
+    "tone": "functional",
+    "characterLimit": 32,
+    "placeholders": ["{{name}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "overflow.menu.label": {
+    "component": "AppHeader",
+    "description": "Accessibility label for the overflow (⋯) menu button.",
+    "tone": "functional",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "overflow.menu.scorecard": {
+    "component": "AppHeader",
+    "description": "Overflow menu item that opens the live scorecard of the match in progress: the Hearts rounds table, the Yacht scorecard or the Blackjack session. Also that screen's title. Not the player's history (that is the Stats item).",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "scorecard.unavailable": {
+    "component": "ScorecardScreen",
+    "description": "Shown on the Scorecard screen if it is opened for a game with no live scorecard.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "overflow.menu.stats": {
+    "component": "AppHeader",
+    "description": "Overflow menu item that opens the player's stats for this game.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "overflow.menu.leaderboard": {
+    "component": "AppHeader",
+    "description": "Overflow menu item that opens the game's leaderboard.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "overflow.menu.newGame": {
+    "component": "AppHeader",
+    "description": "Overflow menu item that starts a new game.",
+    "tone": "action",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "overflow.menu.levelSelect": {
+    "component": "AppHeader",
+    "description": "Overflow menu item that opens level/difficulty selection.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "overflow.menu.editNames": {
+    "component": "AppHeader",
+    "description": "Overflow menu item that opens player name editing.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "overflow.abandon.title": {
+    "component": "AppHeader",
+    "description": "Title of the confirmation dialog shown before abandoning the current game from the overflow menu.",
+    "tone": "neutral",
+    "characterLimit": 48,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "overflow.abandon.body": {
+    "component": "AppHeader",
+    "description": "Body text of the abandon-game confirmation dialog, clarifying that lifetime stats are unaffected.",
+    "tone": "neutral",
+    "characterLimit": 145,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "overflow.abandon.keepPlaying": {
+    "component": "AppHeader",
+    "description": "Cancel button label on the abandon-game confirmation dialog.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "overflow.abandon.startNew": {
+    "component": "AppHeader",
+    "description": "Confirm button label on the abandon-game confirmation dialog.",
+    "tone": "action",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "home.locked.buttonLabel": {
+    "component": "HomeScreen",
+    "description": "Button label on a locked, coming-soon game card on the home screen.",
+    "tone": "action",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "home.locked.cardLabel": {
+    "component": "HomeScreen",
+    "description": "Accessibility label for a locked, coming-soon game card on the home screen.",
+    "tone": "functional",
+    "characterLimit": 42,
+    "placeholders": ["{{title}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "home.locked.comingSoon": {
+    "component": "HomeScreen",
+    "description": "Alert message shown when tapping a locked, coming-soon game card.",
+    "tone": "neutral",
+    "characterLimit": 55,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "deleteData.label": {
+    "component": "SettingsScreen",
+    "description": "Row label in Settings for permanently deleting the player's data.",
+    "tone": "neutral",
+    "characterLimit": 25,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "deleteData.description": {
+    "component": "SettingsScreen",
+    "description": "Explanatory text under the Delete my data row in Settings.",
+    "tone": "neutral",
+    "characterLimit": 105,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "deleteData.button": {
+    "component": "SettingsScreen",
+    "description": "Button label to delete the player's data in Settings.",
+    "tone": "action",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "deleteData.confirm.title": {
+    "component": "SettingsScreen",
+    "description": "Title of the confirmation dialog shown before deleting the player's data.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "deleteData.confirm.body": {
+    "component": "SettingsScreen",
+    "description": "Body text of the delete-data confirmation dialog, warning the action is permanent and irreversible.",
+    "tone": "neutral",
+    "characterLimit": 160,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "deleteData.confirm.confirm": {
+    "component": "SettingsScreen",
+    "description": "Confirm button label on the delete-data confirmation dialog.",
+    "tone": "action",
+    "characterLimit": 25,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "deleteData.confirm.cancel": {
+    "component": "SettingsScreen",
+    "description": "Cancel button label on the delete-data confirmation dialog.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "deleteData.success": {
+    "component": "SettingsScreen",
+    "description": "Success message shown after the player's data is deleted.",
+    "tone": "neutral",
+    "characterLimit": 38,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "deleteData.error": {
+    "component": "SettingsScreen",
+    "description": "Error message shown when deleting the player's data fails.",
+    "tone": "sympathetic",
+    "characterLimit": 55,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "level.pill": {
     "component": "HomeScreen",
     "description": "Compact Arcade level badge in the Home header, e.g. 'Lv 4'. Abbreviate 'level' the way games in this language usually do.",
     "tone": "neutral",
-    "characterLimit": 10,
-    "placeholders": ["level"],
+    "characterLimit": 15,
+    "placeholders": ["{{level}}"],
     "doNotTranslate": [],
-    "notes": "Must stay very short — it sits in the header next to the title."
+    "notes": "Must stay very short — it sits in the header next to the title. Renders as e.g. 'Niv. 4' (under 8 characters); the limit counts the raw {{level}}."
   },
   "level.pillA11y": {
     "component": "HomeScreen",
     "description": "Screen-reader label for the Arcade level badge in the Home header.",
     "tone": "neutral",
     "characterLimit": 40,
-    "placeholders": ["level"],
+    "placeholders": ["{{level}}"],
     "doNotTranslate": [],
     "notes": null
   },
@@ -138,8 +579,8 @@
     "component": "HomeScreen",
     "description": "Compact daily-streak badge in the Home header next to the level pill: a fire emoji and the number of consecutive days, e.g. '🔥 5'.",
     "tone": "neutral",
-    "characterLimit": 8,
-    "placeholders": ["count"],
+    "characterLimit": 11,
+    "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": "Keep the emoji and the {{count}} placeholder; it must stay tiny — it shares the header with the title and the level pill. Do not add words."
   },
@@ -148,7 +589,7 @@
     "description": "Screen-reader label for the streak badge, singular form ({{count}} = 1): the number of consecutive days the player has hit their daily-challenge target.",
     "tone": "neutral",
     "characterLimit": 40,
-    "placeholders": ["count"],
+    "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": "Plural forms follow the i18next count rules for the language (add every category the language has, e.g. few/many for Russian)."
   },
@@ -157,7 +598,7 @@
     "description": "Screen-reader label for the streak badge, plural form.",
     "tone": "neutral",
     "characterLimit": 40,
-    "placeholders": ["count"],
+    "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": "Plural forms follow the i18next count rules for the language (add every category the language has, e.g. few/many for Russian)."
   },
@@ -178,5 +619,50 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Two links share one row — keep it short."
+  },
+  "premiumLevel.title": {
+    "component": "PremiumLevelNotice",
+    "description": "Title of the notice shown when the player taps a difficulty level that is locked because it belongs to the paid tier.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": ["BC Arcade Premium"],
+    "notes": "The product name. Keep it exactly as written."
+  },
+  "premiumLevel.body": {
+    "component": "PremiumLevelNotice",
+    "description": "Body of the notice shown when the player taps a locked premium difficulty level. The paid tier is not on sale yet.",
+    "tone": "friendly",
+    "characterLimit": 80,
+    "placeholders": [],
+    "doNotTranslate": ["BC Arcade Premium"],
+    "notes": "Say it is coming soon; do not promise a date or tell the player to buy anything."
+  },
+  "premiumLevel.ok": {
+    "component": "PremiumLevelNotice",
+    "description": "Button that closes the premium-level notice.",
+    "tone": "functional",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "premiumLevel.tag": {
+    "component": "TableSelectPanel",
+    "description": "Short tag next to a lock icon on a table card that belongs to the paid tier.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "One word."
+  },
+  "premiumLevel.lockedLabel": {
+    "component": "DifficultyPicker",
+    "description": "Screen-reader label for a difficulty option that is locked because it belongs to the paid tier. Not shown visually.",
+    "tone": "neutral",
+    "characterLimit": 80,
+    "placeholders": ["{{level}}"],
+    "doNotTranslate": ["BC Arcade Premium"],
+    "notes": "{{level}} is the option's own name, e.g. 'Hard'. Spoken by VoiceOver and TalkBack."
   }
 }

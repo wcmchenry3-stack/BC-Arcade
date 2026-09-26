@@ -71,11 +71,20 @@
     "doNotTranslate": [],
     "notes": "The numbers (63, +35) should be preserved."
   },
+  "bonus.badge": {
+    "component": "Scorecard",
+    "description": "Small badge on the upper section explaining the bonus threshold.",
+    "tone": "functional, concise",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "63 is the fixed points threshold for the upper-section bonus — keep the number."
+  },
   "bonus.progress": {
     "component": "Scorecard",
     "description": "Bonus progress display when bonus not yet earned.",
     "tone": "functional",
-    "characterLimit": 10,
+    "characterLimit": 17,
     "placeholders": ["{{subtotal}}"],
     "doNotTranslate": [],
     "notes": null
@@ -84,7 +93,7 @@
     "component": "Scorecard",
     "description": "Bonus progress display when bonus has been earned (shows checkmark).",
     "tone": "functional",
-    "characterLimit": 12,
+    "characterLimit": 19,
     "placeholders": ["{{subtotal}}"],
     "doNotTranslate": [],
     "notes": "The ✓ checkmark should be preserved."
@@ -219,7 +228,7 @@
     "component": "ScoreRow",
     "description": "Accessibility text when a category can be scored this turn.",
     "tone": "functional",
-    "characterLimit": 60,
+    "characterLimit": 65,
     "placeholders": ["{{potential}}"],
     "doNotTranslate": [],
     "notes": null
@@ -233,11 +242,83 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "score.label": {
+    "component": "ScoreRow / VsScorecard (accessibility)",
+    "description": "Accessibility label for a scoreable category cell, combining the category name and its current state.",
+    "tone": "functional",
+    "characterLimit": 45,
+    "placeholders": ["{{category}}", "{{state}}"],
+    "doNotTranslate": [],
+    "notes": "{{state}} is one of score.scored / score.potential / score.notAvailable."
+  },
+  "score.you": {
+    "component": "VsScorecard / YachtFinalScorecard",
+    "description": "Column header for the player's own score, shown in vs-mode scorecards.",
+    "tone": "neutral",
+    "characterLimit": 6,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "score.opponent": {
+    "component": "VsScorecard / YachtFinalScorecard",
+    "description": "Abbreviated column header for the opponent's score, shown in vs-mode scorecards.",
+    "tone": "neutral, abbreviated",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "The AI opponent's column currently uses vsMode.cpu ('CPU'); this is the general opponent label."
+  },
+  "score.empty": {
+    "component": "Scorecard / VsScorecard / YachtFinalScorecard",
+    "description": "Placeholder shown in place of a score for a category that hasn't been scored yet.",
+    "tone": "functional",
+    "characterLimit": 4,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "An em dash — keep it short."
+  },
+  "score.bonusLabel": {
+    "component": "Scorecard / VsScorecard",
+    "description": "Short label for the upper-section bonus row.",
+    "tone": "functional, concise",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "score.bonusRow": {
+    "component": "YachtFinalScorecard",
+    "description": "Label for the upper-section bonus subtotal row on the final scorecard.",
+    "tone": "functional",
+    "characterLimit": 32,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "score.bonusCountdown": {
+    "component": "Scorecard",
+    "description": "Short-form countdown to the upper-section bonus, showing points still needed.",
+    "tone": "functional, concise",
+    "characterLimit": 27,
+    "placeholders": ["{{n}}"],
+    "doNotTranslate": [],
+    "notes": "{{n}} is the points still needed to reach the 63-point threshold; +35 is the fixed bonus value — keep both numbers."
+  },
+  "score.total": {
+    "component": "Scorecard / VsScorecard / YachtFinalScorecard",
+    "description": "Short label for the total-score row.",
+    "tone": "functional",
+    "characterLimit": 9,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "dice.label": {
     "component": "Die",
     "description": "Accessibility label for a die showing its index, value, and held state.",
     "tone": "functional",
-    "characterLimit": 50,
+    "characterLimit": 55,
     "placeholders": ["{{index}}", "{{value}}", "{{heldSuffix}}"],
     "doNotTranslate": [],
     "notes": "{{heldSuffix}} is either ', held' or empty string."
@@ -282,7 +363,7 @@
     "component": "Die",
     "description": "Accessibility hint for an unheld die.",
     "tone": "functional",
-    "characterLimit": 25,
+    "characterLimit": 30,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -291,7 +372,7 @@
     "component": "Die",
     "description": "Accessibility hint for a held die.",
     "tone": "functional",
-    "characterLimit": 25,
+    "characterLimit": 35,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -300,16 +381,16 @@
     "component": "DiceRow",
     "description": "Roll button label showing remaining rolls.",
     "tone": "action, concise",
-    "characterLimit": 20,
+    "characterLimit": 25,
     "placeholders": ["{{count}}"],
     "doNotTranslate": [],
-    "notes": "{{count}} is 1, 2, or 3."
+    "notes": "{{count}} is 1, 2, or 3. Renders as e.g. 'Würfeln (2 übrig)'; the limit counts the raw {{count}}."
   },
   "roll.label_one": {
     "component": "DiceRow",
     "description": "Accessibility label for roll button — singular (1 roll left).",
     "tone": "functional",
-    "characterLimit": 35,
+    "characterLimit": 40,
     "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": null
@@ -318,7 +399,7 @@
     "component": "DiceRow",
     "description": "Accessibility label for roll button — plural (2–3 rolls left).",
     "tone": "functional",
-    "characterLimit": 35,
+    "characterLimit": 45,
     "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": null
@@ -341,32 +422,23 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "gameOver.title": {
-    "component": "GameScreen modal",
-    "description": "Modal title when the Yacht game ends after 13 rounds.",
-    "tone": "celebratory, punchy",
-    "characterLimit": 15,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "gameOver.finalScore": {
-    "component": "GameScreen modal",
-    "description": "Label above the final score number.",
-    "tone": "neutral",
-    "characterLimit": 15,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "gameOver.scoreLabel": {
-    "component": "GameScreen modal",
-    "description": "Accessibility label for the final score.",
+  "bonus.yachtLabel": {
+    "component": "Scorecard / VsScorecard / YachtFinalScorecard",
+    "description": "Label for the extra-Yacht bonus row, awarded for additional five-of-a-kind rolls after the first.",
     "tone": "functional",
-    "characterLimit": 30,
-    "placeholders": ["{{score}}"],
+    "characterLimit": 13,
+    "placeholders": [],
+    "doNotTranslate": ["Yacht"],
+    "notes": "Yacht is the game/category name — keep it."
+  },
+  "bonus.yachtValue": {
+    "component": "Scorecard",
+    "description": "Value shown on the extra-Yacht bonus row: the multiplier and total bonus points.",
+    "tone": "functional",
+    "characterLimit": 25,
+    "placeholders": ["{{count}}", "{{total}}"],
     "doNotTranslate": [],
-    "notes": null
+    "notes": "100 is the fixed points value per extra Yacht — the multiplication is implied, not spelled out."
   },
   "gameOver.upperBonus": {
     "component": "GameScreen modal",
@@ -377,20 +449,29 @@
     "doNotTranslate": [],
     "notes": "The +35 is a fixed game value — preserve it."
   },
-  "gameOver.playAgain": {
-    "component": "GameScreen modal",
-    "description": "Button text to return to home screen.",
-    "tone": "action, inviting",
-    "characterLimit": 15,
+  "gameOver.yachtBonus": {
+    "component": "GameScreen",
+    "description": "Result card subtitle announcing extra-Yacht bonuses scored during the game.",
+    "tone": "celebratory, brief",
+    "characterLimit": 41,
+    "placeholders": ["{{total}}", "{{count}}"],
+    "doNotTranslate": ["Yacht"],
+    "notes": "100 is the fixed per-bonus point value — keep the numbers and 'Yacht'."
+  },
+  "tab.upper": {
+    "component": "Scorecard",
+    "description": "Tab label for the upper section, in the narrow-layout scorecard tab bar.",
+    "tone": "functional",
+    "characterLimit": 10,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
   },
-  "gameOver.playAgainLabel": {
-    "component": "GameScreen modal",
-    "description": "Accessibility label for the play again button.",
+  "tab.lower": {
+    "component": "Scorecard",
+    "description": "Tab label for the lower section, in the narrow-layout scorecard tab bar.",
     "tone": "functional",
-    "characterLimit": 40,
+    "characterLimit": 10,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -399,7 +480,7 @@
     "component": "AiDifficultySelector",
     "description": "Accessibility label for the AI difficulty radio group.",
     "tone": "functional",
-    "characterLimit": 20,
+    "characterLimit": 25,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -476,29 +557,11 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "gameOver.youWin": {
-    "component": "GameOverModal",
-    "description": "Title shown in the game-over modal when the human wins VS mode.",
-    "tone": "celebratory, punchy",
-    "characterLimit": 15,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "gameOver.computerWins": {
-    "component": "GameOverModal",
-    "description": "Title shown in the game-over modal when the AI wins VS mode.",
-    "tone": "neutral",
+  "gameOver.scorecard": {
+    "component": "YachtFinalScorecard",
+    "description": "Header above the full per-category breakdown shown in the result card's detail slot.",
+    "tone": "functional",
     "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "gameOver.tie": {
-    "component": "GameOverModal",
-    "description": "Title shown in the game-over modal when the game ends in a tie (equal scores) in VS mode.",
-    "tone": "neutral, short",
-    "characterLimit": 15,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -511,5 +574,77 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Typically 'vs' — very short, often kept as-is across languages."
+  },
+  "vsMode.rollCounter": {
+    "component": "GameScreen (Yacht vs mode)",
+    "description": "Roll counter shown during a vs-mode turn, e.g. above the dice.",
+    "tone": "functional, concise",
+    "characterLimit": 18,
+    "placeholders": ["{{n}}"],
+    "doNotTranslate": [],
+    "notes": "{{n}} is 1-3; 3 is the fixed number of rolls per turn — keep the number."
+  },
+  "vsMode.category": {
+    "component": "VsScorecard",
+    "description": "Column header for the category-name column in the vs-mode scorecard.",
+    "tone": "functional",
+    "characterLimit": 11,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "vsMode.cpu": {
+    "component": "VsScorecard / YachtFinalScorecard / GameScreen",
+    "description": "Column header and opponent label for the AI opponent in vs mode.",
+    "tone": "neutral, abbreviated",
+    "characterLimit": 5,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "CPU is commonly kept as-is across languages."
+  },
+  "vsMode.lower": {
+    "component": "VsScorecard",
+    "description": "Section divider header shown above the lower-section category rows in the vs-mode scorecard.",
+    "tone": "functional",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "vsMode.upperSubtotal": {
+    "component": "VsScorecard",
+    "description": "Row label for the upper-section subtotal in the vs-mode scorecard.",
+    "tone": "functional",
+    "characterLimit": 23,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "vsMode.lowerSubtotal": {
+    "component": "VsScorecard",
+    "description": "Row label for the lower-section subtotal in the vs-mode scorecard.",
+    "tone": "functional",
+    "characterLimit": 23,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "vsMode.bonusProgress": {
+    "component": "VsScorecard",
+    "description": "Bonus row label shown before the player has reached the upper-section bonus threshold.",
+    "tone": "functional",
+    "characterLimit": 23,
+    "placeholders": ["{{n}}"],
+    "doNotTranslate": [],
+    "notes": "{{n}} is the points still needed; 63 is the fixed threshold — keep the number."
+  },
+  "vsMode.bonusUnlocked": {
+    "component": "VsScorecard",
+    "description": "Bonus row label shown once the player has reached the upper-section bonus threshold.",
+    "tone": "functional, celebratory",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Keep the ✓ checkmark."
   }
 }

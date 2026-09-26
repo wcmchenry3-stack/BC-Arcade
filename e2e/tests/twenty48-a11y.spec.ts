@@ -206,12 +206,12 @@ test.describe("2048 — accessibility labels", () => {
       }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Start a new 2048 game" }).first(),
+      page
+        .getByTestId("twenty48-result")
+        .getByRole("button", { name: "Play Again" }),
     ).toBeVisible();
     await expect(
-      page
-        .getByRole("button", { name: "Quit and return to home screen" })
-        .first(),
+      page.getByTestId("twenty48-result").getByRole("button", { name: "Home" }),
     ).toBeVisible();
   });
 
@@ -221,10 +221,12 @@ test.describe("2048 — accessibility labels", () => {
     await page.getByText("Game Over").waitFor();
 
     await expect(
-      page.getByRole("button", { name: "Start a new 2048 game" }).first(),
+      page
+        .getByTestId("twenty48-result")
+        .getByRole("button", { name: "Play Again" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Quit and return to home screen" }),
+      page.getByTestId("twenty48-result").getByRole("button", { name: "Home" }),
     ).toBeVisible();
   });
 });
@@ -253,13 +255,13 @@ test.describe("2048 — axe-core scans", () => {
     await injectGameState(page, wonState());
     await page.getByRole("button", { name: "Play 2048" }).click();
     await page.getByText("You Win!").waitFor();
-    // AnimationOverlay fades in over 300 ms. Two overlays share the testID
-    // (win + game-over), so filter to the one containing this overlay's text.
-    // Mid-animation opacity composites effective fg/bg against the page,
-    // deflating contrast ratios — wait for 1 before running axe (#1743).
-    await expect(
-      page.getByTestId("animation-overlay").filter({ has: page.getByText("You Win!") }),
-    ).toHaveCSS("opacity", "1");
+    // The result card (#2513) fades in. Mid-animation opacity composites
+    // effective fg/bg against the page, deflating contrast ratios — wait for
+    // the fade to finish before running axe (#1743).
+    await expect(page.getByTestId("twenty48-result")).toBeVisible();
+    await page.waitForFunction(() =>
+      document.getAnimations().every((a) => a.playState !== "running"),
+    );
 
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
@@ -271,13 +273,13 @@ test.describe("2048 — axe-core scans", () => {
     await injectGameState(page, gameOverState());
     await page.getByRole("button", { name: "Play 2048" }).click();
     await page.getByText("Game Over").waitFor();
-    // AnimationOverlay fades in over 300 ms. Two overlays share the testID
-    // (win + game-over), so filter to the one containing this overlay's text.
-    // Mid-animation opacity composites effective fg/bg against the page,
-    // deflating contrast ratios — wait for 1 before running axe (#1743).
-    await expect(
-      page.getByTestId("animation-overlay").filter({ has: page.getByText("Game Over") }),
-    ).toHaveCSS("opacity", "1");
+    // The result card (#2513) fades in. Mid-animation opacity composites
+    // effective fg/bg against the page, deflating contrast ratios — wait for
+    // the fade to finish before running axe (#1743).
+    await expect(page.getByTestId("twenty48-result")).toBeVisible();
+    await page.waitForFunction(() =>
+      document.getAnimations().every((a) => a.playState !== "running"),
+    );
 
     const results = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])

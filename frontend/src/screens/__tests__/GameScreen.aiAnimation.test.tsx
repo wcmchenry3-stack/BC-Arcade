@@ -8,6 +8,14 @@ import type { GameState } from "../../game/yacht/types";
 
 // Replace only `roll`; keep every other engine export (score, newGame, …) real.
 const mockRoll = jest.fn();
+// GameShell's Stats item (#2635) navigates through useNavigation; these
+// screens take their navigation as a prop, so the hook gets its own mock.
+const mockShellNavigate = jest.fn();
+jest.mock("@react-navigation/native", () => ({
+  ...jest.requireActual("@react-navigation/native"),
+  useNavigation: () => ({ navigate: mockShellNavigate }),
+}));
+
 jest.mock("../../game/yacht/engine", () => {
   const actual = jest.requireActual("../../game/yacht/engine");
   return { ...actual, roll: (...args: unknown[]) => mockRoll(...args) };
@@ -36,6 +44,11 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
     clearAll: jest.fn().mockResolvedValue(undefined),
   },
 }));
+
+// useGameSync's app-wide foreground clock (#2684) would subscribe to AppState
+// once, on first use — whichever test that lands in. The shared mock
+// jest.setup.ts pins (#2710) never subscribes, so the listener counts below see
+// only the screen's own listener, in any test order.
 
 const ALL_NULL_SCORES = {
   ones: null,
@@ -247,5 +260,145 @@ describe("GameScreen VS mode — AppState interruption + replay", () => {
     });
 
     expect(queryByText("Computer's Turn")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Resuming a saved game that was killed mid-AI-turn (GH #2203)
+// ---------------------------------------------------------------------------
+
+describe("GameScreen VS mode — resuming an interrupted AI turn (#2203)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- the global Sentry mock from jest.setup.ts
+  const Sentry = require("@sentry/react-native") as { captureException: jest.Mock };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    mockRoll.mockImplementation((state: GameState) => ({
+      ...state,
+      dice: [...ROLLED_DICE],
+      rolls_used: state.rolls_used + 1,
+      held: [false, false, false, false, false],
+    }));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /**
+   * Run the AI turn to completion. Each `await delay()` schedules its timer
+   * only after the previous one resolves, so time has to advance in steps
+   * with the promise queue flushed in between.
+   */
+  async function finishAiTurn() {
+    for (let i = 0; i < 20; i++) {
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+    }
+  }
+
+  /** Player has scored round 1 (now on round 2); the AI's round-1 turn is still open. */
+  function resumed(ai: Partial<GameState>) {
+    return renderVsGame(
+      { round: 2, rolls_used: 0, dice: [0, 0, 0, 0, 0], scores: { ...ALL_NULL_SCORES, ones: 3 } },
+      { round: 1, ...ai }
+    );
+  }
+
+  it("resumes the AI's turn on mount instead of handing the player an extra turn", async () => {
+    const { getByText } = await resumed({ rolls_used: 0 });
+    expect(getByText("Computer's Turn")).toBeTruthy();
+  });
+
+  it("with all three rolls used, scores without rolling again and returns control", async () => {
+    // The real engine roll, which throws "No rolls remaining" at rolls_used 3 —
+    // the exact failure that left isAiTurn stuck true before the fix.
+    const actual = jest.requireActual("../../game/yacht/engine");
+    mockRoll.mockImplementation((...args: unknown[]) => actual.roll(...args));
+
+    const { getByText } = await resumed({ rolls_used: 3, dice: [2, 2, 3, 3, 3] });
+    expect(getByText("Computer's Turn")).toBeTruthy();
+
+    await finishAiTurn();
+
+    expect(mockRoll).not.toHaveBeenCalled();
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(getByText("Your Turn")).toBeTruthy();
+  });
+
+  it("with rolls left, keeps the dice it already rolled", async () => {
+    const saved: [number, number, number, number, number] = [2, 3, 4, 5, 1];
+    const { getAllByTestId } = await resumed({ rolls_used: 1, dice: saved });
+
+    // Before any timer fires the AI shows its saved dice, not a fresh roll.
+    const shown = getAllByTestId(/^yacht-die-[0-4]$/).map((d) => d.props.accessibilityLabel);
+    saved.forEach((v, i) => expect(shown[i]).toMatch(new RegExp(`showing ${v}`)));
+
+    await finishAiTurn();
+    // Whatever it rerolled, it never re-did the opening roll of all five dice.
+    for (const [state] of mockRoll.mock.calls as [GameState][]) {
+      expect(state.rolls_used).toBeGreaterThan(0);
+    }
+  });
+
+  it("does not start an AI turn when the round is the player's", async () => {
+    const { getByText } = await renderVsGame(
+      { round: 2, rolls_used: 0 },
+      { round: 2, rolls_used: 0 }
+    );
+    await finishAiTurn();
+    expect(mockRoll).not.toHaveBeenCalled();
+    expect(getByText("Your Turn")).toBeTruthy();
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- the jest.mock at the top of this file
+  const storage = require("../../game/yacht/storage") as { saveGame: jest.Mock };
+  const lastSavedAi = (): GameState =>
+    storage.saveGame.mock.calls[storage.saveGame.mock.calls.length - 1]![2] as GameState;
+
+  it("finishes the computer's round with a fallback when its turn fails, so it never falls behind", async () => {
+    mockRoll.mockImplementationOnce(() => {
+      throw new Error("boom");
+    });
+    const { getByText } = await resumed({ rolls_used: 0 });
+
+    await finishAiTurn();
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(lastSavedAi().round).toBe(2); // caught up with the player
+    expect(getByText("Your Turn")).toBeTruthy();
+  });
+
+  it("still ends the game when the computer's final turn fails", async () => {
+    mockRoll.mockImplementationOnce(() => {
+      throw new Error("boom");
+    });
+    const scores = { ...ALL_NULL_SCORES } as GameState["scores"];
+    for (const c of Object.keys(scores)) if (c !== "chance") scores[c] = 0;
+    await renderVsGame(
+      { round: 13, game_over: true, rolls_used: 0, scores: { ...scores, chance: 20 } },
+      { round: 13, rolls_used: 0, scores }
+    );
+
+    await finishAiTurn();
+
+    // The VS result screen waits on both games being over.
+    expect(lastSavedAi().game_over).toBe(true);
+  });
+
+  it("unlocks the board as a last resort when even the fallback fails", async () => {
+    mockRoll.mockImplementation(() => {
+      throw new Error("No rolls remaining this turn.");
+    });
+    const { getByText } = await resumed({ rolls_used: 0 });
+
+    await finishAiTurn();
+
+    expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      tags: { subsystem: "yacht.ai", op: "runAiTurn" },
+    });
+    expect(getByText("Your Turn")).toBeTruthy();
   });
 });

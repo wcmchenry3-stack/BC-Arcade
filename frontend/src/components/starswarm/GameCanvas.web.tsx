@@ -1,12 +1,5 @@
-import React, {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from "react";
-import { Text, View } from "react-native";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
+import { View } from "react-native";
 import { Asset } from "expo-asset";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
@@ -22,20 +15,38 @@ import {
   MISSION_COMPLETE_FADE_MS,
   decayMissionCompleteTimer,
   showMissionCompleteBanner,
-  perfectBonusPoints,
-  perfectHoldMs,
-  FREE_FIRE_ENEMY_COUNT,
+  isBossWave,
+  routJustStarted,
+  fleeingCount,
+  carrierJustExposed,
+  isCarrierArmored,
+  asteroidOutline,
+  throwAsteroid,
+  killEscorts,
+  carrierBeam,
+  carrierBeamJustStarted,
+  carrierBeamJustFired,
+  reinforcementsJustLaunched,
+  BEAM_HALF_WIDTH,
+  upgradeEvents,
 } from "../../game/starswarm/engine";
 import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import type { StarfieldState } from "../../game/starswarm/starfield";
-import type { StarSwarmState, PowerUpType, DifficultyTier } from "../../game/starswarm/types";
+import type {
+  StarSwarmState,
+  PowerUpType,
+  DifficultyTier,
+  CarrierEvent,
+  UpgradeEvent,
+} from "../../game/starswarm/types";
 
 import playerShipSrc from "../../../assets/starswarm/player-ship.webp";
 import buddyShipSrc from "../../../assets/starswarm/buddy-ship.webp";
 import enemyGruntSrc from "../../../assets/starswarm/enemy-grunt.webp";
 import enemyEliteSrc from "../../../assets/starswarm/enemy-elite.webp";
 import enemyBossSrc from "../../../assets/starswarm/enemy-boss.webp";
+import enemyCarrierSrc from "../../../assets/starswarm/enemy-carrier.webp";
 import bulletPlayerSrc from "../../../assets/starswarm/bullet-player.webp";
 import bulletEnemySrc from "../../../assets/starswarm/bullet-enemy.webp";
 import bulletChargeSrc from "../../../assets/starswarm/bullet-charge.webp";
@@ -95,10 +106,15 @@ const C = {
   bg: "#000010",
   star: "#ffffff",
   bulletEnemy: "#ff4422",
+  bulletFlak: "#ffd27a", // #2487
   bulletPlayer: "#00ffcc",
   enemyGrunt: "#8888ff",
   enemyElite: "#ff88ff",
   enemyBoss: "#ffff44",
+  enemyCarrier: "#b06cff",
+  asteroid: "#8b6a47",
+  asteroidFlash: "#e8d3b8",
+  asteroidEdge: "#c9a27a",
   hitFlash: "#ff2200",
   pipFilled: "#ffffff",
   pipEmpty: "rgba(255,255,255,0.2)",
@@ -121,19 +137,15 @@ const C = {
   powerBarBg: "rgba(255,255,255,0.18)",
   powerBarFill: "#ffee00",
   waveClear: "#00ffcc",
-  freeFireZone: "#ffdd00",
-  gameOverText: "#ff4422",
-  gameOverOverlay: "rgba(0,0,0,0.65)",
+  bossWave: "#ffdd00",
 } as const;
 
-/** MISSION COMPLETE, with a PERFECT! line 34px below it when `perfectText` is given. Shared by
- * the fading wave-clear banner and the #2422 PERFECT celebration so their styling can't drift. */
+/** The fading MISSION COMPLETE wave-clear banner. */
 function drawMissionCompleteBanner(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  missionCompleteText: string,
-  perfectText: string | null
+  missionCompleteText: string
 ) {
   ctx.font = "bold 26px 'Courier New', monospace";
   ctx.fillStyle = C.waveClear;
@@ -141,14 +153,6 @@ function drawMissionCompleteBanner(
   ctx.shadowBlur = 18;
   ctx.fillText(missionCompleteText, x, y);
   ctx.shadowBlur = 0;
-  if (perfectText !== null) {
-    ctx.font = "bold 18px 'Courier New', monospace";
-    ctx.fillStyle = "#ffdd00";
-    ctx.shadowColor = "#ff8800";
-    ctx.shadowBlur = 8;
-    ctx.fillText(perfectText, x, y + 34);
-    ctx.shadowBlur = 0;
-  }
 }
 
 interface Images {
@@ -157,6 +161,7 @@ interface Images {
   enemyGrunt: HTMLImageElement | null;
   enemyElite: HTMLImageElement | null;
   enemyBoss: HTMLImageElement | null;
+  enemyCarrier: HTMLImageElement | null;
   bulletPlayer: HTMLImageElement | null;
   bulletEnemy: HTMLImageElement | null;
   bulletCharge: HTMLImageElement | null;
@@ -174,12 +179,26 @@ export interface DevOptions {
   pauseStraggler?: boolean;
   /** Override difficulty tier for this game (#1037). */
   difficulty?: DifficultyTier;
+  /** Suppress timed asteroid spawns (#2486). */
+  asteroidsDisabled?: boolean;
+  /** Enemies never roll to dodge a rock (#2491). */
+  dodgeDisabled?: boolean;
+  /** Enemies never fire flak at a rock (#2491). */
+  flakDisabled?: boolean;
+  /** Grunts never rout when the leaders die (#2489). */
+  routDisabled?: boolean;
 }
 
 export interface GameCanvasHandle {
   setPlayerX: (x: number) => void;
   setFire: (fire: boolean) => void;
   triggerPowerUp: (type: PowerUpType) => void;
+  /** Throw an asteroid now — dev-panel testing (#2486). */
+  throwAsteroid: () => void;
+  /** Destroy every escort so the Carrier is exposed at once — dev-panel testing (#2491). */
+  killEscorts: () => void;
+  /** #2567: native-only frame sampling — always null on web. */
+  getFrameStats: () => null;
   /** Return the current engine state snapshot — used by StarSwarmScreen to save paused state (#1367). */
   getState: () => StarSwarmState;
 }
@@ -192,12 +211,17 @@ interface Props {
   onWaveClear?: () => void;
   onLaserFire?: () => void;
   onExplosion?: () => void;
-  onFreeFireZone?: () => void;
-  /** Called once when all enemies in a Free Fire Zone are hit (#1022). */
-  /** #2422: called on a PERFECT Free Fire Zone clear. Return true if the fanfare is playing —
-   * the game then holds for its full length; otherwise it holds only a short silent beat. */
-  onFreeFirePerfect?: () => boolean;
+  /** #2490: called once when a boss wave (the Carrier and its escorts, nothing else) begins. */
+  onBossWave?: () => void;
+  /** #2489: called once when the wave's grunts rout, with how many are fleeing. */
+  onRout?: (count: number) => void;
   onPowerUpCollect?: (type: PowerUpType) => void;
+  /** #2484: called once when the last Boss escort dies and the Carrier's armor drops. */
+  onCarrierExposed?: () => void;
+  /** #2485: beam telegraph, beam firing, reinforcement launch. */
+  onCarrierEvent?: (kind: CarrierEvent) => void;
+  /** #2488: a gun or hull ladder change (pickup collected, plating hit, level lost). */
+  onUpgrade?: (ev: UpgradeEvent) => void;
   isPaused?: boolean;
   onPause?: () => void;
   width: number;
@@ -221,9 +245,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onWaveClear,
       onLaserFire,
       onExplosion,
-      onFreeFireZone,
-      onFreeFirePerfect,
+      onBossWave,
+      onRout,
       onPowerUpCollect,
+      onCarrierExposed,
+      onCarrierEvent,
+      onUpgrade,
       isPaused = false,
       onPause,
       width,
@@ -268,12 +295,17 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onWaveClearRef = useRef(onWaveClear);
     const onLaserFireRef = useRef(onLaserFire);
     const onExplosionRef = useRef(onExplosion);
-    const onFreeFireZoneRef = useRef(onFreeFireZone);
-    const onFreeFirePerfectRef = useRef(onFreeFirePerfect);
+    const onBossWaveRef = useRef(onBossWave);
+    const onRoutRef = useRef(onRout);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
+    const onCarrierExposedRef = useRef(onCarrierExposed);
+    const onCarrierEventRef = useRef(onCarrierEvent);
+    const onUpgradeRef = useRef(onUpgrade);
     const onPauseRef = useRef(onPause);
     const prevActivePowerUpRef = useRef<string | null>(null);
     const triggerPowerUpRef = useRef<PowerUpType | null>(null);
+    const throwAsteroidRef = useRef(false); // #2486
+    const killEscortsRef = useRef(false); // #2491
     const isPausedRef = useRef(isPaused);
     const prevScoreRef = useRef(0);
     const prevLivesRef = useRef(stateRef.current.player.lives);
@@ -283,20 +315,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const prevWaveRef = useRef(stateRef.current.wave);
     // Pre-wave countdown: null = no countdown, positive ms = ticking
     const countdownMsRef = useRef<number | null>(initialState ? null : WAVE_COUNTDOWN_MS);
-    // #2422: frame-clock time (RAF timestamp) at which the PERFECT-clear celebration hold ends;
-    // null = not celebrating. A deadline, not a countdown, so it stays in step with the
-    // fanfare audio however slow the frames are. Runs before the pre-wave countdown, which
-    // starts once it finishes.
-    const celebrationEndsAtRef = useRef<number | null>(null);
-    // Mirrors "celebrationEndsAtRef !== null" so the screen-reader live region can re-render — the
-    // canvas itself is drawn from refs and never triggers a React render.
-    const [celebrating, setCelebrating] = useState(false);
     const imagesRef = useRef<Images>({
       playerShip: null,
       buddyShip: null,
       enemyGrunt: null,
       enemyElite: null,
       enemyBoss: null,
+      enemyCarrier: null,
       bulletPlayer: null,
       bulletEnemy: null,
       bulletCharge: null,
@@ -335,17 +360,26 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onPowerUpCollectRef.current = onPowerUpCollect;
     }, [onPowerUpCollect]);
     useEffect(() => {
+      onCarrierExposedRef.current = onCarrierExposed;
+    }, [onCarrierExposed]);
+    useEffect(() => {
+      onCarrierEventRef.current = onCarrierEvent;
+    }, [onCarrierEvent]);
+    useEffect(() => {
+      onUpgradeRef.current = onUpgrade;
+    }, [onUpgrade]);
+    useEffect(() => {
       onPauseRef.current = onPause;
     }, [onPause]);
     useEffect(() => {
       onExplosionRef.current = onExplosion;
     }, [onExplosion]);
     useEffect(() => {
-      onFreeFireZoneRef.current = onFreeFireZone;
-    }, [onFreeFireZone]);
+      onBossWaveRef.current = onBossWave;
+    }, [onBossWave]);
     useEffect(() => {
-      onFreeFirePerfectRef.current = onFreeFirePerfect;
-    }, [onFreeFirePerfect]);
+      onRoutRef.current = onRout;
+    }, [onRout]);
     useEffect(() => {
       const wasPaused = isPausedRef.current;
       isPausedRef.current = isPaused;
@@ -380,6 +414,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           loadImg(enemyGruntSrc as number),
           loadImg(enemyEliteSrc as number),
           loadImg(enemyBossSrc as number),
+          loadImg(enemyCarrierSrc as number),
           loadImg(bulletPlayerSrc as number),
           loadImg(bulletEnemySrc as number),
           loadImg(bulletChargeSrc as number),
@@ -396,6 +431,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           enemyGrunt,
           enemyElite,
           enemyBoss,
+          enemyCarrier,
           bulletPlayer,
           bulletEnemy,
           bulletCharge,
@@ -411,6 +447,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           enemyGrunt: enemyGrunt ?? null,
           enemyElite: enemyElite ?? null,
           enemyBoss: enemyBoss ?? null,
+          enemyCarrier: enemyCarrier ?? null,
           bulletPlayer: bulletPlayer ?? null,
           bulletEnemy: bulletEnemy ?? null,
           bulletCharge: bulletCharge ?? null,
@@ -439,8 +476,17 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         triggerPowerUp(type) {
           triggerPowerUpRef.current = type;
         },
+        throwAsteroid() {
+          throwAsteroidRef.current = true;
+        },
+        killEscorts() {
+          killEscortsRef.current = true;
+        },
         getState() {
           return stateRef.current;
+        },
+        getFrameStats() {
+          return null;
         },
       }),
       []
@@ -455,7 +501,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         height,
         opts?.wave ?? 1,
         (Date.now() ^ (Math.random() * 0xffffffff)) >>> 0,
-        opts?.difficulty ?? difficultyRef.current
+        opts?.difficulty ?? difficultyRef.current,
+        opts?.stragglerEnabled
       );
       sfRef.current = initStarfield(width, height);
       lastFrameTimeRef.current = 0;
@@ -467,9 +514,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       prevWaveRef.current = stateRef.current.wave;
       prevActivePowerUpRef.current = null;
       triggerPowerUpRef.current = null;
+      throwAsteroidRef.current = false;
       countdownMsRef.current = WAVE_COUNTDOWN_MS;
-      celebrationEndsAtRef.current = null;
-      setCelebrating(false);
+      // #2490: a game that opens on a boss wave (dev wave jump) is announced like a cleared-into one
+      if (isBossWave(stateRef.current.wave) && !isPausedRef.current) onBossWaveRef.current?.();
     }, [resetTick, width, height]);
 
     const draw = useCallback(() => {
@@ -513,8 +561,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
 
       // Enemy bullets — harmless carry-overs from a cleared wave (see Bullet.harmless) are
       // dimmed so the player can tell they no longer need dodging.
-      ctx.fillStyle = C.bulletEnemy;
       for (const b of state.enemyBullets) {
+        ctx.fillStyle = b.flak ? C.bulletFlak : C.bulletEnemy; // #2487: flak at rocks reads as amber
         ctx.globalAlpha = b.harmless ? HARMLESS_BULLET_OPACITY : 1;
         ctx.fillRect(b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
       }
@@ -533,6 +581,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       }
 
       // Enemies
+      const carrierArmored = isCarrierArmored(state); // #2484
       for (const enemy of state.enemies) {
         if (!enemy.isAlive) continue;
         const img =
@@ -540,7 +589,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             ? imgs.enemyGrunt
             : enemy.tier === "Elite"
               ? imgs.enemyElite
-              : imgs.enemyBoss;
+              : enemy.tier === "Carrier"
+                ? imgs.enemyCarrier
+                : imgs.enemyBoss;
         if (img) {
           ctx.drawImage(
             img,
@@ -555,13 +606,23 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               ? C.enemyGrunt
               : enemy.tier === "Elite"
                 ? C.enemyElite
-                : C.enemyBoss;
+                : enemy.tier === "Carrier"
+                  ? C.enemyCarrier
+                  : C.enemyBoss;
           ctx.fillRect(
             enemy.x - enemy.width / 2,
             enemy.y - enemy.height / 2,
             enemy.width,
             enemy.height
           );
+        }
+        // #2484: steady force-field ring while the Carrier's escorts still shield it
+        if (enemy.tier === "Carrier" && carrierArmored) {
+          ctx.beginPath();
+          ctx.arc(enemy.x, enemy.y, Math.max(enemy.width, enemy.height) * 0.62, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(0,170,255,0.45)";
+          ctx.lineWidth = 2;
+          ctx.stroke();
         }
         if (enemy.hitFlashTimer > 0) {
           const progress = 1 - enemy.hitFlashTimer / HIT_FLASH_DURATION;
@@ -579,9 +640,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           ctx.stroke();
         }
 
-        // HP pips — Elite (2) and Boss (4); Grunt always has 1 HP so pips are omitted
+        // HP pips — Elite (2), Boss (4), Carrier (8); Grunt always has 1 HP so pips are omitted
         if (enemy.tier !== "Grunt") {
-          const totalPips = enemy.tier === "Elite" ? 2 : 4;
+          const totalPips = enemy.tier === "Elite" ? 2 : enemy.tier === "Carrier" ? 8 : 4;
           const pipW = 4;
           const pipH = 4;
           const pipGap = 2;
@@ -592,6 +653,24 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             ctx.fillStyle = p < enemy.hp ? C.pipFilled : C.pipEmpty;
             ctx.fillRect(rowX + p * (pipW + pipGap), rowY, pipW, pipH);
           }
+        }
+      }
+
+      // #2485 Carrier sweep beam — telegraph, then the beam
+      const beam = carrierBeam(state);
+      if (beam) {
+        if (beam.phase === "charge") {
+          ctx.fillStyle = `rgba(176,108,255,${(0.1 + beam.progress * 0.35).toFixed(3)})`;
+          ctx.fillRect(beam.x - 2, beam.y, 4, height);
+          ctx.beginPath();
+          ctx.arc(beam.x, beam.y + 6, 4 + beam.progress * 8, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(176,108,255,${(0.4 + beam.progress * 0.5).toFixed(3)})`;
+          ctx.fill();
+        } else {
+          ctx.fillStyle = "rgba(176,108,255,0.35)";
+          ctx.fillRect(beam.x - BEAM_HALF_WIDTH - 4, beam.y, BEAM_HALF_WIDTH * 2 + 8, height);
+          ctx.fillStyle = "rgba(230,205,255,0.9)";
+          ctx.fillRect(beam.x - BEAM_HALF_WIDTH * 0.5, beam.y, BEAM_HALF_WIDTH, height);
         }
       }
 
@@ -630,6 +709,18 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           ctx.lineWidth = 2;
           ctx.beginPath();
           ctx.arc(player.x, playerDisplayY, player.width * 0.8, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.lineWidth = 1;
+        }
+        // #2488 Hull plating flash — the plating that just took a hit
+        if (player.hullFlashTimer > 0) {
+          const k = player.hullFlashTimer / HIT_FLASH_DURATION;
+          ctx.globalAlpha = 0.75 * k;
+          ctx.strokeStyle = C.shieldRing;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(player.x, playerDisplayY, player.width * (0.6 + 0.4 * (1 - k)), 0, Math.PI * 2);
           ctx.stroke();
           ctx.globalAlpha = 1;
           ctx.lineWidth = 1;
@@ -695,6 +786,24 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         } else if (pu.type === "buddy") {
           ctx.fillStyle = C.powerUpBuddy;
           ctx.fillRect(lx + pw * 0.2, ly + ph * 0.2, pw * 0.6, ph * 0.6);
+        } else if (pu.type === "salvage") {
+          // #2488 salvage crate — gold with a strap
+          ctx.fillStyle = "#ffb020";
+          ctx.fillRect(lx + pw * 0.15, ly + ph * 0.15, pw * 0.7, ph * 0.7);
+          ctx.fillStyle = "#7a4d08";
+          ctx.fillRect(lx + pw * 0.15, ly + ph * 0.45, pw * 0.7, ph * 0.1);
+        } else if (pu.type === "hull") {
+          // #2488 hull plating — cyan hexagon
+          ctx.fillStyle = "#00aaff";
+          ctx.beginPath();
+          ctx.moveTo(pu.x, ly);
+          ctx.lineTo(lx + pw, ly + ph * 0.25);
+          ctx.lineTo(lx + pw, ly + ph * 0.75);
+          ctx.lineTo(pu.x, ly + ph);
+          ctx.lineTo(lx, ly + ph * 0.75);
+          ctx.lineTo(lx, ly + ph * 0.25);
+          ctx.closePath();
+          ctx.fill();
         } else {
           ctx.fillStyle = C.powerUpLightning;
           ctx.beginPath();
@@ -715,6 +824,19 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, width, height);
         ctx.globalAlpha = 1;
+      }
+
+      // #2486 Asteroids — shared procedural outline (Kenney meteor sprites can replace it)
+      for (const a of state.asteroids) {
+        const pts = asteroidOutline(a);
+        ctx.beginPath();
+        pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+        ctx.closePath();
+        ctx.fillStyle = a.hitFlashTimer > 0 ? C.asteroidFlash : C.asteroid;
+        ctx.fill();
+        ctx.strokeStyle = C.asteroidEdge;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
       }
 
       // Explosions
@@ -745,11 +867,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       ctx.textBaseline = "top";
       ctx.fillStyle = C.hudText;
       ctx.textAlign = "left";
-      ctx.fillText(`${t("hud.score")} ${state.score}`, 10, 8);
+      ctx.fillText(t("hud.scoreValue", { score: state.score }), 10, 8);
       ctx.textAlign = "center";
-      ctx.fillText(`${t("hud.best")} ${hs}`, width / 2, 8);
+      ctx.fillText(t("hud.bestValue", { best: hs }), width / 2, 8);
       ctx.textAlign = "right";
-      ctx.fillText(`${t("hud.wave")} ${state.wave}`, width - 10, 8);
+      ctx.fillText(t("hud.waveValue", { wave: state.wave }), width - 10, 8);
 
       // Difficulty tier — centered below score row
       ctx.font = "bold 10px 'Courier New', monospace";
@@ -759,6 +881,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         `${difficultyLabel(state.difficulty)} ×${difficultyMultiplier(state.difficulty)}`,
         width / 2,
         26
+      );
+      // #2488 upgrade ladders
+      ctx.fillText(
+        `${t("hud.guns")}${state.player.guns} · ${t("hud.hull")} ${"◆".repeat(state.player.hull) || "–"}`,
+        width / 2,
+        38
       );
 
       // Phase overlays
@@ -774,58 +902,34 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         const bannerAlpha = Math.min(1, state.missionCompleteTimer / MISSION_COMPLETE_FADE_MS);
         if (bannerAlpha > 0) {
           ctx.globalAlpha = bannerAlpha;
-          drawMissionCompleteBanner(
-            ctx,
-            width / 2,
-            height / 2,
-            t("phase.missionComplete"),
-            state.freeFirePerfect ? t("phase.perfect") : null
-          );
+          drawMissionCompleteBanner(ctx, width / 2, height / 2, t("phase.missionComplete"));
           ctx.globalAlpha = 1;
         }
       }
 
-      if (state.phase === "FreeFireZone") {
+      // #2489: rout banner — up while grunts are running for the edge
+      if (fleeingCount(state) > 0 && countdownDigit === null) {
         ctx.font = "bold 20px 'Courier New', monospace";
-        ctx.fillStyle = C.freeFireZone;
-        ctx.fillText(t("phase.freeFireZone"), width / 2, height / 2 - 18);
-        ctx.font = "14px 'Courier New', monospace";
-        ctx.fillStyle = C.hudText;
-        ctx.fillText(t("phase.hits", { count: state.freeFireHits }), width / 2, height / 2 + 12);
+        ctx.fillStyle = C.bossWave;
+        ctx.fillText(t("phase.rout"), width / 2, height / 2 - 18);
       }
 
-      if (state.phase === "GameOver") {
-        ctx.fillStyle = C.gameOverOverlay;
-        ctx.fillRect(0, 0, width, height);
-        ctx.font = "bold 28px 'Courier New', monospace";
-        ctx.fillStyle = C.gameOverText;
-        ctx.fillText(t("phase.gameOver"), width / 2, height / 2 - 22);
-        ctx.font = "16px 'Courier New', monospace";
-        ctx.fillStyle = C.hudText;
-        ctx.fillText(`${t("hud.score")} ${state.score}`, width / 2, height / 2 + 18);
+      // #2490: boss-wave telegraph — up while the Carrier and its escorts swoop in
+      if (isBossWave(state.wave) && state.phase === "SwoopIn" && countdownDigit === null) {
+        ctx.font = "bold 20px 'Courier New', monospace";
+        ctx.fillStyle = C.bossWave;
+        ctx.fillText(t("phase.bossWave"), width / 2, height / 2 - 18);
       }
 
-      // #2422: PERFECT Free Fire Zone clear — gameplay is held for the length of the fanfare.
-      if (celebrationEndsAtRef.current !== null) {
-        const points = perfectBonusPoints(state.difficulty).toLocaleString();
-        drawMissionCompleteBanner(
-          ctx,
-          width / 2,
-          height / 2 - 20,
-          t("phase.missionComplete"),
-          t("phase.perfect")
-        );
-        ctx.font = "bold 16px 'Courier New', monospace";
-        ctx.fillStyle = "#ffffff";
-        ctx.fillText(t("phase.perfectBonus", { points }), width / 2, height / 2 + 44);
-      }
+      // Game over is the shared result card in StarSwarmScreen (#2516); the
+      // canvas keeps drawing its final frame behind it.
 
       // Pre-wave countdown (starts as soon as the wave clears)
       if (countdownDigit !== null) {
         // Wave incoming banner above the digit
         ctx.font = "bold 16px 'Courier New', monospace";
         ctx.fillStyle = C.waveClear;
-        ctx.fillText(`— ${t("hud.wave")} ${state.wave} —`, width / 2, height / 2 - 64);
+        ctx.fillText(`— ${t("hud.waveValue", { wave: state.wave })} —`, width / 2, height / 2 - 64);
         // Large countdown digit
         ctx.font = "bold 96px 'Courier New', monospace";
         ctx.fillStyle = C.waveClear;
@@ -881,18 +985,18 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           triggerPowerUpRef.current = null;
           stateRef.current = applyPowerUp(stateRef.current, type);
         }
+        if (throwAsteroidRef.current) {
+          throwAsteroidRef.current = false;
+          stateRef.current = throwAsteroid(stateRef.current); // #2486
+        }
+        if (killEscortsRef.current) {
+          killEscortsRef.current = false;
+          stateRef.current = killEscorts(stateRef.current); // #2491
+        }
 
         const prev = stateRef.current;
         if (prev.phase !== "GameOver" && !isPausedRef.current) {
-          if (celebrationEndsAtRef.current !== null) {
-            // #2422: PERFECT-clear celebration — freeze the engine until the deadline, then
-            // hand over to the normal pre-wave countdown.
-            if (timestamp >= celebrationEndsAtRef.current) {
-              celebrationEndsAtRef.current = null;
-              setCelebrating(false);
-              if (stateRef.current.phase === "SwoopIn") countdownMsRef.current = WAVE_COUNTDOWN_MS;
-            }
-          } else if (countdownMsRef.current !== null) {
+          if (countdownMsRef.current !== null) {
             // Pre-wave countdown: freeze the engine, just tick the timer. #2352: the cosmetic
             // missionCompleteTimer still needs to decay in real time here — tick() (which
             // normally decrements it) never runs while the countdown is active, so without
@@ -913,8 +1017,20 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             try {
               const prevCooldown = prev.player.shootCooldown;
               const pauseStraggler = devOptionsRef.current?.pauseStraggler ?? false;
-              const tickInput =
+              let tickInput =
                 prev.pauseStraggler !== pauseStraggler ? { ...prev, pauseStraggler } : prev;
+              const asteroidsDisabled = devOptionsRef.current?.asteroidsDisabled ?? false; // #2486
+              if (tickInput.asteroidsDisabled !== asteroidsDisabled)
+                tickInput = { ...tickInput, asteroidsDisabled };
+              const dodgeDisabled = devOptionsRef.current?.dodgeDisabled ?? false; // #2491
+              if (tickInput.dodgeDisabled !== dodgeDisabled)
+                tickInput = { ...tickInput, dodgeDisabled };
+              const flakDisabled = devOptionsRef.current?.flakDisabled ?? false; // #2491
+              if (tickInput.flakDisabled !== flakDisabled)
+                tickInput = { ...tickInput, flakDisabled };
+              const routDisabled = devOptionsRef.current?.routDisabled ?? false; // #2489
+              if (tickInput.routDisabled !== routDisabled)
+                tickInput = { ...tickInput, routDisabled };
               const next = tick(tickInput, dtMs, {
                 playerX: inputRef.current.playerX,
                 fire: inputRef.current.fire,
@@ -943,6 +1059,16 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 onPowerUpCollectRef.current?.(nowType);
               }
               prevActivePowerUpRef.current = nowType;
+              // #2484: the Carrier's armor dropping has no on-screen text — surface it as an event.
+              // Judged against the previous tick, and only while the Carrier is still alive.
+              if (carrierJustExposed(prev, applied)) onCarrierExposedRef.current?.();
+              // #2485
+              if (carrierBeamJustStarted(prev, applied)) onCarrierEventRef.current?.("beamCharge");
+              if (carrierBeamJustFired(prev, applied)) onCarrierEventRef.current?.("beamFire");
+              if (reinforcementsJustLaunched(prev, applied))
+                onCarrierEventRef.current?.("reinforce");
+              for (const ev of upgradeEvents(prev, applied)) onUpgradeRef.current?.(ev); // #2488
+              if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
               if (applied.explosions.length > prev.explosions.length) {
                 onExplosionRef.current?.();
               }
@@ -955,26 +1081,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               // directly instead of watching for a phase transition.
               const waveJustCleared = applied.wave > prevWaveRef.current;
               prevWaveRef.current = applied.wave;
-              // #2422: a PERFECT Free Fire Zone clear holds the game for the fanfare instead of
-              // rolling straight into the next wave. The fanfare replaces the wave-clear jingle
-              // (it would mask it), and the celebration owns the banner, so the cosmetic
-              // MISSION COMPLETE timer is cleared to keep the two from stacking.
-              const perfectClear = waveJustCleared && applied.freeFirePerfect;
-              if (perfectClear) {
-                const fanfarePlaying = onFreeFirePerfectRef.current?.() ?? false;
-                celebrationEndsAtRef.current = timestamp + perfectHoldMs(fanfarePlaying);
-                setCelebrating(true);
-                stateRef.current = { ...stateRef.current, missionCompleteTimer: 0 };
-              } else if (waveJustCleared) {
+              if (waveJustCleared) {
                 onWaveClearRef.current?.();
+                // #2490: a boss wave announces itself on top of the wave-clear jingle
+                if (isBossWave(applied.wave)) onBossWaveRef.current?.();
               }
-              if (applied.phase === "FreeFireZone" && prevPhaseRef.current !== "FreeFireZone") {
-                onFreeFireZoneRef.current?.();
-              }
-              // A fresh clear that lands on SwoopIn starts the countdown immediately — a
-              // clear that chains straight into another FreeFireZone wave skips it, same as before.
-              // A PERFECT clear starts it only after the celebration hold (see above).
-              if (waveJustCleared && !perfectClear && applied.phase === "SwoopIn") {
+              // A fresh clear starts the countdown immediately (every wave opens on SwoopIn).
+              if (waveJustCleared && applied.phase === "SwoopIn") {
                 countdownMsRef.current = WAVE_COUNTDOWN_MS;
               }
               prevPhaseRef.current = applied.phase;
@@ -1019,23 +1132,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           accessibilityRole="image"
         >
           <canvas ref={canvasRef} width={displayW} height={displayH} style={{ display: "block" }} />
-        </View>
-        {/* #2422: the celebration is drawn on the canvas, which screen readers can't see —
-            announce it through a visually-hidden live region instead. It is a sibling of the
-            role="image" canvas wrapper, not a child: the children of role="img" are
-            presentational, so a live region inside it would never be read. */}
-        <View
-          style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0 }}
-          accessibilityLiveRegion="assertive"
-        >
-          {celebrating && (
-            <Text>
-              {t("phase.perfectAnnouncement", {
-                count: FREE_FIRE_ENEMY_COUNT,
-                points: perfectBonusPoints(stateRef.current.difficulty).toLocaleString(),
-              })}
-            </Text>
-          )}
         </View>
       </View>
     );

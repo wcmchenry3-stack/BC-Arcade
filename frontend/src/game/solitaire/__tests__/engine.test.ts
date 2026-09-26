@@ -24,8 +24,10 @@ import {
   drawFromStock,
   getHintMoves,
   isProductiveMove,
+  pauseGame,
   recycleWaste,
   resolveAutoMove,
+  resumeGame,
   setRng,
   undo,
   validateMove,
@@ -1219,5 +1221,58 @@ describe("resolveAutoMove — waste source", () => {
     });
     const result = resolveAutoMove(state, { type: "waste" });
     expect(result.kind).toBe("no-move");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pauseGame, resumeGame (#2735)
+// ---------------------------------------------------------------------------
+
+describe("pauseGame / resumeGame", () => {
+  it("pauseGame accumulates time and clears startedAt", () => {
+    const state = mkState({ startedAt: 1000, accumulatedMs: 200 });
+    const paused = pauseGame(state, 1600);
+    expect(paused.startedAt).toBeNull();
+    expect(paused.accumulatedMs).toBe(800);
+  });
+
+  it("pauseGame is a no-op before the first move", () => {
+    const state = mkState({ startedAt: null, accumulatedMs: 0 });
+    expect(pauseGame(state, 5000)).toBe(state);
+  });
+
+  it("resumeGame sets startedAt on a paused clock", () => {
+    const state = mkState({ startedAt: null, accumulatedMs: 200, paused: true });
+    const resumed = resumeGame(state, 5000);
+    expect(resumed.startedAt).toBe(5000);
+    expect(resumed.paused).toBeUndefined();
+  });
+
+  // #2750: not started (waiting for the first move) isn't paused.
+  it("resumeGame doesn't start a clock that isn't paused", () => {
+    const state = mkState({ startedAt: null, accumulatedMs: 0 });
+    expect(resumeGame(state, 5000)).toBe(state);
+  });
+
+  it("a move leaves a paused clock paused, and starts one not started yet", () => {
+    const stock = [{ suit: "clubs" as const, rank: 5 as const, faceUp: false }];
+    const paused = pauseGame(mkState({ stock, startedAt: 1000, accumulatedMs: 0 }), 1600);
+    const moved = drawFromStock(paused);
+    expect(moved).not.toBe(paused);
+    expect(moved.startedAt).toBeNull();
+    expect(moved.paused).toBe(true);
+    expect(moved.accumulatedMs).toBe(600);
+    const fresh = mkState({ stock, startedAt: null, accumulatedMs: 0 });
+    expect(drawFromStock(fresh).startedAt).not.toBeNull();
+  });
+
+  it("resumeGame is a no-op when already running", () => {
+    const state = mkState({ startedAt: 1000 });
+    expect(resumeGame(state, 2000).startedAt).toBe(1000);
+  });
+
+  it("resumeGame is a no-op on a finished game", () => {
+    const state = mkState({ startedAt: null, isComplete: true });
+    expect(resumeGame(state, 2000).startedAt).toBeNull();
   });
 });

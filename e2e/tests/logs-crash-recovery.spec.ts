@@ -16,6 +16,7 @@ import { test } from "@playwright/test";
 import {
   clearLogstore,
   expect,
+  getBackoffUntil,
   inspectQueue,
   mockSyncEndpoints,
   resetLogConfig,
@@ -86,11 +87,20 @@ test.describe("#481 scenario 9 — crash recovery", () => {
     const mock = mockSyncEndpoints(page);
     await mock.install();
 
-    await triggerFlush(page);
-    await page.waitForTimeout(50);
-    await triggerFlush(page);
-
-    stats = await inspectQueue(page);
-    expect(stats.totalRows).toBe(0);
+    // The reloaded app already tried once: HomeScreen flushes on mount, and
+    // since #2654 that flush waits for the pending games to load, so it really
+    // POSTs the queued game to the unmocked backend, fails, and backs off.
+    // Wait the backoff out (and any flush still in flight), then drain.
+    await expect
+      .poll(
+        async () => {
+          if ((await getBackoffUntil(page)) <= Date.now()) {
+            await triggerFlush(page);
+          }
+          return (await inspectQueue(page)).totalRows;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(0);
   });
 });

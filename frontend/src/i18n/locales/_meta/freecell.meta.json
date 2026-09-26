@@ -17,6 +17,42 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "game.playLabel": {
+    "component": "HomeScreen",
+    "description": "Accessibility label for the FreeCell play button on the home screen.",
+    "tone": "functional",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": ["FreeCell"],
+    "notes": null
+  },
+  "action.undo": {
+    "component": "FreeCellScreen",
+    "description": "Button label to undo the last move.",
+    "tone": "action",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.hint": {
+    "component": "FreeCellScreen",
+    "description": "Label for the Hint button in the game header — tapping it highlights a valid move.",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "noMoves.message": {
+    "component": "FreeCellScreen",
+    "description": "Non-blocking banner shown when no legal moves remain, prompting the player to undo.",
+    "tone": "casual, helpful",
+    "characterLimit": 50,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "suit.spades": {
     "component": "FreeCellSlot / FoundationPile / TableauColumn",
     "description": "Suit name — Spades.",
@@ -116,22 +152,22 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "action.hint": {
+  "score.moves": {
     "component": "FreeCellScreen",
-    "description": "Label for the Hint button in the game header — tapping it highlights a valid move.",
+    "description": "Displays the number of moves made in the current game.",
     "tone": "neutral",
-    "characterLimit": 8,
-    "placeholders": [],
+    "characterLimit": 30,
+    "placeholders": ["{{moves}}"],
     "doNotTranslate": [],
     "notes": null
   },
-  "noMoves.message": {
-    "component": "FreeCellScreen",
-    "description": "Non-blocking banner shown when no legal moves remain, prompting the player to undo.",
-    "tone": "casual, helpful",
-    "characterLimit": 50,
+  "error.supermoveRejected": {
+    "component": "FreeCellBoard",
+    "description": "Message describing why a multi-card \"supermove\" was rejected for lacking free cells/columns.",
+    "tone": "functional",
+    "characterLimit": 75,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": null
+    "notes": "Currently unused in the app; the engine silently blocks the move today. Reserved for a future toast or error surfaced by FreeCellBoard."
   }
 }

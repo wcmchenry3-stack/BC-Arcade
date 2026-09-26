@@ -17,7 +17,9 @@ from hearts.module import module as hearts_module
 from mahjong.module import module as mahjong_module
 from solitaire.module import module as solitaire_module
 from sort.module import module as sort_module
+from starswarm.module import module as starswarm_module
 from sudoku.module import module as sudoku_module
+from twenty48.module import module as twenty48_module
 from yacht.module import module as yacht_module
 
 # Keyed by GameType.value (str) so lookups work directly against the name
@@ -31,7 +33,9 @@ _REGISTRY: dict[str, GameModule] = {
     mahjong_module.game_type.value: mahjong_module,
     solitaire_module.game_type.value: solitaire_module,
     sort_module.game_type.value: sort_module,
+    starswarm_module.game_type.value: starswarm_module,
     sudoku_module.game_type.value: sudoku_module,
+    twenty48_module.game_type.value: twenty48_module,
     yacht_module.game_type.value: yacht_module,
 }
 

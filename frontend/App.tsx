@@ -30,20 +30,14 @@ import { EntitlementProvider, useEntitlements } from "./src/entitlements/Entitle
 import {
   PREMIUM_ROUTES,
   visiblePremiumRoutes,
-  visiblePremiumTabs,
   type PremiumRouteName,
-  type PremiumTabName,
 } from "./src/entitlements/premiumRoutes";
+import { MAIN_TABS, type MainTabName } from "./src/navigation/mainTabs";
 import { SoundProvider } from "./src/game/_shared/SoundContext";
 import { CardDeckProvider } from "./src/game/_shared/decks/CardDeckContext";
 import { BlackjackGameProvider } from "./src/game/blackjack/BlackjackGameContext";
 import { HeartsRoundsProvider } from "./src/game/hearts/RoundsContext";
 import { YachtScorecardProvider } from "./src/game/yacht/ScorecardContext";
-import { Twenty48ScoreboardProvider } from "./src/game/twenty48/Twenty48ScoreboardContext";
-import { SolitaireScoreboardProvider } from "./src/game/solitaire/SolitaireScoreboardContext";
-import { SudokuScoreboardProvider } from "./src/game/sudoku/SudokuScoreboardContext";
-import { CascadeScoreboardProvider } from "./src/game/cascade/CascadeScoreboardContext";
-import { MahjongScoreboardProvider } from "./src/game/mahjong/MahjongScoreboardContext";
 import { SessionLogger } from "./src/components/FeedbackWidget/SessionLogger";
 import { installSentryConsoleErrorCapture } from "./src/utils/sentryConsoleError";
 import {
@@ -66,6 +60,7 @@ const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
 
 if (!shouldInitSentry()) {
   // Test-hooks build (CI smoke / Maestro) — never reports (#2429).
+  // Also Expo Web, which is an unmaintained secondary target (#2716).
 } else if (!dsn) {
   console.error("[Sentry] EXPO_PUBLIC_SENTRY_DSN is not set — error reporting disabled.");
 } else {
@@ -175,12 +170,27 @@ function makePremiumScreen<P extends object>(
 // PREMIUM_ROUTES (premiumRoutes.ts), so the entitlement guard below and the
 // store-build visibility gate in LobbyStack() can never disagree about it.
 const PREMIUM_SCREEN_BASES: Record<PremiumRouteName, React.ComponentType<object>> = {
-  Game: GameScreen as React.ComponentType<object>,
+  // The Blackjack screens take navigation props; the guard passes them through.
+  BlackjackBetting: withSuspense(
+    LazyScreens.BlackjackBetting,
+    "blackjack_betting"
+  ) as React.ComponentType<object>,
+  BlackjackTable: withSuspense(
+    LazyScreens.BlackjackTable,
+    "blackjack_table"
+  ) as React.ComponentType<object>,
+  BlackjackVictory: withSuspense(
+    LazyScreens.BlackjackVictory,
+    "blackjack_victory"
+  ) as React.ComponentType<object>,
+  BlackjackStats: withSuspense(
+    LazyScreens.BlackjackStats,
+    "blackjack_stats"
+  ) as React.ComponentType<object>,
   Cascade: withSuspense(LazyScreens.Cascade, "cascade"),
   StarSwarm: withSuspense(LazyScreens.StarSwarm, "starswarm"),
   Hearts: withSuspense(LazyScreens.Hearts, "hearts"),
-  Sudoku: withSuspense(LazyScreens.Sudoku, "sudoku"),
-  Sort: withSuspense(LazyScreens.Sort, "sort"),
+  Mahjong: withSuspense(LazyScreens.Mahjong, "mahjong"),
 };
 const PREMIUM_SCREENS = Object.fromEntries(
   PREMIUM_ROUTES.map(({ slug, route }) => [
@@ -188,14 +198,11 @@ const PREMIUM_SCREENS = Object.fromEntries(
     makePremiumScreen(slug, PREMIUM_SCREEN_BASES[route]),
   ])
 ) as Record<PremiumRouteName, React.FC<object>>;
-const LazyBlackjackBettingScreen = withSuspense(LazyScreens.BlackjackBetting, "blackjack_betting");
-const LazyBlackjackTableScreen = withSuspense(LazyScreens.BlackjackTable, "blackjack_table");
-const LazyBlackjackVictoryScreen = withSuspense(LazyScreens.BlackjackVictory, "blackjack_victory");
-const LazyBlackjackStatsScreen = withSuspense(LazyScreens.BlackjackStats, "blackjack_stats");
 const LazyTwenty48Screen = withSuspense(LazyScreens.Twenty48, "twenty48");
 const LazySolitaireScreen = withSuspense(LazyScreens.Solitaire, "solitaire");
 const LazyFreeCellScreen = withSuspense(LazyScreens.FreeCell, "freecell");
-const LazyMahjongScreen = withSuspense(LazyScreens.Mahjong, "mahjong");
+const LazySortScreen = withSuspense(LazyScreens.Sort, "sort");
+const LazySudokuScreen = withSuspense(LazyScreens.Sudoku, "sudoku");
 const LazyMahjongLayoutInspectorScreen = withSuspense(
   LazyScreens.MahjongLayoutInspector,
   "mahjong_layout_inspector"
@@ -206,12 +213,10 @@ const LazyMahjongLayoutDetailScreen = withSuspense(
 );
 const LazyDailyWordScreen = withSuspense(LazyScreens.DailyWord, "daily_word");
 const LazyLeaderboardScreen = withSuspense(LazyScreens.Leaderboard, "leaderboard");
-const PREMIUM_TAB_SCREENS: Record<PremiumTabName, React.ComponentType<object>> = {
-  Ranks: LazyLeaderboardScreen,
-};
+const LazyGameStatsScreen = withSuspense(LazyScreens.GameStats, "game_stats");
 const LazyGameDetailScreen = withSuspense(LazyScreens.GameDetail, "game_detail");
 const LazySettingsScreen = withSuspense(LazyScreens.Settings, "settings");
-const LazyScoreboardScreen = withSuspense(LazyScreens.Scoreboard, "scoreboard");
+const LazyScorecardScreen = withSuspense(LazyScreens.Scorecard, "scorecard");
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
@@ -227,21 +232,24 @@ function LobbyStack() {
       {visiblePremiumRoutes().map(({ route }) => (
         <HomeStack.Screen key={route} name={route} component={PREMIUM_SCREENS[route]} />
       ))}
-      <HomeStack.Screen name="BlackjackBetting" component={LazyBlackjackBettingScreen} />
-      <HomeStack.Screen name="BlackjackTable" component={LazyBlackjackTableScreen} />
-      <HomeStack.Screen name="BlackjackVictory" component={LazyBlackjackVictoryScreen} />
-      <HomeStack.Screen name="BlackjackStats" component={LazyBlackjackStatsScreen} />
+      <HomeStack.Screen name="Game" component={GameScreen} />
       <HomeStack.Screen name="Twenty48" component={LazyTwenty48Screen} />
       <HomeStack.Screen name="Solitaire" component={LazySolitaireScreen} />
       <HomeStack.Screen name="FreeCell" component={LazyFreeCellScreen} />
-      <HomeStack.Screen name="Mahjong" component={LazyMahjongScreen} />
+      <HomeStack.Screen name="Sort" component={LazySortScreen} />
+      <HomeStack.Screen name="Sudoku" component={LazySudokuScreen} />
       <HomeStack.Screen
         name="MahjongLayoutInspector"
         component={LazyMahjongLayoutInspectorScreen}
       />
       <HomeStack.Screen name="MahjongLayoutDetail" component={LazyMahjongLayoutDetailScreen} />
       <HomeStack.Screen name="DailyWord" component={LazyDailyWordScreen} />
-      <HomeStack.Screen name="Scoreboard" component={LazyScoreboardScreen} />
+      {/* One game's board (#2633). Only games with an openable board link
+          here (useLeaderboardLink); the screen shows none for any other. */}
+      <HomeStack.Screen name="Leaderboard" component={LazyLeaderboardScreen} />
+      {/* One game's stats from /stats/me (#2635), from every game's ⋯ menu. */}
+      <HomeStack.Screen name="GameStats" component={LazyGameStatsScreen} />
+      <HomeStack.Screen name="Scorecard" component={LazyScorecardScreen} />
     </HomeStack.Navigator>
   );
 }
@@ -255,19 +263,23 @@ function ProfileStack() {
   );
 }
 
+// One screen per tab in MAIN_TABS (mainTabs.ts), which is the whole tab bar:
+// the same three tabs in every build (#2634). Leaderboards live in LobbyStack.
+const TAB_SCREENS: Record<MainTabName, React.ComponentType<object>> = {
+  Lobby: LobbyStack,
+  Profile: ProfileStack,
+  Settings: LazySettingsScreen,
+};
+
 function MainTabs() {
   return (
     <Tab.Navigator
       tabBar={(props) => <BottomTabBar {...props} />}
       screenOptions={{ headerShown: false, tabBarPosition: "bottom" }}
     >
-      <Tab.Screen name="Lobby" component={LobbyStack} />
-      {/* The leaderboard is Star Swarm-only — a dead tab while that game is hidden. */}
-      {visiblePremiumTabs().map(({ tab }) => (
-        <Tab.Screen key={tab} name={tab} component={PREMIUM_TAB_SCREENS[tab]} />
+      {MAIN_TABS.map(({ name }) => (
+        <Tab.Screen key={name} name={name} component={TAB_SCREENS[name]} />
       ))}
-      <Tab.Screen name="Profile" component={ProfileStack} />
-      <Tab.Screen name="Settings" component={LazySettingsScreen} />
     </Tab.Navigator>
   );
 }
@@ -294,21 +306,11 @@ function AppInner() {
               <BlackjackGameProvider>
                 <HeartsRoundsProvider>
                   <YachtScorecardProvider>
-                    <Twenty48ScoreboardProvider>
-                      <SolitaireScoreboardProvider>
-                        <SudokuScoreboardProvider>
-                          <CascadeScoreboardProvider>
-                            <MahjongScoreboardProvider>
-                              <NavigationContainer>
-                                <Stack.Navigator screenOptions={{ headerShown: false }}>
-                                  <Stack.Screen name="MainTabs" component={MainTabs} />
-                                </Stack.Navigator>
-                              </NavigationContainer>
-                            </MahjongScoreboardProvider>
-                          </CascadeScoreboardProvider>
-                        </SudokuScoreboardProvider>
-                      </SolitaireScoreboardProvider>
-                    </Twenty48ScoreboardProvider>
+                    <NavigationContainer>
+                      <Stack.Navigator screenOptions={{ headerShown: false }}>
+                        <Stack.Screen name="MainTabs" component={MainTabs} />
+                      </Stack.Navigator>
+                    </NavigationContainer>
                   </YachtScorecardProvider>
                 </HeartsRoundsProvider>
               </BlackjackGameProvider>

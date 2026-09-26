@@ -1,17 +1,22 @@
 /**
- * mahjong-leaderboard.spec.ts — GH #1146
+ * mahjong-leaderboard.spec.ts — GH #1146, #2510, #2627
  *
- * Leaderboard integration: inject a completed game (all 72 pairs removed,
- * isComplete = true), intercept POST /mahjong/score, and verify the win modal
- * appears, accepts a name, and shows the submission confirmation.
+ * The shared result card: a completed game (all 72 pairs removed,
+ * isComplete = true) loads straight onto the win card, and a deadlocked game
+ * (no free pairs, no shuffles) shows the loss card. Since #2627 the finished
+ * game is the leaderboard entry: the app never posts to `/mahjong/*`, and a
+ * won game resumed from storage doesn't ask for its rank again — its session
+ * ended when it was won. (The in-session win, recorded as `win` and ranked
+ * through `GET /games/{id}/rank`, is covered by MahjongScreen.test.tsx:
+ * winning live on web means hitting canvas tiles.)
  *
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "@playwright/test";
-import { injectMahjongState, mockMahjongApi } from "./helpers/mahjong";
-
-const API_BASE = "http://localhost:8000";
+import { injectMahjongState } from "./helpers/mahjong";
 
 const WIN_STATE = {
   _v: 1,
@@ -28,68 +33,108 @@ const WIN_STATE = {
   dealId: "ff00",
 };
 
-test.describe("Mahjong — leaderboard", () => {
-  test("win modal appears and POST /mahjong/score is intercepted for a completed game", async ({
+const DEADLOCK_STATE = {
+  ...WIN_STATE,
+  pairsRemoved: 40,
+  score: 640,
+  isComplete: false,
+  isDeadlocked: true,
+};
+
+/**
+ * Intercepts the removed Mahjong routes (#2644) and the rank route; returns the
+ * URLs of every leaderboard call the app makes.
+ */
+async function routeMahjongApi(
+  page: import("@playwright/test").Page,
+): Promise<string[]> {
+  const calls: string[] = [];
+  await page.route("**/mahjong/**", async (route) => {
+    // Only POSTs count: `POST /mahjong/score` was the removed legacy submit.
+    if (route.request().method() === "POST") calls.push(route.request().url());
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Not Found" }),
+    });
+  });
+  await page.route("**/games/*/rank", async (route) => {
+    calls.push(route.request().url());
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ranked: true,
+        rank: 1,
+        is_best: true,
+        reason: null,
+      }),
+    });
+  });
+  return calls;
+}
+
+async function openMahjong(page: import("@playwright/test").Page) {
+  await page.getByRole("button", { name: "Play Mahjong Solitaire" }).click();
+  await page
+    .getByRole("heading", { name: "Mahjong Solitaire", exact: true })
+    .waitFor({ timeout: 10_000 });
+}
+
+test.describe("Mahjong — result card", () => {
+  test("a completed game shows the win card and does not look up a rank again", async ({
     page,
   }) => {
-    await page.route(`${API_BASE}/mahjong/**`, async (route) => {
-      if (route.request().method() === "POST") {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ player_name: "Tester", score: 1220, rank: 1 }),
-        });
-      } else {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ scores: [] }),
-        });
-      }
-    });
-
+    const calls = await routeMahjongApi(page);
     await injectMahjongState(page, WIN_STATE);
-    await page.getByRole("button", { name: "Play Mahjong Solitaire" }).click();
-    await page
-      .getByRole("heading", { name: "Mahjong Solitaire", exact: true })
-      .waitFor({ timeout: 10_000 });
+    await openMahjong(page);
 
-    // Win modal appears because isComplete = true.
-    await expect(page.getByRole("heading", { name: "YOU WIN!" })).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("Score: 1220").first()).toBeVisible({ timeout: 2_000 });
+    const card = page.getByTestId("mahjong-result");
+    await expect(card).toBeVisible({ timeout: 5_000 });
+    await expect(card.getByText("You Win!")).toBeVisible();
+    await expect(card.getByText("All 72 pairs cleared")).toBeVisible();
+    await expect(card.getByText("1,220")).toBeVisible();
+    await expect(
+      card.getByRole("button", { name: "Play Again" }),
+    ).toBeVisible();
+    await expect(
+      card.getByRole("button", { name: "Change Layout" }),
+    ).toBeVisible();
+    await expect(card.getByRole("button", { name: "Home" })).toBeVisible();
 
-    // Set up POST intercept before triggering submission.
-    const scorePostRequest = page.waitForRequest(
-      (req) => req.url().includes("/mahjong/score") && req.method() === "POST",
-      { timeout: 10_000 },
-    );
-
-    // Enter a name and submit.
-    await page.getByLabel("Enter your name").fill("Tester");
-    await page.getByRole("button", { name: "Submit Score" }).click();
-
-    // Confirmation text appears and POST was made.
-    await expect(page.getByText(/Score saved/).first()).toBeVisible({ timeout: 5_000 });
-    await scorePostRequest;
+    await page.waitForTimeout(1_000);
+    expect(calls).toEqual([]);
   });
 
-  test("NEW GAME dismisses the win modal and starts a fresh game", async ({ page }) => {
-    await mockMahjongApi(page);
+  test("Change Layout dismisses the card and a pick starts a fresh game", async ({
+    page,
+  }) => {
+    await routeMahjongApi(page);
     await injectMahjongState(page, WIN_STATE);
+    await openMahjong(page);
 
-    await page.getByRole("button", { name: "Play Mahjong Solitaire" }).click();
-    await page
-      .getByRole("heading", { name: "Mahjong Solitaire", exact: true })
-      .waitFor({ timeout: 10_000 });
+    const card = page.getByTestId("mahjong-result");
+    await card.getByRole("button", { name: "Change Layout" }).click();
+    await expect(card).not.toBeVisible({ timeout: 3_000 });
 
-    await expect(page.getByRole("heading", { name: "YOU WIN!" })).toBeVisible({ timeout: 5_000 });
-
-    await page.getByRole("button", { name: "Start a new game" }).click();
-
-    // Win modal dismissed; layout select screen is shown next.
-    await expect(page.getByRole("heading", { name: "YOU WIN!" })).not.toBeVisible({ timeout: 3_000 });
-    // Pick the Turtle layout to start a fresh game; PAIRS counter resets to 0.
     await page.getByRole("button", { name: "Turtle", exact: true }).click();
-    await expect(page.getByText(/^PAIRS\s+0\/72/).first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/^PAIRS\s+0\/72/).first()).toBeVisible({
+      timeout: 5_000,
+    });
+  });
+
+  test("a deadlocked game shows the loss card", async ({ page }) => {
+    const calls = await routeMahjongApi(page);
+    await injectMahjongState(page, DEADLOCK_STATE);
+    await openMahjong(page);
+
+    const card = page.getByTestId("mahjong-result");
+    await expect(card).toBeVisible({ timeout: 5_000 });
+    await expect(card.getByText("You Lose")).toBeVisible();
+    await expect(card.getByText("No free pairs remain")).toBeVisible();
+    await expect(
+      card.getByRole("button", { name: "Change Layout" }),
+    ).toBeVisible();
+    expect(calls).toEqual([]);
   });
 });

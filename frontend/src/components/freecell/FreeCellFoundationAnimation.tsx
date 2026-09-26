@@ -133,8 +133,8 @@ export function FreeCellFoundationAnimation({ visible, onAnimationEnd }: Props) 
   const rayStyles = [ray0Style, ray1Style, ray2Style, ray3Style, ray4Style, ray5Style];
 
   return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-      <Animated.View style={[StyleSheet.absoluteFillObject, styles.tintLayer, tintStyle]} />
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Animated.View style={[StyleSheet.absoluteFill, styles.tintLayer, tintStyle]} />
       <View style={styles.content}>
         {rayStyles.map((rayStyle, i) => (
           <Animated.View key={i} style={[styles.sparkleRay, rayStyle]} />
@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   content: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: "center",
     alignItems: "center",
     zIndex: 101,

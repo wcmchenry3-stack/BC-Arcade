@@ -5,7 +5,6 @@ import * as Haptics from "expo-haptics";
 import * as Sentry from "@sentry/react-native";
 import { useTranslation } from "react-i18next";
 import type { GameCanvasHandle } from "./GameCanvas";
-import type { GamePhase } from "../../game/starswarm/types";
 import { CANVAS_W, CANVAS_H, PLAYER_W } from "../../game/starswarm/engine";
 
 const DRAG_ZONE_Y_RATIO = 0.6; // bottom 40% is the drag zone
@@ -13,7 +12,8 @@ const DRAG_ZONE_Y_RATIO = 0.6; // bottom 40% is the drag zone
 interface Props {
   canvasRef: React.RefObject<GameCanvasHandle | null>;
   scale: number;
-  phase: GamePhase;
+  /** A run is on screen and not over — see StarSwarmScreen. */
+  isLiveRun: boolean;
   isPaused: boolean;
   onPause: () => void;
   onResume: () => void;
@@ -27,7 +27,7 @@ function clamp(v: number, lo: number, hi: number) {
 export default function Controls({
   canvasRef,
   scale,
-  phase,
+  isLiveRun,
   isPaused,
   onPause,
   onResume,
@@ -93,7 +93,7 @@ export default function Controls({
               clampedX: Math.round(newX * 10) / 10,
               overshootPx: Math.round((rawX - newX) * 10) / 10,
               side: rawX > newX ? "right" : "left",
-              phase,
+              phase: canvasRef.current?.getState()?.phase,
             },
           });
         }
@@ -104,7 +104,7 @@ export default function Controls({
     .onEnd((e) => {
       if (!activeDragRef.current && e.y < dragZoneY && Math.abs(e.translationX) < 10) {
         // Short tap in top zone → pause
-        if (!isPaused && phase === "Playing") onPause();
+        if (!isPaused && isLiveRun) onPause();
       }
       activeDragRef.current = false;
     })
@@ -151,16 +151,14 @@ export default function Controls({
     };
   }, [canvasRef]);
 
-  const isGameOver = phase === "GameOver";
-
   return (
     <GestureDetector gesture={panGesture}>
       <View style={[styles.overlay, { width: displayW, height: displayH }]}>
         {/* Pause overlay */}
-        {isPaused && !isGameOver && (
+        {isPaused && isLiveRun && (
           <View style={styles.pauseOverlay}>
             <Pressable
-              style={StyleSheet.absoluteFillObject}
+              style={StyleSheet.absoluteFill}
               onPress={onResume}
               accessibilityLabel={t("controls.resumeLabel")}
               accessibilityRole="button"
@@ -186,20 +184,6 @@ export default function Controls({
             </Pressable>
           </View>
         )}
-
-        {/* Game-over new-game button */}
-        {isGameOver && (
-          <View style={styles.gameOverActions}>
-            <Pressable
-              style={styles.newGameBtn}
-              onPress={handleNewGame}
-              accessibilityLabel={t("controls.newGameLabel")}
-              accessibilityRole="button"
-            >
-              <Text style={styles.newGameBtnText}>{t("controls.newGame")}</Text>
-            </Pressable>
-          </View>
-        )}
       </View>
     </GestureDetector>
   );
@@ -208,11 +192,6 @@ export default function Controls({
 /** Call from StarSwarmScreen when the player is hit (short impact). */
 export function hapticPlayerHit() {
   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-}
-
-/** Call from StarSwarmScreen on player death / game over (medium impact). */
-export function hapticPlayerDeath() {
-  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
 }
 
 /** Call from StarSwarmScreen on wave clear (light notification). */
@@ -227,7 +206,7 @@ const styles = StyleSheet.create({
     left: 0,
   },
   pauseOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "rgba(0, 0, 16, 0.72)",
     alignItems: "center",
     justifyContent: "center",
@@ -268,13 +247,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "normal",
     letterSpacing: 0,
-  },
-  gameOverActions: {
-    position: "absolute",
-    bottom: 100,
-    left: 0,
-    right: 0,
-    alignItems: "center",
   },
   newGameBtn: {
     paddingHorizontal: 32,

@@ -1,14 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import {
-  saveGame,
-  loadGame,
-  clearGame,
-  saveBestScore,
-  loadBestScore,
-  loadStats,
-  saveStats,
-} from "../storage";
+import { saveGame, loadGame, clearGame, saveBestScore, loadBestScore } from "../storage";
 import { _resetTileIds, move, setRng, createSeededRng } from "../engine";
 import { Twenty48State } from "../types";
 
@@ -128,26 +120,6 @@ describe("twenty48 storage", () => {
     expect(await loadBestScore()).toBe(0);
   });
 
-  it("saves and loads stats", async () => {
-    await saveStats({ bestTile: 2048, gamesPlayed: 7, gamesWon: 2 });
-    expect(await loadStats()).toEqual({ bestTile: 2048, gamesPlayed: 7, gamesWon: 2 });
-  });
-
-  it("loadStats returns zeros when nothing is saved", async () => {
-    expect(await loadStats()).toEqual({ bestTile: 0, gamesPlayed: 0, gamesWon: 0 });
-  });
-
-  it("loadStats tolerates partial payloads by defaulting missing fields to 0", async () => {
-    await AsyncStorage.setItem("twenty48_stats_v1", JSON.stringify({ bestTile: 512 }));
-    expect(await loadStats()).toEqual({ bestTile: 512, gamesPlayed: 0, gamesWon: 0 });
-  });
-
-  it("loadStats returns zeros for corrupt stats payload", async () => {
-    await AsyncStorage.setItem("twenty48_stats_v1", "not json");
-    expect(await loadStats()).toEqual({ bestTile: 0, gamesPlayed: 0, gamesWon: 0 });
-    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
-  });
-
   // #698: on app reload, the engine's module-level tile-ID counter restarts
   // at 1. Without re-seeding on load, subsequent spawns/merges issue IDs
   // that collide with surviving tiles and React warns about duplicate keys
@@ -191,5 +163,41 @@ describe("twenty48 storage", () => {
     // And the surviving tile keeps its original id.
     const survivor = afterMove.tiles.find((t) => !t.isNew && t.value === 2);
     expect(survivor?.id).toBe(100);
+  });
+});
+
+// #2750: the save banks the running clock and the load restarts it, so the
+// play before an app kill is kept and the time the app was closed never counts.
+describe("twenty48 storage — play clock across a relaunch (#2750)", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it("keeps the play before the save and drops the time until the load", async () => {
+    const nowSpy = jest.spyOn(Date, "now").mockReturnValue(40_000);
+    await saveGame({ ...sample, startedAt: 10_000, accumulatedMs: 5_000 });
+    nowSpy.mockReturnValue(40_000 + 2 * 86_400_000);
+    const loaded = await loadGame();
+    expect(loaded!.accumulatedMs).toBe(35_000);
+    expect(loaded!.startedAt).toBe(40_000 + 2 * 86_400_000);
+  });
+
+  it("loads an older build's running startedAt without counting the gap", async () => {
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify({ ...sample, startedAt: 1_000 }));
+    jest.spyOn(Date, "now").mockReturnValue(172_800_000);
+    const loaded = await loadGame();
+    expect(loaded!.accumulatedMs).toBe(0);
+    expect(loaded!.startedAt).toBe(172_800_000);
+  });
+
+  it("keeps a finished game's clock frozen", async () => {
+    await AsyncStorage.setItem(
+      GAME_KEY,
+      JSON.stringify({ ...sample, game_over: true, startedAt: null, accumulatedMs: 9_000 })
+    );
+    const loaded = await loadGame();
+    expect(loaded!.startedAt).toBeNull();
+    expect(loaded!.accumulatedMs).toBe(9_000);
   });
 });

@@ -1,20 +1,23 @@
 import React, { useState } from "react";
-import { View, Text, Pressable, StyleSheet, Modal, Switch, Linking } from "react-native";
+import { View, Text, Pressable, StyleSheet, Switch, Linking } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import { useTheme, type ThemeMode } from "../theme/ThemeContext";
-import { MODAL_SCRIM } from "../theme/theme.constants";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
+import { ConfirmModal } from "../components/shared/ConfirmModal";
 import { gameEventClient } from "../game/_shared/gameEventClient";
 import { useDeck } from "../game/_shared/decks/CardDeckContext";
 import { useSoundSettings } from "../game/_shared/SoundContext";
 import { clearSession } from "../game/_shared/session";
-import { scoreQueue } from "../game/_shared/scoreQueue";
+import { clearLegacyScoreQueue } from "../game/_shared/legacyScoreQueue";
 import { pendingGamesStore } from "../game/_shared/pendingGamesStore";
 import { eventStore } from "../game/_shared/eventStore";
 import { statsApi } from "../api/stats";
+import { clearMyStatsCache } from "../hooks/useMyStats";
+import { clearDisplayName } from "../game/_shared/displayName";
+import { clearDisplayNameSync } from "../game/_shared/displayNameSync";
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from "../config/legal";
 
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -54,12 +57,19 @@ export default function SettingsScreen() {
   const handleDeleteData = async () => {
     setDeleteConfirmVisible(false);
     try {
+      // First, so a name sync in flight can't recreate the player's name on
+      // the server after the delete (#2624).
+      await clearDisplayNameSync();
       await statsApi.deleteMyData();
+      // The stats screen's remembered /stats/me is this player's (#2635).
+      clearMyStatsCache();
       await Promise.all([
+        // The name too, or the next launch would send it again for the new session.
+        clearDisplayName(),
         clearSession(),
         pendingGamesStore.clearAll(),
         eventStore.clearAll(),
-        scoreQueue.clearAll(),
+        clearLegacyScoreQueue(),
       ]);
       setDeleteSuccessVisible(true);
       setTimeout(() => setDeleteSuccessVisible(false), 3000);
@@ -248,81 +258,29 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
-      <Modal
+      <ConfirmModal
         visible={confirmVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setConfirmVisible(false)}
-      >
-        <View style={[styles.modalBackdrop, { backgroundColor: MODAL_SCRIM }]}>
-          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>
-              {t("clearLogs.confirm.title")}
-            </Text>
-            <Text style={[styles.modalBody, { color: colors.text }]}>
-              {t("clearLogs.confirm.body")}
-            </Text>
-            <View style={styles.modalActions}>
-              <Pressable
-                onPress={() => setConfirmVisible(false)}
-                style={[styles.modalButton, { backgroundColor: colors.surfaceAlt }]}
-                testID="clear-logs-cancel"
-                accessibilityRole="button"
-              >
-                <Text style={{ color: colors.text }}>{t("clearLogs.confirm.cancel")}</Text>
-              </Pressable>
-              <Pressable
-                onPress={handleClearLogs}
-                style={[styles.modalButton, { backgroundColor: colors.error }]}
-                testID="clear-logs-confirm"
-                accessibilityRole="button"
-              >
-                <Text style={[styles.modalDestructiveText, { color: colors.textOnAccent }]}>
-                  {t("clearLogs.confirm.confirm")}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        title={t("clearLogs.confirm.title")}
+        body={t("clearLogs.confirm.body")}
+        confirmLabel={t("clearLogs.confirm.confirm")}
+        cancelLabel={t("clearLogs.confirm.cancel")}
+        destructive
+        onConfirm={handleClearLogs}
+        onCancel={() => setConfirmVisible(false)}
+        testID="clear-logs"
+      />
 
-      <Modal
+      <ConfirmModal
         visible={deleteConfirmVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setDeleteConfirmVisible(false)}
-      >
-        <View style={[styles.modalBackdrop, { backgroundColor: MODAL_SCRIM }]}>
-          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>
-              {t("deleteData.confirm.title")}
-            </Text>
-            <Text style={[styles.modalBody, { color: colors.text }]}>
-              {t("deleteData.confirm.body")}
-            </Text>
-            <View style={styles.modalActions}>
-              <Pressable
-                onPress={() => setDeleteConfirmVisible(false)}
-                style={[styles.modalButton, { backgroundColor: colors.surfaceAlt }]}
-                testID="delete-data-cancel"
-                accessibilityRole="button"
-              >
-                <Text style={{ color: colors.text }}>{t("deleteData.confirm.cancel")}</Text>
-              </Pressable>
-              <Pressable
-                onPress={handleDeleteData}
-                style={[styles.modalButton, { backgroundColor: colors.error }]}
-                testID="delete-data-confirm"
-                accessibilityRole="button"
-              >
-                <Text style={[styles.modalDestructiveText, { color: colors.textOnAccent }]}>
-                  {t("deleteData.confirm.confirm")}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        title={t("deleteData.confirm.title")}
+        body={t("deleteData.confirm.body")}
+        confirmLabel={t("deleteData.confirm.confirm")}
+        cancelLabel={t("deleteData.confirm.cancel")}
+        destructive
+        onConfirm={handleDeleteData}
+        onCancel={() => setDeleteConfirmVisible(false)}
+        testID="delete-data"
+      />
 
       {successVisible && (
         <View style={[styles.toast, { backgroundColor: colors.surface }]}>
@@ -389,23 +347,6 @@ const styles = StyleSheet.create({
   pillGroup: { flexDirection: "row", gap: 8 },
   pill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20 },
   pillText: { fontSize: 14, fontWeight: "500" },
-  modalBackdrop: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  modalCard: {
-    width: "100%",
-    maxWidth: 420,
-    borderRadius: 12,
-    padding: 24,
-  },
-  modalTitle: { fontSize: 18, fontWeight: "600", marginBottom: 12 },
-  modalBody: { fontSize: 14, lineHeight: 20, marginBottom: 20 },
-  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 12 },
-  modalButton: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
-  modalDestructiveText: { fontWeight: "600" },
   toast: {
     position: "absolute",
     bottom: 40,

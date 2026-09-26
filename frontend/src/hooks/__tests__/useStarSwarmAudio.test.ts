@@ -22,18 +22,17 @@ beforeEach(() => {
   mockUseBackgroundMusic.mockClear();
 });
 
-describe("useStarSwarmAudio — PERFECT fanfare (#2422)", () => {
-  it("exposes playPerfect and stopPerfect from the fanfare's own sound", async () => {
+describe("useStarSwarmAudio — boss wave sting (#2490)", () => {
+  it("exposes playBossWave from its own sound key", async () => {
     const play = jest.fn().mockReturnValue(true);
-    const stop = jest.fn();
     (useSound as jest.Mock).mockImplementation((key: string) =>
-      key === "starswarm.perfectbonus" ? { play, stop } : { play: jest.fn(), stop: jest.fn() }
+      key === "starswarm.bosswave"
+        ? { play, stop: jest.fn() }
+        : { play: jest.fn(), stop: jest.fn() }
     );
     const { result } = await renderHook(() => useStarSwarmAudio(true));
-    expect(result.current.playPerfect()).toBe(true);
-    result.current.stopPerfect();
+    result.current.playBossWave();
     expect(play).toHaveBeenCalledTimes(1);
-    expect(stop).toHaveBeenCalledTimes(1);
     (useSound as jest.Mock).mockReturnValue({ play: jest.fn(), stop: jest.fn() });
   });
 });
@@ -45,7 +44,8 @@ describe("useStarSwarmAudio — newGameTick passthrough", () => {
       expect.any(Array),
       expect.any(Object),
       true,
-      3
+      3,
+      false
     );
   });
 
@@ -55,7 +55,19 @@ describe("useStarSwarmAudio — newGameTick passthrough", () => {
       expect.any(Array),
       expect.any(Object),
       true,
-      undefined
+      undefined,
+      false
+    );
+  });
+
+  it("passes paused through, so the music holds while the run is paused", async () => {
+    await renderHook(() => useStarSwarmAudio(true, undefined, 3, true));
+    expect(mockUseBackgroundMusic).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.any(Object),
+      true,
+      3,
+      true
     );
   });
 });

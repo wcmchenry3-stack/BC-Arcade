@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, Pressable, Modal, FlatList, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
-import { LOCALES } from "../i18n/locales";
+import { LOCALES, NATIVE_LOCALES } from "../i18n/locales";
 import { useTheme } from "../theme/ThemeContext";
 
 export default function LanguageSwitcher() {
@@ -38,12 +38,15 @@ export default function LanguageSwitcher() {
         onRequestClose={() => setOpen(false)}
         accessibilityViewIsModal
       >
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
+        <Pressable
+          style={[styles.backdrop, { backgroundColor: colors.overlay }]}
+          onPress={() => setOpen(false)}
+        >
           <View
             style={[styles.sheet, { backgroundColor: colors.modalBg, borderColor: colors.border }]}
           >
             <FlatList
-              data={LOCALES}
+              data={NATIVE_LOCALES}
               keyExtractor={(item) => item.code}
               renderItem={({ item }) => {
                 const active = item.code === i18n.language;
@@ -88,7 +91,6 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     alignItems: "center",
     padding: 24,

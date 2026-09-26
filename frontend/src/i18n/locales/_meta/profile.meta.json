@@ -1,0 +1,470 @@
+{
+  "title": {
+    "component": "ProfileScreen",
+    "description": "Header title of the Profile screen.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.favorite": {
+    "component": "ProfileScreen",
+    "description": "Label on the bento tile showing the player's favourite game: the visible game they have completed most.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.favoriteEmpty": {
+    "component": "ProfileScreen",
+    "description": "Value shown on the favorite-game bento tile when no game has been played yet.",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.gamesTried": {
+    "component": "ProfileScreen",
+    "description": "Label on the bento tile showing how many distinct games the player has tried.",
+    "tone": "neutral",
+    "characterLimit": 25,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.sessions": {
+    "component": "ProfileScreen",
+    "description": "Label on the bento tile showing how many games the player finished or left (abandons included), across visible games.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.completed": {
+    "component": "ProfileScreen",
+    "description": "Label on the bento tile showing how many games the player completed (abandons excluded), across visible games.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.completionRate": {
+    "component": "ProfileScreen",
+    "description": "Label on the bento tile showing the share of sessions the player completed.",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.timePlayed": {
+    "component": "ProfileScreen",
+    "description": "Label on the bento tile showing the player's total reported play time.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stats.percent": {
+    "component": "ProfileScreen",
+    "description": "A whole-number percentage, e.g. \"87%\". Use the locale's percent convention.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "time.hoursMinutes": {
+    "component": "ProfileScreen",
+    "description": "Total play time of an hour or more, abbreviated, e.g. \"3h 12m\".",
+    "tone": "neutral",
+    "characterLimit": 32,
+    "placeholders": ["{{hours}}", "{{minutes}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "time.minutes": {
+    "component": "ProfileScreen",
+    "description": "Total play time under an hour, abbreviated, e.g. \"45m\".",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": ["{{minutes}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "byGame.title": {
+    "component": "ProfileScreen",
+    "description": "Section heading above the per-game list (each game's best and win rate).",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "byGame.game": {
+    "component": "ProfileScreen",
+    "description": "Column heading in the per-game list: the game's name.",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "byGame.best": {
+    "component": "ProfileScreen",
+    "description": "Column heading in the per-game list: the player's best result in that game, in the game's own terms.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "byGame.winRate": {
+    "component": "ProfileScreen",
+    "description": "Column heading in the per-game list: the share of decided games the player won. Narrow column: one short word.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "byGame.noBest": {
+    "component": "ProfileScreen",
+    "description": "Screen-reader text for a game with no best result yet.",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "byGame.rowA11y": {
+    "component": "ProfileScreen",
+    "description": "Screen-reader label for one row of the per-game list.",
+    "tone": "neutral",
+    "characterLimit": 80,
+    "placeholders": ["{{game}}", "{{best}}", "{{winRate}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "byGame.rowA11yNoWins": {
+    "component": "ProfileScreen",
+    "description": "Screen-reader label for a per-game row whose game has no win concept (no win rate).",
+    "tone": "neutral",
+    "characterLimit": 80,
+    "placeholders": ["{{game}}", "{{best}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "recentGames.title": {
+    "component": "ProfileScreen",
+    "description": "Section heading above the list of the player's recent games.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "recentGames.empty": {
+    "component": "ProfileScreen",
+    "description": "Message shown when the recent-games list is empty.",
+    "tone": "casual, friendly",
+    "characterLimit": 41,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "recentGames.loadError": {
+    "component": "ProfileScreen",
+    "description": "Error message shown when the recent-games list (or the whole Profile screen) fails to load.",
+    "tone": "apologetic, clear",
+    "characterLimit": 46,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "recentGames.retry": {
+    "component": "ProfileScreen",
+    "description": "Retry button shown with the recent-games load error.",
+    "tone": "action",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "recentGames.rowA11y": {
+    "component": "ProfileScreen",
+    "description": "Screen-reader label for a recent-game row: game, its result with label, outcome and date.",
+    "tone": "neutral",
+    "characterLimit": 80,
+    "placeholders": ["{{game}}", "{{metric}}", "{{outcome}}", "{{date}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.title": {
+    "component": "GameDetailScreen",
+    "description": "Header title of the Game Details screen, reached from a Recent Games row.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.loadError": {
+    "component": "GameDetailScreen",
+    "description": "Error message shown when a game's details fail to load.",
+    "tone": "apologetic, clear",
+    "characterLimit": 42,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.score": {
+    "component": "GameDetailScreen",
+    "description": "Row label for the game's final score in Game Details.",
+    "tone": "neutral",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.duration": {
+    "component": "GameDetailScreen",
+    "description": "Row label for how long the game lasted in Game Details.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.outcome": {
+    "component": "GameDetailScreen",
+    "description": "Row label for the game's outcome in Game Details.",
+    "tone": "neutral",
+    "characterLimit": 11,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.startedAt": {
+    "component": "GameDetailScreen",
+    "description": "Row label for when the game started in Game Details.",
+    "tone": "neutral",
+    "characterLimit": 11,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.completedAt": {
+    "component": "GameDetailScreen",
+    "description": "Row label for when the game finished in Game Details.",
+    "tone": "neutral",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.gameType": {
+    "component": "GameDetailScreen",
+    "description": "Row label for which game was played, above the localized game name, in Game Details.",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "level.title": {
+    "component": "LevelProgress",
+    "description": "Label on the Arcade Level card at the top of Profile (and Home), above the level number.",
+    "tone": "neutral",
+    "characterLimit": 17,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "level.value": {
+    "component": "LevelProgress",
+    "description": "The player's current arcade level, shown on the Arcade Level card.",
+    "tone": "neutral",
+    "characterLimit": 19,
+    "placeholders": ["{{level}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "level.xpTotal": {
+    "component": "LevelProgress",
+    "description": "The player's total accumulated XP, shown on the Arcade Level card.",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": ["{{xp}}"],
+    "doNotTranslate": [],
+    "notes": "XP is a short abbreviation for experience points; keep the translation short."
+  },
+  "level.xpToNext": {
+    "component": "LevelProgress",
+    "description": "Caption showing how much XP is left to reach the next level.",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": ["{{xp}}", "{{level}}"],
+    "doNotTranslate": [],
+    "notes": "XP is a short abbreviation for experience points; keep the translation short."
+  },
+  "level.max": {
+    "component": "LevelProgress",
+    "description": "Caption shown instead of level.xpToNext once the player has reached the maximum arcade level.",
+    "tone": "celebratory, brief",
+    "characterLimit": 32,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "level.progressA11y": {
+    "component": "LevelProgress",
+    "description": "Accessibility label for the progress bar toward the next level.",
+    "tone": "functional",
+    "characterLimit": 50,
+    "placeholders": ["{{level}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "displayName.label": {
+    "component": "DisplayNameField",
+    "description": "Label above the display-name input, shown on Profile (and reused for the one-time result-card prompt).",
+    "tone": "neutral",
+    "characterLimit": 21,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "displayName.placeholder": {
+    "component": "DisplayNameField",
+    "description": "Placeholder text inside the empty display-name input.",
+    "tone": "casual",
+    "characterLimit": 11,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "displayName.helper": {
+    "component": "DisplayNameField",
+    "description": "Helper text under the display-name input on Profile, explaining what it's used for and its length limit.",
+    "tone": "neutral, helpful",
+    "characterLimit": 89,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "1-32 is the fixed character-count limit for the name — keep the numbers."
+  },
+  "displayName.save": {
+    "component": "DisplayNameField",
+    "description": "Save button (and its accessibility label) for the display-name field.",
+    "tone": "functional",
+    "characterLimit": 13,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "displayName.saved": {
+    "component": "DisplayNameField",
+    "description": "Confirmation text shown under the field after the display name is saved successfully.",
+    "tone": "neutral, reassuring",
+    "characterLimit": 64,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "displayName.saveError": {
+    "component": "DisplayNameField",
+    "description": "Error text shown under the field when saving the display name fails.",
+    "tone": "apologetic, clear",
+    "characterLimit": 63,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.removeName": {
+    "component": "ProfileScreen",
+    "description": "Button under the display-name field: removes the player's name from every leaderboard (after a confirmation).",
+    "tone": "neutral",
+    "characterLimit": 42,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.notOnBoards": {
+    "component": "ProfileScreen",
+    "description": "Shown under the display-name field when the player has no name, so appears on no leaderboard.",
+    "tone": "neutral",
+    "characterLimit": 80,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.removeError": {
+    "component": "ProfileScreen",
+    "description": "Error shown when the name couldn't be removed on this device.",
+    "tone": "neutral",
+    "characterLimit": 70,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.removing": {
+    "component": "ProfileScreen",
+    "description": "Shown under the display-name field after the player removed their name while the removal hasn't reached the server yet (usually offline).",
+    "tone": "neutral",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.onBoardsAs": {
+    "component": "ProfileScreen",
+    "description": "Shown under the display-name field when this device has no name but the server still shows the player on leaderboards under {{name}}.",
+    "tone": "neutral",
+    "characterLimit": 70,
+    "placeholders": ["{{name}}"],
+    "doNotTranslate": [],
+    "notes": "{{name}} is the player's own display name (up to 32 characters)."
+  },
+  "boards.confirm.title": {
+    "component": "ProfileScreen",
+    "description": "Title of the dialog confirming removal of the player's name from leaderboards.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.confirm.body": {
+    "component": "ProfileScreen",
+    "description": "Body of the dialog confirming removal of the player's name from leaderboards.",
+    "tone": "neutral",
+    "characterLimit": 140,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.confirm.confirm": {
+    "component": "ProfileScreen",
+    "description": "Confirm button of the name-removal dialog.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.confirm.cancel": {
+    "component": "ProfileScreen",
+    "description": "Cancel button of the name-removal dialog.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  }
+}

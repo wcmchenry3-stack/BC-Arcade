@@ -2,7 +2,8 @@
  * sort-smoke.spec.ts — GH #1255
  *
  * Smoke tests: navigation from Home to Sort Puzzle, level-select visibility,
- * locked-level premium gate, and the home-screen premium gate when not entitled.
+ * and locked-level progression gate (Sort is free — see mahjong-smoke.spec.ts
+ * for the home-screen premium-gate coverage, swapped tiers 2026-09-24).
  */
 
 import { test, expect } from "@playwright/test";
@@ -15,7 +16,10 @@ test.describe("Sort Puzzle — smoke tests", () => {
   });
 
   test("navigates from Home to Sort Puzzle level-select screen", async ({ page }) => {
-    await expect(page.getByText("Sort Puzzle").first()).toBeVisible();
+    // The Home card underneath the stack also reads "Sort Puzzle" (hidden).
+    await expect(
+      page.getByText("Sort Puzzle", { exact: true }).filter({ visible: true }).first(),
+    ).toBeVisible();
     await expect(page.getByText("Choose a Level")).toBeVisible();
   });
 
@@ -31,16 +35,9 @@ test.describe("Sort Puzzle — smoke tests", () => {
     ).not.toBeDisabled({ timeout: 5_000 });
   });
 
-  test("locked levels show premium gate", async ({ page }) => {
+  test("locked levels show progression gate", async ({ page }) => {
     const lockedBtn = page.getByRole("button", { name: "Level 2, locked" });
     await expect(lockedBtn).toBeVisible({ timeout: 5_000 });
     await expect(lockedBtn).toBeDisabled();
   });
-});
-
-test("Sort Puzzle card shows premium gate on home screen when not entitled", async ({ page }) => {
-  await page.goto("/");
-  await expect(
-    page.getByRole("button", { name: /Sort Puzzle — Coming soon/ }),
-  ).toBeVisible({ timeout: 10_000 });
 });

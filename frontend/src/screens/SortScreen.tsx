@@ -1,23 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
-  ActivityIndicator,
-  Alert,
   AppState,
   AppStateStatus,
-  FlatList,
   LayoutChangeEvent,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
-import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../types/navigation";
@@ -35,36 +28,47 @@ import type { Color, SortState } from "../game/sort/types";
 import SortBoard, { POUR_PER_UNIT_MS } from "../game/sort/components/SortBoard";
 import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../game/sort/components/BottleView";
 import LevelSelectScreen from "../game/sort/components/LevelSelectScreen";
-import { sortApi, type LevelData, type ScoreEntry } from "../game/sort/api";
+import { sortApi, type LevelData } from "../game/sort/api";
 import { isNetworkError } from "../game/_shared/httpClient";
 import { withRetry } from "../game/_shared/withRetry";
 import {
+  applyLevelSolve,
+  highestSolvedLevel,
+  loadBestMoves,
   loadProgress,
+  mergeBestMoves,
+  saveBestMoves,
   saveProgress,
   loadLevelsCache,
   saveLevelsCache,
+  totalBestMoves,
+  type BestMoves,
   type SortProgress,
 } from "../game/sort/storage";
-import { useNetwork } from "../game/_shared/NetworkContext";
-import { OfflineBanner } from "../components/shared/OfflineBanner";
+import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
+import { GameShell } from "../components/shared/GameShell";
+import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { HudStatRow } from "../components/shared/HudStatRow";
+import { PillButton } from "../components/shared/PillButton";
 import { useSortAudio } from "../game/sort/useSortAudio";
+import GameResultModal from "../components/shared/GameResultModal";
+import { useGameSync } from "../game/_shared/useGameSync";
+import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
+import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 
-const MAX_NAME_LENGTH = 32;
+type ScreenView = "loading" | "select" | "play";
 
-type View = "loading" | "select" | "play";
-type SelectTab = "levels" | "leaderboard";
+/** The result card's rank lookup on Sort's session board (#2625, #2677). */
+const sortBoard = sessionBoardAdapter("sort");
 
 export default function SortScreen() {
   const { t } = useTranslation("sort");
+  const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  const tabBarHeight = useSafeBottomTabBarHeight();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
-  const { isOnline, isInitialized } = useNetwork();
-  const offline = isInitialized && !isOnline;
 
   // Top-level view
-  const [view, setView] = useState<View>("loading");
+  const [view, setView] = useState<ScreenView>("loading");
   const [levels, setLevels] = useState<LevelData[]>([]);
   const [loadError, setLoadError] = useState(false);
   const [progress, setProgress] = useState<SortProgress>({
@@ -72,11 +76,6 @@ export default function SortScreen() {
     currentLevelId: null,
     currentState: null,
   });
-
-  // Level select tabs
-  const [selectTab, setSelectTab] = useState<SelectTab>("levels");
-  const [leaderboard, setLeaderboard] = useState<ScoreEntry[]>([]);
-  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 
   // Active game
   const [currentLevelId, setCurrentLevelId] = useState<number | null>(null);
@@ -94,19 +93,72 @@ export default function SortScreen() {
   const pendingPourRef = useRef<{ snapshot: SortState; from: number; to: number } | null>(null);
   const [reduceMotion, setReduceMotion] = useState(false);
 
-  // Win modal
+  // Result card (#2512)
   const [showWinModal, setShowWinModal] = useState(false);
-  const [playerName, setPlayerName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState(false);
-  const [winEntry, setWinEntry] = useState<ScoreEntry | null>(null);
+  /** The solved level's best (fewest) moves, including this solve. */
+  const [winSummary, setWinSummary] = useState<{ best: number; isNewBest: boolean } | null>(null);
+  const leaderboardSubmit = useLeaderboardSubmit(sortBoard);
+  const { submit: submitRank, reset: resetSubmission } = leaderboardSubmit;
+  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
+  const openLeaderboard = useLeaderboardLink(navigation, "sort");
+
+  // One `games` row per level played (#2512): XP, Profile history, stats and
+  // the leaderboard (#2625). Every solve, replays included, is scored with the
+  // player's standing after it (see the solve effect); the board keeps each
+  // named player's best row. Levels are random per fetch, not seeded, so the
+  // board doesn't rank `total_moves`: a tie on level goes to the earliest
+  // completion (#2746).
+  const {
+    start: syncStart,
+    resume: syncResume,
+    markStarted: syncMarkStarted,
+    complete: syncComplete,
+    getGameId: syncGetGameId,
+    setProgressSnapshot: syncSetProgressSnapshot,
+    resetPlayWindow: syncResetPlayWindow,
+  } = useGameSync("sort");
+  const gameStateRef = useRef<SortState | null>(null);
+  gameStateRef.current = gameState;
+  const currentLevelIdRef = useRef<number | null>(null);
+  currentLevelIdRef.current = currentLevelId;
+  /** Bumped whenever the played level changes, so a late hint is dropped. */
+  const levelGenRef = useRef(0);
 
   const [isHinting, setIsHinting] = useState(false);
 
   const progressRef = useRef(progress);
   progressRef.current = progress;
+  /**
+   * The best moves per level: the one source of truth for every solve's card
+   * and score, so the session completes before the player can move on.
+   * Loaded (merged) from `@sort/best_moves` with the screen; storage mirrors it.
+   */
+  const bestMovesRef = useRef<BestMoves>({});
+  /** Storage was read, so writing `bestMovesRef` can't lose a stored best. */
+  const bestsStoredRef = useRef(false);
 
   const audio = useSortAudio();
+
+  // #2619 — the abandon result block. Both the hook's own abandon (unmount) and
+  // abandonSession build it here.
+  const progressResult = useCallback(
+    () => ({
+      won: false,
+      level: currentLevelIdRef.current,
+      moves: gameStateRef.current?.moveCount ?? 0,
+    }),
+    []
+  );
+  useEffect(() => {
+    syncSetProgressSnapshot(() => ({ result: progressResult() }));
+  }, [syncSetProgressSnapshot, progressResult]);
+
+  /** Closes an open, unfinished session as abandoned (a no-op otherwise). */
+  const abandonSession = useCallback(() => {
+    if (!syncGetGameId()) return;
+    const result = progressResult();
+    syncComplete({ outcome: "abandoned", result }, { outcome: "abandoned", ...result });
+  }, [syncGetGameId, syncComplete, progressResult]);
 
   useEffect(() => {
     return () => {
@@ -125,7 +177,7 @@ export default function SortScreen() {
   const loadScreen = useCallback(async () => {
     setLoadError(false);
     setView("loading");
-    const [levelsResult, prog] = await Promise.all([
+    const [levelsResult, prog, stored] = await Promise.all([
       withRetry(() => sortApi.getLevels())
         .then((result) => {
           // Cache the level definitions for offline use. Fire-and-forget —
@@ -138,7 +190,18 @@ export default function SortScreen() {
         // (e.g. entitlement expired) — falling back to cache would bypass that.
         .catch((e) => (isNetworkError(e) ? loadLevelsCache() : null)),
       loadProgress(),
+      loadBestMoves(),
     ]);
+    if (stored !== null) {
+      // Merge, never replace: a Retry must keep a best still only in memory
+      // (its write failed, or storage couldn't be read before).
+      const merged = mergeBestMoves(bestMovesRef.current, stored);
+      bestMovesRef.current = merged;
+      bestsStoredRef.current = true;
+      if (Object.entries(merged).some(([level, moves]) => stored[level] !== moves)) {
+        void saveBestMoves(merged);
+      }
+    }
     if (!levelsResult) {
       setLoadError(true);
     } else {
@@ -189,13 +252,54 @@ export default function SortScreen() {
     // progressRef is a stable ref, so it doesn't belong in the dep array.
   }, [view, currentLevelId, gameState]);
 
-  // Unlock next level and show win modal as soon as the puzzle is solved.
-  // Unlocking is tied to solving, not to leaderboard submission, so players
-  // who skip score entry still progress.
+  // Unlock the next level, complete the session and show the result card as
+  // soon as the puzzle is solved. Nothing here waits on the network or on
+  // storage, so Next Level is available at once.
   useEffect(() => {
     if (!gameState?.isComplete || showWinModal) return;
     setShowWinModal(true);
     if (currentLevelId !== null) {
+      const solvedLevel = currentLevelId;
+      const moves = gameState.moveCount;
+      // Decided now, from the bests in memory, so the session completes before
+      // the player can leave the card (#2625).
+      const { solve, bests } = applyLevelSolve(bestMovesRef.current, solvedLevel, moves);
+      bestMovesRef.current = bests;
+      setWinSummary(solve);
+      // Storage mirrors memory; skipped while it couldn't be read, so a failed
+      // read never overwrites the stored bests.
+      if (solve.isNewBest && bestsStoredRef.current) void saveBestMoves(bests);
+      // Every solve is scored with the player's standing after it (#2625): the
+      // highest level solved, and the sum of best moves up to it (recorded,
+      // not ranked: #2746). The board keeps each player's best row, their
+      // first solve of their highest level. `level`/`moves`/`undos` are the
+      // level actually played.
+      const frontier = Math.min(
+        Math.max(
+          solvedLevel,
+          progressRef.current.unlockedLevel - 1, // read before the unlock below
+          highestSolvedLevel(bests)
+        ),
+        // Never past the last level: the server rejects (and the sync worker
+        // would drop) a level_reached above its cap.
+        Math.max(levels.length, solvedLevel)
+      );
+      const result: Record<string, number | boolean> = {
+        won: true,
+        level: solvedLevel,
+        moves,
+        undos: gameState.undosUsed,
+        level_reached: frontier,
+      };
+      const totalMoves = totalBestMoves(bests, frontier);
+      if (totalMoves !== null) result.total_moves = totalMoves;
+      const gameId = syncComplete(
+        { outcome: "completed", finalScore: frontier, result },
+        { outcome: "completed", ...result }
+      );
+      // The row ranks by itself under the player's name (#2624): the card
+      // only asks where it landed, or for a name if there is none.
+      if (gameId) void submitRank({ gameId });
       const newUnlocked = Math.min(
         Math.max(progressRef.current.unlockedLevel, currentLevelId + 1),
         levels.length || currentLevelId + 1
@@ -209,7 +313,16 @@ export default function SortScreen() {
       setProgress(updated);
       void saveProgress(updated);
     }
-  }, [gameState?.isComplete, showWinModal, currentLevelId, levels]);
+  }, [
+    gameState?.isComplete,
+    gameState?.moveCount,
+    gameState?.undosUsed,
+    showWinModal,
+    currentLevelId,
+    levels,
+    syncComplete,
+    submitRank,
+  ]);
 
   // ---------------------------------------------------------------------------
   // Game handlers
@@ -234,7 +347,7 @@ export default function SortScreen() {
     const { selectedBottleIndex } = gameState;
 
     if (selectedBottleIndex === null) {
-      if (gameState.bottles[index].length > 0) {
+      if ((gameState.bottles[index]?.length ?? 0) > 0) {
         setGameState({ ...gameState, selectedBottleIndex: index });
       }
       return;
@@ -245,10 +358,14 @@ export default function SortScreen() {
       return;
     }
 
-    if (isValidPour(gameState.bottles[selectedBottleIndex], gameState.bottles[index])) {
+    if (isValidPour(gameState.bottles[selectedBottleIndex]!, gameState.bottles[index]!)) {
       const snapshot = gameState;
       const units = pourUnits(gameState.bottles[selectedBottleIndex]!, gameState.bottles[index]!);
       const holdMs = POUR_PER_UNIT_MS * units;
+      if (!syncGetGameId()) {
+        syncStart({ level: currentLevelId });
+        syncMarkStarted();
+      }
       setHistory((h) => [...h, snapshot]);
       setIsPouring(true);
       setPouringFrom(selectedBottleIndex);
@@ -291,9 +408,11 @@ export default function SortScreen() {
   async function handleHint() {
     if (!gameState || gameState.isComplete || isPouring || isHinting) return;
     setIsHinting(true);
+    const gen = levelGenRef.current;
     try {
       const hint = await getNextHintAsync(gameState);
-      if (hint) {
+      // Drop a hint computed for a board the player has since restarted or left.
+      if (hint && gen === levelGenRef.current) {
         setGameState((cur) =>
           cur && !cur.isComplete ? { ...cur, selectedBottleIndex: hint.from } : cur
         );
@@ -306,26 +425,35 @@ export default function SortScreen() {
   function handleSelectLevel(levelId: number) {
     const level = levels.find((l) => l.id === levelId);
     if (!level) return;
+    abandonSession();
+    // The level's play time starts now, though its session opens at the first
+    // pour: the thinking time before that pour counts, and time on the level
+    // grid or the previous level's result card does not (#2710).
+    syncResetPlayWindow();
+    levelGenRef.current += 1;
     setCurrentLevelId(levelId);
     setGameState(initState(level.bottles as (Color | "")[][]));
     setHistory([]);
     setShowWinModal(false);
-    setWinEntry(null);
-    setSubmitError(false);
-    setPlayerName("");
+    setWinSummary(null);
+    resetSubmission();
     setView("play");
   }
 
   function handleContinue() {
     const prog = progressRef.current;
     if (!prog.currentLevelId || !prog.currentState) return;
+    levelGenRef.current += 1;
     setCurrentLevelId(prog.currentLevelId);
     setGameState(prog.currentState);
+    // A restored game continues the session a killed app left open (#2654);
+    // resume() counts its play time from here. With no session to resume the
+    // level's play time still starts now, not on the level grid (#2710).
+    if (!syncResume()) syncResetPlayWindow();
     setHistory([]);
     setShowWinModal(false);
-    setWinEntry(null);
-    setSubmitError(false);
-    setPlayerName("");
+    setWinSummary(null);
+    resetSubmission();
     setView("play");
   }
 
@@ -334,9 +462,12 @@ export default function SortScreen() {
       clearTimeout(pourTimerRef.current);
       pourTimerRef.current = null;
     }
+    pendingPourRef.current = null;
     setIsPouring(false);
     setPouringFrom(null);
     setPouringTo(null);
+    abandonSession();
+    levelGenRef.current += 1;
     setView("select");
     setShowWinModal(false);
     // Silently refresh levels in the background so the next session gets new mixtures
@@ -344,42 +475,6 @@ export default function SortScreen() {
       .getLevels()
       .then((res) => setLevels(res.levels as LevelData[]))
       .catch(() => {});
-  }
-
-  const handleLoadLeaderboard = useCallback(async () => {
-    setLeaderboardLoading(true);
-    try {
-      const res = await sortApi.getLeaderboard();
-      setLeaderboard(res.scores as ScoreEntry[]);
-    } catch {
-      // keep stale data on error
-    } finally {
-      setLeaderboardLoading(false);
-    }
-  }, []);
-
-  const handleSelectTab = useCallback(
-    (tab: SelectTab) => {
-      setSelectTab(tab);
-      if (tab === "leaderboard") {
-        void handleLoadLeaderboard();
-      }
-    },
-    [handleLoadLeaderboard]
-  );
-
-  async function handleSubmitScore() {
-    if (!playerName.trim() || currentLevelId === null || submitting) return;
-    setSubmitting(true);
-    setSubmitError(false);
-    try {
-      const entry = await sortApi.submitScore(playerName.trim(), currentLevelId);
-      setWinEntry(entry);
-    } catch {
-      setSubmitError(true);
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   function handleResetLevel() {
@@ -390,20 +485,18 @@ export default function SortScreen() {
       clearTimeout(pourTimerRef.current);
       pourTimerRef.current = null;
     }
+    // A pour whose animation is still finishing must not land on the fresh board.
+    pendingPourRef.current = null;
     setIsPouring(false);
     setPouringFrom(null);
     setPouringTo(null);
+    abandonSession();
+    // The fresh board's play time starts now, not with the board it replaces
+    // (#2710).
+    syncResetPlayWindow();
+    levelGenRef.current += 1;
     setGameState(initState(level.bottles as (Color | "")[][]));
     setHistory([]);
-  }
-
-  function handleResetOrNew() {
-    if (isPouring) return;
-    Alert.alert(t("action.reset"), t("action.resetPrompt"), [
-      { text: t("action.resetLevel"), onPress: handleResetLevel },
-      { text: t("action.newGame"), onPress: handleBackToSelect },
-      { text: t("action.cancel"), style: "cancel" },
-    ]);
   }
 
   function handleNextLevel() {
@@ -418,170 +511,23 @@ export default function SortScreen() {
   }
 
   // ---------------------------------------------------------------------------
-  // Render helpers
-  // ---------------------------------------------------------------------------
-
-  function renderWinModal() {
-    if (!gameState || !showWinModal) return null;
-    const submitted = winEntry !== null;
-
-    return (
-      <Modal
-        visible={showWinModal}
-        transparent
-        animationType="fade"
-        onRequestClose={handleBackToSelect}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: colors.surfaceHigh }]}>
-            <Text style={[styles.winTitle, { color: colors.text }]}>{t("win.title")}</Text>
-            <Text style={[styles.winStat, { color: colors.textMuted }]}>
-              {t("win.movesUsed", { moves: gameState.moveCount })}
-            </Text>
-            <Text style={[styles.winStat, { color: colors.textMuted }]}>
-              {t("win.undosUsed", { undos: gameState.undosUsed })}
-            </Text>
-
-            {!submitted && (
-              <>
-                <TextInput
-                  style={[
-                    styles.nameInput,
-                    {
-                      color: colors.text,
-                      borderColor: colors.border,
-                      backgroundColor: colors.surface,
-                    },
-                  ]}
-                  value={playerName}
-                  onChangeText={setPlayerName}
-                  placeholder={t("win.enterName")}
-                  placeholderTextColor={colors.textMuted}
-                  maxLength={MAX_NAME_LENGTH}
-                  autoCapitalize="words"
-                  returnKeyType="done"
-                  onSubmitEditing={() => void handleSubmitScore()}
-                />
-
-                {submitError && (
-                  <Text style={[styles.errorText, { color: colors.error }]}>
-                    {t("error.submitFailed")}
-                  </Text>
-                )}
-
-                <Pressable
-                  style={[
-                    styles.modalBtn,
-                    { backgroundColor: colors.accent },
-                    (!playerName.trim() || submitting) && styles.modalBtnDisabled,
-                  ]}
-                  onPress={() => void handleSubmitScore()}
-                  disabled={!playerName.trim() || submitting}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("win.submitScore")}
-                >
-                  <Text style={[styles.modalBtnText, { color: colors.textOnAccent }]}>
-                    {submitting ? t("win.submitting") : t("win.submitScore")}
-                  </Text>
-                </Pressable>
-              </>
-            )}
-
-            {submitted && winEntry && (
-              <Text style={[styles.rankText, { color: colors.accent }]}>
-                {t("win.rank", { rank: winEntry.rank })}
-              </Text>
-            )}
-
-            <View style={styles.modalActions}>
-              {submitted && (currentLevelId ?? 0) < levels.length && (
-                <Pressable
-                  style={[styles.modalBtn, { backgroundColor: colors.accent }]}
-                  onPress={handleNextLevel}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("win.nextLevel")}
-                >
-                  <Text style={[styles.modalBtnText, { color: colors.textOnAccent }]}>
-                    {t("win.nextLevel")}
-                  </Text>
-                </Pressable>
-              )}
-
-              <Pressable
-                style={[styles.modalBtn, styles.modalBtnSecondary, { borderColor: colors.border }]}
-                onPress={handleBackToSelect}
-                accessibilityRole="button"
-                accessibilityLabel={t("win.backToLevels")}
-              >
-                <Text style={[styles.modalBtnText, { color: colors.text }]}>
-                  {t("win.backToLevels")}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    );
-  }
-
-  function renderLeaderboard() {
-    if (leaderboardLoading) {
-      return <ActivityIndicator style={styles.leaderboardLoading} />;
-    }
-    if (leaderboard.length === 0) {
-      return (
-        <Text style={[styles.emptyText, { color: colors.textMuted }]}>
-          {t("leaderboard.empty")}
-        </Text>
-      );
-    }
-    return (
-      <FlatList
-        data={leaderboard}
-        keyExtractor={(_, i) => String(i)}
-        contentContainerStyle={styles.leaderboardList}
-        renderItem={({ item, index }) => (
-          <View style={[styles.leaderboardRow, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.leaderboardRank, { color: colors.textMuted }]}>#{index + 1}</Text>
-            <Text style={[styles.leaderboardName, { color: colors.text }]}>{item.player_name}</Text>
-            <Text style={[styles.leaderboardLevel, { color: colors.accent }]}>
-              {t("leaderboard.levelReached", { level: item.level_reached })}
-            </Text>
-          </View>
-        )}
-      />
-    );
-  }
-
-  // ---------------------------------------------------------------------------
   // Views
   // ---------------------------------------------------------------------------
 
   if (view === "loading") {
-    return (
-      <View style={[styles.screen, styles.center, { backgroundColor: colors.background }]}>
-        <ActivityIndicator />
-      </View>
-    );
+    return <GameShell gameType="sort" key="loading" title={t("game.title")} loading />;
   }
 
   if (view === "select") {
     return (
-      <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-        {/* Header */}
-        <View style={[styles.selectHeader, { borderBottomColor: colors.border }]}>
-          <Pressable
-            onPress={() => navigation.goBack()}
-            style={styles.backBtn}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.back")}
-          >
-            <Text style={[styles.backBtnText, { color: colors.accent }]}>‹</Text>
-          </Pressable>
-          <Text style={[styles.screenTitle, { color: colors.text }]}>{t("game.title")}</Text>
-          <View style={styles.backBtn} />
-        </View>
-
+      <GameShell
+        gameType="sort"
+        key="select"
+        title={t("game.title")}
+        requireBack
+        onBack={() => navigation.goBack()}
+        onOpenLeaderboard={openLeaderboard}
+      >
         {/* Error banner with retry */}
         {loadError && (
           <View style={styles.errorRow}>
@@ -600,126 +546,57 @@ export default function SortScreen() {
           </View>
         )}
 
-        {/* Tab bar */}
-        <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
-          {(["levels", "leaderboard"] as SelectTab[]).map((tab) => (
-            <Pressable
-              key={tab}
-              style={[
-                styles.tab,
-                selectTab === tab && {
-                  borderBottomColor: colors.accent,
-                  borderBottomWidth: 2,
-                },
-              ]}
-              onPress={() => handleSelectTab(tab)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: selectTab === tab }}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  { color: selectTab === tab ? colors.accent : colors.textMuted },
-                ]}
-              >
-                {t(`tab.${tab}`)}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        {/* Tab content */}
-        {selectTab === "levels" ? (
-          <LevelSelectScreen
-            levels={levels}
-            progress={progress}
-            onSelectLevel={handleSelectLevel}
-            onContinue={handleContinue}
-          />
-        ) : (
-          <View style={styles.leaderboardContainer}>{renderLeaderboard()}</View>
-        )}
-      </View>
+        {/* The board is the shared leaderboard screen now (#2633), from the
+            ⋯ menu and the result card; the inline Leaderboard tab is gone. */}
+        <LevelSelectScreen
+          levels={levels}
+          progress={progress}
+          onSelectLevel={handleSelectLevel}
+          onContinue={handleContinue}
+        />
+      </GameShell>
     );
   }
 
   // view === "play"
   return (
-    <View
-      style={[
-        styles.screen,
-        {
-          backgroundColor: colors.background,
-          paddingTop: insets.top,
-          paddingBottom: tabBarHeight,
-        },
-      ]}
-    >
-      {/* Offline banner */}
-      {offline && (
-        <View style={styles.offlineBannerWrap}>
-          <OfflineBanner />
-        </View>
-      )}
-
-      {/* HUD */}
-      <View style={[styles.hud, { borderBottomColor: colors.border }]}>
-        <Pressable
-          onPress={handleBackToSelect}
-          style={styles.hudBtn}
-          accessibilityRole="button"
-          accessibilityLabel={t("action.backToLevels")}
-        >
-          <Text style={[styles.hudBtnText, { color: colors.accent }]}>‹</Text>
-        </Pressable>
-
-        <View style={styles.hudCenter}>
-          <Text style={[styles.hudLevel, { color: colors.text }]}>
-            {t("hud.level", { level: currentLevelId })}
-          </Text>
-          <Text style={[styles.hudMeta, { color: colors.textMuted }]}>
-            {t("hud.moves", { moves: gameState?.moveCount ?? 0 })}
-            {"  "}
-            {t("hud.undos", { undos: gameState?.undosUsed ?? 0 })}
-          </Text>
-        </View>
-
-        <View style={styles.hudActions}>
-          <Pressable
-            onPress={handleUndo}
-            style={[styles.hudActionBtn, { opacity: history.length > 0 ? 1 : 0.35 }]}
-            disabled={history.length === 0}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.undo")}
-            accessibilityState={{ disabled: history.length === 0 }}
-          >
-            <Text style={[styles.hudActionText, { color: colors.text }]}>{t("action.undo")}</Text>
-          </Pressable>
-          <Pressable
+    <GameShell
+      gameType="sort"
+      key="play"
+      title={t("game.title")}
+      requireBack
+      onBack={handleBackToSelect}
+      backAccessibilityLabel={t("action.backToLevels")}
+      onNewGame={handleResetLevel}
+      onLevelSelect={handleBackToSelect}
+      onOpenLeaderboard={openLeaderboard}
+      rightSlot={
+        <View style={styles.headerBtnRow}>
+          <PillButton
+            label={t("action.hint")}
             onPress={handleHint}
-            style={[styles.hudActionBtn, { opacity: isHinting ? 0.35 : 1 }]}
-            disabled={isHinting}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.hint")}
-            accessibilityState={{ busy: isHinting }}
-          >
-            {isHinting ? (
-              <ActivityIndicator size="small" color={colors.text} />
-            ) : (
-              <Text style={[styles.hudActionText, { color: colors.text }]}>{t("action.hint")}</Text>
-            )}
-          </Pressable>
-          <Pressable
-            onPress={handleResetOrNew}
-            style={[styles.hudActionBtn, { opacity: isPouring ? 0.35 : 1 }]}
-            disabled={isPouring}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.reset")}
-          >
-            <Text style={[styles.hudActionText, { color: colors.text }]}>{t("action.reset")}</Text>
-          </Pressable>
+            busy={isHinting}
+            disabled={isPouring || !!gameState?.isComplete}
+            color={colors.bonus}
+          />
+          <PillButton
+            label={t("action.undo")}
+            onPress={handleUndo}
+            disabled={history.length === 0}
+          />
         </View>
-      </View>
+      }
+    >
+      <ConnectedOfflineBanner style={styles.offlineBannerWrap} />
+
+      <HudStatRow
+        style={styles.hud}
+        stats={[
+          { key: "level", text: t("hud.level", { level: currentLevelId }), bold: true },
+          { key: "moves", text: t("hud.moves", { moves: gameState?.moveCount ?? 0 }), muted: true },
+          { key: "undos", text: t("hud.undos", { undos: gameState?.undosUsed ?? 0 }), muted: true },
+        ]}
+      />
 
       {/* Board */}
       <View
@@ -756,39 +633,55 @@ export default function SortScreen() {
         accessibilityRole="switch"
         accessibilityLabel={t("action.colorblindToggle")}
         accessibilityState={{ checked: colorblindMode }}
+        // RN Web 0.21 drops accessibilityState; aria-checked reaches the DOM.
+        aria-checked={colorblindMode}
       >
         <Text style={[styles.colorblindToggleText, { color: colors.textMuted }]}>
           {t("settings.colorblindMode")}
         </Text>
       </Pressable>
 
-      {renderWinModal()}
-    </View>
+      {gameState !== null && currentLevelId !== null ? (
+        <GameResultModal
+          visible={showWinModal}
+          outcome="win"
+          eyebrow={`${t("game.title")} · ${t("hud.level", { level: currentLevelId })}`}
+          hero={{ kind: "score", label: tResult("stat.moves"), value: gameState.moveCount }}
+          isNewBest={winSummary?.isNewBest ?? false}
+          stats={[
+            { label: tResult("stat.undos"), value: gameState.undosUsed },
+            ...(winSummary ? [{ label: tResult("stat.best"), value: winSummary.best }] : []),
+          ]}
+          submission={{
+            status: leaderboardSubmit.status,
+            rank: leaderboardSubmit.rank,
+            isBest: leaderboardSubmit.isBest,
+            playerName: leaderboardSubmit.playerName,
+            onProvideName: leaderboardSubmit.provideName,
+            onRetry: leaderboardSubmit.retry,
+          }}
+          onViewLeaderboard={openLeaderboard}
+          // The next level when there is one; the last level replays.
+          primaryAction={
+            levels.some((l) => l.id === currentLevelId + 1)
+              ? { label: tResult("action.nextLevel"), onPress: handleNextLevel }
+              : undefined
+          }
+          onPlayAgain={() => handleSelectLevel(currentLevelId)}
+          secondaryAction={{ label: tResult("action.changeLevel"), onPress: handleBackToSelect }}
+          onHome={() => navigation.popToTop()}
+          testID="sort-result"
+        />
+      ) : null}
+    </GameShell>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  center: { alignItems: "center", justifyContent: "center" },
-
   offlineBannerWrap: { paddingHorizontal: 12, paddingTop: 4 },
+  headerBtnRow: { flexDirection: "row", gap: 6 },
+  hud: { paddingHorizontal: 12 },
 
-  // Select view
-  selectHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  backBtn: { width: 40, alignItems: "center" },
-  backBtnText: { fontSize: 28, lineHeight: 32, fontFamily: "System" },
-  screenTitle: {
-    flex: 1,
-    textAlign: "center",
-    fontFamily: typography.heading,
-    fontSize: 18,
-  },
   errorRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -799,64 +692,6 @@ const styles = StyleSheet.create({
   },
   loadErrorText: { fontFamily: typography.body, fontSize: 13 },
   retryText: { fontFamily: typography.label, fontSize: 13, textDecorationLine: "underline" },
-  tabBar: {
-    flexDirection: "row",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  tab: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 10,
-  },
-  tabText: {
-    fontFamily: typography.label,
-    fontSize: 13,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  leaderboardContainer: { flex: 1 },
-  leaderboardLoading: { marginTop: 32 },
-  leaderboardList: { padding: 16 },
-  leaderboardRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 12,
-  },
-  leaderboardRank: { fontFamily: typography.label, fontSize: 13, width: 28 },
-  leaderboardName: { flex: 1, fontFamily: typography.body, fontSize: 14 },
-  leaderboardLevel: { fontFamily: typography.label, fontSize: 13 },
-  emptyText: {
-    textAlign: "center",
-    marginTop: 32,
-    fontFamily: typography.body,
-    fontSize: 14,
-  },
-
-  // Play view — HUD
-  hud: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 4,
-  },
-  hudBtn: { width: 36, alignItems: "center" },
-  hudBtnText: { fontSize: 28, lineHeight: 32 },
-  hudCenter: { flex: 1, alignItems: "center" },
-  hudLevel: { fontFamily: typography.heading, fontSize: 16 },
-  hudMeta: { fontFamily: typography.body, fontSize: 11 },
-  hudActions: { flexDirection: "row", gap: 4 },
-  hudActionBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  hudActionText: {
-    fontFamily: typography.label,
-    fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-
   boardContainer: {
     flex: 1,
     alignItems: "center",
@@ -868,40 +703,4 @@ const styles = StyleSheet.create({
   colorblindToggleText: { fontFamily: typography.body, fontSize: 11 },
 
   // Win modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-  },
-  modalCard: {
-    width: "100%",
-    maxWidth: 360,
-    borderRadius: 20,
-    padding: 24,
-    gap: 12,
-    alignItems: "stretch",
-  },
-  winTitle: { fontFamily: typography.heading, fontSize: 28, textAlign: "center" },
-  winStat: { fontFamily: typography.body, fontSize: 14, textAlign: "center" },
-  nameInput: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontFamily: typography.body,
-    fontSize: 16,
-  },
-  errorText: { fontFamily: typography.body, fontSize: 12, textAlign: "center" },
-  rankText: { fontFamily: typography.heading, fontSize: 24, textAlign: "center" },
-  modalActions: { gap: 8 },
-  modalBtn: {
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  modalBtnSecondary: { borderWidth: 1 },
-  modalBtnDisabled: { opacity: 0.5 },
-  modalBtnText: { fontFamily: typography.label, fontSize: 14, fontWeight: "600" },
 });

@@ -9,8 +9,16 @@
  *
  * Flush algorithm (one pass):
  *
- *   1. For each pending game with startedSynced=false:
+ *   0. Wait for the pending games to load from disk, and for the startup
+ *      sweep of a killed process's sessions (#2654) that runs inside the
+ *      store's init(): no queued event is read as belonging to a game that
+ *      simply isn't loaded yet, and no flush acts on a game the sweep is
+ *      about to discard or abandon.
+ *
+ *   1. For each pending game with started=true and startedSynced=false:
  *        POST /games { id, game_type, metadata }
+ *        A game the player hasn't started (#2654) is skipped: its create and
+ *        events stay on the device until markStarted() or a completion.
  *        - 2xx → markStartedSynced
  *        - 404 → should not happen (we created the id); dead-letter + log
  *        - 4xx → dead-letter the pending game
@@ -23,6 +31,11 @@
  *          and preserve events (they'll retry on the next flush)
  *        - 413 → split batch in half, retry halves; single-row 413 →
  *          dead-letter that row
+ *        - 409 "Game is already completed." → the game was completed before
+ *          these events arrived (a completion that got there first). Not the
+ *          stale-session sweep: a swept row still accepts events (#2621).
+ *          Expected: drop the rows quietly — no Sentry error, no dead-letter.
+ *          The completion still goes out in step 3.
  *        - 400/403 → dead-letter those rows; Sentry with high severity
  *          for 403 (session mismatch shouldn't happen)
  *        - 429/5xx/network → set per-row backoff and stop
@@ -58,6 +71,38 @@ export interface FlushResult {
   /** Rows parked for long-backoff retry (e.g. unknown_event_type). */
   parked: number;
   backoffMs: number;
+}
+
+/**
+ * The `duration_ms` sent on PATCH /complete (#2619). Only the game's own
+ * active-time measurement counts as play time: a reported duration > 0 is
+ * sent (rounded to whole ms, since the server field is an int). Anything
+ * else — 0, null, missing, negative or not finite — is sent as `null`,
+ * meaning "unknown".
+ *
+ * The duration is never derived from the pending game's `startedAt` /
+ * `completedAt`: wall-clock time counts idle and backgrounded time as play
+ * (a Daily Word left open all day would record 12 h). A negative value must
+ * never reach the server either — `duration_ms` is `Field(ge=0)`, so it would
+ * 400 the whole completion and lose the score.
+ */
+export function resolveDurationMs(durationMs: number | null | undefined): number | null {
+  if (typeof durationMs !== "number" || !Number.isFinite(durationMs)) return null;
+  const ms = Math.round(durationMs);
+  return ms > 0 ? ms : null;
+}
+
+/**
+ * The detail of the backend's 409 on POST /games/:id/events for a game whose
+ * row is already completed (`backend/games/service.py`, `append_events`).
+ */
+export const GAME_ALREADY_COMPLETED_DETAIL = "Game is already completed.";
+
+function isAlreadyCompleted(res: { status: number; body: unknown }): boolean {
+  return (
+    res.status === 409 &&
+    (res.body as { detail?: unknown } | null)?.detail === GAME_ALREADY_COMPLETED_DETAIL
+  );
 }
 
 const EMPTY: FlushResult = {
@@ -118,6 +163,8 @@ export class SyncWorker {
     this.flushInProgress = true;
     try {
       const result: FlushResult = { ...EMPTY };
+      // Load + startup sweep (see step 0 above).
+      await this.games.init();
 
       if (!(await this.flushGameCreations(result, now))) return result;
       if (!(await this.flushEvents(result, now))) return result;
@@ -140,6 +187,10 @@ export class SyncWorker {
   private async flushGameCreations(result: FlushResult, now: number): Promise<boolean> {
     for (const [gameId, game] of this.games.all()) {
       if (game.startedSynced) continue;
+      // Not started yet (#2654): the player never acted, so the server must
+      // not hear of this session. Its events wait with it (step 2 skips a
+      // game until startedSynced). A completion marks the game started.
+      if (!game.started) continue;
       const res = await this.api.request(
         "POST",
         "/games",
@@ -286,6 +337,19 @@ export class SyncWorker {
       if (g) g.startedSynced = false;
       return true;
     }
+    if (isAlreadyCompleted(res)) {
+      // The row was completed before these events arrived — a completion that
+      // got there first (a row the stale-session sweep closed still accepts
+      // events, #2621). Nothing is wrong and retrying can't help: drop them
+      // quietly.
+      Sentry.addBreadcrumb({
+        category: "syncWorker",
+        message: `events for completed game ${gameId} dropped (409)`,
+        level: "info",
+      });
+      await this.store.deleteByIds(chunk.map((r) => r.id));
+      return true;
+    }
     // 400 unknown_event_type — server-side schema gap (missing event_types row),
     // not a bad client payload. Park with a long backoff so the rows survive
     // until the migration lands rather than being silently dropped.
@@ -344,7 +408,7 @@ export class SyncWorker {
       const body = {
         final_score: summary.finalScore ?? null,
         outcome: summary.outcome ?? null,
-        duration_ms: summary.durationMs ?? null,
+        duration_ms: resolveDurationMs(summary.durationMs),
         completed_at: game.completedAt != null ? new Date(game.completedAt).toISOString() : null,
         result: summary.result ?? {},
       };

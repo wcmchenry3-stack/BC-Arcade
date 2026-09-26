@@ -1,0 +1,5406 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`GameResultModal — outcomes dark theme renders draw 1`] = `
+<Modal
+  accessibilityViewIsModal={true}
+  animationType="fade"
+  onRequestClose={[MockFunction]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      [
+        {
+          "flex": 1,
+        },
+        {
+          "backgroundColor": "rgba(0,0,0,0.75)",
+        },
+      ]
+    }
+  >
+    <RCTScrollView
+      contentContainerStyle={
+        {
+          "alignItems": "center",
+          "flexGrow": 1,
+          "justifyContent": "center",
+          "paddingHorizontal": 20,
+          "paddingVertical": 40,
+        }
+      }
+      showsVerticalScrollIndicator={false}
+    >
+      <View>
+        <View
+          style={
+            [
+              {
+                "alignItems": "center",
+                "borderRadius": 22,
+                "gap": 18,
+                "maxWidth": 380,
+                "paddingBottom": 20,
+                "paddingHorizontal": 22,
+                "paddingTop": 28,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#25252c",
+                "borderColor": "#2e2e38",
+                "borderTopColor": "#d674ff",
+                "borderTopWidth": 5,
+                "borderWidth": 0,
+              },
+            ]
+          }
+          testID="game-result"
+        >
+          <View
+            style={
+              {
+                "alignItems": "center",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 26,
+                    "height": 52,
+                    "justifyContent": "center",
+                    "width": 52,
+                  },
+                  {
+                    "backgroundColor": "rgba(214,116,255,0.14)",
+                  },
+                ]
+              }
+            >
+              <Text
+                allowFontScaling={false}
+                selectable={false}
+                style={
+                  [
+                    {
+                      "color": "#d674ff",
+                      "fontSize": 26,
+                    },
+                    undefined,
+                    {
+                      "fontFamily": "material-community",
+                      "fontStyle": "normal",
+                      "fontWeight": "normal",
+                    },
+                    {},
+                  ]
+                }
+              >
+                󰇼
+              </Text>
+            </View>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.6,
+                    "textAlign": "center",
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#a0a0ac",
+                  },
+                ]
+              }
+            >
+              SUDOKU · HARD
+            </Text>
+            <Text
+              accessibilityRole="header"
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 32,
+                    "lineHeight": 36,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#d674ff",
+                  },
+                ]
+              }
+              testID="game-result-title"
+            >
+              It's a Tie!
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_600SemiBold",
+                    "fontSize": 15,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#a0a0ac",
+                  },
+                ]
+              }
+            >
+              Solved in 12:48
+            </Text>
+          </View>
+          <View
+            accessible={true}
+            style={
+              {
+                "alignItems": "center",
+                "gap": 6,
+              }
+            }
+          >
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.4,
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#a0a0ac",
+                  },
+                ]
+              }
+            >
+              Score
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 52,
+                    "lineHeight": 56,
+                  },
+                  {
+                    "color": "#e8e8f0",
+                  },
+                ]
+              }
+            >
+              4,820
+            </Text>
+          </View>
+          <View
+            style={
+              [
+                {
+                  "alignSelf": "stretch",
+                  "borderRadius": 12,
+                  "flexDirection": "row",
+                },
+                {
+                  "backgroundColor": "#1f1f26",
+                },
+              ]
+            }
+          >
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#e8e8f0",
+                    },
+                  ]
+                }
+              >
+                12:48
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#a0a0ac",
+                    },
+                  ]
+                }
+              >
+                Time
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#e8e8f0",
+                    },
+                  ]
+                }
+              >
+                2
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#a0a0ac",
+                    },
+                  ]
+                }
+              >
+                Errors
+              </Text>
+            </View>
+          </View>
+          <View
+            style={
+              {
+                "alignSelf": "stretch",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              accessibilityLabel="Play Again"
+              accessibilityRole="button"
+              accessibilityState={
+                {
+                  "busy": undefined,
+                  "checked": undefined,
+                  "disabled": false,
+                  "expanded": undefined,
+                  "selected": undefined,
+                }
+              }
+              accessibilityValue={
+                {
+                  "max": undefined,
+                  "min": undefined,
+                  "now": undefined,
+                  "text": undefined,
+                }
+              }
+              accessible={true}
+              collapsable={false}
+              focusable={true}
+              onBlur={[Function]}
+              onClick={[Function]}
+              onFocus={[Function]}
+              onResponderGrant={[Function]}
+              onResponderMove={[Function]}
+              onResponderRelease={[Function]}
+              onResponderTerminate={[Function]}
+              onResponderTerminationRequest={[Function]}
+              onStartShouldSetResponder={[Function]}
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 14,
+                    "flexDirection": "row",
+                    "gap": 8,
+                    "justifyContent": "center",
+                    "minHeight": 52,
+                    "paddingHorizontal": 14,
+                  },
+                  {
+                    "backgroundColor": "#00eefc",
+                  },
+                  {
+                    "transform": [
+                      {
+                        "scale": 1,
+                      },
+                    ],
+                  },
+                ]
+              }
+              testID="game-result-primary"
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_700Bold",
+                      "fontSize": 16,
+                    },
+                    {
+                      "color": "#0e0e13",
+                    },
+                  ]
+                }
+              >
+                Play Again
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "flexDirection": "row",
+                  "gap": 10,
+                }
+              }
+            >
+              <View
+                accessibilityLabel="Home"
+                accessibilityRole="button"
+                accessibilityState={
+                  {
+                    "busy": undefined,
+                    "checked": undefined,
+                    "disabled": false,
+                    "expanded": undefined,
+                    "selected": undefined,
+                  }
+                }
+                accessibilityValue={
+                  {
+                    "max": undefined,
+                    "min": undefined,
+                    "now": undefined,
+                    "text": undefined,
+                  }
+                }
+                accessible={true}
+                collapsable={false}
+                focusable={true}
+                onBlur={[Function]}
+                onClick={[Function]}
+                onFocus={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  [
+                    {
+                      "alignItems": "center",
+                      "borderRadius": 14,
+                      "flexDirection": "row",
+                      "gap": 8,
+                      "justifyContent": "center",
+                      "minHeight": 52,
+                      "paddingHorizontal": 14,
+                    },
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 1.5,
+                    },
+                    {
+                      "flex": 1,
+                      "minWidth": 0,
+                    },
+                    {
+                      "borderColor": "#a0a0ac",
+                      "opacity": 1,
+                    },
+                  ]
+                }
+                testID="game-result-home"
+              >
+                <Text
+                  allowFontScaling={false}
+                  selectable={false}
+                  style={
+                    [
+                      {
+                        "color": "#e8e8f0",
+                        "fontSize": 18,
+                      },
+                      undefined,
+                      {
+                        "fontFamily": "material-community",
+                        "fontStyle": "normal",
+                        "fontWeight": "normal",
+                      },
+                      {},
+                    ]
+                  }
+                >
+                  󰚡
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={
+                    [
+                      {
+                        "flexShrink": 1,
+                        "fontFamily": "Manrope_700Bold",
+                        "fontSize": 16,
+                      },
+                      {
+                        "color": "#e8e8f0",
+                      },
+                    ]
+                  }
+                >
+                  Home
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    </RCTScrollView>
+  </View>
+</Modal>
+`;
+
+exports[`GameResultModal — outcomes dark theme renders ended 1`] = `
+<Modal
+  accessibilityViewIsModal={true}
+  animationType="fade"
+  onRequestClose={[MockFunction]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      [
+        {
+          "flex": 1,
+        },
+        {
+          "backgroundColor": "rgba(0,0,0,0.75)",
+        },
+      ]
+    }
+  >
+    <RCTScrollView
+      contentContainerStyle={
+        {
+          "alignItems": "center",
+          "flexGrow": 1,
+          "justifyContent": "center",
+          "paddingHorizontal": 20,
+          "paddingVertical": 40,
+        }
+      }
+      showsVerticalScrollIndicator={false}
+    >
+      <View>
+        <View
+          style={
+            [
+              {
+                "alignItems": "center",
+                "borderRadius": 22,
+                "gap": 18,
+                "maxWidth": 380,
+                "paddingBottom": 20,
+                "paddingHorizontal": 22,
+                "paddingTop": 28,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#25252c",
+                "borderColor": "#2e2e38",
+                "borderTopColor": "#8ff5ff",
+                "borderTopWidth": 5,
+                "borderWidth": 0,
+              },
+            ]
+          }
+          testID="game-result"
+        >
+          <View
+            style={
+              {
+                "alignItems": "center",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 26,
+                    "height": 52,
+                    "justifyContent": "center",
+                    "width": 52,
+                  },
+                  {
+                    "backgroundColor": "rgba(143,245,255,0.12)",
+                  },
+                ]
+              }
+            >
+              <Text
+                allowFontScaling={false}
+                selectable={false}
+                style={
+                  [
+                    {
+                      "color": "#8ff5ff",
+                      "fontSize": 26,
+                    },
+                    undefined,
+                    {
+                      "fontFamily": "material-community",
+                      "fontStyle": "normal",
+                      "fontWeight": "normal",
+                    },
+                    {},
+                  ]
+                }
+              >
+                󰈽
+              </Text>
+            </View>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.6,
+                    "textAlign": "center",
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#a0a0ac",
+                  },
+                ]
+              }
+            >
+              SUDOKU · HARD
+            </Text>
+            <Text
+              accessibilityRole="header"
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 32,
+                    "lineHeight": 36,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#8ff5ff",
+                  },
+                ]
+              }
+              testID="game-result-title"
+            >
+              Game Over
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_600SemiBold",
+                    "fontSize": 15,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#a0a0ac",
+                  },
+                ]
+              }
+            >
+              Solved in 12:48
+            </Text>
+          </View>
+          <View
+            accessible={true}
+            style={
+              {
+                "alignItems": "center",
+                "gap": 6,
+              }
+            }
+          >
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.4,
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#a0a0ac",
+                  },
+                ]
+              }
+            >
+              Score
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 52,
+                    "lineHeight": 56,
+                  },
+                  {
+                    "color": "#e8e8f0",
+                  },
+                ]
+              }
+            >
+              4,820
+            </Text>
+          </View>
+          <View
+            style={
+              [
+                {
+                  "alignSelf": "stretch",
+                  "borderRadius": 12,
+                  "flexDirection": "row",
+                },
+                {
+                  "backgroundColor": "#1f1f26",
+                },
+              ]
+            }
+          >
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#e8e8f0",
+                    },
+                  ]
+                }
+              >
+                12:48
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#a0a0ac",
+                    },
+                  ]
+                }
+              >
+                Time
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#e8e8f0",
+                    },
+                  ]
+                }
+              >
+                2
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#a0a0ac",
+                    },
+                  ]
+                }
+              >
+                Errors
+              </Text>
+            </View>
+          </View>
+          <View
+            style={
+              {
+                "alignSelf": "stretch",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              accessibilityLabel="Play Again"
+              accessibilityRole="button"
+              accessibilityState={
+                {
+                  "busy": undefined,
+                  "checked": undefined,
+                  "disabled": false,
+                  "expanded": undefined,
+                  "selected": undefined,
+                }
+              }
+              accessibilityValue={
+                {
+                  "max": undefined,
+                  "min": undefined,
+                  "now": undefined,
+                  "text": undefined,
+                }
+              }
+              accessible={true}
+              collapsable={false}
+              focusable={true}
+              onBlur={[Function]}
+              onClick={[Function]}
+              onFocus={[Function]}
+              onResponderGrant={[Function]}
+              onResponderMove={[Function]}
+              onResponderRelease={[Function]}
+              onResponderTerminate={[Function]}
+              onResponderTerminationRequest={[Function]}
+              onStartShouldSetResponder={[Function]}
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 14,
+                    "flexDirection": "row",
+                    "gap": 8,
+                    "justifyContent": "center",
+                    "minHeight": 52,
+                    "paddingHorizontal": 14,
+                  },
+                  {
+                    "backgroundColor": "#00eefc",
+                  },
+                  {
+                    "transform": [
+                      {
+                        "scale": 1,
+                      },
+                    ],
+                  },
+                ]
+              }
+              testID="game-result-primary"
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_700Bold",
+                      "fontSize": 16,
+                    },
+                    {
+                      "color": "#0e0e13",
+                    },
+                  ]
+                }
+              >
+                Play Again
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "flexDirection": "row",
+                  "gap": 10,
+                }
+              }
+            >
+              <View
+                accessibilityLabel="Home"
+                accessibilityRole="button"
+                accessibilityState={
+                  {
+                    "busy": undefined,
+                    "checked": undefined,
+                    "disabled": false,
+                    "expanded": undefined,
+                    "selected": undefined,
+                  }
+                }
+                accessibilityValue={
+                  {
+                    "max": undefined,
+                    "min": undefined,
+                    "now": undefined,
+                    "text": undefined,
+                  }
+                }
+                accessible={true}
+                collapsable={false}
+                focusable={true}
+                onBlur={[Function]}
+                onClick={[Function]}
+                onFocus={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  [
+                    {
+                      "alignItems": "center",
+                      "borderRadius": 14,
+                      "flexDirection": "row",
+                      "gap": 8,
+                      "justifyContent": "center",
+                      "minHeight": 52,
+                      "paddingHorizontal": 14,
+                    },
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 1.5,
+                    },
+                    {
+                      "flex": 1,
+                      "minWidth": 0,
+                    },
+                    {
+                      "borderColor": "#a0a0ac",
+                      "opacity": 1,
+                    },
+                  ]
+                }
+                testID="game-result-home"
+              >
+                <Text
+                  allowFontScaling={false}
+                  selectable={false}
+                  style={
+                    [
+                      {
+                        "color": "#e8e8f0",
+                        "fontSize": 18,
+                      },
+                      undefined,
+                      {
+                        "fontFamily": "material-community",
+                        "fontStyle": "normal",
+                        "fontWeight": "normal",
+                      },
+                      {},
+                    ]
+                  }
+                >
+                  󰚡
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={
+                    [
+                      {
+                        "flexShrink": 1,
+                        "fontFamily": "Manrope_700Bold",
+                        "fontSize": 16,
+                      },
+                      {
+                        "color": "#e8e8f0",
+                      },
+                    ]
+                  }
+                >
+                  Home
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    </RCTScrollView>
+  </View>
+</Modal>
+`;
+
+exports[`GameResultModal — outcomes dark theme renders loss 1`] = `
+<Modal
+  accessibilityViewIsModal={true}
+  animationType="fade"
+  onRequestClose={[MockFunction]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      [
+        {
+          "flex": 1,
+        },
+        {
+          "backgroundColor": "rgba(0,0,0,0.75)",
+        },
+      ]
+    }
+  >
+    <RCTScrollView
+      contentContainerStyle={
+        {
+          "alignItems": "center",
+          "flexGrow": 1,
+          "justifyContent": "center",
+          "paddingHorizontal": 20,
+          "paddingVertical": 40,
+        }
+      }
+      showsVerticalScrollIndicator={false}
+    >
+      <View>
+        <View
+          style={
+            [
+              {
+                "alignItems": "center",
+                "borderRadius": 22,
+                "gap": 18,
+                "maxWidth": 380,
+                "paddingBottom": 20,
+                "paddingHorizontal": 22,
+                "paddingTop": 28,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#25252c",
+                "borderColor": "#2e2e38",
+                "borderTopColor": "#a0a0ac",
+                "borderTopWidth": 5,
+                "borderWidth": 0,
+              },
+            ]
+          }
+          testID="game-result"
+        >
+          <View
+            style={
+              {
+                "alignItems": "center",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 26,
+                    "height": 52,
+                    "justifyContent": "center",
+                    "width": 52,
+                  },
+                  {
+                    "backgroundColor": "rgba(160,160,172,0.14)",
+                  },
+                ]
+              }
+            >
+              <Text
+                allowFontScaling={false}
+                selectable={false}
+                style={
+                  [
+                    {
+                      "color": "#a0a0ac",
+                      "fontSize": 26,
+                    },
+                    undefined,
+                    {
+                      "fontFamily": "material-community",
+                      "fontStyle": "normal",
+                      "fontWeight": "normal",
+                    },
+                    {},
+                  ]
+                }
+              >
+                󰍷
+              </Text>
+            </View>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.6,
+                    "textAlign": "center",
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#a0a0ac",
+                  },
+                ]
+              }
+            >
+              SUDOKU · HARD
+            </Text>
+            <Text
+              accessibilityRole="header"
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 32,
+                    "lineHeight": 36,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#a0a0ac",
+                  },
+                ]
+              }
+              testID="game-result-title"
+            >
+              You Lose
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_600SemiBold",
+                    "fontSize": 15,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#a0a0ac",
+                  },
+                ]
+              }
+            >
+              Solved in 12:48
+            </Text>
+          </View>
+          <View
+            accessible={true}
+            style={
+              {
+                "alignItems": "center",
+                "gap": 6,
+              }
+            }
+          >
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.4,
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#a0a0ac",
+                  },
+                ]
+              }
+            >
+              Score
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 52,
+                    "lineHeight": 56,
+                  },
+                  {
+                    "color": "#e8e8f0",
+                  },
+                ]
+              }
+            >
+              4,820
+            </Text>
+          </View>
+          <View
+            style={
+              [
+                {
+                  "alignSelf": "stretch",
+                  "borderRadius": 12,
+                  "flexDirection": "row",
+                },
+                {
+                  "backgroundColor": "#1f1f26",
+                },
+              ]
+            }
+          >
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#e8e8f0",
+                    },
+                  ]
+                }
+              >
+                12:48
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#a0a0ac",
+                    },
+                  ]
+                }
+              >
+                Time
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#e8e8f0",
+                    },
+                  ]
+                }
+              >
+                2
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#a0a0ac",
+                    },
+                  ]
+                }
+              >
+                Errors
+              </Text>
+            </View>
+          </View>
+          <View
+            style={
+              {
+                "alignSelf": "stretch",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              accessibilityLabel="Play Again"
+              accessibilityRole="button"
+              accessibilityState={
+                {
+                  "busy": undefined,
+                  "checked": undefined,
+                  "disabled": false,
+                  "expanded": undefined,
+                  "selected": undefined,
+                }
+              }
+              accessibilityValue={
+                {
+                  "max": undefined,
+                  "min": undefined,
+                  "now": undefined,
+                  "text": undefined,
+                }
+              }
+              accessible={true}
+              collapsable={false}
+              focusable={true}
+              onBlur={[Function]}
+              onClick={[Function]}
+              onFocus={[Function]}
+              onResponderGrant={[Function]}
+              onResponderMove={[Function]}
+              onResponderRelease={[Function]}
+              onResponderTerminate={[Function]}
+              onResponderTerminationRequest={[Function]}
+              onStartShouldSetResponder={[Function]}
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 14,
+                    "flexDirection": "row",
+                    "gap": 8,
+                    "justifyContent": "center",
+                    "minHeight": 52,
+                    "paddingHorizontal": 14,
+                  },
+                  {
+                    "backgroundColor": "#00eefc",
+                  },
+                  {
+                    "transform": [
+                      {
+                        "scale": 1,
+                      },
+                    ],
+                  },
+                ]
+              }
+              testID="game-result-primary"
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_700Bold",
+                      "fontSize": 16,
+                    },
+                    {
+                      "color": "#0e0e13",
+                    },
+                  ]
+                }
+              >
+                Play Again
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "flexDirection": "row",
+                  "gap": 10,
+                }
+              }
+            >
+              <View
+                accessibilityLabel="Home"
+                accessibilityRole="button"
+                accessibilityState={
+                  {
+                    "busy": undefined,
+                    "checked": undefined,
+                    "disabled": false,
+                    "expanded": undefined,
+                    "selected": undefined,
+                  }
+                }
+                accessibilityValue={
+                  {
+                    "max": undefined,
+                    "min": undefined,
+                    "now": undefined,
+                    "text": undefined,
+                  }
+                }
+                accessible={true}
+                collapsable={false}
+                focusable={true}
+                onBlur={[Function]}
+                onClick={[Function]}
+                onFocus={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  [
+                    {
+                      "alignItems": "center",
+                      "borderRadius": 14,
+                      "flexDirection": "row",
+                      "gap": 8,
+                      "justifyContent": "center",
+                      "minHeight": 52,
+                      "paddingHorizontal": 14,
+                    },
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 1.5,
+                    },
+                    {
+                      "flex": 1,
+                      "minWidth": 0,
+                    },
+                    {
+                      "borderColor": "#a0a0ac",
+                      "opacity": 1,
+                    },
+                  ]
+                }
+                testID="game-result-home"
+              >
+                <Text
+                  allowFontScaling={false}
+                  selectable={false}
+                  style={
+                    [
+                      {
+                        "color": "#e8e8f0",
+                        "fontSize": 18,
+                      },
+                      undefined,
+                      {
+                        "fontFamily": "material-community",
+                        "fontStyle": "normal",
+                        "fontWeight": "normal",
+                      },
+                      {},
+                    ]
+                  }
+                >
+                  󰚡
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={
+                    [
+                      {
+                        "flexShrink": 1,
+                        "fontFamily": "Manrope_700Bold",
+                        "fontSize": 16,
+                      },
+                      {
+                        "color": "#e8e8f0",
+                      },
+                    ]
+                  }
+                >
+                  Home
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    </RCTScrollView>
+  </View>
+</Modal>
+`;
+
+exports[`GameResultModal — outcomes dark theme renders win 1`] = `
+<Modal
+  accessibilityViewIsModal={true}
+  animationType="fade"
+  onRequestClose={[MockFunction]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      [
+        {
+          "flex": 1,
+        },
+        {
+          "backgroundColor": "rgba(0,0,0,0.75)",
+        },
+      ]
+    }
+  >
+    <RCTScrollView
+      contentContainerStyle={
+        {
+          "alignItems": "center",
+          "flexGrow": 1,
+          "justifyContent": "center",
+          "paddingHorizontal": 20,
+          "paddingVertical": 40,
+        }
+      }
+      showsVerticalScrollIndicator={false}
+    >
+      <View>
+        <View
+          style={
+            [
+              {
+                "alignItems": "center",
+                "borderRadius": 22,
+                "gap": 18,
+                "maxWidth": 380,
+                "paddingBottom": 20,
+                "paddingHorizontal": 22,
+                "paddingTop": 28,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#25252c",
+                "borderColor": "#2e2e38",
+                "borderTopColor": "#4ade80",
+                "borderTopWidth": 5,
+                "borderWidth": 0,
+              },
+            ]
+          }
+          testID="game-result"
+        >
+          <View
+            style={
+              {
+                "alignItems": "center",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 26,
+                    "height": 52,
+                    "justifyContent": "center",
+                    "width": 52,
+                  },
+                  {
+                    "backgroundColor": "rgba(74,222,128,0.14)",
+                  },
+                ]
+              }
+            >
+              <Text
+                allowFontScaling={false}
+                selectable={false}
+                style={
+                  [
+                    {
+                      "color": "#4ade80",
+                      "fontSize": 26,
+                    },
+                    undefined,
+                    {
+                      "fontFamily": "material-community",
+                      "fontStyle": "normal",
+                      "fontWeight": "normal",
+                    },
+                    {},
+                  ]
+                }
+              >
+                󰔺
+              </Text>
+            </View>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.6,
+                    "textAlign": "center",
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#a0a0ac",
+                  },
+                ]
+              }
+            >
+              SUDOKU · HARD
+            </Text>
+            <Text
+              accessibilityRole="header"
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 32,
+                    "lineHeight": 36,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#4ade80",
+                  },
+                ]
+              }
+              testID="game-result-title"
+            >
+              You Win!
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_600SemiBold",
+                    "fontSize": 15,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#a0a0ac",
+                  },
+                ]
+              }
+            >
+              Solved in 12:48
+            </Text>
+          </View>
+          <View
+            accessible={true}
+            style={
+              {
+                "alignItems": "center",
+                "gap": 6,
+              }
+            }
+          >
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.4,
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#a0a0ac",
+                  },
+                ]
+              }
+            >
+              Score
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 52,
+                    "lineHeight": 56,
+                  },
+                  {
+                    "color": "#e8e8f0",
+                  },
+                ]
+              }
+            >
+              4,820
+            </Text>
+          </View>
+          <View
+            style={
+              [
+                {
+                  "alignSelf": "stretch",
+                  "borderRadius": 12,
+                  "flexDirection": "row",
+                },
+                {
+                  "backgroundColor": "#1f1f26",
+                },
+              ]
+            }
+          >
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#e8e8f0",
+                    },
+                  ]
+                }
+              >
+                12:48
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#a0a0ac",
+                    },
+                  ]
+                }
+              >
+                Time
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#e8e8f0",
+                    },
+                  ]
+                }
+              >
+                2
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#a0a0ac",
+                    },
+                  ]
+                }
+              >
+                Errors
+              </Text>
+            </View>
+          </View>
+          <View
+            style={
+              {
+                "alignSelf": "stretch",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              accessibilityLabel="Play Again"
+              accessibilityRole="button"
+              accessibilityState={
+                {
+                  "busy": undefined,
+                  "checked": undefined,
+                  "disabled": false,
+                  "expanded": undefined,
+                  "selected": undefined,
+                }
+              }
+              accessibilityValue={
+                {
+                  "max": undefined,
+                  "min": undefined,
+                  "now": undefined,
+                  "text": undefined,
+                }
+              }
+              accessible={true}
+              collapsable={false}
+              focusable={true}
+              onBlur={[Function]}
+              onClick={[Function]}
+              onFocus={[Function]}
+              onResponderGrant={[Function]}
+              onResponderMove={[Function]}
+              onResponderRelease={[Function]}
+              onResponderTerminate={[Function]}
+              onResponderTerminationRequest={[Function]}
+              onStartShouldSetResponder={[Function]}
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 14,
+                    "flexDirection": "row",
+                    "gap": 8,
+                    "justifyContent": "center",
+                    "minHeight": 52,
+                    "paddingHorizontal": 14,
+                  },
+                  {
+                    "backgroundColor": "#00eefc",
+                  },
+                  {
+                    "transform": [
+                      {
+                        "scale": 1,
+                      },
+                    ],
+                  },
+                ]
+              }
+              testID="game-result-primary"
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_700Bold",
+                      "fontSize": 16,
+                    },
+                    {
+                      "color": "#0e0e13",
+                    },
+                  ]
+                }
+              >
+                Play Again
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "flexDirection": "row",
+                  "gap": 10,
+                }
+              }
+            >
+              <View
+                accessibilityLabel="Home"
+                accessibilityRole="button"
+                accessibilityState={
+                  {
+                    "busy": undefined,
+                    "checked": undefined,
+                    "disabled": false,
+                    "expanded": undefined,
+                    "selected": undefined,
+                  }
+                }
+                accessibilityValue={
+                  {
+                    "max": undefined,
+                    "min": undefined,
+                    "now": undefined,
+                    "text": undefined,
+                  }
+                }
+                accessible={true}
+                collapsable={false}
+                focusable={true}
+                onBlur={[Function]}
+                onClick={[Function]}
+                onFocus={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  [
+                    {
+                      "alignItems": "center",
+                      "borderRadius": 14,
+                      "flexDirection": "row",
+                      "gap": 8,
+                      "justifyContent": "center",
+                      "minHeight": 52,
+                      "paddingHorizontal": 14,
+                    },
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 1.5,
+                    },
+                    {
+                      "flex": 1,
+                      "minWidth": 0,
+                    },
+                    {
+                      "borderColor": "#a0a0ac",
+                      "opacity": 1,
+                    },
+                  ]
+                }
+                testID="game-result-home"
+              >
+                <Text
+                  allowFontScaling={false}
+                  selectable={false}
+                  style={
+                    [
+                      {
+                        "color": "#e8e8f0",
+                        "fontSize": 18,
+                      },
+                      undefined,
+                      {
+                        "fontFamily": "material-community",
+                        "fontStyle": "normal",
+                        "fontWeight": "normal",
+                      },
+                      {},
+                    ]
+                  }
+                >
+                  󰚡
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={
+                    [
+                      {
+                        "flexShrink": 1,
+                        "fontFamily": "Manrope_700Bold",
+                        "fontSize": 16,
+                      },
+                      {
+                        "color": "#e8e8f0",
+                      },
+                    ]
+                  }
+                >
+                  Home
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    </RCTScrollView>
+  </View>
+</Modal>
+`;
+
+exports[`GameResultModal — outcomes light theme renders draw 1`] = `
+<Modal
+  accessibilityViewIsModal={true}
+  animationType="fade"
+  onRequestClose={[MockFunction]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      [
+        {
+          "flex": 1,
+        },
+        {
+          "backgroundColor": "rgba(0,0,0,0.5)",
+        },
+      ]
+    }
+  >
+    <RCTScrollView
+      contentContainerStyle={
+        {
+          "alignItems": "center",
+          "flexGrow": 1,
+          "justifyContent": "center",
+          "paddingHorizontal": 20,
+          "paddingVertical": 40,
+        }
+      }
+      showsVerticalScrollIndicator={false}
+    >
+      <View>
+        <View
+          style={
+            [
+              {
+                "alignItems": "center",
+                "borderRadius": 22,
+                "gap": 18,
+                "maxWidth": 380,
+                "paddingBottom": 20,
+                "paddingHorizontal": 22,
+                "paddingTop": 28,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#fff8e8",
+                "borderColor": "#d8c9a6",
+                "borderTopColor": "#8a3fb0",
+                "borderTopWidth": 5,
+                "borderWidth": 1,
+              },
+            ]
+          }
+          testID="game-result"
+        >
+          <View
+            style={
+              {
+                "alignItems": "center",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 26,
+                    "height": 52,
+                    "justifyContent": "center",
+                    "width": 52,
+                  },
+                  {
+                    "backgroundColor": "rgba(138,63,176,0.10)",
+                  },
+                ]
+              }
+            >
+              <Text
+                allowFontScaling={false}
+                selectable={false}
+                style={
+                  [
+                    {
+                      "color": "#8a3fb0",
+                      "fontSize": 26,
+                    },
+                    undefined,
+                    {
+                      "fontFamily": "material-community",
+                      "fontStyle": "normal",
+                      "fontWeight": "normal",
+                    },
+                    {},
+                  ]
+                }
+              >
+                󰇼
+              </Text>
+            </View>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.6,
+                    "textAlign": "center",
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#6b5e4a",
+                  },
+                ]
+              }
+            >
+              SUDOKU · HARD
+            </Text>
+            <Text
+              accessibilityRole="header"
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 32,
+                    "lineHeight": 36,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#8a3fb0",
+                  },
+                ]
+              }
+              testID="game-result-title"
+            >
+              It's a Tie!
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_600SemiBold",
+                    "fontSize": 15,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#6b5e4a",
+                  },
+                ]
+              }
+            >
+              Solved in 12:48
+            </Text>
+          </View>
+          <View
+            accessible={true}
+            style={
+              {
+                "alignItems": "center",
+                "gap": 6,
+              }
+            }
+          >
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.4,
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#6b5e4a",
+                  },
+                ]
+              }
+            >
+              Score
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 52,
+                    "lineHeight": 56,
+                  },
+                  {
+                    "color": "#1a1412",
+                  },
+                ]
+              }
+            >
+              4,820
+            </Text>
+          </View>
+          <View
+            style={
+              [
+                {
+                  "alignSelf": "stretch",
+                  "borderRadius": 12,
+                  "flexDirection": "row",
+                },
+                {
+                  "backgroundColor": "#eddfbf",
+                },
+              ]
+            }
+          >
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#1a1412",
+                    },
+                  ]
+                }
+              >
+                12:48
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#6b5e4a",
+                    },
+                  ]
+                }
+              >
+                Time
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#1a1412",
+                    },
+                  ]
+                }
+              >
+                2
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#6b5e4a",
+                    },
+                  ]
+                }
+              >
+                Errors
+              </Text>
+            </View>
+          </View>
+          <View
+            style={
+              {
+                "alignSelf": "stretch",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              accessibilityLabel="Play Again"
+              accessibilityRole="button"
+              accessibilityState={
+                {
+                  "busy": undefined,
+                  "checked": undefined,
+                  "disabled": false,
+                  "expanded": undefined,
+                  "selected": undefined,
+                }
+              }
+              accessibilityValue={
+                {
+                  "max": undefined,
+                  "min": undefined,
+                  "now": undefined,
+                  "text": undefined,
+                }
+              }
+              accessible={true}
+              collapsable={false}
+              focusable={true}
+              onBlur={[Function]}
+              onClick={[Function]}
+              onFocus={[Function]}
+              onResponderGrant={[Function]}
+              onResponderMove={[Function]}
+              onResponderRelease={[Function]}
+              onResponderTerminate={[Function]}
+              onResponderTerminationRequest={[Function]}
+              onStartShouldSetResponder={[Function]}
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 14,
+                    "flexDirection": "row",
+                    "gap": 8,
+                    "justifyContent": "center",
+                    "minHeight": 52,
+                    "paddingHorizontal": 14,
+                  },
+                  {
+                    "backgroundColor": "#00a8b8",
+                  },
+                  {
+                    "transform": [
+                      {
+                        "scale": 1,
+                      },
+                    ],
+                  },
+                ]
+              }
+              testID="game-result-primary"
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_700Bold",
+                      "fontSize": 16,
+                    },
+                    {
+                      "color": "#0e0e13",
+                    },
+                  ]
+                }
+              >
+                Play Again
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "flexDirection": "row",
+                  "gap": 10,
+                }
+              }
+            >
+              <View
+                accessibilityLabel="Home"
+                accessibilityRole="button"
+                accessibilityState={
+                  {
+                    "busy": undefined,
+                    "checked": undefined,
+                    "disabled": false,
+                    "expanded": undefined,
+                    "selected": undefined,
+                  }
+                }
+                accessibilityValue={
+                  {
+                    "max": undefined,
+                    "min": undefined,
+                    "now": undefined,
+                    "text": undefined,
+                  }
+                }
+                accessible={true}
+                collapsable={false}
+                focusable={true}
+                onBlur={[Function]}
+                onClick={[Function]}
+                onFocus={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  [
+                    {
+                      "alignItems": "center",
+                      "borderRadius": 14,
+                      "flexDirection": "row",
+                      "gap": 8,
+                      "justifyContent": "center",
+                      "minHeight": 52,
+                      "paddingHorizontal": 14,
+                    },
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 1.5,
+                    },
+                    {
+                      "flex": 1,
+                      "minWidth": 0,
+                    },
+                    {
+                      "borderColor": "#6b5e4a",
+                      "opacity": 1,
+                    },
+                  ]
+                }
+                testID="game-result-home"
+              >
+                <Text
+                  allowFontScaling={false}
+                  selectable={false}
+                  style={
+                    [
+                      {
+                        "color": "#1a1412",
+                        "fontSize": 18,
+                      },
+                      undefined,
+                      {
+                        "fontFamily": "material-community",
+                        "fontStyle": "normal",
+                        "fontWeight": "normal",
+                      },
+                      {},
+                    ]
+                  }
+                >
+                  󰚡
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={
+                    [
+                      {
+                        "flexShrink": 1,
+                        "fontFamily": "Manrope_700Bold",
+                        "fontSize": 16,
+                      },
+                      {
+                        "color": "#1a1412",
+                      },
+                    ]
+                  }
+                >
+                  Home
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    </RCTScrollView>
+  </View>
+</Modal>
+`;
+
+exports[`GameResultModal — outcomes light theme renders ended 1`] = `
+<Modal
+  accessibilityViewIsModal={true}
+  animationType="fade"
+  onRequestClose={[MockFunction]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      [
+        {
+          "flex": 1,
+        },
+        {
+          "backgroundColor": "rgba(0,0,0,0.5)",
+        },
+      ]
+    }
+  >
+    <RCTScrollView
+      contentContainerStyle={
+        {
+          "alignItems": "center",
+          "flexGrow": 1,
+          "justifyContent": "center",
+          "paddingHorizontal": 20,
+          "paddingVertical": 40,
+        }
+      }
+      showsVerticalScrollIndicator={false}
+    >
+      <View>
+        <View
+          style={
+            [
+              {
+                "alignItems": "center",
+                "borderRadius": 22,
+                "gap": 18,
+                "maxWidth": 380,
+                "paddingBottom": 20,
+                "paddingHorizontal": 22,
+                "paddingTop": 28,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#fff8e8",
+                "borderColor": "#d8c9a6",
+                "borderTopColor": "#00737e",
+                "borderTopWidth": 5,
+                "borderWidth": 1,
+              },
+            ]
+          }
+          testID="game-result"
+        >
+          <View
+            style={
+              {
+                "alignItems": "center",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 26,
+                    "height": 52,
+                    "justifyContent": "center",
+                    "width": 52,
+                  },
+                  {
+                    "backgroundColor": "rgba(0,115,126,0.10)",
+                  },
+                ]
+              }
+            >
+              <Text
+                allowFontScaling={false}
+                selectable={false}
+                style={
+                  [
+                    {
+                      "color": "#00737e",
+                      "fontSize": 26,
+                    },
+                    undefined,
+                    {
+                      "fontFamily": "material-community",
+                      "fontStyle": "normal",
+                      "fontWeight": "normal",
+                    },
+                    {},
+                  ]
+                }
+              >
+                󰈽
+              </Text>
+            </View>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.6,
+                    "textAlign": "center",
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#6b5e4a",
+                  },
+                ]
+              }
+            >
+              SUDOKU · HARD
+            </Text>
+            <Text
+              accessibilityRole="header"
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 32,
+                    "lineHeight": 36,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#00737e",
+                  },
+                ]
+              }
+              testID="game-result-title"
+            >
+              Game Over
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_600SemiBold",
+                    "fontSize": 15,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#6b5e4a",
+                  },
+                ]
+              }
+            >
+              Solved in 12:48
+            </Text>
+          </View>
+          <View
+            accessible={true}
+            style={
+              {
+                "alignItems": "center",
+                "gap": 6,
+              }
+            }
+          >
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.4,
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#6b5e4a",
+                  },
+                ]
+              }
+            >
+              Score
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 52,
+                    "lineHeight": 56,
+                  },
+                  {
+                    "color": "#1a1412",
+                  },
+                ]
+              }
+            >
+              4,820
+            </Text>
+          </View>
+          <View
+            style={
+              [
+                {
+                  "alignSelf": "stretch",
+                  "borderRadius": 12,
+                  "flexDirection": "row",
+                },
+                {
+                  "backgroundColor": "#eddfbf",
+                },
+              ]
+            }
+          >
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#1a1412",
+                    },
+                  ]
+                }
+              >
+                12:48
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#6b5e4a",
+                    },
+                  ]
+                }
+              >
+                Time
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#1a1412",
+                    },
+                  ]
+                }
+              >
+                2
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#6b5e4a",
+                    },
+                  ]
+                }
+              >
+                Errors
+              </Text>
+            </View>
+          </View>
+          <View
+            style={
+              {
+                "alignSelf": "stretch",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              accessibilityLabel="Play Again"
+              accessibilityRole="button"
+              accessibilityState={
+                {
+                  "busy": undefined,
+                  "checked": undefined,
+                  "disabled": false,
+                  "expanded": undefined,
+                  "selected": undefined,
+                }
+              }
+              accessibilityValue={
+                {
+                  "max": undefined,
+                  "min": undefined,
+                  "now": undefined,
+                  "text": undefined,
+                }
+              }
+              accessible={true}
+              collapsable={false}
+              focusable={true}
+              onBlur={[Function]}
+              onClick={[Function]}
+              onFocus={[Function]}
+              onResponderGrant={[Function]}
+              onResponderMove={[Function]}
+              onResponderRelease={[Function]}
+              onResponderTerminate={[Function]}
+              onResponderTerminationRequest={[Function]}
+              onStartShouldSetResponder={[Function]}
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 14,
+                    "flexDirection": "row",
+                    "gap": 8,
+                    "justifyContent": "center",
+                    "minHeight": 52,
+                    "paddingHorizontal": 14,
+                  },
+                  {
+                    "backgroundColor": "#00a8b8",
+                  },
+                  {
+                    "transform": [
+                      {
+                        "scale": 1,
+                      },
+                    ],
+                  },
+                ]
+              }
+              testID="game-result-primary"
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_700Bold",
+                      "fontSize": 16,
+                    },
+                    {
+                      "color": "#0e0e13",
+                    },
+                  ]
+                }
+              >
+                Play Again
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "flexDirection": "row",
+                  "gap": 10,
+                }
+              }
+            >
+              <View
+                accessibilityLabel="Home"
+                accessibilityRole="button"
+                accessibilityState={
+                  {
+                    "busy": undefined,
+                    "checked": undefined,
+                    "disabled": false,
+                    "expanded": undefined,
+                    "selected": undefined,
+                  }
+                }
+                accessibilityValue={
+                  {
+                    "max": undefined,
+                    "min": undefined,
+                    "now": undefined,
+                    "text": undefined,
+                  }
+                }
+                accessible={true}
+                collapsable={false}
+                focusable={true}
+                onBlur={[Function]}
+                onClick={[Function]}
+                onFocus={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  [
+                    {
+                      "alignItems": "center",
+                      "borderRadius": 14,
+                      "flexDirection": "row",
+                      "gap": 8,
+                      "justifyContent": "center",
+                      "minHeight": 52,
+                      "paddingHorizontal": 14,
+                    },
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 1.5,
+                    },
+                    {
+                      "flex": 1,
+                      "minWidth": 0,
+                    },
+                    {
+                      "borderColor": "#6b5e4a",
+                      "opacity": 1,
+                    },
+                  ]
+                }
+                testID="game-result-home"
+              >
+                <Text
+                  allowFontScaling={false}
+                  selectable={false}
+                  style={
+                    [
+                      {
+                        "color": "#1a1412",
+                        "fontSize": 18,
+                      },
+                      undefined,
+                      {
+                        "fontFamily": "material-community",
+                        "fontStyle": "normal",
+                        "fontWeight": "normal",
+                      },
+                      {},
+                    ]
+                  }
+                >
+                  󰚡
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={
+                    [
+                      {
+                        "flexShrink": 1,
+                        "fontFamily": "Manrope_700Bold",
+                        "fontSize": 16,
+                      },
+                      {
+                        "color": "#1a1412",
+                      },
+                    ]
+                  }
+                >
+                  Home
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    </RCTScrollView>
+  </View>
+</Modal>
+`;
+
+exports[`GameResultModal — outcomes light theme renders loss 1`] = `
+<Modal
+  accessibilityViewIsModal={true}
+  animationType="fade"
+  onRequestClose={[MockFunction]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      [
+        {
+          "flex": 1,
+        },
+        {
+          "backgroundColor": "rgba(0,0,0,0.5)",
+        },
+      ]
+    }
+  >
+    <RCTScrollView
+      contentContainerStyle={
+        {
+          "alignItems": "center",
+          "flexGrow": 1,
+          "justifyContent": "center",
+          "paddingHorizontal": 20,
+          "paddingVertical": 40,
+        }
+      }
+      showsVerticalScrollIndicator={false}
+    >
+      <View>
+        <View
+          style={
+            [
+              {
+                "alignItems": "center",
+                "borderRadius": 22,
+                "gap": 18,
+                "maxWidth": 380,
+                "paddingBottom": 20,
+                "paddingHorizontal": 22,
+                "paddingTop": 28,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#fff8e8",
+                "borderColor": "#d8c9a6",
+                "borderTopColor": "#6b5e4a",
+                "borderTopWidth": 5,
+                "borderWidth": 1,
+              },
+            ]
+          }
+          testID="game-result"
+        >
+          <View
+            style={
+              {
+                "alignItems": "center",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 26,
+                    "height": 52,
+                    "justifyContent": "center",
+                    "width": 52,
+                  },
+                  {
+                    "backgroundColor": "rgba(107,94,74,0.12)",
+                  },
+                ]
+              }
+            >
+              <Text
+                allowFontScaling={false}
+                selectable={false}
+                style={
+                  [
+                    {
+                      "color": "#6b5e4a",
+                      "fontSize": 26,
+                    },
+                    undefined,
+                    {
+                      "fontFamily": "material-community",
+                      "fontStyle": "normal",
+                      "fontWeight": "normal",
+                    },
+                    {},
+                  ]
+                }
+              >
+                󰍷
+              </Text>
+            </View>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.6,
+                    "textAlign": "center",
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#6b5e4a",
+                  },
+                ]
+              }
+            >
+              SUDOKU · HARD
+            </Text>
+            <Text
+              accessibilityRole="header"
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 32,
+                    "lineHeight": 36,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#6b5e4a",
+                  },
+                ]
+              }
+              testID="game-result-title"
+            >
+              You Lose
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_600SemiBold",
+                    "fontSize": 15,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#6b5e4a",
+                  },
+                ]
+              }
+            >
+              Solved in 12:48
+            </Text>
+          </View>
+          <View
+            accessible={true}
+            style={
+              {
+                "alignItems": "center",
+                "gap": 6,
+              }
+            }
+          >
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.4,
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#6b5e4a",
+                  },
+                ]
+              }
+            >
+              Score
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 52,
+                    "lineHeight": 56,
+                  },
+                  {
+                    "color": "#1a1412",
+                  },
+                ]
+              }
+            >
+              4,820
+            </Text>
+          </View>
+          <View
+            style={
+              [
+                {
+                  "alignSelf": "stretch",
+                  "borderRadius": 12,
+                  "flexDirection": "row",
+                },
+                {
+                  "backgroundColor": "#eddfbf",
+                },
+              ]
+            }
+          >
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#1a1412",
+                    },
+                  ]
+                }
+              >
+                12:48
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#6b5e4a",
+                    },
+                  ]
+                }
+              >
+                Time
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#1a1412",
+                    },
+                  ]
+                }
+              >
+                2
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#6b5e4a",
+                    },
+                  ]
+                }
+              >
+                Errors
+              </Text>
+            </View>
+          </View>
+          <View
+            style={
+              {
+                "alignSelf": "stretch",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              accessibilityLabel="Play Again"
+              accessibilityRole="button"
+              accessibilityState={
+                {
+                  "busy": undefined,
+                  "checked": undefined,
+                  "disabled": false,
+                  "expanded": undefined,
+                  "selected": undefined,
+                }
+              }
+              accessibilityValue={
+                {
+                  "max": undefined,
+                  "min": undefined,
+                  "now": undefined,
+                  "text": undefined,
+                }
+              }
+              accessible={true}
+              collapsable={false}
+              focusable={true}
+              onBlur={[Function]}
+              onClick={[Function]}
+              onFocus={[Function]}
+              onResponderGrant={[Function]}
+              onResponderMove={[Function]}
+              onResponderRelease={[Function]}
+              onResponderTerminate={[Function]}
+              onResponderTerminationRequest={[Function]}
+              onStartShouldSetResponder={[Function]}
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 14,
+                    "flexDirection": "row",
+                    "gap": 8,
+                    "justifyContent": "center",
+                    "minHeight": 52,
+                    "paddingHorizontal": 14,
+                  },
+                  {
+                    "backgroundColor": "#00a8b8",
+                  },
+                  {
+                    "transform": [
+                      {
+                        "scale": 1,
+                      },
+                    ],
+                  },
+                ]
+              }
+              testID="game-result-primary"
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_700Bold",
+                      "fontSize": 16,
+                    },
+                    {
+                      "color": "#0e0e13",
+                    },
+                  ]
+                }
+              >
+                Play Again
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "flexDirection": "row",
+                  "gap": 10,
+                }
+              }
+            >
+              <View
+                accessibilityLabel="Home"
+                accessibilityRole="button"
+                accessibilityState={
+                  {
+                    "busy": undefined,
+                    "checked": undefined,
+                    "disabled": false,
+                    "expanded": undefined,
+                    "selected": undefined,
+                  }
+                }
+                accessibilityValue={
+                  {
+                    "max": undefined,
+                    "min": undefined,
+                    "now": undefined,
+                    "text": undefined,
+                  }
+                }
+                accessible={true}
+                collapsable={false}
+                focusable={true}
+                onBlur={[Function]}
+                onClick={[Function]}
+                onFocus={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  [
+                    {
+                      "alignItems": "center",
+                      "borderRadius": 14,
+                      "flexDirection": "row",
+                      "gap": 8,
+                      "justifyContent": "center",
+                      "minHeight": 52,
+                      "paddingHorizontal": 14,
+                    },
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 1.5,
+                    },
+                    {
+                      "flex": 1,
+                      "minWidth": 0,
+                    },
+                    {
+                      "borderColor": "#6b5e4a",
+                      "opacity": 1,
+                    },
+                  ]
+                }
+                testID="game-result-home"
+              >
+                <Text
+                  allowFontScaling={false}
+                  selectable={false}
+                  style={
+                    [
+                      {
+                        "color": "#1a1412",
+                        "fontSize": 18,
+                      },
+                      undefined,
+                      {
+                        "fontFamily": "material-community",
+                        "fontStyle": "normal",
+                        "fontWeight": "normal",
+                      },
+                      {},
+                    ]
+                  }
+                >
+                  󰚡
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={
+                    [
+                      {
+                        "flexShrink": 1,
+                        "fontFamily": "Manrope_700Bold",
+                        "fontSize": 16,
+                      },
+                      {
+                        "color": "#1a1412",
+                      },
+                    ]
+                  }
+                >
+                  Home
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    </RCTScrollView>
+  </View>
+</Modal>
+`;
+
+exports[`GameResultModal — outcomes light theme renders win 1`] = `
+<Modal
+  accessibilityViewIsModal={true}
+  animationType="fade"
+  onRequestClose={[MockFunction]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      [
+        {
+          "flex": 1,
+        },
+        {
+          "backgroundColor": "rgba(0,0,0,0.5)",
+        },
+      ]
+    }
+  >
+    <RCTScrollView
+      contentContainerStyle={
+        {
+          "alignItems": "center",
+          "flexGrow": 1,
+          "justifyContent": "center",
+          "paddingHorizontal": 20,
+          "paddingVertical": 40,
+        }
+      }
+      showsVerticalScrollIndicator={false}
+    >
+      <View>
+        <View
+          style={
+            [
+              {
+                "alignItems": "center",
+                "borderRadius": 22,
+                "gap": 18,
+                "maxWidth": 380,
+                "paddingBottom": 20,
+                "paddingHorizontal": 22,
+                "paddingTop": 28,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#fff8e8",
+                "borderColor": "#d8c9a6",
+                "borderTopColor": "#1f7a3c",
+                "borderTopWidth": 5,
+                "borderWidth": 1,
+              },
+            ]
+          }
+          testID="game-result"
+        >
+          <View
+            style={
+              {
+                "alignItems": "center",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 26,
+                    "height": 52,
+                    "justifyContent": "center",
+                    "width": 52,
+                  },
+                  {
+                    "backgroundColor": "rgba(31,122,60,0.12)",
+                  },
+                ]
+              }
+            >
+              <Text
+                allowFontScaling={false}
+                selectable={false}
+                style={
+                  [
+                    {
+                      "color": "#1f7a3c",
+                      "fontSize": 26,
+                    },
+                    undefined,
+                    {
+                      "fontFamily": "material-community",
+                      "fontStyle": "normal",
+                      "fontWeight": "normal",
+                    },
+                    {},
+                  ]
+                }
+              >
+                󰔺
+              </Text>
+            </View>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.6,
+                    "textAlign": "center",
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#6b5e4a",
+                  },
+                ]
+              }
+            >
+              SUDOKU · HARD
+            </Text>
+            <Text
+              accessibilityRole="header"
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 32,
+                    "lineHeight": 36,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#1f7a3c",
+                  },
+                ]
+              }
+              testID="game-result-title"
+            >
+              You Win!
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_600SemiBold",
+                    "fontSize": 15,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#6b5e4a",
+                  },
+                ]
+              }
+            >
+              Solved in 12:48
+            </Text>
+          </View>
+          <View
+            accessible={true}
+            style={
+              {
+                "alignItems": "center",
+                "gap": 6,
+              }
+            }
+          >
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "Manrope_700Bold",
+                    "fontSize": 12,
+                    "letterSpacing": 1.4,
+                    "textTransform": "uppercase",
+                  },
+                  {
+                    "color": "#6b5e4a",
+                  },
+                ]
+              }
+            >
+              Score
+            </Text>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 52,
+                    "lineHeight": 56,
+                  },
+                  {
+                    "color": "#1a1412",
+                  },
+                ]
+              }
+            >
+              4,820
+            </Text>
+          </View>
+          <View
+            style={
+              [
+                {
+                  "alignSelf": "stretch",
+                  "borderRadius": 12,
+                  "flexDirection": "row",
+                },
+                {
+                  "backgroundColor": "#eddfbf",
+                },
+              ]
+            }
+          >
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#1a1412",
+                    },
+                  ]
+                }
+              >
+                12:48
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#6b5e4a",
+                    },
+                  ]
+                }
+              >
+                Time
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 2,
+                  "paddingHorizontal": 4,
+                  "paddingVertical": 10,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 18,
+                    },
+                    {
+                      "color": "#1a1412",
+                    },
+                  ]
+                }
+              >
+                2
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 12,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#6b5e4a",
+                    },
+                  ]
+                }
+              >
+                Errors
+              </Text>
+            </View>
+          </View>
+          <View
+            style={
+              {
+                "alignSelf": "stretch",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              accessibilityLabel="Play Again"
+              accessibilityRole="button"
+              accessibilityState={
+                {
+                  "busy": undefined,
+                  "checked": undefined,
+                  "disabled": false,
+                  "expanded": undefined,
+                  "selected": undefined,
+                }
+              }
+              accessibilityValue={
+                {
+                  "max": undefined,
+                  "min": undefined,
+                  "now": undefined,
+                  "text": undefined,
+                }
+              }
+              accessible={true}
+              collapsable={false}
+              focusable={true}
+              onBlur={[Function]}
+              onClick={[Function]}
+              onFocus={[Function]}
+              onResponderGrant={[Function]}
+              onResponderMove={[Function]}
+              onResponderRelease={[Function]}
+              onResponderTerminate={[Function]}
+              onResponderTerminationRequest={[Function]}
+              onStartShouldSetResponder={[Function]}
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 14,
+                    "flexDirection": "row",
+                    "gap": 8,
+                    "justifyContent": "center",
+                    "minHeight": 52,
+                    "paddingHorizontal": 14,
+                  },
+                  {
+                    "backgroundColor": "#00a8b8",
+                  },
+                  {
+                    "transform": [
+                      {
+                        "scale": 1,
+                      },
+                    ],
+                  },
+                ]
+              }
+              testID="game-result-primary"
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_700Bold",
+                      "fontSize": 16,
+                    },
+                    {
+                      "color": "#0e0e13",
+                    },
+                  ]
+                }
+              >
+                Play Again
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "flexDirection": "row",
+                  "gap": 10,
+                }
+              }
+            >
+              <View
+                accessibilityLabel="Home"
+                accessibilityRole="button"
+                accessibilityState={
+                  {
+                    "busy": undefined,
+                    "checked": undefined,
+                    "disabled": false,
+                    "expanded": undefined,
+                    "selected": undefined,
+                  }
+                }
+                accessibilityValue={
+                  {
+                    "max": undefined,
+                    "min": undefined,
+                    "now": undefined,
+                    "text": undefined,
+                  }
+                }
+                accessible={true}
+                collapsable={false}
+                focusable={true}
+                onBlur={[Function]}
+                onClick={[Function]}
+                onFocus={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  [
+                    {
+                      "alignItems": "center",
+                      "borderRadius": 14,
+                      "flexDirection": "row",
+                      "gap": 8,
+                      "justifyContent": "center",
+                      "minHeight": 52,
+                      "paddingHorizontal": 14,
+                    },
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 1.5,
+                    },
+                    {
+                      "flex": 1,
+                      "minWidth": 0,
+                    },
+                    {
+                      "borderColor": "#6b5e4a",
+                      "opacity": 1,
+                    },
+                  ]
+                }
+                testID="game-result-home"
+              >
+                <Text
+                  allowFontScaling={false}
+                  selectable={false}
+                  style={
+                    [
+                      {
+                        "color": "#1a1412",
+                        "fontSize": 18,
+                      },
+                      undefined,
+                      {
+                        "fontFamily": "material-community",
+                        "fontStyle": "normal",
+                        "fontWeight": "normal",
+                      },
+                      {},
+                    ]
+                  }
+                >
+                  󰚡
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={
+                    [
+                      {
+                        "flexShrink": 1,
+                        "fontFamily": "Manrope_700Bold",
+                        "fontSize": 16,
+                      },
+                      {
+                        "color": "#1a1412",
+                      },
+                    ]
+                  }
+                >
+                  Home
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    </RCTScrollView>
+  </View>
+</Modal>
+`;
+
+exports[`GameResultModal — submission line shows the offline state 1`] = `
+<Modal
+  accessibilityViewIsModal={true}
+  animationType="fade"
+  onRequestClose={[MockFunction]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      [
+        {
+          "flex": 1,
+        },
+        {
+          "backgroundColor": "rgba(0,0,0,0.75)",
+        },
+      ]
+    }
+  >
+    <RCTScrollView
+      contentContainerStyle={
+        {
+          "alignItems": "center",
+          "flexGrow": 1,
+          "justifyContent": "center",
+          "paddingHorizontal": 20,
+          "paddingVertical": 40,
+        }
+      }
+      showsVerticalScrollIndicator={false}
+    >
+      <View>
+        <View
+          style={
+            [
+              {
+                "alignItems": "center",
+                "borderRadius": 22,
+                "gap": 18,
+                "maxWidth": 380,
+                "paddingBottom": 20,
+                "paddingHorizontal": 22,
+                "paddingTop": 28,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#25252c",
+                "borderColor": "#2e2e38",
+                "borderTopColor": "#4ade80",
+                "borderTopWidth": 5,
+                "borderWidth": 0,
+              },
+            ]
+          }
+          testID="game-result"
+        >
+          <View
+            style={
+              {
+                "alignItems": "center",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 26,
+                    "height": 52,
+                    "justifyContent": "center",
+                    "width": 52,
+                  },
+                  {
+                    "backgroundColor": "rgba(74,222,128,0.14)",
+                  },
+                ]
+              }
+            >
+              <Text
+                allowFontScaling={false}
+                selectable={false}
+                style={
+                  [
+                    {
+                      "color": "#4ade80",
+                      "fontSize": 26,
+                    },
+                    undefined,
+                    {
+                      "fontFamily": "material-community",
+                      "fontStyle": "normal",
+                      "fontWeight": "normal",
+                    },
+                    {},
+                  ]
+                }
+              >
+                󰔺
+              </Text>
+            </View>
+            <Text
+              accessibilityRole="header"
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 32,
+                    "lineHeight": 36,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#4ade80",
+                  },
+                ]
+              }
+              testID="game-result-title"
+            >
+              You Win!
+            </Text>
+          </View>
+          <View
+            style={
+              {
+                "alignItems": "center",
+                "gap": 6,
+              }
+            }
+          >
+            <View
+              accessibilityLiveRegion="polite"
+              accessibilityRole="text"
+              accessible={true}
+              style={
+                {
+                  "alignItems": "center",
+                  "flexDirection": "row",
+                  "gap": 6,
+                  "justifyContent": "center",
+                }
+              }
+            >
+              <Text
+                allowFontScaling={false}
+                selectable={false}
+                style={
+                  [
+                    {
+                      "color": "#a0a0ac",
+                      "fontSize": 16,
+                    },
+                    undefined,
+                    {
+                      "fontFamily": "material-community",
+                      "fontStyle": "normal",
+                      "fontWeight": "normal",
+                    },
+                    {},
+                  ]
+                }
+              >
+                󰅤
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_600SemiBold",
+                      "fontSize": 13,
+                      "textAlign": "center",
+                    },
+                    {
+                      "color": "#a0a0ac",
+                    },
+                  ]
+                }
+              >
+                Saved offline · syncs when you're back online
+              </Text>
+            </View>
+          </View>
+          <View
+            style={
+              {
+                "alignSelf": "stretch",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              style={
+                {
+                  "flexDirection": "row",
+                  "gap": 10,
+                }
+              }
+            >
+              <View
+                accessibilityLabel="Home"
+                accessibilityRole="button"
+                accessibilityState={
+                  {
+                    "busy": undefined,
+                    "checked": undefined,
+                    "disabled": false,
+                    "expanded": undefined,
+                    "selected": undefined,
+                  }
+                }
+                accessibilityValue={
+                  {
+                    "max": undefined,
+                    "min": undefined,
+                    "now": undefined,
+                    "text": undefined,
+                  }
+                }
+                accessible={true}
+                collapsable={false}
+                focusable={true}
+                onBlur={[Function]}
+                onClick={[Function]}
+                onFocus={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  [
+                    {
+                      "alignItems": "center",
+                      "borderRadius": 14,
+                      "flexDirection": "row",
+                      "gap": 8,
+                      "justifyContent": "center",
+                      "minHeight": 52,
+                      "paddingHorizontal": 14,
+                    },
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 1.5,
+                    },
+                    {
+                      "flex": 1,
+                      "minWidth": 0,
+                    },
+                    {
+                      "borderColor": "#a0a0ac",
+                      "opacity": 1,
+                    },
+                  ]
+                }
+                testID="game-result-home"
+              >
+                <Text
+                  allowFontScaling={false}
+                  selectable={false}
+                  style={
+                    [
+                      {
+                        "color": "#e8e8f0",
+                        "fontSize": 18,
+                      },
+                      undefined,
+                      {
+                        "fontFamily": "material-community",
+                        "fontStyle": "normal",
+                        "fontWeight": "normal",
+                      },
+                      {},
+                    ]
+                  }
+                >
+                  󰚡
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={
+                    [
+                      {
+                        "flexShrink": 1,
+                        "fontFamily": "Manrope_700Bold",
+                        "fontSize": 16,
+                      },
+                      {
+                        "color": "#e8e8f0",
+                      },
+                    ]
+                  }
+                >
+                  Home
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    </RCTScrollView>
+  </View>
+</Modal>
+`;
+
+exports[`GameResultModal — submission line shows the one-time name prompt and hands the saved name back 1`] = `
+<Modal
+  accessibilityViewIsModal={true}
+  animationType="fade"
+  onRequestClose={[MockFunction]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      [
+        {
+          "flex": 1,
+        },
+        {
+          "backgroundColor": "rgba(0,0,0,0.75)",
+        },
+      ]
+    }
+  >
+    <RCTScrollView
+      contentContainerStyle={
+        {
+          "alignItems": "center",
+          "flexGrow": 1,
+          "justifyContent": "center",
+          "paddingHorizontal": 20,
+          "paddingVertical": 40,
+        }
+      }
+      showsVerticalScrollIndicator={false}
+    >
+      <View>
+        <View
+          style={
+            [
+              {
+                "alignItems": "center",
+                "borderRadius": 22,
+                "gap": 18,
+                "maxWidth": 380,
+                "paddingBottom": 20,
+                "paddingHorizontal": 22,
+                "paddingTop": 28,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#25252c",
+                "borderColor": "#2e2e38",
+                "borderTopColor": "#4ade80",
+                "borderTopWidth": 5,
+                "borderWidth": 0,
+              },
+            ]
+          }
+          testID="game-result"
+        >
+          <View
+            style={
+              {
+                "alignItems": "center",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 26,
+                    "height": 52,
+                    "justifyContent": "center",
+                    "width": 52,
+                  },
+                  {
+                    "backgroundColor": "rgba(74,222,128,0.14)",
+                  },
+                ]
+              }
+            >
+              <Text
+                allowFontScaling={false}
+                selectable={false}
+                style={
+                  [
+                    {
+                      "color": "#4ade80",
+                      "fontSize": 26,
+                    },
+                    undefined,
+                    {
+                      "fontFamily": "material-community",
+                      "fontStyle": "normal",
+                      "fontWeight": "normal",
+                    },
+                    {},
+                  ]
+                }
+              >
+                󰔺
+              </Text>
+            </View>
+            <Text
+              accessibilityRole="header"
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 32,
+                    "lineHeight": 36,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#4ade80",
+                  },
+                ]
+              }
+              testID="game-result-title"
+            >
+              You Win!
+            </Text>
+          </View>
+          <View
+            style={
+              [
+                {
+                  "alignSelf": "stretch",
+                  "borderRadius": 12,
+                  "padding": 14,
+                },
+                {
+                  "backgroundColor": "#1f1f26",
+                },
+              ]
+            }
+          >
+            <View
+              style={
+                {
+                  "gap": 8,
+                }
+              }
+              testID="result-name-prompt"
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_700Bold",
+                      "fontSize": 13,
+                      "letterSpacing": 0.8,
+                      "textTransform": "uppercase",
+                    },
+                    {
+                      "color": "#a0a0ac",
+                    },
+                  ]
+                }
+              >
+                Pick a display name for leaderboards
+              </Text>
+              <View
+                style={
+                  {
+                    "flexDirection": "row",
+                    "gap": 8,
+                  }
+                }
+              >
+                <TextInput
+                  accessibilityLabel="Pick a display name for leaderboards"
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  maxLength={32}
+                  onChangeText={[Function]}
+                  onSubmitEditing={[Function]}
+                  placeholder="Your name"
+                  placeholderTextColor="#a0a0ac"
+                  returnKeyType="done"
+                  style={
+                    [
+                      {
+                        "borderRadius": 10,
+                        "borderWidth": 1.5,
+                        "flex": 1,
+                        "fontFamily": "Manrope_600SemiBold",
+                        "fontSize": 16,
+                        "height": 48,
+                        "minWidth": 0,
+                        "paddingHorizontal": 14,
+                      },
+                      {
+                        "backgroundColor": "#25252c",
+                        "borderColor": "#a0a0ac",
+                        "color": "#e8e8f0",
+                      },
+                    ]
+                  }
+                  value=""
+                />
+                <View
+                  accessibilityLabel="Save"
+                  accessibilityRole="button"
+                  accessibilityState={
+                    {
+                      "busy": false,
+                      "checked": undefined,
+                      "disabled": true,
+                      "expanded": undefined,
+                      "selected": undefined,
+                    }
+                  }
+                  accessibilityValue={
+                    {
+                      "max": undefined,
+                      "min": undefined,
+                      "now": undefined,
+                      "text": undefined,
+                    }
+                  }
+                  accessible={true}
+                  collapsable={false}
+                  focusable={true}
+                  onBlur={[Function]}
+                  onClick={[Function]}
+                  onFocus={[Function]}
+                  onResponderGrant={[Function]}
+                  onResponderMove={[Function]}
+                  onResponderRelease={[Function]}
+                  onResponderTerminate={[Function]}
+                  onResponderTerminationRequest={[Function]}
+                  onStartShouldSetResponder={[Function]}
+                  style={
+                    [
+                      {
+                        "alignItems": "center",
+                        "borderRadius": 10,
+                        "height": 48,
+                        "justifyContent": "center",
+                        "minWidth": 72,
+                        "paddingHorizontal": 18,
+                      },
+                      {
+                        "backgroundColor": "#00eefc",
+                        "opacity": 0.4,
+                      },
+                    ]
+                  }
+                >
+                  <Text
+                    style={
+                      [
+                        {
+                          "fontFamily": "Manrope_700Bold",
+                          "fontSize": 15,
+                        },
+                        {
+                          "color": "#0e0e13",
+                        },
+                      ]
+                    }
+                  >
+                    Save
+                  </Text>
+                </View>
+              </View>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_400Regular",
+                      "fontSize": 13,
+                    },
+                    {
+                      "color": "#a0a0ac",
+                    },
+                  ]
+                }
+              >
+                Asked once. Change it anytime in Profile.
+              </Text>
+            </View>
+          </View>
+          <View
+            style={
+              {
+                "alignSelf": "stretch",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              style={
+                {
+                  "flexDirection": "row",
+                  "gap": 10,
+                }
+              }
+            >
+              <View
+                accessibilityLabel="Home"
+                accessibilityRole="button"
+                accessibilityState={
+                  {
+                    "busy": undefined,
+                    "checked": undefined,
+                    "disabled": false,
+                    "expanded": undefined,
+                    "selected": undefined,
+                  }
+                }
+                accessibilityValue={
+                  {
+                    "max": undefined,
+                    "min": undefined,
+                    "now": undefined,
+                    "text": undefined,
+                  }
+                }
+                accessible={true}
+                collapsable={false}
+                focusable={true}
+                onBlur={[Function]}
+                onClick={[Function]}
+                onFocus={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  [
+                    {
+                      "alignItems": "center",
+                      "borderRadius": 14,
+                      "flexDirection": "row",
+                      "gap": 8,
+                      "justifyContent": "center",
+                      "minHeight": 52,
+                      "paddingHorizontal": 14,
+                    },
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 1.5,
+                    },
+                    {
+                      "flex": 1,
+                      "minWidth": 0,
+                    },
+                    {
+                      "borderColor": "#a0a0ac",
+                      "opacity": 1,
+                    },
+                  ]
+                }
+                testID="game-result-home"
+              >
+                <Text
+                  allowFontScaling={false}
+                  selectable={false}
+                  style={
+                    [
+                      {
+                        "color": "#e8e8f0",
+                        "fontSize": 18,
+                      },
+                      undefined,
+                      {
+                        "fontFamily": "material-community",
+                        "fontStyle": "normal",
+                        "fontWeight": "normal",
+                      },
+                      {},
+                    ]
+                  }
+                >
+                  󰚡
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={
+                    [
+                      {
+                        "flexShrink": 1,
+                        "fontFamily": "Manrope_700Bold",
+                        "fontSize": 16,
+                      },
+                      {
+                        "color": "#e8e8f0",
+                      },
+                    ]
+                  }
+                >
+                  Home
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    </RCTScrollView>
+  </View>
+</Modal>
+`;
+
+exports[`GameResultModal — variations renders a disabled countdown primary 1`] = `
+<Modal
+  accessibilityViewIsModal={true}
+  animationType="fade"
+  onRequestClose={[MockFunction]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      [
+        {
+          "flex": 1,
+        },
+        {
+          "backgroundColor": "rgba(0,0,0,0.75)",
+        },
+      ]
+    }
+  >
+    <RCTScrollView
+      contentContainerStyle={
+        {
+          "alignItems": "center",
+          "flexGrow": 1,
+          "justifyContent": "center",
+          "paddingHorizontal": 20,
+          "paddingVertical": 40,
+        }
+      }
+      showsVerticalScrollIndicator={false}
+    >
+      <View>
+        <View
+          style={
+            [
+              {
+                "alignItems": "center",
+                "borderRadius": 22,
+                "gap": 18,
+                "maxWidth": 380,
+                "paddingBottom": 20,
+                "paddingHorizontal": 22,
+                "paddingTop": 28,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#25252c",
+                "borderColor": "#2e2e38",
+                "borderTopColor": "#4ade80",
+                "borderTopWidth": 5,
+                "borderWidth": 0,
+              },
+            ]
+          }
+          testID="game-result"
+        >
+          <View
+            style={
+              {
+                "alignItems": "center",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 26,
+                    "height": 52,
+                    "justifyContent": "center",
+                    "width": 52,
+                  },
+                  {
+                    "backgroundColor": "rgba(74,222,128,0.14)",
+                  },
+                ]
+              }
+            >
+              <Text
+                allowFontScaling={false}
+                selectable={false}
+                style={
+                  [
+                    {
+                      "color": "#4ade80",
+                      "fontSize": 26,
+                    },
+                    undefined,
+                    {
+                      "fontFamily": "material-community",
+                      "fontStyle": "normal",
+                      "fontWeight": "normal",
+                    },
+                    {},
+                  ]
+                }
+              >
+                󰔺
+              </Text>
+            </View>
+            <Text
+              accessibilityRole="header"
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 32,
+                    "lineHeight": 36,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#4ade80",
+                  },
+                ]
+              }
+              testID="game-result-title"
+            >
+              You Win!
+            </Text>
+          </View>
+          <View
+            style={
+              {
+                "alignSelf": "stretch",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              accessibilityLabel="Next word in 06:12:40"
+              accessibilityRole="button"
+              accessibilityState={
+                {
+                  "busy": undefined,
+                  "checked": undefined,
+                  "disabled": true,
+                  "expanded": undefined,
+                  "selected": undefined,
+                }
+              }
+              accessibilityValue={
+                {
+                  "max": undefined,
+                  "min": undefined,
+                  "now": undefined,
+                  "text": undefined,
+                }
+              }
+              accessible={true}
+              collapsable={false}
+              focusable={true}
+              onBlur={[Function]}
+              onClick={[Function]}
+              onFocus={[Function]}
+              onResponderGrant={[Function]}
+              onResponderMove={[Function]}
+              onResponderRelease={[Function]}
+              onResponderTerminate={[Function]}
+              onResponderTerminationRequest={[Function]}
+              onStartShouldSetResponder={[Function]}
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 14,
+                    "flexDirection": "row",
+                    "gap": 8,
+                    "justifyContent": "center",
+                    "minHeight": 52,
+                    "paddingHorizontal": 14,
+                  },
+                  {
+                    "backgroundColor": "#1f1f26",
+                    "borderColor": "#2e2e38",
+                    "borderStyle": "dashed",
+                    "borderWidth": 1.5,
+                  },
+                  {
+                    "transform": [
+                      {
+                        "scale": 1,
+                      },
+                    ],
+                  },
+                ]
+              }
+              testID="game-result-primary"
+            >
+              <Text
+                allowFontScaling={false}
+                selectable={false}
+                style={
+                  [
+                    {
+                      "color": "#a0a0ac",
+                      "fontSize": 18,
+                    },
+                    undefined,
+                    {
+                      "fontFamily": "material-community",
+                      "fontStyle": "normal",
+                      "fontWeight": "normal",
+                    },
+                    {},
+                  ]
+                }
+              >
+                󰅐
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_700Bold",
+                      "fontSize": 16,
+                    },
+                    {
+                      "color": "#a0a0ac",
+                    },
+                  ]
+                }
+              >
+                Next word in 06:12:40
+              </Text>
+            </View>
+            <View
+              style={
+                {
+                  "flexDirection": "row",
+                  "gap": 10,
+                }
+              }
+            >
+              <View
+                accessibilityLabel="Home"
+                accessibilityRole="button"
+                accessibilityState={
+                  {
+                    "busy": undefined,
+                    "checked": undefined,
+                    "disabled": false,
+                    "expanded": undefined,
+                    "selected": undefined,
+                  }
+                }
+                accessibilityValue={
+                  {
+                    "max": undefined,
+                    "min": undefined,
+                    "now": undefined,
+                    "text": undefined,
+                  }
+                }
+                accessible={true}
+                collapsable={false}
+                focusable={true}
+                onBlur={[Function]}
+                onClick={[Function]}
+                onFocus={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  [
+                    {
+                      "alignItems": "center",
+                      "borderRadius": 14,
+                      "flexDirection": "row",
+                      "gap": 8,
+                      "justifyContent": "center",
+                      "minHeight": 52,
+                      "paddingHorizontal": 14,
+                    },
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 1.5,
+                    },
+                    {
+                      "flex": 1,
+                      "minWidth": 0,
+                    },
+                    {
+                      "borderColor": "#a0a0ac",
+                      "opacity": 1,
+                    },
+                  ]
+                }
+                testID="game-result-home"
+              >
+                <Text
+                  allowFontScaling={false}
+                  selectable={false}
+                  style={
+                    [
+                      {
+                        "color": "#e8e8f0",
+                        "fontSize": 18,
+                      },
+                      undefined,
+                      {
+                        "fontFamily": "material-community",
+                        "fontStyle": "normal",
+                        "fontWeight": "normal",
+                      },
+                      {},
+                    ]
+                  }
+                >
+                  󰚡
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={
+                    [
+                      {
+                        "flexShrink": 1,
+                        "fontFamily": "Manrope_700Bold",
+                        "fontSize": 16,
+                      },
+                      {
+                        "color": "#e8e8f0",
+                      },
+                    ]
+                  }
+                >
+                  Home
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    </RCTScrollView>
+  </View>
+</Modal>
+`;
+
+exports[`GameResultModal — variations renders a versus hero 1`] = `
+<Modal
+  accessibilityViewIsModal={true}
+  animationType="fade"
+  onRequestClose={[MockFunction]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      [
+        {
+          "flex": 1,
+        },
+        {
+          "backgroundColor": "rgba(0,0,0,0.75)",
+        },
+      ]
+    }
+  >
+    <RCTScrollView
+      contentContainerStyle={
+        {
+          "alignItems": "center",
+          "flexGrow": 1,
+          "justifyContent": "center",
+          "paddingHorizontal": 20,
+          "paddingVertical": 40,
+        }
+      }
+      showsVerticalScrollIndicator={false}
+    >
+      <View>
+        <View
+          style={
+            [
+              {
+                "alignItems": "center",
+                "borderRadius": 22,
+                "gap": 18,
+                "maxWidth": 380,
+                "paddingBottom": 20,
+                "paddingHorizontal": 22,
+                "paddingTop": 28,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#25252c",
+                "borderColor": "#2e2e38",
+                "borderTopColor": "#a0a0ac",
+                "borderTopWidth": 5,
+                "borderWidth": 0,
+              },
+            ]
+          }
+          testID="game-result"
+        >
+          <View
+            style={
+              {
+                "alignItems": "center",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              style={
+                [
+                  {
+                    "alignItems": "center",
+                    "borderRadius": 26,
+                    "height": 52,
+                    "justifyContent": "center",
+                    "width": 52,
+                  },
+                  {
+                    "backgroundColor": "rgba(160,160,172,0.14)",
+                  },
+                ]
+              }
+            >
+              <Text
+                allowFontScaling={false}
+                selectable={false}
+                style={
+                  [
+                    {
+                      "color": "#a0a0ac",
+                      "fontSize": 26,
+                    },
+                    undefined,
+                    {
+                      "fontFamily": "material-community",
+                      "fontStyle": "normal",
+                      "fontWeight": "normal",
+                    },
+                    {},
+                  ]
+                }
+              >
+                󰍷
+              </Text>
+            </View>
+            <Text
+              accessibilityRole="header"
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_700Bold",
+                    "fontSize": 32,
+                    "lineHeight": 36,
+                    "textAlign": "center",
+                  },
+                  {
+                    "color": "#a0a0ac",
+                  },
+                ]
+              }
+              testID="game-result-title"
+            >
+              Computer Wins
+            </Text>
+          </View>
+          <View
+            accessible={true}
+            style={
+              {
+                "alignItems": "center",
+                "alignSelf": "stretch",
+                "flexDirection": "row",
+                "gap": 8,
+              }
+            }
+          >
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 4,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_700Bold",
+                      "fontSize": 12,
+                      "letterSpacing": 1.4,
+                      "textTransform": "uppercase",
+                    },
+                    {
+                      "color": "#a0a0ac",
+                    },
+                  ]
+                }
+              >
+                You
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 44,
+                      "lineHeight": 48,
+                    },
+                    {
+                      "color": "#a0a0ac",
+                      "opacity": 0.85,
+                    },
+                  ]
+                }
+              >
+                241
+              </Text>
+            </View>
+            <Text
+              style={
+                [
+                  {
+                    "fontFamily": "SpaceGrotesk_400Regular",
+                    "fontSize": 18,
+                  },
+                  {
+                    "color": "#a0a0ac",
+                  },
+                ]
+              }
+            >
+              vs
+            </Text>
+            <View
+              style={
+                {
+                  "alignItems": "center",
+                  "flex": 1,
+                  "gap": 4,
+                }
+              }
+            >
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "Manrope_700Bold",
+                      "fontSize": 12,
+                      "letterSpacing": 1.4,
+                      "textTransform": "uppercase",
+                    },
+                    {
+                      "color": "#a0a0ac",
+                    },
+                  ]
+                }
+              >
+                CPU
+              </Text>
+              <Text
+                style={
+                  [
+                    {
+                      "fontFamily": "SpaceGrotesk_700Bold",
+                      "fontSize": 44,
+                      "lineHeight": 48,
+                    },
+                    {
+                      "color": "#e8e8f0",
+                      "opacity": 1,
+                    },
+                  ]
+                }
+              >
+                264
+              </Text>
+            </View>
+          </View>
+          <View
+            style={
+              {
+                "alignSelf": "stretch",
+                "gap": 10,
+              }
+            }
+          >
+            <View
+              style={
+                {
+                  "flexDirection": "row",
+                  "gap": 10,
+                }
+              }
+            >
+              <View
+                accessibilityLabel="Home"
+                accessibilityRole="button"
+                accessibilityState={
+                  {
+                    "busy": undefined,
+                    "checked": undefined,
+                    "disabled": false,
+                    "expanded": undefined,
+                    "selected": undefined,
+                  }
+                }
+                accessibilityValue={
+                  {
+                    "max": undefined,
+                    "min": undefined,
+                    "now": undefined,
+                    "text": undefined,
+                  }
+                }
+                accessible={true}
+                collapsable={false}
+                focusable={true}
+                onBlur={[Function]}
+                onClick={[Function]}
+                onFocus={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  [
+                    {
+                      "alignItems": "center",
+                      "borderRadius": 14,
+                      "flexDirection": "row",
+                      "gap": 8,
+                      "justifyContent": "center",
+                      "minHeight": 52,
+                      "paddingHorizontal": 14,
+                    },
+                    {
+                      "backgroundColor": "transparent",
+                      "borderWidth": 1.5,
+                    },
+                    {
+                      "flex": 1,
+                      "minWidth": 0,
+                    },
+                    {
+                      "borderColor": "#a0a0ac",
+                      "opacity": 1,
+                    },
+                  ]
+                }
+                testID="game-result-home"
+              >
+                <Text
+                  allowFontScaling={false}
+                  selectable={false}
+                  style={
+                    [
+                      {
+                        "color": "#e8e8f0",
+                        "fontSize": 18,
+                      },
+                      undefined,
+                      {
+                        "fontFamily": "material-community",
+                        "fontStyle": "normal",
+                        "fontWeight": "normal",
+                      },
+                      {},
+                    ]
+                  }
+                >
+                  󰚡
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={
+                    [
+                      {
+                        "flexShrink": 1,
+                        "fontFamily": "Manrope_700Bold",
+                        "fontSize": 16,
+                      },
+                      {
+                        "color": "#e8e8f0",
+                      },
+                    ]
+                  }
+                >
+                  Home
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    </RCTScrollView>
+  </View>
+</Modal>
+`;

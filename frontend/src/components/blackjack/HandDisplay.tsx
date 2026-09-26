@@ -12,10 +12,11 @@ interface Props {
   /** "player" renders larger cards with fan rotation and neon score pill;
    *  "dealer" renders compact cards and glass badge score. */
   variant?: "player" | "dealer";
-  /** Shrink cards for constrained layouts — used by split-hand side-by-side
-   *  rendering and by the whole table on short-height viewports. Shrinks
-   *  both the "player" and "dealer" variants when set. */
-  compact?: boolean;
+  cardWidth: number;
+  cardHeight: number;
+  gap?: number;
+  labelFontSize?: number;
+  scorePillFontSize?: number;
   /**
    * Maximum cards per row. Additional cards wrap to a new row so the hand
    * grows downward into reserved table space rather than overflowing into
@@ -32,7 +33,11 @@ export default function HandDisplay({
   label,
   concealed = false,
   variant = "dealer",
-  compact = false,
+  cardWidth,
+  cardHeight,
+  gap = 8,
+  labelFontSize = 13,
+  scorePillFontSize,
   maxPerRow = 5,
 }: Props) {
   const { colors } = useTheme();
@@ -44,15 +49,21 @@ export default function HandDisplay({
   }
 
   return (
-    <View style={[styles.container, compact && styles.containerCompact]}>
+    <View style={[styles.container, { gap }]}>
       {hand.cards.length > 0 && (
-        <Text style={[styles.label, compact && styles.labelCompact, { color: colors.textMuted }]}>
+        <Text style={[styles.label, { color: colors.textMuted, fontSize: labelFontSize }]}>
           {label}
         </Text>
       )}
 
       {showScore && variant === "player" && (
-        <ScorePill value={hand.value} soft={hand.soft} concealed={concealed} variant={variant} />
+        <ScorePill
+          value={hand.value}
+          soft={hand.soft}
+          concealed={concealed}
+          variant={variant}
+          fontSize={scorePillFontSize}
+        />
       )}
 
       <View style={styles.rows}>
@@ -64,8 +75,8 @@ export default function HandDisplay({
                 <PlayingCard
                   key={absoluteIndex}
                   card={card}
-                  variant={variant}
-                  compact={compact}
+                  width={cardWidth}
+                  height={cardHeight}
                   rotation={variant === "player" ? (PLAYER_ROTATIONS[absoluteIndex] ?? 0) : 0}
                 />
               );
@@ -84,19 +95,11 @@ export default function HandDisplay({
 const styles = StyleSheet.create({
   container: {
     alignItems: "center",
-    gap: 8,
-  },
-  containerCompact: {
-    gap: 2,
   },
   label: {
-    fontSize: 13,
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 0.5,
-  },
-  labelCompact: {
-    fontSize: 11,
   },
   rows: {
     alignItems: "center",

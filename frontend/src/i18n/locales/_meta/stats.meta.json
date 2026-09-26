@@ -1,0 +1,326 @@
+{
+  "title": {
+    "component": "GameStatsScreen",
+    "description": "Header title of one game's stats screen.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": [],
+    "notes": "{{game}} is the translated game name, e.g. Sudoku."
+  },
+  "a11y.back": {
+    "component": "GameStatsScreen",
+    "description": "Screen-reader label of the back button, which returns to the game.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": [],
+    "notes": "{{game}} is the translated game name."
+  },
+  "tile.sessions": {
+    "component": "GameStatsScreen",
+    "description": "Tile label: how many games of this game the player finished, abandoned ones included.",
+    "tone": "functional",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Same meaning as profile stats.sessions."
+  },
+  "tile.completed": {
+    "component": "GameStatsScreen",
+    "description": "Tile label: finished games that were not abandoned.",
+    "tone": "functional",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tile.wins": {
+    "component": "GameStatsScreen",
+    "description": "Tile label: number of games won.",
+    "tone": "functional",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tile.losses": {
+    "component": "GameStatsScreen",
+    "description": "Tile label: number of games lost.",
+    "tone": "functional",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tile.ties": {
+    "component": "GameStatsScreen",
+    "description": "Tile label: number of games tied (a push in Blackjack).",
+    "tone": "functional",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tile.winRate": {
+    "component": "GameStatsScreen",
+    "description": "Tile label: wins as a percentage of wins, losses and ties.",
+    "tone": "functional",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tile.currentStreak": {
+    "component": "GameStatsScreen",
+    "description": "Tile label: the player's current run of consecutive wins.",
+    "tone": "functional",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tile.bestStreak": {
+    "component": "GameStatsScreen",
+    "description": "Tile label: the player's longest run of consecutive wins.",
+    "tone": "functional",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tile.best": {
+    "component": "GameStatsScreen",
+    "description": "Tile label: the player's best result in this game, shown with its unit (e.g. 412 pts, 87 moves).",
+    "tone": "functional",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tile.timePlayed": {
+    "component": "GameStatsScreen",
+    "description": "Tile label: total reported play time in this game.",
+    "tone": "functional",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "tile.lastPlayed": {
+    "component": "GameStatsScreen",
+    "description": "Tile label: the date of the player's last finished game.",
+    "tone": "functional",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "empty": {
+    "component": "GameStatsScreen",
+    "description": "Shown when the player has not finished a game of this game yet.",
+    "tone": "friendly",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error": {
+    "component": "GameStatsScreen",
+    "description": "Shown when the stats could not be loaded and none were loaded before.",
+    "tone": "neutral",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "offline": {
+    "component": "GameStatsScreen",
+    "description": "Shown when the device is offline and no stats were loaded before.",
+    "tone": "neutral",
+    "characterLimit": 90,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "stale": {
+    "component": "GameStatsScreen",
+    "description": "Note above stats loaded earlier in this app session, shown when they could not be refreshed.",
+    "tone": "neutral",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "updating": {
+    "component": "GameStatsScreen",
+    "description": "Note above stats loaded earlier in this app session while the latest ones are being fetched.",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "retry": {
+    "component": "GameStatsScreen",
+    "description": "Button that tries loading the stats again.",
+    "tone": "functional",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "link.leaderboard": {
+    "component": "GameStatsScreen",
+    "description": "Link that opens this game's leaderboard.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "link.runHistory": {
+    "component": "GameStatsScreen",
+    "description": "Link (Blackjack only) that opens the on-device history of past runs.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "A run is one Blackjack session from a starting bankroll to cash-out or bust."
+  },
+  "outcome.completed": {
+    "component": "GameDetailScreen, ProfileScreen",
+    "description": "Outcome of a finished game that was played through to a natural end.",
+    "tone": "neutral",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown next to the outcome's glyph in the Profile's Recent Games rows, and as the Outcome value on the game detail screen."
+  },
+  "outcome.abandoned": {
+    "component": "GameDetailScreen, ProfileScreen",
+    "description": "Outcome of a finished game the player left before it ended.",
+    "tone": "neutral",
+    "characterLimit": 13,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown next to the outcome's glyph in the Profile's Recent Games rows, and as the Outcome value on the game detail screen."
+  },
+  "outcome.kept_playing": {
+    "component": "GameDetailScreen, ProfileScreen",
+    "description": "Outcome of a finished game with no natural end that the player kept playing beyond a milestone (e.g. 2048's win tile).",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown next to the outcome's glyph in the Profile's Recent Games rows, and as the Outcome value on the game detail screen."
+  },
+  "outcome.win": {
+    "component": "GameDetailScreen, ProfileScreen",
+    "description": "Outcome of a finished game: the player won.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown next to the outcome's glyph in the Profile's Recent Games rows, and as the Outcome value on the game detail screen."
+  },
+  "outcome.loss": {
+    "component": "GameDetailScreen, ProfileScreen",
+    "description": "Outcome of a finished game: the player lost.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown next to the outcome's glyph in the Profile's Recent Games rows, and as the Outcome value on the game detail screen."
+  },
+  "outcome.push": {
+    "component": "GameDetailScreen, ProfileScreen",
+    "description": "Outcome of a finished game: a tie (a push in Blackjack).",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown next to the outcome's glyph in the Profile's Recent Games rows, and as the Outcome value on the game detail screen."
+  },
+  "metric.score_one": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A points value, singular. Short: shown in narrow columns.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.score_other": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A points value, plural, e.g. \"412 pts\". Short: shown in narrow columns.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.moves_one": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A move count, singular (FreeCell's best is the fewest moves).",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.moves_other": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A move count, plural, e.g. \"87 moves\".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.level": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A level reached (Bottle Sort), e.g. \"Level 19\".",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.guesses_one": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A guess count, singular (Daily Word).",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.guesses_other": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A guess count, plural (Daily Word), e.g. \"3 guesses\".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.chips_one": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A chip count, singular (Blackjack).",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "metric.chips_other": {
+    "component": "GameStatsScreen, GameDetailScreen, ProfileScreen",
+    "description": "A chip count, plural (Blackjack), e.g. \"1,450 chips\".",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  }
+}

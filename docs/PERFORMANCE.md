@@ -28,7 +28,7 @@ In a second terminal:
 ```bash
 cd backend
 
-# Game flow — single user, sequential (correct for global game state)
+# Game flow — one Yacht game through /games, sequential
 locust -f perf/locustfile.py \
   --headless --users 1 --spawn-rate 1 --run-time 60s \
   --host http://localhost:8000 --csv perf-gameflow \
@@ -40,7 +40,7 @@ locust -f perf/locustfile.py \
   --host http://localhost:8000 --csv perf-leaderboard \
   LeaderboardUser
 
-# Read-only polling — 20 users
+# Read-only (catalog, stats, history) — 20 users
 locust -f perf/locustfile.py \
   --headless --users 20 --spawn-rate 5 --run-time 60s \
   --host http://localhost:8000 --csv perf-readonly \
@@ -114,11 +114,9 @@ Artifacts (Locust CSVs and Lighthouse HTML reports) are retained for 30 days.
 
 ## Known Limitations
 
-### Single global game instance
+### Game flow is the sync path, not gameplay
 
-The Yacht backend has one global `game` variable. It is **not concurrent-safe**. Running the game flow with more than 1 user will cause state collisions (mixed round counts, wrong phase errors). This is expected and documented, not a bug in the tests.
-
-The `YachtGameUser` class must always be run with `--users 1`. Concurrent stress testing only applies to the leaderboard endpoints.
+Yacht runs on the device; the server only records games. `YachtGameUser` replays what the app's `SyncWorker` sends for one solo game (`POST /games`, 13 `POST /games/{id}/events` batches, `PATCH /games/{id}/complete`, `GET /games/{id}/rank`), with a fresh `X-Session-ID` per game so it stays under the per-session write limits (10/minute for create and complete). The old server-side `/yacht/*` routes it used to drive were removed in #2630. Every request is session-scoped, so it can run with more than one user.
 
 ### Render free-tier cold starts
 
@@ -564,3 +562,46 @@ python frontend/scripts/convert_icons_to_webp.py frontend/assets/celestial-icons
 
 - `*-baked/` (`fruits-baked/`, `cosmos-baked/`) — Skia pipeline textures
 - `source-icons/` — local pipeline inputs, not bundled
+
+---
+
+## Star Swarm native renderer (#2567)
+
+Epic #2562 moved Star Swarm's native canvas off per-frame React state (#2198). The scene is one
+Skia Picture recorded on the UI thread, and the HUD re-renders only when a value in it changes.
+This section records what that bought on real hardware.
+
+### How to measure
+
+1. Use a release build against the pre-launch API: a Play test build via Gradle on a budget
+   Android phone, and a TestFlight build via Xcode Cloud on an older iPhone. Dev builds run React
+   in development mode and are not representative.
+2. Open the Star Swarm dev panel (`DEV` button) and turn on _Frame readout_. How to read it is in
+   [`TESTING.md`](TESTING.md#star-swarm-reading-the-frame-readout-2567).
+3. Record the readout after about ten seconds in each scenario. Close the panel before reading.
+   The legacy column comes from the dev panel's _Legacy renderer_ switch, which exists only in
+   builds from before #2567 removed it (#2594 is the last). To re-measure it, build one of those.
+   - **Wave 1 idle:** set wave 1, New Game, don't fire.
+   - **Wave 5 boss:** set wave 5, New Game, hold fire.
+   - **Wave 9 lightning:** set wave 9, New Game, trigger _lightning_, hold fire.
+   - **Paused:** any wave, press pause.
+4. Memory: with the Picture renderer, play for ten minutes and compare the app's memory at the
+   start and end (Xcode's memory gauge, or Android Studio's profiler on a profileable build). It
+   should stay flat. A steady climb means Pictures are not being released.
+
+### Results
+
+Numbers are `avg / p95 ms · commits/s`. Filled in from the owner's device runs.
+
+| Device               | Scenario         | Legacy renderer | Picture renderer |
+| -------------------- | ---------------- | --------------- | ---------------- |
+| Budget Android (TBD) | Wave 1 idle      | —               | —                |
+| Budget Android (TBD) | Wave 5 boss      | —               | —                |
+| Budget Android (TBD) | Wave 9 lightning | —               | —                |
+| Budget Android (TBD) | Paused           | —               | —                |
+| Older iPhone (TBD)   | Wave 1 idle      | —               | —                |
+| Older iPhone (TBD)   | Wave 5 boss      | —               | —                |
+| Older iPhone (TBD)   | Wave 9 lightning | —               | —                |
+| Older iPhone (TBD)   | Paused           | —               | —                |
+
+Memory over ten minutes with the Picture renderer: — (Android), — (iPhone).

@@ -7,8 +7,9 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import { GameState } from "./types";
+import { AI_DIFFICULTIES, GameState } from "./types";
 import type { AiDifficulty } from "./types";
+import { isPremiumLevel } from "../../entitlements/premiumLevels";
 
 const STORAGE_KEY = "yacht_game_v2";
 const PREF_KEY = "yacht_pref_v1";
@@ -17,14 +18,24 @@ export interface SavedGame {
   state: GameState;
   aiDifficulty: AiDifficulty | null;
   aiState: GameState | null;
+  /**
+   * The session id of the player's finished game (#2630), saved once their
+   * game ends. A game reopened while the computer still has its last turn to
+   * play (or whose card was showing) looks its rank up with it. Kept in the
+   * same payload as the state, so the two can never disagree, and cleared
+   * with it.
+   */
+  finishedGameId?: string;
 }
 
 export async function saveGame(
   state: GameState,
   aiDifficulty: AiDifficulty | null = null,
-  aiState: GameState | null = null
+  aiState: GameState | null = null,
+  finishedGameId: string | null = null
 ): Promise<void> {
   const payload: SavedGame = { state, aiDifficulty, aiState };
+  if (finishedGameId) payload.finishedGameId = finishedGameId;
   try {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch (e) {
@@ -47,6 +58,14 @@ export async function loadGame(): Promise<SavedGame | null> {
       parsed.state.scores === null
     ) {
       return null;
+    }
+    // A bad finished-game id only costs the card its rank, not the game.
+    const { finishedGameId } = parsed;
+    if (
+      finishedGameId !== undefined &&
+      !(typeof finishedGameId === "string" && finishedGameId.length > 0)
+    ) {
+      delete parsed.finishedGameId;
     }
     return parsed;
   } catch (e) {
@@ -80,7 +99,12 @@ export async function loadLastMode(): Promise<LastModePref | null> {
   try {
     const raw = await AsyncStorage.getItem(PREF_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as LastModePref;
+    const parsed = JSON.parse(raw) as Partial<LastModePref>;
+    // An unknown or now-premium difficulty falls back to the default (#1129).
+    const difficulty =
+      AI_DIFFICULTIES.find((d) => d === parsed.difficulty && !isPremiumLevel("yacht", d)) ??
+      "medium";
+    return { mode: parsed.mode === "vs" ? "vs" : "solo", difficulty };
   } catch (e) {
     Sentry.addBreadcrumb({
       category: "yacht.storage",

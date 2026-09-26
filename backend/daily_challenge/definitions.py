@@ -21,15 +21,21 @@ build it with ``game_facts``. A goal is met if *any one* of the player's games o
 that type today satisfies it; nothing is aggregated across games. Abandoned games
 count for progress goals (``moves_at_least`` and friends) because the game
 reports ``won: false`` plus its progress on abandon; only ``won`` goals need a
-win. ``games.outcome`` is lifecycle-only and is never read here.
+win. ``games.outcome`` is never read here (it records who won only for games
+with a winner — see ``vocab.GameOutcome``; the result block is the one source
+for every game).
 
 Fields the evaluators read, per game (the result each game must send):
     daily_word  is_complete, won, guesses_used         (#2451)
     twenty48    final_score, highest_tile              (already sent)
     solitaire   won, moves                             (SolitaireResult)
-    mahjong     won, pairs, duration_ms (column)       (MahjongResult)
+    sort        final_score (highest level solved)     (every solve, #2625)
     freecell    won, moves                             (#2452)
+    yacht       final_score                            (already sent)
     blackjack   hands_played, hands_won, starting_chips, final_chips (BlackjackResult)
+                — premium since 2026-09-23, so not in the free pool (see below)
+    mahjong     won, pairs, duration_ms (column)       (MahjongResult)
+                — premium since 2026-09-24, so not in the free pool (see below)
 
 Slates
 ------
@@ -239,21 +245,42 @@ FREE_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {
         _won("solitaire", "medium"),
         _won_within("solitaire", "moves", 120, "hard"),
     ),
-    # 72 pairs to clear; the hard limit is minutes, not seconds (duration_ms).
-    "mahjong": (
-        _at_least("mahjong", "pairs", 10, "easy"),
-        _won("mahjong", "medium"),
-        _won_within("mahjong", "duration_ms", 480_000, "hard"),
+    # final_score = the player's highest level solved (23 levels), sent on every
+    # solved level, replays included (#2625). Abandons carry no score.
+    "sort": (
+        _at_least("sort", "final_score", 3, "easy"),
+        _at_least("sort", "final_score", 8, "medium"),
+        _at_least("sort", "final_score", 15, "hard"),
     ),
     "freecell": (
         _at_least("freecell", "moves", 5, "easy"),
         _won("freecell", "medium"),
         _won_within("freecell", "moves", 100, "hard"),
     ),
+    # Score only (Yacht sends no result block). A full solo game typically
+    # lands 150-250; abandoned games count with their score so far.
+    "yacht": (
+        _at_least("yacht", "final_score", 100, "easy"),
+        _at_least("yacht", "final_score", 175, "medium"),
+        _at_least("yacht", "final_score", 250, "hard"),
+    ),
+}
+
+# Blackjack moved to premium on 2026-09-23 (simulated gambling would raise the
+# app's age rating); Mahjong moved to premium on 2026-09-24 (owner decision,
+# traded for Sort going free). Their goals are kept here, outside every live
+# pool, so they join PREMIUM_GOAL_POOL with the other premium games in #2458.
+# Days frozen before either move still rebuild through ``goal_from_spec``.
+PENDING_PREMIUM_GOALS: dict[str, tuple[Goal, Goal, Goal]] = {
     "blackjack": (
         _at_least("blackjack", "hands_played", 3, "easy"),
         _chips_gained("blackjack", "medium"),
         _at_least("blackjack", "hands_won", 3, "hard"),
+    ),
+    "mahjong": (
+        _at_least("mahjong", "pairs", 10, "easy"),
+        _won("mahjong", "medium"),
+        _won_within("mahjong", "duration_ms", 480_000, "hard"),
     ),
 }
 

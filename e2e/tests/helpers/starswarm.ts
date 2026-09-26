@@ -1,18 +1,6 @@
 import { Page } from "@playwright/test";
 import { installEntitlementsMock } from "./api-mock";
 
-const API_BASE = "http://localhost:8000";
-
-export async function mockStarswarmApi(page: Page): Promise<void> {
-  await page.route(`${API_BASE}/starswarm/**`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ scores: [] }),
-    });
-  });
-}
-
 export async function gotoStarswarm(page: Page): Promise<void> {
   await installEntitlementsMock(page);
   await page.goto("/");

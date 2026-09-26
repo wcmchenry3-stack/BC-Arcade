@@ -9,6 +9,11 @@ export interface SavedState {
   score: number;
   savedAt: number;
   queue: { current: number; next: number };
+  /**
+   * Play time so far, pauses excluded (#2750), so a relaunched game keeps it.
+   * Absent in saves from older builds.
+   */
+  playedMs?: number;
 }
 
 export function looksValid(data: unknown): data is SavedState {
@@ -26,7 +31,8 @@ export function looksValid(data: unknown): data is SavedState {
         typeof (p as Record<string, unknown>).y === "number"
     ) ||
     typeof d.score !== "number" ||
-    typeof d.savedAt !== "number"
+    typeof d.savedAt !== "number" ||
+    (d.playedMs !== undefined && typeof d.playedMs !== "number")
   ) {
     return false;
   }
@@ -74,5 +80,27 @@ export async function clearGame(): Promise<void> {
     await AsyncStorage.removeItem(GAME_KEY);
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "cascade.storage", op: "clear" } });
+  }
+}
+
+const BEST_SCORE_KEY = "cascade_best_score";
+
+/** The player's best Cascade score on this device (#2515); 0 when none. */
+export async function loadBestScore(): Promise<number> {
+  try {
+    const raw = await AsyncStorage.getItem(BEST_SCORE_KEY);
+    const n = raw == null ? 0 : Number(raw);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  } catch (e) {
+    Sentry.captureException(e, { tags: { subsystem: "cascade.storage", op: "loadBest" } });
+    return 0;
+  }
+}
+
+export async function saveBestScore(score: number): Promise<void> {
+  try {
+    await AsyncStorage.setItem(BEST_SCORE_KEY, String(Math.floor(score)));
+  } catch (e) {
+    Sentry.captureException(e, { tags: { subsystem: "cascade.storage", op: "saveBest" } });
   }
 }

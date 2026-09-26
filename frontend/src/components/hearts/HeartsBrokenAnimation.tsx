@@ -157,9 +157,9 @@ export function HeartsBrokenAnimation({ visible, onAnimationEnd }: Props) {
 
   return (
     // Non-interactive wrapper — never blocks touches
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {/* Red tint layer — separate from content so its opacity does not bleed into children */}
-      <Animated.View style={[StyleSheet.absoluteFillObject, styles.tintLayer, tintStyle]} />
+      <Animated.View style={[StyleSheet.absoluteFill, styles.tintLayer, tintStyle]} />
       {/* Content: heart icon + radiating crack lines */}
       <View style={styles.content}>
         {crackStyles.map((crackStyle, i) => (
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   content: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: "center",
     alignItems: "center",
     zIndex: 101,

@@ -1,15 +1,15 @@
 import { AppState, StyleSheet } from "react-native";
 import React from "react";
 import { Alert } from "react-native";
-import { act, render, fireEvent, waitFor } from "@testing-library/react-native";
+import { act, render, renderHook, fireEvent, waitFor } from "@testing-library/react-native";
 import * as ReactNative from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import HomeScreen from "../HomeScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
-import i18n from "i18next";
-import mahjongEn from "../../i18n/locales/en/mahjong.json";
 import type { StatsResponse } from "../../api/types";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { clearMyStatsCache, useMyStats } from "../../hooks/useMyStats";
 
 // ---------------------------------------------------------------------------
 // Mock entitlements — default: all games entitled (canPlay always true)
@@ -176,14 +176,6 @@ describe("HomeScreen — game cards", () => {
   });
 
   describe("store build — premium games hidden (#2390)", () => {
-    beforeAll(() => {
-      // jest.setup.ts's i18n fixtures omit the mahjong namespace (other suites
-      // assert on its raw keys), so load it here to match the card by label.
-      i18n.addResourceBundle("en", "mahjong", mahjongEn, true, true);
-    });
-    afterAll(() => {
-      i18n.removeResourceBundle("en", "mahjong");
-    });
     beforeEach(() => {
       // Real isGameVisible, answering as a store build (Jest itself is a dev build).
       __forceStoreBuildForTests(true);
@@ -192,25 +184,26 @@ describe("HomeScreen — game cards", () => {
       __forceStoreBuildForTests(false);
     });
 
-    it("renders exactly the six free games", async () => {
+    it("renders exactly the seven free games", async () => {
       const { getByLabelText, getAllByRole } = await renderScreen();
-      expect(getByLabelText("Play Blackjack")).toBeTruthy();
+      expect(getByLabelText("Play Yacht")).toBeTruthy();
       expect(getByLabelText("Play 2048")).toBeTruthy();
       expect(getByLabelText("Play Solitaire")).toBeTruthy();
       expect(getByLabelText("Play FreeCell")).toBeTruthy();
-      expect(getByLabelText("Play Mahjong Solitaire")).toBeTruthy();
+      expect(getByLabelText("Play Sort Puzzle")).toBeTruthy();
+      expect(getByLabelText("Play Sudoku")).toBeTruthy();
       expect(getByLabelText("Play Daily Word")).toBeTruthy();
       expect(
         getAllByRole("button").filter((b) => /^Play /.test(b.props.accessibilityLabel))
-      ).toHaveLength(6);
+      ).toHaveLength(7);
     });
 
-    it("renders none of the six premium games — not even as locked cards", async () => {
+    it("renders none of the five premium games — not even as locked cards", async () => {
       // Unentitled is the realistic store-build state: a locked card would
       // still be a rendered card.
       mockCanPlay.mockReturnValue(false);
       const { queryByLabelText, queryByText } = await renderScreen();
-      for (const title of ["Yacht", "Cascade", "Hearts", "Sudoku", "Star Swarm", "Sort Puzzle"]) {
+      for (const title of ["Blackjack", "Cascade", "Hearts", "Star Swarm", "Mahjong Solitaire"]) {
         expect(queryByLabelText(`Play ${title}`)).toBeNull();
         expect(queryByText(title)).toBeNull();
       }
@@ -220,7 +213,7 @@ describe("HomeScreen — game cards", () => {
       await renderScreen();
       await waitFor(() => expect(mockPrefetch).toHaveBeenCalledTimes(1));
       const predicate = mockPrefetch.mock.calls[0][0] as (slug: string) => boolean;
-      expect(predicate("yacht")).toBe(false);
+      expect(predicate("blackjack")).toBe(false);
       expect(predicate("starswarm")).toBe(false);
     });
   });
@@ -279,6 +272,64 @@ describe("HomeScreen — game cards", () => {
   });
 });
 
+describe("HomeScreen — resuming a saved Yacht game (#2203)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- the jest.mock above
+  const storage = require("../../game/yacht/storage") as { loadGame: jest.Mock };
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- real engine
+  const { newGame } = require("../../game/yacht/engine");
+
+  afterEach(() => storage.loadGame.mockResolvedValue(null));
+
+  it("resumes a VS game where only the computer's final turn is left", async () => {
+    const human = { ...newGame(), round: 13, game_over: true };
+    const ai = { ...newGame(), round: 13, rolls_used: 2 };
+    storage.loadGame.mockResolvedValue({ state: human, aiDifficulty: "hard", aiState: ai });
+
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Play Yacht"));
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith("Game", {
+        initialState: human,
+        aiDifficulty: "hard",
+        aiState: ai,
+      })
+    );
+  });
+
+  it("passes the finished game's id on for its rank lookup (#2630)", async () => {
+    const human = { ...newGame(), round: 13, game_over: true };
+    const ai = { ...newGame(), round: 13, rolls_used: 2 };
+    storage.loadGame.mockResolvedValue({
+      state: human,
+      aiDifficulty: "hard",
+      aiState: ai,
+      finishedGameId: "game-1",
+    });
+
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Play Yacht"));
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith(
+        "Game",
+        expect.objectContaining({ initialState: human, finishedGameId: "game-1" })
+      )
+    );
+  });
+
+  it("starts a new game once both VS games are over", async () => {
+    const over = { ...newGame(), round: 13, game_over: true };
+    storage.loadGame.mockResolvedValue({ state: over, aiDifficulty: "hard", aiState: over });
+
+    const { getByLabelText } = await renderScreen();
+    await fireEvent.press(getByLabelText("Play Yacht"));
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith("Game", {
+        initialState: expect.objectContaining({ round: 1, game_over: false }),
+      })
+    );
+  });
+});
+
 describe("HomeScreen — AppHeader", () => {
   it("renders AppHeader with app title", async () => {
     const { getByRole } = await renderScreen();
@@ -287,6 +338,22 @@ describe("HomeScreen — AppHeader", () => {
 });
 
 describe("HomeScreen — Arcade level pill (#2391)", () => {
+  it("remembers /stats/me for the stats screen opened offline later (#2635)", async () => {
+    clearMyStatsCache();
+    await AsyncStorage.setItem("game_session_id", "session-a");
+    mockGetMyStats.mockResolvedValue(statsAtLevel(4));
+    const { findByText, unmount } = await renderScreen();
+    await findByText("Lv 4");
+    await unmount();
+
+    mockNetwork.isOnline = false;
+    const { result } = await renderHook(() => useMyStats());
+    await act(async () => {});
+    expect(result.current.status).toBe("ready");
+    expect(result.current.stats?.arcade_level).toBe(4);
+    expect(result.current.stale).toBe(true);
+  });
+
   it("shows the player's level in the header", async () => {
     mockGetMyStats.mockResolvedValue(statsAtLevel(4));
     const { findByText, getByLabelText } = await renderScreen();
@@ -552,15 +619,15 @@ describe("HomeScreen — locked game UI (#1054)", () => {
 
   it("free games render and navigate normally when a premium game is locked", async () => {
     const { getByLabelText } = await renderScreen();
-    expect(getByLabelText("Play Blackjack")).toBeTruthy();
-    await fireEvent.press(getByLabelText("Play Blackjack"));
-    expect(mockNavigate).toHaveBeenCalledWith("BlackjackBetting");
+    expect(getByLabelText("Play Yacht")).toBeTruthy();
+    await fireEvent.press(getByLabelText("Play Yacht"));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("Game", expect.any(Object)));
   });
 
   it("entitled premium games render and navigate normally", async () => {
-    // Yacht is entitled (mockCanPlay returns true for non-cascade)
+    // Hearts is entitled (mockCanPlay returns true for non-cascade)
     const { getByLabelText } = await renderScreen();
-    expect(getByLabelText("Play Yacht")).toBeTruthy();
+    expect(getByLabelText("Play Hearts")).toBeTruthy();
   });
 
   it("all games show play label when all entitled", async () => {

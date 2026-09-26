@@ -70,7 +70,14 @@ def test_scan_covers_every_prod_service_by_its_secret() -> None:
     assert all(e["id_secret"].startswith("RENDER_PROD_") for e in entries)
     assert all(e["url"].startswith("https://") for e in entries)
     wait = next(s for s in job["steps"] if s.get("id") == "wait")
-    assert wait["env"]["SERVICE_ID"] == "${{ secrets[matrix.id_secret] }}"
+    # Each secret is referenced statically; a dynamic `secrets[...]` index
+    # exposes every repo and org secret to the runner.
+    for e in entries:
+        name = e["id_secret"]
+        assert wait["env"][name] == f"${{{{ secrets.{name} }}}}"
+    assert wait["env"]["ID_SECRET"] == "${{ matrix.id_secret }}"
+    assert 'SERVICE_ID="${!ID_SECRET}"' in wait["run"]
+    assert "${{ secrets[" not in SCAN.read_text(encoding="utf-8")
     assert "vars." not in SCAN.read_text(encoding="utf-8")
 
 
@@ -121,3 +128,13 @@ def test_header_check_targets_a_real_route() -> None:
     api = next(e for e in entries if e["service"] == "bc-arcade-api")
     assert api["header_path"] == "/health"
     assert all(e["header_path"].startswith("/") for e in entries)
+
+
+def test_known_red_smoke_legs_do_not_gate_prod_deploys() -> None:
+    """Render's "After CI Checks Pass" waits for every check on a `main` commit.
+    The Maestro legs have never passed (#2347, #2400), so while they ran on
+    push to main no prod deploy could happen (#2522 sat undeployed)."""
+    for name in ("mobile-smoke-ios.yml", "mobile-smoke-android.yml"):
+        on = _load(WORKFLOWS / name)["on"]
+        assert "push" not in on, f"{name} runs on push again - is it green now?"
+        assert "workflow_dispatch" in on

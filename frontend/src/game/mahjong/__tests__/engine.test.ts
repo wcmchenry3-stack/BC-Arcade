@@ -437,6 +437,62 @@ describe("selectTile", () => {
     expect(s2.score).toBe(10 + 500); // SCORE_PER_PAIR + SCORE_COMPLETE_BONUS
     expect(s2.tiles.length).toBe(0);
   });
+
+  it("freezes the clock when the board is cleared", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    const state: MahjongState = {
+      ...createGame(TURTLE_LAYOUT),
+      tiles: [a, b],
+      startedAt: 1_000,
+      accumulatedMs: 500,
+    };
+    jest.spyOn(Date, "now").mockReturnValue(61_000);
+    try {
+      const done = selectTile(selectTile(state, a.id), b.id);
+      expect(done.isComplete).toBe(true);
+      expect(done.startedAt).toBeNull();
+      expect(done.accumulatedMs).toBe(60_500);
+      // Frozen: the elapsed time doesn't grow after the win.
+      expect(elapsedMs(done, 999_999)).toBe(60_500);
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+
+  it("freezes the clock when the last pair leaves the board deadlocked", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    // Left behind: a stack of two non-matching tiles — only one is free.
+    const c: SlotTile = { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 10, row: 0, layer: 0 };
+    const d: SlotTile = { id: 3, suit: "bamboos", rank: 2, faceId: 27, col: 10, row: 0, layer: 1 };
+    const state: MahjongState = {
+      ...createGame(TURTLE_LAYOUT),
+      tiles: [a, b, c, d],
+      shufflesLeft: 0,
+      startedAt: 1_000,
+      accumulatedMs: 500,
+    };
+    jest.spyOn(Date, "now").mockReturnValue(61_000);
+    try {
+      const dead = selectTile(selectTile(state, a.id), b.id);
+      expect(dead.isComplete).toBe(false);
+      expect(dead.isDeadlocked).toBe(true);
+      expect(dead.startedAt).toBeNull();
+      expect(elapsedMs(dead, 999_999)).toBe(60_500);
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+
+  it("keeps the clock running for a non-clearing pair", () => {
+    const state = createGame(TURTLE_LAYOUT);
+    const [a, b] = firstFreePair(state);
+    const next = selectTile(selectTile({ ...state, startedAt: 1_000 }, a.id), b.id);
+    expect(next.isComplete).toBe(false);
+    expect(next.startedAt).toBe(1_000);
+    expect(next.accumulatedMs).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -477,6 +533,20 @@ describe("undoMove", () => {
     expect(state.pairsRemoved).toBe(1);
     state = undoMove(state);
     expect(state.pairsRemoved).toBe(0);
+  });
+
+  // #2750: the snapshot's startedAt predates any pause since; restoring it
+  // would count the time away (or, after a relaunch, the days the app was
+  // closed) as play.
+  it("keeps the live clock, not the snapshot's", () => {
+    const state = { ...createGame(TURTLE_LAYOUT), startedAt: 1_000, accumulatedMs: 0 };
+    const [a, b] = firstFreePair(state);
+    const matched = selectTile(selectTile(state, a.id), b.id);
+    const pausedAndResumed = resumeGame(pauseGame(matched, 61_000), 7_261_000);
+    const reverted = undoMove(pausedAndResumed, 7_300_000);
+    expect(reverted.pairsRemoved).toBe(0);
+    expect(reverted.startedAt).toBe(7_261_000);
+    expect(reverted.accumulatedMs).toBe(60_000);
   });
 });
 
@@ -747,6 +817,37 @@ describe("shuffleBoard", () => {
       expect(result.undoStack.length).toBe(1);
     }
   });
+
+  it("geometric deadlock freezes the clock, and undo resumes it", () => {
+    const tiles: SlotTile[] = [
+      { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 },
+      { id: 1, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 1 },
+      { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 2 },
+      { id: 3, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 3 },
+    ];
+    const state: MahjongState = {
+      ...createGame(TURTLE_LAYOUT),
+      tiles,
+      shufflesLeft: 2,
+      startedAt: 1_000,
+      accumulatedMs: 500,
+    };
+    jest.spyOn(Date, "now").mockReturnValue(61_000);
+    try {
+      const dead = shuffleBoard(state);
+      expect(dead.isDeadlocked).toBe(true);
+      expect(dead.startedAt).toBeNull();
+      expect(dead.accumulatedMs).toBe(60_500);
+      expect(elapsedMs(dead, 999_999)).toBe(60_500);
+      // Backing out of the deadlock starts the clock again from the undo,
+      // keeping the banked time (#2750: never the snapshot's own startedAt).
+      const undone = undoMove(dead, 70_000);
+      expect(undone.startedAt).toBe(70_000);
+      expect(undone.accumulatedMs).toBe(60_500);
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -997,10 +1098,29 @@ describe("timer helpers", () => {
     expect(paused.accumulatedMs).toBe(800);
   });
 
-  it("resumeGame sets startedAt", () => {
-    const state = createGame(TURTLE_LAYOUT);
+  it("resumeGame sets startedAt on a paused clock", () => {
+    const state = { ...createGame(TURTLE_LAYOUT), accumulatedMs: 200, paused: true };
     const resumed = resumeGame(state, 5000);
     expect(resumed.startedAt).toBe(5000);
+    expect(resumed.paused).toBeUndefined();
+  });
+
+  // #2750: not started (waiting for the first tap) isn't paused, and a
+  // finished board never runs again.
+  it("resumeGame doesn't start a clock that isn't paused, or a finished board's", () => {
+    const fresh = createGame(TURTLE_LAYOUT);
+    expect(resumeGame(fresh, 5000)).toBe(fresh);
+    const deadlocked = { ...fresh, isDeadlocked: true, accumulatedMs: 200, paused: true };
+    expect(resumeGame(deadlocked, 5000)).toBe(deadlocked);
+  });
+
+  it("a tap leaves a paused clock paused", () => {
+    const state = { ...createGame(TURTLE_LAYOUT), startedAt: 1000, accumulatedMs: 0 };
+    const [a] = firstFreePair(state);
+    const tapped = selectTile(pauseGame(state, 1600), a.id);
+    expect(tapped.startedAt).toBeNull();
+    expect(tapped.paused).toBe(true);
+    expect(tapped.accumulatedMs).toBe(600);
   });
 
   it("resumeGame is a no-op when already running", () => {

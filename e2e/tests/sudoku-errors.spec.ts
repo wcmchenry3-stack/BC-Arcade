@@ -13,7 +13,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { mockSudokuApi, gotoSudoku, injectSudokuState } from "./helpers/sudoku";
+import { gotoSudoku, injectSudokuState } from "./helpers/sudoku";
 import { installEntitlementsMock } from "./helpers/api-mock";
 
 const API_BASE = "http://localhost:8000";
@@ -68,7 +68,6 @@ test.describe("Sudoku — error paths", () => {
   // ---------------------------------------------------------------------------
 
   test("navigating away from Sudoku returns to Home", async ({ page }) => {
-    await mockSudokuApi(page);
     await gotoSudoku(page);
 
     await page.goto("/");
@@ -84,7 +83,6 @@ test.describe("Sudoku — error paths", () => {
   test("entering a digit on a given cell does not change its value", async ({
     page,
   }) => {
-    await mockSudokuApi(page);
     await injectSudokuState(page, STATE);
 
     await page.getByRole("button", { name: "Play Sudoku" }).click();
@@ -157,7 +155,6 @@ test.describe("Sudoku — error paths", () => {
   test("corrupted sudoku_game localStorage — fresh game loads with difficulty picker", async ({
     page,
   }) => {
-    await mockSudokuApi(page);
     await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() =>

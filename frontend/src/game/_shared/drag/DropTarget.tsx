@@ -28,7 +28,7 @@ export function DropTarget({
   testID,
 }: DropTargetProps) {
   const viewRef = useRef<View>(null);
-  const rafRef = useRef<ReturnType<typeof requestAnimationFrame>>();
+  const rafRef = useRef<ReturnType<typeof requestAnimationFrame> | undefined>(undefined);
   const { colors } = useTheme();
 
   // Keep the latest onDrop in a ref so re-renders don't force re-registration.

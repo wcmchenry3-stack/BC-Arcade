@@ -301,6 +301,37 @@ export class EventStore {
   }
 
   /**
+   * Drop every queued game-event row for one game, dead-lettered and
+   * backed-off rows included. Used when a game is discarded before the
+   * player started it (#2619). Returns how many rows were removed.
+   */
+  async deleteByGameId(gameId: string): Promise<number> {
+    return this.deleteByGameIds([gameId]);
+  }
+
+  /**
+   * `deleteByGameId` for several games in one pass over the tiers — the
+   * startup sweep discards all of a killed process's untouched games at once
+   * (#2654).
+   */
+  async deleteByGameIds(gameIds: string[]): Promise<number> {
+    if (gameIds.length === 0) return 0;
+    const ids = new Set(gameIds);
+    return this.withLock(async () => {
+      let removed = 0;
+      for (const tier of TIERS) {
+        const rows = await this.readTier(tier);
+        const kept = rows.filter((r) => r.log_type !== "game_event" || !ids.has(r.game_id));
+        removed += rows.length - kept.length;
+        if (kept.length !== rows.length) {
+          await this.writeTier(tier, kept);
+        }
+      }
+      return removed;
+    });
+  }
+
+  /**
    * Update a batch of rows (e.g. after a 429 sets next_retry_at on them).
    * Rows are matched by id; missing rows are silently ignored.
    */

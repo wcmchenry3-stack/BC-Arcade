@@ -85,6 +85,17 @@ describe("sentryConfig", () => {
       setEnv("EXPO_PUBLIC_TEST_HOOKS", "0");
       expect(shouldInitSentry()).toBe(true);
     });
+
+    it("is off on web regardless of test-hooks flag (#2716)", () => {
+      expect(shouldInitSentry("web")).toBe(false);
+      setEnv("EXPO_PUBLIC_TEST_HOOKS", "1");
+      expect(shouldInitSentry("web")).toBe(false);
+    });
+
+    it("is on for native platforms when test-hooks is off", () => {
+      expect(shouldInitSentry("ios")).toBe(true);
+      expect(shouldInitSentry("android")).toBe(true);
+    });
   });
 
   describe("shouldTrackAppHangs", () => {

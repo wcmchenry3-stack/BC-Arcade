@@ -46,7 +46,7 @@ Tokens live in `frontend/src/theme/ThemeContext.tsx`. Import via `useTheme()` �
 | `surfaceHigh`  | `#25252c` | Highest elevation, modals              |
 | `border`       | `#2e2e38` | Dividers, faint outlines               |
 | `text`         | `#e8e8f0` | Primary text on surfaces               |
-| `textMuted`    | `#6e6e7a` | Secondary text, labels                 |
+| `textMuted`    | `#a0a0ac` | Secondary text, labels                 |
 | `textOnAccent` | `#0e0e13` | Text on accent-filled buttons          |
 | `accent`       | `#8ff5ff` | Cyan primary — CTAs, highlights        |
 | `accentBright` | `#00eefc` | Accent gradient stop, neon glow        |
@@ -57,24 +57,45 @@ Tokens live in `frontend/src/theme/ThemeContext.tsx`. Import via `useTheme()` �
 
 ### Light theme
 
-Stitch only ships a dark mockup. The light theme is **first-class** and maintained by us — we keep it so users on bright environments or with system-level light preference aren't forced into dark. It is intentionally not a mechanical inversion of dark: accent hues shift darker (`#0099aa`, `#9900cf`, `#5c7a00`) to meet contrast requirements against light surfaces.
+Stitch only ships a dark mockup. The light theme is **first-class** and maintained by us — we keep it so users on bright environments or with system-level light preference aren't forced into dark. It is intentionally not a mechanical inversion of dark: it uses a warm cream ground, and accent hues are desaturated/darkened so they don't vibrate on cream.
 
-| Token          | Hex       | Purpose                            |
-| -------------- | --------- | ---------------------------------- |
-| `background`   | `#f5f5fa` | App background                     |
-| `surface`      | `#ffffff` | Cards, containers                  |
-| `surfaceAlt`   | `#ededf5` | Elevated surfaces                  |
-| `surfaceHigh`  | `#e0e0ec` | Highest elevation                  |
-| `text`         | `#1a1a24` | Primary text                       |
-| `textMuted`    | `#6e6e7a` | Secondary text                     |
-| `accent`       | `#0099aa` | Darkened cyan for ≥ 4.5:1 contrast |
-| `accentBright` | `#00b8cc` | Accent gradient stop               |
-| `secondary`    | `#9900cf` | Darkened magenta                   |
-| `tertiary`     | `#5c7a00` | Darkened lime                      |
-| `error`        | `#c0392b` | Errors                             |
-| `bonus`        | `#16a34a` | Positive confirmations             |
+| Token          | Hex       | Purpose                                 |
+| -------------- | --------- | --------------------------------------- |
+| `background`   | `#f5ecd7` | App background (cream)                  |
+| `surface`      | `#fbf4e2` | Cards, containers                       |
+| `surfaceAlt`   | `#eddfbf` | Elevated surfaces                       |
+| `surfaceHigh`  | `#fff8e8` | Highest elevation, modals               |
+| `border`       | `#d8c9a6` | Dividers, faint outlines                |
+| `text`         | `#1a1412` | Primary text                            |
+| `textMuted`    | `#6b5e4a` | Secondary text                          |
+| `accent`       | `#1bc5d4` | Teal — fills and decoration, not text   |
+| `accentBright` | `#00a8b8` | Accent-filled buttons (dark text on it) |
+| `secondary`    | `#a34fc4` | Darkened magenta                        |
+| `tertiary`     | `#8fa800` | Darkened lime                           |
+| `error`        | `#d94a42` | Errors                                  |
+| `bonus`        | `#2da557` | Positive confirmations (large text/UI)  |
+
+The light header bar stays dark (`headerBg` `#1a1412`) over the cream body.
 
 **Contrast rule:** all body and label text must achieve **≥ 4.5:1** against its surface (WCAG AA). Accent-on-surface pairs used for meaningful information (not decoration) must also meet 4.5:1.
+
+### Outcome tokens (end-of-game results)
+
+Used by the shared end-of-game result card (see epic #2500). Each foreground reaches **≥ 4.5:1** on `surfaceHigh` in its theme, enforced by `frontend/src/theme/__tests__/outcomeContrast.test.ts`. Don't substitute `bonus` or `accent` here: on cream they measure 2.99:1 and 1.99:1.
+
+| Token          | Dark      | Light     | Use                                      |
+| -------------- | --------- | --------- | ---------------------------------------- |
+| `outcomeWin`   | `#4ade80` | `#1f7a3c` | "You Win!"                               |
+| `outcomeLoss`  | `#a0a0ac` | `#6b5e4a` | "You Lose" — muted, deliberately not red |
+| `outcomeDraw`  | `#d674ff` | `#8a3fb0` | "It's a Tie!"                            |
+| `outcomeEnded` | `#8ff5ff` | `#00737e` | "Game Over" in score-attack games        |
+| `celebration`  | `#ffd700` | `#8a6100` | Gold in win celebrations                 |
+
+Each outcome also has a `*Tint` (same hue, 10–14% alpha) for icon discs and badges.
+
+### Modal scrim
+
+Use `colors.overlay` behind every modal card: `rgba(0,0,0,0.75)` in dark, `rgba(0,0,0,0.5)` in light (a 75% scrim over cream reads as an error state). Don't hardcode a scrim.
 
 ---
 

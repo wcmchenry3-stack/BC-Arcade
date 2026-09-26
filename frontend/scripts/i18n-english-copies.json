@@ -1,0 +1,207 @@
+{
+  "_about": "Locale values that equal the English text. `accepted`: the word really is the same in that language (reviewed). `pending`: not translated yet; may only shrink (see scripts/check-i18n-strings.js, #2681). Namespace -> locale -> keys.",
+  "accepted": {
+    "blackjack": {
+      "nl": [
+        "betting.tableLimitsRange",
+        "chip.vipCredits",
+        "chips.display",
+        "hand.playerHand",
+        "header.bankrollAccessibilityLabel",
+        "header.bankrollLabel",
+        "outcome.blackjack",
+        "payout.negative",
+        "payout.positive",
+        "rules.deckCount",
+        "rules.h17",
+        "rules.s17",
+        "score.blackjacks",
+        "stats.biggestWinAmount",
+        "stats.chips",
+        "stats.chipsLabel",
+        "stats.netPLNegative",
+        "stats.netPLPositive",
+        "stats.runOutcome.comeback",
+        "table.beginner",
+        "table.highRoller",
+        "tableSelect.startChips"
+      ],
+      "es": [
+        "chip.vipCredits",
+        "header.bankrollLabel",
+        "rules.h17",
+        "rules.s17",
+        "score.blackjacks"
+      ],
+      "pt": [
+        "chip.vipCredits",
+        "header.bankrollLabel",
+        "outcome.blackjack",
+        "rules.h17",
+        "rules.s17",
+        "score.blackjacks"
+      ],
+      "ru": ["chip.vipCredits", "outcome.blackjack", "rules.h17", "rules.s17"],
+      "ja": ["chip.vipCredits", "rules.h17", "rules.s17"],
+      "ko": ["chip.vipCredits", "rules.h17", "rules.s17"],
+      "zh": ["chip.vipCredits", "outcome.blackjack", "rules.h17", "rules.s17"],
+      "ar": ["chip.vipCredits", "rules.h17", "rules.s17"],
+      "he": ["chip.vipCredits", "rules.h17", "rules.s17"],
+      "hi": ["chip.vipCredits", "rules.h17", "rules.s17"],
+      "de": [
+        "chip.vipCredits",
+        "hand.playerHand",
+        "header.bankrollLabel",
+        "outcome.blackjack",
+        "rules.deckCount",
+        "rules.h17",
+        "rules.penetration",
+        "rules.s17",
+        "score.blackjacks",
+        "stats.chipsLabel",
+        "stats.runOutcome.comeback",
+        "table.highRoller",
+        "tableSelect.startChips"
+      ],
+      "fr-CA": [
+        "chip.vipCredits",
+        "header.bankrollLabel",
+        "outcome.blackjack",
+        "rules.h17",
+        "rules.s17",
+        "score.blackjacks",
+        "score.heroLabel",
+        "stats.handsLabel",
+        "table.highRoller"
+      ]
+    },
+    "daily_word": {
+      "de": ["keyboard.enter"],
+      "nl": ["keyboard.enter"]
+    },
+    "freecell": {
+      "nl": ["action.hint"]
+    },
+    "leaderboard": {
+      "de": ["metric.level"],
+      "fr-CA": ["column.date"],
+      "nl": ["metric.score"]
+    },
+    "mahjong": {
+      "de": ["layout.arena"],
+      "es": ["layout.arena"],
+      "nl": ["action.hint", "hud.score", "layout.arena"],
+      "pt": ["layout.arena"]
+    },
+    "profile": {
+      "ar": ["level.xpTotal"],
+      "de": ["level.value", "level.xpTotal"],
+      "es": ["level.xpTotal"],
+      "fr-CA": ["level.xpTotal", "stats.sessions"],
+      "hi": ["level.xpTotal"],
+      "nl": ["level.xpTotal"],
+      "pt": ["level.xpTotal"],
+      "ru": ["level.xpTotal"]
+    },
+    "result": {
+      "de": ["hero.vs", "name.computer", "stat.bonus"],
+      "es": ["hero.vs"],
+      "fr-CA": ["hero.vs", "standings.row", "stat.bonus"],
+      "nl": ["hero.vs", "name.computer", "stat.bonus", "stat.score"],
+      "ru": ["hero.vs"]
+    },
+    "solitaire": {
+      "de": ["game.title"],
+      "fr-CA": ["game.title"],
+      "nl": ["score.label"]
+    },
+    "sort": {
+      "de": ["color.gold", "color.indigo", "hud.level"],
+      "fr-CA": ["color.indigo"],
+      "nl": ["action.hint", "color.indigo"]
+    },
+    "starswarm": {
+      "nl": ["hud.scoreValue", "score.display"]
+    },
+    "stats": {
+      "de": ["metric.level"],
+      "fr-CA": ["metric.score_one", "metric.score_other"]
+    },
+    "common": {
+      "es": ["nav.lobby", "premiumLevel.tag"],
+      "pt": ["nav.lobby", "premiumLevel.ok", "premiumLevel.tag"],
+      "ja": ["premiumLevel.ok"],
+      "de": ["nav.lobby", "premiumLevel.ok", "premiumLevel.tag", "theme.system"],
+      "nl": ["nav.lobby", "premiumLevel.ok", "premiumLevel.tag"],
+      "fr-CA": ["premiumLevel.ok", "premiumLevel.tag"]
+    },
+    "sudoku": {
+      "es": ["game.title", "hud.errorsOne", "variant.mini"],
+      "pt": ["game.title", "variant.mini"],
+      "ru": ["variant.mini"],
+      "ko": ["game.title"],
+      "de": ["game.title", "variant.mini"],
+      "nl": ["action.hint", "action.start", "game.title", "variant.groupLabel", "variant.mini"],
+      "fr-CA": ["game.title", "numberPad.notes", "variant.mini"]
+    },
+    "yacht": {
+      "es": ["category.yacht", "score.total", "vsMode.cpu", "vsMode.solo", "vsMode.vs"],
+      "pt": [
+        "category.chance",
+        "category.fullHouse",
+        "category.yacht",
+        "score.total",
+        "vsMode.cpu",
+        "vsMode.solo",
+        "vsMode.vs"
+      ],
+      "ru": ["category.yacht", "vsMode.cpu", "vsMode.vs"],
+      "ja": ["category.yacht", "vsMode.cpu", "vsMode.vs"],
+      "ko": ["category.yacht", "vsMode.cpu", "vsMode.vs"],
+      "zh": ["category.yacht", "vsMode.cpu", "vsMode.vs"],
+      "ar": ["category.yacht", "vsMode.cpu", "vsMode.vs"],
+      "he": ["category.yacht", "vsMode.cpu", "vsMode.vs"],
+      "hi": ["category.yacht", "vsMode.cpu", "vsMode.vs"],
+      "de": [
+        "bonus.label",
+        "category.chance",
+        "category.fullHouse",
+        "category.yacht",
+        "vsMode.cpu",
+        "vsMode.solo",
+        "vsMode.vs"
+      ],
+      "nl": [
+        "bonus.label",
+        "bonus.yachtLabel",
+        "category.fullHouse",
+        "category.yacht",
+        "vsMode.cpu",
+        "vsMode.solo",
+        "vsMode.vs",
+        "vsMode.vsComputer"
+      ],
+      "fr-CA": [
+        "bonus.label",
+        "category.chance",
+        "category.yacht",
+        "score.total",
+        "vsMode.cpu",
+        "vsMode.solo",
+        "vsMode.vs"
+      ]
+    },
+    "cascade": {
+      "nl": ["score.display", "score.label"]
+    },
+    "feedback": {
+      "nl": ["type_label"],
+      "fr-CA": ["label_description", "type_label"]
+    },
+    "twenty48": {
+      "nl": ["score.label"],
+      "fr-CA": ["score.label"]
+    }
+  },
+  "pending": {}
+}

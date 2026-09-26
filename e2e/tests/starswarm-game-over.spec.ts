@@ -1,137 +1,211 @@
 /**
- * starswarm-game-over.spec.ts
+ * starswarm-game-over.spec.ts — #2516
  *
- * E2E tests for Star Swarm game-over state and score-submission flow.
+ * Star Swarm's end of run: the shared result card, the run recorded with its
+ * score and its rank on the tier's board under the player's display name
+ * (#2626), Play Again / Change Difficulty, and a Best that survives a reload.
  *
- * The game-over overlay (NEW GAME button) is rendered from the Controls
- * component when `phase === "GameOver"`. Without a `__starswarm_triggerGameOver`
- * test hook, these tests exercise the API mock wiring and verify the initial
- * active-play state is correct before any game-over can occur.
+ * Reaching game over by real play isn't practical here, so the run is ended
+ * through the `__starswarm_endRun(score, wave)` test hook (EXPO_PUBLIC_TEST_HOOKS
+ * builds only), which drives the screen's real game-over path.
  *
- * API endpoints are mocked so tests are hermetic.
+ * No running backend is needed: the routes this spec depends on (the game
+ * sync included) are intercepted with page.route(), and any other call
+ * fails, which the app handles like being offline.
  */
 
 import { test, expect } from "./fixtures";
-import { mockStarswarmApi } from "./helpers/starswarm";
+import type { Page } from "@playwright/test";
+import { gotoStarswarm } from "./helpers/starswarm";
+
+const DISPLAY_NAME_KEY = "player_display_name";
 
 const API_BASE = "http://localhost:8000";
 
-const MOCK_LEADERBOARD = {
-  scores: [
-    {
-      player_id: "alice",
-      score: 1500,
-      wave_reached: 5,
-      timestamp: "2024-01-01T00:00:00",
-      rank: 1,
-    },
-    {
-      player_id: "bob",
-      score: 1000,
-      wave_reached: 3,
-      timestamp: "2024-01-02T00:00:00",
-      rank: 2,
-    },
-  ],
-};
+interface RoutedApi {
+  /** Bodies posted to the removed POST /starswarm/score (#2644) — the app sends none (#2626). */
+  legacyPosts: Record<string, unknown>[];
+  /** PATCH /games/{id}/complete bodies, as SyncWorker uploads them. */
+  completions: Record<string, unknown>[];
+  /** Game ids the result card asked GET /games/{id}/rank about. */
+  rankRequests: string[];
+}
 
-test.describe("Star Swarm — game-over state and score API", () => {
-  test.beforeEach(async ({ page }) => {
-    await mockStarswarmApi(page);
+/**
+ * Intercepts the removed Star Swarm routes (#2644) and the session pipeline: the run's
+ * games row (create, events, complete), its rank, and the display name.
+ */
+async function routeStarswarmApi(page: Page): Promise<RoutedApi> {
+  const api: RoutedApi = { legacyPosts: [], completions: [], rankRequests: [] };
+  const json = (body: unknown, status = 200) => ({
+    status,
+    contentType: "application/json",
+    body: JSON.stringify(body),
   });
+  await page.route("**/starswarm/**", async (route) => {
+    if (route.request().method() === "POST") {
+      api.legacyPosts.push(JSON.parse(route.request().postData() ?? "{}"));
+    }
+    await route.fulfill(json({ detail: "Not Found" }, 404));
+  });
+  await page.route(new RegExp(`^${API_BASE}/games(/.*)?$`), async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname;
+    const rank = path.match(/^\/games\/([^/]+)\/rank$/);
+    if (req.method() === "GET" && rank) {
+      api.rankRequests.push(decodeURIComponent(rank[1]!));
+      await route.fulfill(
+        json({ rank: 3, is_best: true, ranked: true, reason: null }),
+      );
+      return;
+    }
+    if (req.method() === "PATCH" && path.endsWith("/complete")) {
+      api.completions.push(JSON.parse(req.postData() ?? "{}"));
+    }
+    await route.fulfill(
+      json({}, req.method() === "POST" && path === "/games" ? 201 : 200),
+    );
+  });
+  await page.route("**/players/me", async (route) => {
+    const body = JSON.parse(route.request().postData() ?? "{}");
+    await route.fulfill(json({ display_name: body.display_name ?? null }));
+  });
+  return api;
+}
 
+/** Opens Star Swarm, optionally under a display name, and starts a run. */
+async function startRun(page: Page, displayName?: string): Promise<void> {
+  if (displayName) {
+    await page.goto("/");
+    await page.evaluate(([key, name]) => localStorage.setItem(key, name), [
+      DISPLAY_NAME_KEY,
+      displayName,
+    ] as const);
+  }
+  await gotoStarswarm(page);
+  await page.getByTestId("starswarm-start-game").click();
+  await expect(page.getByTestId("starswarm-start-game")).not.toBeVisible();
+}
+
+async function endRun(page: Page, score: number, wave: number): Promise<void> {
+  await page.evaluate(
+    ([s, w]) =>
+      (
+        globalThis as unknown as {
+          __starswarm_endRun: (score: number, wave: number) => void;
+        }
+      ).__starswarm_endRun(s, w),
+    [score, wave] as const,
+  );
+  await expect(page.getByTestId("starswarm-result")).toBeVisible({
+    timeout: 5_000,
+  });
+}
+
+test.describe("Star Swarm — result card", () => {
   test("charge-shot button is absent during active play (#981 removal)", async ({
     page,
   }) => {
-    await page.goto("/");
-    await page.getByRole("button", { name: "Play Star Swarm" }).click();
+    await routeStarswarmApi(page);
+    await gotoStarswarm(page);
     await expect(
       page.getByRole("img", { name: /Star Swarm game/i }),
-    ).toBeVisible({ timeout: 10_000 });
-
-    // Charge-shot button was removed in #981 — power-up now grants super state
+    ).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(
       page.getByRole("button", { name: /Charge shot/i }),
     ).not.toBeAttached();
   });
 
-  test("score submission POST request is correctly shaped", async ({
+  test("ending a run shows the card with score, wave and actions", async ({
     page,
   }) => {
-    const capturedBodies: unknown[] = [];
+    await routeStarswarmApi(page);
+    await startRun(page);
+    await endRun(page, 4200, 7);
 
-    await page.route(`${API_BASE}/starswarm/score`, async (route) => {
-      const raw = await route.request().postData();
-      if (raw) {
-        capturedBodies.push(JSON.parse(raw));
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(MOCK_LEADERBOARD),
-      });
-    });
-
-    await page.goto("/");
-    await page.getByRole("button", { name: "Play Star Swarm" }).click();
+    const card = page.getByTestId("starswarm-result");
+    await expect(card.getByText("Game Over")).toBeVisible();
+    await expect(card.getByText("Reached wave 7")).toBeVisible();
+    await expect(card.getByText("4,200").first()).toBeVisible();
     await expect(
-      page.getByRole("img", { name: /Star Swarm game/i }),
-    ).toBeVisible({ timeout: 10_000 });
-
-    // Score is submitted on game-over, which requires real gameplay to reach.
-    // Verify the route intercept is wired correctly by inspecting that no
-    // malformed requests slip through (captured bodies must have the right shape).
-    await page.waitForTimeout(500);
-    for (const body of capturedBodies) {
-      expect(body).toMatchObject({
-        player_id: expect.any(String),
-        score: expect.any(Number),
-        wave_reached: expect.any(Number),
-      });
-    }
-  });
-
-  test("leaderboard GET endpoint is intercepted", async ({ page }) => {
-    const leaderboardRequests: string[] = [];
-
-    await page.route(`${API_BASE}/starswarm/leaderboard`, async (route) => {
-      leaderboardRequests.push(route.request().url());
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(MOCK_LEADERBOARD),
-      });
-    });
-
-    await page.goto("/");
-    await page.getByRole("button", { name: "Play Star Swarm" }).click();
+      card.getByRole("button", { name: "Play Again" }),
+    ).toBeVisible();
     await expect(
-      page.getByRole("img", { name: /Star Swarm game/i }),
-    ).toBeVisible({ timeout: 10_000 });
-
-    await page.waitForTimeout(500);
-
-    // All leaderboard requests that did fire must target the correct endpoint
-    for (const url of leaderboardRequests) {
-      expect(url).toContain("/starswarm/leaderboard");
-    }
-  });
-
-  test("NEW GAME button is accessible after game over (DOM check)", async ({
-    page,
-  }) => {
-    await page.goto("/");
-    await page.getByRole("button", { name: "Play Star Swarm" }).click();
-    await expect(
-      page.getByRole("img", { name: /Star Swarm game/i }),
-    ).toBeVisible({ timeout: 10_000 });
-
-    // The NEW GAME button is rendered by Controls only when phase = "GameOver".
-    // It is defined in the DOM with accessibilityLabel "Start a new game".
-    // Without a test hook to force game-over, assert it is NOT yet visible
-    // (correct initial state: game is active, not over).
+      card.getByRole("button", { name: "Change Difficulty" }),
+    ).toBeVisible();
+    await expect(card.getByRole("button", { name: "Home" })).toBeVisible();
+    // The old in-canvas NEW GAME button is gone.
     await expect(
       page.getByRole("button", { name: /Start a new game/i }),
-    ).not.toBeVisible({ timeout: 2_000 });
+    ).not.toBeAttached();
+  });
+
+  test("records the run with its score and shows its rank on the tier's board", async ({
+    page,
+  }) => {
+    const api = await routeStarswarmApi(page);
+    await startRun(page, "Tester");
+    await endRun(page, 4200, 7);
+
+    await expect(
+      page.getByText("Saved as Tester · #3 on the leaderboard"),
+    ).toBeVisible({
+      timeout: 10_000,
+    });
+    // #2626: the run's games row is the entry — it carries the score, wave and tier.
+    expect(api.completions).toHaveLength(1);
+    expect(api.completions[0]).toMatchObject({
+      final_score: 4200,
+      outcome: "completed",
+      result: {
+        outcome: "completed",
+        wave_reached: 7,
+        difficulty_tier: expect.any(String),
+      },
+    });
+    expect(api.rankRequests).toHaveLength(1);
+    // Nothing goes to the removed POST /starswarm/score.
+    expect(api.legacyPosts).toHaveLength(0);
+  });
+
+  test("Play Again starts a new run; Change Difficulty opens the picker", async ({
+    page,
+  }) => {
+    await routeStarswarmApi(page);
+    await startRun(page);
+    await endRun(page, 4200, 7);
+
+    await page
+      .getByTestId("starswarm-result")
+      .getByRole("button", { name: "Play Again" })
+      .click();
+    await expect(page.getByTestId("starswarm-result")).not.toBeVisible();
+    await expect(page.getByTestId("starswarm-start-game")).not.toBeVisible();
+
+    await endRun(page, 100, 1);
+    await page
+      .getByTestId("starswarm-result")
+      .getByRole("button", { name: "Change Difficulty" })
+      .click();
+    await expect(page.getByTestId("starswarm-result")).not.toBeVisible();
+    await expect(page.getByTestId("starswarm-start-game")).toBeVisible();
+  });
+
+  test("Best survives a reload", async ({ page }) => {
+    await routeStarswarmApi(page);
+    await startRun(page);
+    await endRun(page, 4200, 7);
+    await expect(
+      page.getByTestId("starswarm-result").getByText("New best"),
+    ).toBeVisible();
+
+    await page.goto("/");
+    await startRun(page);
+    await endRun(page, 100, 1);
+    const card = page.getByTestId("starswarm-result");
+    await expect(card.getByText("New best")).not.toBeVisible();
+    await expect(card.getByText("4,200")).toBeVisible(); // Best
   });
 });

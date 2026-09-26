@@ -26,6 +26,10 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 
+# npm is the package manager (package-lock.json). A yarn.lock makes Render
+# auto-run a frozen yarn install before the build command (#2546).
+yarn.lock
+
 # macOS
 .DS_Store
 *.pem

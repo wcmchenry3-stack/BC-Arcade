@@ -1,11 +1,22 @@
 import React from "react";
-import { render, fireEvent, act, screen, waitFor } from "@testing-library/react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { render, renderHook, fireEvent, act, screen, waitFor } from "@testing-library/react-native";
 import BlackjackBettingScreen from "../BlackjackBettingScreen";
-import { BlackjackGameProvider } from "../../game/blackjack/BlackjackGameContext";
+import { BlackjackGameProvider, useBlackjackGame } from "../../game/blackjack/BlackjackGameContext";
+import { TABLE_CONFIGS } from "../../game/blackjack/tables";
+import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { loadGame } from "../../game/blackjack/storage";
 import { newGame } from "../../game/blackjack/engine";
 import { EngineState } from "../../game/blackjack/engine";
+
+// GameShell's Stats item (#2635) navigates through useNavigation; these
+// screens take their navigation as a prop, so the hook gets its own mock.
+const mockShellNavigate = jest.fn();
+jest.mock("@react-navigation/native", () => ({
+  ...jest.requireActual("@react-navigation/native"),
+  useNavigation: () => ({ navigate: mockShellNavigate }),
+}));
 
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
@@ -79,7 +90,21 @@ describe("BlackjackBettingScreen — header / navigation", () => {
     await waitFor(() => expect(screen.getByText("Blackjack")).toBeTruthy());
   });
 
-  it("⋯ menu Scoreboard item navigates to ScoreboardScreen with blackjack gameKey", async () => {
+  it("⋯ menu Scorecard item (#2636) opens the blackjack live view", async () => {
+    const nav = mockNav();
+    mockShellNavigate.mockClear();
+    await renderScreen(nav);
+    await screen.findByText("Deal");
+    await act(async () => {
+      await fireEvent.press(screen.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByText("Scorecard"));
+    });
+    expect(mockShellNavigate).toHaveBeenCalledWith("Scorecard", { gameKey: "blackjack" });
+  });
+
+  it("⋯ menu Stats item opens Blackjack's stats (#2635)", async () => {
     const nav = mockNav();
     await renderScreen(nav);
     await screen.findByText("Deal");
@@ -87,9 +112,9 @@ describe("BlackjackBettingScreen — header / navigation", () => {
       await fireEvent.press(screen.getByLabelText("More options"));
     });
     await act(async () => {
-      await fireEvent.press(screen.getByText("Scoreboard"));
+      await fireEvent.press(screen.getByText("Stats"));
     });
-    expect(nav.navigate).toHaveBeenCalledWith("Scoreboard", { gameKey: "blackjack" });
+    expect(mockShellNavigate).toHaveBeenCalledWith("GameStats", { gameType: "blackjack" });
   });
 });
 
@@ -163,5 +188,44 @@ describe("BlackjackBettingScreen — persistent table, no pre-deal labels", () =
     await screen.findByText("Deal");
     expect(screen.queryByText("Dealer's Hand")).toBeNull();
     expect(screen.queryByText("Your Hand")).toBeNull();
+  });
+});
+
+describe("BlackjackGameContext — table start (#1129)", () => {
+  const intermediate = TABLE_CONFIGS[1]!;
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    (loadGame as jest.Mock).mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    __setPremiumLevelsForTests(null);
+  });
+
+  async function renderGame() {
+    const hook = await renderHook(() => useBlackjackGame(), {
+      wrapper: ({ children }) => <BlackjackGameProvider>{children}</BlackjackGameProvider>,
+    });
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    return hook;
+  }
+
+  it("remembers the table every start goes to, Next Table included", async () => {
+    const { result } = await renderGame();
+    await act(async () => result.current.handleTableSelect(intermediate));
+    expect(result.current.engine?.betMin).toBe(intermediate.betMin);
+    await waitFor(async () =>
+      expect(await AsyncStorage.getItem("blackjack.difficulty")).toBe("intermediate")
+    );
+  });
+
+  it("never starts a premium table", async () => {
+    __setPremiumLevelsForTests({ blackjack: ["intermediate"] });
+    const { result } = await renderGame();
+    const before = result.current.engine;
+    await act(async () => result.current.handleTableSelect(intermediate));
+    expect(result.current.engine).toBe(before);
+    expect(await AsyncStorage.getItem("blackjack.difficulty")).toBeNull();
   });
 });

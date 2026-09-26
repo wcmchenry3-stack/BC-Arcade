@@ -70,6 +70,36 @@ describe("PendingGamesStore", () => {
     expect(store.all()).toEqual([]);
   });
 
+  describe("setProgressOutcome (#2682)", () => {
+    it("sets and persists the override", async () => {
+      await store.create("g1", "yacht", {});
+      await store.setProgressOutcome("g1", "win");
+      expect(store.get("g1")?.progressOutcome).toBe("win");
+
+      const fresh = new PendingGamesStore();
+      await fresh.init();
+      expect(fresh.get("g1")?.progressOutcome).toBe("win");
+    });
+
+    it("clears the override when set to null", async () => {
+      await store.create("g1", "yacht", {});
+      await store.setProgressOutcome("g1", "win");
+      await store.setProgressOutcome("g1", null);
+      expect(store.get("g1")?.progressOutcome).toBeNull();
+    });
+
+    it("no-ops on a completed game", async () => {
+      await store.create("g1", "yacht", {});
+      await store.complete("g1", { outcome: "abandoned" });
+      await store.setProgressOutcome("g1", "win");
+      expect(store.get("g1")?.progressOutcome).toBeUndefined();
+    });
+
+    it("no-ops on an unknown game", async () => {
+      await expect(store.setProgressOutcome("nope", "win")).resolves.toBeUndefined();
+    });
+  });
+
   it("markStartedSynced / markCompleteSynced flip the flags", async () => {
     await store.create("g1", "yacht", {});
     await store.markStartedSynced("g1");
@@ -85,5 +115,201 @@ describe("PendingGamesStore", () => {
     const fresh = new PendingGamesStore();
     await fresh.init();
     expect(fresh.all()).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // #2654 — deferred create + previous-process sweep support
+  // -------------------------------------------------------------------------
+
+  describe("started flag (#2654)", () => {
+    it("a new game is not started; markStarted flips it and persists", async () => {
+      await store.create("g1", "yacht", {});
+      expect(store.get("g1")?.started).toBe(false);
+      await store.markStarted("g1");
+      expect(store.get("g1")?.started).toBe(true);
+
+      const fresh = new PendingGamesStore();
+      await fresh.init();
+      expect(fresh.get("g1")?.started).toBe(true);
+    });
+
+    it("complete marks an unstarted game started (finishing is real activity)", async () => {
+      await store.create("g1", "yacht", {});
+      await store.complete("g1", { outcome: "completed" });
+      expect(store.get("g1")?.started).toBe(true);
+    });
+
+    it("complete takes an explicit completedAt", async () => {
+      await store.create("g1", "yacht", {});
+      await store.complete("g1", { outcome: "abandoned" }, 1_234);
+      expect(store.get("g1")?.completedAt).toBe(1_234);
+    });
+
+    it("nextEventIndex records when the last event was enqueued", async () => {
+      const now = jest.spyOn(Date, "now").mockReturnValue(5_000);
+      try {
+        await store.create("g1", "yacht", {});
+        store.nextEventIndex("g1");
+        now.mockReturnValue(9_000);
+        store.nextEventIndex("g1");
+        expect(store.get("g1")?.lastEventAt).toBe(9_000);
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    describe("an older build's record, which has no `started`", () => {
+      async function loadLegacy(extra: Record<string, unknown>) {
+        await AsyncStorage.setItem(
+          "pending_games_v1",
+          JSON.stringify({
+            legacy: {
+              gameType: "yacht",
+              metadata: {},
+              startedAt: 1_000,
+              startedSynced: false,
+              nextEventIndex: 1,
+              completed: false,
+              completedAt: null,
+              completeSummary: null,
+              completeSynced: false,
+              ...extra,
+            },
+          })
+        );
+        const fresh = new PendingGamesStore();
+        await fresh.init();
+        return fresh.get("legacy")?.started;
+      }
+
+      it("is started once its create was sent", async () => {
+        expect(await loadLegacy({ startedSynced: true })).toBe(true);
+      });
+
+      it("is started with an event beyond game_started", async () => {
+        expect(await loadLegacy({ nextEventIndex: 2 })).toBe(true);
+      });
+
+      it("is started once finished", async () => {
+        expect(await loadLegacy({ nextEventIndex: 2, completed: true, completedAt: 2_000 })).toBe(
+          true
+        );
+      });
+
+      it("is unstarted when it was never sent and has only game_started", async () => {
+        expect(await loadLegacy({ nextEventIndex: 1 })).toBe(false);
+      });
+    });
+  });
+
+  describe("batch (#2654)", () => {
+    it("persists every change made inside it with one write", async () => {
+      await store.create("a", "yacht", {});
+      await store.create("b", "yacht", {});
+      const setItem = AsyncStorage.setItem as jest.Mock;
+      setItem.mockClear();
+      await store.batch(() => {
+        void store.markStarted("a");
+        store.nextEventIndex("a");
+        void store.complete("a", { outcome: "abandoned" });
+        void store.forget("b");
+      });
+      expect(setItem).toHaveBeenCalledTimes(1);
+      const saved = JSON.parse(setItem.mock.calls[0]?.[1] as string);
+      expect(Object.keys(saved)).toEqual(["a"]);
+      expect(saved.a.completed).toBe(true);
+    });
+
+    it("writes nothing when nothing changed", async () => {
+      const setItem = AsyncStorage.setItem as jest.Mock;
+      setItem.mockClear();
+      await store.batch(() => undefined);
+      expect(setItem).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("previous process (#2654)", () => {
+    /** Let the earlier process's writes land, then return a new process's store. */
+    async function relaunch(): Promise<PendingGamesStore> {
+      await new Promise((r) => setTimeout(r, 10));
+      return new PendingGamesStore();
+    }
+
+    it("lists only the open games read from disk", async () => {
+      await store.create("open", "yacht", {});
+      await store.create("done", "yacht", {});
+      await store.complete("done", { outcome: "completed" });
+
+      const next = await relaunch();
+      await next.init();
+      await next.create("mine", "yacht", {});
+
+      expect(next.previousProcessOpenGames().map(([id]) => id)).toEqual(["open"]);
+    });
+
+    it("is empty before init() resolves", async () => {
+      await store.create("open", "yacht", {});
+      const next = await relaunch();
+      expect(next.previousProcessOpenGames()).toEqual([]);
+    });
+
+    it("a game created before init() resolves is kept, saved, and not from a previous process", async () => {
+      await store.create("saved", "yacht", {});
+      const next = await relaunch();
+
+      const initDone = next.init();
+      await next.create("mine", "twenty48", {}); // this write races the load
+      await initDone;
+
+      // The load merged under the new game instead of replacing the map...
+      expect(next.get("mine")?.gameType).toBe("twenty48");
+      expect(next.get("saved")?.gameType).toBe("yacht");
+      // ...and only the saved game belongs to the earlier process.
+      expect(next.previousProcessOpenGames().map(([id]) => id)).toEqual(["saved"]);
+
+      // The write did not replace the saved games on disk.
+      const after = await relaunch();
+      await after.init();
+      expect(
+        after
+          .all()
+          .map(([id]) => id)
+          .sort()
+      ).toEqual(["mine", "saved"]);
+    });
+
+    it("a game created on a store nobody has init()-ed still loads the saved games first", async () => {
+      await store.create("saved", "yacht", {});
+      const next = await relaunch();
+      await next.create("mine", "yacht", {});
+      expect(next.get("saved")).toBeDefined();
+
+      const after = await relaunch();
+      await after.init();
+      expect(after.get("saved")).toBeDefined();
+      expect(after.get("mine")).toBeDefined();
+    });
+
+    it("adoptOrphan hands over a started, resumable orphan once and lists it no more", async () => {
+      await store.create("a", "yacht", { puzzle: 1 });
+      await store.markStarted("a");
+      const next = await relaunch();
+      expect(next.adoptOrphan("yacht", Date.now())).toBeNull(); // not loaded yet
+      await next.init();
+      expect(next.adoptOrphan("yacht", Date.now(), { puzzle: 2 })).toBeNull();
+      expect(next.adoptOrphan("yacht", Date.now(), { puzzle: 1 })).toBe("a");
+      expect(next.previousProcessOpenGames()).toEqual([]);
+      expect(next.adoptOrphan("yacht", Date.now())).toBeNull();
+    });
+
+    it("drops a forgotten or completed game from the list", async () => {
+      await store.create("a", "yacht", {});
+      await store.create("b", "yacht", {});
+      const next = await relaunch();
+      await next.init();
+      await next.forget("a");
+      await next.complete("b", { outcome: "abandoned" });
+      expect(next.previousProcessOpenGames()).toEqual([]);
+    });
   });
 });

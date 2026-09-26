@@ -214,9 +214,14 @@ export async function clearGame(): Promise<void> {
 
 const STATS_KEY = "sudoku_stats_v1";
 
+/**
+ * The device's cached best time for one puzzle kind, for the result card's
+ * best time and "New best" badge only (#2636); the player's history is the
+ * Stats screen, fed by the server. Older builds also kept `gamesSolved` here:
+ * a stored record with it still loads, and the next save drops it.
+ */
 export interface DifficultyStats {
   bestTimeS: number;
-  gamesSolved: number;
 }
 
 export interface VariantStats {
@@ -231,9 +236,9 @@ export interface SudokuStats {
 }
 
 const EMPTY_VARIANT_STATS: VariantStats = {
-  easy: { bestTimeS: 0, gamesSolved: 0 },
-  medium: { bestTimeS: 0, gamesSolved: 0 },
-  hard: { bestTimeS: 0, gamesSolved: 0 },
+  easy: { bestTimeS: 0 },
+  medium: { bestTimeS: 0 },
+  hard: { bestTimeS: 0 },
 };
 
 export const EMPTY_SUDOKU_STATS: SudokuStats = {
@@ -242,12 +247,9 @@ export const EMPTY_SUDOKU_STATS: SudokuStats = {
 };
 
 function parseDiffStats(d: unknown): DifficultyStats {
-  if (d === null || typeof d !== "object") return { bestTimeS: 0, gamesSolved: 0 };
+  if (d === null || typeof d !== "object") return { bestTimeS: 0 };
   const o = d as Partial<DifficultyStats>;
-  return {
-    bestTimeS: typeof o.bestTimeS === "number" ? o.bestTimeS : 0,
-    gamesSolved: typeof o.gamesSolved === "number" ? o.gamesSolved : 0,
-  };
+  return { bestTimeS: typeof o.bestTimeS === "number" ? o.bestTimeS : 0 };
 }
 
 function parseVariantStats(v: unknown): VariantStats {

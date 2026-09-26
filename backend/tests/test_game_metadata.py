@@ -119,6 +119,23 @@ def test_solitaire_metadata_rejects_unknown_field() -> None:
         SolitaireMetadata.model_validate({"score": 9999})
 
 
+@pytest.mark.parametrize("draw_mode", [1, 3])
+def test_solitaire_metadata_accepts_draw_mode(draw_mode: int) -> None:
+    # #2632: current builds send the deal's draw mode on POST /games.
+    assert SolitaireMetadata.model_validate({"draw_mode": draw_mode}).draw_mode == draw_mode
+
+
+def test_solitaire_metadata_draw_mode_is_optional() -> None:
+    # Installed builds send no metadata at all.
+    assert SolitaireMetadata.model_validate({}).draw_mode is None
+
+
+@pytest.mark.parametrize("draw_mode", [0, 2, "1", True, 3.0])
+def test_solitaire_metadata_rejects_other_draw_modes(draw_mode: object) -> None:
+    with pytest.raises(ValidationError):
+        SolitaireMetadata.model_validate({"draw_mode": draw_mode})
+
+
 # ---------------------------------------------------------------------------
 # HeartsMetadata unit tests
 # ---------------------------------------------------------------------------
@@ -269,8 +286,9 @@ def test_create_game_request_invalid_sudoku_metadata_raises_422() -> None:
 
 
 def test_create_game_request_unregistered_game_type_skips_validation() -> None:
-    # twenty48 is in GameType but not yet in the registry — should not raise
-    req = CreateGameRequest(game_type="twenty48", metadata={"anything": True})
+    # A game type with no registered module (e.g. seeded in the DB before its
+    # module ships) skips validation. Every GameType has a module since #2623.
+    req = CreateGameRequest(game_type="unregistered_game", metadata={"anything": True})
     assert req.metadata == {"anything": True}
 
 

@@ -19,6 +19,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Share,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -36,8 +37,10 @@ import i18n from "i18next";
 
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
+import { DEV_OVERLAY_BG } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
+import GameResultModal from "../components/shared/GameResultModal";
 import {
   initialState,
   setCurrentRowLetter,
@@ -45,11 +48,14 @@ import {
   applyServerResult,
   markComplete,
   buildShareText,
+  guessCount as countGuesses,
+  withServerGuessCount,
   sessionResult,
 } from "../game/daily_word/engine";
 import type { DailyWordState, TileStatus } from "../game/daily_word/types";
 import { dailyWordApi } from "../game/daily_word/api";
 import { withRetry } from "../game/_shared/withRetry";
+import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useGameSync } from "../game/_shared/useGameSync";
 import {
   loadState,
@@ -124,10 +130,21 @@ function formatCountdown(ms: number): string {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
-async function copyToClipboard(text: string): Promise<void> {
-  if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
-    await navigator.clipboard.writeText(text);
+/**
+ * Shares the result: the clipboard on web, the system share sheet on iOS and
+ * Android (#2514 — previously a silent no-op on native that still said
+ * "Copied!"). Resolves to "copied" only when text was actually copied.
+ */
+async function shareResult(text: string): Promise<"copied" | "shared" | "none"> {
+  if (Platform.OS === "web") {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      await navigator.clipboard.writeText(text);
+      return "copied";
+    }
+    return "none";
   }
+  await Share.share({ message: text });
+  return "shared";
 }
 
 // ---------------------------------------------------------------------------
@@ -417,223 +434,17 @@ const toastStyles = StyleSheet.create({
 });
 
 // ---------------------------------------------------------------------------
-// Win modal
-// ---------------------------------------------------------------------------
-
-function WinModal({
-  state,
-  countdown,
-  onClose,
-}: {
-  readonly state: DailyWordState;
-  readonly countdown: string;
-  readonly onClose: () => void;
-}) {
-  const { t } = useTranslation("daily_word");
-  const { colors } = useTheme();
-  const [copied, setCopied] = useState(false);
-
-  const guessCount = state.rows.filter((r) => r.submitted).length;
-
-  async function handleShare() {
-    const text = buildShareText(state, DEEP_LINK);
-    try {
-      await copyToClipboard(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // ignore
-    }
-  }
-
-  return (
-    <Modal
-      visible
-      transparent
-      animationType="fade"
-      accessibilityViewIsModal
-      onRequestClose={onClose}
-    >
-      <Pressable style={modalStyles.overlay} onPress={onClose}>
-        <Pressable onPress={() => {}}>
-          <View
-            style={[
-              modalStyles.card,
-              { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-            ]}
-          >
-            <Pressable
-              style={modalStyles.closeBtn}
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel={t("modal.close")}
-            >
-              <Text style={[modalStyles.closeBtnText, { color: colors.textMuted }]}>✕</Text>
-            </Pressable>
-            <Text style={[modalStyles.title, { color: colors.text }]} accessibilityRole="header">
-              {t("result.win.title")}
-            </Text>
-            <Text style={[modalStyles.body, { color: colors.textMuted }]}>
-              {t("result.win.guesses", { count: guessCount })}
-            </Text>
-            <Pressable
-              onPress={handleShare}
-              style={[modalStyles.primaryBtn, { backgroundColor: colors.accent }]}
-              accessibilityRole="button"
-              accessibilityLabel={t("result.win.share")}
-            >
-              <Text style={[modalStyles.primaryBtnText, { color: "#ffffff" }]}>
-                {copied ? t("result.win.copied") : t("result.win.share")}
-              </Text>
-            </Pressable>
-            <Text style={[modalStyles.countdown, { color: colors.textMuted }]}>
-              {t("result.win.countdown", { time: countdown })}
-            </Text>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Loss modal
-// ---------------------------------------------------------------------------
-
-function LossModal({
-  answer,
-  countdown,
-  onClose,
-}: {
-  readonly answer: string | null;
-  readonly countdown: string;
-  readonly onClose: () => void;
-}) {
-  const { t } = useTranslation("daily_word");
-  const { colors } = useTheme();
-
-  return (
-    <Modal
-      visible
-      transparent
-      animationType="fade"
-      accessibilityViewIsModal
-      onRequestClose={onClose}
-    >
-      <Pressable style={modalStyles.overlay} onPress={onClose}>
-        <Pressable onPress={() => {}}>
-          <View
-            style={[
-              modalStyles.card,
-              { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-            ]}
-          >
-            <Pressable
-              style={modalStyles.closeBtn}
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel={t("modal.close")}
-            >
-              <Text style={[modalStyles.closeBtnText, { color: colors.textMuted }]}>✕</Text>
-            </Pressable>
-            <Text style={[modalStyles.title, { color: colors.text }]} accessibilityRole="header">
-              {t("result.loss.title")}
-            </Text>
-            {answer !== null && (
-              <Text style={[modalStyles.body, { color: colors.text }]}>
-                {t("result.loss.answer", { answer })}
-              </Text>
-            )}
-            <Text style={[modalStyles.body, { color: colors.textMuted }]}>
-              {t("result.loss.countdown", { time: countdown })}
-            </Text>
-            <Text style={[modalStyles.nextWordLabel, { color: colors.textMuted }]}>
-              {"Next word in "}
-              <Text style={{ color: colors.text }}>{countdown}</Text>
-            </Text>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
-
-const modalStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#000000bf",
-  },
-  card: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 28,
-    alignItems: "center",
-    width: "86%",
-    maxWidth: 340,
-    gap: 10,
-  },
-  title: {
-    fontFamily: typography.heading,
-    fontSize: 24,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-    textAlign: "center",
-  },
-  body: {
-    fontFamily: typography.body,
-    fontSize: 15,
-    textAlign: "center",
-  },
-  primaryBtn: {
-    paddingHorizontal: 28,
-    paddingVertical: 12,
-    borderRadius: 999,
-    marginTop: 4,
-    alignItems: "center",
-    minWidth: 160,
-  },
-  primaryBtnText: {
-    fontFamily: typography.label,
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-  countdown: {
-    fontFamily: typography.body,
-    fontSize: 13,
-    textAlign: "center",
-    marginTop: 4,
-  },
-  nextWordLabel: {
-    fontFamily: typography.body,
-    fontSize: 14,
-    textAlign: "center",
-  },
-  closeBtn: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1,
-  },
-  closeBtnText: {
-    fontSize: 18,
-    fontWeight: "600",
-  },
-});
-
-// ---------------------------------------------------------------------------
 // Main screen
 // ---------------------------------------------------------------------------
 
+/** A finished puzzle is a win or a loss on the games row (#2517), not just "completed". */
+function finishedOutcome(state: { won: boolean }) {
+  return recordedOutcome(state.won ? "win" : "loss");
+}
+
 export default function DailyWordScreen() {
   const { t } = useTranslation("daily_word");
+  const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
@@ -651,6 +462,14 @@ export default function DailyWordScreen() {
   const [lossModalVisible, setLossModalVisible] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
   const [countdown, setCountdown] = useState("");
+  // The next puzzle's release time, fixed when the result appears (#2514).
+  // msUntilMidnight() jumps to the following midnight once one passes, so a
+  // countdown recomputed from it would never reach zero.
+  const nextWordAtRef = useRef<number | null>(null);
+  const [nextWordReady, setNextWordReady] = useState(false);
+  const [copied, setCopied] = useState(false);
+  // Play Again couldn't load the next puzzle (offline, server error).
+  const [playAgainFailed, setPlayAgainFailed] = useState(false);
   const [flippingRowIndex, setFlippingRowIndex] = useState<number | null>(null);
 
   // Dev panel (#1293) — all gated by __DEV__; Metro eliminates in production
@@ -675,6 +494,7 @@ export default function DailyWordScreen() {
   // by the hook; the snapshot below gives them the result block.
   const {
     start: syncStart,
+    resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
     getGameId: syncGetGameId,
@@ -689,33 +509,76 @@ export default function DailyWordScreen() {
   // Countdown timer
   // ---------------------------------------------------------------------------
 
-  const startCountdown = useCallback(() => {
-    if (countdownRef.current) clearInterval(countdownRef.current);
-    const tick = () => setCountdown(formatCountdown(msUntilMidnight(tzOffset)));
-    tick();
-    countdownRef.current = setInterval(tick, 1000);
-  }, [tzOffset]);
+  const startCountdown = useCallback(
+    (untilMs?: number) => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      nextWordAtRef.current = untilMs ?? Date.now() + msUntilMidnight(tzOffset);
+      setNextWordReady(false);
+      const tick = () => {
+        const remaining = Math.max(0, (nextWordAtRef.current ?? 0) - Date.now());
+        setCountdown(formatCountdown(remaining));
+        if (remaining === 0) {
+          setNextWordReady(true);
+          if (countdownRef.current) clearInterval(countdownRef.current);
+        }
+      };
+      tick();
+      countdownRef.current = setInterval(tick, 1000);
+    },
+    [tzOffset]
+  );
 
-  const resetToToday = useCallback(async (): Promise<boolean> => {
-    try {
-      await clearState();
-      const todayMeta = await dailyWordApi.getToday(tzOffset, language);
-      // The old puzzle's session must close now: left open, the next guess would
-      // skip start() and be reported against the old puzzle_id.
-      if (syncGetGameId()) {
-        syncComplete({ outcome: "abandoned" }, sessionResult(stateRef.current));
+  /**
+   * Loads today's puzzle in place of the current one. Fetches before clearing
+   * the saved game, so a failure leaves the finished result intact (#2553
+   * review). With `requireNewPuzzle`, a server still serving the current
+   * puzzle (device clock ahead of the server's) changes nothing: "same".
+   */
+  const resetToToday = useCallback(
+    async ({ requireNewPuzzle = false } = {}): Promise<"ok" | "same" | "failed"> => {
+      try {
+        const todayMeta = await dailyWordApi.getToday(tzOffset, language);
+        if (requireNewPuzzle && todayMeta.puzzle_id === stateRef.current?.puzzle_id) {
+          return "same";
+        }
+        await clearState();
+        // The old puzzle's session must close now: left open, the next guess would
+        // skip start() and be reported against the old puzzle_id.
+        if (syncGetGameId()) {
+          const result = sessionResult(stateRef.current);
+          syncComplete({ outcome: "abandoned", result }, result);
+        }
+        const fresh = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
+        setState(fresh);
+        setAnswer(null);
+        setWinModalVisible(false);
+        setLossModalVisible(false);
+        setFlippingRowIndex(null);
+        setNextWordReady(false);
+        setCopied(false);
+        setPlayAgainFailed(false);
+        return "ok";
+      } catch {
+        return "failed";
       }
-      const fresh = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
-      setState(fresh);
-      setAnswer(null);
-      setWinModalVisible(false);
-      setLossModalVisible(false);
-      setFlippingRowIndex(null);
-      return true;
-    } catch {
-      return false;
+    },
+    [tzOffset, language, syncGetGameId, syncComplete]
+  );
+
+  /** How long to wait before retrying when the server hasn't rolled over yet. */
+  const NEXT_WORD_RETRY_MS = 60_000;
+
+  const handlePlayAgain = useCallback(async () => {
+    setPlayAgainFailed(false);
+    const result = await resetToToday({ requireNewPuzzle: true });
+    if (!mountedRef.current) return;
+    if (result === "same") {
+      // The server hasn't moved on yet: count down briefly and try again.
+      startCountdown(Date.now() + NEXT_WORD_RETRY_MS);
+    } else if (result === "failed") {
+      setPlayAgainFailed(true);
     }
-  }, [tzOffset, language, syncGetGameId, syncComplete]);
+  }, [resetToToday, startCountdown]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -778,6 +641,9 @@ export default function DailyWordScreen() {
         let gameState: DailyWordState;
         if (saved && saved.puzzle_id === todayMeta.puzzle_id) {
           gameState = saved;
+          // A restored board continues the session a killed app left open for
+          // this puzzle (#2654).
+          if (!saved.is_complete) syncResume({ puzzle_id: saved.puzzle_id });
         } else {
           if (saved) await clearState();
           gameState = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
@@ -868,6 +734,21 @@ export default function DailyWordScreen() {
       return;
     }
 
+    // #2197 — a word already on the board must not be submitted again. The
+    // server treats a repeat of a recorded guess as a replay (so a re-send
+    // after a lost response cannot rob a turn), which means a *deliberate*
+    // repeat would advance the board without spending a server-side guess.
+    // Six rows and five recorded guesses would then leave the player short of
+    // the answer they earned.
+    const alreadyGuessed = s.rows
+      .slice(0, s.current_row)
+      .some((r) => r.submitted && r.tiles.map((tile) => tile.letter).join("") === guess);
+    if (alreadyGuessed) {
+      showToast(t("error.alreadyGuessed"));
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+      return;
+    }
+
     const _devTs = __DEV__ ? Date.now() : 0;
     const _devBody = __DEV__
       ? { puzzle_id: s.puzzle_id, guess, tz_offset_minutes: tzOffset }
@@ -891,8 +772,19 @@ export default function DailyWordScreen() {
       if (!mountedRef.current) return;
       const tileStates = result.tiles.map((t) => ({ letter: t.letter, status: t.status }));
 
-      const afterApply = applyServerResult(s, tileStates);
+      // #2541 — keep the server's count on the state; `guessCount` reads it.
+      const afterApply = withServerGuessCount(
+        applyServerResult(s, tileStates),
+        result.guesses_used
+      );
       const won = tileStates.every((tile) => tile.status === "correct");
+      // Deliberately the board's rows, not the server's `guesses_remaining`
+      // (#2541 review). A 200 can be a replay of a recorded guess — on a
+      // puzzle the server has as solved, or on a wiped board — and the 200
+      // carries no `solved` flag, so ending the game here would record a
+      // loss for a win, or a fresh completion for a finished puzzle. A board
+      // that is behind reaches its next guess, which the server refuses with
+      // a 403 that the recovery path below handles, guards included.
       const outOfGuesses = !won && afterApply.current_row >= 6;
 
       if (!syncGetGameId()) {
@@ -905,7 +797,8 @@ export default function DailyWordScreen() {
         finalState = markComplete(afterApply, won);
         // Daily Word has no numeric score: final_score stays null and the
         // challenge reads the result block instead.
-        syncComplete({ finalScore: null, outcome: "completed" }, sessionResult(finalState));
+        const result = sessionResult(finalState);
+        syncComplete({ finalScore: null, outcome: finishedOutcome(finalState), result }, result);
       }
 
       setState(finalState);
@@ -946,7 +839,7 @@ export default function DailyWordScreen() {
         if (err.message === "not_a_word") {
           showToast(t("error.notAWord"));
         } else if (err.message === "stale_puzzle_id") {
-          const recovered = await resetToToday();
+          const recovered = (await resetToToday()) === "ok";
           showToast(recovered ? t("error.stalePuzzle") : t("error.couldNotLoad"));
         } else if (err.message === "wrong_guess_length") {
           showToast(t("error.wrongLength"));
@@ -955,6 +848,77 @@ export default function DailyWordScreen() {
         }
       } else if (err instanceof ApiError && err.status === 429) {
         showToast(t("error.rateLimited"));
+      } else if (
+        err instanceof ApiError &&
+        err.status === 403 &&
+        (err.message === "no_guesses_remaining" || err.message === "already_solved")
+      ) {
+        // #2197 — the server says this puzzle is finished and the local board
+        // disagrees, which happens when a guess was recorded but its response
+        // never arrived. Trust the server: close the game out and reveal the
+        // answer it will now release, rather than stranding the player on a
+        // board that can never complete.
+        // Same guard as the success path: the player may have left while the
+        // guess was in flight, in which case useGameSync's unmount cleanup has
+        // already run and there is nothing left to close out.
+        const current = stateRef.current;
+        if (mountedRef.current && current) {
+          // `already_solved` means the server recorded a winning guess — the
+          // player won, and only the response was lost. Marking that a loss
+          // would persist won:false and show them the word they had already
+          // found.
+          const wonIt = err.message === "already_solved";
+          // The board is behind the server here by definition — that is why
+          // this 403 happened — so its row count is too low. Take the
+          // server's count from the refusal (#2541); `guessCount` falls back
+          // to the board if an older API sent none.
+          const finished = markComplete(
+            withServerGuessCount(current, err.body?.guesses_used),
+            wonIt
+          );
+
+          // Only report a session this visit actually played. `already_solved`
+          // is returned for *any* guess on a puzzle this session finished at
+          // any earlier time, and the board can be missing independently of
+          // the session id — they are separate AsyncStorage keys
+          // (`daily_word_state_v1` vs `game_session_id`), and loadState drops
+          // only the board on a corrupt payload. Without this guard, opening a
+          // wiped board and typing one word would fabricate a completed game
+          // for a puzzle finished hours ago, with a guesses_used taken from an
+          // empty board — free XP and a free "win in N guesses" goal credit.
+          const playedThisVisit = current.rows.some((r) => r.submitted);
+          if (playedThisVisit) {
+            // The session must be completed, or the unmount cleanup reports
+            // outcome:"abandoned" — and abandoned games earn no
+            // daily-challenge credit, no streak day and no XP (#2468/#2472).
+            if (!syncGetGameId()) {
+              syncStart(
+                { puzzle_id: current.puzzle_id },
+                { puzzle_id: current.puzzle_id, language: current.language }
+              );
+            }
+            syncMarkStarted();
+            const result = sessionResult(finished);
+            syncComplete({ finalScore: null, outcome: finishedOutcome(finished), result }, result);
+          }
+
+          setState(finished);
+          saveState(finished).catch(() => {});
+
+          if (wonIt) {
+            setWinModalVisible(true);
+          } else {
+            try {
+              const answerData = await dailyWordApi.getAnswer(finished.puzzle_id);
+              if (mountedRef.current) setAnswer(answerData.answer.toUpperCase());
+            } catch {
+              // Modal still opens; it just won't reveal the word.
+            }
+            if (!mountedRef.current) return;
+            setLossModalVisible(true);
+          }
+          startCountdown();
+        }
       } else {
         showToast(t("error.couldNotSubmit"));
       }
@@ -992,9 +956,31 @@ export default function DailyWordScreen() {
   // Render
   // ---------------------------------------------------------------------------
 
+  const guessCount = state ? countGuesses(state) : 0;
+
+  async function handleShare() {
+    if (!state) return;
+    try {
+      const outcome = await shareResult(buildShareText(state, DEEP_LINK));
+      if (outcome !== "copied") return;
+      setCopied(true);
+      setTimeout(() => {
+        if (mountedRef.current) setCopied(false);
+      }, 2000);
+    } catch {
+      // Share dismissed or clipboard unavailable — nothing to report.
+    }
+  }
+
   if (loading) {
     return (
-      <GameShell title={t("game.title")} requireBack onBack={() => navigation.popToTop()} loading>
+      <GameShell
+        gameType="daily_word"
+        title={t("game.title")}
+        requireBack
+        onBack={() => navigation.popToTop()}
+        loading
+      >
         {null}
       </GameShell>
     );
@@ -1002,6 +988,7 @@ export default function DailyWordScreen() {
 
   return (
     <GameShell
+      gameType="daily_word"
       title={t("game.title")}
       requireBack
       onBack={() => navigation.popToTop()}
@@ -1053,17 +1040,42 @@ export default function DailyWordScreen() {
         )}
       </View>
 
-      {/* Win modal */}
-      {state !== null && winModalVisible && (
-        <WinModal state={state} countdown={countdown} onClose={() => setWinModalVisible(false)} />
-      )}
-
-      {/* Loss modal */}
-      {lossModalVisible && (
-        <LossModal
-          answer={answer}
-          countdown={countdown}
-          onClose={() => setLossModalVisible(false)}
+      {/* End-of-game result card (#2514) */}
+      {state !== null && (
+        <GameResultModal
+          visible={winModalVisible || lossModalVisible}
+          outcome={state.won ? "win" : "loss"}
+          eyebrow={t("game.title")}
+          subtitle={
+            playAgainFailed
+              ? t("error.couldNotLoad")
+              : state.won
+                ? tResult("subtitle.solvedIn", { count: guessCount })
+                : answer !== null
+                  ? t("result.loss.answer", { answer })
+                  : undefined
+          }
+          hero={{
+            kind: "score",
+            label: tResult("stat.guesses"),
+            value: state.won ? `${guessCount}/6` : "X/6",
+          }}
+          primaryAction={
+            nextWordReady
+              ? { label: tResult("action.playAgain"), onPress: () => void handlePlayAgain() }
+              : {
+                  label: t("result.countdown", { time: countdown }),
+                  onPress: () => {},
+                  disabled: true,
+                }
+          }
+          secondaryAction={{
+            label: copied ? t("result.copied") : t("result.share"),
+            accessibilityLabel: t("result.share"),
+            onPress: () => void handleShare(),
+          }}
+          onHome={() => navigation.popToTop()}
+          testID="daily-word-result"
         />
       )}
 
@@ -1266,7 +1278,7 @@ const styles = StyleSheet.create({
   },
   devOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: DEV_OVERLAY_BG,
     alignItems: "center",
     justifyContent: "center",
   },

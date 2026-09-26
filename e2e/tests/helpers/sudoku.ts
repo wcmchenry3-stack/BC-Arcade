@@ -1,18 +1,7 @@
 import { Page } from "@playwright/test";
 import { installEntitlementsMock } from "./api-mock";
 
-const API_BASE = "http://localhost:8000";
 const STORAGE_KEY = "sudoku_game";
-
-export async function mockSudokuApi(page: Page): Promise<void> {
-  await page.route(`${API_BASE}/sudoku/**`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ scores: [] }),
-    });
-  });
-}
 
 export async function gotoSudoku(page: Page): Promise<void> {
   await installEntitlementsMock(page);

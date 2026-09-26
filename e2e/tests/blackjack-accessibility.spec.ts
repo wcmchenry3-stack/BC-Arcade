@@ -10,7 +10,7 @@
  *   - axe-core scan passes on betting, player, and result phases
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import AxeBuilder from "@axe-core/playwright";
 import {
   BlackjackPage,

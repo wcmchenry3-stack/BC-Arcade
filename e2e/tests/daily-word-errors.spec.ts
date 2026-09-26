@@ -8,7 +8,9 @@ import { test, expect } from "@playwright/test";
 import { installEntitlementsMock } from "./helpers/api-mock";
 
 test.describe("Daily Word — errors", () => {
-  test("GET /today returns 500 — load-error message shown", async ({ page }) => {
+  test("GET /today returns 500 — load-error message shown", async ({
+    page,
+  }) => {
     await installEntitlementsMock(page);
 
     await page.route("**/daily-word/**", async (route) => {
@@ -18,12 +20,18 @@ test.describe("Daily Word — errors", () => {
     await page.goto("/");
     await page.evaluate(() => localStorage.removeItem("daily_word_state_v1"));
     await page.getByRole("button", { name: "Play Daily Word" }).click();
-    await page.getByRole("heading", { name: "Daily Word" }).waitFor({ timeout: 10_000 });
+    await page
+      .getByRole("heading", { name: "Daily Word", exact: true })
+      .waitFor({ timeout: 10_000 });
 
-    await expect(page.getByText("Could not load today's puzzle")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Could not load today's puzzle")).toBeVisible({
+      timeout: 5_000,
+    });
   });
 
-  test("POST /guess returns 422 — Not in word list toast shown", async ({ page }) => {
+  test("POST /guess returns 422 — Not in word list toast shown", async ({
+    page,
+  }) => {
     await installEntitlementsMock(page);
 
     await page.route("**/daily-word/**", async (route) => {
@@ -42,23 +50,33 @@ test.describe("Daily Word — errors", () => {
           body: JSON.stringify({ detail: "not_a_word" }),
         });
       } else {
-        await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: "{}",
+        });
       }
     });
 
     await page.goto("/");
     await page.evaluate(() => localStorage.removeItem("daily_word_state_v1"));
     await page.getByRole("button", { name: "Play Daily Word" }).click();
-    await page.getByRole("heading", { name: "Daily Word" }).waitFor({ timeout: 10_000 });
+    await page
+      .getByRole("heading", { name: "Daily Word", exact: true })
+      .waitFor({ timeout: 10_000 });
 
     for (const letter of ["Z", "Z", "Z", "Z", "Z"]) {
-      await page.getByRole("button", { name: letter }).click();
+      await page.getByRole("button", { name: letter, exact: true }).click();
     }
-    await page.getByRole("button", { name: "Enter" }).click();
-    await expect(page.getByText("Not in word list")).toBeVisible({ timeout: 3_000 });
+    await page.getByRole("button", { name: "Enter", exact: true }).click();
+    await expect(page.getByText("Not in word list")).toBeVisible({
+      timeout: 3_000,
+    });
   });
 
-  test("POST /guess returns 500 — could not submit toast shown", async ({ page }) => {
+  test("POST /guess returns 500 — could not submit toast shown", async ({
+    page,
+  }) => {
     await installEntitlementsMock(page);
 
     await page.route("**/daily-word/**", async (route) => {
@@ -73,19 +91,27 @@ test.describe("Daily Word — errors", () => {
       } else if (url.includes("/daily-word/guess") && method === "POST") {
         await route.fulfill({ status: 500, body: "Server Error" });
       } else {
-        await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: "{}",
+        });
       }
     });
 
     await page.goto("/");
     await page.evaluate(() => localStorage.removeItem("daily_word_state_v1"));
     await page.getByRole("button", { name: "Play Daily Word" }).click();
-    await page.getByRole("heading", { name: "Daily Word" }).waitFor({ timeout: 10_000 });
+    await page
+      .getByRole("heading", { name: "Daily Word", exact: true })
+      .waitFor({ timeout: 10_000 });
 
     for (const letter of ["C", "R", "A", "N", "E"]) {
-      await page.getByRole("button", { name: letter }).click();
+      await page.getByRole("button", { name: letter, exact: true }).click();
     }
-    await page.getByRole("button", { name: "Enter" }).click();
-    await expect(page.getByText("Could not submit your guess")).toBeVisible({ timeout: 3_000 });
+    await page.getByRole("button", { name: "Enter", exact: true }).click();
+    await expect(page.getByText("Could not submit your guess")).toBeVisible({
+      timeout: 3_000,
+    });
   });
 });

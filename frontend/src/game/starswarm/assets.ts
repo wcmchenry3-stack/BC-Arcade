@@ -1,11 +1,14 @@
 import { useImage } from "@shopify/react-native-skia";
 import type { SkImage } from "@shopify/react-native-skia";
+import type { LoadedSprites } from "./render/frame";
+import type { DrawImages } from "./render/drawFrame";
 
 import playerShipSrc from "../../../assets/starswarm/player-ship.webp";
 import buddyShipSrc from "../../../assets/starswarm/buddy-ship.webp";
 import enemyGruntSrc from "../../../assets/starswarm/enemy-grunt.webp";
 import enemyEliteSrc from "../../../assets/starswarm/enemy-elite.webp";
 import enemyBossSrc from "../../../assets/starswarm/enemy-boss.webp";
+import enemyCarrierSrc from "../../../assets/starswarm/enemy-carrier.webp";
 import bulletPlayerSrc from "../../../assets/starswarm/bullet-player.webp";
 import bulletEnemySrc from "../../../assets/starswarm/bullet-enemy.webp";
 import bulletChargeSrc from "../../../assets/starswarm/bullet-charge.webp";
@@ -13,6 +16,10 @@ import puShieldSrc from "../../../assets/starswarm/powerups/shield_gold.png";
 import puBombSrc from "../../../assets/starswarm/powerups/space-missiles-018.png";
 import puBuddySrc from "../../../assets/starswarm/powerups/player-life.png";
 import puLightningSrc from "../../../assets/starswarm/powerups/bolt_gold.png";
+import asteroid1Src from "../../../assets/starswarm/asteroid-1.webp";
+import asteroid2Src from "../../../assets/starswarm/asteroid-2.webp";
+import asteroid3Src from "../../../assets/starswarm/asteroid-3.webp";
+import asteroid4Src from "../../../assets/starswarm/asteroid-4.webp";
 import explosionFrame00 from "../../../assets/starswarm/explosion/frame00.png";
 import explosionFrame01 from "../../../assets/starswarm/explosion/frame01.png";
 import explosionFrame02 from "../../../assets/starswarm/explosion/frame02.png";
@@ -40,6 +47,7 @@ export interface StarSwarmImages {
   enemyGrunt: SkImage | null;
   enemyElite: SkImage | null;
   enemyBoss: SkImage | null;
+  enemyCarrier: SkImage | null;
   bulletPlayer: SkImage | null;
   bulletEnemy: SkImage | null;
   bulletCharge: SkImage | null;
@@ -49,6 +57,11 @@ export interface StarSwarmImages {
   puBomb: SkImage | null;
   puBuddy: SkImage | null;
   puLightning: SkImage | null;
+  /** #2573: random meteor designs for errant asteroids. */
+  asteroid1: SkImage | null;
+  asteroid2: SkImage | null;
+  asteroid3: SkImage | null;
+  asteroid4: SkImage | null;
 }
 
 export function useStarSwarmImages(): StarSwarmImages {
@@ -57,6 +70,7 @@ export function useStarSwarmImages(): StarSwarmImages {
   const enemyGrunt = useImage(enemyGruntSrc);
   const enemyElite = useImage(enemyEliteSrc);
   const enemyBoss = useImage(enemyBossSrc);
+  const enemyCarrier = useImage(enemyCarrierSrc);
   const bulletPlayer = useImage(bulletPlayerSrc);
   const bulletEnemy = useImage(bulletEnemySrc);
   const bulletCharge = useImage(bulletChargeSrc);
@@ -64,6 +78,10 @@ export function useStarSwarmImages(): StarSwarmImages {
   const puBomb = useImage(puBombSrc);
   const puBuddy = useImage(puBuddySrc);
   const puLightning = useImage(puLightningSrc);
+  const asteroid1 = useImage(asteroid1Src);
+  const asteroid2 = useImage(asteroid2Src);
+  const asteroid3 = useImage(asteroid3Src);
+  const asteroid4 = useImage(asteroid4Src);
   const f00 = useImage(explosionFrame00);
   const f01 = useImage(explosionFrame01);
   const f02 = useImage(explosionFrame02);
@@ -91,6 +109,7 @@ export function useStarSwarmImages(): StarSwarmImages {
     enemyGrunt,
     enemyElite,
     enemyBoss,
+    enemyCarrier,
     bulletPlayer,
     bulletEnemy,
     bulletCharge,
@@ -98,6 +117,10 @@ export function useStarSwarmImages(): StarSwarmImages {
     puBomb,
     puBuddy,
     puLightning,
+    asteroid1,
+    asteroid2,
+    asteroid3,
+    asteroid4,
     explosionFrames: [
       f00,
       f01,
@@ -121,4 +144,62 @@ export function useStarSwarmImages(): StarSwarmImages {
       f19,
     ],
   };
+}
+
+/** #2564: which sprites have loaded — the frame builder draws a fallback for any that haven't. */
+export function loadedSprites(images: StarSwarmImages): LoadedSprites {
+  return {
+    playerShip: images.playerShip !== null,
+    buddyShip: images.buddyShip !== null,
+    enemyGrunt: images.enemyGrunt !== null,
+    enemyElite: images.enemyElite !== null,
+    enemyBoss: images.enemyBoss !== null,
+    enemyCarrier: images.enemyCarrier !== null,
+    bulletPlayer: images.bulletPlayer !== null,
+    puShield: images.puShield !== null,
+    puBomb: images.puBomb !== null,
+    puBuddy: images.puBuddy !== null,
+    puLightning: images.puLightning !== null,
+    asteroid1: images.asteroid1 !== null,
+    asteroid2: images.asteroid2 !== null,
+    asteroid3: images.asteroid3 !== null,
+    asteroid4: images.asteroid4 !== null,
+    explosion: images.explosionFrames.map((f) => f !== null),
+  };
+}
+
+/** #2565: the sprite set the UI-thread renderer draws with, keyed like the display list. */
+export function drawImagesOf(images: StarSwarmImages): DrawImages {
+  return {
+    playerShip: images.playerShip,
+    buddyShip: images.buddyShip,
+    enemyGrunt: images.enemyGrunt,
+    enemyElite: images.enemyElite,
+    enemyBoss: images.enemyBoss,
+    enemyCarrier: images.enemyCarrier,
+    bulletPlayer: images.bulletPlayer,
+    puShield: images.puShield,
+    puBomb: images.puBomb,
+    puBuddy: images.puBuddy,
+    puLightning: images.puLightning,
+    asteroid1: images.asteroid1,
+    asteroid2: images.asteroid2,
+    asteroid3: images.asteroid3,
+    asteroid4: images.asteroid4,
+    explosion: images.explosionFrames,
+  };
+}
+
+/** #2565: same images, same slots — so the picture worklet is rebuilt only when one loads. */
+export function sameDrawImages(a: DrawImages, b: DrawImages): boolean {
+  const keys = Object.keys(a) as (keyof DrawImages)[];
+  for (const k of keys) {
+    if (k === "explosion") continue;
+    if (a[k] !== b[k]) return false;
+  }
+  if (a.explosion.length !== b.explosion.length) return false;
+  for (let i = 0; i < a.explosion.length; i++) {
+    if (a.explosion[i] !== b.explosion[i]) return false;
+  }
+  return true;
 }

@@ -6,28 +6,27 @@
  *      undoMove) in response to GameCanvas callbacks; engine is pure and
  *      replaces state wholesale on every transition.
  *   2. Persistence — AsyncStorage save/resume on every mutation.
- *   3. Instrumentation — useGameSync session started on first tile tap,
- *      completed on win, abandoned on back-navigation.
- *   4. Score submission — scoreQueue.enqueue("mahjong", …) on win; never
- *      calls mahjongApi.submitScore directly.
+ *   3. Instrumentation — useGameSync session started on first tile tap (the
+ *      layout played is its metadata), completed as a `win` on a cleared
+ *      board, a `loss` when the player leaves a deadlock, abandoned otherwise
+ *      (#2627).
+ *   4. Result (#2510) — the shared GameResultModal on a win (the finished
+ *      game is the leaderboard entry; the card shows its rank through
+ *      `sessionBoardAdapter`, #2677) and on a deadlock (a loss, no rank).
  *   5. Audio + animations (#914) — SFX on every game event, lo-fi bg music,
- *      MatchBurst / DeadlockShake / ShufflePulse / WinModal spring.
+ *      MatchBurst / DeadlockShake / ShufflePulse.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
-  ActivityIndicator,
   Image,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
-  ViewStyle,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -49,13 +48,17 @@ import type { HomeStackParamList } from "../types/navigation";
 import { loadTileAssets } from "../components/mahjong/tileAssetLoader";
 import { useTheme } from "../theme/ThemeContext";
 import {
+  DEV_ACCENT,
   MAHJONG_HINT_COLOR,
   MAHJONG_NO_MOVES_OVERLAY_BG,
   MAHJONG_OVERLAY_BTN_BG,
 } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
-import { OfflineBanner } from "../components/shared/OfflineBanner";
+import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { usePausableClock } from "../hooks/usePausableClock";
+import { PillButton } from "../components/shared/PillButton";
+import GameResultModal from "../components/shared/GameResultModal";
 import GameCanvas from "../components/mahjong/GameCanvas";
 import { useMahjongCamera } from "../game/mahjong/layout";
 import type { BoardCamera } from "../game/mahjong/layout";
@@ -66,6 +69,8 @@ import {
   getAllFreePairs,
   getAnyFreePair,
   hasFreePairs,
+  pauseGame,
+  resumeGame,
   selectTile,
   shuffleBoard,
   undoMove,
@@ -86,14 +91,13 @@ import {
   type MahjongStats,
 } from "../game/mahjong/storage";
 import LayoutSelectScreen from "../game/mahjong/LayoutSelectScreen";
-import { useMahjongScoreboard } from "../game/mahjong/MahjongScoreboardContext";
 import { useMahjongAudio } from "../game/mahjong/useMahjongAudio";
-import { scoreQueue } from "../game/_shared/scoreQueue";
 import { useGameSync } from "../game/_shared/useGameSync";
-import { useNetwork } from "../game/_shared/NetworkContext";
+import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
+import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
+import { recordedOutcome } from "../game/_shared/recordedOutcome";
+import { formatMs } from "../game/_shared/formatMs";
 import { clamp, computeZoomBounds, computePanBounds } from "../game/mahjong/zoom";
-
-const MAX_NAME_LENGTH = 32;
 
 // ---------------------------------------------------------------------------
 // FlyingPair — two matched tiles slide toward each other then burst and fade
@@ -295,8 +299,18 @@ function FlyingPair({
 // MahjongScreen
 // ---------------------------------------------------------------------------
 
+/** What the win card shows beyond the final state. */
+interface WinSummary {
+  readonly bestScore: number;
+  readonly isNewBest: boolean;
+}
+
+/** The result card's rank lookup on Mahjong's session board (#2677). */
+const mahjongBoard = sessionBoardAdapter("mahjong");
+
 export default function MahjongScreen() {
   const { t } = useTranslation("mahjong");
+  const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
@@ -307,6 +321,11 @@ export default function MahjongScreen() {
   const [progress, setProgress] = useState<MahjongProgress>(DEFAULT_PROGRESS);
   const [hasSavedGame, setHasSavedGame] = useState(false);
   const progressRef = useRef<MahjongProgress>(DEFAULT_PROGRESS);
+  const [winSummary, setWinSummary] = useState<WinSummary | null>(null);
+  const leaderboard = useLeaderboardSubmit(mahjongBoard);
+  const { submit: submitRank, reset: resetSubmission } = leaderboard;
+  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
+  const openLeaderboard = useLeaderboardLink(navigation, "mahjong");
   const [stats, setStats] = useState<MahjongStats>({
     bestScore: 0,
     bestTimeMs: 0,
@@ -515,20 +534,28 @@ export default function MahjongScreen() {
 
   const {
     start: syncStart,
+    resume: syncResume,
     markStarted: syncMarkStarted,
     complete: syncComplete,
+    close: syncClose,
     getGameId: syncGetGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("mahjong");
 
-  // #2450 — what the hook attaches if it abandons the session itself (unmount).
+  // #2450 / #2619 — the unfinished-board result block (backend MahjongResult).
+  // The hook's abandons (unmount, close()) and the deadlock loss build it here.
+  const progressResult = useCallback(
+    () => ({ won: false, pairs: stateRef.current?.pairsRemoved ?? 0 }),
+    []
+  );
+  // The abandon also carries Mahjong's own play timer, which wins over the
+  // hook's foreground clock (#2684).
   useEffect(() => {
-    syncSetProgressSnapshot(() => ({
-      result: { won: false, pairs: stateRef.current?.pairsRemoved ?? 0 },
-    }));
-  }, [syncSetProgressSnapshot]);
-
-  const { setSnapshot: setScoreboardSnapshot } = useMahjongScoreboard();
+    syncSetProgressSnapshot(() => {
+      const s = stateRef.current;
+      return { result: progressResult(), durationMs: s ? elapsedMs(s) : null };
+    });
+  }, [syncSetProgressSnapshot, progressResult]);
 
   // Audio
   const musicActive = state !== null && !state.isComplete && !state.isDeadlocked;
@@ -576,22 +603,23 @@ export default function MahjongScreen() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Scoreboard snapshot — updated on every state change.
-  useEffect(() => {
-    if (!state) return;
-    const elapsed = elapsedMs(state, Date.now());
-    setScoreboardSnapshot({
-      score: state.score,
-      pairsRemoved: state.pairsRemoved,
-      shufflesLeft: state.shufflesLeft,
-      elapsedMs: elapsed,
-      hasGame: true,
-      bestScore: stats.bestScore,
-      bestTimeMs: stats.bestTimeMs,
-      gamesPlayed: stats.gamesPlayed,
-      gamesWon: stats.gamesWon,
-    });
-  }, [state, stats, setScoreboardSnapshot]);
+  // Another screen covering the game (⋯ → Leaderboard, #2633) or the app
+  // going to the background (#2750) stops its clock, so the finish and best
+  // times count only play (usePausableClock). The pause is saved like any
+  // state change, so a kill while backgrounded keeps the play banked.
+  const { adoptLoaded, matchPresence } = usePausableClock({
+    navigation,
+    state,
+    setState,
+    pauseGame,
+    resumeGame,
+    // Level Select pauses the clock too: coming back to the app there
+    // mustn't start it; CONTINUE does.
+    hold: view === "select",
+    saveOnLeave: (paused) => {
+      if (hasLoadedRef.current) saveGame(paused).catch(() => {});
+    },
+  });
 
   // Mount: restore saved game or show layout select.
   useEffect(() => {
@@ -603,9 +631,11 @@ export default function MahjongScreen() {
         progressRef.current = savedProgress;
         setProgress(savedProgress);
         if (saved !== null) {
-          setState(saved);
+          setState(adoptLoaded(saved));
           setHasSavedGame(!saved.isComplete);
           if (saved.isComplete) winRecordedRef.current = true;
+          // A restored game continues the session a killed app left open (#2654).
+          if (!saved.isComplete) syncResume();
           setView("play");
         } else {
           setView("select");
@@ -617,7 +647,7 @@ export default function MahjongScreen() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [syncResume, adoptLoaded]);
 
   // Persist on every state change after mount load resolves.
   useEffect(() => {
@@ -686,6 +716,12 @@ export default function MahjongScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
+  // Stats as of the win, read by the win lifecycle below.
+  const statsRef = useRef(stats);
+  useEffect(() => {
+    statsRef.current = stats;
+  }, [stats]);
+
   // Win lifecycle: complete sync session, record stats, unlock next layout.
   useEffect(() => {
     if (state === null) {
@@ -693,15 +729,34 @@ export default function MahjongScreen() {
       return;
     }
     if (state.isComplete && !prevCompleteRef.current) {
-      syncComplete(
-        { finalScore: state.score, outcome: "completed", durationMs: state.accumulatedMs },
-        { final_score: state.score, outcome: "completed", won: true, pairs: state.pairsRemoved }
+      const outcome = recordedOutcome("win");
+      // Null for a won game restored from storage: its session already ended.
+      const gameId = syncComplete(
+        {
+          finalScore: state.score,
+          outcome,
+          // elapsedMs, not accumulatedMs: the running segment is only banked
+          // on pause, so accumulatedMs alone misses the current play time.
+          durationMs: elapsedMs(state),
+          result: { won: true, pairs: state.pairsRemoved },
+        },
+        { final_score: state.score, outcome, won: true, pairs: state.pairsRemoved }
       );
       clearGame().catch(() => {});
       if (!winRecordedRef.current) {
         winRecordedRef.current = true;
-        const finalMs = state.accumulatedMs;
+        // The play timer, not accumulatedMs: the engine banks the running
+        // segment only on pause, so a board cleared in one sitting has 0 there.
+        const finalMs = elapsedMs(state);
         const finalScore = state.score;
+        // The finished game is the leaderboard entry (#2624): the card only
+        // asks where it ranks. Only a win completed in this session has one.
+        if (gameId) void submitRank({ gameId });
+        const priorBest = statsRef.current.bestScore;
+        setWinSummary({
+          bestScore: Math.max(finalScore, priorBest),
+          isNewBest: finalScore > priorBest,
+        });
         setStats((prev) => {
           const updated: MahjongStats = {
             ...prev,
@@ -734,7 +789,7 @@ export default function MahjongScreen() {
       setHasSavedGame(false);
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete]);
+  }, [state, syncComplete, submitRank]);
 
   // Disable native swipe-back (iOS edge gesture) while the game is open so that
   // a left-pan on the board doesn't accidentally exit to the lobby.
@@ -743,24 +798,44 @@ export default function MahjongScreen() {
     return () => navigation.setOptions({ gestureEnabled: true });
   }, [navigation]);
 
-  // Abandon on back-navigation.
+  /**
+   * A deadlocked board the player leaves is a lost game (#2517), not an
+   * abandoned one: it was played to its end. Recorded on leaving rather than
+   * at the deadlock, so "Undo last move" on the card can still rescue it.
+   * No score: a loss counts everywhere (only abandons are excluded), and
+   * Mahjong's leaderboard ranks every scored row. The lost board is then
+   * finished: its save is cleared so CONTINUE can't reopen it and record the
+   * same board again (#2592 review). Returns whether it closed the session.
+   */
+  const recordDeadlockLoss = useCallback((): boolean => {
+    const s = stateRef.current;
+    if (!syncGetGameId() || !s?.isDeadlocked || s.isComplete) return false;
+    const result = progressResult();
+    syncComplete(
+      { outcome: "loss", durationMs: elapsedMs(s), result },
+      { outcome: "loss", ...result }
+    );
+    clearGame().catch(() => {});
+    setHasSavedGame(false);
+    return true;
+  }, [syncGetGameId, syncComplete, progressResult]);
+
+  // Leaving a deadlocked board records the loss. Any other open session is
+  // abandoned by useGameSync itself when the screen unmounts, with the
+  // progress snapshot as its result (#2619, #2627).
   useEffect(() => {
     const unsub = navigation.addListener("beforeRemove", () => {
-      if (!syncGetGameId()) return;
-      const s = stateRef.current;
-      if (s?.isComplete) return;
-      syncComplete(
-        { outcome: "abandoned", finalScore: s?.score ?? 0, durationMs: 0 },
-        { outcome: "abandoned", won: false, pairs: s?.pairsRemoved ?? 0 }
-      );
+      recordDeadlockLoss();
     });
     return unsub;
-  }, [navigation, syncComplete, syncGetGameId]);
+  }, [navigation, recordDeadlockLoss]);
 
   const ensureSyncStarted = useCallback(
     (s: MahjongState) => {
       if (syncGetGameId()) return;
-      syncStart({ layout: s.currentLayoutId ?? "turtle" });
+      const layout = s.currentLayoutId ?? "turtle";
+      // Event data for the game_started event; metadata for the row (#2627).
+      syncStart({ layout }, { layout });
       syncMarkStarted();
       if (s.pairsRemoved === 0 && !hasLoadedRef.current) return;
     },
@@ -776,13 +851,16 @@ export default function MahjongScreen() {
       setHintIds(new Set());
       setState((prev) => {
         if (!prev) return prev;
-        const next = selectTile(prev, tileId);
-        if (next === prev) return prev;
+        const moved = selectTile(prev, tileId);
+        if (moved === prev) return prev;
+        // A first tap that lands while the player is away mustn't start the
+        // clock running (#2750).
+        const next = matchPresence(moved);
         ensureSyncStarted(next);
         return next;
       });
     },
-    [ensureSyncStarted]
+    [ensureSyncStarted, matchPresence]
   );
 
   const handleHint = useCallback(() => {
@@ -810,67 +888,106 @@ export default function MahjongScreen() {
   const handleShuffle = useCallback(() => {
     setState((prev) => {
       if (!prev) return prev;
-      const next = shuffleBoard(prev);
-      if (next === prev) return prev;
+      const shuffled = shuffleBoard(prev);
+      if (shuffled === prev) return prev;
+      const next = matchPresence(shuffled);
       ensureSyncStarted(next);
       return next;
     });
-  }, [ensureSyncStarted]);
+  }, [ensureSyncStarted, matchPresence]);
 
   const handleUndo = useCallback(() => {
     setState((prev) => {
       if (!prev) return prev;
-      return undoMove(prev);
+      return matchPresence(undoMove(prev));
     });
-  }, []);
+  }, [matchPresence]);
+
+  /**
+   * Closes an open session: a loss for a deadlocked board, otherwise the
+   * hook's close() — abandoned with the progress snapshot if started,
+   * discarded if not (a no-op after a win or with no session open).
+   */
+  const abandonOpenSession = useCallback(() => {
+    if (recordDeadlockLoss()) return;
+    syncClose();
+  }, [recordDeadlockLoss, syncClose]);
 
   const startNewGame = useCallback(() => {
-    if (syncGetGameId()) {
-      syncComplete(
-        { outcome: "abandoned", finalScore: 0, durationMs: 0 },
-        { outcome: "abandoned", won: false, pairs: stateRef.current?.pairsRemoved ?? 0 }
-      );
-    }
+    abandonOpenSession();
+    setWinSummary(null);
+    resetSubmission();
     winRecordedRef.current = false;
     prevCompleteRef.current = false;
     const s = stateRef.current;
-    setHasSavedGame(s !== null && !s.isComplete);
+    // A deadlocked board left this way is lost (#2517) — nothing to continue.
+    setHasSavedGame(s !== null && !s.isComplete && !s.isDeadlocked);
     setState(null);
     setView("select");
-  }, [syncGetGameId, syncComplete]);
+  }, [abandonOpenSession, resetSubmission]);
 
   // Navigates directly to level select without an abandon confirmation or server
   // abandon event — the in-progress game is preserved locally so CONTINUE works.
+  // Level Select isn't play: the clock pauses here and CONTINUE resumes it
+  // (#2750). The clock's own state decides: only a running clock pauses, and
+  // only a paused one on an unfinished board resumes.
   const goToLevelSelect = useCallback(() => {
     const s = stateRef.current;
     setHasSavedGame(s !== null && !s.isComplete);
+    const now = Date.now();
+    setState((prev) => (prev ? pauseGame(prev, now) : prev));
     setView("select");
   }, []);
 
-  const handleSelectLayout = useCallback((layoutId: string) => {
-    winRecordedRef.current = false;
-    prevCompleteRef.current = false;
-    const fresh = { ...createGame(getLayout(layoutId)), currentLayoutId: layoutId };
-    setState(fresh);
-    setView("play");
-    setHasSavedGame(false);
-    setStats((prev) => {
-      const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
-      saveStats(updated).catch(() => {});
-      return updated;
-    });
-    const newProgress: MahjongProgress = {
-      ...progressRef.current,
-      currentLayoutId: layoutId,
-      currentState: null,
-    };
-    progressRef.current = newProgress;
-    setProgress(newProgress);
-    saveProgress(newProgress).catch(() => {});
-    // Sync session starts on first tile tap via ensureSyncStarted, not here.
-  }, []);
+  const handleSelectLayout = useCallback(
+    (layoutId: string) => {
+      // Level Select keeps the board's session open (so CONTINUE resumes it);
+      // a new deal closes it here, so the next tap opens a session with this
+      // layout (#2627).
+      abandonOpenSession();
+      setWinSummary(null);
+      resetSubmission();
+      winRecordedRef.current = false;
+      prevCompleteRef.current = false;
+      const fresh = { ...createGame(getLayout(layoutId)), currentLayoutId: layoutId };
+      setState(fresh);
+      setView("play");
+      setHasSavedGame(false);
+      setStats((prev) => {
+        const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
+        saveStats(updated).catch(() => {});
+        return updated;
+      });
+      const newProgress: MahjongProgress = {
+        ...progressRef.current,
+        currentLayoutId: layoutId,
+        currentState: null,
+      };
+      progressRef.current = newProgress;
+      setProgress(newProgress);
+      saveProgress(newProgress).catch(() => {});
+      // Sync session starts on first tile tap via ensureSyncStarted, not here.
+    },
+    [abandonOpenSession, resetSubmission]
+  );
+
+  // Play Again from a result card: a fresh deal of the same layout.
+  const handlePlayAgain = useCallback(() => {
+    handleSelectLayout(stateRef.current?.currentLayoutId ?? "turtle");
+  }, [handleSelectLayout]);
 
   const handleContinue = useCallback(() => {
+    const inMemory = stateRef.current;
+    if (inMemory !== null && !inMemory.isComplete) {
+      // Level Select kept this board in memory, with its session open and its
+      // clock stopped: carry on from it (#2750). Reloading the save would drop
+      // the play since the last save, and a resume would reopen the session.
+      setHasSavedGame(false);
+      const now = Date.now();
+      setState((prev) => (prev ? resumeGame(prev, now) : prev));
+      setView("play");
+      return;
+    }
     loadGame()
       .then((saved) => {
         if (!saved) {
@@ -878,24 +995,28 @@ export default function MahjongScreen() {
           setHasSavedGame(false);
           return;
         }
-        setState(saved);
+        setState(adoptLoaded(saved));
         setHasSavedGame(false);
+        // A restored game continues the session a killed app left open (#2654).
+        if (!saved.isComplete) syncResume();
         setView("play");
       })
       .catch(() => {
         setHasSavedGame(false);
       });
-  }, []);
+  }, [syncResume, adoptLoaded]);
 
   const undoDisabled = !state || state.undoStack.length === 0 || state.isComplete;
 
   if (!loading && view === "select") {
     return (
       <GameShell
+        gameType="mahjong"
         title={t("game.title")}
         requireBack
         loading={false}
         onBack={() => navigation.popToTop()}
+        onOpenLeaderboard={openLeaderboard}
         style={{
           paddingBottom: Math.max(insets.bottom, 16),
           paddingLeft: Math.max(insets.left, 12),
@@ -915,6 +1036,7 @@ export default function MahjongScreen() {
 
   return (
     <GameShell
+      gameType="mahjong"
       title={t("game.title")}
       requireBack
       loading={loading}
@@ -926,42 +1048,26 @@ export default function MahjongScreen() {
       }}
       onNewGame={startNewGame}
       onLevelSelect={goToLevelSelect}
-      onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "mahjong" })}
+      // No Scoreboard item (#2627): it led to an untranslated fallback. The
+      // Stats item (GameShell's gameType, #2635) takes its place.
+      onOpenLeaderboard={openLeaderboard}
       rightSlot={
         <View style={styles.hudGroup}>
-          <Pressable
+          <PillButton
+            label={t("action.undo")}
+            accessibilityLabel={t("action.undoLabel")}
             onPress={handleUndo}
             disabled={undoDisabled}
-            style={[
-              styles.headerBtn,
-              { borderColor: colors.accent, opacity: undoDisabled ? 0.4 : 1 },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.undoLabel")}
-            accessibilityState={{ disabled: undoDisabled }}
             testID="mahjong-undo-button"
-          >
-            <Text style={[styles.headerBtnText, { color: colors.accent }]}>{t("action.undo")}</Text>
-          </Pressable>
-          <Pressable
-            onPress={handleHint}
-            disabled={state?.isComplete || state?.isDeadlocked}
-            style={[
-              styles.headerBtn,
-              {
-                borderColor: MAHJONG_HINT_COLOR,
-                opacity: state?.isComplete || state?.isDeadlocked ? 0.3 : 1,
-              },
-            ]}
-            accessibilityRole="button"
+          />
+          <PillButton
+            label={t("action.hint")}
             accessibilityLabel={t("action.hintLabel")}
-            accessibilityState={{ disabled: state?.isComplete || state?.isDeadlocked }}
+            onPress={handleHint}
+            disabled={!!(state?.isComplete || state?.isDeadlocked)}
+            color={MAHJONG_HINT_COLOR}
             testID="mahjong-hint-button"
-          >
-            <Text style={[styles.headerBtnText, { color: MAHJONG_HINT_COLOR }]}>
-              {t("action.hint")}
-            </Text>
-          </Pressable>
+          />
         </View>
       }
     >
@@ -985,40 +1091,24 @@ export default function MahjongScreen() {
               </Text>
             </View>
             <View style={styles.hudGroup}>
-              <Pressable
+              <PillButton
+                label={`${t("action.shuffle")} ${state.shufflesLeft}`}
+                accessibilityLabel={t("action.shuffleLabel")}
                 onPress={handleShuffle}
                 disabled={state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked}
-                style={[
-                  styles.headerBtn,
-                  {
-                    borderColor: "#ffd700",
-                    opacity:
-                      state.shufflesLeft > 0 && !state.isComplete && !state.isDeadlocked ? 1 : 0.3,
-                  },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={t("action.shuffleLabel")}
-                accessibilityState={{
-                  disabled: state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked,
-                }}
+                color="#ffd700"
                 testID="mahjong-shuffle-button"
-              >
-                <Text style={[styles.headerBtnText, { color: "#ffd700" }]}>
-                  {t("action.shuffle")} {state.shufflesLeft}
-                </Text>
-              </Pressable>
+              />
               <Text style={[styles.hudText, styles.dealIdText, { color: colors.textMuted }]}>
                 {t("hud.deal")} #{state.dealId}
               </Text>
               {__DEV__ && (
-                <Pressable
-                  onPress={() => setDevPanelOpen((o) => !o)}
-                  style={[styles.headerBtn, { borderColor: "rgba(255,128,0,0.8)" }]}
-                  accessibilityRole="button"
+                <PillButton
+                  label="DEV"
                   accessibilityLabel="Toggle dev panel"
-                >
-                  <Text style={[styles.headerBtnText, { color: "rgba(255,128,0,1)" }]}>DEV</Text>
-                </Pressable>
+                  onPress={() => setDevPanelOpen((o) => !o)}
+                  color={DEV_ACCENT}
+                />
               )}
             </View>
           </View>
@@ -1057,7 +1147,6 @@ export default function MahjongScreen() {
                     hintIds={hintIds}
                     debugShowFree={__DEV__ && debugShowFree}
                     onTilePress={handleTilePress}
-                    onNewGamePress={startNewGame}
                   />
                 </Animated.View>
                 {flyingPairs.map((pair) => (
@@ -1090,23 +1179,6 @@ export default function MahjongScreen() {
                   <Text style={styles.overlayBtnText}>
                     {t("overlay.shuffleButton")} ({state!.shufflesLeft})
                   </Text>
-                </Pressable>
-              </View>
-            )}
-            {showDeadlockOverlay && (
-              <View
-                style={[StyleSheet.absoluteFill, styles.noMovesOverlay]}
-                accessibilityRole="alert"
-                accessibilityLiveRegion="assertive"
-              >
-                <Text style={styles.overlayTitle}>{t("overlay.deadlocked")}</Text>
-                <Text style={styles.overlayDetail}>{t("overlay.deadlockedDetail")}</Text>
-                <Pressable
-                  style={styles.overlayBtn}
-                  onPress={startNewGame}
-                  accessibilityLabel={t("action.newGameLabel")}
-                >
-                  <Text style={styles.overlayBtnText}>{t("overlay.levelSelectButton")}</Text>
                 </Pressable>
               </View>
             )}
@@ -1167,175 +1239,61 @@ export default function MahjongScreen() {
         </View>
       )}
 
-      {state?.isComplete && (
-        <WinModal
-          score={state.score}
-          pairsRemoved={state.pairsRemoved}
-          reduceMotion={reduceMotion}
-          onNewGame={startNewGame}
-        />
-      )}
-    </GameShell>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Win modal — name entry + ScoreQueue submission
-// ---------------------------------------------------------------------------
-
-function WinModal({
-  score,
-  pairsRemoved,
-  reduceMotion,
-  onNewGame,
-}: {
-  readonly score: number;
-  readonly pairsRemoved: number;
-  readonly reduceMotion: boolean;
-  readonly onNewGame: () => void;
-}) {
-  const { t } = useTranslation("mahjong");
-  const { colors } = useTheme();
-  const { isOnline, isInitialized } = useNetwork();
-
-  const [name, setName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Spring entrance on the card (skipped when reduceMotion is on).
-  const cardScale = useSharedValue(reduceMotion ? 1 : 0.82);
-  useEffect(() => {
-    if (!reduceMotion) {
-      cardScale.value = withSpring(1, { damping: 14, stiffness: 120 });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const cardAnimStyle = useAnimatedStyle(() => ({ transform: [{ scale: cardScale.value }] }));
-
-  const offline = isInitialized && !isOnline;
-  const trimmed = name.trim();
-  const canSubmit = !submitting && !offline && trimmed.length > 0;
-
-  const gradient: ViewStyle =
-    Platform.OS === "web"
-      ? ({
-          backgroundImage: `linear-gradient(135deg, ${colors.accent}, ${colors.accentBright})`,
-        } as ViewStyle)
-      : { backgroundColor: colors.accentBright };
-
-  async function handleSubmit() {
-    if (!canSubmit) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await scoreQueue.enqueue("mahjong", { player_name: trimmed, score });
-      setSubmitted(true);
-      scoreQueue.flush().catch(() => undefined);
-    } catch {
-      setError(t("error.submitFailed", { defaultValue: "Couldn't save score. Tap to retry." }));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const submitLabel = error
-    ? t("error.submitRetry", { defaultValue: "Retry" })
-    : t("action.submitScore", { defaultValue: "Submit Score" });
-
-  return (
-    <Modal visible transparent animationType="fade" accessibilityViewIsModal>
-      <View style={styles.modalOverlay}>
-        <Animated.View
-          style={[
-            styles.modalCard,
-            { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-            cardAnimStyle,
-          ]}
-        >
-          <Text style={[styles.modalTitle, { color: colors.text }]} accessibilityRole="header">
-            {t("overlay.youWon")}
-          </Text>
-          <Text style={[styles.modalBody, { color: colors.textMuted }]}>
-            {t("overlay.youWonDetail", { count: pairsRemoved })}
-          </Text>
-          <Text style={[styles.modalScore, { color: colors.text }]}>
-            {t("score.display", { score })}
-          </Text>
-
-          {!submitted ? (
-            <>
-              <TextInput
-                style={[
-                  styles.nameInput,
-                  {
-                    backgroundColor: colors.surfaceAlt,
-                    borderColor: colors.border,
-                    color: colors.text,
-                  },
-                ]}
-                placeholder={t("win.namePlaceholder", { defaultValue: "Your name" })}
-                placeholderTextColor={colors.textMuted}
-                value={name}
-                onChangeText={setName}
-                maxLength={MAX_NAME_LENGTH}
-                editable={!submitting}
-                accessibilityLabel={t("win.nameLabel", { defaultValue: "Enter your name" })}
-              />
-              {offline ? (
-                <OfflineBanner />
-              ) : (
-                error !== null && (
-                  <Text
-                    style={[styles.errorText, { color: colors.error }]}
-                    accessibilityLiveRegion="assertive"
-                    accessibilityRole="alert"
-                  >
-                    {error}
-                  </Text>
-                )
-              )}
+      {state !== null ? (
+        <GameResultModal
+          visible={state.isComplete || showDeadlockOverlay}
+          outcome={state.isComplete ? "win" : "loss"}
+          eyebrow={`${t("game.title")} · ${t(`layout.${state.currentLayoutId ?? "turtle"}`)}`}
+          subtitle={
+            state.isComplete
+              ? tResult("subtitle.pairsCleared", { count: state.pairsRemoved })
+              : tResult("subtitle.noFreePairs")
+          }
+          hero={{ kind: "score", label: tResult("stat.score"), value: state.score }}
+          isNewBest={state.isComplete && (winSummary?.isNewBest ?? false)}
+          // A deadlock one undo away from a live board isn't final: offer the
+          // undo the header had before the card covered it.
+          detail={
+            !state.isComplete && state.undoStack.length > 0 ? (
               <Pressable
-                style={[styles.modalPrimary, gradient, !canSubmit && styles.modalPrimaryDisabled]}
-                onPress={handleSubmit}
-                disabled={!canSubmit}
+                testID="mahjong-result-undo"
+                style={styles.resultUndoBtn}
+                onPress={handleUndo}
                 accessibilityRole="button"
-                accessibilityLabel={submitLabel}
-                accessibilityState={{ disabled: !canSubmit, busy: submitting }}
-                testID="mahjong-submit-score-button"
+                accessibilityLabel={tResult("action.undoLastMove")}
               >
-                {submitting ? (
-                  <ActivityIndicator color={colors.textOnAccent} />
-                ) : (
-                  <Text style={[styles.modalPrimaryText, { color: colors.textOnAccent }]}>
-                    {submitLabel}
-                  </Text>
-                )}
+                <Text style={[styles.resultUndoText, { color: colors.accent }]}>
+                  {tResult("action.undoLastMove")}
+                </Text>
               </Pressable>
-            </>
-          ) : (
-            <Text
-              style={[styles.submittedText, { color: colors.bonus }]}
-              accessibilityLiveRegion="polite"
-            >
-              {t("win.submitted", { defaultValue: "Score saved! 🎉" })}
-            </Text>
-          )}
-
-          <Pressable
-            style={[styles.modalSecondary, { borderColor: colors.accent }]}
-            onPress={onNewGame}
-            accessibilityRole="button"
-            accessibilityLabel={t("action.newGameLabel")}
-            testID="mahjong-new-game-button"
-          >
-            <Text style={[styles.modalSecondaryText, { color: colors.accent }]}>
-              {t("action.newGame")}
-            </Text>
-          </Pressable>
-        </Animated.View>
-      </View>
-    </Modal>
+            ) : undefined
+          }
+          stats={[
+            { label: tResult("stat.time"), value: formatMs(elapsedMs(state)) },
+            ...(state.isComplete && winSummary && winSummary.bestScore > 0
+              ? [{ label: tResult("stat.best"), value: winSummary.bestScore }]
+              : []),
+          ]}
+          submission={
+            state.isComplete
+              ? {
+                  status: leaderboard.status,
+                  rank: leaderboard.rank,
+                  isBest: leaderboard.isBest,
+                  playerName: leaderboard.playerName,
+                  onProvideName: leaderboard.provideName,
+                  onRetry: leaderboard.retry,
+                }
+              : undefined
+          }
+          onViewLeaderboard={openLeaderboard}
+          onPlayAgain={handlePlayAgain}
+          secondaryAction={{ label: tResult("action.changeLayout"), onPress: startNewGame }}
+          onHome={() => navigation.popToTop()}
+          testID="mahjong-result"
+        />
+      ) : null}
+    </GameShell>
   );
 }
 
@@ -1344,19 +1302,16 @@ function WinModal({
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  headerBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    minHeight: 32,
+  resultUndoBtn: {
+    alignSelf: "center",
+    minHeight: 44,
     justifyContent: "center",
+    paddingHorizontal: 16,
   },
-  headerBtnText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
+  resultUndoText: {
+    fontSize: 15,
+    fontWeight: "700",
+    textDecorationLine: "underline",
   },
   hudRow: {
     flexDirection: "row",
@@ -1386,40 +1341,6 @@ const styles = StyleSheet.create({
   dealIdText: {
     fontSize: 10,
   },
-  modalOverlay: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#000000bf",
-  },
-  modalCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 24,
-    alignItems: "center",
-    width: "86%",
-    maxWidth: 360,
-  },
-  modalTitle: {
-    fontFamily: typography.heading,
-    fontSize: 22,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-    marginBottom: 6,
-    textAlign: "center",
-  },
-  modalBody: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 4,
-    textAlign: "center",
-  },
-  modalScore: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 16,
-    fontVariant: ["tabular-nums"],
-  },
   nameInput: {
     width: "100%",
     paddingHorizontal: 12,
@@ -1429,44 +1350,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginBottom: 12,
   },
-  errorText: {
-    fontSize: 13,
-    marginBottom: 10,
-    textAlign: "center",
-  },
   submittedText: {
     fontSize: 18,
     fontWeight: "700",
     marginBottom: 12,
-  },
-  modalPrimary: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 999,
-    marginBottom: 10,
-    alignItems: "center",
-    minWidth: 180,
-  },
-  modalPrimaryDisabled: {
-    opacity: 0.5,
-  },
-  modalPrimaryText: {
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
-  modalSecondary: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  modalSecondaryText: {
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 1,
-    textTransform: "uppercase",
   },
   devPanel: {
     position: "absolute",

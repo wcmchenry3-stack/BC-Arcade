@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import os
 import uuid
+from dataclasses import asdict
 from datetime import datetime
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import get_session_factory
+from db.models import Game
 from entitlements.dependencies import check_entitlement
 from limiter import limiter, session_key
-from session import get_session_id
+from session import get_session_id, optional_session_id
 
-from . import service
+from . import leaderboard, service
 from .schemas import (
     AppendEventsRequest,
     AppendEventsResponse,
@@ -25,9 +28,12 @@ from .schemas import (
     GameDetailResponse,
     GameEventResponse,
     GameHistoryResponse,
+    GameRankResponse,
     GameRowResponse,
     GameStateResponse,
     GameTypeOut,
+    LeaderboardEntryOut,
+    LeaderboardResponse,
     PatchGameTypeRequest,
 )
 
@@ -36,6 +42,14 @@ router = APIRouter()
 # Public, IP-keyed (unauthenticated). A constant so the rate-limit test derives
 # its request count from the configured limit instead of duplicating it.
 CATALOG_RATE_LIMIT = "60/minute"
+
+# Generic leaderboard (#2618). Keyed by session, with a looser per-IP backstop
+# so rotating the X-Session-ID header doesn't lift the limit (#2217).
+LEADERBOARD_SESSION_RATE_LIMIT = "60/minute"
+LEADERBOARD_IP_RATE_LIMIT = "300/minute"
+# GET /games/{id}/rank (#2677): a read, limited like the leaderboard.
+RANK_SESSION_RATE_LIMIT = "60/minute"
+RANK_IP_RATE_LIMIT = "300/minute"
 
 
 def _to_state(game) -> GameStateResponse:
@@ -143,10 +157,129 @@ async def list_my_games(
             raise HTTPException(status_code=400, detail="Invalid cursor.")
     factory = get_session_factory()
     async with factory() as db:
+        # Close this player's games left open > 24 h before listing them (#2621).
+        # First page only: later pages continue a listing that was just swept.
+        if parsed_cursor is None:
+            await service.sweep_stale_games_safely(db, session_id=sid)
         page = await service.list_games_for_session(
             db, session_id=sid, limit=limit, cursor=parsed_cursor
         )
     return GameHistoryResponse(items=[_to_row(r) for r in page.items], next_cursor=page.next_cursor)
+
+
+@router.get("/leaderboard/{game_type}", response_model=LeaderboardResponse)
+@limiter.limit(LEADERBOARD_IP_RATE_LIMIT)
+@limiter.limit(LEADERBOARD_SESSION_RATE_LIMIT, key_func=session_key)
+async def get_leaderboard(
+    request: Request,
+    game_type: str,
+    limit: int = Query(leaderboard.DEFAULT_LIMIT, ge=1, le=leaderboard.MAX_LIMIT),
+) -> LeaderboardResponse:
+    """Top players on one board: one entry each (their best row).
+
+    Only players with a display name (``PUT /players/me``) are listed, under
+    their current name (#2624).
+
+    Partition values are query params named after ``board.partitions``, e.g.
+    ``/games/leaderboard/sudoku?difficulty=hard&variant=mini``. 404 for an
+    unknown game or one whose board is disabled.
+
+    With a valid ``X-Session-ID`` the caller's own entry is flagged ``is_me``
+    and returned as ``me`` with its exact rank, even outside the top
+    ``limit`` (#2633). Read-only.
+    """
+    board = leaderboard.enabled_board(game_type)
+    if board is None:
+        raise HTTPException(status_code=404, detail="Leaderboard not found.")
+    params = [(k, v) for k, v in request.query_params.multi_items() if k != "limit"]
+    partition = leaderboard.resolve_partition(game_type, board, params)
+    factory = get_session_factory()
+    async with factory() as db:
+        gt = await leaderboard.load_game_type(db, game_type)
+        if gt is None:
+            raise HTTPException(status_code=404, detail="Leaderboard not found.")
+        # Not redundant with check_entitlement's own premium check: a free
+        # board is public, so X-Session-ID is only required (400) for premium.
+        if gt.is_premium:
+            await check_entitlement(db, get_session_id(request), game_type)
+        # The caller, when known, to flag their own entry (#2633). Optional:
+        # a free board stays public without X-Session-ID.
+        viewer = optional_session_id(request)
+        entries = await leaderboard.top_entries(
+            db,
+            game_type=game_type,
+            board=board,
+            game_type_id=gt.id,
+            partition=partition,
+            limit=limit,
+            viewer_session_id=viewer,
+        )
+        # The caller's row in the list is their best entry with its rank:
+        # only a caller outside the top ``limit`` costs the extra queries.
+        me = next((e for e in entries if e.is_me), None)
+        if viewer is not None and me is None:
+            me = await leaderboard.viewer_entry(
+                db,
+                game_type=game_type,
+                board=board,
+                game_type_id=gt.id,
+                partition=partition,
+                session_id=viewer,
+            )
+    return LeaderboardResponse(
+        game_type=game_type,
+        partition=partition,
+        label_key=board.label_key,
+        entries=[_entry_out(e) for e in entries],
+        me=_entry_out(me) if me is not None else None,
+    )
+
+
+def _entry_out(e: leaderboard.BoardEntry) -> LeaderboardEntryOut:
+    return LeaderboardEntryOut(
+        rank=e.rank,
+        player_name=e.player_name,
+        value=e.value,
+        completed_at=e.completed_at,
+        is_me=e.is_me,
+    )
+
+
+@router.get("/{game_id}/rank", response_model=GameRankResponse)
+@limiter.limit(RANK_IP_RATE_LIMIT)
+@limiter.limit(RANK_SESSION_RATE_LIMIT, key_func=session_key)
+async def get_game_rank(request: Request, game_id: uuid.UUID) -> GameRankResponse:
+    """Where one of the caller's games puts them on its board (#2677). Read-only.
+
+    The result card's call: the rank of the caller's best entry in the game's
+    partition and whether this game is that entry, computed exactly as the
+    board computes it. ``ranked: false``
+    with ``reason`` ``board_disabled`` / ``not_finished`` / ``not_rankable`` /
+    ``no_name`` (rank and is_best null) when there is no standing to report.
+    403 if another session owns the game (or a premium game isn't entitled),
+    404 if the game or its board definition doesn't exist.
+    """
+    sid = get_session_id(request)
+    factory = get_session_factory()
+    async with factory() as db:
+        game = await _load_owned_game(db, game_id, sid)
+        result = await leaderboard.game_rank(db, game=game, session_id=sid)
+    return GameRankResponse.model_validate(asdict(result))
+
+
+async def _load_owned_game(db: AsyncSession, game_id: uuid.UUID, sid: str) -> Game:
+    """The caller's game with its ``game_type``, for the name and rank routes.
+
+    404 if it doesn't exist, 403 if another session owns it or it is a premium
+    game the caller isn't entitled to (a no-op for free games).
+    """
+    game = await leaderboard.load_game(db, game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="Game not found.")
+    if game.session_id != sid:
+        raise HTTPException(status_code=403, detail="Game belongs to a different session.")
+    await check_entitlement(db, sid, game.game_type.name)
+    return game
 
 
 @router.get("/{game_id}", response_model=GameDetailResponse)

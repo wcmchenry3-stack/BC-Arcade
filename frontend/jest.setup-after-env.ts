@@ -5,3 +5,24 @@
 // already sprinkled through the suite.
 import { configure } from "@testing-library/react-native";
 configure({ asyncUtilTimeout: 5000 });
+
+// Jest's per-test timeout ("testTimeout" in package.json) must outlast the
+// async-util waits a test makes (#2584). Both were 5000 ms, so a
+// waitFor/findBy that never succeeded ran the test out before it could throw,
+// and every such failure surfaced as an opaque "Exceeded timeout of 5000 ms"
+// instead of the assertion that failed — which is how a deterministic Sudoku
+// test bug read as a CI flake. It is 15000 ms: room for one slow successful
+// wait plus one failing one. That is about the error being readable, not about
+// letting slow tests pass: a waitFor that fails still fails after 5 s, with
+// its real message. It lives in the config, not in a jest.setTimeout() call
+// here, so a --testTimeout flag (yacht-sim-gate.yml) still takes precedence.
+
+// The pinned foreground clock (jest.setup.ts, #2710) starts every test at 0,
+// so a test that moves it can't leak time into the next one.
+beforeEach(() => {
+  jest
+    .requireMock<typeof import("./src/game/_shared/__mocks__/foregroundClock")>(
+      "./src/game/_shared/foregroundClock"
+    )
+    .__resetForegroundClockForTests();
+});

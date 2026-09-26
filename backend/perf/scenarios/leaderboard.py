@@ -1,35 +1,55 @@
 """
-Scenario B: Concurrent leaderboard read/write.
+Scenario B: Concurrent leaderboard reads.
 
-The cascade leaderboard endpoints are the only ones safe to hit with
-multiple concurrent users. Tests that the 10-entry cap holds under load.
+Reads the generic boards (``GET /games/leaderboard/{game_type}``, #2618) of
+two free games, which need no entitlement, and checks that a board never
+lists more entries than asked for. Boards are read-only: the entries come
+from finished session rows (``POST /games`` + ``PATCH /games/{id}/complete``).
+The per-game ``/<game>/score(s)`` routes this used to hit were removed in #2644.
+
+Rate limits (``games/router.py``), with perf.yml's 10 users from one runner IP:
+
+  GET /games/leaderboard/{game_type}: 60/minute per session
+                                      300/minute per IP (backstop)
+
+Each user sends its own ``X-Session-ID`` (as the app does), so the session
+limit is per user. ``wait_time`` is 3-4 s (``LeaderboardUser``), so a user
+makes at most 60 / 3 = 20 requests a minute, ignoring response time:
+
+  per session: 20 / 60  = 33% of the limit
+  per IP:      10 x 20 = 200 / 300 = 67% of the limit
+
+Without a session id every user would share one IP-keyed session bucket
+(60/minute) and the 10 users would exceed it.
 """
 
 import random
+import uuid
 
 from locust import TaskSet, task
 
+_FREE_BOARDS = ("solitaire", "freecell")
+_LIMIT = 10
+
 
 class LeaderboardTasks(TaskSet):
-    @task(2)
-    def submit_score(self):
-        n = self.user.environment.runner.user_count if self.user.environment.runner else 1
-        name = f"LoadUser{random.randint(1, max(n, 1))}"
-        with self.client.post(
-            "/cascade/score",
-            json={"player_name": name, "score": random.randint(100, 9999)},
-            name="POST /cascade/score",
-        ) as resp:
-            resp.raise_for_status()
+    def on_start(self):
+        self._headers = {"X-Session-ID": str(uuid.uuid4())}
 
-    @task(1)
-    def get_scores(self):
+    @task
+    def get_board(self):
+        game = random.choice(_FREE_BOARDS)
         with self.client.get(
-            "/cascade/scores",
-            name="GET /cascade/scores",
+            f"/games/leaderboard/{game}?limit={_LIMIT}",
+            headers=self._headers,
+            name="GET /games/leaderboard/{game_type}",
+            catch_response=True,
         ) as resp:
-            resp.raise_for_status()
-            data = resp.json()
-            scores = data.get("scores", [])
-            if len(scores) > 10:
-                resp.failure(f"Leaderboard cap violated: got {len(scores)} entries (max 10)")
+            if resp.status_code != 200:
+                resp.failure(f"HTTP {resp.status_code}")
+                return
+            entries = resp.json().get("entries", [])
+            if len(entries) > _LIMIT:
+                resp.failure(f"Board limit violated: got {len(entries)} entries (max {_LIMIT})")
+            else:
+                resp.success()

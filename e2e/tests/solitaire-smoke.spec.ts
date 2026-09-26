@@ -2,15 +2,16 @@
  * solitaire-smoke.spec.ts — GH #1143
  *
  * Smoke tests: navigation, 7 tableau columns render, stock pile visible.
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "@playwright/test";
-import { mockSolitaireApi, gotoSolitaire } from "./helpers/solitaire";
+import { gotoSolitaire } from "./helpers/solitaire";
 
 test.describe("Solitaire — smoke tests", () => {
   test.beforeEach(async ({ page }) => {
-    await mockSolitaireApi(page);
     await gotoSolitaire(page);
     // Choose Draw 1 to dismiss the pre-game modal and deal a fresh board.
     await page.getByRole("button", { name: "Draw 1" }).click();

@@ -1,268 +1,313 @@
 /**
- * Unit tests for the Yacht AI hold and score strategies (GH #1602; updated A4 #2028).
+ * Yacht AI tiers (#2246): Easy / Medium / Hard as handicapped reads off the
+ * optimal-play oracle.
  *
- * Tests the utility-AI path. Contract tests (length, legality) apply to all
- * difficulties. Behavioral tests are EV- and weight-based, not heuristic-based.
+ * - Option scoring (`scoreHolds`, `scoreCategories`) agrees with the oracle.
+ * - Selection (`chooseOption`): temperature 0 is argmax, the cap and
+ *   exclusions hold, and draws follow the softmax weights.
+ * - Tier behaviour on fixed fixtures, with noise off so the choice is exact.
+ * - Properties of the live (noisy) tiers over seeded games: legal moves,
+ *   determinism, and never breaking a made yacht or large straight.
+ *
+ * Replaces the utility-AI tests (#2027/#2028). Their weight- and
+ * consideration-specific assertions (chance-safety valve, adversarial
+ * trailing/leading play, opponentRound handling) had no counterpart once
+ * those layers were retired; the behaviours that still apply (legality,
+ * Joker pricing #2242, holding made hands) are kept below.
  */
 
-import { holdStrategy, scoreStrategy } from "../ai";
-import { computeDerived, newGame, setRng } from "../engine";
-import type { GameState } from "../types";
+import {
+  TIERS,
+  chooseOption,
+  holdStrategy,
+  scoreCategories,
+  scoreHolds,
+  scoreStrategy,
+} from "../ai";
+import {
+  computeDerived,
+  createSeededRng,
+  newGame,
+  possibleScores,
+  roll,
+  score,
+  setRng,
+  type Category,
+} from "../engine";
+import { optimalCategoryEVs, optimalHoldEVs } from "../oracle/oracle";
+import type { AiDifficulty, GameState } from "../types";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+const DIFFICULTIES: readonly AiDifficulty[] = ["easy", "medium", "hard"];
 
-function makeGame(dice: number[], rollsUsed = 1): GameState {
+function makeGame(dice: number[], rollsUsed: number, filled: Partial<GameState["scores"]> = {}) {
   const base = newGame();
-  return { ...base, dice, rolls_used: rollsUsed };
+  return computeDerived({
+    ...base,
+    dice,
+    rolls_used: rollsUsed,
+    scores: { ...base.scores, ...filled },
+  });
 }
 
-/** Return a state with specified categories pre-filled and the rest null. */
-function withScores(state: GameState, filled: Partial<GameState["scores"]>): GameState {
-  return computeDerived({ ...state, scores: { ...state.scores, ...filled } });
+function argmax(values: readonly number[]): number {
+  return values.reduce((best, v, i) => (v > values[best]! ? i : best), 0);
 }
 
-// Freeze noise so Easy/Medium tests are deterministic (noise rate > 0.99 never fires).
-beforeEach(() => setRng(() => 0.99));
+/** The tier's choice with its noise switched off. */
+function noiseFreeCategory(state: GameState, d: AiDifficulty): Category {
+  const options = scoreCategories(state, TIERS[d].foresight);
+  return options[argmax(options.map((o) => o.value))]!.category;
+}
+
+function noiseFreeHold(state: GameState, d: AiDifficulty): readonly number[] {
+  const holds = scoreHolds(state, TIERS[d].foresight).filter((h) => !h.dominated);
+  return holds[argmax(holds.map((h) => h.value))]!.kept;
+}
+
+function keptDice(state: GameState, mask: readonly boolean[]): number[] {
+  return state.dice.filter((_, i) => mask[i]).sort((a, b) => a - b);
+}
+
 afterEach(() => setRng(Math.random));
 
 // ---------------------------------------------------------------------------
-// holdStrategy — shared contract
+// Tier parameters
 // ---------------------------------------------------------------------------
 
-describe("holdStrategy — returns boolean[] of length 5", () => {
-  const state = makeGame([1, 2, 3, 4, 5]);
-
-  it("easy", () => {
-    const held = holdStrategy(state, "easy");
-    expect(held).toHaveLength(5);
-    held.forEach((h) => expect(typeof h).toBe("boolean"));
-  });
-
-  it("medium", () => {
-    const held = holdStrategy(state, "medium");
-    expect(held).toHaveLength(5);
-    held.forEach((h) => expect(typeof h).toBe("boolean"));
-  });
-
-  it("hard", () => {
-    const held = holdStrategy(state, "hard");
-    expect(held).toHaveLength(5);
-    held.forEach((h) => expect(typeof h).toBe("boolean"));
+describe("TIERS", () => {
+  it("ladders foresight up and noise down from Easy to Hard", () => {
+    expect(TIERS.easy.foresight).toBeLessThan(TIERS.medium.foresight);
+    expect(TIERS.medium.foresight).toBeLessThan(TIERS.hard.foresight);
+    expect(TIERS.hard.foresight).toBe(1);
+    expect(TIERS.easy.temperature).toBeGreaterThan(TIERS.medium.temperature);
+    expect(TIERS.medium.temperature).toBeGreaterThan(TIERS.hard.temperature);
+    // Hard's slips stay under the regret metric's 5-point blunder threshold.
+    expect(TIERS.hard.maxLoss).toBeLessThan(5);
   });
 });
 
 // ---------------------------------------------------------------------------
-// holdStrategy — EV-driven behaviors (all difficulties)
+// Option scoring agrees with the oracle
 // ---------------------------------------------------------------------------
 
-describe("holdStrategy — EV-driven hold behaviors", () => {
-  it("holds five of a kind — hold-all is universally best EV", () => {
-    const state = makeGame([6, 6, 6, 6, 6], 2);
-    expect(holdStrategy(state, "hard")).toEqual([true, true, true, true, true]);
-    expect(holdStrategy(state, "medium")).toEqual([true, true, true, true, true]);
-  });
+describe("scoreCategories / scoreHolds — agree with the oracle at foresight 1", () => {
+  const states = [
+    makeGame([5, 5, 5, 3, 2], 3),
+    makeGame([2, 2, 2, 2, 2], 3, { yacht: 50, twos: 10 }), // Joker turn
+    makeGame([1, 2, 3, 4, 6], 3, { ones: 3, twos: 6, threes: 9, chance: 22 }),
+  ];
 
-  it("Hard: holds 4 sixes — clearly best EV on final roll", () => {
-    const state = makeGame([6, 6, 6, 6, 1], 2);
-    expect(holdStrategy(state, "hard")).toEqual([true, true, true, true, false]);
-  });
-
-  it("Hard: holds trips at rollsUsed=1 — best 2-roll EV", () => {
-    const state = makeGame([4, 4, 4, 1, 2], 1);
-    expect(holdStrategy(state, "hard")).toEqual([true, true, true, false, false]);
-  });
-
-  it("Hard: holds 4-run when outside bonus-proximity threshold", () => {
-    const state = withScores(makeGame([1, 2, 3, 4, 6], 2), {
-      ones: 3,
-      twos: 6,
-      threes: 9,
-    });
-    const held = holdStrategy(state, "hard");
-    const heldDice = state.dice.filter((_, i) => held[i]);
-    expect(heldDice.includes(6)).toBe(false);
-  });
-
-  it("Easy: holds 4-run [1,2,3,4,6] — better EV than lone 6", () => {
-    // Utility Easy uses EV (not 'hold most frequent' heuristic).
-    // [1,2,3,4] → large_straight potential is better EV than single 6.
-    const state = makeGame([1, 2, 3, 4, 6]);
-    const held = holdStrategy(state, "easy");
-    const heldDice = state.dice.filter((_, i) => held[i]).sort((a, b) => a - b);
-    expect(heldDice).toEqual([1, 2, 3, 4]);
-  });
-
-  it("does not hold straights when both are already scored — falls back to next-best", () => {
-    const state = withScores(makeGame([1, 2, 3, 4, 6]), {
-      large_straight: 40,
-      small_straight: 30,
-    });
-    const held = holdStrategy(state, "medium");
-    const heldDice = state.dice.filter((_, i) => held[i]).sort((a, b) => a - b);
-    expect(heldDice).not.toEqual([1, 2, 3, 4]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// scoreStrategy — shared contract
-// ---------------------------------------------------------------------------
-
-describe("scoreStrategy — never returns a filled category", () => {
-  it("easy: skips filled yacht", () => {
-    const state = withScores(makeGame([5, 5, 5, 5, 5], 3), { yacht: 50 });
-    expect(scoreStrategy(state, "easy")).not.toBe("yacht");
-  });
-
-  it("medium: skips filled large_straight", () => {
-    const state = withScores(makeGame([1, 2, 3, 4, 5], 3), { large_straight: 40 });
-    expect(scoreStrategy(state, "medium")).not.toBe("large_straight");
-  });
-
-  it("hard: skips filled yacht", () => {
-    const state = withScores(makeGame([6, 6, 6, 6, 6], 3), { yacht: 50 });
-    expect(scoreStrategy(state, "hard", 0)).not.toBe("yacht");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// scoreStrategy — immediate value (rateImmediateValue drives selection)
-// ---------------------------------------------------------------------------
-
-describe("scoreStrategy — immediate value", () => {
-  it("takes Yacht (50 pts) when available — highest immediate value", () => {
-    const state = makeGame([6, 6, 6, 6, 6], 3);
-    expect(scoreStrategy(state, "hard", 0)).toBe("yacht");
-    expect(scoreStrategy(state, "medium")).toBe("yacht");
-  });
-
-  it("takes Large Straight (40 pts) when available", () => {
-    const state = makeGame([1, 2, 3, 4, 5], 3);
-    expect(scoreStrategy(state, "hard", 0)).toBe("large_straight");
-    expect(scoreStrategy(state, "medium")).toBe("large_straight");
-  });
-
-  it("takes highest-value category when multiple are tied", () => {
-    // [1,2,3,4,5]: large_straight = 40, chance = 15; large_straight wins
-    const state = makeGame([1, 2, 3, 4, 5], 3);
-    expect(scoreStrategy(state, "easy")).toBe("large_straight");
-  });
-
-  it("Full House wins over lower-value categories when available", () => {
-    const state = makeGame([5, 5, 5, 2, 2], 3);
-    expect(scoreStrategy(state, "medium")).toBe("full_house");
-    expect(scoreStrategy(state, "hard", 0)).toBe("full_house");
-  });
-
-  it("Three of a Kind beats lower-value categories when no better option", () => {
-    // sixes already scored; [6,6,6,1,2]: three_of_a_kind = 21, chance = 21; tie → tiebreak
-    const state = withScores(makeGame([6, 6, 6, 1, 2], 3), { sixes: 18 });
-    const cat = scoreStrategy(state, "medium");
-    // Three of a kind or chance — both score same; either is fine
-    expect(["three_of_a_kind", "chance"].includes(cat)).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// scoreStrategy — Chance-preservation (rateChanceSafetyValve)
-// ---------------------------------------------------------------------------
-
-describe("scoreStrategy — Chance is penalised early game", () => {
-  it("does NOT take Chance in the first round even with decent sum", () => {
-    // [6,5,4,3,2]: chance = 20; but chanceSafetyValve≈0 early → utility AI avoids it
-    const state = makeGame([6, 5, 4, 3, 2], 3);
-    expect(scoreStrategy(state, "easy")).not.toBe("chance");
-    expect(scoreStrategy(state, "medium")).not.toBe("chance");
-    expect(scoreStrategy(state, "hard", 0)).not.toBe("chance");
-  });
-
-  it("does NOT take Chance when sum < 20 (regardless of game phase)", () => {
-    const state = makeGame([1, 2, 3, 4, 5], 3); // sum = 15
-    expect(scoreStrategy(state, "easy")).not.toBe("chance");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// scoreStrategy — adversarial variance (Hard trailing/leading)
-// ---------------------------------------------------------------------------
-
-describe("scoreStrategy — Hard adversarial variance", () => {
-  it("trailing: favours high-variance play (four_of_a_kind) over safe categories", () => {
-    // myScore=0 < opponentScore(50)-20=30 → trailing
-    const state = makeGame([6, 6, 6, 6, 1], 3);
-    expect(scoreStrategy(state, "hard", 50)).toBe("four_of_a_kind");
-  });
-
-  it("trailing: takes full_house when four_of_a_kind unavailable", () => {
-    const state = makeGame([3, 3, 3, 6, 6], 3);
-    expect(scoreStrategy(state, "hard", 50)).toBe("full_house");
-  });
-
-  it("leading: locks in upper-section points when ahead", () => {
-    // myScore = 65 > opponentScore(0)+50 → leading
-    const state = withScores(makeGame([6, 6, 6, 1, 2], 3), {
-      ones: 5,
-      twos: 10,
-      threes: 15,
-      fours: 20,
-      fives: 15,
-    });
-    expect(scoreStrategy(state, "hard", 0)).toBe("sixes");
-  });
-
-  // GH #2200: accepts an optional opponentRound so callers with real turn-order
-  // info (production, simulators) can avoid comparing against a stale snapshot.
-  it("accepts an optional opponentRound without throwing, for both mover positions", () => {
-    const state = withScores({ ...makeGame([6, 6, 6, 6, 1], 3), round: 8 }, { yacht: 50 });
-    expect(() => scoreStrategy(state, "hard", 139, 9)).not.toThrow(); // opponent already played
-    expect(() => scoreStrategy(state, "hard", 139, 8)).not.toThrow(); // opponent pending
-  });
-});
-
-// ---------------------------------------------------------------------------
-// scoreStrategy — Joker safety
-// ---------------------------------------------------------------------------
-
-describe("scoreStrategy — Joker rule compliance", () => {
-  it("Medium Joker: picks highest-value open lower cat", () => {
-    // yacht=50 (joker active), sixes filled; legal set is constrained by engine
-    const state = withScores(makeGame([6, 6, 6, 6, 6], 3), {
-      yacht: 50,
-      sixes: 30,
-      large_straight: 40,
-      four_of_a_kind: 0,
-    });
-    const cat = scoreStrategy(state, "medium");
-    expect(cat).not.toBe("full_house"); // engine would return highest-value legal cat
-  });
-
-  it("Hard Joker: picks highest-value open lower cat", () => {
-    const state = withScores(makeGame([6, 6, 6, 6, 6], 3), {
-      yacht: 50,
-      sixes: 30,
-      large_straight: 40,
-      four_of_a_kind: 0,
-    });
-    const cat = scoreStrategy(state, "hard", 0);
-    expect(cat).not.toBe("full_house");
-  });
-
-  // GH #2242: rateImmediateValue used the non-Joker scorer, which returns 0 for
-  // Full House / Small Straight / Large Straight on Joker turns (they aren't a
-  // natural full-house/straight shape). That made the AI undervalue the boxes
-  // that are actually worth the most on a Joker turn and steer toward a lower
-  // real-value category instead. Fixture: five 2s, yacht + twos filled, so the
-  // legal set (Priority 2) is full_house(25)/small_straight(30)/large_straight(40)
-  // vs. three_of_a_kind/four_of_a_kind/chance(10 each, via sumDice). Correct
-  // Joker-aware valuation must prefer large_straight (40) over the 10-point
-  // categories that the pre-fix code would have rated equal-or-higher.
-  it.each(["easy", "medium", "hard"] as const)(
-    "%s Joker: prefers the 25/40 fixed Full House / Large Straight value over a lower-value legal cat",
-    (difficulty) => {
-      const state = withScores(makeGame([2, 2, 2, 2, 2], 3), { yacht: 50, twos: 10 });
-      const cat = scoreStrategy(state, difficulty, 0);
-      expect(cat).toBe("large_straight");
+  it.each(states.map((s, i) => [i, s] as const))(
+    "category values match optimalCategoryEVs (%i)",
+    async (_, s) => {
+      const oracle = await optimalCategoryEVs(s, s.dice);
+      const ours = scoreCategories(s, 1);
+      expect(ours.map((o) => o.category).sort()).toEqual(Object.keys(oracle).sort());
+      for (const o of ours) expect(o.value).toBeCloseTo(oracle[o.category]!, 6);
     }
   );
+
+  it.each([1, 2] as const)(
+    "hold values match optimalHoldEVs (rolls_used=%i)",
+    async (rollsUsed) => {
+      const s = makeGame([2, 3, 4, 5, 5], rollsUsed);
+      const oracle = await optimalHoldEVs(s, s.dice, (3 - rollsUsed) as 1 | 2);
+      for (const h of scoreHolds(s, 1)) {
+        if (h.kept.length === 5) continue; // keep-all = bank now in the AI loop (see below)
+        const match = oracle.find((o) => o.hold.join() === h.kept.join());
+        expect(h.value).toBeCloseTo(match!.ev, 6);
+      }
+    }
+  );
+
+  it("values keeping all five dice as banking the roll now", () => {
+    const s = makeGame([3, 3, 3, 3, 1], 1);
+    for (const f of [0, 0.4, 1]) {
+      const keepAll = scoreHolds(s, f).find((h) => h.kept.length === 5)!;
+      const bestCategory = Math.max(...scoreCategories(s, f).map((c) => c.value));
+      expect(keepAll.value).toBeCloseTo(bestCategory, 6);
+    }
+  });
+
+  it("marks every reroll of a made yacht as dominated", () => {
+    for (const f of [0, 0.4, 1]) {
+      for (const h of scoreHolds(makeGame([4, 4, 4, 4, 4], 1), f)) {
+        expect(h.dominated).toBe(h.kept.length !== 5);
+      }
+    }
+  });
+
+  it.each(DIFFICULTIES)(
+    "%s: every reroll of a made large straight is dominated or beyond the tier's loss cap",
+    (d) => {
+      // Rerolling everything could still land a yacht (50 > 40), so not every
+      // reroll is dominated; the ones that aren't cost more than maxLoss.
+      const { foresight, maxLoss } = TIERS[d];
+      for (const rollsUsed of [1, 2]) {
+        const holds = scoreHolds(makeGame([2, 3, 4, 5, 6], rollsUsed), foresight);
+        const bank = holds.find((h) => h.kept.length === 5)!.value;
+        for (const h of holds) {
+          if (h.kept.length === 5) continue;
+          expect(h.dominated || bank - h.value > maxLoss).toBe(true);
+        }
+      }
+    }
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Selection
+// ---------------------------------------------------------------------------
+
+describe("chooseOption", () => {
+  it("is argmax at temperature 0 (first index on ties) and never draws", () => {
+    const rng = jest.fn(() => 0.5);
+    expect(chooseOption([1, 5, 3, 5], { temperature: 0, maxLoss: 10 }, undefined, rng)).toBe(1);
+    expect(rng).not.toHaveBeenCalled();
+  });
+
+  it("never picks an excluded option, and throws if all are excluded", () => {
+    const params = { temperature: 5, maxLoss: 100 };
+    const rng = createSeededRng(1);
+    for (let i = 0; i < 500; i++) {
+      expect(chooseOption([9, 8, 7], params, (j) => j === 0, rng)).not.toBe(0);
+    }
+    expect(() => chooseOption([1, 2], params, () => true, rng)).toThrow(/no eligible option/);
+  });
+
+  it("never picks an option more than maxLoss below the best", () => {
+    const rng = createSeededRng(2);
+    for (let i = 0; i < 2000; i++) {
+      const pick = chooseOption([10, 9.5, 4, 0], { temperature: 50, maxLoss: 1 }, undefined, rng);
+      expect([0, 1]).toContain(pick);
+    }
+  });
+
+  it("draws in proportion to exp(−loss / T)", () => {
+    const rng = createSeededRng(3);
+    const counts = [0, 0, 0];
+    const n = 20_000;
+    for (let i = 0; i < n; i++)
+      counts[chooseOption([3, 2, 0], { temperature: 1, maxLoss: 10 }, undefined, rng)]!++;
+    const w = [1, Math.exp(-1), Math.exp(-3)];
+    const total = w.reduce((a, b) => a + b, 0);
+    // Binomial SD at n = 20,000 is < 0.004; 0.015 is ~4σ.
+    counts.forEach((c, i) => expect(Math.abs(c / n - w[i]! / total)).toBeLessThan(0.015));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tier behaviour on fixed fixtures (noise off)
+// ---------------------------------------------------------------------------
+
+describe("tiers with noise off", () => {
+  it("separate on foresight: Easy grabs points, Hard banks for the upper bonus", () => {
+    // Early game, 5-5-5-3-2: three of a kind scores 20 now, fives scores 15
+    // but is worth more once the 63-point bonus is counted.
+    const s = makeGame([5, 5, 5, 3, 2], 3);
+    expect(noiseFreeCategory(s, "easy")).toBe("three_of_a_kind");
+    expect(noiseFreeCategory(s, "hard")).toBe("fives");
+
+    const s2 = makeGame([4, 4, 4, 1, 2], 3);
+    expect(noiseFreeCategory(s2, "easy")).toBe("three_of_a_kind");
+    expect(noiseFreeCategory(s2, "medium")).toBe("fours");
+    expect(noiseFreeCategory(s2, "hard")).toBe("fours");
+  });
+
+  it.each(DIFFICULTIES)("%s: takes a made yacht, large straight and full house", (d) => {
+    expect(noiseFreeCategory(makeGame([6, 6, 6, 6, 6], 3), d)).toBe("yacht");
+    expect(noiseFreeCategory(makeGame([1, 2, 3, 4, 5], 3), d)).toBe("large_straight");
+    expect(noiseFreeCategory(makeGame([5, 5, 5, 2, 2], 3), d)).toBe("full_house");
+  });
+
+  it.each(DIFFICULTIES)("%s: holds four of a kind on the last reroll", (d) => {
+    expect(noiseFreeHold(makeGame([6, 6, 6, 6, 1], 2), d)).toEqual([6, 6, 6, 6]);
+  });
+
+  // GH #2242: on a Joker turn Full House / Small / Large Straight score their
+  // fixed 25/30/40. Five 2s with yacht and twos filled: large straight (40)
+  // must beat the 10-point sum categories.
+  it.each(DIFFICULTIES)("%s Joker: prices the fixed Large Straight value", (d) => {
+    const s = makeGame([2, 2, 2, 2, 2], 3, { yacht: 50, twos: 10 });
+    expect(noiseFreeCategory(s, d)).toBe("large_straight");
+  });
+
+  it.each(DIFFICULTIES)("%s: never picks a filled category", (d) => {
+    expect(noiseFreeCategory(makeGame([5, 5, 5, 5, 5], 3, { yacht: 50 }), d)).not.toBe("yacht");
+    expect(noiseFreeCategory(makeGame([1, 2, 3, 4, 5], 3, { large_straight: 40 }), d)).not.toBe(
+      "large_straight"
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Live tiers (with noise) over seeded games
+// ---------------------------------------------------------------------------
+
+/** Play one seeded solitaire game, checking every decision. */
+function playChecked(
+  d: AiDifficulty,
+  seed: number,
+  check: (s: GameState, holds: boolean[] | null, cat: Category | null) => void
+) {
+  setRng(createSeededRng(seed));
+  const log: string[] = [];
+  let s = newGame();
+  for (let round = 0; round < 13; round++) {
+    s = roll(s, [false, false, false, false, false]);
+    while (s.rolls_used < 3) {
+      const holds = holdStrategy(s, d);
+      check(s, holds, null);
+      log.push(holds.map(Number).join(""));
+      if (holds.every((h) => h)) break;
+      s = roll(s, holds);
+    }
+    const cat = scoreStrategy(s, d);
+    check(s, null, cat);
+    log.push(cat);
+    s = score(s, cat);
+  }
+  expect(s.game_over).toBe(true);
+  return log;
+}
+
+describe("live tiers — properties over seeded games", () => {
+  it.each(DIFFICULTIES)("%s: every hold is boolean[5] and every category is legal", (d) => {
+    for (const seed of [1, 42, 999, 2024]) {
+      playChecked(d, seed, (s, holds, cat) => {
+        if (holds) {
+          expect(holds).toHaveLength(5);
+          holds.forEach((h) => expect(typeof h).toBe("boolean"));
+        }
+        if (cat) expect(cat in possibleScores(s)).toBe(true);
+      });
+    }
+  });
+
+  it.each(DIFFICULTIES)("%s: the same seed replays the same decisions", (d) => {
+    expect(playChecked(d, 77, () => {})).toEqual(playChecked(d, 77, () => {}));
+  });
+
+  it("Easy's noise actually varies play across seeds", () => {
+    expect(playChecked("easy", 1, () => {})).not.toEqual(playChecked("easy", 2, () => {}));
+  });
+
+  it.each(DIFFICULTIES)("%s: never rerolls a made yacht or large straight it can score", (d) => {
+    const rng = createSeededRng(11);
+    const categories = Object.keys(newGame().scores);
+    for (let trial = 0; trial < 150; trial++) {
+      // Random partial scorecard, keeping yacht and large straight open.
+      const filled: Record<string, number> = {};
+      for (const c of categories) {
+        if (c !== "yacht" && c !== "large_straight" && rng() < 0.4) filled[c] = 0;
+      }
+      const face = 1 + Math.floor(rng() * 6);
+      const straight = rng() < 0.5 ? [1, 2, 3, 4, 5] : [2, 3, 4, 5, 6];
+      for (const dice of [[face, face, face, face, face], straight]) {
+        const s = makeGame(dice, 1 + Math.floor(rng() * 2), filled);
+        setRng(createSeededRng(trial));
+        expect(keptDice(s, holdStrategy(s, d))).toEqual([...dice].sort((a, b) => a - b));
+      }
+    }
+  });
 });

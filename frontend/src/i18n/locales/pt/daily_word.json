@@ -1,0 +1,23 @@
+{
+  "game.title": "Palavra do Dia",
+  "game.description": "Palavra de 5 letras. 6 tentativas. Novo desafio todo dia.",
+  "game.playLabel": "Jogar Palavra do Dia",
+  "hud.guessesLeft_one": "{{count}} tentativa restante",
+  "hud.guessesLeft_many": "{{count}} tentativas restantes",
+  "hud.guessesLeft_other": "{{count}} tentativas restantes",
+  "hud.puzzleNumber": "Desafio #{{number}}",
+  "result.loss.answer": "A palavra era {{answer}}",
+  "error.notAWord": "Fora da lista de palavras",
+  "error.alreadyGuessed": "Já tentada",
+  "error.tooShort": "Letras insuficientes",
+  "error.couldNotLoad": "Não foi possível carregar o desafio",
+  "error.couldNotSubmit": "Não foi possível enviar sua tentativa",
+  "error.stalePuzzle": "Novo desafio disponível — carregando a palavra de hoje",
+  "error.wrongLength": "O tamanho da tentativa não corresponde à palavra de hoje",
+  "error.rateLimited": "Muitas tentativas — tente novamente mais tarde",
+  "keyboard.delete": "Apagar",
+  "keyboard.enter": "Enviar",
+  "result.countdown": "Próxima em {{time}}",
+  "result.share": "Compartilhar",
+  "result.copied": "Copiado!"
+}

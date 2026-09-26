@@ -1,108 +1,255 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  RefreshControl,
-} from "react-native";
+import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { EmptyState } from "../components/shared/EmptyState";
 import { useTheme } from "../theme/ThemeContext";
+import { typography } from "../theme/typography";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
+import { ConfirmModal } from "../components/shared/ConfirmModal";
 import { statsApi } from "../api/stats";
-import type { StatsResponse, GameRow } from "../api/types";
+import { fetchAndRememberMyStats } from "../hooks/useMyStats";
+import type { StatsResponse, GameRow, GameTypeStats } from "../api/types";
+import { formatMetric, gameMetric, knownOutcome, outcomeLabel } from "../api/outcomeDisplay";
+import {
+  completedOf,
+  formatNumber,
+  formatPercent,
+  formatPlayTime,
+  sessionsOf,
+  winRateOf,
+} from "../api/statsDisplay";
 import type { ProfileStackParamList } from "../types/navigation";
 import { formatDate } from "../utils/formatTimestamp";
 import { withRetry } from "../game/_shared/withRetry";
-import OfflineBanner from "../components/OfflineBanner";
+import { useDisplayName } from "../game/_shared/displayName";
+import { removeDisplayName, useDisplayNameRemovalPending } from "../game/_shared/displayNameSync";
+import { useNetwork } from "../game/_shared/NetworkContext";
+import { playersApi } from "../api/players";
+import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import LevelProgress from "../components/shared/LevelProgress";
+import DisplayNameField from "../components/shared/DisplayNameField";
 import { isGameVisible } from "../entitlements/gameVisibility";
 import { GAME_TITLE_NAMESPACES, gameTitle } from "../i18n/gameTitle";
 
 type ProfileNav = NativeStackNavigationProp<ProfileStackParamList, "ProfileHome">;
 
 interface StatsCardData {
+  key: string;
   label: string;
   value: string;
-  sublabel?: string;
+}
+
+interface GameSummaryRow {
+  game: string;
+  title: string;
+  /** Games completed; null from a server that predates #2620. */
+  completed: number | null;
+  /** The best with its label ("412 pts"); null before any qualifying game. */
+  best: string | null;
+  /** won / (won + lost + tied); null when the game has no win concept. */
+  winRate: number | null;
+}
+
+/** The games in `/stats/me` that exist in this build (#2390). */
+function visibleStats(stats: StatsResponse): [string, GameTypeStats][] {
+  return Object.entries(stats.by_game).filter(([game]) => isGameVisible(game));
 }
 
 /**
- * Derives the 2×2 bento tiles from the /stats/me response.
- *
- * Only games that exist in this build count (#2390): a store build hides the
- * premium games entirely, so a tester's earlier Yacht or Star Swarm plays must
- * not resurface here as a favourite, a top score, or in the totals. The
- * server's `total_games` / `favorite_game` aggregate over every game, so both
- * are re-derived from the visible `by_game` entries.
+ * One row per visible game played: its own best in its own terms, and its
+ * win rate. Ordered by games completed, then sessions, then slug; the first
+ * row is the favourite.
  */
-function deriveBentoTiles(stats: StatsResponse, t: TFunction): StatsCardData[] {
-  const visible = Object.entries(stats.by_game).filter(([game]) => isGameVisible(game));
-  const totalGames = visible.reduce((sum, [, s]) => sum + s.played, 0);
-  const typesTried = visible.filter(([, s]) => s.played > 0).length;
+function deriveGameSummaries(stats: StatsResponse, t: TFunction): GameSummaryRow[] {
+  return visibleStats(stats)
+    .filter(([, s]) => sessionsOf(s) > 0)
+    .sort(
+      ([a, sa], [b, sb]) =>
+        (completedOf(sb) ?? 0) - (completedOf(sa) ?? 0) ||
+        sessionsOf(sb) - sessionsOf(sa) ||
+        a.localeCompare(b)
+    )
+    .map(([game, s]) => ({
+      game,
+      title: gameTitle(t, game),
+      completed: completedOf(s),
+      best: s.best_value != null ? formatMetric(t, s.best_label_key, s.best_value) : null,
+      winRate: winRateOf(s),
+    }));
+}
 
-  let favoriteGame: string | null =
-    stats.favorite_game && isGameVisible(stats.favorite_game) ? stats.favorite_game : null;
-  if (!favoriteGame) {
-    let mostPlayed = 0;
-    for (const [game, s] of visible) {
-      if (s.played > mostPlayed) {
-        mostPlayed = s.played;
-        favoriteGame = game;
-      }
-    }
-  }
+/**
+ * The top tiles (#2637): only figures that mean the same thing for every
+ * game, so no score is ever compared with another game's. All of them are
+ * re-derived from the visible games (#2390): a store build hides the premium
+ * games entirely, so a tester's earlier Yacht or Star Swarm plays must not
+ * resurface here. That is also why the favourite is picked here, by games
+ * completed, rather than taken from the server (which picks by sessions over
+ * every game).
+ */
+function deriveBentoTiles(
+  stats: StatsResponse,
+  summaries: GameSummaryRow[],
+  t: TFunction
+): StatsCardData[] {
+  const visible = visibleStats(stats);
+  const sessions = visible.reduce((sum, [, s]) => sum + sessionsOf(s), 0);
+  const hasCompleted = visible.every(([, s]) => completedOf(s) != null);
+  const completed = visible.reduce((sum, [, s]) => sum + (completedOf(s) ?? 0), 0);
+  const timePlayedMs = visible.reduce((sum, [, s]) => sum + (s.time_played_ms ?? 0), 0);
+  const favorite = summaries[0];
 
-  // Best single score across all completed games (ignores blackjack's null
-  // `best` since it uses best_chips — fall back to best_chips when present).
-  let topScore: number | null = null;
-  let topScoreGame: string | null = null;
-  for (const [game, s] of visible) {
-    const candidate = s.best ?? s.best_chips ?? null;
-    if (candidate != null && (topScore == null || candidate > topScore)) {
-      topScore = candidate;
-      topScoreGame = game;
-    }
-  }
+  let favoriteValue: string;
+  if (!hasCompleted) favoriteValue = "—";
+  else if (favorite && (favorite.completed ?? 0) > 0) favoriteValue = favorite.title;
+  else favoriteValue = t("stats.favoriteEmpty");
 
   return [
+    { key: "sessions", label: t("stats.sessions"), value: formatNumber(t, sessions) },
     {
-      label: t("stats.totalGames"),
-      value: totalGames.toLocaleString(),
+      key: "completed",
+      label: t("stats.completed"),
+      value: hasCompleted ? formatNumber(t, completed) : "—",
     },
     {
-      label: t("stats.favorite"),
-      value: favoriteGame ? gameTitle(t, favoriteGame) : t("stats.favoriteEmpty"),
+      key: "completionRate",
+      label: t("stats.completionRate"),
+      value: hasCompleted && sessions > 0 ? formatPercent(t, completed / sessions) : "—",
     },
-    {
-      label: t("stats.topScore"),
-      value: topScore != null ? topScore.toLocaleString() : t("stats.topScoreEmpty"),
-      sublabel: topScoreGame ? gameTitle(t, topScoreGame) : undefined,
-    },
-    {
-      label: t("stats.gamesTried"),
-      value: String(typesTried),
-    },
+    { key: "timePlayed", label: t("stats.timePlayed"), value: formatPlayTime(t, timePlayedMs) },
+    { key: "gamesTried", label: t("stats.gamesTried"), value: formatNumber(t, summaries.length) },
+    { key: "favorite", label: t("stats.favorite"), value: favoriteValue },
   ];
 }
 
-function outcomeGlyph(outcome: string | null): string {
-  switch (outcome) {
-    case "completed":
-      return "✓";
-    case "kept_playing":
-      return "▸";
-    case "abandoned":
-      return "·";
-    default:
-      return "";
+/**
+ * Under the name editor: says whether the player is on the leaderboards, and
+ * lets them take their name off every board (#2637). The editor above sets a
+ * name again.
+ *
+ * States, in order: a removal still waiting to reach the server; a name on
+ * this device; no name here but one on the server (fetched when online, e.g.
+ * a device that lost its copy); no name anywhere.
+ */
+function LeaderboardPresence() {
+  const { colors } = useTheme();
+  const { t } = useTranslation("profile");
+  const { isOnline } = useNetwork();
+  const { name, isLoaded } = useDisplayName();
+  const removalPending = useDisplayNameRemovalPending();
+  const [serverName, setServerName] = useState<string | null>(null);
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [removeError, setRemoveError] = useState(false);
+
+  const checkServer = isLoaded && name == null && !removalPending && isOnline;
+  useEffect(() => {
+    if (!checkServer) {
+      setServerName(null);
+      return;
+    }
+    let active = true;
+    playersApi
+      .getMe()
+      .then((me) => {
+        if (active) setServerName(me.display_name);
+      })
+      .catch(() => {
+        // Unknown: show the device's state (no name) rather than an error.
+        if (active) setServerName(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [checkServer]);
+
+  const handleRemove = useCallback(async () => {
+    setConfirmVisible(false);
+    setRemoveError(!(await removeDisplayName()));
+  }, []);
+
+  if (!isLoaded) return null;
+
+  const shownName = name ?? serverName;
+  let status: React.ReactNode;
+  if (removalPending) {
+    status = (
+      <Text
+        accessibilityLiveRegion="polite"
+        testID="profile-name-removing"
+        style={[styles.presenceText, { color: colors.textMuted }]}
+      >
+        {t("boards.removing")}
+      </Text>
+    );
+  } else if (shownName != null) {
+    status = (
+      <>
+        {name == null && (
+          <Text
+            testID="profile-server-name"
+            style={[styles.presenceText, { color: colors.textMuted }]}
+          >
+            {t("boards.onBoardsAs", { name: shownName })}
+          </Text>
+        )}
+        <Pressable
+          onPress={() => {
+            setRemoveError(false);
+            setConfirmVisible(true);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={t("boards.removeName")}
+          testID="profile-remove-name"
+          hitSlop={4}
+          style={({ pressed }) => [styles.removeButton, { opacity: pressed ? 0.6 : 1 }]}
+        >
+          <MaterialCommunityIcons name="account-remove-outline" size={18} color={colors.text} />
+          <Text style={[styles.removeText, { color: colors.text }]}>{t("boards.removeName")}</Text>
+        </Pressable>
+      </>
+    );
+  } else {
+    status = (
+      <Text
+        accessibilityLiveRegion="polite"
+        testID="profile-not-on-boards"
+        style={[styles.presenceText, { color: colors.textMuted }]}
+      >
+        {t("boards.notOnBoards")}
+      </Text>
+    );
   }
+
+  return (
+    <View style={styles.presence}>
+      {status}
+      {removeError && (
+        <Text
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+          style={[styles.presenceText, { color: colors.error }]}
+        >
+          {t("boards.removeError")}
+        </Text>
+      )}
+      <ConfirmModal
+        visible={confirmVisible}
+        title={t("boards.confirm.title")}
+        body={t("boards.confirm.body")}
+        confirmLabel={t("boards.confirm.confirm")}
+        cancelLabel={t("boards.confirm.cancel")}
+        destructive
+        onConfirm={handleRemove}
+        onCancel={() => setConfirmVisible(false)}
+        testID="profile-remove-name-confirm"
+      />
+    </View>
+  );
 }
 
 export default function ProfileScreen() {
@@ -122,7 +269,8 @@ export default function ProfileScreen() {
     setError(null);
     setGamesError(false);
     const [statsResult, gamesResult] = await Promise.allSettled([
-      withRetry(() => statsApi.getMyStats()),
+      // Remembered for the stats screen opened offline later (#2635).
+      fetchAndRememberMyStats(() => withRetry(() => statsApi.getMyStats())),
       withRetry(() => statsApi.getMyGames(20)),
     ]);
     if (statsResult.status === "fulfilled") setStats(statsResult.value);
@@ -160,28 +308,58 @@ export default function ProfileScreen() {
     [games]
   );
 
-  const bentoTiles = useMemo(() => (stats ? deriveBentoTiles(stats, t) : null), [stats, t]);
+  const gameSummaries = useMemo(() => (stats ? deriveGameSummaries(stats, t) : null), [stats, t]);
+  const bentoTiles = useMemo(
+    () => (stats && gameSummaries ? deriveBentoTiles(stats, gameSummaries, t) : null),
+    [stats, gameSummaries, t]
+  );
 
   const renderItem = useCallback(
-    ({ item }: { item: GameRow }) => (
-      <Pressable
-        onPress={() => navigation.navigate("GameDetail", { gameId: item.id })}
-        style={[styles.row, { borderBottomColor: colors.border }]}
-        accessibilityRole="button"
-        accessibilityLabel={`${gameTitle(t, item.game_type)} ${item.final_score ?? ""}`}
-      >
-        <Text style={[styles.rowDate, { color: colors.textMuted }]}>
-          {formatDate(item.completed_at ?? item.started_at)}
-        </Text>
-        <Text style={[styles.rowGame, { color: colors.text }]}>{gameTitle(t, item.game_type)}</Text>
-        <Text style={[styles.rowScore, { color: colors.text }]}>
-          {item.final_score != null ? item.final_score.toLocaleString() : "—"}
-        </Text>
-        <Text style={[styles.rowOutcome, { color: colors.accent }]}>
-          {outcomeGlyph(item.outcome)}
-        </Text>
-      </Pressable>
-    ),
+    ({ item }: { item: GameRow }) => {
+      const title = gameTitle(t, item.game_type);
+      const { value, labelKey } = gameMetric(item);
+      const metric = formatMetric(t, labelKey, value);
+      const outcome = knownOutcome(item.outcome);
+      const outcomeText = outcomeLabel(t, item.outcome);
+      const date = formatDate(t, item.completed_at ?? item.started_at);
+      return (
+        <Pressable
+          onPress={() => navigation.navigate("GameDetail", { gameId: item.id })}
+          style={[styles.row, { borderBottomColor: colors.border }]}
+          accessibilityRole="button"
+          accessibilityLabel={t("recentGames.rowA11y", {
+            game: title,
+            metric,
+            outcome: outcomeText,
+            date,
+          })}
+          testID={`recent-game-${item.id}`}
+        >
+          <View style={styles.rowLine}>
+            <Text style={[styles.rowGame, { color: colors.text }]} numberOfLines={1}>
+              {title}
+            </Text>
+            <Text style={[styles.rowMetric, { color: colors.text }]}>{metric}</Text>
+          </View>
+          <View style={styles.rowLine}>
+            <Text style={[styles.rowDate, { color: colors.textMuted }]}>{date}</Text>
+            <View style={styles.rowOutcome}>
+              {outcome && (
+                <MaterialCommunityIcons
+                  name={outcome.icon}
+                  size={16}
+                  color={colors[outcome.color]}
+                  testID={`outcome-glyph-${item.outcome}`}
+                />
+              )}
+              <Text style={[styles.rowOutcomeText, { color: colors.textMuted }]}>
+                {outcomeText}
+              </Text>
+            </View>
+          </View>
+        </Pressable>
+      );
+    },
     [colors, navigation, t]
   );
 
@@ -201,20 +379,101 @@ export default function ProfileScreen() {
       )}
       {bentoTiles && (
         <View style={styles.bento}>
-          {bentoTiles.map((tile, idx) => (
-            <View key={idx} style={[styles.bentoCard, { backgroundColor: colors.surfaceAlt }]}>
+          {bentoTiles.map((tile) => (
+            <View
+              key={tile.key}
+              testID={`profile-tile-${tile.key}`}
+              accessible
+              accessibilityLabel={`${tile.label}: ${tile.value}`}
+              style={[styles.bentoCard, { backgroundColor: colors.surfaceAlt }]}
+            >
               <Text style={[styles.bentoLabel, { color: colors.textMuted }]}>{tile.label}</Text>
-              <Text style={[styles.bentoValue, { color: colors.text }]}>{tile.value}</Text>
-              {tile.sublabel && (
-                <Text style={[styles.bentoSublabel, { color: colors.textMuted }]}>
-                  {tile.sublabel}
-                </Text>
-              )}
+              <Text
+                style={[styles.bentoValue, { color: colors.text }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {tile.value}
+              </Text>
             </View>
           ))}
         </View>
       )}
-      <Text style={[styles.sectionTitle, { color: colors.text }]}>{t("recentGames.title")}</Text>
+      {gameSummaries && gameSummaries.length > 0 && (
+        <View>
+          <Text accessibilityRole="header" style={[styles.sectionTitle, { color: colors.text }]}>
+            {t("byGame.title")}
+          </Text>
+          <View style={[styles.gamesCard, { backgroundColor: colors.surfaceAlt }]}>
+            <View
+              style={styles.gameRow}
+              // Column headings; each row's label already names its values.
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              <Text
+                style={[styles.gameColHeader, styles.gameTitleCol, { color: colors.textMuted }]}
+              >
+                {t("byGame.game")}
+              </Text>
+              <Text
+                style={[styles.gameColHeader, styles.gameValueCol, { color: colors.textMuted }]}
+              >
+                {t("byGame.best")}
+              </Text>
+              <Text style={[styles.gameColHeader, styles.gameRateCol, { color: colors.textMuted }]}>
+                {t("byGame.winRate")}
+              </Text>
+            </View>
+            {gameSummaries.map((row) => {
+              const rate = row.winRate != null ? formatPercent(t, row.winRate) : "—";
+              return (
+                <View
+                  key={row.game}
+                  testID={`profile-game-${row.game}`}
+                  accessible
+                  accessibilityLabel={t(
+                    row.winRate != null ? "byGame.rowA11y" : "byGame.rowA11yNoWins",
+                    {
+                      game: row.title,
+                      best: row.best ?? t("byGame.noBest"),
+                      winRate: rate,
+                    }
+                  )}
+                  style={[
+                    styles.gameRow,
+                    { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth },
+                  ]}
+                >
+                  <Text
+                    style={[styles.gameTitle, styles.gameTitleCol, { color: colors.text }]}
+                    numberOfLines={1}
+                  >
+                    {row.title}
+                  </Text>
+                  <Text
+                    style={[styles.gameValue, styles.gameValueCol, { color: colors.text }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    {row.best ?? "—"}
+                  </Text>
+                  <Text
+                    style={[styles.gameValue, styles.gameRateCol, { color: colors.text }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    {rate}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      )}
+      <Text accessibilityRole="header" style={[styles.sectionTitle, { color: colors.text }]}>
+        {t("recentGames.title")}
+      </Text>
       {gamesError && (
         <Text style={[styles.sectionErrorText, { color: colors.error }]}>
           {t("recentGames.loadError")}
@@ -225,41 +484,32 @@ export default function ProfileScreen() {
 
   let body: React.ReactNode;
   if (loading) {
-    body = (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.accent} size="large" accessibilityLabel="Loading" />
-      </View>
-    );
+    body = <EmptyState kind="loading" />;
   } else if (error) {
     body = (
-      <View style={styles.center}>
-        <Text style={[styles.errorText, { color: colors.error }]}>
-          {t("recentGames.loadError")}
-        </Text>
-        <Pressable
-          onPress={() => {
+      <EmptyState
+        kind="error"
+        message={t("recentGames.loadError")}
+        retry={{
+          label: t("recentGames.retry"),
+          onPress: () => {
             setLoading(true);
             load().finally(() => setLoading(false));
-          }}
-          style={[styles.retryBtn, { borderColor: colors.accent }]}
-          accessibilityRole="button"
-        >
-          <Text style={[styles.retryText, { color: colors.accent }]}>{t("recentGames.retry")}</Text>
-        </Pressable>
-      </View>
+          },
+        }}
+      />
     );
   } else {
     body = (
       <FlatList
+        testID="profile-list"
         data={visibleGames}
         keyExtractor={(g) => g.id}
         renderItem={renderItem}
         ListHeaderComponent={listHeader}
         ListEmptyComponent={
           !gamesError ? (
-            <Text style={[styles.empty, { color: colors.textMuted }]}>
-              {t("recentGames.empty")}
-            </Text>
+            <EmptyState kind="empty" layout="inline" message={t("recentGames.empty")} />
           ) : null
         }
         refreshControl={
@@ -282,7 +532,20 @@ export default function ProfileScreen() {
       ]}
     >
       <AppHeader title={t("title")} />
-      <OfflineBanner />
+      <ConnectedOfflineBanner style={styles.offlineBannerWrap} />
+      <View
+        style={[
+          styles.displayNameCard,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}
+      >
+        <DisplayNameField
+          testID="profile-display-name"
+          label={t("displayName.label")}
+          helper={t("displayName.helper")}
+        />
+        <LeaderboardPresence />
+      </View>
       {body}
     </View>
   );
@@ -290,15 +553,29 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
-  errorText: { fontSize: 14, marginBottom: 12, textAlign: "center" },
-  retryBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
+  offlineBannerWrap: { marginHorizontal: 16, marginTop: 12 },
+  displayNameCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  retryText: { fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 },
+  presence: { marginTop: 8, gap: 4 },
+  presenceText: { fontFamily: typography.body, fontSize: 13 },
+  removeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 6,
+    minHeight: 44,
+  },
+  removeText: {
+    fontFamily: typography.bodyMedium,
+    fontSize: 14,
+    textDecorationLine: "underline",
+  },
   bento: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -308,28 +585,51 @@ const styles = StyleSheet.create({
   bentoCard: {
     flexGrow: 1,
     flexBasis: "45%",
-    minHeight: 92,
+    minHeight: 84,
     padding: 14,
     borderRadius: 16,
   },
   bentoLabel: {
+    fontFamily: typography.label,
     fontSize: 10,
-    fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 1.2,
     marginBottom: 6,
   },
-  bentoValue: { fontSize: 24, fontWeight: "800" },
-  bentoSublabel: { fontSize: 11, marginTop: 2 },
+  bentoValue: { fontFamily: typography.heading, fontSize: 22 },
   sectionTitle: {
+    fontFamily: typography.label,
     fontSize: 13,
-    fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 1.2,
     paddingHorizontal: 16,
     marginTop: 12,
     marginBottom: 8,
   },
+  gamesCard: {
+    marginHorizontal: 12,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+    borderRadius: 16,
+  },
+  gameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    gap: 8,
+  },
+  gameColHeader: {
+    fontFamily: typography.label,
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: 1.0,
+  },
+  gameTitleCol: { flex: 1 },
+  gameValueCol: { width: 112, textAlign: "right" },
+  gameRateCol: { width: 76, textAlign: "right" },
+  gameTitle: { fontFamily: typography.bodyMedium, fontSize: 14 },
+  gameValue: { fontFamily: typography.heading, fontSize: 14, fontVariant: ["tabular-nums"] },
   listContent: { paddingBottom: 32 },
   sectionErrorText: {
     fontSize: 13,
@@ -338,21 +638,15 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   row: {
-    flexDirection: "row",
-    alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 12,
+    gap: 4,
   },
-  rowDate: { fontSize: 12, width: 88 },
-  rowGame: { fontSize: 14, flex: 1, fontWeight: "600" },
-  rowScore: { fontSize: 14, fontVariant: ["tabular-nums"], fontWeight: "700" },
-  rowOutcome: { fontSize: 16, width: 20, textAlign: "right" },
-  empty: {
-    fontSize: 14,
-    textAlign: "center",
-    paddingVertical: 48,
-    paddingHorizontal: 24,
-  },
+  rowLine: { flexDirection: "row", alignItems: "center", gap: 12 },
+  rowGame: { fontFamily: typography.bodyMedium, fontSize: 14, flex: 1 },
+  rowMetric: { fontFamily: typography.heading, fontSize: 14, fontVariant: ["tabular-nums"] },
+  rowDate: { fontFamily: typography.body, fontSize: 12, flex: 1 },
+  rowOutcome: { flexDirection: "row", alignItems: "center", gap: 4 },
+  rowOutcomeText: { fontFamily: typography.body, fontSize: 12 },
 });

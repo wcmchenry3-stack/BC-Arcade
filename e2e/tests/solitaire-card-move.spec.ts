@@ -9,14 +9,16 @@
  * Tap-to-select (#2128): first tap selects a card, second tap on a valid
  * destination executes the move. (Smart single-tap was reverted in #2128.)
  *
- * All backend calls are intercepted — no running backend required.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  *
  * Board states are injected via localStorage before navigation so the
  * pre-game draw-mode modal is bypassed (saved game is restored directly).
  */
 
 import { test, expect } from "@playwright/test";
-import { mockSolitaireApi, injectSolitaireState } from "./helpers/solitaire";
+import { injectSolitaireState } from "./helpers/solitaire";
 
 // ---------------------------------------------------------------------------
 // Shared stock filler — keeps structural card counts valid without cluttering
@@ -58,7 +60,6 @@ test("solitaire tap-to-select: waste → tableau (K♥ onto empty column)", asyn
     accumulatedMs: 0,
   };
 
-  await mockSolitaireApi(page);
   await injectSolitaireState(page, STATE);
 
   await page.getByRole("button", { name: "Play Solitaire" }).click();
@@ -117,7 +118,6 @@ test("solitaire tap-to-select: tableau → foundation (A♠ to Spades foundation
     accumulatedMs: 0,
   };
 
-  await mockSolitaireApi(page);
   await injectSolitaireState(page, STATE);
 
   await page.getByRole("button", { name: "Play Solitaire" }).click();
@@ -175,7 +175,6 @@ test("solitaire tap-to-select: multi-card run (Q♣-J♥ onto K♦)", async ({
     accumulatedMs: 0,
   };
 
-  await mockSolitaireApi(page);
   await injectSolitaireState(page, STATE);
 
   await page.getByRole("button", { name: "Play Solitaire" }).click();

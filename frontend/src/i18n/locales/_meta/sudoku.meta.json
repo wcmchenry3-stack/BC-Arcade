@@ -26,7 +26,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-
   "cell.label": {
     "component": "SudokuCell (accessibility)",
     "description": "Screen-reader label for a grid cell, e.g. 'Cell row 3, column 5, empty' or 'Cell row 3, column 5, 7'.",
@@ -45,7 +44,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-
   "numberPad.digit": {
     "component": "NumberPad (accessibility)",
     "description": "Accessibility label for a digit button on the number pad.",
@@ -91,11 +89,91 @@
     "doNotTranslate": [],
     "notes": null
   },
-
   "difficulty.groupLabel": {
     "component": "DifficultySelector (accessibility)",
     "description": "Accessibility group label for the difficulty radio buttons.",
     "tone": "functional",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.easy": {
+    "component": "DifficultySelector",
+    "description": "Label for the 'Easy' difficulty tier (36-44 given cells).",
+    "tone": "casual",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.medium": {
+    "component": "DifficultySelector",
+    "description": "Label for the 'Medium' difficulty tier (28-35 given cells).",
+    "tone": "casual",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.hard": {
+    "component": "DifficultySelector",
+    "description": "Label for the 'Hard' difficulty tier (22-27 given cells).",
+    "tone": "casual",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.undo": {
+    "component": "Header action",
+    "description": "Label + accessibility label for the Undo button.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.hint": {
+    "component": "NumberPad tool row",
+    "description": "Label for the Hint button — reveals the correct digit for the selected empty cell.",
+    "tone": "casual",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Russian Подсказка needs 9. The button is an auto-width pill beside Notes in a centred row (NumberPad toolBtn), so it grows with its label."
+  },
+  "action.changeDifficulty": {
+    "component": "Win modal",
+    "description": "Label for the 'Change Difficulty' button (returns to the difficulty picker).",
+    "tone": "casual",
+    "characterLimit": 25,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.start": {
+    "component": "Pre-game modal",
+    "description": "Primary CTA to start the chosen puzzle.",
+    "tone": "casual, upbeat",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "action.quickRestart": {
+    "component": "New Game modal",
+    "description": "Secondary button in the New Game modal that immediately restarts with the same difficulty and variant, bypassing the selectors.",
+    "tone": "casual",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "newGame.title": {
+    "component": "New Game modal",
+    "description": "Headline for the New Game settings modal shown after the player confirms abandoning their current game.",
+    "tone": "casual",
     "characterLimit": 20,
     "placeholders": [],
     "doNotTranslate": [],
@@ -128,109 +206,6 @@
     "doNotTranslate": [],
     "notes": "Show grid size after the name, e.g. 'Mini 6×6'."
   },
-
-  "difficulty.easy": {
-    "component": "DifficultySelector",
-    "description": "Label for the 'Easy' difficulty tier (36-44 given cells).",
-    "tone": "casual",
-    "characterLimit": 12,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "difficulty.medium": {
-    "component": "DifficultySelector",
-    "description": "Label for the 'Medium' difficulty tier (28-35 given cells).",
-    "tone": "casual",
-    "characterLimit": 12,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "difficulty.hard": {
-    "component": "DifficultySelector",
-    "description": "Label for the 'Hard' difficulty tier (22-27 given cells).",
-    "tone": "casual",
-    "characterLimit": 12,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-
-  "action.undo": {
-    "component": "Header action",
-    "description": "Label + accessibility label for the Undo button.",
-    "tone": "functional",
-    "characterLimit": 10,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "action.hint": {
-    "component": "NumberPad tool row",
-    "description": "Label for the Hint button — reveals the correct digit for the selected empty cell.",
-    "tone": "casual",
-    "characterLimit": 8,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "action.newGame": {
-    "component": "Win modal",
-    "description": "Label for the 'New Puzzle' button (starts a fresh puzzle at the same difficulty).",
-    "tone": "casual",
-    "characterLimit": 18,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "action.quickRestart": {
-    "component": "New Game modal",
-    "description": "Secondary button in the New Game modal that immediately restarts with the same difficulty and variant, bypassing the selectors.",
-    "tone": "casual",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "action.changeDifficulty": {
-    "component": "Win modal",
-    "description": "Label for the 'Change Difficulty' button (returns to the difficulty picker).",
-    "tone": "casual",
-    "characterLimit": 25,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "action.start": {
-    "component": "Pre-game modal",
-    "description": "Primary CTA to start the chosen puzzle.",
-    "tone": "casual, upbeat",
-    "characterLimit": 10,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "action.submitScore": {
-    "component": "Win modal",
-    "description": "Primary CTA to submit the score to the leaderboard.",
-    "tone": "casual",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-
-  "newGame.title": {
-    "component": "New Game modal",
-    "description": "Headline for the New Game settings modal shown after the player confirms abandoning their current game.",
-    "tone": "casual",
-    "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-
   "preGame.title": {
     "component": "Pre-game card header",
     "description": "Headline inviting the player to pick a difficulty.",
@@ -249,15 +224,14 @@
     "doNotTranslate": [],
     "notes": null
   },
-
   "hud.errors": {
     "component": "HUD row",
     "description": "Error counter for 2+ errors (plural).",
     "tone": "neutral",
-    "characterLimit": 15,
+    "characterLimit": 17,
     "placeholders": ["{{count}}"],
     "doNotTranslate": [],
-    "notes": "Use the locale's plural form.  The engine picks `hud.errorsOne` for exactly one error."
+    "notes": "Use the locale's plural form.  The engine picks `hud.errorsOne` for exactly one error. Renders as e.g. '3 errores'; the limit counts the raw {{count}}."
   },
   "hud.errorsOne": {
     "component": "HUD row",
@@ -276,42 +250,5 @@
     "placeholders": ["{{time}}"],
     "doNotTranslate": [],
     "notes": "`{{time}}` is a formatted duration like 02:13 or 1:04:27."
-  },
-
-  "win.title": {
-    "component": "Win modal",
-    "description": "Congratulatory headline shown when the puzzle is solved.",
-    "tone": "upbeat, celebratory",
-    "characterLimit": 25,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "win.score": {
-    "component": "Win modal",
-    "description": "Final score line in the win modal.",
-    "tone": "neutral",
-    "characterLimit": 25,
-    "placeholders": ["{{score}}"],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "win.errors": {
-    "component": "Win modal",
-    "description": "Total errors line in the win modal.",
-    "tone": "neutral",
-    "characterLimit": 25,
-    "placeholders": ["{{count}}"],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "win.elapsed": {
-    "component": "Win modal",
-    "description": "Elapsed-time line in the win modal.",
-    "tone": "neutral",
-    "characterLimit": 25,
-    "placeholders": ["{{time}}"],
-    "doNotTranslate": [],
-    "notes": null
   }
 }

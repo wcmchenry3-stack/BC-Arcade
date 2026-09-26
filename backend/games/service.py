@@ -5,27 +5,43 @@ Idempotency strategy:
 - Events: `(game_id, event_index)` is the composite PK. We use dialect-aware
   `INSERT ... ON CONFLICT DO NOTHING` so repeat batches are safe.
 - Complete: re-completing a finished game returns its existing state without
-  overwriting.
+  overwriting — except a row closed by the stale-session sweep (#2621), which a
+  real completion replaces.
 """
 
 from __future__ import annotations
 
+import contextlib
+import functools
 import json
+import logging
 import uuid
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import sentry_sdk
 from pydantic import ValidationError
-from sqlalchemy import case, func, select
+from sqlalchemy import ColumnElement, Text, case, func, literal, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
+from db.dialect import dialect_insert, dialect_name
 from db.models import EventType, Game, GameEvent, GameType
-from games.filters import not_abandoned
+from games.board import SCORE_METRIC, BoardDefinition
+from games.filters import SWEPT_KEY, is_swept, not_abandoned, not_swept, without_swept
+from games.leaderboard import check_completion_limits, merge_result_metadata
+from games.legacy_outcomes import might_be_legacy_win, win_update
+from games.protocol import GameModule
 from games.registry import get_module
+from players.service import remember_legacy_name
 from vocab import GameOutcome
+from vocab import GameType as VocabGameType
+
+logger = logging.getLogger(__name__)
 
 _VALID_OUTCOMES = frozenset(v.value for v in GameOutcome)
 
@@ -112,20 +128,30 @@ async def create_game(
         id=client_id or uuid.uuid4(),
         session_id=session_id,
         game_type_id=gt.id,
-        game_metadata=metadata or {},
+        # The sweep flag is server-written only (#2621).
+        game_metadata=without_swept(metadata),
         players=players,
     )
     valid_started_at = _validate_client_timestamp(started_at, now) if started_at else None
     if valid_started_at is not None:
         game.started_at = valid_started_at
     session.add(game)
+    # A name in the creation metadata (builds before #2624) is also the
+    # player's display name, for the generic boards.
+    await remember_legacy_name(session, session_id, (metadata or {}).get("player_name"))
     await session.commit()
     await session.refresh(game)
     return game
 
 
-async def _get_owned_game(session: AsyncSession, game_id: uuid.UUID, session_id: str) -> Game:
-    game = (await session.execute(select(Game).where(Game.id == game_id))).scalar_one_or_none()
+async def _get_owned_game(
+    session: AsyncSession, game_id: uuid.UUID, session_id: str, *, for_update: bool = False
+) -> Game:
+    stmt = select(Game).where(Game.id == game_id)
+    if for_update:
+        # Postgres: hold the row until commit. SQLite renders no FOR UPDATE.
+        stmt = stmt.with_for_update()
+    game = (await session.execute(stmt)).scalar_one_or_none()
     if game is None:
         raise GameServiceError(404, "Game not found.")
     if game.session_id != session_id:
@@ -137,15 +163,10 @@ def _upsert_ignore(session: AsyncSession, table, rows: list[dict]):
     """Dialect-aware INSERT ... ON CONFLICT DO NOTHING.
 
     Postgres and SQLite both support on_conflict_do_nothing via their
-    dialect-specific insert() constructors. We branch on bind.dialect.name
-    so the API test suite can run against either backend.
+    dialect-specific insert() constructors, so the API test suite can run
+    against either backend.
     """
-    dialect = session.bind.dialect.name if session.bind else "postgresql"
-    if dialect == "sqlite":
-        from sqlalchemy.dialects.sqlite import insert as _insert
-    else:
-        from sqlalchemy.dialects.postgresql import insert as _insert
-    return _insert(table).values(rows).on_conflict_do_nothing()
+    return dialect_insert(session, table).values(rows).on_conflict_do_nothing()
 
 
 async def append_events(
@@ -156,7 +177,9 @@ async def append_events(
     events: list[dict[str, Any]],
 ) -> AppendResult:
     game = await _get_owned_game(session, game_id, session_id)
-    if game.completed_at is not None:
+    # A swept row is still open as far as the device is concerned: a long-offline
+    # queue flushes its events before the completion that replaces the sweep.
+    if game.completed_at is not None and not is_swept(game.game_metadata):
         raise GameServiceError(409, "Game is already completed.")
 
     event_type_map = await _load_event_type_map(session, game.game_type_id)
@@ -222,26 +245,110 @@ async def append_events(
 
 
 # ---------------------------------------------------------------------------
+# Stale-session sweep (#2621)
+# ---------------------------------------------------------------------------
+
+# A game still open this long after it started was left by killing the app.
+# The sweep marks what it closes with metadata[SWEPT_KEY] = true (games.filters),
+# which lets a real completion that arrives later replace it (complete_game).
+STALE_GAME_AFTER = timedelta(hours=24)
+
+
+async def sweep_stale_games(
+    session: AsyncSession, *, session_id: str, now: datetime | None = None
+) -> int:
+    """Close the session's games left open for over 24 h as abandoned (#2621).
+
+    One UPDATE on ``games_session_id_started_at_idx``: sets ``outcome='abandoned'``,
+    ``completed_at = started_at + 24 h`` and ``metadata.swept = true``, and leaves
+    ``duration_ms`` NULL. Only open rows match, so it is idempotent and never
+    touches a completed game. Returns the number of rows closed.
+
+    Run on read, per player — at the start of ``/stats/me`` and ``/games/me`` — so
+    no scheduler is needed. Sessions that never call those again keep their open
+    rows; leaderboards never read open rows, so that gap only affects analytics.
+    """
+    now = now or datetime.now(timezone.utc)
+    dialect = dialect_name(session)
+    if dialect == "sqlite":
+        # SQLite stores DateTime as text, and the ORM writes it as
+        # 'YYYY-MM-DD HH:MM:SS.ffffff'. Build exactly that, so text comparisons
+        # against ORM-written timestamps order correctly: date math on the whole
+        # seconds (SQLite's own %f has only milliseconds), then the original
+        # microseconds, padded for a started_at stored without a fraction.
+        fraction = func.substr(Game.started_at, 21, type_=Text) + "000000"
+        completed_at = (
+            func.strftime("%Y-%m-%d %H:%M:%S", Game.started_at, "+24 hours", type_=Text)
+            + "."
+            + func.substr(fraction, 1, 6, type_=Text)
+        )
+        metadata = func.json_set(Game.game_metadata, f"$.{SWEPT_KEY}", func.json("true"))
+    else:
+        completed_at = Game.started_at + STALE_GAME_AFTER
+        metadata = Game.game_metadata.op("||")(literal({SWEPT_KEY: True}, JSONB))
+    stmt = (
+        update(Game)
+        .where(
+            Game.session_id == session_id,
+            Game.completed_at.is_(None),
+            Game.started_at < now - STALE_GAME_AFTER,
+        )
+        .values(
+            outcome=GameOutcome.ABANDONED.value,
+            completed_at=completed_at,
+            game_metadata=metadata,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    result = await session.execute(stmt)
+    await session.commit()
+    return result.rowcount or 0
+
+
+async def sweep_stale_games_safely(session: AsyncSession, *, session_id: str) -> None:
+    """Run the sweep without ever failing the read it precedes.
+
+    A failure is logged at ERROR (Sentry's logging integration captures it) and
+    rolled back so the read can go on. The log carries the exception class only:
+    a DBAPI error's text includes the statement's bound parameters, session id
+    among them, and the privacy policy keeps identifiers out of crash reports.
+    """
+    try:
+        await sweep_stale_games(session, session_id=session_id)
+    except Exception as exc:  # noqa: BLE001 — a sweep failure must never fail the read
+        logger.error(
+            "stale-session sweep failed (%s); serving the read unswept", type(exc).__name__
+        )
+        with contextlib.suppress(Exception):
+            await session.rollback()
+
+
+# ---------------------------------------------------------------------------
 # Read-side queries (#365)
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class GameTypeStats:
-    played: int
-    best: int | None
-    avg: float | None
     last_played_at: datetime | None
     # Completed-only count behind Arcade XP (#2472). Set straight from the
     # aggregate query, never through stats_shape(): a game module must not be
     # able to shape how much XP it grants.
     completed_played: int = 0
-    best_chips: int | None = None
-    current_chips: int | None = None
-    best_run_chips: int | None = None
-    total_runs: int | None = None
-    runs_completed: int | None = None
-    current_table: str | None = None
+    # Comparable per-game fields (#2620). Like completed_played they come
+    # straight from the queries, never through stats_shape(), so every game
+    # reports them the same way. Meanings: GameTypeStatsResponse.
+    sessions: int = 0
+    won: int | None = None
+    lost: int | None = None
+    tied: int | None = None
+    current_win_streak: int | None = None
+    best_win_streak: int | None = None
+    time_played_ms: int = 0
+    best_value: int | float | None = None
+    best_label_key: str | None = None
+    # Game-specific figures from stats_shape()'s "extras" (Blackjack's chips).
+    extras: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -251,21 +358,198 @@ class StatsSummary:
     favorite_game: str | None
 
 
+# --- comparable per-game stats (#2620) -------------------------------------
+
+# Upper bound on what one row may add to time_played_ms: a sanity bound on the
+# reported duration_ms, not an estimate of play time.
+MAX_TIME_PLAYED_PER_GAME_MS = 24 * 60 * 60 * 1000
+
+# Only these three outcomes count. The legacy ``blackjack`` outcome is not a
+# win here: #2619 (migration 0024_drop_blackjack_outcome) rewrites any stored
+# ``blackjack`` row to ``win`` and drops the value from the CHECK constraint.
+_WIN = GameOutcome.WIN.value
+_LOSS = GameOutcome.LOSS.value
+_PUSH = GameOutcome.PUSH.value
+
+
+def _registered_module(name: str) -> GameModule:
+    """The ``GameModule`` for game type *name*.
+
+    Every vocab ``GameType`` has one since #2623 (a test checks it). A game
+    without one is a bug, so this fails loudly instead of guessing a board for
+    it. Only code-defined types reach it; a ``game_types`` row with no module
+    is left out of the stats instead (``get_stats_for_session``).
+    """
+    module = get_module(name)
+    if module is None:
+        raise LookupError(f"No GameModule registered for game type {name!r}")
+    return module
+
+
+def _metadata_number(key: str, dialect: str) -> ColumnElement:
+    """``games.metadata[key]`` as a number, or NULL when it is not a JSON number.
+
+    Guarded by the JSON type so a malformed value (a game with no
+    ``result_model`` accepts any result block) yields NULL instead of a cast
+    error that would fail the whole ``/stats/me`` response.
+    """
+    if dialect == "sqlite":
+        path = f'$."{key}"'
+        return case(
+            (
+                func.json_type(Game.game_metadata, path).in_(("integer", "real")),
+                func.json_extract(Game.game_metadata, path),
+            )
+        )
+    value = Game.game_metadata[key]
+    return case((func.jsonb_typeof(value) == "number", value.as_float()))
+
+
+@functools.cache
+def _best_candidate(dialect: str) -> ColumnElement:
+    """Each row's board metric when the row can be its game's best, else NULL.
+
+    A row qualifies when it is not abandoned and, if its board sets
+    ``qualifying_outcomes``, its outcome is one of them (Daily Word: wins
+    only). The value is ``final_score`` or the metadata key the board names.
+
+    Boards are static, so the expression is built once per dialect and
+    reused by every request.
+    """
+    whens = []
+    for game_type in VocabGameType:
+        board = _registered_module(game_type.value).board
+        if board.metric == SCORE_METRIC and board.qualifying_outcomes is None:
+            continue  # the ELSE branch below
+        value = (
+            Game.final_score
+            if board.metric == SCORE_METRIC
+            else _metadata_number(board.metric, dialect)
+        )
+        if board.qualifying_outcomes is not None:
+            value = case((Game.outcome.in_(board.qualifying_outcomes), value))
+        whens.append((GameType.name == game_type.value, value))
+    per_game = case(*whens, else_=Game.final_score) if whens else Game.final_score
+    return case((not_abandoned(), per_game))
+
+
+# Each row's reported play time: duration_ms when it is > 0, capped at 24 h.
+# Rows with a null, 0 or negative duration_ms add nothing (SUM skips NULL).
+# There is deliberately no completed_at − started_at fallback: wall-clock time
+# counts idle and backgrounded hours, and rows swept to abandoned (#2621) would
+# add up to a day each.
+_REPORTED_TIME_MS = case(
+    (Game.duration_ms > MAX_TIME_PLAYED_PER_GAME_MS, MAX_TIME_PLAYED_PER_GAME_MS),
+    (Game.duration_ms > 0, Game.duration_ms),
+)
+
+
+def _comparable_columns(dialect: str) -> list[ColumnElement]:
+    """Conditional aggregates for the comparable fields, added to the stats query."""
+    candidate = _best_candidate(dialect)
+    return [
+        func.count(case((Game.outcome == _WIN, Game.id))).label("won"),
+        func.count(case((Game.outcome == _LOSS, Game.id))).label("lost"),
+        func.count(case((Game.outcome == _PUSH, Game.id))).label("tied"),
+        func.sum(_REPORTED_TIME_MS).label("time_played_ms"),
+        func.max(candidate).label("metric_max"),
+        func.min(candidate).label("metric_min"),
+    ]
+
+
+def _as_number(value: Any) -> int | float | None:
+    """DB numerics (Decimal, float) to int when integral, else float."""
+    if value is None:
+        return None
+    number = float(value)
+    return int(number) if number.is_integer() else number
+
+
+def win_streaks(outcomes: Iterable[str]) -> tuple[int, int]:
+    """``(current, best)`` runs of consecutive wins, oldest outcome first.
+
+    A ``loss`` ends a run. Every other outcome — ``push``, ``abandoned``,
+    ``completed``, ``kept_playing`` — neither extends nor breaks it.
+    """
+    current = best = 0
+    for outcome in outcomes:
+        if outcome == _WIN:
+            current += 1
+            best = max(best, current)
+        elif outcome == _LOSS:
+            current = 0
+    return current, best
+
+
+async def _win_streaks_by_game(
+    session: AsyncSession, *, session_id: str
+) -> dict[str, tuple[int, int]]:
+    """One ordered scan of the session's ``win``/``loss`` rows, all games at once.
+
+    Only those two outcomes can move a streak (see ``win_streaks``), so every
+    other row is left out of the scan.
+    """
+    rows = (
+        await session.execute(
+            select(GameType.name, Game.outcome)
+            .join(GameType, Game.game_type_id == GameType.id)
+            .where(
+                Game.session_id == session_id,
+                Game.completed_at.is_not(None),
+                Game.outcome.in_((_WIN, _LOSS)),
+            )
+            .order_by(GameType.name, Game.completed_at, Game.started_at, Game.id)
+        )
+    ).all()
+    outcomes_by_game: dict[str, list[str]] = {}
+    for name, outcome in rows:
+        outcomes_by_game.setdefault(name, []).append(outcome)
+    return {name: win_streaks(outcomes) for name, outcomes in outcomes_by_game.items()}
+
+
+def _comparable_fields(
+    row: Any, board: BoardDefinition, streak: tuple[int, int] | None
+) -> dict[str, Any]:
+    """The comparable GameTypeStats fields for one aggregate row."""
+    has_result = (row.won + row.lost + row.tied) > 0
+    current, best = streak or (0, 0)
+    best_value = row.metric_max if board.direction == "desc" else row.metric_min
+    return {
+        "sessions": row.played,
+        "won": row.won if has_result else None,
+        "lost": row.lost if has_result else None,
+        "tied": row.tied if has_result else None,
+        "current_win_streak": current if has_result else None,
+        "best_win_streak": best if has_result else None,
+        "time_played_ms": round(float(row.time_played_ms or 0)),
+        "best_value": _as_number(best_value),
+        "best_label_key": board.label_key,
+    }
+
+
 async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> StatsSummary:
     """Aggregate per-game-type stats for a single session.
 
-    Only counts completed games — in-progress games are excluded from
-    played/best/avg so the leaderboard stays stable until a game finishes.
+    Only counts finished games (``completed_at`` set); in-progress games are
+    left out.
 
-    Abandoned games (#2468 / #2472) are counted but not scored. ``played`` and
-    ``last_played_at`` are lifecycle facts and still include them; every score
-    aggregate (``best`` / ``avg`` / ``latest_score``) and ``completed_played``
-    — the count XP is derived from — excludes them, because the frontend
-    abandon paths do send a ``final_score`` (Sudoku sends the full completion
-    formula, so a 0-error abandon on Hard scores 300).
+    Abandoned games (#2468 / #2472) are counted but not scored. ``sessions``
+    and ``last_played_at`` are lifecycle facts and still include them (though
+    not ``last_played_at`` for a row the stale-session sweep closed); every
+    score aggregate (``best_value`` and the ``best`` / ``latest_score`` inputs
+    to ``stats_shape()``) and ``completed_played`` — the count XP is derived
+    from — excludes them, because the frontend abandon paths do send a
+    ``final_score`` (Sudoku sends the full completion formula, so a 0-error
+    abandon on Hard scores 300).
 
     Per-game stat shaping is delegated to each module's ``stats_shape()``
     method via the registry (#541).  No game-name branches live here.
+
+    The comparable fields (#2620: ``sessions``, ``won``/``lost``/``tied``,
+    win streaks, ``time_played_ms``, ``best_value``) are set from the queries
+    and the game's ``BoardDefinition``, never through ``stats_shape()``. They
+    add conditional aggregates to the one aggregate query plus, only when some
+    game has a ``win`` or ``loss``, one ordered scan for the win streaks.
     """
     # --- aggregate query -------------------------------------------------
     # Conditional aggregates keep this one round-trip: `case` with no `else`
@@ -277,9 +561,13 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
                 GameType.name,
                 func.count(Game.id).label("played"),
                 func.count(case((not_abandoned(), Game.id))).label("completed_played"),
+                # The highest score: the ``best`` input to stats_shape()
+                # (Blackjack's best_chips).
                 func.max(scored).label("best"),
-                func.avg(scored).label("avg"),
-                func.max(Game.completed_at).label("last_played_at"),
+                # Swept rows (#2621) carry a synthetic completed_at
+                # (started_at + 24 h), not a time the player played.
+                func.max(case((not_swept(), Game.completed_at))).label("last_played_at"),
+                *_comparable_columns(dialect_name(session)),
             )
             .select_from(Game)
             .join(GameType, Game.game_type_id == GameType.id)
@@ -290,6 +578,11 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
             .group_by(GameType.name)
         )
     ).all()
+    streaks = (
+        await _win_streaks_by_game(session, session_id=session_id)
+        if any(row.won or row.lost for row in rows)
+        else {}
+    )
 
     # --- pre-fetch the latest row per game type --------------------------
     # Used by modules (e.g. Blackjack) that need the most-recent score or
@@ -299,40 +592,50 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
     #   score    — skips abandons (#2468). Blackjack reads current_chips
     #              through it, so an abandoned table must not become the
     #              player's live chip balance.
-    #   metadata — takes the latest row whatever its outcome. Blackjack writes
-    #              its cumulative run aggregates (best_run_chips, total_runs,
-    #              runs_completed, current_table) at session *start*, so the
-    #              newest row always holds the freshest figures even when that
-    #              session was later abandoned — and "New Game" and unmount are
-    #              both abandon paths, so filtering here would blank the run
-    #              history for anyone who has not just cashed out or busted.
-    def _latest_row_query(*extra_filters):
-        latest_sq = (
+    #   metadata — takes the latest row whatever its outcome, latest by
+    #              *start*. Blackjack writes its cumulative run aggregates
+    #              (best_run_chips, total_runs, runs_completed, current_table)
+    #              at session start, so the newest session always holds the
+    #              freshest figures even when it was later abandoned — and "New
+    #              Game" and unmount are both abandon paths, so filtering here
+    #              would blank the run history for anyone who has not just
+    #              cashed out or busted. Ordering by started_at also keeps a
+    #              swept row (#2621) in its place: its completed_at is a
+    #              synthetic started_at + 24 h that can postdate newer games,
+    #              while it still wins when it really is the newest session.
+    #
+    # Ties (SQLite's server-default started_at has one-second resolution) fall
+    # back to completed_at, then id, so exactly one row per game type wins.
+    def _latest_row_query(order_by, *extra_filters):
+        ranked = (
             select(
-                Game.game_type_id,
-                func.max(Game.completed_at).label("max_completed_at"),
+                Game.id,
+                func.row_number()
+                .over(
+                    partition_by=Game.game_type_id,
+                    order_by=(*order_by, Game.id.desc()),
+                )
+                .label("rn"),
             )
             .where(
                 Game.session_id == session_id,
                 Game.completed_at.is_not(None),
                 *extra_filters,
             )
-            .group_by(Game.game_type_id)
             .subquery()
         )
         return (
             select(GameType.name, Game.final_score, Game.game_metadata)
             .join(GameType, Game.game_type_id == GameType.id)
-            .join(
-                latest_sq,
-                (Game.game_type_id == latest_sq.c.game_type_id)
-                & (Game.completed_at == latest_sq.c.max_completed_at),
-            )
-            .where(Game.session_id == session_id, *extra_filters)
+            .join(ranked, (Game.id == ranked.c.id) & (ranked.c.rn == 1))
         )
 
-    latest_score_rows = (await session.execute(_latest_row_query(not_abandoned()))).all()
-    latest_meta_rows = (await session.execute(_latest_row_query())).all()
+    latest_score_rows = (
+        await session.execute(_latest_row_query((Game.completed_at.desc(),), not_abandoned()))
+    ).all()
+    latest_meta_rows = (
+        await session.execute(_latest_row_query((Game.started_at.desc(), Game.completed_at.desc())))
+    ).all()
     latest_score_by_name: dict[str, int | None] = {
         name: (int(score) if score is not None else None) for name, score, _ in latest_score_rows
     }
@@ -346,37 +649,35 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
     favorite: str | None = None
     favorite_count = -1
 
-    for name, played, completed_played, best, avg, last_played in rows:
+    for row in rows:
+        name, played, completed_played = row.name, row.played, row.completed_played
+        game_module = get_module(name)
+        if game_module is None:
+            # A game type with rows but no module is a bug, but it must not
+            # take /stats/me down for every player who played it: report it
+            # and leave that game out (it has no board or stats shape).
+            sentry_sdk.capture_message(
+                f"/stats: no GameModule for game type {name!r}; left out", level="error"
+            )
+            continue
         total += played
 
         raw: dict = {
-            "played": played,
-            "best": int(best) if best is not None else None,
-            "avg": round(float(avg), 1) if avg is not None else None,
-            "last_played_at": last_played,
+            "best": int(row.best) if row.best is not None else None,
+            "last_played_at": row.last_played_at,
             "latest_score": latest_score_by_name.get(name),
             "metadata": latest_meta_by_name.get(name, {}),
         }
 
-        game_module = get_module(name)
-        shaped = (
-            game_module.stats_shape(raw)
-            if game_module is not None
-            else {k: v for k, v in raw.items() if k != "latest_score"}
-        )
+        shaped = game_module.stats_shape(raw)
+
+        extras: dict[str, Any] = dict(shaped.get("extras") or {})
 
         by_game[name] = GameTypeStats(
-            played=shaped.get("played", 0),
-            best=shaped.get("best"),
-            avg=shaped.get("avg"),
             last_played_at=shaped.get("last_played_at"),
-            best_chips=shaped.get("best_chips"),
-            current_chips=shaped.get("current_chips"),
-            best_run_chips=shaped.get("best_run_chips"),
-            total_runs=shaped.get("total_runs"),
-            runs_completed=shaped.get("runs_completed"),
-            current_table=shaped.get("current_table"),
+            extras=extras,
             completed_played=completed_played,
+            **_comparable_fields(row, game_module.board, streaks.get(name)),
         )
 
         if played > favorite_count:
@@ -501,14 +802,28 @@ async def complete_game(
     completed_at: datetime | None = None,
     result: dict[str, Any] | None = None,
 ) -> Game:
-    game = await _get_owned_game(session, game_id, session_id)
-    if game.completed_at is not None:
+    # FOR UPDATE: on Postgres a concurrent sweep waits for this completion, then
+    # finds the row no longer open (#2621).
+    game = await _get_owned_game(session, game_id, session_id, for_update=True)
+    if game.completed_at is not None and not is_swept(game.game_metadata):
         return game  # idempotent — do not overwrite
 
     if outcome is not None and outcome not in _VALID_OUTCOMES:
         raise GameServiceError(400, f"Invalid outcome: {outcome!r}")
 
-    validated_result = await _validate_result(session, game, result)
+    name = (
+        await session.execute(select(GameType.name).where(GameType.id == game.game_type_id))
+    ).scalar_one()
+    mod = get_module(name)
+    # The sweep flag is server-written only: a result must not set it (#2621).
+    validated_result = without_swept(await _validate_result(session, game, result, name, mod))
+    # The board's caps and value types (#2618, absorbs #2215).
+    violation = check_completion_limits(name, mod, game, final_score, validated_result)
+    if violation is not None:
+        _report_rejected_result(
+            violation.game_type, "over board limit", {"field": violation.metric}
+        )
+        raise GameServiceError(400, violation.detail)
 
     now = datetime.now(timezone.utc)
     valid_completed_at = _validate_client_timestamp(completed_at, now) if completed_at else None
@@ -516,39 +831,53 @@ async def complete_game(
     game.final_score = final_score
     game.outcome = outcome
     game.duration_ms = duration_ms
-    if validated_result:
-        # Reassign (never mutate in place) — the JSONB column isn't a MutableDict.
-        # Creation-time keys win: leaderboards read player_name / raw_score /
-        # difficulty from here, and a result must never rewrite them.
-        game.game_metadata = {**validated_result, **(game.game_metadata or {})}
+    # Reassign (never mutate in place) — the JSONB column isn't a MutableDict.
+    # Creation-time keys win unless they hold null (merge_result_metadata);
+    # the limit check above merged the same way.
+    game.game_metadata = merge_result_metadata(without_swept(game.game_metadata), validated_result)
+    # Always write metadata, in this same UPDATE, even when it looks unchanged:
+    # a sweep that committed after the row was read (where FOR UPDATE is not
+    # available — SQLite) set the flag in the database, and the completion must
+    # still leave the row finished and unflagged. A real completion replaces a
+    # sweep and puts the row back under "first completion wins" (#2621).
+    flag_modified(game, "game_metadata")
+    if might_be_legacy_win(name, outcome):
+        # An older build's certain win is stored as ``win`` (#2703), by the
+        # same rule migration 0028 applied to the rows stored before it. One
+        # UPDATE on this row, in this transaction, after the completion above
+        # is flushed; the refresh below reads back what it stored.
+        await session.flush()
+        await session.execute(win_update(name, dialect_name(session), game_id=game.id))
     await session.commit()
     await session.refresh(game)
     return game
 
 
 async def _validate_result(
-    session: AsyncSession, game: Game, result: dict[str, Any] | None
+    session: AsyncSession,
+    game: Game,
+    result: dict[str, Any] | None,
+    name: str,
+    mod: GameModule | None,
 ) -> dict:
     """Validate *result* against the game module's ``result_model`` (#2449).
 
-    Games without a registered module or a ``result_model`` accept any dict
-    unvalidated. Only fields the client actually sent are returned. Results over
-    ``_MAX_RESULT_BYTES`` are rejected — unvalidated games have no other bound.
+    ``name`` and ``mod`` are the game's type name and registered module, as
+    ``complete_game`` resolved them. Games without a registered module or a
+    ``result_model`` accept any dict unvalidated. Only fields the client
+    actually sent are returned. Results over ``_MAX_RESULT_BYTES`` are
+    rejected — unvalidated games have no other bound.
     """
     if not result:
         return {}
-    name = (
-        await session.execute(select(GameType.name).where(GameType.id == game.game_type_id))
-    ).scalar_one()
     if len(json.dumps(result, default=str)) > _MAX_RESULT_BYTES:
         _report_rejected_result(name, "result too large", {"keys": sorted(result)[:20]})
         raise GameServiceError(400, "Result too large.")
-    mod = get_module(name)
     result_model = mod.result_model if mod is not None else None
     if result_model is None:
         return dict(result)
     try:
-        return result_model.model_validate(result).model_dump(exclude_unset=True)
+        validated = result_model.model_validate(result).model_dump(exclude_unset=True)
     except ValidationError as e:
         errors = e.errors()
         fields = ", ".join(".".join(str(p) for p in err["loc"]) for err in errors)
@@ -558,6 +887,12 @@ async def _validate_result(
             {"fields": fields, "error_types": sorted({err["type"] for err in errors})},
         )
         raise GameServiceError(400, f"Invalid result for {name}: {fields}")
+    # Optional per-game hook: correct a validated result against server-side
+    # state the client cannot be trusted on (Daily Word's guess record, #2541).
+    reconcile = getattr(mod, "reconcile_result", None)
+    if reconcile is not None:
+        validated = await reconcile(session, game, validated)
+    return validated
 
 
 def _report_rejected_result(game_type: str, reason: str, extra: dict[str, Any]) -> None:

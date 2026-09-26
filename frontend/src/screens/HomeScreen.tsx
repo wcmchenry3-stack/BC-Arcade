@@ -18,10 +18,11 @@ import * as Sentry from "@sentry/react-native";
 import type { HomeStackParamList } from "../types/navigation";
 import { newGame as newYachtGame } from "../game/yacht/engine";
 import { loadGame as loadYachtGame } from "../game/yacht/storage";
+import { isAiTurnPending } from "../game/yacht/vsTurn";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
-import OfflineBanner from "../components/OfflineBanner";
+import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import DailyChallengeCard from "../components/daily_challenge/DailyChallengeCard";
 import { APP_START_MS } from "../utils/appTiming";
 import { prefetchLobbyGameScreens } from "../utils/lazyScreens";
@@ -31,6 +32,7 @@ import { statsApi } from "../api/stats";
 import { withRetry } from "../game/_shared/withRetry";
 import { useNetwork } from "../game/_shared/NetworkContext";
 import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
+import { fetchAndRememberMyStats } from "../hooks/useMyStats";
 
 /** Below this viewport width the grid collapses to a single column. */
 const SINGLE_COL_BREAKPOINT = 360;
@@ -60,7 +62,6 @@ export default function HomeScreen() {
     "mahjong",
     "sort",
     "daily_word",
-    "errors",
   ]);
   const { colors } = useTheme();
   const { canPlay } = useEntitlements();
@@ -110,7 +111,8 @@ export default function HomeScreen() {
     // Shared with the daily-challenge card so their concurrent flushes don't
     // let one of them read before the upload lands.
     flushQueuedGames()
-      .then(() => withRetry(() => statsApi.getMyStats()))
+      // Remembered for the stats screen opened offline later (#2635).
+      .then(() => fetchAndRememberMyStats(() => withRetry(() => statsApi.getMyStats())))
       .then((stats) => {
         if (!mounted.current) return;
         setArcadeLevel(stats.arcade_level);
@@ -148,11 +150,18 @@ export default function HomeScreen() {
 
   async function startYacht() {
     const saved = await loadYachtGame();
-    if (saved && !saved.state.game_over) {
+    // Resume an unfinished game, including a VS game where only the
+    // computer's last turn is left (#2203).
+    const resumable =
+      saved &&
+      (!saved.state.game_over ||
+        (!!saved.aiDifficulty && !!saved.aiState && isAiTurnPending(saved.state, saved.aiState)));
+    if (saved && resumable) {
       navigation.navigate("Game", {
         initialState: saved.state,
         aiDifficulty: saved.aiDifficulty ?? undefined,
         aiState: saved.aiState ?? undefined,
+        finishedGameId: saved.finishedGameId,
       });
     } else {
       navigation.navigate("Game", { initialState: newYachtGame() });
@@ -402,10 +411,6 @@ export default function HomeScreen() {
         }
       />
 
-      <View style={styles.offlineBannerWrap}>
-        <OfflineBanner />
-      </View>
-
       <ScrollView
         contentContainerStyle={[
           styles.grid,
@@ -416,6 +421,7 @@ export default function HomeScreen() {
           },
         ]}
       >
+        <ConnectedOfflineBanner />
         <DailyChallengeCard />
         {numColumns === 1
           ? games.map((item, index) => (
@@ -462,13 +468,6 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
-  },
-  offlineBannerWrap: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    zIndex: 100,
   },
   grid: {
     gap: 16,

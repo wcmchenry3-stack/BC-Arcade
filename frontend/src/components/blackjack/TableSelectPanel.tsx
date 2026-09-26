@@ -1,10 +1,14 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import { TABLE_CONFIGS, TableConfig, isTableUnlocked } from "../../game/blackjack/tables";
 import { RunRecord } from "../../game/blackjack/storage";
+import { loadLastDifficulty } from "../../game/_shared/lastDifficulty";
+import { PREMIUM_LEVEL_OPACITY, usePremiumLevels } from "../shared/usePremiumLevels";
+
+const TABLE_IDS = TABLE_CONFIGS.map((c) => c.id);
 
 interface Props {
   runs: RunRecord[];
@@ -13,8 +17,27 @@ interface Props {
 }
 
 export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }: Props) {
-  const { t } = useTranslation("blackjack");
+  const { t } = useTranslation(["blackjack", "common"]);
   const { colors } = useTheme();
+  // The table the last run was played at, marked so it is easy to pick again (#1129).
+  const [lastTableId, setLastTableId] = useState<TableConfig["id"] | null>(null);
+  const premium = usePremiumLevels("blackjack", "blackjack-premium");
+
+  useEffect(() => {
+    let alive = true;
+    void loadLastDifficulty("blackjack", TABLE_IDS).then((id) => {
+      if (alive) setLastTableId(id);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // The table start itself remembers the table (BlackjackGameContext).
+  const handlePress = (config: TableConfig) => {
+    if (premium.isLocked(config.id)) premium.explain();
+    else onSelectTable(config);
+  };
 
   return (
     <View style={styles.container}>
@@ -34,8 +57,13 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
       <View style={styles.cards}>
         {TABLE_CONFIGS.map((config, idx) => {
           const unlocked = isTableUnlocked(idx, runs);
+          // Premium tables stay tappable, to explain the lock; progress locks don't.
+          const premiumTable = unlocked && premium.isLocked(config.id);
+          const playable = unlocked && !premiumTable;
+          const lastPlayed = playable && config.id === lastTableId;
           const prevConfig = idx > 0 ? TABLE_CONFIGS[idx - 1] : null;
           const accentColor = colors[config.accentKey];
+          const tableName = t(config.labelKey as Parameters<typeof t>[0]);
 
           return (
             <Pressable
@@ -44,23 +72,27 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
                 styles.card,
                 {
                   backgroundColor: colors.surface,
-                  borderColor: unlocked ? accentColor + "66" : colors.border,
-                  opacity: unlocked ? 1 : 0.5,
+                  borderColor: lastPlayed
+                    ? accentColor
+                    : playable
+                      ? accentColor + "66"
+                      : colors.border,
+                  opacity: playable ? 1 : premiumTable ? PREMIUM_LEVEL_OPACITY : 0.5,
                 },
               ]}
-              onPress={() => unlocked && onSelectTable(config)}
+              onPress={() => unlocked && handlePress(config)}
               disabled={!unlocked}
               accessibilityRole="button"
               accessibilityLabel={
-                unlocked
-                  ? t("tableSelect.selectLabel", {
-                      table: t(config.labelKey as Parameters<typeof t>[0]),
-                    })
-                  : t("tableSelect.lockedLabel", {
-                      table: t(config.labelKey as Parameters<typeof t>[0]),
-                    })
+                premiumTable
+                  ? premium.lockedLabel(tableName)
+                  : unlocked
+                    ? t("tableSelect.selectLabel", { table: tableName })
+                    : t("tableSelect.lockedLabel", { table: tableName })
               }
+              accessibilityHint={lastPlayed ? t("tableSelect.lastPlayed") : undefined}
               accessibilityState={{ disabled: !unlocked }}
+              testID={`blackjack-table-${config.id}`}
             >
               <View style={styles.cardTop}>
                 <View>
@@ -68,7 +100,7 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
                     style={[
                       styles.cardName,
                       {
-                        color: unlocked ? accentColor : colors.textMuted,
+                        color: playable ? accentColor : colors.textMuted,
                         fontFamily: typography.heading,
                       },
                     ]}
@@ -80,6 +112,16 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
                   </Text>
                 </View>
 
+                {lastPlayed && (
+                  <Text style={[styles.lockHint, { color: accentColor }]}>
+                    {t("tableSelect.lastPlayed")}
+                  </Text>
+                )}
+                {premiumTable && (
+                  <Text style={[styles.lockHint, { color: colors.textMuted }]}>
+                    {premium.lockedText(t("common:premiumLevel.tag"))}
+                  </Text>
+                )}
                 {!unlocked && prevConfig && (
                   <Text style={[styles.lockHint, { color: colors.textMuted }]}>
                     🔒{" "}
@@ -106,7 +148,7 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
                   <Text style={[styles.statLabel, { color: colors.textMuted }]}>
                     {t("tableSelect.goal")}
                   </Text>
-                  <Text style={[styles.statValue, { color: unlocked ? accentColor : colors.text }]}>
+                  <Text style={[styles.statValue, { color: playable ? accentColor : colors.text }]}>
                     {config.runGoal}
                   </Text>
                 </View>
@@ -136,6 +178,8 @@ export default function TableSelectPanel({ runs, onSelectTable, onViewHistory }:
           {t("tableSelect.viewHistory")}
         </Text>
       </Pressable>
+
+      {premium.notice}
     </View>
   );
 }

@@ -12,7 +12,7 @@
 
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { mockHeartsApi, gotoHearts } from "./helpers/hearts";
+import { gotoHearts } from "./helpers/hearts";
 
 async function assertNoA11yViolations(
   axeBuilder: InstanceType<typeof AxeBuilder>,
@@ -32,7 +32,6 @@ async function assertNoA11yViolations(
 
 test.describe("Hearts — accessibility", () => {
   test.beforeEach(async ({ page }) => {
-    await mockHeartsApi(page);
     await gotoHearts(page);
   });
 

@@ -5,11 +5,13 @@
  * pile, navigate to Solitaire, verify the card is visible, navigate away,
  * return, and confirm the waste card is still the same.
  *
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "@playwright/test";
-import { mockSolitaireApi, injectSolitaireState } from "./helpers/solitaire";
+import { injectSolitaireState } from "./helpers/solitaire";
 
 // 5♥ is the top waste card; stock has the remaining 51 cards face-down.
 function remainingStock() {
@@ -37,7 +39,6 @@ const PERSIST_STATE = {
 };
 
 test("waste card persists after navigating away and back", async ({ page }) => {
-  await mockSolitaireApi(page);
   await injectSolitaireState(page, PERSIST_STATE);
 
   await page.getByRole("button", { name: "Play Solitaire" }).click();

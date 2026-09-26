@@ -11,23 +11,60 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
 import CascadeScreen from "../CascadeScreen";
-import { CascadeScoreboardProvider } from "../../game/cascade/CascadeScoreboardContext";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AppState } from "react-native";
+import type { AppStateStatus } from "react-native";
+import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
 
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 
+const mockPopToTop = jest.fn();
+const mockNavigate = jest.fn();
+// Captured so tests can fire "blur"/"focus" (a pushed Stats/Leaderboard/
+// Scoreboard screen, #2735).
+const mockNavListeners = new Map<string, Array<() => void>>();
 jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({
-    popToTop: jest.fn(),
+    popToTop: mockPopToTop,
     goBack: jest.fn(),
-    navigate: jest.fn(),
+    navigate: mockNavigate,
+    addListener: jest.fn((event: string, handler: () => void) => {
+      mockNavListeners.set(event, [...(mockNavListeners.get(event) ?? []), handler]);
+      return () => {
+        mockNavListeners.set(
+          event,
+          (mockNavListeners.get(event) ?? []).filter((h) => h !== handler)
+        );
+      };
+    }),
   }),
+}));
+
+// The result card reads the synced game's rank (#2632, sessionBoardAdapter).
+const mockGetGameRank = jest.fn();
+jest.mock("../../api/stats", () => ({
+  statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
+}));
+jest.mock("../../api/players", () => ({
+  playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
+}));
+jest.mock("../../game/_shared/flushQueuedGames", () => ({
+  flushQueuedGames: jest.fn(() => Promise.resolve()),
 }));
 
 jest.mock("../../components/cascade/FruitGlyph", () => "FruitGlyph");
 jest.mock("../../components/cascade/NextFruitPreview", () => "NextFruitPreview");
-jest.mock("../../components/cascade/ThemeSelector", () => "ThemeSelector");
+// Captures the fruit-set setter so tests can switch sets like the selector does.
+let mockSetFruitSetById: ((id: string) => void) | null = null;
+jest.mock("../../components/cascade/ThemeSelector", () => {
+  const { useFruitSet } = jest.requireActual("../../theme/FruitSetContext");
+  return function MockThemeSelector() {
+    mockSetFruitSetById = useFruitSet().setFruitSetById;
+    return null;
+  };
+});
 
 // Skia requires a native module — mock the whole package in Jest.
 // useImage returns a non-null stub so useFruitImages resolves immediately
@@ -84,6 +121,7 @@ let mockEngineScore = 0;
 
 const mockEngineDrop = jest.fn();
 const mockEngineDestroy = jest.fn();
+const mockEngineRestore = jest.fn();
 const mockEngineStep = jest.fn().mockImplementation(() => {
   const events = [...pendingEngineEvents];
   pendingEngineEvents = [];
@@ -105,6 +143,7 @@ jest.mock("../../game/cascade/engine2", () => ({
       drop: mockEngineDrop,
       getState: mockEngineGetState,
       destroy: mockEngineDestroy,
+      restore: mockEngineRestore,
     };
   }),
 }));
@@ -156,11 +195,13 @@ async function injectGameOver() {
 
 beforeEach(() => {
   jest.useFakeTimers();
+  mockNavListeners.clear();
   pendingEngineEvents = [];
   mockEngineScore = 0;
   mockEngineInstanceCount = 0;
   mockEngineDrop.mockClear();
   mockEngineDestroy.mockClear();
+  mockEngineRestore.mockClear();
   mockEngineStep.mockClear();
   mockEngineGetState.mockClear();
   mockStartGame.mockReset();
@@ -180,11 +221,7 @@ afterEach(() => {
 async function renderScreen() {
   let renderer!: ReturnType<typeof create>;
   await act(() => {
-    renderer = create(
-      <CascadeScoreboardProvider>
-        <CascadeScreen />
-      </CascadeScoreboardProvider>
-    );
+    renderer = create(<CascadeScreen />);
   });
 
   // Trigger onLayout so scale > 0 and the game area renders
@@ -272,10 +309,10 @@ describe("CascadeGame", () => {
 
     const overlay = renderer.root.findAll(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (node: any) => typeof node.props.onRestart === "function"
+      (node: any) => typeof node.props.onPlayAgain === "function"
     )[0];
     await act(() => {
-      overlay?.props.onRestart();
+      overlay?.props.onPlayAgain();
     });
     // Advance frame so the new engine's RAF loop fires
     await act(() => {
@@ -436,10 +473,10 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     mockCompleteGame.mockClear();
     const overlay = renderer.root.findAll(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (node: any) => typeof node.props.onRestart === "function"
+      (node: any) => typeof node.props.onPlayAgain === "function"
     )[0];
     await act(() => {
-      overlay?.props.onRestart();
+      overlay?.props.onPlayAgain();
     });
     await act(() => {
       advanceOneFrame();
@@ -466,6 +503,114 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     expect(mockCompleteGame.mock.calls[0]?.[1]?.outcome).toBe("abandoned");
   });
 
+  // #2469 item 3 / #2619 — the registered progress snapshot.
+  it("an unmount abandon carries the progress snapshot result and no score", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
+    await act(() => {
+      jest.advanceTimersByTime(201);
+    });
+    await injectMerge(3, 100, 200);
+    mockCompleteGame.mockClear();
+    await act(() => {
+      renderer.unmount();
+    });
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.outcome).toBe("abandoned");
+    expect(summary).not.toHaveProperty("finalScore");
+    // #2619 review: same keys as a completed row's result, minus `outcome`.
+    expect(summary.result).toEqual({
+      final_score: expect.any(Number),
+      duration_ms: expect.any(Number),
+      theme: "fruits",
+      total_drops: 1,
+      total_merges: 1,
+    });
+    expect(eventData).toEqual({ ...summary.result, outcome: "abandoned" });
+  });
+
+  // #2735: ⋯ → Stats/Leaderboard/Scoreboard covers the board; the loop and
+  // the reported duration must not advance meanwhile.
+  it("stops the loop and the play clock while another screen covers the board", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
+    mockCompleteGame.mockClear();
+    mockEngineStep.mockClear();
+
+    await act(() => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    await act(() => {
+      jest.advanceTimersByTime(10 * 60_000); // ten minutes on the Stats screen
+    });
+    // A frame already queued before the blur may still be flushed, but it
+    // no-ops instead of stepping the engine or rescheduling itself.
+    await act(() => {
+      advanceOneFrame();
+    });
+    expect(mockEngineStep).not.toHaveBeenCalled();
+    expect(rafCallbacks).toHaveLength(0);
+
+    await act(() => {
+      mockNavListeners.get("focus")?.forEach((h) => h());
+    });
+    await act(() => {
+      jest.advanceTimersByTime(5_000); // five more seconds of play
+    });
+    await act(() => {
+      renderer.unmount();
+    });
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.result.duration_ms).toBeLessThan(10_000);
+  });
+
+  it("a mid-game New Game abandon keeps theme and final_score, but no outcome, in its result", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
+    await act(() => {
+      jest.advanceTimersByTime(201);
+    });
+    mockCompleteGame.mockClear();
+    const shell = renderer.root.findAll(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (node: any) => typeof node.props.onNewGame === "function"
+    )[0];
+    await act(() => {
+      shell?.props.onNewGame();
+    });
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.outcome).toBe("abandoned");
+    expect(summary.result).toEqual({
+      final_score: expect.any(Number),
+      duration_ms: expect.any(Number),
+      theme: "fruits",
+      total_drops: 1,
+      total_merges: 0,
+    });
+    expect(summary.result).not.toHaveProperty("outcome");
+    expect(summary.durationMs).toBe(summary.result.duration_ms);
+    expect(eventData).toEqual({ ...summary.result, outcome: "abandoned" });
+  });
+
+  it("game over still sends the full result block (#2619: explicit, unchanged)", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
+    mockCompleteGame.mockClear();
+    await injectGameOver();
+
+    const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.result).toEqual(eventData);
+    expect(summary.result).toEqual(
+      expect.objectContaining({ total_drops: 1, outcome: "completed" })
+    );
+  });
+
   it("client failures do not block gameplay (enqueueEvent throws)", async () => {
     const renderer = await renderScreen();
     mockEnqueueEvent.mockImplementation(() => {
@@ -475,5 +620,365 @@ describe("CascadeScreen — gameEventClient instrumentation (#371)", () => {
     // engine.drop still called despite the throw
     expect(mockEngineDrop).toHaveBeenCalled();
     mockEnqueueEvent.mockReset();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2515 — shared result card
+// ---------------------------------------------------------------------------
+
+describe("CascadeScreen — result card (#2515)", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    resetDisplayNameCacheForTests();
+    mockPopToTop.mockClear();
+    mockGetGameRank.mockReset();
+    mockGetGameRank.mockResolvedValue({ ranked: true, rank: 2, is_best: true, reason: null });
+  });
+
+  /** Let AsyncStorage reads/writes and the submit chain settle under fake timers. */
+  async function settle() {
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        await jest.runOnlyPendingTimersAsync();
+      });
+    }
+  }
+
+  function findCard(renderer: ReturnType<typeof create>) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return renderer.root.findAll((node: any) => node.props.testID === "cascade-result")[0];
+  }
+
+  async function playToGameOver(finalScore: number) {
+    const renderer = await renderScreen();
+    await settle();
+    mockEngineScore = finalScore;
+    await injectMerge(2, 150, 300);
+    await injectGameOver();
+    await settle();
+    return renderer;
+  }
+
+  it("shows the Game Over card with the score, best and merges", async () => {
+    const renderer = await playToGameOver(1234);
+    const card = findCard(renderer);
+    expect(card?.props.visible).toBe(true);
+    expect(card?.props.outcome).toBe("ended");
+    expect(card?.props.hero).toEqual({ kind: "score", label: "Score", value: 1234 });
+    expect(card?.props.stats).toEqual([
+      { label: "Best", value: 1234 },
+      { label: "Merges", value: 1 },
+    ]);
+    // A first game is not a "new best".
+    expect(card?.props.isNewBest).toBe(false);
+  });
+
+  it("persists the best score and marks a beaten one as New Best", async () => {
+    await AsyncStorage.setItem("cascade_best_score", "1000");
+    const renderer = await playToGameOver(1234);
+    const card = findCard(renderer);
+    expect(card?.props.isNewBest).toBe(true);
+    expect(card?.props.stats[0]).toEqual({ label: "Best", value: 1234 });
+    await expect(AsyncStorage.getItem("cascade_best_score")).resolves.toBe("1234");
+  });
+
+  it("keeps the stored best when the game scores lower", async () => {
+    await AsyncStorage.setItem("cascade_best_score", "5000");
+    const renderer = await playToGameOver(1234);
+    const card = findCard(renderer);
+    expect(card?.props.isNewBest).toBe(false);
+    expect(card?.props.stats[0]).toEqual({ label: "Best", value: 5000 });
+    await expect(AsyncStorage.getItem("cascade_best_score")).resolves.toBe("5000");
+  });
+
+  // #2632: the card reads the synced game's rank instead of PATCH /cascade/score/{id}.
+  it("shows the synced game's rank under the display name automatically", async () => {
+    await saveDisplayName("Riley");
+    const renderer = await playToGameOver(1234);
+    expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
+    expect(findCard(renderer)?.props.submission).toEqual(
+      expect.objectContaining({ status: "saved", rank: 2, playerName: "Riley" })
+    );
+  });
+
+  it("links the card to Cascade's board (#2633)", async () => {
+    const renderer = await playToGameOver(1234);
+    mockNavigate.mockClear();
+    await act(async () => findCard(renderer)?.props.onViewLeaderboard());
+    expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", { gameType: "cascade" });
+  });
+
+  it("asks for a name when none is set", async () => {
+    const renderer = await playToGameOver(1234);
+    expect(mockGetGameRank).not.toHaveBeenCalled();
+    expect(findCard(renderer)?.props.submission.status).toBe("needsName");
+  });
+
+  it("Home returns to the lobby", async () => {
+    const renderer = await playToGameOver(1234);
+    await act(() => {
+      findCard(renderer)?.props.onHome();
+    });
+    expect(mockPopToTop).toHaveBeenCalled();
+  });
+
+  it("Play Again clears the card and the submission", async () => {
+    await saveDisplayName("Riley");
+    const renderer = await playToGameOver(1234);
+    await act(() => {
+      findCard(renderer)?.props.onPlayAgain();
+    });
+    await settle();
+    const card = findCard(renderer);
+    expect(card?.props.visible).toBe(false);
+    expect(card?.props.submission.status).toBe("idle");
+  });
+
+  it("a fruit-set switch after game over lets the next game submit again", async () => {
+    await saveDisplayName("Riley");
+    await playToGameOver(1234);
+    expect(mockGetGameRank).toHaveBeenCalledTimes(1);
+
+    await act(() => {
+      mockSetFruitSetById?.("cosmos");
+    });
+    await settle();
+    await act(() => {
+      advanceOneFrame();
+    });
+    mockEngineScore = 50;
+    await injectGameOver();
+    await settle();
+
+    expect(mockGetGameRank).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows a save error, with no retry, when the game has no sync id", async () => {
+    await saveDisplayName("Riley");
+    mockStartGame.mockReturnValue(null as unknown as string);
+    const renderer = await playToGameOver(1234);
+    expect(mockGetGameRank).not.toHaveBeenCalled();
+    const submission = findCard(renderer)?.props.submission;
+    expect(submission.status).toBe("error");
+    expect(submission.onRetry).toBeUndefined();
+  });
+});
+
+describe("CascadeScreen — ⋯ menu (#2635)", () => {
+  it("passes a Stats item that opens Cascade's stats", async () => {
+    const renderer = await renderScreen();
+    const shell = renderer.root.findAll(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (node: any) => typeof node.props.onOpenStats === "function"
+    )[0];
+    mockNavigate.mockClear();
+    await act(() => {
+      shell?.props.onOpenStats();
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "cascade" });
+  });
+
+  it("has no Scorecard item: Stats replaced the old Scoreboard (#2636)", async () => {
+    const renderer = await renderScreen();
+    const more = renderer.root.findAll(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (node: any) =>
+        node.props.accessibilityLabel === "More options" && typeof node.props.onPress === "function"
+    )[0];
+    await act(() => {
+      more?.props.onPress();
+    });
+    expect(renderer.root.findAllByProps({ testID: "nav-menu-stats" }).length).toBeGreaterThan(0);
+    expect(JSON.stringify(renderer.toJSON())).not.toMatch(/Scoreboard|Scorecard/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2750 — the clock stops in the background, and a relaunch keeps the play
+// before the kill without counting the time the app was closed
+// ---------------------------------------------------------------------------
+
+describe("CascadeScreen — app background and relaunch (#2750)", () => {
+  const ONE_PIECE = [
+    {
+      id: 1,
+      tier: 0,
+      x: 200,
+      y: 500,
+      vx: 0,
+      vy: 0,
+      angle: 0,
+      shapeKind: "circle" as const,
+      isSleeping: true,
+    },
+  ];
+  let appStateSpy: jest.SpyInstance;
+  // AppState.addEventListener may already be a shared mock whose calls
+  // outlive a test: only listeners added from this test on are emitted to.
+  let appStateBase: number;
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    // Restored by the file's afterEach (jest.restoreAllMocks).
+    appStateSpy = jest.spyOn(AppState, "addEventListener");
+    appStateBase = appStateSpy.mock.calls.length;
+    mockEngineGetState.mockImplementation(() => ({
+      pieces: ONE_PIECE,
+      score: mockEngineScore,
+      gameOver: false,
+    }));
+  });
+  afterEach(() => {
+    mockEngineGetState.mockImplementation(() => ({
+      pieces: [],
+      score: mockEngineScore,
+      gameOver: false,
+    }));
+  });
+
+  /** The app moves to `status`, as the OS reports it to every listener. */
+  async function setAppState(status: AppStateStatus) {
+    await act(async () => {
+      for (const [type, listener] of appStateSpy.mock.calls.slice(appStateBase)) {
+        if (type === "change") (listener as (s: AppStateStatus) => void)(status);
+      }
+    });
+  }
+
+  /** A restored board settles for a second (60 frames) before it takes a drop. */
+  async function settleRestoredBoard() {
+    await act(() => {
+      for (let i = 0; i < 61; i++) advanceOneFrame();
+    });
+  }
+
+  function lastDuration(): unknown {
+    const [, summary] = mockCompleteGame.mock.calls.at(-1)!;
+    return summary.result.duration_ms;
+  }
+
+  it("stops the loop and the play clock while the app is in the background", async () => {
+    const renderer = await renderScreen();
+    await triggerTap(renderer, 100);
+    await act(() => {
+      jest.advanceTimersByTime(20_000);
+    });
+    mockEngineStep.mockClear();
+
+    await setAppState("background");
+    await act(() => {
+      jest.advanceTimersByTime(10 * 60_000); // ten minutes away
+    });
+    await act(() => {
+      advanceOneFrame(); // a frame queued before the pause no-ops
+    });
+    expect(mockEngineStep).not.toHaveBeenCalled();
+    expect(rafCallbacks).toHaveLength(0);
+
+    await setAppState("active");
+    expect(rafCallbacks).toHaveLength(1); // the loop runs again
+    await act(() => {
+      jest.advanceTimersByTime(5_000);
+    });
+    mockCompleteGame.mockClear();
+    await act(() => {
+      renderer.unmount();
+    });
+    expect(lastDuration()).toBe(25_000);
+  });
+
+  // iOS and Android hold animation frames while the app is away: the frame
+  // queued before a trip to the background is delivered late, next to the
+  // resumed loop's. It must not start a second loop, trip after trip, and no
+  // frame may run once the screen is gone. (cancelAnimationFrame is a no-op
+  // here, so the late frames really are delivered.)
+  it("runs one loop after trips to the background, and none after unmount", async () => {
+    const renderer = await renderScreen();
+    expect(rafCallbacks).toHaveLength(1);
+    for (let trip = 0; trip < 2; trip++) {
+      await setAppState("background"); // the pending frame isn't delivered
+      await setAppState("active");
+    }
+    mockEngineStep.mockClear();
+    await act(() => {
+      advanceOneFrame(); // the late frames and the resumed loop's arrive together
+    });
+    expect(mockEngineStep).toHaveBeenCalledTimes(1);
+    expect(rafCallbacks).toHaveLength(1);
+    await act(() => {
+      advanceOneFrame();
+    });
+    expect(mockEngineStep).toHaveBeenCalledTimes(2);
+
+    await act(() => {
+      renderer.unmount();
+    });
+    mockEngineStep.mockClear();
+    await act(() => {
+      advanceOneFrame(); // the frame still queued at unmount
+    });
+    expect(mockEngineStep).not.toHaveBeenCalled();
+    expect(rafCallbacks).toHaveLength(0);
+  });
+
+  it("a relaunch keeps the play before the kill and drops the time the app was closed", async () => {
+    const first = await renderScreen();
+    await triggerTap(first, 100);
+    await act(() => {
+      jest.advanceTimersByTime(20_000);
+    });
+    await setAppState("background"); // the pause saves the board
+    const saved = JSON.parse((await AsyncStorage.getItem("cascade_game_v3"))!);
+    expect(saved.playedMs).toBe(20_000);
+    await act(() => {
+      first.unmount(); // the OS kills the app from here
+    });
+    mockCompleteGame.mockClear();
+
+    jest.setSystemTime(Date.now() + 2 * 24 * 60 * 60_000); // two days later
+    const second = await renderScreen();
+    await act(async () => {
+      await Promise.resolve(); // the saved game's load
+    });
+    expect(mockEngineRestore).toHaveBeenCalledTimes(1);
+    await settleRestoredBoard();
+    await triggerTap(second, 100);
+    await act(() => {
+      jest.advanceTimersByTime(5_000);
+    });
+    await act(() => {
+      second.unmount();
+    });
+    expect(lastDuration()).toBe(25_000);
+  });
+
+  // An older build's save has no playedMs: its earlier play is unknown, so
+  // the clock counts from the load. It must still restore the board.
+  it("restores an older build's save without playedMs, counting from the load", async () => {
+    await AsyncStorage.setItem(
+      "cascade_game_v3",
+      JSON.stringify({
+        version: 3,
+        pieces: [{ tier: 0, x: 200, y: 500 }],
+        score: 10,
+        savedAt: Date.now() - 2 * 24 * 60 * 60_000,
+        queue: { current: 0, next: 1 },
+      })
+    );
+    const renderer = await renderScreen();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockEngineRestore).toHaveBeenCalledTimes(1);
+    await settleRestoredBoard();
+    await triggerTap(renderer, 100);
+    await act(() => {
+      jest.advanceTimersByTime(4_000);
+    });
+    await act(() => {
+      renderer.unmount();
+    });
+    expect(lastDuration()).toBe(4_000);
   });
 });

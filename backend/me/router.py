@@ -7,7 +7,7 @@ from fastapi.responses import Response
 from sqlalchemy import delete
 
 from db.base import get_session_factory
-from db.models import BugLog, Game, GameEntitlement
+from db.models import BugLog, Game, GameEntitlement, Player
 from limiter import limiter, session_key
 from session import get_session_id
 
@@ -25,5 +25,7 @@ async def delete_me(request: Request) -> Response:
         await db.execute(delete(Game).where(Game.session_id == sid))
         await db.execute(delete(GameEntitlement).where(GameEntitlement.session_id == sid))
         await db.execute(delete(BugLog).where(BugLog.session_id == sid))
+        # The display name (#2624) is personal data too.
+        await db.execute(delete(Player).where(Player.session_id == sid))
         await db.commit()
     return Response(status_code=204)

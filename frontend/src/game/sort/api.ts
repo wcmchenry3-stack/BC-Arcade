@@ -11,22 +11,7 @@ export interface LevelsResponse {
   readonly levels: readonly LevelData[];
 }
 
-export interface ScoreEntry {
-  readonly player_name: string;
-  readonly level_reached: number;
-  readonly rank: number;
-}
-
-export interface LeaderboardResponse {
-  readonly scores: readonly ScoreEntry[];
-}
-
+// The leaderboard is the generic session board (#2625): `statsApi.getLeaderboard("sort")`.
 export const sortApi = {
   getLevels: () => request<LevelsResponse>("/sort/levels"),
-  submitScore: (player_name: string, level_reached: number) =>
-    request<ScoreEntry>("/sort/score", {
-      method: "POST",
-      body: JSON.stringify({ player_name, level_reached }),
-    }),
-  getLeaderboard: () => request<LeaderboardResponse>("/sort/scores"),
 };

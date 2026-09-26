@@ -23,6 +23,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -182,6 +183,41 @@ class GameEntitlement(Base):
     )
 
 
+PLAYER_DISPLAY_NAME_MAX_LENGTH = 32
+"""Longest display name (``PUT /players/me``'s limit, ``DisplayName``)."""
+
+
+class Player(Base):
+    """One display name per player (#2624, #2519 decision 17).
+
+    Keyed by the player's id: the app's ``X-Session-ID`` (one per install until
+    accounts, #1047). The name can change at any time and applies to all of the
+    player's history, since every board reads it from here rather than from the
+    game rows. No name history is kept. A player with no row has no name and
+    appears on no board (decision 18).
+
+    ``display_name`` is stored trimmed (the routes' validator does it); the CHECK
+    only guards the length, which is all SQLite and Postgres agree on.
+    """
+
+    __tablename__ = "players"
+    __table_args__ = (
+        CheckConstraint(
+            f"length(display_name) BETWEEN 1 AND {PLAYER_DISPLAY_NAME_MAX_LENGTH}",
+            name="ck_players_display_name_length",
+        ),
+    )
+
+    session_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class BugLog(Base):
     __tablename__ = "bug_logs"
     __table_args__ = (
@@ -202,6 +238,51 @@ class BugLog(Base):
     source: Mapped[str] = mapped_column(Text, nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     context: Mapped[dict] = mapped_column(_JSONB, nullable=False, server_default="{}")
+
+
+class DailyWordProgress(Base):
+    """Server-side record of a session's guesses on one Daily Word puzzle (#2197).
+
+    Daily Word was fully client-authoritative: ``POST /guess`` scored a guess and
+    returned tiles but persisted nothing, so the server could not tell how many
+    guesses a player had used. Two consequences, both live:
+
+    * ``GET /answer`` handed today's word to anyone who asked, with no session and
+      no guesses made — the ``puzzle_id`` is just ``YYYY-MM-DD:{lang}``.
+    * The 6-guess limit existed only in the client, so the real ceiling was the
+      20/hour rate limit — enough scored guesses to brute-force a 5-letter word.
+
+    ``guesses`` holds the distinct guesses in order, which both gives the count
+    and makes a retried guess idempotent: the network layer retries, and a
+    replayed request must not cost the player a turn.
+
+    Not a cache — this is the authority for "has this session earned the answer".
+    Rows are per (session_id, puzzle_id) and are never rewritten for a past
+    puzzle, so a day already played keeps its history.
+    """
+
+    __tablename__ = "daily_word_progress"
+    __table_args__ = (
+        # No separate session_id index: this unique constraint's btree leads
+        # with session_id, and every query filters on both columns.
+        UniqueConstraint("session_id", "puzzle_id", name="uq_daily_word_progress_session_puzzle"),
+        # Retention prunes by updated_at at every process start and daily
+        # (daily_word/retention.py); without this each run scans the table.
+        Index("daily_word_progress_updated_at_idx", "updated_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[str] = mapped_column(Text, nullable=False)
+    # "YYYY-MM-DD:{lang}" — the same id the client sends on every guess.
+    puzzle_id: Mapped[str] = mapped_column(Text, nullable=False)
+    guesses: Mapped[list] = mapped_column(_JSONB, nullable=False, default=list)
+    solved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class DailyChallengeDay(Base):

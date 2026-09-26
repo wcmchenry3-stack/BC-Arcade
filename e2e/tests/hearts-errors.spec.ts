@@ -12,7 +12,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { mockHeartsApi, gotoHearts } from "./helpers/hearts";
+import { gotoHearts } from "./helpers/hearts";
 import { installEntitlementsMock } from "./helpers/api-mock";
 
 const API_BASE = "http://localhost:8000";
@@ -38,7 +38,6 @@ test.describe("Hearts — error paths", () => {
   // ---------------------------------------------------------------------------
 
   test("navigating away from Hearts returns to Home", async ({ page }) => {
-    await mockHeartsApi(page);
     await gotoHearts(page);
 
     await page.goto("/");
@@ -53,7 +52,6 @@ test.describe("Hearts — error paths", () => {
 
   test.describe("pass-phase confirm button", () => {
     test.beforeEach(async ({ page }) => {
-      await mockHeartsApi(page);
       await startFreshHearts(page);
     });
 
@@ -123,7 +121,6 @@ test.describe("Hearts — error paths", () => {
   test("corrupted hearts_game localStorage — fresh game loads with difficulty picker", async ({
     page,
   }) => {
-    await mockHeartsApi(page);
     await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() =>

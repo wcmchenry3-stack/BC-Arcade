@@ -3,9 +3,9 @@ BC Arcade — Locust performance test entry point.
 
 User classes:
 
-  YachtGameUser     — full 13-round game flow (session-isolated; safe with multiple users)
-  LeaderboardUser   — concurrent leaderboard read/write (--users 10)
-  ReadOnlyUser      — polling GET endpoints (--users 20)
+  YachtGameUser     — one Yacht game through /games (session-isolated; safe with multiple users)
+  LeaderboardUser   — concurrent leaderboard reads (--users 10)
+  ReadOnlyUser      — catalog, stats and history reads (--users 20)
   RateLimitVerifyUser — intentionally exhausts rate limits to verify 429 + Retry-After
 
 Usage examples:
@@ -47,8 +47,9 @@ from scenarios.stateless_reads import StatelessReadTasks
 
 class YachtGameUser(HttpUser):
     """
-    Simulates one player completing a full 13-round game.
-    Session isolation allows multiple concurrent users without state collisions.
+    Simulates the app syncing one finished Yacht game (create, 13 event
+    batches, complete, rank lookup). A fresh session per game keeps users
+    apart and under the per-session write limits.
     """
 
     tasks = [GameFlowTasks]
@@ -57,23 +58,25 @@ class YachtGameUser(HttpUser):
 
 class LeaderboardUser(HttpUser):
     """
-    Simulates concurrent players submitting and reading leaderboard scores.
+    Simulates concurrent players reading the generic leaderboards.
     These endpoints are the safest to test with multiple concurrent users.
     Run with --users 10 as the baseline.
     """
 
     tasks = [LeaderboardTasks]
-    wait_time = between(0.5, 2)
+    # 3-4 s: keeps 10 users under 70% of the per-IP limit (scenarios/leaderboard.py).
+    wait_time = between(3, 4)
 
 
 class ReadOnlyUser(HttpUser):
     """
-    Simulates a client polling game state. Establishes the latency floor.
+    Simulates the reads behind Home and Profile. Establishes the latency floor.
     Run with --users 20 to measure read throughput.
     """
 
     tasks = [StatelessReadTasks]
-    wait_time = between(1, 3)
+    # 2-3 s: keeps 20 users under 70% of the limits (scenarios/stateless_reads.py).
+    wait_time = between(2, 3)
 
 
 class RateLimitVerifyUser(HttpUser):

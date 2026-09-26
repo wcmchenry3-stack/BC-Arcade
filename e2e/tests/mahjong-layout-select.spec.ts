@@ -8,7 +8,8 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { mockMahjongApi, injectMahjongFull } from "./helpers/mahjong";
+import { injectMahjongFull } from "./helpers/mahjong";
+import { installEntitlementsMock } from "./helpers/api-mock";
 
 const PROGRESS_TURTLE_ONLY = {
   unlockedLayouts: ["turtle"],
@@ -56,7 +57,7 @@ const COMPLETED_TURTLE_GAME = {
 
 test.describe("Mahjong — layout select screen", () => {
   test.beforeEach(async ({ page }) => {
-    await mockMahjongApi(page);
+    await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() => {
       localStorage.removeItem("mahjong_game");
@@ -118,13 +119,14 @@ test.describe("Mahjong — layout select screen", () => {
       .getByRole("heading", { name: "Mahjong Solitaire", exact: true })
       .waitFor({ timeout: 10_000 });
 
-    // The win modal should appear because the loaded game is complete.
-    await page
-      .getByRole("button", { name: "Start a new game" })
-      .waitFor({ timeout: 10_000 });
+    // The win card should appear because the loaded game is complete.
+    const changeLayout = page
+      .getByTestId("mahjong-result")
+      .getByRole("button", { name: "Change Layout" });
+    await changeLayout.waitFor({ timeout: 10_000 });
 
-    // Dismiss the win modal — this triggers the layout select screen.
-    await page.getByRole("button", { name: "Start a new game" }).click();
+    // Change Layout on the card goes to the layout select screen.
+    await changeLayout.click();
 
     await page
       .getByRole("heading", { name: "Choose Layout", exact: true })

@@ -3,12 +3,12 @@
  *
  * Validates four properties:
  * 1. Legality — every play and pass decision is a legal action.
- * 2. Moon-attempt activation parity — earlyMoon/midMoon thresholds match rule-based code.
+ * 2. Moon-attempt activation — the moonHand.ts trigger (#2234) drives moon-mode play.
  * 3. Noise determinism — same seed → same decisions; Daring → zero noise deviations.
  * 4. Pass correctness — always 3 cards, never 2♣, all cards from the hand.
  */
 
-import { selectCardToPlayUtility, selectCardsToPassUtility } from "../ai";
+import { detectMoonAttempt, selectCardToPlayUtility, selectCardsToPassUtility } from "../ai";
 import {
   commitPass,
   createSeededRng,
@@ -231,8 +231,8 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
 
   beforeEach(() => setRng(() => 0.99)); // suppress noise
 
-  it("earlyMoon: leads highest non-heart for trick control", () => {
-    // 7 hearts + Q♠ + A♣ + 2♦ in hand — earlyMoon condition fires
+  it("moon attempt: leads highest non-heart for trick control", () => {
+    // 7 hearts (5 top) + Q♠ + A♣ + 2♦, no points taken — moon attempt (#2234)
     const hand = [
       c("hearts", 1),
       c("hearts", 13),
@@ -245,7 +245,6 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       c("clubs", 1), // A♣ — highest non-heart, should be led for trick control
       c("diamonds", 2),
     ];
-    // hand.length = 10 ≥ 8, heartsInHand = 7 ≥ 7, myHasQ = true, heartsWon = 0
     const state = mkState({
       playerHands: [[], hand, [], []],
       currentTrick: [],
@@ -257,13 +256,15 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       tricksPlayedInHand: 2,
     });
 
+    expect(detectMoonAttempt(hand, state, 1, "daring")).toBe(true); // in moon mode
     const card = selectCardToPlayUtility(hand, [], state, 1, "daring");
     // Moon-attempt mode: lead highest non-heart → A♣ (not 2♦, not hearts, not Q♠)
     expect(card).toEqual(c("clubs", 1));
   });
 
-  it("earlyMoon: discards junk non-point card when void in led suit (keeps Q♠)", () => {
-    // 7 hearts + Q♠ + 2♦ in hand, void in clubs (led suit)
+  it("moon attempt: discards junk non-point card when void in led suit (keeps Q♠)", () => {
+    // Viable moon hand (moonHand.ts, #2234): 5 top hearts, Q♠, A♦-led
+    // diamonds; void in clubs (led suit).
     const hand = [
       c("hearts", 1),
       c("hearts", 13),
@@ -273,6 +274,8 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       c("hearts", 9),
       c("hearts", 8),
       c("spades", 12),
+      c("diamonds", 1),
+      c("diamonds", 3),
       c("diamonds", 2),
     ];
     const state = mkState({
@@ -286,6 +289,7 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       tricksPlayedInHand: 2,
     });
 
+    expect(detectMoonAttempt(hand, state, 1, "daring")).toBe(true); // in moon mode
     const card = selectCardToPlayUtility(
       hand,
       state.currentTrick as TrickCard[],
@@ -293,15 +297,15 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       1,
       "daring"
     );
-    // Moon-attempt mode with void: dump 2♦ (junk), NOT Q♠ or any heart
-    expect(card).toEqual(c("diamonds", 2));
+    // Moon-attempt mode with void: dump a diamond (junk), NOT Q♠ or any heart
+    expect(card.suit).toBe("diamonds");
     expect(card).not.toEqual(c("spades", 12));
   });
 
-  it("midMoon/earlyMoon: neither fires when heartsInHand < 7 and another player holds points", () => {
-    // 6 hearts (< 7 → earlyMoon off). midMoon requires myPoints === totalPointsTaken;
-    // setting handScores so the human (seat 0) holds all current points breaks midMoon
-    // for player 1 (myPoints=0 ≠ totalPointsTaken=3). Falls back to normal Daring weights.
+  it("moon attempt: never fires once another player holds points", () => {
+    // A strong moon hand (5 top hearts + Q♠), but the human (seat 0) holds all
+    // current points, so a moon is impossible (myPoints=0 ≠ totalPointsTaken=3,
+    // #2234). Falls back to normal Daring weights.
     // Hand has no clubs so player 1 is void in the clubs-led trick.
     const hand = [
       c("hearts", 1),
@@ -320,7 +324,7 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       currentPlayerIndex: 1,
       currentLeaderIndex: 0,
       wonCards: [[c("hearts", 2), c("hearts", 3), c("hearts", 4)], [], [], []],
-      handScores: [3, 0, 0, 0], // seat 0 holds all 3 pts → player 1 midMoon = false
+      handScores: [3, 0, 0, 0], // seat 0 holds all 3 pts → no moon attempt for player 1
       heartsBroken: true,
       tricksPlayedInHand: 2,
     });
@@ -407,8 +411,9 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
     expect(card).toEqual(c("spades", 12));
   });
 
-  it("moon-viable pass: does not pass Q♠ or A♥ when 6+ hearts in hand", () => {
-    // moonViable = heartsInHand ≥ 6 && hasQSpades. Use direction "across" for player 1
+  it("moon-viable pass: does not pass Q♠ or A♥ with a viable moon hand", () => {
+    // Viable moon hand (#2234): 5 top hearts, Q♠, A♣-led clubs, one weak suit
+    // (diamonds). Use direction "across" for player 1
     // so that passingToSeat0(1, "across") → (1+2)%4=3 ≠ 0 → not targeting human,
     // ensuring moon-viable mode activates.
     const hand = [
@@ -422,7 +427,7 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       c("diamonds", 3),
       c("diamonds", 4),
       c("diamonds", 5),
-      c("clubs", 8),
+      c("clubs", 1),
       c("clubs", 9),
       c("clubs", 10),
     ];
@@ -451,7 +456,7 @@ describe("Utility AI — moon-attempt activation (calibration-drift guard)", () 
       c("diamonds", 3),
       c("diamonds", 4),
       c("diamonds", 5),
-      c("clubs", 8),
+      c("clubs", 1),
       c("clubs", 9),
       c("clubs", 10),
     ];
@@ -550,9 +555,12 @@ describe("Utility AI — noise determinism", () => {
   });
 
   it("different seeds produce different play decisions for cautious (probabilistic)", () => {
-    // With 25% noise, two different seeds should differ across many calls.
-    // Run 20 decisions with each seed; at least one should differ.
-    // Theoretical false-failure probability: ≈ (1/5)^20 ≈ 10^-14 — practically impossible.
+    // With 55% noise, two different seeds should differ across many calls.
+    // Run 20 decisions with each seed; at least one should differ. Each seed
+    // plays its best card with p = 0.45 and otherwise a near-best one
+    // (MISTAKE_SPREAD), so two seeds agree on one decision with p < 0.45² +
+    // 0.55² ≈ 0.51, and all 20 agree with p < 0.51^20 ≈ 10⁻⁶ (the seeds are
+    // fixed, so the result is stable).
     const state = mkState({
       playerHands: [[], hand, [], []],
       currentTrick: [],
@@ -569,5 +577,77 @@ describe("Utility AI — noise determinism", () => {
     const a = collectN(1);
     const b = collectN(2);
     expect(JSON.stringify(a)).not.toBe(JSON.stringify(b));
+  });
+});
+
+describe("Utility AI — plausible mistakes (#2283)", () => {
+  afterEach(() => setRng(Math.random));
+
+  const hand = [
+    c("spades", 3),
+    c("spades", 7),
+    c("hearts", 2),
+    c("hearts", 6),
+    c("diamonds", 4),
+    c("diamonds", 8),
+    c("clubs", 5),
+    c("clubs", 9),
+    c("clubs", 10),
+    c("clubs", 11),
+    c("diamonds", 10),
+    c("diamonds", 11),
+    c("diamonds", 12),
+  ];
+  const state = mkState({
+    playerHands: [[], hand, [], []],
+    currentTrick: [],
+    currentPlayerIndex: 1,
+    currentLeaderIndex: 1,
+    heartsBroken: true,
+  });
+  const key = (card: Card) => `${card.suit}:${card.rank}`;
+
+  /** An RNG whose noise gate always fires; the pick draws come from `seed`. */
+  function alwaysNoisy(seed: number): () => number {
+    const pick = createSeededRng(seed);
+    let gate = true;
+    return () => {
+      const v = gate ? 0 : pick();
+      gate = !gate;
+      return v;
+    };
+  }
+
+  it("a mistake never plays the best card, and favours near-best ones", () => {
+    setRng(() => 0.999); // no noise: the best card
+    const best = key(selectCardToPlayUtility(hand, [], state, 1, "cautious"));
+    const counts = new Map<string, number>();
+    for (let seed = 1; seed <= 300; seed++) {
+      setRng(alwaysNoisy(seed));
+      const card = key(selectCardToPlayUtility(hand, [], state, 1, "cautious"));
+      counts.set(card, (counts.get(card) ?? 0) + 1);
+    }
+    expect(counts.has(best)).toBe(false);
+    // Uniform noise would spread 300 mistakes over 12 cards (~25 each); the
+    // near-best weighting concentrates them.
+    expect(Math.max(...counts.values())).toBeGreaterThan(75);
+  });
+
+  it("a sloppy pass is 3 distinct eligible cards, weighted towards the normal pass", () => {
+    setRng(() => 0.999);
+    const normal = new Set(selectCardsToPassUtility(hand, "left", "cautious", 1).map(key));
+    let fromNormal = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      setRng(alwaysNoisy(seed));
+      const pass = selectCardsToPassUtility(hand, "left", "cautious", 1).map(key);
+      expect(new Set(pass).size).toBe(3);
+      for (const k of pass) {
+        expect(hand.map(key)).toContain(k);
+        expect(k).not.toBe("clubs:5"); // 2♣-5♣ are never passed
+        if (normal.has(k)) fromNormal++;
+      }
+    }
+    // Uniform noise would draw a normal-pass card 3/12 of the time (150 of 600).
+    expect(fromNormal).toBeGreaterThan(250);
   });
 });

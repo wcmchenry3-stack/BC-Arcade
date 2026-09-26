@@ -12,7 +12,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { mockSolitaireApi, injectSolitaireState } from "./helpers/solitaire";
+import { injectSolitaireState } from "./helpers/solitaire";
 
 // Build stock from full deck minus cards explicitly in play.
 function stockCards(excluded: string[]) {
@@ -71,7 +71,6 @@ test.describe("Solitaire — hint button", () => {
   test("hint button appears in header with correct accessibility label", async ({
     page,
   }) => {
-    await mockSolitaireApi(page);
     await injectSolitaireState(page, BOARD_STATE_WITH_HINT);
 
     await page.getByRole("button", { name: "Play Solitaire" }).click();
@@ -92,7 +91,6 @@ test.describe("Solitaire — hint button", () => {
   test("tapping hint button shows a hint highlight and decreases score by 20", async ({
     page,
   }) => {
-    await mockSolitaireApi(page);
     await injectSolitaireState(page, BOARD_STATE_WITH_HINT);
 
     await page.getByRole("button", { name: "Play Solitaire" }).click();
@@ -127,7 +125,6 @@ test.describe("Solitaire — hint button", () => {
       score: 10,
     };
 
-    await mockSolitaireApi(page);
     await injectSolitaireState(page, boardStateWithLowScore);
 
     await page.getByRole("button", { name: "Play Solitaire" }).click();
@@ -154,7 +151,6 @@ test.describe("Solitaire — hint button", () => {
       isComplete: true,
     };
 
-    await mockSolitaireApi(page);
     await injectSolitaireState(page, completeBoard);
 
     await page.getByRole("button", { name: "Play Solitaire" }).click();
@@ -172,7 +168,6 @@ test.describe("Solitaire — hint button", () => {
   test("making a move after hint clears the hint highlight", async ({
     page,
   }) => {
-    await mockSolitaireApi(page);
     await injectSolitaireState(page, BOARD_STATE_WITH_HINT);
 
     await page.getByRole("button", { name: "Play Solitaire" }).click();

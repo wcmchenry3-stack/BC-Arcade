@@ -20,6 +20,7 @@ from daily_challenge.definitions import (
     FREE_GOAL_POOL,
     GOAL_POOLS,
     GOALS_PER_DAY,
+    PENDING_PREMIUM_GOALS,
     PREMIUM_GOAL_POOL,
     TIERS,
     Template,
@@ -167,11 +168,22 @@ def test_free_pool_has_the_six_free_games_and_never_a_premium_one() -> None:
         "daily_word",
         "twenty48",
         "solitaire",
-        "mahjong",
+        "sort",
         "freecell",
-        "blackjack",
+        "yacht",
     }
     assert set(FREE_GOAL_POOL).isdisjoint(_ALL_PREMIUM_SLUGS)
+
+
+def test_pending_premium_goals_stay_out_of_every_live_pool() -> None:
+    # Blackjack went premium on 2026-09-23; its goals wait for #2458. In a live
+    # pool it would be picked for store builds, where the game does not exist.
+    for pool in GOAL_POOLS.values():
+        assert set(pool).isdisjoint(PENDING_PREMIUM_GOALS)
+    assert set(PENDING_PREMIUM_GOALS) <= set(_ALL_PREMIUM_SLUGS)
+    # The one-win rule's easy-goal fallback must hold for them too.
+    assert all(goals[0].is_win is False for goals in PENDING_PREMIUM_GOALS.values())
+    assert PENDING_PREMIUM_GOALS["blackjack"][1].is_win  # chips_gained is luck
 
 
 _EN_COPY = (
@@ -231,11 +243,8 @@ _LUCK_DEPENDENT = {
     "daily_word:won_guesses_used_at_most:4",
     "solitaire:won",
     "solitaire:won_moves_at_most:120",
-    "mahjong:won",
-    "mahjong:won_duration_ms_at_most:480000",
     "freecell:won",
     "freecell:won_moves_at_most:100",
-    "blackjack:chips_gained",
 }
 
 
@@ -267,7 +276,6 @@ def test_win_limits_are_above_the_physical_minimum() -> None:
     minimum = {
         ("solitaire", "won_moves_at_most"): 52,  # 52 cards to the foundations
         ("freecell", "won_moves_at_most"): 52,
-        ("mahjong", "won_duration_ms_at_most"): 72 * 2_000,  # 72 pairs, 2 s each
         ("daily_word", "won_guesses_used_at_most"): 1,
     }
     for goals in PREMIUM_GOAL_POOL.values():
@@ -316,14 +324,13 @@ _EVALUATION_CASES = [
     ("solitaire", _HARD, {"won": True, "moves": 120}, True),
     ("solitaire", _HARD, {"won": True, "moves": 121}, False),
     ("solitaire", _HARD, {"won": False, "moves": 20}, False),
-    # mahjong — duration_ms comes from the column
-    ("mahjong", _EASY, {"won": False, "pairs": 10}, True),
-    ("mahjong", _EASY, {"won": False, "pairs": 9}, False),
-    ("mahjong", _MEDIUM, {"won": True, "pairs": 72}, True),
-    ("mahjong", _MEDIUM, {"won": False, "pairs": 60}, False),
-    ("mahjong", _HARD, {"won": True, "pairs": 72, "duration_ms": 480_000}, True),
-    ("mahjong", _HARD, {"won": True, "pairs": 72, "duration_ms": 480_001}, False),
-    ("mahjong", _HARD, {"won": False, "pairs": 40, "duration_ms": 1_000}, False),
+    # sort — final_score = level reached (pour puzzle, 20 levels)
+    ("sort", _EASY, {"final_score": 3}, True),
+    ("sort", _EASY, {"final_score": 2}, False),
+    ("sort", _MEDIUM, {"final_score": 8}, True),
+    ("sort", _MEDIUM, {"final_score": 7}, False),
+    ("sort", _HARD, {"final_score": 15}, True),
+    ("sort", _HARD, {"final_score": 14}, False),
     # freecell
     ("freecell", _EASY, {"won": False, "moves": 5}, True),
     ("freecell", _EASY, {"won": False, "moves": 4}, False),
@@ -331,7 +338,14 @@ _EVALUATION_CASES = [
     ("freecell", _MEDIUM, {"won": False, "moves": 200}, False),
     ("freecell", _HARD, {"won": True, "moves": 100}, True),
     ("freecell", _HARD, {"won": True, "moves": 101}, False),
-    # blackjack
+    # yacht — final_score only, abandoned or not
+    ("yacht", _EASY, {"final_score": 100}, True),
+    ("yacht", _EASY, {"final_score": 99}, False),
+    ("yacht", _MEDIUM, {"final_score": 175}, True),
+    ("yacht", _MEDIUM, {"final_score": 174}, False),
+    ("yacht", _HARD, {"final_score": 250}, True),
+    ("yacht", _HARD, {"final_score": 249, "won": True}, False),
+    # blackjack — premium, pending #2458 (PENDING_PREMIUM_GOALS)
     ("blackjack", _EASY, {"hands_played": 3, "hands_won": 0}, True),
     ("blackjack", _EASY, {"hands_played": 2}, False),
     ("blackjack", _MEDIUM, {"starting_chips": 1000, "final_chips": 1001}, True),
@@ -339,6 +353,14 @@ _EVALUATION_CASES = [
     ("blackjack", _MEDIUM, {"final_chips": 1500}, False),
     ("blackjack", _HARD, {"hands_won": 3}, True),
     ("blackjack", _HARD, {"hands_won": 2}, False),
+    # mahjong — premium, pending #2458 (PENDING_PREMIUM_GOALS); duration_ms comes from the column
+    ("mahjong", _EASY, {"won": False, "pairs": 10}, True),
+    ("mahjong", _EASY, {"won": False, "pairs": 9}, False),
+    ("mahjong", _MEDIUM, {"won": True, "pairs": 72}, True),
+    ("mahjong", _MEDIUM, {"won": False, "pairs": 60}, False),
+    ("mahjong", _HARD, {"won": True, "pairs": 72, "duration_ms": 480_000}, True),
+    ("mahjong", _HARD, {"won": True, "pairs": 72, "duration_ms": 480_001}, False),
+    ("mahjong", _HARD, {"won": False, "pairs": 40, "duration_ms": 1_000}, False),
 ]
 
 
@@ -350,7 +372,8 @@ _EVALUATION_CASES = [
 def test_goal_evaluation_per_game_and_tier(
     game: str, tier: int, facts: dict, expected: bool
 ) -> None:
-    assert FREE_GOAL_POOL[game][tier].evaluate(facts) is expected
+    goals = {**FREE_GOAL_POOL, **PENDING_PREMIUM_GOALS}
+    assert goals[game][tier].evaluate(facts) is expected
 
 
 def test_every_free_game_tier_is_covered_both_ways() -> None:
@@ -398,7 +421,7 @@ def test_a_goal_is_met_by_any_one_game_not_a_sum() -> None:
 
 def test_service_ignores_other_games_and_reports_best_score_only_for_score_goals() -> None:
     score = FREE_GOAL_POOL["twenty48"][_EASY]
-    win = FREE_GOAL_POOL["mahjong"][_MEDIUM]
+    win = PENDING_PREMIUM_GOALS["mahjong"][_MEDIUM]
     ended = [("mahjong", {"won": True, "final_score": 9999}), ("twenty48", {"final_score": 200})]
     assert not evaluate_goal(score, ended).completed
     assert evaluate_goal(score, ended).best_score == 200
@@ -417,8 +440,8 @@ needs_db = pytest.mark.skipif(
 )
 
 _SCORE_2500 = FREE_GOAL_POOL["twenty48"][_HARD]  # final_score >= 2500
-_WIN_MAHJONG = FREE_GOAL_POOL["mahjong"][_MEDIUM]  # won
-_FIXED = Template("fixed_for_tests", (_SCORE_2500, _WIN_MAHJONG))
+_SORT_MEDIUM = FREE_GOAL_POOL["sort"][_MEDIUM]  # final_score >= 8
+_FIXED = Template("fixed_for_tests", (_SCORE_2500, _SORT_MEDIUM))
 
 
 @pytest.fixture()
@@ -569,7 +592,7 @@ def test_finishing_the_games_completes_the_challenge(
     assert body["completed_goals"] == 1
     assert body["completed"] is False
 
-    _play(client, sid, game_type="mahjong", final_score=350, result={"won": True, "pairs": 72})
+    _play(client, sid, game_type="sort", final_score=10)
     body = client.get("/daily-challenge/status", headers=_headers(sid)).json()
     assert body["completed_goals"] == 2
     assert body["completed"] is True
@@ -583,13 +606,12 @@ def test_abandoned_and_unfinished_games_do_not_count(
     _play(
         client,
         sid,
-        game_type="mahjong",
+        game_type="sort",
         final_score=0,
         outcome="abandoned",
-        result={"won": False, "pairs": 12},
     )
     _play(client, sid, game_type="twenty48", final_score=None, outcome="abandoned")
-    for game_type in ("mahjong", "twenty48"):
+    for game_type in ("sort", "twenty48"):
         r = client.post("/games", headers=_headers(sid), json={"game_type": game_type})
         assert r.status_code == 200  # started, never finished
 
@@ -602,24 +624,22 @@ def test_abandoned_and_unfinished_games_do_not_count(
 def test_an_abandoned_game_satisfies_no_goal(client: TestClient, fixed_template: Template) -> None:
     """The challenge is an accomplishment, so quitting earns nothing (#2468/#2472).
 
-    Both rows carry genuine progress — a 9,000-point Twenty48 run and 30 Mahjong
-    pairs. The score goal used to clear on the abandoned run; `won`-style goals
-    were already safe because the abandon result block reports `won: false`.
+    Both rows carry genuine progress — a 9,000-point Twenty48 run and a
+    level-10 Sort run — well past either goal's threshold if it counted.
     """
     sid = str(uuid.uuid4())
     _play(client, sid, game_type="twenty48", final_score=9000, outcome="abandoned")
     _play(
         client,
         sid,
-        game_type="mahjong",
-        final_score=400,
+        game_type="sort",
+        final_score=10,
         outcome="abandoned",
-        result={"won": False, "pairs": 30},
     )
     goals = _goals_by_id(client.get("/daily-challenge/status", headers=_headers(sid)).json())
     assert goals[_SCORE_2500.id]["completed"] is False
     assert goals[_SCORE_2500.id]["best_score"] is None
-    assert goals[_WIN_MAHJONG.id]["completed"] is False
+    assert goals[_SORT_MEDIUM.id]["completed"] is False
 
 
 @needs_db
@@ -642,12 +662,59 @@ def test_kept_playing_twenty48_counts(client: TestClient, fixed_template: Templa
     assert _goals_by_id(body)[_SCORE_2500.id]["completed"] is True
 
 
+_TILE_512 = FREE_GOAL_POOL["twenty48"][_MEDIUM]  # highest_tile >= 512
+
+
+@needs_db
+@pytest.mark.parametrize("outcome", ["completed", "kept_playing"])
+def test_twenty48_tile_goal_reads_the_validated_result(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    """Twenty48's result block is validated since #2623; the goals still read it.
+
+    The body is ``endedPayload`` from ``Twenty48Screen.tsx``: ``highest_tile``
+    reaches the goal only through ``games.metadata``, so a result model that
+    dropped it would silently break the medium goal.
+    """
+    template = Template("twenty48_tile_for_tests", (_TILE_512, _SCORE_2500))
+    monkeypatch.setattr("daily_challenge.service.template_for", lambda _d, _s="free": template)
+    monkeypatch.setattr("daily_challenge.router.template_for", lambda _d, _s="free": template)
+    sid = str(uuid.uuid4())
+
+    ended = {"final_score": 1800, "highest_tile": 256, "move_count": 150, "duration_ms": 1000}
+    _play(
+        client,
+        sid,
+        game_type="twenty48",
+        final_score=1800,
+        outcome=outcome,
+        result={**ended, "outcome": outcome},
+    )
+    goals = _goals_by_id(client.get("/daily-challenge/status", headers=_headers(sid)).json())
+    assert goals[_TILE_512.id]["completed"] is False
+    assert goals[_SCORE_2500.id]["best_score"] == 1800
+
+    ended = {**ended, "final_score": 3000, "highest_tile": 512}
+    _play(
+        client,
+        sid,
+        game_type="twenty48",
+        final_score=3000,
+        outcome=outcome,
+        result={**ended, "outcome": outcome},
+    )
+    goals = _goals_by_id(client.get("/daily-challenge/status", headers=_headers(sid)).json())
+    assert goals[_TILE_512.id]["completed"] is True
+    assert goals[_SCORE_2500.id]["completed"] is True
+    assert goals[_SCORE_2500.id]["best_score"] == 3000
+
+
 @needs_db
 def test_other_sessions_and_other_games_do_not_count(
     client: TestClient, fixed_template: Template
 ) -> None:
     sid, other = str(uuid.uuid4()), str(uuid.uuid4())
-    _play(client, other, game_type="mahjong", final_score=300, result={"won": True, "pairs": 72})
+    _play(client, other, game_type="sort", final_score=10)
     _play(client, sid, game_type="solitaire", final_score=500, result={"won": True, "moves": 90})
     body = client.get("/daily-challenge/status", headers=_headers(sid)).json()
     assert body["completed_goals"] == 0
@@ -668,13 +735,13 @@ async def test_only_games_inside_the_local_day_count(fixed_template: Template) -
 
     before, first, last, after = (str(uuid.uuid4()) for _ in range(4))
     await _insert_finished_game(
-        before, game_type="mahjong", completed_at=day.start_utc - timedelta(seconds=1)
+        before, game_type="sort", completed_at=day.start_utc - timedelta(seconds=1)
     )
-    await _insert_finished_game(first, game_type="mahjong", completed_at=day.start_utc)
+    await _insert_finished_game(first, game_type="sort", completed_at=day.start_utc)
     await _insert_finished_game(
-        last, game_type="mahjong", completed_at=day.end_utc - timedelta(seconds=1)
+        last, game_type="sort", completed_at=day.end_utc - timedelta(seconds=1)
     )
-    await _insert_finished_game(after, game_type="mahjong", completed_at=day.end_utc)
+    await _insert_finished_game(after, game_type="sort", completed_at=day.end_utc)
 
     assert await completed_goals(before) == 0
     assert await completed_goals(first) == 1
@@ -686,14 +753,16 @@ async def test_only_games_inside_the_local_day_count(fixed_template: Template) -
 # slate resolution (#2454)
 # ---------------------------------------------------------------------------
 
-# A premium-slate day that names two premium games (yacht, sudoku) — patched in,
-# because until #2458 the real premium pool holds only free games.
+# A premium-slate day that names one free game (yacht) and one real premium game
+# (starswarm) — patched in, because until #2458 the real premium pool holds only
+# free games. Only the premium one actually counts (resolve_slate filters named
+# games to is_premium=True), so yacht is a harmless decoy.
 _PREMIUM_DAY = Template(
     "premium_for_tests",
     (
         FREE_GOAL_POOL["daily_word"][_EASY],
         _at_least("yacht", "score", 1, "easy"),
-        _at_least("sudoku", "errors", 0, "easy"),
+        _at_least("starswarm", "errors", 0, "easy"),
     ),
 )
 _DAY = date(2026, 10, 9)
@@ -732,7 +801,7 @@ async def test_free_session_gets_the_free_slate(two_slates: Template) -> None:
 
 @needs_db
 async def test_partly_entitled_session_gets_the_free_slate(two_slates: Template) -> None:
-    # Owns yacht but not sudoku: the premium day names both, so it would hand
+    # Owns yacht but not starswarm: the premium day names both, so it would hand
     # this session a goal in a game it cannot open.
     sid = str(uuid.uuid4())
     await _grant(sid, "yacht")
@@ -742,7 +811,7 @@ async def test_partly_entitled_session_gets_the_free_slate(two_slates: Template)
 @needs_db
 async def test_fully_entitled_session_gets_the_premium_slate(two_slates: Template) -> None:
     sid = str(uuid.uuid4())
-    await _grant(sid, "yacht", "sudoku")
+    await _grant(sid, "yacht", "starswarm")
     assert await _slate(sid) == "premium"
 
 
@@ -780,7 +849,9 @@ async def test_slate_tests_run_against_the_expected_premium_seed() -> None:
         premium = set(
             (await db.execute(select(GameType.name).where(GameType.is_premium.is_(True)))).scalars()
         )
-    assert {"yacht", "sudoku", "cascade", "hearts"} <= premium
+    assert {"blackjack", "cascade", "hearts", "starswarm", "mahjong"} <= premium
+    assert "yacht" not in premium
+    assert "sudoku" not in premium
 
 
 @needs_db
@@ -835,7 +906,7 @@ async def test_a_mid_day_entitlement_change_swaps_the_challenge(two_slates: Temp
     sid = str(uuid.uuid4())
     await _grant(sid, "yacht")
     assert await _slate(sid) == "free"
-    await _grant(sid, "sudoku")
+    await _grant(sid, "starswarm")
     assert await _slate(sid) == "premium"
 
 
@@ -863,7 +934,7 @@ async def test_slate_resolution_is_one_statement(two_slates: Template) -> None:
 async def test_status_reports_and_uses_the_resolved_slate(two_slates: Template) -> None:
     now = datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc)
     free, entitled = str(uuid.uuid4()), str(uuid.uuid4())
-    await _grant(entitled, "yacht", "sudoku")
+    await _grant(entitled, "yacht", "starswarm")
     factory = get_session_factory()
     async with factory() as db:
         free_status = await service.get_status_for_session(
@@ -903,7 +974,7 @@ def test_status_for_a_premium_session_differs_from_today(
     assert today["template_id"] == _FIXED.id
     assert status["template_id"] == _PREMIUM_DAY.id
     assert [g["id"] for g in status["goals"]] != [g["id"] for g in today["goals"]]
-    assert {g["game_type"] for g in status["goals"]} >= {"yacht", "sudoku"}
+    assert {g["game_type"] for g in status["goals"]} >= {"yacht", "starswarm"}
 
 
 @needs_db

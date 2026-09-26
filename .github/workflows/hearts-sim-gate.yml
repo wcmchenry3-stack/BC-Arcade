@@ -1,0 +1,73 @@
+name: Hearts AI Sim Gate
+
+# Sim gate v2 (#2238): sequential (SPRT) non-regression and persona-
+# separation checks on duplicate-deal replay, defined in
+# frontend/src/game/hearts/sim/gate.ts against the checked-in baseline
+# frontend/src/game/hearts/sim/baseline.json. The fast per-PR smoke layer is
+# frontend/src/game/hearts/__tests__/ai.calibrate.test.ts (run by ci.yml).
+# Runtime budget and how to read a failure: docs/TESTING.md.
+
+on:
+  schedule:
+    - cron: "45 7 * * *"
+  workflow_dispatch:
+    inputs:
+      max_blocks:
+        description: "Block cap per group (blank = the gate's defaults)"
+        required: false
+        default: ""
+  # PRs that change the AI, the engine, or the gate itself.
+  pull_request:
+    paths:
+      - "frontend/src/game/hearts/ai*.ts"
+      - "frontend/src/game/hearts/engine.ts"
+      - "frontend/src/game/hearts/types.ts"
+      - "frontend/src/game/hearts/sim/**"
+      - "frontend/src/game/_shared/simRandom.ts"
+      - "scripts/simulate-hearts.ts"
+      - ".github/workflows/hearts-sim-gate.yml"
+
+concurrency:
+  group: hearts-sim-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Gate (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    # Worst case (every check runs to its block cap) is ~12 min per group.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep in sync with GATE_GROUPS in frontend/src/game/hearts/sim/gate.ts
+        # (gate.test.ts fails if they differ).
+        group: [presets, field]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Run gate group
+        shell: bash # explicit shell = pipefail, so tee can't mask a failing gate
+        env:
+          MAX_BLOCKS: ${{ inputs.max_blocks }}
+        run: |
+          ARGS=(--gate --group "${{ matrix.group }}" --json "hearts-gate-${{ matrix.group }}.json")
+          if [ -n "$MAX_BLOCKS" ]; then ARGS+=(--max-blocks "$MAX_BLOCKS"); fi
+          npx --yes tsx@4.23.15 scripts/simulate-hearts.ts "${ARGS[@]}" | tee "hearts-gate-${{ matrix.group }}.txt"
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: hearts-gate-${{ matrix.group }}
+          path: hearts-gate-${{ matrix.group }}.*
+          retention-days: 30

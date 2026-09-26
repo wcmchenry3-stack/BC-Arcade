@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, Pressable, StyleSheet, useWindowDimensions } from "react-native";
+import { View, Text, Pressable, StyleSheet } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -12,8 +12,6 @@ import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
-import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
-import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
 import {
   hit as engineHit,
   stand as engineStand,
@@ -23,33 +21,21 @@ import {
   toViewState,
 } from "../game/blackjack/engine";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
-import { TABLE_CONFIGS } from "../game/blackjack/tables";
+import { TABLE_CONFIGS, tableForBetLimits } from "../game/blackjack/tables";
+import { useBlackjackLayout } from "../hooks/useBlackjackLayout";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useSound } from "../game/_shared/useSound";
 import { BLACKJACK_SOUNDS } from "../game/blackjack/sounds";
 import BlackjackTable from "../components/blackjack/BlackjackTable";
 import ActionButtons from "../components/blackjack/ActionButtons";
 import ResultBanner from "../components/blackjack/ResultBanner";
-import GameOverModal from "../components/blackjack/GameOverModal";
+import GameResultModal from "../components/shared/GameResultModal";
+import { winRatePct } from "../components/scorecard/blackjackStatsModel";
 import HudSidebar from "../components/blackjack/HudSidebar";
 import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
 import { GameShell } from "../components/shared/GameShell";
+import { PillButton } from "../components/shared/PillButton";
 import { BlackjackCelebrationAnimation } from "../components/blackjack/BlackjackCelebrationAnimation";
-
-// Below this *available content* height, card sizes, action-button sizes,
-// and table padding collapse to compact variants so the dealer hand, player
-// hand, and action cluster all fit without overlapping.
-//
-// This is measured against available height (window height minus the
-// header, safe-area insets, and the bottom tab bar) rather than raw window
-// height. Raw window height alone under-counts iOS chrome — notch/Dynamic
-// Island top insets, the home indicator, and the tab bar all eat into the
-// usable area — so standard-size iPhones (e.g. iPhone 13 mini/14 at
-// 812-844pt raw height) were passing the old raw-height check yet still
-// didn't have enough room, overlapping the action-button cluster with the
-// player's cards. This also still catches Galaxy Fold unfolded in landscape
-// and portrait, and smaller phones in landscape.
-const COMPACT_HEIGHT_BREAKPOINT = 660;
 
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "BlackjackTable">;
@@ -57,15 +43,11 @@ type Props = {
 
 export default function BlackjackTableScreen({ navigation }: Props) {
   const { t } = useTranslation(["blackjack", "common"]);
+  const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
-  const tabBarHeight = useSafeBottomTabBarHeight();
-  // tabBarHeight (useSafeBottomTabBarHeight/useBottomTabBarHeight) already
-  // includes insets.bottom, so it must not be subtracted again here.
-  const availableHeight = height - insets.top - APP_HEADER_HEIGHT - tabBarHeight;
-  const isCompact = availableHeight < COMPACT_HEIGHT_BREAKPOINT;
-  const { engine, loading, error, apply, clearEvents, handlePlayAgain, sessionStats } =
+  const layout = useBlackjackLayout();
+  const { engine, loading, error, apply, clearEvents, handlePlayAgain, sessionStats, runResult } =
     useBlackjackGame();
   const [confirmNewGameVisible, setConfirmNewGameVisible] = useState(false);
   const [celebrationVisible, setCelebrationVisible] = useState(false);
@@ -86,16 +68,19 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const bustFlash = useSharedValue(0);
   const winFlash = useSharedValue(0);
 
+  // Theme colours (#2507) at the washes' old strengths (40% / 35%).
+  const bustFlashColor = colors.error;
+  const winFlashColor = colors.outcomeWin;
   const bustFlashStyle = useAnimatedStyle(() => ({
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(220,38,38,0.4)",
-    opacity: bustFlash.value,
+    ...StyleSheet.absoluteFill,
+    backgroundColor: bustFlashColor,
+    opacity: bustFlash.value * 0.4,
     pointerEvents: "none",
   }));
   const winFlashStyle = useAnimatedStyle(() => ({
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(34,197,94,0.35)",
-    opacity: winFlash.value,
+    ...StyleSheet.absoluteFill,
+    backgroundColor: winFlashColor,
+    opacity: winFlash.value * 0.35,
     pointerEvents: "none",
   }));
   const milestoneStyle = useAnimatedStyle(() => ({
@@ -205,9 +190,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   }, [handlePlayAgain, navigation]);
 
   // Derive active table config so the HUD can show the right accent colour and milestones.
-  const activeTable =
-    TABLE_CONFIGS.find((c) => c.betMin === engine?.betMin && c.betMax === engine?.betMax) ??
-    TABLE_CONFIGS[0]!;
+  const activeTable = tableForBetLimits(engine) ?? TABLE_CONFIGS[0]!;
   const tableAccentColor = colors[activeTable.accentKey];
 
   const isSplit = (state?.player_hands?.length ?? 0) > 1;
@@ -220,11 +203,11 @@ export default function BlackjackTableScreen({ navigation }: Props) {
 
   return (
     <GameShell
+      gameType="blackjack"
       title={t("game.title")}
       requireBack
       onBack={() => navigation.popToTop()}
       onNewGame={handleNewGame}
-      onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "blackjack" })}
       loading={!engine && loading}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >
@@ -245,16 +228,11 @@ export default function BlackjackTableScreen({ navigation }: Props) {
 
       {/* New Game */}
       <View style={styles.actionRow}>
-        <Pressable
+        <PillButton
+          label={t("common:newGame.button")}
           onPress={handleNewGamePress}
-          style={[styles.newGameBtn, { borderColor: tableAccentColor }]}
-          accessibilityRole="button"
-          accessibilityLabel={t("common:newGame.button")}
-        >
-          <Text style={[styles.newGameText, { color: tableAccentColor }]}>
-            {t("common:newGame.button")}
-          </Text>
-        </Pressable>
+          color={tableAccentColor}
+        />
       </View>
 
       {/* Table */}
@@ -267,7 +245,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
             playerHands={state.player_hands}
             activeHandIndex={state.active_hand_index}
             handBets={state.hand_bets}
-            compact={isCompact}
+            layout={layout}
           />
           <Animated.View style={bustFlashStyle} />
           <Animated.View style={winFlashStyle} />
@@ -304,7 +282,12 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       )}
 
       {/* Phase-specific controls */}
-      <View style={[styles.controls, isCompact && styles.controlsCompact]}>
+      <View
+        style={[
+          styles.controls,
+          { paddingBottom: layout.controlsPaddingBottom, gap: layout.controlsGap },
+        ]}
+      >
         {state?.phase === "result" && (
           <>
             {!isSplit && <ResultBanner outcome={state.outcome!} payout={state.payout} />}
@@ -357,7 +340,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
             doubleDownAvailable={state.double_down_available}
             splitAvailable={state.split_available}
             loading={false}
-            compact={isCompact}
+            layout={layout}
           />
         )}
 
@@ -367,10 +350,22 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       </View>
 
       {state && (
-        <GameOverModal
+        <GameResultModal
           visible={state.game_over}
-          onPlayAgain={handlePlayAgain}
-          onHome={() => navigation.goBack()}
+          // The result the run recorded (#2628): a win if it reached its goal
+          // before Keep Playing, else a loss.
+          outcome={runResult ?? "ended"}
+          eyebrow={`${t("game.title")} · ${t(activeTable.labelKey as Parameters<typeof t>[0])}`}
+          subtitle={t("gameOver.title")}
+          stats={[
+            { label: tResult("stat.hands"), value: sessionStats.handsPlayed },
+            { label: tResult("stat.biggestWin"), value: sessionStats.biggestWin },
+            { label: tResult("stat.winRate"), value: `${winRatePct(sessionStats) ?? 0}%` },
+          ]}
+          // Same as the header's New Game: a fresh session, back to betting.
+          onPlayAgain={handleNewGame}
+          onHome={() => navigation.popToTop()}
+          testID="blackjack-result"
         />
       )}
 
@@ -402,20 +397,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 4,
   },
-  newGameBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    minHeight: 32,
-    justifyContent: "center",
-  },
-  newGameText: {
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
   tableArea: {
     flex: 1,
     alignItems: "center",
@@ -428,16 +409,10 @@ const styles = StyleSheet.create({
   controls: {
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingBottom: 32,
-    gap: 16,
     // flexShrink: 0 keeps the action cluster fully rendered even when the
     // tableRow above is competing for space — without this, on compact
     // viewports the controls could be squeezed to zero height.
     flexShrink: 0,
-  },
-  controlsCompact: {
-    paddingBottom: 12,
-    gap: 8,
   },
   resultActions: {
     width: "100%",

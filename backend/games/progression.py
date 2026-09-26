@@ -12,7 +12,7 @@ mini-games" App Store 4.2 narrative). "Completed game played" is each game
 type's ``GameTypeStats.completed_played`` count, which
 ``get_stats_for_session`` restricts to games with ``completed_at IS NOT NULL``
 *and* an outcome other than ``abandoned`` (#2472) — not
-``StatsSummary.total_games`` or ``GameTypeStats.played``, both of which still
+``StatsSummary.total_games`` or ``GameTypeStats.sessions``, both of which still
 count abandons as lifecycle facts.
 
 Levels: ``LEVEL_THRESHOLDS[i]`` is the cumulative XP required to reach level
@@ -72,11 +72,11 @@ def compute_progression(summary: StatsSummary) -> Progression:
     """Derive Arcade XP and level from a games stats summary.
 
     ``summary.by_game[name].completed_played`` is used as each game type's
-    completed-game count, rather than ``summary.total_games`` or ``played``.
+    completed-game count, rather than ``summary.total_games`` or ``sessions``.
     The query behind ``StatsSummary`` excludes in-progress games from both, and
     ``completed_played`` additionally excludes abandoned ones (#2472) — quitting
     a game must earn nothing, or a player can farm XP by starting games and
-    backing out. ``played`` deliberately still counts abandons: it is the
+    backing out. ``sessions`` deliberately still counts abandons: it is the
     lifecycle "games played" figure Profile shows, not an XP input.
     """
     completed_games = sum(stats.completed_played for stats in summary.by_game.values())

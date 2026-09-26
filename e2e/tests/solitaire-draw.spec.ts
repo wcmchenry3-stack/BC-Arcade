@@ -3,16 +3,17 @@
  *
  * Draw mechanic: tap the stock pile, waste pile shows a face-up card,
  * and the move counter increments to 1.
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "@playwright/test";
-import { mockSolitaireApi, gotoSolitaire } from "./helpers/solitaire";
+import { gotoSolitaire } from "./helpers/solitaire";
 
 test("tap stock: waste shows face-up card and moves counter increments", async ({
   page,
 }) => {
-  await mockSolitaireApi(page);
   await gotoSolitaire(page);
   // Dismiss the pre-game draw-mode modal.
   await page.getByRole("button", { name: "Draw 1" }).click();

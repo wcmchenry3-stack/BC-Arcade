@@ -1,7 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
-import { saveGame, loadGame, clearGame } from "../storage";
+import { saveGame, loadGame, clearGame, saveLastMode, loadLastMode } from "../storage";
 import { newGame } from "../engine";
+import { __setPremiumLevelsForTests } from "../../../entitlements/premiumLevels";
 
 const STORAGE_KEY = "yacht_game_v2";
 
@@ -17,6 +18,42 @@ describe("yacht storage", () => {
     await saveGame(g);
     const loaded = await loadGame();
     expect(loaded).toEqual({ state: g, aiDifficulty: null, aiState: null });
+  });
+
+  it("saves and loads the finished game's id with the game (#2630)", async () => {
+    const g = { ...newGame(), game_over: true };
+    await saveGame(g, "hard", newGame(), "game-1");
+    expect(await loadGame()).toEqual({
+      state: g,
+      aiDifficulty: "hard",
+      aiState: newGame(),
+      finishedGameId: "game-1",
+    });
+  });
+
+  it("saves no finished-game id while there is none (#2630)", async () => {
+    await saveGame(newGame(), null, null, null);
+    expect(await loadGame()).not.toHaveProperty("finishedGameId");
+  });
+
+  it.each([42, "", null])(
+    "drops a bad saved finished-game id (%p) but keeps the game",
+    async (id) => {
+      const g = newGame();
+      await AsyncStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ state: g, aiDifficulty: null, aiState: null, finishedGameId: id })
+      );
+      const loaded = await loadGame();
+      expect(loaded?.state).toEqual(g);
+      expect(loaded).not.toHaveProperty("finishedGameId");
+    }
+  );
+
+  it("clearGame removes the finished-game id with the game (#2630)", async () => {
+    await saveGame({ ...newGame(), game_over: true }, null, null, "game-1");
+    await clearGame();
+    expect(await AsyncStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
   it("returns null when no saved game exists", async () => {
@@ -54,5 +91,42 @@ describe("yacht storage", () => {
     await saveGame(newGame());
     await clearGame();
     expect(await loadGame()).toBeNull();
+  });
+});
+
+describe("yacht last mode (#1129)", () => {
+  const PREF_KEY = "yacht_pref_v1";
+
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  afterEach(() => {
+    __setPremiumLevelsForTests(null);
+  });
+
+  it("round-trips the mode and difficulty", async () => {
+    await saveLastMode("vs", "hard");
+    expect(await loadLastMode()).toEqual({ mode: "vs", difficulty: "hard" });
+  });
+
+  it("returns null when nothing is stored", async () => {
+    expect(await loadLastMode()).toBeNull();
+  });
+
+  it("falls back to medium for an unknown difficulty", async () => {
+    await AsyncStorage.setItem(PREF_KEY, JSON.stringify({ mode: "vs", difficulty: "insane" }));
+    expect(await loadLastMode()).toEqual({ mode: "vs", difficulty: "medium" });
+  });
+
+  it("falls back to medium for a difficulty that is now premium", async () => {
+    await saveLastMode("vs", "hard");
+    __setPremiumLevelsForTests({ yacht: ["hard"] });
+    expect(await loadLastMode()).toEqual({ mode: "vs", difficulty: "medium" });
+  });
+
+  it("falls back to solo for an unknown mode", async () => {
+    await AsyncStorage.setItem(PREF_KEY, JSON.stringify({ mode: "duo", difficulty: "easy" }));
+    expect(await loadLastMode()).toEqual({ mode: "solo", difficulty: "easy" });
   });
 });

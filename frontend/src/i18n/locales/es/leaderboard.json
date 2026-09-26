@@ -1,0 +1,22 @@
+{
+  "title": "Clasificación de {{game}}",
+  "column.rank": "#",
+  "column.player": "Jugador",
+  "column.date": "Fecha",
+  "metric.score": "Puntuación",
+  "metric.moves": "Movimientos",
+  "metric.level": "Nivel",
+  "direction.asc": "Menos es mejor",
+  "partition.tier": "Rango",
+  "you": "Tú",
+  "yourBest": "Tu mejor marca",
+  "empty": "Aún no hay nadie en esta clasificación. Termina una partida para ocupar el primer puesto.",
+  "error": "No se pudo cargar la clasificación.",
+  "offline": "Estás sin conexión. La clasificación se cargará cuando vuelvas a conectarte.",
+  "retry": "Reintentar",
+  "unavailable": "Este juego no tiene clasificación.",
+  "a11y.row": "Puesto {{rank}}, {{name}}, {{metric}} {{value}}, {{date}}",
+  "a11y.rowYou": "Puesto {{rank}}, {{name}}, tú, {{metric}} {{value}}, {{date}}",
+  "a11y.yourBest": "Tu mejor marca: puesto {{rank}}, {{metric}} {{value}}, {{date}}",
+  "a11y.back": "Volver a {{game}}"
+}

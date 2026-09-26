@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 
@@ -19,26 +21,19 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from cascade.router import router as cascade_router
 from daily_challenge.router import router as daily_challenge_router
 from daily_word.router import router as daily_word_router
 from db.base import DATABASE_URL, get_engine, is_configured
 from entitlements.dependencies import EntitlementError
 from entitlements.router import router as entitlements_router
 from entitlements.service import is_dev_override_active
-from freecell.router import router as freecell_router
 from games.router import router as games_router
-from hearts.router import router as hearts_router
 from limiter import _real_ip, limiter
 from logs.router import router as logs_router
-from mahjong.router import router as mahjong_router
 from me.router import router as me_router
-from solitaire.router import router as solitaire_router
+from players.router import router as players_router
 from sort.router import router as sort_router
-from starswarm.router import router as starswarm_router
 from stats.router import router as stats_router
-from sudoku.router import router as sudoku_router
-from yacht.router import router as yacht_router
 
 # ---------------------------------------------------------------------------
 # Audit logger — emits JSON lines; Render's log aggregator handles timestamps
@@ -91,27 +86,50 @@ if _sentry_dsn:
 # prod, and they were unthrottled (#2464's route audit exempts FastAPI's own
 # doc routes, so this doesn't need a rate limit added).
 _is_production = os.environ.get("ENVIRONMENT") == "production"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Startup and shutdown for the API (#2668).
+
+    Replaces four ``@app.on_event`` hooks, which FastAPI deprecates — and which
+    it stops running once a lifespan is set, so they moved together. Startup
+    steps run in their previous registration order.
+
+    The Daily Word retention task is held in one place, ``app.state`` (which
+    tests read). The ``try`` opens as soon as it exists, so it is stopped on
+    every exit — including a startup that is cancelled or fails during the
+    DB health check, which can take up to ``DB_PING_TIMEOUT_SECONDS`` (#2672
+    review). Stopping is bounded (#2667), and the state is reset even when a
+    crashed task is re-raised.
+    """
+    _warn_if_dev_override_active()
+    app.state.retention_task = _start_daily_word_retention()
+    try:
+        await _db_health_check()
+        yield
+    finally:
+        try:
+            await _stop_daily_word_retention(app.state.retention_task)
+        finally:
+            app.state.retention_task = None
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="BC Arcade API",
     docs_url=None if _is_production else "/docs",
     redoc_url=None if _is_production else "/redoc",
     openapi_url=None if _is_production else "/openapi.json",
 )
 app.include_router(entitlements_router, prefix="/entitlements")
-app.include_router(cascade_router, prefix="/cascade")
 app.include_router(daily_challenge_router, prefix="/daily-challenge")
 app.include_router(daily_word_router, prefix="/daily-word")
-app.include_router(freecell_router, prefix="/freecell")
-app.include_router(hearts_router, prefix="/hearts")
-app.include_router(mahjong_router, prefix="/mahjong")
-app.include_router(solitaire_router, prefix="/solitaire")
 app.include_router(sort_router, prefix="/sort")
-app.include_router(starswarm_router, prefix="/starswarm")
-app.include_router(sudoku_router, prefix="/sudoku")
-app.include_router(yacht_router, prefix="/yacht")
 app.include_router(games_router, prefix="/games")
 app.include_router(logs_router, prefix="/logs")
 app.include_router(me_router, prefix="/me")
+app.include_router(players_router, prefix="/players")
 app.include_router(stats_router, prefix="/stats")
 
 # ---------------------------------------------------------------------------
@@ -259,12 +277,52 @@ async def request_logger(request: Request, call_next) -> Response:
     return response
 
 
-@app.on_event("startup")
-async def _dev_entitlement_override_warning() -> None:
+def _warn_if_dev_override_active() -> None:
     if is_dev_override_active():
         logging.getLogger("audit").warning(
             "DEV ENTITLEMENT OVERRIDE ACTIVE — all premium games unlocked for all sessions"
         )
+
+
+# Daily Word retention (#2544): prune guess records older than 14 days, at
+# startup and then daily. Started and cancelled by `lifespan` above.
+def _start_daily_word_retention() -> asyncio.Task | None:
+    if not is_configured():
+        return None
+    from daily_word.retention import run_retention_loop
+    from db.base import get_session_factory
+
+    return asyncio.create_task(run_retention_loop(get_session_factory))
+
+
+RETENTION_STOP_TIMEOUT_SECONDS = 5.0
+
+
+async def _stop_daily_word_retention(task: asyncio.Task | None) -> None:
+    """Cancel the retention task and wait for it — but only so long.
+
+    Bounded (#2667): a prune stuck in the driver can absorb the cancel, and an
+    unbounded wait held shutdown, and a TestClient exit, for good; CI hung
+    ~28 min on it. After the bound it warns and moves on.
+
+    asyncio.wait never raises the task's own outcome, so a CancelledError aimed
+    at *this* coroutine — shutdown itself being cancelled — still propagates
+    (#2672 review). A task that crashed is re-raised, as ``await task`` did;
+    the lifespan resets its state regardless.
+    """
+    if task is None:
+        return
+    from daily_word.retention import logger as retention_logger
+
+    task.cancel()
+    done, _ = await asyncio.wait({task}, timeout=RETENTION_STOP_TIMEOUT_SECONDS)
+    if not done:
+        retention_logger.warning(
+            "daily_word retention: task still running %.0fs after cancel; not waiting",
+            RETENTION_STOP_TIMEOUT_SECONDS,
+        )
+    elif not task.cancelled():
+        task.result()  # re-raises a crash, as `await task` did
 
 
 DB_PING_TIMEOUT_SECONDS = 5.0
@@ -287,7 +345,6 @@ async def _ping_db() -> None:
     await asyncio.wait_for(_select_one(), timeout=DB_PING_TIMEOUT_SECONDS)
 
 
-@app.on_event("startup")
 async def _db_health_check() -> None:
     """Log DB reachability on boot. Non-fatal if DATABASE_URL is unset."""
     if not is_configured():

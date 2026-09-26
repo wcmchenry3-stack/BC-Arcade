@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { dealGame } from "../engine";
-import { clearGame, loadGame, saveGame } from "../storage";
+import { clearGame, loadFinishedGameId, loadGame, saveFinishedGameId, saveGame } from "../storage";
 import type { HeartsState } from "../types";
 
 describe("hearts storage", () => {
@@ -11,7 +11,7 @@ describe("hearts storage", () => {
   });
 
   it("saveGame serialises state to AsyncStorage", async () => {
-    const state = dealGame();
+    const state = { ...dealGame(), accumulatedMs: 1_500 };
     await saveGame(state);
     expect(AsyncStorage.setItem).toHaveBeenCalledWith("hearts_game", JSON.stringify(state));
   });
@@ -132,5 +132,45 @@ describe("hearts storage", () => {
   it("clearGame removes the storage key", async () => {
     await clearGame();
     expect(AsyncStorage.removeItem).toHaveBeenCalledWith("hearts_game");
+  });
+
+  // #2629: the play time survives a save and restore.
+  it("loadGame keeps a saved game's play time", async () => {
+    const state = { ...dealGame(), accumulatedMs: 125_000 };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(state));
+    expect((await loadGame())?.accumulatedMs).toBe(125_000);
+  });
+
+  it.each([
+    ["an older save with none", undefined],
+    ["a negative value", -1],
+    ["a non-number", "12"],
+  ])("loadGame counts %s as no play time yet", async (_label, accumulatedMs) => {
+    const state = { ...dealGame(), accumulatedMs };
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(state));
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect(loaded?.accumulatedMs).toBe(0);
+  });
+
+  // #2629: the reopened result card asks for the finished game's rank again.
+  it("saves and loads the finished game's id", async () => {
+    await saveFinishedGameId("g-1");
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith("hearts_finished_game_id", "g-1");
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue("g-1");
+    expect(await loadFinishedGameId()).toBe("g-1");
+    expect(AsyncStorage.getItem).toHaveBeenCalledWith("hearts_finished_game_id");
+  });
+
+  it("loadFinishedGameId is null when none is saved or storage fails", async () => {
+    expect(await loadFinishedGameId()).toBeNull();
+    (AsyncStorage.getItem as jest.Mock).mockRejectedValueOnce(new Error("boom"));
+    expect(await loadFinishedGameId()).toBeNull();
+  });
+
+  it("clearGame also forgets the finished game's id and the pre-#2629 owed score", async () => {
+    await clearGame();
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith("hearts_finished_game_id");
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith("hearts_pending_submission");
   });
 });

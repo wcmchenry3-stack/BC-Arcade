@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useMemo, useState } from "react";
 
 // Snapshot of Yacht state shared between GameScreen (writer) and the
-// upcoming Yacht ScoreboardScreen variant (reader). Mirrors the Hearts
+// upcoming Yacht ScorecardScreen variant (reader). Mirrors the Hearts
 // RoundsContext pattern so the new stack screen can read live scorecard
 // data without round-tripping through route params.
 export interface YachtScorecardSnapshot {

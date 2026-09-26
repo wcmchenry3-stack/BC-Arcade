@@ -73,6 +73,41 @@ inlines the flag into the JS bundle, so the Play artifact is protected twice:
   `cacheVersion` re-transforms only when one changes, and covers iOS, web and CI
   as well as local Gradle builds.
 
+## API URL: store vs. pre-launch builds
+
+The API URL a bundle is compiled against decides whether it is a pre-launch or a
+store build (`isPreLaunchApiBuild()`; see [`IOS.md`](IOS.md), "API URL per
+workflow"). The Android split is:
+
+- **Default: store build.** A Gradle release build bundles JS in production
+  mode, so Expo loads the tracked `frontend/.env.production`
+  (`https://games-api.buffingchi.com`). No Android build step deletes it.
+- **Higher-priority sources can override it.** Expo ranks the shell
+  environment first, then the gitignored `frontend/.env.production.local` and
+  `frontend/.env.local`, and `.env.production` after those. A plain
+  `./gradlew bundleRelease` is a store build only when none of them sets
+  `EXPO_PUBLIC_API_URL`. A `.env.local` left over from local development that
+  points at the dev API makes every release bundle a pre-launch bundle, even
+  from a fresh shell.
+- **Pre-launch (Play internal testing): opt-in.** Export
+  `EXPO_PUBLIC_API_URL=https://dev-games-api.buffingchi.com` in the shell
+  before the release build. Metro's cache is keyed on `EXPO_PUBLIC_*` values,
+  so the next build without the export does not reuse the dev bundle.
+- **Gap: nothing connects the URL to the Play track.** On iOS the Xcode Cloud
+  workflow chooses the URL (see [`IOS.md`](IOS.md)). On Android, an AAB
+  bundled against the dev API could still be promoted from internal testing to
+  production in Play Console. Before uploading or promoting a production-track
+  AAB, check what was inlined. From `frontend/android`:
+
+  ```bash
+  grep -a -c "https://dev-games-api.buffingchi.com" app/build/generated/assets/react/release/index.android.bundle   # must print 0
+  grep -a -c "https://games-api.buffingchi.com" app/build/generated/assets/react/release/index.android.bundle       # must be > 0
+  ```
+
+  The literal dev URL appears in the bundle only when it was inlined, because
+  `envFlags.ts` holds it as an escaped regex. Then check the build on a
+  device: 6 tiles, 3 tabs, no debug panels.
+
 ## Windows build prerequisites
 
 Two machine-level fixes are needed before Gradle can build this app on Windows:

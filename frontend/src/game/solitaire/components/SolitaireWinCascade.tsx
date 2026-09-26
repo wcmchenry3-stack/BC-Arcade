@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, StyleSheet, View } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -9,16 +9,47 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { useTheme } from "../../../theme/ThemeContext";
+
+/** How long the cascade plays before handing over to the result card. */
+export const WIN_CASCADE_MS = 2000;
 
 interface Props {
-  readonly visible: boolean;
+  /** Called once the cascade has played — or at once when motion is reduced. */
+  readonly onDone: () => void;
 }
 
-export function SolitaireWinCascade({ visible }: Props) {
-  const [reduceMotion, setReduceMotion] = useState(false);
+/**
+ * The win celebration (#2509): six cards fall across the board. Rendered in
+ * the shared result card's `celebration` slot, so it plays on mount and
+ * calls `onDone` to reveal the card.
+ */
+export function SolitaireWinCascade({ onDone }: Props) {
+  const { colors } = useTheme();
+  const [playing, setPlaying] = useState(false);
+  const onDoneRef = useRef(onDone);
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
 
   useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .catch(() => false)
+      .then((reduceMotion) => {
+        if (!alive) return;
+        if (reduceMotion) {
+          onDoneRef.current();
+          return;
+        }
+        setPlaying(true);
+        timer = setTimeout(() => onDoneRef.current(), WIN_CASCADE_MS);
+      });
+    return () => {
+      alive = false;
+      if (timer !== null) clearTimeout(timer);
+    };
   }, []);
 
   const y0 = useSharedValue(-80);
@@ -35,7 +66,7 @@ export function SolitaireWinCascade({ visible }: Props) {
   const op5 = useSharedValue(0);
 
   useEffect(() => {
-    if (!visible || reduceMotion) return;
+    if (!playing) return;
 
     const ys = [y0, y1, y2, y3, y4, y5];
     const ops = [op0, op1, op2, op3, op4, op5];
@@ -60,7 +91,7 @@ export function SolitaireWinCascade({ visible }: Props) {
       [op0, op1, op2, op3, op4, op5].forEach((v) => cancelAnimation(v));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
+  }, [playing]);
 
   const a0 = useAnimatedStyle(() => ({
     transform: [{ translateY: y0.value }],
@@ -87,7 +118,7 @@ export function SolitaireWinCascade({ visible }: Props) {
     opacity: op5.value,
   }));
 
-  if (!visible || reduceMotion) return null;
+  if (!playing) return null;
 
   return (
     <View
@@ -96,12 +127,18 @@ export function SolitaireWinCascade({ visible }: Props) {
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
-      <Animated.View style={[styles.card, styles.c0, { backgroundColor: "#e74c3c" }, a0]} />
-      <Animated.View style={[styles.card, styles.c1, { backgroundColor: "#3498db" }, a1]} />
-      <Animated.View style={[styles.card, styles.c2, { backgroundColor: "#2ecc71" }, a2]} />
-      <Animated.View style={[styles.card, styles.c3, { backgroundColor: "#f1c40f" }, a3]} />
-      <Animated.View style={[styles.card, styles.c4, { backgroundColor: "#9b59b6" }, a4]} />
-      <Animated.View style={[styles.card, styles.c5, { backgroundColor: "#e91e63" }, a5]} />
+      <Animated.View style={[styles.card, styles.c0, { backgroundColor: colors.error }, a0]} />
+      <Animated.View style={[styles.card, styles.c1, { backgroundColor: colors.accent }, a1]} />
+      <Animated.View style={[styles.card, styles.c2, { backgroundColor: colors.outcomeWin }, a2]} />
+      <Animated.View
+        style={[styles.card, styles.c3, { backgroundColor: colors.celebration }, a3]}
+      />
+      <Animated.View
+        style={[styles.card, styles.c4, { backgroundColor: colors.outcomeDraw }, a4]}
+      />
+      <Animated.View
+        style={[styles.card, styles.c5, { backgroundColor: colors.accentBright }, a5]}
+      />
     </View>
   );
 }

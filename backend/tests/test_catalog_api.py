@@ -79,9 +79,9 @@ def test_catalog_premium_flags(client: TestClient) -> None:
     r = client.get("/games/catalog")
     assert r.status_code == 200
     by_name = {g["name"]: g for g in r.json()["items"]}
-    for premium in ("cascade", "hearts", "sudoku", "starswarm", "yacht"):
+    for premium in ("cascade", "hearts", "starswarm", "blackjack", "mahjong"):
         assert by_name[premium]["is_premium"] is True, f"{premium} should be premium"
-    for free in ("blackjack", "solitaire", "freecell", "mahjong", "twenty48"):
+    for free in ("yacht", "solitaire", "freecell", "sort", "twenty48", "sudoku"):
         assert by_name[free]["is_premium"] is False, f"{free} should be free"
 
 
@@ -133,7 +133,8 @@ def test_patch_wrong_admin_token_rejected(client: TestClient) -> None:
 
 
 def test_patch_game_type_is_premium(client: TestClient) -> None:
-    gid = _get_game_id(client, "blackjack")
+    # A free game, so the cleanup below restores its real value.
+    gid = _get_game_id(client, "twenty48")
     try:
         r = client.patch(
             f"/games/catalog/{gid}",
