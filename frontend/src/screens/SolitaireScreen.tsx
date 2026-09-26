@@ -28,6 +28,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
+import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import {
   ModalActions,
@@ -145,6 +146,8 @@ export default function SolitaireScreen() {
   const [resumedWin, setResumedWin] = useState(false);
   const leaderboard = useLeaderboardSubmit(solitaireBoard);
   const { submit: submitScore, reset: resetSubmission } = leaderboard;
+  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
+  const openLeaderboard = useLeaderboardLink(navigation, "solitaire");
 
   const { play: playCardFlip } = useSound("solitaire.cardFlip", SOLITAIRE_SOUNDS);
   const { play: playCardPlace } = useSound("solitaire.cardPlace", SOLITAIRE_SOUNDS);
@@ -807,6 +810,7 @@ export default function SolitaireScreen() {
         }}
         onNewGame={resetToPreGame}
         onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "solitaire" })}
+        onOpenLeaderboard={openLeaderboard}
         rightSlot={
           <View style={styles.headerBtnRow}>
             <PillButton
@@ -955,10 +959,12 @@ export default function SolitaireScreen() {
             submission={{
               status: leaderboard.status,
               rank: leaderboard.rank,
+              isBest: leaderboard.isBest,
               playerName: leaderboard.playerName,
               onProvideName: leaderboard.provideName,
               onRetry: leaderboard.retry,
             }}
+            onViewLeaderboard={openLeaderboard}
             onPlayAgain={handlePlayAgain}
             secondaryAction={{ label: tResult("action.changeMode"), onPress: resetToPreGame }}
             onHome={() => navigation.popToTop()}

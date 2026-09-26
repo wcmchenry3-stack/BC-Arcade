@@ -1,0 +1,22 @@
+{
+  "title": "Ranking de {{game}}",
+  "column.rank": "#",
+  "column.player": "Jogador",
+  "column.date": "Data",
+  "metric.score": "Pontuação",
+  "metric.moves": "Jogadas",
+  "metric.level": "Nível",
+  "direction.asc": "Menos é melhor",
+  "partition.tier": "Patente",
+  "you": "Você",
+  "yourBest": "Seu melhor",
+  "empty": "Ninguém está neste ranking ainda. Termine uma partida para ficar em primeiro.",
+  "error": "Não foi possível carregar o ranking.",
+  "offline": "Você está offline. O ranking carrega quando você se reconectar.",
+  "retry": "Tentar novamente",
+  "unavailable": "Este jogo não tem ranking.",
+  "a11y.row": "Posição {{rank}}, {{name}}, {{metric}} {{value}}, {{date}}",
+  "a11y.rowYou": "Posição {{rank}}, {{name}}, você, {{metric}} {{value}}, {{date}}",
+  "a11y.yourBest": "Seu melhor: posição {{rank}}, {{metric}} {{value}}, {{date}}",
+  "a11y.back": "Voltar para {{game}}"
+}

@@ -60,4 +60,12 @@ describe("statsApi.getLeaderboard (#2625)", () => {
       "/games/leaderboard/sudoku?difficulty=hard&variant=mini"
     );
   });
+
+  it("sends the top N as `limit` after the partition (#2633)", async () => {
+    mockRequest.mockResolvedValueOnce({});
+    await statsApi.getLeaderboard("sudoku", { difficulty: "easy" }, { limit: 50 });
+    expect(mockRequest).toHaveBeenCalledWith("/games/leaderboard/sudoku?difficulty=easy&limit=50");
+    await statsApi.getLeaderboard("freecell", {}, { limit: 50 });
+    expect(mockRequest).toHaveBeenLastCalledWith("/games/leaderboard/freecell?limit=50");
+  });
 });

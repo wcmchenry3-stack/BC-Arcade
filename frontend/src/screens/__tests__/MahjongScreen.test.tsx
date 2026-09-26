@@ -68,11 +68,12 @@ const mockAddListener = jest.fn((event: string, handler: () => void) => {
   };
 });
 
+const mockNavigate = jest.fn();
 jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({
     popToTop: jest.fn(),
     goBack: jest.fn(),
-    navigate: jest.fn(),
+    navigate: mockNavigate,
     setOptions: jest.fn(),
     addListener: mockAddListener,
   }),
@@ -899,6 +900,47 @@ describe("MahjongScreen — progress snapshot (#2619)", () => {
     expect(data).toEqual({ won: false, pairs: 12, outcome: "abandoned" });
   });
 
+  // #2633: ⋯ → Leaderboard covers the game; its clock must not run meanwhile.
+  it("stops the play clock while another screen covers the game", async () => {
+    const { unmount } = await mountMidGameWithSession(); // the tap starts the clock at NOW
+    const emit = async (event: string) => {
+      await act(async () => {
+        mockNavListeners.get(event)?.forEach((h) => h());
+      });
+    };
+    await emit("blur");
+    dateNow.mockReturnValue(NOW + 10 * 60_000); // ten minutes on the leaderboard
+    await emit("focus");
+    dateNow.mockReturnValue(NOW + 10 * 60_000 + 5_000); // five more seconds of play
+
+    await unmount();
+    const [, summary] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.durationMs).toBe(PLAY_MS + 5_000);
+  });
+
+  it("a blur before the first move doesn't start the clock on return", async () => {
+    const inProgress = makeWinState({
+      isComplete: false,
+      isDeadlocked: false,
+      pairsRemoved: 12,
+      accumulatedMs: PLAY_MS,
+      startedAt: null,
+    } as Partial<MahjongState>);
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(inProgress));
+    await mount();
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    dateNow.mockReturnValue(NOW + 60_000);
+    await act(async () => {
+      mockNavListeners.get("focus")?.forEach((h) => h());
+    });
+    await waitFor(async () => {
+      const saved = JSON.parse((await AsyncStorage.getItem("mahjong_game"))!);
+      expect(saved.startedAt).toBeNull();
+    });
+  });
+
   // #2627: back-navigation leaves the abandon to useGameSync's unmount, with
   // the snapshot — no screen-level abandon carrying a score.
   it("a back-navigation leaves the abandon to the hook's unmount", async () => {
@@ -1086,5 +1128,17 @@ describe("MahjongScreen — layout metadata and menu (#2627)", () => {
     });
     expect(api.getByText("New Game")).toBeTruthy();
     expect(api.queryByText("Scoreboard")).toBeNull();
+  });
+
+  it("has a Leaderboard item that opens Mahjong's board (#2633)", async () => {
+    const api = await mount();
+    mockNavigate.mockClear();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByText("Leaderboard"));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", { gameType: "mahjong" });
   });
 });

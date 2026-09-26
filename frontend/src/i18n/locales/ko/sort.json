@@ -35,9 +35,5 @@
   "levelSelect.title": "레벨 선택",
   "levelSelect.continue": "레벨 {{level}} 계속하기",
   "levelSelect.locked": "잠김",
-  "levelSelect.lockedLevel": "레벨 {{level}}, 잠김",
-  "tab.levels": "레벨",
-  "tab.leaderboard": "랭킹",
-  "leaderboard.empty": "아직 점수가 없습니다.",
-  "leaderboard.levelReached": "레벨 {{level}}"
+  "levelSelect.lockedLevel": "레벨 {{level}}, 잠김"
 }

@@ -40,6 +40,7 @@
   "deck.selected": "{{name}} selected",
   "overflow.menu.label": "More options",
   "overflow.menu.scoreboard": "Scoreboard",
+  "overflow.menu.leaderboard": "Leaderboard",
   "overflow.menu.newGame": "New Game",
   "overflow.menu.levelSelect": "Level Select",
   "overflow.menu.editNames": "Edit Names",

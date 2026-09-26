@@ -55,6 +55,7 @@ import {
 } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
+import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { PillButton } from "../components/shared/PillButton";
 import GameResultModal from "../components/shared/GameResultModal";
 import GameCanvas from "../components/mahjong/GameCanvas";
@@ -67,6 +68,8 @@ import {
   getAllFreePairs,
   getAnyFreePair,
   hasFreePairs,
+  pauseGame,
+  resumeGame,
   selectTile,
   shuffleBoard,
   undoMove,
@@ -320,6 +323,8 @@ export default function MahjongScreen() {
   const [winSummary, setWinSummary] = useState<WinSummary | null>(null);
   const leaderboard = useLeaderboardSubmit(mahjongBoard);
   const { submit: submitRank, reset: resetSubmission } = leaderboard;
+  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
+  const openLeaderboard = useLeaderboardLink(navigation, "mahjong");
   const [stats, setStats] = useState<MahjongStats>({
     bestScore: 0,
     bestTimeMs: 0,
@@ -808,6 +813,28 @@ export default function MahjongScreen() {
     return unsub;
   }, [navigation, recordDeadlockLoss]);
 
+  // Another screen covering the game (⋯ → Leaderboard, #2633) stops its clock,
+  // so the finish and best times count only play. Only a clock this pauses is
+  // restarted on return: a board with no move yet keeps waiting for its first.
+  const pausedOnBlurRef = useRef(false);
+  useEffect(() => {
+    const offBlur = navigation.addListener("blur", () => {
+      const s = stateRef.current;
+      if (!s || s.startedAt === null) return;
+      pausedOnBlurRef.current = true;
+      setState(pauseGame(s));
+    });
+    const offFocus = navigation.addListener("focus", () => {
+      if (!pausedOnBlurRef.current) return;
+      pausedOnBlurRef.current = false;
+      setState((s) => (s ? resumeGame(s) : s));
+    });
+    return () => {
+      offBlur?.();
+      offFocus?.();
+    };
+  }, [navigation]);
+
   const ensureSyncStarted = useCallback(
     (s: MahjongState) => {
       if (syncGetGameId()) return;
@@ -973,6 +1000,7 @@ export default function MahjongScreen() {
         requireBack
         loading={false}
         onBack={() => navigation.popToTop()}
+        onOpenLeaderboard={openLeaderboard}
         style={{
           paddingBottom: Math.max(insets.bottom, 16),
           paddingLeft: Math.max(insets.left, 12),
@@ -1005,6 +1033,7 @@ export default function MahjongScreen() {
       onLevelSelect={goToLevelSelect}
       // No Scoreboard item (#2627): it led to an untranslated fallback. #2635
       // brings it back, pointing at the game's stats screen.
+      onOpenLeaderboard={openLeaderboard}
       rightSlot={
         <View style={styles.hudGroup}>
           <PillButton
@@ -1233,12 +1262,14 @@ export default function MahjongScreen() {
               ? {
                   status: leaderboard.status,
                   rank: leaderboard.rank,
+                  isBest: leaderboard.isBest,
                   playerName: leaderboard.playerName,
                   onProvideName: leaderboard.provideName,
                   onRetry: leaderboard.retry,
                 }
               : undefined
           }
+          onViewLeaderboard={openLeaderboard}
           onPlayAgain={handlePlayAgain}
           secondaryAction={{ label: tResult("action.changeLayout"), onPress: startNewGame }}
           onHome={() => navigation.popToTop()}

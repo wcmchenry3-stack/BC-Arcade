@@ -35,9 +35,5 @@
   "levelSelect.title": "Choisir un niveau",
   "levelSelect.continue": "Continuer le niveau {{level}}",
   "levelSelect.locked": "Verrouillé",
-  "levelSelect.lockedLevel": "Niveau {{level}}, verrouillé",
-  "tab.levels": "Niveaux",
-  "tab.leaderboard": "Classement",
-  "leaderboard.empty": "Aucun pointage pour le moment.",
-  "leaderboard.levelReached": "Niveau {{level}}"
+  "levelSelect.lockedLevel": "Niveau {{level}}, verrouillé"
 }

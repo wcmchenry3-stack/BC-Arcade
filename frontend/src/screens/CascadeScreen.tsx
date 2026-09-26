@@ -40,6 +40,7 @@ import {
   DEV_SURFACE_SUBTLE,
 } from "../theme/theme.constants";
 import { GameShell } from "../components/shared/GameShell";
+import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import GameResultModal from "../components/shared/GameResultModal";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
 import type { FruitDefinition, FruitTier } from "../theme/fruitSets";
@@ -310,6 +311,8 @@ function CascadeGame() {
   } | null>(null);
   const leaderboard = useLeaderboardSubmit(cascadeBoard);
   const { submit: submitScore, reset: resetScore } = leaderboard;
+  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
+  const openLeaderboard = useLeaderboardLink(navigation, "cascade");
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const [, setQueueVersion] = useState(0);
@@ -852,6 +855,7 @@ function CascadeGame() {
       onBack={() => navigation.popToTop()}
       onNewGame={handleRestart}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "cascade" })}
+      onOpenLeaderboard={openLeaderboard}
       style={{
         paddingBottom: Math.max(insets.bottom, 16),
         paddingLeft: Math.max(insets.left, 16),
@@ -941,11 +945,13 @@ function CascadeGame() {
                 : {
                     status: leaderboard.status,
                     rank: leaderboard.rank,
+                    isBest: leaderboard.isBest,
                     playerName: leaderboard.playerName,
                     onProvideName: leaderboard.provideName,
                     onRetry: leaderboard.retry,
                   }
             }
+            onViewLeaderboard={openLeaderboard}
             onPlayAgain={handleRestart}
             onHome={() => navigation.popToTop()}
             testID="cascade-result"

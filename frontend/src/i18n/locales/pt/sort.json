@@ -35,9 +35,5 @@
   "levelSelect.title": "Escolha um Nível",
   "levelSelect.continue": "Continuar Nível {{level}}",
   "levelSelect.locked": "Bloqueado",
-  "levelSelect.lockedLevel": "Nível {{level}}, bloqueado",
-  "tab.levels": "Níveis",
-  "tab.leaderboard": "Ranking",
-  "leaderboard.empty": "Nenhuma pontuação ainda.",
-  "leaderboard.levelReached": "Nível {{level}}"
+  "levelSelect.lockedLevel": "Nível {{level}}, bloqueado"
 }

@@ -1,0 +1,22 @@
+{
+  "title": "{{game}}-Bestenliste",
+  "column.rank": "#",
+  "column.player": "Spieler",
+  "column.date": "Datum",
+  "metric.score": "Punkte",
+  "metric.moves": "Züge",
+  "metric.level": "Level",
+  "direction.asc": "Weniger ist besser",
+  "partition.tier": "Stufe",
+  "you": "Du",
+  "yourBest": "Deine Bestleistung",
+  "empty": "Noch niemand auf dieser Bestenliste. Beende ein Spiel und hol dir Platz 1.",
+  "error": "Die Bestenliste konnte nicht geladen werden.",
+  "offline": "Du bist offline. Die Bestenliste lädt, sobald du wieder verbunden bist.",
+  "retry": "Wiederholen",
+  "unavailable": "Dieses Spiel hat keine Bestenliste.",
+  "a11y.row": "Platz {{rank}}, {{name}}, {{metric}} {{value}}, {{date}}",
+  "a11y.rowYou": "Platz {{rank}}, {{name}}, du, {{metric}} {{value}}, {{date}}",
+  "a11y.yourBest": "Deine Bestleistung: Platz {{rank}}, {{metric}} {{value}}, {{date}}",
+  "a11y.back": "Zurück zu {{game}}"
+}

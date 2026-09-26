@@ -35,9 +35,5 @@
   "levelSelect.title": "एक लेवल चुनें",
   "levelSelect.continue": "लेवल {{level}} जारी रखें",
   "levelSelect.locked": "लॉक",
-  "levelSelect.lockedLevel": "लेवल {{level}}, लॉक",
-  "tab.levels": "लेवल्स",
-  "tab.leaderboard": "लीडरबोर्ड",
-  "leaderboard.empty": "अभी कोई स्कोर नहीं।",
-  "leaderboard.levelReached": "लेवल {{level}}"
+  "levelSelect.lockedLevel": "लेवल {{level}}, लॉक"
 }

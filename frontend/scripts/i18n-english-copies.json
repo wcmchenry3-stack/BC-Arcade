@@ -87,6 +87,11 @@
       "nl": ["score.board"],
       "pt": ["score.total"]
     },
+    "leaderboard": {
+      "de": ["metric.level"],
+      "fr-CA": ["column.date"],
+      "nl": ["metric.score"]
+    },
     "mahjong": {
       "de": ["layout.arena"],
       "es": ["layout.arena"],
@@ -116,13 +121,12 @@
       "nl": ["score.label"]
     },
     "sort": {
-      "de": ["color.gold", "color.indigo", "hud.level", "leaderboard.levelReached"],
+      "de": ["color.gold", "color.indigo", "hud.level"],
       "fr-CA": ["color.indigo"],
       "nl": ["action.hint", "color.indigo"]
     },
     "starswarm": {
-      "fr-CA": ["leaderboard.colDate"],
-      "nl": ["hud.scoreValue", "leaderboard.colScore", "score.display"]
+      "nl": ["hud.scoreValue", "score.display"]
     },
     "common": {
       "es": ["nav.lobby", "premiumLevel.tag"],

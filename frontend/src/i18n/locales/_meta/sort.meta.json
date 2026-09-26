@@ -331,41 +331,5 @@
     "placeholders": ["{{level}}"],
     "doNotTranslate": [],
     "notes": null
-  },
-  "tab.levels": {
-    "component": "SortScreen",
-    "description": "Tab label for the level-select grid, in the level-select tab bar.",
-    "tone": "functional",
-    "characterLimit": 11,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "tab.leaderboard": {
-    "component": "SortScreen",
-    "description": "Tab label for the leaderboard, in the level-select tab bar.",
-    "tone": "functional",
-    "characterLimit": 15,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "leaderboard.empty": {
-    "component": "SortScreen / LeaderboardScreen",
-    "description": "Message shown when the Sort Puzzle leaderboard has no scores yet.",
-    "tone": "neutral",
-    "characterLimit": 32,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "leaderboard.levelReached": {
-    "component": "SortScreen",
-    "description": "Detail text on a leaderboard row, showing the level that entry reached.",
-    "tone": "functional",
-    "characterLimit": 19,
-    "placeholders": ["{{level}}"],
-    "doNotTranslate": [],
-    "notes": null
   }
 }

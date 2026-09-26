@@ -287,6 +287,15 @@ describe("HeartsScreen — playing phase (no modal)", () => {
     expect(mockNavigate).toHaveBeenCalledWith("Scoreboard", { gameKey: "hearts" });
   });
 
+  it("⋯ menu Leaderboard item opens Hearts' board (#2633)", async () => {
+    mockNavigate.mockClear();
+    const { getByLabelText, getByText } = await renderScreen();
+    await waitFor(() => getByLabelText("More options"));
+    await fireEvent.press(getByLabelText("More options"));
+    await fireEvent.press(getByText("Leaderboard"));
+    expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", { gameType: "hearts" });
+  });
+
   it("⋯ menu Edit Names item opens the rename modal", async () => {
     const { getByLabelText, getByText } = await renderScreen();
     await waitFor(() => getByLabelText("More options"));

@@ -14,6 +14,7 @@ export interface GameShellProps extends Pick<
   | "backAccessibilityLabel"
   | "rightSlot"
   | "onOpenScoreboard"
+  | "onOpenLeaderboard"
   | "onNewGame"
   | "onLevelSelect"
   | "onEditPlayerNames"
@@ -47,6 +48,7 @@ export function GameShell({
   backAccessibilityLabel,
   rightSlot,
   onOpenScoreboard,
+  onOpenLeaderboard,
   onNewGame,
   onLevelSelect,
   onEditPlayerNames,
@@ -88,6 +90,7 @@ export function GameShell({
           backAccessibilityLabel={backAccessibilityLabel}
           rightSlot={rightSlot}
           onOpenScoreboard={onOpenScoreboard}
+          onOpenLeaderboard={onOpenLeaderboard}
           onNewGame={onNewGame}
           onLevelSelect={onLevelSelect}
           onEditPlayerNames={onEditPlayerNames}

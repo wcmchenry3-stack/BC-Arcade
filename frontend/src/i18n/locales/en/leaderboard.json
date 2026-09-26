@@ -1,0 +1,22 @@
+{
+  "title": "{{game}} Leaderboard",
+  "column.rank": "#",
+  "column.player": "Player",
+  "column.date": "Date",
+  "metric.score": "Score",
+  "metric.moves": "Moves",
+  "metric.level": "Level",
+  "direction.asc": "Lower is better",
+  "partition.tier": "Tier",
+  "you": "You",
+  "yourBest": "Your best",
+  "empty": "No one is on this board yet. Finish a game to claim the top spot.",
+  "error": "Couldn't load the leaderboard.",
+  "offline": "You're offline. The leaderboard loads when you reconnect.",
+  "retry": "Retry",
+  "unavailable": "This game has no leaderboard.",
+  "a11y.row": "Rank {{rank}}, {{name}}, {{metric}} {{value}}, {{date}}",
+  "a11y.rowYou": "Rank {{rank}}, {{name}}, you, {{metric}} {{value}}, {{date}}",
+  "a11y.yourBest": "Your best: rank {{rank}}, {{metric}} {{value}}, {{date}}",
+  "a11y.back": "Back to {{game}}"
+}

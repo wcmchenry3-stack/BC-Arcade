@@ -144,6 +144,11 @@ export interface GameLeaderboardEntry {
   /** The board's metric (e.g. Sort's level reached), labelled by `label_key`. */
   readonly value: number;
   readonly completed_at: string;
+  /**
+   * The requesting player's own entry (#2633), decided by the server from
+   * `X-Session-ID`. Absent from servers before #2633.
+   */
+  readonly is_me?: boolean;
 }
 
 /** `GET /games/leaderboard/{game_type}` (#2618). Mirrors backend `LeaderboardResponse`. */
@@ -152,4 +157,10 @@ export interface GameLeaderboardResponse {
   readonly partition: Readonly<Record<string, string>>;
   readonly label_key: string;
   readonly entries: readonly GameLeaderboardEntry[];
+  /**
+   * The caller's own best entry on this board, with its exact rank, whether
+   * or not it is in `entries` (#2633). Null (absent before #2633) when the
+   * player has no entry: no display name, or no eligible game.
+   */
+  readonly me?: GameLeaderboardEntry | null;
 }

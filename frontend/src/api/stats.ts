@@ -48,12 +48,17 @@ export const statsApi = {
    * `GET /games/leaderboard/{gameType}` (#2618): the top players on one board,
    * one entry each. `partition` holds the board's partition query params
    * (e.g. `{ difficulty: "easy" }`); a board without partitions takes none.
+   * `limit` is the server's top N (1–100, default 10). The caller's own
+   * entry comes back as `me` (#2633).
    */
   getLeaderboard: (
     gameType: GameType,
-    partition: Readonly<Record<string, string>> = {}
+    partition: Readonly<Record<string, string>> = {},
+    { limit }: { limit?: number } = {}
   ): Promise<GameLeaderboardResponse> => {
-    const query = new URLSearchParams(partition as Record<string, string>).toString();
+    const params = new URLSearchParams(partition as Record<string, string>);
+    if (limit !== undefined) params.set("limit", String(limit));
+    const query = params.toString();
     const path = `/games/leaderboard/${encodeURIComponent(gameType)}`;
     return request<GameLeaderboardResponse>(query ? `${path}?${query}` : path);
   },

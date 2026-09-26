@@ -13,8 +13,9 @@
  *   // on game over:
  *   void leaderboard.submit({ gameId });
  *
- * - Online with a name: `saved`. `rank` is set when this game is the player's
- *   best entry and in the top 10; a worse game shows no "#N".
+ * - Online with a name: `saved`. `rank` is the rank of the player's best
+ *   entry when it is in the top 10, and `isBest` says whether this game is
+ *   that entry: a worse game shows "Your best: #N" (#2633).
  * - No name: `needsName`; `provideName()` saves it (`saveDisplayName`, which
  *   syncs it through `PUT /players/me`) and then fetches the rank.
  * - Still syncing (`not_finished`, or a name that couldn't be sent yet):
@@ -51,7 +52,9 @@ export interface SessionBoardAdapterOptions {
 
 /** What the card makes of a rank response. */
 export function toRankLookup(result: GameRankResponse, nameSynced: boolean): RankLookup {
-  if (result.ranked) return { kind: "ranked", rank: result.is_best ? result.rank : null };
+  // `rank` is the player's best entry's; the card says "Your best: #N" when
+  // this game isn't that entry (#2633).
+  if (result.ranked) return { kind: "ranked", rank: result.rank, isBest: result.is_best !== false };
   switch (result.reason) {
     case "not_finished":
       return { kind: "pending" };

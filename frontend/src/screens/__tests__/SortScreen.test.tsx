@@ -49,9 +49,10 @@ jest.mock("../../game/sort/components/SortBoard", () => {
 
 const mockGoBack = jest.fn();
 const mockPopToTop = jest.fn();
+const mockNavigate = jest.fn();
 jest.mock("@react-navigation/native", () => ({
   ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ goBack: mockGoBack, popToTop: mockPopToTop }),
+  useNavigation: () => ({ goBack: mockGoBack, popToTop: mockPopToTop, navigate: mockNavigate }),
 }));
 
 // Per-session game sync (#2512): assert start/complete without the real client.
@@ -82,7 +83,7 @@ jest.mock("../../game/sort/api", () => ({
   },
 }));
 
-// The inline Leaderboard tab reads the generic board (#2625).
+// The board is the shared leaderboard screen (#2633): Sort never reads it itself.
 jest.mock("../../api/stats", () => ({
   statsApi: { getLeaderboard: jest.fn() },
 }));
@@ -360,40 +361,25 @@ describe("SortScreen — entering and playing a level", () => {
   });
 });
 
-describe("SortScreen — leaderboard tab", () => {
-  it("fetches and displays the generic Sort board (#2625)", async () => {
-    statsApi.getLeaderboard.mockResolvedValue({
-      game_type: "sort",
-      partition: {},
-      label_key: "level",
-      entries: [
-        { rank: 1, player_name: "Alice", value: 23, completed_at: "2026-09-01T00:00:00Z" },
-        { rank: 1, player_name: "Bob", value: 23, completed_at: "2026-09-01T00:00:00Z" },
-        { rank: 3, player_name: "Cara", value: 5, completed_at: "2026-09-02T00:00:00Z" },
-      ],
-    });
-    const { findByText, getAllByText } = await renderScreen();
+describe("SortScreen — leaderboard (#2633)", () => {
+  it("has no inline Leaderboard tab: the level select is the whole screen", async () => {
+    const { findByText, queryByRole, queryByText } = await renderScreen();
     await findByText("Choose a Level");
-    const leaderboardTab = await findByText("Leaderboard");
-    await act(async () => {
-      await fireEvent.press(leaderboardTab);
-    });
-    expect(statsApi.getLeaderboard).toHaveBeenCalledWith("sort");
-    expect(await findByText("Alice")).toBeTruthy();
-    expect(await findByText("Level 5")).toBeTruthy();
-    // The server's rank, so tied players share one.
-    expect(getAllByText("#1")).toHaveLength(2);
-    expect(await findByText("#3")).toBeTruthy();
+    expect(queryByRole("tab")).toBeNull();
+    expect(queryByText("Leaderboard")).toBeNull();
+    expect(statsApi.getLeaderboard).not.toHaveBeenCalled();
   });
 
-  it("shows empty state when leaderboard has no scores", async () => {
-    const { findByText } = await renderScreen();
+  it("the ⋯ menu's Leaderboard item opens the shared Sort board", async () => {
+    const { findByText, getByTestId } = await renderScreen();
     await findByText("Choose a Level");
-    const leaderboardTab = await findByText("Leaderboard");
     await act(async () => {
-      await fireEvent.press(leaderboardTab);
+      await fireEvent.press(getByTestId("nav-menu"));
     });
-    expect(await findByText("No scores yet.")).toBeTruthy();
+    await act(async () => {
+      await fireEvent.press(getByTestId("nav-menu-leaderboard"));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", { gameType: "sort" });
   });
 });
 
@@ -913,6 +899,18 @@ describe("SortScreen — result card (#2512)", () => {
     expect(adapterGameTypes).toEqual(["sort"]);
     expect(mockRankSubmit).toHaveBeenCalledTimes(1);
     expect(mockRankSubmit).toHaveBeenCalledWith("Riley", { gameId: "sort-game-id" });
+  });
+
+  it("shows the best entry's rank when this solve isn't it, and links to the board (#2633)", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    mockRankSubmit.mockResolvedValue({ kind: "ranked", rank: 4, isBest: false });
+    const r = await renderScreen();
+    const card = await solveLevel(r, 1);
+    await waitFor(() => expect(card.getByText("Saved as Riley · Your best: #4")).toBeTruthy());
+    await act(async () => {
+      await fireEvent.press(card.getByText("View leaderboard"));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", { gameType: "sort" });
   });
 
   it("scores a replay below the frontier with the frontier and an improved total", async () => {

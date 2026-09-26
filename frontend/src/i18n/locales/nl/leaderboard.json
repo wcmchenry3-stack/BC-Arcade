@@ -1,0 +1,22 @@
+{
+  "title": "{{game}}-ranglijst",
+  "column.rank": "#",
+  "column.player": "Speler",
+  "column.date": "Datum",
+  "metric.score": "Score",
+  "metric.moves": "Zetten",
+  "metric.level": "Niveau",
+  "direction.asc": "Lager is beter",
+  "partition.tier": "Rang",
+  "you": "Jij",
+  "yourBest": "Jouw beste",
+  "empty": "Nog niemand op deze ranglijst. Speel een spel uit en pak de eerste plaats.",
+  "error": "De ranglijst kon niet worden geladen.",
+  "offline": "Je bent offline. De ranglijst laadt zodra je weer verbonden bent.",
+  "retry": "Opnieuw",
+  "unavailable": "Dit spel heeft geen ranglijst.",
+  "a11y.row": "Plaats {{rank}}, {{name}}, {{metric}} {{value}}, {{date}}",
+  "a11y.rowYou": "Plaats {{rank}}, {{name}}, jij, {{metric}} {{value}}, {{date}}",
+  "a11y.yourBest": "Jouw beste: plaats {{rank}}, {{metric}} {{value}}, {{date}}",
+  "a11y.back": "Terug naar {{game}}"
+}

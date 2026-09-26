@@ -35,9 +35,5 @@
   "levelSelect.title": "اختر مستوى",
   "levelSelect.continue": "متابعة المستوى {{level}}",
   "levelSelect.locked": "مقفل",
-  "levelSelect.lockedLevel": "المستوى {{level}}، مقفل",
-  "tab.levels": "المستويات",
-  "tab.leaderboard": "الترتيب",
-  "leaderboard.empty": "لا توجد نقاط بعد.",
-  "leaderboard.levelReached": "المستوى {{level}}"
+  "levelSelect.lockedLevel": "المستوى {{level}}، مقفل"
 }

@@ -9,6 +9,7 @@ import {
   PAUSED_RUN_STORAGE_KEY,
   _resetPauseStoreForTests,
   clearSavedPausedState,
+  getSavedPausedState,
   savePausedState,
 } from "../../game/starswarm/pauseStore";
 import { CANVAS_H, CANVAS_W, initStarSwarm } from "../../game/starswarm/engine";
@@ -24,14 +25,28 @@ jest.mock("expo-blur", () => ({
 }));
 
 const mockPopToTop = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  useNavigation: () => ({
-    popToTop: mockPopToTop,
-    goBack: jest.fn(),
-    navigate: jest.fn(),
-    addListener: jest.fn(() => jest.fn()),
+// Live navigation listeners, so a test can blur the screen (#2633).
+const mockNavListeners = new Map<string, Set<() => void>>();
+const mockNavigation = {
+  popToTop: mockPopToTop,
+  goBack: jest.fn(),
+  navigate: jest.fn(),
+  addListener: jest.fn((event: string, cb: () => void) => {
+    const set = mockNavListeners.get(event) ?? new Set();
+    set.add(cb);
+    mockNavListeners.set(event, set);
+    return () => set.delete(cb);
   }),
+};
+jest.mock("@react-navigation/native", () => ({
+  useNavigation: () => mockNavigation,
 }));
+
+async function emitNav(event: "blur" | "focus") {
+  await act(async () => {
+    for (const cb of [...(mockNavListeners.get(event) ?? [])]) cb();
+  });
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockCanvasProps: any = null;
@@ -211,6 +226,31 @@ describe("StarSwarmScreen — auto-pause when the app leaves the foreground", ()
     await startRun();
     await setAppState("inactive");
     expectPaused();
+  });
+
+  it("pauses and saves a live run when another screen covers it (#2633)", async () => {
+    await renderScreen();
+    await startRun();
+    expectRunning();
+
+    // e.g. ⋯ → Leaderboard: the game screen stays mounted under the board.
+    await emitNav("blur");
+    expectPaused();
+    expect(getSavedPausedState()).not.toBeNull();
+
+    // Coming back leaves it paused until the player resumes.
+    await emitNav("focus");
+    expectPaused();
+  });
+
+  it("does not pause a finished run when the screen is covered", async () => {
+    await renderScreen();
+    await startRun();
+    await act(async () => {
+      mockCanvasProps.onGameOver(4200, 7);
+    });
+    await emitNav("blur");
+    expect(mockCanvasProps.isPaused).toBe(false);
   });
 
   it("pauses mid-wave too — after a wave clear", async () => {
