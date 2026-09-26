@@ -145,12 +145,23 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   );
   useEffect(() => {
     // #2682 — once the run has reached its goal it stays a win however the
-    // session ends (§8.8), including a kill the player never comes back to:
-    // the outcome override tells the killed-process sweep to record `win`
-    // instead of `abandoned` if it closes this session unresumed.
+    // session ends (§8.8), including a kill the player never comes back to,
+    // or an in-process unmount (an ErrorBoundary elsewhere, a hot reload):
+    // the outcome override tells useGameSync's own abandon and the
+    // killed-process sweep to record `win` instead of `abandoned`.
+    //
+    // Same gate as `endSession`'s early return: a session that neither
+    // resumed real hand history nor played a hand of its own claims nothing
+    // (not even a goal a *stale local save* claims was already reached) —
+    // otherwise a goal-reached save whose old session can't be continued
+    // would let the brand-new, still-empty session it starts instead double
+    // up the win the old session's own sweep already recorded for it.
     syncSetProgressSnapshot(() => ({
       result: sessionResult(),
-      outcome: goalReachedRef.current ? "win" : undefined,
+      outcome:
+        goalReachedRef.current && (resumedRef.current || totalHandsRef.current > 0)
+          ? "win"
+          : undefined,
     }));
   }, [syncSetProgressSnapshot, sessionResult]);
 

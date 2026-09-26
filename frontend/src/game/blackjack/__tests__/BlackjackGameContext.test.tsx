@@ -3,6 +3,8 @@ import { renderHook, act } from "@testing-library/react-native";
 
 import { BlackjackGameProvider, useBlackjackGame } from "../BlackjackGameContext";
 import { TABLE_CONFIGS } from "../tables";
+import { newGame } from "../engine";
+import { loadGame } from "../storage";
 import type { ProgressSnapshot } from "../../_shared/useGameSync";
 
 // The context reaches into these; mocked so the test drives only the engine
@@ -72,10 +74,10 @@ describe("BlackjackGameContext progress snapshot (#2682)", () => {
       result.current.handleTableSelect(TABLE_CONFIGS[0]!);
     });
 
-    // Simulate the run reaching its goal (skips actual hand-by-hand play —
-    // covered by engine.test.ts — to isolate the snapshot wiring).
+    // Simulate a hand resolving into the run's goal (skips actual card-by-card
+    // play — covered by engine.test.ts — to isolate the snapshot wiring).
     await act(async () => {
-      result.current.apply((s) => ({ ...s, phase: "victory" }));
+      result.current.apply((s) => ({ ...s, outcome: "win", phase: "victory" }));
     });
 
     expect(latestSnapshot().outcome).toBe("win");
@@ -88,12 +90,37 @@ describe("BlackjackGameContext progress snapshot (#2682)", () => {
       result.current.handleTableSelect(TABLE_CONFIGS[0]!);
     });
     await act(async () => {
-      result.current.apply((s) => ({ ...s, phase: "victory" }));
+      result.current.apply((s) => ({ ...s, outcome: "win", phase: "victory" }));
     });
     await act(async () => {
       result.current.handleKeepPlaying();
     });
 
     expect(latestSnapshot().outcome).toBe("win");
+  });
+
+  it("reports no override for a goal-reached save whose old session cannot be continued and has played no hand here (#2628)", async () => {
+    // A save that already reached its goal in an earlier, killed process —
+    // but its pending session is gone (too old, or already swept), so this
+    // launch starts a brand-new, still-empty session instead of resuming it.
+    const saved = {
+      ...newGame(undefined, {
+        startingChips: TABLE_CONFIGS[0]!.startingChips,
+        runGoal: TABLE_CONFIGS[0]!.runGoal,
+        betMin: TABLE_CONFIGS[0]!.betMin,
+        betMax: TABLE_CONFIGS[0]!.betMax,
+      }),
+      phase: "victory" as const,
+    };
+    (loadGame as jest.Mock).mockResolvedValueOnce(saved);
+
+    const { result } = await renderHook(() => useBlackjackGame(), { wrapper });
+    await act(async () => {});
+
+    // This brand-new session must not claim the old session's win by itself —
+    // that would double it up with whatever the old session's own sweep
+    // already recorded for it (#2682 review).
+    expect(latestSnapshot().outcome).toBeUndefined();
+    expect(result.current.engine?.phase).toBe("victory"); // sanity: goal really is preset
   });
 });
