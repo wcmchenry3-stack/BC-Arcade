@@ -2,7 +2,9 @@
  * hearts-gameplay.spec.ts — GH #1142
  *
  * Pass phase interaction and AI auto-play.
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "./fixtures";

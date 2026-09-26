@@ -15,7 +15,9 @@
  * final_score recorded = Math.max(0, 100 − cumulativeScores[0]).
  * The human discards ♥5 onto East's winning ♦9 and ends on 45: 55.
  *
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on (the game
+ * sync included) are intercepted with page.route(), and any other call
+ * fails, which the app handles like being offline.
  */
 
 import { test, expect } from "./fixtures";

@@ -9,7 +9,9 @@
  * through the `__starswarm_endRun(score, wave)` test hook (EXPO_PUBLIC_TEST_HOOKS
  * builds only), which drives the screen's real game-over path.
  *
- * API endpoints are mocked so tests are hermetic.
+ * No running backend is needed: the routes this spec depends on (the game
+ * sync included) are intercepted with page.route(), and any other call
+ * fails, which the app handles like being offline.
  */
 
 import { test, expect } from "./fixtures";

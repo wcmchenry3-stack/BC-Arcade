@@ -9,7 +9,9 @@
  * The test relies on that save being committed before `page.goto("/")` fully
  * resolves — which is the same pattern used in the 2048 persistence suite.
  *
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "./fixtures";

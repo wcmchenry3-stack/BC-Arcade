@@ -5,7 +5,9 @@
  * 8♠ on column 2. Two taps: first selects 7♥, second on 8♠ executes move.
  * (Smart single-tap auto-move was reverted in #2128.)
  *
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "@playwright/test";

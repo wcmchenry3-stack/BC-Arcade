@@ -4,7 +4,9 @@
  * Smoke tests for Mahjong Solitaire: navigation, board render, HUD display,
  * the overflow menu, and crash-free board interaction.
  *
- * All mahjong API calls are intercepted via page.route() — no backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "@playwright/test";

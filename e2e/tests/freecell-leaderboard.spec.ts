@@ -9,7 +9,9 @@
  * /freecell/score (#2632; removed in #2644). A resumed, already-won save shows
  * the card without looking its rank up again.
  *
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect, type Page } from "@playwright/test";

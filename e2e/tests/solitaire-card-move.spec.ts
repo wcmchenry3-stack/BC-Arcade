@@ -9,7 +9,9 @@
  * Tap-to-select (#2128): first tap selects a card, second tap on a valid
  * destination executes the move. (Smart single-tap was reverted in #2128.)
  *
- * All backend calls are intercepted — no running backend required.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  *
  * Board states are injected via localStorage before navigation so the
  * pre-game draw-mode modal is bypassed (saved game is restored directly).

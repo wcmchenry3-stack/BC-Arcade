@@ -3,7 +3,9 @@
  *
  * Difficulty selector: pre-game picker, the result card's Change Difficulty /
  * Play Again (#2506), and difficulty persistence.
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "./fixtures";

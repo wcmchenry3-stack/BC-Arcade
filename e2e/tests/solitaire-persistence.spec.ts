@@ -5,7 +5,9 @@
  * pile, navigate to Solitaire, verify the card is visible, navigate away,
  * return, and confirm the waste card is still the same.
  *
- * All backend calls are intercepted — no running backend needed.
+ * No running backend is needed: the routes this spec depends on are
+ * intercepted with page.route(), and any other call (such as SyncWorker's
+ * game sync) fails, which the app handles like being offline.
  */
 
 import { test, expect } from "@playwright/test";
