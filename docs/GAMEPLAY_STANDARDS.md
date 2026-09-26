@@ -332,3 +332,14 @@ This supplements the backend checklist in [`GAME-CONTRACT.md §3`](GAME-CONTRACT
 - [ ] Pile/tile/piece components are purely presentational (no logic, no gesture detection)
 - [ ] If using Skia Canvas: web fallback (`GameCanvas.web.tsx`) exists with identical hit-test logic
 - [ ] Overlays (ghost, burst, highlights) rendered as absolute-positioned siblings inside the game root
+
+### Reporting
+
+How a finished game reaches the server and the player. The rules are in [`ARCHITECTURE.md §4`](ARCHITECTURE.md#4-persistence-and-offline-contract) and the screens in [`ARCHITECTURE.md §14`](ARCHITECTURE.md#14-result-leaderboard-and-stats-screens); this game's own page goes in [`docs/games/`](games/).
+
+- [ ] The screen records its session through `useGameSync("<game>")` only: `markStarted()` on the player's first real action, `complete()` on game over, `setProgressSnapshot()` so the hook's own abandons carry the result block, and `resume()` when it restores saved progress. No direct `/games` calls, no queue of its own, nothing in `scoreQueue`.
+- [ ] The outcome comes from `recordedOutcome()` (`game/_shared/recordedOutcome.ts`). `win` / `loss` / `push` only if the game has a winner — its backend module sets `has_winner = True`, which reaches the app as `HAS_WINNER` in `api/vocab.ts`. Every other game records `completed`. The outcome guard (`game/_shared/outcomeGuard.ts`) fails the screen tests if it doesn't.
+- [ ] Duration: pass `durationMs` only if the game measures its own active play time (paused while backgrounded or idle); otherwise pass nothing and `useGameSync`'s active-play window fills it in. Never send wall-clock start-to-end time. A screen that shows a picker or a new board before its session opens calls `resetPlayWindow()` when play begins.
+- [ ] `summary.result` matches the backend module's `result_model`, including any fields the game's daily-challenge goals read (`backend/daily_challenge/definitions.py`).
+- [ ] The result card is `GameResultModal`. For a game with a board, `useLeaderboardSubmit(sessionBoardAdapter("<game>"))` and `submit({ gameId })` once at game end: the card only reads the rank (`GET /games/{id}/rank`); it submits no score. Pass `onViewLeaderboard` from `useLeaderboardLink` so "View leaderboard" appears when the board is openable.
+- [ ] Stats entry: every `GameShell` the game renders gets `gameType="<game>"`, which adds the ⋯ menu's "Stats" item. Add the game to `SCORECARD_GAMES` (`navigation/scorecards.ts`) only if it has a live in-match view.

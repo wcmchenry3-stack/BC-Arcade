@@ -20,7 +20,8 @@ different trust model and is treated separately.
 - The rule engine (`frontend/src/game/<name>/engine.ts`).
 - Session state during play, persisted to AsyncStorage so it survives app kill.
 - Event log generation with priority tags.
-- The submission queue (uses the shared pipeline — see §4).
+- The local write queue: every game records its sessions through `useGameSync`
+  and the shared `SyncWorker` (see §4).
 
 ### 2.2 The server owns
 
@@ -58,14 +59,37 @@ compliance under epic #894.
 
 ## 4. Persistence and offline contract
 
-Every game uses the shared submission pipeline. **No game implements its own
-queue.** The pipeline is:
+**One write path.** Every game records its sessions the same way, and **no
+game implements its own queue**:
 
-- `SyncWorker` — batched event flush with exponential backoff (1s → 30min).
-- `ScoreQueue` — outcome submissions, retried up to 5 attempts.
-- `PendingGamesStore` — pending games persisted across app restarts.
+```text
+useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
+            → SyncWorker → POST /games, POST /games/{id}/events,
+                           PATCH /games/{id}/complete
+```
+
+- `useGameSync` (`frontend/src/game/_shared/useGameSync.ts`) — the hook every
+  game uses: the eleven game screens in `frontend/src/screens/` and
+  Blackjack's `game/blackjack/BlackjackGameContext.tsx`. Only `SyncWorker`
+  calls the `/games` write routes; screens only read (`api/stats.ts`).
+- `PendingGamesStore` — pending games (creation metadata, completion summary)
+  persisted across app restarts.
+- `eventStore` — queued gameplay events and bug logs, sharded by priority tier.
+- `SyncWorker` — uploads both: every 30 s (`SYNC_INTERVAL_MS`), on foreground
+  and on reconnect (`NetworkContext`), with a global exponential backoff
+  (1 s → 30 min) after a 5xx or network failure. A row leaves the device only
+  after a 2xx.
 - `displayNameSync` — one pending display-name sync (see below).
 - All four are AsyncStorage-backed and survive app kill.
+
+Nothing else writes a game's result. The result card submits nothing: it only
+asks `GET /games/{id}/rank` where the synced game landed (#2677; §14). There
+is no per-game "name attach" either — the name is the player's (below).
+`ScoreQueue` (`game/_shared/scoreQueue.ts`) is **dead code**: no game registers
+a handler since Phase 2 of #2519, so its reconnect flush sends nothing and an
+item an older build queued stays unsent; #2644 removes it. Daily Word's
+`POST /daily-word/guess` checks each guess against the server's answer during
+play; it is not a result write.
 
 **Identity and display name (#2624, #2519 decisions 17–18).** A player is
 their player id: the app's `game_session_id`, sent as `X-Session-ID` (one per
@@ -91,15 +115,20 @@ foreground or launch; Profile shows it as pending until then. When the device
 has no name, Profile asks `GET /players/me` (online) and offers removal of a
 name the server still has. See `frontend/src/game/_shared/displayNameSync.ts`.
 
-**Safe replays.** Retries are the normal case, so every write is safe to
-repeat: `POST /games` dedupes on the client game id, a completed game can't be
-completed again (a replayed `PATCH /games/{id}/complete` returns the row
-unchanged), events dedupe on `(game_id, event_index)`, and `PUT /players/me`
-with the current name writes nothing, and `DELETE /players/me` without one
-deletes nothing. With the name on the player there is no
-per-game name left to duplicate. The only remaining lost-response duplicates
-are the legacy per-game `POST /<game>/score` handlers still in `ScoreQueue`
-(listed in its header), which Phase 2 of #2519 removes.
+**Safe replays (idempotency).** Retries are the normal case, so every write
+the app makes is safe to repeat (`backend/games/service.py` module docstring):
+`POST /games` dedupes on the client game id (`create_game`); events dedupe on
+`(game_id, event_index)` (`INSERT … ON CONFLICT DO NOTHING`); a completed game
+can't be completed again — the first completion wins and a replayed
+`PATCH /games/{id}/complete` returns the row unchanged (`complete_game`), the
+one exception being a row the stale-session sweep closed (#2621, below), which
+a real completion replaces. `PUT /players/me` with the current name writes
+nothing, and `DELETE /players/me` without one deletes nothing (#2624). With the
+name on the player there is no per-game name left to duplicate. The legacy
+per-game `POST /<game>/score` routes still insert a row per call, but only
+installed v1.0 builds call them (the current app has no `ScoreQueue`
+handlers), their rows sit under sentinel `*-anon` sessions that no board reads,
+and #2644 removes them.
 
 What we log:
 
@@ -111,9 +140,10 @@ What we log:
 `result` dict alongside `final_score` / `outcome` / `duration_ms`. Each game
 module may declare a `result_model` (a Pydantic model, separate from the
 creation-time `metadata_model`, which forbids extra keys); the validated result
-is merged into `games.metadata` — creation-time keys always win on a collision,
+is merged into `games.metadata` — a creation-time key wins on a collision
+unless it holds `null` (`merge_result_metadata`, `backend/games/leaderboard.py`),
 because leaderboards read partition keys such as `difficulty` (and the legacy
-per-game boards `player_name` / `raw_score`) from there — and an
+per-game leaderboard routes read `player_name`) from there — and an
 invalid or oversized (> 8 KB) result returns 400 without completing the game
 and is reported to Sentry (game type, failing field paths, error types — no
 session id or values), because the app's sync worker dead-letters a 400. Modules with
@@ -123,14 +153,41 @@ builds that send no `result` keep working. The client passes the result block
 explicitly as `summary.result` to `useGameSync.complete()`; the analytics
 `game_ended` payload is never copied into it (#2619).
 
-**Outcome (#2519 decision 11).** `games.outcome` carries the result for games
-that can record a winner (`GameModule.has_winner`, set only once the client
-writes one): `win` / `loss` / `push` (a tie). A `completed` row from such a
-game (solo Yacht) is a finish with no winner, not a win.
-Score-only games record `completed` / `kept_playing` — a finished game with no
-win concept. `abandoned` is a quit. The per-game rules live in one place, the
+**Outcome (#2519 decision 11).** `games.outcome` carries the result, not
+only the lifecycle. Games that can record a winner (`GameModule.has_winner`:
+Yacht, Hearts, Daily Word, Blackjack, Mahjong, Twenty48) record `win` /
+`loss` / `push` (a tie); a `completed` row from such a game (solo Yacht) is a
+finish with no winner, not a win. Score-only games (Solitaire, FreeCell,
+Sudoku, Cascade, Sort, Star Swarm) record `completed` — a finished game with
+no win concept. `kept_playing` means the same; only Twenty48 builds from
+before #2631 send it. `abandoned` is a quit, excluded from boards, stats and XP
+by `games.filters.not_abandoned()`. The per-game rules live in one place, the
 `GameOutcome` docstring in `backend/vocab.py`; `won` inside a result block is
-only a daily-challenge input, not the win signal.
+only a daily-challenge input, not the win signal. Summary and per-game table:
+[GAME-CONTRACT §1.2](GAME-CONTRACT.md#12-gameoutcome--outcome-vocabulary).
+
+- **Client mapping.** A screen turns its result card's outcome into the
+  recorded one with `recordedOutcome()`
+  (`frontend/src/game/_shared/recordedOutcome.ts`: win→`win`, loss→`loss`,
+  draw→`push`, ended→`completed`).
+- **Generated vocabulary.** `HAS_WINNER` (each module's `has_winner`),
+  `RESULT_OUTCOMES` and `LIFECYCLE_OUTCOMES` are generated into
+  `frontend/src/api/vocab.ts` from the backend by
+  `backend/scripts/gen_vocab_ts.py`; `backend/tests/test_vocab.py` fails on
+  drift.
+- **Runtime guard (#2642, PR #2744).** `assertOutcomeAllowed`
+  (`frontend/src/game/_shared/outcomeGuard.ts`) checks every outcome as it
+  leaves the app: `useGameSync`'s `complete()`, its own abandons, the outcome
+  a progress snapshot reports, and `gameEventClient.completeGame`, which the
+  killed-session sweep also goes through. A game with no winner recording
+  `win` / `loss` / `push` throws `OutcomeNotAllowedError` in development and
+  tests; in production the outcome is sent unchanged and the first violation
+  per game and outcome is reported to Sentry.
+- **The backend does not reject it.** `complete_game` only checks that the
+  value is in `GameOutcome` — a 400 would dead-letter the game in the app. It
+  does rewrite one case: an older build's certain win (a Mahjong cleared
+  board, a Blackjack cash-out, the Twenty48 session that first reached 2048)
+  is stored as `win` (`games/legacy_outcomes.py`, #2703).
 
 **Abandons.** Only a session the player started (`markStarted()`) is ever
 abandoned — on unmount, `start()`, `restart()` or `close()` over an open session. Those
@@ -148,16 +205,31 @@ play, so a Daily Word left open all day would record 12 h. A negative value
 never reaches the server, where `duration_ms` is `ge=0` and would 400 the
 whole completion.
 
-A game with no timer of its own still reports one (#2684): `useGameSync` sends
-the foreground time on the game screen since the previous session ended, with
-each idle gap capped at 10 minutes; a game's own measured duration wins.
-Foreground time comes from `foregroundClock.foregroundNow()`, one app-wide
-counter with a single `AppState` subscription that stops while the app is
-`background` or `inactive`. The gaps are the stretches between player-activity
-pings (mount, `markStarted()`, `enqueue()`, `complete()`, `resume()`).
-`complete()` and the hook's own abandons use it unless the game (or its
-progress snapshot) passes a value > 0. A resumed session counts from the
-relaunch. Blackjack sends no duration of its own, so the shared one applies.
+**Duration fallback.** A game's own `durationMs` > 0 always wins. A game with
+no timer of its own still reports one (#2684): `useGameSync` fills in the
+time its active-play window has counted.
+
+- The window counts foreground time only: `foregroundClock.foregroundNow()`,
+  one app-wide counter that stops while `AppState` is `background` or
+  `inactive`.
+- It also stops while the game screen is blurred by a screen pushed on top
+  (Stats, Leaderboard, Scorecard) and resumes when focus returns
+  (`useIsScreenFocused`, #2735, PR #2743).
+- Each idle gap between player-activity pings (`markStarted()`, `enqueue()`,
+  `complete()`) adds at most `IDLE_GAP_CAP_MS` (10 minutes).
+- It runs from mount, pauses at zero when a session ends (so a result card or
+  a menu between games is never counted), and restarts from zero on
+  `start()` / `restart()` after a pause, on `resume()` (a session resumed
+  after a killed process counts from the resume), and on `resetPlayWindow()`.
+- `complete()` sends the game's `summary.durationMs` when > 0, otherwise the
+  window; the hook's own abandons send the progress snapshot's `durationMs`
+  when > 0, otherwise the window. A window reading 0 sends nothing
+  (`resolveDurationMs`: unknown). Blackjack sends no duration of its own, so
+  the window applies.
+
+Every rule, with the screens that call `resetPlayWindow()`, is in
+[GAME-CONTRACT.md](GAME-CONTRACT.md) §2.3 "useGameSync"; open gaps are
+tracked in #2750.
 
 **Deferred create and killed sessions (#2654).** `startGame()` records the
 session on the device only. `SyncWorker` sends `POST /games` and the session's
@@ -194,14 +266,29 @@ Every orphan abandon goes through `completeGame()` (a bare `abandoned`,
 for it. A pending record saved by an older build has no `started` field: it
 counts as started if its create was sent (`startedSynced`), it has an event
 beyond `game_started`, or it was finished; otherwise it is an untouched session
-and is discarded. The server's 24 h stale-session sweep (#2621) remains the
-fallback for devices that never report back; a device's later completion
-replaces a swept row. An event batch the server refuses with 409 "Game is
-already completed." is dropped quietly — no Sentry error, no dead-letter.
+and is discarded. The server's stale-session sweep (below) remains the
+fallback for devices that never report back.
 
-**Memory cap: 2 MB total queue size.** When the queue exceeds this, eviction
-kicks in (see §5). If 2 MB turns out to be too small in practice, that is a
-signal to revisit _how_ we queue — not a signal to bump the cap.
+**Stale-session sweep (#2621, #2519 decisions 9 and 15).** A row still open
+24 h after `started_at` was left by a killed app that never reported back.
+`sweep_stale_games` (`backend/games/service.py`) closes the caller's own such
+rows as `abandoned` — `completed_at = started_at + 24 h`, `duration_ms` left
+NULL, `metadata.swept = true` — in one UPDATE. It runs **on read, per player**,
+at the start of `GET /stats/me` and `GET /games/me`; there is no scheduler, so
+a player who never calls those again keeps their open rows (boards never read
+open rows). A sweep failure is logged and the read goes on unswept. A device's
+later real completion replaces a swept row (`complete_game`), and an event
+batch for it that the server refuses with 409 "Game is already completed." is
+dropped quietly by `SyncWorker` — no Sentry error, no dead-letter.
+
+**Queue cap.** `eventStore` holds at most 5,000 rows or 5 MB
+(`MAX_ROWS` / `MAX_SIZE_BYTES` in `game/_shared/eventQueueConfig.ts`) and drops
+rows older than 7 days; over the cap it evicts (see §5, and the
+`eventStore.ts` header for the order it implements: lifecycle rows are
+evicted last, everything else oldest-first). Pending games and their
+completion summaries live in `PendingGamesStore`, not in this queue. If the
+cap turns out to be too small in practice, that is a signal to revisit _how_
+we queue — not a signal to bump the cap.
 
 ## 5. Eviction policy
 
@@ -271,14 +358,33 @@ Do not silently introduce server-authoritative single-player for a new game.
 Existing games that don't fit the policy are **not** critiqued here. They are
 tracked in:
 
-- **#893 — Trouble-game migrations.** Yacht (server-authoritative SP), Blackjack
-  (two rule engines), Starswarm and Freecell (in-memory leaderboards).
+- **#893 — Trouble-game migrations.** Its original findings no longer hold in
+  the code: Yacht's server-side gameplay routes were deleted (#896) and its
+  score routes with #2630 — `backend/yacht/` is a `GameModule` descriptor only;
+  Blackjack's server-side engine was deleted (#897), so its one rule engine is
+  `frontend/src/game/blackjack/engine.ts`; and Star Swarm's and FreeCell's
+  leaderboards are not in memory — both rank finished `games` rows on the
+  generic boards (#2626, #2632).
 - **#894 — Shared TS rule engine epic.** Audit existing engines for headlessness
-  ahead of multi-player work, including Mahjong (WIP, #870) before its engine
-  ships.
+  ahead of multi-player work, including Mahjong's
+  (`frontend/src/game/mahjong/engine.ts`).
 
 Both issues note that "first step is further research" — the snapshots in those
 issues are not authoritative.
+
+**Leaderboards.** Every game's board is served by the generic routes
+(`GET /games/leaderboard/{game_type}`, `backend/games/leaderboard.py`), from a
+`board` each `GameModule` declares; no game has its own leaderboard store. The
+rules are the same for every game — most importantly **one entry per player**
+(#2519 decision 12): rows are grouped by player (`session_id`, the install,
+until accounts in #1047) and only each player's best row is listed and
+ranked, so a replay that doesn't beat it never appears. Only players with a
+display name rank (decisions 17–18). The rules and routes are in
+[GAME-CONTRACT.md — Leaderboard routes](GAME-CONTRACT.md#leaderboard-routes-2618);
+each game's board (metric, direction, partitions, cap) is in §1.3 there and
+in its own page under [`docs/games/`](games/). The legacy per-game score and
+leaderboard routes (e.g. `POST /solitaire/score`, `GET /solitaire/scores`,
+`GET /freecell/leaderboard`) stay only for installed v1.0 builds until #2644.
 
 ## 10. Premium entitlements
 
@@ -504,14 +610,22 @@ One challenge a day, three goals — **Daily Word always, plus two other games**
 the thread that makes the arcade one product rather than a folder of games (App
 Review guideline 4.2). Backend: `backend/daily_challenge/`.
 
-- **Stateless, like Daily Word.** No table, no migration. Today's challenge is
-  derived from `date.toordinal()` and `DAILY_CHALLENGE_SALT` for the player's
-  **local** date (`tz_offset_minutes`, the same convention as
-  `/daily-word/today`): the non-Daily-Word games sit in a salt-shuffled rotation
-  and each day steps two places along it, so the day's two games never repeat the
-  previous day's. The salt is a per-environment secret, so the schedule cannot be
-  read off the public repo. (The day ordinal, not Daily Word's `YYYYMMDD`
-  number, whose jumps at month ends can repeat a pick.) Tiers rotate by day too.
+- **Derived, then frozen (#2493).** A day's challenge is derived from
+  `date.toordinal()` and `DAILY_CHALLENGE_SALT` for the player's **local** date
+  (`tz_offset_minutes`, the same convention as `/daily-word/today`): the
+  non-Daily-Word games sit in a salt-shuffled rotation and each day steps two
+  places along it, so the day's two games never repeat the previous day's. The
+  salt is a per-environment secret, so the schedule cannot be read off the
+  public repo. (The day ordinal, not Daily Word's `YYYYMMDD` number, whose jumps
+  at month ends can repeat a pick.) Tiers rotate by day too. That derivation
+  (`template_for` in `definitions.py`) is only the policy for a day nobody has
+  seen yet: the first request for a (date, slate) pair writes the result to the
+  `daily_challenge_days` table (`DailyChallengeDay` in `backend/db/models.py`,
+  migration `0019_add_daily_challenge_days`), and every later request reads that
+  row back (`backend/daily_challenge/schedule.py`). Retuning the goal pool, a
+  target or the salt therefore only changes days not yet frozen. Goals are
+  stored as self-contained specs, so a frozen day survives a goal leaving the
+  pool.
 - **Completion is a read-side view.** `GET /daily-challenge/status` runs one
   query over the session's own `games` rows finished inside the local day and
   evaluates the goals in Python. It is the data `PATCH /games/{id}/complete`
@@ -541,9 +655,10 @@ Review guideline 4.2). Backend: `backend/daily_challenge/`.
   game as owned (§10.4) but follows the same rule, so dev never reports a slate
   production would not. Premium-only goal specs are post-launch (#2458), so today
   the two templates are identical, every session resolves to the free slate —
-  override or not — and no query runs. The slate is live: nothing pins it for the
-  day, so a mid-day entitlement change swaps the challenge on the next `/status`
-  (the feature is stateless by design). Two guards keep the static pool honest: a test
+  override or not — and no query runs. The slate choice is live: each slate's
+  template is frozen per day, but which slate a session gets is not pinned, so
+  a mid-day entitlement change swaps the challenge on the next `/status`. Two
+  guards keep the static pool honest: a test
   fails if any free-pool game is premium in `game_types` (the pool would then
   name a game a free player cannot open), and the free pool is disjoint from the
   premium slugs, which a store build hides (§10.7).
@@ -552,25 +667,25 @@ Review guideline 4.2). Backend: `backend/daily_challenge/`.
   list therefore comes from `/status`, which can differ from `/today` in the goals
   themselves, not just their completion — a client must not build its goals from
   `/today` and only read completion off `/status` (#2455).
-- **Streak: replayed, not stored (#2456).** `streak_days` on `GET /stats/me` is the
-  number of consecutive local days with at least 2 of that day's 3 goals met — a
-  count only, no reward, no new table. It works because a past day's challenge is
-  reproducible from its date: `compute_streak` recomputes each day's template and
-  scores it with the same `evaluate_template` the live `/status` uses, so there is
-  one definition of a day and of a goal. The run ends **today** if today already has
-  2 of 3, otherwise **yesterday** (today is not failed, just unfinished). One
-  windowed query grouped by day in Python — never a query per day — plus one for the
+- **Streak: replayed over frozen days (#2456, #2493).** `streak_days` on
+  `GET /stats/me` is the number of consecutive local days with at least 2 of that
+  day's 3 goals met — a count only, no reward, and no streak table: the streak
+  itself is not stored. `compute_streak` (`backend/daily_challenge/streak.py`)
+  reads each past day's frozen template (`schedule.get_or_create_templates`; a day
+  never requested before is frozen on that call) and scores it with the same
+  `evaluate_template` the live `/status` uses, so there is one definition of a day
+  and of a goal. The run ends **today** if today already has 2 of 3, otherwise
+  **yesterday** (today is not failed, just unfinished). One windowed query over the
+  player's games grouped by day in Python — never a query per day — plus one query
+  per slate for the window's frozen templates, and the premium slate's and the
   session's entitlements only when some day's free and premium templates differ
   (not until #2458). Capped at 60 days: a value of 60 means "at least 60", shown as
   "60+". `/stats/me` takes the same optional `tz_offset_minutes` as
   `/daily-challenge/*`; old clients omit it and get UTC days. A streak failure is
   logged and returns 0 rather than taking down the XP/level fields the same response
   carries. Owner decision, 2026-09-20 — not in the original release plan.
-  Accepted approximations: **replay is retroactive re-scoring** — history is not
-  stored, so changing a goal target, adding premium goal specs (#2458) or changing
-  `DAILY_CHALLENGE_SALT` shifts every streak (treat the salt as permanent once
-  players have streaks); past days use the session's _current_ entitlements, so once
-  premium goals exist a purchase or refund re-scores the window under the other
+  Accepted approximations: past days use the session's _current_ entitlements, so
+  once premium goals exist a purchase or refund re-scores the window under the other
   slate; one UTC offset covers the whole window, so a daylight-saving change moves a
   game finished within an hour of local midnight onto the neighbouring day; and
   history is client-reported (`completed_at` is accepted up to a year back), so a
@@ -605,3 +720,26 @@ Each tier values a move as **points banked now + λ × the optimal expected poin
 Head to head, Hard beats Easy ~92% and Medium ~72% of the time. The nightly calibration gate (`frontend/src/game/yacht/sim/gate.ts`, `.github/workflows/yacht-sim-gate.yml`) guards these numbers, and the regret gate checks each tier's per-decision quality against the oracle ([TESTING.md](TESTING.md)).
 
 **Runtime.** The table ships compressed (~0.9 MB of JS) and decodes on first use (~0.3 s on a dev machine; slower on-device). `GameScreen` calls `preloadOracleTable()` when a VS game's difficulty is set, so the first AI turn doesn't pay for it. After that a decision is a few milliseconds.
+
+## 14. Result, leaderboard and stats screens
+
+Where a recorded game shows up in the app (#2519 plan §4.4). Each surface has
+one job and reads the server; none of them writes a score.
+
+| Surface                                                   | Job                                | What it reads                                                                                                                                                                                                                                                                                                                                             |
+| --------------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Result card** (`components/shared/GameResultModal.tsx`) | The end of _this_ game             | Its rank line from `useLeaderboardSubmit(sessionBoardAdapter(game))`: `submit({ gameId })` asks `GET /games/{id}/rank` (#2677) and shows "#N on the leaderboard" or "Your best: #N", asks once for a display name, or shows nothing for a game on no board. A "View leaderboard" link appears when the game has an openable board (`useLeaderboardLink`). |
+| **Leaderboard** (`screens/LeaderboardScreen.tsx`, #2633)  | Top players of _one_ game's board  | `GET /games/leaderboard/{game_type}`: one entry per player, with a partition picker where the board has partitions. The player's own row is highlighted (`is_me`); when it is outside the list, their best is pinned below with its exact rank (`me`). Opened from the result card and the game's ⋯ menu.                                                 |
+| **Game stats** (`screens/GameStatsScreen.tsx`, #2635)     | _My_ history in _this_ game        | `GET /stats/me` → `by_game[gameType]`. The last response is cached in memory for the app session, keyed by session id (`hooks/useMyStats.ts`), and cleared by Settings → Delete my data (`clearMyStatsCache`). Blackjack links to its on-device run history.                                                                                              |
+| **Scorecard** (`screens/ScorecardScreen.tsx`, #2636)      | The live view of the match in play | Game state on the device. Only Hearts, Yacht and Blackjack have one (`SCORECARD_GAMES`, `navigation/scorecards.ts`).                                                                                                                                                                                                                                      |
+| **Profile** (`screens/ProfileScreen.tsx`, #2637)          | Cross-game _personal_ summary      | `GET /stats/me`: only tiles that mean the same for every game (sessions, completed, completion rate, time played, games tried, favourite) and one row per game with that game's own best and win rate. No cross-game score. Also "Remove my name from leaderboards" (§4).                                                                                 |
+
+`GameShell` takes a required `gameType` prop and adds the ⋯ menu's "Stats"
+item itself, plus "Scorecard" for a game in `SCORECARD_GAMES`; `null` is only
+for a screen that is not one game's play screen. What each game reports and
+where the player sees it is in its page under [`docs/games/`](games/).
+
+**Testing.** Maestro is paused past v1.0 ([MAESTRO.md](MAESTRO.md)); these
+screens are checked by hand with
+[MANUAL-QA-LEADERBOARDS.md](MANUAL-QA-LEADERBOARDS.md) on iOS and Android
+builds.
