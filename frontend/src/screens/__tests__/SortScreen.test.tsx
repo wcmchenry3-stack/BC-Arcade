@@ -381,6 +381,18 @@ describe("SortScreen — leaderboard (#2633)", () => {
     });
     expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", { gameType: "sort" });
   });
+
+  it("the ⋯ menu's Stats item opens Sort's stats (#2635)", async () => {
+    const { findByText, getByTestId } = await renderScreen();
+    await findByText("Choose a Level");
+    await act(async () => {
+      await fireEvent.press(getByTestId("nav-menu"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByTestId("nav-menu-stats"));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "sort" });
+  });
 });
 
 // ---------------------------------------------------------------------------

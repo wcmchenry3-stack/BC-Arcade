@@ -1,0 +1,22 @@
+{
+  "title": "Statistiken: {{game}}",
+  "a11y.back": "Zurück zu {{game}}",
+  "tile.sessions": "Sitzungen",
+  "tile.completed": "Abgeschlossen",
+  "tile.wins": "Siege",
+  "tile.losses": "Niederlagen",
+  "tile.ties": "Unentschieden",
+  "tile.winRate": "Siegquote",
+  "tile.currentStreak": "Siegesserie",
+  "tile.bestStreak": "Beste Serie",
+  "tile.best": "Bestwert",
+  "tile.timePlayed": "Spielzeit",
+  "tile.lastPlayed": "Zuletzt gespielt",
+  "empty": "Noch keine beendeten Spiele. Beende ein Spiel, um hier deine Statistiken zu sehen.",
+  "error": "Deine Statistiken konnten nicht geladen werden.",
+  "offline": "Du bist offline. Deine Statistiken werden geladen, sobald du wieder verbunden bist.",
+  "stale": "Das sind deine zuletzt geladenen Statistiken. Sie sind möglicherweise nicht aktuell.",
+  "retry": "Wiederholen",
+  "link.leaderboard": "Bestenliste ansehen",
+  "link.runHistory": "Laufverlauf"
+}

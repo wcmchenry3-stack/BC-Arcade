@@ -296,6 +296,15 @@ describe("HeartsScreen — playing phase (no modal)", () => {
     expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", { gameType: "hearts" });
   });
 
+  it("⋯ menu Stats item opens Hearts' stats (#2635)", async () => {
+    mockNavigate.mockClear();
+    const { getByLabelText, getByText } = await renderScreen();
+    await waitFor(() => getByLabelText("More options"));
+    await fireEvent.press(getByLabelText("More options"));
+    await fireEvent.press(getByText("Stats"));
+    expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "hearts" });
+  });
+
   it("⋯ menu Edit Names item opens the rename modal", async () => {
     const { getByLabelText, getByText } = await renderScreen();
     await waitFor(() => getByLabelText("More options"));

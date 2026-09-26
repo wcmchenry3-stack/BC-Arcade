@@ -28,6 +28,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameStatsLink } from "../hooks/useGameStatsLink";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import {
   ModalActions,
@@ -118,6 +119,7 @@ export default function SudokuScreen() {
   const { submit: submitScore, reset: resetScore } = leaderboard;
   // The card's "View leaderboard" link and the ⋯ menu item (#2633) open the
   // board of the puzzle on screen, else of the picker's choice.
+  const openStats = useGameStatsLink(navigation, "sudoku");
   const openLeaderboard = useLeaderboardLink(navigation, "sudoku", {
     difficulty: state?.difficulty ?? difficulty,
     variant: state?.variant ?? variant,
@@ -518,6 +520,7 @@ export default function SudokuScreen() {
       onBack={() => navigation.popToTop()}
       onNewGame={state !== null ? handleNewGameRequest : undefined}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "sudoku" })}
+      onOpenStats={openStats}
       onOpenLeaderboard={openLeaderboard}
       rightSlot={headerRight}
       style={{

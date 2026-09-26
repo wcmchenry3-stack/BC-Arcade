@@ -1,0 +1,22 @@
+{
+  "title": "Statistiques : {{game}}",
+  "a11y.back": "Retour à {{game}}",
+  "tile.sessions": "Parties",
+  "tile.completed": "Terminées",
+  "tile.wins": "Victoires",
+  "tile.losses": "Défaites",
+  "tile.ties": "Égalités",
+  "tile.winRate": "Taux de victoire",
+  "tile.currentStreak": "Série de victoires",
+  "tile.bestStreak": "Meilleure série",
+  "tile.best": "Record",
+  "tile.timePlayed": "Temps de jeu",
+  "tile.lastPlayed": "Dernière partie",
+  "empty": "Aucune partie terminée pour l'instant. Terminez une partie pour voir vos statistiques ici.",
+  "error": "Impossible de charger vos statistiques.",
+  "offline": "Vous êtes hors ligne. Vos statistiques se chargeront à la reconnexion.",
+  "stale": "Affichage de vos dernières statistiques chargées. Elles ne sont peut-être pas à jour.",
+  "retry": "Réessayer",
+  "link.leaderboard": "Voir le classement",
+  "link.runHistory": "Historique des séries"
+}

@@ -21,6 +21,14 @@ export type LeaderboardParams = {
   refreshAfterSync?: boolean;
 };
 
+/**
+ * The shared per-game stats screen (#2635): the player's `/stats/me` figures
+ * for one game, opened from the game's ⋯ menu ("Stats").
+ */
+export type GameStatsParams = {
+  gameType: GameType;
+};
+
 export type RootStackParamList = {
   MainTabs: undefined;
 };
@@ -51,6 +59,7 @@ export type HomeStackParamList = {
   Sort: undefined;
   DailyWord: undefined;
   Leaderboard: LeaderboardParams;
+  GameStats: GameStatsParams;
   Scoreboard: {
     gameKey: "hearts" | "yacht" | "blackjack" | "twenty48" | "solitaire" | "sudoku" | "cascade";
   };

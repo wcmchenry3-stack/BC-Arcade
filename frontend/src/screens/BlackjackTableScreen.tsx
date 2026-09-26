@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
+import { useGameStatsLink } from "../hooks/useGameStatsLink";
 import { useTheme } from "../theme/ThemeContext";
 import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { useSafeBottomTabBarHeight } from "../hooks/useSafeBottomTabBarHeight";
@@ -58,6 +59,7 @@ type Props = {
 };
 
 export default function BlackjackTableScreen({ navigation }: Props) {
+  const openStats = useGameStatsLink(navigation, "blackjack");
   const { t } = useTranslation(["blackjack", "common"]);
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
@@ -229,6 +231,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       onBack={() => navigation.popToTop()}
       onNewGame={handleNewGame}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "blackjack" })}
+      onOpenStats={openStats}
       loading={!engine && loading}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >

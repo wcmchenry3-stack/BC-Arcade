@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable } from "react-native";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
+import { useGameStatsLink } from "../hooks/useGameStatsLink";
 import { useTheme } from "../theme/ThemeContext";
 import { placeBet as enginePlaceBet, toViewState, DEFAULT_RULES } from "../game/blackjack/engine";
 import { useBlackjackGame } from "../game/blackjack/BlackjackGameContext";
@@ -19,6 +20,7 @@ type Props = {
 };
 
 export default function BlackjackBettingScreen({ navigation }: Props) {
+  const openStats = useGameStatsLink(navigation, "blackjack");
   const { t } = useTranslation(["blackjack", "common"]);
   const { colors } = useTheme();
   const { engine, loading, error, apply, handleRulesChange, handlePlayAgain, handleTableSelect } =
@@ -63,6 +65,7 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
       onBack={() => navigation.popToTop()}
       onNewGame={handlePlayAgain}
       onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "blackjack" })}
+      onOpenStats={openStats}
       loading={!engine && loading}
     >
       {/* Full-width run HUD — shown once a table is selected */}

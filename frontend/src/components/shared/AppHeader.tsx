@@ -32,6 +32,11 @@ export interface AppHeaderProps {
   /** When provided, shows the ⋯ menu with a Scoreboard item. See GH #711. */
   onOpenScoreboard?: () => void;
   /**
+   * When provided, shows the ⋯ menu with a Stats item (#2635): the game's
+   * shared stats screen. Pass `useGameStatsLink`'s result.
+   */
+  onOpenStats?: () => void;
+  /**
    * When provided, shows the ⋯ menu with a Leaderboard item (#2633). Pass
    * `useLeaderboardLink`'s result: undefined for games without an openable board.
    */
@@ -51,6 +56,7 @@ export function AppHeader({
   requireBack = false,
   backAccessibilityLabel,
   onOpenScoreboard,
+  onOpenStats,
   onOpenLeaderboard,
   onNewGame,
   onLevelSelect,
@@ -66,6 +72,7 @@ export function AppHeader({
   const totalHeight = APP_HEADER_HEIGHT + insets.top;
   const showMenu =
     !!onOpenScoreboard ||
+    !!onOpenStats ||
     !!onOpenLeaderboard ||
     !!onNewGame ||
     !!onLevelSelect ||
@@ -110,6 +117,11 @@ export function AppHeader({
   const handleMenuScoreboard = () => {
     setMenuOpen(false);
     onOpenScoreboard?.();
+  };
+
+  const handleMenuStats = () => {
+    setMenuOpen(false);
+    onOpenStats?.();
   };
 
   const handleMenuLeaderboard = () => {
@@ -296,6 +308,28 @@ export function AppHeader({
               />
               <Text style={[styles.itemLabel, { color: colors.text }]}>
                 {t("common:overflow.menu.scoreboard")}
+              </Text>
+            </Pressable>
+          )}
+
+          {!!onOpenStats && (
+            <Pressable
+              onPress={handleMenuStats}
+              accessibilityRole="menuitem"
+              testID="nav-menu-stats"
+              style={(state) => [
+                styles.dropdownItem,
+                state.pressed && { backgroundColor: colors.surfaceAlt },
+              ]}
+            >
+              <MaterialIcons
+                name="insights"
+                size={18}
+                color={colors.accent}
+                style={styles.itemIcon}
+              />
+              <Text style={[styles.itemLabel, { color: colors.text }]}>
+                {t("common:overflow.menu.stats")}
               </Text>
             </Pressable>
           )}

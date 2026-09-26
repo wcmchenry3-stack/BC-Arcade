@@ -545,3 +545,32 @@ describe("FreeCellScreen — result card (#2508)", () => {
     expect(mockGetGameRank).not.toHaveBeenCalled();
   });
 });
+
+describe("FreeCellScreen — ⋯ menu (#2635)", () => {
+  let reduceMotion: jest.SpyInstance;
+
+  beforeEach(() => {
+    reduceMotion = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      jest.runAllTimers();
+    });
+    reduceMotion.mockRestore();
+  });
+
+  it("the Stats item opens FreeCell's stats", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(null);
+    const { getByLabelText, getByText } = await renderScreen();
+    await waitFor(() => getByLabelText("More options"));
+    mockNavigate.mockClear();
+    await act(async () => {
+      await fireEvent.press(getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByText("Stats"));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "freecell" });
+  });
+});

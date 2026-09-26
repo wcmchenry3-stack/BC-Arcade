@@ -40,6 +40,7 @@
   "deck.selected": "已选择{{name}}",
   "overflow.menu.label": "更多选项",
   "overflow.menu.scoreboard": "排行榜",
+  "overflow.menu.stats": "统计",
   "overflow.menu.leaderboard": "排行榜",
   "overflow.menu.newGame": "新游戏",
   "overflow.menu.levelSelect": "选择关卡",

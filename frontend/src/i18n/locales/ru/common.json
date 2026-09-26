@@ -40,6 +40,7 @@
   "deck.selected": "{{name}} выбрана",
   "overflow.menu.label": "Ещё опции",
   "overflow.menu.scoreboard": "Таблица очков",
+  "overflow.menu.stats": "Статистика",
   "overflow.menu.leaderboard": "Рейтинг",
   "overflow.menu.newGame": "Новая игра",
   "overflow.menu.levelSelect": "Выбор уровня",

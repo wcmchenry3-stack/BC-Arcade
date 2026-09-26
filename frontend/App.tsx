@@ -219,6 +219,7 @@ const LazyMahjongLayoutDetailScreen = withSuspense(
 );
 const LazyDailyWordScreen = withSuspense(LazyScreens.DailyWord, "daily_word");
 const LazyLeaderboardScreen = withSuspense(LazyScreens.Leaderboard, "leaderboard");
+const LazyGameStatsScreen = withSuspense(LazyScreens.GameStats, "game_stats");
 const PREMIUM_TAB_SCREENS: Record<PremiumTabName, React.ComponentType<object>> = {
   Ranks: LazyLeaderboardScreen,
 };
@@ -255,6 +256,8 @@ function LobbyStack() {
       {/* One game's board (#2633). Only games with an openable board link
           here (useLeaderboardLink); the screen shows none for any other. */}
       <HomeStack.Screen name="Leaderboard" component={LazyLeaderboardScreen} />
+      {/* One game's stats from /stats/me (#2635), from every game's ⋯ menu. */}
+      <HomeStack.Screen name="GameStats" component={LazyGameStatsScreen} />
       <HomeStack.Screen name="Scoreboard" component={LazyScoreboardScreen} />
     </HomeStack.Navigator>
   );

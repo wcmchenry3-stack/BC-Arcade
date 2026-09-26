@@ -56,6 +56,7 @@ import {
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameStatsLink } from "../hooks/useGameStatsLink";
 import { PillButton } from "../components/shared/PillButton";
 import GameResultModal from "../components/shared/GameResultModal";
 import GameCanvas from "../components/mahjong/GameCanvas";
@@ -324,6 +325,7 @@ export default function MahjongScreen() {
   const leaderboard = useLeaderboardSubmit(mahjongBoard);
   const { submit: submitRank, reset: resetSubmission } = leaderboard;
   // The card's "View leaderboard" link and the ⋯ menu item (#2633).
+  const openStats = useGameStatsLink(navigation, "mahjong");
   const openLeaderboard = useLeaderboardLink(navigation, "mahjong");
   const [stats, setStats] = useState<MahjongStats>({
     bestScore: 0,
@@ -1000,6 +1002,7 @@ export default function MahjongScreen() {
         requireBack
         loading={false}
         onBack={() => navigation.popToTop()}
+        onOpenStats={openStats}
         onOpenLeaderboard={openLeaderboard}
         style={{
           paddingBottom: Math.max(insets.bottom, 16),
@@ -1031,8 +1034,9 @@ export default function MahjongScreen() {
       }}
       onNewGame={startNewGame}
       onLevelSelect={goToLevelSelect}
-      // No Scoreboard item (#2627): it led to an untranslated fallback. #2635
-      // brings it back, pointing at the game's stats screen.
+      // No Scoreboard item (#2627): it led to an untranslated fallback. Stats
+      // opens the shared stats screen instead (#2635).
+      onOpenStats={openStats}
       onOpenLeaderboard={openLeaderboard}
       rightSlot={
         <View style={styles.hudGroup}>

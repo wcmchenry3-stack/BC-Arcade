@@ -29,6 +29,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameStatsLink } from "../hooks/useGameStatsLink";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import {
   ModalActions,
@@ -147,6 +148,7 @@ export default function SolitaireScreen() {
   const leaderboard = useLeaderboardSubmit(solitaireBoard);
   const { submit: submitScore, reset: resetSubmission } = leaderboard;
   // The card's "View leaderboard" link and the ⋯ menu item (#2633).
+  const openStats = useGameStatsLink(navigation, "solitaire");
   const openLeaderboard = useLeaderboardLink(navigation, "solitaire");
 
   const { play: playCardFlip } = useSound("solitaire.cardFlip", SOLITAIRE_SOUNDS);
@@ -810,6 +812,7 @@ export default function SolitaireScreen() {
         }}
         onNewGame={resetToPreGame}
         onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "solitaire" })}
+        onOpenStats={openStats}
         onOpenLeaderboard={openLeaderboard}
         rightSlot={
           <View style={styles.headerBtnRow}>

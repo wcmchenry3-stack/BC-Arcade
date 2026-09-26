@@ -746,3 +746,19 @@ describe("SudokuScreen — leaderboard (#2633)", () => {
     });
   });
 });
+
+describe("SudokuScreen — stats (#2635)", () => {
+  it("the ⋯ menu's Stats item opens Sudoku's stats", async () => {
+    await saveGame(loadPuzzle("hard", "mini", () => 0));
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    mockNavigate.mockClear();
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByText("Stats"));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "sudoku" });
+  });
+});

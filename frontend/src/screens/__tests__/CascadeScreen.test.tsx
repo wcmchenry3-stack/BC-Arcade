@@ -714,3 +714,18 @@ describe("CascadeScreen — result card (#2515)", () => {
     expect(submission.onRetry).toBeUndefined();
   });
 });
+
+describe("CascadeScreen — ⋯ menu (#2635)", () => {
+  it("passes a Stats item that opens Cascade's stats", async () => {
+    const renderer = await renderScreen();
+    const shell = renderer.root.findAll(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (node: any) => typeof node.props.onOpenStats === "function"
+    )[0];
+    mockNavigate.mockClear();
+    await act(() => {
+      shell?.props.onOpenStats();
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "cascade" });
+  });
+});

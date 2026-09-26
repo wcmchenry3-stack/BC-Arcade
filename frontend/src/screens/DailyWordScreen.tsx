@@ -40,6 +40,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { DEV_OVERLAY_BG } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
+import { useGameStatsLink } from "../hooks/useGameStatsLink";
 import GameResultModal from "../components/shared/GameResultModal";
 import {
   initialState,
@@ -448,6 +449,7 @@ export default function DailyWordScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
+  const openStats = useGameStatsLink(navigation, "daily_word");
 
   const [state, setState] = useState<DailyWordState | null>(null);
   // Always holds the latest state — read by the async submit, the session
@@ -985,6 +987,7 @@ export default function DailyWordScreen() {
       title={t("game.title")}
       requireBack
       onBack={() => navigation.popToTop()}
+      onOpenStats={openStats}
       error={loadError}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >

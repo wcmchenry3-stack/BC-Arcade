@@ -199,6 +199,18 @@ describe("GameScreen", () => {
     });
     expect(mockNavigation.navigate).toHaveBeenCalledWith("Leaderboard", { gameType: "yacht" });
   });
+
+  it("⋯ menu Stats item opens Yacht's stats (#2635)", async () => {
+    (mockNavigation.navigate as jest.Mock).mockClear();
+    const { getByLabelText, getByText } = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(getByText("Stats"));
+    });
+    expect(mockNavigation.navigate).toHaveBeenCalledWith("GameStats", { gameType: "yacht" });
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -94,6 +94,19 @@ describe("BlackjackBettingScreen — header / navigation", () => {
     });
     expect(nav.navigate).toHaveBeenCalledWith("Scoreboard", { gameKey: "blackjack" });
   });
+
+  it("⋯ menu Stats item opens Blackjack's stats (#2635)", async () => {
+    const nav = mockNav();
+    await renderScreen(nav);
+    await screen.findByText("Deal");
+    await act(async () => {
+      await fireEvent.press(screen.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByText("Stats"));
+    });
+    expect(nav.navigate).toHaveBeenCalledWith("GameStats", { gameType: "blackjack" });
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -460,6 +460,7 @@ Use this checklist when adding a new game. Each item links to the file to create
 - [ ] **`frontend/src/api/vocab.ts`** — committed generated file includes the new `GameType` value
 - [ ] **`frontend/src/game/mygame/types.ts`** — per-game state and action types extending `GameSession<TState, TAction>`
 - [ ] **Screen** — uses `GameShell` and `useGameSync`; passes ESLint import zone check
+- [ ] **Stats menu item** (#2635) — every `GameShell` with a menu passes `onOpenStats`, the callback from `useGameStatsLink(navigation, "<game>")`, which opens the shared `GameStats` screen (`/stats/me` for that game); list the screen in `GAME_SCREENS` in `frontend/src/screens/__tests__/gameStatsCoverage.test.tsx`
 - [ ] **`noUncheckedIndexedAccess`** clean — no suppression comments
 - [ ] **Icon assets are WebP** — any new icons added to `assets/fruit-icons/` or `assets/celestial-icons/` must be converted before committing: `python frontend/scripts/convert_icons_to_webp.py <dir>`. Raw PNGs in non-exempt asset directories will fail CI (`assetTransparency.test.ts`).
 

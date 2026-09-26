@@ -905,6 +905,22 @@ describe("Twenty48Screen — result card (#2513)", () => {
     expect(nav.navigate).toHaveBeenCalledWith("Leaderboard", { gameType: "twenty48" });
   });
 
+  it("the ⋯ menu's Stats opens 2048's stats (#2635)", async () => {
+    const nav = mockNav();
+    const r = await renderScreen(nav);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(r.getByLabelText("More options")).toBeTruthy());
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByText("Stats"));
+    });
+    expect(nav.navigate).toHaveBeenCalledWith("GameStats", { gameType: "twenty48" });
+  });
+
   it("ignores moves while the win card is up, then accepts them after Keep Playing (#2550 review)", async () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(WON_STATE);
     const { getByTestId, getByLabelText } = await mountAndSettle();

@@ -306,6 +306,19 @@ describe("SolitaireScreen — new game confirmation", () => {
     });
     expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", { gameType: "solitaire" });
   });
+
+  it("the ⋯ menu's Stats opens Solitaire's stats (#2635)", async () => {
+    const api = await mount();
+    await chooseDraw1(api);
+    mockNavigate.mockClear();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByText("Stats"));
+    });
+    expect(mockNavigate).toHaveBeenCalledWith("GameStats", { gameType: "solitaire" });
+  });
 });
 
 // ---------------------------------------------------------------------------

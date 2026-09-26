@@ -9,6 +9,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameStatsLink } from "../hooks/useGameStatsLink";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { PillButton } from "../components/shared/PillButton";
 import FreeCellBoard from "../components/freecell/FreeCellBoard";
@@ -83,6 +84,7 @@ export default function FreeCellScreen() {
   const leaderboard = useLeaderboardSubmit(freecellBoard);
   const { submit: submitScore, reset: resetSubmission } = leaderboard;
   // The card's "View leaderboard" link and the ⋯ menu item (#2633).
+  const openStats = useGameStatsLink(navigation, "freecell");
   const openLeaderboard = useLeaderboardLink(navigation, "freecell");
 
   // #2452 — record each game as a per-session `games` row so FreeCell earns Arcade
@@ -355,6 +357,7 @@ export default function FreeCellScreen() {
         paddingRight: Math.max(insets.right, 12),
       }}
       onNewGame={handleNewGame}
+      onOpenStats={openStats}
       onOpenLeaderboard={openLeaderboard}
       rightSlot={
         <View style={styles.headerBtnRow}>

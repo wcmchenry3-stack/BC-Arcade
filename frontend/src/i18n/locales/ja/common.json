@@ -40,6 +40,7 @@
   "deck.selected": "{{name}}が選択されました",
   "overflow.menu.label": "その他のオプション",
   "overflow.menu.scoreboard": "スコアボード",
+  "overflow.menu.stats": "統計",
   "overflow.menu.leaderboard": "ランキング",
   "overflow.menu.newGame": "新しいゲーム",
   "overflow.menu.levelSelect": "レベル選択",
