@@ -1366,7 +1366,8 @@ export function initStarSwarm(
   canvasH: number,
   wave = 1,
   seed = 42,
-  difficulty: DifficultyTier = "LieutenantJG"
+  difficulty: DifficultyTier = "LieutenantJG",
+  stragglerEnabled?: boolean
 ): StarSwarmState {
   seedRng(seed);
 
@@ -1383,7 +1384,7 @@ export function initStarSwarm(
     hullFlashTimer: 0,
   };
 
-  return buildWaveState(canvasW, canvasH, wave, player, 0, 0, difficulty);
+  return buildWaveState(canvasW, canvasH, wave, player, 0, 0, difficulty, stragglerEnabled);
 }
 
 function buildWaveState(
@@ -1394,6 +1395,7 @@ function buildWaveState(
   score: number,
   bonusLivesAwarded = 0,
   difficulty: DifficultyTier = "LieutenantJG",
+  stragglerOverride: boolean | undefined = undefined,
   // #2352 follow-up: bullets already in flight when a wave clears carry into the next wave
   // instead of vanishing (a real missile doesn't disappear because the ship that fired it
   // did). Empty by default for a fresh game start (initStarSwarm) — only startNextWave()
@@ -1425,8 +1427,9 @@ function buildWaveState(
   const powerUps: PowerUp[] = [];
   const dropJitterTarget = triggerKills(wave) + Math.floor(rng() * 5) - 2;
   const paramScale = difficultyParamScale(difficulty);
-  // Ensign gets gentler AI; every tier above gets straggler aggression
-  const stragglerEnabled = difficulty !== "Ensign";
+  // Ensign gets gentler AI; every tier above gets straggler aggression.
+  // stragglerOverride lets the dev panel disable it regardless of difficulty.
+  const stragglerEnabled = stragglerOverride ?? difficulty !== "Ensign";
 
   // Reset invincibility on each new wave so same-tick hit state never carries forward
   const wavePlayer: Player = { ...player, invincibleTimer: 0 };
@@ -3026,6 +3029,7 @@ function startNextWave(state: StarSwarmState): StarSwarmState {
     state.score,
     state.bonusLivesAwarded,
     state.difficulty,
+    state.stragglerEnabled,
     // In-flight bullets survive the wave boundary instead of vanishing. Enemy bullets are
     // marked harmless (see Bullet.harmless): the ship the player was flying already won this
     // wave, so a shot fired at it a moment before the last enemy died can't retroactively
