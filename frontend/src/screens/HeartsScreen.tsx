@@ -388,6 +388,13 @@ export default function HeartsScreen() {
           await delay(400);
           if (unmountedRef.current) return;
 
+          // Read the latest committed React state after the await. If the game was
+          // reset mid-loop (handleStartGame sets loopActiveRef=false and a fresh
+          // non-null state), our stale card is no longer in that state's hands —
+          // bail rather than throwing "Invalid play" inside the state write.
+          const latestState = gameStateRef.current;
+          if (!latestState || latestState.currentPlayerIndex !== s.currentPlayerIndex) return;
+
           const playerIndex = s.currentPlayerIndex;
           const card = selectCardToPlay(
             s.playerHands[playerIndex] as Card[],
@@ -410,12 +417,12 @@ export default function HeartsScreen() {
               trickLogBufferRef.current.push(buildDebugTrick(completedTrick, s.currentLeaderIndex));
             }
           }
-          // Use a functional updater so any concurrent setGameState calls that
-          // land during the await (events cleanup, future state fields) are not
-          // overwritten by a stale snapshot. The local `s` is still advanced
-          // above for the AI's own decision-making in subsequent iterations.
-          setGameState((prev) => (prev ? playCard(prev, playerIndex, card) : null));
-          // Clear events on the local copy for the same reason as before.
+          // Apply the card play on top of the latest React state, with events
+          // cleared first so prior-turn events don't accumulate in prev and cause
+          // useGameEvents to re-fire already-processed handlers (e.g. duplicate
+          // heartsBroken animation). The local `s` is still advanced above for the
+          // AI's own decision-making in subsequent iterations.
+          setGameState(playCard({ ...latestState, events: [] as HeartsState["events"] }, playerIndex, card));
           s = { ...s, events: [] };
 
           if (completedTrick && s.phase === "playing") {

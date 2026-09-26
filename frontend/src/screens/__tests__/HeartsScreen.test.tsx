@@ -406,14 +406,14 @@ describe("HeartsScreen — AI loop frozen regression (race condition)", () => {
     await waitFor(() => expect(getByText("Hand Complete")).toBeTruthy());
   });
 
-  it("uses a functional setGameState updater so concurrent state changes survive (#2705)", async () => {
+  it("reads gameStateRef.current as the state-write base so concurrent changes survive (#2705)", async () => {
     // With the fix, each AI move calls playCard twice: once locally (to advance
-    // the AI's working copy `s`) and once inside setGameState(prev => playCard(prev, ...))
-    // for React state. This double-call is the observable signal that the functional
-    // updater is in use; it ensures any setGameState call that lands concurrently
-    // during await delay() — such as the events cleanup from useGameEvents.onClear,
-    // or future per-game state fields — is applied on top of the latest state rather
-    // than overwritten by a stale snapshot.
+    // the AI's working copy `s`) and once to compute the state write on top of
+    // gameStateRef.current (cleared of prior events to avoid re-firing handlers).
+    // This double-call is the observable signal that the fix is in place; it
+    // ensures any setGameState that lands concurrently during await delay() —
+    // such as the events cleanup from useGameEvents.onClear — is incorporated
+    // rather than overwritten by a stale snapshot.
     //
     // 3 AI moves × 2 playCard calls each = 6 total. The old direct setGameState(s)
     // would produce 3, causing this test to fail and expose the regression.
