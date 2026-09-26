@@ -379,7 +379,9 @@ export function ResultCard({
 
       {detail ? <View style={styles.detail}>{detail}</View> : null}
 
-      {submission ? <SubmissionLine submission={submission} colors={colors} /> : null}
+      {submission ? (
+        <SubmissionLine submission={submission} colors={colors} testID={`${testID}-submission`} />
+      ) : null}
       {onViewLeaderboard ? (
         <Pressable
           testID={`${testID}-leaderboard`}
@@ -468,7 +470,20 @@ function Hero({
   );
 }
 
-function SubmissionLine({ submission, colors }: { submission: ResultSubmission; colors: Colors }) {
+/**
+ * The line's testID is `${testID}-${state}`: `saving`, `ranked` (saved, with
+ * a "#N" rank), `saved` (saved, no rank), `offline` or `error`. Native E2E
+ * flows (Maestro, #2643) wait on a state without matching translated copy.
+ */
+function SubmissionLine({
+  submission,
+  colors,
+  testID,
+}: {
+  submission: ResultSubmission;
+  colors: Colors;
+  testID: string;
+}) {
   const { t } = useTranslation("result");
   const { status, rank, isBest, playerName, onProvideName, onRetry } = submission;
 
@@ -494,8 +509,10 @@ function SubmissionLine({ submission, colors }: { submission: ResultSubmission; 
   let icon: IconName = "check";
   let text: string;
   let color = colors.textMuted;
+  let state: string = status;
   switch (status) {
     case "saved":
+      if (rank != null) state = "ranked";
       // The rank is always the player's best entry's (#2633): this game's
       // placing when it is that entry, else "Your best: #N".
       text =
@@ -517,12 +534,14 @@ function SubmissionLine({ submission, colors }: { submission: ResultSubmission; 
     case "submitting":
       icon = "cloud-upload-outline";
       text = t("submission.saving");
+      state = "saving";
       break;
   }
 
   return (
     <View style={styles.submission}>
       <View
+        testID={`${testID}-${state}`}
         style={styles.submissionLine}
         accessible
         accessibilityLiveRegion="polite"
