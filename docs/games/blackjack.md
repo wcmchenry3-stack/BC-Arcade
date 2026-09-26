@@ -82,5 +82,4 @@ Tier TBD. If free: no entitlement check. If premium: requires a valid entitlemen
 
 ## Known Issues / Limitations
 
-- Tracked in issue #893 (two rule engines — migration to single TS engine in progress)
 - #2745: the app sends no `final_score`, so Stats' "Best" (`best_chips`) and `current_chips` stay empty (see [Scoring](#scoring-persistence))

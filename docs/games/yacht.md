@@ -72,5 +72,4 @@ Tier TBD. If premium: requires a valid entitlement JWT. Offline play continues w
 
 ## Known Issues / Limitations
 
-- Tracked in issue #893 (server-authoritative SP migration)
 - AI difficulty tuning is ongoing

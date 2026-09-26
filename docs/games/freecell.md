@@ -61,4 +61,4 @@ Tier TBD. If free: no entitlement check.
 
 ## Known Issues / Limitations
 
-- Tracked in issue #893 (in-memory leaderboard migration)
+- None tracked at this time.
