@@ -7,6 +7,7 @@
  * reported as production and launch-day crash-free numbers meant nothing.
  */
 
+import { Platform } from "react-native";
 import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
 
 export type SentryEnvironment = "production" | "development";
@@ -29,8 +30,11 @@ export function resolveSentryEnvironment(isDev: boolean = __DEV__): string {
  * Test-hooks builds (CI smoke, Maestro) never report. `httpClient` gates its
  * `captureMessage` calls on the test build but not `captureException`, so the
  * only complete gate is not initialising at all.
+ * Expo Web is an unmaintained secondary target; its Sentry noise is suppressed
+ * by never initialising at all (#2716).
  */
-export function shouldInitSentry(): boolean {
+export function shouldInitSentry(platformOS: string = Platform.OS): boolean {
+  if (platformOS === "web") return false;
   return !areTestHooksEnabled();
 }
 
