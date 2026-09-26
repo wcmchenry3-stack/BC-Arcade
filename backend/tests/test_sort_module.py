@@ -11,7 +11,9 @@ would dead-letter the solve, so every current one must pass.
 
 from __future__ import annotations
 
+import itertools
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -120,10 +122,19 @@ async def _player(name: str | None = None) -> str:
     return sid
 
 
+# Ties on level rank by completed_at (#2746). Back-to-back requests can get
+# the same server now(), and a tie on that falls back to the random game id,
+# so every play here sends its own completed_at, one second after the last.
+_T0 = datetime.now(timezone.utc) - timedelta(hours=1)
+_tick = itertools.count()
+
+
 def _play(sid: str, body: dict) -> str:
     r = client.post("/games", headers=_headers(sid), json={"game_type": "sort", "metadata": {}})
     assert r.status_code == 200, r.text
     game_id = r.json()["id"]
+    completed_at = _T0 + timedelta(seconds=next(_tick))
+    body = {**body, "completed_at": completed_at.isoformat()}
     r = client.patch(f"/games/{game_id}/complete", headers=_headers(sid), json=body)
     assert r.status_code == 200, r.text
     return game_id

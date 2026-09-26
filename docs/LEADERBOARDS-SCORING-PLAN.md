@@ -216,7 +216,7 @@ All 204 open issues were scanned; the ones that touch this area are listed. "Abs
 | 2215 | Score submission upper bounds | Open | **Absorb** into board definition (`max_value`) |
 | 2217 | Leaderboard GETs rate-limited by IP | Open | **Absorb** into the single generic leaderboard route |
 | 2270 | DECISION: finish or delete abandoned sync layer (`useLeaderboard`, unused `GameSession` types) | Open | **Decide here:** delete `useLeaderboard` and the unused `_shared/types.ts` aspirational types; the new leaderboard screen uses a fresh hook against the generic route |
-| 2231 | Product decisions incl. Sort `level_reached` comparability | Open | Sort item answered by §8 decision 5 (levels are seeded, so comparable; tie-break on total moves); rest untouched |
+| 2231 | Product decisions incl. Sort `level_reached` comparability | Open | Sort item answered by §8 decision 5 (levels were believed seeded, so comparable; tie-break on total moves. They are not; the tie-break was dropped in #2746); rest untouched |
 | 2272 | `reset_leaderboard()` stubs in 6 routers | Open | **Absorb**: the routers are deleted with pattern C |
 | 1130 | Star Swarm submission + top-10 (legacy) | Backend shipped | **Close** as superseded by #2516 |
 | 1131 | Twenty48 submission + top-10 (legacy) | Open | **Close** as superseded: Twenty48 gets a board (§8 decision 1) via a board definition, not a new router |
@@ -294,7 +294,7 @@ Phase 4 — docs, tests, cleanup
 | 2 | Yacht partition | **One board, solo and vs mixed**; record `mode` and `difficulty` | Difficulty only changes the opponent; the player's own score is ranked |
 | 3 | Mahjong partition by layout | **One board; record `layout`** | All 25 layouts are 144 tiles, so the max score is identical. Split later if boards diverge |
 | 4 | Hearts partition by AI difficulty | **Record `ai_difficulty`, don't partition** | Split only if scores clearly differ |
-| 5 | Sort ranking metric | **Highest level cleared, tie-break fewest total moves** (tie-break dropped in #2746: levels are not seeded; ties go to the earliest completion) | Levels are generated with a fixed seed, so every player gets the same 23 levels; the cap only causes ties, which moves resolve |
+| 5 | Sort ranking metric | **Highest level cleared, tie-break fewest total moves** (tie-break dropped in #2746: levels are not seeded; ties go to the earliest completion) | ~~Levels are generated with a fixed seed, so every player gets the same 23 levels; the cap only causes ties, which moves resolve~~ Wrong: `GET /sort/levels` builds unseeded random levels per request, so moves compare different puzzles (#2746) |
 | 6 | Existing `*-anon` rows | **Delete in a data migration** | Cannot be attributed to a player; the store build is unreleased, so they are test plays |
 | 7 | Ranks tab | **Retire** | Boards open from the result card and game menu; app keeps three tabs |
 | 8 | Blackjack win | **Reached the run goal = win; busted out = loss; leaving mid-run = abandoned** | Uses the game's own victory condition |
