@@ -1,4 +1,3 @@
 {
-  "backend.connection": "无法连接到服务器。请检查服务器是否运行中？",
-  "score.save": "无法保存分数。请检查您的网络连接。"
+  "backend.connection": "无法连接到服务器。请检查服务器是否运行中？"
 }

@@ -82,11 +82,6 @@
     "freecell": {
       "nl": ["action.hint"]
     },
-    "hearts": {
-      "fr-CA": ["score.board", "score.total"],
-      "nl": ["score.board"],
-      "pt": ["score.total"]
-    },
     "leaderboard": {
       "de": ["metric.level"],
       "fr-CA": ["column.date"],
@@ -100,9 +95,9 @@
     },
     "profile": {
       "ar": ["level.xpTotal"],
-      "de": ["level.value", "level.xpTotal", "metric.level"],
+      "de": ["level.value", "level.xpTotal"],
       "es": ["level.xpTotal"],
-      "fr-CA": ["level.xpTotal", "metric.score_one", "metric.score_other", "stats.sessions"],
+      "fr-CA": ["level.xpTotal", "stats.sessions"],
       "hi": ["level.xpTotal"],
       "nl": ["level.xpTotal"],
       "pt": ["level.xpTotal"],
@@ -127,6 +122,10 @@
     },
     "starswarm": {
       "nl": ["hud.scoreValue", "score.display"]
+    },
+    "stats": {
+      "de": ["metric.level"],
+      "fr-CA": ["metric.score_one", "metric.score_other"]
     },
     "common": {
       "es": ["nav.lobby", "premiumLevel.tag"],

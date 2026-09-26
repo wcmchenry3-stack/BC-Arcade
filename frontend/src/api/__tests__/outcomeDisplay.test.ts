@@ -7,6 +7,7 @@ import {
   outcomeLabel,
 } from "../outcomeDisplay";
 import { GAME_OUTCOMES } from "../vocab";
+import { LOCALES } from "../../i18n/locales";
 
 const t = i18n.t.bind(i18n);
 
@@ -14,7 +15,7 @@ describe("outcomeDisplay (#2637)", () => {
   it.each(GAME_OUTCOMES)("gives %s a glyph and an English label", (outcome) => {
     const display = outcomeDisplay(outcome);
     expect(display.icon).toBeTruthy();
-    const label = t(`profile:${display.labelKey}`);
+    const label = t(`stats:${display.labelKey}`);
     expect(label).not.toBe(display.labelKey);
     expect(label).not.toBe(outcome);
   });
@@ -61,6 +62,51 @@ describe("formatMetric (#2637)", () => {
   it("shows a dash when there is no value", () => {
     expect(formatMetric(t, "moves", null)).toBe("—");
     expect(formatMetric(t, "moves", undefined)).toBe("—");
+  });
+});
+
+describe("outcome and metric labels in every locale (#2638)", () => {
+  // The labels moved from "profile" to "stats": Profile, GameDetail and Stats all show them.
+  const statsT = (code: string) => {
+    const instance = i18n.createInstance();
+    void instance.init({
+      lng: code,
+      ns: ["stats"],
+      defaultNS: "stats",
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      resources: { [code]: { stats: require(`../../i18n/locales/${code}/stats.json`) } },
+      interpolation: { escapeValue: false },
+      initAsync: false,
+    });
+    return instance.t.bind(instance) as unknown as typeof t;
+  };
+
+  it.each(LOCALES.map((l) => l.code))("%s has every outcome label in stats", (code) => {
+    const tLocale = statsT(code);
+    for (const outcome of GAME_OUTCOMES) {
+      const label = outcomeLabel(tLocale, outcome);
+      expect(label).not.toBe(outcomeDisplay(outcome).labelKey);
+      expect(label).not.toMatch(/^(stats:)?outcome\./);
+    }
+  });
+
+  it.each(LOCALES.map((l) => l.code))("%s has every metric label in stats", (code) => {
+    const tLocale = statsT(code);
+    for (const labelKey of ["score", "moves", "level", "guesses", "chips"]) {
+      for (const value of [1, 2, 5, 19]) {
+        const text = formatMetric(tLocale, labelKey, value);
+        expect(text).not.toMatch(/metric\./);
+        expect(text).not.toBe(value.toLocaleString());
+      }
+    }
+  });
+
+  it.each(LOCALES.map((l) => l.code))("%s no longer has them in profile", (code) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const profile: Record<string, string> = require(`../../i18n/locales/${code}/profile.json`);
+    expect(
+      Object.keys(profile).filter((k) => /^(metric\.|recentGames\.outcome\.)/.test(k))
+    ).toEqual([]);
   });
 });
 

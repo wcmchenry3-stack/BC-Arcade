@@ -19,5 +19,20 @@
   "updating": "Actualizando…",
   "retry": "Reintentar",
   "link.leaderboard": "Ver clasificación",
-  "link.runHistory": "Historial de series"
+  "link.runHistory": "Historial de series",
+  "outcome.completed": "Completada",
+  "outcome.abandoned": "Abandonada",
+  "outcome.kept_playing": "Siguió jugando",
+  "outcome.win": "Victoria",
+  "outcome.loss": "Derrota",
+  "outcome.push": "Empate",
+  "metric.score_one": "{{value}} punto",
+  "metric.score_other": "{{value}} puntos",
+  "metric.moves_one": "{{value}} movimiento",
+  "metric.moves_other": "{{value}} movimientos",
+  "metric.level": "Nivel {{value}}",
+  "metric.guesses_one": "{{value}} intento",
+  "metric.guesses_other": "{{value}} intentos",
+  "metric.chips_one": "{{value}} ficha",
+  "metric.chips_other": "{{value}} fichas"
 }

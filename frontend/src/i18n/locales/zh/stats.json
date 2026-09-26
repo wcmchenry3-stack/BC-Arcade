@@ -19,5 +19,20 @@
   "updating": "正在更新…",
   "retry": "重试",
   "link.leaderboard": "查看排行榜",
-  "link.runHistory": "游戏历史"
+  "link.runHistory": "游戏历史",
+  "outcome.completed": "已完成",
+  "outcome.abandoned": "已放弃",
+  "outcome.kept_playing": "继续游玩",
+  "outcome.win": "胜",
+  "outcome.loss": "负",
+  "outcome.push": "平局",
+  "metric.score_one": "{{value}} 分",
+  "metric.score_other": "{{value}} 分",
+  "metric.moves_one": "{{value}} 步",
+  "metric.moves_other": "{{value}} 步",
+  "metric.level": "第 {{value}} 关",
+  "metric.guesses_one": "{{value}} 次猜测",
+  "metric.guesses_other": "{{value}} 次猜测",
+  "metric.chips_one": "{{value}} 筹码",
+  "metric.chips_other": "{{value}} 筹码"
 }

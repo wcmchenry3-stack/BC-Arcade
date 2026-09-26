@@ -254,7 +254,7 @@ function LeaderboardPresence() {
 export default function ProfileScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation(["profile", ...GAME_TITLE_NAMESPACES]);
+  const { t } = useTranslation(["profile", "stats", ...GAME_TITLE_NAMESPACES]);
   const navigation = useNavigation<ProfileNav>();
 
   const [stats, setStats] = useState<StatsResponse | null>(null);

@@ -19,5 +19,20 @@
   "updating": "업데이트 중…",
   "retry": "다시 시도",
   "link.leaderboard": "랭킹 보기",
-  "link.runHistory": "런 기록"
+  "link.runHistory": "런 기록",
+  "outcome.completed": "완료",
+  "outcome.abandoned": "포기",
+  "outcome.kept_playing": "계속 플레이",
+  "outcome.win": "승리",
+  "outcome.loss": "패배",
+  "outcome.push": "무승부",
+  "metric.score_one": "{{value}}점",
+  "metric.score_other": "{{value}}점",
+  "metric.moves_one": "{{value}}수",
+  "metric.moves_other": "{{value}}수",
+  "metric.level": "레벨 {{value}}",
+  "metric.guesses_one": "{{value}}회 추측",
+  "metric.guesses_other": "{{value}}회 추측",
+  "metric.chips_one": "칩 {{value}}개",
+  "metric.chips_other": "칩 {{value}}개"
 }

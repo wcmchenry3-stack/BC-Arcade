@@ -32,7 +32,7 @@ export default function GameDetailScreen({ navigation, route }: Props) {
   const { gameId } = route.params;
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation(["profile", ...GAME_TITLE_NAMESPACES]);
+  const { t } = useTranslation(["profile", "stats", ...GAME_TITLE_NAMESPACES]);
 
   const [detail, setDetail] = useState<GameDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);

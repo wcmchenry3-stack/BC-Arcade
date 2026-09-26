@@ -7,14 +7,5 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
-  },
-  "score.save": {
-    "component": "GameOverOverlay",
-    "description": "Error shown when the leaderboard score save request fails.",
-    "tone": "friendly, helpful",
-    "characterLimit": 55,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
   }
 }

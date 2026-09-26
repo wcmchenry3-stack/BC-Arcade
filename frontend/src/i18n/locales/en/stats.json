@@ -19,5 +19,20 @@
   "updating": "Updating…",
   "retry": "Retry",
   "link.leaderboard": "View leaderboard",
-  "link.runHistory": "Run history"
+  "link.runHistory": "Run history",
+  "outcome.completed": "Completed",
+  "outcome.abandoned": "Abandoned",
+  "outcome.kept_playing": "Kept Playing",
+  "outcome.win": "Win",
+  "outcome.loss": "Loss",
+  "outcome.push": "Tie",
+  "metric.score_one": "{{value}} pt",
+  "metric.score_other": "{{value}} pts",
+  "metric.moves_one": "{{value}} move",
+  "metric.moves_other": "{{value}} moves",
+  "metric.level": "Level {{value}}",
+  "metric.guesses_one": "{{value}} guess",
+  "metric.guesses_other": "{{value}} guesses",
+  "metric.chips_one": "{{value}} chip",
+  "metric.chips_other": "{{value}} chips"
 }
