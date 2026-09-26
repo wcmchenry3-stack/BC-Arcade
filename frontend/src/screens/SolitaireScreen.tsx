@@ -72,7 +72,6 @@ import {
   saveStats,
   type SolitaireStats,
 } from "../game/solitaire/storage";
-import { useSolitaireScoreboard } from "../game/solitaire/SolitaireScoreboardContext";
 import { formatMs } from "../game/_shared/formatMs";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
@@ -119,12 +118,10 @@ export default function SolitaireScreen() {
   const [moves, setMoves] = useState(0);
   const [autoCompleting, setAutoCompleting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<SolitaireStats>({
-    bestTimeMs: 0,
-    bestMoves: 0,
-    gamesPlayed: 0,
-    gamesWon: 0,
-  });
+  // The device's cached best time (`solitaire_stats_v1`), for the result
+  // card's best time and "New best" badge only (#2636): the player's history
+  // is the Stats screen, fed by the server.
+  const statsRef = useRef<SolitaireStats>({ bestTimeMs: 0 });
 
   const sparkleOpacity = useRef(new Animated.Value(0)).current;
   const lastTapRef = useRef<{ key: string; time: number } | null>(null);
@@ -182,31 +179,11 @@ export default function SolitaireScreen() {
     });
   }, [syncSetProgressSnapshot, progressResult]);
 
-  const { setSnapshot: setScoreboardSnapshot } = useSolitaireScoreboard();
-
   useEffect(() => {
     return () => {
       if (autoStepTimeoutRef.current !== null) clearTimeout(autoStepTimeoutRef.current);
     };
   }, []);
-
-  useEffect(() => {
-    if (!state) return;
-    const foundationsComplete = Object.values(state.foundations).filter(
-      (cards) => cards.length === 13
-    ).length;
-    const elapsedMs = activeMs(state);
-    setScoreboardSnapshot({
-      moves,
-      elapsedMs,
-      foundationsComplete,
-      hasGame: true,
-      bestTimeMs: stats.bestTimeMs,
-      bestMoves: stats.bestMoves,
-      gamesPlayed: stats.gamesPlayed,
-      gamesWon: stats.gamesWon,
-    });
-  }, [state, moves, stats, setScoreboardSnapshot]);
 
   const deal = useCallback(
     (drawMode: DrawMode) => {
@@ -217,11 +194,6 @@ export default function SolitaireScreen() {
       setState(dealGame(drawMode));
       setSelection(null);
       setMoves(0);
-      setStats((prev) => {
-        const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
-        saveStats(updated);
-        return updated;
-      });
     },
     [syncRestart]
   );
@@ -243,7 +215,7 @@ export default function SolitaireScreen() {
     Promise.all([loadGame(), loadStats()]).then(([saved, savedStats]) => {
       if (!alive) return;
       hasLoadedRef.current = true;
-      setStats(savedStats);
+      statsRef.current = savedStats;
       if (saved !== null) {
         setState(saved);
         // Suppress re-counting a win when resuming an already-won game.
@@ -284,12 +256,6 @@ export default function SolitaireScreen() {
     movesRef.current = moves;
   }, [moves]);
 
-  // Stats as of the win, read by the completion effect below.
-  const statsRef = useRef(stats);
-  useEffect(() => {
-    statsRef.current = stats;
-  }, [stats]);
-
   // #597 — end sync sessions exactly once on the completion transition and
   // clear the saved game so the next mount starts fresh.
   useEffect(() => {
@@ -315,26 +281,21 @@ export default function SolitaireScreen() {
         // Only a win that happened this session has a session to rank (a
         // resumed won game's was completed back then).
         if (gameId) void submitScore({ gameId });
-        const isNewBest =
-          statsRef.current.bestTimeMs === 0 || finalMs < statsRef.current.bestTimeMs;
+        const priorBest = statsRef.current.bestTimeMs;
+        const improved = priorBest === 0 || finalMs < priorBest;
         setWinSummary({
           timeMs: finalMs,
           moves: finalMoves,
-          bestTimeMs: isNewBest ? finalMs : statsRef.current.bestTimeMs,
-          isNewBest,
+          bestTimeMs: improved ? finalMs : priorBest,
+          // Only a beaten previous best is a "new best" — not a first win
+          // (as in Sudoku, Cascade and 2048).
+          isNewBest: priorBest > 0 && finalMs < priorBest,
         });
-        setStats((prev) => {
-          const updated: SolitaireStats = {
-            ...prev,
-            gamesWon: prev.gamesWon + 1,
-            bestTimeMs:
-              prev.bestTimeMs === 0 || finalMs < prev.bestTimeMs ? finalMs : prev.bestTimeMs,
-            bestMoves:
-              prev.bestMoves === 0 || finalMoves < prev.bestMoves ? finalMoves : prev.bestMoves,
-          };
-          saveStats(updated);
-          return updated;
-        });
+        // The cache is written only when the best improves.
+        if (improved) {
+          statsRef.current = { bestTimeMs: finalMs };
+          saveStats(statsRef.current);
+        }
       } else {
         // A resumed, already-won game: its win was counted when it happened.
         setWinSummary({
@@ -808,7 +769,6 @@ export default function SolitaireScreen() {
           paddingRight: Math.max(insets.right, 12),
         }}
         onNewGame={resetToPreGame}
-        onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "solitaire" })}
         onOpenLeaderboard={openLeaderboard}
         rightSlot={
           <View style={styles.headerBtnRow}>

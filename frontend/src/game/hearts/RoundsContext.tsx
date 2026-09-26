@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useMemo, useState } from "react";
 
 // Snapshot of Hearts score state shared between HeartsScreen (which mutates
-// it as hands complete) and ScoreboardScreen (which renders it). Lives in
+// it as hands complete) and ScorecardScreen (which renders it). Lives in
 // React state at app root so the new stack screen can read the same data
 // HeartsScreen is producing without round-tripping arrays-of-arrays through
 // route params.

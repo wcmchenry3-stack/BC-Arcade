@@ -30,12 +30,5 @@
   "a11y.boardRegion": "لوحة اللعبة",
   "a11y.invalidMove": "حركة غير صالحة",
   "error.saveFailed": "تعذر حفظ لعبتك.",
-  "error.loadFailed": "تعذر استئناف اللعبة المحفوظة.",
-  "scoreboard.heroLabel": "الوقت",
-  "scoreboard.heroSub": "{{moves}} حركة · {{foundations}} من 4 مكتملة",
-  "scoreboard.heroSubEmpty": "لم تُلعب أي مباراة بعد",
-  "scoreboard.bestTime": "أفضل وقت",
-  "scoreboard.bestMoves": "أقل حركات",
-  "scoreboard.gamesPlayed": "المباريات الملعوبة",
-  "scoreboard.gamesWon": "المباريات الفائزة"
+  "error.loadFailed": "تعذر استئناف اللعبة المحفوظة."
 }

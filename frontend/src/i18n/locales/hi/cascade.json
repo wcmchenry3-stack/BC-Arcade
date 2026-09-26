@@ -11,12 +11,5 @@
   "preview.comingUp": "आ रहा है: {{name}}",
   "theme.groupLabel": "फलों का थीम सेट",
   "theme.optionLabel": "{{label}} थीम",
-  "event.merged": "मर्ज हो गया! {{fruit}} बना।",
-  "scoreboard.heroLabel": "स्कोर",
-  "scoreboard.heroSub": "सबसे बड़ा फल: {{bestFruit}} · {{merges}} मर्ज",
-  "scoreboard.heroSubEmpty": "अभी तक कोई गेम नहीं खेला",
-  "scoreboard.bestScore": "सर्वश्रेष्ठ",
-  "scoreboard.bestFruit": "सबसे बड़ा फल",
-  "scoreboard.gamesPlayed": "खेले गए गेम",
-  "scoreboard.totalMerges": "कुल मर्ज"
+  "event.merged": "मर्ज हो गया! {{fruit}} बना।"
 }

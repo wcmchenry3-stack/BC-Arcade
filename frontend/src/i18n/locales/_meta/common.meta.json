@@ -350,11 +350,20 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "overflow.menu.scoreboard": {
+  "overflow.menu.scorecard": {
     "component": "AppHeader",
-    "description": "Overflow menu item that opens the scoreboard.",
+    "description": "Overflow menu item that opens the live scorecard of the match in progress: the Hearts rounds table, the Yacht scorecard or the Blackjack session. Also that screen's title. Not the player's history (that is the Stats item).",
     "tone": "neutral",
     "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "scorecard.unavailable": {
+    "component": "ScorecardScreen",
+    "description": "Shown on the Scorecard screen if it is opened for a game with no live scorecard.",
+    "tone": "functional",
+    "characterLimit": 60,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null

@@ -30,12 +30,5 @@
   "a11y.boardRegion": "Spielfeld Solitaire",
   "a11y.invalidMove": "Ungültiger Zug",
   "error.saveFailed": "Spiel konnte nicht gespeichert werden.",
-  "error.loadFailed": "Gespeichertes Spiel konnte nicht geladen werden.",
-  "scoreboard.heroLabel": "ZEIT",
-  "scoreboard.heroSub": "{{moves}} Züge · {{foundations}} von 4 fertig",
-  "scoreboard.heroSubEmpty": "Noch keine Spiele gespielt",
-  "scoreboard.bestTime": "Bestzeit",
-  "scoreboard.bestMoves": "Wenigste Züge",
-  "scoreboard.gamesPlayed": "Gespielte Spiele",
-  "scoreboard.gamesWon": "Gewonnene Spiele"
+  "error.loadFailed": "Gespeichertes Spiel konnte nicht geladen werden."
 }

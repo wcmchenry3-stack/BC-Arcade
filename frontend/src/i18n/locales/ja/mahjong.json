@@ -44,10 +44,5 @@
   "layout.concentric_squares": "同心の四角",
   "layoutSelect.title": "配置を選択",
   "layoutSelect.continue": "続ける",
-  "layoutSelect.lockedLayout": "{{name}} — ロック中",
-  "scoreboard.title": "トップスコア",
-  "scoreboard.rank": "順位",
-  "scoreboard.player": "プレイヤー",
-  "scoreboard.score": "スコア",
-  "scoreboard.empty": "まだスコアはありません — 一番乗りしよう！"
+  "layoutSelect.lockedLayout": "{{name}} — ロック中"
 }

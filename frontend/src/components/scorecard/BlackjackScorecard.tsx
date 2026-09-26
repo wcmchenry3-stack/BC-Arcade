@@ -9,7 +9,7 @@ interface Props {
   readonly stats: SessionStats;
 }
 
-export default function BlackjackScoreboard({ stats }: Props) {
+export default function BlackjackScorecard({ stats }: Props) {
   const { t } = useTranslation(["blackjack", "common"]);
   const { colors } = useTheme();
 

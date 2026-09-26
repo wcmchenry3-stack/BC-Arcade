@@ -30,12 +30,5 @@
   "a11y.boardRegion": "Plateau de solitaire",
   "a11y.invalidMove": "Coup invalide",
   "error.saveFailed": "Impossible de sauvegarder votre partie.",
-  "error.loadFailed": "Impossible de reprendre la partie sauvegardée.",
-  "scoreboard.heroLabel": "TEMPS",
-  "scoreboard.heroSub": "{{moves}} coups · {{foundations}} sur 4 complétées",
-  "scoreboard.heroSubEmpty": "Aucune partie jouée pour l'instant",
-  "scoreboard.bestTime": "Meilleur temps",
-  "scoreboard.bestMoves": "Moins de coups",
-  "scoreboard.gamesPlayed": "Parties jouées",
-  "scoreboard.gamesWon": "Parties gagnées"
+  "error.loadFailed": "Impossible de reprendre la partie sauvegardée."
 }

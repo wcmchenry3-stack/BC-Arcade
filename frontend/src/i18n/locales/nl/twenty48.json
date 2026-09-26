@@ -14,12 +14,5 @@
   "win.body": "Je hebt 2048 bereikt! Je kunt doorspelen voor een hogere score.",
   "controls.keyboardHint": "Of gebruik de pijltoetsen",
   "stats.highestTile": "Hoogste tegel",
-  "stats.timePlayed": "Speeltijd",
-  "scoreboard.heroLabel": "SCORE",
-  "scoreboard.heroSub": "Beste tegel: {{bestTile}} · {{moves}} zetten",
-  "scoreboard.heroSubEmpty": "Nog geen spellen gespeeld",
-  "scoreboard.bestScore": "Beste score",
-  "scoreboard.bestTile": "Beste tegel",
-  "scoreboard.gamesPlayed": "Aantal spellen",
-  "scoreboard.gamesWon": "Gewonnen spellen"
+  "stats.timePlayed": "Speeltijd"
 }

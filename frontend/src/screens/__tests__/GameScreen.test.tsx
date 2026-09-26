@@ -184,16 +184,16 @@ describe("GameScreen", () => {
     expect(mockNavigation.popToTop).toHaveBeenCalledTimes(1);
   });
 
-  it("⋯ menu Scoreboard item navigates to ScoreboardScreen with yacht gameKey", async () => {
-    (mockNavigation.navigate as jest.Mock).mockClear();
+  it("⋯ menu Scorecard item (#2636) opens the yacht live view", async () => {
+    mockShellNavigate.mockClear();
     const { getByLabelText, getByText } = await renderScreen();
     await act(async () => {
       await fireEvent.press(getByLabelText("More options")); // open ⋯ menu
     });
     await act(async () => {
-      await fireEvent.press(getByText("Scoreboard")); // tap Scoreboard item
+      await fireEvent.press(getByText("Scorecard")); // tap Scorecard item
     });
-    expect(mockNavigation.navigate).toHaveBeenCalledWith("Scoreboard", { gameKey: "yacht" });
+    expect(mockShellNavigate).toHaveBeenCalledWith("Scorecard", { gameKey: "yacht" });
   });
 
   it("⋯ menu Leaderboard item opens Yacht's board (#2633)", async () => {

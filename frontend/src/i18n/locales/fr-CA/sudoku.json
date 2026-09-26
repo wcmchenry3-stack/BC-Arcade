@@ -25,13 +25,6 @@
   "hud.errors": "{{count}} erreurs",
   "hud.errorsOne": "1 erreur",
   "hud.elapsed": "Temps écoulé {{time}}",
-  "scoreboard.heroLabel": "TEMPS ÉCOULÉ",
-  "scoreboard.heroSub": "{{difficulty}} · {{errors}} erreurs",
-  "scoreboard.heroSubEmpty": "Aucune partie jouée",
-  "scoreboard.easyBestTime": "Meilleur temps : Facile",
-  "scoreboard.mediumBestTime": "Meilleur temps : Moyen",
-  "scoreboard.hardBestTime": "Meilleur temps : Difficile",
-  "scoreboard.gamesSolved": "Casse-têtes résolus",
   "action.quickRestart": "Redémarrage rapide",
   "newGame.title": "Nouvelle partie"
 }

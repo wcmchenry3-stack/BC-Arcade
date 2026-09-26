@@ -25,13 +25,6 @@
   "hud.errors": "{{count}} טעויות",
   "hud.errorsOne": "טעות אחת",
   "hud.elapsed": "זמן שחלף {{time}}",
-  "scoreboard.heroLabel": "זמן שחלף",
-  "scoreboard.heroSub": "{{difficulty}} · {{errors}} טעויות",
-  "scoreboard.heroSubEmpty": "עדיין לא שוחקו משחקים",
-  "scoreboard.easyBestTime": "שיא (קל)",
-  "scoreboard.mediumBestTime": "שיא (בינוני)",
-  "scoreboard.hardBestTime": "שיא (קשה)",
-  "scoreboard.gamesSolved": "חידות שנפתרו",
   "action.quickRestart": "הפעלה מחדש מהירה",
   "newGame.title": "משחק חדש"
 }

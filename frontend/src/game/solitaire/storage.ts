@@ -23,11 +23,14 @@ import type { SolitaireState } from "./types";
 const GAME_KEY = "solitaire_game";
 const STATS_KEY = "solitaire_stats_v1";
 
+/**
+ * The device's cached best, for the result card's best time and "New best"
+ * badge only (#2636); the player's history is the Stats screen, fed by the
+ * server. Older builds also kept `bestMoves`, `gamesPlayed` and `gamesWon`
+ * here: a stored record with them still loads, and the next save drops them.
+ */
 export interface SolitaireStats {
   bestTimeMs: number;
-  bestMoves: number;
-  gamesPlayed: number;
-  gamesWon: number;
 }
 
 function stripNestedUndo(state: SolitaireState): SolitaireState {
@@ -90,19 +93,14 @@ export async function clearGame(): Promise<void> {
   }
 }
 
-const EMPTY_STATS: SolitaireStats = { bestTimeMs: 0, bestMoves: 0, gamesPlayed: 0, gamesWon: 0 };
+const EMPTY_STATS: SolitaireStats = { bestTimeMs: 0 };
 
 export async function loadStats(): Promise<SolitaireStats> {
   try {
     const raw = await AsyncStorage.getItem(STATS_KEY);
     if (!raw) return { ...EMPTY_STATS };
     const parsed = JSON.parse(raw);
-    return {
-      bestTimeMs: typeof parsed.bestTimeMs === "number" ? parsed.bestTimeMs : 0,
-      bestMoves: typeof parsed.bestMoves === "number" ? parsed.bestMoves : 0,
-      gamesPlayed: typeof parsed.gamesPlayed === "number" ? parsed.gamesPlayed : 0,
-      gamesWon: typeof parsed.gamesWon === "number" ? parsed.gamesWon : 0,
-    };
+    return { bestTimeMs: typeof parsed?.bestTimeMs === "number" ? parsed.bestTimeMs : 0 };
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "solitaire.storage", op: "loadStats" } });
     return { ...EMPTY_STATS };
@@ -111,7 +109,7 @@ export async function loadStats(): Promise<SolitaireStats> {
 
 export async function saveStats(stats: SolitaireStats): Promise<void> {
   try {
-    await AsyncStorage.setItem(STATS_KEY, JSON.stringify(stats));
+    await AsyncStorage.setItem(STATS_KEY, JSON.stringify({ bestTimeMs: stats.bestTimeMs }));
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "solitaire.storage", op: "saveStats" } });
   }

@@ -14,12 +14,5 @@
   "win.body": "وصلت إلى 2048! يمكنك الاستمرار للحصول على نتيجة أعلى.",
   "controls.keyboardHint": "أو استخدم مفاتيح الأسهم",
   "stats.highestTile": "أعلى بلاطة",
-  "stats.timePlayed": "وقت اللعب",
-  "scoreboard.heroLabel": "النتيجة",
-  "scoreboard.heroSub": "أفضل بلاطة: {{bestTile}} · {{moves}} حركة",
-  "scoreboard.heroSubEmpty": "لم تُلعب أي مباراة بعد",
-  "scoreboard.bestScore": "أفضل نتيجة",
-  "scoreboard.bestTile": "أفضل بلاطة",
-  "scoreboard.gamesPlayed": "المباريات الملعوبة",
-  "scoreboard.gamesWon": "المباريات الفائزة"
+  "stats.timePlayed": "وقت اللعب"
 }

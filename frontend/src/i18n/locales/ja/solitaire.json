@@ -30,12 +30,5 @@
   "a11y.boardRegion": "ソリティアボード",
   "a11y.invalidMove": "無効な操作です",
   "error.saveFailed": "ゲームの保存に失敗しました。",
-  "error.loadFailed": "保存したゲームを再開できませんでした。",
-  "scoreboard.heroLabel": "タイム",
-  "scoreboard.heroSub": "{{moves}}手 · 組札 {{foundations}}/4 完成",
-  "scoreboard.heroSubEmpty": "まだプレイしたゲームはありません",
-  "scoreboard.bestTime": "ベストタイム",
-  "scoreboard.bestMoves": "最少手数",
-  "scoreboard.gamesPlayed": "プレイ回数",
-  "scoreboard.gamesWon": "勝利回数"
+  "error.loadFailed": "保存したゲームを再開できませんでした。"
 }

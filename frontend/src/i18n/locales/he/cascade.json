@@ -11,12 +11,5 @@
   "preview.comingUp": "בקרוב: {{name}}",
   "theme.groupLabel": "ערכת פירות",
   "theme.optionLabel": "ערכת {{label}}",
-  "event.merged": "התמזגו! נוצר {{fruit}}.",
-  "scoreboard.heroLabel": "ניקוד",
-  "scoreboard.heroSub": "הפרי הגבוה: {{bestFruit}} · {{merges}} מיזוגים",
-  "scoreboard.heroSubEmpty": "עדיין לא שוחקו משחקים",
-  "scoreboard.bestScore": "שיא כל הזמנים",
-  "scoreboard.bestFruit": "הפרי הגבוה",
-  "scoreboard.gamesPlayed": "משחקים ששוחקו",
-  "scoreboard.totalMerges": "סך המיזוגים"
+  "event.merged": "התמזגו! נוצר {{fruit}}."
 }

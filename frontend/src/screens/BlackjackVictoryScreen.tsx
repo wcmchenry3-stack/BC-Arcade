@@ -14,7 +14,7 @@ import {
   useResultFeedback,
   type ResultHero,
 } from "../components/shared/GameResultModal";
-import { formatPL, winRatePct } from "../components/scoreboard/blackjackStatsModel";
+import { formatPL, winRatePct } from "../components/scorecard/blackjackStatsModel";
 import {
   Unlock,
   evaluateUnlocks,

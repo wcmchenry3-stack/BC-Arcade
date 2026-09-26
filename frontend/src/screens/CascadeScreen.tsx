@@ -64,7 +64,6 @@ import FruitGlyph from "../components/cascade/FruitGlyph";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
 import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
-import { useCascadeScoreboard } from "../game/cascade/CascadeScoreboardContext";
 import {
   saveGame as saveCascadeGame,
   loadGame as loadCascadeGame,
@@ -360,11 +359,9 @@ function CascadeGame() {
     getGameId,
     setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("cascade");
-  const { setSnapshot: setScoreboardSnapshot } = useCascadeScoreboard();
+  // The cached best, for the result card's "New best" badge only (#2636): the
+  // player's history is the Stats screen, fed by the server.
   const bestScoreRef = useRef(0);
-  const bestFruitTierRef = useRef(-1);
-  const bestFruitNameRef = useRef("—");
-  const gamesPlayedRef = useRef(0);
 
   const completedGameIdRef = useRef<string | null>(null);
 
@@ -448,17 +445,6 @@ function CascadeGame() {
     queueRef.current = newQueue;
     return tier;
   }, []); // reads/writes refs only — no reactive deps
-
-  const pushScoreboardSnapshot = useCallback(() => {
-    setScoreboardSnapshot({
-      score: scoreRef.current,
-      bestScore: bestScoreRef.current,
-      bestFruitName: bestFruitNameRef.current,
-      mergeCount: mergeCountRef.current,
-      gamesPlayed: gamesPlayedRef.current,
-      hasGame: true,
-    });
-  }, [setScoreboardSnapshot]);
 
   useEffect(() => {
     startInstrumentedSession(activeFruitSetRef.current.id);
@@ -560,15 +546,10 @@ function CascadeGame() {
         AccessibilityInfo.announceForAccessibility(
           t("cascade:event.merged", { fruit: merged.name })
         );
-        if (event.tier > bestFruitTierRef.current) {
-          bestFruitTierRef.current = event.tier;
-          bestFruitNameRef.current = merged.name;
-        }
       }
-      pushScoreboardSnapshot();
       saveGameThrottled();
     },
-    [activeFruitSet, t, saveGameThrottled, syncEnqueue, pushScoreboardSnapshot]
+    [activeFruitSet, t, saveGameThrottled, syncEnqueue]
   );
 
   /**
@@ -602,10 +583,8 @@ function CascadeGame() {
     setGameOver(true);
     const gameId = endInstrumentedSession("completed");
     clearCascadeGame().catch(() => {});
-    gamesPlayedRef.current += 1;
     showResult(gameId);
-    pushScoreboardSnapshot();
-  }, [endInstrumentedSession, pushScoreboardSnapshot, showResult]);
+  }, [endInstrumentedSession, showResult]);
 
   // Always-fresh refs for the RAF loop — updated every render so the loop
   // never captures stale closures for merge/gameOver handling.
@@ -834,7 +813,6 @@ function CascadeGame() {
     settlingTicksLeftRef.current = 0;
     setGameKey((k) => k + 1);
     startInstrumentedSession(activeFruitSetRef.current.id);
-    pushScoreboardSnapshot();
   }
 
   const queue = queueRef.current;
@@ -854,7 +832,6 @@ function CascadeGame() {
       requireBack
       onBack={() => navigation.popToTop()}
       onNewGame={handleRestart}
-      onOpenScoreboard={() => navigation.navigate("Scoreboard", { gameKey: "cascade" })}
       onOpenLeaderboard={openLeaderboard}
       style={{
         paddingBottom: Math.max(insets.bottom, 16),

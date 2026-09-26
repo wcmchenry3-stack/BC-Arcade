@@ -1,7 +1,7 @@
 import React from "react";
 import { render } from "@testing-library/react-native";
 
-import HeartsScoreboard from "../HeartsScoreboard";
+import HeartsScorecard from "../HeartsScorecard";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 
 async function wrap(ui: React.ReactElement) {
@@ -10,11 +10,11 @@ async function wrap(ui: React.ReactElement) {
 
 const labels = ["You", "West", "North", "East"] as const;
 
-describe("HeartsScoreboard", () => {
+describe("HeartsScorecard", () => {
   describe("totals strip", () => {
     it("renders one column per player with name + score", async () => {
       const { getByText, getAllByText } = await wrap(
-        <HeartsScoreboard
+        <HeartsScorecard
           playerLabels={labels}
           cumulativeScores={[13, 25, 41, 59]}
           scoreHistory={[]}
@@ -32,7 +32,7 @@ describe("HeartsScoreboard", () => {
   describe("round table", () => {
     it("renders single-letter header initials", async () => {
       const { getByText } = await wrap(
-        <HeartsScoreboard playerLabels={labels} cumulativeScores={[0, 0, 0, 0]} scoreHistory={[]} />
+        <HeartsScorecard playerLabels={labels} cumulativeScores={[0, 0, 0, 0]} scoreHistory={[]} />
       );
       expect(getByText("Y")).toBeTruthy();
       expect(getByText("W")).toBeTruthy();
@@ -42,7 +42,7 @@ describe("HeartsScoreboard", () => {
 
     it("renders only rounds that have been played (no placeholder rows)", async () => {
       const { getByText, queryByText } = await wrap(
-        <HeartsScoreboard
+        <HeartsScorecard
           playerLabels={labels}
           cumulativeScores={[15, 14, 11, 21]}
           scoreHistory={[
@@ -59,7 +59,7 @@ describe("HeartsScoreboard", () => {
 
     it("renders moon row with 0★ for shooter and 26 for the other three", async () => {
       const { getByText, getAllByText } = await wrap(
-        <HeartsScoreboard
+        <HeartsScorecard
           playerLabels={labels}
           cumulativeScores={[0, 26, 26, 26]}
           scoreHistory={[[0, 26, 26, 26]]}
@@ -72,7 +72,7 @@ describe("HeartsScoreboard", () => {
 
     it("does not apply moon styling to a non-moon row that happens to contain 0s", async () => {
       const { queryByText } = await wrap(
-        <HeartsScoreboard
+        <HeartsScorecard
           playerLabels={labels}
           cumulativeScores={[5, 0, 8, 0]}
           scoreHistory={[[5, 0, 8, 0]]}
@@ -86,7 +86,7 @@ describe("HeartsScoreboard", () => {
     it("all 13 rounds render inline (no scroll container)", async () => {
       const thirteenRows = Array.from({ length: 13 }, (_, i) => [i, i + 1, i + 2, i + 3]);
       const { getAllByText } = await wrap(
-        <HeartsScoreboard
+        <HeartsScorecard
           playerLabels={labels}
           cumulativeScores={[78, 91, 100, 84]}
           scoreHistory={thirteenRows}
@@ -100,7 +100,7 @@ describe("HeartsScoreboard", () => {
   describe("compact mode", () => {
     it("hides the totals strip and footnote", async () => {
       const { queryByText } = await wrap(
-        <HeartsScoreboard
+        <HeartsScorecard
           playerLabels={labels}
           cumulativeScores={[10, 30, 20, 40]}
           scoreHistory={[[5, 10, 8, 15]]}
@@ -118,7 +118,7 @@ describe("HeartsScoreboard", () => {
   describe("footnote", () => {
     it("renders the rules footnote in non-compact mode", async () => {
       const { getByText } = await wrap(
-        <HeartsScoreboard playerLabels={labels} cumulativeScores={[0, 0, 0, 0]} scoreHistory={[]} />
+        <HeartsScorecard playerLabels={labels} cumulativeScores={[0, 0, 0, 0]} scoreHistory={[]} />
       );
       expect(getByText(/shooter zeroes/)).toBeTruthy();
     });

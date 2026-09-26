@@ -25,13 +25,6 @@
   "hud.errors": "{{count}} 次错误",
   "hud.errorsOne": "1 次错误",
   "hud.elapsed": "已用时间 {{time}}",
-  "scoreboard.heroLabel": "已用时间",
-  "scoreboard.heroSub": "{{difficulty}} · {{errors}} 次错误",
-  "scoreboard.heroSubEmpty": "暂无游戏记录",
-  "scoreboard.easyBestTime": "简单最佳",
-  "scoreboard.mediumBestTime": "中等最佳",
-  "scoreboard.hardBestTime": "困难最佳",
-  "scoreboard.gamesSolved": "解出局数",
   "action.quickRestart": "快速重玩",
   "newGame.title": "新游戏"
 }

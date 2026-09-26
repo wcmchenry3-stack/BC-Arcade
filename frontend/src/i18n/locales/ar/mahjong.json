@@ -44,10 +44,5 @@
   "layout.concentric_squares": "مربعات متحدة المركز",
   "layoutSelect.title": "اختر التخطيط",
   "layoutSelect.continue": "متابعة",
-  "layoutSelect.lockedLayout": "{{name}} — مقفل",
-  "scoreboard.title": "أعلى النقاط",
-  "scoreboard.rank": "رتبة",
-  "scoreboard.player": "اللاعب",
-  "scoreboard.score": "النقاط",
-  "scoreboard.empty": "لا توجد نقاط بعد — كن الأول!"
+  "layoutSelect.lockedLayout": "{{name}} — مقفل"
 }

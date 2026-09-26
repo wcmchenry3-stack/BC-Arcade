@@ -1,4 +1,4 @@
-// Pure helpers for the Blackjack scoreboard variant. Mirrors yachtScorecardModel.ts
+// Pure helpers for the Blackjack scorecard (live view). Mirrors yachtScorecardModel.ts
 // — no React/theme imports so the formatting + colour logic is unit-testable.
 
 import type { SessionStats } from "../../game/blackjack/sessionStats";

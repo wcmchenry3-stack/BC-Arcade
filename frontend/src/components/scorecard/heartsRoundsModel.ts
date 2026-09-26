@@ -1,4 +1,4 @@
-// Pure helpers powering the Hearts scoreboard view. Kept independent of
+// Pure helpers powering the Hearts scorecard (live view). Kept independent of
 // React + theme so the rendering logic can be unit-tested without a tree.
 
 export interface SeatStanding {

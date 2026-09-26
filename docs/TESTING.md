@@ -700,7 +700,7 @@ Verifies that `scoreHistory` and full game state survive a top-tab switch
    are non-zero and the round table has 2+ rows.
 2. Mid-game, tap the **Profile** or **Settings** bottom-tab.
 3. Tap **Lobby** to return; resume Hearts.
-4. Open the ⋯ menu → **Scoreboard**. Expected:
+4. Open the ⋯ menu → **Scorecard**. Expected:
    - Round table shows the same number of rows as before the switch.
    - Each row sums to 26 (or `[0,26,26,26]` for moon shots).
    - Totals row equals the sum of every round row, per player.

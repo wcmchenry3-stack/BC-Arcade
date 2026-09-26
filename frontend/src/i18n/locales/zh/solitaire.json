@@ -30,12 +30,5 @@
   "a11y.boardRegion": "纸牌游戏区",
   "a11y.invalidMove": "无效操作",
   "error.saveFailed": "无法保存游戏进度。",
-  "error.loadFailed": "无法恢复存档。",
-  "scoreboard.heroLabel": "时间",
-  "scoreboard.heroSub": "{{moves}} 步 · 已完成 {{foundations}}/4 组",
-  "scoreboard.heroSubEmpty": "还没有玩过游戏",
-  "scoreboard.bestTime": "最佳时间",
-  "scoreboard.bestMoves": "最少步数",
-  "scoreboard.gamesPlayed": "已玩局数",
-  "scoreboard.gamesWon": "获胜局数"
+  "error.loadFailed": "无法恢复存档。"
 }

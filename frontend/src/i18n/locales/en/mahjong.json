@@ -44,10 +44,5 @@
   "layout.concentric_squares": "Concentric Squares",
   "layoutSelect.title": "Choose Layout",
   "layoutSelect.continue": "Continue",
-  "layoutSelect.lockedLayout": "{{name}} — locked",
-  "scoreboard.title": "Top Scores",
-  "scoreboard.rank": "Rank",
-  "scoreboard.player": "Player",
-  "scoreboard.score": "Score",
-  "scoreboard.empty": "No scores yet — be the first!"
+  "layoutSelect.lockedLayout": "{{name}} — locked"
 }

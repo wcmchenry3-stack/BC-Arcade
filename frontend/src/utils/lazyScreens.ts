@@ -24,7 +24,7 @@ const factories = {
   GameStats: () => import("../screens/GameStatsScreen"),
   GameDetail: () => import("../screens/GameDetailScreen"),
   Settings: () => import("../screens/SettingsScreen"),
-  Scoreboard: () => import("../screens/ScoreboardScreen"),
+  Scorecard: () => import("../screens/ScorecardScreen"),
 } as const;
 
 export const LazyScreens = {
@@ -48,7 +48,7 @@ export const LazyScreens = {
   GameStats: React.lazy(factories.GameStats),
   GameDetail: React.lazy(factories.GameDetail),
   Settings: React.lazy(factories.Settings),
-  Scoreboard: React.lazy(factories.Scoreboard),
+  Scorecard: React.lazy(factories.Scorecard),
 } as const;
 
 // Slugs for premium games that have lazy screens.

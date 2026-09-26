@@ -26,12 +26,5 @@
   "preGame.body": "Elige una dificultad para empezar.",
   "hud.errors": "{{count}} errores",
   "hud.errorsOne": "1 error",
-  "hud.elapsed": "Tiempo transcurrido {{time}}",
-  "scoreboard.heroLabel": "TRANSCURRIDO",
-  "scoreboard.heroSub": "{{difficulty}} · {{errors}} errores",
-  "scoreboard.heroSubEmpty": "Aún no hay partidas jugadas",
-  "scoreboard.easyBestTime": "Mejor Fácil",
-  "scoreboard.mediumBestTime": "Mejor Media",
-  "scoreboard.hardBestTime": "Mejor Difícil",
-  "scoreboard.gamesSolved": "Partidas Resueltas"
+  "hud.elapsed": "Tiempo transcurrido {{time}}"
 }

@@ -25,13 +25,6 @@
   "hud.errors": "{{count}} ошибок",
   "hud.errorsOne": "1 ошибка",
   "hud.elapsed": "Прошло времени: {{time}}",
-  "scoreboard.heroLabel": "ПРОШЛО",
-  "scoreboard.heroSub": "{{difficulty}} · ошибок: {{errors}}",
-  "scoreboard.heroSubEmpty": "Игр пока не было",
-  "scoreboard.easyBestTime": "Рекорд: Легко",
-  "scoreboard.mediumBestTime": "Рекорд: Средне",
-  "scoreboard.hardBestTime": "Рекорд: Сложно",
-  "scoreboard.gamesSolved": "Решено игр",
   "action.quickRestart": "Быстрый перезапуск",
   "newGame.title": "Новая игра"
 }

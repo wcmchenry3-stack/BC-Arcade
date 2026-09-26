@@ -14,12 +14,5 @@
   "win.body": "2048에 도달했습니다! 더 높은 점수를 위해 계속 플레이할 수 있습니다.",
   "controls.keyboardHint": "또는 방향키 사용",
   "stats.highestTile": "최고 타일",
-  "stats.timePlayed": "플레이 시간",
-  "scoreboard.heroLabel": "점수",
-  "scoreboard.heroSub": "최고 타일: {{bestTile}} · 이동 {{moves}}회",
-  "scoreboard.heroSubEmpty": "아직 플레이 없음",
-  "scoreboard.bestScore": "최고 점수",
-  "scoreboard.bestTile": "최고 타일",
-  "scoreboard.gamesPlayed": "플레이 횟수",
-  "scoreboard.gamesWon": "승리 횟수"
+  "stats.timePlayed": "플레이 시간"
 }
