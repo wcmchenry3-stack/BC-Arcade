@@ -95,6 +95,7 @@ import type { GameRankResponse } from "../../api/types";
 import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
 
 beforeEach(async () => {
+  mockNavListeners.clear();
   mockStartGame.mockReset();
   mockStartGame.mockReturnValue("game-uuid-test");
   mockEnqueueEvent.mockReset();
@@ -109,12 +110,25 @@ beforeEach(async () => {
   resetDisplayNameCacheForTests();
 });
 
+// Captured so tests can fire "blur"/"focus" (a pushed Stats/Leaderboard/
+// Scoreboard screen, #2735).
+const mockNavListeners = new Map<string, Array<() => void>>();
+
 function mockNav() {
   return {
     setOptions: jest.fn(),
     navigate: jest.fn(),
     goBack: jest.fn(),
     popToTop: jest.fn(),
+    addListener: jest.fn((event: string, handler: () => void) => {
+      mockNavListeners.set(event, [...(mockNavListeners.get(event) ?? []), handler]);
+      return () => {
+        mockNavListeners.set(
+          event,
+          (mockNavListeners.get(event) ?? []).filter((h) => h !== handler)
+        );
+      };
+    }),
   } as unknown as Parameters<typeof Twenty48Screen>[0]["navigation"];
 }
 
@@ -687,6 +701,35 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     expect(summary["outcome"]).toBe("abandoned");
     expect(summary["durationMs"]).toBe(42_000);
     expect((summary["result"] as Record<string, unknown>)["duration_ms"]).toBe(42_000);
+  });
+
+  // #2735: ⋯ → Stats/Leaderboard/Scoreboard covers the board; its clock
+  // must not run meanwhile.
+  it("stops the play clock while another screen covers the board", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const { unmount } = await mountAndSettle();
+    let now = Date.now();
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      await act(() => {
+        dispatchKey("ArrowRight"); // starts the board's timer
+      });
+      mockCompleteGame.mockClear();
+
+      await act(async () => {
+        mockNavListeners.get("blur")?.forEach((h) => h());
+      });
+      now += 10 * 60_000; // ten minutes on the Stats screen
+      await act(async () => {
+        mockNavListeners.get("focus")?.forEach((h) => h());
+      });
+      now += 5_000; // five more seconds of play
+      await unmount();
+    } finally {
+      nowSpy.mockRestore();
+    }
+    const summary = mockCompleteGame.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(summary["durationMs"]).toBe(5_000);
   });
 
   it("does not double-fire game_ended: unmount after completion is a no-op", async () => {

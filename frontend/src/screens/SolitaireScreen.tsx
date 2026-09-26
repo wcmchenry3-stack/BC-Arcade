@@ -53,7 +53,9 @@ import {
   dealGame,
   drawFromStock,
   getHintMoves,
+  pauseGame,
   recycleWaste,
+  resumeGame,
   undo,
   validateMove,
 } from "../game/solitaire/engine";
@@ -277,6 +279,29 @@ export default function SolitaireScreen() {
     if (state === null) return;
     saveGame(state).catch(() => {});
   }, [state]);
+
+  // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
+  // #2735) stops its clock, so the finish time counts only play. Only a
+  // clock this pauses is restarted on return: a deal with no move yet keeps
+  // waiting for its first.
+  const pausedOnBlurRef = useRef(false);
+  useEffect(() => {
+    const offBlur = navigation.addListener("blur", () => {
+      const s = stateRef.current;
+      if (!s || s.startedAt === null) return;
+      pausedOnBlurRef.current = true;
+      setState(pauseGame(s));
+    });
+    const offFocus = navigation.addListener("focus", () => {
+      if (!pausedOnBlurRef.current) return;
+      pausedOnBlurRef.current = false;
+      setState((s) => (s ? resumeGame(s) : s));
+    });
+    return () => {
+      offBlur?.();
+      offFocus?.();
+    };
+  }, [navigation]);
 
   // #597 — mirror moves into a ref so the abandon snapshot (which runs on
   // unmount) and the completion effect read the latest value.

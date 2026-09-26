@@ -305,6 +305,44 @@ describe("SudokuScreen — in-game input", () => {
     expect(summary["durationMs"]).toBe(45_000);
   });
 
+  // #2735: ⋯ → Stats/Leaderboard/Scoreboard covers the puzzle; its clock
+  // must not run meanwhile.
+  it("stops the play clock while another screen covers the puzzle", async () => {
+    const rendered = await startEasy();
+    const { getAllByRole, unmount } = rendered;
+    const emptyCells = getAllByRole("button").filter((n) =>
+      /empty/.test(String(n.props.accessibilityLabel ?? ""))
+    );
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    let now = Date.now();
+    const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      await act(async () => {
+        await fireEvent.press(enabledDigitButton(rendered)); // the puzzle's timer starts
+      });
+      await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
+      mockCompleteGame.mockClear();
+
+      await act(async () => {
+        mockNavListeners.get("blur")?.forEach((h) => h());
+      });
+      now += 10 * 60_000; // ten minutes reading Stats
+      await act(async () => {
+        mockNavListeners.get("focus")?.forEach((h) => h());
+      });
+      now += 5_000; // five more seconds of play
+      await unmount();
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
+    expect(summary["durationMs"]).toBe(5_000);
+  });
+
   // #2632: no screen-level beforeRemove abandon. It sent the full completion
   // formula as finalScore; back-navigation now unmounts and the hook abandons
   // with no score (the test above).

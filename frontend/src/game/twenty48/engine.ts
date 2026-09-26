@@ -371,6 +371,27 @@ export function newGame(): Twenty48State {
 }
 
 /**
+ * Freeze the timer while the screen is covered by another (Stats,
+ * Leaderboard, Scoreboard, #2735), so that time doesn't count as play. A
+ * no-op once the game has no running timer to freeze (not yet started, or
+ * already over).
+ */
+export function pauseGame(state: Twenty48State, now: number = Date.now()): Twenty48State {
+  if (state.startedAt === null) return state;
+  return {
+    ...state,
+    accumulatedMs: state.accumulatedMs + (now - state.startedAt),
+    startedAt: null,
+  };
+}
+
+/** Resume a timer `pauseGame` froze. A no-op on a finished or unstarted game. */
+export function resumeGame(state: Twenty48State, now: number = Date.now()): Twenty48State {
+  if (state.startedAt !== null || state.game_over) return state;
+  return { ...state, startedAt: now };
+}
+
+/**
  * Apply a move to `state`. Returns a new state.
  * Throws if the move has no effect or the game is already over.
  */

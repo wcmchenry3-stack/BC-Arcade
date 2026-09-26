@@ -9,7 +9,13 @@ import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { Twenty48State } from "../game/twenty48/types";
-import { newGame, move as engineMove, Direction } from "../game/twenty48/engine";
+import {
+  newGame,
+  move as engineMove,
+  pauseGame,
+  resumeGame,
+  Direction,
+} from "../game/twenty48/engine";
 import {
   saveGame,
   loadGame,
@@ -110,6 +116,29 @@ export default function Twenty48Screen({ navigation }: Props) {
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
+  // #2735) stops its clock, so the reported duration counts only play. Only
+  // a clock this pauses is restarted on return: a board with no move yet
+  // keeps waiting for its first.
+  const pausedOnBlurRef = useRef(false);
+  useEffect(() => {
+    const offBlur = navigation.addListener("blur", () => {
+      const s = stateRef.current;
+      if (!s || s.startedAt === null) return;
+      pausedOnBlurRef.current = true;
+      setState(pauseGame(s));
+    });
+    const offFocus = navigation.addListener("focus", () => {
+      if (!pausedOnBlurRef.current) return;
+      pausedOnBlurRef.current = false;
+      setState((s) => (s ? resumeGame(s) : s));
+    });
+    return () => {
+      offBlur?.();
+      offFocus?.();
+    };
+  }, [navigation]);
 
   // #2450 / #2619 — the board's result block. The hook's own abandon (unmount)
   // and the New Game abandon both build it here. final_score goes in the result
