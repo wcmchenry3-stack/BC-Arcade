@@ -4,6 +4,7 @@
  * module-level constant, so each build flavour is loaded in isolation.
  */
 
+import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -176,10 +177,99 @@ describe("gameVisibility", () => {
       // from the workflow's BC_API_TARGET (docs/IOS.md). Any third URL, or a
       // default other than production, would silently change which games ship —
       // update this test and docs/IOS.md together if that is ever needed.
-      const script = fs.readFileSync(
+      const postClone = fs.readFileSync(
         path.join(frontendRoot, "ios/ci_scripts/ci_post_clone.sh"),
         "utf-8"
       );
+      const selectorPath = path.join(frontendRoot, "ios/ci_scripts/select_api_target.sh");
+      const script = postClone + "\n" + fs.readFileSync(selectorPath, "utf-8");
+
+      function selectTarget(env: Record<string, string> = {}) {
+        return spawnSync(
+          "/bin/sh",
+          ["-c", '. "$1"; printf "SELECTED=%s\\n" "$API_URL"', "test", selectorPath],
+          {
+            encoding: "utf-8",
+            // Do not inherit a developer's workflow/API settings.
+            env: { PATH: process.env.PATH, ...env },
+          }
+        );
+      }
+
+      it("validates the target before installing dependencies", () => {
+        const source =
+          '. "$CI_PRIMARY_REPOSITORY_PATH/frontend/ios/ci_scripts/select_api_target.sh"';
+        expect(postClone).toContain(source);
+        expect(postClone.indexOf(source)).toBeLessThan(postClone.indexOf("brew install"));
+      });
+
+      it.each([undefined, "", "production"])("rejects a dev archive targeting %s", (target) => {
+        const result = selectTarget({
+          CI_BRANCH: "dev",
+          ...(target === undefined ? {} : { BC_API_TARGET: target }),
+        });
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain("BC_API_TARGET=prelaunch");
+        expect(result.stdout).not.toContain("SELECTED=");
+      });
+
+      it.each(["dev", "fix/example", "main"])("allows explicit prelaunch on %s", (branch) => {
+        const result = selectTarget({ CI_BRANCH: branch, BC_API_TARGET: "prelaunch" });
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain(`SELECTED=${PRE_LAUNCH_API_URL}`);
+      });
+
+      it.each([undefined, "", "production"])(
+        "allows the main archive's production target %s",
+        (target) => {
+          const result = selectTarget({
+            CI_BRANCH: "main",
+            ...(target === undefined ? {} : { BC_API_TARGET: target }),
+          });
+          expect(result.status).toBe(0);
+          expect(result.stdout).toContain(`SELECTED=${PRODUCTION_API_URL}`);
+        }
+      );
+
+      it("uses the PR source, not its main target, to reject production", () => {
+        const result = selectTarget({
+          CI_BRANCH: "main",
+          CI_PULL_REQUEST_SOURCE_BRANCH: "dev",
+          CI_PULL_REQUEST_TARGET_BRANCH: "main",
+        });
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain("source is 'dev'");
+      });
+
+      it("recognises a canonical main branch ref, but never guesses from a tag or missing branch", () => {
+        expect(selectTarget({ CI_GIT_REF: "refs/heads/main" }).status).toBe(0);
+        for (const env of [
+          {},
+          { CI_GIT_REF: "refs/heads/dev" },
+          { CI_GIT_REF: "refs/tags/v1.0.9" },
+        ]) {
+          expect(selectTarget(env).status).toBe(1);
+        }
+      });
+
+      it("rejects unknown targets and a conflicting workflow URL", () => {
+        const typo = selectTarget({ CI_BRANCH: "main", BC_API_TARGET: "prelauch" });
+        expect(typo.status).toBe(1);
+        const override = selectTarget({
+          CI_BRANCH: "dev",
+          BC_API_TARGET: "prelaunch",
+          EXPO_PUBLIC_API_URL: PRODUCTION_API_URL,
+        });
+        expect(override.status).toBe(1);
+        expect(override.stderr).toContain("would override");
+        expect(
+          selectTarget({
+            CI_BRANCH: "dev",
+            BC_API_TARGET: "prelaunch",
+            EXPO_PUBLIC_API_URL: PRE_LAUNCH_API_URL,
+          }).status
+        ).toBe(0);
+      });
 
       function assigned(name: string): string {
         const values = [...script.matchAll(new RegExp(`^${name}=(\\S+)$`, "gm"))];
