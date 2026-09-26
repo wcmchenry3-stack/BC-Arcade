@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { GameLeaderboardEntry } from "../api/stats";
+import { formatNumber } from "../api/statsDisplay";
 import type { BoardDefinition, GameType } from "../api/vocab";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { EmptyState } from "../components/shared/EmptyState";
@@ -407,7 +408,7 @@ function EntryRow({
   pinned?: boolean;
 }) {
   const mine = !!entry.is_me;
-  const value = entry.value.toLocaleString();
+  const value = formatNumber(t, entry.value);
   const date = formatDate(t, entry.completed_at);
   const a11yLabel = pinned
     ? t("leaderboard:a11y.yourBest", { rank: entry.rank, metric: metricLabel, value, date })

@@ -92,12 +92,12 @@ export default function GameDetailScreen({ navigation, route }: Props) {
           />
           <DetailRow
             label={t("detail.startedAt")}
-            value={formatTimestamp(detail.started_at)}
+            value={formatTimestamp(t, detail.started_at)}
             colors={colors}
           />
           <DetailRow
             label={t("detail.completedAt")}
-            value={formatTimestamp(detail.completed_at)}
+            value={formatTimestamp(t, detail.completed_at)}
             colors={colors}
             isLast
           />
