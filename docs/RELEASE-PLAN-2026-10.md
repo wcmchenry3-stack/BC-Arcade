@@ -115,14 +115,22 @@ Topology after this lands: **prod** = Render API + static site on `main` → **S
 
 **Design risks:** (1) PG 17 (Supabase) vs PG 18 (dev) — the schema is vanilla (no extensions; JSONB, UUID, timestamptz), but the test suite only ever runs on SQLite, so the Thu 24 `alembic upgrade head` is the first real proof; (2) session-pooler connection ceiling on the free tier vs the app's pool of 5 + 5 overflow plus one Alembic connection at boot — fine for one instance, revisit before scaling out; (3) a free-plan pause during App Review is a prod outage — hence the keep-alive now and Pro before submit; (4) the pooler URL leaking into this public repo — gitleaks will not reliably catch a Postgres URL, so it never goes anywhere but the password manager and the Render dashboard.
 
-### E. Closing task — document every game + full architecture review (after submission) — added 2026-09-20
+### E. Closing task — documentation program — superseded by #2799
 
-Owner request (Sep 20): the last thing this plan does is document all 12 games and how the app works, in `CLAUDE.md` form, together with a full architecture review. Scheduled into the **Sat 10 – Thu 15 review-wait window**: no code freeze to fight, and the architecture is at its launch shape.
+> **Superseded execution plan.** The original Sep 20 plan below proposed one nested `CLAUDE.md`
+> per game/package plus another architecture review. That would now duplicate the canonical
+> documentation system established by #2799. The current work is tracked there instead:
+> `docs/games/*.md` owns player-visible/per-game behavior; `GAME-CONTRACT.md` owns shared game
+> integration; `ARCHITECTURE.md` owns the system map; dedicated shared-system docs own
+> leaderboards, progression, Daily Challenge, feedback/observability and i18n.
+>
+> Do **not** create a second per-game documentation tree under source directories merely to satisfy
+> this historical release-plan item. Source-local comments/CLAUDE guidance may still be used for
+> implementation-specific contributor instructions when they add information that does not belong
+> in the canonical product/game docs.
 
-- **Per-game `CLAUDE.md`** in each `frontend/src/game/<name>/` (12 games + `_shared/`): rules as implemented, engine state shape and entry points (`engine.ts`), storage/persistence keys, scoring and what the server records, offline behaviour (`scoreQueue` / `SyncWorker`), AI approach where one exists (hearts, yacht), premium/visibility status, test files, known gotchas. Nested `CLAUDE.md` files load only when a session works in that directory — full detail at no cost to every other session. Matching `backend/<package>/CLAUDE.md` where a game has server-side logic (`daily_word`, `daily_challenge`, `games`, `stats`, entitlements).
-- **Root `CLAUDE.md` stays a tight index (< 50 lines)** — it gains one line pointing at the per-game files, nothing more.
-- **Full architecture review** → refresh `docs/ARCHITECTURE.md` end-to-end against the code as shipped (client engines, sync/offline queue, entitlements + visibility, progression, daily challenge, DB topology from D, observability, CI/release paths). **Includes a new "Infrastructure & external services" section** — none exists today (`ARCHITECTURE.md` and `RENDER.md` have no Cloudflare content at all): one map of what each service is for and how they connect — **GitHub** (Actions, CodeQL, gitleaks, release-please, Dependabot, branch protection), **Render** (dev + prod API and static sites, dev Postgres), **Supabase** (prod Postgres, session pooler, Pro/backups), **Sentry** (org / projects / environments / release tagging, the triage routine above), **Cloudflare** (DNS for `games-api` / `games` / buffingchi.com, proxy and TLS mode, any Workers / Web Analytics — gathered read-only over the Cloudflare MCP at that time, not from memory), plus the store toolchains (Xcode Cloud → App Store Connect, Gradle → Play Console). Per service: what it hosts, who owns the account, which secrets live there (names only — never values), and the failure mode if it goes down. Findings become GitHub issues (`tech-debt` / `security`), not inline fixes — the launch branch stays frozen.
-- **How (token-aware):** one `haiku` Explore agent per game, in parallel, each writing a draft from a fixed template; `sonnet` for the four engines with real algorithmic depth (hearts, yacht, sudoku, mahjong); the main session writes the cross-cutting architecture review itself and spot-checks every draft against the engine code before merge. One docs PR per ~4 games to keep reviews readable.
+The complete current documentation execution plan, de-duplication rules, dependencies and
+reorganization work live in **#2799**. This release plan remains a dated execution/history record.
 
 ## Progress snapshot — read this first (updated Sep 20, end of night — Mac, then PC)
 
