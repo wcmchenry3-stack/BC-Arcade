@@ -21,7 +21,7 @@ Drafts for #828: [`privacy-policy.html`](privacy-policy.html), [`terms-of-servic
 
 ### Owner decisions still open (placeholders in the files)
 
-1. ~~**Feedback destination**~~ — **resolved 2026-09-20:** in-app feedback now goes to Sentry User Feedback (`Sentry.captureFeedback`, text + session logs, no name/email, no screenshot) on every platform. The old Cloudflare worker path rejected every native request (`403 Origin not allowed` — native `fetch` sends no `Origin`) and, on web, filed the text and logs as a GitHub issue after passing it through the Anthropic API. The policy's feedback section is final on this point. Store forms: add "Other user content — not linked to the user, app functionality".
+1. ~~**Feedback destination**~~ — **resolved 2026-09-20:** in-app feedback now goes to Sentry User Feedback (`Sentry.captureFeedback`, text + session logs, no name/email field, no screenshot) on every platform. The current technical flow is documented in [FEEDBACK-OBSERVABILITY.md](FEEDBACK-OBSERVABILITY.md). The old Cloudflare worker path rejected every native request (`403 Origin not allowed` — native `fetch` sends no `Origin`) and, on web, filed the text and logs as a GitHub issue after passing it through the Anthropic API. The policy's feedback section is final on this point. Store forms: add "Other user content — not linked to the user, app functionality".
 2. **Legal name and postal address** of the publisher (GDPR Art. 13(1)(a)).
 3. **Retention limit** for inactive sessions ("until you delete" is lawful but a stated maximum is stronger).
 4. **Governing law** (ToS §13) and **liability cap** (ToS §9).
