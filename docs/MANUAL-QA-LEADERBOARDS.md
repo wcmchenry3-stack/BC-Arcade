@@ -1,4 +1,4 @@
-# Manual QA: results, leaderboards, stats and Profile
+> **Verification procedure.** This checklist validates the current reporting system; it is not the product specification. See [LEADERBOARDS.md](LEADERBOARDS.md) for current behavior and [GAME-CONTRACT.md](GAME-CONTRACT.md) for the integration contract.\n\n# Manual QA: results, leaderboards, stats and Profile
 
 A hand check of the leaderboards and scoring epic (#2519). Run it on real iOS and Android builds: the store-configuration builds (Wed 30 build #2 and the RC) and any TestFlight or Play test build that carries these changes.
 
