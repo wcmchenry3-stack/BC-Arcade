@@ -1,8 +1,9 @@
 # Deploying to Render
 
 Web (Expo Web) is a secondary target; what matters here is the **API**, which the
-iOS and Android apps talk to. For the why behind the topology see
-[`ARCHITECTURE.md` §11](ARCHITECTURE.md).
+iOS and Android apps talk to. For the why behind the topology and the external-service map see
+[`ARCHITECTURE.md`](ARCHITECTURE.md); this file owns the concrete Render/Supabase
+deployment procedure and environment-variable inventory.
 
 ## Environments
 

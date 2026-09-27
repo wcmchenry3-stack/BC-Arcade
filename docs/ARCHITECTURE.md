@@ -4,6 +4,13 @@ This document is policy. It applies to every game shipped in this repo. New game
 must be designed to fit; existing games that don't fit are tracked in linked
 issues for migration.
 
+Use this file for **system ownership and data-flow boundaries**. Use
+[GAME-CONTRACT.md](GAME-CONTRACT.md) for the normative game/session integration
+contract, [GAMEPLAY_STANDARDS.md](GAMEPLAY_STANDARDS.md) for shared gameplay/UI
+engineering rules, and the per-game files under [docs/games/](games/) for actual
+gameplay rules. Dedicated subsystem documents should own their detailed product
+rules rather than duplicating them here.
+
 ## 1. Core principle
 
 **Offline-first single-player. Server-authoritative multi-player.**
@@ -26,7 +33,7 @@ different trust model and is treated separately.
 ### 2.2 The server owns
 
 - Persistence: game records, final scores, event logs.
-- Identity and auth (when introduced).
+- Pseudonymous install identity (`X-Session-ID`) and the optional player display name; account authentication remains future work.
 - **Boundary security:** input validation, payload size caps, rate limits,
   content sanitization, ORM-only DB access. The OWASP layer stays even though
   rule enforcement leaves. See §6.
@@ -38,6 +45,70 @@ different trust model and is treated separately.
 - Validate game rules.
 - Recompute scores from event logs.
 - Hold in-memory session state for single-player games.
+
+## 2.4 Backend map
+
+The backend is a **shared reporting/persistence service**, not twelve separate
+game servers.
+
+`backend/main.py` creates the FastAPI application and mounts a small set of
+shared product routers plus the few game-specific services that genuinely need
+server behavior.
+
+| Area | Location | Responsibility |
+| --- | --- | --- |
+| Shared game sessions | `backend/games/` | Create/complete games, append events, ranking, board definitions, progression helpers, shared schemas |
+| Game vocabulary | `backend/vocab.py` | Canonical `GameType` and `GameOutcome` vocabulary |
+| Database | `backend/db/` | SQLAlchemy engine/session setup and persisted models |
+| Schema migrations | `backend/alembic/` | The only production schema-evolution path |
+| Stats / Profile data | `backend/stats/` | Cross-game and per-game aggregates over shared session rows |
+| Player display name | `backend/players/` | Optional public leaderboard name for the pseudonymous player id |
+| Entitlements | `backend/entitlements/` | Which premium games the current session may open |
+| Daily Challenge | `backend/daily_challenge/` | Frozen daily goal schedules, evaluation and streak derivation |
+| Daily Word | `backend/daily_word/` | Daily puzzle/guess service, one of the deliberate server-side gameplay exceptions |
+| Internal bug logs | `backend/logs/` | Session-linked diagnostic log ingestion |
+| Delete-my-data | `backend/me/` | Player/session data deletion |
+| Bottle Sort level service | `backend/sort/` | Generated/verified level sets |
+| Per-game descriptors | `backend/<game>/module.py` | `GameModule` metadata/result models, winner semantics, board definition and Stats shaping—not a second rule engine |
+
+Most per-game backend directories are **descriptors**, not gameplay services.
+A normal single-player game's rules stay in the TypeScript engine on the
+client. Adding a Python module for a game does not mean the server replays or
+validates that game's moves.
+
+### One game module contract
+
+Every registered game exposes a `GameModule` that tells the shared backend:
+
+- its canonical game type;
+- whether the game has a winner concept;
+- how creation metadata/result data are validated;
+- how its public board / Stats "Best" value are defined;
+- any game-specific Stats shaping.
+
+The normative protocol, route behavior, outcome vocabulary, and new-game
+checklist live in [GAME-CONTRACT.md](GAME-CONTRACT.md). This architecture file
+does not duplicate them.
+
+### Generated backend → frontend vocabulary
+
+`backend/scripts/gen_vocab_ts.py` generates shared product vocabulary into
+`frontend/src/api/vocab.ts`, including values such as:
+
+- game/outcome vocabulary;
+- winner semantics;
+- board definitions.
+
+`backend/tests/test_vocab.py` is the drift guard. When the backend declaration
+changes, regenerate the client vocabulary rather than hand-maintaining a second
+configuration.
+
+### Persistence
+
+Production schema changes go through Alembic migrations. The production API
+uses Supabase as plain PostgreSQL; dev uses its separate Render Postgres
+database; local development/CI can use SQLite. Environment/deploy details belong
+in [RENDER.md](RENDER.md), not duplicated here.
 
 ## 3. The rule engine — written once
 
@@ -650,6 +721,33 @@ Operational detail — env vars, first deploy, connection rules — is in
 [`RENDER.md`](RENDER.md).
 
 ---
+
+## 11.1 Infrastructure and external services
+
+BC Arcade intentionally keeps external-service responsibilities narrow. This is
+the system map; operational commands, environment variables and secrets belong
+in their runbooks.
+
+| Service | What BC Arcade uses it for | What happens if it is unavailable | Operational source |
+| --- | --- | --- | --- |
+| **GitHub** | Source, PR review, Actions/CI, dependency/security automation and repository history | Development/release automation stops; already-installed apps continue to run | Root workflows + testing/build docs |
+| **Render** | Dev/prod FastAPI services and secondary Expo Web sites; dev Postgres | Server reads/sync/entitlement/daily services are unavailable; offline-capable single-player continues locally and queues writes | [RENDER.md](RENDER.md) |
+| **Supabase** | Production PostgreSQL only, through the session pooler | Production server features that require DB access fail; local single-player can continue until sync/read services are needed | [RENDER.md](RENDER.md) |
+| **Sentry** | Native app + backend crashes/errors/performance and in-app User Feedback | Diagnostics/feedback visibility is reduced; gameplay should continue | `sentryConfig.ts`, backend `main.py`; canonical feedback/observability doc under #2805 |
+| **Cloudflare** | DNS/TLS/network routing for BC Arcade domains | Custom domains/routing may fail even when Render services are healthy | Render/domain configuration |
+| **Apple/Xcode Cloud/App Store Connect** | iOS build/sign/test/distribution toolchain | New iOS builds/releases stop; installed builds are unaffected | [IOS.md](IOS.md) |
+| **Google Play / Gradle signing toolchain** | Android build/sign/test/distribution | New Android releases stop; installed builds are unaffected | [ANDROID-CI.md](ANDROID-CI.md) |
+
+### Secrets and configuration ownership
+
+This public repository documents **secret names and required placement, never
+secret values**. Runtime credentials live in the appropriate service/dashboard
+or the owner's password manager. Do not paste secrets into source, issues,
+documentation, PR descriptions, or tool arguments.
+
+For the concrete Render/Supabase environment topology and variable inventory,
+use [RENDER.md](RENDER.md). Build-time API-target rules live in
+[IOS.md](IOS.md) and [ANDROID-CI.md](ANDROID-CI.md).
 
 ## 12. Daily cross-game challenge
 
