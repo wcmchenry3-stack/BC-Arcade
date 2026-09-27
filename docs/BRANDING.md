@@ -120,7 +120,7 @@ Stitch mockups are **guidelines, not truth**. They contain inconsistencies and r
 
 ## Cascade-specific theming
 
-Cascade has its own asset pipeline (background removal, vertex extraction, fruit-set definitions) that is orthogonal to BC Arcade's palette/typography system. See [`CASCADE-THEMING.md`](CASCADE-THEMING.md) for that pipeline.
+Cascade has its own asset pipeline (background removal, vertex extraction, fruit-set definitions) that is orthogonal to BC Arcade's palette/typography system. See [`research/CASCADE-THEMING.md`](research/CASCADE-THEMING.md) for that pipeline.
 
 ---
 
