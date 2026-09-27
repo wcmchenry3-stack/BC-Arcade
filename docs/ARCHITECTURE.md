@@ -750,23 +750,25 @@ Head to head, Hard beats Easy ~92% and Medium ~72% of the time. The nightly cali
 
 ## 14. Result, leaderboard and stats screens
 
-Where a recorded game shows up in the app (#2519 plan §4.4). Each surface has
-one job and reads the server; none of them writes a score.
+BC Arcade has five distinct player-facing reporting surfaces: the end-of-game
+result card, one-game leaderboards, one-game Stats, live Scorecards, and the
+cross-game personal Profile.
 
-| Surface                                                   | Job                                | What it reads                                                                                                                                                                                                                                                                                                                                                       |
-| --------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Result card** (`components/shared/GameResultModal.tsx`) | The end of _this_ game             | Its rank line from `useLeaderboardSubmit(sessionBoardAdapter(game))`: `submit({ gameId })` asks `GET /games/{id}/rank` (#2677) and shows "#N on the leaderboard" or "Your best: #N", asks once for a display name, or shows nothing for a game on no board. A "View leaderboard" link appears when the game has an openable board (`useLeaderboardLink`).           |
-| **Leaderboard** (`screens/LeaderboardScreen.tsx`, #2633)  | Top players of _one_ game's board  | `GET /games/leaderboard/{game_type}`: one entry per player, with a partition picker where the board has partitions. The player's own row is highlighted (`is_me`); when it is outside the list, their best is pinned below with its exact rank (`me`). Opened from the result card, the game's ⋯ menu and its Game stats screen (all through `useLeaderboardLink`). |
-| **Game stats** (`screens/GameStatsScreen.tsx`, #2635)     | _My_ history in _this_ game        | `GET /stats/me` → `by_game[gameType]`. The last response is cached in memory for the app session, keyed by session id (`hooks/useMyStats.ts`), and cleared by Settings → Delete my data (`clearMyStatsCache`). Blackjack links to its on-device run history.                                                                                                        |
-| **Scorecard** (`screens/ScorecardScreen.tsx`, #2636)      | The live view of the match in play | Game state on the device. Only Hearts, Yacht and Blackjack have one (`SCORECARD_GAMES`, `navigation/scorecards.ts`).                                                                                                                                                                                                                                                |
-| **Profile** (`screens/ProfileScreen.tsx`, #2637)          | Cross-game _personal_ summary      | `GET /stats/me`: only tiles that mean the same for every game (sessions, completed, completion rate, time played, games tried, favourite) and one row per game with that game's own best and win rate. No cross-game score. Also "Remove my name from leaderboards" (§4).                                                                                           |
+Their current product behavior and ranking model are documented in
+[LEADERBOARDS.md](LEADERBOARDS.md). The normative integration contract—what a
+game records, how `BoardDefinition` works, and how `GameShell` /
+`useGameSync` connect those surfaces—remains
+[GAME-CONTRACT.md](GAME-CONTRACT.md).
 
-`GameShell` takes a required `gameType` prop and adds the ⋯ menu's "Stats"
-item itself, plus "Scorecard" for a game in `SCORECARD_GAMES`; `null` is only
-for a screen that is not one game's play screen. What each game reports and
-where the player sees it is in its page under [`docs/games/`](games/).
+At the architecture level, the important boundary is:
 
-**Testing.** Maestro is paused past v1.0 ([MAESTRO.md](MAESTRO.md)); these
-screens are checked by hand with
-[MANUAL-QA-LEADERBOARDS.md](MANUAL-QA-LEADERBOARDS.md) on iOS and Android
-builds.
+- completed/history/ranking surfaces read the shared server-side game/session
+  model;
+- a Scorecard reads the live game already running on the device;
+- no surface submits an independent per-game score outside the shared game
+  session contract;
+- Profile aggregates only metrics that are comparable across games and never
+  invents a cross-game score.
+
+Manual device verification lives in
+[MANUAL-QA-LEADERBOARDS.md](MANUAL-QA-LEADERBOARDS.md).
