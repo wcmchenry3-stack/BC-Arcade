@@ -300,7 +300,7 @@ Unregistered game types (e.g. seeded in the DB before their module is implemente
 `games/service.py` runs one aggregate query per session, pre-fetches the latest score and metadata per game, and (only when some game has a `win` or `loss`) one ordered scan for win streaks. It then:
 
 1. calls `module.stats_shape(raw_stats)` for the game-specific part of the `/stats/me` entry, and
-2. sets the **comparable fields** itself, from the queries and the game's `BoardDefinition` (§1.3). `stats_shape` cannot change them, nor `completed` (the Arcade XP input, `games/progression.py`).
+2. sets the **comparable fields** itself, from the queries and the game's `BoardDefinition` (§1.3). `stats_shape` cannot change them, nor `completed` (the Arcade XP input; see [PROGRESSION.md](PROGRESSION.md) and `games/progression.py`).
 
 There is no game-specific logic in `service.py`.
 
