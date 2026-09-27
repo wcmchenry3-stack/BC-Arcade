@@ -20,9 +20,12 @@ The default layout is the Turtle / Tortoise stack: a multi-layer pyramid of 144 
 - The game is won when all tiles are removed
 - The board is deadlocked when no matching free pair remains and no shuffle is left (or a shuffle cannot produce a playable board). A deadlocked board the player leaves is a lost game; see [Scoring](#scoring-persistence)
 
-### Shuffle
+### Hint, Undo, Shuffle, and Deadlock
 
-When no matching free pair remains and shuffles are left, a Shuffle prompt is offered instead of a deadlock. A game has 3 shuffles (`MAX_SHUFFLES` in `frontend/src/game/mahjong/engine.ts`).
+- **Hint:** highlights one currently available matching free pair. It does not remove the pair for the player.
+- **Undo:** restores the prior board snapshot. Up to 50 snapshots are retained. Undoing out of a deadlock resumes the game rather than preserving the deadlocked state.
+- **Shuffle:** when no matching free pair remains and shuffles are left, the game offers Shuffle instead of immediately declaring the board dead. A game has 3 shuffles (`MAX_SHUFFLES`).
+- **Deadlock:** if no matching free pair exists and no usable shuffle remains, the board is deadlocked. The player can still rescue it with Undo if history exists. A deadlocked board is recorded as a loss only when the player leaves it or starts another game; reaching the deadlock itself is not an irreversible server result.
 
 ## Scoring (Persistence)
 
@@ -39,6 +42,12 @@ When no matching free pair remains and shuffles are left, a Shuffle prompt is of
 - **Duration:** Mahjong's own play timer (`elapsedMs` in `engine.ts`). It wins over `useGameSync`'s window. The timer stops at a win or a deadlock and pauses while the player is away: another screen covers the game (navigation `blur`, #2633) or the app is in the background (`AppState`, #2750). `usePausableClock` (built on `usePauseWhileAway`) drives `pauseGame` / `resumeGame` for both as functional updates at the event's time, and resumes only once neither holds; it also starts paused when the screen mounts away, and pauses a game loaded while the player is away (`adoptLoaded`) and matches a move built from a board rendered before the player left or came back to their presence, pausing or resuming it (`matchPresence`). The clock's paused state is its own (`paused` on `PlayClock`): a move never restarts a paused clock, only the return does, and a clock that never started still starts on the first move. The pause also saves in its own event handler, before any render, from the latest state the screen computed; the pause is saved like any state change. The save banks the running segment into `accumulatedMs` and the load restarts the clock from the moment of loading (`clockForSave` / `clockOnLoad` in `frontend/src/game/_shared/playClock.ts`), so a relaunch keeps the play before an app kill and never counts the time the app was closed. Level Select pauses the clock (a trip to the background there doesn't resume it), and CONTINUE carries on from the board still in memory and resumes it (the save is loaded only when nothing is); a deadlocked or cleared board never resumes. Undo keeps the live clock rather than the snapshot's (`undoMove`), and undoing out of a deadlock starts the stopped clock again. A save from a build before #2750 carries a raw running `startedAt`, and the oldest have no `accumulatedMs`: when the app was closed is unknown, so that running segment is dropped and the game counts from the load, keeping only what was banked.
 - **How it reaches the server:** the `useGameSync("mahjong")` session row, opened at the first tile tap. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. The engine runs client-side and the board persists to AsyncStorage, so a game finished offline uploads when the device is back online. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best win once. The legacy `POST /mahjong/score` was removed in #2644. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the win card shows the rank through `sessionBoardAdapter` (`GET /games/{id}/rank`), or asks once for a display name. The deadlock card shows no rank. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu. Store builds hide Mahjong (`HIDDEN_GAMES`, `frontend/src/entitlements/gameVisibility.ts`), so there it has no leaderboard or stats entry point.
+
+## Responsive layout and rendering
+
+Mahjong's responsive layout is implemented in `frontend/src/game/mahjong/layout.ts` through `calculateMahjongLayout()` and `makeBoardCamera()`. The old "responsive layout extraction pending" description is obsolete.
+
+Native rendering uses Skia; web uses Canvas2D. Both consume the same engine/layout concepts and must keep hit-testing behavior aligned.
 
 ## Client-Side Engine
 
@@ -63,8 +72,10 @@ Mahjong uses a Skia canvas on native. The canvas must be complemented by native 
 Premium: requires a valid entitlement JWT. Offline play continues within the
 7-day grace period; see [`docs/ARCHITECTURE.md §10`](../ARCHITECTURE.md#10-premium-entitlements).
 
-## Known Issues / Limitations
+## Scoring decision still open
 
-- Responsive board layout extraction pending (Epic #1331 — `calculateMahjongLayout()` to be extracted)
-- Engine shipping tracked in issue #870
-- #2747: every cleared board scores exactly 1220, so the board only orders players by who cleared first (see [Scoring](#scoring-persistence), Tie-break)
+**#2747 remains an intentional product dependency.** Under the current implementation every clear scores 1220, so the public board cannot distinguish quality of clears and falls back to the shared completion-time tie-break.
+
+This file documents that current behavior, but it should not be treated as the final Mahjong ranking design. #2747 must decide whether ranking becomes time-based, score-with-penalties, or score plus a meaningful tie-break (and whether layouts should partition the board). Update this section and the backend `BoardDefinition` together when that decision lands.
+
+Active implementation bugs and future gameplay work stay in GitHub rather than being copied into a stale Known Issues list.
