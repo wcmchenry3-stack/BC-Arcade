@@ -315,22 +315,40 @@ we queue — not a signal to bump the cap.
 
 ## 5. Eviction policy
 
-When the queue is over budget, evict oldest entries from the lowest non-empty
-tier first.
+The queue's priority number controls **sync/processing order**, not a simple
+"evict P3 before P2 before P0" hierarchy. Capacity eviction deliberately
+protects lifecycle rows first and then uses age across the remaining pool.
 
-| Tier                   | Contents                                          | Eviction order        |
-| ---------------------- | ------------------------------------------------- | --------------------- |
-| **P0** (most precious) | High-priority bug reports / crashes               | last to evict         |
-| **P1**                 | Game outcomes (final score, completion, duration) | evicted after P2 / P3 |
-| **P2**                 | Low-priority bug reports / user feedback          | evicted after P3      |
-| **P3**                 | Normal gameplay event logs                        | first to evict        |
+When the queue exceeds either the 5,000-row or 5 MB cap:
 
-Bug priority is **assigned automatically by the client**, not by the user:
+1. **P1 lifecycle rows are protected while any non-P1 rows remain.** These
+   events describe the load-bearing game lifecycle (for example
+   `game_started`, `game_ended`, and `hand_resolved`).
+2. **P0 bug logs, P2 mid-tier events, and P3 granular events form one FIFO
+   eviction pool.** The oldest row in that combined pool is evicted first,
+   regardless of tier. A newer granular event can therefore outlive an older
+   bug log.
+3. **If the queue consists only of lifecycle rows, P1 is still FIFO-evictable.**
+   It is last-to-evict, not permanently immune to the hard cap.
+4. Rows older than the queue TTL are removed independently of capacity
+   eviction.
 
-- Unhandled crash, error, or hang → **P0**.
-- User-submitted feedback or in-app bug report → **P2**.
+This policy is intentional (#486) and is enforced by `eventStore.ts` plus the
+queue-cap tests. It replaced the older pure tier-walk policy because preserving
+fresh events sometimes requires evicting older nominally "higher-priority"
+rows.
 
-Users do not pick a priority. The client classifies.
+The current priority assignments still matter for batching/sync behavior:
+
+| Tier | Typical contents |
+| --- | --- |
+| **P0** | Bug logs |
+| **P1** | Lifecycle events |
+| **P2** | Mid-tier gameplay events such as score/bet/deal/merge |
+| **P3** | Granular gameplay events |
+
+Bug/event priority is assigned automatically by the client; users do not choose
+a priority.
 
 ## 6. Boundary security
 
