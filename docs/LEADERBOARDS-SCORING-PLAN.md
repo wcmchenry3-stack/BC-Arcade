@@ -1,4 +1,4 @@
-# Leaderboards & Scoring — Streamlining Plan
+> **Historical design record.** This file preserves the implementation plan and decision history that led to the current shared reporting system. It is **not** the current behavior contract. For current behavior see [LEADERBOARDS.md](LEADERBOARDS.md); for normative game integration see [GAME-CONTRACT.md](GAME-CONTRACT.md).\n\n# Leaderboards & Scoring — Streamlining Plan
 
 **Status:** owner decisions recorded 2026-09-25 (§8, sixteen decisions); filed as issues under epic #2519. Nothing in this plan is scheduled before the v1.0 store submission; see [§6 Sequencing](#6-sequencing).
 **Scope:** how every game *reports* its result, how results are *stored and ranked*, and how results are *shown* (result card, per-game scoreboard, leaderboards, Profile stats). Game rules and scoring formulas stay game-specific and are out of scope.
