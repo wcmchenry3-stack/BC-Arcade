@@ -18,11 +18,30 @@ Daily Word is a once-per-day word-guessing puzzle (Wordle-style). The player has
 
 ### Rules
 
-- Guesses must be valid words (validated against a word list)
-- One puzzle per day per language — everyone plays the same word
-- After 6 incorrect guesses the answer is revealed
-- Progress is saved — leaving mid-game and returning continues where you left off
-- Results can be shared (emoji grid format)
+- One puzzle per local day per language — everyone in the same day/language gets the same answer.
+- The player has at most 6 scored guesses.
+- Guesses must have the puzzle's visible length and be valid words.
+- Invalid words and wrong-length guesses do not spend a scored guess.
+- A retried duplicate guess request does not spend the same turn twice.
+- After six unsuccessful scored guesses, the puzzle is lost; the answer is available only to a session that has earned it by solving or exhausting its guesses.
+- Progress is saved locally so leaving and returning resumes the board.
+- Results can be shared as an emoji-grid summary.
+
+### Repeated letters
+
+Tile evaluation is frequency-aware:
+
+1. exact-position matches are marked first;
+2. remaining answer-letter inventory is then consumed for wrong-position matches;
+3. any additional duplicate letters in the guess are gray/absent once the answer's remaining copies are exhausted.
+
+This prevents one answer letter from incorrectly marking multiple duplicate guess letters yellow.
+
+### English and Hindi
+
+English uses ordinary code-point letter length.
+
+Hindi input is NFC-normalized and uses Devanagari grapheme clusters for visible puzzle length, so combining marks/conjuncts render as one visual tile where appropriate. The backend returns grapheme-cluster information for Hindi guesses so the client can render the scored result consistently.
 
 ### Languages
 
@@ -45,11 +64,63 @@ Daily Word has **no leaderboard**. Its board is declared disabled (`enabled=Fals
 - **How it reaches the server:** the `useGameSync("daily_word")` session row, opened at the first accepted guess (`POST /daily-word/guess` checks each guess). `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`, with `finalScore: null`, when the puzzle ends. The screen asks for no rank: `GET /games/{id}/rank` would answer `board_disabled`.
 - **Where the player sees it:** the win / loss result card, which shows no leaderboard line, and Stats (`GameStatsScreen`, #2635, in the ⋯ menu): sessions, wins, losses, win rate and streaks, "Best" as the fewest guesses in a won puzzle, and time played. There is no Leaderboard entry point (`openableBoard` in `frontend/src/game/_shared/leaderboardAvailability.ts`). The daily challenge reads the result block (`backend/daily_challenge/definitions.py`).
 
-## Client-Side Engine
+## Daily lifecycle and rollover
+
+The puzzle id is `YYYY-MM-DD:<language>`, derived from the player's current UTC offset.
+
+### Loading / resume
+
+On mount the screen fetches today's puzzle metadata and loads any saved board.
+
+- If the saved `puzzle_id` matches today, that board resumes.
+- If it belongs to another day/language, the stale save is cleared and a fresh board is created.
+- For network failures while loading, cached "today" metadata may be used when available. HTTP errors are not bypassed by cache fallback.
+- An unfinished restored board resumes the corresponding shared game session.
+
+### Midnight / stale-puzzle recovery
+
+The backend rejects a guess for an old puzzle id (with a one-minute clock-drift grace around midnight). When the client receives `stale_puzzle_id`, it tries to replace the board with today's puzzle.
+
+**The replacement is fetch-first and atomic from the player's perspective:**
+1. fetch today's puzzle;
+2. if that succeeds, clear the old local state;
+3. abandon the old open session if necessary;
+4. install the fresh board.
+
+If the fetch fails, the old saved board and its open session are left intact. This fixes the data-loss scenario formerly tracked by #2473.
+
+For a completed puzzle, the result card counts down to the next local midnight. When it reaches zero, the primary action becomes Play Again:
+- if the server still serves the same puzzle (for example device/server clock skew), the completed result remains and the client retries after a short countdown;
+- if loading the new puzzle fails, the finished board remains saved and Play Again stays retryable;
+- only a successfully fetched different puzzle replaces it.
+
+### Current timezone model
+
+Daily Word currently sends `tz_offset_minutes`, not an IANA timezone id. The current offset determines the local date/puzzle id. This is the same broad offset-based day model used by Daily Challenge today; timezone/DST improvements should be kept consistent across the two systems.
 
 - Location: `frontend/src/game/daily_word/engine.ts`
 - Key exports: guess validation, tile color computation, win/loss detection
 - Puzzle generation: `backend/daily_word/puzzle.py` generates daily puzzles server-side
+
+## Guess validation and server-side progress
+
+The answer is deterministic, but scored-guess state is also tracked server-side so a caller cannot obtain unlimited scored attempts simply by resetting local state.
+
+- `POST /guess` validates puzzle id, language, visible length and dictionary membership before spending a guess.
+- The scored-guess cap is 6.
+- Repeated/retried guesses are idempotent with respect to the guess count.
+- The server can reconcile the client's `guesses_used` upward from its recorded count.
+- `GET /answer` is gated: the session must have solved the puzzle or exhausted its guesses.
+- If the guess-state database is temporarily unavailable, guess scoring degrades open so the free puzzle remains playable; answer release remains closed because entitlement to the answer cannot be proven.
+
+## Sharing
+
+After a win/loss:
+- iOS/Android use the native system share sheet;
+- web copies the generated share text to the clipboard when available;
+- the share text includes the emoji result grid and Daily Word deep link.
+
+The UI only says "Copied" when a clipboard copy actually happened.
 
 ## Backend
 
@@ -66,6 +137,8 @@ Daily Word has **no leaderboard**. Its board is declared disabled (`enabled=Fals
 
 Tier TBD. If free: no entitlement check — daily puzzle is always accessible.
 
-## Known Issues / Limitations
+## Open behavior dependencies
 
-- None tracked at this time
+The former rollover data-loss issue #2473 is already resolved in current code and tests and should not remain a documentation dependency.
+
+Active future timezone/day-boundary work should be documented here only when it changes the shipped behavior; do not mirror the general GitHub backlog into this file.
