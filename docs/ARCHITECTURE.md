@@ -149,6 +149,12 @@ What we log:
 - **Gameplay event logs:** per-move or per-action records, useful for analytics
   and for diagnosing reported bugs.
 
+Player-submitted feedback, automatic Sentry diagnostics, and session-linked
+internal bug logs are separate channels. Their current data flows and privacy
+boundaries are documented in
+[FEEDBACK-OBSERVABILITY.md](FEEDBACK-OBSERVABILITY.md); this architecture
+section owns only the shared offline event/session pipeline.
+
 **Result envelope (#2449).** `PATCH /games/{id}/complete` accepts an optional
 `result` dict alongside `final_score` / `outcome` / `duration_ms`. Each game
 module may declare a `result_model` (a Pydantic model, separate from the
