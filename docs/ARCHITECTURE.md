@@ -647,103 +647,24 @@ Operational detail — env vars, first deploy, connection rules — is in
 
 ## 12. Daily cross-game challenge
 
-One challenge a day, three goals — **Daily Word always, plus two other games** —
-the thread that makes the arcade one product rather than a folder of games (App
-Review guideline 4.2). Backend: `backend/daily_challenge/`.
+Daily Challenge is a shared read-side product system built on completed
+`games` rows: three goals per local day, frozen per date/slate, plus an
+app-wide derived streak.
 
-- **Derived, then frozen (#2493).** A day's challenge is derived from
-  `date.toordinal()` and `DAILY_CHALLENGE_SALT` for the player's **local** date
-  (`tz_offset_minutes`, the same convention as `/daily-word/today`): the
-  non-Daily-Word games sit in a salt-shuffled rotation and each day steps two
-  places along it, so the day's two games never repeat the previous day's. The
-  salt is a per-environment secret, so the schedule cannot be read off the
-  public repo. (The day ordinal, not Daily Word's `YYYYMMDD` number, whose jumps
-  at month ends can repeat a pick.) Tiers rotate by day too. That derivation
-  (`template_for` in `definitions.py`) is only the policy for a day nobody has
-  seen yet: the first request for a (date, slate) pair writes the result to the
-  `daily_challenge_days` table (`DailyChallengeDay` in `backend/db/models.py`,
-  migration `0019_add_daily_challenge_days`), and every later request reads that
-  row back (`backend/daily_challenge/schedule.py`). Retuning the goal pool, a
-  target or the salt therefore only changes days not yet frozen. Goals are
-  stored as self-contained specs, so a frozen day survives a goal leaving the
-  pool.
-- **Completion is a read-side view.** `GET /daily-challenge/status` reads the
-  day's frozen template (`schedule.get_or_create_template`: one SELECT, plus an
-  INSERT on the first request for that day and slate), then runs one query over
-  the session's own `games` rows finished inside the local day and evaluates the
-  goals in Python. It is the data `PATCH /games/{id}/complete`
-  already writes, so a game played offline counts as soon as the sync queue
-  uploads it (§4) — by the time it was played, not the time it was uploaded.
-- **Goals are per game, over the result envelope (#2449).** No one measure fits
-  every game, so each game owns three goals (easy / medium / hard) in its own
-  terms — moves, pairs, highest tile, chips, guesses. Each goal is a predicate
-  over one row's measures: the result block in `games.metadata` plus the
-  `final_score` / `duration_ms` columns (`game_facts`). It is met if any one of
-  the player's games of that type satisfies it. `games.outcome` is never read —
-  a game reports `won` and its progress on abandon, so progress goals ("make 10
-  moves") credit a game the player left, and `won` goals need a win. The fields
-  each game must send are listed in `definitions.py`.
-- **Rules the pick enforces (tested):** Daily Word every day; two distinct other
-  games; none repeated from the previous day; at most one goal per day that
-  requires a win (luck-dependent — a Klondike deal is not always winnable), the
-  win slot rotating by day and any extra win goal falling back to that game's
-  easy goal, which never needs a win.
-- **Two slates, resolved per request (#2454).** `FREE_GOAL_POOL` (the six free
-  games) and a superset `PREMIUM_GOAL_POOL` are static spec tables; which slate a
-  session gets is a live database fact. `resolve_slate` runs one join over
-  `game_types.is_premium` and the session's `game_entitlements`: a session gets
-  the **premium** slate only if it owns **every** premium game that day's premium
-  template names — otherwise it would be handed a goal in a game it cannot open —
-  else the free slate. `ENTITLEMENT_DEV_OVERRIDE` counts every named premium
-  game as owned (§10.4) but follows the same rule, so dev never reports a slate
-  production would not. Premium-only goal specs are post-launch (#2458), so today
-  the two templates are identical, every session resolves to the free slate —
-  override or not — and `resolve_slate` runs no query. The slate choice is live: each slate's
-  template is frozen per day, but which slate a session gets is not pinned, so
-  a mid-day entitlement change swaps the challenge on the next `/status`. Two
-  guards keep the static pool honest: a test
-  fails if any free-pool game is premium in `game_types` (the pool would then
-  name a game a free player cannot open), and the free pool is disjoint from the
-  premium slugs, which a store build hides (§10.7).
-- **`/today` is always the free slate; only `/status` can be premium.** `/today`
-  has no session, so it never resolves a slate; it reads (or, on the day's first
-  request, freezes) the free template through the same
-  `schedule.get_or_create_template`. For an entitled session the goal
-  list therefore comes from `/status`, which can differ from `/today` in the goals
-  themselves, not just their completion — a client must not build its goals from
-  `/today` and only read completion off `/status` (#2455).
-- **Streak: replayed over frozen days (#2456, #2493).** `streak_days` on
-  `GET /stats/me` is the number of consecutive local days with at least 2 of that
-  day's 3 goals met — a count only, no reward, and no streak table: the streak
-  itself is not stored. `compute_streak` (`backend/daily_challenge/streak.py`)
-  reads each past day's frozen template (`schedule.get_or_create_templates`; a day
-  never requested before is frozen on that call) and scores it with the same
-  `evaluate_template` the live `/status` uses, so there is one definition of a day
-  and of a goal. The run ends **today** if today already has 2 of 3, otherwise
-  **yesterday** (today is not failed, just unfinished). One windowed query over the
-  player's games grouped by day in Python — never a query per day — plus one query
-  per slate for the window's frozen templates, and the premium slate's and the
-  session's entitlements only when some day's free and premium templates differ
-  (not until #2458). Capped at 60 days: a value of 60 means "at least 60", shown as
-  "60+". `/stats/me` takes the same optional `tz_offset_minutes` as
-  `/daily-challenge/*`; old clients omit it and get UTC days. A streak failure is
-  logged and returns 0 rather than taking down the XP/level fields the same response
-  carries. Owner decision, 2026-09-20 — not in the original release plan.
-  Accepted approximations: past days use the session's _current_ entitlements, so
-  once premium goals exist a purchase or refund re-scores the window under the other
-  slate; one UTC offset covers the whole window, so a daylight-saving change moves a
-  game finished within an hour of local midnight onto the neighbouring day; and
-  history is client-reported (`completed_at` is accepted up to a year back), so a
-  streak can be fabricated — fine for a count with no reward, to be revisited before
-  it earns anything (#2469).
-- **No copy on the wire.** Responses carry `kind` (per game, e.g. `won`,
-  `moves_at_least`, `highest_tile_at_least`), `game_type` and `target`; the
-  client words them in its own i18n namespace.
+The current product rules, goal scheduling/evaluation, free/premium slate
+resolution, API behavior, streak algorithm, offline implications, and the
+known UTC-offset/DST limitation are canonicalized in
+[DAILY-CHALLENGE.md](DAILY-CHALLENGE.md).
 
-| Route                         | Auth                         | Limit  |
-| ----------------------------- | ---------------------------- | ------ |
-| `GET /daily-challenge/today`  | none (IP-keyed)              | 60/min |
-| `GET /daily-challenge/status` | `X-Session-ID` (session-key) | 60/min |
+At the architecture level, the important boundaries are:
+
+- normal games write their existing shared session/result data; they do not
+  call a separate challenge-completion endpoint;
+- `backend/daily_challenge/` reads those rows and freezes each day's assigned
+  goal specs in `daily_challenge_days`;
+- the challenge and streak are derived views, not mutable counters;
+- the Home card consumes the session-scoped status route and localizes goal
+  copy on the client.
 
 ## 13. Yacht computer opponent
 

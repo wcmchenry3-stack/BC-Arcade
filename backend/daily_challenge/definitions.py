@@ -17,13 +17,13 @@ display copy — the client builds that in its own i18n namespace) and an
 ``evaluate(facts)`` predicate. ``facts`` is one finished game's measures: the
 result block the game reported on ``PATCH /games/{id}/complete`` (merged into
 ``games.metadata``, #2449) plus the ``final_score`` and ``duration_ms`` columns —
-build it with ``game_facts``. A goal is met if *any one* of the player's games of
-that type today satisfies it; nothing is aggregated across games. Abandoned games
-count for progress goals (``moves_at_least`` and friends) because the game
-reports ``won: false`` plus its progress on abandon; only ``won`` goals need a
-win. ``games.outcome`` is never read here (it records who won only for games
-with a winner — see ``vocab.GameOutcome``; the result block is the one source
-for every game).
+build it with ``game_facts``. A goal is met if *any one* of the player's eligible
+games of that type today satisfies it; nothing is aggregated across games.
+``service.py`` filters abandoned rows before these predicates run, so neither
+win goals nor progress/threshold goals can be satisfied by an abandoned game.
+``games.outcome`` is otherwise not an evaluator input (it records who won only
+for games with a winner — see ``vocab.GameOutcome``; the result block carries
+the per-game measures).
 
 Fields the evaluators read, per game (the result each game must send):
     daily_word  is_complete, won, guesses_used         (#2451)
@@ -164,7 +164,10 @@ def _won(game_type: str, tier: Tier) -> Goal:
 
 
 def _at_least(game_type: str, measure: str, target: int, tier: Tier) -> Goal:
-    """Reach ``target`` on a numeric measure; no win needed, abandoned games count."""
+    """Reach ``target`` on a numeric measure; no win needed.
+
+    The service filters abandoned game rows before evaluation.
+    """
 
     def check(f: Facts) -> bool:
         value = _number(f, measure)

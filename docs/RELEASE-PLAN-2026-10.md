@@ -92,7 +92,7 @@ Pure derivation from the existing `games` table — no new table, no migration.
 
 ### C. Daily cross-game challenge (~2.5–3 dev-days)
 
-> **Reworked Sep 20 under epic #2448 — what shipped differs from the design below.** Three goals a day across all six free games (not four games / two goals), per-game goals over a result envelope, free / premium slates, and an app-wide streak. `docs/ARCHITECTURE.md` §12 and the workstream C row in the progress snapshot are the source of truth; the text below is the original design.
+> **Historical implementation plan.** What shipped differs from the design below. Current behavior is canonicalized in [DAILY-CHALLENGE.md](DAILY-CHALLENGE.md); preserve this section as release/design history.
 
 Clone the Daily Word stateless pattern — no new tables; completion is a read-side view over data already written by `PATCH /games/{id}/complete`.
 - New `backend/daily_challenge/` package (mirrors `daily_word/`): `definitions.py` — deterministic template pick by `(YYYYMMDD + DAILY_CHALLENGE_SALT) % len(TEMPLATES)`; templates span free games only. **Only twenty48 gets `score_at_least` goals** (it's the only visible free game with comparable `final_score` — per migration 0003 comment); all others use binary "complete".
