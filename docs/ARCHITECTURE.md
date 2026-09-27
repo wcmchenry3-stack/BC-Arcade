@@ -429,16 +429,36 @@ how those games behave once open.
 
 ### 10.2 Offline grace period
 
-Tokens remain valid for **7 days past expiry** when the device is offline. If
-a token is missing or expired beyond the grace period, the app shows a
-"Reconnect to restore premium access" message. Free games are always accessible
-regardless of token state.
+The client may reuse the cached entitlement set for **7 days past JWT expiry**
+when it cannot refresh. If the cache is missing or beyond the grace period,
+premium access is denied locally until the app reconnects. Free games remain
+accessible.
 
-### 10.3 Route protection
+This grace is client-side continuity only. Once online, current server
+authorization comes from the session's database entitlement rows, not from a
+client-presented JWT claim.
 
-Every premium API endpoint uses the `require_entitlement(game_slug)` FastAPI
-dependency. A missing or invalid token returns `403 not_entitled`. This prevents
-score submission from a session that has lost its entitlement between sessions.
+### 10.3 Server authorization
+
+The JWT is the app's signed entitlement cache; it is **not** the server's
+authorization credential.
+
+Server-side premium checks use the validated `X-Session-ID` and current
+`game_entitlements` rows:
+
+- generic `POST /games` calls `check_entitlement` before creating a premium
+  game session;
+- a premium game's own backend router uses
+  `require_entitlement(game_slug)` when it exposes game-specific endpoints;
+- shared game operations remain scoped to the session that owns the game row.
+
+This means editing/decoding the cached client JWT cannot grant server-side
+premium access. An already-open game is allowed to finish under the product rule
+that entitlement changes do not interrupt gameplay.
+
+The current session id is a client-held UUID, not an authenticated account
+credential. The paid-IAP ownership/replay gate and the exact current trust model
+are documented in [../SECURITY.md](../SECURITY.md).
 
 ### 10.4 Dev override
 
