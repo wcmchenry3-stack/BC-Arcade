@@ -69,6 +69,12 @@ backend/tests/
 
 ## Frontend
 
+Localization architecture, locale/namespace contributor workflow, formatting
+rules, and the purpose of the i18n guards are canonicalized in
+[I18N.md](I18N.md). This testing guide should document how to run the checks,
+not duplicate the product localization contract.
+
+
 ### Setup
 
 ```bash
