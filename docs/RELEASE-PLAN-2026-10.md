@@ -83,6 +83,8 @@ Maestro as a PR gate on either platform (#2400 Android, #2347 iOS — see the 20
 
 ### B. Arcade XP + player level (~2 dev-days)
 
+> **Historical implementation plan.** Arcade XP is now shipped. Current product/data behavior is canonicalized in [PROGRESSION.md](PROGRESSION.md); preserve the notes below as implementation/release history rather than an evergreen specification.
+
 Pure derivation from the existing `games` table — no new table, no migration.
 - New `backend/games/progression.py`: pure `compute_progression(summary: StatsSummary)` — base XP per completed game + variety bonus per distinct game played (breadth supports the anti-container narrative), `LEVEL_THRESHOLDS` array marked "tune post-launch". Unit tests with hand-built fixtures (`backend/tests/test_progression.py`).
 - Extend `StatsResponse` in `backend/games/schemas.py` (`arcade_xp`, `arcade_level`, `xp_into_level`, `xp_for_next_level`); ~5-line change in `backend/stats/router.py::get_my_stats()`.
