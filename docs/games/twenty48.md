@@ -1,61 +1,152 @@
 # 2048
 
-**Category:** Puzzle
-**Tier:** TBD
-**Status:** In Development
+**Category:** Puzzle  
+**Tier:** Free in the v1.0 store build
+
+BC Arcade's 2048 is the standard 4×4 sliding-number puzzle with local save/resume, a score leaderboard, and a run that is considered won when the player first reaches 2048.
+
+Shared session/offline/reporting behavior is defined by [GAME-CONTRACT.md](../GAME-CONTRACT.md). This page owns 2048-specific gameplay, scoring, and run-lifecycle rules.
 
 ## How to Play
 
-Classic 2048. Slide all tiles on a 4×4 grid in one of four directions (up, down, left, right). When two tiles with the same number collide, they merge into one tile with their combined value. The goal is to create a tile with the value **2048** (or beyond).
+Swipe the whole 4×4 board up, down, left, or right.
 
-### Rules
+On an effective move:
 
-- Every swipe slides **all** tiles as far as possible in the chosen direction
-- After each swipe, a new tile (value 2 or 4) spawns in a random empty cell
-- Two tiles can only merge once per swipe (a merged tile cannot merge again in the same move)
-- The game ends when the grid is full and no legal moves remain
+1. every tile slides as far as it can in that direction;
+2. adjacent equal values merge;
+3. each tile can participate in at most one merge during that move;
+4. one new tile spawns in a random empty cell.
 
-### Scoring
+A move that would not change the board is ignored and does not spawn a tile.
 
-Each merge scores points equal to the value of the new (merged) tile. A 2+2 merge scores 4; a 1024+1024 merge scores 2048.
+## Starting board and tile spawning
 
-## Scoring (Persistence)
+A new game begins with **two** randomly placed tiles.
 
-- **Metric and direction:** `final_score`, higher is better, labelled `score` (`board` in `backend/twenty48/module.py`; `BOARDS.twenty48` in `frontend/src/api/vocab.ts`). It is the score when the session closes: at the 2048 tile, or at game over.
-- **Tie-break:** none declared. Equal scores go to the earlier `completed_at`, the last tie-break on every board.
-- **Partitions:** none: one global board (#2519 decision 1).
-- **Recorded, not partitioned:** result (`Twenty48Result`): `final_score`, `highest_tile`, `move_count`, `duration_ms`, `outcome`. The opening board is event data (`game_started`'s `initial_board`), not metadata. The daily challenge reads `final_score` and `highest_tile` from the result.
-- **Max value:** none (#2519 decision 14).
-- **Outcomes:** `has_winner = True` (#2631). One session per game, closed as:
-  - `win` when the 2048 tile appears, with `final_score` = the score at that moment. Keep Playing after it is untracked, so later points are not ranked.
-  - `loss` on a game over without 2048, with `final_score` = the score at game over.
-  - `abandoned` on New Game during play, or on leaving the screen, with the result block (its `final_score` included, for the daily challenge) but no `final_score` column, so it never ranks.
-  - Older builds sent `completed` (game over) and `kept_playing` (Keep Playing); those rows stay valid. The server stores one as `win` when it closed the session that first reached 2048, i.e. its `highest_tile` is 2048 or more and its `initial_board` is below 2048 (`backend/games/legacy_outcomes.py`, #2703). The rest stay as sent, a finish with no winner.
-- **Duration:** 2048's own timer (`startedAt` / `accumulatedMs` on the game state, `computeDurationMs` in `Twenty48Screen.tsx`). It wins over `useGameSync`'s window. It runs from the session's first move and pauses while the player is away: another screen covers the board (navigation `blur`, #2743) or the app is in the background (`AppState`, #2750). `usePausableClock` (built on `usePauseWhileAway`) drives `pauseGame` / `resumeGame` for both as functional updates at the event's time, and resumes only once neither holds; it also starts paused when the screen mounts away, and pauses a game loaded while the player is away (`adoptLoaded`) and matches a move built from a board rendered before the player left or came back to their presence, pausing or resuming it (`matchPresence`). The clock's paused state is its own (`paused` on `PlayClock`): a move never restarts a paused clock, only the return does, and a clock that never started still starts on the first move. The pause also saves in its own event handler, before any render, from the latest state the screen computed. 2048 saves on every move and on that pause. The save banks the running segment into `accumulatedMs` and the load restarts the clock from the moment of loading (`clockForSave` / `clockOnLoad` in `frontend/src/game/_shared/playClock.ts`), so a relaunch keeps the play before an app kill and never counts the time the app was closed.
-- **How it reaches the server:** the `useGameSync("twenty48")` session row, validated by the backend module (see [Backend](#backend)). `SyncWorker` sends `POST /games` once the player has moved, and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best game once. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
-- **Where the player sees it:** the win and game-over cards show the game's rank through `sessionBoardAdapter` (`GET /games/{id}/rank`), once per session, or ask once for a display name; never on an abandon. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu.
+Every spawned tile is:
 
-## Client-Side Engine
+- **2** with 90% probability;
+- **4** with 10% probability.
 
-- Location: `frontend/src/game/twenty48/engine.ts`
-- Key exports: `applySwipe(state, direction) → GameState`, tile spawn logic, merge scoring, game-over detection
+The game uses a random empty cell for the spawn.
+
+## Merging and score
+
+Two equal tiles merge into their doubled value.
+
+The score increases by the value of each newly created merged tile.
+
+Examples:
+- 2 + 2 → 4 and adds 4 points;
+- 8 + 8 → 16 and adds 16 points;
+- 1024 + 1024 → 2048 and adds 2048 points.
+
+A newly merged tile cannot merge again during the same move.
+
+## Win, Keep Playing, and game over
+
+### Reaching 2048
+
+The first move that creates a **2048** tile is the run's win.
+
+At that moment:
+- the game session is completed as `win`;
+- the score at that exact moment is the ranked `final_score`;
+- the result card appears.
+
+If legal moves remain, the player can choose **Keep Playing**.
+
+### Keep Playing
+
+Keep Playing hides the win card and lets the player continue the local board beyond 2048.
+
+That continuation is deliberately **untracked for the completed session**:
+
+- later points do not replace the ranked score from the 2048 win;
+- a later game-over after Keep Playing does not create a second session result/rank submission.
+
+This keeps one game session tied to the first 2048 achievement rather than stretching the same session indefinitely.
+
+### Loss
+
+If no empty cells remain and no horizontally or vertically adjacent equal tiles exist **before 2048 has been reached**, the game ends as `loss`.
+
+The final board score is ranked for that finished run.
+
+## Controls
+
+### Native
+
+Swipe the board in the desired direction.
+
+### Web
+
+Use:
+- arrow keys; or
+- WASD.
+
+A move is locked briefly during tile animation. One input can be queued during that animation; queued input is dropped when the winning result interrupts play or when the app/screen goes away.
+
+There is no undo feature.
+
+## Scoring and leaderboard
+
+The public board ranks by `final_score`, higher is better.
+
+- One global board; no difficulty/ruleset partitions.
+- No natural maximum is declared.
+- Equal scores use the shared final tie rule: earlier completion ranks first.
+
+The result block also records:
+- `final_score`;
+- highest tile;
+- move count;
+- active-play duration;
+- outcome.
+
+Daily Challenge can read score/highest-tile measures from this result data.
+
+## Timer
+
+The active-play clock starts on the first effective move.
+
+It pauses when:
+- the app backgrounds; or
+- another screen covers the game.
+
+The saved clock banks elapsed active time before a pause/relaunch, so time spent with the app closed does not count.
+
+## Save / resume
+
+The board is saved locally after moves and when play is paused.
+
+A saved in-progress board restores after relaunch, including its accumulated active-play clock.
+
+The local save is cleared when the game is over so the next launch starts fresh.
+
+A board that already reached 2048 can also be restored for Keep Playing, but its original session was already completed at the win.
+
+## Session outcomes
+
+- **win** — first reaches 2048; ranked score freezes at that moment.
+- **loss** — game over without having reached 2048; final score ranks.
+- **abandoned** — the player starts a new game or leaves while a pre-2048 run is in progress; progress can remain in the result envelope for product features such as Daily Challenge, but the row has no ranked `final_score`.
+
+Older builds used legacy `completed` / `kept_playing` outcomes. Backend compatibility logic preserves those historical rows; new builds use the current win/loss contract.
+
+For generic syncing, ranking, display-name, Stats, and result-card behavior, see [GAME-CONTRACT.md](../GAME-CONTRACT.md).
+
+## Local "Best" vs server history
+
+The screen retains a local best score only to support immediate result-card/UI presentation such as a "New best" badge.
+
+Historical Stats and public ranking come from the shared server reporting model, not legacy local counters.
+
+## Implementation
+
+- Engine: `frontend/src/game/twenty48/engine.ts`
+- Screen: `frontend/src/screens/Twenty48Screen.tsx`
 - Storage: `frontend/src/game/twenty48/storage.ts`
 - Types: `frontend/src/game/twenty48/types.ts`
-
-## Backend
-
-Gameplay is fully client-side; sessions reach the server through the shared `SyncWorker` pipeline.
-
-- Module: `backend/twenty48/module.py`, registered in `backend/games/registry.py` (#2623)
-- Metadata model: `Twenty48Metadata` in `backend/twenty48/models.py` — empty (extra keys forbidden); the opening board is event data
-- Result model: `Twenty48Result` — `final_score`, `highest_tile`, `move_count`, `duration_ms`, `outcome`, all optional; unknown keys are ignored. The daily challenge reads `final_score` and `highest_tile` from it
-- Board: `final_score` desc, one global board, no cap, one entry per player. `has_winner = True` (#2631); an older build's `completed` / `kept_playing` completion is stored as `win` when it closed the session that first reached 2048 (its `game_started` event's `initial_board` is below 2048), otherwise it counts as a finish with no winner (#2703, `backend/games/legacy_outcomes.py`)
-- Stats: default pass-through `stats_shape`
-
-## Entitlement
-
-Tier TBD. If free: no entitlement check — game is always accessible.
-
-## Known Issues / Limitations
-
-- None tracked at this time
+- Backend descriptor: `backend/twenty48/module.py`
