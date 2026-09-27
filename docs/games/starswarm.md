@@ -4,15 +4,128 @@
 **Tier:** TBD
 **Status:** In Development (early)
 
-## How to Play
+## Overview and Core Loop
 
-Starswarm is an arcade shooter. Details of the core loop, controls, and level structure are still being defined. This document will be updated as the game design solidifies.
+Star Swarm is a score-attack arcade shooter. The player moves horizontally near the bottom of the
+screen while the ship auto-fires upward. Survive successive enemy waves, destroy higher-value
+targets, collect temporary power-ups and run-long ship upgrades, and push the score as high as
+possible before all lives are lost.
 
-What is known:
+A fresh run starts with **3 lives**, **Guns L1**, **Hull 0**, score 0 at wave 1, and the selected
+Starfleet difficulty tier.
 
-- The game is rendered via `@shopify/react-native-skia` (canvas-based)
-- It is a score-attack game — the goal is to survive as long as possible and score as many points as possible
-- No local save state is persisted to AsyncStorage (intentional — the game has no resume state)
+The ship is clamped to the playable horizontal bounds. Firing is continuous while gameplay input is
+active.
+
+> **#2776 refinement boundary.** This document describes current `dev`. #2776 will tighten
+> pre-wave invulnerability/firing, wave-clear extraction and cleanup, Carrier beam
+> lifecycle/cadence, Carrier late-stage aggression/dives, the right-edge drag regression, and
+> upgrade-pickup communication. Those sections should be updated with #2776; the rest of the game
+> specification is not blocked on that work.
+
+## Controls
+
+- Drag horizontally to move the player ship.
+- The ship auto-fires; there is no ammunition economy.
+- Pause suspends and saves the run for resume.
+- New Game starts a clean run and abandons the old server session if one is open.
+- Development-only tuning controls are test aids, not player rules.
+
+Shared input/accessibility conventions: [GAMEPLAY_STANDARDS.md](../GAMEPLAY_STANDARDS.md).
+
+## Difficulty Tiers
+
+| Tier | Score multiplier | AI parameter scale |
+| --- | ---: | ---: |
+| Ensign | 1× | 0.70 |
+| Lieutenant J.G. | 1.5× | 1.00 |
+| Lieutenant | 2× | 1.15 |
+| Lieutenant Commander | 2.5× | 1.30 |
+| Commander | 3× | 1.50 |
+| Captain | 4× | 1.70 |
+| Rear Admiral | 5× | 1.90 |
+| Vice Admiral | 6× | 2.15 |
+| Admiral | 8× | 2.50 |
+| Fleet Admiral | 10× | 3.00 |
+
+The score multiplier applies to enemy kills, rout catches and wave-clear bonuses. The AI parameter
+scale drives dive cadence/floor, bullet density, aimed-shot pressure, formation aggression and
+several Carrier/asteroid-AI cadences or probabilities.
+
+Ensign is additionally gentler: normal ≤3-survivor straggler aggression is disabled and the
+Carrier does not launch reinforcements.
+
+Each tier has its own public leaderboard partition.
+
+## Ordinary Wave Progression
+
+Outside boss waves, every wave contains:
+
+- 1 Carrier;
+- 4 Boss escorts;
+- 16 Elites (two rows of eight);
+- 2–5 Grunt rows of eight.
+
+| Ordinary wave formula | Grunt rows | Grunts | Total enemies |
+| --- | ---: | ---: | ---: |
+| 1–2 | 2 | 16 | 37 |
+| 3–4 | 3 | 24 | 45 |
+| 5–6 | 4 | 32 | 53 |
+| 7+ | 5 | 40 | 61 |
+
+Boss waves replace the ordinary formation, so wave 5, 9, 13, … do not use those ordinary totals.
+
+Progression rules include:
+
+- max simultaneous divers: 1 on waves 1–2, 2 on 3–4, 3 on 5–6, then 4;
+- dive interval shortens by wave with a difficulty-scaled floor;
+- enemy bullet cap starts at 3 on wave 1, adds 1 every two waves, scales with difficulty, and caps
+  at 24;
+- Grunt aimed-shot chance starts at 10% on wave 1 and rises 5 percentage points per wave, with a
+  difficulty-scaled cap;
+- once ≤35% of the starting non-leader population remains, Elite/Boss escalation latches on;
+- once ≤3 total enemies remain, normal straggler aggression activates except on Ensign/routed-grunt
+  endings.
+
+## Lives, Damage, and Bonus Lives
+
+The player starts with **3 lives** and can hold at most **5**.
+
+Normal hit precedence is **shield → hull plating → life**. Losing a life also drops Guns by one
+level, to a floor of L1.
+
+A bonus life is earned every:
+
+`30,000 × difficulty score multiplier` points.
+
+Awards repeat at each threshold multiple subject to the 5-life cap. A bonus-life award also grants
+800 ms of slow motion at 35% game speed and at least 600 ms of invincibility. A threshold crossed
+on the same tick as a lethal hit can rescue the player from Game Over.
+
+## Temporary Power-Ups
+
+Ordinary power-ups are separate from the Guns/Hull upgrade ladders.
+
+A normal drop triggers after:
+
+`min(12 + floor((wave - 1) × 1.5), 20) ± 2 kills`
+
+The jitter is re-sampled after each drop. At most one ordinary power-up pickup is on-screen at a
+time; salvage/hull upgrade pickups do not consume that slot.
+
+| Lives | Shield | Smart Bomb | Lightning | Buddy |
+| --- | ---: | ---: | ---: | ---: |
+| 0–1 | 33% | 33% | 17% | 17% |
+| 2+ | 25% | 25% | 25% | 25% |
+
+- **Lightning:** 5 seconds; faster fire, 4-damage piercing shots, can penetrate Carrier armor.
+- **Shield:** 5 seconds; absorbs incoming damage while active.
+- **Smart Bomb:** instant; clears enemy bullets/asteroids, deals 1 damage to every alive enemy,
+  respects Carrier armor, and awards normal base-score credit for kills (no dive multiplier).
+- **Buddy:** launches a companion ship that fires one 5–7-shot piercing spread burst toward the
+  enemy cluster; its shots share the player-bullet cap.
+
+Collecting Lightning or Shield replaces the currently active duration power-up.
 
 ## Enemy Tiers
 
@@ -27,38 +140,50 @@ Diving enemies score 2×. The Carrier and Bosses are excluded from the "non-boss
 drive Elite/Boss escalation (`isLeaderTier`). `isCarrierArmored(state)` is the renderer-facing
 helper for the armor state; the screen announces `a11y.carrierExposed` when it drops.
 
-## Wave Structure (#2490)
+## Wave Structure
 
-Every wave opens on a swoop-in, a 3-second countdown, then combat; the next wave starts the
-instant no enemy is alive — killed or escaped (the "MISSION COMPLETE" banner is cosmetic). Clearing
-wave _n_ pays `500 × n × difficultyMultiplier`. A wave ends one of two ways: every ship is shot
-down, or the leaders die first and the surviving grunts rout (below) — caught or escaped, they are
-gone within a few seconds either way.
+Every wave begins with the enemy formation swooping into place. The UI presents a 3-second combat
+countdown before active play.
 
-**Boss waves** — wave 5, then every 4th (5, 9, 13, …; `isBossWave`) — are the Carrier and its four
-Boss escorts and nothing else: a short, hostile stage of its own.
+**Current implementation caveat:** the engine moves from `SwoopIn` to `Playing` as soon as all
+enemies arrive, while the visible countdown is owned by the screen. Player fire is not centrally
+phase-gated today. #2776 will make swoop-in/countdown true invulnerable setup time.
 
-- The Bosses are active from the first tick: the ≤35% threshold is latched at wave start, so they
-  burst-fire and dive on the normal dive timer.
-- The Carrier's beam interval is ÷1.5 (`BOSS_WAVE_BEAM_SCALE`), first beam included; its armor
-  rules are unchanged (kill the escorts, or pierce with lightning / the buddy burst).
-- No reinforcements (there are no grunt slots) and no timed asteroid spawns; a rock already in
-  flight rides in like any other wave, and the dev-panel throw still works.
-- The clear bonus is doubled (`BOSS_WAVE_CLEAR_MULT`): `500 × n × 2 × difficultyMultiplier`.
-- The "CARRIER SIGHTED" banner (`phase.bossWave`) shows during the swoop-in, with the
-  `starswarm.bosswave` sting and an `a11y.bossWave` announcement.
+### Current wave clear
 
-There is no longer a shooting-gallery bonus wave or a flat perfect bonus; #2490 removed the Free
-Fire Zone and everything that hung off it.
+When no enemy remains alive, current `dev`:
 
-## Carrier Actions (#2485)
+1. awards the wave-clear bonus;
+2. immediately constructs the next wave;
+3. shows a non-blocking MISSION COMPLETE banner;
+4. carries player bullets into the new wave;
+5. carries enemy bullets but marks them harmless;
+6. carries active asteroids.
 
-- **Sweep beam.** Every 7 s (÷ min(1.6, difficulty paramScale)) the Carrier shudders and glows for
-  600 ms, then fires a 24 px-wide vertical beam below itself for 1.2 s while the formation sway
-  drags it sideways. The beam is not a bullet (no `bulletCap()` slot). In the column it costs a
-  life; the shield holds it off; post-hit invincibility covers the rest of the sweep.
-  `carrierBeam(state)` gives the renderers position and progress; the screen speaks
-  `a11y.carrierBeam` when the telegraph starts.
+There is no blocking WinTransition/autopilot today. #2776 will replace this with a short AI
+extraction/natural-hazard-resolution sequence followed by a hard transient reset before the next
+formation enters.
+
+### Boss waves
+
+Boss waves are **5, 9, 13, …** and contain only 1 Carrier + 4 Boss escorts.
+
+- Boss escalation is active from the first tick.
+- Carrier beam cadence is 1.5× faster.
+- No Carrier reinforcements.
+- No timed asteroid spawns (although a carried asteroid can currently enter).
+- Wave-clear bonus is doubled.
+- CARRIER SIGHTED banner/sound/accessibility announcement play during entry.
+
+The old Free Fire Zone / shooting-gallery bonus wave no longer exists.
+
+## Carrier Actions
+
+- **Sweep beam (current).** Fixed 7-second base interval, divided by
+  `min(1.6, difficulty paramScale)` and another 1.5 on boss waves. The Carrier telegraphs for
+  600 ms, then exposes a 24 px-wide vertical beam for 1.2 seconds. Today it is derived from the
+  live Carrier's beam state rather than an independent projectile. Shield/hull/life precedence
+  applies.
 - **Reinforcements.** Every 8 s while it lives (Playing phase, not on Ensign) it launches 2–4 grunts
   that swoop into empty grunt slots, capped per wave at half the wave's grunt slots
   (`reinforceCap`). They never touch `startingNonBossCount`, so the 35% / ≤3 latches are unaffected
@@ -67,6 +192,14 @@ Fire Zone and everything that hung off it.
   fires a pair of aimed shots every 1.1 s (÷ the same cadence factor), whether or not grunts are
   still alive, so the player can't plink an exposed Carrier for free. These do count against
   `bulletCap()`.
+
+### #2776 Carrier refinements
+
+#2776 will replace the fixed/metronomic beam reset with bounded randomness, make a released beam an
+independent traveling hazard, add protected → exposed → final-stand aggression, allow
+Carrier-specific attack runs/dives after armor loss, increase final-stand behavioral pressure, and
+make salvage/hull pickups more self-explanatory. Until then, the current rules above describe
+`dev`.
 - Sounds: `starswarm.beamcharge`, `starswarm.beamfire`, `starswarm.reinforce` (reused files, #2492).
 
 ## In-Run Ship Upgrades (#2488)
@@ -182,7 +315,39 @@ the run counters, the tier table, wave reached, difficulty and score — counts 
 identifies the player — once per run. `EXPO_PUBLIC_TEST_HOOKS=1` builds also expose
 `globalThis.__starswarm_getRunStats()` for an E2E driver.
 
-## Scoring (Persistence)
+## Scoring
+
+All positive score awards are multiplied by the selected difficulty multiplier.
+
+| Event | Base score |
+| --- | ---: |
+| Grunt kill | 100 |
+| Elite kill | 200 |
+| Boss kill | 400 |
+| Carrier kill | 1000 |
+| Enemy killed while Diving/Circling | 2× base |
+| Fleeing Grunt caught by player fire | 200 |
+| Fleeing Grunt killed by Smart Bomb | 100 |
+| Ordinary wave clear | 500 × wave |
+| Boss-wave clear | 500 × wave × 2 |
+
+### Zero-score events
+
+No direct points are awarded for:
+
+- destroying an asteroid with player fire;
+- destroying an asteroid with enemy fire/flak;
+- an asteroid killing an enemy;
+- a routed Grunt escaping;
+- collecting a power-up;
+- collecting salvage at Guns L3;
+- collecting hull plating at Hull 2.
+
+Asteroid-caused enemy deaths still count toward wave clear/escalation but do not advance the normal
+player-kill power-up counter. Smart Bomb kills do award normal enemy base score because the bomb is
+a player power-up.
+
+## Leaderboard and Run Reporting
 
 - **Metric and direction:** `final_score`, higher is better, labelled `score` (`board` in `backend/starswarm/module.py`; `BOARDS.starswarm` in `frontend/src/api/vocab.ts`). It is the points at game over.
 - **Tie-break:** none declared. Equal scores go to the earlier `completed_at`, the last tie-break on every board.
@@ -193,6 +358,23 @@ identifies the player — once per run. `EXPO_PUBLIC_TEST_HOOKS=1` builds also e
 - **Duration:** `useGameSync`'s active-play window. The screen sends no `durationMs` of its own (never `0`): the engine keeps no play clock. The window restarts when a run begins (`beginRun`), so time on the difficulty picker is not counted.
 - **How it reaches the server:** since #2626 the run's own `useGameSync("starswarm")` session row is its leaderboard entry. The row opens when the run begins, with `difficulty_tier` as creation metadata. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. Each tier's board shows each named player's best run on that tier once. The legacy `POST /starswarm/score` was removed in #2644. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the result card reads the run's rank on its tier's board through `sessionBoardAdapter` (`GET /games/{id}/rank`). It asks for a display name only when the player has none. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633) on the finished run's tier, else the current tier. Stats (#2635) are in the ⋯ menu. The device keeps the best score (`game/starswarm/bestScore.ts`) for the card's "Best" and "New best". Store builds hide Star Swarm (`HIDDEN_GAMES`, `frontend/src/entitlements/gameVisibility.ts`), so there it has no leaderboard or stats entry point.
+
+## Pause, Backgrounding, and Resume
+
+Star Swarm **does persist paused runs**.
+
+`frontend/src/game/starswarm/pauseStore.ts` stores the paused run in AsyncStorage under
+`starswarm.pausedRun`. It saves the complete engine state, difficulty, and engine id/RNG counters
+needed to resume safely after a cold process restart.
+
+- Manual pause saves the run.
+- Background/inactive transitions save it so the OS can kill the process safely.
+- The next process hydrates the save before the screen mounts, with a bounded timeout.
+- Corrupt/incompatible saves are dropped rather than restored.
+- The screen resumes the shared server session where possible.
+- New Game / finish / abandon clears the saved run as appropriate.
+
+This replaces the old, incorrect statement that Star Swarm had no local resume state.
 
 ## Client-Side Engine
 
@@ -255,8 +437,25 @@ Starswarm uses a Skia canvas for all rendering. Accessible text overlays for sco
 
 ## Entitlement
 
-Tier TBD. If premium: requires a valid entitlement JWT; see [`docs/ARCHITECTURE.md §10`](../ARCHITECTURE.md#10-premium-entitlements).
+Star Swarm is a **premium/hidden** game in the v1.0 store build. Development/internal/pre-launch
+builds can expose it under shared visibility/entitlement rules.
 
-## Known Issues / Limitations
+Server premium authorization is based on the current session's entitlement database state; the
+cached JWT is the client's navigation/offline cache. See
+[ARCHITECTURE.md §10](../ARCHITECTURE.md#10-premium-entitlements) and
+[SECURITY.md](../../SECURITY.md).
 
-- In early development — game design is not finalized
+## Current Refinement Work
+
+The broad game contract is documented above. #2776 is a focused polish/transition story.
+
+After #2776 lands, update the affected sections for:
+
+- pre-wave firing/invulnerability/countdown;
+- wave-clear AI extraction and hard transient reset;
+- Carrier beam lifecycle/randomized cadence;
+- Carrier exposed/final-stage aggression and attack runs;
+- right-edge drag regression behavior/testing;
+- salvage/hull pickup communication.
+
+Other active bugs/tuning work belongs in GitHub rather than a duplicated Known Issues list.
