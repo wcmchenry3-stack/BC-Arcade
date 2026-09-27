@@ -191,7 +191,7 @@ The Android export produces a single Hermes bytecode file. Module sizes below ar
 
 ### Findings
 
-**⚠️ Sentry accounts for ~2.0 MB (24.5%) of JS source content** across seven packages: `@sentry/core`, `@sentry/react-native`, `@sentry-internal/replay`, `@sentry/browser`, `@sentry-internal/browser-utils`, `@sentry/react`, `@sentry-internal/feedback`, `@sentry-internal/replay-canvas`. The session replay and feedback SDKs add meaningful weight. Evaluate whether session replay is intentionally enabled — if not, it can be tree-shaken by removing the `Sentry.replayIntegration()` call.
+**⚠️ Sentry accounts for ~2.0 MB (24.5%) of JS source content** across seven packages: `@sentry/core`, `@sentry/react-native`, `@sentry-internal/replay`, `@sentry/browser`, `@sentry-internal/browser-utils`, `@sentry/react`, `@sentry-internal/feedback`, `@sentry-internal/replay-canvas`. Replay-related packages are present in the dependency bundle, but BC Arcade does **not** initialize `Sentry.replayIntegration()`; Session Replay is not an active runtime data flow. The feedback package is used by the in-app Sentry User Feedback flow. See [FEEDBACK-OBSERVABILITY.md](FEEDBACK-OBSERVABILITY.md).
 
 **`matter-js` (366 KB) is active and expected.** Cascade's native engine (`engine.native.ts`) uses matter-js for polygon body physics on Android and iOS. `@dimforge/rapier2d-compat` (Rapier2D) is the web-only engine — it does **not** appear in the Android bundle. Metro's `.native.ts` platform resolution routes correctly.
 
