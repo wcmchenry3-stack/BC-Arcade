@@ -31,7 +31,7 @@ The purpose of this index is to make one thing clear: **which document is the so
 | How are assets organized? | [ASSETS.md](ASSETS.md) |
 | How do I manually verify leaderboards? | [MANUAL-QA-LEADERBOARDS.md](MANUAL-QA-LEADERBOARDS.md) |
 | What is the current release plan? | [RELEASE-PLAN-2026-10.md](RELEASE-PLAN-2026-10.md) |
-| What should I use for old leaderboard design rationale? | [LEADERBOARDS-SCORING-PLAN.md](LEADERBOARDS-SCORING-PLAN.md) — historical/design record, not the current contract |
+| What should I use for old leaderboard design rationale? | [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) — historical/design record, not the current contract |
 
 Several shared-system canonical documents are being created under documentation epic #2799 (leaderboards/Stats, Daily Challenge, Arcade XP, feedback/observability, and localization). Until those land, the current canonical implementation contracts remain the files identified below.
 
@@ -100,12 +100,12 @@ Preserve these because they contain evidence and rationale, but use the canonica
 
 | Document | Purpose |
 | --- | --- |
-| [HEARTS_PIMC_SPIKE.md](HEARTS_PIMC_SPIKE.md) | Hearts AI PIMC research and follow-up evidence |
-| [YACHT_ORACLE.md](YACHT_ORACLE.md) | Yacht optimal-play oracle design/reference |
-| [CASCADE_ASSET_SPIKE.md](CASCADE_ASSET_SPIKE.md) | Cascade asset investigation |
-| [CASCADE_PHYSICS.md](CASCADE_PHYSICS.md) | Cascade physics design/reference |
-| [CASCADE-THEMING.md](CASCADE-THEMING.md) | Cascade theming design/reference |
-| [LEADERBOARDS-SCORING-PLAN.md](LEADERBOARDS-SCORING-PLAN.md) | Historical leaderboard/scoring implementation plan. Current behavior lives in GAME-CONTRACT and per-game docs until the dedicated canonical leaderboard document lands. |
+| [HEARTS_PIMC_SPIKE.md](research/HEARTS_PIMC_SPIKE.md) | Hearts AI PIMC research and follow-up evidence |
+| [YACHT_ORACLE.md](research/YACHT_ORACLE.md) | Yacht optimal-play oracle design/reference |
+| [CASCADE_ASSET_SPIKE.md](research/CASCADE_ASSET_SPIKE.md) | Cascade asset investigation |
+| [CASCADE_PHYSICS.md](research/CASCADE_PHYSICS.md) | Cascade physics design/reference |
+| [CASCADE-THEMING.md](research/CASCADE-THEMING.md) | Cascade theming design/reference |
+| [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) | Historical leaderboard/scoring implementation plan. Current behavior lives in GAME-CONTRACT and per-game docs until the dedicated canonical leaderboard document lands. |
 
 ## Audits and point-in-time snapshots
 
@@ -113,10 +113,10 @@ These record findings from a specific review/date. They should not silently beco
 
 | Document | Purpose |
 | --- | --- |
-| [ATT-AUDIT.md](ATT-AUDIT.md) | App Tracking Transparency audit |
-| [LAUNCH-TRIAGE-2026-09-26.html](LAUNCH-TRIAGE-2026-09-26.html) | Dated launch-triage snapshot |
-| [solitaire-qa-report.md](solitaire-qa-report.md) | Solitaire QA snapshot |
-| [sudoku-qa-report.md](sudoku-qa-report.md) | Sudoku QA snapshot |
+| [ATT-AUDIT.md](audits/ATT-AUDIT.md) | App Tracking Transparency audit |
+| [LAUNCH-TRIAGE-2026-09-26.html](audits/LAUNCH-TRIAGE-2026-09-26.html) | Dated launch-triage snapshot |
+| [solitaire-qa-report.md](audits/solitaire-qa-report.md) | Solitaire QA snapshot |
+| [sudoku-qa-report.md](audits/sudoku-qa-report.md) | Sudoku QA snapshot |
 
 ## Documentation ownership rules
 
