@@ -147,7 +147,13 @@ The local device also caches lightweight best-moves/game counters for immediate 
 
 Cards support the shared card-game selection/drag interaction.
 
-Foundation auto-move behavior is available through the current board interaction; hints and auto-complete are separate from direct player moves.
+A **double-tap within 300 ms** on:
+- a free-cell card; or
+- the top card of a tableau column
+
+moves that card directly to its foundation when the foundation move is legal.
+
+A single tap remains selection; double-tap is an explicit convenience action, separate from Hint and the automatic endgame completion sequence.
 
 ## Implementation
 
