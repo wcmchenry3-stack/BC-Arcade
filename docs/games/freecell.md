@@ -1,64 +1,165 @@
 # FreeCell
 
-**Category:** Card
-**Tier:** TBD
-**Status:** In Development
+**Category:** Card  
+**Tier:** Free in the v1.0 store build
 
-## How to Play
+BC Arcade FreeCell deals only from a bank of solver-verified solvable layouts and ranks completed deals by **fewest moves**. It includes hints, supermoves, undo, and automatic foundation completion.
 
-FreeCell is a solitaire variant where nearly every deal is winnable with correct play. The full 52-card deck is dealt face-up into 8 tableau columns at the start — there is no hidden information.
+Shared session/offline/reporting behavior is defined by [GAME-CONTRACT.md](../GAME-CONTRACT.md). This page owns FreeCell-specific gameplay and scoring.
 
-### Layout
+## Objective and layout
 
-- **Tableau** (8 columns): all cards dealt face-up at start; move cards to build in descending rank, alternating colors
-- **Free cells** (4): temporary holding spots for individual cards; each can hold one card at a time
-- **Foundations** (4, one per suit): built up from Ace to King
+Move all 52 cards to four suit foundations, Ace through King.
 
-### Rules
+A new deal places the entire deck face-up across eight tableau columns:
 
-- Move a single card (or a sequence, if enough free cells + empty columns exist) from one tableau column to another
-- A card may be placed on the tableau if it is one rank lower and opposite color from the top card
-- Free cells can hold any single card temporarily
-- Empty tableau columns act as extended free cells (can hold any card or sequence)
-- Win by moving all 52 cards to the foundations
+- columns 1–4: 7 cards each;
+- columns 5–8: 6 cards each.
 
-### Supermove
+There are:
+- **4 free cells**, each holding at most one card;
+- **4 foundations**, one per suit;
+- **8 tableau columns**.
 
-The maximum number of cards moveable as a sequence is `(free cells + 1) × 2^(empty columns)`.
+There is no stock/waste and no hidden information.
 
-### Double-Tap
+## Deals
 
-Double-tapping a card (within a 300 ms window) triggers auto-move to foundation if a valid foundation move exists.
+Live deals come from `frontend/src/game/freecell/seeds.json`, a bank of **provably solvable** seeds produced offline by `backend/scripts/gen_freecell_seeds.py`.
 
-## Scoring (Persistence)
+The engine selects a bank seed and deterministically shuffles the deck. Explicit seeds remain available for tests/E2E.
 
-- **Metric and direction:** `final_score`, **lower is better**, labelled `moves` (`board` in `backend/freecell/module.py`; `BOARDS.freecell` in `frontend/src/api/vocab.ts`). A win sends the engine's `moveCount` (`FreeCellScreen.tsx`). Each move counts 1, taking a card back off a foundation counts 2, and Undo restores the earlier count (`frontend/src/game/freecell/engine.ts`).
-- **Tie-break:** none declared. Equal move counts go to the earlier `completed_at`, the last tie-break on every board.
-- **Partitions:** none: one board.
-- **Recorded, not partitioned:** result (`FreeCellResult`): `won` and `moves`. Creation metadata is empty (`FreeCellMetadata`).
-- **Max value:** none (`max_value` unset).
-- **Outcomes:** `has_winner = False`. A won deal records `completed`: FreeCell has no loss, so every non-abandoned row is a win. New Game during a deal, or leaving the screen, records `abandoned` with `{ won: false, moves }` and no score. The daily challenge still counts an abandon's moves.
-- **Duration:** `useGameSync`'s active-play window; FreeCell sends no duration of its own. New Game restarts the window (`resetPlayWindow`), so time on the previous board is not counted.
-- **How it reaches the server:** the `useGameSync("freecell")` session row, opened at the first move of a deal. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best (fewest-move) win once. Installed builds from before #2632 send no `final_score`, so their rows never rank. The legacy `POST /freecell/score` was removed in #2644, and the unattributable rows it wrote (`freecell-anon`) were deleted (#2622). Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
-- **Where the player sees it:** the win card shows the rank through `sessionBoardAdapter` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu; "Best" there is the fewest moves.
+## Tableau and foundations
 
-## Client-Side Engine
+Tableau sequences build:
+- descending by rank;
+- alternating red/black.
 
-- Location: `frontend/src/game/freecell/engine.ts`
-- Key exports: `validateMove`, `applyMove`, `autoMoveCandidates`, supermove calculation
+An empty tableau column accepts a King or King-led movable run.
 
-## Backend
+Foundations build upward by suit from Ace.
 
-- Module: `backend/freecell/module.py` (#2452), registered in `backend/games/registry.py`
-- Endpoints: none of its own — the generic `/games` routes. The legacy `POST /freecell/score` and `GET /freecell/leaderboard` were removed in #2644.
-- Metadata model: `FreeCellMetadata` — empty (extra keys forbidden)
-- Result model: `FreeCellResult` — `won: bool`, `moves: int`
-- Scoring: see [Scoring](#scoring-persistence)
+A top foundation card can be moved back to tableau when legal.
 
-## Entitlement
+## Free cells
 
-Tier TBD. If free: no entitlement check.
+Any exposed single tableau card can move to an empty free cell.
 
-## Known Issues / Limitations
+A card in a free cell can move:
+- to a legal tableau destination; or
+- to its foundation.
 
-- None tracked at this time.
+Free cells also increase the size of a run that can be moved as one player action.
+
+## Supermoves
+
+A legal alternating-color descending tableau run can move as one action when enough temporary workspace exists.
+
+Maximum movable run length:
+
+`(1 + empty free cells) × 2^(empty tableau columns)`
+
+The destination column is excluded from the empty-column multiplier when it is itself empty.
+
+A supermove counts as **one move**, regardless of the number of cards transferred.
+
+## Move count and ranking
+
+FreeCell's ranked metric is move count: **lower is better**.
+
+Normal legal moves count **1**, including:
+- tableau → tableau (single card or supermove);
+- tableau → free cell;
+- tableau → foundation;
+- free cell → tableau;
+- free cell → foundation.
+
+Moving a card **from foundation back to tableau costs 2 moves** as a progress penalty.
+
+Undo restores the earlier move count.
+
+There is one global FreeCell board with no partition and no declared maximum. Equal move totals use the shared final tie rule: earlier completion ranks first.
+
+## Hint
+
+Hint highlights a recommended productive move; it does not execute it and has no score/move penalty.
+
+The engine orders hints roughly as:
+1. tableau/free-cell → foundation;
+2. productive tableau → tableau runs;
+3. free-cell → tableau;
+4. tableau → free cell as a parking move.
+
+Obvious reversible tableau oscillations are filtered from the hint list.
+
+If only non-productive/reversible moves remain, Hint reports the existing **No moves left** state rather than recommending one of those swaps.
+
+Players may still manually make legal moves that the hint engine considers non-productive.
+
+## Auto-complete
+
+When every remaining card can reach a foundation through direct foundation plays alone, FreeCell automatically begins completion.
+
+The engine proves this with a greedy simulation before starting.
+
+The automatic sequence:
+- prefers free-cell → foundation;
+- then tableau-top → foundation;
+- runs one move at a time.
+
+It does **not** perform rearrangement during auto-complete. If direct foundation draining cannot finish the board, auto-complete is not enabled yet.
+
+Each automated foundation move is a real move and increments the move count.
+
+## Undo
+
+Undo restores the most recent engine snapshot, including the earlier move count.
+
+It is disabled:
+- with no undo history;
+- after completion;
+- while auto-complete is running.
+
+## Win / no-loss model
+
+The deal is complete when all 52 cards reach the foundations.
+
+FreeCell has no formal loss outcome in the shared reporting model. A position with no productive hint can still be escaped through Undo or other legal play if available.
+
+A won deal records:
+- `completed`;
+- `final_score = moveCount`;
+- result `{ won: true, moves }`.
+
+Starting a new deal or leaving after a move records `abandoned` with no ranked score.
+
+## Save / resume and duration
+
+Board state is persisted locally after changes and restores after relaunch.
+
+A killed app can therefore continue the same deal/session.
+
+FreeCell does not maintain its own persisted play clock. Duration comes from the shared `useGameSync` active-play window; starting a new deal resets that window.
+
+The local device also caches lightweight best-moves/game counters for immediate UI presentation; server Stats/history are authoritative for shared reporting.
+
+## Controls
+
+Cards support the shared card-game selection/drag interaction.
+
+A **double-tap within 300 ms** on:
+- a free-cell card; or
+- the top card of a tableau column
+
+moves that card directly to its foundation when the foundation move is legal.
+
+A single tap remains selection; double-tap is an explicit convenience action, separate from Hint and the automatic endgame completion sequence.
+
+## Implementation
+
+- Engine: `frontend/src/game/freecell/engine.ts`
+- Screen: `frontend/src/screens/FreeCellScreen.tsx`
+- Seed bank: `frontend/src/game/freecell/seeds.json`
+- Seed generator/solver: `backend/scripts/gen_freecell_seeds.py`
+- Storage: `frontend/src/game/freecell/storage.ts`
+- Backend descriptor: `backend/freecell/module.py`
