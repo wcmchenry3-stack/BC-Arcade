@@ -16,12 +16,16 @@ export type LogType = "game_event" | "bug_log";
 export type BugLevel = "warn" | "error" | "fatal";
 
 /**
- * Priority tiers (lower number = evicted last = preserved longest).
+ * Priority tiers used by the sync/batching path.
  *
- *   P0: bug logs — preserved longest, but still FIFO-evictable at the cap
+ * Capacity eviction does NOT walk these tiers in numeric order. eventStore
+ * protects P1 lifecycle rows first, then FIFO-evicts by age across the
+ * combined P0/P2/P3 pool; P1 is used only after that pool is empty.
+ *
+ *   P0: bug logs
  *   P1: lifecycle — game_started, game_ended, hand_resolved, etc.
  *   P2: mid-tier — score, bet_placed, hand_dealt, merge
- *   P3: granular — move, drop, roll, player_action (evicted first)
+ *   P3: granular — move, drop, roll, player_action
  */
 export const Priority = {
   BUG_LOG: 0,
@@ -35,9 +39,9 @@ const LIFECYCLE_EVENTS = new Set(["game_started", "game_ended", "hand_resolved"]
 const MID_EVENTS = new Set(["score", "bet_placed", "hand_dealt", "merge"]);
 
 export interface LogConfig {
-  /** Hard cap on queued rows. Exceeding triggers priority eviction. */
+  /** Hard cap on queued rows. Exceeding triggers eventStore capacity eviction. */
   MAX_ROWS: number;
-  /** Hard cap on queued payload bytes. Exceeding triggers priority eviction. */
+  /** Hard cap on queued payload bytes. Exceeding triggers eventStore capacity eviction. */
   MAX_SIZE_BYTES: number;
 
   /** Show a capacity warning toast once queue hits this ratio. */
