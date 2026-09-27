@@ -19,7 +19,12 @@ The purpose of this index is to make one thing clear: **which document is the so
 | --- | --- |
 | What is BC Arcade trying to be? | [PRODUCT.md](PRODUCT.md) |
 | How is the system divided between client and server? | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| How does every game open, sync, complete, abandon, report, and rank? | [GAME-CONTRACT.md](GAME-CONTRACT.md) |
+| How does every game open, sync, complete, and abandon? | [GAME-CONTRACT.md](GAME-CONTRACT.md) |
+| How do leaderboards, Stats, Scorecards, and Profile work? | [LEADERBOARDS.md](LEADERBOARDS.md) |
+| How does Arcade XP / player level work? | [PROGRESSION.md](PROGRESSION.md) |
+| How does Daily Challenge work? | [DAILY-CHALLENGE.md](DAILY-CHALLENGE.md) |
+| How do player feedback and Sentry diagnostics work? | [FEEDBACK-OBSERVABILITY.md](FEEDBACK-OBSERVABILITY.md) |
+| How does localization/i18n work? | [I18N.md](I18N.md) |
 | What are the shared gameplay/input/rendering standards? | [GAMEPLAY_STANDARDS.md](GAMEPLAY_STANDARDS.md) |
 | How does a particular game play? | [Game specifications](games/) |
 | How do accessibility requirements work? | [ACCESSIBILITY.md](ACCESSIBILITY.md) |
@@ -31,9 +36,9 @@ The purpose of this index is to make one thing clear: **which document is the so
 | How are assets organized? | [ASSETS.md](ASSETS.md) |
 | How do I manually verify leaderboards? | [MANUAL-QA-LEADERBOARDS.md](MANUAL-QA-LEADERBOARDS.md) |
 | What is the current release plan? | [RELEASE-PLAN-2026-10.md](RELEASE-PLAN-2026-10.md) |
-| What should I use for old leaderboard design rationale? | [LEADERBOARDS-SCORING-PLAN.md](LEADERBOARDS-SCORING-PLAN.md) — historical/design record, not the current contract |
+| What should I use for old leaderboard design rationale? | [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) — historical/design record, not the current contract |
 
-Several shared-system canonical documents are being created under documentation epic #2799 (leaderboards/Stats, Daily Challenge, Arcade XP, feedback/observability, and localization). Until those land, the current canonical implementation contracts remain the files identified below.
+The shared-system canonical documents created under #2799 are now part of the source-of-truth set below.
 
 ## Canonical product and system documentation
 
@@ -42,7 +47,12 @@ Several shared-system canonical documents are being created under documentation 
 | [PRODUCT.md](PRODUCT.md) | Product principles, roster, monetization/identity intent | Canonical product intent, but roster/status/tier statements must be truth-synced when release decisions change. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | High-level client/server architecture, persistence, entitlements, environments, shared systems | Canonical architecture overview. Deep subsystem material may later become summaries linking to dedicated canonical docs. |
 | [GAME-CONTRACT.md](GAME-CONTRACT.md) | Normative backend/frontend contract for game sessions, outcomes, modules, sync, results, ranking, Stats/Profile integration | **Normative source of truth for game integration.** Avoid duplicating these rules elsewhere. |
-| [GAMEPLAY_STANDARDS.md](GAMEPLAY_STANDARDS.md) | Shared game logic/layout/input/animation/rendering standards | Canonical standards document; open truth-sync work is tracked separately. |
+| [GAMEPLAY_STANDARDS.md](GAMEPLAY_STANDARDS.md) | Shared game logic/layout/input/animation/rendering standards | Canonical standards document. |
+| [LEADERBOARDS.md](LEADERBOARDS.md) | Leaderboards, ranking, Stats, Scorecards, Profile, identity/partition behavior | Canonical reporting/ranking overview; GAME-CONTRACT remains normative for integration details. |
+| [PROGRESSION.md](PROGRESSION.md) | Arcade XP and player levels | Canonical progression rules derived from session history. |
+| [DAILY-CHALLENGE.md](DAILY-CHALLENGE.md) | Daily Challenge scheduling, evaluation, slates, streaks, timezone model | Canonical Daily Challenge contract. |
+| [FEEDBACK-OBSERVABILITY.md](FEEDBACK-OBSERVABILITY.md) | Player-submitted feedback and automatic diagnostics/Sentry | Canonical feedback/observability behavior. |
+| [I18N.md](I18N.md) | Supported locales, fallback, formatting, contributor workflow | Canonical localization contract. |
 | [ACCESSIBILITY.md](ACCESSIBILITY.md) | Accessibility requirements and testing expectations | Canonical accessibility guidance. |
 | [ASSETS.md](ASSETS.md) | Asset organization and delivery guidance | Canonical asset guidance; audio expansion is tracked in #1787. |
 | [BRANDING.md](BRANDING.md) | Brand/visual identity guidance | Canonical brand reference. |
@@ -100,12 +110,12 @@ Preserve these because they contain evidence and rationale, but use the canonica
 
 | Document | Purpose |
 | --- | --- |
-| [HEARTS_PIMC_SPIKE.md](HEARTS_PIMC_SPIKE.md) | Hearts AI PIMC research and follow-up evidence |
-| [YACHT_ORACLE.md](YACHT_ORACLE.md) | Yacht optimal-play oracle design/reference |
-| [CASCADE_ASSET_SPIKE.md](CASCADE_ASSET_SPIKE.md) | Cascade asset investigation |
-| [CASCADE_PHYSICS.md](CASCADE_PHYSICS.md) | Cascade physics design/reference |
-| [CASCADE-THEMING.md](CASCADE-THEMING.md) | Cascade theming design/reference |
-| [LEADERBOARDS-SCORING-PLAN.md](LEADERBOARDS-SCORING-PLAN.md) | Historical leaderboard/scoring implementation plan. Current behavior lives in GAME-CONTRACT and per-game docs until the dedicated canonical leaderboard document lands. |
+| [HEARTS_PIMC_SPIKE.md](research/HEARTS_PIMC_SPIKE.md) | Hearts AI PIMC research and follow-up evidence |
+| [YACHT_ORACLE.md](research/YACHT_ORACLE.md) | Yacht optimal-play oracle design/reference |
+| [CASCADE_ASSET_SPIKE.md](research/CASCADE_ASSET_SPIKE.md) | Cascade asset investigation |
+| [CASCADE_PHYSICS.md](research/CASCADE_PHYSICS.md) | Cascade physics design/reference |
+| [CASCADE-THEMING.md](research/CASCADE-THEMING.md) | Cascade theming design/reference |
+| [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) | Historical leaderboard/scoring implementation plan. Current behavior lives in LEADERBOARDS.md + GAME-CONTRACT.md. |
 
 ## Audits and point-in-time snapshots
 
@@ -113,10 +123,10 @@ These record findings from a specific review/date. They should not silently beco
 
 | Document | Purpose |
 | --- | --- |
-| [ATT-AUDIT.md](ATT-AUDIT.md) | App Tracking Transparency audit |
-| [LAUNCH-TRIAGE-2026-09-26.html](LAUNCH-TRIAGE-2026-09-26.html) | Dated launch-triage snapshot |
-| [solitaire-qa-report.md](solitaire-qa-report.md) | Solitaire QA snapshot |
-| [sudoku-qa-report.md](sudoku-qa-report.md) | Sudoku QA snapshot |
+| [ATT-AUDIT.md](audits/ATT-AUDIT.md) | App Tracking Transparency audit |
+| [LAUNCH-TRIAGE-2026-09-26.html](audits/LAUNCH-TRIAGE-2026-09-26.html) | Dated launch-triage snapshot |
+| [solitaire-qa-report.md](audits/solitaire-qa-report.md) | Solitaire QA snapshot |
+| [sudoku-qa-report.md](audits/sudoku-qa-report.md) | Sudoku QA snapshot |
 
 ## Documentation ownership rules
 
@@ -129,6 +139,14 @@ When behavior changes:
 5. If a code comment/test is the only place a product rule is explained, move the durable rule into the appropriate canonical doc and keep the source comment implementation-focused.
 6. Update documentation in the same PR as behavior changes when practical.
 
-## Planned organization
+## Organization
 
-Documentation epic #2799 is also evaluating a light folder reorganization (for example separating architecture, operations, release, research, and audits). **The current paths above remain authoritative until those moves actually land.** We will not move files merely for aesthetics, and any move must preserve Git history and update all references in the same change.
+The first low-risk reorganization under #2799 is complete in this branch:
+
+- evergreen/canonical and operational docs remain at the top of `docs/` for low-friction access;
+- per-game specs remain under `docs/games/`;
+- research/design records live under `docs/research/`;
+- point-in-time audits and QA snapshots live under `docs/audits/`;
+- release/store/legal files stay at their current paths because they are active operational artifacts and some public/legal paths may be externally significant.
+
+We deliberately did **not** create deep `product/`, `architecture/`, `operations/`, and `release/` nesting. The index provides the category map without forcing high-churn moves for heavily referenced canonical/operational files.

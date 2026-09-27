@@ -226,4 +226,4 @@ When changing ranking/reporting:
 3. Update the affected per-game scoring doc.
 4. Update this document only when the shared ranking/Stats behavior changes.
 5. Keep [GAME-CONTRACT.md](GAME-CONTRACT.md) normative for integration details.
-6. Keep historical design rationale in [LEADERBOARDS-SCORING-PLAN.md](LEADERBOARDS-SCORING-PLAN.md), clearly labeled as historical.
+6. Keep historical design rationale in [research/LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md), clearly labeled as historical.

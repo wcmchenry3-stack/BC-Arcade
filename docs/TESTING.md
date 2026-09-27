@@ -280,7 +280,7 @@ bot can win a dice game on luck while playing badly, or lose while playing
 perfectly. The regret metric grades individual decisions instead: for each
 hold or category choice the AI makes, "EV-loss" is `optimalEV - chosenEV`,
 computed against the exact ground-truth oracle (`frontend/src/game/yacht/oracle/`,
-[`docs/YACHT_ORACLE.md`](YACHT_ORACLE.md)) — the Yacht analogue of chess's
+[`docs/research/YACHT_ORACLE.md`](research/YACHT_ORACLE.md)) — the Yacht analogue of chess's
 average centipawn loss. Implementation: `oracle/regret.ts` (per-decision
 EV-loss + blunder banding) and `oracle/regretAggregate.ts` (summaries,
 worst-decision tail, and a Welch's-t-test significance check), unit-tested in

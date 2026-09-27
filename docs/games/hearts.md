@@ -366,7 +366,7 @@ Premium entitlement behavior is a platform concern; see [ARCHITECTURE.md §10](.
 - Persona weights/noise: `frontend/src/game/hearts/aiWeights.ts`
 - Information set/pass memory: `frontend/src/game/hearts/aiInfoSet.ts`
 - Moon hand quality: `frontend/src/game/hearts/moonHand.ts`
-- PIMC research record: [HEARTS_PIMC_SPIKE.md](../HEARTS_PIMC_SPIKE.md)
+- PIMC research record: [HEARTS_PIMC_SPIKE.md](../research/HEARTS_PIMC_SPIKE.md)
 
 ## Open AI dependency
 

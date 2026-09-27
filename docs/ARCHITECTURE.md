@@ -792,7 +792,7 @@ At the architecture level, the important boundaries are:
 
 ## 13. Yacht computer opponent
 
-Since #2246 (architecture decision #2269, epic #2283) all three Yacht difficulties are **one optimal engine, handicapped**. There is no separate "medium brain". The engine is the solved-game oracle (`frontend/src/game/yacht/oracle/`, [YACHT_ORACLE.md](YACHT_ORACLE.md)); `frontend/src/game/yacht/ai.ts` reads it for every decision.
+Since #2246 (architecture decision #2269, epic #2283) all three Yacht difficulties are **one optimal engine, handicapped**. There is no separate "medium brain". The engine is the solved-game oracle (`frontend/src/game/yacht/oracle/`, [research/YACHT_ORACLE.md](research/YACHT_ORACLE.md)); `frontend/src/game/yacht/ai.ts` reads it for every decision.
 
 Each tier values a move as **points banked now + λ × the optimal expected points still to come**, then picks among near-best options with a capped softmax:
 
