@@ -1,10 +1,10 @@
 # BC Arcade
 
-A collection of classic card/dice games (Yacht, Hearts, Solitaire, Blackjack, Sudoku, Cascade) with a FastAPI backend and an Expo/React Native frontend that runs on iOS, Android, and the web.
+A collection of 12 arcade, card, dice, puzzle, and word games — Yacht, Hearts, Blackjack, Solitaire, Sudoku, Cascade, 2048, FreeCell, Mahjong, Bottle Sort, Daily Word, and Star Swarm — with a FastAPI backend and an Expo/React Native frontend that runs on iOS, Android, and the web.
 
 - **Backend:** Python 3.13, FastAPI, uvicorn
 - **Frontend:** Expo (TypeScript), React Native, Expo Web
-- **Docs:** see [`docs/`](docs/) for testing, deployment, iOS/Android, branding
+- **Docs:** start with [`docs/README.md`](docs/README.md) for the canonical documentation map, game specs, operations, release material, research, and audits
 - **Claude Code guide:** [`CLAUDE.md`](CLAUDE.md)
 
 ## Requirements
