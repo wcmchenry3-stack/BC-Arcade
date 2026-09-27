@@ -2,7 +2,7 @@
 
 For **#823** (App Store Connect → App Privacy), **#825 / #2014** (Play Console → Data safety) and the
 age-rating questionnaires. Derived from the code, not from memory — sources are in
-[`LEGAL-REVIEW-NOTES.md`](LEGAL-REVIEW-NOTES.md) and [`ATT-AUDIT.md`](ATT-AUDIT.md). The three places
+[`LEGAL-REVIEW-NOTES.md`](LEGAL-REVIEW-NOTES.md) and [`audits/ATT-AUDIT.md`](audits/ATT-AUDIT.md). The three places
 that must agree: [`privacy-policy.html`](privacy-policy.html), the iOS privacy manifest
 (`frontend/ios/GamingApp/PrivacyInfo.xcprivacy`) and these forms.
 
