@@ -16,7 +16,7 @@
  * the SAME shared logic the offline solver used to build the table, just
  * run for one specific dice roll instead of averaged over all 252 — so
  * these are not literally O(1), but bounded (≤252 multisets × ≤32 holds)
- * and fast; see docs/YACHT_ORACLE.md for a measured figure.
+ * and fast; see docs/research/YACHT_ORACLE.md for a measured figure.
  */
 
 import type { Category } from "../engine";
