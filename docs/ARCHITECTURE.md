@@ -683,7 +683,13 @@ lands:
 
 ### 10.9 Premium difficulty levels
 
-A single level of a game can be premium too (#1129). List it under the game's
+**Product policy:** [PRODUCT.md](PRODUCT.md#monetization) permits premium access
+to complete games, not paid levels or modes inside a free game. No premium
+difficulty levels are configured. The machinery below exists in the client,
+but must not be used to create freemium gameplay; #1129 needs review against
+this policy before any level is listed.
+
+The existing mechanism can mark a single level of a game as premium (#1129). List it under the game's
 key in `PREMIUM_LEVELS` (`frontend/src/entitlements/premiumLevels.ts`); none
 is listed yet. Every level picker (the shared `DifficultyPicker`, the Star
 Swarm tier picker, the Blackjack table cards and Next Table) goes through
