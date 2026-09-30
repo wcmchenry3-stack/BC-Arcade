@@ -696,10 +696,215 @@ def test_notification_for_foreign_product_or_without_transaction_is_ignored(
     assert r.json() == {"status": "ignored"}
 
 
-def test_notification_environment_not_allowed_is_422(client, use_verifier) -> None:
+def test_notification_from_disallowed_environment_is_acknowledged(client, use_verifier) -> None:
+    """Review N1: verified but not accepted here → 200 ignored, so Apple stops retrying."""
     use_verifier(make_verifier(envs=frozenset({"production"})))
-    r = post_note(client, signed_note("TEST", None))
+    r = post_note(client, signed_note("REFUND", signed_txn("6980", revocationDate=now_ms())))
+    assert r.status_code == 200 and r.json() == {"status": "ignored"}
+    # It must still verify: a forged Sandbox notification is refused.
+    forged = tamper(signed_note("TEST", None), version="9")
+    assert post_note(client, forged).status_code == 422
+
+
+async def test_disallowed_environment_notification_records_nothing(client, use_verifier) -> None:
+    use_verifier(make_verifier(envs=frozenset({"production"})))
+    note = signed_note("ONE_TIME_CHARGE", signed_txn("6981"))
+    assert post_note(client, note).json() == {"status": "ignored"}
+    assert await purchase_row("6981") is None
+
+
+def test_notification_environment_we_cannot_verify_is_422(client, use_verifier) -> None:
+    # Sandbox-only deployment without APPLE_APP_ID: a Production notification cannot be verified.
+    use_verifier(
+        AppStoreVerifier(
+            config(frozenset({"sandbox"}), app_id=None), root_certificates=[default_ca().root_der]
+        )
+    )
+    r = post_note(client, signed_note("TEST", None, environment="Production"))
     assert r.status_code == 422 and r.json()["detail"] == "environment_not_allowed"
+    empty = default_ca().sign({"notificationType": "TEST", "notificationUUID": "x"})
+    assert post_note(client, empty).status_code == 422
+    assert post_note(client, signed_note("TEST", None, environment="Xcode")).status_code == 422
+
+
+def test_notification_environment_is_found_where_the_library_looks() -> None:
+    env = apple_store._notification_environment
+    assert env({"data": {"environment": "Sandbox"}, "summary": {"environment": "X"}}) == "Sandbox"
+    assert env({"summary": {"environment": "Production"}}) == "Production"
+    assert env({"externalPurchaseToken": {"externalPurchaseId": "SANDBOX_1"}}) == "Sandbox"
+    assert env({"externalPurchaseToken": {"externalPurchaseId": "abc"}}) == "Production"
+    assert env({"appData": {"environment": "Sandbox"}}) == "Sandbox"
+    assert env({"data": {}, "appData": {"environment": "Production"}}) == "Production"
+    assert env({}) is None
+
+
+@pytest.mark.parametrize(
+    ("section", "expected"),
+    [
+        (
+            {
+                "appData": {
+                    "bundleId": BUNDLE_ID,
+                    "appAppleId": APP_APPLE_ID,
+                    "environment": "Sandbox",
+                }
+            },
+            200,
+        ),
+        (
+            {
+                "externalPurchaseToken": {
+                    "externalPurchaseId": "SANDBOX_123",
+                    "bundleId": BUNDLE_ID,
+                    "appAppleId": APP_APPLE_ID,
+                }
+            },
+            200,
+        ),
+        (
+            {
+                "externalPurchaseToken": {
+                    "externalPurchaseId": "123",
+                    "bundleId": BUNDLE_ID,
+                    "appAppleId": APP_APPLE_ID,
+                }
+            },
+            200,
+        ),
+    ],
+    ids=["appData", "external-sandbox", "external-production"],
+)
+def test_notifications_without_data_or_summary_verify_and_ack(
+    client, verifier, section, expected
+) -> None:
+    body = {
+        "notificationType": "RESCIND_CONSENT",
+        "notificationUUID": str(uuid.uuid4()),
+        "version": "2.0",
+        "signedDate": now_ms(),
+        **section,
+    }
+    r = post_note(client, default_ca().sign(body))
+    assert r.status_code == expected and r.json() == {"status": "ignored"}
+
+
+async def test_notification_from_other_environment_never_touches_purchase(
+    client: TestClient, verifier
+) -> None:
+    """Review N4: a Production notification must not act on a Sandbox purchase row."""
+    sid = _grant(client, "6990")  # Sandbox purchase
+    note = signed_note(
+        "REFUND",
+        signed_txn("6990", environment="Production", revocationDate=now_ms()),
+        environment="Production",
+        signed_date=now_ms(timedelta(minutes=1)),
+    )
+    assert post_note(client, note).json() == {"status": "unchanged"}
+    assert (await purchase_row("6990")).state == "owned"
+    assert jwt_games(client, sid) == ["hearts"]
+    assert await count(PurchaseEvent, PurchaseEvent.kind == "environment_mismatch") == 1
+    assert post_note(client, note).json() == {"status": "unchanged"}  # redelivery: dedupe
+    assert await count(PurchaseEvent, PurchaseEvent.kind == "environment_mismatch") == 1
+
+
+async def test_environment_mismatch_dedupe_race_is_a_noop(client, verifier, monkeypatch) -> None:
+    from purchases import service
+
+    _grant(client, "6991")
+    real = service._dedupe_seen
+
+    async def never(db, key):
+        return False
+
+    async with get_session_factory()() as db:
+        assert not await service.apply_store_state(
+            db,
+            platform="apple",
+            store_key="6991",
+            state="revoked",
+            dedupe_key="mm",
+            environment="production",
+        )
+    monkeypatch.setattr(service, "_dedupe_seen", never)
+    async with get_session_factory()() as db:  # same dedupe key again → unique violation
+        assert not await service.apply_store_state(
+            db,
+            platform="apple",
+            store_key="6991",
+            state="revoked",
+            dedupe_key="mm",
+            environment="production",
+        )
+    monkeypatch.setattr(service, "_dedupe_seen", real)
+    assert (await purchase_row("6991")).state == "owned"
+
+
+# ---------------------------------------------------------------------------
+# Online (OCSP) checks — the production default
+# ---------------------------------------------------------------------------
+
+
+def _online_verifier(ca) -> AppStoreVerifier:
+    cfg = AppleConfig(
+        bundle_id=BUNDLE_ID,
+        app_apple_id=APP_APPLE_ID,
+        environments=BOTH,  # type: ignore[arg-type]
+        online_checks=True,
+        api=None,
+    )
+    return AppStoreVerifier(cfg, root_certificates=[ca.root_der])
+
+
+@pytest.fixture(scope="module")
+def ocsp_ca():
+    return make_ca(name="OCSP", ocsp_url="http://ocsp.test.invalid/ocsp")
+
+
+@pytest.mark.parametrize(
+    ("status", "http", "detail"),
+    [
+        ("good", 200, None),
+        ("revoked", 422, "verification_failed"),
+        ("http_error", 503, "store_unavailable"),
+        ("unreachable", 503, "store_unavailable"),
+    ],
+)
+def test_online_checks_consult_ocsp(
+    client, use_verifier, monkeypatch, ocsp_ca, status, http, detail
+) -> None:
+    from appstoreserverlibrary import signed_data_verifier
+
+    from tests.apple_jws import ocsp_responder
+
+    responder = ocsp_responder(ocsp_ca, status=status)
+    monkeypatch.setattr(signed_data_verifier.requests, "post", responder)
+    use_verifier(_online_verifier(ocsp_ca))
+    r = post_txn(client, str(uuid.uuid4()), ocsp_ca.sign(transaction(f"ocsp-{status}")))
+    assert r.status_code == http, r.text
+    if detail:
+        assert r.json()["detail"] == detail
+    else:
+        assert r.json()["status"] == "owned"
+        leaf, inter = ocsp_ca.chain[0][0], ocsp_ca.chain[1][0]
+        # Both certificates were checked: intermediate first, then the leaf.
+        assert responder.seen == [inter.serial_number, leaf.serial_number]
+
+
+def test_online_checks_ignore_a_backdated_signed_date(client, use_verifier, monkeypatch) -> None:
+    """With online checks on, validity is checked now, not at the JWS's signedDate."""
+    from appstoreserverlibrary import signed_data_verifier
+
+    from tests.apple_jws import ocsp_responder
+
+    ca = make_ca(
+        name="Expired",
+        ocsp_url="http://ocsp.test.invalid/ocsp",
+        leaf_not_after=datetime.now(timezone.utc) - timedelta(hours=1),
+    )
+    monkeypatch.setattr(signed_data_verifier.requests, "post", ocsp_responder(ca))
+    use_verifier(_online_verifier(ca))
+    backdated = ca.sign(transaction("ocsp-old", signed_date=now_ms(timedelta(days=-1, hours=1))))
+    assert post_txn(client, str(uuid.uuid4()), backdated).status_code == 422
 
 
 def test_well_signed_but_unstructurable_notification_is_422(client, verifier) -> None:
@@ -964,3 +1169,168 @@ async def test_stop_replay_is_bounded(monkeypatch) -> None:
     assert not task.done()
     release.set()
     await task
+
+
+# ---------------------------------------------------------------------------
+# Review follow-ups: misconfiguration reporting, production online checks, replay
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def sentry_messages(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    messages: list[str] = []
+    monkeypatch.setattr(
+        apple_store.sentry_sdk, "capture_message", lambda msg, level=None: messages.append(msg)
+    )
+    return messages
+
+
+def _configure(env: pytest.MonkeyPatch, **extra: str) -> None:
+    env.setenv("APPLE_BUNDLE_ID", BUNDLE_ID)
+    env.setenv("APPLE_APP_ID", str(APP_APPLE_ID))
+    for key, value in extra.items():
+        env.setenv(key, value)
+    apple.reset_apple_verifier()  # a client fixture may have cached the dormant answer
+
+
+def test_online_checks_off_is_refused_in_production(apple_env, sentry_messages) -> None:
+    _configure(apple_env, APPLE_IAP_ONLINE_CHECKS="off", ENVIRONMENT="production")
+    assert load_config() is None
+    assert sentry_messages == ["apple_iap_misconfigured: online_checks_off_in_production"]
+    apple_env.setenv("ENVIRONMENT", "development")
+    cfg = load_config()
+    assert cfg is not None and cfg.online_checks is False
+    apple_env.delenv("APPLE_IAP_ONLINE_CHECKS")
+    apple_env.setenv("ENVIRONMENT", "production")
+    cfg = load_config()
+    assert cfg is not None and cfg.online_checks is True
+
+
+def test_set_but_broken_config_reports_reason_only(
+    apple_env, sentry_messages, client: TestClient
+) -> None:
+    secret = "-----BEGIN PRIVATE KEY-----\nnot-really-a-key\n-----END PRIVATE KEY-----"
+    _configure(
+        apple_env,
+        APPLE_IAP_ISSUER_ID="issuer",
+        APPLE_IAP_KEY_ID="KEY123",
+        APPLE_IAP_PRIVATE_KEY=secret,
+    )
+    assert apple.configured_verifier() is None
+    assert sentry_messages == ["apple_iap_misconfigured: init"]
+    assert all("not-really" not in m and "KEY123" not in m for m in sentry_messages)
+    r = post_txn(client, str(uuid.uuid4()), signed_txn("7900"))
+    assert r.status_code == 503 and r.json()["detail"] == "store_unavailable"
+
+
+@pytest.mark.parametrize(
+    ("extra", "reason"),
+    [
+        ({"APPLE_IAP_KEY_ID": "KEY123"}, "api_key"),
+        ({"APPLE_APP_ID": "12a"}, "app_id"),
+        ({"APPLE_IAP_ENVIRONMENTS": "Xcode"}, "environments"),
+    ],
+)
+def test_half_set_config_is_reported(apple_env, sentry_messages, extra, reason) -> None:
+    _configure(apple_env, **extra)
+    assert apple.configured_verifier() is None
+    assert sentry_messages == [f"apple_iap_misconfigured: {reason}"]
+
+
+def test_missing_root_certificate_is_reported(
+    apple_env, sentry_messages, monkeypatch, tmp_path
+) -> None:
+    _configure(apple_env)
+    monkeypatch.setattr(apple_store, "APPLE_ROOT_CA_G3_FILE", tmp_path / "missing.cer")
+    assert apple.configured_verifier() is None
+    assert sentry_messages == ["apple_iap_misconfigured: root_certificate"]
+
+
+def test_unset_bundle_id_is_quietly_dormant(apple_env, sentry_messages) -> None:
+    assert apple.configured_verifier() is None
+    assert sentry_messages == []
+
+
+async def test_replay_does_not_count_disallowed_environment_as_failed() -> None:
+    api = FakeApiClient()
+    v = make_verifier(envs=frozenset({"production"}), api={"production": api})
+    api.pages = [_page([signed_note("REFUND", signed_txn("7950"))], None, False)]
+    result = await replay_notification_history(v, get_session_factory())
+    assert (result.fetched, result.failed, result.applied) == (1, 0, 0)
+
+
+async def test_replay_warns_when_page_limit_is_hit(caplog: pytest.LogCaptureFixture) -> None:
+    api = FakeApiClient()
+    api.pages = [_page([], "1", True), _page([], "2", True), _page([], "3", True)]
+    v = make_verifier(api={"sandbox": api})
+    result = await replay_notification_history(v, get_session_factory(), max_pages=2)
+    assert result.truncated_environments == 1 and api.history_calls == 2
+    assert "apple_replay_page_limit" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Body-size middleware on the unauthenticated webhook (review N6)
+# ---------------------------------------------------------------------------
+
+
+def _chunks(data: bytes, size: int = 1024):
+    for i in range(0, len(data), size):
+        yield data[i : i + size]
+
+
+@pytest.mark.parametrize("value", ["abc", "-1", "1e3", " 12x"])
+def test_non_numeric_content_length_is_400(client, verifier, value) -> None:
+    r = client.post(
+        "/purchases/apple/notifications",
+        content=b"{}",
+        headers={"Content-Type": "application/json", "Content-Length": value},
+    )
+    assert r.status_code == 400
+
+
+def test_chunked_body_over_cap_is_413(client, verifier) -> None:
+    body = json.dumps({"signedPayload": "a" * 40_000}).encode()
+    r = client.post(
+        "/purchases/apple/notifications",
+        content=_chunks(body),
+        headers={"Content-Type": "application/json"},
+    )
+    assert r.status_code == 413
+
+
+def test_chunked_body_within_cap_is_processed(client, verifier) -> None:
+    body = json.dumps({"signedPayload": signed_note("TEST", None)}).encode()
+    r = client.post(
+        "/purchases/apple/notifications",
+        content=_chunks(body),
+        headers={"Content-Type": "application/json"},
+    )
+    assert r.status_code == 200 and r.json() == {"status": "test"}
+
+
+async def test_body_middleware_stops_on_client_disconnect() -> None:
+    from main import MaxBodySizeMiddleware
+
+    called = False
+
+    async def app(scope, receive, send):
+        nonlocal called
+        called = True
+
+    messages = [
+        {"type": "http.request", "body": b"{", "more_body": True},
+        {"type": "http.disconnect"},
+    ]
+
+    async def receive():
+        return messages.pop(0)
+
+    async def send(message):
+        raise AssertionError("nothing should be sent")
+
+    scope = {"type": "http", "path": "/purchases/apple/notifications", "headers": []}
+    await MaxBodySizeMiddleware(app)(scope, receive, send)
+    assert not called
+    # Non-HTTP scopes pass straight through.
+    await MaxBodySizeMiddleware(app)({"type": "lifespan"}, receive, send)
+    assert called

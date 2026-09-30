@@ -206,6 +206,12 @@ async def backdate_links(days: int) -> None:
                 created_at=datetime.now(timezone.utc) - timedelta(days=days)
             )
         )
+        # The caps also count the retained "linked" audit events (S1, #2786).
+        await db.execute(
+            update(PurchaseEvent)
+            .where(PurchaseEvent.kind == "linked")
+            .values(created_at=datetime.now(timezone.utc) - timedelta(days=days))
+        )
         await db.commit()
 
 
@@ -1295,3 +1301,40 @@ async def test_foreign_key_sets_null_and_recompute_repairs_the_row(
         await purchase_service.recompute_entitlement(db, sid, "hearts")
         await db.commit()
     assert (await entitlement(sid)).purchase_id == family_id
+
+
+async def test_delete_my_data_churn_cannot_reset_link_caps(
+    client: TestClient, fake_apple: FakeAppleVerifier
+) -> None:
+    """Security review S1 (#2786): restore, DELETE /me, restore on a new install, repeat.
+
+    DELETE /me removes the install's purchase_links, so the caps count the
+    retained "linked" audit events instead.
+    """
+    from purchases.service import MAX_NEW_LINKS_PER_PURCHASE_PER_30D, MAX_SESSIONS_PER_PURCHASE
+
+    fake_apple.answers["churn"] = verified("churn")
+
+    def restore_then_erase(sid: str) -> int:
+        status = post_apple(client, sid, "churn", source="restore").status_code
+        assert client.delete("/me", headers={"X-Session-ID": sid}).status_code == 204
+        return status
+
+    first = [new_sid() for _ in range(MAX_NEW_LINKS_PER_PURCHASE_PER_30D)]
+    assert [restore_then_erase(s) for s in first] == [200] * len(first)
+    assert await count(PurchaseLink) == 0  # every link was erased
+    r = post_apple(client, new_sid(), "churn", source="restore")
+    assert r.status_code == 409 and r.json()["detail"] == "link_limit"
+
+    # A returning install (same ID) is not a new session for either cap.
+    assert post_apple(client, first[0], "churn", source="restore").status_code == 200
+    assert client.delete("/me", headers={"X-Session-ID": first[0]}).status_code == 204
+
+    # After the 30-day window, the lifetime cap still counts erased installs.
+    await backdate_links(31)
+    extra = MAX_SESSIONS_PER_PURCHASE - MAX_NEW_LINKS_PER_PURCHASE_PER_30D
+    assert [restore_then_erase(new_sid()) for _ in range(extra)] == [200] * extra
+    await backdate_links(31)
+    r = post_apple(client, new_sid(), "churn", source="restore")
+    assert r.status_code == 409 and r.json()["detail"] == "link_limit"
+    assert await count(PurchaseEvent, PurchaseEvent.kind == "link_rejected") == 2

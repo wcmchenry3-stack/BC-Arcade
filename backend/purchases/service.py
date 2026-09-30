@@ -398,6 +398,46 @@ async def upsert_purchase(
 # ---------------------------------------------------------------------------
 
 
+async def _link_counts(
+    db: AsyncSession, purchase: Purchase, session_id: str, now: datetime
+) -> tuple[int, int, bool]:
+    """(sessions ever linked, sessions newly linked in the window, is this session one of them).
+
+    Counted from the retained ``linked`` audit events, by distinct session
+    hash, as well as from live ``purchase_links`` rows. ``DELETE /me`` deletes
+    links but keeps ``purchase_events``, so erasing and restoring on a fresh
+    install cannot reset either cap (IAP.md §4, §8.5).
+    """
+    linked = (
+        await db.execute(
+            select(PurchaseEvent.session_hash, PurchaseEvent.created_at).where(
+                PurchaseEvent.purchase_id == purchase.id,
+                PurchaseEvent.kind == "linked",
+                PurchaseEvent.session_hash.is_not(None),
+            )
+        )
+    ).all()
+    since = now - NEW_LINK_WINDOW
+    ever = {h for h, _ in linked}
+    fresh = {h for h, at in linked if _utc(at) >= since}
+    live_total = (
+        await db.execute(
+            select(func.count())
+            .select_from(PurchaseLink)
+            .where(PurchaseLink.purchase_id == purchase.id)
+        )
+    ).scalar_one()
+    live_recent = (
+        await db.execute(
+            select(func.count())
+            .select_from(PurchaseLink)
+            .where(PurchaseLink.purchase_id == purchase.id, PurchaseLink.created_at >= since)
+        )
+    ).scalar_one()
+    returning = session_hash(session_id) in ever
+    return max(len(ever), live_total), max(len(fresh), live_recent), returning
+
+
 async def _link_session(
     db: AsyncSession,
     purchase: Purchase,
@@ -429,24 +469,12 @@ async def _link_session(
     ):
         refusal = "ownership_mismatch"
     else:
-        total = (
-            await db.execute(
-                select(func.count())
-                .select_from(PurchaseLink)
-                .where(PurchaseLink.purchase_id == purchase.id)
-            )
-        ).scalar_one()
-        recent = (
-            await db.execute(
-                select(func.count())
-                .select_from(PurchaseLink)
-                .where(
-                    PurchaseLink.purchase_id == purchase.id,
-                    PurchaseLink.created_at >= now - NEW_LINK_WINDOW,
-                )
-            )
-        ).scalar_one()
-        if total >= MAX_SESSIONS_PER_PURCHASE:
+        total, recent, returning = await _link_counts(db, purchase, session_id, now)
+        # A returning install (linked before, unlinked by Delete My Data) adds
+        # no new session to either cap.
+        if returning:
+            refusal = None
+        elif total >= MAX_SESSIONS_PER_PURCHASE:
             refusal = "link_limit"
             reason = "session_cap"
         elif recent >= MAX_NEW_LINKS_PER_PURCHASE_PER_30D:
@@ -557,8 +585,14 @@ async def apply_store_state(
     reason: str | None = None,
     dedupe_key: str | None = None,
     event_at: datetime | None = None,
+    environment: str | None = None,
 ) -> bool:
     """Set a known purchase's state from a verified store notification, and recompute.
+
+    ``environment`` (the notification's verified environment, e.g. ``sandbox``)
+    must match the purchase's when given: store keys from different store
+    environments never act on each other. A mismatch is audited
+    (``environment_mismatch``) and changes nothing.
 
     For Apple ``REFUND`` / ``REVOKE`` (→ revoked), ``REFUND_REVERSED`` (→ owned),
     Google voided purchases (→ revoked) and ``ONE_TIME_PRODUCT_CANCELED``
@@ -587,6 +621,20 @@ async def apply_store_state(
     # A parallel delivery may have committed while this one waited for the lock.
     if dedupe_key is not None and await _dedupe_seen(db, dedupe_key):
         await db.rollback()
+        return False
+    if environment is not None and purchase.environment != environment:
+        _event(
+            db,
+            purchase,
+            "environment_mismatch",
+            dedupe_key=dedupe_key,
+            env=environment,
+            current=purchase.environment,
+        )
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
         return False
     now = _now()
     at = _utc(event_at or now)

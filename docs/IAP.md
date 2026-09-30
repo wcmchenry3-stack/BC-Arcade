@@ -179,7 +179,10 @@ currently used.**
     sessions may be linked per purchase in any rolling 30 days, also
     `409 link_limit`. Re-presenting from an already-linked session is not a
     new link and is always allowed.
-  - Both limits count `purchase_links` rows (§8.1).
+  - Both limits count distinct installs ever linked: live `purchase_links`
+    rows and the retained `linked` audit events in `purchase_events`
+    (§8.1), so Delete My Data cannot reset them (§8.5). An install that was
+    linked before and re-links is not a new session.
   - **Unlinking happens only via support** (for example a user who has
     reinstalled more than five times). There is no self-service unlink.
   - Per-IP and per-`store_key` rate limits (§8.2) slow down anyone trying to
@@ -442,11 +445,23 @@ throwaway CA (`backend/tests/apple_jws.py`) and trust that instead.
 
 **Dormant by default.** `load_config()` returns nothing, and both Apple routes
 answer `503 store_unavailable`, unless `APPLE_BUNDLE_ID` is set and, when
-`Production` is allowed, `APPLE_APP_ID` too. A half-set API key (one or two
-of the three `APPLE_IAP_*` key variables), an unknown environment list or an
-unreadable private key also leaves it dormant, with an
-`apple_iap_misconfigured` warning (variable **names** only) in the audit log.
-The configuration is read once per process.
+`Production` is allowed, `APPLE_APP_ID` too. Once `APPLE_BUNDLE_ID` is set,
+anything else wrong also leaves it dormant **and is reported**: a half-set API
+key (one or two of the three `APPLE_IAP_*` key variables), a non-numeric
+`APPLE_APP_ID`, an unknown environment list, a missing or altered root
+certificate, an unreadable private key, or `APPLE_IAP_ONLINE_CHECKS=off` on
+the production API (`ENVIRONMENT=production`). Each logs an
+`apple_iap_misconfigured` warning and sends a Sentry message carrying only
+the reason code (`api_key`, `app_id`, `environments`, `root_certificate`,
+`init`, `online_checks_off_in_production`) — never a value or an exception
+text. The configuration is read once per process.
+
+**Online checks.** With `APPLE_IAP_ONLINE_CHECKS` on (the default, and the
+only setting the production API accepts), certificate validity is checked at
+the current time and both certificates by OCSP. Off, the library skips OCSP
+and checks validity at the JWS's own `signedDate`, so a revoked signing
+certificate with a backdated `signedDate` would pass; for local and dev use
+only.
 
 **Webhook.** `POST /purchases/apple/notifications`, body `{"signedPayload":
 "<JWS>"}`, no session header. Enter these in App Store Connect → App
@@ -459,10 +474,19 @@ Information → App Store Server Notifications, **Version 2**:
 
 Behavior (`backend/purchases/apple_notifications.py`):
 
-- `signedPayload` is verified as in step 2, choosing the verifier from
-  `data.environment` (or `summary.environment`); for `Production` the
-  `appAppleId` must equal `APPLE_APP_ID`. The embedded
-  `signedTransactionInfo` is verified too, pinned to the same environment.
+- `signedPayload` is verified as in step 2, choosing the verifier where
+  the library reads the environment: `data`, `summary`,
+  `externalPurchaseToken` (an `externalPurchaseId` starting `SANDBOX` is
+  Sandbox) or `appData`. For `Production` the `appAppleId` must equal
+  `APPLE_APP_ID`. A notification from an environment this deployment does
+  not accept is still verified (Sandbox always can be; Production when
+  `APPLE_APP_ID` is set) and then answered `200 {"status": "ignored"}` so
+  Apple stops retrying; one we cannot verify at all is `422
+  environment_not_allowed`. The embedded `signedTransactionInfo` is verified
+  too, pinned to the same environment.
+- A notification acts on a purchase only when the environments match: a
+  Production notification for a store key recorded as Sandbox (or the
+  reverse) changes nothing and is audited as `environment_mismatch`.
 - `REFUND` / `REVOKE` → `revoked`, `REFUND_REVERSED` → `owned`, through
   `apply_store_state(..., event_at=<notification signedDate>,
   dedupe_key=<notificationUUID>)`. For a purchase no client has posted yet,
@@ -479,15 +503,19 @@ Behavior (`backend/purchases/apple_notifications.py`):
   `environment_not_allowed` for a payload that fails verification (Apple
   retries, then gives up; nothing is applied); `503 store_unavailable` while
   dormant or when OCSP is unreachable (Apple retries); `413` over 32 KB
-  (the `/purchases` body cap); `429` past 300 requests a minute per IP.
+  (the `/purchases` body cap, enforced on the stream too when there is no
+  `Content-Length`); `400` for a malformed `Content-Length`; `429` past 300
+  requests a minute per IP.
 - Logs carry the notification type, outcome and `notificationUUID` only;
   rejections log the status and code only, never the payload. Sentry never
   receives request bodies, and `signedPayload` is on the scrub list.
 
 **Replay.** `replay_notification_history()` asks **Get Notification History**
 for the last 48 h, per allowed environment with an API client, follows
-pagination (at most 100 pages), and feeds every `signedPayload` through the
-webhook handler, so dedupe and ordering are the same. A payload that fails
+pagination (at most 100 pages; hitting the cap logs `apple_replay_page_limit`
+and the rest waits for the next run), and feeds every `signedPayload` through
+the webhook handler, so dedupe and ordering are the same. A notification from
+a disallowed environment counts as ignored, not failed. A payload that fails
 verification is counted and skipped; an API error ends that environment's run
 and the next run retries. It runs **in-process** at startup and then every
 24 h (`main.py` lifespan, like the Daily Word retention task), only when the
@@ -651,8 +679,9 @@ transaction as every change to `purchase_links` or `purchases.state` (a small
 `recompute_entitlements(session_id, game_slug)` helper), with `purchase_id`
 pointing at one of the qualifying purchases. Links are kept when a purchase is
 revoked, so a refund reversal restores access without a new sync. The session
-cap and the 30-day new-link limit (§4) count `purchase_links` rows, never
-`game_entitlements` rows. Rows with `source = 'legacy'` (no `purchase_id`) are
+cap and the 30-day new-link limit (§4) count distinct installs from
+`purchase_links` rows and the retained `linked` events in `purchase_events`
+(#2786; §8.5), never `game_entitlements` rows. Rows with `source = 'legacy'` (no `purchase_id`) are
 not touched.
 
 `GET /entitlements`, `check_entitlement` and `require_entitlement` **stay
@@ -976,6 +1005,14 @@ runners make wall-clock time noisy.
   follow-up (SECURITY.md §9 "Known issue: X-Forwarded-For spoofing"); the
   per-session and per-`store_key` limits still apply.
 
+- **OCSP latency.** With online checks on, each uncached chain costs two
+  blocking OCSP requests to Apple, each with a 30 s timeout, run in a worker
+  thread (the default anyio pool is 40 threads). The library caches a
+  verified chain's key for 15 minutes (about 32 chains), and Apple signs
+  with few leaves, so steady-state traffic rarely pays it; a slow responder
+  can still hold threads and delay Apple requests, which answer `503` when
+  OCSP fails. Rate limits bound the exposure.
+
 _#2786 note:_ the bucket-burn risk is unchanged. The route still counts the
 per-`store_key` bucket before calling the verifier, because with API
 credentials the verifier makes a store call (Get Transaction Info).
@@ -1021,8 +1058,11 @@ not redesigned here; it is disclosed.
 **Restore afterwards.** The purchase belongs to the store account, not the
 install: Restore Purchases (or the launch sync) re-presents the store's
 signed transaction and links the new install ID, subject to the §4 link caps.
-The deleted link no longer counts toward `MAX_SESSIONS_PER_PURCHASE`; the
-30-day new-link limit still counts only rows that exist.
+Both link caps count distinct installs from the retained `linked` audit
+events as well as live links, so the erased install still counts: restoring,
+erasing and restoring on a fresh install in a loop hits `409 link_limit`
+exactly as keeping the links would (tested). Re-linking the same install ID
+is not a new session.
 
 **Store policy.** Apple: account deletion must remove data "the developer
 isn't legally required to maintain" (guest/auto-generated accounts
@@ -1260,8 +1300,10 @@ owner sign-off.
 - **Irreversible:** once Family Sharing is enabled for a product in App Store
   Connect, it cannot be turned off for that product. That is the one concrete
   reason to wait. No other blocker was found.
-- If the owner declines, leave it off. The server then rejects `FAMILY_SHARED`
-  (it should never see one) and the paywall copy omits sharing.
+- If the owner declines, leave it off and the paywall copy omits sharing.
+  The server accepts `FAMILY_SHARED` transactions either way and needs no
+  flag: Apple issues them only for products with Family Sharing enabled, so
+  with it off none exist.
 - Google: not available (§7.5). Store listing copy must not promise it on
   Android.
 
@@ -1387,7 +1429,7 @@ Sentry (SECURITY.md §13).
 | `APPLE_IAP_ENVIRONMENTS`                                   | `Production,Sandbox` in production (§6.4). Default when unset: `Production,Sandbox`. Only `Production` and `Sandbox` are honoured. |
 | `APPLE_IAP_ISSUER_ID`, `APPLE_IAP_KEY_ID`                  | Optional. App Store Server API key identity (App Store Connect → Integrations → In-App Purchase key). Set all three `APPLE_IAP_*` key variables or none. |
 | `APPLE_IAP_PRIVATE_KEY`                                    | Optional, with the two above. The `.p8` key (PEM string; `\n`-escaped newlines are accepted). Enables Get Transaction Info on every client post and the notification-history replay. |
-| `APPLE_IAP_ONLINE_CHECKS`                                  | Optional. OCSP revocation checks of Apple's signing certificates; on unless set to `false` / `0` / `off`. Needs outbound HTTPS to Apple's OCSP responder. |
+| `APPLE_IAP_ONLINE_CHECKS`                                  | Optional. OCSP revocation checks of Apple's signing certificates, and validity checked at the current time; on unless set to `false` / `0` / `off`. **Off is refused (dormant, reported) when `ENVIRONMENT=production`.** Needs outbound HTTPS to Apple's OCSP responder. |
 | `GOOGLE_PLAY_ENVIRONMENTS`                                 | Allowed Google environments, `production,test` (default). Drop `test` to refuse license-tester purchases. |
 | `GOOGLE_PLAY_PACKAGE_NAME` (`com.buffingchi.games`)        | Package check.                                                                               |
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`                         | Service-account key.                                                                         |

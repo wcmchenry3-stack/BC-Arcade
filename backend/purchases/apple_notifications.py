@@ -75,6 +75,11 @@ async def handle_signed_notification(
     env, note = await verifier.decode_notification(signed_payload)
     ntype = note.rawNotificationType or ""
     uuid_ = note.notificationUUID
+    if not verifier.allows(env):
+        # Genuine, but from an environment this deployment does not accept
+        # (e.g. Sandbox on a Production-only API): acknowledge so Apple stops.
+        _log_event("apple_notification", type=ntype, outcome="ignored", via=via, id=uuid_, env=env)
+        return "ignored"
     if ntype == "TEST":
         _log_event("apple_notification", type=ntype, outcome="test", via=via, id=uuid_)
         return "test"
@@ -110,6 +115,7 @@ async def handle_signed_notification(
                 reason=reason,
                 dedupe_key=uuid_,
                 event_at=event_at,
+                environment=env,
             )
         else:
             # A new purchase, or one no client has posted yet: record the
@@ -129,6 +135,7 @@ class ReplayResult:
     applied: int = 0
     failed: int = 0
     skipped_environments: int = 0
+    truncated_environments: int = 0
 
 
 async def replay_notification_history(
@@ -156,7 +163,7 @@ async def replay_notification_history(
     for env in verifier.api_environments():
         client = verifier.api_client(env)
         token: str | None = None
-        for _ in range(max_pages):
+        for page_no in range(max_pages):
             request = NotificationHistoryRequest(
                 startDate=int(start.timestamp() * 1000), endDate=int(end.timestamp() * 1000)
             )
@@ -182,12 +189,20 @@ async def replay_notification_history(
             token = page.paginationToken
             if not page.hasMore or not token:
                 break
+            if page_no == max_pages - 1:
+                # More history than one run reads; the rest waits for the next
+                # run (or a manual run with a shorter window).
+                result.truncated_environments += 1
+                _log.warning(
+                    json.dumps({"event": "apple_replay_page_limit", "env": env, "pages": max_pages})
+                )
     _log_event(
         "apple_replay_done",
         fetched=result.fetched,
         applied=result.applied,
         failed=result.failed,
         skipped_environments=result.skipped_environments,
+        truncated_environments=result.truncated_environments,
     )
     return result
 

@@ -61,7 +61,7 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `APPLE_IAP_ISSUER_ID`      | optional (App Store Server API); set all three `APPLE_IAP_*` key vars or none | ←                                                         | Dashboard secret    |
 | `APPLE_IAP_KEY_ID`         | ↑                                                               | ↑                                                                       | Dashboard secret    |
 | `APPLE_IAP_PRIVATE_KEY`    | ↑ (the `.p8` PEM)                                               | ↑                                                                       | Dashboard secret    |
-| `APPLE_IAP_ONLINE_CHECKS`  | optional; OCSP checks, on unless `false`                        | optional                                                                | Dashboard           |
+| `APPLE_IAP_ONLINE_CHECKS`  | leave unset (on); `off` is refused in production                | optional; `off` allowed for local testing                               | Dashboard           |
 
 The `APPLE_*` variables are **unset by default**: Apple verification stays
 dormant and `POST /purchases/apple` and `POST /purchases/apple/notifications`

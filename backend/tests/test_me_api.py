@@ -206,6 +206,7 @@ async def test_delete_me_removes_leaderboard_name(client: TestClient, session_id
     assert r.status_code == 204
 
     assert await _count(Player, session_id) == 0
+    assert client.get("/players/me", headers=_headers(session_id)).json()["display_name"] is None
 
 
 async def test_delete_me_removes_purchase_links_but_keeps_store_records(
@@ -260,4 +261,3 @@ async def test_delete_me_removes_purchase_links_but_keeps_store_records(
         assert (await db.execute(select(func.count()).select_from(Purchase))).scalar_one() == 1
         events = (await db.execute(select(func.count()).select_from(PurchaseEvent))).scalar_one()
         assert events == 1
-    assert client.get("/players/me", headers=_headers(session_id)).json()["display_name"] is None
