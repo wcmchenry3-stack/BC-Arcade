@@ -45,7 +45,7 @@ A stored session is eligible for a board only when all applicable rules pass:
 2. If the board declares `qualifying_outcomes`, the row's outcome is one of them.
 3. The metric exists and is a sane integer within the board's effective bounds.
 4. Any required partition values resolve to an allowed board.
-5. The player has a display name.
+5. The player has joined the leaderboards (so has a generated public name; see §4a).
 6. Legacy sentinel anonymous rows are excluded.
 
 A malformed or legacy row can remain in storage without being allowed to rank.
@@ -56,11 +56,22 @@ Public boards show one entry per current player identity.
 
 Today that identity is the player's BC Arcade session id. The leaderboard query groups eligible rows by `session_id` and keeps only that session's best row for the selected board/partition.
 
-The player's display name comes from the `players` table, not from old per-game score metadata. A rename therefore updates the name shown for that player's ranking without rewriting historical game rows.
+The player's public name comes from the `players` table, not from old per-game score metadata. Getting a new name therefore updates the name shown for that player's ranking without rewriting historical game rows.
 
-Anonymous play remains fully supported. A player simply does not appear publicly until they choose a display name.
+Anonymous play remains fully supported. A player simply does not appear publicly until they choose to join the leaderboards.
 
 Future account identity work can change how player identity is resolved without changing each game's scoring contract.
+
+## 4a. Public names are generated, not typed (#2778)
+
+Launch decision, recorded in [LEADERBOARD-IDENTITIES.md](LEADERBOARD-IDENTITIES.md): players never type public text.
+
+- **Join** (`PUT /players/me`, no body) is the explicit opt-in. The server assigns a generated name such as "Brave Otter 4821" (`backend/players/generated.py`: curated adjective + animal + number).
+- **Get a new name** (`POST /players/me/reroll`) swaps it for another generated name. It is online only, and it never opts anyone in.
+- **Leave** (`DELETE /players/me`) takes the player off every board. Joining again gives a new name.
+- The API ignores any name text a client sends. An older build's `player_name` in `POST /games` metadata only counts as that player's choice to join, and they get a generated name.
+- Existing players who had set a name were kept on the boards under a generated name by migration 0030. Nobody who never set a name was opted in.
+- Names are the same English words on every locale, and they are not unique. The board identifies a player by id.
 
 ## 5. Ordering and ties
 
@@ -118,9 +129,9 @@ Possible outcomes include:
 
 - exact rank for the player's best entry;
 - a message that this game did not beat the player's existing best;
-- one-time display-name prompt;
+- one-time **Join leaderboards** prompt (no name entry: the server generates the name);
 - no rank line for a disabled/unavailable board;
-- retry/offline state while the session/name is still syncing.
+- retry/offline state while the session or the join is still syncing.
 
 The result card can link to the full Leaderboard screen.
 
@@ -132,8 +143,8 @@ The Leaderboard screen shows the top entries for **one game and one partition**.
 
 It provides:
 
-- one best entry per named player;
-- rank, current display name, metric value, and completion date;
+- one best entry per player who has joined;
+- rank, current generated name, metric value, and completion date;
 - the current player's row highlighted when it is in the returned list;
 - the current player's exact best pinned below the list when it is outside the visible results;
 - partition controls for partitioned boards;
@@ -194,7 +205,7 @@ Per-game rows can show that game's own Best and win-rate information.
 
 BC Arcade does **not** compare a Hearts score to a Sudoku score or create a cross-game "highest score" leaderboard.
 
-Profile also owns the player's display-name controls, including removing the name from public leaderboards.
+Profile also owns the player's leaderboard membership (#2778): **Join leaderboards** when they haven't joined, and otherwise their generated name with **Get a new name** and **Leave leaderboards**. There is no name text field. Profile refreshes its copy of the name from `GET /players/me` when it opens online, so a name the server replaced (migration 0030) shows as the new generated one.
 
 ## 13. Offline and sync behavior
 
@@ -203,8 +214,10 @@ Gameplay/session completion is offline-capable through the shared game sync queu
 Consequences:
 
 - a finished offline game can upload later;
-- the result card may temporarily have no rank while its game/name is pending sync;
-- opening a leaderboard from a pending result can trigger a refresh after queued games and display-name changes flush;
+- the result card may temporarily have no rank while its game or a join is pending sync;
+- a join or leave made offline is kept in one pending slot and sent on reconnect, foreground or launch; the generated name appears once the join reaches the server;
+- **Get a new name** needs a connection;
+- opening a leaderboard from a pending result can trigger a refresh after queued games and a pending join/leave flush;
 - public boards themselves are server reads and show an offline/error state when unavailable.
 
 The underlying session/offline contract remains [ARCHITECTURE §4](ARCHITECTURE.md#4-persistence-and-offline-contract) and [GAME-CONTRACT](GAME-CONTRACT.md).

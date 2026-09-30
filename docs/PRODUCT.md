@@ -67,11 +67,13 @@ Current no-ads statements in store and privacy materials describe the initial re
 
 ## Identity Tiers
 
-| Tier | Description                 | Status             |
-| ---- | --------------------------- | ------------------ |
-| 0    | Anonymous (UUID session)    | Implemented        |
-| 1    | Optional name input         | Planned            |
-| 2    | Google/Apple SSO (optional) | Planned — see #144 |
+| Tier | Description                                                  | Status             |
+| ---- | ------------------------------------------------------------ | ------------------ |
+| 0    | Anonymous (UUID session)                                     | Implemented        |
+| 1    | Opt-in leaderboard membership under a server-generated name  | Implemented, #2778 |
+| 2    | Google/Apple SSO (optional)                                  | Planned — see #144 |
+
+Players never type a public name: joining the leaderboards gives them a generated name (for example "Brave Otter 4821") that they can swap for another generated name or withdraw. See [LEADERBOARD-IDENTITIES.md](LEADERBOARD-IDENTITIES.md).
 
 Login is always optional. Never block gameplay behind it. Prompt only after the user has played:
 
