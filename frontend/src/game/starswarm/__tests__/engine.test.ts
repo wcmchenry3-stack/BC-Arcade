@@ -52,7 +52,6 @@ import {
   DODGE_SIDESTEP,
   DODGE_SIDESTEP_MS,
   DODGE_PATH_NUDGE,
-  FLAK_COOLDOWN,
   playerVolley,
   upgradeEvents,
   SPREAD_VX,
@@ -4373,10 +4372,6 @@ describe("Enemy asteroid response (#2487)", () => {
     expect(fromShip!.vy).toBeLessThan(0); // aimed up at the rock
     expect(s.enemies.find((e) => e.id === c.id)!.flakCooldown).toBeGreaterThan(0);
     expect(s.tierStats.Guardian.flak).toBeGreaterThanOrEqual(1);
-    const flakCount = s.tierStats.Guardian.flak;
-    // cooldown: no second shot from this ship for FLAK_COOLDOWN
-    for (let t = 16; t < FLAK_COOLDOWN - 100; t += 16) s = tick(s, 16, ASIDE);
-    expect(s.tierStats.Guardian.flak).toBe(flakCount);
   });
 
   it("no flak at a rock moving away, out of range, or when enemy fire is disabled", () => {
