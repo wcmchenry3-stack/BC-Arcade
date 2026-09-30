@@ -6,6 +6,7 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
+import type { ScoreLedger } from "../../game/starswarm/scoreLedger";
 
 // useGameSync's play clock (#2684) is pinned for every test by jest.setup.ts
 // (#2710); the duration tests move it forward.
@@ -32,7 +33,7 @@ jest.mock("@react-navigation/native", () => ({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockCanvasProps: any = null;
 // What the canvas's getState() returns — null by default (no engine state).
-let mockCanvasState: { difficulty: string } | null = null;
+let mockCanvasState: { difficulty: string; scoreLedger?: ScoreLedger } | null = null;
 jest.mock("../../components/starswarm/GameCanvas", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require("react");
@@ -224,6 +225,43 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     // The engine keeps no play clock: useGameSync's active-play window (#2684)
     // supplies the run's foreground time.
     expect(summary.durationMs).toBe(45_000);
+  });
+
+  // #2837: the run's per-wave score breakdown rides in the result block only.
+  it("sends the run's per-wave score breakdown in the result, not the event", async () => {
+    await renderScreen();
+    await startRun();
+    mockCanvasState = {
+      difficulty: "Commander",
+      scoreLedger: {
+        waves: [
+          { wave: 1, pts: { Grunt: 1000, clear: 500 } },
+          { wave: 2, pts: { "Grunt:dive": 400, Carrier: 1000, clear: 1000 } },
+        ],
+        earlier: null,
+      },
+    };
+    await endRun(3900, 2);
+    const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
+    expect(summary.result).toEqual({
+      outcome: "completed",
+      wave_reached: 2,
+      difficulty_tier: "Commander",
+      score_breakdown: {
+        v: 1,
+        waves: [
+          { wave: 1, start: 0, end: 1500, total: 1500, pts: { Grunt: 1000, clear: 500 } },
+          {
+            wave: 2,
+            start: 1500,
+            end: 3900,
+            total: 2400,
+            pts: { "Grunt:dive": 400, Carrier: 1000, clear: 1000 },
+          },
+        ],
+      },
+    });
+    expect(eventData).not.toHaveProperty("score_breakdown");
   });
 
   it("reports a game over with no open session, and asks for no rank", async () => {
