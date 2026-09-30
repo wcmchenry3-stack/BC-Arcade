@@ -31,6 +31,10 @@
   "a11y.gunsDown": "गन घटकर स्तर {{level}} हो गई।",
   "a11y.hullUp": "हल प्लेटिंग {{level}}।",
   "a11y.hullHit": "हल प्लेटिंग ने हिट सह ली।",
+  "hud.cueGuns": "गन +1",
+  "hud.cueGunsMax": "गन MAX",
+  "hud.cueHull": "हल +1",
+  "hud.cueHullMax": "हल MAX",
   "result.reachedWave": "वेव {{wave}} तक पहुंचे",
   "result.wave": "वेव"
 }

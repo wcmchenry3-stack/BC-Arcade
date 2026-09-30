@@ -31,6 +31,10 @@
   "a11y.gunsDown": "انخفض مستوى المدافع إلى {{level}}.",
   "a11y.hullUp": "درع الهيكل {{level}}.",
   "a11y.hullHit": "امتص درع الهيكل الضربة.",
+  "hud.cueGuns": "مدافع +1",
+  "hud.cueGunsMax": "مدافع الأقصى",
+  "hud.cueHull": "الهيكل +1",
+  "hud.cueHullMax": "الهيكل الأقصى",
   "result.reachedWave": "وصلت إلى الموجة {{wave}}",
   "result.wave": "الموجة"
 }

@@ -31,6 +31,10 @@
   "a11y.gunsDown": "Пушки понижены до уровня {{level}}.",
   "a11y.hullUp": "Броня корпуса {{level}}.",
   "a11y.hullHit": "Броня корпуса поглотила удар.",
+  "hud.cueGuns": "ПУШКИ +1",
+  "hud.cueGunsMax": "ПУШКИ МАКС",
+  "hud.cueHull": "КОРПУС +1",
+  "hud.cueHullMax": "КОРПУС МАКС",
   "result.reachedWave": "Достигнута волна {{wave}}",
   "result.wave": "Волна"
 }

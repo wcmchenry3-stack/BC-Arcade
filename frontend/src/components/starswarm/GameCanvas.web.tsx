@@ -29,8 +29,22 @@ import {
   reinforcementsJustLaunched,
   BEAM_HALF_WIDTH,
   upgradeEvents,
+  PLAYER_W,
 } from "../../game/starswarm/engine";
 import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
+import {
+  isUpgradePickup,
+  upgradePickupOps,
+  drawPickupOps,
+} from "../../game/starswarm/render/pickups";
+import type { UpgradePickupType } from "../../game/starswarm/render/pickups";
+import {
+  pickupCues,
+  pickupCueFrame,
+  pickupCueLabelKey,
+  pickupCueColor,
+} from "../../game/starswarm/render/pickupCue";
+import type { PickupCue } from "../../game/starswarm/render/pickupCue";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import type { StarfieldState } from "../../game/starswarm/starfield";
 import type {
@@ -191,6 +205,8 @@ export interface DevOptions {
 
 export interface GameCanvasHandle {
   setPlayerX: (x: number) => void;
+  /** See GameCanvas.tsx — the commanded ship X, current even while the engine is frozen. */
+  getPlayerX: () => number;
   setFire: (fire: boolean) => void;
   triggerPowerUp: (type: PowerUpType) => void;
   /** Throw an asteroid now — dev-panel testing (#2486). */
@@ -283,7 +299,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         )
     );
     const sfRef = useRef<StarfieldState>(initStarfield(width, height));
-    const inputRef = useRef({ playerX: width / 2, fire: true });
+    const inputRef = useRef({ playerX: initialState?.player.x ?? width / 2, fire: true });
     const infiniteLivesRef = useRef(false);
     const devOptionsRef = useRef<DevOptions | undefined>(devOptions);
     devOptionsRef.current = devOptions;
@@ -308,6 +324,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const killEscortsRef = useRef(false); // #2491
     const isPausedRef = useRef(isPaused);
     const prevScoreRef = useRef(0);
+    // #2847: the pickup cue on screen — when it started and what it says
+    const pickupCueRef = useRef<{ cue: PickupCue; startedAt: number } | null>(null);
     const prevLivesRef = useRef(stateRef.current.player.lives);
     const prevPhaseRef = useRef(stateRef.current.phase);
     // #2352: wave clear now advances the wave in the same tick (no WinTransition phase to
@@ -470,6 +488,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         setPlayerX(x) {
           inputRef.current.playerX = x;
         },
+        getPlayerX() {
+          const hw = PLAYER_W / 2;
+          return Math.max(hw, Math.min(width - hw, inputRef.current.playerX));
+        },
         setFire(fire) {
           inputRef.current.fire = fire;
         },
@@ -489,7 +511,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           return null;
         },
       }),
-      []
+      [width]
     );
 
     useEffect(() => {
@@ -786,24 +808,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         } else if (pu.type === "buddy") {
           ctx.fillStyle = C.powerUpBuddy;
           ctx.fillRect(lx + pw * 0.2, ly + ph * 0.2, pw * 0.6, ph * 0.6);
-        } else if (pu.type === "salvage") {
-          // #2488 salvage crate — gold with a strap
-          ctx.fillStyle = "#ffb020";
-          ctx.fillRect(lx + pw * 0.15, ly + ph * 0.15, pw * 0.7, ph * 0.7);
-          ctx.fillStyle = "#7a4d08";
-          ctx.fillRect(lx + pw * 0.15, ly + ph * 0.45, pw * 0.7, ph * 0.1);
-        } else if (pu.type === "hull") {
-          // #2488 hull plating — cyan hexagon
-          ctx.fillStyle = "#00aaff";
-          ctx.beginPath();
-          ctx.moveTo(pu.x, ly);
-          ctx.lineTo(lx + pw, ly + ph * 0.25);
-          ctx.lineTo(lx + pw, ly + ph * 0.75);
-          ctx.lineTo(pu.x, ly + ph);
-          ctx.lineTo(lx, ly + ph * 0.75);
-          ctx.lineTo(lx, ly + ph * 0.25);
-          ctx.closePath();
-          ctx.fill();
+        } else if (isUpgradePickup(pu.type)) {
+          // #2847: shared geometry with the native renderer (render/pickups.ts)
+          drawPickupOps(ctx, upgradePickupOps(pu as typeof pu & { type: UpgradePickupType }));
         } else {
           ctx.fillStyle = C.powerUpLightning;
           ctx.beginPath();
@@ -888,6 +895,28 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         width / 2,
         38
       );
+
+      // #2847: pickup cue — "GUNS +1" / "HULL +1" / "GUNS MAX" toast under the ladder line
+      const pc = pickupCueRef.current;
+      if (pc) {
+        const f = pickupCueFrame(Date.now() - pc.startedAt);
+        if (f) {
+          ctx.save();
+          ctx.globalAlpha = f.opacity;
+          ctx.font = "bold 18px 'Courier New', monospace";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = pickupCueColor(pc.cue.kind);
+          ctx.shadowColor = "#000000";
+          ctx.shadowBlur = 4;
+          ctx.translate(width / 2, 66 + f.offsetY);
+          ctx.scale(f.scale, f.scale);
+          ctx.fillText(t(pickupCueLabelKey(pc.cue)), 0, 0);
+          ctx.restore();
+        } else {
+          pickupCueRef.current = null;
+        }
+      }
 
       // Phase overlays
       ctx.textAlign = "center";
@@ -1068,6 +1097,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               if (reinforcementsJustLaunched(prev, applied))
                 onCarrierEventRef.current?.("reinforce");
               for (const ev of upgradeEvents(prev, applied)) onUpgradeRef.current?.(ev); // #2488
+              // #2847: the newest cue wins if two land on one tick
+              const cues = pickupCues(prev, applied);
+              if (cues.length > 0) {
+                pickupCueRef.current = { cue: cues[cues.length - 1]!, startedAt: Date.now() };
+              }
               if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
               if (applied.explosions.length > prev.explosions.length) {
                 onExplosionRef.current?.();

@@ -63,10 +63,12 @@ export default function Controls({
     .onBegin((e) => {
       activeDragRef.current = e.y > dragZoneY;
       if (activeDragRef.current) {
-        // Use engine's authoritative player.x as the drag anchor so it can never
-        // drift out of sync with playerXRef.
-        const engineX = canvasRef.current?.getState()?.player.x;
-        const anchorX = engineX ?? playerXRef.current;
+        // Anchor on the canvas's commanded ship X, not getState().player.x: the engine only
+        // copies input into player.x on a tick, and ticks are frozen during the pre-wave
+        // countdown, so engine X can be stale there and the ship would jump back on touch.
+        const handle = canvasRef.current;
+        const anchorX =
+          handle?.getPlayerX?.() ?? handle?.getState()?.player.x ?? playerXRef.current;
         playerXRef.current = anchorX;
         shipXAtDragStartRef.current = anchorX;
       }

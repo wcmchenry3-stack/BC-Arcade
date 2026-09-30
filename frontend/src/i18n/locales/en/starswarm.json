@@ -31,6 +31,10 @@
   "a11y.gunsDown": "Guns down to level {{level}}.",
   "a11y.hullUp": "Hull plating {{level}}.",
   "a11y.hullHit": "Hull plating absorbed the hit.",
+  "hud.cueGuns": "GUNS +1",
+  "hud.cueGunsMax": "GUNS MAX",
+  "hud.cueHull": "HULL +1",
+  "hud.cueHullMax": "HULL MAX",
   "result.reachedWave": "Reached wave {{wave}}",
   "result.wave": "Wave"
 }

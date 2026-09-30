@@ -31,6 +31,10 @@
   "a11y.gunsDown": "Canons réduits au niveau {{level}}.",
   "a11y.hullUp": "Blindage {{level}}.",
   "a11y.hullHit": "Le blindage a absorbé le coup.",
+  "hud.cueGuns": "CANONS +1",
+  "hud.cueGunsMax": "CANONS MAX",
+  "hud.cueHull": "COQUE +1",
+  "hud.cueHullMax": "COQUE MAX",
   "result.reachedWave": "Vague {{wave}} atteinte",
   "result.wave": "Vague"
 }
