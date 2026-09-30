@@ -469,6 +469,6 @@ After #2776 lands, update the affected sections for:
 - wave-clear AI extraction and hard transient reset;
 - Carrier beam lifecycle/randomized cadence;
 - Carrier exposed/final-stage aggression and attack runs;
-- right-edge drag regression behavior/testing;
+- right-edge drag regression behavior/testing.
 
 Other active bugs/tuning work belongs in GitHub rather than a duplicated Known Issues list.
