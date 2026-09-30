@@ -34,6 +34,12 @@ Drafts for #828: [`privacy-policy.html`](privacy-policy.html), [`terms-of-servic
    Sentry 90-day retention and IP setting to verify, database backup window, legacy feedback issues from the old Cloudflare-worker
    path, and the diagnostics consent decision (DATA-INVENTORY §7).
 
+### Publishing (#2780)
+
+Final URLs, hosting, the full `[OWNER TO CONFIRM]` checklist (now including `docs/support.html`) and the owner-approval record
+live in [LEGAL-PUBLISHING.md](LEGAL-PUBLISHING.md). The Terms were updated 2026-09-30 for generated leaderboard names (no UGC)
+and v1.0 having no purchases (§4, §5A), and their placeholders now use the `[OWNER TO CONFIRM: …]` style.
+
 ### Not legal advice
 
 These are drafts prepared by an AI assistant from the codebase. Have a lawyer review them before publishing.

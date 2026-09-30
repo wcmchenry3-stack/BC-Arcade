@@ -73,7 +73,8 @@ type is declared for audio.
 
 **Collects or shares user data?** Yes · **Encrypted in transit?** Yes (HTTPS only) ·
 **Can users request deletion?** Yes — in the app (Settings → Delete my data; Profile → Leave leaderboards removes the public name).
-No account exists, so the account-deletion URL requirement does not apply (#835 covers future accounts) ·
+There is no sign-in, but the auto-generated install ID works like a guest account, so we conservatively provide the
+**Delete account URL** `https://buffingchi.com/support#delete-data` (owner to confirm; see `LEGAL-PUBLISHING.md`, #2780) ·
 **Independent security review?** No · **Families policy / designed for children?** No.
 
 **Shared with third parties?** **No.** Render, Supabase, Cloudflare (DNS/proxy) and Sentry are service providers processing on our
