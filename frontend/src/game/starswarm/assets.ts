@@ -7,7 +7,7 @@ import playerShipSrc from "../../../assets/starswarm/player-ship.webp";
 import buddyShipSrc from "../../../assets/starswarm/buddy-ship.webp";
 import enemyGruntSrc from "../../../assets/starswarm/enemy-grunt.webp";
 import enemyEliteSrc from "../../../assets/starswarm/enemy-elite.webp";
-import enemyBossSrc from "../../../assets/starswarm/enemy-boss.webp";
+import enemyGuardianSrc from "../../../assets/starswarm/enemy-boss.webp";
 import enemyCarrierSrc from "../../../assets/starswarm/enemy-carrier.webp";
 import bulletPlayerSrc from "../../../assets/starswarm/bullet-player.webp";
 import bulletEnemySrc from "../../../assets/starswarm/bullet-enemy.webp";
@@ -46,7 +46,7 @@ export interface StarSwarmImages {
   buddyShip: SkImage | null;
   enemyGrunt: SkImage | null;
   enemyElite: SkImage | null;
-  enemyBoss: SkImage | null;
+  enemyGuardian: SkImage | null;
   enemyCarrier: SkImage | null;
   bulletPlayer: SkImage | null;
   bulletEnemy: SkImage | null;
@@ -69,7 +69,7 @@ export function useStarSwarmImages(): StarSwarmImages {
   const buddyShip = useImage(buddyShipSrc);
   const enemyGrunt = useImage(enemyGruntSrc);
   const enemyElite = useImage(enemyEliteSrc);
-  const enemyBoss = useImage(enemyBossSrc);
+  const enemyGuardian = useImage(enemyGuardianSrc);
   const enemyCarrier = useImage(enemyCarrierSrc);
   const bulletPlayer = useImage(bulletPlayerSrc);
   const bulletEnemy = useImage(bulletEnemySrc);
@@ -108,7 +108,7 @@ export function useStarSwarmImages(): StarSwarmImages {
     buddyShip,
     enemyGrunt,
     enemyElite,
-    enemyBoss,
+    enemyGuardian,
     enemyCarrier,
     bulletPlayer,
     bulletEnemy,
@@ -153,7 +153,7 @@ export function loadedSprites(images: StarSwarmImages): LoadedSprites {
     buddyShip: images.buddyShip !== null,
     enemyGrunt: images.enemyGrunt !== null,
     enemyElite: images.enemyElite !== null,
-    enemyBoss: images.enemyBoss !== null,
+    enemyGuardian: images.enemyGuardian !== null,
     enemyCarrier: images.enemyCarrier !== null,
     bulletPlayer: images.bulletPlayer !== null,
     puShield: images.puShield !== null,
@@ -175,7 +175,7 @@ export function drawImagesOf(images: StarSwarmImages): DrawImages {
     buddyShip: images.buddyShip,
     enemyGrunt: images.enemyGrunt,
     enemyElite: images.enemyElite,
-    enemyBoss: images.enemyBoss,
+    enemyGuardian: images.enemyGuardian,
     enemyCarrier: images.enemyCarrier,
     bulletPlayer: images.bulletPlayer,
     puShield: images.puShield,

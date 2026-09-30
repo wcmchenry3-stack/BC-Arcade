@@ -9,7 +9,7 @@ import {
   PLAYER_HURT_RADIUS,
   WIGGLE_DURATION,
   DIVE_PATH_DURATION,
-  BOSS_DIVE_THRESHOLD,
+  GUARDIAN_DIVE_THRESHOLD,
   BURST_INTERVAL,
   BURST_PAUSE_BASE,
   POWERUP_DURATION,
@@ -23,7 +23,7 @@ import {
   difficultyMultiplier,
   difficultyParamScale,
   difficultyLabel,
-  BOSS_BULLET_VY,
+  GUARDIAN_BULLET_VY,
   BULLET_E_VY,
   PLAYER_W,
   MAX_PLAYER_BULLETS,
@@ -571,7 +571,7 @@ describe("Wave progression", () => {
     s = clearWave(s);
     expect(s.wave).toBe(5);
     expect(s.phase).toBe("SwoopIn");
-    expect(s.enemies.every((e) => e.tier === "Boss" || e.tier === "Carrier")).toBe(true);
+    expect(s.enemies.every((e) => e.tier === "Guardian" || e.tier === "Carrier")).toBe(true);
   });
 
   it("score is carried over between waves", () => {
@@ -1168,7 +1168,7 @@ describe("#2842 hard reset before the next wave", () => {
 describe("Boss wave (#2490)", () => {
   const ASIDE: StarSwarmInput = { playerX: 40, fire: false };
   /** A boss wave settled into formation: no enemy fire, beam parked, rocks off, player parked
-   * left — all applied before the swoop-in so four active Bosses can't end the game first. */
+   * left — all applied before the swoop-in so four active Guardians can't end the game first. */
   function settled(difficulty: DifficultyTier = "LieutenantJG", wave = 5): StarSwarmState {
     const init = initStarSwarm(CANVAS_W, CANVAS_H, wave, 42, difficulty);
     const s = advanceMs(
@@ -1228,25 +1228,25 @@ describe("Boss wave (#2490)", () => {
 
   it("a boss wave is exactly one Carrier and four Bosses, the Carrier last to swoop in", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 5);
-    expect(s.enemies.map((e) => e.tier)).toEqual(["Boss", "Boss", "Boss", "Boss", "Carrier"]);
-    expect(s.startingNonBossCount).toBe(0);
+    expect(s.enemies.map((e) => e.tier)).toEqual(["Guardian", "Guardian", "Guardian", "Guardian", "Carrier"]);
+    expect(s.startingNonLeaderCount).toBe(0);
     const normal = initStarSwarm(CANVAS_W, CANVAS_H, 4);
     expect(normal.enemies.some((e) => e.tier === "Grunt")).toBe(true);
     expect(normal.enemies.some((e) => e.tier === "Elite")).toBe(true);
   });
 
-  it("the Bosses are active from the first tick: threshold latched, dives on the normal timer, bursts", () => {
-    expect(initStarSwarm(CANVAS_W, CANVAS_H, 5).bossThresholdCrossed).toBe(true);
-    expect(initStarSwarm(CANVAS_W, CANVAS_H, 4).bossThresholdCrossed).toBe(false);
-    // a dive trigger sends a Boss out of formation straight away
+  it("the Guardians are active from the first tick: threshold latched, dives on the normal timer, bursts", () => {
+    expect(initStarSwarm(CANVAS_W, CANVAS_H, 5).guardianThresholdCrossed).toBe(true);
+    expect(initStarSwarm(CANVAS_W, CANVAS_H, 4).guardianThresholdCrossed).toBe(false);
+    // a dive trigger sends a Guardian out of formation straight away
     let s = { ...settled(), nextDiveTimer: 1 };
     s = tick(s, 16, ASIDE);
-    expect(s.enemies.some((e) => e.tier === "Boss" && e.phase !== "Formation")).toBe(true);
-    // and a Boss whose shot timer is up fires its burst without waiting for anything
+    expect(s.enemies.some((e) => e.tier === "Guardian" && e.phase !== "Formation")).toBe(true);
+    // and a Guardian whose shot timer is up fires its burst without waiting for anything
     let firing = { ...settled(), enemyFireDisabled: false };
     firing = {
       ...firing,
-      enemies: firing.enemies.map((e) => (e.tier === "Boss" ? { ...e, shootTimer: 1 } : e)),
+      enemies: firing.enemies.map((e) => (e.tier === "Guardian" ? { ...e, shootTimer: 1 } : e)),
     };
     firing = tick(firing, 16, ASIDE);
     expect(firing.enemyBullets.length).toBeGreaterThan(0);
@@ -1373,27 +1373,27 @@ describe("Player firing", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Boss HP 4 (#970)
+// Guardian HP 4 (#970)
 // ---------------------------------------------------------------------------
 
-describe("Boss HP (#970)", () => {
-  it("Boss starts with 4 HP", () => {
+describe("Guardian HP (#970)", () => {
+  it("Guardian starts with 4 HP", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
-    const boss = s.enemies.find((e) => e.isAlive && e.tier === "Boss");
-    if (!boss) throw new Error("no boss");
+    const boss = s.enemies.find((e) => e.isAlive && e.tier === "Guardian");
+    if (!boss) throw new Error("no Guardian");
     expect(boss.hp).toBe(4);
   });
 
-  it("Boss requires exactly 4 hits of damage=1 to die", () => {
+  it("Guardian requires exactly 4 hits of damage=1 to die", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
-    const bossId = s.enemies.find((e) => e.isAlive && e.tier === "Boss")?.id;
-    if (!bossId) throw new Error("no boss");
-    const getBoss = () => s.enemies.find((e) => e.id === bossId)!;
+    const guardianId = s.enemies.find((e) => e.isAlive && e.tier === "Guardian")?.id;
+    if (!guardianId) throw new Error("no Guardian");
+    const getGuardian = () => s.enemies.find((e) => e.id === guardianId)!;
 
     for (let hit = 1; hit <= 4; hit++) {
-      const b = getBoss();
+      const b = getGuardian();
       s = {
         ...s,
         playerBullets: [
@@ -1412,24 +1412,24 @@ describe("Boss HP (#970)", () => {
       };
       s = tick(s, 16, NO_INPUT);
       if (hit < 4) {
-        expect(getBoss().isAlive).toBe(true);
-        expect(getBoss().hp).toBe(4 - hit);
+        expect(getGuardian().isAlive).toBe(true);
+        expect(getGuardian().hp).toBe(4 - hit);
       } else {
-        expect(getBoss().isAlive).toBe(false);
+        expect(getGuardian().isAlive).toBe(false);
       }
     }
   });
 
-  it("Boss is still worth 400 points on kill (Ensign ×1 baseline)", () => {
+  it("Guardian is still worth 400 points on kill (Ensign ×1 baseline)", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42, "Ensign");
     s = advanceMs(s, 8000);
-    const bossId = s.enemies.find((e) => e.isAlive && e.tier === "Boss")?.id;
-    if (!bossId) throw new Error("no boss");
-    const getBoss = () => s.enemies.find((e) => e.id === bossId)!;
+    const guardianId = s.enemies.find((e) => e.isAlive && e.tier === "Guardian")?.id;
+    if (!guardianId) throw new Error("no Guardian");
+    const getGuardian = () => s.enemies.find((e) => e.id === guardianId)!;
     const scoreBefore = s.score;
 
     for (let hit = 1; hit <= 4; hit++) {
-      const b = getBoss();
+      const b = getGuardian();
       s = {
         ...s,
         playerBullets: [
@@ -1553,9 +1553,9 @@ describe("Enemy bullet cap (#972)", () => {
     s = advanceMs(s, 8000);
     expect(s.phase).toBe("Playing");
 
-    // Force the first non-Boss formation enemy to fire immediately
-    // (Bosses are passive until bossThresholdCrossed, so use a Grunt or Elite)
-    const targetIdx = s.enemies.findIndex((e) => e.phase === "Formation" && e.tier !== "Boss");
+    // Force the first non-Guardian formation enemy to fire immediately
+    // (Guardians are passive until guardianThresholdCrossed, so use a Grunt or Elite)
+    const targetIdx = s.enemies.findIndex((e) => e.phase === "Formation" && e.tier !== "Guardian");
     if (targetIdx === -1) return;
     s = {
       ...s,
@@ -2055,51 +2055,51 @@ describe("Bézier arc dives (#977)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Boss dive threshold (#978)
+// Guardian dive threshold (#978)
 // ---------------------------------------------------------------------------
 
-describe("Boss dive threshold (#978)", () => {
-  it("BOSS_DIVE_THRESHOLD is 0.35", () => {
-    expect(BOSS_DIVE_THRESHOLD).toBe(0.35);
+describe("Guardian dive threshold (#978)", () => {
+  it("GUARDIAN_DIVE_THRESHOLD is 0.35", () => {
+    expect(GUARDIAN_DIVE_THRESHOLD).toBe(0.35);
   });
 
-  it("startingNonBossCount set correctly at wave init", () => {
+  it("startingNonLeaderCount set correctly at wave init", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H);
-    // #2484: Boss and Carrier both sit out the count
-    const nonBossCount = s.enemies.filter((e) => !isLeaderTier(e.tier)).length;
-    expect(s.startingNonBossCount).toBe(nonBossCount);
-    expect(s.startingNonBossCount).toBeGreaterThan(0);
+    // #2484: Guardian and Carrier both sit out the count
+    const nonLeaderCount = s.enemies.filter((e) => !isLeaderTier(e.tier)).length;
+    expect(s.startingNonLeaderCount).toBe(nonLeaderCount);
+    expect(s.startingNonLeaderCount).toBeGreaterThan(0);
   });
 
-  it("boss does not dive when >35% non-boss enemies are still alive", () => {
+  it("Guardian does not dive when >35% non-leader enemies are still alive", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
-    const bossIds = new Set(
-      s.enemies.filter((e) => e.isAlive && e.tier === "Boss").map((e) => e.id)
+    const guardianIds = new Set(
+      s.enemies.filter((e) => e.isAlive && e.tier === "Guardian").map((e) => e.id)
     );
 
-    // Force dive trigger with all non-boss enemies alive (100% remain → >35%)
+    // Force dive trigger with all non-leader enemies alive (100% remain → >35%)
     s = { ...s, nextDiveTimer: 1 };
     s = tick(s, 16, NO_INPUT);
 
-    // No boss should enter Wiggling or Diving
-    const bossWiggling = s.enemies.some(
-      (e) => bossIds.has(e.id) && (e.phase === "Wiggling" || e.phase === "Diving")
+    // No Guardian should enter Wiggling or Diving
+    const guardianWiggling = s.enemies.some(
+      (e) => guardianIds.has(e.id) && (e.phase === "Wiggling" || e.phase === "Diving")
     );
-    expect(bossWiggling).toBe(false);
+    expect(guardianWiggling).toBe(false);
   });
 
-  it("boss can dive when ≤35% non-boss enemies remain", () => {
+  it("Guardian can dive when ≤35% non-leader enemies remain", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
 
-    // Kill enough non-boss enemies to drop to 30% alive (below 35% threshold)
-    const target = Math.floor(s.startingNonBossCount * 0.3);
+    // Kill enough non-leader enemies to drop to 30% alive (below 35% threshold)
+    const target = Math.floor(s.startingNonLeaderCount * 0.3);
     let killed = 0;
     s = {
       ...s,
       enemies: s.enemies.map((e) => {
-        if (e.tier !== "Boss" && e.isAlive && killed < s.startingNonBossCount - target) {
+        if (e.tier !== "Guardian" && e.isAlive && killed < s.startingNonLeaderCount - target) {
           killed++;
           return { ...e, isAlive: false, hp: 0 };
         }
@@ -2107,47 +2107,47 @@ describe("Boss dive threshold (#978)", () => {
       }),
     };
 
-    // Run until a boss enters Wiggling or Diving
+    // Run until a Guardian enters Wiggling or Diving
     s = { ...s, nextDiveTimer: 1 };
-    let bossActed = false;
+    let guardianActed = false;
     for (let i = 0; i < 300; i++) {
       s = tick(s, 16, NO_INPUT);
       if (
-        s.enemies.some((e) => e.tier === "Boss" && (e.phase === "Wiggling" || e.phase === "Diving"))
+        s.enemies.some((e) => e.tier === "Guardian" && (e.phase === "Wiggling" || e.phase === "Diving"))
       ) {
-        bossActed = true;
+        guardianActed = true;
         break;
       }
       if (s.phase !== "Playing") break;
       s = { ...s, nextDiveTimer: 1 }; // keep triggering
     }
-    expect(bossActed).toBe(true);
+    expect(guardianActed).toBe(true);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Boss burst-fire (#979)
+// Guardian burst-fire (#979)
 // ---------------------------------------------------------------------------
 
-describe("Boss burst-fire (#979)", () => {
-  it("Boss fires on first tick when shootTimer=0 and burstShotsLeft=0", () => {
+describe("Guardian burst-fire (#979)", () => {
+  it("Guardian fires on first tick when shootTimer=0 and burstShotsLeft=0", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
-    const bossIdx = s.enemies.findIndex(
-      (e) => e.isAlive && e.tier === "Boss" && e.phase === "Formation"
+    const guardianIdx = s.enemies.findIndex(
+      (e) => e.isAlive && e.tier === "Guardian" && e.phase === "Formation"
     );
-    if (bossIdx === -1) throw new Error("no boss in formation");
+    if (guardianIdx === -1) throw new Error("no Guardian in formation");
     s = {
       ...s,
-      bossThresholdCrossed: true, // Boss must be active to fire
+      guardianThresholdCrossed: true, // Guardian must be active to fire
       enemyBullets: [],
       enemies: s.enemies.map((e, i) =>
-        i === bossIdx ? { ...e, shootTimer: 0, burstShotsLeft: 0 } : e
+        i === guardianIdx ? { ...e, shootTimer: 0, burstShotsLeft: 0 } : e
       ),
     };
     s = tick(s, 16, NO_INPUT);
     expect(s.enemyBullets.length).toBeGreaterThan(0);
-    const boss = s.enemies[bossIdx]!;
+    const boss = s.enemies[guardianIdx]!;
     // After first burst shot, timer is either BURST_INTERVAL (more shots) or long pause (1-shot burst)
     expect(boss.shootTimer).toBeLessThanOrEqual(BURST_INTERVAL + 2);
     // burstShotsLeft is 0 (burst complete) or up to 4 (3–5 shot burst, remaining after first)
@@ -2155,24 +2155,24 @@ describe("Boss burst-fire (#979)", () => {
     expect(boss.burstShotsLeft).toBeLessThanOrEqual(4);
   });
 
-  it("Boss has long pause after burst completes (burstShotsLeft reaches 0)", () => {
+  it("Guardian has long pause after burst completes (burstShotsLeft reaches 0)", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
-    const bossIdx = s.enemies.findIndex(
-      (e) => e.isAlive && e.tier === "Boss" && e.phase === "Formation"
+    const guardianIdx = s.enemies.findIndex(
+      (e) => e.isAlive && e.tier === "Guardian" && e.phase === "Formation"
     );
-    if (bossIdx === -1) throw new Error("no boss in formation");
-    // Force last shot in burst (Boss must be active to fire)
+    if (guardianIdx === -1) throw new Error("no Guardian in formation");
+    // Force last shot in burst (Guardian must be active to fire)
     s = {
       ...s,
-      bossThresholdCrossed: true,
+      guardianThresholdCrossed: true,
       enemyBullets: [],
       enemies: s.enemies.map((e, i) =>
-        i === bossIdx ? { ...e, shootTimer: 0, burstShotsLeft: 1 } : e
+        i === guardianIdx ? { ...e, shootTimer: 0, burstShotsLeft: 1 } : e
       ),
     };
     s = tick(s, 16, NO_INPUT);
-    const boss = s.enemies[bossIdx]!;
+    const boss = s.enemies[guardianIdx]!;
     expect(boss.burstShotsLeft).toBe(0);
     // Long pause should be at least BURST_PAUSE_BASE - one tick
     expect(boss.shootTimer).toBeGreaterThanOrEqual(BURST_PAUSE_BASE - 16);
@@ -2183,48 +2183,48 @@ describe("Boss burst-fire (#979)", () => {
     expect(s.enemies.every((e) => e.burstShotsLeft === 0)).toBe(true);
   });
 
-  it("Boss burst bullet travels at BOSS_BULLET_VY; Elite bullet travels at BULLET_E_VY", () => {
+  it("Guardian burst bullet travels at GUARDIAN_BULLET_VY; Elite bullet travels at BULLET_E_VY", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
-    const bossIdx = s.enemies.findIndex(
-      (e) => e.isAlive && e.tier === "Boss" && e.phase === "Formation"
+    const guardianIdx = s.enemies.findIndex(
+      (e) => e.isAlive && e.tier === "Guardian" && e.phase === "Formation"
     );
     const eliteIdx = s.enemies.findIndex(
       (e) => e.isAlive && e.tier === "Elite" && e.phase === "Formation"
     );
-    if (bossIdx === -1) throw new Error("no boss in formation");
+    if (guardianIdx === -1) throw new Error("no Guardian in formation");
     if (eliteIdx === -1) throw new Error("no elite in formation");
     s = {
       ...s,
-      bossThresholdCrossed: true,
+      guardianThresholdCrossed: true,
       enemyBullets: [],
       enemies: s.enemies.map((e, i) => {
-        if (i === bossIdx) return { ...e, shootTimer: 0, burstShotsLeft: 0 };
+        if (i === guardianIdx) return { ...e, shootTimer: 0, burstShotsLeft: 0 };
         if (i === eliteIdx) return { ...e, shootTimer: 0 };
         return e;
       }),
     };
     s = tick(s, 16, NO_INPUT);
-    const bossBullet = s.enemyBullets.find((b) => b.vy === BOSS_BULLET_VY);
+    const guardianBullet = s.enemyBullets.find((b) => b.vy === GUARDIAN_BULLET_VY);
     const eliteBullet = s.enemyBullets.find((b) => b.vy === BULLET_E_VY);
-    expect(bossBullet).toBeDefined();
+    expect(guardianBullet).toBeDefined();
     expect(eliteBullet).toBeDefined();
   });
 
-  it("Boss circle-phase bullet travels at BOSS_BULLET_VY", () => {
+  it("Guardian circle-phase bullet travels at GUARDIAN_BULLET_VY", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
-    const bossIdx = s.enemies.findIndex((e) => e.isAlive && e.tier === "Boss");
-    if (bossIdx === -1) throw new Error("no boss");
+    const guardianIdx = s.enemies.findIndex((e) => e.isAlive && e.tier === "Guardian");
+    if (guardianIdx === -1) throw new Error("no Guardian");
     const cx = CANVAS_W / 2;
     const cy = CANVAS_H * 0.3;
     const radius = 60;
     s = {
       ...s,
-      bossThresholdCrossed: true,
+      guardianThresholdCrossed: true,
       enemyBullets: [],
       enemies: s.enemies.map((e, i) =>
-        i === bossIdx
+        i === guardianIdx
           ? {
               ...e,
               phase: "Circling" as const,
@@ -2241,7 +2241,7 @@ describe("Boss burst-fire (#979)", () => {
     s = tick(s, 16, NO_INPUT);
     expect(s.enemyBullets.length).toBeGreaterThan(0);
     const bullet = s.enemyBullets[0]!;
-    expect(bullet.vy).toBe(BOSS_BULLET_VY);
+    expect(bullet.vy).toBe(GUARDIAN_BULLET_VY);
   });
 });
 
@@ -2567,10 +2567,10 @@ describe("GameOver freeze cleanup (#2334)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #1029 — Grunt & Boss collision redesign
+// #1029 — Grunt & Guardian collision redesign
 // ---------------------------------------------------------------------------
 
-describe("#1029 Grunt & Boss collision redesign", () => {
+describe("#1029 Grunt & Guardian collision redesign", () => {
   it("Grunt never enters Circling phase", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
@@ -2603,21 +2603,21 @@ describe("#1029 Grunt & Boss collision redesign", () => {
     expect(after.phase === "Circling").toBe(false);
   });
 
-  it("Boss never body-collides with player", () => {
+  it("Guardian never body-collides with player", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
-    s = { ...s, bossThresholdCrossed: true, player: { ...s.player, invincibleTimer: 0 } };
+    s = { ...s, guardianThresholdCrossed: true, player: { ...s.player, invincibleTimer: 0 } };
 
-    const bossId = s.enemies.find((e) => e.isAlive && e.tier === "Boss")?.id;
-    if (!bossId) throw new Error("no boss");
+    const guardianId = s.enemies.find((e) => e.isAlive && e.tier === "Guardian")?.id;
+    if (!guardianId) throw new Error("no Guardian");
 
-    // Teleport Boss directly onto the player and give it a diving phase
+    // Teleport Guardian directly onto the player and give it a diving phase
     const { player } = s;
     s = {
       ...s,
       player: { ...player, lives: 3, invincibleTimer: 0 },
       enemies: s.enemies.map((e) =>
-        e.id === bossId
+        e.id === guardianId
           ? {
               ...e,
               phase: "Diving" as const,
@@ -2637,32 +2637,32 @@ describe("#1029 Grunt & Boss collision redesign", () => {
     };
 
     s = tick(s, 16, NO_INPUT);
-    // Player should NOT have lost a life despite Boss being on same position
+    // Player should NOT have lost a life despite Guardian being on same position
     expect(s.player.lives).toBe(3);
   });
 });
 
 // ---------------------------------------------------------------------------
-// #1030 — Elite phase system & Boss passive start
+// #1030 — Elite phase system & Guardian passive start
 // ---------------------------------------------------------------------------
 
-describe("#1030 Elite phase system & Boss passive start", () => {
-  it("bossThresholdCrossed initialises to false", () => {
+describe("#1030 Elite phase system & Guardian passive start", () => {
+  it("guardianThresholdCrossed initialises to false", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H);
-    expect(s.bossThresholdCrossed).toBe(false);
+    expect(s.guardianThresholdCrossed).toBe(false);
   });
 
-  it("bossThresholdCrossed flips to true once ≤35% non-boss enemies remain and stays true", () => {
+  it("guardianThresholdCrossed flips to true once ≤35% non-leader enemies remain and stays true", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
-    expect(s.bossThresholdCrossed).toBe(false);
+    expect(s.guardianThresholdCrossed).toBe(false);
 
-    const target = Math.floor(s.startingNonBossCount * 0.3);
+    const target = Math.floor(s.startingNonLeaderCount * 0.3);
     let killed = 0;
     s = {
       ...s,
       enemies: s.enemies.map((e) => {
-        if (e.tier !== "Boss" && e.isAlive && killed < s.startingNonBossCount - target) {
+        if (e.tier !== "Guardian" && e.isAlive && killed < s.startingNonLeaderCount - target) {
           killed++;
           return { ...e, isAlive: false, hp: 0 };
         }
@@ -2670,52 +2670,52 @@ describe("#1030 Elite phase system & Boss passive start", () => {
       }),
     };
     s = tick(s, 16, NO_INPUT);
-    expect(s.bossThresholdCrossed).toBe(true);
+    expect(s.guardianThresholdCrossed).toBe(true);
 
     // Stays true after further ticks
     s = advanceMs(s, 1000, NO_INPUT);
-    expect(s.bossThresholdCrossed).toBe(true);
+    expect(s.guardianThresholdCrossed).toBe(true);
   });
 
-  it("Boss does not fire while bossThresholdCrossed is false", () => {
+  it("Guardian does not fire while guardianThresholdCrossed is false", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
-    expect(s.bossThresholdCrossed).toBe(false);
+    expect(s.guardianThresholdCrossed).toBe(false);
 
-    const bossIdx = s.enemies.findIndex((e) => e.isAlive && e.tier === "Boss");
-    if (bossIdx === -1) throw new Error("no boss");
+    const guardianIdx = s.enemies.findIndex((e) => e.isAlive && e.tier === "Guardian");
+    if (guardianIdx === -1) throw new Error("no Guardian");
     s = {
       ...s,
       enemyBullets: [],
-      // Only the Boss is due to fire this tick — everyone else is pushed far out, so a bullet
-      // here could only be the Boss's (the seed no longer guarantees the rest stay quiet, #2484).
+      // Only the Guardian is due to fire this tick — everyone else is pushed far out, so a bullet
+      // here could only be the Guardian's (the seed no longer guarantees the rest stay quiet, #2484).
       enemies: s.enemies.map((e, i) =>
-        i === bossIdx ? { ...e, shootTimer: 0, burstShotsLeft: 0 } : { ...e, shootTimer: 99_999 }
+        i === guardianIdx ? { ...e, shootTimer: 0, burstShotsLeft: 0 } : { ...e, shootTimer: 99_999 }
       ),
     };
     s = tick(s, 16, NO_INPUT);
-    // Boss should not fire while passive
+    // Guardian should not fire while passive
     expect(s.enemyBullets.length).toBe(0);
   });
 
-  it("Boss does not dive while bossThresholdCrossed is false", () => {
+  it("Guardian does not dive while guardianThresholdCrossed is false", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
-    expect(s.bossThresholdCrossed).toBe(false);
+    expect(s.guardianThresholdCrossed).toBe(false);
 
-    const bossIds = new Set(s.enemies.filter((e) => e.tier === "Boss").map((e) => e.id));
+    const guardianIds = new Set(s.enemies.filter((e) => e.tier === "Guardian").map((e) => e.id));
     s = { ...s, nextDiveTimer: 1 };
     s = tick(s, 16, NO_INPUT);
-    const bossActed = s.enemies.some(
-      (e) => bossIds.has(e.id) && (e.phase === "Wiggling" || e.phase === "Diving")
+    const guardianActed = s.enemies.some(
+      (e) => guardianIds.has(e.id) && (e.phase === "Wiggling" || e.phase === "Diving")
     );
-    expect(bossActed).toBe(false);
+    expect(guardianActed).toBe(false);
   });
 
   it("Elite Phase 1 dive stays above 60% canvas height", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
-    expect(s.bossThresholdCrossed).toBe(false);
+    expect(s.guardianThresholdCrossed).toBe(false);
 
     // Force an Elite to dive
     const eliteIdx = s.enemies.findIndex(
@@ -2753,7 +2753,7 @@ describe("#1030 Elite phase system & Boss passive start", () => {
   it("Elite Phase 1 has no body collision", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
-    expect(s.bossThresholdCrossed).toBe(false);
+    expect(s.guardianThresholdCrossed).toBe(false);
     s = { ...s, player: { ...s.player, lives: 3, invincibleTimer: 0 } };
 
     const eliteId = s.enemies.find((e) => e.isAlive && e.tier === "Elite")?.id;
@@ -2784,10 +2784,10 @@ describe("#1030 Elite phase system & Boss passive start", () => {
     expect(s.player.lives).toBe(3);
   });
 
-  it("Elite Phase 2 (bossThresholdCrossed=true) can body-collide", () => {
+  it("Elite Phase 2 (guardianThresholdCrossed=true) can body-collide", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
-    s = { ...s, bossThresholdCrossed: true, player: { ...s.player, lives: 3, invincibleTimer: 0 } };
+    s = { ...s, guardianThresholdCrossed: true, player: { ...s.player, lives: 3, invincibleTimer: 0 } };
 
     const eliteId = s.enemies.find((e) => e.isAlive && e.tier === "Elite")?.id;
     if (!eliteId) throw new Error("no elite");
@@ -3323,29 +3323,29 @@ describe("Carrier tier (#2484)", () => {
   const carrierOf = (s: StarSwarmState) => s.enemies.find((e) => e.tier === "Carrier");
   const withoutEscorts = (s: StarSwarmState): StarSwarmState => ({
     ...s,
-    enemies: s.enemies.map((e) => (e.tier === "Boss" ? { ...e, isAlive: false, hp: 0 } : e)),
+    enemies: s.enemies.map((e) => (e.tier === "Guardian" ? { ...e, isAlive: false, hp: 0 } : e)),
   });
 
-  it("wave 1 has exactly one Carrier, centered in a row above the Bosses", () => {
+  it("wave 1 has exactly one Carrier, centered in a row above the Guardians", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H);
     const carriers = s.enemies.filter((e) => e.tier === "Carrier");
     expect(carriers).toHaveLength(1);
     const c = carriers[0]!;
     expect(c.formationX).toBe(CANVAS_W / 2);
     expect(c.hp).toBe(8);
-    const bossYs = s.enemies.filter((e) => e.tier === "Boss").map((e) => e.formationY);
+    const guardianYs = s.enemies.filter((e) => e.tier === "Guardian").map((e) => e.formationY);
     const eliteYs = s.enemies.filter((e) => e.tier === "Elite").map((e) => e.formationY);
-    expect(bossYs).toHaveLength(4);
-    expect(Math.min(...bossYs)).toBeGreaterThan(c.formationY);
-    expect(Math.min(...eliteYs)).toBeGreaterThan(Math.max(...bossYs));
+    expect(guardianYs).toHaveLength(4);
+    expect(Math.min(...guardianYs)).toBeGreaterThan(c.formationY);
+    expect(Math.min(...eliteYs)).toBeGreaterThan(Math.max(...guardianYs));
   });
 
-  it("is excluded from the non-boss threshold count", () => {
+  it("is excluded from the non-leader threshold count", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H);
     const gruntsAndElites = s.enemies.filter((e) => e.tier === "Grunt" || e.tier === "Elite");
-    expect(s.startingNonBossCount).toBe(gruntsAndElites.length);
+    expect(s.startingNonLeaderCount).toBe(gruntsAndElites.length);
     expect(isLeaderTier("Carrier")).toBe(true);
-    expect(isLeaderTier("Boss")).toBe(true);
+    expect(isLeaderTier("Guardian")).toBe(true);
     expect(isLeaderTier("Elite")).toBe(false);
   });
 
@@ -3379,14 +3379,14 @@ describe("Carrier tier (#2484)", () => {
     expect(s.wave).toBe(1); // a live Carrier keeps the wave open
   });
 
-  it("sways at most ±12 px while Bosses sway ±20 and Grunts ±40", () => {
+  it("sways at most ±12 px while Guardians sway ±20 and Grunts ±40", () => {
     // Enemy fire off so the drifting player can't be killed (GameOver would freeze the sway)
     let s = { ...settled(), enemyFireDisabled: true, enemyBullets: [] };
     for (let t = 0; t < 4000 && Math.abs(s.formationSwayX) < 30; t += 16) s = tick(s, 16, NO_INPUT);
     expect(Math.abs(s.formationSwayX)).toBeGreaterThanOrEqual(30);
     const c = carrierOf(s)!;
     expect(Math.abs(c.x - c.formationX)).toBeLessThanOrEqual(12);
-    const boss = s.enemies.find((e) => e.isAlive && e.tier === "Boss" && e.phase === "Formation")!;
+    const boss = s.enemies.find((e) => e.isAlive && e.tier === "Guardian" && e.phase === "Formation")!;
     expect(Math.abs(boss.x - boss.formationX)).toBeLessThanOrEqual(20);
   });
 
@@ -3397,7 +3397,7 @@ describe("Carrier tier (#2484)", () => {
     const oneEscort = {
       ...s,
       enemies: s.enemies.map((e, i) =>
-        e.tier === "Boss" && i !== s.enemies.findIndex((x) => x.tier === "Boss")
+        e.tier === "Guardian" && i !== s.enemies.findIndex((x) => x.tier === "Guardian")
           ? { ...e, isAlive: false, hp: 0 }
           : e
       ),
@@ -3908,7 +3908,7 @@ describe("Carrier actions (#2485)", () => {
   it("#2699: stays silent while armored, then fires twin aimed lasers once unarmored — even with a grunt still alive", () => {
     let s = { ...quiet(), enemyFireDisabled: false, pauseStraggler: true, nextDiveTimer: 1e9 };
     const c = carrierOf(s);
-    const boss = s.enemies.find((e) => e.isAlive && e.tier === "Boss")!;
+    const boss = s.enemies.find((e) => e.isAlive && e.tier === "Guardian")!;
     const grunt = s.enemies.find((e) => e.isAlive && e.tier === "Grunt")!;
     s = killAllBut(s, (e) => e.id === c.id || e.id === boss.id || e.id === grunt.id);
     s = {
@@ -3926,7 +3926,7 @@ describe("Carrier actions (#2485)", () => {
       s = tick(s, 16, ASIDE);
       expect(s.enemyBullets).toHaveLength(0);
     }
-    // its last Boss escort dies — armor drops, but the grunt is still alive
+    // its last Guardian escort dies — armor drops, but the grunt is still alive
     s = killAllBut(s, (e) => e.id === c.id || e.id === grunt.id);
     expect(isCarrierArmored(s)).toBe(false);
     let volleyAt = -1;
@@ -3946,10 +3946,10 @@ describe("Carrier actions (#2485)", () => {
     expect(s.enemyBullets.every((b) => b.vx < 0 && b.vy > 0)).toBe(true);
   });
 
-  it("#2699: stays silent while any Boss escort lives, even once every grunt is dead", () => {
+  it("#2699: stays silent while any Guardian escort lives, even once every grunt is dead", () => {
     let s = { ...quiet(), enemyFireDisabled: false, pauseStraggler: true, nextDiveTimer: 1e9 };
     const c = carrierOf(s);
-    const boss = s.enemies.find((e) => e.isAlive && e.tier === "Boss")!;
+    const boss = s.enemies.find((e) => e.isAlive && e.tier === "Guardian")!;
     s = killAllBut(s, (e) => e.id === c.id || e.id === boss.id);
     s = {
       ...s,
@@ -4021,15 +4021,15 @@ describe("Carrier actions (#2485)", () => {
     let s = quiet();
     s = {
       ...s,
-      bossThresholdCrossed: true,
+      guardianThresholdCrossed: true,
       reinforceTimer: 1,
       enemies: s.enemies.map((e) => (e.tier === "Grunt" ? { ...e, isAlive: false, hp: 0 } : e)),
     };
-    const startCount = s.startingNonBossCount;
+    const startCount = s.startingNonLeaderCount;
     s = tick(s, 16, ASIDE);
     expect(s.reinforcedThisWave).toBeGreaterThan(0);
-    expect(s.bossThresholdCrossed).toBe(true);
-    expect(s.startingNonBossCount).toBe(startCount);
+    expect(s.guardianThresholdCrossed).toBe(true);
+    expect(s.startingNonLeaderCount).toBe(startCount);
   });
 });
 
@@ -4082,11 +4082,11 @@ describe("Enemy asteroid response (#2487)", () => {
   it("dodgeChance is base × difficulty, capped at 97%; the Carrier never rolls", () => {
     expect(dodgeChance("Grunt", 1)).toBeCloseTo(0.25);
     expect(dodgeChance("Elite", 1)).toBeCloseTo(0.55);
-    expect(dodgeChance("Boss", 1)).toBeCloseTo(0.8);
+    expect(dodgeChance("Guardian", 1)).toBeCloseTo(0.8);
     expect(dodgeChance("Grunt", difficultyParamScale("Ensign"))).toBeCloseTo(0.175);
     expect(dodgeChance("Grunt", difficultyParamScale("FleetAdmiral"))).toBeCloseTo(0.75); // 0.25 × 3
     expect(dodgeChance("Elite", difficultyParamScale("FleetAdmiral"))).toBe(0.97); // 1.65 → cap
-    expect(dodgeChance("Boss", difficultyParamScale("FleetAdmiral"))).toBe(0.97);
+    expect(dodgeChance("Guardian", difficultyParamScale("FleetAdmiral"))).toBe(0.97);
     expect(dodgeChance("Carrier", 3)).toBe(0);
   });
 
@@ -4553,7 +4553,7 @@ describe("In-run ship upgrades (#2488)", () => {
     s = {
       ...s,
       enemies: s.enemies.map((e) =>
-        e.tier === "Boss" ? { ...e, isAlive: false, hp: 0 } : e.id === c.id ? { ...e, hp: 1 } : e
+        e.tier === "Guardian" ? { ...e, isAlive: false, hp: 0 } : e.id === c.id ? { ...e, hp: 1 } : e
       ),
       playerBullets: [
         {
@@ -4640,7 +4640,7 @@ describe("In-run ship upgrades (#2488)", () => {
     const exposedAtOneHp = (s: StarSwarmState) => ({
       ...s,
       enemies: s.enemies.map((e) =>
-        e.tier === "Boss"
+        e.tier === "Guardian"
           ? { ...e, isAlive: false, hp: 0 }
           : e.tier === "Carrier"
             ? { ...e, hp: 1 }
@@ -4909,7 +4909,7 @@ describe("Run stats (#2491)", () => {
       },
     };
     const rows = dodgeRateByTier(s);
-    expect(rows.map((r) => r.tier)).toEqual(["Grunt", "Elite", "Boss", "Carrier"]);
+    expect(rows.map((r) => r.tier)).toEqual(["Grunt", "Elite", "Guardian", "Carrier"]);
     const [grunt, elite, boss, carrier] = rows;
     expect(grunt).toEqual({
       tier: "Grunt",
@@ -4950,8 +4950,8 @@ describe("Run stats (#2491)", () => {
 
   it("flakDisabled silences flak without touching enemy missiles", () => {
     const base = { ...quiet(), enemyFireDisabled: false };
-    const boss = formation(base, "Boss");
-    // parked just above the Boss row, drifting toward it: in range and approaching every tick
+    const boss = formation(base, "Guardian");
+    // parked just above the Guardian row, drifting toward it: in range and approaching every tick
     const a = () => rock("large", boss.x, boss.y - 80, { vy: 0.02 });
     const totalFlak = (s: StarSwarmState) =>
       Object.values(s.tierStats).reduce((n, t) => n + t.flak, 0);
@@ -5052,13 +5052,13 @@ describe("Grunt rout (#2489)", () => {
     };
   }
 
-  it("triggers only mid-wave with grunts alive and no Elite, Boss or Carrier; then latches", () => {
+  it("triggers only mid-wave with grunts alive and no Elite, Guardian or Carrier; then latches", () => {
     const base = quiet();
     expect(base.routed).toBe(false);
     // leaders alive → nothing
     expect(tick(base, 16, ASIDE).routed).toBe(false);
     // one Elite left among the leaders → still nothing
-    const oneElite = kill(base, (e) => e.tier === "Boss" || e.tier === "Carrier");
+    const oneElite = kill(base, (e) => e.tier === "Guardian" || e.tier === "Carrier");
     expect(tick(oneElite, 16, ASIDE).routed).toBe(false);
     expect(fleeing(tick(oneElite, 16, ASIDE))).toHaveLength(0);
     // leaders dead but still swooping in → waits for Playing
@@ -5200,7 +5200,7 @@ describe("Grunt rout (#2489)", () => {
     let s = quiet("LieutenantJG", 5);
     expect(liveGrunts(s)).toHaveLength(0);
     s = tick(
-      kill(s, (e) => e.tier === "Boss"),
+      kill(s, (e) => e.tier === "Guardian"),
       16,
       ASIDE
     );

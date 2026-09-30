@@ -1,7 +1,7 @@
 import type { ScoreLedger } from "./scoreLedger";
 
-/** #2484: Carrier — one per wave, top row, never dives, armored while its Boss escorts live. */
-export type EnemyTier = "Grunt" | "Elite" | "Boss" | "Carrier";
+/** #2484: Carrier — one per wave, top row, never dives, armored while its Guardian escorts live. */
+export type EnemyTier = "Grunt" | "Elite" | "Guardian" | "Carrier";
 
 /** Pickups. lightning/shield are 5 s buffs, buddy/bomb are instant (#980–#1035); salvage and hull
  * are #2488 in-run upgrades: salvage raises the gun level, hull adds plating. */
@@ -113,7 +113,7 @@ export interface Enemy {
   readonly hitFlashTimer: number;
   /** Countdown ms for Wiggling phase; 0 otherwise (#975). */
   readonly wiggleTimer: number;
-  /** Shots remaining in the active Boss burst; 0 = start a new burst (#979). */
+  /** Shots remaining in the active Guardian burst; 0 = start a new burst (#979). */
   readonly burstShotsLeft: number;
   /** #2485: Carrier sweep-beam state; "idle" for every other tier. */
   readonly beamPhase: BeamPhase;
@@ -322,8 +322,8 @@ export interface StarSwarmState {
   readonly bonusLivesAwarded: number;
   /** ms remaining for the slow-motion window after a bonus life is awarded (#1078); 0 when inactive. */
   readonly bonusLifeSlowMoTimer: number;
-  /** Non-Boss enemy count at wave start; used for Boss dive eligibility (#978). */
-  readonly startingNonBossCount: number;
+  /** Non-Guardian enemy count at wave start; used for Guardian dive eligibility (#978). */
+  readonly startingNonLeaderCount: number;
   /** Enemy kills since last power-up drop (Playing phase only). */
   readonly killsSinceLastDrop: number;
   /** Kill count target to trigger the next drop (includes ±2 jitter). */
@@ -337,15 +337,15 @@ export interface StarSwarmState {
     readonly type: PowerUpType;
     readonly shieldAbsorbed: number;
   } | null;
-  /** True once ≤35% non-boss enemies remain; latches true and never resets mid-wave. */
-  readonly bossThresholdCrossed: boolean;
-  /** True once ≤3 enemies remain (Stage 3); enables boss deep dive + body collision. */
-  readonly bossDeepThresholdCrossed: boolean;
+  /** True once ≤35% non-leader enemies remain; latches true and never resets mid-wave. */
+  readonly guardianThresholdCrossed: boolean;
+  /** True once ≤3 enemies remain (Stage 3); enables Guardian deep dive + body collision. */
+  readonly guardianDeepThresholdCrossed: boolean;
   /** When true, ≤3 surviving enemies immediately break formation and go fully aggressive. */
   readonly stragglerEnabled: boolean;
   /** When true (dev panel), straggler aggression is suppressed regardless of enemy count (#1039). */
   readonly pauseStraggler: boolean;
-  /** #2489: latched once the wave's grunts have routed (no Elite, Boss or Carrier left alive). */
+  /** #2489: latched once the wave's grunts have routed (no Elite, Guardian or Carrier left alive). */
   readonly routed: boolean;
   /** Dev (#2489): grunts never rout — the old hunt-the-last-three ending, for comparison. */
   readonly routDisabled: boolean;

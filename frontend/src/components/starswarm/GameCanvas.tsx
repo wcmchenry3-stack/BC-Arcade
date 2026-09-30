@@ -160,7 +160,7 @@ interface Props {
   onRout?: (count: number) => void;
   onBonusLife?: () => void;
   onPowerUpCollect?: (type: PowerUpType) => void;
-  /** #2484: called once when the last Boss escort dies and the Carrier's armor drops. */
+  /** #2484: called once when the last Guardian escort dies and the Carrier's armor drops. */
   onCarrierExposed?: () => void;
   /** #2485: beam telegraph, beam firing, reinforcement launch. */
   onCarrierEvent?: (kind: CarrierEvent) => void;

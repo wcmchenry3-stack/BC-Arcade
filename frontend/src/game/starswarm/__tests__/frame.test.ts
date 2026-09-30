@@ -32,7 +32,7 @@ const ALL: LoadedSprites = {
   buddyShip: true,
   enemyGrunt: true,
   enemyElite: true,
-  enemyBoss: true,
+  enemyGuardian: true,
   enemyCarrier: true,
   bulletPlayer: true,
   puShield: true,
@@ -50,7 +50,7 @@ const NONE: LoadedSprites = {
   buddyShip: false,
   enemyGrunt: false,
   enemyElite: false,
-  enemyBoss: false,
+  enemyGuardian: false,
   enemyCarrier: false,
   bulletPlayer: false,
   puShield: false,
@@ -129,7 +129,7 @@ describe("buildFrame — scene order and background", () => {
       // escorted Carrier mid-flash and firing its beam
       enemies: [
         enemyOf("Carrier", { id: 3, hitFlashTimer: 100, beamPhase: "fire", beamTimer: 500 }),
-        enemyOf("Boss", { id: 11 }),
+        enemyOf("Guardian", { id: 11 }),
       ],
       activePowerUp: { type: "shield", remainingMs: 5000, shieldAbsorbed: 0 },
       player: { ...blank().player, hullFlashTimer: 100 },
@@ -206,7 +206,7 @@ describe("buildFrame — scene order and background", () => {
 
   it("every key is unique within a frame", () => {
     const s = blank({
-      enemies: [enemyOf("Carrier", { id: 7, hitFlashTimer: 100 }), enemyOf("Boss", { id: 8 })],
+      enemies: [enemyOf("Carrier", { id: 7, hitFlashTimer: 100 }), enemyOf("Guardian", { id: 8 })],
       powerUps: [
         { id: 9, type: "salvage", x: 50, y: 50, vy: 0, width: 24, height: 24, despawnTimer: 1 },
       ],
@@ -288,14 +288,14 @@ describe("buildFrame — enemies", () => {
       enemies: [
         enemyOf("Grunt", { id: 1 }),
         enemyOf("Elite", { id: 2 }),
-        enemyOf("Boss", { id: 3 }),
+        enemyOf("Guardian", { id: 3 }),
         enemyOf("Carrier", { id: 4 }),
       ],
     });
     const ops = buildFrame(s, NO_STARS, OPTS);
     expect(byKey(ops, "en-1")).toMatchObject({ k: "image", sprite: "enemyGrunt" });
     expect(byKey(ops, "en-2")).toMatchObject({ k: "image", sprite: "enemyElite" });
-    expect(byKey(ops, "en-3")).toMatchObject({ k: "image", sprite: "enemyBoss" });
+    expect(byKey(ops, "en-3")).toMatchObject({ k: "image", sprite: "enemyGuardian" });
     expect(byKey(ops, "en-4")).toMatchObject({ k: "image", sprite: "enemyCarrier" });
     const bare = buildFrame(s, NO_STARS, { ...OPTS, loaded: NONE });
     expect(byKey(bare, "en-1")).toMatchObject({ k: "rect", color: "#8888ff" });
@@ -304,9 +304,9 @@ describe("buildFrame — enemies", () => {
     expect(byKey(bare, "en-4")).toMatchObject({ k: "rect", color: "#b06cff" });
   });
 
-  it("the Carrier wears its force-field ring only while a Boss escort lives", () => {
+  it("the Carrier wears its force-field ring only while a Guardian escort lives", () => {
     const carrier = enemyOf("Carrier", { id: 1 });
-    const escorted = blank({ enemies: [carrier, enemyOf("Boss", { id: 2 })] });
+    const escorted = blank({ enemies: [carrier, enemyOf("Guardian", { id: 2 })] });
     const ring = byKey(buildFrame(escorted, NO_STARS, OPTS), "en-1-ring");
     expect(ring).toMatchObject({
       k: "circle",
@@ -318,7 +318,7 @@ describe("buildFrame — enemies", () => {
     });
     const exposed = blank({ enemies: [carrier] });
     expect(byKey(buildFrame(exposed, NO_STARS, OPTS), "en-1-ring")).toBeUndefined();
-    // a Boss never wears one
+    // a Guardian never wears one
     expect(byKey(buildFrame(escorted, NO_STARS, OPTS), "en-2-ring")).toBeUndefined();
   });
 

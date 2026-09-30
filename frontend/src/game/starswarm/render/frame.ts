@@ -39,7 +39,7 @@ export type SpriteKey =
   | "buddyShip"
   | "enemyGrunt"
   | "enemyElite"
-  | "enemyBoss"
+  | "enemyGuardian"
   | "enemyCarrier"
   | "bulletPlayer"
   | "puShield"
@@ -128,13 +128,13 @@ const BACKGROUND = "#000010";
 const TIER_SPRITE: Record<EnemyTier, Exclude<SpriteKey, "explosion">> = {
   Grunt: "enemyGrunt",
   Elite: "enemyElite",
-  Boss: "enemyBoss",
+  Guardian: "enemyGuardian",
   Carrier: "enemyCarrier",
 };
 const TIER_FALLBACK: Record<EnemyTier, string> = {
   Grunt: "#8888ff",
   Elite: "#ff88ff",
-  Boss: "#ffff44",
+  Guardian: "#ffff44",
   Carrier: "#b06cff",
 };
 const POWERUP_SPRITE: Partial<Record<PowerUpType, Exclude<SpriteKey, "explosion">>> = {

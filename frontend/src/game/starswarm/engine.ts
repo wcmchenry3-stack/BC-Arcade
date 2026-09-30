@@ -71,7 +71,7 @@ const BULLET_E_H = 10;
 export const BULLET_E_VY = 0.35; // px/ms downward
 
 const FORMATION_COLS = 8;
-const FORMATION_COL_W = 44; // #950: was 38 — Boss (36 px) had only 1 px margin/side
+const FORMATION_COL_W = 44; // #950: was 38 — Guardian (36 px) had only 1 px margin/side
 const FORMATION_ROW_H = 42; // #2484: was 46 — the Carrier row has to fit above the player lane
 const FORMATION_TOP = 90;
 
@@ -88,18 +88,18 @@ export const WIGGLE_DURATION = 350; // ms
 const WIGGLE_AMPLITUDE = 6; // px horizontal oscillation
 
 // #977: Bézier arc dive paths
-export const DIVE_PATH_DURATION = 1800; // ms (non-Boss)
-const BOSS_DIVE_PATH_DURATION = Math.round(DIVE_PATH_DURATION * (DIVE_SPEED / 0.22)); // ~2210ms
+export const DIVE_PATH_DURATION = 1800; // ms (non-Guardian)
+const GUARDIAN_DIVE_PATH_DURATION = Math.round(DIVE_PATH_DURATION * (DIVE_SPEED / 0.22)); // ~2210ms
 
-// #978: Boss dive eligibility threshold
-export const BOSS_DIVE_THRESHOLD = 0.35; // boss unlocked when ≤35% non-boss remain
+// #978: Guardian dive eligibility threshold
+export const GUARDIAN_DIVE_THRESHOLD = 0.35; // Guardians unlocked when ≤35% non-leader remain
 
-// #979: Boss burst-fire
+// #979: Guardian burst-fire
 export const BURST_INTERVAL = 200; // ms between shots within a burst
 export const BURST_PAUSE_BASE = 2000; // ms cooldown after burst completes
 const BURST_PAUSE_JITTER = 1000; // ms random addend to pause
-export const BOSS_BULLET_VY = 0.46; // px/ms — faster than Elite (0.35) so boss shots are harder to dodge
-const BOSS_MAX_SWAY = 20; // px — Boss sways ±20px vs ±40px for other tiers
+export const GUARDIAN_BULLET_VY = 0.46; // px/ms — faster than Elite (0.35) so Guardian shots are harder to dodge
+const GUARDIAN_MAX_SWAY = 20; // px — Guardian sways ±20px vs ±40px for other tiers
 // #2484: the Carrier is the heaviest hull in the formation and barely drifts.
 const CARRIER_MAX_SWAY = 12; // px
 
@@ -167,7 +167,7 @@ export function waveClearBonusPoints(wave: number, difficulty: DifficultyTier): 
 // Score diving enemies get a 2× multiplier.
 const DIVE_SCORE_MULT = 2;
 
-// #2489: grunt rout — once no Elite, Boss or Carrier is left alive, surviving grunts break and run
+// #2489: grunt rout — once no Elite, Guardian or Carrier is left alive, surviving grunts break and run
 // for the top edge. Catch one on the way out for 2× (the dive multiplier); an escape pays nothing.
 export const FLEE_DURATION_MIN = 1500; // ms along the flee path
 export const FLEE_DURATION_MAX = 2100;
@@ -218,7 +218,7 @@ const SUPER_DAMAGE = 4;
 // #974: small circle around the player sprite centre — forgiveness hitbox
 export const PLAYER_HURT_RADIUS = 7; // px
 
-// #1310: duration of the shield-ring hit flash on non-lethal Elite/Boss hits
+// #1310: duration of the shield-ring hit flash on non-lethal Elite/Guardian hits
 export const HIT_FLASH_DURATION = 250; // ms
 
 // #2485: Carrier actions — sweep beam, reinforcements, lone-ship lasers
@@ -248,7 +248,7 @@ export const HULL_INVINCIBLE_MS = 600; // grace after plating takes a hit (same 
 export const DODGE_BASE: Record<EnemyTier, number> = {
   Grunt: 0.25,
   Elite: 0.55,
-  Boss: 0.8,
+  Guardian: 0.8,
   Carrier: 0,
 };
 export const DODGE_CAP = 0.97;
@@ -260,7 +260,7 @@ export const DODGE_PATH_NUDGE = 40; // px, control-point shift for ships on a pa
 export const FLAK_BASE: Record<EnemyTier, number> = {
   Grunt: 0.3,
   Elite: 0.7,
-  Boss: 0.9,
+  Guardian: 0.9,
   Carrier: 1,
 };
 const FLAK_SCALE_CAP = 1.3;
@@ -287,21 +287,21 @@ export const ASTEROID_STATS: Record<AsteroidKind, { radius: number; hp: number }
   small: { radius: 12, hp: 2 },
 };
 
-// #2484: Carrier — one per wave, never dives, armored while its four Boss escorts live.
-const TIER_SCORE: Record<EnemyTier, number> = { Grunt: 100, Elite: 200, Boss: 400, Carrier: 1000 };
-const TIER_HP: Record<EnemyTier, number> = { Grunt: 1, Elite: 2, Boss: 4, Carrier: 8 };
+// #2484: Carrier — one per wave, never dives, armored while its four Guardian escorts live.
+const TIER_SCORE: Record<EnemyTier, number> = { Grunt: 100, Elite: 200, Guardian: 400, Carrier: 1000 };
+const TIER_HP: Record<EnemyTier, number> = { Grunt: 1, Elite: 2, Guardian: 4, Carrier: 8 };
 
-/** #2484: Boss and Carrier sit out the Grunt/Elite "non-boss" thresholds (35% / ≤3 remaining). */
+/** #2484: Guardian and Carrier sit out the Grunt/Elite "non-leader" thresholds (35% / ≤3 remaining). */
 export function isLeaderTier(tier: EnemyTier): boolean {
-  return tier === "Boss" || tier === "Carrier";
+  return tier === "Guardian" || tier === "Carrier";
 }
 
 function carrierArmoredIn(enemies: readonly Enemy[]): boolean {
-  return enemies.some((e) => e.isAlive && e.tier === "Boss");
+  return enemies.some((e) => e.isAlive && e.tier === "Guardian");
 }
 
 /**
- * #2484: the Carrier is armored while any of its four Boss escorts is alive. Ordinary player
+ * #2484: the Carrier is armored while any of its four Guardian escorts is alive. Ordinary player
  * shots are spent on the force field (ring plays, no damage); piercing shots go through.
  * False when there is no live Carrier, so renderers can key an indicator off this alone.
  */
@@ -312,7 +312,7 @@ export function isCarrierArmored(state: StarSwarmState): boolean {
 }
 
 /**
- * #2484: true on the exact tick the Carrier's armor drops — its last Boss escort died while the
+ * #2484: true on the exact tick the Carrier's armor drops — its last Guardian escort died while the
  * Carrier itself is still alive. A Carrier killed *through* its armor (piercing shots) also stops
  * reading as armored, but nothing was exposed, so that edge is excluded. Shared by both renderers
  * so the announcement can't drift between native and web.
@@ -324,7 +324,7 @@ export function carrierJustExposed(prev: StarSwarmState, next: StarSwarmState): 
 
 // #979/#2484: heavier tiers drift less with the formation sway
 function clampSway(tier: EnemyTier, swayX: number): number {
-  const limit = tier === "Carrier" ? CARRIER_MAX_SWAY : tier === "Boss" ? BOSS_MAX_SWAY : MAX_SWAY;
+  const limit = tier === "Carrier" ? CARRIER_MAX_SWAY : tier === "Guardian" ? GUARDIAN_MAX_SWAY : MAX_SWAY;
   return Math.max(-limit, Math.min(limit, swayX));
 }
 
@@ -408,7 +408,7 @@ function bonusLifeThreshold(difficulty: DifficultyTier): number {
 const TIER_SIZE: Record<EnemyTier, { w: number; h: number }> = {
   Grunt: { w: 24, h: 24 },
   Elite: { w: 28, h: 28 },
-  Boss: { w: 36, h: 32 },
+  Guardian: { w: 36, h: 32 },
   Carrier: { w: 54, h: 48 }, // #2484 — matches the 172×151 sprite's aspect so it isn't squashed
 };
 
@@ -545,8 +545,8 @@ interface SlotDef {
 function waveSlots(wave: number): SlotDef[] {
   const slots: SlotDef[] = [];
 
-  // Boss row: 4 enemies, centered
-  for (let c = 0; c < 4; c++) slots.push({ tier: "Boss", row: 1, col: c, rowCols: 4 });
+  // Guardian row: 4 enemies, centered
+  for (let c = 0; c < 4; c++) slots.push({ tier: "Guardian", row: 1, col: c, rowCols: 4 });
 
   // Two Elite rows
   for (let r = 2; r <= 3; r++)
@@ -560,7 +560,7 @@ function waveSlots(wave: number): SlotDef[] {
       slots.push({ tier: "Grunt", row: r, col: c, rowCols: FORMATION_COLS });
 
   // #2484: Carrier row — one ship, centered above its escorts. Last in the list so it is the
-  // last to swoop in (and so enemies[0] stays a Boss, which the dev panel and tests lean on).
+  // last to swoop in (and so enemies[0] stays a Guardian, which the dev panel and tests lean on).
   slots.push({ tier: "Carrier", row: 0, col: 0, rowCols: 1 });
 
   return slots;
@@ -569,7 +569,7 @@ function waveSlots(wave: number): SlotDef[] {
 /** #2490: a boss wave is the Carrier and its four escorts, nothing else. Carrier last, as above. */
 function bossWaveSlots(): SlotDef[] {
   const slots: SlotDef[] = [];
-  for (let c = 0; c < 4; c++) slots.push({ tier: "Boss", row: 1, col: c, rowCols: 4 });
+  for (let c = 0; c < 4; c++) slots.push({ tier: "Guardian", row: 1, col: c, rowCols: 4 });
   slots.push({ tier: "Carrier", row: 0, col: 0, rowCols: 1 });
   return slots;
 }
@@ -995,7 +995,7 @@ export function emptyTierStats(): Record<EnemyTier, TierStats> {
   return {
     Grunt: ZERO_TIER_STATS,
     Elite: ZERO_TIER_STATS,
-    Boss: ZERO_TIER_STATS,
+    Guardian: ZERO_TIER_STATS,
     Carrier: ZERO_TIER_STATS,
   };
 }
@@ -1045,7 +1045,7 @@ export function dodgeChance(tier: EnemyTier, paramScale: number): number {
   return Math.min(DODGE_CAP, DODGE_BASE[tier] * paramScale);
 }
 
-const TIER_ORDER: readonly EnemyTier[] = ["Grunt", "Elite", "Boss", "Carrier"];
+const TIER_ORDER: readonly EnemyTier[] = ["Grunt", "Elite", "Guardian", "Carrier"];
 
 /** #2491: one dev-panel row per tier — the configured dodge odds next to what actually happened. */
 export interface TierDodgeRow {
@@ -1441,7 +1441,7 @@ function buildWaveState(
   });
   const phase: StarSwarmState["phase"] = "SwoopIn";
 
-  const startingNonBossCount = enemies.filter((e) => !isLeaderTier(e.tier)).length;
+  const startingNonLeaderCount = enemies.filter((e) => !isLeaderTier(e.tier)).length;
 
   const powerUps: PowerUp[] = [];
   const dropJitterTarget = triggerKills(wave) + Math.floor(rng() * 5) - 2;
@@ -1488,13 +1488,13 @@ function buildWaveState(
     formationSwayDir: 1,
     bonusLivesAwarded,
     bonusLifeSlowMoTimer: 0,
-    startingNonBossCount,
+    startingNonLeaderCount,
     killsSinceLastDrop: 0,
     dropJitterTarget,
     activePowerUp: null,
     // #2490: on a boss wave the Bosses are active from the first tick — bursts and dives
-    bossThresholdCrossed: bossWave,
-    bossDeepThresholdCrossed: false,
+    guardianThresholdCrossed: bossWave,
+    guardianDeepThresholdCrossed: false,
     stragglerEnabled,
     pauseStraggler: false,
     routed: false,
@@ -1650,7 +1650,7 @@ interface EnemyTickResult {
 interface CarrierCtx {
   /** Playing phase — beams and lone fire only happen mid-wave. */
   playing: boolean;
-  /** #2699: its four Boss escorts are dead, so its force field is down — twin lasers fire. */
+  /** #2699: its four Guardian escorts are dead, so its force field is down — twin lasers fire. */
   unarmored: boolean;
   /** #2490: boss wave — the beam cadence is BOSS_WAVE_BEAM_SCALE× faster. */
   bossWave: boolean;
@@ -1659,7 +1659,7 @@ const NO_CARRIER_CTX: CarrierCtx = { playing: false, unarmored: false, bossWave:
 
 /**
  * #2485: the Carrier's own tick while holding station. Beam: idle → charge (telegraph) → fire →
- * idle on a difficulty-scaled cadence. Twin-laser lasers: #2699 once its armor is down (its Boss
+ * idle on a difficulty-scaled cadence. Twin-laser lasers: #2699 once its armor is down (its Guardian
  * escorts are dead) it fires a pair of aimed shots every LONE_FIRE_INTERVAL, so the player can't
  * just plink an exposed Carrier from off to one side while grunts still live. Reinforcements live
  * in tickEnemies (they need the whole roster).
@@ -1697,7 +1697,7 @@ function tickCarrier(
     if (shootTimer <= 0) {
       shootTimer = LONE_FIRE_INTERVAL / cadence;
       bullets = [-LONE_FIRE_OFFSET, LONE_FIRE_OFFSET].map((dx) => {
-        const vel = aimVelocity(enemy.x + dx, enemy.y, playerX, playerY, BOSS_BULLET_VY);
+        const vel = aimVelocity(enemy.x + dx, enemy.y, playerX, playerY, GUARDIAN_BULLET_VY);
         return {
           id: nextId(),
           x: enemy.x + dx,
@@ -1769,8 +1769,8 @@ function tickSingleEnemy(
   canvasH: number,
   shouldDive: boolean,
   wave: number,
-  bossThresholdCrossed: boolean,
-  bossDeepThresholdCrossed: boolean,
+  guardianThresholdCrossed: boolean,
+  guardianDeepThresholdCrossed: boolean,
   paramScale = 1,
   carrierCtx: CarrierCtx = NO_CARRIER_CTX
 ): EnemyTickResult {
@@ -1791,11 +1791,11 @@ function tickSingleEnemy(
         playerY,
         shouldDive,
         wave,
-        bossThresholdCrossed,
+        guardianThresholdCrossed,
         paramScale
       );
     case "Wiggling":
-      return tickWiggling(enemy, dtMs, canvasH, bossThresholdCrossed, bossDeepThresholdCrossed);
+      return tickWiggling(enemy, dtMs, canvasH, guardianThresholdCrossed, guardianDeepThresholdCrossed);
     case "Diving":
       return tickDiving(
         enemy,
@@ -1803,8 +1803,8 @@ function tickSingleEnemy(
         canvasH,
         playerX,
         playerY,
-        bossThresholdCrossed,
-        bossDeepThresholdCrossed
+        guardianThresholdCrossed,
+        guardianDeepThresholdCrossed
       );
     case "Circling":
       return tickCircling(enemy, dtMs, playerX, playerY);
@@ -1849,7 +1849,7 @@ function tickFormation(
   playerY: number,
   shouldDive: boolean,
   wave: number,
-  bossThresholdCrossed: boolean,
+  guardianThresholdCrossed: boolean,
   paramScale = 1
 ): EnemyTickResult {
   // #2484/#2485: a Carrier in Formation is routed to tickCarrier before reaching here
@@ -1857,8 +1857,8 @@ function tickFormation(
     return { enemy, bullet: null };
   }
 
-  // Boss is passive until threshold crossed: no firing, no diving
-  if (enemy.tier === "Boss" && !bossThresholdCrossed) {
+  // Guardian is passive until threshold crossed: no firing, no diving
+  if (enemy.tier === "Guardian" && !guardianThresholdCrossed) {
     return { enemy, bullet: null };
   }
 
@@ -1880,9 +1880,9 @@ function tickFormation(
     return { enemy: { ...enemy, shootTimer }, bullet: null };
   }
 
-  // #979: Boss fires in bursts; other tiers use random single-shot interval
-  if (enemy.tier === "Boss") {
-    const { enemy: e, bullet } = bossBurstFire(enemy, playerX, playerY);
+  // #979: Guardian fires in bursts; other tiers use random single-shot interval
+  if (enemy.tier === "Guardian") {
+    const { enemy: e, bullet } = guardianBurstFire(enemy, playerX, playerY);
     return { enemy: e, bullet };
   }
 
@@ -1909,8 +1909,8 @@ function tickFormation(
   };
 }
 
-// #979: shared burst-fire logic for Boss in Formation and Diving phases
-function bossBurstFire(enemy: Enemy, playerX: number, playerY: number): EnemyTickResult {
+// #979: shared burst-fire logic for Guardian in Formation and Diving phases
+function guardianBurstFire(enemy: Enemy, playerX: number, playerY: number): EnemyTickResult {
   const newBurstShotsLeft =
     enemy.burstShotsLeft === 0
       ? 2 + Math.floor(rng() * 3) // start new burst: pick 3–5 total shots; return remaining after this shot
@@ -1918,7 +1918,7 @@ function bossBurstFire(enemy: Enemy, playerX: number, playerY: number): EnemyTic
   const newShootTimer =
     newBurstShotsLeft > 0 ? BURST_INTERVAL : BURST_PAUSE_BASE + rng() * BURST_PAUSE_JITTER;
 
-  const vel = aimVelocity(enemy.x, enemy.y, playerX, playerY, BOSS_BULLET_VY); // #1314
+  const vel = aimVelocity(enemy.x, enemy.y, playerX, playerY, GUARDIAN_BULLET_VY); // #1314
   const bullet: Bullet = {
     id: nextId(),
     x: enemy.x,
@@ -1941,17 +1941,17 @@ function tickWiggling(
   enemy: Enemy,
   dtMs: number,
   canvasH: number,
-  bossThresholdCrossed: boolean,
-  bossDeepThresholdCrossed: boolean
+  guardianThresholdCrossed: boolean,
+  guardianDeepThresholdCrossed: boolean
 ): EnemyTickResult {
   const newTimer = enemy.wiggleTimer - dtMs;
 
   if (newTimer <= 0) {
-    // Stage 1 Elites: shallow arc; Stage 2 Bosses: shallow arc (like Stage 1 Elites)
-    const isBossStage2 = enemy.tier === "Boss" && bossThresholdCrossed && !bossDeepThresholdCrossed;
-    const shallow = (enemy.tier === "Elite" && !bossThresholdCrossed) || isBossStage2;
+    // Stage 1 Elites: shallow arc; Stage 2 Guardians: shallow arc (like Stage 1 Elites)
+    const isGuardianStage2 = enemy.tier === "Guardian" && guardianThresholdCrossed && !guardianDeepThresholdCrossed;
+    const shallow = (enemy.tier === "Elite" && !guardianThresholdCrossed) || isGuardianStage2;
     const path = divePath(enemy, enemy.diveTargetX, canvasH, shallow);
-    const duration = enemy.tier === "Boss" ? BOSS_DIVE_PATH_DURATION : DIVE_PATH_DURATION;
+    const duration = enemy.tier === "Guardian" ? GUARDIAN_DIVE_PATH_DURATION : DIVE_PATH_DURATION;
     return {
       enemy: {
         ...enemy,
@@ -1978,29 +1978,29 @@ function tickWiggling(
 
 // #977/#1029/#1030: Bézier arc dive
 // - Grunts: skip Circling; go directly to Returning at 85%
-// - Elites Phase 1 (bossThresholdCrossed=false): shallow arc, Returning at 60%, no body collision
-// - Elites Phase 2 + Bosses: Circling at 85% (existing behaviour)
+// - Elites Phase 1 (guardianThresholdCrossed=false): shallow arc, Returning at 60%, no body collision
+// - Elites Phase 2 + Guardians: Circling at 85% (existing behaviour)
 function tickDiving(
   enemy: Enemy,
   dtMs: number,
   canvasH: number,
   playerX: number,
   playerY: number,
-  bossThresholdCrossed: boolean,
-  bossDeepThresholdCrossed: boolean
+  guardianThresholdCrossed: boolean,
+  guardianDeepThresholdCrossed: boolean
 ): EnemyTickResult {
   const newT = enemy.pathT + dtMs / enemy.pathDuration;
   const pos = evalCubic(enemy.path!, Math.min(newT, 1));
 
-  // Tick shoot timer; Boss uses burst fire (#979), others use single aimed shot
+  // Tick shoot timer; Guardian uses burst fire (#979), others use single aimed shot
   const shootTimer = enemy.shootTimer - dtMs;
   let bullet: Bullet | null = null;
   let nextShootTimer = shootTimer;
   let nextBurstShotsLeft = enemy.burstShotsLeft;
 
   if (shootTimer <= 0) {
-    if (enemy.tier === "Boss") {
-      const result = bossBurstFire(enemy, playerX, playerY);
+    if (enemy.tier === "Guardian") {
+      const result = guardianBurstFire(enemy, playerX, playerY);
       bullet = result.bullet;
       nextShootTimer = result.enemy.shootTimer;
       nextBurstShotsLeft = result.enemy.burstShotsLeft;
@@ -2021,14 +2021,14 @@ function tickDiving(
     }
   }
 
-  const isElitePhase1 = enemy.tier === "Elite" && !bossThresholdCrossed;
-  // #1077: Stage 2 Boss uses shallow arc — return to formation like Elite Phase 1, no Circling
-  const isBossStage2 = enemy.tier === "Boss" && bossThresholdCrossed && !bossDeepThresholdCrossed;
-  const depthThreshold = isElitePhase1 || isBossStage2 ? canvasH * 0.6 : canvasH * 0.85;
+  const isElitePhase1 = enemy.tier === "Elite" && !guardianThresholdCrossed;
+  // #1077: Stage 2 Guardian uses shallow arc — return to formation like Elite Phase 1, no Circling
+  const isGuardianStage2 = enemy.tier === "Guardian" && guardianThresholdCrossed && !guardianDeepThresholdCrossed;
+  const depthThreshold = isElitePhase1 || isGuardianStage2 ? canvasH * 0.6 : canvasH * 0.85;
   const pathDone = pos.y > depthThreshold || newT >= 1;
 
   if (pathDone) {
-    if (enemy.tier === "Grunt" || isElitePhase1 || isBossStage2) {
+    if (enemy.tier === "Grunt" || isElitePhase1 || isGuardianStage2) {
       // No circling: return directly to formation
       const path = returnPath(pos.x, pos.y, enemy.formationX, enemy.formationY);
       return {
@@ -2047,7 +2047,7 @@ function tickDiving(
       };
     }
 
-    // Elite Phase 2 + Boss → Circling
+    // Elite Phase 2 + Guardian → Circling
     return {
       enemy: {
         ...enemy,
@@ -2094,7 +2094,7 @@ function tickCircling(
   const shootTimer = enemy.shootTimer - dtMs;
   let bullet: Bullet | null = null;
   if (shootTimer <= 0) {
-    const speed = enemy.tier === "Boss" ? BOSS_BULLET_VY : undefined;
+    const speed = enemy.tier === "Guardian" ? GUARDIAN_BULLET_VY : undefined;
     const vel = aimVelocity(enemy.x, enemy.y, playerX, playerY, speed);
     bullet = {
       id: nextId(),
@@ -2190,18 +2190,18 @@ function startFleeing(e: Enemy, canvasW: number, difficulty: DifficultyTier): En
 }
 
 function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
-  // #1030: bossThresholdCrossed latches true once ≤35% non-boss enemies remain
-  const aliveNonBoss = state.enemies.filter((e) => e.isAlive && !isLeaderTier(e.tier)).length;
-  const bossThresholdCrossed =
-    state.bossThresholdCrossed ||
-    state.startingNonBossCount === 0 ||
-    aliveNonBoss / state.startingNonBossCount <= BOSS_DIVE_THRESHOLD;
+  // #1030: guardianThresholdCrossed latches true once ≤35% non-leader enemies remain
+  const aliveNonLeader = state.enemies.filter((e) => e.isAlive && !isLeaderTier(e.tier)).length;
+  const guardianThresholdCrossed =
+    state.guardianThresholdCrossed ||
+    state.startingNonLeaderCount === 0 ||
+    aliveNonLeader / state.startingNonLeaderCount <= GUARDIAN_DIVE_THRESHOLD;
 
-  // #1077: bossDeepThresholdCrossed latches true at Stage 3 (≤3 enemies alive)
+  // #1077: guardianDeepThresholdCrossed latches true at Stage 3 (≤3 enemies alive)
   // #2484: the Carrier never leaves formation, so it is not counted as a straggler
   const aliveAll = state.enemies.filter((e) => e.isAlive && e.tier !== "Carrier").length;
-  const bossDeepThresholdCrossed =
-    state.bossDeepThresholdCrossed ||
+  const guardianDeepThresholdCrossed =
+    state.guardianDeepThresholdCrossed ||
     (state.stragglerEnabled &&
       !state.pauseStraggler &&
       state.phase === "Playing" &&
@@ -2239,7 +2239,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     nextDiveTimer -= dtMs;
     if (nextDiveTimer <= 0) {
       nextDiveTimer = diveInterval(state.wave, difficultyParamScale(state.difficulty));
-      // #978/#1030: Boss only eligible once bossThresholdCrossed
+      // #978/#1030: Guardian only eligible once guardianThresholdCrossed
       const candidates = roster
         .map((e, i) => ({ e, i }))
         .filter(
@@ -2247,7 +2247,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
             e.isAlive &&
             e.phase === "Formation" &&
             e.tier !== "Carrier" && // #2484: never dives
-            (e.tier !== "Boss" || bossThresholdCrossed)
+            (e.tier !== "Guardian" || guardianThresholdCrossed)
         );
       // Only launch enough new divers to reach the cap; Wiggling enemies are NOT counted (#975)
       const currentDivers = roster.filter((e) => e.isAlive && e.phase === "Diving").length;
@@ -2279,7 +2279,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   // #2842: ships that reach formation during swoop-in hold their fire until combat starts
   const enemyWeaponsFree = weaponsFree(state) && !state.enemyFireDisabled;
   const enemyBulletCap = bulletCap(state.wave, _ps);
-  // #2699: the Carrier fires its twin lasers once its armor is down (Boss escorts dead),
+  // #2699: the Carrier fires its twin lasers once its armor is down (Guardian escorts dead),
   // not only once it's the sole enemy left alive.
   const carrierCtx: CarrierCtx = {
     playing: state.phase === "Playing",
@@ -2297,15 +2297,15 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
       state.canvasH,
       shouldDive,
       state.wave,
-      bossThresholdCrossed,
-      bossDeepThresholdCrossed,
+      guardianThresholdCrossed,
+      guardianDeepThresholdCrossed,
       _ps,
       carrierCtx
     );
     let e = result.enemy;
     if (enemy.isAlive && enemy.phase === "Fleeing" && !e.isAlive) routEscaped++; // #2489
     // Apply sway offset to enemies holding Formation position
-    // #979: Boss sways ±BOSS_MAX_SWAY (20px) vs ±MAX_SWAY (40px) for other tiers
+    // #979: Guardian sways ±GUARDIAN_MAX_SWAY (20px) vs ±MAX_SWAY (40px) for other tiers
     if (e.isAlive && e.phase === "Formation") {
       e = { ...e, x: e.formationX + clampSway(e.tier, swayX) + dodgeOffset(e) }; // #2487 sidestep
       // #2485: beam telegraph — a quick shudder so the player has time to sidestep
@@ -2335,7 +2335,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   });
 
   // #2485: Carrier reinforcements — refill empty grunt slots while it lives, capped per wave.
-  // Not on Ensign. Reinforcements don't touch startingNonBossCount, so the 35% / ≤3 latches
+  // Not on Ensign. Reinforcements don't touch startingNonLeaderCount, so the 35% / ≤3 latches
   // are unaffected once crossed; until then they delay the escalation, which is the point.
   let reinforceTimer = state.reinforceTimer;
   let reinforcedThisWave = state.reinforcedThisWave;
@@ -2407,8 +2407,8 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     nextDiveTimer,
     formationSwayX: swayX,
     formationSwayDir: swayDir,
-    bossThresholdCrossed,
-    bossDeepThresholdCrossed,
+    guardianThresholdCrossed,
+    guardianDeepThresholdCrossed,
     reinforceTimer,
     reinforcedThisWave,
     runStats,
@@ -2843,7 +2843,7 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
     }
     {
       // #956/#1029/#1030/#1077: capture the ramming enemy so we can destroy it on collision
-      // Bosses collidable only in Stage 3 (bossDeepThresholdCrossed); Elite Phase 1 always exempt
+      // Guardians collidable only in Stage 3 (guardianDeepThresholdCrossed); Elite Phase 1 always exempt
       // A projectile that already costs the life makes the ram check moot; an absorbed one doesn't.
       let rammingEnemyId: number | null = null;
       const hitByShip =
@@ -2851,8 +2851,8 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
         enemies.some((e) => {
           if (!e.isAlive) return false;
           if (e.tier === "Carrier") return false; // #2484: never leaves formation
-          if (e.tier === "Boss" && !state.bossDeepThresholdCrossed) return false;
-          if (e.tier === "Elite" && !state.bossThresholdCrossed) return false;
+          if (e.tier === "Guardian" && !state.guardianDeepThresholdCrossed) return false;
+          if (e.tier === "Elite" && !state.guardianThresholdCrossed) return false;
           if (e.phase !== "Diving" && e.phase !== "Circling") return false;
           if (
             !collideCircleAABB(player.x, player.y, PLAYER_HURT_RADIUS, e.x, e.y, e.width, e.height)
