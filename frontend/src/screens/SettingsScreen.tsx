@@ -3,6 +3,8 @@ import { View, Text, Pressable, StyleSheet, Switch, Linking } from "react-native
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
+import { usePurchases } from "../purchases/PurchaseProvider";
+import { useRestorePurchases } from "../purchases/useRestorePurchases";
 import { useTheme, type ThemeMode } from "../theme/ThemeContext";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
@@ -28,6 +30,10 @@ export default function SettingsScreen() {
   const { muted, setMuted } = useSoundSettings();
   const insets = useSafeAreaInsets();
   const { t } = useTranslation("common");
+  // Restore Purchases (Apple 3.1.1) exists only where purchases do: hidden with
+  // the unavailable adapter, i.e. web and v1.0 store builds.
+  const { isAvailable: purchasesAvailable } = usePurchases();
+  const restorer = useRestorePurchases();
 
   const themeLabel: Record<ThemeMode, string> = {
     system: t("theme.system", "System"),
@@ -233,6 +239,41 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
+      {purchasesAvailable && (
+        <View style={[styles.rowStacked, { borderColor: colors.border }]}>
+          <View style={styles.rowStackedText}>
+            <Text style={[styles.label, { color: colors.text }]}>{t("paywall.restore")}</Text>
+            <Text style={[styles.description, { color: colors.text, opacity: 0.7 }]}>
+              {t("settings.restorePurchases.description")}
+            </Text>
+            {restorer.status !== "idle" && restorer.status !== "busy" && (
+              <Text
+                style={[styles.description, { color: colors.text }]}
+                accessibilityLiveRegion="polite"
+                testID={`restore-purchases-${restorer.status}`}
+              >
+                {t(`restore.${restorer.status}`)}
+              </Text>
+            )}
+          </View>
+          <Pressable
+            onPress={() => void restorer.restore()}
+            disabled={restorer.busy}
+            style={[
+              styles.destructive,
+              styles.restoreButton,
+              { backgroundColor: colors.surfaceAlt, opacity: restorer.busy ? 0.5 : 1 },
+            ]}
+            testID="restore-purchases-button"
+            accessibilityRole="button"
+            accessibilityLabel={t("paywall.restore")}
+            accessibilityState={{ disabled: restorer.busy, busy: restorer.busy }}
+          >
+            <Text style={{ color: colors.text }}>{t("paywall.restore")}</Text>
+          </Pressable>
+        </View>
+      )}
+
       <View style={styles.legalRow}>
         <Pressable
           onPress={() => openLegalUrl(PRIVACY_POLICY_URL)}
@@ -324,6 +365,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 16 },
   description: { fontSize: 13, marginTop: 4 },
   destructive: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+  restoreButton: { minHeight: 48, justifyContent: "center" },
   destructiveText: { fontWeight: "600" },
   legalRow: {
     flexDirection: "row",

@@ -744,6 +744,33 @@ applyToken(rawToken: string): Promise<void>; // validate, cache (AsyncStorage) a
   family via Family Sharing (App Store)". It appears on iOS only.
 - **Never** show the paywall at game end, after a loss, or on a timer (§3).
 
+### 9.4 As built (#841)
+
+- **Route.** `Paywall` is a modal on the **root** stack (`presentation: "modal"`,
+  params `{ gameSlug }`). `HomeScreen` opens it from a locked premium tile.
+  `App.tsx` registers it only when `visiblePremiumRoutes().length > 0`, so a
+  v1.0 store build (every premium game hidden) has no route to it.
+  `releaseBuildConfig.test.ts` pins this.
+- **Adapter selection.** `selectPurchaseAdapter` (`src/purchases/selectAdapter.ts`)
+  returns `unavailablePurchaseAdapter` on web, in any build with no visible
+  premium game, and until a factory is registered. #2786/#2787 register
+  `expoIapAdapter` with `registerPurchaseAdapterFactory((deps) => ...)`; `deps`
+  carries `applyToken`. `PurchaseProvider` (inside `EntitlementProvider`) runs
+  `init`, the transaction listener and the silent `syncOwned` at launch.
+- **Restore Purchases** is on the paywall directly under Buy (visible without
+  scrolling) and in Settings. Settings hides the row while the adapter is the
+  unavailable one, so a store build shows no purchase UI at all.
+- **Apple 3.1.1.** The Restore button is always rendered on the paywall,
+  whatever the product state (loading, unavailable, error, pending), and is
+  never behind a menu. Prices come from the store's `displayPrice`.
+- **Copy.** One-time purchase and unlimited replay. The paywall never mentions
+  lives, continues or chips. Locked tiles read "Locked, tap to unlock", not
+  "Coming soon". All strings are in the `common` namespace (`paywall.*`,
+  `restore.*`); the 12 non-English translations need native review.
+- **Outcome states.** loading, cancelled (silent), pending (Ask to Buy),
+  awaiting_server, `not_linkable` (contact support link, `SUPPORT_URL`), retryable
+  and non-retryable errors, already owned (goes straight to the game).
+
 ---
 
 ## 10. Entitlement refresh policy

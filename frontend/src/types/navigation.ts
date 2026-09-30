@@ -32,6 +32,12 @@ export type GameStatsParams = {
 
 export type RootStackParamList = {
   MainTabs: undefined;
+  /**
+   * The premium-game paywall (docs/IAP.md §9.3), a modal opened from a locked
+   * premium tile. Registered only in builds where a premium game is visible.
+   * `gameSlug` is untrusted: the screen narrows it with `isPremiumGameSlug`.
+   */
+  Paywall: { gameSlug: string };
 };
 
 export type HomeStackParamList = {

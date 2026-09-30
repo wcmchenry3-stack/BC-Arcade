@@ -51,12 +51,22 @@ export interface EntitlementContextValue {
   canPlay: (gameSlug: string) => boolean;
   isLoading: boolean;
   lastRefreshed: Date | null;
+  /** Re-fetch GET /entitlements and apply it. Network failures keep the current entitlements. */
+  refresh: () => Promise<void>;
+  /**
+   * Validate, cache and apply a token returned by the purchase/restore endpoints
+   * (docs/IAP.md §9.2) so `canPlay` updates at once. Rejects on an invalid or
+   * expired token without changing entitlements.
+   */
+  applyToken: (rawToken: string) => Promise<void>;
 }
 
 const EntitlementContext = createContext<EntitlementContextValue>({
   canPlay: (slug) => !PREMIUM_GAMES.has(slug),
   isLoading: true,
   lastRefreshed: null,
+  refresh: async () => {},
+  applyToken: async () => {},
 });
 
 const _entitlementsClient = createGameClient({ apiTag: "entitlements" });
@@ -149,6 +159,17 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
     }
   }, []);
 
+  const applyToken = useCallback(async (rawToken: string) => {
+    const result = await parseRawToken(rawToken);
+    if (!result.valid || result.expired) throw new Error("Invalid or expired entitlement token");
+    await AsyncStorage.setMany({
+      [TOKEN_STORAGE_KEY]: rawToken,
+      [CACHED_AT_STORAGE_KEY]: new Date().toISOString(),
+    });
+    setEntitledGames(new Set(result.payload.entitled_games));
+    setLastRefreshed(new Date());
+  }, []);
+
   useEffect(() => {
     async function init() {
       try {
@@ -211,7 +232,7 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
   );
 
   return (
-    <EntitlementContext.Provider value={{ canPlay, isLoading, lastRefreshed }}>
+    <EntitlementContext.Provider value={{ canPlay, isLoading, lastRefreshed, refresh, applyToken }}>
       {children}
     </EntitlementContext.Provider>
   );

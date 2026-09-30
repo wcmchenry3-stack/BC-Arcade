@@ -19,7 +19,9 @@
  * App.tsx):
  *  1. every route App.tsx registers statically is a free-game or shared route;
  *     premium routes come only from the visibility-filtered registry;
- *  2. no purchase / paywall / IAP dependency, screen, or route exists;
+ *  2. no purchase / IAP dependency exists, and the only paywall surface is the
+ *     Paywall modal (#841), registered solely behind the premium-visibility
+ *     gate, so it has no route in a store build;
  *  3. no deep-link surface: no React Navigation `linking` config and no
  *     Android VIEW intent-filter, so an external URL cannot open any screen;
  *  4. the production env file targets the production API and nothing else.
@@ -31,6 +33,9 @@ import * as path from "path";
 import { PREMIUM_GAMES } from "../entitlements/EntitlementContext";
 import { __forceStoreBuildForTests, isGameVisible } from "../entitlements/gameVisibility";
 import { PREMIUM_ROUTES, visiblePremiumRoutes } from "../entitlements/premiumRoutes";
+import { createFakePurchaseAdapter } from "../purchases/fakeAdapter";
+import { registerPurchaseAdapterFactory, selectPurchaseAdapter } from "../purchases/selectAdapter";
+import { unavailablePurchaseAdapter } from "../purchases/unavailableAdapter";
 
 // frontend/ is one level above src/
 const frontendRoot = path.resolve(__dirname, "../..");
@@ -130,9 +135,48 @@ describe("no purchase / paywall entry point ships in v1.0", () => {
       .map((file) => path.relative(frontendRoot, file));
     expect(offenders).toEqual([]);
 
+    // The paywall (#841) is the one permitted purchase screen; it is reachable
+    // only through the visibility-gated route asserted below.
     const screens = fs.readdirSync(path.join(frontendRoot, "src/screens"));
-    expect(screens.filter((f) => PURCHASE_WORDS.test(f))).toEqual([]);
-    expect(read("src/types/navigation.ts")).not.toMatch(PURCHASE_WORDS);
+    expect(screens.filter((f) => PURCHASE_WORDS.test(f))).toEqual(["PaywallScreen.tsx"]);
+    // ...and its route type is the only purchase word in the navigation types.
+    const navTypes = read("src/types/navigation.ts").replace(
+      /\/\*\*(?:(?!\*\/)[^])*\*\/\s*Paywall: \{ gameSlug: string \};/,
+      ""
+    );
+    expect(navTypes).not.toMatch(PURCHASE_WORDS);
+  });
+
+  it("registers the Paywall route only behind the premium-visibility gate, never in a stack of free games", () => {
+    const app = read("App.tsx");
+    const registrations = app.match(/name="Paywall"/g) ?? [];
+    expect(registrations).toHaveLength(1);
+    expect(app).toMatch(
+      /visiblePremiumRoutes\(\)\.length > 0 &&\s*\(\s*<Stack\.Screen\s+name="Paywall"/
+    );
+    expect(app).not.toMatch(/<HomeStack\.Screen\s+name="Paywall"/);
+  });
+
+  it("a store build has no visible premium route, so the Paywall is not registered", () => {
+    __forceStoreBuildForTests(true);
+    try {
+      expect(visiblePremiumRoutes().length > 0).toBe(false);
+    } finally {
+      __forceStoreBuildForTests(false);
+    }
+  });
+
+  it("the purchase adapter stays unavailable in a store build even if a real one is registered", () => {
+    __forceStoreBuildForTests(true);
+    registerPurchaseAdapterFactory(() => createFakePurchaseAdapter());
+    try {
+      expect(selectPurchaseAdapter({ applyToken: async () => {} })).toBe(
+        unavailablePurchaseAdapter
+      );
+    } finally {
+      registerPurchaseAdapterFactory(null);
+      __forceStoreBuildForTests(false);
+    }
   });
 
   it("Android declares no billing permission or library", () => {

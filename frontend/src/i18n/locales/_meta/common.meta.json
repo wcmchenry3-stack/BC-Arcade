@@ -460,19 +460,10 @@
   },
   "home.locked.cardLabel": {
     "component": "HomeScreen",
-    "description": "Accessibility label for a locked, coming-soon game card on the home screen.",
+    "description": "Accessibility label for a locked premium game card on the home screen; tapping it opens the purchase screen.",
     "tone": "functional",
-    "characterLimit": 42,
+    "characterLimit": 60,
     "placeholders": ["{{title}}"],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "home.locked.comingSoon": {
-    "component": "HomeScreen",
-    "description": "Alert message shown when tapping a locked, coming-soon game card.",
-    "tone": "neutral",
-    "characterLimit": 55,
-    "placeholders": [],
     "doNotTranslate": [],
     "notes": null
   },
@@ -664,5 +655,230 @@
     "placeholders": ["{{level}}"],
     "doNotTranslate": ["BC Arcade Premium"],
     "notes": "{{level}} is the option's own name, e.g. 'Hard'. Spoken by VoiceOver and TalkBack."
+  },
+  "paywall.header": {
+    "component": "PaywallScreen",
+    "description": "Header title of the paywall screen.",
+    "tone": "functional",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.oneTime": {
+    "component": "PaywallScreen",
+    "description": "Explains that the game is a single one-time purchase with no time limit.",
+    "tone": "reassuring",
+    "characterLimit": 70,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.unlimitedReplay": {
+    "component": "PaywallScreen",
+    "description": "Explains the game can be replayed without limit and needs no subscription.",
+    "tone": "reassuring",
+    "characterLimit": 50,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.buy": {
+    "component": "PaywallScreen",
+    "description": "Label of the primary purchase button. {{price}} is the store's localized price.",
+    "tone": "action",
+    "characterLimit": 32,
+    "placeholders": ["{{price}}"],
+    "doNotTranslate": [],
+    "notes": "Keep the placeholder exactly."
+  },
+  "paywall.buyLabel": {
+    "component": "PaywallScreen",
+    "description": "Screen-reader label of the purchase button.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": ["{{game}}", "{{price}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.loadingPrice": {
+    "component": "PaywallScreen",
+    "description": "Purchase button label while the store price is loading.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.unavailableButton": {
+    "component": "PaywallScreen",
+    "description": "Purchase button label when the game cannot be bought right now.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.loadError": {
+    "component": "PaywallScreen",
+    "description": "Shown when the store price could not be loaded.",
+    "tone": "neutral",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.retry": {
+    "component": "PaywallScreen",
+    "description": "Button that retries a failed purchase or price load.",
+    "tone": "action",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.restore": {
+    "component": "PaywallScreen, SettingsScreen",
+    "description": "Restore Purchases button (required by Apple guideline 3.1.1). Also the Settings row title.",
+    "tone": "action",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Use the platform's standard term for restoring purchases."
+  },
+  "paywall.owned": {
+    "component": "PaywallScreen",
+    "description": "Shown when the player already owns the game.",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.play": {
+    "component": "PaywallScreen",
+    "description": "Button that opens the game the player owns.",
+    "tone": "action",
+    "characterLimit": 40,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.pending": {
+    "component": "PaywallScreen",
+    "description": "Shown while a purchase awaits approval (Ask to Buy / pending payment).",
+    "tone": "neutral",
+    "characterLimit": 120,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.awaitingServer": {
+    "component": "PaywallScreen",
+    "description": "Shown when the store charged the player but the app could not confirm it yet (offline).",
+    "tone": "reassuring",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.notLinkable": {
+    "component": "PaywallScreen",
+    "description": "Shown when a valid purchase cannot be used on this install; the player must contact support.",
+    "tone": "neutral",
+    "characterLimit": 110,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.contactSupport": {
+    "component": "PaywallScreen",
+    "description": "Button that opens the support page.",
+    "tone": "action",
+    "characterLimit": 32,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.errorRetry": {
+    "component": "PaywallScreen",
+    "description": "Generic purchase error the player can retry.",
+    "tone": "neutral",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.errorFatal": {
+    "component": "PaywallScreen",
+    "description": "Purchase error that cannot be retried; points to support.",
+    "tone": "neutral",
+    "characterLimit": 120,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.storeUnavailable": {
+    "component": "PaywallScreen",
+    "description": "Shown when the app store cannot be reached or is unsupported on this device.",
+    "tone": "neutral",
+    "characterLimit": 70,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "paywall.productUnavailable": {
+    "component": "PaywallScreen",
+    "description": "Shown when the game is not available to buy right now.",
+    "tone": "neutral",
+    "characterLimit": 110,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "restore.restored": {
+    "component": "PaywallScreen, SettingsScreen",
+    "description": "Confirms that purchases were restored.",
+    "tone": "positive",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "restore.pending": {
+    "component": "PaywallScreen, SettingsScreen",
+    "description": "Restore found a purchase still awaiting approval.",
+    "tone": "neutral",
+    "characterLimit": 110,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "restore.nothing": {
+    "component": "PaywallScreen, SettingsScreen",
+    "description": "Restore found no purchases for this store account.",
+    "tone": "neutral",
+    "characterLimit": 90,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "restore.error": {
+    "component": "PaywallScreen, SettingsScreen",
+    "description": "Restore failed.",
+    "tone": "neutral",
+    "characterLimit": 80,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "settings.restorePurchases.description": {
+    "component": "SettingsScreen",
+    "description": "Description under the Restore Purchases row in Settings.",
+    "tone": "functional",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
   }
 }
