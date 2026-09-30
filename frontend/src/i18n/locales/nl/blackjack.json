@@ -59,7 +59,6 @@
   "betting.tapToAdd": "Tik chips om in te zetten",
   "chip.addLabel": "{{amount}} aan inzet toevoegen",
   "chip.disabledLabel": "{{amount}}-chip niet beschikbaar",
-  "chip.vipCredits": "VIP",
   "rules.title": "Tafelregels",
   "rules.toggleLabel": "Tafelregels wisselen",
   "rules.dealerSoft17": "Dealer zachte 17",

@@ -59,7 +59,6 @@
   "betting.tapToAdd": "チップをタップして賭ける",
   "chip.addLabel": "{{amount}} を賭けに追加",
   "chip.disabledLabel": "{{amount}} チップは使用不可",
-  "chip.vipCredits": "VIP",
   "rules.title": "テーブルルール",
   "rules.toggleLabel": "テーブルルールを切り替え",
   "rules.dealerSoft17": "ディーラーソフト17",

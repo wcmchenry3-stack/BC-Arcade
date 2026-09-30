@@ -27,6 +27,37 @@ Current product contract:
 
 This is the behavior #2788 verifies for the premium release.
 
+## Run rules at a glance
+
+| Stage       | Rule                                                                                                                                                                                                                                   |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Start       | Player picks a table (Beginner is always open). The run starts with that table's fixed starting chips (100 / 250 / 500). No chips carry over from any earlier run.                                                                     |
+| Betting     | Bets stay within the table's min/max and can never exceed the current stack. Double and split need enough uncommitted chips. There is no way to add chips mid-run.                                                                     |
+| Progression | Chips move only by hand settlement (3:2 natural, 1:1 win, push, loss). Reaching the goal opens the victory phase (Cash Out or Keep Playing).                                                                                           |
+| End         | Goal reached then Cash Out (win), chips reach zero (loss, or win if the goal was already reached), or New Game / quit before the goal (abandoned).                                                                                     |
+| Persisted   | Local engine state (for resume) and a local run record per run with hands played. The server records one game row per run with outcome, hands and starting/final chips. Chips are never a balance that survives a run.                 |
+| Scored      | Outcome (`win` / `loss` / `abandoned`) and hand counts only. There is no leaderboard and no chip currency.                                                                                                                             |
+| Replay      | After any end, **Play Again** / **New Game** returns to the table picker and a table pick starts a fresh run immediately. No purchase, paywall or entitlement re-check sits between runs beyond the normal access gating for the game. |
+
+## Automated verification (#2788)
+
+- `frontend/src/game/blackjack/__tests__/economy.test.ts`: no Blackjack source imports a purchase/IAP/paywall module or an entitlement check other than the per-level `premiumLevels` lock; no chip buy/refill/restore/redeem/continue identifiers; every table always opens with its configured stack; wagers beyond the stack are rejected; a zero-chip run has no engine path forward except a new run.
+- `frontend/src/screens/__tests__/BlackjackReplay.test.tsx`: the out-of-chips card offers only Play Again and Home (no buy/continue copy), Play Again goes straight to the table picker, and each table then starts a fresh full-stack run.
+- Existing coverage: run outcome recording (#2628) and Play Again after a bust-out in `BlackjackTableScreen.test.tsx`.
+
+## Manual device checklist (iOS and Android)
+
+Automated tests do not replace device evidence. On each of an iOS and an Android build, with premium access granted, record pass/fail and screenshots:
+
+1. Start Beginner: chips read 100, goal 250; no purchase or "get chips" control appears anywhere (table picker, betting, table, menu, Stats).
+2. Lose every chip: the result card shows "Out of Chips" with only Play Again and Home.
+3. Tap Play Again: the table picker appears at once with no purchase sheet, paywall or loading gate; pick Beginner and confirm chips are back to 100.
+4. Repeat with airplane mode on: replay still starts (offline).
+5. Reach the goal, choose Keep Playing, then bust: the result is still a win and Play Again starts a fresh run.
+6. New Game mid-run: confirm dialog, then a fresh run at the picked table.
+7. Force-quit mid-hand and relaunch: the run resumes with the same chips; after finishing it, a new run still starts free.
+8. Read the store listing, paywall and Premium screens: copy sells access to the game only, never chips, extra chances, lives or continues.
+
 ## Objective and card values
 
 The player competes against the dealer. Build a hand as close to 21 as possible without going over, and beat the dealer's resolved total.
@@ -40,6 +71,7 @@ A natural Blackjack is a two-card 21.
 ## Dealer rules
 
 Default table rules use:
+
 - 6 decks;
 - dealer stands on soft 17 (`hit_soft_17 = false`);
 - configured deck penetration of 0.75;
@@ -50,15 +82,19 @@ The engine supports a rules object, but player-facing difficulty variants are se
 ## Player actions
 
 ### Hit
+
 Take another card.
 
 ### Stand
+
 End action for the current hand and allow dealer/settlement logic to continue.
 
 ### Double Down
+
 Available on an eligible two-card hand when enough uncommitted chips remain. The wager doubles and exactly one additional card is taken before the hand stands.
 
 ### Split
+
 A two-card hand can split when the ranks match **or both cards are ten-valued**. The player must have enough uncommitted chips to fund the additional hand.
 
 The engine caps a run at **3 splits**.
@@ -66,6 +102,7 @@ The engine caps a run at **3 splits**.
 Split-ace restrictions are enforced by the engine; double-down is not available on a split-ace hand.
 
 ### Surrender
+
 Not implemented. Late surrender remains separate backlog (#175) and must not be documented as current behavior.
 
 ## Hand settlement
@@ -85,11 +122,11 @@ For split hands, each hand resolves independently against the dealer using its o
 
 BC Arcade currently has three arcade tables:
 
-| Table | Starting chips | Run goal | Min bet | Max bet | Milestones |
-| --- | ---: | ---: | ---: | ---: | --- |
-| Beginner | 100 | 250 | 5 | 25 | 175, 220 |
-| Intermediate | 250 | 750 | 10 | 50 | 500, 625 |
-| High Roller | 500 | 1500 | 25 | 200 | 1000, 1250 |
+| Table        | Starting chips | Run goal | Min bet | Max bet | Milestones |
+| ------------ | -------------: | -------: | ------: | ------: | ---------- |
+| Beginner     |            100 |      250 |       5 |      25 | 175, 220   |
+| Intermediate |            250 |      750 |      10 |      50 | 500, 625   |
+| High Roller  |            500 |     1500 |      25 |     200 | 1000, 1250 |
 
 The Beginner table is always unlocked.
 
@@ -104,6 +141,7 @@ A **run** begins when the player selects a table and receives that table's start
 The run continues hand after hand until one of these things happens:
 
 ### Goal reached
+
 When chips reach or exceed the table's run goal, the engine enters the victory phase.
 
 The player can then:
@@ -114,9 +152,11 @@ The player can then:
 Once the run goal has been reached, that run is considered a **win** for server/reporting purposes even if the player chooses Keep Playing and later loses all remaining chips.
 
 ### Chips reach zero before the goal
+
 The run ends as a **loss**.
 
 ### New Game / leave before the goal
+
 A started run ends as **abandoned**.
 
 A session in which no hand was actually played records no Blackjack result.
@@ -126,6 +166,7 @@ A session in which no hand was actually played records no Blackjack result.
 Run records are stored locally and include table, opening/final chips, whether the table goal was reached, hands played, biggest win, chip low, outcome and timestamps.
 
 A "comeback" means the run:
+
 1. fell to at most 25% of its starting chips **before** reaching the goal; and
 2. later completed the table.
 
@@ -144,6 +185,7 @@ There is also an existing local unlock model with three named cosmetic rewards:
 **These are not currently complete usable cosmetics.** #1911 tracks the missing visual assets, application logic and management UI.
 
 Until #1911 is resolved:
+
 - documentation must not imply that the player can equip/use these styles;
 - an earned unlock record/notification should be treated as unfinished reward plumbing, not a finished customization feature.
 
@@ -162,18 +204,21 @@ Backend module: `backend/blackjack/module.py`.
 A server game row represents one Blackjack run/session.
 
 Creation metadata can include:
+
 - best run chips from local history;
 - total runs;
 - completed runs;
 - current table.
 
 Result data includes:
+
 - hands won;
 - hands played;
 - starting chips;
 - final chips.
 
 Outcomes:
+
 - `win`: run goal was reached;
 - `loss`: chips reached zero before the goal;
 - `abandoned`: player left a started run before the goal.
