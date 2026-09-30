@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const fs = require("fs");
 const { getSentryExpoConfig } = require("@sentry/react-native/metro");
 
 const config = getSentryExpoConfig(__dirname);
@@ -21,9 +22,21 @@ const publicEnv = Object.keys(process.env)
   .sort()
   .map((key) => `${key}=${process.env[key]}`)
   .join("|");
+// babel-plugins/inlineSentryConventions.js copies values out of
+// @sentry/conventions into the Sentry files that import them. Metro's cache
+// key tracks neither that package nor the plugin, so fold both in: a new
+// conventions release or a plugin edit re-transforms those files (#2869).
+const inlinedSentryInputs = crypto.createHash("sha1");
+for (const file of [
+  require.resolve("@sentry/conventions/attributes"),
+  require.resolve("./babel-plugins/inlineSentryConventions"),
+]) {
+  inlinedSentryInputs.update(fs.readFileSync(file));
+}
 config.cacheVersion = [
   config.cacheVersion ?? "",
   crypto.createHash("sha1").update(publicEnv).digest("hex"),
+  inlinedSentryInputs.digest("hex"),
 ].join(":");
 
 module.exports = config;
