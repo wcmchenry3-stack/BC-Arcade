@@ -143,6 +143,8 @@ export interface Enemy {
   readonly rolledAsteroidIds: readonly number[];
   /** #2487: ms until this ship may fire flak at an asteroid again. */
   readonly flakCooldown: number;
+  /** #2844: ms left in which this ship counts as evading a rock — its player-directed aim is degraded. */
+  readonly evadeMs: number;
 }
 
 /** #2487: per-tier asteroid-response counters (carried across waves, reset on a new game). */

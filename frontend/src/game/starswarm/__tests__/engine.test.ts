@@ -4335,8 +4335,12 @@ describe("Enemy asteroid response (#2487)", () => {
   });
 
   it("a formation ship fires flak at a rock approaching within range — outside the bullet cap", () => {
-    let s = { ...quiet(), enemyFireDisabled: false };
-    const c = s.enemies.find((e) => e.isAlive && e.tier === "Carrier")!; // flak chance 1.0
+    const base = { ...quiet(), enemyFireDisabled: false };
+    // #2844: the Carrier's flak is its diverted twin volley (see asteroids.test.ts); the per-ship
+    // flak roll belongs to the fighters. Guardians roll 0.9, so a few seeds always find a shot.
+    const c = base.enemies.find(
+      (e) => e.isAlive && e.tier === "Guardian" && e.phase === "Formation"
+    )!;
     // cap already full with ordinary shots parked far away
     const filler: Bullet[] = [0, 1, 2].map((i) => ({
       id: 85_000 + i,
@@ -4350,20 +4354,29 @@ describe("Enemy asteroid response (#2487)", () => {
       damage: 1,
     }));
     expect(filler.length).toBe(bulletCap(2));
-    s = { ...s, enemyBullets: filler, asteroids: [rock("large", c.x, c.y - 90, { vy: 0.2 })] };
-    s = tick(s, 16, ASIDE);
-    const flak = s.enemyBullets.filter((b) => b.flak);
-    const fromCarrier = flak.find((b) => Math.abs(b.x - c.x) < 6);
-    expect(fromCarrier).toBeDefined();
-    expect(fromCarrier!.vy).toBeLessThan(0); // aimed up at the rock
+    let s = base;
+    let fromShip: Bullet | undefined;
+    for (let seed = 1; seed <= 40 && !fromShip; seed++) {
+      seedRng(seed);
+      s = tick(
+        {
+          ...base,
+          enemyBullets: filler,
+          asteroids: [rock("large", c.x, c.y - 90, { vy: 0.2 })],
+        },
+        16,
+        ASIDE
+      );
+      fromShip = s.enemyBullets.filter((b) => b.flak).find((b) => Math.abs(b.x - c.x) < 6);
+    }
+    expect(fromShip).toBeDefined();
+    expect(fromShip!.vy).toBeLessThan(0); // aimed up at the rock
     expect(s.enemies.find((e) => e.id === c.id)!.flakCooldown).toBeGreaterThan(0);
-    expect(s.tierStats.Carrier.flak).toBe(1);
-    // cooldown: no second Carrier shot for FLAK_COOLDOWN
-    const shotsAfter = (st: StarSwarmState) =>
-      st.enemyBullets.filter((b) => b.flak && Math.abs(b.x - c.x) < 6).length;
+    expect(s.tierStats.Guardian.flak).toBeGreaterThanOrEqual(1);
+    const flakCount = s.tierStats.Guardian.flak;
+    // cooldown: no second shot from this ship for FLAK_COOLDOWN
     for (let t = 16; t < FLAK_COOLDOWN - 100; t += 16) s = tick(s, 16, ASIDE);
-    expect(s.tierStats.Carrier.flak).toBe(1);
-    expect(shotsAfter(s)).toBeLessThanOrEqual(1);
+    expect(s.tierStats.Guardian.flak).toBe(flakCount);
   });
 
   it("no flak at a rock moving away, out of range, or when enemy fire is disabled", () => {

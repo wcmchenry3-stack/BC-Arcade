@@ -80,6 +80,7 @@ const ENEMY: KeySpec<Enemy> = {
   dodge: "required",
   rolledAsteroidIds: "required",
   flakCooldown: "required",
+  evadeMs: "required",
 };
 
 const BULLET: KeySpec<Bullet> = {
