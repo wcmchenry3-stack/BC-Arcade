@@ -356,7 +356,10 @@ from a side edge (picked by a hash of its id) and flies through three phases (`B
    every 2.2 s. For the last `BUDDY_RUN_MS` (700 ms) before each burst it lines up under its target
    and climbs 24 px, then fires one 5–7-shot piercing spread (±20°, 0.5 px/ms) at it. Its target is
    the exposed Carrier; otherwise it is the centre of the other ships on screen. The armored Carrier
-   is never Buddy's target, because the field would stop the burst.
+   is never Buddy's target, because the field would stop the burst. A burst is only spent when
+   the whole fan fits under the player-bullet cap (`MAX_PLAYER_BULLETS`, which Buddy's shots
+   share). Until then Buddy holds its run, lined up. Its station time keeps running, so a blocked
+   burst never stretches the sortie.
 3. **Leaving**: 0.8 s after its last burst, after `BUDDY_STATION_MS` (9 s) on station, or as soon
    as the wave's last enemy dies (extraction), it peels off the nearer side edge. Bursts it has not
    fired are lost.
@@ -417,7 +420,9 @@ tests hold it:
 | Guardian |           40% |               0.46 |              0.06 |                  75% |
 | Carrier  | 55% (exposed) |               0.52 |              0.02 |                 100% |
 
-A ship that is evading a rock still has its aim degraded (#2844), whichever target it chose.
+A ship that is evading a rock has its player-directed aim degraded (#2844). A shot it diverts to
+Buddy keeps its `BUDDY_TARGETING` aim instead; the degrade's rng draws are still taken, so the
+seeded stream is the same whichever target the shot went to.
 `runStats.buddyShotsDrawn` counts the diverted shots. A counterfactual test holds the invariant:
 with the same seed, the enemy's player-directed plus Buddy-directed fire never exceeds its
 player-directed fire without Buddy.

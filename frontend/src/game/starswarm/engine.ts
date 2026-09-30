@@ -3215,7 +3215,13 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
         const vel = aimVelocity(b.x, enemy.y, state.player.x, state.player.y, GUARDIAN_BULLET_VY);
         b = { ...b, vx: vel.vx, vy: vel.vy, target: undefined };
       }
-      if (evading && !b.flak) b = { ...b, ...degradeAim(b.vx, b.vy, enemy.tier, rng) };
+      if (evading && !b.flak) {
+        // #2844 evasion degrades player-directed aim only. A shot at Buddy keeps its
+        // BUDDY_TARGETING aim, but the rng draws are still taken so the seeded stream is the same
+        // whichever target the shot went to (the same-seed counterfactual relies on it).
+        const degraded = degradeAim(b.vx, b.vy, enemy.tier, rng);
+        if (b.target !== "buddy") b = { ...b, ...degraded };
+      }
       if (b.flak) {
         // #2844: flak is outside the cap — its price was paid in the ship's fire timer. Only the
         // Carrier's diverted volley reaches here (a volley that replaced a player-directed one).
@@ -3651,17 +3657,26 @@ function planBuddyGoal(
 }
 
 /** #2845: one attack-run burst — a piercing (not armor-piercing) fan at `target`. */
-function buddyBurst(b: BuddyShip, target: Vec2 | null, room: number): Bullet[] {
-  const count =
+/** #2845: how many shots Buddy's next burst fans out (a stateless hash — rng-free). */
+export function buddyBurstCount(b: Pick<BuddyShip, "id" | "burstsLeft">): number {
+  return (
     BUDDY_BULLET_COUNT_MIN +
     Math.floor(
       hashFrac(b.id * 9.13 + b.burstsLeft * 2.71) *
         (BUDDY_BULLET_COUNT_MAX - BUDDY_BULLET_COUNT_MIN + 1)
-    );
+    )
+  );
+}
+
+/**
+ * The whole fan, always — the caller only fires it once the player-bullet cap (#2334: Buddy's
+ * shots are player-owned) has room for every shot, so a burst is never spent half-empty.
+ */
+function buddyBurst(b: BuddyShip, target: Vec2 | null): Bullet[] {
+  const count = buddyBurstCount(b);
   const base = target ? Math.atan2(target.y - b.y, target.x - b.x) : -Math.PI / 2;
   const out: Bullet[] = [];
-  // #2334: Buddy's shots are player-owned — they respect the player's hard bullet cap
-  for (let i = 0; i < Math.min(count, room); i++) {
+  for (let i = 0; i < count; i++) {
     const angle = count === 1 ? base : base + ((i / (count - 1)) * 2 - 1) * BUDDY_SPREAD_HALF;
     out.push({
       id: nextId(),
@@ -3755,14 +3770,16 @@ function tickBuddyShips(state: StarSwarmState, dtMs: number): StarSwarmState {
       stationMs -= dtMs;
       burstTimer -= dtMs;
       if (burstTimer <= 0 && burstsLeft > 0) {
-        if (weaponsFree(state)) {
-          const room = MAX_PLAYER_BULLETS - newPlayerBullets.length;
-          newPlayerBullets.push(...buddyBurst(b, buddyAimTarget(state), Math.max(0, room)));
+        const room = MAX_PLAYER_BULLETS - newPlayerBullets.length;
+        if (weaponsFree(state) && room >= buddyBurstCount(b)) {
+          newPlayerBullets.push(...buddyBurst(b, buddyAimTarget(state)));
           burstsLeft--;
           burstTimer = BUDDY_BURST_INTERVAL;
           if (burstsLeft === 0) stationMs = Math.min(stationMs, 800); // a beat, then away
         } else {
-          burstTimer = 0; // hold the run until combat allows fire
+          // hold the run (lined up) until combat allows fire and the player-bullet cap has room
+          // for the whole fan; station time still runs, so a blocked burst can't stretch the sortie
+          burstTimer = 0;
         }
       }
       b = { ...b, burstTimer, burstsLeft, stationMs };

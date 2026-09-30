@@ -20,6 +20,8 @@ import {
   buddyJustLost,
   shotHarmsAllies,
   chooseCarrierTarget,
+  buddyBurstCount,
+  MAX_PLAYER_BULLETS,
   asteroidThreatens,
   buddyThreatCircle,
   CANVAS_W,
@@ -279,6 +281,32 @@ describe("Buddy durability (#2845)", () => {
     );
   });
 
+  it("a burst blocked by the player-bullet cap is held, then fires the whole fan once there is room", () => {
+    const b = buddyOf({ x: 200, y: 420, burstsLeft: 2, burstTimer: 0 });
+    const filler = Array.from({ length: MAX_PLAYER_BULLETS }, (_, i) =>
+      playerShot({ x: 10 + i * 8, y: 620, vy: 0 })
+    );
+    let s: StarSwarmState = { ...settled(), buddyShips: [b], playerBullets: filler };
+    s = advance(s, 500);
+    expect(s.buddyShips[0]!.burstsLeft).toBe(2); // not spent on an empty (or partial) fan
+    expect(s.playerBullets.filter((x) => x.source === "buddy")).toEqual([]);
+    const expected = buddyBurstCount(s.buddyShips[0]!);
+    s = tick({ ...s, playerBullets: [] }, 16, ASIDE);
+    expect(s.buddyShips[0]!.burstsLeft).toBe(1);
+    expect(s.playerBullets.filter((x) => x.source === "buddy")).toHaveLength(expected);
+  });
+
+  it("a blocked burst never stretches the sortie: station time still runs out", () => {
+    const b = buddyOf({ x: 200, y: 420, burstsLeft: 2, burstTimer: 0, stationMs: 200 });
+    const filler = Array.from({ length: MAX_PLAYER_BULLETS }, (_, i) =>
+      playerShot({ x: 10 + i * 8, y: 620, vy: 0 })
+    );
+    let s: StarSwarmState = { ...settled(), buddyShips: [b], playerBullets: filler };
+    s = advance(s, 400);
+    expect(s.buddyShips[0]!.phase).toBe("Leaving");
+    expect(s.buddyShips[0]!.burstsLeft).toBe(2);
+  });
+
   it("the HP bar shows one pip per hit point, shared by both renderers", () => {
     const pips = (hp: number) =>
       buddyOps(buddyOf({ id: 3, hp }), 34).filter((o) => /^buddy-3-hp-\d+$/.test(o.key)).length;
@@ -330,6 +358,36 @@ describe("enemy targeting of Buddy (#2845)", () => {
       aimAtBuddy(200, 100, still, "Grunt", gKey).vx,
       9
     );
+  });
+
+  it("an evading ship's shot at Buddy keeps its BUDDY_TARGETING aim — evasion degrades player-directed fire only", () => {
+    const buddy = buddyOf({ x: 180, y: 430, hp: 1e6 });
+    let s = settled(3);
+    s = withEnemies(s, (e) => e.tier === "Elite", { shootTimer: 0, evadeMs: 1e9 });
+    s = { ...s, buddyShips: [buddy] };
+    const seen = new Set<number>();
+    let atBuddy = 0;
+    let atPlayer = 0;
+    for (let t = 0; t < 20_000 && atBuddy < 3; t += 16) {
+      s = tick(s, 16, ASIDE);
+      for (const b of s.enemyBullets) {
+        if (seen.has(b.id) || b.flak) continue;
+        seen.add(b.id);
+        if (b.target !== "buddy") {
+          atPlayer++;
+          continue;
+        }
+        atBuddy++;
+        // where it was released (it has flown one 16 ms step since)
+        const x0 = b.x - b.vx * 16;
+        const y0 = b.y - b.vy * 16;
+        const want = aimAtBuddy(x0, y0, s.buddyShips[0]!, "Elite", b.id);
+        expect(b.vx).toBeCloseTo(want.vx, 9);
+        expect(b.vy).toBeCloseTo(want.vy, 9);
+      }
+    }
+    expect(atBuddy).toBeGreaterThan(0);
+    expect(atPlayer).toBeGreaterThan(0);
   });
 
   it("only a Buddy on screen, in range and below the shooter can be targeted", () => {
