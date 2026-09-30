@@ -193,15 +193,15 @@ Purchase history**, name Apple/Google as payment/entitlement verifiers, add serv
 re-check retention and deletion of purchase records (#835 for authenticated deletion).
 
 **Delete My Data and purchase records (owner decision, #2786; [`IAP.md` §8.5](IAP.md#85-delete-my-data-and-purchase-records-owner-decision-2786)).**
-The server side is on `dev` (dormant until the Apple variables are set); v1.0 still creates no purchase rows. Same rule for
-Apple and Google (#2787):
+The server side is on `dev` for both stores (dormant until the Apple or Google variables are set); v1.0 still creates no purchase rows. Same rule for
+Apple and Google (#2787 verified it for Google):
 
 | Table                   | Holds                                                                                                                                                                  | Keyed to                                       | `DELETE /me`                                                                 |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------- |
 | `purchase_links`        | which install is linked to which store purchase, source, times                                                                                                         | install ID                                     | **Deleted**                                                                  |
 | `game_entitlements`     | derived unlocks (above)                                                                                                                                                | install ID                                     | **Deleted**                                                                  |
-| `purchases`             | store transaction record: platform, store IDs (Apple `originalTransactionId` / latest `transactionId`; Google token / order ID), product, dates, environment, state, revocation reason, `account_token` | the store purchase; `account_token` is a one-way derivative of the install ID (Apple `uuid5`, Google SHA-256) | **Kept** (refunds, chargebacks, fraud, legal claims). Retention **[OWNER TO CONFIRM]** |
-| `purchase_events`       | audit and webhook-dedupe rows: event kind, store notification ID, `session_hash` = SHA-256 of the install ID, small detail JSON                                         | the purchase                                   | **Kept**, as above                                                           |
+| `purchases`             | store transaction record: platform, store IDs (Apple `originalTransactionId` / latest `transactionId`; Google `purchaseToken` / `orderId`), product, dates, environment, state, revocation reason, `acknowledged_at` (Google), `account_token` | the store purchase; `account_token` is a one-way derivative of the install ID (Apple `uuid5`, Google SHA-256) | **Kept** (refunds, chargebacks, fraud, legal claims). Retention **[OWNER TO CONFIRM]** |
+| `purchase_events`       | audit and webhook-dedupe rows: event kind, store notification ID (Apple `notificationUUID`, Pub/Sub `messageId`, or a SHA-256 key per Google voided purchase), `session_hash` = SHA-256 of the install ID, small detail JSON                                         | the purchase                                   | **Kept**, as above                                                           |
 
 No retained column holds the install ID itself; `account_token` and `session_hash` are pseudonymous (recomputable only from
 the old install ID, which the app discards on Delete My Data). Legal basis proposed as GDPR Art. 17(3)(b)/(e) plus fraud

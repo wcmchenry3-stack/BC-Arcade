@@ -15,7 +15,14 @@ Notifications V2 with no session: it is authenticated by Apple's JWS
 signature alone, rate limited per IP, and answers 200 for anything verified
 (even if irrelevant) so Apple stops retrying, ``4xx`` for a payload that fails
 verification and ``503`` while Apple verification is not configured.
-The Google RTDN webhook belongs to #2787.
+
+``POST /purchases/google/notifications`` (#2787) takes Google Play Real-time
+Developer Notifications from a Pub/Sub push subscription, with no session:
+the Google-signed OIDC bearer token is verified before the body is parsed
+(401/403 otherwise), every purchase it names is re-read from the Play
+Developer API before anything is written, and anything authenticated but
+irrelevant is 200 so Pub/Sub stops retrying. ``503`` while Google is not
+configured or the Play API is down (Pub/Sub retries).
 """
 
 from __future__ import annotations
@@ -38,7 +45,7 @@ from entitlements.schemas import EntitlementsResponse
 from limiter import limiter, session_key
 from session import get_session_id
 
-from . import apple, apple_notifications, service
+from . import apple, apple_notifications, google, google_notifications, service
 from .google import get_google_verifier
 from .schemas import (
     AppleNotificationRequest,
@@ -64,6 +71,9 @@ PURCHASE_STORE_KEY_RATE_LIMIT = "10/hour;30/day"
 # Apple sends from its own address ranges; a 429 loses nothing (Apple retries,
 # and the notification-history replay backfills).
 APPLE_NOTIFICATION_IP_RATE_LIMIT = "300/minute"
+# Pub/Sub pushes from Google's ranges; a 429 loses nothing (Pub/Sub retries,
+# and the daily voided-purchases poll backfills revocations).
+GOOGLE_NOTIFICATION_IP_RATE_LIMIT = "300/minute"
 
 
 class _InvalidRequestRoute(APIRoute):
@@ -243,4 +253,39 @@ async def post_apple_notification(request: Request, body: AppleNotificationReque
             )
         )
         raise _http(exc) from None
+    return {"status": outcome}
+
+
+@router.post("/google/notifications")
+@limiter.limit(GOOGLE_NOTIFICATION_IP_RATE_LIMIT)
+async def post_google_notification(request: Request) -> dict:
+    """Google Play RTDN via Pub/Sub push (docs/IAP.md §7.4, §7.6).
+
+    The body is read as bytes and parsed only after the push's OIDC token has
+    been verified, so an unauthenticated caller never reaches the parser.
+    """
+    runtime = google.configured_runtime()
+    if runtime is None:
+        raise HTTPException(status_code=503, detail="store_unavailable")
+    try:
+        await runtime.push_auth.authenticate(request.headers.get("authorization"))
+        message_id, note = google_notifications.parse_push(await request.body())
+        outcome = await google_notifications.handle_developer_notification(
+            runtime.verifier, note, message_id, get_session_factory()
+        )
+    except PurchaseError as exc:
+        # Why it was refused — never the payload or the token.
+        _log.warning(
+            json.dumps(
+                {
+                    "event": "google_notification_rejected",
+                    "status": exc.status_code,
+                    "detail": exc.detail,
+                }
+            )
+        )
+        headers = {"WWW-Authenticate": "Bearer"} if exc.status_code == 401 else None
+        raise HTTPException(
+            status_code=exc.status_code, detail=exc.detail, headers=headers
+        ) from None
     return {"status": outcome}

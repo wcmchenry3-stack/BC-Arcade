@@ -56,7 +56,10 @@ _audit_log = logging.getLogger("audit")
 # pseudonymous ID — the Privacy Policy says crash reports carry no identifier.
 # The store evidence of POST /purchases/* (#840) is a bearer credential for a
 # paid purchase: purchase_token (Google), signed_transaction / signedPayload
-# (Apple JWS) and the store_key derived from either.
+# (Apple JWS) and the store_key derived from either. Google Play (#2787) adds
+# the Play API / RTDN spelling purchaseToken, the obfuscated account id (a
+# session derivative), the order id, and the service-account key; the RTDN
+# bearer token is "authorization", already in the SDK's default denylist.
 SENTRY_SCRUBBED_KEYS = [
     "x-session-id",
     "x-admin-token",
@@ -65,6 +68,12 @@ SENTRY_SCRUBBED_KEYS = [
     "signed_transaction",
     "signedPayload",
     "store_key",
+    "purchaseToken",
+    "obfuscatedExternalAccountId",
+    "account_token",
+    "orderId",
+    "service_account_json",
+    "service_account_info",
 ]
 
 # SQLAlchemy appends the statement and its bound values to every DBAPIError
@@ -158,18 +167,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _warn_if_dev_override_active()
     app.state.retention_task = _start_daily_word_retention()
     app.state.apple_replay_task = _start_apple_notification_replay()
+    app.state.google_jobs_task = _start_google_play_jobs()
     try:
         await _db_health_check()
         yield
     finally:
         try:
-            await _stop_apple_notification_replay(app.state.apple_replay_task)
+            await _stop_purchase_task(app.state.google_jobs_task, "google_jobs_stop_timeout")
         finally:
-            app.state.apple_replay_task = None
+            app.state.google_jobs_task = None
             try:
-                await _stop_daily_word_retention(app.state.retention_task)
+                await _stop_apple_notification_replay(app.state.apple_replay_task)
             finally:
-                app.state.retention_task = None
+                app.state.apple_replay_task = None
+                try:
+                    await _stop_daily_word_retention(app.state.retention_task)
+                finally:
+                    app.state.retention_task = None
 
 
 app = FastAPI(
@@ -463,12 +477,37 @@ def _start_apple_notification_replay() -> asyncio.Task | None:
 
 async def _stop_apple_notification_replay(task: asyncio.Task | None) -> None:
     """Cancel the replay task, bounded like the retention task (#2667)."""
+    await _stop_purchase_task(task, "apple_replay_stop_timeout")
+
+
+async def _stop_purchase_task(task: asyncio.Task | None, timeout_event: str) -> None:
+    """Cancel a background purchase job, waiting at most RETENTION_STOP_TIMEOUT_SECONDS."""
     if task is None:
         return
     task.cancel()
     done, _ = await asyncio.wait({task}, timeout=RETENTION_STOP_TIMEOUT_SECONDS)
     if not done:
-        _audit_log.warning(json.dumps({"event": "apple_replay_stop_timeout"}))
+        _audit_log.warning(json.dumps({"event": timeout_event}))
+
+
+# Google Play jobs (#2787, docs/IAP.md §7.6): the voided-purchases poll (last
+# 48 h) and the unacknowledged-purchase sweep, at startup and then daily. Runs
+# only when Google verification is configured; idempotent across instances
+# (per-void dedupe keys; acknowledgement is safe to repeat). Manual run:
+# `python scripts/google_play_jobs.py`.
+def _start_google_play_jobs() -> asyncio.Task | None:
+    if not is_configured():
+        return None
+    from purchases import google
+
+    if google.configured_verifier() is None:
+        return None
+    from db.base import get_session_factory
+    from purchases.google_notifications import run_google_jobs_loop
+
+    return asyncio.create_task(
+        run_google_jobs_loop(google.configured_verifier, get_session_factory)
+    )
 
 
 DB_PING_TIMEOUT_SECONDS = 5.0
