@@ -31,6 +31,10 @@
   "a11y.gunsDown": "Armas reduzidas ao nível {{level}}.",
   "a11y.hullUp": "Blindagem do casco {{level}}.",
   "a11y.hullHit": "A blindagem do casco absorveu o impacto.",
+  "hud.cueGuns": "ARMAS +1",
+  "hud.cueGunsMax": "ARMAS MÁX",
+  "hud.cueHull": "CASCO +1",
+  "hud.cueHullMax": "CASCO MÁX",
   "result.reachedWave": "Alcançou a onda {{wave}}",
   "result.wave": "Onda"
 }

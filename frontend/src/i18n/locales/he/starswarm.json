@@ -31,6 +31,10 @@
   "a11y.gunsDown": "התותחים ירדו לרמה {{level}}.",
   "a11y.hullUp": "שריון ברמה {{level}}.",
   "a11y.hullHit": "השריון ספג את הפגיעה.",
+  "hud.cueGuns": "תותחים +1",
+  "hud.cueGunsMax": "תותחים מקס׳",
+  "hud.cueHull": "שריון +1",
+  "hud.cueHullMax": "שריון מקס׳",
   "result.reachedWave": "הגעת לגל {{wave}}",
   "result.wave": "גל"
 }
