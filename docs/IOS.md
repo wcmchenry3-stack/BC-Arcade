@@ -41,32 +41,59 @@ The `/Volumes/workspace/repository/` path in Xcode Cloud logs is Apple's runner 
 
 The API URL a build is compiled against decides whether it is a pre-launch build or a store build. `isPreLaunchApiBuild()` (`frontend/src/game/_shared/envFlags.ts`) turns on the hidden premium games, the Hearts debug panel, the Star Swarm dev panel and Sentry's `development` environment for any bundle compiled against the dev API. The dev backend also grants every premium game for free (`ENTITLEMENT_DEV_OVERRIDE`). A build meant for the App Store must never use the dev URL.
 
-`frontend/ios/ci_scripts/ci_post_clone.sh` deletes `.env.production` and writes `frontend/.env` on every Xcode Cloud build. It picks the URL from the workflow's **`BC_API_TARGET`** environment variable (App Store Connect → Xcode Cloud → workflow → Environment → Environment Variables):
+`frontend/ios/ci_scripts/ci_post_clone.sh` deletes `.env.production` and writes `frontend/.env` on every Xcode Cloud build. Before installing dependencies, it sources `select_api_target.sh`, which checks the source branch and picks the URL from the workflow's **`BC_API_TARGET`** environment variable (App Store Connect → Xcode Cloud → workflow → Environment → Environment Variables):
 
 | Workflow                           | `BC_API_TARGET`             | API URL baked into the bundle          | Build type                          |
 | ---------------------------------- | --------------------------- | -------------------------------------- | ----------------------------------- |
 | Internal / TestFlight (pre-launch) | `prelaunch`                 | `https://dev-games-api.buffingchi.com` | Pre-launch: all 12 games, dev tools |
-| App Store release                  | unset (or `production`)     | `https://games-api.buffingchi.com`     | Store: 6 games, no dev tools        |
+| App Store release **from `main`** | unset (or `production`) | `https://games-api.buffingchi.com` | Store: 7 free games, no dev tools |
+| Non-main or unknown source | unset, empty, or `production` | none: the build fails | select `prelaunch` for internal testing |
 | Any workflow                       | anything else (e.g. a typo) | none: the build fails                  | none                                |
 
-Only the internal/TestFlight workflow sets the variable. A workflow without it, including any new or copied workflow, builds against production. The build can never silently become an App Store build with the dev tools. The opposite mistake is possible: forgetting the variable on the TestFlight workflow gives a 6-game TestFlight build. The post-clone log line below shows which kind every build is.
+Only `main` can target production. A copied or new workflow building `dev` without `BC_API_TARGET=prelaunch` fails before installing dependencies, rather than sending newer app requests to an older production API (#2773). The guard uses the PR source branch first, then `CI_BRANCH`, then a `refs/heads/…` `CI_GIT_REF`; a tag or unknown source cannot silently select production. Release archives must build from `main`. These are [Apple-provided build variables](https://developer.apple.com/documentation/xcode/environment-variable-reference).
 
 **Workflow setup** (App Store Connect → Xcode Cloud → Manage Workflows):
 
 1. **TestFlight / internal workflow.** Set Environment → `BC_API_TARGET` = `prelaunch`. In the Archive action, set **Deployment Preparation → TestFlight (Internal Testing Only)**. Its builds then cannot be submitted for App Store review, so a pre-launch archive cannot ship even when it is the newest build in the list.
-2. **App Store release workflow.** Leave `BC_API_TARGET` unset, or set it to `production`. In the Archive action, set **Deployment Preparation → TestFlight and App Store**. Its builds can still go to internal TestFlight testers before submission, and that is how the store-configuration check (6 tiles, 3 tabs) runs on the exact binary that ships. Create this workflow, for example by duplicating the TestFlight one and removing the variable, before the first production-API build.
+2. **App Store release workflow.** Set its source branch to `main`. Leave `BC_API_TARGET` unset, or set it to `production`. In the Archive action, set **Deployment Preparation → TestFlight and App Store**. Its builds can still go to internal TestFlight testers before submission, and that is how the store-configuration check (7 free-game tiles, 3 tabs) runs on the exact binary that ships. Create this workflow, for example by duplicating the TestFlight one and removing the variable, before the first production-API build.
 3. **Never set `EXPO_PUBLIC_API_URL` on a workflow.** Expo would let it override `.env`, so the script fails the build if it is set to anything but the URL it chose. The script also fails if a `.env.local` or `.env.production.local` sets the URL.
 
-**Check each build.** The post-clone step logs `=== workflow '<name>': BC_API_TARGET='…' -> <url> — STORE build ===` or `… — PRE-LAUNCH build (never submit for App Store review) ===`. After the first run of each workflow, confirm that its log line matches the table above.
+**Check each build.** The post-clone step logs `=== workflow '<name>', branch '<branch>': BC_API_TARGET='…' -> <url> — STORE build ===` or `… — PRE-LAUNCH build (never submit for App Store review) ===`. After the first run of each workflow, confirm that its log line matches the table above.
 
-Each workflow uses the same URL until launch and after it, so nobody needs to edit the script on launch day. `frontend/src/entitlements/__tests__/gameVisibility.test.ts` reads the script. It fails if:
+Each workflow uses the same URL until launch and after it, so nobody needs to edit the script on launch day. `frontend/src/entitlements/__tests__/gameVisibility.test.ts` executes the target selector for main, dev, PR, missing-source, and override cases, and checks the post-clone wiring. It fails if:
 
 - the script contains any URL besides the two APIs and the Sentry DSN;
 - the `BC_API_TARGET` case gains an arm, or anything but `prelaunch` selects the dev API;
-- an unset variable stops meaning production;
+- a non-main or unknown-source build reaches production, or an unset target on `main` stops meaning production;
 - the override guard is removed.
 
 Android makes the same split differently. See [`ANDROID-CI.md`](ANDROID-CI.md), "API URL: store vs. pre-launch builds".
+
+### Recovering build 91's API mismatch (#2773)
+
+Build 91 used current `dev` app code but contacted `games-api.buffingchi.com`, whose
+September 24 release predates generic leaderboards, Solitaire `draw_mode` metadata,
+and Sort becoming free. The resulting symptoms were leaderboard 404s, game-creation
+422s (BC_GAMES-53), and Sort returning `not_entitled`. Startup missing-game 404s
+(BC_GAMES-52) are consistent with a persisted queue switching servers, but that
+queue's original server has not been verified.
+
+1. In Xcode Cloud, set the internal workflow's `BC_API_TARGET` to `prelaunch`,
+   its source to `dev`, and Archive Deployment Preparation to **TestFlight
+   (Internal Testing Only)**. Rebuild; changing this setting cannot change an
+   already installed bundle.
+2. Confirm the post-clone log selects `https://dev-games-api.buffingchi.com` and
+   `PRE-LAUNCH build`, and that Render's dev API is running the matching commit.
+3. Install the replacement build on the same device without clearing app data.
+   Open Sort, play a level, open the leaderboard, and finish a fresh game under
+   a saved display name. Confirm the new game ranks and subsequent Sentry
+   events use the development environment.
+4. Recheck BC_GAMES-52/53 for the **replacement build**. Existing historical
+   events do not prove the fix failed. Keep them unresolved until this check.
+
+SyncWorker already forgets/dead-letters terminally rejected creations. A rebuild
+cannot promise recovery of scores rejected by build 91; do not erase local data
+or replay dead letters into a different environment as a recovery shortcut.
 
 ### Store-build guard (test hooks)
 
