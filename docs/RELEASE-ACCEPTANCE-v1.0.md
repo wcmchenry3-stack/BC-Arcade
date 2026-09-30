@@ -90,6 +90,7 @@ Run every row on the primary device of each platform; repeat the seven-game row 
 | XP / daily | XP, level, daily challenge, streak update | [ ] | [ ] | #2480, #2392 |
 | Deletion | Settings -> delete data works, app returns to clean state | [ ] | [ ] | #1923 |
 | Legal | Privacy Policy and Terms links open the hosted pages | [ ] | [ ] | #1922, #828 |
+| | Data deletion page `https://buffingchi.com/support#delete-data` opens in a browser without the app and matches Settings -> Delete my data; same URL entered as Play Console Data safety "Delete account URL" | n/a | [ ] | #2780, docs/LEGAL-PUBLISHING.md |
 | Lifecycle | Background mid-game and resume: state intact, timers correct | [ ] | [ ] | |
 | | Kill and relaunch mid-game: resume or clean start, no crash | [ ] | [ ] | |
 | | Rotate (where supported), split view / multitasking on iPad | [ ] | [ ] | |
