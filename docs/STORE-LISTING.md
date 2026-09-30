@@ -144,8 +144,9 @@ login, no ads) and only claiming what the v1.0 store build does. Name is always 
 - **Primary category:** Games → **Puzzle** (Apple secondary: **Card**). Play has one category —
   **Puzzle** (Card is the alternative; Casino must not be used).
 - **Privacy Policy URL:** `https://buffingchi.com/privacy` (must be live, #828)
-- **Support / marketing URL:** `https://buffingchi.com` (needs a contact route — an email address or
-  form on the site; the in-app feedback button does not count for Apple)
+- **Support URL:** `https://buffingchi.com/support` (backed by `docs/support.html`: support email
+  and FAQ, the contact route Apple requires — the in-app feedback button does not count). Hosting and
+  approval status: [`LEGAL-PUBLISHING.md`](LEGAL-PUBLISHING.md) (#2780)
 - **Languages to list:** English first. The UI is translated into 13 locales (ar, de, en, es, fr-CA,
   he, hi, ja, ko, nl, pt, ru, zh); Daily Word itself plays in English and Hindi. Listing text in
   English only for v1.0 is fine — localize the listing post-launch.

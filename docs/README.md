@@ -101,8 +101,10 @@ These files can contain current release facts, but they are not the evergreen ar
 | [STORE-LISTING.md](STORE-LISTING.md) | **Release/store-specific.** Store copy, ratings and submission preparation. |
 | [STORE-PRIVACY-ANSWERS.md](STORE-PRIVACY-ANSWERS.md) | **Release/store-specific.** App Store / Play privacy declarations. |
 | [LEGAL-REVIEW-NOTES.md](LEGAL-REVIEW-NOTES.md) | **Release/legal working notes.** Not the public policy itself. |
+| [LEGAL-PUBLISHING.md](LEGAL-PUBLISHING.md) | **Release/legal.** Final legal/support URLs, the file behind each, hosting status, owner-approval checklist and approved versions (#2780). |
 | [privacy-policy.html](privacy-policy.html) | **Public/legal artifact.** Do not move without checking the publishing path. |
 | [terms-of-service.html](terms-of-service.html) | **Public/legal artifact.** Do not move without checking the publishing path. |
+| [support.html](support.html) | **Public/legal artifact.** Backs `https://buffingchi.com/support`. Do not move without checking the publishing path. |
 
 ## Research and design records
 
