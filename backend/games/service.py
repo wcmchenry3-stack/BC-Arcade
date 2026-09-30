@@ -37,7 +37,7 @@ from games.leaderboard import check_completion_limits, merge_result_metadata
 from games.legacy_outcomes import might_be_legacy_win, win_update
 from games.protocol import GameModule
 from games.registry import get_module
-from players.service import remember_legacy_name
+from players.service import remember_legacy_opt_in
 from vocab import GameOutcome
 from vocab import GameType as VocabGameType
 
@@ -136,9 +136,9 @@ async def create_game(
     if valid_started_at is not None:
         game.started_at = valid_started_at
     session.add(game)
-    # A name in the creation metadata (builds before #2624) is also the
-    # player's display name, for the generic boards.
-    await remember_legacy_name(session, session_id, (metadata or {}).get("player_name"))
+    # A name in the creation metadata (builds before #2624) was the player
+    # joining the boards: keep that choice, under a generated name (#2778).
+    await remember_legacy_opt_in(session, session_id, (metadata or {}).get("player_name"))
     await session.commit()
     await session.refresh(game)
     return game

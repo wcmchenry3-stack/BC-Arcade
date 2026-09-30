@@ -1,23 +1,22 @@
-"""Request/response schemas for ``/players/me`` (#2624)."""
+"""Request/response schemas for ``/players/me`` (#2624, #2778)."""
 
 from __future__ import annotations
 
 import unicodedata
-from typing import Annotated
 
-from pydantic import AfterValidator, BaseModel
+from pydantic import BaseModel
 
 from db.models import PLAYER_DISPLAY_NAME_MAX_LENGTH
 
 
 def clean_display_name(raw: object, *, truncate: bool = False) -> str | None:
-    """``raw`` as a display name, or ``None`` when it can't be one.
+    """``raw`` as a would-be name, or ``None`` when it can't be one.
 
-    Trimmed with ``str.strip()`` (the board trims the same way), 1-32
-    characters, and no control characters (Unicode ``Cc``): those render as
-    nothing on a board, and Postgres rejects NUL outright. ``truncate`` cuts
-    a longer name to 32 characters instead of refusing it, for names that
-    come from legacy routes (#2624 review).
+    Since #2778 no client text is ever stored as a public name: this only
+    decides whether an older build *sent* a name (``POST /games`` metadata),
+    which under the old model was the player's choice to join the boards.
+    Trimmed, 1-32 characters (``truncate`` cuts a longer one instead of
+    refusing it), and no control characters (Unicode ``Cc``).
     """
     if not isinstance(raw, str):
         return None
@@ -31,29 +30,8 @@ def clean_display_name(raw: object, *, truncate: bool = False) -> str | None:
     return name
 
 
-def _display_name(value: str) -> str:
-    name = clean_display_name(value)
-    if name is None:
-        raise ValueError(
-            f"must be 1-{PLAYER_DISPLAY_NAME_MAX_LENGTH} characters with no control characters"
-        )
-    return name
-
-
-DisplayName = Annotated[str, AfterValidator(_display_name)]
-"""A display name: 1-32 characters once surrounding whitespace is dropped,
-with no control characters (``clean_display_name``). The app applies the same
-rule (``normalizeDisplayName``), so a name it accepts is never refused here.
-"""
-
-
-class SetDisplayNameRequest(BaseModel):
-    """``PUT /players/me``."""
-
-    display_name: DisplayName
-
-
 class PlayerResponse(BaseModel):
-    """The caller's display name, or ``null`` when none is set."""
+    """The caller's generated public name, or ``null`` when they are not on
+    the leaderboards."""
 
     display_name: str | None

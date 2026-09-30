@@ -380,9 +380,10 @@ def test_a_null_creation_tier_takes_the_tier_from_the_result() -> None:
     metadata = client.get(f"/games/{gid}", headers=_headers(_SID)).json()["metadata"]
     assert metadata["difficulty_tier"] == "Captain"
 
-    r = client.put("/players/me", headers=_headers(_SID), json={"display_name": "Ace"})
+    r = client.put("/players/me", headers=_headers(_SID))
     assert r.status_code == 200, r.text
-    assert _names(_board("?difficulty_tier=Captain")) == [("Ace", 5000)]
+    ace = r.json()["display_name"]
+    assert _names(_board("?difficulty_tier=Captain")) == [(ace, 5000)]
     assert _board("?difficulty_tier=LieutenantJG")["entries"] == []
 
 

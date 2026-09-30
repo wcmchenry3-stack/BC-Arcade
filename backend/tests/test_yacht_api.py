@@ -46,9 +46,11 @@ def _headers(sid: str) -> dict[str, str]:
     return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
-def _name(client: TestClient, sid: str, name: str) -> None:
-    r = client.put("/players/me", headers=_headers(sid), json={"display_name": name})
+def _name(client: TestClient, sid: str) -> str:
+    """Join the boards; returns the generated name."""
+    r = client.put("/players/me", headers=_headers(sid))
     assert r.status_code == 200, r.text
+    return r.json()["display_name"]
 
 
 def _create(client: TestClient, sid: str, metadata: dict[str, Any]):
@@ -174,37 +176,37 @@ async def test_duration_is_recorded(client: TestClient) -> None:
 
 async def test_solo_and_vs_games_share_one_board(client: TestClient) -> None:
     solo, vs_win, vs_push = _sid(), _sid(), _sid()
-    _name(client, solo, "Solo")
-    _name(client, vs_win, "VsWin")
-    _name(client, vs_push, "VsPush")
+    solo_name = _name(client, solo)
+    vs_win_name = _name(client, vs_win)
+    vs_push_name = _name(client, vs_push)
     _play(client, solo, 180, metadata=SOLO)
     _play(client, vs_win, 250, metadata=_vs("hard"), outcome="win")
     _play(client, vs_push, 120, metadata=_vs("easy"), outcome="push")
 
-    assert _board(client, solo) == [("VsWin", 250), ("Solo", 180), ("VsPush", 120)]
+    assert _board(client, solo) == [(vs_win_name, 250), (solo_name, 180), (vs_push_name, 120)]
 
 
 async def test_a_game_lost_to_the_computer_still_ranks(client: TestClient) -> None:
     sid = _sid()
-    _name(client, sid, "Loser")
+    loser = _name(client, sid)
     _play(client, sid, 210, metadata=_vs("medium"), outcome="loss")
-    assert _board(client, sid) == [("Loser", 210)]
+    assert _board(client, sid) == [(loser, 210)]
 
 
 async def test_one_entry_per_player_their_best_game(client: TestClient) -> None:
     other = _sid()
-    _name(client, other, "Other")
+    other_name = _name(client, other)
     _play(client, other, 200, metadata=SOLO)
 
     sid = _sid()
-    _name(client, sid, "Me")
+    me = _name(client, sid)
     ids = [
         _play(client, sid, 150, metadata=SOLO),
         _play(client, sid, 240, metadata=_vs("hard"), outcome="loss"),
         _play(client, sid, 90, metadata=SOLO),
     ]
 
-    assert _board(client, sid) == [("Me", 240), ("Other", 200)]
+    assert _board(client, sid) == [(me, 240), (other_name, 200)]
 
     ranks = [client.get(f"/games/{g}/rank", headers=_headers(sid)).json() for g in ids]
     assert [r["rank"] for r in ranks] == [1, 1, 1]
@@ -222,7 +224,7 @@ async def test_unnamed_player_does_not_rank(client: TestClient) -> None:
 
 async def test_abandoned_game_does_not_rank(client: TestClient) -> None:
     sid = _sid()
-    _name(client, sid, "Quitter")
+    quitter = _name(client, sid)
     _play(client, sid, 300, metadata=SOLO, outcome="abandoned")
     _play(client, sid, 100, metadata=SOLO)
-    assert _board(client, sid) == [("Quitter", 100)]
+    assert _board(client, sid) == [(quitter, 100)]
