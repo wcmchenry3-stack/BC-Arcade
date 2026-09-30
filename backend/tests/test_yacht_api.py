@@ -226,3 +226,180 @@ async def test_abandoned_game_does_not_rank(client: TestClient) -> None:
     _play(client, sid, 300, metadata=SOLO, outcome="abandoned")
     _play(client, sid, 100, metadata=SOLO)
     assert _board(client, sid) == [("Quitter", 100)]
+
+
+# ---------------------------------------------------------------------------
+# Final scorecard in the result (#2839)
+# ---------------------------------------------------------------------------
+
+_CARD = {
+    "categories": {
+        "ones": 3,
+        "twos": 6,
+        "threes": 9,
+        "fours": 12,
+        "fives": 15,
+        "sixes": 18,
+        "three_of_a_kind": 20,
+        "four_of_a_kind": 0,
+        "full_house": 25,
+        "small_straight": 30,
+        "large_straight": 0,
+        "yacht": 50,
+        "chance": 22,
+    },
+    "upper_bonus": 35,
+    "yacht_bonus_count": 1,
+    "yacht_bonus_total": 100,
+}
+# Categories 63 + 147 = 210, the upper bonus 35, and one extra Yacht's 100.
+_CARD_TOTAL = 210 + 35 + 100
+
+
+def _complete(
+    client: TestClient,
+    sid: str,
+    game_id: str,
+    result: dict[str, Any],
+    *,
+    score: int,
+    outcome: str = "completed",
+):
+    return client.patch(
+        f"/games/{game_id}/complete",
+        headers=_headers(sid),
+        json={"final_score": score, "outcome": outcome, "duration_ms": 90_000, "result": result},
+    )
+
+
+async def test_scorecard_is_saved_and_returned_to_the_owner(client: TestClient) -> None:
+    sid = _sid()
+    game_id = _create(client, sid, SOLO).json()["id"]
+    result = {
+        "final_score": _CARD_TOTAL,
+        "upper_bonus": 35,
+        "yacht_bonus_total": 100,
+        "outcome": "completed",
+        "scorecard": _CARD,
+    }
+    r = _complete(client, sid, game_id, result, score=_CARD_TOTAL)
+    assert r.status_code == 200, r.text
+
+    r = client.get(f"/games/{game_id}", headers=_headers(sid))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["final_score"] == _CARD_TOTAL
+    assert body["metadata"]["mode"] == "solo"
+    assert body["metadata"]["scorecard"] == _CARD
+    assert body["metadata"]["scorecard_reconciled"] is True
+    assert body["metadata"]["yacht_bonus_total"] == 100
+    # The saved card is the owner's alone.
+    r = client.get(f"/games/{game_id}", headers=_headers(_sid()))
+    assert r.status_code == 403
+
+
+async def test_vs_result_saves_both_cards_and_the_board_uses_the_player_total(
+    client: TestClient,
+) -> None:
+    sid = _sid()
+    _name(client, sid, "Vs")
+    game_id = _create(client, sid, _vs("hard")).json()["id"]
+    opp = {"categories": {"ones": 2, "chance": 20}}
+    result = {
+        "final_score": _CARD_TOTAL,
+        "upper_bonus": 35,
+        "yacht_bonus_total": 100,
+        "outcome": "win",
+        "vs_result": "win",
+        "opponent_score": 22,
+        "scorecard": _CARD,
+        "opponent_scorecard": opp,
+    }
+    assert (
+        _complete(client, sid, game_id, result, score=_CARD_TOTAL, outcome="win").status_code == 200
+    )
+    meta = (await _row(game_id)).game_metadata
+    assert meta["scorecard"] == _CARD
+    assert meta["opponent_scorecard"] == opp
+    assert meta["opponent_score"] == 22
+    assert meta["scorecard_reconciled"] is True
+    assert _board(client, sid) == [("Vs", _CARD_TOTAL)]
+
+
+async def test_unreconciled_card_is_saved_and_flagged_not_rejected(client: TestClient) -> None:
+    sid = _sid()
+    game_id = _create(client, sid, SOLO).json()["id"]
+    result = {"final_score": 999, "outcome": "completed", "scorecard": _CARD}
+    assert _complete(client, sid, game_id, result, score=999).status_code == 200
+    assert (await _row(game_id)).game_metadata["scorecard_reconciled"] is False
+
+
+async def test_abandoned_partial_card_is_saved(client: TestClient) -> None:
+    sid = _sid()
+    game_id = _create(client, sid, SOLO).json()["id"]
+    result = {
+        "final_score": 6,
+        "outcome": "abandoned",
+        "scorecard": {"categories": {"twos": 6}, "upper_bonus": 0},
+    }
+    assert _complete(client, sid, game_id, result, score=6, outcome="abandoned").status_code == 200
+    meta = (await _row(game_id)).game_metadata
+    assert meta["scorecard"]["categories"] == {"twos": 6}
+    assert meta["scorecard_reconciled"] is True
+
+
+async def test_card_is_reconciled_against_the_stored_final_score(client: TestClient) -> None:
+    sid = _sid()
+    game_id = _create(client, sid, SOLO).json()["id"]
+    # The card and the result's copy agree with each other, not with the row.
+    result = {"final_score": _CARD_TOTAL, "outcome": "completed", "scorecard": _CARD}
+    assert _complete(client, sid, game_id, result, score=999).status_code == 200
+    row = await _row(game_id)
+    assert row.final_score == 999
+    assert row.game_metadata["scorecard"] == _CARD
+    assert row.game_metadata["scorecard_reconciled"] is False
+
+
+async def test_completion_retry_is_idempotent(client: TestClient) -> None:
+    """An offline retry re-sends the same PATCH; the card is stored once, unchanged."""
+    sid = _sid()
+    game_id = _create(client, sid, SOLO).json()["id"]
+    result = {"final_score": _CARD_TOTAL, "outcome": "completed", "scorecard": _CARD}
+    for _ in range(2):
+        r = _complete(client, sid, game_id, result, score=_CARD_TOTAL)
+        assert r.status_code == 200, r.text
+    assert (await _row(game_id)).game_metadata["scorecard"] == _CARD
+
+
+async def test_pre_2839_result_still_completes(client: TestClient) -> None:
+    sid = _sid()
+    game_id = _play(client, sid, 180, metadata=_vs("easy"))
+    meta = (await _row(game_id)).game_metadata
+    assert "scorecard" not in meta
+    assert "scorecard_reconciled" not in meta
+    assert meta["yacht_bonus_total"] == 0
+
+
+@pytest.mark.parametrize(
+    "scorecard",
+    [{"categories": {"bogus": 1}}, {"categories": {"ones": 99}}, {"categories": {"chance": -3}}],
+)
+async def test_out_of_shape_card_still_completes_with_the_card_dropped(
+    client: TestClient, scorecard: dict
+) -> None:
+    """A 400 would dead-letter the game; the score and row are kept."""
+    sid = _sid()
+    game_id = _create(client, sid, SOLO).json()["id"]
+    result = {"final_score": 10, "outcome": "completed", "scorecard": scorecard}
+    assert _complete(client, sid, game_id, result, score=10).status_code == 200
+    row = await _row(game_id)
+    assert row.final_score == 10
+    assert "scorecard" not in row.game_metadata
+    assert row.game_metadata["scorecard_reconciled"] is False
+
+
+def test_result_over_the_size_cap_is_400(client: TestClient) -> None:
+    sid = _sid()
+    game_id = _create(client, sid, SOLO).json()["id"]
+    result = {"final_score": 10, "outcome": "completed", "scorecard": _CARD, "pad": "x" * 9000}
+    assert _complete(client, sid, game_id, result, score=10).status_code == 400

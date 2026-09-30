@@ -595,6 +595,13 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
         upper_bonus: expect.any(Number),
         yacht_bonus_total: expect.any(Number),
         outcome: "completed",
+        // #2839: the final category scorecard rides in the same result.
+        scorecard: expect.objectContaining({
+          categories: expect.any(Object),
+          upper_bonus: expect.any(Number),
+          yacht_bonus_count: expect.any(Number),
+          yacht_bonus_total: expect.any(Number),
+        }),
       })
     );
     for (const key of RESERVED_KEYS) {
@@ -613,6 +620,14 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     if (abandonCall === undefined) throw new Error("Expected completeGame call");
     const [, summary] = abandonCall;
     expect(summary.outcome).toBe("abandoned");
+    // #2839: the unmount abandon carries the (empty so far) card, and no score.
+    expect(summary.result).toEqual(
+      expect.objectContaining({
+        outcome: "abandoned",
+        scorecard: expect.objectContaining({ categories: {} }),
+      })
+    );
+    expect(summary.finalScore).toBeUndefined();
   });
 
   it("does not double-fire game_ended: completeGame on unmount is skipped after natural end", async () => {
