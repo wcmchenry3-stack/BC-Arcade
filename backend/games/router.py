@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import os
 import uuid
 from dataclasses import asdict
@@ -106,7 +107,9 @@ async def patch_game_type(
 ) -> GameTypeOut:
     # TODO: replace with admin role check once #971 ships.
     admin_token = os.environ.get("ADMIN_API_TOKEN", "")
-    if not admin_token or x_admin_token != admin_token:
+    if not admin_token or not hmac.compare_digest(
+        x_admin_token.encode("utf-8"), admin_token.encode("utf-8")
+    ):
         raise HTTPException(status_code=403, detail="Forbidden.")
     factory = get_session_factory()
     async with factory() as db:

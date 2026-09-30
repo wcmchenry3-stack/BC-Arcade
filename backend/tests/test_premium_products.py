@@ -18,7 +18,7 @@ from sqlalchemy import select
 
 from db.base import get_session_factory
 from db.models import GameType
-from entitlements.service import _ALL_PREMIUM_SLUGS
+from entitlements.service import ALL_PREMIUM_SLUGS
 
 _CATALOG_FILE = (
     Path(__file__).parents[2] / "frontend" / "src" / "entitlements" / "premiumProducts.json"
@@ -60,4 +60,4 @@ async def test_catalog_matches_game_types_is_premium() -> None:
 
 
 def test_catalog_matches_backend_premium_slugs() -> None:
-    assert {p["gameSlug"] for p in _catalog()["products"]} == set(_ALL_PREMIUM_SLUGS)
+    assert {p["gameSlug"] for p in _catalog()["products"]} == set(ALL_PREMIUM_SLUGS)
