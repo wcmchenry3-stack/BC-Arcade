@@ -14,7 +14,7 @@ from __future__ import annotations
 from games.board import SCORE_METRIC, BoardDefinition
 from games.protocol import default_stats_shape
 from vocab import GameType
-from yacht.models import YachtMetadata
+from yacht.models import YachtMetadata, YachtResult
 
 
 class YachtModule:
@@ -22,7 +22,7 @@ class YachtModule:
 
     game_type = GameType.YACHT
     metadata_model = YachtMetadata
-    result_model = None
+    result_model = YachtResult
     has_winner = True
     # Solo and vs-computer games share one board (#2519 decision 2); the
     # metadata records ``mode`` and ``difficulty`` without partitioning.
