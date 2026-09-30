@@ -1,4 +1,9 @@
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+import logging
+
+import sentry_sdk
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validator
+
+logger = logging.getLogger(__name__)
 
 
 class HeartsMetadata(BaseModel):
@@ -31,30 +36,66 @@ def _valid_int(v: object) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
 
 
-def _breakdown_is_valid(data: dict) -> bool:
-    """True when ``hand_scores`` / ``final_scores`` / ``human_seat`` are well formed
-    and every seat's hand deltas sum to its final total (and, when the block
-    carries ``final_score``, that equals ``max(0, 100 - human total)``)."""
+def _hand_row_is_valid(row: object) -> bool:
+    """One hand's applied deltas: four ints in 0..26 that sum to 26, or the moon
+    pattern (0 for the shooter, 26 for each opponent, sum 78). The engine's
+    scoring has no other variants: 13 hearts + the queen of spades are 26 points."""
+    if not isinstance(row, list) or len(row) != SEATS:
+        return False
+    if not all(_valid_int(p) and 0 <= p <= MAX_HAND_POINTS for p in row):
+        return False
+    return sum(row) == 26 or sorted(row) == [0, 26, 26, 26]
+
+
+def _breakdown_problem(data: dict, body_score: object = None) -> str | None:
+    """Why ``hand_scores`` / ``final_scores`` / ``human_seat`` can't be kept, or
+    None when they are well formed and reconcile: every seat's hand deltas sum
+    to its final total and, when the block carries ``final_score``, it is an int
+    equal to ``max(0, 100 - human total)``."""
     hands = data.get("hand_scores")
     finals = data.get("final_scores")
     seat = data.get("human_seat")
     if not isinstance(hands, list) or not isinstance(finals, list):
-        return False
+        return "missing or non-list breakdown"
     if not 1 <= len(hands) <= MAX_HANDS or len(finals) != SEATS:
-        return False
+        return "wrong hand count or seat count"
     if not _valid_int(seat) or not 0 <= seat < SEATS:
-        return False
-    for row in hands:
-        if not isinstance(row, list) or len(row) != SEATS:
-            return False
-        if not all(_valid_int(p) and 0 <= p <= MAX_HAND_POINTS for p in row):
-            return False
+        return "bad human_seat"
+    if not all(_hand_row_is_valid(row) for row in hands):
+        return "bad hand row"
     if not all(_valid_int(f) and f >= 0 for f in finals):
-        return False
+        return "bad final_scores"
     if any(sum(row[i] for row in hands) != finals[i] for i in range(SEATS)):
-        return False
-    score = data.get("final_score")
-    return not (_valid_int(score) and score != max(0, 100 - finals[seat]))
+        return "hand sums do not match final_scores"
+    expected = max(0, 100 - finals[seat])
+    if "final_score" in data:
+        score = data["final_score"]
+        if not _valid_int(score):
+            return "final_score is not an int"
+        if body_score is not None and score != body_score:
+            return "result final_score differs from the completion's"
+        if score != expected:
+            return "final_score does not match human total"
+    if body_score is not None and body_score != expected:
+        return "completion final_score does not match human total"
+    return None
+
+
+def _report_dropped_breakdown(reason: str) -> None:
+    """Log and send to Sentry a breakdown dropped from a completion (#2838).
+
+    The completion still succeeds; this makes the lost detail visible. Reason
+    only: no session id or score values (same privacy rule as
+    ``games.service._report_rejected_result``).
+    """
+    logger.warning("hearts result: breakdown dropped (%s)", reason)
+    with sentry_sdk.new_scope() as scope:
+        scope.set_tag("game_type", "hearts")
+        scope.set_context("result_breakdown", {"reason": reason})
+        scope.fingerprint = ["hearts-result-breakdown-dropped", reason]
+        sentry_sdk.capture_message(
+            f"PATCH /games/{{id}}/complete dropped hearts breakdown: {reason}", level="warning"
+        )
 
 
 _BREAKDOWN_KEYS = ("hand_scores", "final_scores", "human_seat")
@@ -91,13 +132,18 @@ class HeartsResult(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _drop_bad_breakdown(cls, data: object) -> object:
+    def _drop_bad_breakdown(cls, data: object, info: ValidationInfo) -> object:
         if not isinstance(data, dict):
             return data
         if not any(k in data for k in _BREAKDOWN_KEYS):
             return data
         cleaned = dict(data)
-        if not _breakdown_is_valid(cleaned):
+        # The completion body's final_score (what becomes games.final_score) when
+        # the service passes it; None when validated directly.
+        body_score = (info.context or {}).get("final_score")
+        problem = _breakdown_problem(cleaned, body_score)
+        if problem is not None:
+            _report_dropped_breakdown(problem)
             for k in _BREAKDOWN_KEYS:
                 cleaned.pop(k, None)
         return cleaned

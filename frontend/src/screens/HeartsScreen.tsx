@@ -473,7 +473,9 @@ export default function HeartsScreen() {
     const durationMs = clockMs(clockRef.current);
     const gameId = syncComplete(
       { outcome: recordedOutcome(outcome), finalScore, durationMs, result },
-      result
+      // The analytics event gets the score only; the per-hand history stays in
+      // the completion result, not duplicated into game_events (#2838).
+      { final_score: result.final_score, vs_result: result.vs_result }
     );
     if (!gameId) return;
     // Kept beside the saved game-over state, so a reopened card asks again.
