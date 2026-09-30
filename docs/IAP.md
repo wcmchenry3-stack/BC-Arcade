@@ -1,9 +1,12 @@
 # In-App Purchases — Premium Access Contract
 
-**Status:** contract for owner review (#2785). Nothing in this document has shipped
-yet: purchase code, the `purchases` table and the paywall are implemented by
-#840 (backend), #841 (paywall), #2786 (Apple) and #2787 (Google), which build to
-the interfaces defined here. Where this document and an older issue disagree,
+**Status:** contract for owner review (#2785). The backend core has shipped
+(#840): the `purchases` / `purchase_links` / `purchase_events` schema,
+`POST /purchases/{apple,google}`, link caps, derived `game_entitlements` and
+the store-verifier interface (§8.4). Real store verification, webhooks and
+crons (#2786 Apple, #2787 Google) and the paywall (#841) have not shipped;
+until they do, the purchase routes answer `503 store_unavailable`. Those
+stories build to the interfaces defined here. Where this document and an older issue disagree,
 this document wins; where it and shipped code disagree, fix one of them in the
 same PR.
 
@@ -147,7 +150,9 @@ currently used.**
   - Apple: `appAccountToken = uuid5(APP_ACCOUNT_NS, X-Session-ID)`. StoreKit
     requires a UUID, and a name-based v5 UUID is a UUID. `APP_ACCOUNT_NS` is a
     fixed namespace UUID shared by client and server (a constant, not a
-    secret).
+    secret): **`9be30341-bb1d-44c0-a581-03038f538fe9`**
+    (`backend/purchases/apple.py`). Never change it; every earlier purchase's
+    ownership check depends on it.
   - Google: `obfuscatedAccountId = hex(SHA-256(X-Session-ID))`, 64 characters,
     within Play's limit.
 
@@ -453,6 +458,7 @@ purchases
   account_token       text            -- appAccountToken | obfuscatedExternalAccountId
   purchased_at        timestamptz
   verified_at         timestamptz not null
+  state_changed_at    timestamptz not null  -- store time of the latest applied transition (§8.4)
   acknowledged_at     timestamptz     -- Google only
   revoked_at          timestamptz
   revocation_reason   text
@@ -471,7 +477,7 @@ purchase_links               -- which sessions a purchase is linked to (the owne
   index (session_id), index (purchase_id, created_at)
 
 game_entitlements            -- existing table, extended; derived for purchased games
-  + purchase_id       uuid null references purchases(id) on delete cascade
+  + purchase_id       uuid null references purchases(id) on delete set null  -- recompute decides (§8.4)
   + last_verified_at  timestamptz null
   + source            text not null default 'legacy'   -- 'purchase' | 'restore' | 'sync' | 'legacy'
   index (purchase_id)
@@ -622,6 +628,181 @@ POST /purchases/google/notifications   Pub/Sub push envelope, OIDC bearer
 
 Mock the store clients at the `apple.py` / `google.py` boundary. Use a real
 signed JWS fixture made with a test CA for the verifier.
+
+### 8.4 Implementation notes (#840)
+
+**What #840 shipped** (`backend/purchases/`, migration
+`0031_add_purchases`):
+
+| Piece                                   | Where                                                           |
+| --------------------------------------- | --------------------------------------------------------------- |
+| Schema (§8.1), reversible               | `alembic/versions/0031_add_purchases.py`, `db/models.py`        |
+| Upsert, link caps, recompute, revoke    | `purchases/service.py`                                          |
+| `POST /purchases/apple`, `/google`      | `purchases/router.py`, `purchases/schemas.py`                   |
+| Account tokens, Apple store-key parse   | `purchases/apple.py`, `purchases/google.py`                     |
+| Verifier interface and defaults         | `purchases/verifiers.py`                                        |
+| Admin `PATCH is_premium` guard (§13)    | `games/service.py` `patch_game_type`                            |
+| Tests                                   | `tests/test_purchases.py`, `tests/test_purchases_migration.py`, `tests/test_entitlement_lookup_perf.py` |
+
+**Verifier interface.** The service never calls a store. The routes get a
+verifier through a FastAPI dependency (`apple.get_apple_verifier`,
+`google.get_google_verifier`) and pass the service its normalized answer:
+
+```python
+@dataclass(frozen=True)
+class VerifiedPurchase:
+    platform: Literal["apple", "google"]
+    product_id: str
+    store_key: str                 # Apple originalTransactionId | Google purchaseToken
+    transaction_id: str | None     # Apple transactionId | Google orderId
+    environment: Literal["production", "sandbox", "test"]
+    ownership_type: Literal["purchased", "family_shared"]
+    state: Literal["pending", "owned", "revoked", "cancelled"]
+    purchased_at: datetime | None
+    account_token: str | None      # appAccountToken | obfuscatedExternalAccountId
+    revoked_at: datetime | None = None
+    revocation_reason: str | None = None
+    acknowledged: bool = False     # Google acknowledgementState == 1
+    event_at: datetime | None = None  # store time of this state (see "Event ordering")
+
+class AppleVerifier(Protocol):
+    async def verify(self, evidence: AppleEvidence) -> VerifiedPurchase: ...
+
+class GoogleVerifier(Protocol):
+    async def verify(self, evidence: GoogleEvidence) -> VerifiedPurchase: ...
+    async def acknowledge(self, evidence: GoogleEvidence) -> None: ...
+```
+
+A verifier raises `PurchaseError(status, detail)` with a §8.2 code instead of
+returning a partial answer. The shipped defaults (`NotConfiguredAppleVerifier`,
+`NotConfiguredGoogleVerifier`) raise `503 store_unavailable`, so nothing is
+granted until #2786 / #2787 replace the dependency bodies with real verifiers.
+Tests override the dependencies with fakes.
+
+**Hooks left for #2786 / #2787.**
+
+- `purchases.service.apply_store_state(db, platform=, store_key=, state=,
+  reason=, dedupe_key=, event_at=)` sets `owned` / `revoked` / `cancelled`
+  from a verified notification, recomputes every linked session, and is a
+  no-op for a repeated `dedupe_key` (Apple `notificationUUID`, Pub/Sub
+  `messageId`). The key is checked again after the purchase row lock, and a
+  unique-key race on commit rolls back to the same no-op, so two parallel
+  deliveries of one notification apply once. Webhooks and crons call it; they
+  are not in #840.
+- **Required of #2786 / #2787: pass the store's event time.** Webhooks and
+  crons must pass `event_at` — Apple: the notification's `signedDate`
+  (ASSN v2) or, for the history replay, that notification's `signedDate`;
+  Google: RTDN `eventTimeMillis`, voided-purchases `voidedTimeMillis`. The
+  verifiers should set `VerifiedPurchase.event_at` (Apple: the transaction
+  JWS `signedDate` from Get Transaction Info; Google: when the Play API was
+  read). Omitted, the time defaults to now — for a client POST, the moment the
+  request started verifying, before the store call. See "Event ordering".
+- **Environment allow-list.** `purchases.verifiers.allowed_environments()`
+  reads `APPLE_IAP_ENVIRONMENTS` (default `Production,Sandbox`) and
+  `GOOGLE_PLAY_ENVIRONMENTS` (default `production,test`). The verifiers must
+  apply it before any store call (§6.2 step 1); `process_verified_purchase`
+  checks it again on the verified answer and returns `422
+  environment_not_allowed` before writing anything, whatever a verifier
+  returned.
+- `purchases.service.delete_purchase(db, purchase_id)` is the way to remove a
+  purchase (support, sandbox clean-up): it deletes the purchase and its links
+  and recomputes every session it was linked to. A raw SQL delete leaves
+  derived rows (see "Deleting a purchase") until the next recompute.
+- Google acknowledgement runs after the grant is committed, in the same
+  request. If it fails, the grant stands and `acknowledged_at` stays null for
+  the #2787 sweep.
+
+**Event ordering.** `purchases.state_changed_at` is the store time of the
+latest applied state transition. A verified answer or notification whose
+event time is older than it — and that would change the state — is ignored and
+audited as `stale_ignored` (a notification's `dedupe_key` is still recorded, so
+its redelivery stays a no-op). So a `REFUND` signed before a
+`REFUND_REVERSED` but delivered after it does not revoke again, and a client
+POST whose verifier read the store before a webhook's revoke cannot restore
+access: the POST's default event time is taken before its store call. Equal
+times apply.
+
+**Deleting a purchase.** `game_entitlements.purchase_id` is `ON DELETE SET
+NULL`, not `CASCADE`: deleting one purchase must not drop a game that another
+`owned` purchase still grants. The recompute treats a non-legacy row with no
+(or a dangling) `purchase_id` like any other derived row and re-points or
+removes it.
+
+**Concurrency.** The purchase row is locked (`FOR UPDATE`) before any link or
+state change. `recompute_entitlement` locks the session's existing row,
+evaluates the qualifying purchase after that lock (so a removal never acts on
+an answer a concurrent grant has changed), and writes with one `INSERT ... ON
+CONFLICT (session_id, game_slug) DO UPDATE` (Postgres and SQLite dialects).
+When several sessions are recomputed they are taken in `(session_id,
+game_slug)` order, so two transactions cannot lock rows in opposite orders.
+
+**Behavior details #840 settled.**
+
+- A missing or invalid `X-Session-ID` on `/purchases/*` is `400
+  invalid_request` (other routes keep their existing messages).
+- A verified `pending` answer for an `owned` purchase is refused: the purchase
+  stays `owned`, a `regression_refused` event is recorded and a warning is
+  logged.
+- A malformed body, or an Apple JWS whose unverified payload names no
+  `originalTransactionId`, is `400 invalid_request` (FastAPI's default 422
+  is remapped for these routes, because 422 means "store verification failed").
+- The per-`store_key` limit is keyed by a SHA-256 of `platform:store_key`, so
+  raw store keys never sit in limiter storage. Like the other limits it is
+  in-process memory (slowapi's default storage), per worker.
+- The Google product ID is checked against the naming convention before the
+  store is called; the service then accepts a product only when
+  `game_types.is_premium` is true for its slug (`422 unknown_product`).
+- A verified `cancelled` purchase is recorded and answered with
+  `422 verification_failed` (nothing to grant or finish).
+- The same `store_key` presented with a different product is
+  `422 verification_failed`.
+- Google ownership tokens are compared case-insensitively; Apple tokens as
+  UUIDs. Both are computed over the exact `X-Session-ID` string.
+- Audit: `purchase_events` rows `recorded`, `linked`, `link_rejected`
+  (reason `ownership_mismatch` / `session_cap` / `new_links_30d`),
+  `state_changed`, `notification`, `stale_ignored`, `regression_refused`,
+  `deleted`, each with `session_hash = sha256(session)`;
+  matching JSON lines go to the `audit` logger. Raw tokens and session IDs
+  are never written.
+- `/purchases/*` accepts bodies up to 32 KB (other routes stay at 1 KB).
+- Admin `PATCH /games/catalog/{id}` answers `409 is_premium_migration_only`
+  for an `is_premium` change on a game in the product catalog or with any
+  `purchases` row (§13). Same-value patches and `category` changes still work.
+
+**Measured entitlement lookup (target < 5 ms).**
+`tests/test_entitlement_lookup_perf.py` seeds 20,001 `game_entitlements` rows
+over 10,000 sessions and times 200 `check_entitlement` calls (the
+`is_premium` read plus the `(session_id, game_slug)` lookup) through the async
+ORM on one open session. On the CI SQLite database the median was **1.8 ms**
+(p95 2.6 ms), and `get_entitled_games` took 1.4 ms; the query plan uses the
+`uq_game_entitlements_session_slug` index, not a scan. The test fails if the
+median reaches 5 ms or the plan stops using an index. Postgres was not
+measured here; the lookup is the same indexed equality query, so it is
+expected to be no slower. The query-plan check always runs (SQLite `EXPLAIN
+QUERY PLAN`, Postgres `EXPLAIN`); the timing check uses the 5 ms target
+locally and 20 ms when `CI` is set or coverage is running, where shared
+runners make wall-clock time noisy.
+
+**Residual risks (accepted for #840, revisit with #2786 / #2787).**
+
+- **Per-`store_key` bucket burn.** The per-`store_key` limit is counted
+  *before* verification, from the **unverified** Apple JWS payload (that is
+  its purpose: it runs before any store call). Anyone can mint a forged JWS
+  naming a victim's `originalTransactionId`, so 30 forged posts burn that
+  purchase's bucket for a day (10 per hour) and the real owner's restores and
+  syncs get `429` until it refills. No access is granted or lost — the
+  existing links and entitlements stand, and the store's own redelivery
+  retries later — but restores on new devices are delayed. The Google key is
+  the purchase token, which is not public, so this is mainly an Apple risk.
+  Mitigations if abused: count the bucket only after signature verification
+  (#2786's `SignedDataVerifier` is local and cheap), or key it by
+  `(store_key, session)` as well.
+- **Per-IP limit trusts `X-Forwarded-For`.** The per-IP limit uses the
+  limiter's proxy-aware address, which takes the *first*
+  `X-Forwarded-For` hop — client-controlled, so a client can rotate its
+  apparent IP and escape the per-IP limit. Known issue, fixed globally in a
+  follow-up (SECURITY.md §9 "Known issue: X-Forwarded-For spoofing"); the
+  per-session and per-`store_key` limits still apply.
 
 ---
 
@@ -865,9 +1046,9 @@ separate product decision.
 - **Admin `PATCH is_premium` hazard.** Flipping a game to free while it has
   `purchases` would give it away to everyone. Flipping it to premium without a
   catalog product leaves it unbuyable. The drift tests catch the second in CI,
-  not in production. #840 should make the PATCH refuse an `is_premium` change
-  for a slug that is in the product catalog, or document that such changes are
-  migration-only.
+  not in production. **Done (#840):** the PATCH refuses an `is_premium` change
+  for a slug in the product catalog, or for any game with a `purchases` row,
+  with `409 is_premium_migration_only`. Such changes are migration-only.
 - **Pre-launch API.** The pre-launch API grants every premium game through
   `ENTITLEMENT_DEV_OVERRIDE`, so purchase testing there proves nothing. Sandbox
   testing needs a backend with the override **off** (§14).
@@ -953,7 +1134,8 @@ Sentry (SECURITY.md §13).
 | `APPLE_IAP_ISSUER_ID`, `APPLE_IAP_KEY_ID`                  | App Store Server API key identity (App Store Connect → Integrations → In-App Purchase key).  |
 | `APPLE_IAP_PRIVATE_KEY`                                    | The `.p8` key (PEM string).                                                                  |
 | `APPLE_BUNDLE_ID` (`com.buffingchi.games`), `APPLE_APP_ID` | Verifier inputs. `APPLE_APP_ID` is the numeric Apple ID, needed for production verification. |
-| `APPLE_IAP_ENVIRONMENTS`                                   | `Production,Sandbox` in production (§6.4).                                                   |
+| `APPLE_IAP_ENVIRONMENTS`                                   | `Production,Sandbox` in production (§6.4). Default when unset: `Production,Sandbox`.         |
+| `GOOGLE_PLAY_ENVIRONMENTS`                                 | Allowed Google environments, `production,test` (default). Drop `test` to refuse license-tester purchases. |
 | `GOOGLE_PLAY_PACKAGE_NAME` (`com.buffingchi.games`)        | Package check.                                                                               |
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`                         | Service-account key.                                                                         |
 | `GOOGLE_RTDN_AUDIENCE`, `GOOGLE_RTDN_PUSH_SA`              | Pub/Sub push OIDC verification.                                                              |

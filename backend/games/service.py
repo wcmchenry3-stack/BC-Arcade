@@ -31,6 +31,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from db.dialect import dialect_insert, dialect_name
 from db.models import EventType, Game, GameEvent, GameType
+from entitlements.service import ALL_PREMIUM_SLUGS
 from games.board import SCORE_METRIC, BoardDefinition
 from games.filters import SWEPT_KEY, is_swept, not_abandoned, not_swept, without_swept
 from games.leaderboard import check_completion_limits, merge_result_metadata
@@ -38,6 +39,7 @@ from games.legacy_outcomes import might_be_legacy_win, win_update
 from games.protocol import GameModule
 from games.registry import get_module
 from players.service import remember_legacy_opt_in
+from purchases.service import slug_has_purchases
 from vocab import GameOutcome
 from vocab import GameType as VocabGameType
 
@@ -949,6 +951,16 @@ async def patch_game_type(
     ).scalar_one_or_none()
     if gt is None:
         raise GameServiceError(404, "Game type not found.")
+    # docs/IAP.md §13: flipping a purchasable game to free would give it away;
+    # flipping it back without the store product leaves it unbuyable. A game in
+    # the product catalog, or with any recorded purchase, changes tier only by
+    # a migration shipped with the catalog JSON (#840).
+    if (
+        is_premium is not None
+        and is_premium != gt.is_premium
+        and (gt.name in ALL_PREMIUM_SLUGS or await slug_has_purchases(session, gt.name))
+    ):
+        raise GameServiceError(409, "is_premium_migration_only")
     if is_premium is not None:
         gt.is_premium = is_premium
     if category is not None:
