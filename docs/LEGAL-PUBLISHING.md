@@ -15,8 +15,10 @@ advice. The documents were drafted from the codebase and need owner and legal re
 | `https://buffingchi.com/support#delete-data` | [`docs/support.html`](support.html) section `id="delete-data"` | **Play Console → App content → Data safety → "Delete account URL"** (data deletion web resource). Not linked from the app              |
 
 **Delete account URL (Google Play).** Play requires apps that let users create an account to give a web page, usable without
-reinstalling the app, where users can request deletion of their account and data. Apple counts auto-generated "guest" accounts
-as accounts, and BC Arcade's anonymous install ID behaves like one, so v1.0 treats the URL as required. The "Delete your data"
+reinstalling the app, where users can request deletion of their account and data. Apple's account-deletion guidance
+([Offering account deletion in your app](https://developer.apple.com/support/offering-account-deletion-in-your-app/)) covers
+auto-generated guest accounts, and BC Arcade's anonymous install ID behaves like one, so we conservatively treat Play's delete
+account URL as required. Owner to confirm when filling in the Data safety form. The "Delete your data"
 section of the support page names the app and developer, gives the in-app steps (Settings → Delete my data), says what is
 deleted and what is kept and for how long (consistent with the privacy policy), and gives an email fallback. Keep the
 `delete-data` anchor stable; it is entered in Play Console.
@@ -33,17 +35,19 @@ The pages are English only. Translating them is out of scope for this release (#
 
 - `render.yaml` defines four Render services. Only the two static sites serve HTML (`bc-arcade-frontend` at
   `games.buffingchi.com`, `bc-arcade-frontend-dev` at `dev-games.buffingchi.com`). Both publish the Expo Web export
-  (`frontend/dist`) and nothing from `docs/`. Neither is bound to the apex `buffingchi.com`.
+  (`frontend/dist`) and nothing from `docs/`. `render.yaml` does not configure the apex `buffingchi.com`; confirm in the
+  Render and Cloudflare dashboards what, if anything, serves it today.
 - No GitHub Actions workflow deploys `docs/` or anything to the apex domain. There is no Cloudflare Pages or Workers config
   (`wrangler.toml`), `CNAME`, `_redirects` or `public/` site in the repo.
-- `docs/RELEASE-PLAN-2026-10.md` lists "DNS/hosting for buffingchi.com legal pages" as a manual owner task. DNS for
-  `buffingchi.com` is on Cloudflare (the `games` / `games-api` CNAMEs are there).
+- `docs/RELEASE-PLAN-2026-10.md` lists "DNS/hosting for buffingchi.com legal pages" as a manual owner task, and records the
+  `games` / `games-api` CNAMEs as added in Cloudflare. The repo cannot show the apex domain's current DNS or hosting; check the
+  Cloudflare dashboard.
 
 So `docs/*.html` are the **source** for the pages, not what is served. Until the owner publishes them, the URLs in the app
 and the consoles are whatever the apex domain serves today, which was not checked from here (outbound access to
 `buffingchi.com` was blocked in the session that wrote this).
 
-**What the owner needs to do** (any static host works. Cloudflare Pages is the simplest because DNS is already there):
+**What the owner needs to do** (any static host works. Cloudflare Pages is likely simplest if the domain's DNS is on Cloudflare):
 
 1. Resolve every `[OWNER TO CONFIRM: …]` marker (section 3) and get legal sign-off.
 2. Publish the three files so that `/privacy`, `/terms` and `/support` return `200` with `Content-Type: text/html`, publicly,
@@ -58,7 +62,8 @@ and the consoles are whatever the apex domain serves today, which was not checke
 ## 3. Owner-supplied values (`[OWNER TO CONFIRM]` markers)
 
 Nothing below may be filled in by an assistant. Replace each marker with the confirmed value, or delete it if the drafted text
-is confirmed as correct. Then run `grep -n "OWNER TO CONFIRM" docs/*.html`. It must print nothing.
+is confirmed as correct. Then run `grep -c "OWNER TO" docs/*.html`. It must print `0` for each file. Every marker is kept on
+a single line so this check cannot miss one (keep it that way when editing).
 
 | #   | Decision                                                                                                                                                                                                                                                                                                                       | Where                                                                                                                                                               |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -100,6 +105,10 @@ Re-check these when the product changes, and update all three pages together.
   The support page's "What is kept" list mirrors the policy's "How Long We Keep It". **For the premium update**, add the
   purchase-record retention statement (store transaction IDs and ownership records, and how long they are kept after Delete my
   data, e.g. for refunds and restore) to both the policy and the support page's delete-data section before submission.
+- **Device backups can restore the install ID.** Android has `android:allowBackup="true"` with no backup rules
+  (`frontend/android/app/src/main/AndroidManifest.xml:17`), and iOS/iCloud device backups restore the app container, so a
+  restored backup can bring back the install ID (DATA-INVENTORY §1). The support page therefore says restoring a backup "may"
+  bring scores back rather than promising uninstalling always unlinks them.
 
 ## 5. In-app link wiring (verified 2026-09-30)
 
@@ -120,18 +129,25 @@ Tick each item and link evidence (screenshot, curl output, console screenshot).
 - [ ] Legal review of `docs/privacy-policy.html` completed
 - [ ] Legal review of `docs/terms-of-service.html` completed
 - [ ] Support page `docs/support.html` reviewed
-- [ ] All `[OWNER TO CONFIRM]` markers resolved (`grep -n "OWNER TO CONFIRM" docs/*.html` prints nothing)
+- [ ] All `[OWNER TO CONFIRM]` markers resolved (`grep -c "OWNER TO" docs/*.html` prints `0` for each file)
 - [ ] Publisher legal name and contact email confirmed and identical on all three pages
 - [ ] Hosting done: `/privacy`, `/terms`, `/support` (with the `#delete-data` section) return 200 `text/html`, public, no login, match the approved commit
 - [ ] Links verified on a **real iOS** store-configuration build (Settings → Privacy Policy, Terms of Service open the hosted pages)
 - [ ] Links verified on a **real Android** store-configuration build (same)
 - [ ] App Store Connect: **Privacy Policy URL** = `https://buffingchi.com/privacy`, **Support URL** = `https://buffingchi.com/support`
+- [ ] App Store Connect: **Marketing URL** (optional), e.g. `https://buffingchi.com`, or left blank
+- [ ] App Store Connect → App Information → **License Agreement**: choose Apple's Standard EULA, or a custom EULA that links
+      `https://buffingchi.com/terms`. Our Terms already include Apple's required minimum clauses ("Apple-Specific Clause"), so
+      either works. Record the choice here: \_\_\_\_\_\_
 - [ ] Play Console: **Privacy policy** = `https://buffingchi.com/privacy`. **Contact details**: email and website
-      (`https://buffingchi.com/support`) filled in
+      (`https://buffingchi.com/support`) filled in. Contact phone (optional): filled in or left blank
 - [ ] Play Console → Data safety: **Delete account URL** = `https://buffingchi.com/support#delete-data`, and the page opens in a
       browser without the app installed
+- [ ] Play Console → Data safety: "Users can request that data be deleted" answered **Yes** (in-app Delete my data plus the
+      web page), consistent with [`STORE-PRIVACY-ANSWERS.md`](STORE-PRIVACY-ANSWERS.md)
 - [ ] Owner decision #11 (email fallback for deletion) made
-- [ ] Row in `RELEASE-ACCEPTANCE-v1.0.md` §4 "Legal" ticked for both platforms
+- [ ] `RELEASE-ACCEPTANCE-v1.0.md` §4 "Legal" rows ticked: the links row on both platforms, the deletion-page row on Android
+      only (it is a Play Console requirement)
 
 ## 7. Approved versions
 
