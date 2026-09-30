@@ -3,6 +3,9 @@ set -e
 
 echo "=== Xcode Cloud: ci_post_clone.sh ==="
 
+# Fail before expensive installs if the workflow targets an incompatible API.
+. "$CI_PRIMARY_REPOSITORY_PATH/frontend/ios/ci_scripts/select_api_target.sh"
+
 # Ensure Homebrew paths are available
 export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
 
@@ -36,34 +39,14 @@ echo "export PATH=\"/usr/local/opt/node@22/bin:/usr/local/bin:/opt/homebrew/bin:
 #    debug panels, Sentry environment). The Xcode Cloud workflow's
 #    BC_API_TARGET environment variable picks it (docs/IOS.md):
 #      prelaunch      -> dev API (internal / TestFlight workflows only)
-#      unset or empty -> production API (App Store release workflows)
-#      production     -> production API
+#      unset or empty -> production API (main-branch App Store workflows only)
+#      production     -> production API (main branch only)
 #      anything else  -> build fails (a typo must not pick a side)
+#    select_api_target.sh validates the target before dependencies install.
 #    Remove .env.production so Expo CLI does not load it and
 #    override the URL below (APP_ENV=production is set in
 #    Xcode Cloud, causing .env.production to win otherwise).
 # -------------------------------------------------------
-PRELAUNCH_API_URL=https://dev-games-api.buffingchi.com
-PRODUCTION_API_URL=https://games-api.buffingchi.com
-case "${BC_API_TARGET:-}" in
-  prelaunch) API_URL=$PRELAUNCH_API_URL ;;
-  ""|production) API_URL=$PRODUCTION_API_URL ;;
-  *)
-    echo "error: BC_API_TARGET='$BC_API_TARGET' is not 'prelaunch' or 'production' — fix the Xcode Cloud workflow environment variable (docs/IOS.md)." >&2
-    exit 1
-    ;;
-esac
-if [ "$API_URL" = "$PRODUCTION_API_URL" ]; then BUILD_KIND="STORE build"; else BUILD_KIND="PRE-LAUNCH build (never submit for App Store review)"; fi
-echo "=== workflow '${CI_WORKFLOW:-unknown}': BC_API_TARGET='${BC_API_TARGET:-}' -> $API_URL — $BUILD_KIND ==="
-
-# Expo CLI gives the process environment priority over .env, so an
-# EXPO_PUBLIC_API_URL set on the workflow would silently replace the URL
-# chosen above. Refuse it — BC_API_TARGET is the only switch.
-if [ -n "${EXPO_PUBLIC_API_URL:-}" ] && [ "$EXPO_PUBLIC_API_URL" != "$API_URL" ]; then
-  echo "error: EXPO_PUBLIC_API_URL='$EXPO_PUBLIC_API_URL' is set in the Xcode Cloud environment and would override $API_URL — remove it and use BC_API_TARGET (docs/IOS.md)." >&2
-  exit 1
-fi
-
 cd "$CI_PRIMARY_REPOSITORY_PATH/frontend"
 rm -f .env.production
 # The same override through a dotenv file Expo ranks above .env. Both are
