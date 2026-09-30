@@ -259,6 +259,35 @@ describe.each([1, 1.5])("Controls edge drag through canvas + engine (scale %s)",
     expect(t.canvas.x).toBe(CANVAS_W / 2);
   });
 
+  it("a drag held perfectly still through the extraction resumes from the ship (#2842)", async () => {
+    const t = await setup(scale);
+    t.canvas.state = { ...t.canvas.state, enemyFireDisabled: true, asteroidsDisabled: true };
+    while (t.canvas.state.phase === "SwoopIn") t.canvas.frame();
+    t.begin();
+    t.moveTo(100 * scale);
+    expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 100, 5);
+
+    // Last kill; the finger stays down and does not move, so no onChange arrives at all.
+    t.canvas.state = {
+      ...t.canvas.state,
+      enemies: t.canvas.state.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+    };
+    const wave = t.canvas.state.wave;
+    while (t.canvas.state.wave === wave) t.canvas.frame();
+    expect(t.canvas.x).toBe(CANVAS_W / 2);
+    expect(t.canvas.countdownMs).not.toBeNull();
+
+    // A small move: relative to the re-centred ship, no snap back under the finger.
+    t.moveTo(102 * scale);
+    expect(t.canvas.handle.getPlayerX()).toBeCloseTo(CANVAS_W / 2, 5);
+    t.moveTo(97 * scale);
+    expect(t.canvas.handle.getPlayerX()).toBeCloseTo(CANVAS_W / 2 - 5, 5);
+    // …and once the countdown is over the engine ship follows from there
+    while (t.canvas.countdownMs !== null) t.canvas.frame();
+    t.moveTo(107 * scale);
+    expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 5, 5);
+  });
+
   it("a drag held through the wave-clear autopilot resumes from the ship (#2842)", async () => {
     const t = await setup(scale);
     t.canvas.state = { ...t.canvas.state, enemyFireDisabled: true, asteroidsDisabled: true };

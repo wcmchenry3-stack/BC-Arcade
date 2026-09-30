@@ -46,8 +46,10 @@ export default function Controls({
   const shipXAtDragStartRef = useRef(CANVAS_W / 2);
   // Sentry breadcrumb throttle: only log the first boundary-hit per second to avoid flood.
   const lastBoundaryLogMsRef = useRef(0);
-  // #2842: the current drag was held through a wave-clear autopilot — re-anchor on its next move.
-  const autopilotDuringDragRef = useRef(false);
+  // #2842: the wave the current drag was anchored in. Every extraction ends in a wave change, so
+  // a different wave on a later move means the autopilot moved (and re-centred) the ship since —
+  // re-anchor then, even if the finger was held still and sent no events through it.
+  const anchorWaveRef = useRef<number | null>(null);
 
   const resetPlayerX = useCallback(() => {
     playerXRef.current = CANVAS_W / 2;
@@ -64,12 +66,12 @@ export default function Controls({
     .minDistance(0)
     .onBegin((e) => {
       activeDragRef.current = e.y > dragZoneY;
-      autopilotDuringDragRef.current = false;
       if (activeDragRef.current) {
         // Anchor on the canvas's commanded ship X, not getState().player.x: the engine only
         // copies input into player.x on a tick, and ticks are frozen during the pre-wave
         // countdown, so engine X can be stale there and the ship would jump back on touch.
         const handle = canvasRef.current;
+        anchorWaveRef.current = handle?.getState()?.wave ?? null;
         const anchorX =
           handle?.getPlayerX?.() ?? handle?.getState()?.player.x ?? playerXRef.current;
         playerXRef.current = anchorX;
@@ -81,15 +83,13 @@ export default function Controls({
       // #2842: the wave-clear autopilot moves the ship on its own (and the next wave re-centres
       // it). A drag held through that is ignored, then re-anchored on the ship (the canvas
       // keeps its commanded X on the autopilot's) so control resumes from where the ship is
-      // instead of snapping back under the finger.
+      // instead of snapping back under the finger. The wave change is what triggers the
+      // re-anchor, so it works whether or not any move arrived during the extraction.
       const handle = canvasRef.current;
       const state = handle?.getState();
-      if (state?.phase === "Extraction") {
-        autopilotDuringDragRef.current = true;
-        return;
-      }
-      if (autopilotDuringDragRef.current && state) {
-        autopilotDuringDragRef.current = false;
+      if (state?.phase === "Extraction") return;
+      if (state && anchorWaveRef.current !== null && state.wave !== anchorWaveRef.current) {
+        anchorWaveRef.current = state.wave;
         const shipX = handle?.getPlayerX?.() ?? state.player.x;
         shipXAtDragStartRef.current = shipX - e.translationX / scale;
       }
