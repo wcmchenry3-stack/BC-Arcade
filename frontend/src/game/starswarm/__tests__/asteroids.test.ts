@@ -156,6 +156,25 @@ describe("Asteroid entry geometry (#2844)", () => {
     }
   });
 
+  it("a landscape canvas always yields a fair plan: no timed spawn is silently dropped", () => {
+    const W = 844;
+    const H = 390;
+    for (const seed of SEEDS) {
+      const rand = makeRand(seed);
+      for (const kind of ["large", "small"] as const) {
+        const r = ASTEROID_STATS[kind].radius;
+        const plan = planAsteroidEntry(W, H, r, [], rand);
+        expect(plan).not.toBeNull();
+        const p = plan!;
+        expect(p.x + r <= 0 || p.x - r >= W || p.y + r <= 0 || p.y - r >= H).toBe(true);
+        expect(Math.atan2(p.vy, Math.abs(p.vx))).toBeGreaterThanOrEqual(0.3 - 1e-9);
+        const m = asteroidEntryMetrics(p, r, W, H);
+        expect(m.crossPx).toBeGreaterThanOrEqual(ASTEROID_MIN_CROSS_FRAC * W);
+        expect(m.reactionMs).toBeGreaterThanOrEqual(ASTEROID_MIN_REACTION_MS);
+      }
+    }
+  });
+
   it("uses every region: side edges, the top edge and both upper corners", () => {
     const seen = new Set<AsteroidEntryRegion>();
     for (const seed of SEEDS) {
@@ -373,6 +392,105 @@ describe("Asteroid attention cost (#2844)", () => {
       expect(delayedMs).toBeGreaterThanOrEqual(ASTEROID_ATTENTION.Grunt.flakMs - 2 * DT);
     }
     expect(flaked).toBeGreaterThan(0); // the seeded flak roll did fire in some runs
+  });
+
+  it("a rock passing near but not threatening a ship causes no flak and no timer cost", () => {
+    const base = settled(2);
+    const g = formationOf(base, "Grunt").sort((a, b) => a.x - b.x)[0]!;
+    // approaching (closing distance), inside flak range, but its line passes ~60 px wide of the ship
+    const passing = rock("large", g.x - 60, g.y - 50, 0, 0.2);
+    for (let seed = 1; seed <= 40; seed++) {
+      seedRng(seed);
+      const s = { ...patchEnemy(base, g.id, { shootTimer: 5000 }), asteroids: [passing] };
+      const after = tick(s, DT, ASIDE);
+      const e = byId(after, g.id);
+      expect(e.flakCooldown).toBe(0);
+      expect(e.shootTimer).toBe(5000 - DT);
+      expect(e.attentionMs).toBe(0);
+      expect(after.tierStats.Grunt.flak).toBe(0);
+    }
+  });
+
+  it("the attention debt survives a dive launch: a flaking Grunt can't shoot the player early", () => {
+    const FLAK_AT = 1;
+    let done = 0;
+    for (let seed = 1; seed <= 40 && done < 3; seed++) {
+      const base = settled(2);
+      const g = formationOf(base, "Grunt")[0]!;
+      let s = patchEnemy(base, g.id, { shootTimer: 100 });
+      s = { ...s, dodgeDisabled: true, asteroids: [rockAt(g)], player: { ...s.player, x: g.x } };
+      seedRng(seed);
+      s = tick(s, DT, { playerX: g.x, fire: false });
+      if (byId(s, g.id).flakCooldown <= 0) continue; // this seed's flak roll missed
+      done++;
+      const debt = byId(s, g.id).attentionMs;
+      expect(debt).toBeGreaterThanOrEqual(ASTEROID_ATTENTION.Grunt.flakMs - DT);
+      // launched on a dive the next instant (tickWiggling zeroes shootTimer), rock gone
+      s = patchEnemy({ ...s, asteroids: [] }, g.id, {
+        phase: "Wiggling",
+        wiggleTimer: 1,
+        diveTargetX: g.x,
+      });
+      let shotAfterMs = Infinity;
+      for (let i = 1; i <= 200; i++) {
+        s = { ...s, enemyBullets: [] };
+        s = tick(s, DT, { playerX: g.x, fire: false });
+        if (s.enemyBullets.some((b) => !b.flak)) {
+          shotAfterMs = i * DT;
+          break;
+        }
+      }
+      expect(byId(s, g.id).phase).not.toBe("Formation");
+      // it may not fire at the player until the debt has run out (one tick of slack)
+      expect(shotAfterMs).toBeGreaterThanOrEqual(debt - 2 * DT - FLAK_AT);
+    }
+    expect(done).toBeGreaterThan(0);
+  });
+
+  it("a threatened ship that is already Wiggling keeps its debt through Wiggling to Diving", () => {
+    let checked = 0;
+    for (let seed = 1; seed <= 10; seed++) {
+      const base = settled(2);
+      const g = formationOf(base, "Grunt")[0]!;
+      // mid-wiggle, about to launch (the launch zeroes shootTimer); sturdy so the rock can't kill it
+      let s = patchEnemy(base, g.id, {
+        phase: "Wiggling",
+        wiggleTimer: 40,
+        diveTargetX: g.x,
+        shootTimer: 100,
+        hp: 99,
+      });
+      s = { ...s, asteroids: [rockAt(g)], player: { ...s.player, x: g.x } };
+      seedRng(seed);
+      s = tick(s, DT, { playerX: g.x, fire: false });
+      const debt = byId(s, g.id).attentionMs;
+      expect(debt).toBeGreaterThan(0); // threatened while wiggling, so it pays the threat cost
+      s = { ...s, asteroids: [] };
+      let shotAfterMs = Infinity;
+      let dived = false;
+      for (let i = 1; i <= 200; i++) {
+        s = { ...s, enemyBullets: [] };
+        s = tick(s, DT, { playerX: g.x, fire: false });
+        if (byId(s, g.id).phase === "Diving") dived = true;
+        if (s.enemyBullets.some((b) => !b.flak)) {
+          shotAfterMs = i * DT;
+          break;
+        }
+      }
+      expect(dived).toBe(true);
+      expect(shotAfterMs).toBeGreaterThanOrEqual(debt - 2 * DT);
+      checked++;
+    }
+    expect(checked).toBe(10);
+  });
+
+  it("the debt also holds against the straggler rule's timer cap", () => {
+    const base = settled(2);
+    const g = formationOf(base, "Grunt")[0]!;
+    const s = patchEnemy(base, g.id, { shootTimer: 50, attentionMs: 900 });
+    // the straggler rule would cap the timer at SHOOT_INTERVAL_BASE / 2; the floor still holds
+    const after = tick({ ...s, pauseStraggler: false, stragglerEnabled: true }, DT, ASIDE);
+    expect(byId(after, g.id).shootTimer).toBeGreaterThanOrEqual(byId(after, g.id).attentionMs);
   });
 
   it("flak stays outside the global bullet cap but does not add player-directed pressure", () => {

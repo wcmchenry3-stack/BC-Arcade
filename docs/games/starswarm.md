@@ -433,7 +433,9 @@ The rock is aimed through a random point in 15-85% of the width and 25-70% of th
   reach the player's row (`asteroidEntryMetrics`);
 - does not start overlapping any ship, including reinforcements waiting off-screen, or Buddy.
 
-If none of the attempts is fair, no rock spawns this time (the timer still resets). Everything is
+If the random attempts all fail (common on a short landscape canvas), a deterministic fallback scans
+side-edge entries at the slowest speed over fixed angles, so a timed spawn is not dropped; it obeys
+the same fairness rules. If even that is blocked by ships, no rock spawns this time (the timer still resets). Everything is
 drawn from the seeded `rng()`, so a seeded run replays exactly. Timed spawns still respect
 `MAX_ASTEROIDS`.
 
@@ -476,7 +478,11 @@ most distracted, then Elite, then Guardian, then Carrier least.
 
 - **Nearby threat:** a mild local distraction. `withAsteroidAttention(timer, tier, "threat")` adds
   the threat cost to the ship's next-shot timer once per rock, whether or not its dodge roll succeeds.
-- **Flak engagement:** firing flak adds the flak cost to the same timer, so the gun that shot at the
+- **Debt, not just a timer bump:** every cost is also booked as `enemy.attentionMs`, a floor that
+  is re-applied under the ship's next-shot timer after every tick. A dive launch (which zeroes the
+  timer) or the straggler rule (which caps it) therefore cannot cash the debt in early.
+- **Flak engagement** (only for a ship the rock actually threatens; a rock passing wide costs
+  nothing): firing flak adds the flak cost to the same timer, so the gun that shot at the
   rock is not also shooting at the player. Flak stays outside the global bullet cap; the timer is
   what pays for it.
 - **Active dodge:** a successful dodge (sidestep or nudge) sets `enemy.evadeMs` to 600 ms. While it

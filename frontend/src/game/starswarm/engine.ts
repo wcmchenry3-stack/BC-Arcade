@@ -379,6 +379,23 @@ export function withAsteroidAttention(
 }
 
 /**
+ * #2844: a ship pays attention to a rock: its next-shot timer slips back AND the same amount is
+ * booked as `attentionMs` debt, a floor that tickEnemies re-applies after every tick so a phase
+ * change (dive launch, straggler cap) cannot erase it.
+ */
+function payAttention<E extends Pick<Enemy, "tier" | "shootTimer" | "attentionMs">>(
+  e: E,
+  kind: "threat" | "flak"
+): E {
+  const a = ASTEROID_ATTENTION[e.tier];
+  return {
+    ...e,
+    shootTimer: withAsteroidAttention(e.shootTimer, e.tier, kind),
+    attentionMs: e.attentionMs + (kind === "flak" ? a.flakMs : a.threatMs),
+  };
+}
+
+/**
  * #2844: degrade a player-directed shot's aim while its ship is evading. The velocity gets a
  * sideways kick of (0.5–1 × the tier's aimSpread × |vy|) in a random direction — always a real
  * miss, never a no-op, bigger for the more distracted tiers. `rand` supplies two draws.
@@ -1055,6 +1072,14 @@ export function planAsteroidEntry(
   rand: () => number
 ): AsteroidEntry | null {
   const off = radius + ASTEROID_ENTRY_EDGE;
+  const fair = (x: number, y: number, vx: number, vy: number): boolean => {
+    if (Math.atan2(vy, Math.abs(vx)) < ASTEROID_MIN_ANGLE) return false;
+    if (actors.some((a) => circleCircle(x, y, radius, a.x, a.y, a.r))) return false;
+    const m = asteroidEntryMetrics({ x, y, vx, vy }, radius, canvasW, canvasH);
+    return (
+      m.crossPx >= ASTEROID_MIN_CROSS_FRAC * canvasW && m.reactionMs >= ASTEROID_MIN_REACTION_MS
+    );
+  };
   for (let attempt = 0; attempt < ASTEROID_ENTRY_ATTEMPTS; attempt++) {
     let pick = rand();
     let region: AsteroidEntryRegion = "left";
@@ -1092,12 +1117,28 @@ export function planAsteroidEntry(
     const len = Math.hypot(tx - x, ty - y) || 1;
     const vx = ((tx - x) / len) * speed;
     const vy = ((ty - y) / len) * speed;
-    if (Math.atan2(vy, Math.abs(vx)) < ASTEROID_MIN_ANGLE) continue;
-    if (actors.some((a) => circleCircle(x, y, radius, a.x, a.y, a.r))) continue;
-    const m = asteroidEntryMetrics({ x, y, vx, vy }, radius, canvasW, canvasH);
-    if (m.crossPx < ASTEROID_MIN_CROSS_FRAC * canvasW) continue;
-    if (m.reactionMs < ASTEROID_MIN_REACTION_MS) continue;
-    return { region, x, y, vx, vy };
+    if (fair(x, y, vx, vy)) return { region, x, y, vx, vy };
+  }
+  // Deterministic fallback, so a timed spawn is not silently dropped on an awkward canvas (a
+  // landscape tablet is short, and a random aim is often too steep to cross far enough before it
+  // reaches the player row): scan side-edge entries at the slowest speed over a fixed set of
+  // angles, starting at a rand()-chosen offset for variety. The same fairness rules apply.
+  const FALLBACK_Y = [0.04, 0.15, 0.3] as const;
+  const FALLBACK_ANGLE = [0.35, 0.5, 0.65, 0.8, 0.95] as const;
+  const combos: { region: AsteroidEntryRegion; y: number; angle: number }[] = [];
+  for (const region of ["left", "right"] as const) {
+    for (const fy of FALLBACK_Y) {
+      for (const angle of FALLBACK_ANGLE) combos.push({ region, y: canvasH * fy, angle });
+    }
+  }
+  const start = Math.floor(rand() * combos.length);
+  for (let i = 0; i < combos.length; i++) {
+    const c = combos[(start + i) % combos.length]!;
+    const dir = c.region === "left" ? 1 : -1;
+    const x = c.region === "left" ? -off : canvasW + off;
+    const vx = dir * Math.cos(c.angle) * ASTEROID_SPEED_MIN;
+    const vy = Math.sin(c.angle) * ASTEROID_SPEED_MIN;
+    if (fair(x, c.y, vx, vy)) return { region: c.region, x, y: c.y, vx, vy };
   }
   return null;
 }
@@ -1631,6 +1672,7 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
     let e = e0;
     if (e.flakCooldown > 0) e = { ...e, flakCooldown: Math.max(0, e.flakCooldown - dtMs) };
     if (e.evadeMs > 0) e = { ...e, evadeMs: Math.max(0, e.evadeMs - dtMs) };
+    if (e.attentionMs > 0) e = { ...e, attentionMs: Math.max(0, e.attentionMs - dtMs) };
     if (e.dodge) {
       const t = e.dodge.t + dtMs;
       e = t >= e.dodge.dur ? { ...e, dodge: null } : { ...e, dodge: { ...e.dodge, t } };
@@ -1647,6 +1689,7 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
         e.tier !== "Carrier" &&
         e.phase === "Formation" &&
         e.flakCooldown <= 0 &&
+        rockThreatens(a, e) && // only a ship this rock actually threatens reacts (and pays)
         weaponsFree(state) && // #2842: no new fire outside combat
         !state.enemyFireDisabled &&
         !state.flakDisabled // #2491 dev toggle
@@ -1672,11 +1715,7 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
               flak: true,
             });
             // #2844: the attention cost — this ship's next player-directed shot slips back
-            e = {
-              ...e,
-              flakCooldown: FLAK_COOLDOWN,
-              shootTimer: withAsteroidAttention(e.shootTimer, e.tier, "flak"),
-            };
+            e = payAttention({ ...e, flakCooldown: FLAK_COOLDOWN }, "flak");
             bumpStat(stats, e.tier, { flak: 1 });
           }
         }
@@ -1688,20 +1727,13 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
       if (e.tier === "Carrier") {
         // #2844: heavy — no sidestep, but a rock bearing down still takes its attention (once)
         if (rockThreatens(a, e)) {
-          e = {
-            ...e,
-            rolledAsteroidIds: [...e.rolledAsteroidIds, a.id],
-            shootTimer: withAsteroidAttention(e.shootTimer, e.tier, "threat"),
-          };
+          e = payAttention({ ...e, rolledAsteroidIds: [...e.rolledAsteroidIds, a.id] }, "threat");
         }
         continue;
       }
       if (state.dodgeDisabled || !rockThreatens(a, e)) continue;
-      e = {
-        ...e,
-        rolledAsteroidIds: [...e.rolledAsteroidIds, a.id],
-        shootTimer: withAsteroidAttention(e.shootTimer, e.tier, "threat"), // #2844 mild distraction
-      };
+      // #2844 mild distraction
+      e = payAttention({ ...e, rolledAsteroidIds: [...e.rolledAsteroidIds, a.id] }, "threat");
       const onPath = PATH_PHASES.has(e.phase) && e.path !== null;
       bumpStat(stats, e.tier, { rolls: 1, pathRolls: onPath ? 1 : 0 });
       if (rng() < dodgeChance(e.tier, paramScale)) {
@@ -1769,6 +1801,7 @@ function makeEnemy(idx: number, slot: SlotDef, canvasW: number): Enemy {
     rolledAsteroidIds: [],
     flakCooldown: 0,
     evadeMs: 0,
+    attentionMs: 0,
   };
 }
 
@@ -3179,6 +3212,14 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
       });
     }
   }
+
+  // #2844: the attention debt is a floor under every ship's next-shot timer, whatever the phase
+  // changes above did to it (a dive launch zeroes the timer; the straggler rule caps it)
+  enemies = enemies.map((e) =>
+    e.isAlive && e.attentionMs > 0 && e.shootTimer < e.attentionMs
+      ? { ...e, shootTimer: e.attentionMs }
+      : e
+  );
 
   return {
     ...state,

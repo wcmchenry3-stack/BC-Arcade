@@ -50,6 +50,7 @@ import {
   splitRemaining,
   emptyTierStats,
   DODGE_SIDESTEP,
+  FLAK_COOLDOWN,
   DODGE_SIDESTEP_MS,
   DODGE_PATH_NUDGE,
   playerVolley,
@@ -4334,7 +4335,18 @@ describe("Enemy asteroid response (#2487)", () => {
   });
 
   it("a formation ship fires flak at a rock approaching within range — outside the bullet cap", () => {
-    const base = { ...quiet(), enemyFireDisabled: false };
+    const q = { ...quiet(), enemyFireDisabled: false };
+    const guardian = q.enemies.find(
+      (e) => e.isAlive && e.tier === "Guardian" && e.phase === "Formation"
+    )!;
+    // only this Guardian (plus the armored Carrier, which never flaks) stays, so every flak
+    // bolt in the state is this ship's
+    const base = {
+      ...q,
+      enemies: q.enemies.map((e) =>
+        e.id === guardian.id || e.tier === "Carrier" ? e : { ...e, isAlive: false, hp: 0 }
+      ),
+    };
     // #2844: the Carrier's flak is its diverted twin volley (see asteroids.test.ts); the per-ship
     // flak roll belongs to the fighters. Guardians roll 0.9, so a few seeds always find a shot.
     const c = base.enemies.find(
@@ -4372,6 +4384,12 @@ describe("Enemy asteroid response (#2487)", () => {
     expect(fromShip!.vy).toBeLessThan(0); // aimed up at the rock
     expect(s.enemies.find((e) => e.id === c.id)!.flakCooldown).toBeGreaterThan(0);
     expect(s.tierStats.Guardian.flak).toBeGreaterThanOrEqual(1);
+    // a fighter can't flak again within FLAK_COOLDOWN, even with a fresh rock always inbound
+    const flakCount = s.tierStats.Guardian.flak;
+    for (let t = 16; t < FLAK_COOLDOWN - 100; t += 16) {
+      s = tick({ ...s, asteroids: [rock("large", c.x, c.y - 90, { vy: 0.2 })] }, 16, ASIDE);
+      expect(s.tierStats.Guardian.flak).toBe(flakCount);
+    }
   });
 
   it("no flak at a rock moving away, out of range, or when enemy fire is disabled", () => {
@@ -5034,19 +5052,22 @@ describe("Run stats (#2491)", () => {
   it("flakDisabled silences flak without touching enemy missiles", () => {
     const base = { ...quiet(), enemyFireDisabled: false };
     const boss = formation(base, "Guardian");
-    // parked just above the Guardian row, drifting toward it: in range and approaching every tick
-    const a = () => rock("large", boss.x, boss.y - 80, { vy: 0.02 });
+    // above the Guardian row and closing on it: it threatens the ship every tick (#2844: only a
+    // threatened ship flaks), well inside flak range
+    const a = () => rock("large", boss.x, boss.y - 90, { vy: 0.1 });
     const totalFlak = (s: StarSwarmState) =>
       Object.values(s.tierStats).reduce((n, t) => n + t.flak, 0);
 
     let on = { ...base, asteroids: [a()] };
     let off = { ...base, asteroids: [a()], flakDisabled: true };
+    let flakSeen = false;
     for (let i = 0; i < 30; i++) {
       on = tick(on, 16, ASIDE);
       off = tick(off, 16, ASIDE);
+      if (on.enemyBullets.some((b) => b.flak)) flakSeen = true; // bolts are spent on the rock fast
     }
     expect(totalFlak(on)).toBeGreaterThan(0);
-    expect(on.enemyBullets.some((b) => b.flak)).toBe(true);
+    expect(flakSeen).toBe(true);
     expect(totalFlak(off)).toBe(0);
     expect(off.enemyBullets.some((b) => b.flak)).toBe(false);
     // ordinary enemy fire is a separate toggle and still runs
