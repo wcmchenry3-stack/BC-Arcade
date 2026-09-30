@@ -214,6 +214,12 @@ describe("award paths (#2837)", () => {
     let s = tick({ ...s0, playerBullets: [shot(g)] }, 16, NO_INPUT);
     s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
     s = tick(s, 16, NO_INPUT);
+    // #2842: the bonus lands on the last kill, while wave 1's extraction is still flying
+    expect(s.phase).toBe("Extraction");
+    expect(s.wave).toBe(1);
+    expect(ptsFor(s, 1)[WAVE_CLEAR_SOURCE]).toBe(waveClearBonusPoints(1, "Ensign"));
+    expect(ledgerTotal(s.scoreLedger)).toBe(s.score);
+    for (let i = 0; i < 1000 && s.wave === 1; i++) s = tick(s, 16, NO_INPUT);
     expect(s.wave).toBe(2);
     expect(ptsFor(s, 1)[WAVE_CLEAR_SOURCE]).toBe(waveClearBonusPoints(1, "Ensign"));
     expect(ptsFor(s, 2)).toEqual({});

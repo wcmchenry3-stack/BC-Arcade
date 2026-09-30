@@ -20,6 +20,7 @@ import type {
   GunsLevel,
   HullLevel,
   UpgradeEvent,
+  Extraction,
 } from "./types";
 import {
   WAVE_CLEAR_SOURCE,
@@ -105,10 +106,22 @@ const CARRIER_MAX_SWAY = 12; // px
 const DIVE_INTERVAL_BASE = 3200; // ms between dive triggers
 const DIVE_INTERVAL_MIN = 900; // floor regardless of wave
 
-// #2352: wave clear no longer freezes gameplay or hands the ship to an AI autopilot —
-// the wave advances the instant the last enemy dies. This just times the purely-cosmetic
-// "MISSION COMPLETE" banner fade so it doesn't block or slow anything down.
+// Times the purely-cosmetic "MISSION COMPLETE" banner, set on the wave's last kill. It never
+// blocks or slows anything down (#2352); the #2842 extraction runs underneath it.
 export const MISSION_COMPLETE_BANNER_MS = 1200;
+
+// #2842: wave-clear extraction. After the last kill the AI flies the ship: it holds the lane
+// (dodging) while the surviving hazards resolve, then climbs off the top. The hard transient
+// reset happens once it is off-screen, or at EXTRACTION_MAX_MS whatever happens.
+export const EXTRACTION_HOLD_MIN_MS = 500; // the ship holds the lane at least this long…
+export const EXTRACTION_HOLD_MAX_MS = 2500; // …and climbs by here even if hazards remain
+export const EXTRACTION_MAX_MS = 6000; // hard cap on the whole extraction
+export const PILOT_SPEED = 0.3; // px/ms lateral autopilot speed (a brisk drag)
+const PILOT_CLIMB_ACCEL = 0.0015; // px/ms² climb acceleration
+const PILOT_CLIMB_MAX = 0.9; // px/ms climb speed cap
+const PILOT_LOOKAHEAD_MS = [0, 100, 200, 350, 500, 700] as const;
+const PILOT_MARGIN = 10; // px of slack the autopilot keeps from a hazard
+const PILOT_STEP = 6; // px between candidate lanes the autopilot scores
 // ms the banner takes to fade out at the end of its life — shared by both renderers so
 // native/web can't drift out of sync with each other or with MISSION_COMPLETE_BANNER_MS.
 export const MISSION_COMPLETE_FADE_MS = 300;
@@ -124,10 +137,10 @@ export function decayMissionCompleteTimer(timer: number, dtMs: number): number {
 
 /** Whether the cosmetic "MISSION COMPLETE" banner should render this frame. Suppressed during
  * GameOver (would ghost under the game-over overlay) — a real phase this timer can still be
- * counting down through. Also suppressed while the pre-wave countdown overlay is showing (the
- * countdown starts in the same tick as a wave clear, and both overlays render full-screen and
- * centered) — countdownActive is passed in since the countdown lives in the renderer's ref
- * state, not the engine state. */
+ * counting down through. Also suppressed while the pre-wave countdown overlay is showing (a
+ * short extraction can hand over to the next wave's countdown before the banner has faded, and
+ * both overlays render full-screen and centered) — countdownActive is passed in since the
+ * countdown lives in the renderer's ref state, not the engine state. */
 export function showMissionCompleteBanner(
   state: StarSwarmState,
   countdownActive: boolean
@@ -719,10 +732,11 @@ function canSpawnAsteroid(state: StarSwarmState): boolean {
 
 /**
  * Dev-panel / test hook: throw a rock now. Honours the on-screen cap but ignores the wave
- * minimum and the dev "disabled" toggle, so a tester can always summon one.
+ * minimum and the dev "disabled" toggle, so a tester can always summon one. #2842: combat only —
+ * no hazard may enter during swoop-in (setup time) or extraction (only survivors resolve).
  */
 export function throwAsteroid(state: StarSwarmState, kind?: AsteroidKind): StarSwarmState {
-  if (state.phase === "GameOver" || state.asteroids.length >= MAX_ASTEROIDS) return state;
+  if (!weaponsFree(state) || state.asteroids.length >= MAX_ASTEROIDS) return state;
   return {
     ...state,
     asteroids: [...state.asteroids, spawnAsteroid(state.canvasW, kind)],
@@ -1191,6 +1205,7 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
       if (
         e.phase === "Formation" &&
         e.flakCooldown <= 0 &&
+        weaponsFree(state) && // #2842: no new fire outside combat
         !state.enemyFireDisabled &&
         !state.flakDisabled // #2491 dev toggle
       ) {
@@ -1406,14 +1421,8 @@ function buildWaveState(
   bonusLivesAwarded = 0,
   difficulty: DifficultyTier = "LieutenantJG",
   stragglerOverride: boolean | undefined = undefined,
-  // #2352 follow-up: bullets already in flight when a wave clears carry into the next wave
-  // instead of vanishing (a real missile doesn't disappear because the ship that fired it
-  // did). Empty by default for a fresh game start (initStarSwarm) — only startNextWave()
-  // passes real carried-over bullets.
-  playerBullets: readonly Bullet[] = [],
-  enemyBullets: readonly Bullet[] = [],
-  // #2486: rocks in flight carry over too — the next wave's swoop-in meets them
-  asteroids: readonly Asteroid[] = [],
+  // #2842: a wave always opens on a clean transient state — no bullets, rocks, beams or buddy
+  // ships carry over (see clearTransientCombat), so nothing here takes them as parameters.
   // #2487: counters carry across waves, reset on a new game
   tierStats: Readonly<Record<EnemyTier, TierStats>> = emptyTierStats(),
   // #2491: likewise
@@ -1441,8 +1450,14 @@ function buildWaveState(
   // stragglerOverride lets the dev panel disable it regardless of difficulty.
   const stragglerEnabled = stragglerOverride ?? difficulty !== "Ensign";
 
-  // Reset invincibility on each new wave so same-tick hit state never carries forward
-  const wavePlayer: Player = { ...player, invincibleTimer: 0 };
+  // Reset invincibility on each new wave so same-tick hit state never carries forward.
+  // #2842: the extraction flew the ship off the top — it is back on station, centred.
+  const wavePlayer: Player = {
+    ...player,
+    x: canvasW / 2,
+    y: canvasH - PLAYER_Y_FROM_BOTTOM,
+    invincibleTimer: 0,
+  };
 
   return {
     phase,
@@ -1450,12 +1465,12 @@ function buildWaveState(
     score,
     player: wavePlayer,
     enemies,
-    playerBullets,
-    enemyBullets,
+    playerBullets: [],
+    enemyBullets: [],
     explosions: [],
     powerUps,
     buddyShips: [],
-    asteroids,
+    asteroids: [],
     nextAsteroidTimer: asteroidInterval(),
     asteroidsDisabled: false,
     reinforceTimer: REINFORCE_INTERVAL,
@@ -1465,6 +1480,7 @@ function buildWaveState(
     dodgeDisabled: false,
     flakDisabled: false,
     phaseTimer: 0,
+    extraction: null,
     canvasW,
     canvasH,
     nextDiveTimer: diveInterval(wave, paramScale),
@@ -1514,9 +1530,13 @@ export function tick(state: StarSwarmState, dtMs: number, input: StarSwarmInput)
   s = tickAsteroids(s, scaledDt); // #2486
   s = tickPowerUps(s, scaledDt);
   s = tickBuddyShips(s, scaledDt);
-  const awards: ScorePoints = {}; // #2837
-  s = tickCollisions(s, awards); // score updated by kills here
-  s = commitAwards(s, awards);
+  // #2842: the central damage gate — during swoop-in every actor is invulnerable, so no
+  // bullet, rock, beam or ram resolves at all (and no incoming enemy can be pre-damaged).
+  if (hazardsLive(s)) {
+    const awards: ScorePoints = {}; // #2837
+    s = tickCollisions(s, awards); // score updated by kills here
+    s = commitAwards(s, awards);
+  }
   s = tickBonusLives(state, s); // #1078: after score updated; un-GameOvers if bonus life rescues player
   s = tickExplosions(s, scaledDt);
   s = checkPhaseTransitions(s);
@@ -1530,7 +1550,7 @@ export function tick(state: StarSwarmState, dtMs: number, input: StarSwarmInput)
 // #1078 #1079: repeating threshold scaled by difficulty; slow-mo + invincibility on award
 // No early exit on GameOver — if the threshold was just crossed in the same tick the player died,
 // the bonus life is still awarded and GameOver is reverted (race condition fix).
-function tickBonusLives(_prev: StarSwarmState, next: StarSwarmState): StarSwarmState {
+function tickBonusLives(prev: StarSwarmState, next: StarSwarmState): StarSwarmState {
   const threshold = bonusLifeThreshold(next.difficulty);
   const livesEarnable = Math.floor(next.score / threshold);
   const livesToAward = Math.max(0, livesEarnable - next.bonusLivesAwarded);
@@ -1547,8 +1567,14 @@ function tickBonusLives(_prev: StarSwarmState, next: StarSwarmState): StarSwarmS
   const awarded = Math.min(livesToAward, MAX_LIVES - next.player.lives);
   const newLives = next.player.lives + awarded;
 
-  // #1078: if the bonus life rescued the player from a same-tick lethal hit, revert GameOver
-  const phase = next.phase === "GameOver" && newLives > 0 ? "Playing" : next.phase;
+  // #1078: if the bonus life rescued the player from a same-tick lethal hit, revert GameOver —
+  // to the phase the tick started in (#2842: a rescue mid-extraction stays in extraction)
+  const phase =
+    next.phase === "GameOver" && newLives > 0
+      ? prev.phase === "GameOver"
+        ? "Playing"
+        : prev.phase
+      : next.phase;
 
   return {
     ...next,
@@ -1569,12 +1595,22 @@ function tickBonusLives(_prev: StarSwarmState, next: StarSwarmState): StarSwarmS
 
 function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput): StarSwarmState {
   const p = state.player;
-  const hw = p.width / 2;
-  const newX = Math.max(hw, Math.min(state.canvasW - hw, input.playerX));
   const invincibleTimer = Math.max(0, p.invincibleTimer - dtMs);
   const shootCooldown = Math.max(0, p.shootCooldown - dtMs);
-
   const hullFlashTimer = Math.max(0, p.hullFlashTimer - dtMs); // #2488
+
+  // #2842: after the last kill the AI has the ship — input is ignored until the next wave
+  if (state.phase === "Extraction" && state.extraction) {
+    const piloted = tickExtractionPilot(state, state.extraction, dtMs);
+    return {
+      ...state,
+      player: { ...piloted.player, invincibleTimer, shootCooldown, hullFlashTimer },
+      extraction: piloted.extraction,
+    };
+  }
+
+  const hw = p.width / 2;
+  const newX = Math.max(hw, Math.min(state.canvasW - hw, input.playerX));
   const player: Player = { ...p, x: newX, invincibleTimer, shootCooldown, hullFlashTimer };
 
   const isSuper = state.activePowerUp?.type === "lightning";
@@ -1582,6 +1618,7 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
   if (
     shootCooldown === 0 &&
     input.fire &&
+    weaponsFree(state) && // #2842: no firing during swoop-in (extraction returned above)
     !state.playerFireDisabled &&
     state.playerBullets.length < MAX_PLAYER_BULLETS
   ) {
@@ -2237,11 +2274,10 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   }
 
   const newEnemyBullets: Bullet[] = [...state.enemyBullets];
-  // Harmless bullets carried over from a cleared wave (see Bullet.harmless) don't count
-  // against bulletCap() — otherwise up to a full cap's worth of leftovers would suppress
-  // the new wave's real fire until they drift off-screen.
-  // #2487: flak at rocks is outside the cap too
-  let liveEnemyBulletCount = newEnemyBullets.filter((b) => !b.harmless && !b.flak).length;
+  // #2487: flak at rocks is outside the cap
+  let liveEnemyBulletCount = newEnemyBullets.filter((b) => !b.flak).length;
+  // #2842: ships that reach formation during swoop-in hold their fire until combat starts
+  const enemyWeaponsFree = weaponsFree(state) && !state.enemyFireDisabled;
   const enemyBulletCap = bulletCap(state.wave, _ps);
   // #2699: the Carrier fires its twin lasers once its armor is down (Boss escorts dead),
   // not only once it's the sole enemy left alive.
@@ -2290,7 +2326,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
       e = { ...e, hitFlashTimer: Math.max(0, e.hitFlashTimer - dtMs) };
     }
     for (const b of [result.bullet, ...(result.bullets ?? [])]) {
-      if (b && liveEnemyBulletCount < enemyBulletCap && !state.enemyFireDisabled) {
+      if (b && liveEnemyBulletCount < enemyBulletCap && enemyWeaponsFree) {
         newEnemyBullets.push(b);
         liveEnemyBulletCount++;
       }
@@ -2432,7 +2468,8 @@ function tickBuddyShips(state: StarSwarmState, dtMs: number): StarSwarmState {
 
     // Fire spread burst once at BUDDY_FIRE_AT_T
     let hasFired = buddy.hasFired;
-    if (!hasFired && newT >= BUDDY_FIRE_AT_T) {
+    // #2842: like every other gun, the buddy only opens fire during combat
+    if (!hasFired && newT >= BUDDY_FIRE_AT_T && weaponsFree(state)) {
       hasFired = true;
       const bulletCount =
         BUDDY_BULLET_COUNT_MIN +
@@ -2761,13 +2798,10 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
   }
 
   if (player.invincibleTimer <= 0) {
-    // Harmless (carried-over from a cleared wave, see Bullet.harmless) bullets keep flying
-    // and rendering but can never register a hit — they're excluded here rather than filtered
-    // out of currentEnemyBullets entirely so they still despawn normally via tickBullets.
-    const bulletHits = currentEnemyBullets.filter(
-      (b) =>
-        !b.harmless &&
-        collideCircleAABB(player.x, player.y, PLAYER_HURT_RADIUS, b.x, b.y, b.width, b.height)
+    // #2842: every enemy shot in flight is live — including during extraction, after the ship
+    // that fired it (or the whole wave) has died. Only the wave-boundary reset removes them.
+    const bulletHits = currentEnemyBullets.filter((b) =>
+      collideCircleAABB(player.x, player.y, PLAYER_HURT_RADIUS, b.x, b.y, b.width, b.height)
     );
     const hitByBullet = bulletHits.length > 0;
     // #2486: a rock on the hull is treated like a shot — the shield absorbs it, otherwise it
@@ -2797,11 +2831,9 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
     const projectileHit = hitByBullet || hitByRock || hitByBeam;
     const absorbed = projectileHit && shieldActive;
     if (absorbed) {
-      // Shield absorbs the bullets — no damage. Harmless bullets aren't absorbed (they were
-      // never counted in bulletHits), so they fly on through instead of popping mid-screen.
+      // Shield absorbs the bullets — no damage.
       currentEnemyBullets = currentEnemyBullets.filter(
         (b) =>
-          b.harmless ||
           !collideCircleAABB(player.x, player.y, PLAYER_HURT_RADIUS, b.x, b.y, b.width, b.height)
       );
       activePowerUp = {
@@ -2853,7 +2885,6 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
         const enemyBulletsAfterHit = hitByBullet
           ? currentEnemyBullets.filter(
               (b) =>
-                b.harmless ||
                 !collideCircleAABB(
                   player.x,
                   player.y,
@@ -3009,8 +3040,210 @@ function tickExplosions(state: StarSwarmState, dtMs: number): StarSwarmState {
 }
 
 // ---------------------------------------------------------------------------
-// Phase transitions
+// Wave lifecycle (#2842)
 // ---------------------------------------------------------------------------
+//
+//   SwoopIn ──all arrived──▶ Playing ──last kill──▶ Extraction ──ship out──▶ clearTransientCombat
+//      ▲                                                                           │
+//      └─────────────────────────────── buildWaveState (wave N+1) ◀────────────────┘
+//
+// The screen's 3 s countdown runs with the engine frozen before each SwoopIn, so combat begins
+// only once both the countdown and the swoop-in are over. Two central gates decide everything:
+// weaponsFree (may anything *new* be fired or spawned?) and hazardsLive (does anything already
+// in flight resolve — hit, damage, collect?).
+
+/**
+ * #2842: may anything new enter play — player or enemy fire, flak, a buddy's burst, the Carrier's
+ * beam and twin lasers, a timed or thrown asteroid? Only in combat. Swoop-in is setup time and
+ * extraction only lets what is already in flight resolve.
+ */
+export function weaponsFree(state: StarSwarmState): boolean {
+  return state.phase === "Playing";
+}
+
+/**
+ * #2842: do projectiles, rocks, beams and rams resolve against ships? In combat, and during
+ * extraction — shots already fired stay real after the wave's last kill. Never during swoop-in:
+ * the player and every enemy are invulnerable until combat starts.
+ */
+export function hazardsLive(state: StarSwarmState): boolean {
+  return state.phase === "Playing" || state.phase === "Extraction";
+}
+
+/** #2842: the AI is flying the player ship (input is ignored). */
+export function isAutopilot(state: StarSwarmState): boolean {
+  return state.phase === "Extraction";
+}
+
+/** #2842: true on the tick the wave's last enemy dies (wave-clear sound, haptic, a11y). */
+export function waveJustCleared(prev: StarSwarmState, next: StarSwarmState): boolean {
+  return prev.phase !== "Extraction" && next.phase === "Extraction";
+}
+
+/** #2842: a hostile thing in flight, as a circle, for the extraction autopilot. */
+export interface Hazard {
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
+  readonly r: number;
+}
+
+/**
+ * #2842: every hostile hazard still in flight: enemy shots (flak included) and rocks. A new
+ * traveling hostile entity (e.g. #2843's released Carrier beam) must be added here so the
+ * autopilot dodges it, and to clearTransientCombat so it cannot outlive its wave.
+ */
+export function liveHazards(state: StarSwarmState): Hazard[] {
+  const hazards: Hazard[] = state.enemyBullets.map((b) => ({
+    x: b.x,
+    y: b.y,
+    vx: b.vx,
+    vy: b.vy,
+    r: Math.max(b.width, b.height) / 2,
+  }));
+  for (const a of state.asteroids) {
+    if (a.hp > 0) hazards.push({ x: a.x, y: a.y, vx: a.vx, vy: a.vy, r: a.radius });
+  }
+  return hazards;
+}
+
+function climbSpeed(climbMs: number): number {
+  return Math.min(PILOT_CLIMB_MAX, PILOT_CLIMB_ACCEL * climbMs);
+}
+
+/** A hazard that could still reach the ship — anything but one below it and falling away. */
+function stillThreatens(h: Hazard, p: Player): boolean {
+  return !(h.y - h.r > p.y + PLAYER_HURT_RADIUS && h.vy >= 0);
+}
+
+/**
+ * How dangerous heading for lane `targetX` is over the next ~700 ms: every sampled moment a
+ * hazard would come within reach of the ship counts, near moments weighing more. 0 = clear.
+ */
+function laneDanger(
+  p: Player,
+  hazards: readonly Hazard[],
+  targetX: number,
+  climbMs: number,
+  climbing: boolean
+): number {
+  let danger = 0;
+  const dx = targetX - p.x;
+  for (const t of PILOT_LOOKAHEAD_MS) {
+    const sx = p.x + Math.sign(dx) * Math.min(Math.abs(dx), PILOT_SPEED * t);
+    const sy = climbing ? p.y - climbSpeed(climbMs + t / 2) * t : p.y;
+    const weight = 1 / (1 + t / 250);
+    for (const h of hazards) {
+      const reach = h.r + PLAYER_HURT_RADIUS + PILOT_MARGIN;
+      const hx = h.x + h.vx * t - sx;
+      const hy = h.y + h.vy * t - sy;
+      if (hx * hx + hy * hy < reach * reach) danger += weight;
+    }
+  }
+  return danger;
+}
+
+/** The safest lane to steer for — the current one unless another is strictly safer. */
+function pickLane(
+  p: Player,
+  hazards: readonly Hazard[],
+  canvasW: number,
+  climbMs: number,
+  climbing: boolean
+): number {
+  if (hazards.length === 0) return p.x;
+  let best = p.x;
+  let bestCost = laneDanger(p, hazards, p.x, climbMs, climbing) * 1000;
+  if (bestCost === 0) return p.x;
+  const hw = p.width / 2;
+  for (let x = hw; x <= canvasW - hw; x += PILOT_STEP) {
+    const cost = laneDanger(p, hazards, x, climbMs, climbing) * 1000 + Math.abs(x - p.x) * 0.01;
+    if (cost < bestCost) {
+      bestCost = cost;
+      best = x;
+    }
+  }
+  return best;
+}
+
+/**
+ * #2842: one tick of the extraction autopilot. The ship holds the lane, sidestepping whatever
+ * is still live, for at least EXTRACTION_HOLD_MIN_MS; once nothing can still reach it (or at
+ * EXTRACTION_HOLD_MAX_MS regardless) it accelerates off the top, still steering around hazards.
+ * Deterministic: no rng, so seeded runs replay exactly.
+ */
+function tickExtractionPilot(
+  state: StarSwarmState,
+  ex: Extraction,
+  dtMs: number
+): { player: Player; extraction: Extraction } {
+  const p = state.player;
+  const elapsedMs = ex.elapsedMs + dtMs;
+  const hazards = liveHazards(state);
+  const climbing =
+    ex.climbMs > 0 ||
+    (elapsedMs >= EXTRACTION_HOLD_MIN_MS &&
+      (elapsedMs >= EXTRACTION_HOLD_MAX_MS || !hazards.some((h) => stillThreatens(h, p))));
+  const climbMs = climbing ? ex.climbMs + dtMs : 0;
+  const targetX = pickLane(p, hazards, state.canvasW, climbMs, climbing);
+  const dx = targetX - p.x;
+  const x = p.x + Math.sign(dx) * Math.min(Math.abs(dx), PILOT_SPEED * dtMs);
+  const y = climbing ? p.y - climbSpeed(climbMs) * dtMs : p.y;
+  return { player: { ...p, x, y }, extraction: { elapsedMs, climbMs } };
+}
+
+/** #2842: the ship is off the top (or the extraction timed out) — time for the reset. */
+function extractionComplete(state: StarSwarmState): boolean {
+  const ex = state.extraction;
+  if (state.phase !== "Extraction" || !ex) return false;
+  return state.player.y + state.player.height / 2 < 0 || ex.elapsedMs >= EXTRACTION_MAX_MS;
+}
+
+/**
+ * #2842: the last enemy is down. Award the clear bonus, raise the banner and hand the ship to
+ * the autopilot. Nothing is frozen and nothing is removed: shots already fired (by either side,
+ * whether or not their ship survives) and rocks keep flying and stay harmful.
+ */
+function beginExtraction(state: StarSwarmState): StarSwarmState {
+  // #2490 ×2 on boss waves; #2837 credited to the wave just cleared
+  const scored = addScore(
+    state,
+    WAVE_CLEAR_SOURCE,
+    waveClearBonusPoints(state.wave, state.difficulty)
+  );
+  return {
+    ...scored,
+    phase: "Extraction",
+    extraction: { elapsedMs: 0, climbMs: 0 },
+    missionCompleteTimer: MISSION_COMPLETE_BANNER_MS,
+  };
+}
+
+/**
+ * #2842: the hard wave-boundary reset — the one explicit place transient combat entities leave
+ * play other than by their own hit or despawn. Projectiles are never removed because the ship
+ * that fired them died (see the #2776 invariants); they persist until this boundary.
+ *
+ * Clears: player shots (Buddy shots are player-owned, so included), enemy shots (aimed, burst,
+ * twin-laser, flak), asteroids, buddy ships, and any Carrier beam (derived from the Carrier's
+ * beamPhase today). Plug-in point: a new transient combat entity — #2843's independent
+ * traveling Carrier beam, #2845's Buddy projectiles/state — must be cleared here (and in the
+ * reset test in engine.test.ts), so nothing from wave N can interact with wave N+1.
+ */
+export function clearTransientCombat(state: StarSwarmState): StarSwarmState {
+  return {
+    ...state,
+    playerBullets: [],
+    enemyBullets: [],
+    asteroids: [],
+    buddyShips: [],
+    enemies: state.enemies.map((e) =>
+      e.beamPhase === "idle" ? e : { ...e, beamPhase: "idle" as const }
+    ),
+    extraction: null,
+  };
+}
 
 function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
   const liveEnemies = state.enemies.filter((e) => e.isAlive);
@@ -3022,46 +3255,39 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
     return state;
   }
 
-  // Playing → next wave once all enemies dead. #2352: the next wave starts immediately — no
-  // freeze, no AI autopilot lockout. The wave-clear sound/haptic (fired by the caller off the
-  // `wave` bump) and the brief, non-blocking missionCompleteTimer banner are the only
-  // acknowledgment. #2490: a boss wave pays double (see waveClearBonusPoints).
+  // Playing → Extraction on the last kill (#2842)
   if (state.phase === "Playing") {
-    if (liveEnemies.length === 0) {
-      const waveClearBonus = waveClearBonusPoints(state.wave, state.difficulty);
-      // Note: invincibleTimer and bombFlashTimer don't need resetting here —
-      // startNextWave() → buildWaveState() unconditionally resets both on every wave.
-      const next = startNextWave(addScore(state, WAVE_CLEAR_SOURCE, waveClearBonus)); // #2837
-      return { ...next, missionCompleteTimer: MISSION_COMPLETE_BANNER_MS };
-    }
-    return state;
+    return liveEnemies.length === 0 ? beginExtraction(state) : state;
+  }
+
+  // Extraction → hard reset → wave N+1, once the ship is out
+  if (state.phase === "Extraction") {
+    return extractionComplete(state) ? startNextWave(clearTransientCombat(state)) : state;
   }
 
   return state;
 }
 
 function startNextWave(state: StarSwarmState): StarSwarmState {
-  const nextWave = state.wave + 1;
   const next = buildWaveState(
     state.canvasW,
     state.canvasH,
-    nextWave,
+    state.wave + 1,
     state.player,
     state.score,
     state.bonusLivesAwarded,
     state.difficulty,
     state.stragglerEnabled,
-    // In-flight bullets survive the wave boundary instead of vanishing. Enemy bullets are
-    // marked harmless (see Bullet.harmless): the ship the player was flying already won this
-    // wave, so a shot fired at it a moment before the last enemy died can't retroactively
-    // kill them — it just keeps flying across the screen like a normal spent shot.
-    state.playerBullets,
-    state.enemyBullets.map((b) => (b.harmless ? b : { ...b, harmless: true })),
-    state.asteroids,
     state.tierStats,
     state.runStats
   );
-  return { ...next, scoreLedger: state.scoreLedger }; // #2837: the ledger carries across waves
+  // the cosmetic banner raised on the last kill finishes its own fade;
+  // #2837: the ledger carries across waves
+  return {
+    ...next,
+    missionCompleteTimer: state.missionCompleteTimer,
+    scoreLedger: state.scoreLedger,
+  };
 }
 
 // ---------------------------------------------------------------------------
