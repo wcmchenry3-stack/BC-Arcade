@@ -91,9 +91,11 @@ FLOWS = (
 )
 
 
-def _set_display_name(client: TestClient, sid: str, name: str) -> None:
-    r = client.put("/players/me", headers=_headers(sid), json={"display_name": name})
+def _join(client: TestClient, sid: str) -> str:
+    """Join the boards (``PUT /players/me``); returns the generated name."""
+    r = client.put("/players/me", headers=_headers(sid))
     assert r.status_code == 200, r.text
+    return r.json()["display_name"]
 
 
 def _start(client: TestClient, sid: str, flow: AppFlow) -> str:
@@ -145,7 +147,7 @@ def _entries(client: TestClient, sid: str, flow: AppFlow) -> list[tuple[str, int
 async def test_a_named_player_appears_once_per_board(client: TestClient, flow: AppFlow) -> None:
     sid = str(uuid.uuid4())
     await _grant_all(sid)  # Sudoku and Cascade are premium
-    _set_display_name(client, sid, "Solo")
+    solo = _join(client, sid)
 
     first = _win(client, sid, flow, flow.best)
     assert _rank(client, sid, first) == {
@@ -154,14 +156,14 @@ async def test_a_named_player_appears_once_per_board(client: TestClient, flow: A
         "is_best": True,
         "reason": None,
     }
-    assert _entries(client, sid, flow) == [("Solo", flow.best)]
+    assert _entries(client, sid, flow) == [(solo, flow.best)]
 
     # A worse game and an abandoned one leave the single best entry.
     second = _win(client, sid, flow, flow.worse)
     assert _rank(client, sid, second)["is_best"] is False
     abandoned = _abandon(client, sid, flow)
     assert _rank(client, sid, abandoned)["ranked"] is False
-    assert _entries(client, sid, flow) == [("Solo", flow.best)]
+    assert _entries(client, sid, flow) == [(solo, flow.best)]
 
 
 async def test_solitaire_records_the_draw_mode_on_the_session_row(client: TestClient) -> None:
@@ -175,11 +177,11 @@ async def test_solitaire_records_the_draw_mode_on_the_session_row(client: TestCl
 async def test_solitaire_draw_modes_share_one_board(client: TestClient) -> None:
     draw_1 = AppFlow(**{**FLOWS[0].__dict__, "metadata": {"draw_mode": 1}})
     one, three = str(uuid.uuid4()), str(uuid.uuid4())
-    _set_display_name(client, one, "DrawOne")
-    _set_display_name(client, three, "DrawThree")
+    draw_one = _join(client, one)
+    draw_three = _join(client, three)
     _win(client, one, draw_1, 700)
     _win(client, three, FLOWS[0], 800)
-    assert _entries(client, one, FLOWS[0]) == [("DrawThree", 800), ("DrawOne", 700)]
+    assert _entries(client, one, FLOWS[0]) == [(draw_three, 800), (draw_one, 700)]
 
 
 async def test_freecell_best_value_is_the_fewest_moves(client: TestClient) -> None:

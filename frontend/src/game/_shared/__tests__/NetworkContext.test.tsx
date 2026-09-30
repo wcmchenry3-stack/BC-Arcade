@@ -38,7 +38,6 @@ jest.mock("../useNetworkStatus", () => ({
 }));
 
 jest.mock("../displayNameSync", () => ({
-  registerDisplayNameSync: jest.fn(),
   syncDisplayNameOnLaunch: jest.fn().mockResolvedValue(true),
   flushDisplayNameSync: jest.fn().mockResolvedValue(true),
 }));
@@ -50,14 +49,7 @@ jest.mock("../displayNameSync", () => ({
 import { syncWorker } from "../syncWorker";
 import { clearLegacyScoreQueue } from "../legacyScoreQueue";
 import { useNetworkStatus } from "../useNetworkStatus";
-import {
-  flushDisplayNameSync,
-  registerDisplayNameSync,
-  syncDisplayNameOnLaunch,
-} from "../displayNameSync";
-
-// Read before any beforeEach clears the mocks' call records.
-const nameSyncRegistrationsAtLoad = (registerDisplayNameSync as jest.Mock).mock.calls.length;
+import { flushDisplayNameSync, syncDisplayNameOnLaunch } from "../displayNameSync";
 
 function getAppStateListener(): (s: AppStateStatus) => void {
   const mock = AppState.addEventListener as jest.Mock;
@@ -161,11 +153,7 @@ describe("NetworkContext — display name sync (#2624)", () => {
     }));
   });
 
-  it("installs the save sync once, at module load", () => {
-    expect(nameSyncRegistrationsAtLoad).toBe(1);
-  });
-
-  it("syncs a never-synced stored name once on launch", async () => {
+  it("runs the leaderboard launch sync once on launch", async () => {
     await renderProvider();
     expect(syncDisplayNameOnLaunch).toHaveBeenCalledTimes(1);
   });

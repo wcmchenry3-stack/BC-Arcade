@@ -8,7 +8,10 @@ import type { GameState } from "../../game/yacht/types";
 import { newGame } from "../../game/yacht/engine";
 import * as storage from "../../game/yacht/storage";
 import { gameEventClient } from "../../game/_shared/gameEventClient";
-import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
+import {
+  resetDisplayNameCacheForTests,
+  storeAssignedDisplayName,
+} from "../../game/_shared/displayName";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { GameRankResponse } from "../../api/types";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
@@ -428,7 +431,7 @@ describe("Yacht vs mode — app backgrounded during the CPU's last turn (#2543 r
   });
 
   it("the card still finds the game recorded on a background once the CPU finishes (#2630)", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const r = await renderVs("yacht", [6, 6, 6, 6, 6], "chance");
     await playLastTurn(r, /^Yacht/i);
     // complete() runs here and clears the hook's game id.
@@ -500,7 +503,7 @@ describe("Yacht reporting — mode metadata (#2630)", () => {
 
 describe("Yacht reporting — result card leaderboard line (#2630)", () => {
   it("a named player's solo game shows its rank", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const r = await renderSolo("yacht");
     await playLastTurn(r, /^Yacht/i);
     await settle();
@@ -511,7 +514,7 @@ describe("Yacht reporting — result card leaderboard line (#2630)", () => {
   });
 
   it("a vs game shows its rank once the CPU has finished", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const r = await renderVs("yacht", [6, 6, 6, 6, 6], "chance");
     await playLastTurn(r, /^Yacht/i);
     await settle();
@@ -538,7 +541,7 @@ describe("Yacht reporting — result card leaderboard line (#2630)", () => {
   });
 
   it("an unranked game shows no leaderboard line", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     mockGetRank.mockResolvedValue({
       ranked: false,
       rank: null,
@@ -554,7 +557,7 @@ describe("Yacht reporting — result card leaderboard line (#2630)", () => {
   });
 
   it("never looks up a rank for an abandoned game", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const r = await renderSolo("yacht");
     await act(async () => {
       await fireEvent.press(r.getByRole("button", { name: /^Roll/i }));
@@ -574,7 +577,7 @@ describe("Yacht reporting — result card leaderboard line (#2630)", () => {
   });
 
   it("never looks up a rank when the player leaves mid-game", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const r = await renderSolo("yacht");
     await act(async () => {
       await fireEvent.press(r.getByRole("button", { name: /^Roll/i }));
@@ -589,7 +592,7 @@ describe("Yacht reporting — result card leaderboard line (#2630)", () => {
   });
 
   it("Play Again clears the line for the next game", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const r = await renderSolo("yacht");
     await playLastTurn(r, /^Yacht/i);
     await settle();
@@ -640,7 +643,7 @@ describe("Yacht reporting — a finished game reopened (#2630 review)", () => {
   });
 
   it("looks the rank up with the saved id once the CPU finishes, and submits nothing", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const r = await renderReopened("saved-game-id");
     await finishCpuTurn();
     await settle();
@@ -658,7 +661,7 @@ describe("Yacht reporting — a finished game reopened (#2630 review)", () => {
   });
 
   it("shows no leaderboard line for a reopened game saved without an id", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const r = await renderReopened(undefined);
     await finishCpuTurn();
     await settle();
@@ -668,7 +671,7 @@ describe("Yacht reporting — a finished game reopened (#2630 review)", () => {
   });
 
   it("ignores a saved id on a game that isn't over", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const r = await renderGame({
       initialState: lastRound("yacht", [6, 6, 6, 6, 6], 0),
       finishedGameId: "stale-id",

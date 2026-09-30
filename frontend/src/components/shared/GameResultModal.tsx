@@ -14,7 +14,7 @@ import { useTranslation } from "react-i18next";
 import { useTheme, type Colors } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import type { LeaderboardSubmitStatus } from "../../game/_shared/useLeaderboardSubmit";
-import DisplayNameField from "./DisplayNameField";
+import JoinLeaderboardsPrompt from "./JoinLeaderboardsPrompt";
 import { useIsScreenFocused } from "../../hooks/useIsScreenFocused";
 
 /**
@@ -58,8 +58,11 @@ export interface ResultSubmission {
    */
   isBest?: boolean | null;
   playerName?: string | null;
-  /** Saves the name from the one-time prompt and sends the waiting score. */
-  onProvideName?: (name: string) => Promise<boolean> | void;
+  /**
+   * The one-time "Join leaderboards" prompt (#2778): joins under a
+   * server-generated name and looks the waiting game's rank up.
+   */
+  onJoinLeaderboards?: () => Promise<boolean> | void;
   onRetry?: () => void;
 }
 
@@ -470,7 +473,7 @@ function Hero({
 
 function SubmissionLine({ submission, colors }: { submission: ResultSubmission; colors: Colors }) {
   const { t } = useTranslation("result");
-  const { status, rank, isBest, playerName, onProvideName, onRetry } = submission;
+  const { status, rank, isBest, playerName, onJoinLeaderboards, onRetry } = submission;
 
   // Nothing submitted yet (or this outcome isn't submitted), or the game is on
   // no board (#2677): no line at all.
@@ -479,14 +482,7 @@ function SubmissionLine({ submission, colors }: { submission: ResultSubmission; 
   if (status === "needsName") {
     return (
       <View style={[styles.namePrompt, { backgroundColor: colors.surfaceAlt }]}>
-        <DisplayNameField
-          testID="result-name-prompt"
-          label={t("namePrompt.label")}
-          helper={t("namePrompt.helper")}
-          onSaved={(name) => {
-            void onProvideName?.(name);
-          }}
-        />
+        <JoinLeaderboardsPrompt testID="result-name-prompt" onJoin={onJoinLeaderboards} />
       </View>
     );
   }

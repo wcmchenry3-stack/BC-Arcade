@@ -17,7 +17,7 @@ import { eventStore } from "../game/_shared/eventStore";
 import { statsApi } from "../api/stats";
 import { clearMyStatsCache } from "../hooks/useMyStats";
 import { clearDisplayName } from "../game/_shared/displayName";
-import { clearDisplayNameSync } from "../game/_shared/displayNameSync";
+import { clearDisplayNameSync, forgetSyncedDisplayName } from "../game/_shared/displayNameSync";
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from "../config/legal";
 
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -59,13 +59,20 @@ export default function SettingsScreen() {
     try {
       // First, so a name sync in flight can't recreate the player's name on
       // the server after the delete (#2624).
+      // It also marks the legacy-name migration done, so a name left on the
+      // device can never turn into a join on a later launch (#2778 review).
       await clearDisplayNameSync();
       await statsApi.deleteMyData();
       // The stats screen's remembered /stats/me is this player's (#2635).
       clearMyStatsCache();
+      // The local name goes before the session, and a failure stops here: the
+      // device must not keep showing a name under a fresh player id.
+      if (!(await clearDisplayName())) {
+        throw new Error("deleteData: couldn't clear the local display name");
+      }
+      // Only now that the server copy is gone.
+      await forgetSyncedDisplayName();
       await Promise.all([
-        // The name too, or the next launch would send it again for the new session.
-        clearDisplayName(),
         clearSession(),
         pendingGamesStore.clearAll(),
         eventStore.clearAll(),

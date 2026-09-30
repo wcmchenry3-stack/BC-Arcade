@@ -92,10 +92,20 @@ jest.mock("../../game/_shared/flushQueuedGames", () => ({
 jest.mock("../../game/_shared/displayNameSync", () => ({
   ...jest.requireActual("../../game/_shared/displayNameSync"),
   flushDisplayNameSync: jest.fn(() => Promise.resolve(true)),
+  // Joining stores the server's generated name at once (#2778).
+  joinLeaderboards: async () => {
+    await jest
+      .requireActual("../../game/_shared/displayName")
+      .storeAssignedDisplayName("Brave Otter 4821");
+    return true;
+  },
 }));
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { GameRankResponse } from "../../api/types";
-import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
+import {
+  resetDisplayNameCacheForTests,
+  storeAssignedDisplayName,
+} from "../../game/_shared/displayName";
 
 beforeEach(async () => {
   mockNavListeners.clear();
@@ -1158,7 +1168,7 @@ describe("Twenty48Screen — win / loss outcomes and the leaderboard (#2631)", (
   beforeEach(() => jest.clearAllMocks());
 
   it("reaching 2048 completes the session as a win at that moment's score", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     (loadGame as jest.Mock).mockResolvedValueOnce(null);
     const r = await mountAndSettle();
 
@@ -1180,7 +1190,7 @@ describe("Twenty48Screen — win / loss outcomes and the leaderboard (#2631)", (
   });
 
   it("the submission renders once: one rank lookup for the session, one line on the card", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     (loadGame as jest.Mock).mockResolvedValueOnce(null);
     const r = await mountAndSettle();
 
@@ -1191,18 +1201,18 @@ describe("Twenty48Screen — win / loss outcomes and the leaderboard (#2631)", (
     expect(mockGetRank).toHaveBeenCalledWith("game-uuid-test");
   });
 
-  it("asks for a display name on the win card when the player has none", async () => {
+  it("asks the player to join on the win card when not on the boards", async () => {
     (loadGame as jest.Mock).mockResolvedValueOnce(null);
     const r = await mountAndSettle();
 
     await playMove(WIN_MOVE);
-    expect(await r.findByLabelText("Pick a display name for leaderboards")).toBeTruthy();
+    expect(await r.findByRole("button", { name: "Join leaderboards" })).toBeTruthy();
     // No name yet: nothing to look up.
     expect(mockGetRank).not.toHaveBeenCalled();
   });
 
   it("Keep Playing sends no completion; a later game over neither completes nor submits", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     (loadGame as jest.Mock).mockResolvedValueOnce(null);
     const r = await mountAndSettle();
     await playMove(WIN_MOVE);
@@ -1225,7 +1235,7 @@ describe("Twenty48Screen — win / loss outcomes and the leaderboard (#2631)", (
   });
 
   it("a game over without 2048 completes as a loss and shows the rank", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     (loadGame as jest.Mock).mockResolvedValueOnce(null);
     const r = await mountAndSettle();
 
@@ -1262,7 +1272,7 @@ describe("Twenty48Screen — win / loss outcomes and the leaderboard (#2631)", (
   });
 
   it("a resumed game that already won does not complete again", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     (loadGame as jest.Mock).mockResolvedValueOnce(WON_STATE);
     const r = await mountAndSettle();
     await waitFor(() => expect(r.getByText("You Win!")).toBeTruthy());
@@ -1281,7 +1291,7 @@ describe("Twenty48Screen — win / loss outcomes and the leaderboard (#2631)", (
   it("a won save whose session an older build left open records it as the win", async () => {
     // A pre-#2631 build closed the session only on Keep Playing; the app was
     // killed with the win card up.
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     mockResumeGame.mockReturnValueOnce("old-build-session");
     (loadGame as jest.Mock).mockResolvedValueOnce({ ...WON_STATE, accumulatedMs: 60_000 });
     const r = await mountAndSettle();
@@ -1359,7 +1369,7 @@ describe("Twenty48Screen — win / loss outcomes and the leaderboard (#2631)", (
   });
 
   it("no submit on an abandon: leaving mid-game", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
     const r = await mountAndSettle();
     await playMove({ ...NOOP_LEFT_STATE, score: 64 });
@@ -1370,7 +1380,7 @@ describe("Twenty48Screen — win / loss outcomes and the leaderboard (#2631)", (
   });
 
   it("no submit on an abandon: New Game mid-game; the next game submits afresh", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     (loadGame as jest.Mock).mockResolvedValueOnce(null);
     const r = await mountAndSettle();
     await playMove({ ...NOOP_LEFT_STATE, score: 64 });
@@ -1391,7 +1401,7 @@ describe("Twenty48Screen — win / loss outcomes and the leaderboard (#2631)", (
   });
 
   it("a saved game-over board shows no leaderboard line and looks nothing up", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     (loadGame as jest.Mock).mockResolvedValueOnce(GAME_OVER_STATE);
     const r = await mountAndSettle();
     const card = within(await r.findByTestId("twenty48-result"));

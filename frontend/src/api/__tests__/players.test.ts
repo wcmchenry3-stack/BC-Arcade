@@ -8,7 +8,7 @@ jest.mock("../../game/_shared/httpClient", () => ({
 
 import { playersApi } from "../players";
 
-describe("playersApi (#2624)", () => {
+describe("playersApi (#2624, #2778)", () => {
   beforeEach(() => mockRequest.mockClear());
 
   it("GETs the caller's name", async () => {
@@ -16,15 +16,17 @@ describe("playersApi (#2624)", () => {
     expect(mockRequest).toHaveBeenCalledWith("/players/me");
   });
 
-  it("PUTs the name as display_name", async () => {
-    await playersApi.putMe("Riley");
-    expect(mockRequest).toHaveBeenCalledWith("/players/me", {
-      method: "PUT",
-      body: JSON.stringify({ display_name: "Riley" }),
-    });
+  it("joins with a bodiless PUT: no name text is ever sent", async () => {
+    await playersApi.putMe();
+    expect(mockRequest).toHaveBeenCalledWith("/players/me", { method: "PUT" });
   });
 
-  it("DELETEs the name", async () => {
+  it("rerolls with a bodiless POST", async () => {
+    await playersApi.rerollMe();
+    expect(mockRequest).toHaveBeenCalledWith("/players/me/reroll", { method: "POST" });
+  });
+
+  it("DELETEs to leave", async () => {
     await playersApi.deleteMe();
     expect(mockRequest).toHaveBeenCalledWith("/players/me", { method: "DELETE" });
   });
