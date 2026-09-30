@@ -510,22 +510,26 @@ BC Arcade has a server-authoritative premium access layer that is independent of
 game rule enforcement. Entitlements control _which games a session may open_, not
 how those games behave once open.
 
+How purchases feed this system (store verification, the `purchases` table, restore,
+refunds, the product catalog) is specified in [IAP.md](IAP.md). Purchases write
+`game_entitlements` rows; they do not add a second entitlement model.
+
 ### 10.1 How it works
 
-1. The client calls `GET /entitlements` on startup (and on foreground-resume if
-   the cached token is within 1 hour of expiry).
+1. The client calls `GET /entitlements` on startup and on every foreground-resume.
+   Purchase and restore responses also carry a fresh token ([IAP.md §8.2](IAP.md#82-endpoints)).
 2. The server returns an **RS256-signed JWT** containing:
    - `sub`: session_id
    - `entitled_games`: array of game slugs the session may access
    - `iat` / `exp`: issued-at and expiry (24-hour TTL)
 3. The token is cached in AsyncStorage by `EntitlementContext.tsx`.
 4. Before navigating to any premium game, the context checks `entitled_games`.
-   If the game is absent, the UI shows an upgrade prompt instead.
+   If the game is absent, the UI shows the paywall instead ([IAP.md §9](IAP.md#9-frontend-contract--841)).
 
 ### 10.2 Offline grace period
 
 The client may reuse the cached entitlement set for **7 days past JWT expiry**
-when it cannot refresh. If the cache is missing or beyond the grace period,
+when it cannot refresh (reviewed for paid access and retained: [IAP.md §10](IAP.md#10-entitlement-refresh-policy)). If the cache is missing or beyond the grace period,
 premium access is denied locally until the app reconnects. Free games remain
 accessible.
 
@@ -567,7 +571,9 @@ entitlement checks and grant access to every game. Never set this in production.
 | Backend — JWT issuance           | `backend/entitlements/service.py`                         |
 | Backend — Route guard            | `backend/entitlements/dependencies.py`                    |
 | Frontend — Token cache & context | `frontend/src/entitlements/EntitlementContext.tsx`        |
-| DB — entitlement rows            | `backend/alembic/versions/0014_game_types_premium_cat.py` |
+| DB — premium flag                | `backend/alembic/versions/0014_game_types_premium_cat.py` |
+| DB — entitlement rows            | `backend/alembic/versions/0015_add_game_entitlements.py`  |
+| Store product catalog            | `frontend/src/entitlements/premiumProducts.json`          |
 
 ### 10.6 Adding a premium game
 
@@ -575,6 +581,9 @@ entitlement checks and grant access to every game. Never set this in production.
 2. Add the game slug to `PREMIUM_GAMES` in `EntitlementContext.tsx`.
 3. Add `require_entitlement("<slug>")` to every route in `backend/<game>/router.py`.
 4. Document the tier in `docs/games/<game>.md`.
+4a. Add its store product to `frontend/src/entitlements/premiumProducts.json` and create the
+   product in both store consoles ([IAP.md §2](IAP.md#2-catalog)); the premium-products drift
+   tests fail until the catalog matches `is_premium`.
 5. While v1.0 hides premium games (§10.7), also add the slug to `HIDDEN_GAMES` in
    `gameVisibility.ts` and its route to `PREMIUM_ROUTES` in `premiumRoutes.ts`
    (plus the unguarded screen in `App.tsx`'s `PREMIUM_SCREEN_BASES`). The
