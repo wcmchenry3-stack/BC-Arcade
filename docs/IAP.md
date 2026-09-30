@@ -1336,12 +1336,12 @@ runners make wall-clock time noisy.
   Mitigations if abused: count the bucket only after signature verification
   (#2786's `SignedDataVerifier` is local and cheap), or key it by
   `(store_key, session)` as well.
-- **Per-IP limit trusts `X-Forwarded-For`.** The per-IP limit uses the
-  limiter's proxy-aware address, which takes the *first*
-  `X-Forwarded-For` hop — client-controlled, so a client can rotate its
-  apparent IP and escape the per-IP limit. Known issue, fixed globally in a
-  follow-up (SECURITY.md §9 "Known issue: X-Forwarded-For spoofing"); the
-  per-session and per-`store_key` limits still apply.
+- ~~**Per-IP limit trusts `X-Forwarded-For`.**~~ Fixed in #2863: the
+  per-IP limit is keyed by `limiter.client_ip`, which trusts only
+  `CF-Connecting-IP` or the `X-Forwarded-For` entry appended by Render's
+  proxy, never the client-controlled left-most one. What remains is the
+  `*.onrender.com` bypass question in SECURITY.md §9 ("Client IP trust
+  model"), which the owner confirms.
 
 - **OCSP latency.** With online checks on, each uncached chain costs two
   blocking OCSP requests to Apple, each with a 30 s timeout, run in a worker

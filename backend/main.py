@@ -30,7 +30,7 @@ from entitlements.dependencies import EntitlementError
 from entitlements.router import router as entitlements_router
 from entitlements.service import is_dev_override_active
 from games.router import router as games_router
-from limiter import _real_ip, limiter
+from limiter import client_ip, limiter
 from logs.router import router as logs_router
 from me.router import router as me_router
 from players.router import router as players_router
@@ -271,7 +271,7 @@ async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONR
         json.dumps(
             {
                 "event": "rate_limit_exceeded",
-                "ip": _real_ip(request),
+                "ip": client_ip(request),
                 "method": request.method,
                 "path": request.url.path,
             }
@@ -446,7 +446,7 @@ async def request_logger(request: Request, call_next) -> Response:
     duration_ms = round((time.monotonic() - start) * 1000, 1)
 
     record: dict = {
-        "ip": _real_ip(request),
+        "ip": client_ip(request),
         "method": request.method,
         "path": request.url.path,
         "status": response.status_code,
