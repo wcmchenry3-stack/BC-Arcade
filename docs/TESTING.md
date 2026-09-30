@@ -705,6 +705,23 @@ The noise ladder still holds on noise plays: Cautious − Schemer is +476
 [450, 503] and Schemer − Daring +232 [217, 246]. Each mistake is cheaper and
 less often a blunder; the personas simply make more of them.
 
+### Star Swarm Buddy balance simulation (#2880)
+
+This is a seeded, headless harness over the real Star Swarm engine. An autoplayed player,
+invincible or not, fights while Buddy is launched through the real power-up path. The harness
+reports, per difficulty × wave type:
+
+- Buddy's destruction rate and killers, and its HP;
+- the shots it draws, and whether they hit;
+- its damage and kill share, and its per-sortie kills and share of the fleet;
+- the Carrier's time-to-kill, with and without Buddy, on the same seeds.
+
+It lives in `frontend/src/game/starswarm/sim/`, and its CLI is `scripts/simulate-starswarm.ts`. A
+fast smoke preset runs with the normal jest suite. The full runs use the CLI
+(`npx tsx scripts/simulate-starswarm.ts --preset baseline --jobs 4`). How to run it, shard it and
+override tuning in the sim only:
+[starswarm.md → Balance simulation](games/starswarm.md#balance-simulation-2880).
+
 ## Manual repros
 
 ### Hearts: tab-switch state preservation (#745)
