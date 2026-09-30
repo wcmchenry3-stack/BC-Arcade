@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as Sentry from "@sentry/react-native";
 import type { GameType } from "./types";
 import { useNetwork } from "./NetworkContext";
-import { loadDisplayName, saveDisplayName } from "./displayName";
+import { getCachedDisplayName, loadDisplayName } from "./displayName";
+import { getLeaderboardSyncPending, joinLeaderboards } from "./displayNameSync";
 import { ApiError, isNetworkError } from "./httpClient";
 
 /**
@@ -11,14 +12,15 @@ import { ApiError, isNetworkError } from "./httpClient";
  *
  * A game calls `submit(payload)` once when it ends, and the result card
  * renders `status`. Nothing is sent or queued here: the game syncs through
- * `SyncWorker` and the name through `displayNameSync`, and the adapter only
- * looks up where the finished game ranks (`sessionBoardAdapter`).
+ * `SyncWorker` and the leaderboard join through `displayNameSync`, and the
+ * adapter only looks up where the finished game ranks (`sessionBoardAdapter`).
  *
  *   saved      — ranked; `rank` is set when the player's best entry is top 10
  *   offline    — the device is offline (or the lookup hit a network error);
  *                the hook asks again while the card is mounted
- *   needsName  — no display name yet; call `provideName()` (the card's
- *                one-time prompt) and the lookup runs
+ *   needsName  — not on the leaderboards; call `joinLeaderboards()` (the
+ *                card's one-time "Join leaderboards" prompt, #2778) and the
+ *                lookup runs under the name the server generates
  *   unranked   — this game is on no board (the board is disabled, or the
  *                game can never rank); the card shows no leaderboard line
  *   error      — the lookup failed; `retry()` tries again
@@ -33,8 +35,8 @@ export type LeaderboardSubmitStatus =
  *               hook still applies `topTenRank`), and `isBest` says whether
  *               this game is that entry (#2633; omitted means it is)
  *   unranked  — `unranked`: the game is on no board; nothing more to do
- *   needsName — the server has no name for the player: `needsName`
- *   pending   — not on the server yet (the completion or the name is still
+ *   needsName — the player hasn't joined the leaderboards: `needsName`
+ *   pending   — not on the server yet (the completion or the join is still
  *               syncing): shown as `submitting`, and asked again later
  */
 export type RankLookup =
@@ -115,12 +117,15 @@ export interface LeaderboardSubmitState<P> {
    * "Your best: #N".
    */
   isBest: boolean;
-  /** The display name the rank was looked up under. */
+  /** The player's (server-generated) leaderboard name, once known. */
   playerName: string | null;
   /** Look up this game's rank. Later calls are ignored until `reset()`. */
   submit: (payload: P) => Promise<void>;
-  /** Save a display name and run the lookup waiting on it. Resolves false if the name is invalid. */
-  provideName: (name: string) => Promise<boolean>;
+  /**
+   * Join the leaderboards (the player's explicit opt-in, #2778) and run the
+   * lookup waiting on it. Resolves false if the join couldn't be stored.
+   */
+  joinLeaderboards: () => Promise<boolean>;
   /** Try the last lookup again after an `error`. */
   retry: () => Promise<void>;
   /** Forget this game's submission (call on new game). */
@@ -177,7 +182,7 @@ export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): Leaderb
       const generation = generationRef.current;
       const isCurrent = () => generationRef.current === generation;
       clearTimer();
-      setPlayerName(name);
+      setPlayerName(name || null);
       unsettledRef.current = true;
 
       if (offlineRef.current) {
@@ -204,6 +209,8 @@ export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): Leaderb
       if (lookup != null) {
         switch (lookup.kind) {
           case "ranked":
+            // A join confirmed during the lookup has brought the generated name.
+            setPlayerName(getCachedDisplayName() ?? (name || null));
             setRank(topTenRank(lookup.rank));
             setIsBest(lookup.isBest ?? true);
             setStatus("saved");
@@ -244,18 +251,22 @@ export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): Leaderb
     [clearTimer, scheduleRefetch]
   );
 
-  /** Looks the pending game up under the stored name, or asks for one. */
+  /**
+   * Looks the pending game up under the stored name (or a join still on its
+   * way to the server), or asks the player to join.
+   */
   const sendPending = useCallback(async () => {
     const pending = pendingRef.current;
     if (!pending) return;
     const generation = generationRef.current;
     const name = await loadDisplayName();
+    const joining = name == null && (await getLeaderboardSyncPending()) === "join";
     if (generationRef.current !== generation) return;
-    if (!name) {
+    if (!name && !joining) {
       setStatus("needsName");
       return;
     }
-    await send(name, pending.payload);
+    await send(name ?? "", pending.payload);
   }, [send]);
   sendPendingRef.current = sendPending;
 
@@ -269,17 +280,15 @@ export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): Leaderb
     [sendPending]
   );
 
-  const provideName = useCallback(
-    async (raw: string) => {
-      const generation = generationRef.current;
-      const name = await saveDisplayName(raw);
-      if (!name) return false;
-      const pending = pendingRef.current;
-      if (pending && generationRef.current === generation) await send(name, pending.payload);
-      return true;
-    },
-    [send]
-  );
+  const join = useCallback(async () => {
+    const generation = generationRef.current;
+    if (!(await joinLeaderboards())) return false;
+    const pending = pendingRef.current;
+    if (pending && generationRef.current === generation) {
+      await send(getCachedDisplayName() ?? "", pending.payload);
+    }
+    return true;
+  }, [send]);
 
   const retry = sendPending;
 
@@ -315,5 +324,5 @@ export function useLeaderboardSubmit<P>(adapter: LeaderboardAdapter<P>): Leaderb
     setPlayerName(null);
   }, [clearTimer]);
 
-  return { status, rank, isBest, playerName, submit, provideName, retry, reset };
+  return { status, rank, isBest, playerName, submit, joinLeaderboards: join, retry, reset };
 }

@@ -3,9 +3,9 @@
  *
  * Wraps the tree so any component can call `useNetwork()` to get
  * `{ isOnline, isInitialized }`. Internally watches for offline→online
- * transitions and flushes `SyncWorker` and the display-name sync (#2624)
- * exactly once per reconnect edge. Both also flush on foreground, and the
- * name sync once at launch.
+ * transitions and flushes `SyncWorker` and the leaderboard join/leave sync
+ * (#2624, #2778) exactly once per reconnect edge. Both also flush on
+ * foreground, and the leaderboard sync once at launch.
  */
 
 import React, { createContext, useContext, useEffect, useRef } from "react";
@@ -13,11 +13,7 @@ import { AppState, AppStateStatus } from "react-native";
 import * as Sentry from "@sentry/react-native";
 import { NetworkStatus, useNetworkStatus } from "./useNetworkStatus";
 import { clearLegacyScoreQueue } from "./legacyScoreQueue";
-import {
-  flushDisplayNameSync,
-  registerDisplayNameSync,
-  syncDisplayNameOnLaunch,
-} from "./displayNameSync";
+import { flushDisplayNameSync, syncDisplayNameOnLaunch } from "./displayNameSync";
 import { gameEventClient } from "./gameEventClient";
 import { syncWorker } from "./syncWorker";
 import { registerLogstoreTestHooks } from "./testHooks";
@@ -27,9 +23,6 @@ const NetworkContext = createContext<NetworkStatus>({
   isOnline: true,
   isInitialized: false,
 });
-
-// Every saved display name is also sent to the server (#2624).
-registerDisplayNameSync();
 
 function flushNameSync(op: string): void {
   flushDisplayNameSync().catch((e) => {
@@ -53,8 +46,8 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
     syncWorker.start();
     // What an older build left in the removed score queue (#2644).
     void clearLegacyScoreQueue();
-    // A stored name the server has never been sent (set before #2624) is
-    // synced once; any pending name sync is retried.
+    // Any pending join/leave is retried, a name typed before #2624 becomes a
+    // join (#2778), and the device's copy of the name is refreshed.
     syncDisplayNameOnLaunch().catch((e) => {
       Sentry.captureException(e, { tags: { subsystem: "displayNameSync", op: "launch" } });
     });

@@ -108,9 +108,15 @@ async function routeApi(page: Page): Promise<Traffic> {
     traffic.hearts.push(`${route.request().method()} ${route.request().url()}`);
     await route.fulfill({ ...json({ detail: "Not Found" }), status: 404 });
   });
+  // /players/me as the server behaves since #2778: a join (PUT, no body)
+  // assigns a generated name, GET reads it, DELETE leaves. The name is
+  // "Tester" so a device that already holds that name keeps it.
+  let boardName: string | null = null;
   await page.route("**/players/me", async (route) => {
-    const body = JSON.parse(route.request().postData() ?? "{}");
-    await route.fulfill(json({ display_name: body.display_name ?? null }));
+    const method = route.request().method();
+    if (method === "PUT") boardName = "Tester";
+    if (method === "DELETE") boardName = null;
+    await route.fulfill(json({ display_name: boardName }));
   });
   await page.route("**/games**", async (route) => {
     const req = route.request();
@@ -205,19 +211,16 @@ test.describe("Hearts — result card + leaderboard", () => {
     await expect(card.getByRole("button", { name: "Home" })).toBeVisible();
   });
 
-  test("asks for a display name once when none is set, then shows the rank", async ({
+  test("asks the player to join once when not on the boards, then shows the rank", async ({
     page,
   }) => {
     const traffic = await routeApi(page);
     await finishGame(page);
 
-    const nameInput = page.getByLabel("Pick a display name for leaderboards");
-    await expect(nameInput).toBeVisible({ timeout: 5_000 });
-    const save = page.getByRole("button", { name: "Save" });
-    await expect(save).toBeDisabled();
+    const join = page.getByRole("button", { name: "Join leaderboards" });
+    await expect(join).toBeVisible({ timeout: 5_000 });
 
-    await nameInput.fill("Tester");
-    await save.click();
+    await join.click();
 
     await expect(
       page.getByText("Saved as Tester · #1 on the leaderboard"),

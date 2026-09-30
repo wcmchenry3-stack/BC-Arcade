@@ -27,12 +27,16 @@ import type { ProfileStackParamList } from "../types/navigation";
 import { formatDate } from "../utils/formatTimestamp";
 import { withRetry } from "../game/_shared/withRetry";
 import { useDisplayName } from "../game/_shared/displayName";
-import { removeDisplayName, useDisplayNameRemovalPending } from "../game/_shared/displayNameSync";
+import {
+  joinLeaderboards,
+  leaveLeaderboards,
+  refreshDisplayNameFromServer,
+  rerollDisplayName,
+  useLeaderboardSyncPending,
+} from "../game/_shared/displayNameSync";
 import { useNetwork } from "../game/_shared/NetworkContext";
-import { playersApi } from "../api/players";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import LevelProgress from "../components/shared/LevelProgress";
-import DisplayNameField from "../components/shared/DisplayNameField";
 import { isGameVisible } from "../entitlements/gameVisibility";
 import { GAME_TITLE_NAMESPACES, gameTitle } from "../i18n/gameTitle";
 
@@ -128,113 +132,176 @@ function deriveBentoTiles(
 }
 
 /**
- * Under the name editor: says whether the player is on the leaderboards, and
- * lets them take their name off every board (#2637). The editor above sets a
- * name again.
+ * Leaderboard participation (#2637, #2778). Players never type a public name:
+ * "Join leaderboards" is the explicit opt-in and the server generates the
+ * name; "Get a new name" asks it for another; "Leave leaderboards" takes the
+ * player off every board.
  *
- * States, in order: a removal still waiting to reach the server; a name on
- * this device; no name here but one on the server (fetched when online, e.g.
- * a device that lost its copy); no name anywhere.
+ * States, in order: a leave still waiting to reach the server; a join still
+ * waiting (no name yet); on the boards under a name; not on any board.
  */
-function LeaderboardPresence() {
+function LeaderboardMembership() {
   const { colors } = useTheme();
   const { t } = useTranslation("profile");
   const { isOnline } = useNetwork();
   const { name, isLoaded } = useDisplayName();
-  const removalPending = useDisplayNameRemovalPending();
-  const [serverName, setServerName] = useState<string | null>(null);
+  const pending = useLeaderboardSyncPending();
   const [confirmVisible, setConfirmVisible] = useState(false);
-  const [removeError, setRemoveError] = useState(false);
+  const [busy, setBusy] = useState<"join" | "reroll" | null>(null);
+  const [error, setError] = useState<"join" | "reroll" | "leave" | null>(null);
 
-  const checkServer = isLoaded && name == null && !removalPending && isOnline;
+  // The server is the source of truth for the name (it replaced typed names
+  // with generated ones): bring this device's copy up to date when online.
   useEffect(() => {
-    if (!checkServer) {
-      setServerName(null);
-      return;
-    }
-    let active = true;
-    playersApi
-      .getMe()
-      .then((me) => {
-        if (active) setServerName(me.display_name);
-      })
-      .catch(() => {
-        // Unknown: show the device's state (no name) rather than an error.
-        if (active) setServerName(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [checkServer]);
+    if (isOnline) void refreshDisplayNameFromServer();
+  }, [isOnline]);
 
-  const handleRemove = useCallback(async () => {
+  const handleJoin = useCallback(async () => {
+    setError(null);
+    setBusy("join");
+    const ok = await joinLeaderboards();
+    setBusy(null);
+    if (!ok) setError("join");
+  }, []);
+
+  const handleReroll = useCallback(async () => {
+    setError(null);
+    setBusy("reroll");
+    const next = await rerollDisplayName();
+    setBusy(null);
+    if (next == null) setError("reroll");
+  }, []);
+
+  const handleLeave = useCallback(async () => {
     setConfirmVisible(false);
-    setRemoveError(!(await removeDisplayName()));
+    setError(null);
+    if (!(await leaveLeaderboards())) setError("leave");
   }, []);
 
   if (!isLoaded) return null;
 
-  const shownName = name ?? serverName;
-  let status: React.ReactNode;
-  if (removalPending) {
-    status = (
+  const link = (
+    label: string,
+    icon: React.ComponentProps<typeof MaterialCommunityIcons>["name"],
+    onPress: () => void,
+    testID: string,
+    disabled = false
+  ) => (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      testID={testID}
+      hitSlop={4}
+      style={({ pressed }) => [styles.linkButton, { opacity: disabled ? 0.4 : pressed ? 0.6 : 1 }]}
+    >
+      <MaterialCommunityIcons name={icon} size={18} color={colors.text} />
+      <Text style={[styles.linkText, { color: colors.text }]}>{label}</Text>
+    </Pressable>
+  );
+
+  let body: React.ReactNode;
+  if (pending === "leave") {
+    body = (
       <Text
         accessibilityLiveRegion="polite"
         testID="profile-name-removing"
         style={[styles.presenceText, { color: colors.textMuted }]}
       >
-        {t("boards.removing")}
+        {t("boards.leaving")}
       </Text>
     );
-  } else if (shownName != null) {
-    status = (
+  } else if (name == null && pending === "join") {
+    body = (
+      <Text
+        accessibilityLiveRegion="polite"
+        testID="profile-joining"
+        style={[styles.presenceText, { color: colors.textMuted }]}
+      >
+        {t("boards.joining")}
+      </Text>
+    );
+  } else if (name != null) {
+    body = (
       <>
-        {name == null && (
-          <Text
-            testID="profile-server-name"
-            style={[styles.presenceText, { color: colors.textMuted }]}
-          >
-            {t("boards.onBoardsAs", { name: shownName })}
-          </Text>
-        )}
-        <Pressable
-          onPress={() => {
-            setRemoveError(false);
-            setConfirmVisible(true);
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={t("boards.removeName")}
-          testID="profile-remove-name"
-          hitSlop={4}
-          style={({ pressed }) => [styles.removeButton, { opacity: pressed ? 0.6 : 1 }]}
+        <Text
+          accessibilityLiveRegion="polite"
+          testID="profile-board-name"
+          style={[styles.presenceName, { color: colors.text }]}
         >
-          <MaterialCommunityIcons name="account-remove-outline" size={18} color={colors.text} />
-          <Text style={[styles.removeText, { color: colors.text }]}>{t("boards.removeName")}</Text>
-        </Pressable>
+          {t("boards.onBoardsAs", { name })}
+        </Text>
+        <Text style={[styles.presenceText, { color: colors.textMuted }]}>
+          {t("boards.generatedHelper")}
+        </Text>
+        {link(
+          t("boards.reroll"),
+          "dice-multiple-outline",
+          () => void handleReroll(),
+          "profile-reroll-name",
+          busy != null || !isOnline
+        )}
+        {link(
+          t("boards.leave"),
+          "account-remove-outline",
+          () => {
+            setError(null);
+            setConfirmVisible(true);
+          },
+          "profile-remove-name"
+        )}
       </>
     );
   } else {
-    status = (
-      <Text
-        accessibilityLiveRegion="polite"
-        testID="profile-not-on-boards"
-        style={[styles.presenceText, { color: colors.textMuted }]}
-      >
-        {t("boards.notOnBoards")}
-      </Text>
+    body = (
+      <>
+        <Text
+          accessibilityLiveRegion="polite"
+          testID="profile-not-on-boards"
+          style={[styles.presenceText, { color: colors.textMuted }]}
+        >
+          {t("boards.notOnBoards")}
+        </Text>
+        <Pressable
+          onPress={() => void handleJoin()}
+          disabled={busy != null}
+          accessibilityRole="button"
+          accessibilityLabel={t("boards.join")}
+          accessibilityState={{ disabled: busy != null, busy: busy === "join" }}
+          testID="profile-join-boards"
+          style={[
+            styles.joinButton,
+            { backgroundColor: colors.accentBright, opacity: busy != null ? 0.4 : 1 },
+          ]}
+        >
+          <Text style={[styles.joinText, { color: colors.textOnAccent }]}>{t("boards.join")}</Text>
+        </Pressable>
+      </>
     );
   }
 
+  const errorKey =
+    error === "join"
+      ? "boards.joinError"
+      : error === "reroll"
+        ? "boards.rerollError"
+        : error === "leave"
+          ? "boards.leaveError"
+          : null;
+
   return (
-    <View style={styles.presence}>
-      {status}
-      {removeError && (
+    <View style={styles.presence} testID="profile-display-name">
+      <Text style={[styles.membershipLabel, { color: colors.textMuted }]}>{t("boards.title")}</Text>
+      {body}
+      {errorKey != null && (
         <Text
           accessibilityRole="alert"
           accessibilityLiveRegion="assertive"
           style={[styles.presenceText, { color: colors.error }]}
         >
-          {t("boards.removeError")}
+          {t(errorKey)}
         </Text>
       )}
       <ConfirmModal
@@ -244,7 +311,7 @@ function LeaderboardPresence() {
         confirmLabel={t("boards.confirm.confirm")}
         cancelLabel={t("boards.confirm.cancel")}
         destructive
-        onConfirm={handleRemove}
+        onConfirm={handleLeave}
         onCancel={() => setConfirmVisible(false)}
         testID="profile-remove-name-confirm"
       />
@@ -539,12 +606,7 @@ export default function ProfileScreen() {
           { backgroundColor: colors.surface, borderColor: colors.border },
         ]}
       >
-        <DisplayNameField
-          testID="profile-display-name"
-          label={t("displayName.label")}
-          helper={t("displayName.helper")}
-        />
-        <LeaderboardPresence />
+        <LeaderboardMembership />
       </View>
       {body}
     </View>
@@ -562,16 +624,32 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  presence: { marginTop: 8, gap: 4 },
+  presence: { gap: 6 },
+  membershipLabel: {
+    fontFamily: typography.label,
+    fontSize: 13,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  presenceName: { fontFamily: typography.bodyMedium, fontSize: 16 },
   presenceText: { fontFamily: typography.body, fontSize: 13 },
-  removeButton: {
+  joinButton: {
+    minHeight: 48,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  joinText: { fontFamily: typography.label, fontSize: 15 },
+  linkButton: {
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
     gap: 6,
     minHeight: 44,
   },
-  removeText: {
+  linkText: {
     fontFamily: typography.bodyMedium,
     fontSize: 14,
     textDecorationLine: "underline",

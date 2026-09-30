@@ -45,6 +45,13 @@ jest.mock("../../game/_shared/flushQueuedGames", () => ({
 jest.mock("../../game/_shared/displayNameSync", () => ({
   ...jest.requireActual("../../game/_shared/displayNameSync"),
   flushDisplayNameSync: () => Promise.resolve(true),
+  // Joining stores the server's generated name at once (#2778).
+  joinLeaderboards: async () => {
+    await jest
+      .requireActual("../../game/_shared/displayName")
+      .storeAssignedDisplayName("Brave Otter 4821");
+    return true;
+  },
 }));
 
 // A stand-in for useGameSync that keeps the real hook's session rules:
@@ -859,7 +866,7 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
   // just asks for the name again and then shows the rank.
   it("resumes the name prompt and the rank lookup after a remount", async () => {
     const first = await finishGame([45, 100, 63, 52]);
-    expect(await first.findByLabelText("Pick a display name for leaderboards")).toBeTruthy();
+    expect(await first.findByRole("button", { name: "Join leaderboards" })).toBeTruthy();
     await waitFor(() => expect(saveFinishedGameId).toHaveBeenCalledWith("hearts-game"));
     await first.unmount();
 
@@ -870,15 +877,12 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
     (loadFinishedGameId as jest.Mock).mockResolvedValue("hearts-game");
     (loadGame as jest.Mock).mockResolvedValue(gameOverState());
     const again = await renderScreen();
-    const input = await again.findByLabelText("Pick a display name for leaderboards");
+    const join = await again.findByRole("button", { name: "Join leaderboards" });
     await act(async () => {
-      await fireEvent.changeText(input, "Riley");
-    });
-    await act(async () => {
-      await fireEvent.press(again.getByRole("button", { name: "Save" }));
+      await fireEvent.press(join);
     });
     await waitFor(() =>
-      expect(again.getByText("Saved as Riley · #1 on the leaderboard")).toBeTruthy()
+      expect(again.getByText("Saved as Brave Otter 4821 · #1 on the leaderboard")).toBeTruthy()
     );
     expect(mockGetGameRank).toHaveBeenCalledTimes(1);
     expect(mockGetGameRank).toHaveBeenCalledWith("hearts-game");
