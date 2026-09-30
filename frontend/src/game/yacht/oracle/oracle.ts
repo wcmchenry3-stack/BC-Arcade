@@ -4,7 +4,7 @@
  * Shipped, lazy-loaded: `oracleTable.generated.ts` (the precomputed ~786K-
  * entry EV table, built offline by `scripts/build-yacht-oracle.ts`, stored
  * compressed — see `tableCodec.ts`) is `require()`d lazily inside
- * `getOracleTable()`, not imported at module top-level — its ~0.9 MB base64
+ * `getOracleTable()`, not imported at module top-level — its ~0.6 MB base64
  * payload is never parsed/decoded during app startup, only when a caller
  * actually asks the oracle something. A lazy `require()`
  * (rather than dynamic `import()`) is deliberate: it defers evaluation
