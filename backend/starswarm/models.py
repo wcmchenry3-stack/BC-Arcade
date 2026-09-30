@@ -10,9 +10,20 @@ from before #2626 send a score-less session row, which never ranks.
 
 from __future__ import annotations
 
-from typing import Literal, get_args
+import logging
+from typing import Annotated, Any, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationError,
+    ValidatorFunctionWrapHandler,
+    field_validator,
+)
+
+logger = logging.getLogger(__name__)
 
 DifficultyTier = Literal[
     "Ensign",
@@ -56,11 +67,63 @@ class StarSwarmMetadata(BaseModel):
     difficulty_tier: str | None = Field(default=None, max_length=32)
 
 
+# --- per-wave score breakdown (#2837) ---------------------------------------
+#
+# Built by ``summarizeScoreLedger`` in ``frontend/src/game/starswarm/scoreLedger.ts``.
+# The app caps it at 4 KiB of JSON (20 detailed waves, older ones folded into
+# ``earlier``); the bounds here are looser, so the app's own cap is what bites.
+
+MAX_BREAKDOWN_WAVES = 64
+MAX_BREAKDOWN_SOURCES = 48
+
+SourceKey = Annotated[str, StringConstraints(min_length=1, max_length=32)]
+"""A point source: an enemy tier id (``Grunt``, ``Elite``, ``Boss``,
+``Carrier``, or whatever the engine calls a tier next), optionally with a
+``:dive`` / ``:rout`` / ``:bomb`` / ``:ram`` modifier, or ``clear`` for the
+wave-clear bonus. An open set: an unknown source is kept, not rejected."""
+
+ScorePoints = Annotated[dict[SourceKey, int], Field(max_length=MAX_BREAKDOWN_SOURCES)]
+
+
+class StarSwarmWaveScore(BaseModel):
+    """One wave that scored: ``end - start == total == sum(pts)``."""
+
+    wave: int = Field(ge=0)
+    start: int
+    end: int
+    total: int
+    pts: ScorePoints
+
+
+class StarSwarmEarlierScore(BaseModel):
+    """Waves ``first``..``last`` folded together to keep the block bounded; they start at 0."""
+
+    first: int = Field(ge=0)
+    last: int = Field(ge=0)
+    total: int
+    pts: ScorePoints
+
+
+class StarSwarmScoreBreakdown(BaseModel):
+    """Where a run's score came from, by wave and source.
+
+    ``earlier.total`` + every ``waves[].total`` + ``unattributed`` equals the
+    run's ``final_score``. Waves that scored nothing are absent. Unknown keys
+    are ignored so a newer build's additions don't fail the block.
+    """
+
+    v: int = 1
+    earlier: StarSwarmEarlierScore | None = None
+    waves: list[StarSwarmWaveScore] = Field(default_factory=list, max_length=MAX_BREAKDOWN_WAVES)
+    unattributed: int | None = None
+
+
 class StarSwarmResult(BaseModel):
     """Result block sent on ``PATCH /games/{id}/complete`` (#2449).
 
     Mirrors ``handleGameOver`` in ``StarSwarmScreen.tsx``:
-    ``{outcome, wave_reached, difficulty_tier}``. ``difficulty_tier`` is
+    ``{outcome, wave_reached, difficulty_tier, score_breakdown}``
+    (``score_breakdown`` since #2837). ``difficulty_tier`` is
     declared so it survives validation into ``games.metadata``, where the board
     partitions on it; like the metadata's, only a value in
     ``DIFFICULTY_TIERS`` ranks. Every field is optional and unknown keys are
@@ -70,3 +133,24 @@ class StarSwarmResult(BaseModel):
     outcome: str | None = Field(default=None, max_length=32)
     wave_reached: int | None = Field(default=None, ge=0)
     difficulty_tier: str | None = Field(default=None, max_length=32)
+    # #2837: the run's per-wave score breakdown. Builds before it send none.
+    score_breakdown: StarSwarmScoreBreakdown | None = None
+
+    @field_validator("score_breakdown", mode="wrap")
+    @classmethod
+    def _drop_a_malformed_breakdown(
+        cls, value: Any, handler: ValidatorFunctionWrapHandler
+    ) -> StarSwarmScoreBreakdown | None:
+        """A breakdown that doesn't validate is dropped, never the run (#2837).
+
+        The score and tier still complete and rank; losing the player's
+        breakdown beats dead-lettering the whole run.
+        """
+        try:
+            return handler(value)
+        except ValidationError as e:
+            logger.warning(
+                "starswarm: dropped a malformed score_breakdown (%s)",
+                ", ".join(".".join(str(p) for p in err["loc"]) for err in e.errors()[:5]),
+            )
+            return None

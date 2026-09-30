@@ -23,6 +23,7 @@ import type {
   TierStats,
   Vec2,
 } from "./types";
+import type { EarlierScore, ScoreLedger, WaveScore } from "./scoreLedger";
 
 type KeySpec<T> = {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -180,6 +181,15 @@ const RUN_STATS: KeySpec<RunStats> = {
   rocksBrokenByEnemy: "required",
 };
 
+// #2837
+const SCORE_LEDGER: KeySpec<ScoreLedger> = { waves: "required", earlier: "required" };
+const WAVE_SCORE: KeySpec<WaveScore> = { wave: "required", pts: "required" };
+const EARLIER_SCORE: KeySpec<EarlierScore> = {
+  first: "required",
+  last: "required",
+  pts: "required",
+};
+
 const STATE: KeySpec<StarSwarmState> = {
   phase: "required",
   wave: "required",
@@ -223,6 +233,7 @@ const STATE: KeySpec<StarSwarmState> = {
   playerFireDisabled: "required",
   enemyFireDisabled: "required",
   missionCompleteTimer: "required",
+  scoreLedger: "required",
 };
 
 const SPECS = {
@@ -237,6 +248,9 @@ const SPECS = {
   ACTIVE_POWER_UP,
   TIER_STATS,
   RUN_STATS,
+  SCORE_LEDGER,
+  WAVE_SCORE,
+  EARLIER_SCORE,
   VEC2,
   BEZIER,
   DODGE,
@@ -273,6 +287,14 @@ const fitsEnemy = (v: unknown) =>
   (v.dodge === null || fits(v.dodge, DODGE)) &&
   Array.isArray(v.rolledAsteroidIds);
 
+const fitsPts = (v: unknown) =>
+  isObject(v) && Object.values(v).every((n) => typeof n === "number" && Number.isFinite(n));
+
+const fitsScoreLedger = (v: unknown) =>
+  fits(v, SCORE_LEDGER) &&
+  allFit(v.waves, (w) => fits(w, WAVE_SCORE) && fitsPts(w.pts)) &&
+  (v.earlier === null || (fits(v.earlier, EARLIER_SCORE) && fitsPts(v.earlier.pts)));
+
 /** A parsed save's state fits this build's StarSwarmState, all the way down. */
 export function fitsSaveShape(v: unknown): v is StarSwarmState {
   if (!fits(v, STATE)) return false;
@@ -287,6 +309,7 @@ export function fitsSaveShape(v: unknown): v is StarSwarmState {
     allFit(v.asteroids, (a) => fits(a, ASTEROID)) &&
     (v.activePowerUp === null || fits(v.activePowerUp, ACTIVE_POWER_UP)) &&
     fits(v.runStats, RUN_STATS) &&
+    fitsScoreLedger(v.scoreLedger) &&
     isObject(v.tierStats) &&
     Object.values(v.tierStats).every((t) => fits(t, TIER_STATS))
   );

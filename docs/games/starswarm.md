@@ -347,14 +347,33 @@ Asteroid-caused enemy deaths still count toward wave clear/escalation but do not
 player-kill power-up counter. Smart Bomb kills do award normal enemy base score because the bomb is
 a player power-up.
 
+### Per-wave score breakdown (#2837)
+
+Every award goes through `frontend/src/game/starswarm/scoreLedger.ts`, which credits it to the
+current wave on `state.scoreLedger` (saved and restored with a paused run, so a resumed run never
+counts a point twice). Sources are keyed by the engine's tier id, so a renamed tier needs no change:
+`<tier>` (shot kill in formation), `<tier>:dive` (shot kill while Diving/Circling), `<tier>:rout`
+(fleeing Grunt caught), `<tier>:bomb` (Smart Bomb, pickup or dev panel), `<tier>:ram` (a diver that
+rammed the ship), and `clear` (wave-clear bonus, credited to the wave it cleared). Readers must
+treat the source set as open.
+
+Game over sends it as the result's `score_breakdown`:
+`{v: 1, earlier?: {first, last, total, pts}, waves: [{wave, start, end, total, pts}], unattributed?}`.
+The run starts at 0 and waves that scored nothing are absent; `earlier.total` + every
+`waves[].total` + `unattributed` (present only when non-zero) equals `final_score`. It is bounded:
+the ledger keeps the last 20 scoring waves in detail and folds older ones into `earlier`, and the
+summary folds further until its compact JSON is ≤ 4 KiB (`BREAKDOWN_MAX_BYTES`), so the whole result
+stays well under the backend's 8 KiB limit (worst case measured ≈ 4.3 KB as the server counts it).
+The breakdown is in the result only, not the `game_ended` event. Display is #2840.
+
 ## Leaderboard and Run Reporting
 
 - **Metric and direction:** `final_score`, higher is better, labelled `score` (`board` in `backend/starswarm/module.py`; `BOARDS.starswarm` in `frontend/src/api/vocab.ts`). It is the points at game over.
 - **Tie-break:** none declared. Equal scores go to the earlier `completed_at`, the last tie-break on every board.
 - **Partitions:** `difficulty_tier`: each of the ten tiers in `DIFFICULTY_TIERS` (`backend/starswarm/models.py`) is its own board, and only those tiers have one (`partition_values`). A row with no tier counts as `LieutenantJG` (`partition_defaults`). A row with any other tier is stored but never ranks.
-- **Recorded, not partitioned:** result (`StarSwarmResult`): `outcome` and `wave_reached` (`difficulty_tier` is repeated there too).
+- **Recorded, not partitioned:** result (`StarSwarmResult`): `outcome`, `wave_reached` and `score_breakdown` (#2837, [above](#per-wave-score-breakdown-2837)) (`difficulty_tier` is repeated there too). The owner reads them back in `metadata` from `GET /games/{id}`.
 - **Max value:** none (#2519 decision 14).
-- **Outcomes:** `has_winner = False`: a run ends when the ship is lost. Game over records `completed` (score-only, no win) with `final_score` and the result `{outcome, wave_reached, difficulty_tier}` (#2626). Starting another run while one is open, or leaving the screen, records `abandoned` with no result and no score.
+- **Outcomes:** `has_winner = False`: a run ends when the ship is lost. Game over records `completed` (score-only, no win) with `final_score` and the result `{outcome, wave_reached, difficulty_tier, score_breakdown}` (#2626, #2837). Starting another run while one is open, or leaving the screen, records `abandoned` with no result and no score.
 - **Duration:** `useGameSync`'s active-play window. The screen sends no `durationMs` of its own (never `0`): the engine keeps no play clock. The window restarts when a run begins (`beginRun`), so time on the difficulty picker is not counted.
 - **How it reaches the server:** since #2626 the run's own `useGameSync("starswarm")` session row is its leaderboard entry. The row opens when the run begins, with `difficulty_tier` as creation metadata. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. Each tier's board shows each named player's best run on that tier once. The legacy `POST /starswarm/score` was removed in #2644. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the result card reads the run's rank on its tier's board through `sessionBoardAdapter` (`GET /games/{id}/rank`). It asks for a display name only when the player has none. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633) on the finished run's tier, else the current tier. Stats (#2635) are in the ⋯ menu. The device keeps the best score (`game/starswarm/bestScore.ts`) for the card's "Best" and "New best". Store builds hide Star Swarm (`HIDDEN_GAMES`, `frontend/src/entitlements/gameVisibility.ts`), so there it has no leaderboard or stats entry point.
@@ -424,7 +443,7 @@ React commits per second over the game. See
 
 - Module: `backend/starswarm/module.py`, registered in `backend/games/registry.py` (#2623)
 - Metadata model: `StarSwarmMetadata` in `backend/starswarm/models.py` — `difficulty_tier` only (extra keys forbidden)
-- Result model: `StarSwarmResult` — `outcome`, `wave_reached`, `difficulty_tier`, all optional; unknown keys are ignored
+- Result model: `StarSwarmResult` — `outcome`, `wave_reached`, `difficulty_tier`, `score_breakdown` (`StarSwarmScoreBreakdown`, #2837), all optional; unknown keys are ignored. A `score_breakdown` that doesn't validate (over 64 waves or 48 sources a wave, a source over 32 characters, a non-integer) is dropped to `null` and the run still completes and ranks
 - Tiers: only a `difficulty_tier` in `DIFFICULTY_TIERS` (`backend/starswarm/models.py`) has a board — `Ensign`, `LieutenantJG`, `Lieutenant`, `LieutenantCommander`, `Commander`, `Captain`, `RearAdmiral`, `ViceAdmiral`, `Admiral`, `FleetAdmiral`, the client's `DIFFICULTY_TIERS` (`frontend/src/game/starswarm/engine.ts`). Creation and completion accept any other string up to 32 characters (`captain`, a forged tier) and store it, so the run is never dead-lettered; that row never ranks, and naming it or requesting its board is a 400. `tests/test_starswarm_module.py` parses the client list and fails if the two drift, so **a tier added to the app must be added to the backend in the same release**, or its runs stay off the leaderboard. A missing or `null` tier is allowed
 - Board: `final_score` desc, one board per `difficulty_tier` (`GET /games/leaderboard/starswarm?difficulty_tier=Captain`), no cap. A row with no tier counts as `LieutenantJG` (`DEFAULT_DIFFICULTY_TIER`), and a request without `difficulty_tier` is the `LieutenantJG` board; an unknown tier is a 400. `has_winner = False`
 - Stats: default pass-through `stats_shape` (`default_stats_shape`)
