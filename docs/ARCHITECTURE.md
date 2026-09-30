@@ -573,6 +573,8 @@ entitlement checks and grant access to every game. Never set this in production.
 | Frontend — Token cache & context | `frontend/src/entitlements/EntitlementContext.tsx`        |
 | DB — premium flag                | `backend/alembic/versions/0014_game_types_premium_cat.py` |
 | DB — entitlement rows            | `backend/alembic/versions/0015_add_game_entitlements.py`  |
+| DB — purchases, links, events    | `backend/alembic/versions/0030_add_purchases.py`          |
+| Backend — purchase routes/logic  | `backend/purchases/` ([IAP.md §8.4](IAP.md#84-implementation-notes-840)) |
 | Store product catalog            | `frontend/src/entitlements/premiumProducts.json`          |
 
 ### 10.6 Adding a premium game
