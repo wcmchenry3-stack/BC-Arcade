@@ -1,4 +1,4 @@
-"""Migration 0030 — purchase tables and the game_entitlements extension (#840).
+"""Migration 0031 — purchase tables and the game_entitlements extension (#840).
 
 Runs ``alembic`` against its own scratch SQLite file (the pattern of
 ``test_players_backfill_migration.py``): existing entitlement rows become
@@ -16,8 +16,8 @@ import uuid
 from pathlib import Path
 
 _BACKEND = Path(__file__).resolve().parent.parent
-_BEFORE = "0029_delete_anon_rows_final"
-_REVISION = "0030_add_purchases"
+_BEFORE = "0030_generated_player_names"
+_REVISION = "0031_add_purchases"
 
 
 def _alembic(db_path: Path, *args: str) -> None:

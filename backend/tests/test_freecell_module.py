@@ -175,12 +175,13 @@ def test_a_named_players_win_ranks_once_and_an_abandon_never() -> None:
     # Fewer moves is better, so an abandoned game with a handful of moves must
     # never rank, and each player is listed once (their fewest moves).
     sid = str(uuid.uuid4())
-    r = client.put("/players/me", headers=_headers(sid), json={"display_name": "Alice"})
+    r = client.put("/players/me", headers=_headers(sid))
     assert r.status_code == 200, r.text
+    alice = r.json()["display_name"]
     _play(sid, won=False, moves=3, outcome="abandoned")
     _play(sid, won=True, moves=88)
     _play(sid, won=True, moves=104)
-    assert _generic_board(sid) == [("Alice", 88)]
+    assert _generic_board(sid) == [(alice, 88)]
 
 
 def test_a_session_game_earns_xp_and_counts_as_played() -> None:

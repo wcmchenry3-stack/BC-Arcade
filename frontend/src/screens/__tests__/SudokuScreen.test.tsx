@@ -68,7 +68,7 @@ jest.mock("../../api/stats", () => ({
   statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
 }));
 jest.mock("../../api/players", () => ({
-  playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
+  playersApi: { putMe: jest.fn(() => Promise.resolve({ display_name: "Brave Otter 4821" })) },
 }));
 
 // The hook's foreground clock (#2684) is held still by the shared mock
@@ -82,7 +82,10 @@ jest.mock("../../game/_shared/flushQueuedGames", () => ({
 
 import { flushQueuedGames } from "../../game/_shared/flushQueuedGames";
 import { ApiError } from "../../game/_shared/httpClient";
-import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
+import {
+  resetDisplayNameCacheForTests,
+  storeAssignedDisplayName,
+} from "../../game/_shared/displayName";
 import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 
 function fillAllExcept(state: SudokuState, skip: { row: number; col: number }): SudokuState {
@@ -706,7 +709,7 @@ describe("SudokuScreen — result card (#2511)", () => {
   // #2632: the card reads the synced game's rank (GET /games/{id}/rank)
   // instead of PATCH /sudoku/score/{id}.
   it("shows the synced game's rank under the display name automatically", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const r = await solvePuzzle();
     await waitFor(() => expect(mockGetGameRank).toHaveBeenCalledWith("game-123"));
     // The completion is uploaded before its rank is read.
@@ -715,24 +718,21 @@ describe("SudokuScreen — result card (#2511)", () => {
     expect(r.queryByLabelText(/your name/i)).toBeNull();
   });
 
-  it("asks for a display name once when none is set, then shows the rank", async () => {
+  it("asks the player to join once when not on the boards, then shows the rank", async () => {
     const r = await solvePuzzle();
-    const input = await r.findByLabelText("Pick a display name for leaderboards");
+    const join = await r.findByRole("button", { name: "Join leaderboards" });
     expect(mockGetGameRank).not.toHaveBeenCalled();
 
     await act(async () => {
-      await fireEvent.changeText(input, "Alice");
-    });
-    await act(async () => {
-      await fireEvent.press(r.getByRole("button", { name: "Save" }));
+      await fireEvent.press(join);
     });
 
     await waitFor(() => expect(mockGetGameRank).toHaveBeenCalledWith("game-123"));
-    await r.findByText("Saved as Alice · #3 on the leaderboard");
+    await r.findByText("Saved as Brave Otter 4821 · #3 on the leaderboard");
   });
 
   it("offers a retry when the rank lookup fails, and queues nothing", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     mockGetGameRank.mockRejectedValue(new ApiError("boom", 500));
     const r = await solvePuzzle();
     await r.findByText("Couldn't save your score.");
@@ -745,7 +745,7 @@ describe("SudokuScreen — result card (#2511)", () => {
   });
 
   it("Change Difficulty returns to the picker", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const r = await solvePuzzle();
     await act(async () => {
       await fireEvent.press(r.getByRole("button", { name: "Change Difficulty" }));
@@ -755,7 +755,7 @@ describe("SudokuScreen — result card (#2511)", () => {
   });
 
   it("Play Again starts a new puzzle and closes the card", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const r = await solvePuzzle();
     await act(async () => {
       await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
@@ -765,7 +765,7 @@ describe("SudokuScreen — result card (#2511)", () => {
   });
 
   it("Home returns to the lobby", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const r = await solvePuzzle();
     await act(async () => {
       await fireEvent.press(r.getByRole("button", { name: "Home" }));

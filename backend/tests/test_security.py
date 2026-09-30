@@ -283,8 +283,10 @@ def test_invalid_uuid_session_id_returns_400(client_default):
     suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
 def test_display_name_string_input_never_500(client_default, player_name):
-    """Arbitrary string values for a display name must never produce 5xx errors."""
+    """Arbitrary string values for a display name must never produce 5xx
+    errors, and are never stored: the player gets a generated name (#2778)."""
     from limiter import limiter
+    from players.generated import is_generated_display_name
 
     limiter.reset()
     res = client_default.put(
@@ -293,3 +295,5 @@ def test_display_name_string_input_never_500(client_default, player_name):
         headers={"X-Session-ID": _sid()},
     )
     assert res.status_code < 500, f"5xx for player_name={player_name!r}: {res.text}"
+    assert res.status_code == 200, res.text
+    assert is_generated_display_name(res.json()["display_name"])

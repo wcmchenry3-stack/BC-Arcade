@@ -1,7 +1,7 @@
 """add purchases, purchase_links, purchase_events; extend game_entitlements (#840)
 
-Revision ID: 0030_add_purchases
-Revises: 0029_delete_anon_rows_final
+Revision ID: 0031_add_purchases
+Revises: 0030_generated_player_names
 Create Date: 2026-09-30
 
 The store-purchase schema of docs/IAP.md §8.1:
@@ -38,8 +38,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from alembic import op
 
-revision: str = "0030_add_purchases"
-down_revision: str | None = "0029_delete_anon_rows_final"
+revision: str = "0031_add_purchases"
+down_revision: str | None = "0030_generated_player_names"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

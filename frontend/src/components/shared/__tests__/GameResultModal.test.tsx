@@ -235,18 +235,26 @@ describe("GameResultModal — submission line", () => {
     expect(onRetry).toHaveBeenCalled();
   });
 
-  it("shows the one-time name prompt and hands the saved name back", async () => {
-    const onProvideName = jest.fn(() => Promise.resolve(true));
-    const { toJSON } = await renderCard({ submission: { status: "needsName", onProvideName } });
-    expect(screen.getByText("Pick a display name for leaderboards")).toBeTruthy();
+  it("shows the one-time join prompt, with no name field, and joins on press (#2778)", async () => {
+    const onJoinLeaderboards = jest.fn(() => Promise.resolve(true));
+    const { toJSON } = await renderCard({
+      submission: { status: "needsName", onJoinLeaderboards },
+    });
+    expect(screen.getByText("Join the leaderboards?")).toBeTruthy();
+    // Players never type a public name.
+    expect(JSON.stringify(toJSON())).not.toContain("TextInput");
     expect(toJSON()).toMatchSnapshot();
 
-    await fireEvent.changeText(
-      screen.getByLabelText("Pick a display name for leaderboards"),
-      "Riley"
-    );
-    await fireEvent.press(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(onProvideName).toHaveBeenCalledWith("Riley"));
+    await fireEvent.press(screen.getByRole("button", { name: "Join leaderboards" }));
+    await waitFor(() => expect(onJoinLeaderboards).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText("Couldn't join the leaderboards. Try again.")).toBeNull();
+  });
+
+  it("shows an error when the join couldn't be stored", async () => {
+    const onJoinLeaderboards = jest.fn(() => Promise.resolve(false));
+    await renderCard({ submission: { status: "needsName", onJoinLeaderboards } });
+    await fireEvent.press(screen.getByRole("button", { name: "Join leaderboards" }));
+    expect(await screen.findByText("Couldn't join the leaderboards. Try again.")).toBeTruthy();
   });
 });
 

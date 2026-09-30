@@ -632,11 +632,11 @@ signed JWS fixture made with a test CA for the verifier.
 ### 8.4 Implementation notes (#840)
 
 **What #840 shipped** (`backend/purchases/`, migration
-`0030_add_purchases`):
+`0031_add_purchases`):
 
 | Piece                                   | Where                                                           |
 | --------------------------------------- | --------------------------------------------------------------- |
-| Schema (§8.1), reversible               | `alembic/versions/0030_add_purchases.py`, `db/models.py`        |
+| Schema (§8.1), reversible               | `alembic/versions/0031_add_purchases.py`, `db/models.py`        |
 | Upsert, link caps, recompute, revoke    | `purchases/service.py`                                          |
 | `POST /purchases/apple`, `/google`      | `purchases/router.py`, `purchases/schemas.py`                   |
 | Account tokens, Apple store-key parse   | `purchases/apple.py`, `purchases/google.py`                     |

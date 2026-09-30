@@ -301,8 +301,7 @@ def test_a_named_players_win_and_loss_leave_one_board_entry() -> None:
     whatever else is on the shared global board.
     """
     sid = str(uuid.uuid4())
-    name = f"T48-{uuid.uuid4().hex[:8]}"
-    r = client.put("/players/me", headers=_headers(sid), json={"display_name": name})
+    r = client.put("/players/me", headers=_headers(sid))
     assert r.status_code == 200, r.text
     ids = {}
     for key in ("reached-2048-win", "game-over-loss"):

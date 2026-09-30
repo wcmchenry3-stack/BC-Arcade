@@ -60,7 +60,16 @@ async function captureSync(page: Page): Promise<Captured> {
     captured.legacyPosts.push(JSON.parse(route.request().postData() ?? "{}"));
     await route.fulfill({ ...ok({ detail: "Not Found" }), status: 404 });
   });
-  await page.route("**/players/me", (route) => route.fulfill(ok()));
+  // /players/me as the server behaves since #2778: a join (PUT, no body)
+  // assigns a generated name, GET reads it, DELETE leaves. The name is
+  // "Tester" so a device that already holds that name keeps it.
+  let boardName: string | null = null;
+  await page.route("**/players/me", async (route) => {
+    const method = route.request().method();
+    if (method === "PUT") boardName = "Tester";
+    if (method === "DELETE") boardName = null;
+    await route.fulfill(ok({ display_name: boardName }));
+  });
   await page.route(
     (url) => /^\/games(\/|$)/.test(url.pathname),
     async (route) => {

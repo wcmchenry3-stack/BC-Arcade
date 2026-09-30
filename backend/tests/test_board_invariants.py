@@ -198,9 +198,11 @@ def _play(
     return game_id
 
 
-def _set_display_name(client: TestClient, sid: str, name: str) -> None:
-    r = client.put("/players/me", headers=_headers(sid), json={"display_name": name})
+def _join(client: TestClient, sid: str) -> str:
+    """Join the boards (``PUT /players/me``); returns the generated name."""
+    r = client.put("/players/me", headers=_headers(sid))
     assert r.status_code == 200, r.text
+    return r.json()["display_name"]
 
 
 def _leaderboard(client: TestClient, game: str, sid: str) -> dict:
@@ -249,11 +251,11 @@ async def test_a_finished_game_ranks_once_its_player_has_a_name(
     assert body["me"] is None
     assert _rank(client, game_id, sid)["reason"] == "no_name"
 
-    _set_display_name(client, sid, "Solo")
+    solo = _join(client, sid)
 
     body = _leaderboard(client, game, sid)
     assert [(e["player_name"], e["value"], e["is_me"]) for e in body["entries"]] == [
-        ("Solo", _better(_definition(game), 0), True)
+        (solo, _better(_definition(game), 0), True)
     ]
     assert body["me"] == body["entries"][0]
     assert _rank(client, game_id, sid) == {
@@ -279,7 +281,7 @@ async def test_a_session_with_several_games_appears_once_with_its_best(
 
     sid = _sid()
     await _grant_all(sid)
-    _set_display_name(client, sid, "Me")
+    me = _join(client, sid)
     games = {
         "mid": _play(client, sid, game, _better(board, 0), completed_at=_recent(1)),
         # Equal best values: the tie-break decides (the later one has the better
@@ -305,7 +307,7 @@ async def test_a_session_with_several_games_appears_once_with_its_best(
     best = games["best_late" if tb else "best_early"]
 
     body = _leaderboard(client, game, sid)
-    assert _names(body) == ["Top", "Me", "Bottom"]
+    assert _names(body) == ["Top", me, "Bottom"]
     entry = body["entries"][1]
     assert (entry["rank"], entry["value"], entry["is_me"]) == (2, _better(board, 5), True)
     assert body["me"] == entry
