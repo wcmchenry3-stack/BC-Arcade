@@ -23,11 +23,11 @@ import {
   asteroidOutline,
   throwAsteroid,
   killEscorts,
-  carrierBeam,
   carrierBeamJustStarted,
   carrierBeamJustFired,
+  carrierAttackRunJustStarted,
+  carrierFinalStandJustStarted,
   reinforcementsJustLaunched,
-  BEAM_HALF_WIDTH,
   upgradeEvents,
   waveJustCleared,
   isAutopilot,
@@ -40,6 +40,7 @@ import {
   drawPickupOps,
 } from "../../game/starswarm/render/pickups";
 import type { UpgradePickupType } from "../../game/starswarm/render/pickups";
+import { carrierOps } from "../../game/starswarm/render/carrier";
 import {
   pickupCues,
   pickupCueFrame,
@@ -234,9 +235,9 @@ interface Props {
   /** #2489: called once when the wave's grunts rout, with how many are fleeing. */
   onRout?: (count: number) => void;
   onPowerUpCollect?: (type: PowerUpType) => void;
-  /** #2484: called once when the last Guardian escort dies and the Carrier's armor drops. */
+  /** #2484: called once when the last Guardian dies and the Carrier's armor drops. */
   onCarrierExposed?: () => void;
-  /** #2485: beam telegraph, beam firing, reinforcement launch. */
+  /** #2485/#2843: beam charge and release, reinforcements, attack run, final stand. */
   onCarrierEvent?: (kind: CarrierEvent) => void;
   /** #2488: a gun or hull ladder change (pickup collected, plating hit, level lost). */
   onUpgrade?: (ev: UpgradeEvent) => void;
@@ -677,23 +678,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         }
       }
 
-      // #2485 Carrier sweep beam — telegraph, then the beam
-      const beam = carrierBeam(state);
-      if (beam) {
-        if (beam.phase === "charge") {
-          ctx.fillStyle = `rgba(176,108,255,${(0.1 + beam.progress * 0.35).toFixed(3)})`;
-          ctx.fillRect(beam.x - 2, beam.y, 4, height);
-          ctx.beginPath();
-          ctx.arc(beam.x, beam.y + 6, 4 + beam.progress * 8, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(176,108,255,${(0.4 + beam.progress * 0.5).toFixed(3)})`;
-          ctx.fill();
-        } else {
-          ctx.fillStyle = "rgba(176,108,255,0.35)";
-          ctx.fillRect(beam.x - BEAM_HALF_WIDTH - 4, beam.y, BEAM_HALF_WIDTH * 2 + 8, height);
-          ctx.fillStyle = "rgba(230,205,255,0.9)";
-          ctx.fillRect(beam.x - BEAM_HALF_WIDTH * 0.5, beam.y, BEAM_HALF_WIDTH, height);
-        }
-      }
+      // #2485/#2843 Carrier telegraphs and released beams — the native geometry, replayed
+      drawPickupOps(ctx, carrierOps(state));
 
       // Player (blink during invincibility)
       const blink =
@@ -1095,6 +1081,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               if (carrierBeamJustFired(prev, applied)) onCarrierEventRef.current?.("beamFire");
               if (reinforcementsJustLaunched(prev, applied))
                 onCarrierEventRef.current?.("reinforce");
+              // #2843: attack-run telegraph and a final stand after the armor was already down
+              if (carrierAttackRunJustStarted(prev, applied))
+                onCarrierEventRef.current?.("attackRun");
+              if (carrierFinalStandJustStarted(prev, applied))
+                onCarrierEventRef.current?.("finalStand");
               for (const ev of upgradeEvents(prev, applied)) onUpgradeRef.current?.(ev); // #2488
               // #2847: the newest cue wins if two land on one tick
               const cues = pickupCues(prev, applied);

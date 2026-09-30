@@ -21,6 +21,8 @@ import type {
   HullLevel,
   UpgradeEvent,
   Extraction,
+  CarrierBeam,
+  CarrierStage,
 } from "./types";
 import {
   WAVE_CLEAR_SOURCE,
@@ -221,19 +223,83 @@ export const PLAYER_HURT_RADIUS = 7; // px
 // #1310: duration of the shield-ring hit flash on non-lethal Elite/Guardian hits
 export const HIT_FLASH_DURATION = 250; // ms
 
-// #2485: Carrier actions — sweep beam, reinforcements, lone-ship lasers
-export const BEAM_INTERVAL_BASE = 7000; // ms between beams (÷ min(1.6, paramScale))
+// #2485/#2843: Carrier actions — traveling beam, twin lasers, reinforcements, attack runs
 export const BOSS_WAVE_BEAM_SCALE = 1.5; // #2490: beams come this much faster on a boss wave
-export const BEAM_CHARGE_MS = 600; // telegraph: wiggle + glow
-export const BEAM_FIRE_MS = 1200; // beam on, dragged sideways by the formation sway
-export const BEAM_HALF_WIDTH = 12; // px either side of the Carrier's x
+export const BEAM_CHARGE_MS = 600; // telegraph: wiggle + glow — the same in every stage (#2843)
+export const BEAM_HALF_WIDTH = 12; // px either side of the released beam's column
+export const BEAM_LENGTH = 140; // px, the released bolt's length
+export const BEAM_SPEED = 1.1; // px/ms — fast: a bolt crosses the lane in ~0.4 s
 const BEAM_WIGGLE_AMPLITUDE = 3; // px, during charge
-export const REINFORCE_INTERVAL = 8000; // ms between launches while the Carrier lives
-const REINFORCE_MIN = 2;
-const REINFORCE_MAX = 4;
-export const LONE_FIRE_INTERVAL = 1100; // ms between twin-laser volleys once the Carrier is unarmored
-const LONE_FIRE_OFFSET = 14; // px either side of centre for the twin lasers
-const BEAM_DIFFICULTY_CAP = 1.6; // paramScale is capped here for beam/lone-fire cadence
+const TWIN_FIRE_OFFSET = 14; // px either side of centre for the twin lasers
+export const CARRIER_CADENCE_CAP = 1.6; // paramScale is capped here for every Carrier cadence
+export const ATTACK_RUN_BRACE_MS = 800; // #2843: attack-run telegraph — the Carrier rears back
+const ATTACK_RUN_BRACE_LIFT = 8; // px the Carrier rears up while bracing
+/** #2843: how long the heavy attack run takes, and how deep it reaches (fraction of canvasH). */
+export const ATTACK_RUN: Readonly<
+  Record<Exclude<CarrierStage, "protected">, { readonly ms: number; readonly depth: number }>
+> = {
+  exposed: { ms: 3400, depth: 0.46 },
+  finalStand: { ms: 2800, depth: 0.56 },
+};
+
+/** A bounded random interval (or count): uniform in [min, max]. */
+export interface CadenceRange {
+  readonly min: number;
+  readonly max: number;
+}
+
+/** #2843: the Carrier's randomized cadences. */
+export type CarrierCadence = "beam" | "twin" | "reinforce" | "attackRun";
+
+/**
+ * #2843: base cadence ranges (ms) per stage, before difficulty (÷ min(1.6, paramScale)) and, for
+ * the beam only, the boss-wave factor (÷ 1.5). A stage missing from a row means the action does
+ * not happen in that stage: no twin fire or attack run while protected, and no reinforcements
+ * once the Carrier makes its final stand. Every later stage is shorter on average than the one
+ * before (tests hold this), so each stage is more aggressive than the last.
+ */
+export const CARRIER_CADENCE: Readonly<
+  Record<CarrierCadence, Readonly<Partial<Record<CarrierStage, CadenceRange>>>>
+> = {
+  beam: {
+    protected: { min: 6000, max: 9000 },
+    exposed: { min: 4000, max: 6500 },
+    finalStand: { min: 2600, max: 4200 },
+  },
+  twin: {
+    exposed: { min: 900, max: 1500 },
+    finalStand: { min: 600, max: 1000 },
+  },
+  reinforce: {
+    protected: { min: 6500, max: 10_000 },
+    exposed: { min: 5000, max: 8000 },
+  },
+  attackRun: {
+    exposed: { min: 7000, max: 11_000 },
+    finalStand: { min: 4200, max: 7000 },
+  },
+};
+
+/**
+ * #2843: fair minimum spacing — no scaling ever brings a cadence below this. The beam floor is
+ * the idle gap between one release and the next charge, so the 600 ms telegraph always follows
+ * at least this much quiet.
+ */
+export const CARRIER_CADENCE_FLOOR: Readonly<Record<CarrierCadence, number>> = {
+  beam: 1500,
+  twin: 400,
+  reinforce: 4000,
+  attackRun: 3000,
+};
+
+/** #2843: what a cadence roll returns for an action its stage doesn't have (~11.5 days). */
+export const CADENCE_INACTIVE_MS = 1e9;
+
+/** #2843: grunts per reinforcement launch, by stage (still bounded by vacant slots and caps). */
+export const REINFORCE_COUNT: Readonly<Partial<Record<CarrierStage, CadenceRange>>> = {
+  protected: { min: 2, max: 3 },
+  exposed: { min: 2, max: 4 },
+};
 
 // #2488: in-run ship upgrades — never persisted, never sold
 export const GUNS_MAX: GunsLevel = 3;
@@ -288,7 +354,12 @@ export const ASTEROID_STATS: Record<AsteroidKind, { radius: number; hp: number }
 };
 
 // #2484: Carrier — one per wave, never dives, armored while its four Guardian escorts live.
-const TIER_SCORE: Record<EnemyTier, number> = { Grunt: 100, Elite: 200, Guardian: 400, Carrier: 1000 };
+const TIER_SCORE: Record<EnemyTier, number> = {
+  Grunt: 100,
+  Elite: 200,
+  Guardian: 400,
+  Carrier: 1000,
+};
 const TIER_HP: Record<EnemyTier, number> = { Grunt: 1, Elite: 2, Guardian: 4, Carrier: 8 };
 
 /** #2484: Guardian and Carrier sit out the Grunt/Elite "non-leader" thresholds (35% / ≤3 remaining). */
@@ -322,9 +393,84 @@ export function carrierJustExposed(prev: StarSwarmState, next: StarSwarmState): 
   return carrierAlive && isCarrierArmored(prev) && !isCarrierArmored(next);
 }
 
+const STAGE_RANK: Readonly<Record<CarrierStage, number>> = {
+  protected: 0,
+  exposed: 1,
+  finalStand: 2,
+};
+
+/** #2843: the stage of the Carrier in this roster; null when no Carrier is alive. */
+function carrierStageIn(enemies: readonly Enemy[]): CarrierStage | null {
+  if (!enemies.some((e) => e.isAlive && e.tier === "Carrier")) return null;
+  if (carrierArmoredIn(enemies)) return "protected";
+  // a fleeing grunt has left the fight — it doesn't hold the Carrier out of its final stand
+  const others = enemies.some((e) => e.isAlive && e.tier !== "Carrier" && e.phase !== "Fleeing");
+  return others ? "exposed" : "finalStand";
+}
+
+/**
+ * #2843: the Carrier's live aggression stage (see CarrierStage), or null with no Carrier alive.
+ * Exposed begins the moment the last Guardian dies; final stand once nothing else meaningful
+ * is left. The stage only ever escalates within a wave.
+ */
+export function carrierStage(state: StarSwarmState): CarrierStage | null {
+  return carrierStageIn(state.enemies);
+}
+
+/**
+ * #2843: true on the tick the Carrier's final stand begins after its armor was already down.
+ * A boss wave's lone Carrier goes from protected straight to final stand on the last Guardian
+ * kill; that tick is announced as the armor drop (`carrierJustExposed`) instead, not twice.
+ */
+export function carrierFinalStandJustStarted(prev: StarSwarmState, next: StarSwarmState): boolean {
+  return (
+    next.wave === prev.wave &&
+    carrierStage(prev) === "exposed" &&
+    carrierStage(next) === "finalStand"
+  );
+}
+
+/**
+ * #2843: the bounds a Carrier cadence rolls within, at this stage, difficulty and wave; null if
+ * the action doesn't happen in that stage. Difficulty divides by min(1.6, paramScale), a boss
+ * wave divides the beam by a further 1.5, and nothing goes below CARRIER_CADENCE_FLOOR.
+ */
+export function carrierCadenceBounds(
+  kind: CarrierCadence,
+  stage: CarrierStage,
+  difficulty: DifficultyTier,
+  bossWave: boolean
+): CadenceRange | null {
+  const base = CARRIER_CADENCE[kind][stage];
+  if (!base) return null;
+  const div =
+    Math.min(CARRIER_CADENCE_CAP, difficultyParamScale(difficulty)) *
+    (kind === "beam" && bossWave ? BOSS_WAVE_BEAM_SCALE : 1);
+  const floor = CARRIER_CADENCE_FLOOR[kind];
+  return { min: Math.max(floor, base.min / div), max: Math.max(floor, base.max / div) };
+}
+
+/**
+ * #2843: one seeded roll of a Carrier cadence — uniform within `carrierCadenceBounds`. An action
+ * that doesn't happen in this stage returns CADENCE_INACTIVE_MS without drawing from the rng (a
+ * finite "never", so it survives a save — JSON has no Infinity). Uses the engine's rng(), so
+ * seeded runs replay exactly.
+ */
+export function rollCarrierCadence(
+  kind: CarrierCadence,
+  stage: CarrierStage,
+  difficulty: DifficultyTier,
+  bossWave: boolean
+): number {
+  const b = carrierCadenceBounds(kind, stage, difficulty, bossWave);
+  if (!b) return CADENCE_INACTIVE_MS;
+  return b.min + rng() * (b.max - b.min);
+}
+
 // #979/#2484: heavier tiers drift less with the formation sway
 function clampSway(tier: EnemyTier, swayX: number): number {
-  const limit = tier === "Carrier" ? CARRIER_MAX_SWAY : tier === "Guardian" ? GUARDIAN_MAX_SWAY : MAX_SWAY;
+  const limit =
+    tier === "Carrier" ? CARRIER_MAX_SWAY : tier === "Guardian" ? GUARDIAN_MAX_SWAY : MAX_SWAY;
   return Math.max(-limit, Math.min(limit, swayX));
 }
 
@@ -1078,7 +1224,7 @@ export function dodgeRateByTier(state: StarSwarmState): TierDodgeRow[] {
 }
 
 /**
- * #2491 dev-panel hook: destroy every escort at once so the Carrier's exposed state, lone fire
+ * #2491 dev-panel hook: destroy every escort at once so the Carrier's final stand, twin fire
  * and plating drop can be reached without playing the wave out. No points — it's a tool, not a
  * bomb — and the escalation latches are left to the next tick to work out as usual.
  */
@@ -1093,7 +1239,7 @@ export function killEscorts(state: StarSwarmState): StarSwarmState {
   return { ...state, enemies, explosions };
 }
 
-const PATH_PHASES = new Set(["SwoopIn", "Diving", "Returning", "Fleeing"]);
+const PATH_PHASES = new Set(["SwoopIn", "Diving", "Returning", "Fleeing", "AttackRun"]);
 
 /** Where the ship will be `ms` from now: on its path if it has one, else where it is. */
 function predictEnemyPos(e: Enemy, ms: number): Vec2 {
@@ -1306,7 +1452,9 @@ function makeEnemy(idx: number, slot: SlotDef, canvasW: number): Enemy {
     wiggleTimer: 0,
     burstShotsLeft: 0,
     beamPhase: "idle",
-    beamTimer: BEAM_INTERVAL_BASE, // #2485: first beam one full interval after the wave settles
+    beamTimer: 0, // #2843: the Carrier's is rolled in buildWaveState / on launch; unused otherwise
+    runPhase: "idle",
+    runTimer: 0, // #2843: rolled when the Carrier is exposed; unused otherwise
     dodge: null,
     rolledAsteroidIds: [],
     flakCooldown: 0,
@@ -1432,19 +1580,21 @@ function buildWaveState(
   // stage of its own in the slot the old bonus wave held. It swoops in and plays like any wave.
   const bossWave = isBossWave(wave);
   const slots = bossWave ? bossWaveSlots() : waveSlots(wave);
-  const enemies: Enemy[] = slots.map((slot, idx) => {
-    const e = makeEnemy(idx, slot, canvasW);
-    // the Carrier beams more often here, from the first one on
-    return bossWave && slot.tier === "Carrier"
-      ? { ...e, beamTimer: e.beamTimer / BOSS_WAVE_BEAM_SCALE }
-      : e;
-  });
+  const built: Enemy[] = slots.map((slot, idx) => makeEnemy(idx, slot, canvasW));
   const phase: StarSwarmState["phase"] = "SwoopIn";
 
-  const startingNonLeaderCount = enemies.filter((e) => !isLeaderTier(e.tier)).length;
+  const startingNonLeaderCount = built.filter((e) => !isLeaderTier(e.tier)).length;
 
   const powerUps: PowerUp[] = [];
   const dropJitterTarget = triggerKills(wave) + Math.floor(rng() * 5) - 2;
+  // #2843: the Carrier's first beam and the first reinforcement launch are seeded rolls from the
+  // protected stage's ranges (a boss wave's beam range is already 1.5× faster, from the first on)
+  const enemies: Enemy[] = built.map((e) =>
+    e.tier === "Carrier"
+      ? { ...e, beamTimer: rollCarrierCadence("beam", "protected", difficulty, bossWave) }
+      : e
+  );
+  const reinforceTimer = rollCarrierCadence("reinforce", "protected", difficulty, bossWave);
   const paramScale = difficultyParamScale(difficulty);
   // Ensign gets gentler AI; every tier above gets straggler aggression.
   // stragglerOverride lets the dev panel disable it regardless of difficulty.
@@ -1473,8 +1623,10 @@ function buildWaveState(
     asteroids: [],
     nextAsteroidTimer: asteroidInterval(),
     asteroidsDisabled: false,
-    reinforceTimer: REINFORCE_INTERVAL,
+    reinforceTimer,
     reinforcedThisWave: 0,
+    carrierBeams: [],
+    carrierStage: carrierStageIn(enemies), // "protected": every wave opens with its Guardians
     tierStats,
     runStats,
     dodgeDisabled: false,
@@ -1642,103 +1794,282 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
 interface EnemyTickResult {
   enemy: Enemy;
   bullet: Bullet | null;
-  /** #2485: a volley (the lone Carrier's twin lasers) — each still counts against bulletCap(). */
+  /** #2485: a volley (the Carrier's twin lasers) — each still counts against bulletCap(). */
   bullets?: Bullet[];
+  /** #2843: a released Carrier beam — its own entity from here on (see CarrierBeam). */
+  beam?: CarrierBeam;
 }
 
-/** #2485: what the Carrier needs to know that the per-enemy tick otherwise doesn't see. */
+/** #2485/#2843: what the Carrier needs to know that the per-enemy tick otherwise doesn't see. */
 interface CarrierCtx {
-  /** Playing phase — beams and lone fire only happen mid-wave. */
+  /** Playing phase — the Carrier only acts mid-wave. */
   playing: boolean;
-  /** #2699: its four Guardian escorts are dead, so its force field is down — twin lasers fire. */
-  unarmored: boolean;
+  /** The Carrier's live stage this tick (null with no Carrier). */
+  stage: CarrierStage | null;
+  /** The stage the Carrier last acted on (`state.carrierStage`) — an escalation re-rolls. */
+  prevStage: CarrierStage | null;
   /** #2490: boss wave — the beam cadence is BOSS_WAVE_BEAM_SCALE× faster. */
   bossWave: boolean;
+  difficulty: DifficultyTier;
+  playerX: number;
+  playerY: number;
+  canvasH: number;
 }
-const NO_CARRIER_CTX: CarrierCtx = { playing: false, unarmored: false, bossWave: false };
+const NO_CARRIER_CTX: CarrierCtx = {
+  playing: false,
+  stage: null,
+  prevStage: null,
+  bossWave: false,
+  difficulty: "LieutenantJG",
+  playerX: 0,
+  playerY: 0,
+  canvasH: CANVAS_H,
+};
 
 /**
- * #2485: the Carrier's own tick while holding station. Beam: idle → charge (telegraph) → fire →
- * idle on a difficulty-scaled cadence. Twin-laser lasers: #2699 once its armor is down (its Guardian
- * escorts are dead) it fires a pair of aimed shots every LONE_FIRE_INTERVAL, so the player can't
- * just plink an exposed Carrier from off to one side while grunts still live. Reinforcements live
- * in tickEnemies (they need the whole roster).
+ * #2843 finite-capacity seam: where a Carrier volley goes. The Carrier's own timers decide
+ * *when* it fires and how much; this decides only *where*. The player is the only target today.
+ * #2844 (flak at a rock) and #2845 (fire at Buddy) plug their choice in here: a diverted volley
+ * replaces the player-directed one on the same timer — it never adds a volley or a gun.
  */
-function tickCarrier(
-  enemy: Enemy,
-  dtMs: number,
-  playerX: number,
-  playerY: number,
-  paramScale: number,
-  ctx: CarrierCtx
-): EnemyTickResult {
-  if (!ctx.playing) return { enemy, bullet: null };
-  const cadence = Math.min(BEAM_DIFFICULTY_CAP, paramScale);
-
-  let beamPhase: BeamPhase = enemy.beamPhase;
-  let beamTimer = enemy.beamTimer - dtMs;
-  if (beamTimer <= 0) {
-    if (beamPhase === "idle") {
-      beamPhase = "charge";
-      beamTimer = BEAM_CHARGE_MS;
-    } else if (beamPhase === "charge") {
-      beamPhase = "fire";
-      beamTimer = BEAM_FIRE_MS;
-    } else {
-      beamPhase = "idle";
-      beamTimer = BEAM_INTERVAL_BASE / cadence / (ctx.bossWave ? BOSS_WAVE_BEAM_SCALE : 1);
-    }
-  }
-
-  let shootTimer = enemy.shootTimer;
-  let bullets: Bullet[] | undefined;
-  if (ctx.unarmored) {
-    shootTimer -= dtMs;
-    if (shootTimer <= 0) {
-      shootTimer = LONE_FIRE_INTERVAL / cadence;
-      bullets = [-LONE_FIRE_OFFSET, LONE_FIRE_OFFSET].map((dx) => {
-        const vel = aimVelocity(enemy.x + dx, enemy.y, playerX, playerY, GUARDIAN_BULLET_VY);
-        return {
-          id: nextId(),
-          x: enemy.x + dx,
-          y: enemy.y + enemy.height / 2,
-          vx: vel.vx,
-          vy: vel.vy,
-          owner: "enemy" as const,
-          width: BULLET_E_W,
-          height: BULLET_E_H,
-          damage: 1,
-        };
-      });
-    }
-  }
-
-  return { enemy: { ...enemy, beamPhase, beamTimer, shootTimer }, bullet: null, bullets };
+export interface CarrierTarget {
+  readonly kind: "player";
+  readonly x: number;
+  readonly y: number;
 }
 
-/** #2485: where the Carrier's beam is, for collisions and both renderers; null when no beam. */
-export function carrierBeam(
+function chooseCarrierTarget(ctx: CarrierCtx): CarrierTarget {
+  return { kind: "player", x: ctx.playerX, y: ctx.playerY };
+}
+
+/** #2485/#2699: the Carrier's twin lasers, aimed at `target`. */
+function carrierTwinVolley(c: Enemy, target: CarrierTarget): Bullet[] {
+  return [-TWIN_FIRE_OFFSET, TWIN_FIRE_OFFSET].map((dx) => {
+    const vel = aimVelocity(c.x + dx, c.y, target.x, target.y, GUARDIAN_BULLET_VY);
+    return {
+      id: nextId(),
+      x: c.x + dx,
+      y: c.y + c.height / 2,
+      vx: vel.vx,
+      vy: vel.vy,
+      owner: "enemy" as const,
+      width: BULLET_E_W,
+      height: BULLET_E_H,
+      damage: 1,
+    };
+  });
+}
+
+/** #2843: a released beam, leaving the Carrier's emitter and heading straight down. */
+function releaseBeam(c: Enemy): CarrierBeam {
+  return {
+    id: nextId(),
+    x: c.x,
+    y: c.y + c.height / 2,
+    vy: BEAM_SPEED,
+    length: BEAM_LENGTH,
+    halfWidth: BEAM_HALF_WIDTH,
+  };
+}
+
+/**
+ * #2843: the Carrier's heavy attack run — not a Grunt dive. It leans out to one side, sweeps
+ * down to the player's column (captured when the brace began) at `depth`, and climbs back to
+ * its station: one slow, wide, readable swoop that never reaches the player lane. Deeper and
+ * quicker in the final stand.
+ */
+export function carrierRunPath(
+  c: Enemy,
+  targetX: number,
+  canvasH: number,
+  stage: Exclude<CarrierStage, "protected">
+): CubicBezier {
+  const depthY = canvasH * ATTACK_RUN[stage].depth;
+  const lean = c.formationX < targetX ? -1 : 1; // swing out away from the target first
+  return {
+    p0: { x: c.x, y: c.y },
+    p1: { x: targetX + lean * 70, y: depthY },
+    p2: { x: targetX - lean * 70, y: depthY },
+    p3: { x: c.formationX, y: c.formationY },
+  };
+}
+
+/**
+ * #2485/#2843: the Carrier's own tick (station-keeping or on its attack run). Every cadence is a
+ * seeded roll from its stage's range (`rollCarrierCadence`), so nothing is metronomic.
+ *
+ * - Beam: idle → charge (BEAM_CHARGE_MS telegraph) → release. The release is an independent
+ *   CarrierBeam; the Carrier goes straight back to idle.
+ * - Twin lasers (exposed / final stand only): a pair of aimed shots per roll.
+ * - Attack run (exposed / final stand only): brace (ATTACK_RUN_BRACE_MS telegraph) → run.
+ *
+ * Telegraphs never overlap: a charge never starts during a brace, nor a brace during a charge.
+ * While exposed the beam also holds during the run; in the final stand beam, direct fire and
+ * movement may combine — each keeps its own telegraph.
+ *
+ * On an escalation (protected → exposed → final stand) timers pull in: an action that just
+ * came online rolls fresh, one already running keeps the sooner of its timer and a new roll.
+ */
+function tickCarrier(enemy: Enemy, dtMs: number, ctx: CarrierCtx): EnemyTickResult {
+  const stage = ctx.stage;
+  if (!ctx.playing || !stage) return { enemy, bullet: null };
+  const roll = (kind: CarrierCadence) =>
+    rollCarrierCadence(kind, stage, ctx.difficulty, ctx.bossWave);
+
+  let e = enemy;
+  const prev = ctx.prevStage;
+  if (prev && STAGE_RANK[stage] > STAGE_RANK[prev]) {
+    const cameOnline = prev === "protected";
+    e = {
+      ...e,
+      beamTimer: e.beamPhase === "idle" ? Math.min(e.beamTimer, roll("beam")) : e.beamTimer,
+      shootTimer: cameOnline ? roll("twin") : Math.min(e.shootTimer, roll("twin")),
+      runTimer:
+        e.runPhase === "idle" && e.phase !== "AttackRun"
+          ? cameOnline
+            ? roll("attackRun")
+            : Math.min(e.runTimer, roll("attackRun"))
+          : e.runTimer,
+    };
+  }
+
+  const armedStage = stage !== "protected";
+  const bracing = e.runPhase === "brace";
+  const running = e.phase === "AttackRun";
+
+  // ── Beam ──
+  let beamPhase: BeamPhase = e.beamPhase;
+  let beamTimer = e.beamTimer;
+  let beam: CarrierBeam | undefined;
+  if (beamPhase === "charge") {
+    beamTimer -= dtMs;
+    if (beamTimer <= 0) {
+      beam = releaseBeam(e);
+      beamPhase = "idle";
+      beamTimer = roll("beam");
+    }
+  } else if (!bracing && !(running && stage !== "finalStand")) {
+    beamTimer -= dtMs;
+    if (beamTimer <= 0) {
+      beamPhase = "charge";
+      beamTimer = BEAM_CHARGE_MS;
+    }
+  }
+
+  // ── Twin lasers ──
+  let shootTimer = e.shootTimer;
+  let bullets: Bullet[] | undefined;
+  if (armedStage) {
+    shootTimer -= dtMs;
+    if (shootTimer <= 0) {
+      shootTimer = roll("twin");
+      bullets = carrierTwinVolley(e, chooseCarrierTarget(ctx));
+    }
+  }
+
+  // ── Attack run ──
+  let next: Enemy = { ...e, beamPhase, beamTimer, shootTimer };
+  if (running) {
+    const newT = e.pathT + dtMs / e.pathDuration;
+    if (newT >= 1 || !e.path) {
+      next = {
+        ...next,
+        phase: "Formation",
+        x: e.formationX,
+        y: e.formationY,
+        path: null,
+        pathT: 1,
+        runTimer: roll("attackRun"),
+      };
+    } else {
+      const pos = evalCubic(e.path, newT);
+      next = { ...next, x: pos.x, y: pos.y, pathT: newT };
+    }
+  } else if (bracing) {
+    const runTimer = e.runTimer - dtMs;
+    if (runTimer <= 0 && armedStage) {
+      const start = { ...next, y: e.formationY };
+      next = {
+        ...start,
+        phase: "AttackRun",
+        runPhase: "idle",
+        runTimer: 0,
+        path: carrierRunPath(start, e.diveTargetX, ctx.canvasH, stage as "exposed" | "finalStand"),
+        pathT: 0,
+        pathDuration: ATTACK_RUN[stage as "exposed" | "finalStand"].ms,
+      };
+    } else {
+      // rear back: a slow lift and settle, the run's telegraph
+      const p = 1 - Math.max(0, runTimer) / ATTACK_RUN_BRACE_MS;
+      next = {
+        ...next,
+        runTimer,
+        y: e.formationY - ATTACK_RUN_BRACE_LIFT * Math.sin(Math.PI * p),
+      };
+    }
+  } else if (armedStage) {
+    const runTimer = e.runTimer - dtMs;
+    // a brace waits for a beam charge to finish, so the two telegraphs never overlap
+    if (runTimer <= 0 && beamPhase !== "charge") {
+      next = {
+        ...next,
+        runPhase: "brace",
+        runTimer: ATTACK_RUN_BRACE_MS,
+        diveTargetX: ctx.playerX,
+      };
+    } else {
+      next = { ...next, runTimer };
+    }
+  }
+
+  return { enemy: next, bullet: null, bullets, beam };
+}
+
+/**
+ * #2843: the Carrier's beam charge, for both renderers and the beam-start event; null when it
+ * isn't charging (released beams are `state.carrierBeams`).
+ */
+export function carrierBeamCharge(
   state: StarSwarmState
-): { x: number; y: number; phase: Exclude<BeamPhase, "idle">; progress: number } | null {
+): { x: number; y: number; progress: number } | null {
   const c = state.enemies.find((e) => e.isAlive && e.tier === "Carrier");
-  if (!c || c.beamPhase === "idle") return null;
-  const total = c.beamPhase === "charge" ? BEAM_CHARGE_MS : BEAM_FIRE_MS;
+  if (!c || c.beamPhase !== "charge") return null;
   return {
     x: c.x,
     y: c.y + c.height / 2,
-    phase: c.beamPhase,
-    progress: 1 - Math.max(0, c.beamTimer) / total,
+    progress: 1 - Math.max(0, c.beamTimer) / BEAM_CHARGE_MS,
+  };
+}
+
+/** #2843: the Carrier's attack-run brace (telegraph) progress 0–1; null when not bracing. */
+export function carrierRunBrace(
+  state: StarSwarmState
+): { x: number; y: number; r: number; progress: number } | null {
+  const c = state.enemies.find((e) => e.isAlive && e.tier === "Carrier");
+  if (!c || c.runPhase !== "brace") return null;
+  return {
+    x: c.x,
+    y: c.y,
+    r: Math.max(c.width, c.height) * 0.7,
+    progress: 1 - Math.max(0, c.runTimer) / ATTACK_RUN_BRACE_MS,
   };
 }
 
 /** #2485: true on the tick the Carrier starts charging its beam (telegraph sound + a11y). */
 export function carrierBeamJustStarted(prev: StarSwarmState, next: StarSwarmState): boolean {
-  return carrierBeam(prev)?.phase !== "charge" && carrierBeam(next)?.phase === "charge";
+  return carrierBeamCharge(prev) === null && carrierBeamCharge(next) !== null;
 }
 
-/** #2485: true on the tick the beam switches from telegraph to firing. */
+/** #2843: true on the tick a beam is released (a beam in flight that wasn't there before). */
 export function carrierBeamJustFired(prev: StarSwarmState, next: StarSwarmState): boolean {
-  return carrierBeam(prev)?.phase !== "fire" && carrierBeam(next)?.phase === "fire";
+  if (next.wave !== prev.wave) return false;
+  const before = new Set(prev.carrierBeams.map((b) => b.id));
+  return next.carrierBeams.some((b) => !before.has(b.id));
+}
+
+/** #2843: true on the tick the Carrier braces for an attack run (its telegraph). */
+export function carrierAttackRunJustStarted(prev: StarSwarmState, next: StarSwarmState): boolean {
+  return carrierRunBrace(prev) === null && carrierRunBrace(next) !== null;
 }
 
 /** #2485: true on the tick a reinforcement batch launches (same wave, counter went up). */
@@ -1756,9 +2087,22 @@ export function fleeingCount(state: StarSwarmState): number {
   return state.enemies.filter((e) => e.isAlive && e.phase === "Fleeing").length;
 }
 
-/** #2485: reinforcements are capped at half the wave's grunt slots. */
+/**
+ * #2843: the wave's original Grunt slots — the only slots reinforcements may refill, and the
+ * ceiling on how many Grunts can be alive at once. None on a boss wave.
+ */
+function originalGruntSlots(wave: number): SlotDef[] {
+  return isBossWave(wave) ? [] : waveSlots(wave).filter((s) => s.tier === "Grunt");
+}
+
+/** #2843: the wave's original simultaneous Grunt population (0 on a boss wave). */
+export function originalGruntCount(wave: number): number {
+  return originalGruntSlots(wave).length;
+}
+
+/** #2485: reinforcements per wave are capped at half the wave's original grunt slots. */
 export function reinforceCap(wave: number): number {
-  return Math.floor(waveSlots(wave).filter((s) => s.tier === "Grunt").length / 2);
+  return Math.floor(originalGruntCount(wave) / 2);
 }
 
 function tickSingleEnemy(
@@ -1775,9 +2119,9 @@ function tickSingleEnemy(
   carrierCtx: CarrierCtx = NO_CARRIER_CTX
 ): EnemyTickResult {
   if (!enemy.isAlive) return { enemy, bullet: null };
-  // #2485: the Carrier has its own station-keeping tick
-  if (enemy.tier === "Carrier" && enemy.phase === "Formation") {
-    return tickCarrier(enemy, dtMs, playerX, playerY, paramScale, carrierCtx);
+  // #2485/#2843: the Carrier has its own tick, on station and on its attack run
+  if (enemy.tier === "Carrier" && (enemy.phase === "Formation" || enemy.phase === "AttackRun")) {
+    return tickCarrier(enemy, dtMs, carrierCtx);
   }
 
   switch (enemy.phase) {
@@ -1795,7 +2139,13 @@ function tickSingleEnemy(
         paramScale
       );
     case "Wiggling":
-      return tickWiggling(enemy, dtMs, canvasH, guardianThresholdCrossed, guardianDeepThresholdCrossed);
+      return tickWiggling(
+        enemy,
+        dtMs,
+        canvasH,
+        guardianThresholdCrossed,
+        guardianDeepThresholdCrossed
+      );
     case "Diving":
       return tickDiving(
         enemy,
@@ -1812,6 +2162,8 @@ function tickSingleEnemy(
       return tickReturning(enemy, dtMs);
     case "Fleeing":
       return tickFleeing(enemy, dtMs);
+    case "AttackRun":
+      return { enemy, bullet: null }; // #2843: Carrier only, routed above
   }
 }
 
@@ -1948,7 +2300,8 @@ function tickWiggling(
 
   if (newTimer <= 0) {
     // Stage 1 Elites: shallow arc; Stage 2 Guardians: shallow arc (like Stage 1 Elites)
-    const isGuardianStage2 = enemy.tier === "Guardian" && guardianThresholdCrossed && !guardianDeepThresholdCrossed;
+    const isGuardianStage2 =
+      enemy.tier === "Guardian" && guardianThresholdCrossed && !guardianDeepThresholdCrossed;
     const shallow = (enemy.tier === "Elite" && !guardianThresholdCrossed) || isGuardianStage2;
     const path = divePath(enemy, enemy.diveTargetX, canvasH, shallow);
     const duration = enemy.tier === "Guardian" ? GUARDIAN_DIVE_PATH_DURATION : DIVE_PATH_DURATION;
@@ -2023,7 +2376,8 @@ function tickDiving(
 
   const isElitePhase1 = enemy.tier === "Elite" && !guardianThresholdCrossed;
   // #1077: Stage 2 Guardian uses shallow arc — return to formation like Elite Phase 1, no Circling
-  const isGuardianStage2 = enemy.tier === "Guardian" && guardianThresholdCrossed && !guardianDeepThresholdCrossed;
+  const isGuardianStage2 =
+    enemy.tier === "Guardian" && guardianThresholdCrossed && !guardianDeepThresholdCrossed;
   const depthThreshold = isElitePhase1 || isGuardianStage2 ? canvasH * 0.6 : canvasH * 0.85;
   const pathDone = pos.y > depthThreshold || newT >= 1;
 
@@ -2279,13 +2633,20 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   // #2842: ships that reach formation during swoop-in hold their fire until combat starts
   const enemyWeaponsFree = weaponsFree(state) && !state.enemyFireDisabled;
   const enemyBulletCap = bulletCap(state.wave, _ps);
-  // #2699: the Carrier fires its twin lasers once its armor is down (Guardian escorts dead),
-  // not only once it's the sole enemy left alive.
+  // #2843: the Carrier acts on its stage as of the tick's starting roster; an escalation since
+  // the stage it last acted on (state.carrierStage) pulls its timers in (see tickCarrier)
+  const stage = carrierStageIn(roster);
   const carrierCtx: CarrierCtx = {
     playing: state.phase === "Playing",
-    unarmored: !carrierArmoredIn(state.enemies),
+    stage,
+    prevStage: state.carrierStage,
     bossWave: isBossWave(state.wave), // #2490
+    difficulty: state.difficulty,
+    playerX: state.player.x,
+    playerY: state.player.y,
+    canvasH: state.canvasH,
   };
+  const newCarrierBeams: CarrierBeam[] = [...state.carrierBeams];
   let routEscaped = 0; // #2489: fleeing grunts that reached the edge this tick
   let enemies = roster.map((enemy, idx) => {
     const shouldDive = diveIndices.has(idx);
@@ -2308,7 +2669,10 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     // #979: Guardian sways ±GUARDIAN_MAX_SWAY (20px) vs ±MAX_SWAY (40px) for other tiers
     if (e.isAlive && e.phase === "Formation") {
       e = { ...e, x: e.formationX + clampSway(e.tier, swayX) + dodgeOffset(e) }; // #2487 sidestep
-      // #2485: beam telegraph — a quick shudder so the player has time to sidestep
+    }
+    if (e.isAlive && (e.phase === "Formation" || e.phase === "AttackRun")) {
+      // #2485: beam telegraph — a quick shudder so the player has time to sidestep (#2843: on
+      // station or mid-run in the final stand)
       if (e.beamPhase === "charge") {
         const elapsed = BEAM_CHARGE_MS - e.beamTimer;
         e = {
@@ -2331,38 +2695,49 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
         liveEnemyBulletCount++;
       }
     }
+    // #2843: a released beam is its own entity from here on
+    if (result.beam && enemyWeaponsFree) newCarrierBeams.push(result.beam);
     return e;
   });
 
-  // #2485: Carrier reinforcements — refill empty grunt slots while it lives, capped per wave.
-  // Not on Ensign. Reinforcements don't touch startingNonLeaderCount, so the 35% / ≤3 latches
-  // are unaffected once crossed; until then they delay the escalation, which is the point.
+  // #2485/#2843: Carrier reinforcements — on a seeded, stage-ranged interval, refill vacant
+  // *original* grunt slots only, so the live grunt count never exceeds the wave's original
+  // grunt population; also capped per wave (reinforceCap). A wave with no original grunts (a
+  // boss wave) gets none, and neither does a Carrier in its final stand, nor Ensign.
+  // Reinforcements don't touch startingNonLeaderCount, so the 35% / ≤3 latches are unaffected
+  // once crossed; until then they delay the escalation, which is the point.
   let reinforceTimer = state.reinforceTimer;
   let reinforcedThisWave = state.reinforcedThisWave;
   let runStats = state.runStats;
-  const carrierAlive = enemies.some((e) => e.isAlive && e.tier === "Carrier");
-  // #2490: never on a boss wave — there are no grunt slots to refill, and it's meant to be short.
+  const gruntSlots = originalGruntSlots(state.wave);
+  const launchRange = stage ? REINFORCE_COUNT[stage] : undefined;
   if (
     state.phase === "Playing" &&
-    carrierAlive &&
+    stage !== null &&
+    launchRange !== undefined &&
     state.difficulty !== "Ensign" &&
-    !isBossWave(state.wave)
+    gruntSlots.length > 0
   ) {
     reinforceTimer -= dtMs;
     if (reinforceTimer <= 0) {
-      reinforceTimer = REINFORCE_INTERVAL;
-      const occupied = new Set(
-        enemies.filter((e) => e.isAlive).map((e) => `${e.formationX},${e.formationY}`)
+      reinforceTimer = rollCarrierCadence(
+        "reinforce",
+        stage,
+        state.difficulty,
+        isBossWave(state.wave)
       );
-      const empty = waveSlots(state.wave).filter((slot) => {
-        if (slot.tier !== "Grunt") return false;
+      const live = enemies.filter((e) => e.isAlive);
+      const occupied = new Set(live.map((e) => `${e.formationX},${e.formationY}`));
+      const liveGrunts = live.filter((e) => e.tier === "Grunt").length;
+      const empty = gruntSlots.filter((slot) => {
         const { fx, fy } = slotToWorld(slot, state.canvasW);
         return !occupied.has(`${fx},${fy}`);
       });
       const n = Math.min(
         empty.length,
-        REINFORCE_MIN + Math.floor(rng() * (REINFORCE_MAX - REINFORCE_MIN + 1)),
-        reinforceCap(state.wave) - reinforcedThisWave
+        launchRange.min + Math.floor(rng() * (launchRange.max - launchRange.min + 1)),
+        reinforceCap(state.wave) - reinforcedThisWave,
+        gruntSlots.length - liveGrunts // the population ceiling
       );
       const launched: Enemy[] = [];
       for (let i = 0; i < n; i++) {
@@ -2411,6 +2786,9 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     guardianDeepThresholdCrossed,
     reinforceTimer,
     reinforcedThisWave,
+    carrierBeams: newCarrierBeams,
+    // #2843: only in combat does the Carrier act on (and so "consume") a stage change
+    carrierStage: state.phase === "Playing" ? stage : state.carrierStage,
     runStats,
     routed,
   };
@@ -2541,7 +2919,29 @@ function tickBullets(state: StarSwarmState, dtMs: number): StarSwarmState {
         b.x < canvasW + 10
     );
 
-  return { ...state, playerBullets, enemyBullets };
+  // #2843: released Carrier beams fly on whatever became of the Carrier; gone once the whole
+  // bolt is below the screen
+  const carrierBeams =
+    state.carrierBeams.length === 0
+      ? state.carrierBeams
+      : state.carrierBeams
+          .map((b) => ({ ...b, y: b.y + b.vy * dtMs }))
+          .filter((b) => b.y - b.length < canvasH);
+
+  return { ...state, playerBullets, enemyBullets, carrierBeams };
+}
+
+/** #2843: does this released beam touch the player's hurt circle? */
+function beamHitsPlayer(b: CarrierBeam, p: Player): boolean {
+  return collideCircleAABB(
+    p.x,
+    p.y,
+    PLAYER_HURT_RADIUS,
+    b.x,
+    b.y - b.length / 2,
+    b.halfWidth * 2,
+    b.length
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -2788,6 +3188,9 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
 
   // #1034: bomb cleared all enemy bullets on activation
   let currentEnemyBullets: typeof state.enemyBullets = bombActivated ? [] : state.enemyBullets;
+  // #2843: …and every released Carrier beam (enemy projectiles too); a charge on the Carrier
+  // isn't a projectile yet, so it is untouched
+  let carrierBeams: readonly CarrierBeam[] = bombActivated ? [] : state.carrierBeams;
 
   // #2486: enemy shots are spent on rocks the same way the player's are
   {
@@ -2811,23 +3214,18 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
     );
     const hitByRock = rockHitIdx !== -1;
     if (hitByRock) rocks[rockHitIdx] = { ...rocks[rockHitIdx]!, hp: 0, shattered: true };
-    // #2485: the Carrier's beam — a vertical band below it; the shield holds it off, otherwise it
-    // costs a life (post-hit invincibility then covers the rest of the sweep)
-    const firingBeamOn = enemies.find(
-      (e) =>
-        e.isAlive &&
-        e.tier === "Carrier" &&
-        e.beamPhase === "fire" &&
-        player.y > e.y &&
-        Math.abs(player.x - e.x) < BEAM_HALF_WIDTH + PLAYER_HURT_RADIUS
+    // #2843: a released Carrier beam that reaches the ship is spent on it — shield-absorbed or
+    // not — so one beam costs at most one plate or one life. Whether its Carrier still lives is
+    // irrelevant: a released beam is its own entity.
+    const beamHitIds = new Set(
+      carrierBeams.filter((b) => beamHitsPlayer(b, player)).map((b) => b.id)
     );
-    const hitByBeam = firingBeamOn !== undefined;
-    const beamRemainingMs = firingBeamOn ? Math.max(0, firingBeamOn.beamTimer) : 0;
+    const hitByBeam = beamHitIds.size > 0;
+    if (hitByBeam) carrierBeams = carrierBeams.filter((b) => !beamHitIds.has(b.id));
 
     // #1033: the shield absorbs projectiles (bullets, a rock, the beam) but never a ship
-    // collision, so the ram check below runs whether or not something was absorbed this tick.
-    // (Before #2533 an absorbed hit skipped it; harmless for a one-frame bullet, but the beam
-    // lasts 1.2 s and left a shielded player parked in its column unrammable.)
+    // collision, so the ram check below runs whether or not something was absorbed this tick
+    // (#2533).
     const projectileHit = hitByBullet || hitByRock || hitByBeam;
     const absorbed = projectileHit && shieldActive;
     if (absorbed) {
@@ -2863,8 +3261,8 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
         });
 
       if (hitByShip || (projectileHit && !absorbed)) {
-        // #2491: a sweep that lands (plating or a life) counts once — the grace that follows
-        // keeps the rest of the same sweep out of this block
+        // #2491/#2843: a beam that lands (plating or a life) counts once — it is spent on the
+        // ship, so the same beam can never land twice
         if (hitByBeam && !absorbed) runStats = bumpRun(runStats, { beamHits: 1 });
         const finalEnemies =
           hitByShip && rammingEnemyId !== null
@@ -2911,6 +3309,7 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
             runStats,
             playerBullets,
             enemyBullets: enemyBulletsAfterHit,
+            carrierBeams,
             explosions: newExplosions,
             score,
             powerUps: [...powerUps, ...newDrops],
@@ -2924,13 +3323,8 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
               guns,
               hull,
               hullFlashTimer,
-              // A beam lasts longer than the plating's grace, so the grace stretches to the end
-              // of the sweep — one plate per beam, never two and a life (#2540 review).
-              invincibleTimer: Math.max(
-                player.invincibleTimer,
-                HULL_INVINCIBLE_MS,
-                hitByBeam ? beamRemainingMs + 50 : 0
-              ),
+              // #2843: a beam is spent on contact, so one plate per beam needs no longer grace
+              invincibleTimer: Math.max(player.invincibleTimer, HULL_INVINCIBLE_MS),
             },
           };
         }
@@ -2957,6 +3351,7 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
             // clear only if the GameOver sticks.
             playerBullets,
             enemyBullets: enemyBulletsAfterHit,
+            carrierBeams,
             explosions: newExplosions,
             score,
             powerUps: [...powerUps, ...newDrops],
@@ -2979,6 +3374,7 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
           runStats,
           playerBullets,
           enemyBullets: enemyBulletsAfterHit,
+          carrierBeams,
           explosions: newExplosions,
           score,
           powerUps: [...powerUps, ...newDrops],
@@ -3010,6 +3406,7 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
     player: { ...player, guns, hull, hullFlashTimer }, // #2488
     playerBullets,
     enemyBullets: currentEnemyBullets,
+    carrierBeams,
     score,
     explosions: newExplosions,
     powerUps: [...powerUps, ...newDrops],
@@ -3090,9 +3487,9 @@ export interface Hazard {
 }
 
 /**
- * #2842: every hostile hazard still in flight: enemy shots (flak included) and rocks. A new
- * traveling hostile entity (e.g. #2843's released Carrier beam) must be added here so the
- * autopilot dodges it, and to clearTransientCombat so it cannot outlive its wave.
+ * #2842: every hostile hazard still in flight: enemy shots (flak included), rocks and (#2843)
+ * released Carrier beams. A new traveling hostile entity must be added here so the autopilot
+ * dodges it, and to clearTransientCombat so it cannot outlive its wave.
  */
 export function liveHazards(state: StarSwarmState): Hazard[] {
   const hazards: Hazard[] = state.enemyBullets.map((b) => ({
@@ -3104,6 +3501,13 @@ export function liveHazards(state: StarSwarmState): Hazard[] {
   }));
   for (const a of state.asteroids) {
     if (a.hp > 0) hazards.push({ x: a.x, y: a.y, vx: a.vx, vy: a.vy, r: a.radius });
+  }
+  // #2843: a beam is a long band, not a circle — cover it with a chain of overlapping circles
+  for (const b of state.carrierBeams) {
+    const step = b.halfWidth * 1.5;
+    for (let d = 0; d <= b.length; d += step) {
+      hazards.push({ x: b.x, y: b.y - d, vx: 0, vy: b.vy, r: b.halfWidth });
+    }
   }
   return hazards;
 }
@@ -3226,20 +3630,23 @@ function beginExtraction(state: StarSwarmState): StarSwarmState {
  * that fired them died (see the #2776 invariants); they persist until this boundary.
  *
  * Clears: player shots (Buddy shots are player-owned, so included), enemy shots (aimed, burst,
- * twin-laser, flak), asteroids, buddy ships, and any Carrier beam (derived from the Carrier's
- * beamPhase today). Plug-in point: a new transient combat entity — #2843's independent
- * traveling Carrier beam, #2845's Buddy projectiles/state — must be cleared here (and in the
- * reset test in engine.test.ts), so nothing from wave N can interact with wave N+1.
+ * twin-laser, flak), asteroids, buddy ships, #2843's released Carrier beams, and any beam
+ * charge or attack-run brace still on a Carrier. Plug-in point: a new transient combat entity
+ * (#2845's Buddy projectiles/state) must be cleared here (and in the reset test in
+ * engine.test.ts), so nothing from wave N can interact with wave N+1.
  */
 export function clearTransientCombat(state: StarSwarmState): StarSwarmState {
   return {
     ...state,
     playerBullets: [],
     enemyBullets: [],
+    carrierBeams: [],
     asteroids: [],
     buddyShips: [],
     enemies: state.enemies.map((e) =>
-      e.beamPhase === "idle" ? e : { ...e, beamPhase: "idle" as const }
+      e.beamPhase === "idle" && e.runPhase === "idle"
+        ? e
+        : { ...e, beamPhase: "idle" as const, runPhase: "idle" as const }
     ),
     extraction: null,
   };
@@ -3341,6 +3748,7 @@ export function applyPowerUp(state: StarSwarmState, type: PowerUpType): StarSwar
       enemies,
       asteroids: [],
       enemyBullets: [],
+      carrierBeams: [], // #2843: released beams are enemy projectiles too
       powerUps: [...state.powerUps, ...drops],
       explosions: newExplosions,
       score,

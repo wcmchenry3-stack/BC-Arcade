@@ -13,12 +13,11 @@ import {
   BULLET_C_W,
   HIT_FLASH_DURATION,
   ASTEROID_HIT_FLASH_MS,
-  BEAM_HALF_WIDTH,
   isCarrierArmored,
-  carrierBeam,
   asteroidOutline,
   hashFrac,
 } from "../engine";
+import { carrierOps } from "./carrier";
 import { isUpgradePickup, upgradePickupOps } from "./pickups";
 import type { UpgradePickupType } from "./pickups";
 import type { StarfieldState } from "../starfield";
@@ -280,46 +279,8 @@ export function buildFrame(
     }
   }
 
-  // #2485 Carrier sweep beam — telegraph, then the beam
-  const beam = carrierBeam(state);
-  if (beam?.phase === "charge") {
-    ops.push({
-      k: "rect",
-      key: "beam-telegraph",
-      x: beam.x - 2,
-      y: beam.y,
-      w: 4,
-      h: state.canvasH,
-      color: `rgba(176,108,255,${(0.1 + beam.progress * 0.35).toFixed(3)})`,
-    });
-    ops.push({
-      k: "circle",
-      key: "beam-charge",
-      cx: beam.x,
-      cy: beam.y + 6,
-      r: 4 + beam.progress * 8,
-      color: `rgba(176,108,255,${(0.4 + beam.progress * 0.5).toFixed(3)})`,
-    });
-  } else if (beam?.phase === "fire") {
-    ops.push({
-      k: "rect",
-      key: "beam-glow",
-      x: beam.x - BEAM_HALF_WIDTH - 4,
-      y: beam.y,
-      w: BEAM_HALF_WIDTH * 2 + 8,
-      h: state.canvasH,
-      color: "rgba(176,108,255,0.35)",
-    });
-    ops.push({
-      k: "rect",
-      key: "beam-core",
-      x: beam.x - BEAM_HALF_WIDTH * 0.5,
-      y: beam.y,
-      w: BEAM_HALF_WIDTH,
-      h: state.canvasH,
-      color: "rgba(230,205,255,0.9)",
-    });
-  }
+  // #2485/#2843 Carrier telegraphs (beam charge, attack-run brace) and released beams
+  ops.push(...carrierOps(state));
 
   // Player and its overlays — one visibility rule for all of them
   const { player } = state;

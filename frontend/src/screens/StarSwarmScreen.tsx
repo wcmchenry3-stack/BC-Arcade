@@ -380,8 +380,9 @@ function StarSwarmGame() {
     AccessibilityInfo.announceForAccessibility(t("a11y.carrierExposed"));
   }, [t]);
 
-  // #2485: beam telegraph and reinforcement launches — sound plus a spoken cue, since neither
-  // has on-screen text and the beam gives the player only ~0.6 s to react.
+  // #2485/#2843: beam telegraph, reinforcement launches, attack-run telegraph and the final
+  // stand — sound plus a spoken cue, since none has on-screen text and the beam gives the
+  // player only ~0.6 s to react.
   const handleCarrierEvent = useCallback(
     (kind: CarrierEvent) => {
       playCarrierEvent(kind);
@@ -389,6 +390,10 @@ function StarSwarmGame() {
         AccessibilityInfo.announceForAccessibility(t("a11y.carrierBeam"));
       } else if (kind === "reinforce") {
         AccessibilityInfo.announceForAccessibility(t("a11y.reinforcements"));
+      } else if (kind === "attackRun") {
+        AccessibilityInfo.announceForAccessibility(t("a11y.carrierAttackRun"));
+      } else if (kind === "finalStand") {
+        AccessibilityInfo.announceForAccessibility(t("a11y.carrierFinalStand"));
       }
     },
     [playCarrierEvent, t]
