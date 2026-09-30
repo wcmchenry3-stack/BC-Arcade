@@ -7,7 +7,7 @@ import Animated, {
   withTiming,
   Easing,
 } from "react-native-reanimated";
-import { StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, StyleSheet, Text, View } from "react-native";
 import { Canvas, Group, Picture, createPicture } from "@shopify/react-native-skia";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
@@ -202,6 +202,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     ref
   ) => {
     const { t } = useTranslation("starswarm");
+    // Read from the frame loop without re-subscribing it on language change.
+    const tRef = useRef(t);
+    tRef.current = t;
     const images = useStarSwarmImages();
     // #2565: a stable image set for the UI thread — a new object only when an image loads, so
     // the picture worklet (which captures it) is rebuilt only when there is something to add.
@@ -606,6 +609,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               // #2847: the newest cue wins if two land on one tick
               const cues = pickupCues(prev, applied);
               if (cues.length > 0) showPickupCueRef.current(cues[cues.length - 1]!);
+              // A maxed pickup fires no upgrade event, so announce it here for screen readers.
+              for (const cue of cues) {
+                if (cue.max)
+                  AccessibilityInfo.announceForAccessibility(tRef.current(pickupCueLabelKey(cue)));
+              }
               if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
               // #2352: wave clear no longer freezes gameplay behind a WinTransition phase —
               // the wave counter bumps in the same tick the last enemy dies. Detect that bump
@@ -701,7 +709,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           </View>
 
           {/* #2847: "GUNS +1" / "HULL +1" / "GUNS MAX" — non-modal, fades on its own. The spoken
-              cue already comes from onUpgrade's announcement, so hide this from screen readers. */}
+              cue comes from onUpgrade (or the MAX announcement above), so hide this from screen readers. */}
           {pickupCue !== null && (
             <Animated.Text
               style={[styles.pickupCue, { color: pickupCueColor(pickupCue.kind) }, pickupCueStyle]}
