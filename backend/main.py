@@ -32,6 +32,7 @@ from limiter import _real_ip, limiter
 from logs.router import router as logs_router
 from me.router import router as me_router
 from players.router import router as players_router
+from purchases.router import router as purchases_router
 from sort.router import router as sort_router
 from stats.router import router as stats_router
 
@@ -130,6 +131,7 @@ app.include_router(games_router, prefix="/games")
 app.include_router(logs_router, prefix="/logs")
 app.include_router(me_router, prefix="/me")
 app.include_router(players_router, prefix="/players")
+app.include_router(purchases_router, prefix="/purchases")
 app.include_router(stats_router, prefix="/stats")
 
 # ---------------------------------------------------------------------------
@@ -194,9 +196,14 @@ _allowed_origins: list[str] = (
 DEFAULT_MAX_BODY_BYTES = 1_024  # 1 KB — legacy game payloads (~50 bytes max)
 LARGE_BODY_BYTES = 256 * 1_024  # 256 KB — batched events + bug logs (#364)
 LARGE_BODY_PREFIXES = ("/games", "/logs", "/stats")
+# An Apple StoreKit 2 JWS carries its certificate chain, ~4-6 KB (#840).
+PURCHASE_BODY_BYTES = 32 * 1_024
+PURCHASE_BODY_PREFIX = "/purchases"
 
 
 def _max_body_bytes_for(path: str) -> int:
+    if path.startswith(PURCHASE_BODY_PREFIX):
+        return PURCHASE_BODY_BYTES
     for prefix in LARGE_BODY_PREFIXES:
         if path.startswith(prefix):
             return LARGE_BODY_BYTES

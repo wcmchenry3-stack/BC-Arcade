@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date as dt_date
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON,
@@ -164,15 +164,25 @@ class GameEvent(Base):
 
 
 class GameEntitlement(Base):
-    """Session-scoped entitlements written by IAP receipt validation.
+    """Session-scoped premium access — the server authority for ``GET /entitlements``.
 
-    Stubbed empty until #822 ships — rows here drive entitled_games in JWTs.
+    For purchased games these rows are *derived* (docs/IAP.md §8.1): a
+    ``(session_id, game_slug)`` row exists exactly when one of the session's
+    ``purchase_links`` joins an ``owned`` purchase of that game, and
+    ``purchase_id`` points at one such purchase. ``purchases/service.py``
+    keeps it in step in the same transaction as every link or state change.
+    Rows with ``source = 'legacy'`` (no ``purchase_id``) predate purchases and
+    are never touched by that recompute.
     """
 
     __tablename__ = "game_entitlements"
     __table_args__ = (
         Index("game_entitlements_session_id_idx", "session_id"),
+        Index("game_entitlements_purchase_id_idx", "purchase_id"),
         UniqueConstraint("session_id", "game_slug", name="uq_game_entitlements_session_slug"),
+        CheckConstraint(
+            "source IN ('purchase','restore','sync','legacy')", name="ck_game_entitlements_source"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -180,6 +190,135 @@ class GameEntitlement(Base):
     game_slug: Mapped[str] = mapped_column(Text, nullable=False)
     granted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    purchase_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey(
+            "purchases.id", ondelete="CASCADE", name="fk_game_entitlements_purchase_id_purchases"
+        ),
+        nullable=True,
+    )
+    last_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    source: Mapped[str] = mapped_column(Text, nullable=False, server_default="legacy")
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class Purchase(Base):
+    """One store purchase — the unit of ownership (docs/IAP.md §4, §8.1).
+
+    Keyed by the store's own identity for the purchase: Apple
+    ``originalTransactionId`` or Google ``purchaseToken``. A row exists once,
+    however often the evidence is presented; ``state`` follows the store's
+    latest verified answer. Sessions use it through ``purchase_links``.
+    """
+
+    __tablename__ = "purchases"
+    __table_args__ = (
+        UniqueConstraint("platform", "store_key", name="uq_purchases_platform_store_key"),
+        CheckConstraint("platform IN ('apple','google')", name="ck_purchases_platform"),
+        CheckConstraint(
+            "state IN ('pending','owned','revoked','cancelled')", name="ck_purchases_state"
+        ),
+        CheckConstraint(
+            "environment IN ('production','sandbox','test')", name="ck_purchases_environment"
+        ),
+        CheckConstraint(
+            "ownership_type IN ('purchased','family_shared')", name="ck_purchases_ownership_type"
+        ),
+        Index("purchases_game_slug_idx", "game_slug"),
+        Index("purchases_state_idx", "state"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
+    # Apple originalTransactionId | Google purchaseToken. Never logged.
+    store_key: Mapped[str] = mapped_column(Text, nullable=False)
+    product_id: Mapped[str] = mapped_column(Text, nullable=False)
+    # = game_types.name; is_premium was true when the purchase was first recorded.
+    game_slug: Mapped[str] = mapped_column(Text, nullable=False)
+    state: Mapped[str] = mapped_column(Text, nullable=False)
+    environment: Mapped[str] = mapped_column(Text, nullable=False)
+    ownership_type: Mapped[str] = mapped_column(Text, nullable=False, server_default="purchased")
+    # Apple latest transactionId | Google orderId.
+    store_transaction_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Apple appAccountToken | Google obfuscatedExternalAccountId (one-way session derivative).
+    account_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    purchased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revocation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class PurchaseLink(Base):
+    """Which sessions a purchase is linked to — the ownership record (IAP.md §4).
+
+    The session cap and the 30-day new-link limit count these rows. Links are
+    kept when a purchase is revoked, so a refund reversal restores access to
+    every linked session without a new sync. Unlinking is support-only.
+    """
+
+    __tablename__ = "purchase_links"
+    __table_args__ = (
+        UniqueConstraint("purchase_id", "session_id", name="uq_purchase_links_purchase_session"),
+        CheckConstraint("source IN ('purchase','restore','sync')", name="ck_purchase_links_source"),
+        Index("purchase_links_session_id_idx", "session_id"),
+        Index("purchase_links_purchase_id_created_at_idx", "purchase_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    purchase_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("purchases.id", ondelete="CASCADE", name="fk_purchase_links_purchase_id"),
+        nullable=False,
+    )
+    session_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    last_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Set in Python (not server_default) so the 30-day window compares like with like.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class PurchaseEvent(Base):
+    """Audit trail and webhook idempotency for purchases (IAP.md §4, §8.1).
+
+    ``dedupe_key`` (unique, nullable) holds a store notification id — Apple
+    ``notificationUUID`` or the Pub/Sub ``messageId`` — so a redelivered
+    notification is a no-op. ``session_hash`` is SHA-256 of the session id;
+    raw sessions and store tokens are never stored here.
+    """
+
+    __tablename__ = "purchase_events"
+    __table_args__ = (
+        UniqueConstraint("dedupe_key", name="uq_purchase_events_dedupe_key"),
+        Index("purchase_events_purchase_id_idx", "purchase_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    purchase_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("purchases.id", ondelete="SET NULL", name="fk_purchase_events_purchase_id"),
+        nullable=True,
+    )
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    dedupe_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    session_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail: Mapped[dict] = mapped_column(_JSONB, nullable=False, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
     )
 
 
