@@ -868,15 +868,31 @@ Tests override the dependencies with fakes.
   request. If it fails, the grant stands and `acknowledged_at` stays null for
   the #2787 sweep.
 
-**Event ordering.** `purchases.state_changed_at` is the store time of the
-latest applied state transition. A verified answer or notification whose
-event time is older than it — and that would change the state — is ignored and
-audited as `stale_ignored` (a notification's `dedupe_key` is still recorded, so
-its redelivery stays a no-op). So a `REFUND` signed before a
-`REFUND_REVERSED` but delivered after it does not revoke again, and a client
-POST whose verifier read the store before a webhook's revoke cannot restore
-access: the POST's default event time is taken before its store call. Equal
-times apply.
+**Event ordering.** `purchases.state_changed_at` is the ordering
+**watermark**: the store time of the latest applied state transition, or of a
+later store-pushed event that confirmed the current state. A verified answer
+or notification whose event time is older than it — and that would change
+the state — is ignored and audited as `stale_ignored` (a notification's
+`dedupe_key` is still recorded, so its redelivery stays a no-op). So a
+`REFUND` signed before a `REFUND_REVERSED` but delivered after it does not
+revoke again, and a client POST whose verifier read the store before a
+webhook's revoke cannot restore access: the POST's default event time is
+taken before its store call. Equal times apply.
+
+**Same-state events (fixed in #2786, all stores).** A **store-pushed** event
+(`apply_store_state`, and `record_store_purchase` for notifications about a
+known purchase) that confirms the state the purchase is already in still
+moves the watermark forward to its event time — never backwards. Without
+this, a `REFUND_REVERSED` at T2 reaching an already-`owned` purchase, then the
+`REFUND` at T1 < T2 it reversed, would revoke; likewise a newer refund on an
+already-`revoked` purchase followed by an older reversal would restore. A
+same-state **client** POST does **not** move the watermark: its event time may
+be only when the request started verifying (Google), or a device-signed date,
+and letting it pass a real store event signed slightly earlier (a refund whose
+notification is still in flight) would hide that refund. Transitions from
+client answers keep the rules above; `owned` never regresses to `pending`,
+and a refused regression does not move the watermark. Google (#2787) gets the
+same behavior through the same functions.
 
 **Deleting a purchase.** `game_entitlements.purchase_id` is `ON DELETE SET
 NULL`, not `CASCADE`: deleting one purchase must not drop a game that another

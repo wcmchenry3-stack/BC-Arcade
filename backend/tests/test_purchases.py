@@ -1042,6 +1042,111 @@ async def test_refund_older_than_refund_reversed_is_ignored(
     assert (await purchase_row("1000")).state == "owned"
 
 
+@pytest.mark.parametrize("platform", ["apple", "google"])
+async def test_same_state_notification_advances_watermark_reversal_then_older_refund(
+    client: TestClient,
+    fake_apple: FakeAppleVerifier,
+    fake_google: FakeGoogleVerifier,
+    platform: str,
+) -> None:
+    """Codex P1 on #2871, for every store: REFUND_REVERSED at T2 on an owned
+    purchase, then REFUND at T1 < T2, must not revoke."""
+    sid = new_sid()
+    key = f"wm-a-{platform}"
+    if platform == "apple":
+        fake_apple.answers[key] = verified(key)
+        assert post_apple(client, sid, key).status_code == 200
+    else:
+        fake_google.answers[key] = verified(key, platform="google")
+        assert post_google(client, sid, key).status_code == 200
+    t0 = datetime.now(timezone.utc) + timedelta(minutes=1)
+
+    async def apply(state: str, dedupe: str, at: datetime) -> bool:
+        async with get_session_factory()() as db:
+            return await purchase_service.apply_store_state(
+                db,
+                platform=platform,
+                store_key=key,
+                state=state,  # type: ignore[arg-type]
+                dedupe_key=dedupe,
+                event_at=at,
+            )
+
+    assert not await apply("owned", f"{key}-n2", t0 + timedelta(hours=2))  # same state
+    row = await purchase_row(key)
+    assert row.state == "owned"
+    assert purchase_service._utc(row.state_changed_at) == t0 + timedelta(hours=2)
+    assert not await apply("revoked", f"{key}-n1", t0 + timedelta(hours=1))  # older
+    assert (await purchase_row(key)).state == "owned"
+    assert jwt_games(client, sid) == ["hearts"]
+    assert (
+        await count(
+            PurchaseEvent,
+            PurchaseEvent.kind == "stale_ignored",
+            PurchaseEvent.dedupe_key == f"{key}-n1",
+        )
+        == 1
+    )
+    # An older same-state event never moves the watermark back.
+    assert not await apply("owned", f"{key}-n0", t0)
+    assert purchase_service._utc((await purchase_row(key)).state_changed_at) == t0 + timedelta(
+        hours=2
+    )
+
+
+@pytest.mark.parametrize("platform", ["apple", "google"])
+async def test_same_state_notification_advances_watermark_refund_then_older_reversal(
+    client: TestClient,
+    fake_apple: FakeAppleVerifier,
+    fake_google: FakeGoogleVerifier,
+    platform: str,
+) -> None:
+    sid = new_sid()
+    key = f"wm-b-{platform}"
+    if platform == "apple":
+        fake_apple.answers[key] = verified(key)
+        assert post_apple(client, sid, key).status_code == 200
+    else:
+        fake_google.answers[key] = verified(key, platform="google")
+        assert post_google(client, sid, key).status_code == 200
+    t0 = datetime.now(timezone.utc) + timedelta(minutes=1)
+
+    async def apply(state: str, dedupe: str, at: datetime) -> bool:
+        async with get_session_factory()() as db:
+            return await purchase_service.apply_store_state(
+                db,
+                platform=platform,
+                store_key=key,
+                state=state,  # type: ignore[arg-type]
+                dedupe_key=dedupe,
+                event_at=at,
+            )
+
+    assert await apply("revoked", f"{key}-r1", t0 + timedelta(hours=1))
+    assert not await apply("revoked", f"{key}-r3", t0 + timedelta(hours=3))  # same, newer
+    assert not await apply("owned", f"{key}-v2", t0 + timedelta(hours=2))  # older reversal
+    assert (await purchase_row(key)).state == "revoked"
+    assert jwt_games(client, sid) == []
+
+
+async def test_same_state_client_post_does_not_advance_watermark(
+    client: TestClient, fake_apple: FakeAppleVerifier
+) -> None:
+    """A client answer's time may be only when verification started, so a
+    same-state post must not hide a real store event signed just before it."""
+    sid = new_sid()
+    t0 = datetime.now(timezone.utc)
+    fake_apple.answers["wm-c"] = verified("wm-c", event_at=t0)
+    assert post_apple(client, sid, "wm-c").status_code == 200
+    fake_apple.answers["wm-c"] = verified("wm-c", event_at=t0 + timedelta(hours=2))
+    assert post_apple(client, sid, "wm-c").status_code == 200  # same state, later time
+    assert purchase_service._utc((await purchase_row("wm-c")).state_changed_at) == t0
+    assert await apply_state(
+        "wm-c", "revoked", dedupe_key="wm-c-r", event_at=t0 + timedelta(hours=1)
+    )
+    assert jwt_games(client, sid) == []
+
+
 async def test_stale_owned_answer_after_webhook_revoke_is_ignored(
     client: TestClient, fake_apple: FakeAppleVerifier
 ) -> None:

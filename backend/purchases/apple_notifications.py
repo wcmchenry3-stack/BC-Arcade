@@ -24,7 +24,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -198,11 +198,13 @@ async def run_replay_loop(
     *,
     interval_s: float = REPLAY_INTERVAL_S,
     timeout_s: float = REPLAY_TIMEOUT_S,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> None:
     """Replay now, then every ``interval_s``, until cancelled (started by ``main.lifespan``).
 
     Same shape as the Daily Word retention loop: a failure is reported and
-    retried next cycle, never raised.
+    retried next cycle, never raised. ``sleep`` is injectable so tests can
+    drive cycles without real time.
     """
     while True:
         try:
@@ -216,4 +218,4 @@ async def run_replay_loop(
                 scope.set_tag("subsystem", "purchases.apple_replay")
                 scope.fingerprint = ["apple-notification-replay-failed"]
                 sentry_sdk.capture_exception(exc)
-        await asyncio.sleep(interval_s)
+        await sleep(interval_s)

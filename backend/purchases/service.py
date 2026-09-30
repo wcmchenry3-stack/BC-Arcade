@@ -15,10 +15,14 @@ Invariants:
 * ``game_entitlements`` is *derived* for purchased games by
   :func:`recompute_entitlement`, in the same transaction as every link or
   state change. Legacy rows (``source = 'legacy'``) are never touched.
-* ``purchases.state_changed_at`` is the store time of the latest applied
-  transition. A verified answer or notification whose event time is older is
+* ``purchases.state_changed_at`` is the ordering watermark: the store time of
+  the latest applied transition, or of a later **store-pushed** event
+  (notification, webhook, cron) that confirmed the current state. A verified
+  answer or notification that would change the state and is older than it is
   ignored, so out-of-order webhooks and stale client re-posts cannot undo a
-  newer state.
+  newer state. A same-state **client** answer never moves it: its time may be
+  only when the request started verifying, and must not hide a real store
+  event signed slightly earlier.
 * ``owned`` never regresses to ``pending``.
 
 Concurrency (Postgres): the purchase row is locked (``FOR UPDATE``) before any
@@ -260,11 +264,28 @@ async def _premium_slug_for(db: AsyncSession, product_id: str) -> str:
     return slug
 
 
+def _advance_watermark(purchase: Purchase, event_at: datetime) -> bool:
+    """Move ``state_changed_at`` forward to ``event_at`` (never back). True if it moved."""
+    if purchase.state_changed_at is None or _utc(event_at) > _utc(purchase.state_changed_at):
+        purchase.state_changed_at = event_at
+        return True
+    return False
+
+
 def _apply_verified(
-    purchase: Purchase, v: VerifiedPurchase, now: datetime, event_at: datetime
+    purchase: Purchase,
+    v: VerifiedPurchase,
+    now: datetime,
+    event_at: datetime,
+    *,
+    store_event: bool = False,
 ) -> None:
     if purchase.state != v.state or purchase.state_changed_at is None:
         purchase.state_changed_at = event_at
+    elif store_event:
+        # A store-pushed event confirming the current state still advances the
+        # ordering watermark, so an older opposite event cannot flip it later.
+        _advance_watermark(purchase, event_at)
     purchase.state = v.state
     purchase.verified_at = now
     purchase.environment = v.environment
@@ -303,8 +324,14 @@ async def upsert_purchase(
     game_slug: str,
     *,
     observed_at: datetime | None = None,
+    store_event: bool = False,
 ) -> tuple[Purchase, str | None]:
     """Insert or refresh the ``purchases`` row; return it and its previous state.
+
+    ``store_event`` marks the answer as a store-pushed event (a verified
+    notification) rather than a client post: then a same-state answer newer
+    than ``state_changed_at`` also advances it (see "Event ordering" in
+    docs/IAP.md §8.4).
 
     The previous state is None for a new row. The row is locked for the rest
     of the transaction. Does not commit.
@@ -361,7 +388,7 @@ async def upsert_purchase(
         )
         _event(db, purchase, "regression_refused", state=verified.state, current=previous)
     else:
-        _apply_verified(purchase, verified, now, event_at)
+        _apply_verified(purchase, verified, now, event_at, store_event=store_event)
     await db.flush()
     return purchase, previous
 
@@ -542,7 +569,9 @@ async def apply_store_state(
     ``eventTimeMillis`` / ``voidedTimeMillis`` — and defaults to now. A
     transition older than the purchase's ``state_changed_at`` is ignored (and
     audited as ``stale_ignored``), so notifications delivered out of order
-    cannot undo a newer state.
+    cannot undo a newer state. A notification for the state the purchase is
+    already in still advances ``state_changed_at`` to ``event_at`` when newer
+    (never backwards), so it orders later events too.
 
     ``dedupe_key`` (the notification id) makes a redelivery a no-op. It is
     checked again after the purchase row lock, and a unique-key race on commit
@@ -565,6 +594,12 @@ async def apply_store_state(
     changed = False
     try:
         if previous == state:
+            # Same state, but a store event: it still advances the ordering
+            # watermark (never backwards), so an older opposite notification
+            # delivered afterwards is stale (REFUND_REVERSED at T2 on an
+            # owned purchase, then REFUND at T1 < T2, must not revoke).
+            if _advance_watermark(purchase, at):
+                purchase.verified_at = now
             _event(db, purchase, "notification", dedupe_key=dedupe_key, state=state)
         elif _is_stale(purchase, at):
             _event(
@@ -648,7 +683,7 @@ async def record_store_purchase(
     if event_at is not None:
         verified = replace(verified, event_at=event_at)
     try:
-        purchase, previous = await upsert_purchase(db, verified, game_slug)
+        purchase, previous = await upsert_purchase(db, verified, game_slug, store_event=True)
         if dedupe_key is not None and await _dedupe_seen(db, dedupe_key):
             await db.rollback()
             return False

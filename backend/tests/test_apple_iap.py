@@ -557,30 +557,78 @@ async def test_refund_then_refund_reversed(client: TestClient, verifier) -> None
     assert jwt_games(client, sid) == ["hearts"]
 
 
-def test_refund_delivered_after_its_reversal_is_ignored(client: TestClient, verifier) -> None:
+async def test_reversal_on_owned_purchase_then_older_refund_keeps_access(
+    client: TestClient, verifier
+) -> None:
+    """Codex P1 on #2871: a same-state notification still advances the watermark."""
     sid = _grant(client, "6100")
-    refund = signed_note(
+    refund_t1 = signed_note(
         "REFUND",
         signed_txn("6100", revocationDate=now_ms()),
         signed_date=now_ms(timedelta(minutes=1)),
     )
-    reversed_ = signed_note(
+    reversal_t2 = signed_note(
         "REFUND_REVERSED", signed_txn("6100"), signed_date=now_ms(timedelta(minutes=2))
     )
-    # Out of order: the refund was signed first but arrives last.
-    assert post_note(client, reversed_).json() == {"status": "unchanged"}
-    assert post_note(client, refund).json() == {"status": "applied"}
-    assert post_note(client, reversed_).json() == {"status": "unchanged"}  # duplicate
-    later_refund = signed_note(
+    # Out of order: the reversal (T2) arrives while the purchase is still owned,
+    # then the refund it reversed (T1 < T2) arrives.
+    assert post_note(client, reversal_t2).json() == {"status": "unchanged"}
+    row = await purchase_row("6100")
+    watermark = row.state_changed_at.replace(tzinfo=timezone.utc)
+    assert abs(watermark.timestamp() * 1000 - now_ms(timedelta(minutes=2))) < 5_000
+    assert post_note(client, refund_t1).json() == {"status": "unchanged"}  # stale
+    assert (await purchase_row("6100")).state == "owned"
+    assert jwt_games(client, sid) == ["hearts"]
+    assert post_note(client, reversal_t2).json() == {"status": "unchanged"}  # duplicate
+    # A genuinely newer refund still applies.
+    refund_t3 = signed_note(
         "REFUND",
         signed_txn("6100", revocationDate=now_ms()),
-        signed_date=now_ms(timedelta(minutes=1, seconds=30)),
+        signed_date=now_ms(timedelta(minutes=3)),
     )
-    reversal2 = signed_note(
-        "REFUND_REVERSED", signed_txn("6100"), signed_date=now_ms(timedelta(minutes=3))
+    assert post_note(client, refund_t3).json() == {"status": "applied"}
+    assert jwt_games(client, sid) == []
+
+
+async def test_newer_refund_on_revoked_purchase_then_older_reversal_stays_revoked(
+    client: TestClient, verifier
+) -> None:
+    sid = _grant(client, "6150")
+    refund_t1 = signed_note(
+        "REFUND",
+        signed_txn("6150", revocationDate=now_ms()),
+        signed_date=now_ms(timedelta(minutes=1)),
     )
-    assert post_note(client, reversal2).json() == {"status": "applied"}
-    assert post_note(client, later_refund).json() == {"status": "unchanged"}  # stale
+    reversal_t2 = signed_note(
+        "REFUND_REVERSED", signed_txn("6150"), signed_date=now_ms(timedelta(minutes=2))
+    )
+    refund_t3 = signed_note(
+        "REFUND",
+        signed_txn("6150", revocationDate=now_ms()),
+        signed_date=now_ms(timedelta(minutes=3)),
+    )
+    assert post_note(client, refund_t1).json() == {"status": "applied"}
+    assert post_note(client, refund_t3).json() == {"status": "unchanged"}  # same state, newer
+    assert post_note(client, reversal_t2).json() == {"status": "unchanged"}  # stale
+    assert (await purchase_row("6150")).state == "revoked"
+    assert jwt_games(client, sid) == []
+
+
+async def test_one_time_charge_for_known_purchase_advances_watermark(
+    client: TestClient, verifier
+) -> None:
+    """record_store_purchase (the unlinked path) follows the same watermark rule."""
+    sid = _grant(client, "6170")
+    charge_t2 = signed_note(
+        "ONE_TIME_CHARGE", signed_txn("6170"), signed_date=now_ms(timedelta(minutes=2))
+    )
+    refund_t1 = signed_note(
+        "REFUND",
+        signed_txn("6170", revocationDate=now_ms()),
+        signed_date=now_ms(timedelta(minutes=1)),
+    )
+    assert post_note(client, charge_t2).json() == {"status": "applied"}  # recorded
+    assert post_note(client, refund_t1).json() == {"status": "unchanged"}  # stale
     assert jwt_games(client, sid) == ["hearts"]
 
 
@@ -846,19 +894,29 @@ async def test_replay_is_dormant_without_api_and_survives_api_errors() -> None:
 
 
 async def test_replay_loop_reports_failures_and_keeps_going(monkeypatch) -> None:
+    """Deterministic: a fake sleep drives exactly three cycles, then cancels the loop."""
     calls = {"n": 0}
+    sleeps: list[float] = []
 
     async def failing(*a, **kw):
         calls["n"] += 1
         raise RuntimeError("boom")
 
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        if len(sleeps) == 3:
+            raise asyncio.CancelledError
+
     monkeypatch.setattr(apple_notifications, "replay_notification_history", failing)
-    task = asyncio.create_task(run_replay_loop(lambda: None, get_session_factory, interval_s=0.01))
-    await asyncio.sleep(0.05)
-    task.cancel()
+    captured: list[BaseException] = []
+    monkeypatch.setattr(
+        apple_notifications.sentry_sdk, "capture_exception", lambda exc: captured.append(exc)
+    )
     with pytest.raises(asyncio.CancelledError):
-        await task
-    assert calls["n"] >= 2
+        await run_replay_loop(lambda: None, get_session_factory, interval_s=123.0, sleep=fake_sleep)
+    assert calls["n"] == 3  # every failure was retried on the next cycle
+    assert sleeps == [123.0, 123.0, 123.0]
+    assert len(captured) == 3 and all(isinstance(e, RuntimeError) for e in captured)
 
 
 async def test_lifespan_starts_replay_only_when_api_configured(monkeypatch) -> None:
@@ -877,7 +935,7 @@ async def test_lifespan_starts_replay_only_when_api_configured(monkeypatch) -> N
     try:
         task = main._start_apple_notification_replay()
         assert task is not None
-        await asyncio.wait_for(started.wait(), 1)
+        await asyncio.wait_for(started.wait(), 30)
         await main._stop_apple_notification_replay(task)
         assert task.cancelled()
         await main._stop_apple_notification_replay(None)
