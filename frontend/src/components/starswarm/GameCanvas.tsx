@@ -26,6 +26,8 @@ import {
   carrierBeamJustFired,
   reinforcementsJustLaunched,
   upgradeEvents,
+  waveJustCleared,
+  isAutopilot,
 } from "../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { areTestHooksEnabled, isPreLaunchApiBuild } from "../../game/_shared/envFlags";
@@ -577,18 +579,21 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 onCarrierEventRef.current?.("reinforce");
               for (const ev of upgradeEvents(prev, applied)) onUpgradeRef.current?.(ev); // #2488
               if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
-              // #2352: wave clear no longer freezes gameplay behind a WinTransition phase —
-              // the wave counter bumps in the same tick the last enemy dies. Detect that bump
-              // directly instead of watching for a phase transition.
-              const waveJustCleared = applied.wave > prevWaveRef.current;
+              // #2842: the wave clears on the last kill — extraction starts (no freeze, #2352);
+              // the wave counter bumps later, once the AI has flown the ship out and the field
+              // has had its hard reset.
+              if (waveJustCleared(prev, applied)) onWaveClearRef.current?.();
+              // While the AI flies the ship, keep the input on it so control resumes in place.
+              if (isAutopilot(applied)) inputRef.current.playerX = applied.player.x;
+              const waveStarted = applied.wave > prevWaveRef.current;
               prevWaveRef.current = applied.wave;
-              if (waveJustCleared) {
-                onWaveClearRef.current?.();
-                // #2490: a boss wave announces itself on top of the wave-clear jingle
+              if (waveStarted) {
+                inputRef.current.playerX = applied.player.x; // back on station, centred
+                // #2490: a boss wave announces itself as it opens
                 if (isBossWave(applied.wave)) onBossWaveRef.current?.();
               }
-              // A fresh clear starts the pre-wave countdown immediately (every wave opens on SwoopIn).
-              if (waveJustCleared && applied.phase === "SwoopIn") {
+              // Every new wave opens on SwoopIn behind the pre-wave countdown.
+              if (waveStarted && applied.phase === "SwoopIn") {
                 countdownMsRef.current = WAVE_COUNTDOWN_MS;
                 waveBannerCountdownRef.current = true;
               }

@@ -46,6 +46,8 @@ export default function Controls({
   const shipXAtDragStartRef = useRef(CANVAS_W / 2);
   // Sentry breadcrumb throttle: only log the first boundary-hit per second to avoid flood.
   const lastBoundaryLogMsRef = useRef(0);
+  // #2842: the current drag was held through a wave-clear autopilot — re-anchor on its next move.
+  const autopilotDuringDragRef = useRef(false);
 
   const resetPlayerX = useCallback(() => {
     playerXRef.current = CANVAS_W / 2;
@@ -62,6 +64,7 @@ export default function Controls({
     .minDistance(0)
     .onBegin((e) => {
       activeDragRef.current = e.y > dragZoneY;
+      autopilotDuringDragRef.current = false;
       if (activeDragRef.current) {
         // Use engine's authoritative player.x as the drag anchor so it can never
         // drift out of sync with playerXRef.
@@ -73,6 +76,18 @@ export default function Controls({
     })
     .onChange((e) => {
       if (!activeDragRef.current) return;
+      // #2842: the wave-clear autopilot moves the ship on its own (and the next wave re-centres
+      // it). A drag held through that is ignored, then re-anchored on the engine's ship so
+      // control resumes from where the ship is instead of snapping back under the finger.
+      const state = canvasRef.current?.getState();
+      if (state?.phase === "Extraction") {
+        autopilotDuringDragRef.current = true;
+        return;
+      }
+      if (autopilotDuringDragRef.current && state) {
+        autopilotDuringDragRef.current = false;
+        shipXAtDragStartRef.current = state.player.x - e.translationX / scale;
+      }
       const hw = PLAYER_W / 2;
       const rawX = shipXAtDragStartRef.current + e.translationX / scale;
       const newX = clamp(rawX, hw, CANVAS_W - hw);

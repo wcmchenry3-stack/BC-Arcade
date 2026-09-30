@@ -16,6 +16,7 @@ import type {
   CubicBezier,
   Enemy,
   Explosion,
+  Extraction,
   Player,
   PowerUp,
   RunStats,
@@ -89,7 +90,6 @@ const BULLET: KeySpec<Bullet> = {
   damage: "required",
   piercing: "optional",
   hitEnemyIds: "optional",
-  harmless: "optional",
   flak: "optional",
 };
 
@@ -160,6 +160,11 @@ const ACTIVE_POWER_UP: KeySpec<NonNullable<StarSwarmState["activePowerUp"]>> = {
   shieldAbsorbed: "required",
 };
 
+const EXTRACTION: KeySpec<Extraction> = {
+  elapsedMs: "required",
+  climbMs: "required",
+};
+
 const TIER_STATS: KeySpec<TierStats> = {
   rolls: "required",
   dodged: "required",
@@ -201,6 +206,7 @@ const STATE: KeySpec<StarSwarmState> = {
   dodgeDisabled: "required",
   flakDisabled: "required",
   phaseTimer: "required",
+  extraction: "required",
   canvasW: "required",
   canvasH: "required",
   nextDiveTimer: "required",
@@ -235,6 +241,7 @@ const SPECS = {
   BUDDY_SHIP,
   ASTEROID,
   ACTIVE_POWER_UP,
+  EXTRACTION,
   TIER_STATS,
   RUN_STATS,
   VEC2,
@@ -286,6 +293,7 @@ export function fitsSaveShape(v: unknown): v is StarSwarmState {
     allFit(v.buddyShips, (b) => fits(b, BUDDY_SHIP) && fitsBezier(b.path)) &&
     allFit(v.asteroids, (a) => fits(a, ASTEROID)) &&
     (v.activePowerUp === null || fits(v.activePowerUp, ACTIVE_POWER_UP)) &&
+    (v.extraction === null || fits(v.extraction, EXTRACTION)) &&
     fits(v.runStats, RUN_STATS) &&
     isObject(v.tierStats) &&
     Object.values(v.tierStats).every((t) => fits(t, TIER_STATS))

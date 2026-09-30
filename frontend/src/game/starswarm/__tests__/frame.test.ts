@@ -13,7 +13,6 @@ import {
   BEAM_HALF_WIDTH,
   BULLET_C_W,
 } from "../engine";
-import { HARMLESS_BULLET_OPACITY } from "../constants";
 import { initStarfield } from "../starfield";
 import {
   buildFrame,
@@ -234,18 +233,15 @@ describe("buildFrame — scene order and background", () => {
 });
 
 describe("buildFrame — bullets", () => {
-  it("harmless enemy bullets are dimmed, live ones are opaque, flak is amber", () => {
+  it("every enemy bullet in flight is drawn at full strength (#2842); flak is amber", () => {
     const s = blank({
-      enemyBullets: [
-        bullet({ id: 1 }),
-        bullet({ id: 2, harmless: true }),
-        bullet({ id: 3, flak: true }),
-      ],
+      enemyBullets: [bullet({ id: 1 }), bullet({ id: 3, flak: true })],
     });
     const ops = buildFrame(s, NO_STARS, OPTS);
-    expect(byKey(ops, "eb-1")).toMatchObject({ k: "rect", color: "#ff4422", opacity: 1 });
-    expect(byKey(ops, "eb-2")).toMatchObject({ opacity: HARMLESS_BULLET_OPACITY });
+    expect(byKey(ops, "eb-1")).toMatchObject({ k: "rect", color: "#ff4422" });
+    expect(byKey(ops, "eb-1")).not.toHaveProperty("opacity");
     expect(byKey(ops, "eb-3")).toMatchObject({ color: "#ffd27a" });
+    expect(byKey(ops, "eb-3")).not.toHaveProperty("opacity");
     // centred on the bullet
     expect(byKey(ops, "eb-1")).toMatchObject({ x: 100 - 2.5, y: 300 - 5, w: 5, h: 10 });
   });
@@ -416,6 +412,19 @@ describe("buildFrame — player", () => {
     expect(playerVisible(at(INVINCIBLE_BLINK_INTERVAL - 1))).toBe(true); // floor 0 → shown
     expect(playerVisible(at(INVINCIBLE_BLINK_INTERVAL))).toBe(false); // floor 1 → hidden
     expect(playerVisible(at(INVINCIBLE_BLINK_INTERVAL * 2))).toBe(true); // floor 2 → shown
+  });
+
+  it("stays drawn while the extraction climbs it out, and vanishes off the top (#2842)", () => {
+    const at = (y: number) =>
+      blank({
+        phase: "Extraction",
+        extraction: { elapsedMs: 900, climbMs: 400 },
+        player: { ...blank().player, y },
+      });
+    expect(byKey(buildFrame(at(300), NO_STARS, OPTS), "player")).toBeDefined();
+    expect(playerVisible(at(-10))).toBe(true); // still partly on screen
+    expect(playerVisible(at(-40))).toBe(false);
+    expect(byKey(buildFrame(at(-40), NO_STARS, OPTS), "player")).toBeUndefined();
   });
 
   it("is hidden above the top edge and at game over — overlays included (#2334)", () => {
