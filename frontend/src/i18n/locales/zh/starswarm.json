@@ -27,6 +27,7 @@
   "a11y.carrierFinalStand": "母舰背水一战，攻击更加猛烈。",
   "a11y.bossWave": "首领波次。仅剩母舰及其守卫舰。",
   "a11y.rout": "残兵正在逃跑：{{count}}。趁它们逃走前拦截它们。",
+  "a11y.buddyDown": "僚机已被击毁。",
   "hud.guns": "炮组 L",
   "hud.hull": "船体",
   "a11y.gunsUp": "炮组等级 {{level}}。",

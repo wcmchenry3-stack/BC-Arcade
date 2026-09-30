@@ -1091,8 +1091,15 @@ describe("#2842 hard reset before the next wave", () => {
     s = applyPowerUp(s, "buddy");
     s = {
       ...s,
-      enemyBullets: [makeEnemyBullet({ x: 30, y: 100 }), makeEnemyBullet({ id: 2, flak: true })],
-      playerBullets: [makePlayerBullet({ x: 330, y: 300, piercing: true })],
+      enemyBullets: [
+        makeEnemyBullet({ x: 30, y: 100 }),
+        makeEnemyBullet({ id: 2, flak: true }),
+        makeEnemyBullet({ id: 3, x: 60, y: 200, target: "buddy" }), // #2845: a shot at Buddy
+      ],
+      playerBullets: [
+        makePlayerBullet({ x: 330, y: 300, piercing: true }),
+        makePlayerBullet({ id: 4, x: 200, y: 300, piercing: true, source: "buddy" }), // #2845
+      ],
       asteroids: [makeRock({ x: 200, y: 150 })],
       // #2843: a beam charging, an attack run bracing, and a released beam in flight
       enemies: s.enemies.map((e) =>
@@ -3153,26 +3160,26 @@ describe("#1035 Buddy Ship", () => {
     expect(s.buddyShips.length).toBe(1);
   });
 
-  it("buddy ship fires player bullets and is removed after traversal", () => {
+  it("buddy ship fires player bullets, then peels off once its bursts are spent", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
     s = applyPowerUp(s, "buddy");
     expect(s.buddyShips.length).toBe(1);
-
-    // Advance until the buddy has fired (pathT >= 0.45) and completed (pathT > 1.2).
-    // #1314: proportional aiming is more lethal — invincibility prevents GameOver mid-advance.
-    s = { ...s, player: { ...s.player, invincibleTimer: 999_999 } };
-    s = advanceMs(s, 4000, NO_INPUT);
-
-    // Buddy should be gone after full traversal
+    // #2845: Buddy draws fire now — keep the player alive, and Buddy untouchable, for the sortie
+    s = { ...s, player: { ...s.player, invincibleTimer: 999_999 }, enemyFireDisabled: true };
+    let buddyShots = 0;
+    const seen = new Set<number>();
+    for (let t = 0; t < 14_000 && s.buddyShips.length > 0; t += 16) {
+      s = tick(s, 16, NO_INPUT);
+      for (const b of s.playerBullets) {
+        if (b.source === "buddy" && !seen.has(b.id)) {
+          seen.add(b.id);
+          buddyShots++;
+        }
+      }
+    }
     expect(s.buddyShips.length).toBe(0);
-    // Should have fired at least a few bullets during the run
-    // (bullets may have scrolled off, so just check they were ever created)
-    // We check by observing that bullets were fired at some point — we track via state snapshot
-    const bulletsAfter = s.playerBullets.length;
-    // At some point during the 4000ms window bullets were generated; final count may be lower
-    // due to off-screen removal. We just verify buddy removed cleanly.
-    expect(bulletsAfter).toBeGreaterThanOrEqual(0); // always true — buddy removal is the key check
+    expect(buddyShots).toBeGreaterThanOrEqual(5);
   });
 });
 
@@ -3496,12 +3503,31 @@ describe("Carrier tier (#2484)", () => {
     expect(s.playerBullets).toHaveLength(0);
   });
 
-  it("escorted: a piercing shot goes through the armor", () => {
+  it("escorted: an armor-piercing (Lightning) shot goes through the armor", () => {
     let s = settled();
     const c = carrierOf(s)!;
-    s = { ...s, playerBullets: [shotAt(c.x, c.y, { piercing: true, damage: 1, width: 12 })] };
+    s = {
+      ...s,
+      playerBullets: [
+        shotAt(c.x, c.y, { piercing: true, armorPiercing: true, damage: 1, width: 12 }),
+      ],
+    };
     s = tick(s, 16, NO_INPUT);
     expect(carrierOf(s)!.hp).toBe(7);
+  });
+
+  it("#2845 escorted: a piercing-only (Buddy) shot is spent on the field — multi-hit is not armor bypass", () => {
+    let s = settled();
+    const c = carrierOf(s)!;
+    s = {
+      ...s,
+      playerBullets: [shotAt(c.x, c.y, { piercing: true, source: "buddy", damage: 1 })],
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(carrierOf(s)!.hp).toBe(8);
+    expect(carrierOf(s)!.hitFlashTimer).toBeGreaterThan(0);
+    expect(s.playerBullets).toHaveLength(0);
+    expect(s.runStats.armorDeflects).toBe(1);
   });
 
   it("a piercing shot damages an enemy only once across its whole flight, not once per tick it overlaps it", () => {
@@ -3512,7 +3538,16 @@ describe("Carrier tier (#2484)", () => {
     const c = carrierOf(s)!;
     s = {
       ...s,
-      playerBullets: [shotAt(c.x, c.y, { piercing: true, damage: 1, width: 12, vx: 0, vy: 0 })],
+      playerBullets: [
+        shotAt(c.x, c.y, {
+          piercing: true,
+          armorPiercing: true,
+          damage: 1,
+          width: 12,
+          vx: 0,
+          vy: 0,
+        }),
+      ],
     };
     s = tick(s, 16, NO_INPUT);
     expect(carrierOf(s)!.hp).toBe(7);
@@ -4928,7 +4963,7 @@ describe("Run stats (#2491)", () => {
     expect(s.runStats.rocksBrokenByEnemy).toBe(0);
   });
 
-  it("armorDeflects counts ordinary shots the escorted Carrier shrugs off, not piercing ones", () => {
+  it("armorDeflects counts shots the escorted Carrier shrugs off, not armor-piercing ones", () => {
     const base = quiet("LieutenantJG", 1);
     expect(isCarrierArmored(base)).toBe(true);
     const c = carrierOf(base);
@@ -4939,7 +4974,10 @@ describe("Run stats (#2491)", () => {
     expect(s.runStats.armorDeflects).toBe(2);
 
     s = tick(
-      { ...base, playerBullets: [shot(c.x, c.y, { piercing: true, width: 12 })] },
+      {
+        ...base,
+        playerBullets: [shot(c.x, c.y, { piercing: true, armorPiercing: true, width: 12 })],
+      },
       16,
       ASIDE
     );

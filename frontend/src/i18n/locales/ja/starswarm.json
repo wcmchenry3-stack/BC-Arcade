@@ -27,6 +27,7 @@
   "a11y.carrierFinalStand": "キャリア最後の抵抗。攻撃が激しくなります。",
   "a11y.bossWave": "ボスウェーブ。キャリアとガーディアンのみ。",
   "a11y.rout": "逃走中の雑魚: {{count}}。逃げ切られる前に倒そう。",
+  "a11y.buddyDown": "僚機が撃墜されました。",
   "hud.guns": "武器L",
   "hud.hull": "装甲",
   "a11y.gunsUp": "武器レベル{{level}}。",

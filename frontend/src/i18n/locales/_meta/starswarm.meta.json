@@ -251,6 +251,15 @@
     "doNotTranslate": [],
     "notes": "{{count}} is an integer (1–40). Phrased so the number can sit after a colon and avoid plural forms."
   },
+  "a11y.buddyDown": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader announcement when the player's allied companion ship (the Buddy power-up) is shot down (#2845).",
+    "tone": "neutral, urgent",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Buddy is the friendly wingman ship launched by the Buddy power-up; translate as 'companion/wingman ship', not as a name."
+  },
   "hud.guns": {
     "component": "GameCanvas",
     "description": "HUD label before the gun level number (1–3). Rendered as e.g. 'GUNS L2'.",

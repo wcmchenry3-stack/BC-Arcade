@@ -27,6 +27,7 @@
   "a11y.carrierFinalStand": "Dernier combat du vaisseau-mère. Il attaque plus vite.",
   "a11y.bossWave": "Vague de boss. Seulement le vaisseau-mère et ses gardiens.",
   "a11y.rout": "Ennemis en fuite : {{count}}. Rattrape-les avant qu'ils s'échappent.",
+  "a11y.buddyDown": "Vaisseau allié détruit.",
   "hud.guns": "CANONS N",
   "hud.hull": "COQUE",
   "a11y.gunsUp": "Canons niveau {{level}}.",

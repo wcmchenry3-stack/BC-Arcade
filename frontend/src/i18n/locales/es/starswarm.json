@@ -27,6 +27,7 @@
   "a11y.carrierFinalStand": "Última resistencia de la nodriza. Ataca más rápido.",
   "a11y.bossWave": "Ola de jefes. Solo la nodriza y sus guardianes.",
   "a11y.rout": "Soldados huyendo: {{count}}. Atrápalos antes de que escapen.",
+  "a11y.buddyDown": "Nave compañera destruida.",
   "hud.guns": "ARMAS N",
   "hud.hull": "CASCO",
   "a11y.gunsUp": "Nivel de armas {{level}}.",
