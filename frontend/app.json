@@ -49,12 +49,22 @@
         }
       ],
       "expo-localization",
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": false,
+          "enableBackgroundRecording": false
+        }
+      ],
       [
         "react-native-audio-api",
         {
           "disableFFmpeg": true,
-          "iosMicrophonePermission": false
+          "iosMicrophonePermission": false,
+          "iosBackgroundMode": false,
+          "androidForegroundService": false,
+          "androidPermissions": [],
+          "androidFSTypes": []
         }
       ]
     ]

@@ -115,7 +115,7 @@ Two machine-level fixes are needed before Gradle can build this app on Windows:
 - **Long paths.** `react-native-audio-api` compiles sources from outside its
   `android/` folder, so CMake object paths exceed 260 characters from almost any
   checkout location, and the build dies with `ninja: error: mkdir(...): No such
-  file or directory`. Enable `LongPathsEnabled` in the registry **and** replace
+file or directory`. Enable `LongPathsEnabled` in the registry **and** replace
   the SDK's bundled ninja 1.10 (`Android/Sdk/cmake/3.22.1/bin/ninja.exe`, not
   long-path aware) with ninja ≥ 1.12 from the official releases. A `subst` drive
   does not help — Gradle resolves it back to the real path.
@@ -124,6 +124,29 @@ Two machine-level fixes are needed before Gradle can build this app on Windows:
   `Plugin [id: '…foojay-resolver-convention'] was not found`. Add
   `systemProp.javax.net.ssl.trustStoreType=Windows-ROOT` to the user-level
   `~/.gradle/gradle.properties` so the JVM uses the Windows certificate store.
+
+## Foreground services and storage permissions (#2781)
+
+Decision: **no game needs background audio**, so the app declares no foreground
+service. Play Console answer: **Foreground service permissions -> "No" (no
+declaration or demo video needed)**. The manifest and console must agree.
+
+- Removed from `AndroidManifest.xml` (as `tools:node="remove"` so a library
+  merge cannot re-add them): `FOREGROUND_SERVICE`,
+  `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `CentralizedForegroundService`
+  (react-native-audio-api) and `AudioControlsService` (expo-audio).
+- These entries are added by the **config plugins**, not by the libraries' own
+  `AndroidManifest.xml` files, so `app.json` sets `enableBackgroundPlayback:
+false` (expo-audio) and `androidForegroundService: false`,
+  `androidPermissions: []`, `iosBackgroundMode: false` (react-native-audio-api).
+  A regenerated `expo prebuild` manifest then matches the committed one.
+- No code uses lock-screen controls, `setActiveForLockScreen`, or the audio-api
+  playback notification, so nothing starts the removed services. In-app audio
+  (`createAudioPlayer`, audio-api `AudioContext`) is unaffected.
+- `READ_/WRITE_EXTERNAL_STORAGE` (maxSdk 32): no code reads or writes shared
+  storage, so both are removed via `tools:node="remove"`.
+- iOS: the committed `Info.plist` has no `UIBackgroundModes`; nothing to change.
+  A future `prebuild` also no longer adds `audio`.
 
 ## Key Gradle files
 
@@ -161,7 +184,7 @@ the real app (#2368).
 screen is compiled into every debug build unconditionally (Android's
 `android/src/debug` source set; iOS links it into every Debug configuration
 target) and always shows first on a fresh install — there is no cold-start path
-that skips it, embedded bundle or not. What embedding the bundle *does* unlock is
+that skips it, embedded bundle or not. What embedding the bundle _does_ unlock is
 a "Load embedded bundle" button on that screen
 (`DevLauncherController.hasEmbeddedBundle()` / iOS's
 `loadLocalBundleOnSuccess:`), which only appears when **both**:
@@ -182,7 +205,7 @@ and the Play Store/App Store release paths untouched:
   bundles like a release build would.
 - **iOS**: `mobile-smoke-ios.yml` writes `unset SKIP_BUNDLING` to
   `frontend/ios/.xcode.env.local` before the build step. That file is gitignored
-  (`frontend/ios/.gitignore`) and is sourced a *second* time by the build phase
+  (`frontend/ios/.gitignore`) and is sourced a _second_ time by the build phase
   **after** it sets `SKIP_BUNDLING=1` — the phase's own script comments document
   this as the intended local-override point — so it only ever affects CI, never a
   developer's local Xcode/Simulator build. A "Verify JS bundle was embedded" step
