@@ -72,7 +72,7 @@ jest.mock("../../api/stats", () => ({
   statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
 }));
 jest.mock("../../api/players", () => ({
-  playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
+  playersApi: { putMe: jest.fn(() => Promise.resolve({ display_name: "Brave Otter 4821" })) },
 }));
 jest.mock("../../game/_shared/flushQueuedGames", () => ({
   flushQueuedGames: jest.fn(() => Promise.resolve()),
@@ -431,17 +431,16 @@ describe("FreeCellScreen — result card (#2508)", () => {
     expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
   });
 
-  it("asks for a display name once when none is set, then shows the rank", async () => {
+  it("asks the player to join once when not on the boards, then shows the rank", async () => {
     const r = await winInOneMove();
-    const input = await r.findByLabelText("Pick a display name for leaderboards");
+    const join = await r.findByRole("button", { name: "Join leaderboards" });
     expect(mockGetGameRank).not.toHaveBeenCalled();
     await act(async () => {
-      await fireEvent.changeText(input, "Riley");
+      await fireEvent.press(join);
     });
-    await act(async () => {
-      await fireEvent.press(r.getByRole("button", { name: "Save" }));
-    });
-    await waitFor(() => expect(r.getByText("Saved as Riley · #2 on the leaderboard")).toBeTruthy());
+    await waitFor(() =>
+      expect(r.getByText("Saved as Brave Otter 4821 · #2 on the leaderboard")).toBeTruthy()
+    );
     expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
   });
 

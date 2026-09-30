@@ -657,7 +657,7 @@ export default function SortScreen() {
             rank: leaderboardSubmit.rank,
             isBest: leaderboardSubmit.isBest,
             playerName: leaderboardSubmit.playerName,
-            onProvideName: leaderboardSubmit.provideName,
+            onJoinLeaderboards: leaderboardSubmit.joinLeaderboards,
             onRetry: leaderboardSubmit.retry,
           }}
           onViewLeaderboard={openLeaderboard}

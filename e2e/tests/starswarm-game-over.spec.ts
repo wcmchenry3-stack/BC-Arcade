@@ -66,9 +66,15 @@ async function routeStarswarmApi(page: Page): Promise<RoutedApi> {
       json({}, req.method() === "POST" && path === "/games" ? 201 : 200),
     );
   });
+  // /players/me as the server behaves since #2778: a join (PUT, no body)
+  // assigns a generated name, GET reads it, DELETE leaves. The name is
+  // "Tester" so a device that already holds that name keeps it.
+  let boardName: string | null = null;
   await page.route("**/players/me", async (route) => {
-    const body = JSON.parse(route.request().postData() ?? "{}");
-    await route.fulfill(json({ display_name: body.display_name ?? null }));
+    const method = route.request().method();
+    if (method === "PUT") boardName = "Tester";
+    if (method === "DELETE") boardName = null;
+    await route.fulfill(json({ display_name: boardName }));
   });
   return api;
 }

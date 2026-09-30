@@ -72,6 +72,15 @@ import {
   FLEE_DURATION_MAX,
   FLEE_STAGGER_MAX,
   FLEE_ENSIGN_SCALE,
+  EXTRACTION_HOLD_MIN_MS,
+  EXTRACTION_HOLD_MAX_MS,
+  EXTRACTION_MAX_MS,
+  clearTransientCombat,
+  weaponsFree,
+  hazardsLive,
+  isAutopilot,
+  waveJustCleared,
+  liveHazards,
 } from "../engine";
 import type {
   Asteroid,
@@ -93,6 +102,22 @@ function advanceMs(state: StarSwarmState, ms: number, input = NO_INPUT): StarSwa
     s = tick(s, Math.min(step, ms - elapsed), input);
   }
   return s;
+}
+
+/** #2842: tick through a wave's extraction until the next wave opens (or the game ends). */
+function runExtraction(state: StarSwarmState, input = NO_INPUT): StarSwarmState {
+  let s = state;
+  const wave = s.wave;
+  for (let i = 0; i < 1000 && s.wave === wave && s.phase !== "GameOver"; i++) {
+    s = tick(s, 16, input);
+  }
+  return s;
+}
+
+/** #2842: kill every enemy, then fly the extraction out — returns the next wave's first state. */
+function clearWave(state: StarSwarmState, input = NO_INPUT): StarSwarmState {
+  const s = { ...state, enemies: state.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+  return runExtraction(tick(s, 16, input), input);
 }
 
 beforeEach(() => {
@@ -190,19 +215,16 @@ describe("player boundary clamping", () => {
     expect(s.player.x).toBe(CANVAS_W - hw);
   });
 
-  // Regression: #2352 removed the WinTransition cinematic (hard freeze + AI autopilot) —
-  // the wave now advances in the same tick the last enemy dies, and the ship keeps
-  // whatever position the player last drove it to (nothing repositions it).
+  // #2842: after the extraction the next wave puts the ship back on station, centred.
   it("player.x stays within valid bounds immediately after a wave clear", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
     // Drive ship to right edge for the duration of the wave
     const rightEdgeInput: StarSwarmInput = { playerX: CANVAS_W - hw, fire: false };
     s = advanceMs(s, 8000, rightEdgeInput);
-    // Kill remaining enemies to trigger the wave clear
-    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
-    s = tick(s, 16, rightEdgeInput);
+    s = clearWave(s, rightEdgeInput);
     expect(s.wave).toBe(2);
     expect(s.phase).toBe("SwoopIn");
+    expect(s.player.x).toBe(CANVAS_W / 2);
     expect(s.player.x).toBeGreaterThanOrEqual(hw);
     expect(s.player.x).toBeLessThanOrEqual(CANVAS_W - hw);
   });
@@ -210,8 +232,7 @@ describe("player boundary clamping", () => {
   it("using the engine's own player.x as input is a no-op right after a wave clear", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
     s = advanceMs(s, 8000);
-    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
-    s = tick(s, 16, NO_INPUT);
+    s = clearWave(s);
     expect(s.wave).toBe(2);
     // Using the engine's own player.x as the input must be a no-op
     const parkedX = s.player.x;
@@ -530,19 +551,24 @@ describe("Scoring", () => {
 // ---------------------------------------------------------------------------
 
 describe("Wave progression", () => {
-  it("advances to next wave in the same tick the last enemy dies", () => {
+  it("the last kill starts the extraction; the next wave opens once the ship is out (#2842)", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
     s = advanceMs(s, 8000);
     s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
     s = tick(s, 16, NO_INPUT);
+    expect(s.phase).toBe("Extraction");
+    expect(s.wave).toBe(1);
+    expect(s.extraction).toEqual({ elapsedMs: 0, climbMs: 0 });
+    s = runExtraction(s);
     expect(s.wave).toBe(2);
+    expect(s.phase).toBe("SwoopIn");
+    expect(s.extraction).toBeNull();
   });
 
   it("clearing wave 4 leads into the wave-5 boss wave (#2490)", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 4);
     s = advanceMs(s, 8000);
-    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
-    s = tick(s, 16, NO_INPUT);
+    s = clearWave(s);
     expect(s.wave).toBe(5);
     expect(s.phase).toBe("SwoopIn");
     expect(s.enemies.every((e) => e.tier === "Boss" || e.tier === "Carrier")).toBe(true);
@@ -560,12 +586,12 @@ describe("Wave progression", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #2352 — wave clear no longer freezes gameplay or hands off to an AI autopilot;
-// a short cosmetic banner timer marks the moment instead.
+// #2352 — wave clear never freezes gameplay; a short cosmetic banner timer marks the moment.
+// (#2842 hands the ship to an extraction autopilot, but nothing stops moving.)
 // ---------------------------------------------------------------------------
 
 describe("#2352 non-blocking wave clear", () => {
-  it("sets missionCompleteTimer to the full banner duration on wave clear", () => {
+  it("sets missionCompleteTimer to the full banner duration on the last kill", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
     s = advanceMs(s, 8000);
     expect(s.missionCompleteTimer).toBe(0); // not showing mid-wave
@@ -584,11 +610,34 @@ describe("#2352 non-blocking wave clear", () => {
     expect(s.missionCompleteTimer).toBe(0);
   });
 
-  it("the new wave's enemies keep moving immediately — nothing freezes for a clear", () => {
+  it("nothing freezes for a clear — the ship flies out, then the new wave animates at once", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
     s = advanceMs(s, 8000);
-    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
-    s = tick(s, 16, NO_INPUT); // clears wave 1 and builds wave 2 in the same tick
+    const bullet = {
+      id: 77777,
+      x: 40,
+      y: 300,
+      vx: 0,
+      vy: -0.6,
+      owner: "player" as const,
+      width: 3,
+      height: 10,
+      damage: 1,
+    };
+    s = {
+      ...s,
+      playerBullets: [bullet],
+      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.phase).toBe("Extraction");
+    const y0 = s.playerBullets[0]!.y;
+    s = tick(s, 16, NO_INPUT);
+    expect(s.playerBullets[0]!.y).toBeLessThan(y0); // shots keep flying
+    const shipY = s.player.y;
+    s = advanceMs(s, EXTRACTION_HOLD_MIN_MS + 200);
+    expect(s.player.y).toBeLessThan(shipY); // the ship is climbing out
+    s = runExtraction(s);
     expect(s.wave).toBe(2);
     const startY = s.enemies[0]?.y ?? 0;
     s = tick(s, 100, NO_INPUT); // a single normal frame of wave 2
@@ -613,207 +662,502 @@ describe("#2352 non-blocking wave clear", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #2409 — in-flight bullets survive a wave clear instead of vanishing, and a
-// leftover enemy bullet can't unfairly kill the player after the wave they
-// were fired in has already cleared.
+// #2842 — wave lifecycle: safe entry, live extraction, projectile persistence, hard reset
 // ---------------------------------------------------------------------------
 
-describe("#2409 bullets survive wave clear", () => {
-  function makeEnemyBullet(overrides: Partial<Bullet> = {}): Bullet {
-    return {
-      id: 88888,
-      x: 0,
-      y: 0,
-      vx: 0,
-      vy: BULLET_E_VY,
-      owner: "enemy",
-      width: 5,
-      height: 14,
-      damage: 1,
-      ...overrides,
-    };
-  }
+function makeEnemyBullet(overrides: Partial<Bullet> = {}): Bullet {
+  return {
+    id: 88888,
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: BULLET_E_VY,
+    owner: "enemy",
+    width: 5,
+    height: 14,
+    damage: 1,
+    ...overrides,
+  };
+}
 
-  function makePlayerBullet(overrides: Partial<Bullet> = {}): Bullet {
-    return {
-      id: 77777,
-      x: 0,
-      y: 0,
-      vx: 0,
-      vy: -0.6,
-      owner: "player",
-      width: 3,
-      height: 10,
-      damage: 1,
-      ...overrides,
-    };
-  }
+function makePlayerBullet(overrides: Partial<Bullet> = {}): Bullet {
+  return {
+    id: 77777,
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: -0.6,
+    owner: "player",
+    width: 3,
+    height: 10,
+    damage: 1,
+    ...overrides,
+  };
+}
 
-  it("an in-flight enemy bullet is not wiped by a wave clear", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
-    s = advanceMs(s, 8000);
-    const bullet = makeEnemyBullet({ x: CANVAS_W / 2, y: 50 });
-    s = {
-      ...s,
-      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
-      enemyBullets: [bullet],
-    };
-    s = tick(s, 16, NO_INPUT);
-    expect(s.wave).toBe(2);
-    expect(s.enemyBullets).toHaveLength(1);
-    expect(s.enemyBullets[0]!.id).toBe(bullet.id);
+function makeRock(overrides: Partial<Asteroid> = {}): Asteroid {
+  return {
+    id: 66666,
+    kind: "large",
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: 0,
+    radius: ASTEROID_STATS.large.radius,
+    hp: ASTEROID_STATS.large.hp,
+    rotation: 0,
+    spin: 0,
+    hitFlashTimer: 0,
+    hitEnemyIds: [],
+    ...overrides,
+  };
+}
+
+/** A wave in combat with nobody shooting on their own (so tests place every shot). */
+function quietPlaying(wave = 1): StarSwarmState {
+  let s = initStarSwarm(CANVAS_W, CANVAS_H, wave);
+  s = { ...s, enemyFireDisabled: true, asteroidsDisabled: true, flakDisabled: true };
+  s = advanceMs(s, 8000);
+  expect(s.phase).toBe("Playing");
+  return { ...s, enemyFireDisabled: false, player: { ...s.player, invincibleTimer: 0 } };
+}
+
+/** The first tick of a wave's extraction, with `extra` in flight as the last enemy dies. */
+function enterExtraction(extra: Partial<StarSwarmState> = {}): StarSwarmState {
+  const s = quietPlaying();
+  const killed = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+  const next = tick({ ...killed, ...extra }, 16, NO_INPUT);
+  expect(next.phase).toBe("Extraction");
+  return { ...next, player: { ...next.player, invincibleTimer: 0 } };
+}
+
+/** A wave still swooping in, with one ship already arrived in formation. */
+function swoopingWithOneArrived(): { s: StarSwarmState; arrivedId: number } {
+  let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
+  s = advanceMs(s, 400);
+  expect(s.phase).toBe("SwoopIn");
+  const e0 = s.enemies.find((e) => e.tier === "Grunt")!;
+  const arrived = {
+    ...e0,
+    phase: "Formation" as const,
+    x: e0.formationX,
+    y: e0.formationY,
+    path: null,
+    pathT: 1,
+    shootTimer: 0,
+  };
+  s = { ...s, enemies: s.enemies.map((e) => (e.id === e0.id ? arrived : e)) };
+  return { s, arrivedId: e0.id };
+}
+
+describe("#2842 wave entry: swoop-in is safe setup time", () => {
+  it("the central gates: weapons free only in combat, hazards live in combat and extraction", () => {
+    const base = initStarSwarm(CANVAS_W, CANVAS_H);
+    const at = (phase: StarSwarmState["phase"]) => ({ ...base, phase });
+    expect(weaponsFree(at("SwoopIn"))).toBe(false);
+    expect(weaponsFree(at("Playing"))).toBe(true);
+    expect(weaponsFree(at("Extraction"))).toBe(false);
+    expect(hazardsLive(at("SwoopIn"))).toBe(false);
+    expect(hazardsLive(at("Playing"))).toBe(true);
+    expect(hazardsLive(at("Extraction"))).toBe(true);
+    expect(isAutopilot(at("Extraction"))).toBe(true);
+    expect(isAutopilot(at("Playing"))).toBe(false);
   });
 
-  it("an in-flight player bullet is not wiped by a wave clear", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
-    s = advanceMs(s, 8000);
-    const bullet = makePlayerBullet({ x: CANVAS_W / 2, y: 200 });
-    s = {
-      ...s,
-      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
-      playerBullets: [bullet],
-    };
-    s = tick(s, 16, NO_INPUT);
-    expect(s.wave).toBe(2);
-    expect(s.playerBullets).toHaveLength(1);
-    expect(s.playerBullets[0]!.id).toBe(bullet.id);
-  });
-
-  it("a carried-over enemy bullet keeps moving and despawns off-screen normally", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
-    s = advanceMs(s, 8000);
-    const bullet = makeEnemyBullet({ x: CANVAS_W / 2, y: CANVAS_H - 5 });
-    s = {
-      ...s,
-      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
-      enemyBullets: [bullet],
-    };
-    s = tick(s, 16, NO_INPUT); // wave clears, bullet carries over
-    expect(s.enemyBullets).toHaveLength(1);
-    s = tick(s, 100, NO_INPUT); // bullet travels past the bottom edge
-    expect(s.enemyBullets).toHaveLength(0);
-  });
-
-  it("a leftover enemy bullet on a collision course cannot hit the player after the wave clears", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
-    s = advanceMs(s, 8000);
-    s = { ...s, player: { ...s.player, lives: 3, invincibleTimer: 0 } };
-    // Above the player, heading straight down — on a collision course but not overlapping yet,
-    // so the wave-clear tick itself carries it over rather than resolving a same-tick hit.
-    const bullet = makeEnemyBullet({ x: s.player.x, y: s.player.y - 100 });
-    s = {
-      ...s,
-      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
-      enemyBullets: [bullet],
-    };
-    s = tick(s, 16, NO_INPUT); // wave clears — bullet is carried over and marked harmless
-    expect(s.wave).toBe(2);
-    expect(s.enemyBullets[0]?.harmless).toBe(true);
-
-    // Advance until the bullet reaches (and passes through) the player's position.
-    s = advanceMs(s, 400, NO_INPUT);
-    expect(s.player.lives).toBe(3);
-    expect(s.phase).not.toBe("GameOver");
-  });
-
-  it("a freshly-fired enemy bullet in the new wave can still hit the player normally", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
-    s = advanceMs(s, 8000);
-    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
-    s = tick(s, 16, NO_INPUT); // wave clears, no leftover bullets this time
-    expect(s.wave).toBe(2);
-
-    s = { ...s, player: { ...s.player, lives: 3, invincibleTimer: 0 } };
-    const bullet = makeEnemyBullet({ x: s.player.x, y: s.player.y }); // not harmless
-    s = { ...s, enemyBullets: [bullet] };
-    s = tick(s, 16, NO_INPUT);
-    expect(s.player.lives).toBe(2);
-  });
-
-  it("a carried-over player bullet can still score a hit on a new-wave enemy", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
-    s = advanceMs(s, 8000);
-    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
-    s = tick(s, 16, NO_INPUT); // wave 2 begins, SwoopIn
-    expect(s.wave).toBe(2);
-    // Let wave 2's enemies finish swooping into formation (on-screen) before parking a bullet
-    // on one — freshly-spawned enemies start off-screen mid-Bezier-path. Enemy fire is
-    // disabled for this stretch; it's irrelevant to what's being tested and would otherwise
-    // risk an unrelated GameOver under NO_INPUT before the assertions below even run.
+  it("the player cannot fire during swoop-in, and can the moment combat starts", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = { ...s, enemyFireDisabled: true };
-    s = advanceMs(s, 8000, NO_INPUT);
+    while (s.phase === "SwoopIn") {
+      s = tick(s, 16, FIRE_INPUT);
+      if (s.phase === "SwoopIn") expect(s.playerBullets).toHaveLength(0);
+    }
+    s = tick(s, 16, FIRE_INPUT);
     expect(s.phase).toBe("Playing");
-    s = { ...s, enemyFireDisabled: false, player: { ...s.player, lives: 3, invincibleTimer: 0 } };
-    const target = s.enemies.find((e) => e.isAlive)!;
-    // Bullet is sized generously (dodge-proof) and damage is high enough to one-shot any
-    // tier regardless of which enemy ends up at index 0 (Bosses have the most HP, at 4).
-    const bullet = makePlayerBullet({
-      x: target.x,
-      y: target.y,
-      vy: 0,
-      width: 200,
-      height: 200,
-      damage: 999,
-    });
-    const scoreBefore = s.score;
-    s = { ...s, playerBullets: [bullet] };
-    s = tick(s, 16, NO_INPUT);
-    expect(s.score).toBeGreaterThan(scoreBefore);
+    expect(s.playerBullets.length).toBeGreaterThan(0);
   });
 
-  it("carried-over harmless bullets do not count against the new wave's bulletCap", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
-    s = advanceMs(s, 8000);
-    expect(s.phase).toBe("Playing");
+  it("an enemy already in formation holds its fire until combat starts", () => {
+    const { s, arrivedId } = swoopingWithOneArrived();
+    const next = tick(s, 16, NO_INPUT);
+    expect(next.phase).toBe("SwoopIn");
+    expect(next.enemyBullets).toHaveLength(0);
+    // the same ship, same timer, in combat: it fires
+    const playing = tick({ ...s, phase: "Playing" }, 16, NO_INPUT);
+    expect(playing.enemies.find((e) => e.id === arrivedId)).toBeDefined();
+    expect(playing.enemyBullets.length).toBeGreaterThan(0);
+  });
 
-    // A full cap's worth of harmless leftovers, parked mid-screen so they stay alive this tick.
-    const leftovers = Array.from({ length: bulletCap(1) }, (_, i) =>
-      makeEnemyBullet({ id: 90000 + i, x: 50 + i * 20, y: 200, harmless: true })
-    );
-    const targetIdx = s.enemies.findIndex((e) => e.phase === "Formation" && e.tier !== "Boss");
-    expect(targetIdx).not.toBe(-1);
+  it("the player is invulnerable to shots and rocks during swoop-in", () => {
+    let { s } = swoopingWithOneArrived();
     s = {
       ...s,
-      enemyBullets: leftovers,
-      enemies: s.enemies.map((e, i) => (i === targetIdx ? { ...e, shootTimer: 0 } : e)),
+      player: { ...s.player, invincibleTimer: 0 },
+      enemyBullets: [makeEnemyBullet({ x: s.player.x, y: s.player.y, vy: 0, width: 40 })],
+      asteroids: [makeRock({ x: s.player.x, y: s.player.y })],
     };
-
-    s = tick(s, 16, NO_INPUT);
-    expect(s.enemyBullets.filter((b) => !b.harmless).length).toBeGreaterThan(0);
+    const next = tick(s, 16, NO_INPUT);
+    expect(next.phase).not.toBe("GameOver");
+    expect(next.player.lives).toBe(s.player.lives);
+    expect(next.player.hull).toBe(s.player.hull);
   });
 
-  it("the shield does not absorb (despawn) a harmless bullet overlapping the player", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
-    s = advanceMs(s, 8000);
-    s = applyPowerUp(s, "shield");
-    s = { ...s, enemyFireDisabled: true, player: { ...s.player, invincibleTimer: 0 } };
-    const lethal = makeEnemyBullet({ id: 90001, x: s.player.x, y: s.player.y });
-    const harmless = makeEnemyBullet({ id: 90002, x: s.player.x, y: s.player.y, harmless: true });
-    const absorbedBefore = s.activePowerUp!.shieldAbsorbed;
-    s = { ...s, enemyBullets: [lethal, harmless] };
-
-    s = tick(s, 16, NO_INPUT);
-    expect(s.enemyBullets.map((b) => b.id)).toEqual([harmless.id]);
-    expect(s.activePowerUp!.shieldAbsorbed).toBe(absorbedBefore + 1);
+  it("no incoming enemy can be pre-damaged — shots and rocks do nothing to it", () => {
+    const setup = swoopingWithOneArrived();
+    const { arrivedId } = setup;
+    let s = setup.s;
+    const target = s.enemies.find((e) => e.id === arrivedId)!;
+    s = {
+      ...s,
+      playerBullets: [
+        makePlayerBullet({ x: target.x, y: target.y, vy: 0, width: 60, height: 60, damage: 9 }),
+      ],
+      asteroids: [makeRock({ x: target.x, y: target.y })],
+    };
+    const next = tick(s, 16, NO_INPUT);
+    const after = next.enemies.find((e) => e.id === arrivedId)!;
+    expect(after.isAlive).toBe(true);
+    expect(after.hp).toBe(target.hp);
+    expect(next.score).toBe(s.score);
   });
 
-  it("a lethal hit does not despawn a harmless bullet overlapping the player", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
-    s = advanceMs(s, 8000);
-    s = { ...s, enemyFireDisabled: true, player: { ...s.player, lives: 3, invincibleTimer: 0 } };
-    const lethal = makeEnemyBullet({ id: 90001, x: s.player.x, y: s.player.y });
-    const harmless = makeEnemyBullet({ id: 90002, x: s.player.x, y: s.player.y, harmless: true });
-    s = { ...s, enemyBullets: [lethal, harmless] };
+  it("no asteroid can spawn during swoop-in — timed or thrown", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
+    s = { ...s, nextAsteroidTimer: 1 };
+    expect(throwAsteroid(s)).toBe(s);
+    s = advanceMs(s, 500);
+    expect(s.phase).toBe("SwoopIn");
+    expect(s.asteroids).toHaveLength(0);
+    expect(s.runStats.rocksSpawned).toBe(0);
+  });
 
+  it("the Carrier's beam cannot charge during swoop-in", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 3);
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) =>
+        e.tier === "Carrier"
+          ? { ...e, phase: "Formation" as const, path: null, pathT: 1, beamTimer: 1 }
+          : e
+      ),
+    };
+    s = advanceMs(s, 300);
+    expect(s.phase).toBe("SwoopIn");
+    expect(carrierBeam(s)).toBeNull();
+  });
+
+  it("combat starts only once every ship has arrived", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    while (s.phase === "SwoopIn") {
+      expect(s.enemies.some((e) => e.isAlive && e.phase === "SwoopIn")).toBe(true);
+      s = tick(s, 16, NO_INPUT);
+    }
+    expect(s.phase).toBe("Playing");
+    expect(s.enemies.every((e) => !e.isAlive || e.phase !== "SwoopIn")).toBe(true);
+  });
+});
+
+describe("#2842 wave clear: live extraction", () => {
+  it("fires waveJustCleared on the last kill, once", () => {
+    const s = quietPlaying();
+    const killed = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    const next = tick(killed, 16, NO_INPUT);
+    expect(waveJustCleared(s, next)).toBe(true);
+    expect(waveJustCleared(next, tick(next, 16, NO_INPUT))).toBe(false);
+  });
+
+  it("awards the wave-clear bonus once, on the last kill", () => {
+    const s = quietPlaying();
+    const killed = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    const bonus = waveClearBonusPoints(1, s.difficulty);
+    const next = tick(killed, 16, NO_INPUT);
+    expect(next.score).toBe(s.score + bonus);
+    expect(runExtraction(next).score).toBe(s.score + bonus);
+  });
+
+  it("stops manual fire after the last kill", () => {
+    let s = enterExtraction();
+    s = { ...s, player: { ...s.player, shootCooldown: 0 } };
+    s = advanceMs(s, 500, FIRE_INPUT);
+    expect(s.phase).toBe("Extraction");
+    expect(s.playerBullets).toHaveLength(0);
+  });
+
+  it("the AI has the ship — input is ignored", () => {
+    let s = enterExtraction();
+    const x0 = s.player.x;
+    s = advanceMs(s, 200, { playerX: 0, fire: true });
+    expect(s.player.x).toBe(x0); // nothing to dodge, so it holds its lane
+  });
+
+  it("already-fired player shots keep flying through the extraction", () => {
+    let s = enterExtraction({ playerBullets: [makePlayerBullet({ x: 40, y: 400 })] });
+    expect(s.playerBullets.map((b) => b.id)).toEqual([77777]);
+    const y0 = s.playerBullets[0]!.y;
+    s = advanceMs(s, 200);
+    expect(s.playerBullets[0]!.y).toBeLessThan(y0);
+  });
+
+  it("already-fired enemy shots stay harmful during the extraction", () => {
+    let s = enterExtraction();
+    const lives = s.player.lives;
+    // too wide to sidestep in one tick
+    s = {
+      ...s,
+      enemyBullets: [makeEnemyBullet({ x: s.player.x, y: s.player.y, vy: 0, width: 60 })],
+    };
     s = tick(s, 16, NO_INPUT);
-    expect(s.player.lives).toBe(2);
-    expect(s.enemyBullets.map((b) => b.id)).toEqual([harmless.id]);
+    expect(s.player.lives).toBe(lives - 1);
+  });
+
+  it("rocks stay harmful during the extraction", () => {
+    let s = enterExtraction();
+    const lives = s.player.lives;
+    s = { ...s, asteroids: [makeRock({ x: s.player.x, y: s.player.y })] };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.player.lives).toBe(lives - 1);
+  });
+
+  it("a shield still absorbs a hit during the extraction", () => {
+    let s = enterExtraction();
+    s = {
+      ...s,
+      activePowerUp: { type: "shield", remainingMs: 3000, shieldAbsorbed: 0 },
+      enemyBullets: [makeEnemyBullet({ x: s.player.x, y: s.player.y, vy: 0, width: 60 })],
+    };
+    const lives = s.player.lives;
+    s = tick(s, 16, NO_INPUT);
+    expect(s.player.lives).toBe(lives);
+    expect(s.activePowerUp?.shieldAbsorbed).toBe(1);
+  });
+
+  it("no new rocks enter during the extraction", () => {
+    let s = enterExtraction();
+    s = { ...s, asteroidsDisabled: false, nextAsteroidTimer: 1, wave: 3 };
+    expect(throwAsteroid(s)).toBe(s);
+    s = advanceMs(s, 300);
+    expect(s.asteroids).toHaveLength(0);
+  });
+
+  it("the autopilot sidesteps a column of shots coming straight at it", () => {
+    let s = enterExtraction();
+    const x0 = s.player.x;
+    const lives = s.player.lives;
+    s = {
+      ...s,
+      enemyBullets: [150, 200, 250].map((dy, i) =>
+        makeEnemyBullet({ id: 91000 + i, x: x0, y: s.player.y - dy })
+      ),
+    };
+    s = advanceMs(s, 1200);
+    expect(s.player.lives).toBe(lives);
+    expect(s.player.x).not.toBe(x0);
+  });
+
+  it("the autopilot steers around a rock on a collision course", () => {
+    let s = enterExtraction();
+    const { x, y } = s.player;
+    const lives = s.player.lives;
+    s = { ...s, asteroids: [makeRock({ x: x - 100, y: y - 100, vx: 0.14, vy: 0.14 })] };
+    s = advanceMs(s, 1500);
+    expect(s.player.lives).toBe(lives);
+    expect(s.asteroids.length).toBeGreaterThan(0); // not shattered on the hull
+  });
+
+  it("holds the lane at least EXTRACTION_HOLD_MIN_MS, and climbs by EXTRACTION_HOLD_MAX_MS", () => {
+    let s = enterExtraction();
+    // a stationary shot high above keeps threatening the climb path
+    s = { ...s, enemyBullets: [makeEnemyBullet({ x: 20, y: 60, vy: 0 })] };
+    const laneY = s.player.y;
+    s = advanceMs(s, EXTRACTION_HOLD_MIN_MS - 50);
+    expect(s.extraction?.climbMs).toBe(0);
+    expect(s.player.y).toBe(laneY);
+    s = advanceMs(s, EXTRACTION_HOLD_MAX_MS - EXTRACTION_HOLD_MIN_MS + 100);
+    expect(s.extraction!.climbMs).toBeGreaterThan(0);
+    expect(s.player.y).toBeLessThan(laneY);
+  });
+
+  it("climbs out as soon as the hold minimum passes when nothing can reach it", () => {
+    let s = enterExtraction();
+    s = advanceMs(s, EXTRACTION_HOLD_MIN_MS + 50);
+    expect(s.extraction!.climbMs).toBeGreaterThan(0);
+  });
+
+  it("leaves the playfield off the top before the next wave opens", () => {
+    let s = enterExtraction();
+    let last = s;
+    while (s.wave === 1) {
+      last = s;
+      s = tick(s, 16, NO_INPUT);
+    }
+    expect(last.phase).toBe("Extraction");
+    expect(last.player.y).toBeLessThan(0);
+    expect(last.extraction!.elapsedMs).toBeLessThan(EXTRACTION_MAX_MS);
+  });
+
+  it("the extraction never runs past EXTRACTION_MAX_MS", () => {
+    let s = enterExtraction();
+    s = { ...s, extraction: { elapsedMs: EXTRACTION_MAX_MS - 10, climbMs: 0 } };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.wave).toBe(2);
+    expect(s.phase).toBe("SwoopIn");
+  });
+
+  it("a bonus-life rescue mid-extraction stays in the extraction", () => {
+    let s = enterExtraction();
+    s = {
+      ...s,
+      score: 1_000_000,
+      bonusLivesAwarded: 0,
+      player: { ...s.player, lives: 1, hull: 0 },
+      enemyBullets: [makeEnemyBullet({ x: s.player.x, y: s.player.y, vy: 0, width: 60 })],
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.player.lives).toBeGreaterThan(0);
+    expect(s.phase).toBe("Extraction");
+    expect(s.wave).toBe(1);
+  });
+
+  it("replays identically under the same seed", () => {
+    const run = () => {
+      seedRng(42);
+      _resetIds();
+      let s = enterExtraction({
+        enemyBullets: [0, 1, 2, 3].map((i) =>
+          makeEnemyBullet({ id: 92000 + i, x: 120 + i * 40, y: 200 + i * 30 })
+        ),
+      });
+      const xs: number[] = [];
+      while (s.wave === 1) {
+        s = tick(s, 16, NO_INPUT);
+        xs.push(s.player.x);
+      }
+      return xs;
+    };
+    expect(run()).toEqual(run());
+  });
+});
+
+describe("#2842 projectile persistence: shots outlive their source", () => {
+  it("a shot survives the death of the ship that fired it, and still hits", () => {
+    let s = quietPlaying();
+    const shooter = s.enemies.find((e) => e.isAlive && e.phase === "Formation")!;
+    const lives = s.player.lives;
+    // its shot is in flight above the player; then the shooter is shot down
+    s = {
+      ...s,
+      enemyBullets: [makeEnemyBullet({ x: s.player.x, y: s.player.y - 60 })],
+      playerBullets: [
+        makePlayerBullet({ x: shooter.x, y: shooter.y, vy: 0, width: 40, damage: 99 }),
+      ],
+    };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.enemies.find((e) => e.id === shooter.id)!.isAlive).toBe(false);
+    expect(s.enemyBullets.map((b) => b.id)).toEqual([88888]);
+    s = advanceMs(s, 400, { playerX: s.player.x, fire: false });
+    expect(s.player.lives).toBe(lives - 1);
+  });
+
+  it("the wave's last kill does not retract anything in flight", () => {
+    const s = enterExtraction({
+      enemyBullets: [makeEnemyBullet({ x: 30, y: 100 })],
+      playerBullets: [makePlayerBullet({ x: 330, y: 300 })],
+      asteroids: [makeRock({ x: 200, y: 150, vx: 0.1, vy: 0.1 })],
+    });
+    expect(s.enemyBullets.map((b) => b.id)).toEqual([88888]);
+    expect(s.playerBullets.map((b) => b.id)).toEqual([77777]);
+    expect(s.asteroids.map((a) => a.id)).toEqual([66666]);
+  });
+});
+
+describe("#2842 hard reset before the next wave", () => {
+  it("clearTransientCombat empties every transient combat entity", () => {
+    let s = quietPlaying(3);
+    s = applyPowerUp(s, "buddy");
+    s = {
+      ...s,
+      enemyBullets: [makeEnemyBullet({ x: 30, y: 100 }), makeEnemyBullet({ id: 2, flak: true })],
+      playerBullets: [makePlayerBullet({ x: 330, y: 300, piercing: true })],
+      asteroids: [makeRock({ x: 200, y: 150 })],
+      enemies: s.enemies.map((e) =>
+        e.tier === "Carrier" ? { ...e, beamPhase: "fire" as const, beamTimer: 500 } : e
+      ),
+      extraction: { elapsedMs: 100, climbMs: 0 },
+    };
+    expect(s.buddyShips.length).toBeGreaterThan(0);
+    expect(carrierBeam(s)).not.toBeNull();
+    const c = clearTransientCombat(s);
+    expect(c.enemyBullets).toEqual([]);
+    expect(c.playerBullets).toEqual([]);
+    expect(c.asteroids).toEqual([]);
+    expect(c.buddyShips).toEqual([]);
+    expect(carrierBeam(c)).toBeNull();
+    expect(c.extraction).toBeNull();
+    // and nothing else about the run
+    expect(c.score).toBe(s.score);
+    expect(c.player).toBe(s.player);
+    expect(c.runStats).toBe(s.runStats);
+  });
+
+  it("nothing from wave N can interact with wave N+1", () => {
+    // wave N ends with hazards everywhere — too many to all resolve before the ship is out
+    const leftovers = Array.from({ length: 12 }, (_, i) =>
+      makeEnemyBullet({ id: 93000 + i, x: 20 + i * 28, y: 20, vy: 0.05 })
+    );
+    let s = enterExtraction({
+      enemyBullets: leftovers,
+      playerBullets: [makePlayerBullet({ x: 100, y: 600, vy: -0.05 })],
+      asteroids: [makeRock({ x: 40, y: 30, vx: 0.01, vy: 0.01 })],
+    });
+    s = runExtraction(s);
+    expect(s.wave).toBe(2);
+    expect(s.enemyBullets).toEqual([]);
+    expect(s.playerBullets).toEqual([]);
+    expect(s.asteroids).toEqual([]);
+    expect(s.buddyShips).toEqual([]);
+    // the new formation arrives untouched and the player starts combat unscathed
+    const lives = s.player.lives;
+    s = { ...s, enemyFireDisabled: true, asteroidsDisabled: true };
+    while (s.phase === "SwoopIn") s = tick(s, 16, NO_INPUT);
+    expect(s.phase).toBe("Playing");
+    expect(s.player.lives).toBe(lives);
+    const fresh = initStarSwarm(CANVAS_W, CANVAS_H, 2);
+    for (const e of s.enemies) {
+      const hp = fresh.enemies.find((f) => f.tier === e.tier)!.hp;
+      expect(e.isAlive).toBe(true);
+      expect(e.hp).toBe(hp);
+    }
+  });
+
+  it("the next wave opens clean even when the extraction timed out", () => {
+    let s = enterExtraction({
+      enemyBullets: [makeEnemyBullet({ x: 30, y: 100, vy: 0 })],
+      asteroids: [makeRock({ x: 300, y: 100 })],
+    });
+    s = { ...s, extraction: { elapsedMs: EXTRACTION_MAX_MS, climbMs: 0 } };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.wave).toBe(2);
+    expect(s.enemyBullets).toEqual([]);
+    expect(s.asteroids).toEqual([]);
+  });
+
+  it("liveHazards lists every hostile shot and rock the autopilot must avoid", () => {
+    const s = {
+      ...initStarSwarm(CANVAS_W, CANVAS_H),
+      enemyBullets: [makeEnemyBullet({ x: 10, y: 20 })],
+      asteroids: [makeRock({ x: 50, y: 60 }), makeRock({ id: 2, hp: 0 })],
+      playerBullets: [makePlayerBullet()],
+    };
+    const h = liveHazards(s);
+    expect(h).toHaveLength(2);
+    expect(h[0]).toMatchObject({ x: 10, y: 20, r: 7 });
+    expect(h[1]).toMatchObject({ x: 50, y: 60, r: ASTEROID_STATS.large.radius });
   });
 
   it("first wave of a fresh game starts with no leftover bullets", () => {
     const s = initStarSwarm(CANVAS_W, CANVAS_H, 1);
     expect(s.playerBullets).toHaveLength(0);
     expect(s.enemyBullets).toHaveLength(0);
+    expect(s.extraction).toBeNull();
   });
 });
 
@@ -953,9 +1297,12 @@ describe("Boss wave (#2490)", () => {
     let s = { ...settled("Commander"), score: 1000 };
     s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
     s = tick(s, 16, ASIDE);
-    expect(s.wave).toBe(6);
+    expect(s.phase).toBe("Extraction");
     expect(s.score).toBe(1000 + waveClearBonusPoints(5, "Commander"));
     expect(s.missionCompleteTimer).toBe(MISSION_COMPLETE_BANNER_MS);
+    s = runExtraction(s, ASIDE);
+    expect(s.wave).toBe(6);
+    expect(s.score).toBe(1000 + waveClearBonusPoints(5, "Commander"));
     // an ordinary wave is unchanged
     let n = { ...settled("Commander", 4), score: 1000 };
     n = { ...n, enemies: n.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
@@ -965,7 +1312,7 @@ describe("Boss wave (#2490)", () => {
     );
   });
 
-  it("no timed rocks on a boss wave; a carried rock and a dev throw still work", () => {
+  it("no timed rocks on a boss wave; a dev throw still works, nothing carries in (#2842)", () => {
     let s = { ...settled(), asteroidsDisabled: false, nextAsteroidTimer: 1 };
     s = tick(s, 16, ASIDE);
     expect(s.asteroids).toHaveLength(0);
@@ -976,9 +1323,9 @@ describe("Boss wave (#2490)", () => {
       asteroids: [rockAt(CANVAS_W / 2, 460)],
       enemies: prev.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
-    prev = tick(prev, 16, ASIDE);
+    prev = runExtraction(tick(prev, 16, ASIDE), ASIDE);
     expect(prev.wave).toBe(5);
-    expect(prev.asteroids).toHaveLength(1);
+    expect(prev.asteroids).toHaveLength(0);
   });
 });
 
@@ -987,15 +1334,21 @@ describe("Boss wave (#2490)", () => {
 // ---------------------------------------------------------------------------
 
 describe("Player firing", () => {
+  // #2842: the guns are live only in combat (see the wave-entry gating tests)
+  const playingNow = (): StarSwarmState => ({
+    ...initStarSwarm(CANVAS_W, CANVAS_H),
+    phase: "Playing",
+  });
+
   it("fire=true creates a player bullet", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    let s = playingNow();
     s = tick(s, 16, FIRE_INPUT);
     expect(s.playerBullets).toHaveLength(1);
     expect(s.playerBullets[0]?.owner).toBe("player");
   });
 
   it("shoot cooldown prevents rapid-fire", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    let s = playingNow();
     s = tick(s, 16, FIRE_INPUT);
     s = tick(s, 16, FIRE_INPUT);
     // Second tick should not add another bullet while cooldown is active
@@ -1004,7 +1357,7 @@ describe("Player firing", () => {
   });
 
   it("player bullet moves upward", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H);
+    let s = playingNow();
     s = tick(s, 16, FIRE_INPUT);
     const y0 = s.playerBullets[0]?.y ?? 0;
     s = tick(s, 100, NO_INPUT);
@@ -2875,8 +3228,8 @@ describe("#1037 Difficulty tiers", () => {
       ...s,
       enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     });
-    base = tick(wipeAll(base), 16, NO_INPUT);
-    hard = tick(wipeAll(hard), 16, NO_INPUT);
+    base = runExtraction(tick(wipeAll(base), 16, NO_INPUT));
+    hard = runExtraction(tick(wipeAll(hard), 16, NO_INPUT));
 
     // Both should have advanced to wave 2, and hard score should be ≥ 4× base score
     expect(base.wave).toBe(2);
@@ -3253,32 +3606,35 @@ describe("Errant asteroids (#2486)", () => {
     expect(s.asteroids).toHaveLength(MAX_ASTEROIDS);
   });
 
-  it("rocks in flight carry across a wave clear into a normal wave", () => {
+  it("rocks in flight keep going through the extraction, then the reset clears them (#2842)", () => {
     let s = quiet(1);
-    const a = rock("large", CANVAS_W / 2, SAFE_Y);
+    const a = rock("large", 40, 60, { vx: 0, vy: 0 });
     s = {
       ...s,
       asteroids: [a],
       enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
     s = tick(s, 16, NO_INPUT);
+    expect(s.phase).toBe("Extraction");
+    expect(s.asteroids.map((r) => r.id)).toEqual([a.id]);
+    s = runExtraction(s);
     expect(s.wave).toBe(2);
     expect(s.phase).toBe("SwoopIn");
-    expect(s.asteroids.map((r) => r.id)).toEqual([a.id]);
+    expect(s.asteroids).toEqual([]);
   });
 
-  it("rides into a boss wave like any other wave, but the timer spawns nothing there (#2490)", () => {
+  it("never rides into a boss wave, and the timer spawns nothing there (#2490, #2842)", () => {
     let s = quiet(4);
-    const a = rock("large", CANVAS_W / 2, SAFE_Y);
+    const a = rock("large", 40, 60, { vx: 0, vy: 0 });
     s = {
       ...s,
       asteroids: [a],
       enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
-    s = tick(s, 16, NO_INPUT);
+    s = runExtraction(tick(s, 16, NO_INPUT));
     expect(s.wave).toBe(5);
-    expect(s.asteroids.map((r) => r.id)).toEqual([a.id]);
-    s = { ...s, asteroids: [], asteroidsDisabled: false, nextAsteroidTimer: 1 };
+    expect(s.asteroids).toEqual([]);
+    s = { ...s, asteroidsDisabled: false, nextAsteroidTimer: 1 };
     s = advanceMs(s, 8000, NO_INPUT); // swoop-in, then Playing
     expect(s.phase).toBe("Playing");
     expect(s.asteroids).toHaveLength(0);
@@ -3350,8 +3706,10 @@ describe("Errant asteroids (#2486)", () => {
     expect(s.score).toBe(500);
   });
 
+  // #2842: in combat — a reinforcement swooping in; during the wave's own swoop-in nothing
+  // resolves at all (see the wave-entry gating tests)
   it("strikes a swooping ship once it is on screen, but not one still waiting off-screen", () => {
-    let s = initStarSwarm(CANVAS_W, CANVAS_H, 2);
+    let s: StarSwarmState = { ...initStarSwarm(CANVAS_W, CANVAS_H, 2), phase: "Playing" };
     const waiting = s.enemies.find((e) => e.pathT < 0)!;
     s = { ...s, asteroids: [rock("large", waiting.x, waiting.y)] };
     s = tick(s, 16, NO_INPUT);
@@ -3979,8 +4337,7 @@ describe("Enemy asteroid response (#2487)", () => {
     s = tick({ ...s, asteroids: [rock("large", g.x, g.y)] }, 16, ASIDE);
     expect(s.tierStats.Grunt.struck).toBe(1);
 
-    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
-    s = tick(s, 16, ASIDE);
+    s = clearWave(s, ASIDE);
     expect(s.wave).toBe(3);
     expect(s.tierStats.Grunt.struck).toBe(1);
 
@@ -4331,8 +4688,7 @@ describe("In-run ship upgrades (#2488)", () => {
 
   it("the ladders survive a wave clear but reset on a new game", () => {
     let s = withPlayer(quiet(), { guns: 3, hull: 2 });
-    s = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
-    s = tick(s, 16, ASIDE);
+    s = clearWave(s, ASIDE);
     expect(s.wave).toBe(3);
     expect(s.player.guns).toBe(3);
     expect(s.player.hull).toBe(2);
@@ -4410,9 +4766,8 @@ describe("Run stats (#2491)", () => {
     s = {
       ...s,
       runStats: { ...s.runStats, reinforced: 7, rocksSpawned: 3, beamHits: 2 },
-      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
     };
-    s = tick(s, 16, ASIDE);
+    s = clearWave(s, ASIDE);
     expect(s.wave).toBe(3);
     expect(s.runStats.reinforced).toBe(7);
     expect(s.runStats.rocksSpawned).toBe(3);
@@ -4831,6 +5186,8 @@ describe("Grunt rout (#2489)", () => {
     const before = fleeing(s).length;
     s = { ...s, score: 5000 };
     s = advanceMs(s, FLEE_DURATION_MAX * FLEE_ENSIGN_SCALE + FLEE_STAGGER_MAX + 100, ASIDE);
+    expect(s.phase).toBe("Extraction"); // #2842: the wave is clear, the ship is flying out
+    s = runExtraction(s, ASIDE);
     expect(s.wave).toBe(3);
     expect(s.routed).toBe(false);
     expect(s.runStats.routEscaped).toBe(before);
@@ -4848,9 +5205,12 @@ describe("Grunt rout (#2489)", () => {
       ASIDE
     );
     expect(s.routed).toBe(false);
-    s = tick(
-      kill(s, () => true),
-      16,
+    s = runExtraction(
+      tick(
+        kill(s, () => true),
+        16,
+        ASIDE
+      ),
       ASIDE
     );
     expect(s.wave).toBe(6);

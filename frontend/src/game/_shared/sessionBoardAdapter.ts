@@ -2,9 +2,9 @@
  * The result card's leaderboard flow for games on the session boards (#2677).
  *
  * Since #2624 a player's name lives on the player, and every finished game of
- * a named player ranks by itself: the card no longer submits anything. It
- * asks `GET /games/{id}/rank` where this game puts the player, and shows that
- * (or the one-time name prompt).
+ * a player on the leaderboards ranks by itself: the card no longer submits
+ * anything. It asks `GET /games/{id}/rank` where this game puts the player,
+ * and shows that (or the one-time "Join leaderboards" prompt, #2778).
  *
  * Plug it into `useLeaderboardSubmit` and call `submit({ gameId })` once the
  * game ends:
@@ -16,12 +16,13 @@
  * - Online with a name: `saved`. `rank` is the rank of the player's best
  *   entry when it is in the top 10, and `isBest` says whether this game is
  *   that entry: a worse game shows "Your best: #N" (#2633).
- * - No name: `needsName`; `provideName()` saves it (`saveDisplayName`, which
- *   syncs it through `PUT /players/me`) and then fetches the rank.
- * - Still syncing (`not_finished`, or a name that couldn't be sent yet):
+ * - Not on the leaderboards: `needsName`; `joinLeaderboards()` joins
+ *   (`PUT /players/me`, which assigns a generated name) and then fetches the
+ *   rank.
+ * - Still syncing (`not_finished`, or a join that couldn't be sent yet):
  *   `submitting`, and the hook asks again on a backoff timer while mounted.
  * - Offline: `offline`, and nothing is queued. The game uploads through
- *   `SyncWorker` and the name through `displayNameSync`; the card fetches the
+ *   `SyncWorker` and the join through `displayNameSync`; the card fetches the
  *   rank again on reconnect (and on the timer) while it is mounted.
  * - On no board (`board_disabled`, or `not_rankable`: the game can never
  *   rank): `unranked`, and the card shows no leaderboard line.
@@ -59,7 +60,7 @@ export function toRankLookup(result: GameRankResponse, nameSynced: boolean): Ran
     case "not_finished":
       return { kind: "pending" };
     case "no_name":
-      // A name that couldn't be sent yet is still on its way, not missing.
+      // A join that couldn't be sent yet is still on its way, not missing.
       return nameSynced ? { kind: "needsName" } : { kind: "pending" };
     default:
       return { kind: "unranked" };
@@ -75,7 +76,7 @@ export function sessionBoardAdapter(
     gameType,
     submit: async (_playerName, { gameId }) => {
       // The completion sits in the local game queue until SyncWorker uploads
-      // it (every 30 s), and a name just saved may still be in
+      // it (every 30 s), and a join just made may still be in
       // displayNameSync's slot: send both first so the rank sees them.
       const [, nameSynced] = await Promise.all([flushQueuedGames(), flushDisplayNameSync()]);
       // Until the completion lands the server answers 404 (no row yet) or
