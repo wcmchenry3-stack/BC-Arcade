@@ -11,7 +11,14 @@ import React from "react";
 import { render } from "@testing-library/react-native";
 import Controls from "../Controls";
 import type { GameCanvasHandle } from "../GameCanvas";
-import { CANVAS_H, CANVAS_W, PLAYER_W, initStarSwarm, tick } from "../../../game/starswarm/engine";
+import {
+  CANVAS_H,
+  CANVAS_W,
+  PLAYER_W,
+  initStarSwarm,
+  isAutopilot,
+  tick,
+} from "../../../game/starswarm/engine";
 import type { StarSwarmState } from "../../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../../game/starswarm/constants";
 
@@ -72,7 +79,15 @@ class FakeCanvas {
       if (this.countdownMs === 0) this.countdownMs = null;
       return;
     }
+    const prevWave = this.state.wave;
     this.state = tick(this.state, dtMs, { playerX: this.input.playerX, fire: false });
+    // #2842: GameCanvas keeps the commanded X on the ship while the extraction autopilot flies
+    // it, and on the re-centred ship when the next wave opens behind its countdown.
+    if (isAutopilot(this.state)) this.input.playerX = this.state.player.x;
+    if (this.state.wave > prevWave) {
+      this.input.playerX = this.state.player.x;
+      this.countdownMs = WAVE_COUNTDOWN_MS;
+    }
   }
 
   get x() {
@@ -242,5 +257,69 @@ describe.each([1, 1.5])("Controls edge drag through canvas + engine (scale %s)",
     mockPan.current.onChange?.({ y: 1, translationX: 100 * scale });
     t.canvas.frame();
     expect(t.canvas.x).toBe(CANVAS_W / 2);
+  });
+
+  it("a drag held perfectly still through the extraction resumes from the ship (#2842)", async () => {
+    const t = await setup(scale);
+    t.canvas.state = { ...t.canvas.state, enemyFireDisabled: true, asteroidsDisabled: true };
+    while (t.canvas.state.phase === "SwoopIn") t.canvas.frame();
+    t.begin();
+    t.moveTo(100 * scale);
+    expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 100, 5);
+
+    // Last kill; the finger stays down and does not move, so no onChange arrives at all.
+    t.canvas.state = {
+      ...t.canvas.state,
+      enemies: t.canvas.state.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+    };
+    const wave = t.canvas.state.wave;
+    while (t.canvas.state.wave === wave) t.canvas.frame();
+    expect(t.canvas.x).toBe(CANVAS_W / 2);
+    expect(t.canvas.countdownMs).not.toBeNull();
+
+    // A small move: relative to the re-centred ship, no snap back under the finger.
+    t.moveTo(102 * scale);
+    expect(t.canvas.handle.getPlayerX()).toBeCloseTo(CANVAS_W / 2, 5);
+    t.moveTo(97 * scale);
+    expect(t.canvas.handle.getPlayerX()).toBeCloseTo(CANVAS_W / 2 - 5, 5);
+    // …and once the countdown is over the engine ship follows from there
+    while (t.canvas.countdownMs !== null) t.canvas.frame();
+    t.moveTo(107 * scale);
+    expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 5, 5);
+  });
+
+  it("a drag held through the wave-clear autopilot resumes from the ship (#2842)", async () => {
+    const t = await setup(scale);
+    t.canvas.state = { ...t.canvas.state, enemyFireDisabled: true, asteroidsDisabled: true };
+    while (t.canvas.state.phase === "SwoopIn") t.canvas.frame();
+    t.begin();
+    let tx = 100;
+    t.moveTo(tx * scale);
+    expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 100, 5);
+
+    // Last kill with the finger still down: the autopilot flies the ship, the finger is ignored.
+    t.canvas.state = {
+      ...t.canvas.state,
+      enemies: t.canvas.state.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+    };
+    t.canvas.frame();
+    expect(t.canvas.state.phase).toBe("Extraction");
+    const wave = t.canvas.state.wave;
+    while (t.canvas.state.wave === wave) {
+      tx -= 1;
+      t.moveTo(tx * scale);
+      if (t.canvas.state.phase === "Extraction") {
+        expect(t.canvas.handle.getPlayerX()).toBeCloseTo(t.canvas.x, 5);
+      }
+    }
+
+    // The next wave opens behind its countdown with the ship re-centred; the held drag picks up
+    // from there instead of snapping back under the finger.
+    expect(t.canvas.x).toBe(CANVAS_W / 2);
+    expect(t.canvas.countdownMs).not.toBeNull();
+    t.moveTo(tx * scale);
+    expect(t.canvas.handle.getPlayerX()).toBeCloseTo(CANVAS_W / 2, 5);
+    t.moveTo((tx - 10) * scale);
+    expect(t.canvas.handle.getPlayerX()).toBeCloseTo(CANVAS_W / 2 - 10, 5);
   });
 });
