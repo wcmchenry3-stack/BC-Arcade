@@ -778,11 +778,40 @@ async def test_jwks_cache_refresh_and_filtering() -> None:
     clock[0] += google_notifications.JWKS_TTL_S
     await jwks.key("test-kid-1")
     assert fake.calls == 3  # expired cache refetches
-    fake.keys = []
-    clock[0] += google_notifications.JWKS_TTL_S
+
+
+async def test_jwks_outage_backs_off_and_serves_stale_keys_for_a_grace_period() -> None:
+    """Review S3: a failed fetch is retried at most every 60 s, and the last good
+    keys keep verifying for up to 24 h past their TTL while Google is unreachable."""
+    fake = FakeJwks()
+    clock = [0.0]
+    jwks = GoogleJwks(fake.transport(), clock=lambda: clock[0])
+    assert await jwks.key("test-kid-1") is not None
+    fake.fail = True
+    clock[0] += google_notifications.JWKS_TTL_S  # expired
+    assert await jwks.key("test-kid-1") is not None  # refresh failed; stale key served
+    assert fake.calls == 2
+    for _ in range(50):  # junk kids and repeats during the outage: no refetch
+        assert await jwks.key("junk") is None
+        assert await jwks.key("test-kid-1") is not None
+    assert fake.calls == 2
+    clock[0] += google_notifications.JWKS_RETRY_BACKOFF_S
+    await jwks.key("test-kid-1")
+    assert fake.calls == 3  # retried once the backoff passed
+    # Past TTL + grace with Google still down: fail closed.
+    clock[0] = google_notifications.JWKS_TTL_S + google_notifications.JWKS_STALE_GRACE_S
     with pytest.raises(PurchaseError) as exc:
         await jwks.key("test-kid-1")
     assert exc.value.status_code == 503
+    # Inside the backoff with no usable keys: still 503, without a fetch.
+    calls = fake.calls
+    with pytest.raises(PurchaseError):
+        await jwks.key("test-kid-1")
+    assert fake.calls == calls
+    # Google comes back: recovers after the backoff.
+    fake.fail = False
+    clock[0] += google_notifications.JWKS_RETRY_BACKOFF_S
+    assert await jwks.key("test-kid-1") is not None
 
 
 async def test_rtdn_key_rotation_is_picked_up(client, gp) -> None:
@@ -1064,15 +1093,39 @@ async def test_notification_for_disallowed_environment_is_ignored(client, instal
     assert await row(token) is None
 
 
-def test_rtdn_logs_no_tokens_or_payloads(client, gp, caplog) -> None:
-    token = tok()
-    gp.play.purchases[token] = play_purchase()
+async def test_no_logger_ever_sees_a_token(client, gp, caplog) -> None:
+    """Review B1: capture ALL loggers (root, DEBUG) through a full grant, acknowledgement,
+    RTDN, voided lookup, poll and sweep, and check no purchase token, order id,
+    account token or bearer token appears anywhere."""
+    session, token, other = sid(), tok(), tok()
+    account = google.expected_account_token(session)
+    gp.play.purchases[token] = play_purchase(account=account)
+    gp.play.purchases[other] = play_purchase(order="GPA.SECRET-ORDER")
     bearer = oidc_token()
-    with caplog.at_level(logging.INFO, logger="audit"):
-        post_rtdn(client, developer_notification(one_time=(1, token)), bearer=bearer)
+    with caplog.at_level(logging.DEBUG):
+        assert post_google(client, session, token, source="purchase").status_code == 200
+        assert gp.play.ack_calls == [(HEARTS, token)]
+        post_rtdn(client, developer_notification(one_time=(1, other)), bearer=bearer)
+        gp.play.voided_pages = [voided_page([voided_record(token, NOW())])]
+        post_rtdn(client, developer_notification(voided={"purchaseToken": token, "productType": 2}))
         post_rtdn(client, developer_notification(test=True), bearer=oidc_token(aud="x"))
-    assert token not in caplog.text and bearer not in caplog.text
-    assert "google_notification" in caplog.text and "google_notification_rejected" in caplog.text
+        gp.play.get_errors.append(500)
+        post_google(client, sid(), tok())
+        await poll_voided_purchases(gp.verifier, get_session_factory())
+        await acknowledge_sweep(gp.verifier, get_session_factory())
+    # Every logger at DEBUG, except the SQLite test driver, whose DEBUG lines
+    # echo bound SQL parameters (store keys are columns); production runs
+    # asyncpg with the root logger at INFO.
+    records = [r for r in caplog.records if r.name != "aiosqlite"]
+    text = "".join(r.getMessage() + str(r.args) for r in records)
+    # (The account token is SHA-256(session), the same pseudonym the audit log
+    # already carries as session_hash by design, IAP.md §4, so it is not listed.)
+    for secret in (token, other, "GPA.SECRET-ORDER", bearer, ACCESS_TOKEN):
+        assert secret not in text
+    assert "google_notification" in text and "google_notification_rejected" in text
+    # The HTTP client loggers that would have printed the URLs are held at WARNING.
+    for name in ("httpx", "httpcore"):
+        assert logging.getLogger(name).getEffectiveLevel() >= logging.WARNING
 
 
 def test_rtdn_is_rate_limited_and_body_capped(client, gp) -> None:
@@ -1298,3 +1351,208 @@ async def test_service_acknowledge_mark_is_idempotent(client, gp) -> None:
     async with get_session_factory()() as db:
         await purchase_service.mark_acknowledged(db, purchase.id)
     assert (await row(token)).acknowledged_at == first
+
+
+# ---------------------------------------------------------------------------
+# Sentry redaction of store IDs in URLs (review B1)
+# ---------------------------------------------------------------------------
+
+PLAY_URL = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.buffingchi.games/purchases"
+
+
+def test_sentry_hooks_redact_store_ids() -> None:
+    import main
+
+    opts = main._sentry_options("https://key@o0.ingest.sentry.io/0")
+    crumb = {
+        "type": "http",
+        "category": "httplib",
+        "data": {
+            "url": f"{PLAY_URL}/productsv2/tokens/SECRET-TOKEN",
+            "method": "GET",
+            "http.query": "startTime=1&token=SECRET-PAGE",
+        },
+    }
+    out = opts["before_breadcrumb"](crumb, {})
+    assert "SECRET" not in json.dumps(out)
+    assert out["data"]["url"].endswith("/tokens/[redacted]")
+    assert out["data"]["http.query"] == "startTime=1&token=[redacted]"
+    transaction = {
+        "type": "transaction",
+        "transaction": "/purchases/google",
+        "spans": [
+            {"description": f"POST {PLAY_URL}/products/com.x/tokens/SECRET-ACK:acknowledge"},
+            {
+                "description": "GET https://api.storekit.itunes.apple.com/inApps/v1/transactions/2000000999",
+                "data": {
+                    "url": "https://api.storekit.itunes.apple.com/inApps/v1/transactions/2000000999"
+                },
+            },
+            {
+                "description": "POST https://api.storekit.itunes.apple.com/inApps/v1/notifications/history",
+                "data": {"http.query": "paginationToken=SECRET-APPLE"},
+            },
+            {
+                "description": "GET https://api.storekit.itunes.apple.com/inApps/v2/history/2000000999"
+            },
+        ],
+        "breadcrumbs": {"values": [crumb]},
+    }
+    out = opts["before_send_transaction"](transaction, {})
+    dumped = json.dumps(out)
+    assert "SECRET" not in dumped and "2000000999" not in dumped
+    assert out["spans"][0]["description"].endswith("/tokens/[redacted]:acknowledge")
+    assert out["transaction"] == "/purchases/google"
+    event = {
+        "exception": {
+            "values": [{"value": f"ConnectError for {PLAY_URL}/productsv2/tokens/SECRET-X"}]
+        },
+        "message": "plain message",
+    }
+    out = opts["before_send"](event, {})
+    assert "SECRET" not in json.dumps(out) and out["message"] == "plain message"
+
+
+def test_sentry_end_to_end_transaction_and_breadcrumbs_carry_no_token() -> None:
+    """A real SDK client with the app's options and the auto-enabled httpx integration."""
+    import httpx
+    import sentry_sdk
+    from sentry_sdk.transport import Transport
+
+    import main
+
+    sent: list = []
+
+    class Capture(Transport):
+        def capture_envelope(self, envelope) -> None:
+            sent.append(envelope.serialize().decode("utf-8", "replace"))
+
+    opts = main._sentry_options("https://key@o0.ingest.sentry.io/0")
+    opts.update(traces_sample_rate=1.0, transport=Capture())
+    sentry_sdk.init(**opts)
+    try:
+        with sentry_sdk.isolation_scope():
+            http = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(404)))
+            with sentry_sdk.start_transaction(name="rtdn", op="test"):
+                http.get(f"{PLAY_URL}/productsv2/tokens/SECRET-E2E-TOKEN")
+                http.get(f"{PLAY_URL}/voidedpurchases", params={"token": "SECRET-PAGE"})
+                sentry_sdk.capture_message("after the store call")
+        sentry_sdk.flush()
+    finally:
+        sentry_sdk.get_client().close()
+        sentry_sdk.init()  # back to a non-recording client
+    payload = "\n".join(sent)
+    assert "productsv2/tokens/[redacted]" in payload  # the span / breadcrumb was there
+    assert "SECRET" not in payload
+
+
+# ---------------------------------------------------------------------------
+# Review fixes: event ordering (B2, S1), account token (S2), budgets (N3), partial refunds (N4)
+# ---------------------------------------------------------------------------
+
+
+async def test_pending_rtdn_racing_completion_keeps_epoch_so_the_grant_applies(client, gp) -> None:
+    """Review B2: PURCHASED arrives at Tc+2s while Play still says PENDING; the
+    client's later post (completion Tc) must still grant and acknowledge."""
+    session, token = sid(), tok()
+    tc = NOW() - timedelta(seconds=30)
+    gp.play.purchases[token] = play_purchase(state="PENDING")
+    note = developer_notification(one_time=(1, token), event_at=tc + timedelta(seconds=2))
+    assert post_rtdn(client, note).json() == {"status": "applied"}
+    pending = await row(token)
+    assert pending.state == "pending" and utc(pending.state_changed_at) == PENDING_EVENT_AT
+    gp.play.purchases[token] = play_purchase(completed=tc)
+    r = post_google(client, session, token)
+    assert r.status_code == 200 and r.json()["status"] == "owned"
+    assert jwt_games(client, session) == ["hearts"]
+    assert (await row(token)).acknowledged_at is not None
+
+
+async def test_replayed_far_future_purchased_cannot_block_a_later_void(client, gp) -> None:
+    """Review S1: a captured push token replayed with eventTimeMillis in 2036."""
+    tc = NOW() - timedelta(minutes=10)
+    session, token = grant(client, gp, completed=tc)
+    future = datetime(2036, 1, 1, tzinfo=timezone.utc)
+    replay = developer_notification(one_time=(1, token), event_at=future)
+    post_rtdn(client, replay)
+    assert utc((await row(token)).state_changed_at) < NOW()  # ordered by completion time
+    gp.play.purchases[token] = play_purchase(state="CANCELLED", completed=tc)
+    void = developer_notification(voided={"purchaseToken": token, "productType": 2})
+    assert post_rtdn(client, void).json() == {"status": "applied"}
+    assert jwt_games(client, session) == []
+
+
+async def test_far_future_event_time_is_clamped(client, gp) -> None:
+    _, token = grant(client, gp)
+    gp.play.purchases[token] = play_purchase(state="CANCELLED")
+    future = datetime(2036, 1, 1, tzinfo=timezone.utc)
+    note = developer_notification(
+        voided={"purchaseToken": token, "productType": 2}, event_at=future
+    )
+    assert post_rtdn(client, note).json() == {"status": "applied"}
+    changed = utc((await row(token)).state_changed_at)
+    assert changed <= NOW() + google_notifications.EVENT_TIME_LEEWAY
+    assert google_notifications.clamp_event_time(None, NOW()) is None
+
+
+@pytest.mark.parametrize("account", ["é" * 64, "ü" + "a" * 63, "g" * 64, "a" * 63, "a" * 65, "😀"])
+def test_malformed_account_token_is_403_never_500(client, gp, account) -> None:
+    """Review S2 (Codex): non-hex / non-ASCII obfuscatedExternalAccountId."""
+    token = tok()
+    gp.play.purchases[token] = play_purchase(account=account)
+    r = post_google(client, sid(), token, source="purchase")
+    assert r.status_code == 403 and r.json()["detail"] == "ownership_mismatch"
+
+
+def test_account_token_matches_rejects_non_hex_without_raising() -> None:
+    session = sid()
+    assert not google.account_token_matches(session, "é" * 64)
+    assert not google.account_token_matches(session, 123)  # type: ignore[arg-type]
+    assert google.account_token_matches(session, google.expected_account_token(session).upper())
+    v = to_verified("t", play_purchase(account="é" * 64), environments=frozenset({"production"}))
+    assert v.account_token is None
+
+
+def test_owned_without_completion_time_gets_the_weakest_time() -> None:
+    data = play_purchase()
+    del data["purchaseCompletionTime"]
+    v = to_verified("t", data, environments=frozenset({"production"}))
+    assert (v.state, v.event_at) == ("owned", PENDING_EVENT_AT)
+
+
+async def test_client_ack_is_bounded_and_left_to_the_sweep(client, gp, monkeypatch) -> None:
+    """Review N3: a hanging acknowledgement cannot hold the client's request."""
+    from purchases import router
+
+    async def hang(evidence):
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(router, "GOOGLE_ACK_BUDGET_S", 0.05)
+    monkeypatch.setattr(gp.verifier, "acknowledge", hang)
+    session, token = grant(client, gp)
+    assert jwt_games(client, session) == ["hearts"]
+    assert (await row(token)).acknowledged_at is None
+
+
+async def test_rtdn_ack_is_bounded(client, gp, monkeypatch) -> None:
+    async def hang(evidence):
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(google_notifications, "RTDN_ACK_BUDGET_S", 0.05)
+    monkeypatch.setattr(gp.verifier, "acknowledge", hang)
+    token = tok()
+    gp.play.purchases[token] = play_purchase()
+    assert post_rtdn(client, developer_notification(one_time=(1, token))).status_code == 200
+    assert (await row(token)).acknowledged_at is None
+
+
+async def test_partial_refunds_are_ignored_on_both_paths(client, gp) -> None:
+    """Review N4: a quantity-based partial refund voids nothing, via RTDN or the poll."""
+    session, token = grant(client, gp)
+    partial = {**voided_record(token, NOW()), "voidedQuantity": 1}
+    gp.play.voided_pages = [voided_page([partial])]
+    r = post_rtdn(client, developer_notification(voided={"purchaseToken": token, "productType": 2}))
+    assert r.json() == {"status": "unconfirmed"}
+    result = await poll_voided_purchases(gp.verifier, get_session_factory())
+    assert (result.fetched, result.applied) == (1, 0)
+    assert jwt_games(client, session) == ["hearts"]

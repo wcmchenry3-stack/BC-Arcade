@@ -63,6 +63,8 @@ _GOOGLE_ENVIRONMENTS: frozenset[str] = frozenset({"production", "test"})
 # Android applicationId rules: dot-separated segments, each starting with a letter.
 _PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# obfuscatedExternalAccountId as our client sets it: hex(SHA-256(X-Session-ID)) (IAP.md §4).
+ACCOUNT_TOKEN_RE = re.compile(r"\A[0-9a-fA-F]{64}\Z")
 
 HTTP_TIMEOUT_S = 15.0
 # Acknowledgement retries inside one call (IAP.md §7.3): 3 attempts in all.
@@ -428,7 +430,9 @@ def to_verified(
     state: PurchaseState
     event_at: datetime | None
     if raw_state == PURCHASED:
-        state, event_at = "owned", completed_at
+        # No completion time (never expected): the weakest time, so it can never
+        # out-order a real store event (a void) — see "Event ordering".
+        state, event_at = "owned", completed_at or PENDING_EVENT_AT
     elif raw_state == PENDING:
         state, event_at = "pending", PENDING_EVENT_AT
     elif raw_state == CANCELLED:
@@ -454,7 +458,11 @@ def to_verified(
         ownership_type="purchased",  # Play Family Library does not share in-app products
         state=state,
         purchased_at=completed_at,
-        account_token=account if isinstance(account, str) and account else None,
+        # Our client sends hex(SHA-256(session)); anything else is treated as
+        # absent (so a source=purchase post is 403 ownership_mismatch, never a 500).
+        account_token=(
+            account if isinstance(account, str) and ACCOUNT_TOKEN_RE.match(account) else None
+        ),
         revocation_reason="voided" if state == "revoked" else None,
         acknowledged=data.get("acknowledgementState") == ACKNOWLEDGED,
         event_at=event_at,

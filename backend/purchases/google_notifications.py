@@ -45,7 +45,7 @@ from typing import Any, Literal
 import httpx
 import jwt
 import sentry_sdk
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from db.models import Purchase
@@ -77,6 +77,12 @@ JWKS_TTL_S = 3_600.0
 # An unknown kid refetches the JWKS at most this often (Google rotates keys
 # rarely; this stops a flood of bogus kids from hammering Google).
 JWKS_MIN_REFRESH_S = 60.0
+# A failed fetch is retried at most this often, and while Google's JWKS is
+# unreachable the last good keys keep serving for this long past their TTL
+# (Google publishes each key well before use and keeps it for days after).
+JWKS_RETRY_BACKOFF_S = 60.0
+JWKS_STALE_GRACE_S = 24 * 3_600.0
+JWKS_FETCH_TIMEOUT_S = 5.0
 CLOCK_LEEWAY_S = 30
 
 
@@ -90,11 +96,12 @@ class GoogleJwks:
         url: str = GOOGLE_JWKS_URL,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        self._client = httpx.AsyncClient(transport=transport, timeout=10.0)
+        self._client = httpx.AsyncClient(transport=transport, timeout=JWKS_FETCH_TIMEOUT_S)
         self._url = url
         self._clock = clock
         self._keys: dict[str, Any] = {}
         self._fetched_at: float | None = None
+        self._failed_at: float | None = None
         self._lock = asyncio.Lock()
 
     async def _refresh(self) -> None:
@@ -124,13 +131,33 @@ class GoogleJwks:
         self._fetched_at = self._clock()
 
     async def key(self, kid: str) -> Any | None:
+        """The key for ``kid``, or None. 503 only when no usable keys exist at all.
+
+        Refetches when the cache is past its TTL, or for an unknown ``kid``
+        at most every ``JWKS_MIN_REFRESH_S``. A failed fetch is not retried
+        for ``JWKS_RETRY_BACKOFF_S`` (so an outage does not make every
+        request, junk tokens included, wait on Google under the lock), and
+        the previous keys keep serving for ``JWKS_STALE_GRACE_S`` past the TTL.
+        """
         async with self._lock:
             now = self._clock()
             age = None if self._fetched_at is None else now - self._fetched_at
             expired = age is None or age >= JWKS_TTL_S
             unknown_kid = age is not None and kid not in self._keys and age >= JWKS_MIN_REFRESH_S
-            if expired or unknown_kid:
-                await self._refresh()
+            backing_off = (
+                self._failed_at is not None and now - self._failed_at < JWKS_RETRY_BACKOFF_S
+            )
+            if (expired or unknown_kid) and not backing_off:
+                try:
+                    await self._refresh()
+                    self._failed_at = None
+                except PurchaseError:
+                    self._failed_at = now
+            usable = self._fetched_at is not None and (
+                now - self._fetched_at < JWKS_TTL_S + JWKS_STALE_GRACE_S
+            )
+            if not usable:
+                raise PurchaseError(503, "store_unavailable")
             return self._keys.get(kid)
 
 
@@ -297,6 +324,27 @@ def parse_push(body: bytes) -> tuple[str, dict[str, Any]]:
     return message_id, note
 
 
+# A notification's eventTimeMillis comes from the (authenticated but not
+# body-bound) push; it may not claim a time further ahead than this.
+EVENT_TIME_LEEWAY = timedelta(minutes=2)
+# Most time an RTDN push spends acknowledging (the subscription's ack deadline
+# should be 60 s, IAP.md §7.6).
+RTDN_ACK_BUDGET_S = 20.0
+
+
+def clamp_event_time(event_at: datetime | None, now: datetime) -> datetime | None:
+    """``min(event_at, now + EVENT_TIME_LEEWAY)`` — a replayed far-future time cannot pin the watermark."""
+    if event_at is None:
+        return None
+    return min(event_at, now + EVENT_TIME_LEEWAY)
+
+
+def is_partial_refund(record: dict[str, Any]) -> bool:
+    """A quantity-based partial refund (``voidedQuantity`` set): our products are quantity 1, so
+    it cannot void one of them; ignored on both the RTDN and the poll path."""
+    return record.get("voidedQuantity") is not None
+
+
 def _token(value: object) -> str | None:
     if isinstance(value, str) and 0 < len(value) <= MAX_PURCHASE_TOKEN_CHARS:
         return value
@@ -331,10 +379,15 @@ async def _acknowledge_if_needed(
         if row is None or row.state != "owned" or row.acknowledged_at is not None:
             return
         try:
-            await verifier.acknowledge(
-                GoogleEvidence(product_id=row.product_id, purchase_token=token)
+            # Bounded so the push is answered well inside the subscription's
+            # ack deadline; the sweep finishes anything left.
+            await asyncio.wait_for(
+                verifier.acknowledge(
+                    GoogleEvidence(product_id=row.product_id, purchase_token=token)
+                ),
+                timeout=RTDN_ACK_BUDGET_S,
             )
-        except PurchaseError:
+        except (PurchaseError, TimeoutError):
             # Persisted; the sweep retries inside the 3-day window.
             _log.warning(json.dumps({"event": "purchase_ack_failed", "platform": "google"}))
             return
@@ -348,7 +401,13 @@ async def _apply(
     dedupe_key: str,
     event_at: datetime | None,
 ) -> bool:
-    """Apply a re-read store state to a known purchase, or record an unknown one (unlinked)."""
+    """Apply a re-read store state to a known purchase, or record an unknown one (unlinked).
+
+    ``event_at`` None means the store read's own time (``verified.event_at``:
+    completion time for owned, the epoch for pending), else the request time.
+    """
+    if event_at is None:
+        event_at = verified.event_at
     async with session_factory() as db:
         if verified.state != "pending" and await service.purchase_exists(
             db, "google", verified.store_key
@@ -380,7 +439,11 @@ async def find_voided(
             start_ms=int(start.timestamp() * 1000), page_token=page_token
         )
         for record in page.get("voidedPurchases") or []:
-            if isinstance(record, dict) and record.get("purchaseToken") == token:
+            if (
+                isinstance(record, dict)
+                and record.get("purchaseToken") == token
+                and not is_partial_refund(record)
+            ):
                 return record
         page_token = (page.get("tokenPagination") or {}).get("nextPageToken")
         if not page_token:
@@ -408,9 +471,13 @@ async def _one_time(
     if kind == "canceled" and verified.state not in announced:
         # Play does not (yet) say what the notification claims: apply nothing.
         return kind, "unconfirmed"
-    # The notification's time orders the state it announced; any other state
-    # Play reports now is ordered by the verifier's own time.
-    at = event_at if verified.state in announced else None
+    # For PURCHASED the notification's time is never used (#2787 review B2,
+    # S1): an owned answer is ordered by Play's own purchaseCompletionTime and a
+    # pending one keeps the epoch, so neither a notification that raced a
+    # completing payment nor a replayed far-future eventTimeMillis can move the
+    # watermark past a later real event. A terminal state Play confirms for a
+    # CANCELED notification uses its (clamped) event time.
+    at = event_at if kind == "canceled" else None
     changed = await _apply(session_factory, verified, dedupe_key=dedupe_key, event_at=at)
     if kind == "purchased":
         # Delivered even if no client ever reports: meets the 3-day deadline.
@@ -482,7 +549,8 @@ async def handle_developer_notification(
     if isinstance(note.get("testNotification"), dict):
         _log_event("google_notification", kind="test", outcome="test", id=message_id)
         return "test"
-    event_at = parse_millis(note.get("eventTimeMillis"))
+    now = now or datetime.now(timezone.utc)
+    event_at = clamp_event_time(parse_millis(note.get("eventTimeMillis")), now)
     otp = note.get("oneTimeProductNotification")
     voided = note.get("voidedPurchaseNotification")
     if isinstance(otp, dict):
@@ -497,7 +565,7 @@ async def handle_developer_notification(
             dedupe_key=dedupe_key,
             event_at=event_at,
             session_factory=session_factory,
-            now=now or datetime.now(timezone.utc),
+            now=now,
         )
     else:
         # Subscription notifications and future types: acknowledge, do nothing.
@@ -535,7 +603,7 @@ async def _apply_voided_record(
     verifier: PlayVerifier, record: dict[str, Any], session_factory: Callable[[], AsyncSession]
 ) -> bool:
     token = _token(record.get("purchaseToken"))
-    if token is None:
+    if token is None or is_partial_refund(record):
         return False
     voided_at = parse_millis(record.get("voidedTimeMillis"))
     dedupe_key = _voided_dedupe_key(token, record.get("voidedTimeMillis"))
@@ -642,10 +710,6 @@ class AckSweepResult:
     failed: int = 0
 
 
-def _utc(dt: datetime) -> datetime:
-    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
-
-
 async def acknowledge_sweep(
     verifier: PlayVerifier | None,
     session_factory: Callable[[], AsyncSession],
@@ -664,25 +728,22 @@ async def acknowledge_sweep(
     if verifier is None:
         return None
     cutoff = (now or datetime.now(timezone.utc)) - max_age
+    # When the 3-day clock started: completion, else when we first recorded it.
+    started = func.coalesce(Purchase.purchased_at, Purchase.created_at)
     async with session_factory() as db:
-        rows = (
+        due = (
             await db.execute(
-                select(
-                    Purchase.id,
-                    Purchase.product_id,
-                    Purchase.store_key,
-                    Purchase.purchased_at,
-                    Purchase.created_at,
-                )
+                select(Purchase.id, Purchase.product_id, Purchase.store_key)
                 .where(
                     Purchase.platform == "google",
                     Purchase.state == "owned",
                     Purchase.acknowledged_at.is_(None),
+                    started >= cutoff,
                 )
-                .order_by(Purchase.created_at)
+                .order_by(started)
+                .limit(limit)
             )
         ).all()
-    due = [r for r in rows if _utc(r.purchased_at or r.created_at) >= cutoff][:limit]
     result = AckSweepResult(candidates=len(due))
     for row in due:
         evidence = GoogleEvidence(product_id=row.product_id, purchase_token=row.store_key)

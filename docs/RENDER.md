@@ -66,7 +66,7 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | required with the package name: the Play API service-account key JSON | ← (same account is fine; the key is per service)             | Dashboard secret    |
 | `GOOGLE_RTDN_AUDIENCE`     | required with the package name: `https://games-api.buffingchi.com/purchases/google/notifications` | `https://dev-games-api.buffingchi.com/purchases/google/notifications` | Dashboard |
 | `GOOGLE_RTDN_PUSH_SA`      | required with the package name: the Pub/Sub push service-account email | ← (its own push subscription)                                   | Dashboard           |
-| `GOOGLE_PLAY_ENVIRONMENTS` | optional; default `production,test`                            | optional                                                                | Dashboard           |
+| `GOOGLE_PLAY_ENVIRONMENTS` | **set `production`** (the default `production,test` lets licence testers unlock for free) | leave the default `production,test`                   | Dashboard           |
 
 The `APPLE_*` variables are **unset by default**: Apple verification stays
 dormant and `POST /purchases/apple` and `POST /purchases/apple/notifications`

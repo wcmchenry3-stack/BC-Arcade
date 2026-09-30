@@ -44,6 +44,11 @@ from stats.router import router as stats_router
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 _audit_log = logging.getLogger("audit")
+# httpx logs every request URL at INFO ("HTTP Request: GET .../tokens/<token>").
+# Store API URLs carry credentials in the path (Google purchaseToken, Apple
+# transaction IDs), so the HTTP client loggers only speak up for warnings (#2787).
+for _http_logger in ("httpx", "httpcore"):
+    logging.getLogger(_http_logger).setLevel(logging.WARNING)
 
 # ---------------------------------------------------------------------------
 # Sentry — no-op when SENTRY_DSN is unset (local dev)
@@ -102,7 +107,51 @@ def _sentry_before_send(event: dict, hint: dict) -> dict:
                 logentry[key] = _strip_sql(logentry[key])
     if isinstance(event.get("message"), str):
         event["message"] = _strip_sql(event["message"])
-    return event
+    return _redact_store_ids(event)
+
+
+# Store API URLs carry credentials in their path or query: Google Play
+# `.../purchases/productsv2/tokens/<purchaseToken>` and `.../products/<id>/tokens/<token>:acknowledge`,
+# Apple `/inApps/v1/transactions/<transactionId>` and `/inApps/v1/history/<id>`,
+# and pagination tokens (`?paginationToken=` for Apple notification history,
+# `?token=` for Google voided purchases). The SDK's HTTP integrations (httpx,
+# stdlib http.client) put full URLs into span descriptions and data and into
+# breadcrumbs, which no key denylist catches — so every string in those is
+# rewritten (#2787 security review B1). `before_send` does not run on
+# transactions, hence the separate transaction and breadcrumb hooks.
+_STORE_ID_PATTERNS = (
+    (re.compile(r"(/tokens/)[^/?#:\s\"']+"), r"\1[redacted]"),
+    (re.compile(r"(/transactions/)[^/?#\s\"']+"), r"\1[redacted]"),
+    (re.compile(r"(/history/)[^/?#\s\"']+"), r"\1[redacted]"),
+    (re.compile(r"((?:[?&]|^)(?:paginationToken|token)=)[^&#\s\"']+"), r"\1[redacted]"),
+)
+
+
+def _redact_text(text: str) -> str:
+    for pattern, replacement in _STORE_ID_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _redact_store_ids(value):
+    """Recursively redact store IDs in every string of a dict / list structure."""
+    if isinstance(value, str):
+        return _redact_text(value)
+    if isinstance(value, dict):
+        return {k: _redact_store_ids(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_store_ids(v) for v in value]
+    return value
+
+
+def _sentry_before_send_transaction(event: dict, hint: dict) -> dict:
+    """Redact store IDs from a performance transaction (span descriptions, span data, breadcrumbs)."""
+    return _redact_store_ids(event)
+
+
+def _sentry_before_breadcrumb(crumb: dict, hint: dict) -> dict:
+    """Redact store IDs from a breadcrumb (HTTP client breadcrumbs carry the full URL)."""
+    return _redact_store_ids(crumb)
 
 
 def _sentry_options(dsn: str) -> dict:
@@ -131,6 +180,12 @@ def _sentry_options(dsn: str) -> dict:
             denylist=DEFAULT_DENYLIST + SENTRY_SCRUBBED_KEYS, recursive=True
         ),
         "before_send": _sentry_before_send,
+        # Hooks rather than disabling the HTTP integrations: they cover httpx
+        # (Google Play, the Apple API client) and stdlib http.client alike,
+        # including any client added later, and keep outbound-call spans for
+        # latency debugging.
+        "before_send_transaction": _sentry_before_send_transaction,
+        "before_breadcrumb": _sentry_before_breadcrumb,
     }
 
 

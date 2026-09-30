@@ -27,6 +27,7 @@ configured or the Play API is down (Pub/Sub retries).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -74,6 +75,9 @@ APPLE_NOTIFICATION_IP_RATE_LIMIT = "300/minute"
 # Pub/Sub pushes from Google's ranges; a 429 loses nothing (Pub/Sub retries,
 # and the daily voided-purchases poll backfills revocations).
 GOOGLE_NOTIFICATION_IP_RATE_LIMIT = "300/minute"
+# Most time POST /purchases/google spends acknowledging after the grant is
+# committed (#2787 review N3); past it the acknowledgement sweep takes over.
+GOOGLE_ACK_BUDGET_S = 8.0
 
 
 class _InvalidRequestRoute(APIRoute):
@@ -147,8 +151,12 @@ async def _complete(
         )
         if result.needs_acknowledgement and google_verifier and google_evidence:
             try:
-                await google_verifier.acknowledge(google_evidence)
-            except PurchaseError:
+                # Bounded: retries and timeouts must not hold the client's
+                # request for ~50 s; the sweep finishes anything left.
+                await asyncio.wait_for(
+                    google_verifier.acknowledge(google_evidence), timeout=GOOGLE_ACK_BUDGET_S
+                )
+            except (PurchaseError, TimeoutError):
                 # The grant is persisted; the unacknowledged-purchase sweep
                 # (#2787) retries within Google's 3-day window.
                 _log.warning('{"event": "purchase_ack_failed", "platform": "google"}')

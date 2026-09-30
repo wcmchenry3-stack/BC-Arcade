@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 from typing import Any
 
 from .verifiers import GoogleVerifier, NotConfiguredGoogleVerifier
@@ -30,10 +31,21 @@ def expected_account_token(session_id: str) -> str:
     return hashlib.sha256(session_id.encode("utf-8")).hexdigest()
 
 
+_HEX64 = re.compile(r"\A[0-9a-fA-F]{64}\Z")
+
+
 def account_token_matches(session_id: str, token: str | None) -> bool:
-    if not token:
+    """True when ``token`` is this session's obfuscatedAccountId (hex, case-insensitive).
+
+    Anything that is not exactly 64 hex characters is a mismatch — never an
+    exception (``hmac.compare_digest`` raises on non-ASCII ``str``) — and the
+    comparison is on bytes.
+    """
+    if not isinstance(token, str) or not _HEX64.match(token):
         return False
-    return hmac.compare_digest(token.lower(), expected_account_token(session_id))
+    return hmac.compare_digest(
+        token.lower().encode("ascii"), expected_account_token(session_id).encode("ascii")
+    )
 
 
 _NOT_CONFIGURED = NotConfiguredGoogleVerifier()

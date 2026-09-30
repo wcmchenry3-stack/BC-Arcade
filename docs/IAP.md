@@ -732,8 +732,14 @@ state (never granted, and `owned` never regresses to it), so it never
 out-orders a real event, and a completion is never refused because our clock
 ran ahead of Google's. A `revoked` / `cancelled` answer carries no void time,
 so it uses the request's start (§8.4 default); a cancelled token never
-becomes owned again, so "now" never hides a real event. Notifications and the
-poll pass the store's event time (below).
+becomes owned again, so "now" never hides a real event. An `owned` answer
+with no completion time (not expected) also gets the epoch. Notifications
+never override the owned or pending time (below): a `PURCHASED` notification
+that raced a completing payment cannot push a pending purchase's watermark
+past the completion (so the client's post still grants), and a replayed
+far-future `eventTimeMillis` cannot pin the watermark (security review B2,
+S1). Where a notification's time is used (a `CANCELED` Play confirms, a
+void), it is clamped to at most now + 2 minutes.
 
 **Acknowledgement** (§7.3). After `process_verified_purchase` has committed
 an `owned` purchase, the route calls `purchases.products.acknowledge` in the
@@ -745,7 +751,10 @@ safe; anything else is `422` and the grant stands. If acknowledgement still
 fails, the grant stands, `acknowledged_at` stays null and the **sweep**
 retries: `acknowledge_sweep()` acknowledges every `owned` Google purchase
 with a null `acknowledged_at` whose completion (or first record) is within
-4 days (Google's 3-day window plus a day of slack), up to 500 a run. It also
+4 days (Google's 3-day window plus a day of slack), up to 500 a run (the
+cutoff and limit are in the SQL query). The in-request acknowledgement is
+capped at 8 s in all (`GOOGLE_ACK_BUDGET_S`), so retries and timeouts never
+hold the client's request for long; past it the sweep takes over. It also
 covers purchases whose link was refused (`403`/`409`) and RTDN-recorded
 purchases. Nothing is ever consumed.
 
@@ -758,13 +767,15 @@ purchases. Nothing is ever consumed.
    `HS256` keyed with the public key, and ES/PS variants are refused), a
    `kid` found in Google's JWKS (`https://www.googleapis.com/oauth2/v3/certs`,
    RSA keys only, cached an hour; an unknown `kid` refetches at most once a
-   minute), a valid signature, `iss` `https://accounts.google.com` (or
+   minute; a failed fetch is retried at most once a minute, and the last good
+   keys keep serving for up to 24 h past their TTL while Google is
+   unreachable), a valid signature, `iss` `https://accounts.google.com` (or
    `accounts.google.com`), `aud` equal to `GOOGLE_RTDN_AUDIENCE`, `exp` and
    `iat` present and current (30 s leeway), and `email` equal to
    `GOOGLE_RTDN_PUSH_SA` with `email_verified: true`. Any failure is `401`
    (`403 forbidden` for a valid token from another service account). If the
-   JWKS cannot be fetched the answer is `503` (Pub/Sub retries). It fails
-   closed.
+   JWKS cannot be fetched and no usable keys are cached, the answer is `503`
+   (Pub/Sub retries). It fails closed.
 2. Only then is the envelope parsed: `message.messageId` and base64
    `message.data` holding a `DeveloperNotification`. A malformed envelope is
    `400 invalid_request`.
@@ -783,15 +794,22 @@ purchases. Nothing is ever consumed.
      (`cancelled` for a never-completed purchase, `revoked` for a completed
      one); otherwise `200 {"status": "unconfirmed"}` and nothing changes.
    - `voidedPurchaseNotification` (one-time products; quantity-based partial
-     refunds ignored) → revoke only when confirmed: Play's purchase read
+     refunds — `refundType` 2, or a voided record with `voidedQuantity` — are
+     ignored here and in the poll alike: our products are quantity 1) →
+     revoke only when confirmed: Play's purchase read
      says `CANCELLED`, or the token is listed by `voidedpurchases.list` from
      an hour before the event (the purchase read can lag a refund). A known
      purchase is revoked with `apply_store_state`; an unknown one is
      recorded revoked (unlinked), so a later client post cannot grant it.
-     Not confirmed → `unconfirmed`, and the daily poll picks it up.
-   The state Play reports is applied with `event_at = eventTimeMillis` when
-   it is the state the notification announced (otherwise the store read's own
-   time), `dedupe_key = pubsub:<messageId>`, and, for known purchases,
+     Not confirmed → **`200 {"status": "unconfirmed"}`**, so Pub/Sub does
+     not retry; nothing is applied, and the daily voided poll (48 h window,
+     at startup and every 24 h) revokes it once `voidedpurchases.list`
+     lists it.
+   The state Play reports is applied with, as its event time: for
+   `PURCHASED`, the store read's own time (completion time for owned, the
+   epoch for pending, the request time for a terminal state), never the
+   notification's; for `CANCELED` and voids, `eventTimeMillis` clamped to now
+   + 2 min. Also `dedupe_key = pubsub:<messageId>`, and, for known purchases,
    `apply_store_state(..., environment=<Play's environment for the token>)`,
    so the environment-mismatch guard applies exactly as for Apple.
 5. Responses: `200 {"status": "applied" | "unchanged" | "ignored" | "test" |
@@ -803,7 +821,14 @@ purchases. Nothing is ever consumed.
    per IP.
 6. Logs carry the notification kind, outcome and Pub/Sub `messageId` only;
    rejections log status and code only. Never a token, an order ID, a body
-   or the bearer token. Sentry never receives bodies; `authorization`
+   or the bearer token. The `httpx` / `httpcore` loggers are held at
+   `WARNING` app-wide, because httpx logs every request URL at `INFO` and the
+   Play URLs carry the purchase token in their path (the Apple API URLs
+   carry transaction IDs). Sentry's `before_send`, `before_send_transaction`
+   and `before_breadcrumb` hooks rewrite `/tokens/<…>`, `/transactions/<…>`,
+   `/history/<…>` and `token=` / `paginationToken=` query values to
+   `[redacted]` in every event, span and breadcrumb string, which covers the
+   URLs the SDK's HTTP integrations record. Sentry never receives bodies; `authorization`
    (SDK default), `purchaseToken`, `purchase_token`,
    `obfuscatedExternalAccountId`, `account_token`, `orderId` and the
    service-account key names are on the scrub list (`backend/main.py`).
@@ -814,7 +839,9 @@ TLS endpoint) could replay it with another body within that hour; because
 every notification is re-read from Play, the most they can cause is extra
 Play reads and acknowledgements of genuine purchases, or using up a Pub/Sub
 message ID early (the state it would have applied is re-read on the next
-notification or poll anyway).
+notification or poll anyway). A replayed body cannot move the ordering
+watermark into the future either: `PURCHASED` never uses the notification's
+time, and other event times are clamped to now + 2 minutes.
 
 **Voided-purchases poll.** `poll_voided_purchases()` lists
 `voidedpurchases.list` for the last 48 h (`startTime`/`endTime`, clamped to
@@ -888,8 +915,12 @@ then delete the old key in Cloud Console; the old key works until deleted.
      on a separate topic/subscription);
    - **Enable authentication**, service account = the push account from
      step 2, **audience** = the endpoint URL above (set it explicitly);
-   - acknowledgement deadline 60 s; retry with exponential backoff;
-     optionally a dead-letter topic.
+   - **raise the acknowledgement deadline to 60 s** (the default is 10 s):
+     one push can re-read the purchase, look it up in the voided list and
+     acknowledge it (acknowledgement capped at 20 s), which can take longer
+     than 10 s on a slow Play API; a push not answered in time is simply
+     redelivered (deduplicated). Retry with exponential backoff; optionally
+     a dead-letter topic.
 4. Set `GOOGLE_RTDN_AUDIENCE` to that audience and `GOOGLE_RTDN_PUSH_SA` to
    the push account's email on the matching Render service.
 5. Play Console → Monetize with Play → Monetization setup → Real-time
@@ -904,8 +935,11 @@ backend used for purchase testing (§17 Q6) and rely on the voided poll and
 the sweep on the other.
 
 **Environments.** `GOOGLE_PLAY_ENVIRONMENTS` (default `production,test`)
-decides which purchases are accepted; drop `test` to refuse licence-tester
-purchases (§17 Q5). Every row stores its environment.
+decides which purchases are accepted. **Recommended: set it to `production`
+on the production backend**, or every licence tester unlocks premium games
+there for free; keep `production,test` on the dev / purchase-testing backend
+(§17 Q5). The code default stays `production,test`. Every row stores its
+environment.
 
 **Delete My Data (§8.5).** Store-agnostic and verified for Google
 (`tests/test_google_iap.py`): `DELETE /me` removes the install's
@@ -1740,7 +1774,7 @@ Sentry (SECURITY.md §13).
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`                         | **Required** with the package name. The service-account key file's whole JSON (one line is fine). Its `token_uri` must be Google's. |
 | `GOOGLE_RTDN_AUDIENCE`                                     | **Required** with the package name. The OIDC audience set on the Pub/Sub push subscription: the endpoint URL, e.g. `https://games-api.buffingchi.com/purchases/google/notifications`. |
 | `GOOGLE_RTDN_PUSH_SA`                                      | **Required** with the package name. Email of the service account the push subscription authenticates as (not the Play API account). |
-| `GOOGLE_PLAY_ENVIRONMENTS`                                 | Optional. Allowed Google environments, `production,test` (default). Drop `test` to refuse licence-tester purchases. |
+| `GOOGLE_PLAY_ENVIRONMENTS`                                 | Optional. Allowed Google environments, `production,test` (default). **Set `production` on the production backend** so licence testers do not unlock for free there; keep `production,test` on dev. |
 
 With `GOOGLE_PLAY_PACKAGE_NAME` set, a missing or invalid one of the other
 three required variables leaves Google dormant and is reported to Sentry by
