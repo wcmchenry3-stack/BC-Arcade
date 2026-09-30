@@ -286,6 +286,27 @@ async def test_service_validates_and_returns_the_stored_block() -> None:
     assert stored["scorecard_reconciled"] is False  # 50 is not 345
 
 
+async def test_service_reconciles_the_card_against_the_body_final_score() -> None:
+    from games import service
+
+    result = _result(final_score=_FULL_TOTAL, scorecard=_card(_FULL, upper_bonus=35))
+    ok = await service._validate_result(
+        None, None, result, "yacht", module, _FULL_TOTAL  # type: ignore[arg-type]
+    )
+    assert ok["scorecard_reconciled"] is True
+    # The row scores 999: the card explains the result's copy, not the row.
+    bad = await service._validate_result(
+        None, None, result, "yacht", module, 999  # type: ignore[arg-type]
+    )
+    assert bad["scorecard_reconciled"] is False
+    assert bad["scorecard"]["categories"] == _FULL
+    # An abandon has no body score: the result's own copy is used.
+    none = await service._validate_result(
+        None, None, result, "yacht", module, None  # type: ignore[arg-type]
+    )
+    assert none["scorecard_reconciled"] is True
+
+
 async def test_service_completes_with_a_bad_card_dropped_and_rejects_only_oversize(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

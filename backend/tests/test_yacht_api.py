@@ -348,6 +348,18 @@ async def test_abandoned_partial_card_is_saved(client: TestClient) -> None:
     assert meta["scorecard_reconciled"] is True
 
 
+async def test_card_is_reconciled_against_the_stored_final_score(client: TestClient) -> None:
+    sid = _sid()
+    game_id = _create(client, sid, SOLO).json()["id"]
+    # The card and the result's copy agree with each other, not with the row.
+    result = {"final_score": _CARD_TOTAL, "outcome": "completed", "scorecard": _CARD}
+    assert _complete(client, sid, game_id, result, score=999).status_code == 200
+    row = await _row(game_id)
+    assert row.final_score == 999
+    assert row.game_metadata["scorecard"] == _CARD
+    assert row.game_metadata["scorecard_reconciled"] is False
+
+
 async def test_completion_retry_is_idempotent(client: TestClient) -> None:
     """An offline retry re-sends the same PATCH; the card is stored once, unchanged."""
     sid = _sid()
