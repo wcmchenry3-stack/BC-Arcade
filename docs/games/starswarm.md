@@ -482,6 +482,65 @@ autopilot dodges shots aimed at Buddy (they are ordinary enemy shots), and Buddy
 never hazards to the player. `clearTransientCombat` removes every Buddy and every shot either side
 fired, and `saveShape` persists Buddy's full state.
 
+### Balance simulation (#2880)
+
+`frontend/src/game/starswarm/sim/` is a seeded, headless balance harness for Buddy. It drives the
+real `tick()` with an autoplayed player and launches Buddy through `applyPowerUp(s, "buddy")`.
+Nothing in the engine is instrumented. Every metric comes from diffing consecutive states:
+which enemy shot vanished on Buddy's hull, which ship a Buddy shot newly pierced, and which of
+Buddy's attack runs fired it. The attribution is checked against Buddy's real HP loss
+(`Attr. misses`: a shot fired and landed within one tick is invisible to diffing, which is rare).
+
+- **Scenarios.** `boss-exposed`: wave 5, launched the tick the last Guardian dies.
+  `boss-start`: wave 5, launched as combat starts. `normal-start`: wave 3, launched as combat
+  starts, against the full 45-ship fleet. `normal-mid`: wave 3, launched once a seeded 15–75% of
+  the wave is dead. `normal-exposed`: wave 3, launched at Carrier exposure.
+- **Pilots.** `autoplay`: a fallible player. It sweeps under its target and fires. It dodges
+  shots, rocks, beams, beam telegraphs and divers over a 720 ms lookahead, but notices only 85%
+  of hazards and re-plans every 120 ms at 0.45 px/ms. It has Guns L2, and its lives are topped up
+  so it always finishes the fight. `invincible`: the same player, never hurt. `duel`: invincible,
+  and it stops firing at launch, so whatever dies, Buddy killed. It measures Buddy vs the
+  Carrier, and whether one sortie can clear a wave alone.
+- **Pairing.** Each seed plays to the launch point once. It then forks the exact state and
+  engine counters into a with-Buddy branch and a without-Buddy branch, so the Carrier's
+  time-to-kill is compared on the same seed. Seeds are hashed (`cellSeed`, `_shared/simRandom`),
+  because the engine's LCG makes neighbouring seeds nearly identical. The same index gives the
+  same seed in every cell and variant.
+- **House rules.** Pickups are removed as they spawn, so no stray Bomb or Shield skews a sortie.
+- **Overrides.** `sim/engineVariant.ts` builds a private copy of `engine.ts` with named constants
+  (or exact code snippets) rewritten, for sweeps and behaviour prototypes. The shipped engine is
+  never modified. An anchor that no longer matches throws, and the smoke test re-applies every
+  preset. The variants and presets are in `sim/presets.ts`.
+
+The files follow the Hearts sim layout, and are ready for a regression gate (#2884):
+
+| File                            | Role                                                                                                                                                    |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sim/balance.ts`                | Pure and deterministic, with no output. `runCell` / `measureCell(engine, {scenario, difficulty, pilot, variant, seeds})` returns a plain `CellSummary`. |
+| `sim/presets.ts`                | The variants, `engineFor`, and the presets: `fast`, `baseline`, `offense`, `sensitivity`, `candidates`, `proposal`.                                     |
+| `sim/report.ts`                 | Markdown tables built from `CellSummary`.                                                                                                               |
+| `scripts/simulate-starswarm.ts` | The CLI.                                                                                                                                                |
+
+The `fast` preset (3 seeds, two cells) is the jest smoke test in
+`sim/__tests__/balance.test.ts`, which runs with `npx jest src/game/starswarm` in about 15 s. The
+full runs use the CLI:
+
+```bash
+# from the repo root
+npx tsx scripts/simulate-starswarm.ts --preset baseline --jobs 4 --md /tmp/base.md --json /tmp/base.json
+npx tsx scripts/simulate-starswarm.ts --preset offense --jobs 4       # fan / pierce / damage, 3 runs fixed
+npx tsx scripts/simulate-starswarm.ts --preset sensitivity --jobs 4   # one-at-a-time sweeps
+npx tsx scripts/simulate-starswarm.ts --preset candidates --jobs 4    # survivability combos on the offense core
+npx tsx scripts/simulate-starswarm.ts --preset proposal --jobs 4      # base vs the proposal, same seeds
+# filters: --seeds 200 --seed-base 0 --diffs Captain,Ensign --scenarios boss-exposed
+#          --pilots autoplay,duel --variants base,hp8
+npx tsx scripts/simulate-starswarm.ts --merge /tmp/a.json,/tmp/b.json --md /tmp/all.md
+```
+
+A boss-wave seed takes about 0.2 s. An ordinary-wave seed takes 0.3–1.5 s, because the pilot has
+to play the wave down to the launch point. The whole baseline is roughly 1 CPU-hour, which is why
+`--jobs` forks shard processes.
+
 ## In-Run Ship Upgrades (#2488)
 
 Two ladders that live and die with the run. Nothing persists between runs and nothing is sold, so
@@ -882,6 +941,7 @@ cached JWT is the client's navigation/offline cache. See
 
 The broad game contract is documented above, including all of the #2776 epic. Buddy's tuning
 numbers (`BUDDY_HP`, `BUDDY_TARGETING`, `BUDDY_NOTICE`) are starting values; set them from
-survival-time data (`runStats.buddyLost` against `buddyLaunched`, and `buddyShotsDrawn`).
+survival-time data (`runStats.buddyLost` against `buddyLaunched`, and `buddyShotsDrawn`) and the
+[balance simulation](#balance-simulation-2880) (#2880).
 
 Other active bugs/tuning work belongs in GitHub rather than a duplicated Known Issues list.
