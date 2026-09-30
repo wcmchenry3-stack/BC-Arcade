@@ -37,6 +37,10 @@ services:
       # number counts (#851).
       - key: ENVIRONMENT
         value: production
+      # Client IP for per-IP rate limits: trust CF-Connecting-IP, else the
+      # X-Forwarded-For entry Render's proxy appended (#2863, RENDER.md).
+      - key: TRUSTED_PROXY_MODE
+        value: cloudflare
       # Supabase session pooler (*.pooler.supabase.com, port 5432 — never the
       # transaction pooler on 6543, never the Render dev DB). The URL carries
       # the DB password: dashboard secret only, never committed.
@@ -115,6 +119,10 @@ services:
         value: "https://dev-games.buffingchi.com,https://dev-games-api.buffingchi.com"
       - key: ENVIRONMENT
         value: development
+      # Client IP for per-IP rate limits: trust CF-Connecting-IP, else the
+      # X-Forwarded-For entry Render's proxy appended (#2863, RENDER.md).
+      - key: TRUSTED_PROXY_MODE
+        value: cloudflare
       # Render Postgres `bc-arcade-db` (dev only).
       - key: DATABASE_URL
         sync: false
