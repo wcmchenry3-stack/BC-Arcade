@@ -12,7 +12,7 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { PurchaseProvider } from "../../purchases/PurchaseProvider";
 import { createFakePurchaseAdapter, fakeProducts } from "../../purchases/fakeAdapter";
 import type { FakePurchaseAdapter, FakePurchaseConfig } from "../../purchases/fakeAdapter";
-import { SUPPORT_URL } from "../../config/legal";
+import { PRIVACY_POLICY_URL, SUPPORT_URL, TERMS_OF_SERVICE_URL } from "../../config/legal";
 
 const mockNavigate = jest.fn();
 const mockGoBack = jest.fn();
@@ -103,6 +103,18 @@ describe("PaywallScreen content", () => {
     expect(screen.getByText(/Unlimited replay/)).toBeTruthy();
     expect(screen.getByTestId("paywall-terms")).toBeTruthy();
     expect(screen.getByTestId("paywall-privacy")).toBeTruthy();
+  });
+
+  it("Terms and Privacy links open the hosted legal pages with localized labels", async () => {
+    await renderPaywall();
+    const terms = screen.getByTestId("paywall-terms");
+    const privacy = screen.getByTestId("paywall-privacy");
+    expect(terms).toHaveTextContent("Terms of Service");
+    expect(privacy).toHaveTextContent("Privacy Policy");
+    await fireEvent.press(terms);
+    expect(Linking.openURL).toHaveBeenCalledWith(TERMS_OF_SERVICE_URL);
+    await fireEvent.press(privacy);
+    expect(Linking.openURL).toHaveBeenCalledWith(PRIVACY_POLICY_URL);
   });
 
   it("displays the localized price from the store, never a hardcoded one", async () => {
