@@ -59,7 +59,6 @@
   "betting.tapToAdd": "הקש צ'יפס להימור",
   "chip.addLabel": "הוסף {{amount}} להימור",
   "chip.disabledLabel": "צ'יפ {{amount}} אינו זמין",
-  "chip.vipCredits": "VIP",
   "rules.title": "חוקי שולחן",
   "rules.toggleLabel": "החלף חוקי שולחן",
   "rules.dealerSoft17": "דילר 17 רך",

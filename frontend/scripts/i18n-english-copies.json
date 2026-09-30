@@ -4,7 +4,6 @@
     "blackjack": {
       "nl": [
         "betting.tableLimitsRange",
-        "chip.vipCredits",
         "chips.display",
         "hand.playerHand",
         "header.bankrollAccessibilityLabel",
@@ -26,30 +25,22 @@
         "table.highRoller",
         "tableSelect.startChips"
       ],
-      "es": [
-        "chip.vipCredits",
-        "header.bankrollLabel",
-        "rules.h17",
-        "rules.s17",
-        "score.blackjacks"
-      ],
+      "es": ["header.bankrollLabel", "rules.h17", "rules.s17", "score.blackjacks"],
       "pt": [
-        "chip.vipCredits",
         "header.bankrollLabel",
         "outcome.blackjack",
         "rules.h17",
         "rules.s17",
         "score.blackjacks"
       ],
-      "ru": ["chip.vipCredits", "outcome.blackjack", "rules.h17", "rules.s17"],
-      "ja": ["chip.vipCredits", "rules.h17", "rules.s17"],
-      "ko": ["chip.vipCredits", "rules.h17", "rules.s17"],
-      "zh": ["chip.vipCredits", "outcome.blackjack", "rules.h17", "rules.s17"],
-      "ar": ["chip.vipCredits", "rules.h17", "rules.s17"],
-      "he": ["chip.vipCredits", "rules.h17", "rules.s17"],
-      "hi": ["chip.vipCredits", "rules.h17", "rules.s17"],
+      "ru": ["outcome.blackjack", "rules.h17", "rules.s17"],
+      "ja": ["rules.h17", "rules.s17"],
+      "ko": ["rules.h17", "rules.s17"],
+      "zh": ["outcome.blackjack", "rules.h17", "rules.s17"],
+      "ar": ["rules.h17", "rules.s17"],
+      "he": ["rules.h17", "rules.s17"],
+      "hi": ["rules.h17", "rules.s17"],
       "de": [
-        "chip.vipCredits",
         "hand.playerHand",
         "header.bankrollLabel",
         "outcome.blackjack",
@@ -64,7 +55,6 @@
         "tableSelect.startChips"
       ],
       "fr-CA": [
-        "chip.vipCredits",
         "header.bankrollLabel",
         "outcome.blackjack",
         "rules.h17",
