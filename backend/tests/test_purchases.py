@@ -206,6 +206,12 @@ async def backdate_links(days: int) -> None:
                 created_at=datetime.now(timezone.utc) - timedelta(days=days)
             )
         )
+        # The caps also count the retained "linked" audit events (S1, #2786).
+        await db.execute(
+            update(PurchaseEvent)
+            .where(PurchaseEvent.kind == "linked")
+            .values(created_at=datetime.now(timezone.utc) - timedelta(days=days))
+        )
         await db.commit()
 
 
@@ -1042,6 +1048,111 @@ async def test_refund_older_than_refund_reversed_is_ignored(
     assert (await purchase_row("1000")).state == "owned"
 
 
+@pytest.mark.parametrize("platform", ["apple", "google"])
+async def test_same_state_notification_advances_watermark_reversal_then_older_refund(
+    client: TestClient,
+    fake_apple: FakeAppleVerifier,
+    fake_google: FakeGoogleVerifier,
+    platform: str,
+) -> None:
+    """Codex P1 on #2871, for every store: REFUND_REVERSED at T2 on an owned
+    purchase, then REFUND at T1 < T2, must not revoke."""
+    sid = new_sid()
+    key = f"wm-a-{platform}"
+    if platform == "apple":
+        fake_apple.answers[key] = verified(key)
+        assert post_apple(client, sid, key).status_code == 200
+    else:
+        fake_google.answers[key] = verified(key, platform="google")
+        assert post_google(client, sid, key).status_code == 200
+    t0 = datetime.now(timezone.utc) + timedelta(minutes=1)
+
+    async def apply(state: str, dedupe: str, at: datetime) -> bool:
+        async with get_session_factory()() as db:
+            return await purchase_service.apply_store_state(
+                db,
+                platform=platform,
+                store_key=key,
+                state=state,  # type: ignore[arg-type]
+                dedupe_key=dedupe,
+                event_at=at,
+            )
+
+    assert not await apply("owned", f"{key}-n2", t0 + timedelta(hours=2))  # same state
+    row = await purchase_row(key)
+    assert row.state == "owned"
+    assert purchase_service._utc(row.state_changed_at) == t0 + timedelta(hours=2)
+    assert not await apply("revoked", f"{key}-n1", t0 + timedelta(hours=1))  # older
+    assert (await purchase_row(key)).state == "owned"
+    assert jwt_games(client, sid) == ["hearts"]
+    assert (
+        await count(
+            PurchaseEvent,
+            PurchaseEvent.kind == "stale_ignored",
+            PurchaseEvent.dedupe_key == f"{key}-n1",
+        )
+        == 1
+    )
+    # An older same-state event never moves the watermark back.
+    assert not await apply("owned", f"{key}-n0", t0)
+    assert purchase_service._utc((await purchase_row(key)).state_changed_at) == t0 + timedelta(
+        hours=2
+    )
+
+
+@pytest.mark.parametrize("platform", ["apple", "google"])
+async def test_same_state_notification_advances_watermark_refund_then_older_reversal(
+    client: TestClient,
+    fake_apple: FakeAppleVerifier,
+    fake_google: FakeGoogleVerifier,
+    platform: str,
+) -> None:
+    sid = new_sid()
+    key = f"wm-b-{platform}"
+    if platform == "apple":
+        fake_apple.answers[key] = verified(key)
+        assert post_apple(client, sid, key).status_code == 200
+    else:
+        fake_google.answers[key] = verified(key, platform="google")
+        assert post_google(client, sid, key).status_code == 200
+    t0 = datetime.now(timezone.utc) + timedelta(minutes=1)
+
+    async def apply(state: str, dedupe: str, at: datetime) -> bool:
+        async with get_session_factory()() as db:
+            return await purchase_service.apply_store_state(
+                db,
+                platform=platform,
+                store_key=key,
+                state=state,  # type: ignore[arg-type]
+                dedupe_key=dedupe,
+                event_at=at,
+            )
+
+    assert await apply("revoked", f"{key}-r1", t0 + timedelta(hours=1))
+    assert not await apply("revoked", f"{key}-r3", t0 + timedelta(hours=3))  # same, newer
+    assert not await apply("owned", f"{key}-v2", t0 + timedelta(hours=2))  # older reversal
+    assert (await purchase_row(key)).state == "revoked"
+    assert jwt_games(client, sid) == []
+
+
+async def test_same_state_client_post_does_not_advance_watermark(
+    client: TestClient, fake_apple: FakeAppleVerifier
+) -> None:
+    """A client answer's time may be only when verification started, so a
+    same-state post must not hide a real store event signed just before it."""
+    sid = new_sid()
+    t0 = datetime.now(timezone.utc)
+    fake_apple.answers["wm-c"] = verified("wm-c", event_at=t0)
+    assert post_apple(client, sid, "wm-c").status_code == 200
+    fake_apple.answers["wm-c"] = verified("wm-c", event_at=t0 + timedelta(hours=2))
+    assert post_apple(client, sid, "wm-c").status_code == 200  # same state, later time
+    assert purchase_service._utc((await purchase_row("wm-c")).state_changed_at) == t0
+    assert await apply_state(
+        "wm-c", "revoked", dedupe_key="wm-c-r", event_at=t0 + timedelta(hours=1)
+    )
+    assert jwt_games(client, sid) == []
+
+
 async def test_stale_owned_answer_after_webhook_revoke_is_ignored(
     client: TestClient, fake_apple: FakeAppleVerifier
 ) -> None:
@@ -1190,3 +1301,40 @@ async def test_foreign_key_sets_null_and_recompute_repairs_the_row(
         await purchase_service.recompute_entitlement(db, sid, "hearts")
         await db.commit()
     assert (await entitlement(sid)).purchase_id == family_id
+
+
+async def test_delete_my_data_churn_cannot_reset_link_caps(
+    client: TestClient, fake_apple: FakeAppleVerifier
+) -> None:
+    """Security review S1 (#2786): restore, DELETE /me, restore on a new install, repeat.
+
+    DELETE /me removes the install's purchase_links, so the caps count the
+    retained "linked" audit events instead.
+    """
+    from purchases.service import MAX_NEW_LINKS_PER_PURCHASE_PER_30D, MAX_SESSIONS_PER_PURCHASE
+
+    fake_apple.answers["churn"] = verified("churn")
+
+    def restore_then_erase(sid: str) -> int:
+        status = post_apple(client, sid, "churn", source="restore").status_code
+        assert client.delete("/me", headers={"X-Session-ID": sid}).status_code == 204
+        return status
+
+    first = [new_sid() for _ in range(MAX_NEW_LINKS_PER_PURCHASE_PER_30D)]
+    assert [restore_then_erase(s) for s in first] == [200] * len(first)
+    assert await count(PurchaseLink) == 0  # every link was erased
+    r = post_apple(client, new_sid(), "churn", source="restore")
+    assert r.status_code == 409 and r.json()["detail"] == "link_limit"
+
+    # A returning install (same ID) is not a new session for either cap.
+    assert post_apple(client, first[0], "churn", source="restore").status_code == 200
+    assert client.delete("/me", headers={"X-Session-ID": first[0]}).status_code == 204
+
+    # After the 30-day window, the lifetime cap still counts erased installs.
+    await backdate_links(31)
+    extra = MAX_SESSIONS_PER_PURCHASE - MAX_NEW_LINKS_PER_PURCHASE_PER_30D
+    assert [restore_then_erase(new_sid()) for _ in range(extra)] == [200] * extra
+    await backdate_links(31)
+    r = post_apple(client, new_sid(), "churn", source="restore")
+    assert r.status_code == 409 and r.json()["detail"] == "link_limit"
+    assert await count(PurchaseEvent, PurchaseEvent.kind == "link_rejected") == 2

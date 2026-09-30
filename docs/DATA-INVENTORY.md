@@ -191,3 +191,20 @@ leaderboards from game records); diagnostics are App Functionality only.
 linked to the install ID). Then add Apple **Purchases → Purchase History** (linked, App Functionality) and Google **Financial info →
 Purchase history**, name Apple/Google as payment/entitlement verifiers, add server-side store-verification data to this table, and
 re-check retention and deletion of purchase records (#835 for authenticated deletion).
+
+**Delete My Data and purchase records (owner decision, #2786; [`IAP.md` §8.5](IAP.md#85-delete-my-data-and-purchase-records-owner-decision-2786)).**
+The server side is on `dev` (dormant until the Apple variables are set); v1.0 still creates no purchase rows. Same rule for
+Apple and Google (#2787):
+
+| Table                   | Holds                                                                                                                                                                  | Keyed to                                       | `DELETE /me`                                                                 |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------- |
+| `purchase_links`        | which install is linked to which store purchase, source, times                                                                                                         | install ID                                     | **Deleted**                                                                  |
+| `game_entitlements`     | derived unlocks (above)                                                                                                                                                | install ID                                     | **Deleted**                                                                  |
+| `purchases`             | store transaction record: platform, store IDs (Apple `originalTransactionId` / latest `transactionId`; Google token / order ID), product, dates, environment, state, revocation reason, `account_token` | the store purchase; `account_token` is a one-way derivative of the install ID (Apple `uuid5`, Google SHA-256) | **Kept** (refunds, chargebacks, fraud, legal claims). Retention **[OWNER TO CONFIRM]** |
+| `purchase_events`       | audit and webhook-dedupe rows: event kind, store notification ID, `session_hash` = SHA-256 of the install ID, small detail JSON                                         | the purchase                                   | **Kept**, as above                                                           |
+
+No retained column holds the install ID itself; `account_token` and `session_hash` are pseudonymous (recomputable only from
+the old install ID, which the app discards on Delete My Data). Legal basis proposed as GDPR Art. 17(3)(b)/(e) plus fraud
+prevention **[OWNER TO CONFIRM]**. Apple requires telling users what is kept for legal reasons, and Google requires the
+retention to be disclosed in the privacy policy and the Data safety deletion answers: the proposed privacy-policy paragraph
+is in `IAP.md` §8.5 and the check is in [`RELEASE-ACCEPTANCE-premium.md` §7](RELEASE-ACCEPTANCE-premium.md#7-dependencies-and-store-setup).

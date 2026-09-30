@@ -15,10 +15,14 @@ Invariants:
 * ``game_entitlements`` is *derived* for purchased games by
   :func:`recompute_entitlement`, in the same transaction as every link or
   state change. Legacy rows (``source = 'legacy'``) are never touched.
-* ``purchases.state_changed_at`` is the store time of the latest applied
-  transition. A verified answer or notification whose event time is older is
+* ``purchases.state_changed_at`` is the ordering watermark: the store time of
+  the latest applied transition, or of a later **store-pushed** event
+  (notification, webhook, cron) that confirmed the current state. A verified
+  answer or notification that would change the state and is older than it is
   ignored, so out-of-order webhooks and stale client re-posts cannot undo a
-  newer state.
+  newer state. A same-state **client** answer never moves it: its time may be
+  only when the request started verifying, and must not hide a real store
+  event signed slightly earlier.
 * ``owned`` never regresses to ``pending``.
 
 Concurrency (Postgres): the purchase row is locked (``FOR UPDATE``) before any
@@ -35,7 +39,7 @@ import json
 import logging
 import uuid
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
@@ -260,11 +264,28 @@ async def _premium_slug_for(db: AsyncSession, product_id: str) -> str:
     return slug
 
 
+def _advance_watermark(purchase: Purchase, event_at: datetime) -> bool:
+    """Move ``state_changed_at`` forward to ``event_at`` (never back). True if it moved."""
+    if purchase.state_changed_at is None or _utc(event_at) > _utc(purchase.state_changed_at):
+        purchase.state_changed_at = event_at
+        return True
+    return False
+
+
 def _apply_verified(
-    purchase: Purchase, v: VerifiedPurchase, now: datetime, event_at: datetime
+    purchase: Purchase,
+    v: VerifiedPurchase,
+    now: datetime,
+    event_at: datetime,
+    *,
+    store_event: bool = False,
 ) -> None:
     if purchase.state != v.state or purchase.state_changed_at is None:
         purchase.state_changed_at = event_at
+    elif store_event:
+        # A store-pushed event confirming the current state still advances the
+        # ordering watermark, so an older opposite event cannot flip it later.
+        _advance_watermark(purchase, event_at)
     purchase.state = v.state
     purchase.verified_at = now
     purchase.environment = v.environment
@@ -303,8 +324,14 @@ async def upsert_purchase(
     game_slug: str,
     *,
     observed_at: datetime | None = None,
+    store_event: bool = False,
 ) -> tuple[Purchase, str | None]:
     """Insert or refresh the ``purchases`` row; return it and its previous state.
+
+    ``store_event`` marks the answer as a store-pushed event (a verified
+    notification) rather than a client post: then a same-state answer newer
+    than ``state_changed_at`` also advances it (see "Event ordering" in
+    docs/IAP.md §8.4).
 
     The previous state is None for a new row. The row is locked for the rest
     of the transaction. Does not commit.
@@ -361,7 +388,7 @@ async def upsert_purchase(
         )
         _event(db, purchase, "regression_refused", state=verified.state, current=previous)
     else:
-        _apply_verified(purchase, verified, now, event_at)
+        _apply_verified(purchase, verified, now, event_at, store_event=store_event)
     await db.flush()
     return purchase, previous
 
@@ -369,6 +396,46 @@ async def upsert_purchase(
 # ---------------------------------------------------------------------------
 # Linking
 # ---------------------------------------------------------------------------
+
+
+async def _link_counts(
+    db: AsyncSession, purchase: Purchase, session_id: str, now: datetime
+) -> tuple[int, int, bool]:
+    """(sessions ever linked, sessions newly linked in the window, is this session one of them).
+
+    Counted from the retained ``linked`` audit events, by distinct session
+    hash, as well as from live ``purchase_links`` rows. ``DELETE /me`` deletes
+    links but keeps ``purchase_events``, so erasing and restoring on a fresh
+    install cannot reset either cap (IAP.md §4, §8.5).
+    """
+    linked = (
+        await db.execute(
+            select(PurchaseEvent.session_hash, PurchaseEvent.created_at).where(
+                PurchaseEvent.purchase_id == purchase.id,
+                PurchaseEvent.kind == "linked",
+                PurchaseEvent.session_hash.is_not(None),
+            )
+        )
+    ).all()
+    since = now - NEW_LINK_WINDOW
+    ever = {h for h, _ in linked}
+    fresh = {h for h, at in linked if _utc(at) >= since}
+    live_total = (
+        await db.execute(
+            select(func.count())
+            .select_from(PurchaseLink)
+            .where(PurchaseLink.purchase_id == purchase.id)
+        )
+    ).scalar_one()
+    live_recent = (
+        await db.execute(
+            select(func.count())
+            .select_from(PurchaseLink)
+            .where(PurchaseLink.purchase_id == purchase.id, PurchaseLink.created_at >= since)
+        )
+    ).scalar_one()
+    returning = session_hash(session_id) in ever
+    return max(len(ever), live_total), max(len(fresh), live_recent), returning
 
 
 async def _link_session(
@@ -402,24 +469,12 @@ async def _link_session(
     ):
         refusal = "ownership_mismatch"
     else:
-        total = (
-            await db.execute(
-                select(func.count())
-                .select_from(PurchaseLink)
-                .where(PurchaseLink.purchase_id == purchase.id)
-            )
-        ).scalar_one()
-        recent = (
-            await db.execute(
-                select(func.count())
-                .select_from(PurchaseLink)
-                .where(
-                    PurchaseLink.purchase_id == purchase.id,
-                    PurchaseLink.created_at >= now - NEW_LINK_WINDOW,
-                )
-            )
-        ).scalar_one()
-        if total >= MAX_SESSIONS_PER_PURCHASE:
+        total, recent, returning = await _link_counts(db, purchase, session_id, now)
+        # A returning install (linked before, unlinked by Delete My Data) adds
+        # no new session to either cap.
+        if returning:
+            refusal = None
+        elif total >= MAX_SESSIONS_PER_PURCHASE:
             refusal = "link_limit"
             reason = "session_cap"
         elif recent >= MAX_NEW_LINKS_PER_PURCHASE_PER_30D:
@@ -530,8 +585,14 @@ async def apply_store_state(
     reason: str | None = None,
     dedupe_key: str | None = None,
     event_at: datetime | None = None,
+    environment: str | None = None,
 ) -> bool:
     """Set a known purchase's state from a verified store notification, and recompute.
+
+    ``environment`` (the notification's verified environment, e.g. ``sandbox``)
+    must match the purchase's when given: store keys from different store
+    environments never act on each other. A mismatch is audited
+    (``environment_mismatch``) and changes nothing.
 
     For Apple ``REFUND`` / ``REVOKE`` (→ revoked), ``REFUND_REVERSED`` (→ owned),
     Google voided purchases (→ revoked) and ``ONE_TIME_PRODUCT_CANCELED``
@@ -542,7 +603,9 @@ async def apply_store_state(
     ``eventTimeMillis`` / ``voidedTimeMillis`` — and defaults to now. A
     transition older than the purchase's ``state_changed_at`` is ignored (and
     audited as ``stale_ignored``), so notifications delivered out of order
-    cannot undo a newer state.
+    cannot undo a newer state. A notification for the state the purchase is
+    already in still advances ``state_changed_at`` to ``event_at`` when newer
+    (never backwards), so it orders later events too.
 
     ``dedupe_key`` (the notification id) makes a redelivery a no-op. It is
     checked again after the purchase row lock, and a unique-key race on commit
@@ -559,12 +622,32 @@ async def apply_store_state(
     if dedupe_key is not None and await _dedupe_seen(db, dedupe_key):
         await db.rollback()
         return False
+    if environment is not None and purchase.environment != environment:
+        _event(
+            db,
+            purchase,
+            "environment_mismatch",
+            dedupe_key=dedupe_key,
+            env=environment,
+            current=purchase.environment,
+        )
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+        return False
     now = _now()
     at = _utc(event_at or now)
     previous = purchase.state
     changed = False
     try:
         if previous == state:
+            # Same state, but a store event: it still advances the ordering
+            # watermark (never backwards), so an older opposite notification
+            # delivered afterwards is stale (REFUND_REVERSED at T2 on an
+            # owned purchase, then REFUND at T1 < T2, must not revoke).
+            if _advance_watermark(purchase, at):
+                purchase.verified_at = now
             _event(db, purchase, "notification", dedupe_key=dedupe_key, state=state)
         elif _is_stale(purchase, at):
             _event(
@@ -604,6 +687,67 @@ async def apply_store_state(
         await db.rollback()
         return False
     return changed
+
+
+async def purchase_exists(db: AsyncSession, platform: str, store_key: str) -> bool:
+    return (
+        await db.execute(
+            select(Purchase.id).where(
+                Purchase.platform == platform, Purchase.store_key == store_key
+            )
+        )
+    ).first() is not None
+
+
+async def record_store_purchase(
+    db: AsyncSession,
+    verified: VerifiedPurchase,
+    *,
+    dedupe_key: str | None = None,
+    event_at: datetime | None = None,
+) -> bool:
+    """Record a purchase the store told us about before any client posted it.
+
+    For a verified notification (Apple ``ONE_TIME_CHARGE``, or a ``REFUND`` /
+    ``REVOKE`` for a purchase no session has presented yet). Upserts the
+    ``purchases`` row from the verified transaction — **no session is linked**,
+    so nothing is granted; a later client post links it (subject to §4) and a
+    later post of an older JWS cannot undo a newer revoke (event ordering).
+    If the row already exists the usual upsert rules apply and linked sessions
+    are recomputed on a state change.
+
+    ``dedupe_key`` makes a redelivery a no-op. Returns False for a duplicate,
+    an environment outside the allow-list or a product that is not a premium
+    game (nothing written). Commits.
+    """
+    if dedupe_key is not None and await _dedupe_seen(db, dedupe_key):
+        return False
+    if verified.environment not in allowed_environments(verified.platform):
+        return False
+    try:
+        game_slug = await _premium_slug_for(db, verified.product_id)
+    except PurchaseError:
+        return False
+    if event_at is not None:
+        verified = replace(verified, event_at=event_at)
+    try:
+        purchase, previous = await upsert_purchase(db, verified, game_slug, store_event=True)
+        if dedupe_key is not None and await _dedupe_seen(db, dedupe_key):
+            await db.rollback()
+            return False
+        if previous is not None and previous != purchase.state:
+            _event(db, purchase, "state_changed", previous=previous, state=purchase.state)
+            await _recompute_all_links(db, purchase)
+        _event(db, purchase, "notification", dedupe_key=dedupe_key, state=purchase.state)
+        await db.commit()
+    except PurchaseError:
+        # Same store key, different product: bad evidence, nothing written.
+        await db.rollback()
+        return False
+    except IntegrityError:
+        await db.rollback()
+        return False
+    return True
 
 
 async def delete_purchase(db: AsyncSession, purchase_id: uuid.UUID) -> bool:

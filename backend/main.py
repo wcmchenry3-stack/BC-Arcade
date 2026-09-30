@@ -20,7 +20,8 @@ from sentry_sdk.integrations.starlette import StarletteIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.datastructures import Headers
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from daily_challenge.router import router as daily_challenge_router
 from daily_word.router import router as daily_word_router
@@ -156,14 +157,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     _warn_if_dev_override_active()
     app.state.retention_task = _start_daily_word_retention()
+    app.state.apple_replay_task = _start_apple_notification_replay()
     try:
         await _db_health_check()
         yield
     finally:
         try:
-            await _stop_daily_word_retention(app.state.retention_task)
+            await _stop_apple_notification_replay(app.state.apple_replay_task)
         finally:
-            app.state.retention_task = None
+            app.state.apple_replay_task = None
+            try:
+                await _stop_daily_word_retention(app.state.retention_task)
+            finally:
+                app.state.retention_task = None
 
 
 app = FastAPI(
@@ -260,18 +266,72 @@ def _max_body_bytes_for(path: str) -> int:
     return DEFAULT_MAX_BODY_BYTES
 
 
-class MaxBodySizeMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next) -> Response:
-        content_length = request.headers.get("content-length")
-        if content_length:
-            cap = _max_body_bytes_for(request.url.path)
-            if int(content_length) > cap:
-                return Response(
-                    content='{"detail":"Request body too large."}',
-                    status_code=413,
-                    media_type="application/json",
-                )
-        return await call_next(request)
+def _json_error(status: int, detail: str) -> Response:
+    return Response(
+        content=json.dumps({"detail": detail}), status_code=status, media_type="application/json"
+    )
+
+
+class MaxBodySizeMiddleware:
+    """Reject bodies over the path's cap (pure ASGI, so it can see the body stream).
+
+    * A ``Content-Length`` over the cap → 413; one that is not a non-negative
+      integer → 400 (it used to raise, a 500).
+    * No ``Content-Length`` (chunked) on ``/purchases/*`` — which includes the
+      unauthenticated App Store webhook — the body is read here, at most
+      ``cap`` bytes, then handed on; more than that → 413. Other paths keep
+      their previous behavior (no streaming check).
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        path: str = scope["path"]
+        cap = _max_body_bytes_for(path)
+        content_length = Headers(scope=scope).get("content-length")
+        if content_length is not None:
+            text = content_length.strip()
+            if not (text.isascii() and text.isdigit()):
+                await _json_error(400, "Invalid Content-Length.")(scope, receive, send)
+                return
+            if int(text) > cap:
+                await _json_error(413, "Request body too large.")(scope, receive, send)
+                return
+            await self.app(scope, receive, send)
+            return
+        if not path.startswith(PURCHASE_BODY_PREFIX):
+            await self.app(scope, receive, send)
+            return
+
+        chunks: list[bytes] = []
+        size = 0
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            chunk = message.get("body", b"")
+            size += len(chunk)
+            if size > cap:
+                await _json_error(413, "Request body too large.")(scope, receive, send)
+                return
+            chunks.append(chunk)
+            if not message.get("more_body", False):
+                break
+        body = b"".join(chunks)
+        replayed = False
+
+        async def replay() -> Message:
+            nonlocal replayed
+            if not replayed:
+                replayed = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return await receive()
+
+        await self.app(scope, replay, send)
 
 
 # Register in reverse of desired execution order (last registered = outermost).
@@ -380,6 +440,35 @@ async def _stop_daily_word_retention(task: asyncio.Task | None) -> None:
         )
     elif not task.cancelled():
         task.result()  # re-raises a crash, as `await task` did
+
+
+# App Store notification-history replay (#2786, docs/IAP.md §6.5): replays the
+# last 48 h of App Store Server Notifications at startup and then daily, so a
+# webhook Apple gave up on is still applied. Runs only when Apple verification
+# and the App Store Server API are configured; idempotent across instances
+# (notificationUUID dedupe). Manual run: `python scripts/apple_replay_notifications.py`.
+def _start_apple_notification_replay() -> asyncio.Task | None:
+    if not is_configured():
+        return None
+    from purchases import apple
+
+    verifier = apple.configured_verifier()
+    if verifier is None or not verifier.has_api:
+        return None
+    from db.base import get_session_factory
+    from purchases.apple_notifications import run_replay_loop
+
+    return asyncio.create_task(run_replay_loop(apple.configured_verifier, get_session_factory))
+
+
+async def _stop_apple_notification_replay(task: asyncio.Task | None) -> None:
+    """Cancel the replay task, bounded like the retention task (#2667)."""
+    if task is None:
+        return
+    task.cancel()
+    done, _ = await asyncio.wait({task}, timeout=RETENTION_STOP_TIMEOUT_SECONDS)
+    if not done:
+        _audit_log.warning(json.dumps({"event": "apple_replay_stop_timeout"}))
 
 
 DB_PING_TIMEOUT_SECONDS = 5.0

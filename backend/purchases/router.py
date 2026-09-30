@@ -8,13 +8,20 @@ Google acknowledgement → a fresh entitlement JWT from the existing
 
 Rate limits (all apply; the first to trip returns 429): per session, per
 client IP, and per ``store_key`` — the last counted after the key is parsed
-and before any store call. Webhooks (``/purchases/*/notifications``) belong
-to #2786 / #2787.
+and before any store call.
+
+``POST /purchases/apple/notifications`` (#2786) takes App Store Server
+Notifications V2 with no session: it is authenticated by Apple's JWS
+signature alone, rate limited per IP, and answers 200 for anything verified
+(even if irrelevant) so Apple stops retrying, ``4xx`` for a payload that fails
+verification and ``503`` while Apple verification is not configured.
+The Google RTDN webhook belongs to #2787.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from collections.abc import Callable, Coroutine
 from datetime import datetime, timezone
@@ -31,9 +38,14 @@ from entitlements.schemas import EntitlementsResponse
 from limiter import limiter, session_key
 from session import get_session_id
 
-from . import apple, service
+from . import apple, apple_notifications, service
 from .google import get_google_verifier
-from .schemas import ApplePurchaseRequest, GooglePurchaseRequest, PurchaseResponse
+from .schemas import (
+    AppleNotificationRequest,
+    ApplePurchaseRequest,
+    GooglePurchaseRequest,
+    PurchaseResponse,
+)
 from .verifiers import (
     AppleEvidence,
     AppleVerifier,
@@ -49,6 +61,9 @@ _log = logging.getLogger("audit")
 PURCHASE_SESSION_RATE_LIMIT = "20/minute"
 PURCHASE_IP_RATE_LIMIT = "30/minute;200/day"
 PURCHASE_STORE_KEY_RATE_LIMIT = "10/hour;30/day"
+# Apple sends from its own address ranges; a 429 loses nothing (Apple retries,
+# and the notification-history replay backfills).
+APPLE_NOTIFICATION_IP_RATE_LIMIT = "300/minute"
 
 
 class _InvalidRequestRoute(APIRoute):
@@ -203,3 +218,29 @@ async def post_google_purchase(
         )
     except PurchaseError as exc:
         raise _http(exc) from None
+
+
+@router.post("/apple/notifications")
+@limiter.limit(APPLE_NOTIFICATION_IP_RATE_LIMIT)
+async def post_apple_notification(request: Request, body: AppleNotificationRequest) -> dict:
+    """App Store Server Notifications V2 (docs/IAP.md §6.5)."""
+    verifier = apple.configured_verifier()
+    if verifier is None:
+        raise HTTPException(status_code=503, detail="store_unavailable")
+    try:
+        outcome = await apple_notifications.handle_signed_notification(
+            verifier, body.signedPayload, get_session_factory()
+        )
+    except PurchaseError as exc:
+        # Why it was refused — never the payload.
+        _log.warning(
+            json.dumps(
+                {
+                    "event": "apple_notification_rejected",
+                    "status": exc.status_code,
+                    "detail": exc.detail,
+                }
+            )
+        )
+        raise _http(exc) from None
+    return {"status": outcome}
