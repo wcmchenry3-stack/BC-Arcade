@@ -2718,6 +2718,15 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     state.difficulty !== "Ensign" &&
     gruntSlots.length > 0
   ) {
+    // #2843: an escalation pulls a pending launch into the new stage's range, like the
+    // Carrier's other timers (the sooner of what was pending and a fresh seeded roll)
+    const prevStage = state.carrierStage;
+    if (prevStage && STAGE_RANK[stage] > STAGE_RANK[prevStage]) {
+      reinforceTimer = Math.min(
+        reinforceTimer,
+        rollCarrierCadence("reinforce", stage, state.difficulty, isBossWave(state.wave))
+      );
+    }
     reinforceTimer -= dtMs;
     if (reinforceTimer <= 0) {
       reinforceTimer = rollCarrierCadence(

@@ -202,6 +202,24 @@ describe("Carrier stages (#2843)", () => {
     expect(carrierOf(s).beamTimer).toBeLessThanOrEqual(beam.max);
   });
 
+  it("an escalation pulls a pending reinforcement launch into the exposed range (seeded)", () => {
+    for (const d of ["LieutenantJG", "Captain", "FleetAdmiral"] as const) {
+      const exposedAfter = (seed: number) => {
+        // a protected roll left far off, then the last Guardian dies
+        const s = { ...settled(3, d, seed), reinforceTimer: 9_999_999 };
+        return tick(exposed(s), 16, ASIDE).reinforceTimer;
+      };
+      const b = carrierCadenceBounds("reinforce", "exposed", d, false)!;
+      const t = exposedAfter(11);
+      expect(t).toBeLessThanOrEqual(b.max);
+      expect(t).toBeGreaterThanOrEqual(b.min - 16);
+      expect(exposedAfter(11)).toBe(t); // seeded
+    }
+    // a launch already due sooner keeps its time
+    const s = { ...settled(3, "Captain"), reinforceTimer: 500 };
+    expect(tick(exposed(s), 16, ASIDE).reinforceTimer).toBe(500 - 16);
+  });
+
   it("stays protected-quiet: no twin fire and no attack run while a Guardian lives", () => {
     let s = withCarrier(settled(), { shootTimer: 0, runTimer: 0, beamTimer: 1e9 });
     s = alone(s);
