@@ -11,13 +11,18 @@ import { splitSource, type StarSwarmBreakdown, type StarSwarmRow } from "./break
 /**
  * Localised names for the ledger's source keys (scoreLedger.ts). The source
  * set is open: the key is the engine's tier id, so a renamed or new tier
- * (Boss → Guardian) or modifier this build doesn't know shows its raw id.
+ * or modifier this build doesn't know shows its raw id. "Boss" is the pre-#2843 name of
+ * the Guardian tier.
  */
 const KNOWN_BASES = new Set(["Grunt", "Elite", "Boss", "Guardian", "Carrier", "clear"]);
 const KNOWN_MODS = new Set(["dive", "rout", "bomb", "ram"]);
+/** #2843: runs from builds before the rename sent "Boss" for the same tier — label it Guardian. */
+const LEGACY_BASES: Readonly<Record<string, string>> = { Boss: "Guardian" };
 
 export function starSwarmSourceLabel(t: TFunction, key: string): string {
-  const { base, mod } = splitSource(key);
+  const split = splitSource(key);
+  const base = LEGACY_BASES[split.base] ?? split.base;
+  const { mod } = split;
   const source = KNOWN_BASES.has(base) ? t(`profile:detail.starswarm.source.${base}`) : base;
   if (mod == null) return source;
   const modLabel = KNOWN_MODS.has(mod) ? t(`profile:detail.starswarm.mod.${mod}`) : mod;
