@@ -10,24 +10,10 @@
  * ship was in at the start of the tick in which they happened.
  *
  * A CONTROL run (dodge + flak disabled) with the same seed says how often that rock would have hit
- * an unreacting ship, so "avoided" = 1 - hit/controlHit. An optional PROPOSAL policy is applied
- * between ticks, from outside the engine, to estimate the effect of the #2881 diver reactions.
+ * an unreacting ship, so "avoided" = 1 - hit/controlHit. The #2881 diver reactions (flinch, flak,
+ * late nudge) are built into the engine's tickAsteroidThreats, so the LIVE run measures them.
  */
-import {
-  CANVAS_H,
-  CANVAS_W,
-  FLAK_BASE,
-  FLAK_COOLDOWN,
-  ASTEROID_ATTENTION,
-  WIGGLE_DURATION,
-  asteroidThreatens,
-  difficultyParamScale,
-  enemyThreatCircle,
-  initStarSwarm,
-  seedRng,
-  splitRemaining,
-  tick,
-} from "../engine";
+import { CANVAS_H, CANVAS_W, WIGGLE_DURATION, initStarSwarm, seedRng, tick } from "../engine";
 import { createStream, deriveSeed } from "../../_shared/simRandom";
 import type {
   Asteroid,
@@ -57,36 +43,10 @@ export const SIM_CELLS: readonly SimCell[] = [
   { tier: "Carrier", phase: "Formation" }, // exposed (no Guardian left); armored is immune by design
 ];
 
-/** Between-tick reactions layered over the engine for divers (#2881 proposal). Sim-only. */
-export interface DiverPolicy {
-  readonly name: string;
-  /** Phases the policy acts in. */
-  readonly phases: readonly SimPhase[];
-  /** Chance a threatened ship flinches (evade window => aim degrade + visible cue), by tier. */
-  readonly flinch: Readonly<Record<EnemyTier, number>>;
-  readonly flinchMs: number;
-  /** Multiplier on the engine's FLAK_BASE for a diver firing flak at the rock (pays flakMs). */
-  readonly flakFactor: number;
-  /** When the engine's own dodge roll failed: chance of a late partial nudge, by tier. */
-  readonly lateNudge: Readonly<Record<EnemyTier, number>>;
-  /** Control-point shift (px) of that late nudge. p0 and p3 are untouched, so the dive stays committed. */
-  readonly nudgePx: number;
-}
-
-export const PROPOSED_POLICY: DiverPolicy = {
-  name: "proposal",
-  phases: ["Diving", "Returning", "Circling", "Fleeing"],
-  flinch: { Grunt: 1, Elite: 0.85, Guardian: 0.6, Carrier: 0 },
-  flinchMs: 450,
-  flakFactor: 0.8,
-  lateNudge: { Grunt: 0.35, Elite: 0.5, Guardian: 0.6, Carrier: 0 },
-  nudgePx: 60,
-};
-
 export interface TrialResult {
   readonly cell: SimCell;
   readonly seed: number;
-  /** Engine marked the ship threatened (rolledAsteroidIds gained the rock), or the policy did. */
+  /** Engine marked the ship threatened (rolledAsteroidIds gained the rock). */
   readonly threatened: boolean;
   readonly threatPhase: SimPhase | null;
   readonly warnMs: number | null; // detection to the rock reaching the ship: the ship's warning
@@ -94,7 +54,7 @@ export interface TrialResult {
   readonly flak: boolean;
   readonly dodged: boolean; // a sidestep / path nudge happened (evadeMs raised)
   readonly pathNudged: boolean;
-  readonly flinched: boolean; // proposal only
+  readonly flinched: boolean; // flinchMs raised (visible wobble + aim degrade)
   readonly evadedShots: number; // player-directed shots fired while evading (aim degraded)
   readonly hit: boolean;
   readonly hitPhase: SimPhase | null;
@@ -226,12 +186,11 @@ export function runTrial(
   seed: number,
   difficulty: DifficultyTier,
   cell: SimCell,
-  mode: "live" | "control" | "policy",
-  policy: DiverPolicy = PROPOSED_POLICY
+  mode: "live" | "control"
 ): TrialResult | null {
   const rand = createStream(deriveSeed(seed, difficulty.length, 1));
   let s = settledWave(seed, difficulty);
-  seedRng(deriveSeed(seed, difficulty.length, 2)); // the engine's own stream, identical for control / live / policy
+  seedRng(deriveSeed(seed, difficulty.length, 2)); // the engine's own stream, identical for control / live
   const pool = s.enemies.filter(
     (e) => e.isAlive && e.tier === cell.tier && e.phase === "Formation"
   );
@@ -261,8 +220,6 @@ export function runTrial(
     hit: false,
     hitPhase: null as SimPhase | null,
   };
-  let policyDone = false;
-  const scale = difficultyParamScale(difficulty);
 
   for (let t = 0; t < arriveMs + TAIL_MS; t += DT) {
     const prev = find(s, id)!;
@@ -286,7 +243,8 @@ export function runTrial(
     if (cell.tier === "Carrier") {
       if (s.tierStats.Carrier.flak > prevFlakStat) out.flak = true;
     } else if (cur.flakCooldown > prev.flakCooldown) out.flak = true;
-    if (cur.evadeMs > prev.evadeMs) {
+    if (cur.flinchMs > prev.flinchMs) out.flinched = true;
+    if (cur.evadeMs > prev.evadeMs || (cur.path !== prev.path && cur.pathT < prev.pathT)) {
       out.dodged = true;
       if (cur.path !== prev.path) out.pathNudged = true;
     }
@@ -303,78 +261,6 @@ export function runTrial(
       break;
     }
 
-    // ---- proposal policy: reactions the engine does not give divers, applied from outside ----
-    if (mode === "policy" && !policyDone && policy.phases.includes(cur.phase as SimPhase)) {
-      const r = s.asteroids.find((a) => a.id === rock.id);
-      // the engine's own flag covers moving divers; asteroidThreatens (static ship) covers Circling
-      if (r && (out.threatened || asteroidThreatens(r, enemyThreatCircle(cur), 700))) {
-        policyDone = true;
-        let e: Enemy = cur;
-        const engineDodged = out.dodged;
-        if (!out.threatened) {
-          // Circling is skipped by the engine entirely: pay the threat distraction ourselves
-          const cost = ASTEROID_ATTENTION[e.tier].threatMs;
-          e = { ...e, shootTimer: e.shootTimer + cost, attentionMs: e.attentionMs + cost };
-          out.threatened = true;
-          out.threatPhase = e.phase as SimPhase;
-          out.warnMs = arriveMs - t;
-          out.distracted = true;
-        }
-        if (rand() < policy.flinch[e.tier]) {
-          e = { ...e, evadeMs: Math.max(e.evadeMs, policy.flinchMs) };
-          out.flinched = true;
-        }
-        if (
-          e.flakCooldown <= 0 &&
-          rand() < Math.min(1.3, scale) * FLAK_BASE[e.tier] * policy.flakFactor
-        ) {
-          const tx = r.x + r.vx * 300;
-          const ty = r.y + r.vy * 300;
-          const len = Math.hypot(tx - e.x, ty - e.y) || 1;
-          const flak: Bullet = {
-            id: 980_000 + t,
-            x: e.x,
-            y: e.y,
-            vx: ((tx - e.x) / len) * 0.42,
-            vy: ((ty - e.y) / len) * 0.42,
-            owner: "enemy",
-            width: 4,
-            height: 8,
-            damage: 1,
-            flak: true,
-          };
-          const cost = ASTEROID_ATTENTION[e.tier].flakMs; // finite capacity: flak displaces a shot
-          e = {
-            ...e,
-            flakCooldown: FLAK_COOLDOWN,
-            shootTimer: e.shootTimer + cost,
-            attentionMs: e.attentionMs + cost,
-          };
-          s = { ...s, enemyBullets: [...s.enemyBullets, flak] };
-          out.flak = true;
-        }
-        if (
-          !engineDodged &&
-          e.path &&
-          e.pathT >= 0 &&
-          e.pathT < 1 &&
-          rand() < policy.lateNudge[e.tier]
-        ) {
-          const dir = e.x < r.x + r.vx * 400 ? -1 : 1;
-          const rest = splitRemaining(e.path, e.pathT);
-          const nudged: CubicBezier = {
-            p0: rest.p0,
-            p1: { x: rest.p1.x + dir * policy.nudgePx, y: rest.p1.y },
-            p2: { x: rest.p2.x + dir * policy.nudgePx, y: rest.p2.y },
-            p3: rest.p3,
-          };
-          e = { ...e, path: nudged, pathT: 0, pathDuration: e.pathDuration * (1 - e.pathT) };
-          out.pathNudged = true;
-          out.dodged = true;
-        }
-        s = patch(s, id, e);
-      }
-    }
     if (!s.asteroids.some((a) => a.id === rock.id)) break;
   }
   return { cell, seed, ...out };
@@ -383,7 +269,7 @@ export function runTrial(
 /** Rates for one (tier, phase) cell over `n` valid trials. All 0..1 except counts and ms. */
 export interface RateSet {
   readonly n: number;
-  readonly threatened: number; // the ship noticed the rock (engine flag; the policy's in policy mode)
+  readonly threatened: number; // the ship noticed the rock (engine flag)
   readonly distracted: number; // paid attention debt
   readonly flak: number;
   readonly dodged: number; // sidestep or path nudge happened
@@ -401,19 +287,16 @@ export interface CellMetrics {
   /** Dodge + flak off: how often the injected rock hits an unreacting ship (geometry check). */
   readonly controlHit: number;
   readonly live: RateSet;
-  readonly policy: RateSet | null;
 }
 
 export interface AwarenessParams {
   readonly seeds: number;
   readonly difficulty: DifficultyTier;
   readonly cells?: readonly SimCell[];
-  /** Also run the proposal (between-tick) layer over the same seeds. */
-  readonly policy?: DiverPolicy | null;
 }
 
 export interface AwarenessMetrics {
-  readonly params: { seeds: number; difficulty: DifficultyTier; policy: string | null };
+  readonly params: { seeds: number; difficulty: DifficultyTier };
   readonly cells: readonly CellMetrics[];
 }
 
@@ -445,37 +328,30 @@ function rates(rs: readonly TrialResult[]): RateSet {
 }
 
 /**
- * The entry point a future gate calls: pure and deterministic for (seeds, difficulty, cells,
- * policy), prints nothing, returns plain data. Seeds are 1..seeds, hashed per trial.
+ * The entry point a future gate calls: pure and deterministic for (seeds, difficulty, cells),
+ * prints nothing, returns plain data. Seeds are 1..seeds, hashed per trial.
  */
 export function measureAwareness(params: AwarenessParams): AwarenessMetrics {
-  const policy = params.policy ?? null;
   const cells: CellMetrics[] = [];
   for (const cell of params.cells ?? SIM_CELLS) {
     const control: TrialResult[] = [];
     const live: TrialResult[] = [];
-    const prop: TrialResult[] = [];
     for (let seed = 1; seed <= params.seeds; seed++) {
       const c = runTrial(seed, params.difficulty, cell, "control");
       const l = runTrial(seed, params.difficulty, cell, "live");
       if (!c || !l) continue;
       control.push(c);
       live.push(l);
-      if (policy) {
-        const p = runTrial(seed, params.difficulty, cell, "policy", policy);
-        if (p) prop.push(p);
-      }
     }
     cells.push({
       cell,
       controlHit: control.length ? control.filter((r) => r.hit).length / control.length : 0,
       live: rates(live),
-      policy: policy ? rates(prop) : null,
     });
   }
   waveCache.clear();
   return {
-    params: { seeds: params.seeds, difficulty: params.difficulty, policy: policy?.name ?? null },
+    params: { seeds: params.seeds, difficulty: params.difficulty },
     cells,
   };
 }
@@ -484,7 +360,6 @@ export function measureAwareness(params: AwarenessParams): AwarenessMetrics {
 export const FAST_PARAMS: AwarenessParams = {
   seeds: 6,
   difficulty: "LieutenantJG",
-  policy: PROPOSED_POLICY,
   cells: [
     { tier: "Grunt", phase: "Formation" },
     { tier: "Grunt", phase: "Diving" },
@@ -495,7 +370,7 @@ export const FAST_PARAMS: AwarenessParams = {
 
 const pct = (x: number | null): string => (x === null ? "-" : `${Math.round(100 * x)}%`);
 
-/** Markdown table of one difficulty's metrics (`live` rows, then `proposal` rows when present). */
+/** Markdown table of one difficulty's metrics (the `live` engine rows). */
 export function formatMetrics(m: AwarenessMetrics): string {
   const head =
     "| tier | phase | set | n | control hit | threatened | distracted | flak | dodge | nudge | flinch | hit | hit if dodged | hit if not | warn ms |\n" +
@@ -504,9 +379,6 @@ export function formatMetrics(m: AwarenessMetrics): string {
     `| ${c.cell.tier} | ${c.cell.phase} | ${set} | ${r.n} | ${pct(c.controlHit)} | ${pct(r.threatened)} | ` +
     `${pct(r.distracted)} | ${pct(r.flak)} | ${pct(r.dodged)} | ${pct(r.nudged)} | ${pct(r.flinched)} | ` +
     `${pct(r.hit)} | ${pct(r.hitGivenDodged)} | ${pct(r.hitGivenNotDodged)} | ${r.medianWarnMs ?? "-"} |`;
-  const lines = m.cells.flatMap((c) => [
-    row(c, "live", c.live),
-    ...(c.policy ? [row(c, m.params.policy ?? "policy", c.policy)] : []),
-  ]);
+  const lines = m.cells.map((c) => row(c, "live", c.live));
   return [head, ...lines].join("\n");
 }

@@ -6,7 +6,6 @@
  */
 import {
   FAST_PARAMS,
-  PROPOSED_POLICY,
   SIM_CELLS,
   formatMetrics,
   measureAwareness,
@@ -44,21 +43,20 @@ describe("asteroid awareness sim (#2881) fast smoke", () => {
     }
   });
 
-  it("the engine gives Circling ships no reaction, the proposal gives them one", () => {
+  it("Circling ships now detect the rock, and Grunt divers visibly react", () => {
     const m = measureAwareness(FAST_PARAMS);
     const circ = m.cells.find((c) => c.cell.phase === "Circling")!;
-    expect(circ.live.threatened).toBe(0);
-    expect(circ.policy!.threatened).toBeGreaterThan(0);
+    expect(circ.live.threatened).toBeGreaterThan(0);
+    const dive = m.cells.find((c) => c.cell.tier === "Grunt" && c.cell.phase === "Diving")!;
+    expect(dive.live.flinched).toBeGreaterThan(0.5);
   });
 });
 
 (RUN ? describe : describe.skip)("asteroid awareness sim (#2881) full sweep", () => {
   jest.setTimeout(30 * 60_000);
 
-  it.each(diffs)("%s: baseline vs proposal", (difficulty) => {
-    const m = measureAwareness({ seeds, difficulty, policy: PROPOSED_POLICY });
-    process.stdout.write(
-      `\n${difficulty} seeds=${seeds} policy=${JSON.stringify(PROPOSED_POLICY)}\n${formatMetrics(m)}\n`
-    );
+  it.each(diffs)("%s: engine metrics", (difficulty) => {
+    const m = measureAwareness({ seeds, difficulty });
+    process.stdout.write(`\n${difficulty} seeds=${seeds}\n${formatMetrics(m)}\n`);
   });
 });
