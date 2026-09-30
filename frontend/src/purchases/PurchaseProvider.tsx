@@ -4,7 +4,7 @@
  * loaded. UI reads the adapter through `usePurchases()` and never imports the
  * store library.
  */
-import React, { createContext, useContext, useEffect, useMemo, useRef } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import * as Sentry from "@sentry/react-native";
 import { PREMIUM_GAMES, useEntitlements } from "../entitlements/EntitlementContext";
 import { selectPurchaseAdapter } from "./selectAdapter";
@@ -44,6 +44,8 @@ export function PurchaseProvider({
     [adapterOverride]
   );
   const isAvailable = adapter !== unavailablePurchaseAdapter;
+  // The adapter whose init() has completed; syncOwned waits for it.
+  const [initedAdapter, setInitedAdapter] = useState<PurchaseAdapter | null>(null);
 
   useEffect(() => {
     if (!isAvailable) return;
@@ -52,11 +54,16 @@ export function PurchaseProvider({
       // A grant or revocation that happened outside the paywall: re-read the token.
       if (e.kind === "owned" || e.kind === "revoked") void refresh();
     });
-    adapter.init().catch((e) => {
-      if (!cancelled) {
-        Sentry.captureException(e, { tags: { subsystem: "purchases", op: "init" } });
-      }
-    });
+    adapter
+      .init()
+      .then(() => {
+        if (!cancelled) setInitedAdapter(adapter);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          Sentry.captureException(e, { tags: { subsystem: "purchases", op: "init" } });
+        }
+      });
     return () => {
       cancelled = true;
       unsubscribe();
@@ -64,17 +71,38 @@ export function PurchaseProvider({
     };
   }, [adapter, isAvailable, refresh]);
 
-  // Silent sync at launch, once entitlements have loaded: post store-owned
-  // products this session is missing. Never prompts (docs/IAP.md §5).
+  // Silent sync at launch, once the adapter is initialised and entitlements
+  // have loaded: post store-owned products this session is missing. Never
+  // prompts (docs/IAP.md §5). The once-flag is set only after a successful
+  // sync, so a failed one is retried when the effect next re-runs.
   const syncedRef = useRef(false);
+  const syncInFlightRef = useRef(false);
+  const ready = initedAdapter === adapter;
   useEffect(() => {
-    if (!isAvailable || isLoading || syncedRef.current) return;
-    syncedRef.current = true;
+    if (!isAvailable || !ready || isLoading || syncedRef.current || syncInFlightRef.current) return;
+    syncInFlightRef.current = true;
     const entitled = new Set([...PREMIUM_GAMES].filter((slug) => canPlay(slug)));
-    adapter.syncOwned(entitled).catch((e) => {
-      Sentry.captureException(e, { tags: { subsystem: "purchases", op: "syncOwned" } });
-    });
-  }, [adapter, isAvailable, isLoading, canPlay]);
+    adapter
+      .syncOwned(entitled)
+      .then((r) => {
+        if (r.error) {
+          Sentry.addBreadcrumb({
+            category: "purchases",
+            message: "syncOwned incomplete",
+            level: "warning",
+            data: { error: r.error },
+          });
+        } else {
+          syncedRef.current = true;
+        }
+      })
+      .catch((e) => {
+        Sentry.captureException(e, { tags: { subsystem: "purchases", op: "syncOwned" } });
+      })
+      .finally(() => {
+        syncInFlightRef.current = false;
+      });
+  }, [adapter, isAvailable, ready, isLoading, canPlay]);
 
   const value = useMemo(() => ({ adapter, isAvailable }), [adapter, isAvailable]);
   return <PurchaseContext.Provider value={value}>{children}</PurchaseContext.Provider>;

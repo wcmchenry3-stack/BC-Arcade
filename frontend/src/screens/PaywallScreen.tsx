@@ -75,6 +75,7 @@ export default function PaywallScreen() {
   const [reloadKey, setReloadKey] = useState(0);
   const mounted = useRef(true);
   const navigatedRef = useRef(false);
+  const inFlightRef = useRef(false);
 
   useEffect(() => {
     mounted.current = true;
@@ -122,8 +123,20 @@ export default function PaywallScreen() {
     };
   }, [adapter, slug, reloadKey]);
 
+  // A purchase for this game finishing outside our own purchase() call (Ask to
+  // Buy declined or failed, interrupted transaction): drop a stale "pending".
+  useEffect(() => {
+    if (!slug) return;
+    return adapter.onTransaction((e) => {
+      if (e.kind === "error" && e.gameSlug === slug) {
+        setNotice((n) => (n?.kind === "pending" ? null : n));
+      }
+    });
+  }, [adapter, slug]);
+
   const onBuy = useCallback(async () => {
-    if (!slug || purchasing) return;
+    if (!slug || inFlightRef.current) return;
+    inFlightRef.current = true;
     setPurchasing(true);
     setNotice(null);
     try {
@@ -149,13 +162,15 @@ export default function PaywallScreen() {
       Sentry.captureException(e, { tags: { subsystem: "purchases", op: "purchase" } });
       if (mounted.current) setNotice({ kind: "error", code: "unknown", retryable: true });
     } finally {
+      inFlightRef.current = false;
       if (mounted.current) setPurchasing(false);
     }
-  }, [adapter, goToGame, purchasing, slug]);
+  }, [adapter, goToGame, slug]);
 
   const onRestore = useCallback(async () => {
     setNotice(null);
     const r = await restorer.restore();
+    if (!mounted.current) return;
     if (r && slug && (r.restored.includes(slug) || r.alreadyOwned.includes(slug))) goToGame();
   }, [goToGame, restorer, slug]);
 
@@ -194,8 +209,13 @@ export default function PaywallScreen() {
 
   const busy = purchasing || restorer.busy;
   const product = productState.status === "ready" ? productState.product : null;
-  const blocked = notice?.kind === "pending" || (notice?.kind === "error" && !notice.retryable);
-  const canBuy = product !== null && !busy && !owned && !blocked;
+  const blocked =
+    notice?.kind === "pending" ||
+    notice?.kind === "awaiting_server" ||
+    (notice?.kind === "error" && !notice.retryable);
+  // Buy stays disabled until the initial entitlement bootstrap has finished, so
+  // a purchase's fresh token can never race the launch fetch.
+  const canBuy = product !== null && !busy && !owned && !blocked && !entitlementsLoading;
   const retryableError = notice?.kind === "error" && notice.retryable;
 
   let buyLabel = t("common:paywall.loadingPrice");
@@ -323,22 +343,23 @@ export default function PaywallScreen() {
                 testID={`paywall-notice-${notice.kind}`}
               >
                 <Text style={[styles.message, { color: colors.text }]}>{noticeText(notice)}</Text>
-                {notice.kind === "error" && notice.code === "not_linkable" && (
-                  <Pressable
-                    onPress={openSupport}
-                    style={[styles.secondary, { borderColor: colors.border }]}
-                    accessibilityRole="link"
-                    testID="paywall-support"
-                  >
-                    <Text style={[styles.secondaryText, { color: colors.text }]}>
-                      {t("common:paywall.contactSupport")}
-                    </Text>
-                  </Pressable>
-                )}
+                {notice.kind === "error" &&
+                  (notice.code === "not_linkable" || notice.code === "verification_failed") && (
+                    <Pressable
+                      onPress={openSupport}
+                      style={[styles.secondary, { borderColor: colors.border }]}
+                      accessibilityRole="link"
+                      testID="paywall-support"
+                    >
+                      <Text style={[styles.secondaryText, { color: colors.text }]}>
+                        {t("common:paywall.contactSupport")}
+                      </Text>
+                    </Pressable>
+                  )}
                 {retryableError && (
                   <Pressable
                     onPress={onBuy}
-                    disabled={busy || !product}
+                    disabled={!canBuy}
                     style={[styles.secondary, { borderColor: colors.border }]}
                     accessibilityRole="button"
                     testID="paywall-retry"

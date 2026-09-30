@@ -170,6 +170,77 @@ describe("PurchaseProvider", () => {
     expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it("does not sync until init() has completed", async () => {
+    const adapter = createFakePurchaseAdapter();
+    let finishInit: () => void = () => {};
+    adapter.init = jest.fn(() => new Promise<void>((r) => (finishInit = r)));
+    await render(<PurchaseProvider adapter={adapter}>{null}</PurchaseProvider>);
+    await act(async () => {});
+    expect(adapter.calls.syncOwned).toEqual([]);
+    await act(async () => finishInit());
+    expect(adapter.calls.syncOwned).toHaveLength(1);
+  });
+
+  it("retries a failed silent sync instead of marking it done", async () => {
+    const adapter = createFakePurchaseAdapter();
+    const real = adapter.syncOwned.bind(adapter);
+    let calls = 0;
+    adapter.syncOwned = jest.fn((entitled: ReadonlySet<string>) =>
+      ++calls === 1 ? Promise.reject(new Error("offline")) : real(entitled)
+    );
+    mockEntitled = new Set();
+    const { rerender } = await render(
+      <PurchaseProvider adapter={adapter}>{null}</PurchaseProvider>
+    );
+    await act(async () => {});
+    expect(calls).toBe(1);
+    // entitlements change (e.g. foreground refresh) -> effect re-runs -> retried
+    mockEntitled = new Set(["hearts"]);
+    await rerender(<PurchaseProvider adapter={adapter}>{null}</PurchaseProvider>);
+    await act(async () => {});
+    expect(calls).toBe(2);
+    // ...and once it succeeded it is not repeated
+    mockEntitled = new Set(["hearts", "cascade"]);
+    await rerender(<PurchaseProvider adapter={adapter}>{null}</PurchaseProvider>);
+    await act(async () => {});
+    expect(calls).toBe(2);
+  });
+
+  it("does not sync until init() has completed", async () => {
+    const adapter = createFakePurchaseAdapter();
+    let finishInit: () => void = () => {};
+    adapter.init = jest.fn(() => new Promise<void>((r) => (finishInit = r)));
+    await render(<PurchaseProvider adapter={adapter}>{null}</PurchaseProvider>);
+    await act(async () => {});
+    expect(adapter.calls.syncOwned).toEqual([]);
+    await act(async () => finishInit());
+    expect(adapter.calls.syncOwned).toHaveLength(1);
+  });
+
+  it("retries a failed silent sync instead of marking it done", async () => {
+    const adapter = createFakePurchaseAdapter();
+    const real = adapter.syncOwned.bind(adapter);
+    let calls = 0;
+    adapter.syncOwned = jest.fn((entitled: ReadonlySet<string>) =>
+      ++calls === 1 ? Promise.reject(new Error("offline")) : real(entitled)
+    );
+    const { rerender } = await render(
+      <PurchaseProvider adapter={adapter}>{null}</PurchaseProvider>
+    );
+    await act(async () => {});
+    expect(calls).toBe(1);
+    // entitlements change (e.g. a foreground refresh) -> effect re-runs -> retried
+    mockEntitled = new Set(["hearts"]);
+    await rerender(<PurchaseProvider adapter={adapter}>{null}</PurchaseProvider>);
+    await act(async () => {});
+    expect(calls).toBe(2);
+    // once it has succeeded it is not repeated
+    mockEntitled = new Set(["hearts", "cascade"]);
+    await rerender(<PurchaseProvider adapter={adapter}>{null}</PurchaseProvider>);
+    await act(async () => {});
+    expect(calls).toBe(2);
+  });
+
   it("does not init or sync the unavailable adapter", async () => {
     const init = jest.spyOn(unavailablePurchaseAdapter, "init");
     const sync = jest.spyOn(unavailablePurchaseAdapter, "syncOwned");

@@ -107,11 +107,6 @@ describe("store build exposes exactly the seven free games", () => {
       .sort();
     expect(users).toEqual(["MahjongLayoutInspectorScreen.tsx", "MahjongScreen.tsx"]);
   });
-
-  it("store build registers no premium route", () => {
-    __forceStoreBuildForTests(true);
-    expect(visiblePremiumRoutes()).toEqual([]);
-  });
 });
 
 describe("no purchase / paywall entry point ships in v1.0", () => {
@@ -155,15 +150,40 @@ describe("no purchase / paywall entry point ships in v1.0", () => {
       /visiblePremiumRoutes\(\)\.length > 0 &&\s*\(\s*<Stack\.Screen\s+name="Paywall"/
     );
     expect(app).not.toMatch(/<HomeStack\.Screen\s+name="Paywall"/);
-  });
-
-  it("a store build has no visible premium route, so the Paywall is not registered", () => {
+    // ...and in a store build that gate is false, so no Paywall route exists.
     __forceStoreBuildForTests(true);
     try {
-      expect(visiblePremiumRoutes().length > 0).toBe(false);
+      expect(visiblePremiumRoutes()).toEqual([]);
     } finally {
       __forceStoreBuildForTests(false);
     }
+  });
+
+  it("App.tsx mounts <PurchaseProvider> without an adapter override", () => {
+    const app = read("App.tsx");
+    expect(app).toMatch(/<PurchaseProvider[\s>]/);
+    expect(app).not.toMatch(/<PurchaseProvider[^>]*adapter=/);
+  });
+
+  it("only HomeScreen navigates to the Paywall", () => {
+    const users = walk(path.join(frontendRoot, "src"))
+      .concat(path.join(frontendRoot, "App.tsx"))
+      .filter((f) => /navigate\(\s*["']Paywall["']/.test(fs.readFileSync(f, "utf-8")))
+      .map((f) => path.basename(f));
+    expect(users).toEqual(["HomeScreen.tsx"]);
+  });
+
+  it("no non-test source imports the fake purchase adapter", () => {
+    const files = walk(path.join(frontendRoot, "src")).concat(path.join(frontendRoot, "App.tsx"));
+    const offenders = files
+      .filter((f) => path.basename(f) !== "fakeAdapter.ts")
+      .filter((f) =>
+        /createFakePurchaseAdapter|purchases\/fakeAdapter|\.\/fakeAdapter/.test(
+          fs.readFileSync(f, "utf-8")
+        )
+      )
+      .map((f) => path.relative(frontendRoot, f));
+    expect(offenders).toEqual([]);
   });
 
   it("the purchase adapter stays unavailable in a store build even if a real one is registered", () => {

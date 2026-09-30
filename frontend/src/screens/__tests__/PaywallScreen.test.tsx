@@ -24,14 +24,18 @@ jest.mock("@react-navigation/native", () => ({
 }));
 
 let mockEntitled = new Set<string>();
+let mockLoading = false;
+// Stable identities: a fresh fn per render would re-run PurchaseProvider's effect and dispose the adapter.
+const mockRefresh = jest.fn().mockResolvedValue(undefined);
+const mockApplyToken = jest.fn().mockResolvedValue(undefined);
 jest.mock("../../entitlements/EntitlementContext", () => ({
   ...jest.requireActual("../../entitlements/EntitlementContext"),
   useEntitlements: () => ({
     canPlay: (slug: string) => mockEntitled.has(slug),
-    isLoading: false,
+    isLoading: mockLoading,
     lastRefreshed: null,
-    refresh: jest.fn().mockResolvedValue(undefined),
-    applyToken: jest.fn().mockResolvedValue(undefined),
+    refresh: mockRefresh,
+    applyToken: mockApplyToken,
   }),
 }));
 
@@ -53,8 +57,12 @@ const insets = {
 
 let adapter: FakePurchaseAdapter;
 
-async function renderPaywall(config: FakePurchaseConfig = {}) {
+async function renderPaywall(
+  config: FakePurchaseConfig = {},
+  setup?: (a: FakePurchaseAdapter) => void
+) {
   adapter = createFakePurchaseAdapter(config);
+  setup?.(adapter);
   const utils = await render(
     <SafeAreaProvider initialMetrics={insets}>
       <ThemeProvider>
@@ -78,6 +86,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockParams = { gameSlug: "cascade" };
   mockEntitled = new Set();
+  mockLoading = false;
   jest.spyOn(Linking, "openURL").mockResolvedValue(true);
 });
 
@@ -226,6 +235,7 @@ describe("PaywallScreen purchase outcomes", () => {
     await fireEvent.press(screen.getByTestId("paywall-buy"));
     await waitFor(() => expect(screen.getByTestId("paywall-notice-awaiting_server")).toBeTruthy());
     expect(screen.getByText(/unlocks when you're back online/)).toBeTruthy();
+    expect(screen.getByTestId("paywall-buy")).toBeDisabled();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -267,6 +277,7 @@ describe("PaywallScreen purchase outcomes", () => {
     expect(screen.getByText(/couldn't be completed/)).toBeTruthy();
     expect(screen.queryByTestId("paywall-retry")).toBeNull();
     expect(screen.getByTestId("paywall-buy")).toBeDisabled();
+    expect(screen.getByTestId("paywall-support")).toBeTruthy();
   });
 
   it("an adapter that throws is reported as a retryable error", async () => {
@@ -274,6 +285,77 @@ describe("PaywallScreen purchase outcomes", () => {
     adapter.purchase = () => Promise.reject(new Error("boom"));
     await fireEvent.press(screen.getByTestId("paywall-buy"));
     await waitFor(() => expect(screen.getByTestId("paywall-retry")).toBeTruthy());
+  });
+});
+
+describe("PaywallScreen in-flight purchase", () => {
+  it("is busy while purchasing: Buy and Restore disabled, then re-enabled", async () => {
+    await renderPaywall();
+    let release: (o: unknown) => void = () => {};
+    adapter.purchase = jest.fn(() => new Promise((r) => (release = r as never))) as never;
+    await act(async () => {
+      fireEvent.press(screen.getByTestId("paywall-buy"));
+    });
+    expect(adapter.purchase).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("paywall-purchasing")).toBeTruthy();
+    expect(screen.getByTestId("paywall-buy")).toBeDisabled();
+    expect(screen.getByTestId("paywall-restore")).toBeDisabled();
+    await act(async () => release({ kind: "cancelled" }));
+    expect(screen.getByTestId("paywall-buy")).toBeEnabled();
+  });
+
+  it("ignores a double tap: two presses in one act() start one purchase", async () => {
+    await renderPaywall();
+    let release: (o: unknown) => void = () => {};
+    adapter.purchase = jest.fn(() => new Promise((r) => (release = r as never))) as never;
+    await act(async () => {
+      fireEvent.press(screen.getByTestId("paywall-buy"));
+      fireEvent.press(screen.getByTestId("paywall-buy"));
+    });
+    expect(adapter.purchase).toHaveBeenCalledTimes(1);
+    await act(async () => release({ kind: "cancelled" }));
+  });
+
+  it("keeps Buy disabled while the entitlement bootstrap is still loading", async () => {
+    mockLoading = true;
+    await renderPaywall();
+    expect(screen.getByText("Buy for $4.99")).toBeTruthy();
+    expect(screen.getByTestId("paywall-buy")).toBeDisabled();
+  });
+
+  it("clears a pending notice when the adapter reports a failed transaction for this game", async () => {
+    await renderPaywall({ purchaseOutcome: { kind: "pending", gameSlug: "cascade" } });
+    await fireEvent.press(screen.getByTestId("paywall-buy"));
+    await waitFor(() => expect(screen.getByTestId("paywall-notice-pending")).toBeTruthy());
+    // another game's failure is ignored
+    await act(async () =>
+      adapter.emit({ kind: "error", gameSlug: "hearts", code: "verification_failed" })
+    );
+    expect(screen.getByTestId("paywall-notice-pending")).toBeTruthy();
+    await act(async () =>
+      adapter.emit({ kind: "error", gameSlug: "cascade", code: "verification_failed" })
+    );
+    expect(screen.queryByTestId("paywall-notice-pending")).toBeNull();
+    expect(screen.getByTestId("paywall-buy")).toBeEnabled();
+  });
+
+  it("unsubscribes its transaction listener on unmount", async () => {
+    let active = 0;
+    const { unmount } = await renderPaywall({}, (a) => {
+      const orig = a.onTransaction.bind(a);
+      a.onTransaction = (l) => {
+        active += 1;
+        const off = orig(l);
+        return () => {
+          active -= 1;
+          off();
+        };
+      };
+    });
+    // PurchaseProvider and the paywall each subscribe
+    expect(active).toBe(2);
+    await unmount();
+    expect(active).toBe(0);
   });
 });
 
