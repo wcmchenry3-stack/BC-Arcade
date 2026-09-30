@@ -108,6 +108,7 @@ Anthropic API) are **owner to check**: search the repo's issues for feedback-fil
 | Supabase on AWS (Oregon) | Processor: production Postgres (dev uses Render Postgres)                                                                                                                 | all §2 tables                                                                 |
 | Sentry (US)              | Processor: crash, metrics, breadcrumbs, feedback                                                                                                                          | §4, §5                                                                        |
 | Cloudflare               | Processor for DNS and network routing/proxy of our domains (`docs/RENDER.md`, `docs/ARCHITECTURE.md` §774; Bot Fight Mode is on, per `ci.yml`). Not involved in feedback. | request metadata and traffic in transit; no app-level data stored by us there |
+| Resend, Anthropic | Internal tooling, no player data: the org-level Dependabot triage job emails the owner (Resend) and drafts a summary paragraph (Anthropic) from repo, PR and dependency metadata only (`SECURITY.md` §16) |
 | Apple / Google           | Store, crash reports via their own programs if the user opted in on the device                                                                                            | outside our control; v1.0 has no purchases                                    |
 
 No ad networks, no analytics SDKs, no data brokers, no sale or advertising share. **Tracking: none.** No ATT prompt.
@@ -182,6 +183,7 @@ leaderboards from game records); diagnostics are App Functionality only.
 
 ## Owner confirmations
 
+- **Resend key scope:** confirm the Resend key used by the org-level Dependabot triage job is send-only and restricted to `mail.buffingchi.com` (`SECURITY.md` §16).
 - **IP addresses in Render request logs:** confirm the declaration approach. Currently covered under Device ID and stated as not
   joined to anything (Apple/Google have no IP-address type).
 
@@ -193,15 +195,15 @@ Purchase history**, name Apple/Google as payment/entitlement verifiers, add serv
 re-check retention and deletion of purchase records (#835 for authenticated deletion).
 
 **Delete My Data and purchase records (owner decision, #2786; [`IAP.md` §8.5](IAP.md#85-delete-my-data-and-purchase-records-owner-decision-2786)).**
-The server side is on `dev` (dormant until the Apple variables are set); v1.0 still creates no purchase rows. Same rule for
-Apple and Google (#2787):
+The server side is on `dev` for both stores (dormant until the Apple or Google variables are set); v1.0 still creates no purchase rows. Same rule for
+Apple and Google (#2787 verified it for Google):
 
 | Table                   | Holds                                                                                                                                                                  | Keyed to                                       | `DELETE /me`                                                                 |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------- |
 | `purchase_links`        | which install is linked to which store purchase, source, times                                                                                                         | install ID                                     | **Deleted**                                                                  |
 | `game_entitlements`     | derived unlocks (above)                                                                                                                                                | install ID                                     | **Deleted**                                                                  |
-| `purchases`             | store transaction record: platform, store IDs (Apple `originalTransactionId` / latest `transactionId`; Google token / order ID), product, dates, environment, state, revocation reason, `account_token` | the store purchase; `account_token` is a one-way derivative of the install ID (Apple `uuid5`, Google SHA-256) | **Kept** (refunds, chargebacks, fraud, legal claims). Retention **[OWNER TO CONFIRM]** |
-| `purchase_events`       | audit and webhook-dedupe rows: event kind, store notification ID, `session_hash` = SHA-256 of the install ID, small detail JSON                                         | the purchase                                   | **Kept**, as above                                                           |
+| `purchases`             | store transaction record: platform, store IDs (Apple `originalTransactionId` / latest `transactionId`; Google `purchaseToken` / `orderId`), product, dates, environment, state, revocation reason, `acknowledged_at` (Google), `account_token` | the store purchase; `account_token` is a one-way derivative of the install ID (Apple `uuid5`, Google SHA-256) | **Kept** (refunds, chargebacks, fraud, legal claims). Retention **[OWNER TO CONFIRM]** |
+| `purchase_events`       | audit and webhook-dedupe rows: event kind, store notification ID (Apple `notificationUUID`, Pub/Sub `messageId`, or a SHA-256 key per Google voided purchase), `session_hash` = SHA-256 of the install ID, small detail JSON                                         | the purchase                                   | **Kept**, as above                                                           |
 
 No retained column holds the install ID itself; `account_token` and `session_hash` are pseudonymous (recomputable only from
 the old install ID, which the app discards on Delete My Data). Legal basis proposed as GDPR Art. 17(3)(b)/(e) plus fraud
