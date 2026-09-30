@@ -153,6 +153,18 @@ Public board:
 
 Equal scores use the shared final tie-break: earlier `completed_at` ranks first.
 
+### Saved final scorecard (#2839)
+
+The completion `result` (`endedPayload` → `buildEndedPayload` in `frontend/src/game/yacht/resultPayload.ts`, validated by `YachtResult` in `backend/yacht/models.py`, merged into `games.metadata`) carries the card that explains `final_score`. The owner reads it back from `GET /games/{id}` under `metadata`; display is #2840. Ranking is unchanged: it still uses the player's `final_score` only.
+
+- `scorecard`: the player's `{ categories, upper_bonus, yacht_bonus_count, yacht_bonus_total }`. `categories` maps the 13 keys to scores and omits any category not filled, so an abandoned game sends a partial card.
+- `opponent_scorecard`: the computer's card, in the same shape, only when the computer finished a vs game (with `opponent_score` and `vs_result`). The two cards are never mixed: `scorecard` is always the player's.
+- Top-level `final_score`, `upper_bonus` and `yacht_bonus_total` keep their meaning, so builds before #2839 stay valid.
+
+Bonus accounting: `total = sum(filled categories) + upper_bonus + yacht_bonus_total`. An extra Yacht (Joker) writes its Joker-priced points (upper face sum, Full House 25, Small Straight 30, Large Straight 40, dice sum for the sum categories) into an ordinary category, so those points are in the category sum. The extra Yacht's **100** is only in `yacht_bonus_total` (`100 × yacht_bonus_count`, at most 12, and only once Yacht holds 50). `upper_bonus` (35) needs all six upper categories filled with a subtotal of 63 or more, and is never inside `categories`.
+
+Server rules: category keys must be the 13 above, each a non-negative integer within its category maximum (Joker scores included), `upper_bonus` 0 to 35, `yacht_bonus_count` 0 to 12. Anything else is a 400, which a current build never sends. A card that is well-formed but does not add up, or breaks the bonus rules, is **stored, not rejected**, with the server-written `scorecard_reconciled: false` (a client cannot set it); `true` means every card present reconciles. Old results without a card are unchanged. The shared 8 KiB result cap applies.
+
 Creation metadata:
 - `mode`: `solo` or `vs`;
 - `difficulty`: Easy/Medium/Hard for vs mode only.

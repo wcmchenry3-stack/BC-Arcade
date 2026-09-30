@@ -595,6 +595,13 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
         upper_bonus: expect.any(Number),
         yacht_bonus_total: expect.any(Number),
         outcome: "completed",
+        // #2839: the final category scorecard rides in the same result.
+        scorecard: expect.objectContaining({
+          categories: expect.any(Object),
+          upper_bonus: expect.any(Number),
+          yacht_bonus_count: expect.any(Number),
+          yacht_bonus_total: expect.any(Number),
+        }),
       })
     );
     for (const key of RESERVED_KEYS) {

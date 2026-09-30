@@ -34,6 +34,7 @@ import Scorecard from "../components/Scorecard";
 import VsScorecard from "../components/yacht/VsScorecard";
 import GameResultModal, { type GameOutcome } from "../components/shared/GameResultModal";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
+import { buildEndedPayload } from "../game/yacht/resultPayload";
 import YachtFinalScorecard from "../components/yacht/YachtFinalScorecard";
 import AiDifficultySelector from "../components/yacht/AiDifficultySelector";
 import { YachtCelebrationAnimation } from "../components/yacht/YachtCelebrationAnimation";
@@ -214,21 +215,9 @@ export default function GameScreen({ navigation, route }: Props) {
     outcome: "completed" | "abandoned",
     opponent?: GameState | null
   ) {
-    const payload: Record<string, unknown> = {
-      final_score: s.total_score,
-      upper_bonus: s.upper_bonus,
-      yacht_bonus_total: s.yacht_bonus_total,
-      outcome,
-    };
-    // #2505: vs-mode games report who won once the CPU has finished.
-    if (opponent?.game_over && outcome === "completed") {
-      const vsResult = vsOutcome(s, opponent);
-      payload.opponent_score = opponent.total_score;
-      payload.vs_result = vsResult;
-      // #2517: the row records who won (a tie is `push`), not just "completed".
-      payload.outcome = recordedOutcome(vsResult);
-    }
-    return payload;
+    // #2505: vs-mode games report who won once the CPU has finished (#2517:
+    // the row records who won, a tie is `push`). #2839: both scorecards go in.
+    return buildEndedPayload(s, outcome, opponent, vsOutcome, recordedOutcome);
   }
 
   // When the mode modal is shown on first render we defer syncStart to the
