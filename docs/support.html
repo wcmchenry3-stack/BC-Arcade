@@ -64,24 +64,7 @@
       <p>No. The current version is free and has no in-app purchases.</p>
 
       <h3>How do I delete my data?</h3>
-      <p>
-        Open <strong>Settings</strong>, choose <strong>Delete my data</strong>
-        and confirm. This permanently deletes the game records, statistics,
-        Daily Word guesses, error logs and leaderboard name linked to your
-        anonymous ID from our server, and clears that ID from your device. It
-        cannot be undone. The next time you play, the app starts a new anonymous
-        session.
-      </p>
-      <p>
-        Game saves, preferences and names you type yourself (for example player
-        names in a card game) are stored only on your device and are never
-        uploaded. To remove them, uninstall the app (or, on Android, clear the
-        app's storage).
-      </p>
-      <p>
-        If you cannot use the button, email us and we will help. Because we do
-        not know who you are, we may ask you to send the request from the app.
-      </p>
+      <p>See <a href="#delete-data">Delete your data</a> below.</p>
 
       <h3>How do leaderboards work, and how do I leave them?</h3>
       <p>
@@ -111,6 +94,102 @@
         data on your device. Restoring your phone from a device backup may bring
         that ID back, but because there are no accounts we cannot find or move
         your scores to a new installation or device for you.
+      </p>
+
+      <h2 id="delete-data">Delete your data (BC Arcade by Buffing Chi)</h2>
+      <p>
+        BC Arcade has no sign-in. Instead, the app creates a random anonymous ID
+        on your device the first time you open it, and your game records on our
+        server are linked to that ID. Deleting your data deletes everything
+        linked to that ID. You do not need to reinstall the app to do it.
+      </p>
+
+      <h3>Step 1: Delete from inside the app (recommended)</h3>
+      <ol>
+        <li>Open BC Arcade and go to the <strong>Settings</strong> tab.</li>
+        <li>Tap <strong>Delete my data</strong>.</li>
+        <li>Confirm with <strong>Delete my data</strong>.</li>
+      </ol>
+      <p>
+        This is immediate and cannot be undone. The next time you play, the app
+        starts a new anonymous ID with no history. If you only want to disappear
+        from the public leaderboards, use <strong>Profile</strong> &rarr;
+        <strong>Leave leaderboards</strong> instead.
+      </p>
+
+      <h3>Step 2: Remove what is stored only on your device</h3>
+      <p>
+        Game saves, games in progress, on-device statistics, preferences and
+        names you type yourself (for example player names in a card game) are
+        stored only on your device and are never uploaded. Uninstall the app to
+        remove them (on Android you can also clear the app's storage in system
+        settings).
+      </p>
+
+      <h3>If you cannot use the app</h3>
+      <p>
+        Email <strong>buffingchi@gmail.com</strong> [OWNER TO CONFIRM: support
+        email fallback] with the subject "Delete my data". Please note: because
+        there is no login, we can only erase your data on our server when the
+        request is made from the app itself. An email does not tell us which
+        anonymous ID is yours, so we cannot find or verify your records from it.
+        We will reply and help you make the request from the app.
+      </p>
+
+      <h3>What is deleted</h3>
+      <p>From our server, permanently and straight away:</p>
+      <ul>
+        <li>
+          Your game records: which games you played, when, scores, outcomes,
+          settings and in-game event logs (your statistics, leaderboard
+          rankings, Arcade XP and level are calculated from these)
+        </li>
+        <li>Your Daily Word guesses</li>
+        <li>Which games your ID is entitled to open</li>
+        <li>Automatic error logs linked to your ID</li>
+        <li>
+          Your generated leaderboard name, which removes you from every
+          leaderboard
+        </li>
+      </ul>
+      <p>
+        From your device: your anonymous ID, your generated leaderboard name and
+        any results still waiting to be sent.
+      </p>
+
+      <h3>What is kept, and for how long</h3>
+      <ul>
+        <li>
+          <strong>If you uninstall without using Delete my data:</strong> your
+          game records stay on our server, linked only to an anonymous ID that
+          no longer exists on your device, until [OWNER TO CONFIRM: maximum
+          retention period for inactive sessions].
+        </li>
+        <li>
+          <strong>Crash reports and feedback you sent (Sentry):</strong> these
+          are not linked to your anonymous ID, so we cannot find yours to delete
+          them. They are deleted automatically after 90 days [OWNER TO CONFIRM:
+          Sentry retention setting].
+        </li>
+        <li>
+          <strong>Server request logs</strong> (IP address, time, the address
+          requested): kept by our hosting provider for a limited period for
+          security and troubleshooting, then deleted. They are not linked to
+          your game data.
+        </li>
+        <li>
+          <strong>Backups:</strong> a deleted record can remain in our database
+          provider's routine backups until that backup expires [OWNER TO
+          CONFIRM: backup window].
+        </li>
+        <li>
+          <strong>Data on your device</strong> (saves, statistics, preferences,
+          typed names): until you uninstall the app or clear its storage.
+        </li>
+      </ul>
+      <p>
+        Full details are in our
+        <a href="https://buffingchi.com/privacy">Privacy Policy</a>.
       </p>
 
       <h2 id="legal">Legal</h2>

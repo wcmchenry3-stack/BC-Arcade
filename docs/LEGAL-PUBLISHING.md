@@ -7,13 +7,21 @@ advice. The documents were drafted from the codebase and need owner and legal re
 
 ## 1. Final URLs
 
-| URL                              | Backing file in this repo                             | Used by                                                                                                                                |
-| -------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `https://buffingchi.com/privacy` | [`docs/privacy-policy.html`](privacy-policy.html)     | `PRIVACY_POLICY_URL`: Settings legal row, Paywall (premium update); App Store Connect Privacy Policy URL; Play Console privacy policy  |
-| `https://buffingchi.com/terms`   | [`docs/terms-of-service.html`](terms-of-service.html) | `TERMS_OF_SERVICE_URL`: Settings legal row, Paywall (premium update)                                                                   |
-| `https://buffingchi.com/support` | [`docs/support.html`](support.html)                   | `SUPPORT_URL`: Paywall "contact support" (premium update, `not_linkable`); App Store Connect Support URL; Play Console website/contact |
+| URL                                          | Backing file in this repo                                      | Used by                                                                                                                                |
+| -------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `https://buffingchi.com/privacy`             | [`docs/privacy-policy.html`](privacy-policy.html)              | `PRIVACY_POLICY_URL`: Settings legal row, Paywall (premium update); App Store Connect Privacy Policy URL; Play Console privacy policy  |
+| `https://buffingchi.com/terms`               | [`docs/terms-of-service.html`](terms-of-service.html)          | `TERMS_OF_SERVICE_URL`: Settings legal row, Paywall (premium update)                                                                   |
+| `https://buffingchi.com/support`             | [`docs/support.html`](support.html)                            | `SUPPORT_URL`: Paywall "contact support" (premium update, `not_linkable`); App Store Connect Support URL; Play Console website/contact |
+| `https://buffingchi.com/support#delete-data` | [`docs/support.html`](support.html) section `id="delete-data"` | **Play Console → App content → Data safety → "Delete account URL"** (data deletion web resource). Not linked from the app              |
 
-The URLs live in `frontend/src/config/legal.ts` and are pinned by `frontend/src/config/__tests__/legal.test.ts`. If the owner
+**Delete account URL (Google Play).** Play requires apps that let users create an account to give a web page, usable without
+reinstalling the app, where users can request deletion of their account and data. Apple counts auto-generated "guest" accounts
+as accounts, and BC Arcade's anonymous install ID behaves like one, so v1.0 treats the URL as required. The "Delete your data"
+section of the support page names the app and developer, gives the in-app steps (Settings → Delete my data), says what is
+deleted and what is kept and for how long (consistent with the privacy policy), and gives an email fallback. Keep the
+`delete-data` anchor stable; it is entered in Play Console.
+
+The first three URLs live in `frontend/src/config/legal.ts` and are pinned by `frontend/src/config/__tests__/legal.test.ts`. If the owner
 changes a URL, change `legal.ts`, that test, this table, [`STORE-LISTING.md`](STORE-LISTING.md),
 [`STORE-PRIVACY-ANSWERS.md`](STORE-PRIVACY-ANSWERS.md) and both consoles together.
 
@@ -52,20 +60,21 @@ and the consoles are whatever the apex domain serves today, which was not checke
 Nothing below may be filled in by an assistant. Replace each marker with the confirmed value, or delete it if the drafted text
 is confirmed as correct. Then run `grep -n "OWNER TO CONFIRM" docs/*.html`. It must print nothing.
 
-| #   | Decision                                                                                      | Where                                                                                                                                                               |
-| --- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Publisher **legal name** (Buffing Chi, or the registered person/entity)                       | privacy-policy "Your Rights" (GDPR controller); terms intro + §17 Contact; support Contact                                                                          |
-| 2   | Publisher **postal address** (GDPR Art. 13)                                                   | privacy-policy "Your Rights"; terms §17                                                                                                                             |
-| 3   | **Contact / support email** (currently `buffingchi@gmail.com`): keep, or use a domain address | privacy-policy Contact; terms §17; support Contact. If changed, also replace the plain `buffingchi@gmail.com` mentions in the policy's deletion and rights sections |
-| 4   | Terms **effective date** (the day the approved version goes live)                             | terms header                                                                                                                                                        |
-| 5   | Terms **liability cap** amount                                                                | terms §9                                                                                                                                                            |
-| 6   | Terms **governing-law jurisdiction** (state / country)                                        | terms §13                                                                                                                                                           |
-| 7   | Sentry **"Prevent Storing of IP Addresses"** turned on                                        | privacy-policy "Crash and performance reports"                                                                                                                      |
-| 8   | Sentry **retention** is 90 days on the current plan (3 markers)                               | privacy-policy "Crash and performance reports", "Feedback you choose to send", "How Long We Keep It"                                                                |
-| 9   | **Maximum retention** for inactive sessions (or confirm "until you delete" only)              | privacy-policy "How Long We Keep It"                                                                                                                                |
-| 10  | Supabase **backup window**                                                                    | privacy-policy "How Long We Keep It"                                                                                                                                |
+| #   | Decision                                                                                                                                                                                                                                                                                                                       | Where                                                                                                                                                               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Publisher **legal name** (Buffing Chi, or the registered person/entity)                                                                                                                                                                                                                                                        | privacy-policy "Your Rights" (GDPR controller); terms intro + §17 Contact; support Contact                                                                          |
+| 2   | Publisher **postal address** (GDPR Art. 13)                                                                                                                                                                                                                                                                                    | privacy-policy "Your Rights"; terms §17                                                                                                                             |
+| 3   | **Contact / support email** (currently `buffingchi@gmail.com`): keep, or use a domain address                                                                                                                                                                                                                                  | privacy-policy Contact; terms §17; support Contact. If changed, also replace the plain `buffingchi@gmail.com` mentions in the policy's deletion and rights sections |
+| 4   | Terms **effective date** (the day the approved version goes live)                                                                                                                                                                                                                                                              | terms header                                                                                                                                                        |
+| 5   | Terms **liability cap** amount                                                                                                                                                                                                                                                                                                 | terms §9                                                                                                                                                            |
+| 6   | Terms **governing-law jurisdiction** (state / country)                                                                                                                                                                                                                                                                         | terms §13                                                                                                                                                           |
+| 7   | Sentry **"Prevent Storing of IP Addresses"** turned on                                                                                                                                                                                                                                                                         | privacy-policy "Crash and performance reports"                                                                                                                      |
+| 8   | Sentry **retention** is 90 days on the current plan (4 markers)                                                                                                                                                                                                                                                                | privacy-policy "Crash and performance reports", "Feedback you choose to send", "How Long We Keep It"; support "What is kept"                                        |
+| 9   | **Maximum retention** for inactive sessions (or confirm "until you delete" only)                                                                                                                                                                                                                                               | privacy-policy "How Long We Keep It"; support "Delete your data" → "What is kept"                                                                                   |
+| 10  | Supabase **backup window**                                                                                                                                                                                                                                                                                                     | privacy-policy "How Long We Keep It"; support "What is kept"                                                                                                        |
+| 11  | **Email fallback for data deletion**: is it acceptable, given an email cannot be matched to or verify an install ID? (Options: keep it as help-only, as drafted; or drop it and rely on the in-app button; or add a verifiable route, e.g. showing the install ID in Settings for the user to quote.) Also confirm the address | support "Delete your data" → "If you cannot use the app"                                                                                                            |
 
-That is 17 markers in total: 8 in the privacy policy, 7 in the terms and 2 on the support page (some decisions appear in more
+That is 21 markers in total: 8 in the privacy policy, 7 in the terms and 6 on the support page (some decisions appear in more
 than one place).
 
 Related owner decisions that have no marker but block approval (from `LEGAL-REVIEW-NOTES.md` and `DATA-INVENTORY.md`):
@@ -88,6 +97,9 @@ Re-check these when the product changes, and update all three pages together.
   the privacy policy (purchase records, Apple/Google as verifiers; see DATA-INVENTORY "Premium update"), change terms §5A
   to present tense, add a "Restore purchases" FAQ to the support page, then re-approve all three (#2790).
 - Delete My Data, Leave leaderboards and the local-only data are described the same way in the policy and on the support page.
+  The support page's "What is kept" list mirrors the policy's "How Long We Keep It". **For the premium update**, add the
+  purchase-record retention statement (store transaction IDs and ownership records, and how long they are kept after Delete my
+  data, e.g. for refunds and restore) to both the policy and the support page's delete-data section before submission.
 
 ## 5. In-app link wiring (verified 2026-09-30)
 
@@ -110,12 +122,15 @@ Tick each item and link evidence (screenshot, curl output, console screenshot).
 - [ ] Support page `docs/support.html` reviewed
 - [ ] All `[OWNER TO CONFIRM]` markers resolved (`grep -n "OWNER TO CONFIRM" docs/*.html` prints nothing)
 - [ ] Publisher legal name and contact email confirmed and identical on all three pages
-- [ ] Hosting done: `/privacy`, `/terms`, `/support` return 200 `text/html`, public, no login, match the approved commit
+- [ ] Hosting done: `/privacy`, `/terms`, `/support` (with the `#delete-data` section) return 200 `text/html`, public, no login, match the approved commit
 - [ ] Links verified on a **real iOS** store-configuration build (Settings → Privacy Policy, Terms of Service open the hosted pages)
 - [ ] Links verified on a **real Android** store-configuration build (same)
 - [ ] App Store Connect: **Privacy Policy URL** = `https://buffingchi.com/privacy`, **Support URL** = `https://buffingchi.com/support`
 - [ ] Play Console: **Privacy policy** = `https://buffingchi.com/privacy`. **Contact details**: email and website
       (`https://buffingchi.com/support`) filled in
+- [ ] Play Console → Data safety: **Delete account URL** = `https://buffingchi.com/support#delete-data`, and the page opens in a
+      browser without the app installed
+- [ ] Owner decision #11 (email fallback for deletion) made
 - [ ] Row in `RELEASE-ACCEPTANCE-v1.0.md` §4 "Legal" ticked for both platforms
 
 ## 7. Approved versions
