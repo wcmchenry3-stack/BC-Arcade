@@ -182,6 +182,7 @@ leaderboards from game records); diagnostics are App Functionality only.
 
 ## Owner confirmations
 
+- **Resend (email API):** the owner reports using it for Dependabot/security alerts, but it is not referenced in this repo (see `SECURITY.md` §16). If it only sends developer alerts, add it to §6 as internal developer notifications only, receiving no player data. If any player data could reach it, decide whether to add it as a processor here and in the privacy policy.
 - **IP addresses in Render request logs:** confirm the declaration approach. Currently covered under Device ID and stated as not
   joined to anything (Apple/Google have no IP-address type).
 

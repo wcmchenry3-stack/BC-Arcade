@@ -313,3 +313,21 @@ When a security check is added/removed, update this section only after verifying
 - `docs/RENDER.md` — deployment/environment secrets and database topology
 - `docs/STORE-PRIVACY-ANSWERS.md` — store-facing data declarations
 - `docs/FEEDBACK-OBSERVABILITY.md` — diagnostics/feedback data handling (once canonical PR lands)
+
+## 16. Dependabot and alert notifications
+
+Dependabot is configured in `.github/dependabot.yml` (weekly npm, pip and GitHub Actions updates; CVE fixes are grouped separately as `security-updates`). It opens pull requests and raises GitHub security alerts. Nothing in the repository sends email about them.
+
+**Resend (email API) is not referenced anywhere in this repository.** A full case-insensitive search of `.github/` (workflows and `dependabot.yml`), `scripts/`, `backend/`, `frontend/`, `docs/`, `render.yaml` and any Cloudflare config found no `resend`, `RESEND_*` secret names, `api.resend.com` calls or `re_` API keys. No workflow or script sends email. If the owner uses Resend for Dependabot or security alerts, it is configured outside the repo (for example a GitHub App, a webhook relay, a Cloudflare Worker or the Resend dashboard), and its details cannot be verified from the code.
+
+Owner to record here once confirmed:
+
+| Item | Value |
+| --- | --- |
+| Purpose | Developer alerts only (assumed, unconfirmed). No player data is sent from this repo to Resend. |
+| Trigger | Unknown: where the integration lives (GitHub App, webhook, dashboard) and which events fire it |
+| Recipients | Unknown (record by role, not personal address) |
+| Secret name and storage | Unknown (record the name only, never the value) |
+| Sending domain | Unknown |
+| Key rotation | Create a new key in the Resend dashboard, update it wherever the integration stores it, then revoke the old key |
+| Failure mode | If the key is revoked or expires, alert emails stop silently; GitHub's own Dependabot alerts and PRs are unaffected, so check the repo's Security tab periodically |
