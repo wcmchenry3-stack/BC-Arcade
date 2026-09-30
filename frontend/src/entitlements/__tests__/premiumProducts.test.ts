@@ -9,7 +9,9 @@ import {
   PREMIUM_PRODUCTS,
   PRODUCT_ID_PREFIX,
   gameForProductId,
+  isPremiumGameSlug,
   productIdForGame,
+  type PremiumGameSlug,
 } from "../premiumProducts";
 
 const slugs = () => new Set(PREMIUM_PRODUCTS.map((p) => p.gameSlug));
@@ -20,8 +22,22 @@ describe("premiumProducts", () => {
     expect(PREMIUM_PRODUCTS).toHaveLength(PREMIUM_GAMES.size);
   });
 
-  it("covers every game hidden in v1.0 store builds", () => {
-    expect(slugs()).toEqual(HIDDEN_GAMES);
+  it("makes every game hidden in v1.0 store builds purchasable", () => {
+    // Subset, not equality: a game may be hidden for non-premium reasons, but a
+    // hidden premium game must still have a product so it can be unlocked.
+    const purchasable = slugs();
+    for (const slug of HIDDEN_GAMES) {
+      expect(purchasable.has(slug as PremiumGameSlug)).toBe(true);
+    }
+  });
+
+  it("narrows slugs with isPremiumGameSlug", () => {
+    const expected: PremiumGameSlug[] = ["blackjack", "cascade", "hearts", "mahjong", "starswarm"];
+    for (const slug of expected) expect(isPremiumGameSlug(slug)).toBe(true);
+    expect([...slugs()].sort()).toEqual(expected);
+    for (const slug of ["yacht", "sudoku", "", "Hearts", "com.buffingchi.games.premium.hearts"]) {
+      expect(isPremiumGameSlug(slug)).toBe(false);
+    }
   });
 
   it("uses the shared product-ID convention, valid on both stores", () => {

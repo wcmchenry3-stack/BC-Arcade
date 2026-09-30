@@ -9,13 +9,15 @@ purchasable, so the JSON and the migrated catalog have to agree exactly.
 from __future__ import annotations
 
 import json
+import os
 import re
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from db.base import get_session_factory
+from db.models import GameType
 from entitlements.service import _ALL_PREMIUM_SLUGS
 
 _CATALOG_FILE = (
@@ -25,14 +27,6 @@ _PREFIX = "com.buffingchi.games.premium."
 # Valid on both stores: Play requires a lowercase letter/digit first and only
 # [a-z0-9_.]; App Store Connect allows [A-Za-z0-9_.]. 40 is a conservative cap.
 _PRODUCT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_.]{0,39}$")
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 def _catalog() -> dict:
@@ -53,9 +47,15 @@ def test_product_ids_and_games_unique() -> None:
     assert len({p["productId"] for p in products}) == len(products)
 
 
-def test_catalog_matches_game_types_is_premium(client: TestClient) -> None:
-    items = client.get("/games/catalog").json()["items"]
-    premium = {g["name"] for g in items if g["is_premium"]}
+@pytest.mark.skipif(not os.environ.get("DATABASE_URL"), reason="DATABASE_URL not set")
+async def test_catalog_matches_game_types_is_premium() -> None:
+    # Read game_types directly: /games/catalog filters on is_active, so an
+    # inactive premium game would slip past a catalog-endpoint comparison.
+    factory = get_session_factory()
+    async with factory() as db:
+        premium = set(
+            (await db.execute(select(GameType.name).where(GameType.is_premium.is_(True)))).scalars()
+        )
     assert {p["gameSlug"] for p in _catalog()["products"]} == premium
 
 

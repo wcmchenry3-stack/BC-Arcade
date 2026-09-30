@@ -14,24 +14,36 @@
  */
 import catalog from "./premiumProducts.json";
 
+/** The premium games that have a store product (the slugs in `premiumProducts.json`). */
+export type PremiumGameSlug = "blackjack" | "cascade" | "hearts" | "mahjong" | "starswarm";
+
 export interface PremiumProduct {
   /** `game_types.name` / the slug used by `PREMIUM_GAMES` and `HIDDEN_GAMES`. */
-  gameSlug: string;
+  gameSlug: PremiumGameSlug;
   /** Store product ID — identical on iOS and Android. */
   productId: string;
 }
 
 export const PRODUCT_ID_PREFIX: string = catalog.productIdPrefix;
 
-export const PREMIUM_PRODUCTS: readonly PremiumProduct[] = catalog.products;
+// JSON imports widen `gameSlug` to `string`; the unit test pins every entry to
+// `PremiumGameSlug` (via `isPremiumGameSlug`), so this assertion is checked.
+export const PREMIUM_PRODUCTS: readonly PremiumProduct[] = catalog.products as PremiumProduct[];
 
-const byGame = new Map(PREMIUM_PRODUCTS.map((p) => [p.gameSlug, p.productId]));
-const byProduct = new Map(PREMIUM_PRODUCTS.map((p) => [p.productId, p.gameSlug]));
+const byGame = new Map<string, string>(PREMIUM_PRODUCTS.map((p) => [p.gameSlug, p.productId]));
+const byProduct = new Map<string, PremiumGameSlug>(
+  PREMIUM_PRODUCTS.map((p) => [p.productId, p.gameSlug])
+);
+
+/** Narrows an arbitrary slug (route param, server payload) to a purchasable game. */
+export function isPremiumGameSlug(s: string): s is PremiumGameSlug {
+  return byGame.has(s);
+}
 
 export function productIdForGame(gameSlug: string): string | undefined {
   return byGame.get(gameSlug);
 }
 
-export function gameForProductId(productId: string): string | undefined {
+export function gameForProductId(productId: string): PremiumGameSlug | undefined {
   return byProduct.get(productId);
 }

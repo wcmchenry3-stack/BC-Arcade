@@ -26,7 +26,7 @@ Readiness Gate" (security requirements this must satisfy).
 | Client library         | [`expo-iap`](https://www.npmjs.com/package/expo-iap) `~5.8.2` for both platforms (StoreKit 2 on iOS, Play Billing Library 9.1 on Android).                            |
 | Server verification    | Apple: signed-transaction (JWS) verification plus App Store Server API. Google: Play Developer API. The client's "success" is never trusted.                          |
 | Entitlement system     | Reuse `game_entitlements` + `GET /entitlements` RS256 JWT. A new `purchases` table records store evidence and feeds `game_entitlements`; no second entitlement model. |
-| Restore                | Via verified store ownership on the same store account, after reinstall or on a new device. No sign-in required.                                                      |
+| Restore                | Via verified store ownership on the same store account, after reinstall or on a new device. No sign-in required. Capped links per purchase (§4).                      |
 | Cross-platform sharing | **Not supported and not promised.** An App Store purchase does not unlock Android, or the reverse.                                                                    |
 | Family Sharing         | **Recommended: enable for all five Apple products** (owner sign-off required; it cannot be turned off once on). Not available for Google Play one-time products.      |
 | Refresh policy         | Keep the 24-hour JWT and 7-day offline grace.                                                                                                                         |
@@ -39,8 +39,8 @@ Readiness Gate" (security requirements this must satisfy).
 
 The catalog lives in one file:
 [`frontend/src/entitlements/premiumProducts.json`](../frontend/src/entitlements/premiumProducts.json),
-wrapped by `premiumProducts.ts` (`PREMIUM_PRODUCTS`, `productIdForGame`,
-`gameForProductId`).
+wrapped by `premiumProducts.ts` (`PREMIUM_PRODUCTS`, `PremiumGameSlug`,
+`isPremiumGameSlug`, `productIdForGame`, `gameForProductId`).
 
 | Game       | `game_types.name` (slug) | Product ID                               | Store type (Apple / Google)             |
 | ---------- | ------------------------ | ---------------------------------------- | --------------------------------------- |
@@ -53,9 +53,13 @@ wrapped by `premiumProducts.ts` (`PREMIUM_PRODUCTS`, `productIdForGame`,
 **Drift guards** (both run in CI):
 
 - `frontend/src/entitlements/__tests__/premiumProducts.test.ts` — the catalog
-  equals `PREMIUM_GAMES` and `HIDDEN_GAMES`, every ID follows the convention.
+  equals `PREMIUM_GAMES` and matches `PremiumGameSlug`, every `HIDDEN_GAMES`
+  entry is purchasable (a subset check: a game could be hidden for other
+  reasons, but a hidden premium game must have a product), and every ID follows
+  the convention.
 - `backend/tests/test_premium_products.py` — the catalog equals the
-  `game_types.is_premium` rows after migrations and `_ALL_PREMIUM_SLUGS`.
+  `game_types.is_premium` rows after migrations (read straight from the table,
+  so an inactive premium game still counts) and `_ALL_PREMIUM_SLUGS`.
 
 So a tier change (a migration flipping `is_premium`) fails CI until the catalog
 changes with it. #2460 still owns folding `_ALL_PREMIUM_SLUGS` into a query.
@@ -127,39 +131,66 @@ currently used.**
 - A `purchases` row is keyed by the store's identity for the purchase. For
   Apple that is `originalTransactionId`; for Google, the `purchaseToken`. The
   row exists once, however often it is presented.
-- A session gets a game only through a `game_entitlements` row that points at
-  a verified, non-revoked purchase (`purchase_id`).
+- A session is linked to a purchase by a `purchase_links` row (§8.1). A
+  session gets a game only through a `game_entitlements` row derived from a
+  link to a verified, `owned` purchase.
 - **Proof of ownership is store-signed evidence that the server verifies**:
   a JWS from Apple, checked against Apple's root CA and then with the App
   Store Server API, or a Google token checked with the Play Developer API.
   That evidence is only on a device signed in to the buying store account. A
   client-supplied product ID or success flag is never enough.
-- **Initial purchase binding.** When a purchase starts, the client passes the
-  session identity into the store purchase:
-  - Apple: `appAccountToken = X-Session-ID` (a UUID, as StoreKit requires).
+- **Initial purchase binding.** When a purchase starts, the client passes a
+  one-way derivative of the session identity into the store purchase. The raw
+  `X-Session-ID` never leaves the app except in our own API header; it is
+  never given to Apple or Google, so it cannot be read back out of a
+  transaction, a receipt or a store report.
+  - Apple: `appAccountToken = uuid5(APP_ACCOUNT_NS, X-Session-ID)`. StoreKit
+    requires a UUID, and a name-based v5 UUID is a UUID. `APP_ACCOUNT_NS` is a
+    fixed namespace UUID shared by client and server (a constant, not a
+    secret).
   - Google: `obfuscatedAccountId = hex(SHA-256(X-Session-ID))`, 64 characters,
     within Play's limit.
 
-  The server records it. On `source: "purchase"`, a mismatch with the calling
-  session is rejected (`403 ownership_mismatch`).
+  The server records the token, recomputes the expected value from the calling
+  session's `X-Session-ID`, and compares. On `source: "purchase"`, a mismatch
+  is rejected (`403 ownership_mismatch`). Only a transaction returned by a
+  `purchase()` call started in this app process is posted as `"purchase"`
+  (§5).
 
-- **Restore / new device / reinstall.** The same verified purchase can be
-  linked to another session (`source: "restore" | "sync"`). One store account
-  legitimately uses several installs (an iPhone and an iPad, or a reinstall), so
-  a purchase may be linked to at most **`MAX_SESSIONS_PER_PURCHASE = 5`**
-  sessions. Linking a sixth unlinks the least recently verified one. That
-  bounds the damage from a leaked transaction without locking out real users. The
-  cap is an owner-tunable constant (§17).
-- Every link and unlink is logged (purchase ID, session hash, source) for
-  support and abuse review. Raw tokens are never logged.
+- **Restore / new device / reinstall — the designed transfer rule.** The same
+  verified purchase can be linked to another session (`source` `"restore"` or
+  `"sync"`). One store account legitimately uses several installs (an iPhone and
+  an iPad, or a reinstall), so cross-session linking is allowed, but capped:
+  - A purchase may be linked to at most **`MAX_SESSIONS_PER_PURCHASE = 5`**
+    sessions. A link beyond that is **rejected** (`409 link_limit`). Nothing
+    is evicted, so a leaked transaction cannot push the real owner's
+    installs out.
+  - Additionally, at most **`MAX_NEW_LINKS_PER_PURCHASE_PER_30D = 3`** new
+    sessions may be linked per purchase in any rolling 30 days, also
+    `409 link_limit`. Re-presenting from an already-linked session is not a
+    new link and is always allowed.
+  - Both limits count `purchase_links` rows (§8.1).
+  - **Unlinking happens only via support** (for example a user who has
+    reinstalled more than five times). There is no self-service unlink.
+  - Per-IP and per-`store_key` rate limits (§8.2) slow down anyone trying to
+    spray one transaction across many sessions.
+
+  This is the "explicitly designed transfer rule" that SECURITY.md §10, §11
+  and §14 allow. Both constants are owner-tunable (§17).
+
+- Every link, rejected link and support unlink is logged (purchase ID, session
+  hash, source) for support and abuse review. Raw tokens are never logged.
 - **Future accounts (#144/#1047).** When an optional account exists, purchases
   can also link to `player_id`. Nothing in this model has to be migrated for
   that; `purchases` stays the source of truth.
 
 **Residual risk (accepted, for owner sign-off).** Someone who pulls a valid JWS
-or token off their own device could share it with up to four other installs.
-Rate limits, the session cap and the audit log keep this small. Apple's
-per-device `deviceVerification` binding is optional hardening for later.
+or token off their own device could share it with up to four other installs
+(at most three in any 30 days), after which the purchase refuses new links,
+including the buyer's own. Rate limits, the link caps and the audit log keep
+this small and visible. True binding to a person, rather than to a capped set
+of installs, needs accounts (#144); Apple's per-device `deviceVerification`
+binding is optional hardening for later. Neither is required for launch.
 
 ---
 
@@ -168,24 +199,43 @@ per-device `deviceVerification` binding is optional hardening for later.
 "Finish" means Apple `Transaction.finish()` or Google acknowledgement, done by
 `expo-iap`'s `finishTransaction({ purchase, isConsumable: false })`.
 
-| State / event                                  | Client behavior                                                                                                                                         | Server effect                                                                                               | Finish?                                                              |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| **Success**                                    | Send evidence to `POST /purchases/{apple,google}`, apply the returned token, open the game.                                                             | Verify, upsert `purchases` (state `owned`), link session in `game_entitlements`, and on Google acknowledge. | **After** the server returns `owned` (after persistence).            |
-| **User cancel**                                | Return to the paywall silently. No error toast.                                                                                                         | None.                                                                                                       | Nothing to finish.                                                   |
-| **Pending** (Ask to Buy, Play pending payment) | Show "Waiting for approval". No access. The purchase finishes later through the transaction listener.                                                   | Google: `state=pending` row if reported, never linked. Apple: nothing until the transaction arrives.        | No.                                                                  |
-| **Pending → completed**                        | The listener (running from app start) receives it and runs the Success path, even if the paywall is closed.                                             | As Success.                                                                                                 | After persistence.                                                   |
-| **Pending → cancelled/declined**               | Clear the "waiting" state.                                                                                                                              | Google RTDN `ONE_TIME_PRODUCT_CANCELED` marks the row `cancelled`.                                          | n/a                                                                  |
-| **Interrupted** (killed/crashed after charge)  | On next launch the adapter handles unfinished transactions (Apple `Transaction.unfinished`/updates, Google `queryPurchases`) and runs the Success path. | Idempotent upsert.                                                                                          | After persistence.                                                   |
-| **Server unreachable after charge (offline)**  | "Purchase received — it unlocks when you're back online." Retry on reconnect/foreground with backoff.                                                   | Google: RTDN lets the server verify and acknowledge without the client (§7.4).                              | **No** until the server confirms. The store redelivers.              |
-| **Server verification fails (4xx)**            | Generic error, Sentry event, no access.                                                                                                                 | Nothing granted.                                                                                            | No. Google will auto-refund an unacknowledged purchase after 3 days. |
-| **Server transient error (5xx/503)**           | As "server unreachable".                                                                                                                                | None.                                                                                                       | No.                                                                  |
-| **Already owned**                              | The paywall shows "Owned" or navigates straight in. A buy attempt that returns "already owned" runs Restore for that product.                           | Idempotent.                                                                                                 | n/a                                                                  |
-| **Refund / revocation**                        | The next token refresh drops the game. `EntitlementContext` clears that game's local state. A game in progress plays on.                                | Notification sets the row to `revoked` and deletes its `game_entitlements` links.                           | n/a                                                                  |
-| **Refund reversed** (Apple `REFUND_REVERSED`)  | Access returns on the next sync or restore.                                                                                                             | Row back to `owned`. Sessions re-link on their next sync.                                                   | n/a                                                                  |
-| **Reinstall, same device**                     | Silent **sync** on first launch (below), then an explicit Restore button if needed.                                                                     | Link the new session (subject to the cap).                                                                  | n/a                                                                  |
-| **New device, same store account**             | As reinstall.                                                                                                                                           | As reinstall.                                                                                               | n/a                                                                  |
-| **Different store account / other platform**   | Not restorable. The paywall shows the price.                                                                                                            | None.                                                                                                       | n/a                                                                  |
-| **Offline, already entitled**                  | Cached JWT, then up to 7 days of grace (§10).                                                                                                           | None.                                                                                                       | n/a                                                                  |
+| State / event                                  | Client behavior                                                                                                                                          | Server effect                                                                                                 | Finish?                                                              |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| **Success**                                    | Send evidence to `POST /purchases/{apple,google}` (`source` per the rule below), apply the returned token, open the game.                                | Verify, upsert `purchases` (state `owned`), link session in `game_entitlements`, and on Google acknowledge.   | **After** the server returns `owned` (after persistence).            |
+| **User cancel**                                | Return to the paywall silently. No error toast.                                                                                                          | None.                                                                                                         | Nothing to finish.                                                   |
+| **Pending** (Ask to Buy, Play pending payment) | Show "Waiting for approval". No access. The purchase finishes later through the transaction listener.                                                    | Google: `state=pending` row if reported, never linked. Apple: nothing until the transaction arrives.          | No.                                                                  |
+| **Pending → completed**                        | The listener (running from app start) receives it and runs the Success path with `source: "sync"`, even if the paywall is closed.                        | As Success.                                                                                                   | After persistence.                                                   |
+| **Pending → cancelled/declined**               | Clear the "waiting" state.                                                                                                                               | Google RTDN `ONE_TIME_PRODUCT_CANCELED` marks the row `cancelled`.                                            | n/a                                                                  |
+| **Interrupted** (killed/crashed after charge)  | On next launch the adapter handles unfinished transactions (Apple `Transaction.unfinished`/updates, Google `queryPurchases`) and posts `source: "sync"`. | Idempotent upsert.                                                                                            | After persistence.                                                   |
+| **Server unreachable after charge (offline)**  | "Purchase received — it unlocks when you're back online." Retry on reconnect/foreground with backoff.                                                    | Google: RTDN lets the server verify and acknowledge without the client (§7.4).                                | **No** until the server confirms. The store redelivers.              |
+| **Server verification fails (400/422)**        | Generic error, Sentry event, no access.                                                                                                                  | Nothing granted.                                                                                              | No. Google will auto-refund an unacknowledged purchase after 3 days. |
+| **Valid purchase, not linkable (403/409)**     | `ownership_mismatch` or `link_limit`: no access on this install. Show "This purchase can't be used here — contact support" with a support link.          | Store evidence verified and the `purchases` row kept (audit). No link. `purchase_events` records the refusal. | **Yes.** The purchase is real; see below.                            |
+| **Server transient error (5xx/503)**           | As "server unreachable".                                                                                                                                 | None.                                                                                                         | No.                                                                  |
+| **Already owned**                              | The paywall shows "Owned" or navigates straight in. A buy attempt that returns "already owned" runs Restore for that product.                            | Idempotent.                                                                                                   | n/a                                                                  |
+| **Refund / revocation**                        | The next token refresh drops the game. `EntitlementContext` clears that game's local state. A game in progress plays on.                                 | Notification sets the row to `revoked`; the game drops from linked sessions' `game_entitlements`.             | n/a                                                                  |
+| **Refund reversed** (Apple `REFUND_REVERSED`)  | Access returns on the next token refresh.                                                                                                                | Row back to `owned`. Existing `purchase_links` restore access at once.                                        | n/a                                                                  |
+| **Reinstall, same device**                     | Silent **sync** on first launch (below), then an explicit Restore button if needed.                                                                      | Link the new session (subject to the link caps, §4).                                                          | n/a                                                                  |
+| **New device, same store account**             | As reinstall.                                                                                                                                            | As reinstall.                                                                                                 | n/a                                                                  |
+| **Different store account / other platform**   | Not restorable. The paywall shows the price.                                                                                                             | None.                                                                                                         | n/a                                                                  |
+| **Offline, already entitled**                  | Cached JWT, then up to 7 days of grace (§10).                                                                                                            | None.                                                                                                         | n/a                                                                  |
+
+**Which `source` to send.** `source: "purchase"` is sent **only** for the
+transaction returned by a `purchase()` call started in this app process. Every
+other transaction is `source: "sync"`: those from the transaction listener
+(Ask to Buy approval, a purchase on another device), unfinished transactions
+at launch, and `getAvailablePurchases`. The explicit Restore button sends
+`source: "restore"`, which the server treats exactly like `"sync"` except in
+the audit log. Only `"purchase"` checks the account token (§4). A transaction
+that arrives outside `purchase()` may belong to another install's session
+(a second device, a reinstall), so it must not be judged as a fresh purchase.
+
+**Finish on `ownership_mismatch` and `link_limit`.** Both mean the server
+verified real store evidence and kept the `purchases` row; they only refuse to
+link _this_ session. Leaving the transaction unfinished would not help:
+Apple would redeliver it at every launch for ever, and Google would
+auto-refund a purchase the user really paid for after 3 days. So the client
+finishes or acknowledges it, and the user is sent to support, which can unlink
+old installs (§4).
 
 **Silent sync (both platforms).** At launch, once `EntitlementContext` has
 loaded, the adapter lists owned products without any UI. That is
@@ -208,7 +258,9 @@ with no user action. The explicit **Restore Purchases** button also calls
 - Start the transaction listener (`purchaseUpdatedListener`) **at app start**,
   not only when the paywall is open, so Ask-to-Buy approvals, interrupted
   purchases and purchases made on another device are handled.
-- `requestPurchase({ request: { ios: { sku, appAccountToken: sessionId } } })`.
+- `requestPurchase({ request: { ios: { sku, appAccountToken } } })`, where
+  `appAccountToken = uuid5(APP_ACCOUNT_NS, sessionId)` (§4). Never pass the raw
+  session ID.
   Send the transaction's `purchaseToken` / JWS (`jwsRepresentation`) to the
   server. Never send the legacy app receipt.
 - Treat `ownershipTypeIOS` `PURCHASED` and `FAMILY_SHARED` alike on the client.
@@ -223,22 +275,37 @@ with no user action. The explicit **Restore Purchases** button also calls
   (Python, `3.1.x`), using `SignedDataVerifier` with Apple's root certificates.
   The root certificates are public and may be committed under
   `backend/purchases/apple_roots/`.
+- **One verifier and one API client per allowed environment.** The library's
+  `SignedDataVerifier` and `AppStoreServerAPIClient` are each bound to one
+  environment. At startup, build a `SignedDataVerifier` and an
+  `AppStoreServerAPIClient` for every environment in `APPLE_IAP_ENVIRONMENTS`
+  (§6.4): the Production pair uses `APPLE_APP_ID` and
+  `api.storekit.itunes.apple.com`, the Sandbox pair uses
+  `api.storekit-sandbox.itunes.apple.com`.
 - Steps:
-  1. Verify the JWS signature chain.
-  2. Check `bundleId == com.buffingchi.games`, then the environment (§6.4).
-  3. Check `productId` is in the catalog and `type == Non-Consumable`.
-  4. Check there is no `revocationDate`.
-  5. Fetch the authoritative state with the App Store Server API
-     **Get Transaction Info** (`/inApps/v1/transactions/{transactionId}`). This
-     also catches a JWS that has since been revoked.
-  6. Upsert on `originalTransactionId`.
+  1. Read `environment` from the **unverified** JWS payload. It only picks
+     the verifier; it is not trusted. If it is not in
+     `APPLE_IAP_ENVIRONMENTS`, reject (`422 environment_not_allowed`).
+  2. Verify the JWS signature chain with that environment's verifier. The
+     verifier checks that the signed `environment` matches, so a payload that
+     lies about its environment fails here.
+  3. Check `bundleId == com.buffingchi.games`.
+  4. Check `productId` is in the catalog and `type == Non-Consumable`.
+  5. Check there is no `revocationDate`.
+  6. Fetch the authoritative state with the **same environment's** App Store
+     Server API client, **Get Transaction Info**
+     (`/inApps/v1/transactions/{transactionId}`). This also catches a JWS that
+     has since been revoked.
+  7. Upsert on `originalTransactionId`.
 - Record `appAccountToken`, `inAppOwnershipType`, `environment`,
   `purchaseDate` and `transactionId`.
 
 ### 6.3 Finishing
 
 The client finishes the transaction **only after** the server responds `owned`
-(the purchase is persisted) or `revoked`. An unfinished transaction is
+(the purchase is persisted) or `revoked`, or rejects the link with `403
+ownership_mismatch` / `409 link_limit` (§5: the evidence is valid and
+persisted). An unfinished transaction is
 redelivered at every launch, and that redelivery is the recovery path.
 Re-posting is safe because the server is idempotent.
 
@@ -247,15 +314,26 @@ Re-posting is safe because the server is idempotent.
 TestFlight, sandbox testers and **App Review** all produce `Sandbox`
 transactions against the **production** API. So production must accept
 `Sandbox` as well as `Production`
-(`APPLE_IAP_ENVIRONMENTS=Production,Sandbox`), or App Review cannot buy. Rows
-store `environment` so sandbox purchases can be told apart and removed. Only
-App Store Connect users and testers can make sandbox purchases.
+(`APPLE_IAP_ENVIRONMENTS=Production,Sandbox`), or App Review cannot buy. Sandbox
+transactions are verified with the Sandbox verifier and the Sandbox API host
+(§6.2), never the Production ones. A transaction whose verified environment is
+not allowed is rejected (`environment_not_allowed`). Rows store `environment`
+so sandbox purchases can be told apart and removed.
+
+Sandbox purchases need a Sandbox Apple Account or a TestFlight build. **Anyone
+who joins a public TestFlight link is a TestFlight tester and can mint valid
+Sandbox JWSes for free.** So, while production accepts Sandbox, a public
+TestFlight link hands out free premium access on production. Keep TestFlight
+groups invite-only, or accept the risk (§17 Q5).
 
 ### 6.5 Refunds and revocations — App Store Server Notifications V2
 
 - Set the production and sandbox notification URLs in App Store Connect to
   `POST /purchases/apple/notifications`.
-- Verify `signedPayload` with the same `SignedDataVerifier`. Handle these types:
+- Verify `signedPayload` the same way as §6.2: read `data.environment` from the
+  unverified payload, reject it if not allowed, verify with that environment's
+  `SignedDataVerifier`, and use that environment's API client for any
+  follow-up call. Handle these types:
   - `REFUND` → revoke.
   - `REVOKE` → revoke (Family Sharing stopped).
   - `REFUND_REVERSED` → restore to `owned`.
@@ -282,7 +360,9 @@ App Store Connect users and testers can make sandbox purchases.
 - The BILLING permission comes from the billing library's manifest merge.
   `frontend/android/` stays committed; run `./gradlew assembleDebug` before
   changing it (ANDROID-CI.md).
-- `requestPurchase({ request: { android: { skus: [productId], obfuscatedAccountId } } })`.
+- `requestPurchase({ request: { android: { skus: [productId], obfuscatedAccountId } } })`,
+  where `obfuscatedAccountId = hex(SHA-256(sessionId))` (§4). Never pass the raw
+  session ID.
   Send `purchaseToken`, `productId` and `packageName` to the server.
 - **At every launch**, call `getAvailablePurchases()`. Google requires this to
   catch purchases completed while the app was closed and pending purchases
@@ -330,7 +410,12 @@ App Store Connect users and testers can make sandbox purchases.
 - `oneTimeProductNotification`:
   - `ONE_TIME_PRODUCT_PURCHASED` → verify, upsert, acknowledge. The row is not
     linked to a session, so the 3-day deadline is met even if the client never
-    reports. The next client sync links it.
+    reports. Acknowledging before any session is linked is safe: the
+    acknowledgement only tells Google the purchase was delivered, and the
+    purchase stays on the buyer's Play account. Any session that presents the
+    token is linked on its next sync (the listener, launch-time
+    `getAvailablePurchases`, or Restore), subject to the link caps. The purchase
+    is never lost.
   - `ONE_TIME_PRODUCT_CANCELED` → mark a pending row `cancelled`.
 - `voidedPurchaseNotification` (refund or chargeback) → revoke, keyed on
   `purchaseToken`.
@@ -375,7 +460,17 @@ purchases
   unique (platform, store_key)
   index (game_slug), index (state)
 
-game_entitlements            -- existing table, extended
+purchase_links               -- which sessions a purchase is linked to (the ownership record)
+  id                  uuid pk
+  purchase_id         uuid not null references purchases(id) on delete cascade
+  session_id          text not null  -- X-Session-ID
+  source              text not null  -- 'purchase' | 'restore' | 'sync'
+  last_verified_at    timestamptz not null
+  created_at          timestamptz not null  -- the 30-day new-link limit counts this
+  unique (purchase_id, session_id)
+  index (session_id), index (purchase_id, created_at)
+
+game_entitlements            -- existing table, extended; derived for purchased games
   + purchase_id       uuid null references purchases(id) on delete cascade
   + last_verified_at  timestamptz null
   + source            text not null default 'legacy'   -- 'purchase' | 'restore' | 'sync' | 'legacy'
@@ -387,6 +482,18 @@ purchase_events              -- audit + webhook idempotency
   session_hash text null, detail jsonb, created_at timestamptz
 ```
 
+**`purchase_links` is the ownership record; `game_entitlements` is derived
+from it.** For purchased games, a `(session_id, game_slug)` row exists exactly
+when some `purchase_links` row for that session joins a `purchases` row with
+`state = 'owned'` and that `game_slug`. #840 maintains this in the same
+transaction as every change to `purchase_links` or `purchases.state` (a small
+`recompute_entitlements(session_id, game_slug)` helper), with `purchase_id`
+pointing at one of the qualifying purchases. Links are kept when a purchase is
+revoked, so a refund reversal restores access without a new sync. The session
+cap and the 30-day new-link limit (§4) count `purchase_links` rows, never
+`game_entitlements` rows. Rows with `source = 'legacy'` (no `purchase_id`) are
+not touched.
+
 `GET /entitlements`, `check_entitlement` and `require_entitlement` **stay
 unchanged**. They already read `game_entitlements` by session, so a verified
 purchase reaches the JWT and every server guard through the rows #840 writes.
@@ -396,16 +503,28 @@ under 5 ms per lookup.
 ### 8.2 Endpoints
 
 ```http
-POST /purchases/apple            rate limit 20/minute per session
+POST /purchases/apple            rate limits: see below
 X-Session-ID: <uuid>
 { "signed_transaction": "<JWS>", "source": "purchase" | "restore" | "sync" }
 
-POST /purchases/google           rate limit 20/minute per session
+POST /purchases/google           rate limits: see below
 X-Session-ID: <uuid>
 { "product_id": "com.buffingchi.games.premium.hearts",
   "purchase_token": "<token>",
   "source": "purchase" | "restore" | "sync" }
 ```
+
+**Rate limits** (both endpoints; all three apply, the first to trip returns
+`429`):
+
+| Key                          | Limit              | Why                                                                                                                    |
+| ---------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| per session (`X-Session-ID`) | 20/minute          | Normal retry and sync bursts.                                                                                          |
+| per client IP                | 30/minute, 200/day | Session IDs are free to mint, so a per-session limit alone does not stop spraying.                                     |
+| per `store_key`              | 10/hour, 30/day    | One transaction presented from many sessions or IPs. Counted after the store key is parsed, before any store API call. |
+
+Per-IP limits use the same proxy-aware client address as the existing
+limiter. All three are owner-tunable constants.
 
 **200 response**, the same shape for both:
 
@@ -431,30 +550,40 @@ X-Session-ID: <uuid>
 
 **Errors** (FastAPI `detail` codes):
 
-| HTTP | `detail`                                                                         | Client action                         |
-| ---- | -------------------------------------------------------------------------------- | ------------------------------------- |
-| 400  | `invalid_request`                                                                | Bug. Report to Sentry. Do not finish. |
-| 403  | `ownership_mismatch` (`source: "purchase"` with a foreign account token)         | Do not finish. Show a generic error.  |
-| 422  | `verification_failed`, `unknown_product`, `wrong_app`, `environment_not_allowed` | Do not finish. Report to Sentry.      |
-| 429  | rate limited                                                                     | Back off.                             |
-| 503  | `store_unavailable` (Apple or Google API down or timed out)                      | Retry later. Do not finish.           |
+| HTTP | `detail`                                                                         | Client action                            |
+| ---- | -------------------------------------------------------------------------------- | ---------------------------------------- |
+| 400  | `invalid_request`                                                                | Bug. Report to Sentry. Do not finish.    |
+| 403  | `ownership_mismatch` (`source: "purchase"` with a foreign account token)         | **Finish** (§5). Show "contact support". |
+| 409  | `link_limit` (session cap or 30-day new-link limit reached, §4)                  | **Finish** (§5). Show "contact support". |
+| 422  | `verification_failed`, `unknown_product`, `wrong_app`, `environment_not_allowed` | Do not finish. Report to Sentry.         |
+| 429  | rate limited                                                                     | Back off.                                |
+| 503  | `store_unavailable` (Apple or Google API down or timed out)                      | Retry later. Do not finish.              |
 
 **Idempotency rules.** The endpoint is a pure function of (verified store
 state, calling session):
 
 1. Upsert `purchases` on `(platform, store_key)` and refresh `state`,
    `verified_at` and the other fields from the store's answer.
-2. If the purchase is `owned`, upsert `game_entitlements(session_id,
-game_slug)` with `purchase_id`, `last_verified_at = now`, and `source`. Then
-   apply the session cap (§4).
-3. If it is `revoked`, delete that purchase's entitlement links and return
-   `revoked`.
+2. If the purchase is `owned` and this session already has a
+   `purchase_links` row for it, refresh `last_verified_at`. Otherwise check the
+   account token (`source: "purchase"` only, §4), then the session cap and
+   the 30-day new-link limit, counted on `purchase_links` under a row lock on
+   the purchase. If a check fails, return `403` / `409` and link nothing.
+   If both pass, insert the `purchase_links` row. Then recompute the
+   session's `game_entitlements` row (§8.1).
+3. If it is `revoked`, keep the `purchase_links` rows, recompute
+   `game_entitlements` for every linked session (dropping the game unless
+   another `owned` purchase qualifies), and return `revoked`.
 
-Repeating a call never creates a second grant. No `Idempotency-Key` header is
-needed. A session that already holds `game_slug` through a _different_ purchase
-(for example a Family-Shared transaction and its own purchase) keeps one row.
-Revoking one purchase then re-links from any other `owned` purchase that the
-same session has presented.
+Repeating a call never creates a second grant: `unique (purchase_id,
+session_id)` makes the link idempotent, and a re-post from a linked session is
+not a new link. No `Idempotency-Key` header is needed. A session that already
+holds `game_slug` through a _different_ purchase (for example a Family-Shared
+transaction and its own purchase) has two `purchase_links` rows but one
+`game_entitlements` row. Revoking one purchase then keeps the game, because
+the recompute finds the other `owned` purchase through that session's links.
+A refund reversal (`REFUND_REVERSED`) sets the purchase back to `owned` and
+recomputes, so every still-linked session gets the game back at once.
 
 **Webhooks** (no session; rate limited per IP; return `200` quickly):
 
@@ -473,11 +602,21 @@ POST /purchases/google/notifications   Pub/Sub push envelope, OIDC bearer
 
 - The cases in SECURITY.md §14.
 - Idempotent re-post of the same transaction.
-- Restore from a second session: linked, subject to the cap.
-- A foreign `appAccountToken` with `source: "purchase"` → 403.
+- Restore from a second session: linked.
+- A sixth session → `409 link_limit`, nothing evicted; a fourth new session
+  within 30 days → `409 link_limit`; a re-post from an already-linked session
+  still succeeds at the cap.
+- Per-IP and per-`store_key` rate limits return 429.
+- A foreign `appAccountToken` with `source: "purchase"` → 403; the same
+  transaction with `source: "sync"` links (subject to the caps).
+- `appAccountToken` / `obfuscatedAccountId` are derived from the session ID
+  (never equal to it) and the server's recomputation matches the client's.
+- A Sandbox JWS is verified with the Sandbox verifier and API host; a
+  Production JWS with the Production pair; a JWS whose environment is not
+  allowed → `environment_not_allowed`.
 - Duplicate webhooks.
 - Revoke → JWT drops the game → `POST /games` returns 403.
-- `REFUND_REVERSED`.
+- `REFUND_REVERSED` restores access to every still-linked session.
 - Sandbox rejected when not allowed.
 - Free-game regression.
 
@@ -506,8 +645,9 @@ signed JWS fixture made with a test CA for the verifier.
 The only purchase surface the UI may use. The UI never imports `expo-iap`.
 
 ```ts
-export type PremiumGameSlug =
-  "blackjack" | "cascade" | "hearts" | "mahjong" | "starswarm";
+// Defined and exported by src/entitlements/premiumProducts.ts (#2785), with
+// the `isPremiumGameSlug(s)` type guard for narrowing untrusted strings.
+import type { PremiumGameSlug } from "../entitlements/premiumProducts";
 
 export interface StoreProduct {
   gameSlug: PremiumGameSlug;
@@ -521,7 +661,8 @@ export interface StoreProduct {
 export type PurchaseErrorCode =
   | "store_unavailable" // store not connected, billing unavailable, not signed in
   | "product_unavailable" // product not found / not approved yet
-  | "verification_failed" // server 4xx
+  | "verification_failed" // server 400/422
+  | "not_linkable" // server 403 ownership_mismatch / 409 link_limit — finished; show "contact support"
   | "server_unavailable" // server 5xx / network — purchase is safe, will retry
   | "unknown";
 
@@ -819,11 +960,14 @@ version when #2786 starts.
 2. **Family Sharing** on the Apple products (§11). It cannot be undone per
    product.
 3. **Price tier** per game. Is it the same for all five?
-4. **`MAX_SESSIONS_PER_PURCHASE = 5`** (§4). Accept the residual-risk
-   statement?
+4. **Link caps** (§4): `MAX_SESSIONS_PER_PURCHASE = 5` (rejected beyond, no
+   eviction), `MAX_NEW_LINKS_PER_PURCHASE_PER_30D = 3`, unlink via support
+   only. Accept these values and the residual-risk statement?
 5. **Sandbox/test purchases on production** (§6.4, §7.2). Accept that TestFlight
    testers and license testers get premium access free on the production
-   backend? Rows are tagged by environment and can be revoked.
+   backend? Note that **anyone who joins a public TestFlight link** can mint
+   valid Sandbox transactions, so either keep TestFlight invite-only or accept
+   that. Rows are tagged by environment and can be revoked.
 6. **Testing backend.** Turn off `ENTITLEMENT_DEV_OVERRIDE` on the dev backend
    at launch, or stand up a separate IAP staging backend?
 
