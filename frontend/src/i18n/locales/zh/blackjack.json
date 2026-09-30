@@ -59,7 +59,6 @@
   "betting.tapToAdd": "点击筹码下注",
   "chip.addLabel": "向下注添加 {{amount}}",
   "chip.disabledLabel": "{{amount}} 筹码不可用",
-  "chip.vipCredits": "VIP",
   "rules.title": "牌桌规则",
   "rules.toggleLabel": "切换牌桌规则",
   "rules.dealerSoft17": "庄家软17",

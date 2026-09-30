@@ -844,6 +844,7 @@ jobs:
             -PUPLOAD_STORE_PASSWORD=android \
             -PUPLOAD_KEY_ALIAS=androiddebugkey \
             -PUPLOAD_KEY_PASSWORD=android \
+            -PALLOW_DEBUG_SIGNED_RELEASE=true \
             --no-daemon
         # No SENTRY_AUTH_TOKEN: sentry.gradle skips source-map upload when the
         # token is absent, so the smoke test validates the build chain only.

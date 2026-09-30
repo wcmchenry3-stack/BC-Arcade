@@ -59,7 +59,6 @@
   "betting.tapToAdd": "Toca fichas para apostar",
   "chip.addLabel": "Añadir {{amount}} a la apuesta",
   "chip.disabledLabel": "Ficha de {{amount}} no disponible",
-  "chip.vipCredits": "VIP",
   "rules.title": "Reglas de mesa",
   "rules.toggleLabel": "Alternar reglas de mesa",
   "rules.dealerSoft17": "Crupier 17 suave",

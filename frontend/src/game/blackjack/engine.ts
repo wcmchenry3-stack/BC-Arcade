@@ -440,6 +440,10 @@ function settleWith(s: EngineState, outcome: "blackjack" | "win" | "lose" | "pus
 
 export function placeBet(s: EngineState, amount: number): EngineState {
   if (s.phase !== "betting") throw new Error("Not in betting phase.");
+  // A run with no chips is over; a zero wager is never a valid bet.
+  if (s.chips <= 0) throw new Error("No chips to bet.");
+  if (amount <= 0) throw new Error("Bet must be greater than zero.");
+  // Short stack (0 < chips < betMin): the only legal bet is all-in.
   const effectiveMin = s.chips < s.betMin ? s.chips : s.betMin;
   if (amount < effectiveMin || amount > s.betMax) {
     throw new Error(`Bet must be between ${effectiveMin} and ${s.betMax}.`);

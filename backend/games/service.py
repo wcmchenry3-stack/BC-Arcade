@@ -816,7 +816,9 @@ async def complete_game(
     ).scalar_one()
     mod = get_module(name)
     # The sweep flag is server-written only: a result must not set it (#2621).
-    validated_result = without_swept(await _validate_result(session, game, result, name, mod))
+    validated_result = without_swept(
+        await _validate_result(session, game, result, name, mod, final_score)
+    )
     # The board's caps and value types (#2618, absorbs #2215).
     violation = check_completion_limits(name, mod, game, final_score, validated_result)
     if violation is not None:
@@ -859,13 +861,17 @@ async def _validate_result(
     result: dict[str, Any] | None,
     name: str,
     mod: GameModule | None,
+    final_score: int | None = None,
 ) -> dict:
     """Validate *result* against the game module's ``result_model`` (#2449).
 
     ``name`` and ``mod`` are the game's type name and registered module, as
     ``complete_game`` resolved them. Games without a registered module or a
     ``result_model`` accept any dict unvalidated. Only fields the client
-    actually sent are returned. Results over ``_MAX_RESULT_BYTES`` are
+    actually sent are returned. The request body's ``final_score`` (what becomes
+    ``games.final_score``) is handed to the model as ``context={"final_score": ...}``
+    so a model can reconcile its block against it; models that don't read it
+    are unaffected. Results over ``_MAX_RESULT_BYTES`` are
     rejected — unvalidated games have no other bound.
     """
     if not result:
@@ -877,7 +883,9 @@ async def _validate_result(
     if result_model is None:
         return dict(result)
     try:
-        validated = result_model.model_validate(result).model_dump(exclude_unset=True)
+        validated = result_model.model_validate(
+            result, context={"final_score": final_score}
+        ).model_dump(exclude_unset=True)
     except ValidationError as e:
         errors = e.errors()
         fields = ", ".join(".".join(str(p) for p in err["loc"]) for err in errors)

@@ -569,6 +569,14 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
    * the game. The human led ♥5 and wins the trick (+1 point); the AIs follow
    * with diamonds.
    */
+  // Ten resolved hands (each row sums to 26) that add up to [45, 100, 63, 52],
+  // the pre-hand totals the result-card tests start from.
+  const PRIOR_HANDS = [
+    ...Array.from({ length: 5 }, () => [5, 10, 6, 5]),
+    ...Array.from({ length: 3 }, () => [4, 10, 7, 5]),
+    ...Array.from({ length: 2 }, () => [4, 10, 6, 6]),
+  ];
+
   function lastTrickState(cumulativeScores: number[]): HeartsState {
     return {
       _v: 3,
@@ -578,7 +586,7 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
       passDirection: "none",
       cumulativeScores,
       handScores: [0, 0, 0, 0],
-      scoreHistory: [],
+      scoreHistory: PRIOR_HANDS,
       passSelections: [[], [], [], []],
       passingComplete: true,
       heartsBroken: true,
@@ -704,12 +712,21 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
       outcome: "win",
       finalScore: 54,
       durationMs: expect.any(Number),
-      result: { final_score: 54, vs_result: "win" },
+      // #2838: the completion result carries the per-hand path: the ten prior
+      // hands plus the one just played, summing to the final totals.
+      result: {
+        final_score: 54,
+        vs_result: "win",
+        hand_scores: [...PRIOR_HANDS, [1, 0, 0, 0]],
+        final_scores: [46, 100, 63, 52],
+        human_seat: 0,
+      },
     });
     // The AIs' three 400 ms turns ran on the clock (plus the test's own waits).
     const { durationMs } = summary as { durationMs: number };
     expect(durationMs).toBeGreaterThanOrEqual(1200);
     expect(durationMs).toBeLessThan(10_000);
+    // The analytics payload is the score only, not the history (#2838).
     expect(payload).toEqual({ final_score: 54, vs_result: "win" });
   });
 
