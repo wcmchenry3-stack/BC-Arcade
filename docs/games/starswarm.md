@@ -18,11 +18,10 @@ The ship is clamped to the playable horizontal bounds. Firing is continuous whil
 active during combat (never during swoop-in or the wave-clear extraction — see
 [Wave Structure](#wave-structure)).
 
-> **#2776 refinement boundary.** This document describes current `dev`. #2776 will tighten
-> Carrier beam lifecycle/cadence, Carrier late-stage aggression/dives, the right-edge drag
-> regression, and (upgrade-pickup communication landed in #2847; the wave lifecycle landed in
-> #2842). Those sections should be updated with #2776; the rest of the game specification is
-> not blocked on that work.
+> **#2776 refinement boundary.** This document describes current `dev`. Of the #2776 epic, the
+> wave lifecycle (#2842), upgrade-pickup communication (#2847), the edge-drag regression (#2846)
+> and the staged Carrier encounter (#2843) have landed. Asteroid battlefield rules (#2844) and
+> Buddy as an allied ship (#2845) are still to come; their sections will change with them.
 
 ## Controls
 
@@ -36,25 +35,26 @@ Shared input/accessibility conventions: [GAMEPLAY_STANDARDS.md](../GAMEPLAY_STAN
 
 ## Difficulty Tiers
 
-| Tier | Score multiplier | AI parameter scale |
-| --- | ---: | ---: |
-| Ensign | 1× | 0.70 |
-| Lieutenant J.G. | 1.5× | 1.00 |
-| Lieutenant | 2× | 1.15 |
-| Lieutenant Commander | 2.5× | 1.30 |
-| Commander | 3× | 1.50 |
-| Captain | 4× | 1.70 |
-| Rear Admiral | 5× | 1.90 |
-| Vice Admiral | 6× | 2.15 |
-| Admiral | 8× | 2.50 |
-| Fleet Admiral | 10× | 3.00 |
+| Tier                 | Score multiplier | AI parameter scale |
+| -------------------- | ---------------: | -----------------: |
+| Ensign               |               1× |               0.70 |
+| Lieutenant J.G.      |             1.5× |               1.00 |
+| Lieutenant           |               2× |               1.15 |
+| Lieutenant Commander |             2.5× |               1.30 |
+| Commander            |               3× |               1.50 |
+| Captain              |               4× |               1.70 |
+| Rear Admiral         |               5× |               1.90 |
+| Vice Admiral         |               6× |               2.15 |
+| Admiral              |               8× |               2.50 |
+| Fleet Admiral        |              10× |               3.00 |
 
 The score multiplier applies to enemy kills, rout catches and wave-clear bonuses. The AI parameter
 scale drives dive cadence/floor, bullet density, aimed-shot pressure, formation aggression and
 several Carrier/asteroid-AI cadences or probabilities.
 
 Ensign is additionally gentler: normal ≤3-survivor straggler aggression is disabled and the
-Carrier does not launch reinforcements.
+Carrier does not launch reinforcements. Every Carrier cadence divides by `min(1.6, paramScale)`,
+so Ensign's are the slowest (see [Carrier encounter](#carrier-encounter-2843)).
 
 Each tier has its own public leaderboard partition.
 
@@ -63,16 +63,16 @@ Each tier has its own public leaderboard partition.
 Outside boss waves, every wave contains:
 
 - 1 Carrier;
-- 4 Boss escorts;
+- 4 Guardian escorts;
 - 16 Elites (two rows of eight);
 - 2–5 Grunt rows of eight.
 
 | Ordinary wave formula | Grunt rows | Grunts | Total enemies |
-| --- | ---: | ---: | ---: |
-| 1–2 | 2 | 16 | 37 |
-| 3–4 | 3 | 24 | 45 |
-| 5–6 | 4 | 32 | 53 |
-| 7+ | 5 | 40 | 61 |
+| --------------------- | ---------: | -----: | ------------: |
+| 1–2                   |          2 |     16 |            37 |
+| 3–4                   |          3 |     24 |            45 |
+| 5–6                   |          4 |     32 |            53 |
+| 7+                    |          5 |     40 |            61 |
 
 Boss waves replace the ordinary formation, so wave 5, 9, 13, … do not use those ordinary totals.
 
@@ -84,7 +84,7 @@ Progression rules include:
   at 24;
 - Grunt aimed-shot chance starts at 10% on wave 1 and rises 5 percentage points per wave, with a
   difficulty-scaled cap;
-- once ≤35% of the starting non-leader population remains, Elite/Boss escalation latches on;
+- once ≤35% of the starting non-leader population remains, Elite/Guardian escalation latches on;
 - once ≤3 total enemies remain, normal straggler aggression activates except on Ensign/routed-grunt
   endings.
 
@@ -115,9 +115,9 @@ The jitter is re-sampled after each drop. At most one ordinary power-up pickup i
 time; salvage/hull upgrade pickups do not consume that slot.
 
 | Lives | Shield | Smart Bomb | Lightning | Buddy |
-| --- | ---: | ---: | ---: | ---: |
-| 0–1 | 33% | 33% | 17% | 17% |
-| 2+ | 25% | 25% | 25% | 25% |
+| ----- | -----: | ---------: | --------: | ----: |
+| 0–1   |    33% |        33% |       17% |   17% |
+| 2+    |    25% |        25% |       25% |   25% |
 
 - **Lightning:** 5 seconds; faster fire, 4-damage piercing shots, can penetrate Carrier armor.
 - **Shield:** 5 seconds; absorbs incoming damage while active.
@@ -130,15 +130,22 @@ Collecting Lightning or Shield replaces the currently active duration power-up.
 
 ## Enemy Tiers
 
-| Tier    | Count / wave          | HP  | Points | Behaviour                                                                                                                                                                                                |
-| ------- | --------------------- | --- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Grunt   | 16–40 (2–5 rows of 8) | 1   | 100    | Single shots, partly aimed; deep dives from wave 1; can ram                                                                                                                                              |
-| Elite   | 16 (2 rows of 8)      | 2   | 200    | Always-aimed shots; shallow dives early, deep dives + circling once ≤35% Grunts/Elites remain                                                                                                            |
-| Boss    | 4                     | 4   | 400    | Silent until ≤35% Grunts/Elites remain, then 3–5 shot bursts; dives when ≤3 enemies remain                                                                                                               |
-| Carrier | 1 (top row, #2484)    | 8   | 1000   | Never dives. **Armored while any Boss lives**: ordinary shots ring off it; piercing shots (lightning, buddy burst) get through. Sweep beam, reinforcements and lone-ship twin lasers (#2485), see below. |
+The hierarchy is **Grunt → Elite → Guardian → Carrier**. #2843 renamed the escort tier from
+"Boss" to **Guardian** everywhere: the engine's tier id (`"Guardian"`), player-facing text and
+accessibility strings, docs, tests and telemetry. Boss _waves_ keep their name (`isBossWave`,
+`phase.bossWave`, `a11y.bossWave`). The sprite file is still `enemy-boss.webp` (its asset
+credits refer to it); the code knows it as `enemyGuardian`.
 
-Diving enemies score 2×. The Carrier and Bosses are excluded from the "non-boss" thresholds that
-drive Elite/Boss escalation (`isLeaderTier`). `isCarrierArmored(state)` is the renderer-facing
+| Tier     | Count / wave          | HP  | Points | Behaviour                                                                                                                                                                                                                                                               |
+| -------- | --------------------- | --- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Grunt    | 16–40 (2–5 rows of 8) | 1   | 100    | Single shots, partly aimed; deep dives from wave 1; can ram                                                                                                                                                                                                             |
+| Elite    | 16 (2 rows of 8)      | 2   | 200    | Always-aimed shots; shallow dives early, deep dives + circling once ≤35% Grunts/Elites remain                                                                                                                                                                           |
+| Guardian | 4                     | 4   | 400    | Silent until ≤35% Grunts/Elites remain, then 3–5 shot bursts; dives when ≤3 enemies remain                                                                                                                                                                              |
+| Carrier  | 1 (top row, #2484)    | 8   | 1000   | Never joins the formation's dives. **Armored while any Guardian lives**: ordinary shots ring off it; piercing shots (lightning, buddy burst) get through. Staged boss encounter: traveling beam, twin lasers, reinforcements and its own attack run (#2843), see below. |
+
+Diving enemies score 2×. The Carrier and Guardians are excluded from the "non-leader" thresholds
+that drive Elite/Guardian escalation (`isLeaderTier`; state `startingNonLeaderCount`,
+`guardianThresholdCrossed`, `guardianDeepThresholdCrossed`). `isCarrierArmored(state)` is the renderer-facing
 helper for the armor state; the screen announces `a11y.carrierExposed` when it drops.
 
 ## Wave Structure
@@ -158,7 +165,8 @@ safe setup time, gated centrally in the engine:
 
 - **No new fire, from anyone.** `weaponsFree(state)` is true only in `Playing`. It gates player
   fire, enemy shots (a ship that reaches its slot early holds its fire), flak, Buddy bursts, timed
-  asteroid spawns and dev-panel throws. The Carrier's beam and twin lasers only run in `Playing`.
+  asteroid spawns and dev-panel throws. Everything the Carrier does (beam, twin lasers,
+  reinforcements, attack runs) only runs in `Playing`.
 - **Everyone is invulnerable.** `hazardsLive(state)` is false in `SwoopIn`, so `tick()` skips
   collision resolution entirely. No shot, rock, beam or ram damages the player or any enemy, and
   no incoming enemy can be pre-damaged.
@@ -191,56 +199,131 @@ accelerates off the top of the screen, still dodging. When the ship is off-scree
 `buildWaveState` builds wave N+1, and it clears:
 
 - all player shots (Buddy shots are player-owned, so included);
-- all enemy shots (aimed, burst, twin-laser, flak);
+- all enemy shots (aimed, burst, twin-laser, flak) and every released Carrier beam (#2843);
 - all asteroids;
-- buddy ships and any Carrier beam.
+- buddy ships, and any beam charge or attack-run brace still on a Carrier.
 
 Nothing from wave N can interact with wave N+1. The new wave also re-centres the ship on its lane
 and drops falling pickups and any active Lightning/Shield, as before.
 
 **Projectile persistence.** Apart from this boundary, a projectile leaves play only by hitting
 something, despawning off-screen, or a Smart Bomb. The death of the ship that fired it never
-removes it. **Plug-in point:** any new transient combat entity (#2843's independent traveling
-Carrier beam, #2845's Buddy projectiles/state) must be cleared in `clearTransientCombat` and, if
-hostile, listed in `liveHazards` so the autopilot dodges it.
+removes it. **Plug-in point:** any new transient combat entity (#2845's Buddy projectiles/state)
+must be cleared in `clearTransientCombat` and, if hostile, listed in `liveHazards` so the
+autopilot dodges it. #2843's released Carrier beam is both: `liveHazards` covers its length with a
+chain of overlapping circles.
 
 ### Boss waves
 
-Boss waves are **5, 9, 13, …** and contain only 1 Carrier + 4 Boss escorts.
+Boss waves are **5, 9, 13, …** and contain only 1 Carrier + 4 Guardian escorts.
 
-- Boss escalation is active from the first tick.
-- Carrier beam cadence is 1.5× faster.
-- No Carrier reinforcements.
+- Guardian escalation is active from the first tick.
+- Carrier beam cadence is 1.5× faster in every stage (still never below its floor).
+- No Carrier reinforcements: the wave has no original Grunts to refill.
+- When the last Guardian dies, the lone Carrier goes straight from protected to **final stand**
+  (the most aggressive stage), so the lone-Carrier climax stays active: fast twin fire, beams and
+  attack runs until it dies. That tick is announced once, as the armor drop.
 - No timed asteroid spawns, and nothing carries in from the previous wave (#2842 hard reset).
 - Wave-clear bonus is doubled.
 - CARRIER SIGHTED banner/sound/accessibility announcement play during entry.
 
 The old Free Fire Zone / shooting-gallery bonus wave no longer exists.
 
-## Carrier Actions
+## Carrier Encounter (#2843)
 
-- **Sweep beam (current).** Fixed 7-second base interval, divided by
-  `min(1.6, difficulty paramScale)` and another 1.5 on boss waves. The Carrier telegraphs for
-  600 ms, then exposes a 24 px-wide vertical beam for 1.2 seconds. Today it is derived from the
-  live Carrier's beam state rather than an independent projectile. Shield/hull/life precedence
-  applies.
-- **Reinforcements.** Every 8 s while it lives (Playing phase, not on Ensign) it launches 2–4 grunts
-  that swoop into empty grunt slots, capped per wave at half the wave's grunt slots
-  (`reinforceCap`). They never touch `startingNonBossCount`, so the 35% / ≤3 latches are unaffected
-  once crossed. Killing the Carrier early is the wave's objective.
-- **Twin lasers.** #2699: once it's unarmored (its last Boss escort has died — see armor above) it
-  fires a pair of aimed shots every 1.1 s (÷ the same cadence factor), whether or not grunts are
-  still alive, so the player can't plink an exposed Carrier for free. These do count against
-  `bulletCap()`.
+The Carrier is a staged boss encounter. Its code lives in `tickCarrier` (engine.ts); the stage is
+derived from the live roster.
 
-### #2776 Carrier refinements
+### Stages
 
-#2776 will replace the fixed/metronomic beam reset with bounded randomness, make a released beam an
-independent traveling hazard, add protected → exposed → final-stand aggression, allow
-Carrier-specific attack runs/dives after armor loss, increase final-stand behavioral pressure, and
-(pickup communication: see #2847 under In-Run Ship Upgrades). Until then, the current rules above describe
-`dev`.
-- Sounds: `starswarm.beamcharge`, `starswarm.beamfire`, `starswarm.reinforce` (reused files, #2492).
+`carrierStage(state)` returns `protected`, `exposed`, `finalStand`, or null when no Carrier is
+alive. Each stage is more aggressive than the last, and the stage only escalates within a wave.
+
+| Stage           | When                                                                       | Armor | Beam      | Twin lasers     | Attack run                        | Reinforcements             |
+| --------------- | -------------------------------------------------------------------------- | ----- | --------- | --------------- | --------------------------------- | -------------------------- |
+| **Protected**   | any Guardian alive                                                         | on    | 6–9 s     | none            | none                              | every 6.5–10 s, 2–3 grunts |
+| **Exposed**     | the moment the last Guardian dies                                          | off   | 4–6.5 s   | every 0.9–1.5 s | every 7–11 s                      | every 5–8 s, 2–4 grunts    |
+| **Final stand** | the Carrier is the only meaningful enemy left (fleeing grunts don't count) | off   | 2.6–4.2 s | every 0.6–1.0 s | every 4.2–7 s, deeper and quicker | none                       |
+
+- Ranges are base values (`CARRIER_CADENCE`), divided by `min(1.6, paramScale)` (difficulty) and,
+  for the beam only, by 1.5 on a boss wave. No scaling goes below the fair minimum spacing
+  (`CARRIER_CADENCE_FLOOR`): beam 1.5 s of idle between one release and the next charge, twin 0.4 s,
+  reinforcement 4 s, attack run 3 s. `carrierCadenceBounds(kind, stage, difficulty, bossWave)` is
+  the source of truth; tests hold that each later stage has a shorter average and never a longer
+  maximum.
+- Every interval is a seeded roll (`rollCarrierCadence`, the engine's `rng()`), uniform within its
+  bounds. None is a fixed metronomic reset, and a seeded run replays exactly.
+- **Escalation.** On the first tick after a stage change, timers pull in. An action that just came
+  online (twin fire, attack runs on exposure) rolls fresh. One already running keeps the sooner of
+  its timer and a new roll from the new stage. The engine records the stage it last acted on in
+  `state.carrierStage`.
+- Screen events (`CarrierEvent`, raised by both canvases): the armor drop (`a11y.carrierExposed`,
+  `carrierJustExposed`) and `finalStand` (`a11y.carrierFinalStand`,
+  `carrierFinalStandJustStarted`). `finalStand` is raised only for exposed → final stand. A boss
+  wave's lone Carrier jumps protected → final stand, and that is announced once, as the armor
+  drop.
+
+### Traveling beam
+
+- **Charge (telegraph).** For `BEAM_CHARGE_MS` (600 ms in every stage), the Carrier shudders and
+  its emitter swells. A thin line shows the column the bolt will take (`carrierBeamCharge`,
+  `beamCharge` event, `a11y.carrierBeam`).
+- **Release.** The charge becomes an independent `CarrierBeam` in `state.carrierBeams`: a
+  140 × 24 px bolt travelling straight down at 1.1 px/ms (it crosses the lane in about 0.4 s). The
+  release raises the `beamFire` event (`carrierBeamJustFired`). The Carrier goes straight back to
+  idle and rolls its next interval.
+- **Persistence.** A released beam leaves play only by reaching the player, leaving the bottom of
+  the screen, a Smart Bomb, or the wave-boundary reset. It survives the Carrier's death and the
+  wave-clear extraction. Killing the Carrier mid-charge cancels only the unreleased charge.
+- **Hit.** A beam that touches the ship's hurt circle is spent on it, shield-absorbed or not. So
+  one beam costs at most one plate or one life (shield → hull → life), and `runStats.beamHits`
+  counts it once. Beams pass through rocks (asteroid semantics are #2844's). The enemy-fire dev
+  toggle stops a charge from releasing anything.
+
+### Twin lasers
+
+In the exposed and final-stand stages only: a pair of aimed shots (±14 px) per roll. They count
+against `bulletCap()`.
+
+**Finite combat capacity.** The Carrier's timers decide _when_ it fires and how much;
+`chooseCarrierTarget` decides only _where_. The player is the only target today. #2844 (flak at a
+rock) and #2845 (fire at Buddy) must plug their target choice in there. A diverted volley replaces
+the player-directed one on the same timer and never adds a volley or a gun. The one existing
+exception, the #2487 flak roll, is outside this seam and is #2844's to fold in.
+
+### Attack run
+
+In the exposed and final-stand stages only. When its roll comes up (never while a beam charges),
+the Carrier **braces** for `ATTACK_RUN_BRACE_MS` (800 ms). It rears up 8 px, an amber ring tightens
+around it and a chevron shows under it (`carrierRunBrace`, `attackRun` event,
+`a11y.carrierAttackRun`). It captures the player's X as it braces. It then flies its own heavy
+swoop (enemy phase `AttackRun`, `carrierRunPath`). This is not a Grunt dive: it leans out, sweeps
+down to the captured column and climbs back to its station in one slow, wide cubic. Exposed: 3.4 s
+to 46% of the canvas height. Final stand: 2.8 s to 56%. It never reaches the player lane, so there
+is no body collision. It keeps its twin-fire timer during the run, and on return it rolls the next
+run.
+
+Telegraphs never overlap: a beam charge never starts during a brace, and a brace waits for a
+charge to finish. While exposed, the beam also holds for the whole run. In the final stand, beam,
+direct fire and movement can combine: a charge may start mid-run, with its usual telegraph.
+
+### Reinforcements
+
+- A seeded interval and launch count per stage (table above). None on Ensign, in the final stand,
+  or on a wave with no original Grunts (a boss wave).
+- Only **vacant original Grunt slots** are refilled (`originalGruntCount(wave)` slots, taken from
+  the wave's layout). The live Grunt count never exceeds the wave's original simultaneous Grunt
+  population. A per-wave total cap of half the original slots (`reinforceCap`) also applies.
+- Reinforcements never touch `startingNonLeaderCount`, so the 35% / ≤3 latches are unaffected once
+  crossed. Killing the Carrier early is the wave's objective.
+
+### Rendering and sound
+
+`render/carrier.ts` (`carrierOps`) holds the shared geometry: the charge telegraph, each released
+bolt (glow, core and a white-hot head) and the brace ring/chevron. The native Picture
+(`buildFrame`) appends it, and the web canvas replays the same ops, so the two cannot drift.
+Sounds: `starswarm.beamcharge` (charge and attack-run brace), `starswarm.beamfire` (release),
+`starswarm.reinforce`, and the boss-wave sting for the final stand (all reused files, #2492).
 
 ## In-Run Ship Upgrades (#2488)
 
@@ -252,7 +335,7 @@ the leaderboard stays fair.
 | Guns   | L1 single → L2 twin (±7 px) → L3 twin + spread pair (±0.14 px/ms) | **Salvage crate**: 40% chance from any large asteroid that breaks, whoever broke it | one level per life lost (floor L1) |
 | Hull   | 0 → 1 → 2 plating                                                 | **Hull plating**: always dropped when the Carrier dies                              | one level per hit absorbed         |
 
-- Hit order is **shield → hull → life**. Plating absorbs a shot, a rock, the beam or a ram (the
+- Hit order is **shield → hull → life**. Plating absorbs a shot, a rock, a Carrier beam or a ram (the
   rammer still dies), flashes a ring on the ship and grants 600 ms of grace. Lightning still
   multiplies fire rate on top of the gun level (its piercing shots at every level).
 - `MAX_PLAYER_BULLETS` is 40 (was 20): L3 fires four bullets a volley.
@@ -277,7 +360,7 @@ the leaderboard stays fair.
 
 ## Grunt Rout (#2489)
 
-The moment no Elite, Boss or Carrier is left alive in the Playing phase and at least one grunt is,
+The moment no Elite, Guardian or Carrier is left alive in the Playing phase and at least one grunt is,
 the wave's grunts break and run: `state.routed` latches for the wave and every surviving grunt in
 any phase but swoop-in enters `Fleeing` — a cubic path from where it is to off-screen top on its
 nearer side, 1.5–2.1 s long (× 1.4 on Ensign) after a 0–375 ms hesitation. A reinforcement still
@@ -288,9 +371,10 @@ they still roll to dodge rocks and can be struck by them.
 - **Escaped** (`pathT ≥ 1`): removed with no score, `runStats.routEscaped`. The wave clears once
   nothing is alive, escapes included.
 - The ≤3-survivor straggler rule stands down for a routed set; it still engages when an Elite or
-  Boss is among the survivors (the grunts don't rout then).
+  Guardian is among the survivors (the grunts don't rout then).
 - Boss waves have no grunts, so nothing routs there. Killing the leaders last farms nothing: the
-  Carrier's reinforcement cap bounds how many grunts can exist, and each caught one pays double.
+  Carrier's reinforcements only refill original grunt slots (and are capped per wave), so they
+  bound how many grunts can exist, and each caught one pays double.
 - "ROUT!" banner (`phase.rout`) while any grunt is fleeing, a `starswarm.rout` sting and an
   `a11y.rout` announcement with the count. Dev panel: "Rout off" restores the old mop-up ending.
 
@@ -309,7 +393,7 @@ neutral third party:
   going. The Carrier's force field shatters any rock harmlessly (ring plays). On the player it acts
   like a shot: the shield absorbs it, otherwise it costs a life; either way it shatters.
 - **Nobody scores.** Breaking a rock and enemies a rock kills award no points and don't advance the
-  power-up kill counter (they do count toward wave clear and the Elite/Boss thresholds).
+  power-up kill counter (they do count toward wave clear and the Elite/Guardian thresholds).
 - The smart bomb clears rocks. Rocks in flight stay live through the wave-clear extraction and are
   cleared by the hard reset before the next wave (#2842); none ever carries into a new wave.
 - Dev panel: "Asteroids off" (timed spawns) and "Throw asteroid" (`throwAsteroid()` in the engine).
@@ -325,12 +409,12 @@ When a rock will cross a ship's hitbox within the next 700 ms (sampled at +200/+
 against where the ship will be — on its path if it is swooping, diving or returning), the ship
 rolls **once per rock** to dodge. Success chance is `base × difficulty paramScale`, capped at 97%:
 
-| Tier    | Dodge base | Flak base | Dodge action                                         |
-| ------- | ---------- | --------- | ---------------------------------------------------- |
-| Grunt   | 25%        | 30%       | formation: 22 px sidestep (600 ms); on a path: nudge |
-| Elite   | 55%        | 70%       | same                                                 |
-| Boss    | 80%        | 90%       | same                                                 |
-| Carrier | never      | 100%      | rocks shatter on its force field                     |
+| Tier     | Dodge base | Flak base | Dodge action                                         |
+| -------- | ---------- | --------- | ---------------------------------------------------- |
+| Grunt    | 25%        | 30%       | formation: 22 px sidestep (600 ms); on a path: nudge |
+| Elite    | 55%        | 70%       | same                                                 |
+| Guardian | 80%        | 90%       | same                                                 |
+| Carrier  | never      | 100%      | rocks shatter on its force field                     |
 
 A path nudge splits the curve at the ship's current progress and shifts the _remaining_ segment's
 control points 40 px away from the rock, restarting it from the ship's position with the time it
@@ -352,8 +436,8 @@ Two sets of counters live on the engine state, both carried across waves and res
 
 - `tierStats` (per tier, #2487): dodge rolls, dodged, path rolls, struck, flak shots.
 - `runStats` (whole run): reinforcements launched, armor deflections (ordinary shots the escorted
-  Carrier shrugged off), beam hits on the player (sweeps that cost plating or a life — a
-  shield-absorbed sweep is not one), rocks spawned, rocks broken by the player's shots and by
+  Carrier shrugged off), beam hits on the player (released Carrier beams that cost plating or a
+  life — a shield-absorbed beam is not one), rocks spawned, rocks broken by the player's shots and by
   enemy shots (flak included; a bomb or a hull shatter credits nobody), and fleeing grunts caught
   (shot or bombed) or escaped (#2489).
 
@@ -375,17 +459,17 @@ identifies the player — once per run. `EXPO_PUBLIC_TEST_HOOKS=1` builds also e
 
 All positive score awards are multiplied by the selected difficulty multiplier.
 
-| Event | Base score |
-| --- | ---: |
-| Grunt kill | 100 |
-| Elite kill | 200 |
-| Boss kill | 400 |
-| Carrier kill | 1000 |
-| Enemy killed while Diving/Circling | 2× base |
-| Fleeing Grunt caught by player fire | 200 |
-| Fleeing Grunt killed by Smart Bomb | 100 |
-| Ordinary wave clear | 500 × wave |
-| Boss-wave clear | 500 × wave × 2 |
+| Event                               |     Base score |
+| ----------------------------------- | -------------: |
+| Grunt kill                          |            100 |
+| Elite kill                          |            200 |
+| Guardian kill                       |            400 |
+| Carrier kill                        |           1000 |
+| Enemy killed while Diving/Circling  |        2× base |
+| Fleeing Grunt caught by player fire |            200 |
+| Fleeing Grunt killed by Smart Bomb  |            100 |
+| Ordinary wave clear                 |     500 × wave |
+| Boss-wave clear                     | 500 × wave × 2 |
 
 ### Zero-score events
 
@@ -411,7 +495,10 @@ counts a point twice). Sources are keyed by the engine's tier id, so a renamed t
 `<tier>` (shot kill in formation), `<tier>:dive` (shot kill while Diving/Circling), `<tier>:rout`
 (fleeing Grunt caught), `<tier>:bomb` (Smart Bomb, pickup or dev panel), `<tier>:ram` (a diver that
 rammed the ship), and `clear` (wave-clear bonus, credited to the wave it cleared). Readers must
-treat the source set as open.
+treat the source set as open. Since #2843 the escort tier's sources are `Guardian`,
+`Guardian:dive`, … . Results from older builds carry `Boss`, `Boss:dive`, … for the same tier.
+The backend keeps both unchanged (it validates shape, not names), so a reader that aggregates
+across builds should treat `Boss*` as `Guardian*`.
 
 Game over sends it as the result's `score_breakdown`:
 `{v: 1, earlier?: {first, last, total, pts}, waves: [{wave, start, end, total, pts}], unattributed?}`.
@@ -434,7 +521,10 @@ and ranks.
 
 Adding `scoreLedger` to the saved state changed `SAVE_FINGERPRINT`, so a run paused on a build
 before #2837 is discarded once, not restored, after the update (Star Swarm is hidden in store
-builds, so this is accepted).
+builds, so this is accepted). #2843 did the same again (`carrierBeams`, `carrierStage`, the
+Carrier's `runPhase`/`runTimer`, and the Guardian renames of `startingNonLeaderCount` and the
+`guardian*ThresholdCrossed` latches), so a run paused before it is discarded once too. No save
+restores with a `"Boss"` tier id.
 
 ## Leaderboard and Run Reporting
 
@@ -476,7 +566,8 @@ The engine (`engine.ts`) is pure and ticks on the JS thread in the canvas's RAF 
 drawing decision for the native canvas lives in `render/frame.ts`: `buildFrame(state, starfield,
 { loaded, width, height })` returns a flat, back-to-front display list of primitive ops (`fill`,
 `rect`, `circle`, `image`, `poly`) — plain data, no Skia objects. Sprite-vs-fallback choices, the
-Carrier's armor ring, hit-flash bursts, the beam, the invincibility
+Carrier's armor ring, hit-flash bursts, the Carrier's beams and telegraphs (`render/carrier.ts`,
+shared with the web canvas), the invincibility
 blink and the #2334 hidden-ship-at-game-over rule are all decided there and unit-tested in
 `__tests__/frame.test.ts`. `render/drawFrame.ts` replays the ops and decides nothing (see below).
 
@@ -536,12 +627,9 @@ cached JWT is the client's navigation/offline cache. See
 
 ## Current Refinement Work
 
-The broad game contract is documented above. #2776 is a focused polish/transition story.
-
-After #2776 lands, update the affected sections for:
-
-- Carrier beam lifecycle/randomized cadence;
-- Carrier exposed/final-stage aggression and attack runs;
-- right-edge drag regression behavior/testing.
+The broad game contract is documented above. Of the #2776 epic, #2844 (asteroid battlefield rules,
+including armored-vs-exposed Carrier asteroid behaviour and flak's attention cost) and #2845 (Buddy
+as an allied ship, including Carrier targeting of Buddy through `chooseCarrierTarget`) remain.
+Update the affected sections as they land.
 
 Other active bugs/tuning work belongs in GitHub rather than a duplicated Known Issues list.

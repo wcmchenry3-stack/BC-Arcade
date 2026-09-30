@@ -115,14 +115,16 @@ export function useStarSwarmAudio(
     [playSalvage, playHullUp, playHullHit]
   );
 
-  // #2485: one entry point for the Carrier's moments
+  // #2485: one entry point for the Carrier's moments. #2843: the attack-run brace reuses the
+  // rising charge sound (it is a telegraph too); the final stand reuses the boss-wave sting.
   const playCarrierEvent = useCallback(
     (kind: CarrierEvent) => {
-      if (kind === "beamCharge") playBeamCharge();
+      if (kind === "beamCharge" || kind === "attackRun") playBeamCharge();
       else if (kind === "beamFire") playBeamFire();
+      else if (kind === "finalStand") playBossWave();
       else playReinforce();
     },
-    [playBeamCharge, playBeamFire, playReinforce]
+    [playBeamCharge, playBeamFire, playBossWave, playReinforce]
   );
 
   const playPowerUpCollect = useCallback(

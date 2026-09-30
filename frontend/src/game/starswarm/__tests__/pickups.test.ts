@@ -26,7 +26,7 @@ const NONE: LoadedSprites = {
   buddyShip: false,
   enemyGrunt: false,
   enemyElite: false,
-  enemyBoss: false,
+  enemyGuardian: false,
   enemyCarrier: false,
   bulletPlayer: false,
   puShield: true,
