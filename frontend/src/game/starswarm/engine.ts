@@ -1535,7 +1535,7 @@ export function tick(state: StarSwarmState, dtMs: number, input: StarSwarmInput)
 // #1078 #1079: repeating threshold scaled by difficulty; slow-mo + invincibility on award
 // No early exit on GameOver — if the threshold was just crossed in the same tick the player died,
 // the bonus life is still awarded and GameOver is reverted (race condition fix).
-function tickBonusLives(_prev: StarSwarmState, next: StarSwarmState): StarSwarmState {
+function tickBonusLives(prev: StarSwarmState, next: StarSwarmState): StarSwarmState {
   const threshold = bonusLifeThreshold(next.difficulty);
   const livesEarnable = Math.floor(next.score / threshold);
   const livesToAward = Math.max(0, livesEarnable - next.bonusLivesAwarded);
@@ -1556,9 +1556,9 @@ function tickBonusLives(_prev: StarSwarmState, next: StarSwarmState): StarSwarmS
   // to the phase the tick started in (#2842: a rescue mid-extraction stays in extraction)
   const phase =
     next.phase === "GameOver" && newLives > 0
-      ? _prev.phase === "GameOver"
+      ? prev.phase === "GameOver"
         ? "Playing"
-        : _prev.phase
+        : prev.phase
       : next.phase;
 
   return {
