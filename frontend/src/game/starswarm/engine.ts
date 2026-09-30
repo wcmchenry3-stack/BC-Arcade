@@ -203,12 +203,63 @@ export const POWERUP_DURATION = 5000; // ms of super state (lightning / shield)
 // #1034: Smart Bomb flash
 const BOMB_FLASH_DURATION = 300; // ms
 
-// #1035: Buddy Ship
-const BUDDY_SHIP_DURATION = 2500; // ms to cross the screen
+// #1035/#2845: Buddy — a durable, targetable allied ship
+/** #2845: Buddy's hit points. Tuning range 8–12 (Carrier-class or a little tougher). */
+export const BUDDY_HP = 10;
+export const BUDDY_HURT_RADIUS = 11; // px — Buddy's hit circle (a bigger hull than the player's forgiveness circle)
+export const BUDDY_SPEED = 0.2; // px/ms — the bound on its evasive and station-keeping moves
+const BUDDY_TRANSIT_SPEED = 0.34; // px/ms — flying in and peeling off
+export const BUDDY_STATION_MS = 9000; // ms on station before it peels off
+export const BUDDY_BURSTS = 3; // attack runs per sortie — one spread burst each
+export const BUDDY_FIRST_BURST_MS = 700; // ms after reaching station before the first burst
+export const BUDDY_BURST_INTERVAL = 2200; // ms between bursts
+export const BUDDY_RUN_MS = 700; // the attack run: it lines up under its target this long before a burst
+const BUDDY_RUN_RISE = 24; // px it climbs toward the target on an attack run (never inside the standoff)
 const BUDDY_BULLET_SPEED = 0.5; // px/ms
 const BUDDY_BULLET_COUNT_MIN = 5;
 const BUDDY_BULLET_COUNT_MAX = 7;
-const BUDDY_FIRE_AT_T = 0.45; // path progress when spread burst fires
+const BUDDY_SPREAD_HALF = Math.PI / 9; // ±20° fan
+/** #2845: Buddy never closes inside this distance of the Carrier on station — no point-blank passes. */
+export const BUDDY_STANDOFF = 150; // px
+const BUDDY_FORMATION_GAP = 55; // px Buddy keeps below the lowest ship holding formation
+const BUDDY_PLAYER_GAP = 90; // px Buddy keeps above the player lane (its floor)
+const BUDDY_STRAFE = 55; // px either side of its target line while strafing
+const BUDDY_STRAFE_PERIOD = 3200; // ms per strafe cycle
+export const BUDDY_REPLAN_MS = 140; // ms reaction latency between evasion re-plans (imperfection)
+// sampled every 40 ms so even a fast shot (0.5 px/ms) can't slip between samples of a ~22 px reach
+const BUDDY_LOOKAHEAD_MS = Array.from({ length: 19 }, (_, i) => i * 40); // 0 … 720 ms
+const BUDDY_MARGIN = 6; // px of slack its evasion keeps from a hazard
+export const BUDDY_ROCK_LOOKAHEAD_MS = 900; // rock threat window (asteroidThreatens)
+/**
+ * #2845: the chance Buddy notices a given hostile at all — decided per hazard by a stateless hash
+ * of its id, so it is deterministic and never draws from the seeded rng. An unnoticed shot or rock
+ * is simply not dodged: strong, readable, imperfect.
+ */
+export const BUDDY_NOTICE = { shot: 0.8, beam: 0.9, rock: 0.85 } as const;
+export const BUDDY_BEAM_DAMAGE = 3; // a released Carrier beam is heavy
+export const BUDDY_ROCK_DAMAGE = 2; // per rock (one hit per rock, like any ship)
+/** #2845: at most this many enemy shots may be in flight at Buddy — it draws fire, it isn't focus-fired. */
+export const BUDDY_MAX_INCOMING = 3;
+const BUDDY_TARGET_RANGE = 380; // px — a ship only diverts to a Buddy within this range…
+const BUDDY_TARGET_BELOW = 20; // …and at least this far below it (enemy guns point down)
+
+/** #2845: how a tier treats Buddy as a target. Grunt → Elite → Guardian → Carrier, weakest to strongest. */
+export interface BuddyTargeting {
+  /** Chance a shot this ship is about to fire at the player goes to Buddy instead. */
+  readonly divert: number;
+  /** Speed of a shot at Buddy, px/ms. */
+  readonly speed: number;
+  /** Max aim error, radians (uniform ±). */
+  readonly aimError: number;
+  /** Fraction of Buddy's motion it leads (0 = aims where Buddy is). */
+  readonly lead: number;
+}
+export const BUDDY_TARGETING: Readonly<Record<EnemyTier, BuddyTargeting>> = {
+  Grunt: { divert: 0.12, speed: 0.28, aimError: 0.22, lead: 0 },
+  Elite: { divert: 0.25, speed: 0.35, aimError: 0.12, lead: 0.4 },
+  Guardian: { divert: 0.4, speed: 0.46, aimError: 0.06, lead: 0.75 },
+  Carrier: { divert: 0.55, speed: 0.52, aimError: 0.02, lead: 1 }, // exposed only
+};
 // Time for a powerup to fall from spawn (y = POWERUP_H/2) to just past the player, plus a
 // 2-second collection window. Computed per-canvas so it works at any screen height.
 function powerUpDespawnMs(canvasH: number): number {
@@ -450,7 +501,8 @@ function carrierArmoredIn(enemies: readonly Enemy[]): boolean {
 
 /**
  * #2484: the Carrier is armored while any of its four Guardian escorts is alive. Ordinary player
- * shots are spent on the force field (ring plays, no damage); piercing shots go through.
+ * shots are spent on the force field (ring plays, no damage); only armor-piercing shots
+ * (Lightning, #2845) go through — Buddy's piercing burst does not.
  * False when there is no live Carrier, so renderers can key an indicator off this alone.
  */
 export function isCarrierArmored(state: StarSwarmState): boolean {
@@ -658,6 +710,11 @@ let _nextId = 1;
 
 function nextId(): number {
   return _nextId++;
+}
+
+/** The id the next entity will get — a deterministic, rng-free key (#2845 Carrier volley roll). */
+function peekNextId(): number {
+  return _nextId;
 }
 
 /** Reset for testing only. */
@@ -880,25 +937,6 @@ function pickPowerUpType(lives: number): PowerUpType {
   if (r < 0.5) return "shield";
   if (r < 0.75) return "buddy";
   return "bomb";
-}
-
-// #1035: Bézier arc for a buddy ship crossing from one edge to the other
-function buddyShipPath(
-  fromLeft: boolean,
-  targetX: number,
-  targetY: number,
-  canvasW: number,
-  canvasH: number
-): CubicBezier {
-  const startX = fromLeft ? -40 : canvasW + 40;
-  const endX = fromLeft ? canvasW + 40 : -40;
-  const entryY = canvasH * 0.3;
-  return {
-    p0: { x: startX, y: entryY },
-    p1: { x: canvasW * (fromLeft ? 0.3 : 0.7), y: canvasH * 0.12 },
-    p2: { x: targetX, y: targetY },
-    p3: { x: endX, y: entryY },
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1426,6 +1464,8 @@ export function playerVolley(x: number, y: number, guns: GunsLevel, isSuper: boo
     height: isSuper ? BULLET_C_H : BULLET_P_H,
     damage: isSuper ? SUPER_DAMAGE : 1,
     piercing: isSuper ? true : undefined,
+    // #2845: Lightning is the explicit armor-piercing exception — multi-hit AND through the field
+    armorPiercing: isSuper ? true : undefined,
   });
   if (guns === 1) return [make(0, 0)];
   const volley = [make(-TWIN_OFFSET, 0), make(TWIN_OFFSET, 0)];
@@ -1493,6 +1533,9 @@ const ZERO_RUN_STATS: RunStats = {
   rocksSpawned: 0,
   rocksBrokenByPlayer: 0,
   rocksBrokenByEnemy: 0,
+  buddyLaunched: 0, // #2845
+  buddyLost: 0,
+  buddyShotsDrawn: 0,
 };
 
 /** #2491: a fresh run's counters. */
@@ -2145,7 +2188,7 @@ interface EnemyTickResult {
 }
 
 /** #2485/#2843: what the Carrier needs to know that the per-enemy tick otherwise doesn't see. */
-interface CarrierCtx {
+export interface CarrierCtx {
   /** Playing phase — the Carrier only acts mid-wave. */
   playing: boolean;
   /** The Carrier's live stage this tick (null with no Carrier). */
@@ -2160,6 +2203,11 @@ interface CarrierCtx {
   canvasH: number;
   /** #2844: a rock the exposed Carrier would answer with flak this tick (see `carrierFlakRock`); else null. */
   flakRock: CarrierFlakRock | null;
+  /**
+   * #2845: the Buddy an *exposed* Carrier may divert a volley to (nearest in range, pressure cap
+   * not reached); null while armored or with no Buddy to shoot at.
+   */
+  buddy: BuddyShip | null;
 }
 const NO_CARRIER_CTX: CarrierCtx = {
   playing: false,
@@ -2171,6 +2219,7 @@ const NO_CARRIER_CTX: CarrierCtx = {
   playerY: 0,
   canvasH: CANVAS_H,
   flakRock: null,
+  buddy: null,
 };
 
 /** #2844: the part of a rock the Carrier's flak choice needs. */
@@ -2179,8 +2228,8 @@ export type CarrierFlakRock = Pick<Asteroid, "x" | "y" | "vx" | "vy">;
 /**
  * #2843/#2844 finite-capacity seam: where a Carrier volley goes. The Carrier's own timers decide
  * *when* it fires and how much; this decides only *where*. A volley aimed at a rock REPLACES the
- * player-directed one on the same timer — it never adds a volley, a gun or any cadence. #2845
- * (fire at Buddy) plugs in here the same way.
+ * player-directed one on the same timer — it never adds a volley, a gun or any cadence. #2845:
+ * a volley at Buddy plugs in here the same way — the same two guns on the same timer.
  */
 export type CarrierTarget =
   | { readonly kind: "player"; readonly x: number; readonly y: number }
@@ -2189,6 +2238,13 @@ export type CarrierTarget =
       /** Lead point the flak is aimed at. */
       readonly x: number;
       readonly y: number;
+    }
+  | {
+      readonly kind: "buddy";
+      /** The Buddy being shot at (the volley leads it, see aimAtBuddy). */
+      readonly buddy: BuddyShip;
+      /** Stateless per-volley key for the aim-error hash. */
+      readonly key: number;
     };
 
 /**
@@ -2219,10 +2275,18 @@ export function carrierFlakRock(
   return best;
 }
 
-function chooseCarrierTarget(ctx: CarrierCtx): CarrierTarget {
+/**
+ * Where this volley goes: a threatening rock first (#2844), then — #2845, exposed Carrier only —
+ * Buddy on a `BUDDY_TARGETING.Carrier.divert` roll, else the player. The roll is a stateless hash
+ * of `key` (the volley's first bullet id), so it never draws from the seeded rng.
+ */
+export function chooseCarrierTarget(ctx: CarrierCtx, key = 0): CarrierTarget {
   if (ctx.flakRock) {
     const r = ctx.flakRock;
     return { kind: "rock", x: r.x + r.vx * FLAK_LEAD_MS, y: r.y + r.vy * FLAK_LEAD_MS };
+  }
+  if (ctx.buddy && buddyDivertRoll(key) < BUDDY_TARGETING.Carrier.divert) {
+    return { kind: "buddy", buddy: ctx.buddy, key };
   }
   return { kind: "player", x: ctx.playerX, y: ctx.playerY };
 }
@@ -2232,6 +2296,22 @@ function carrierTwinVolley(c: Enemy, target: CarrierTarget): Bullet[] {
   return [-TWIN_FIRE_OFFSET, TWIN_FIRE_OFFSET].map((dx) => {
     const ox = c.x + dx;
     const oy = c.y + c.height / 2;
+    if (target.kind === "buddy") {
+      // #2845: the same two guns on the same timer, aimed at Buddy instead of the player
+      const vel = aimAtBuddy(ox, oy, target.buddy, "Carrier", target.key + dx);
+      return {
+        id: nextId(),
+        x: ox,
+        y: oy,
+        vx: vel.vx,
+        vy: vel.vy,
+        owner: "enemy" as const,
+        width: BULLET_E_W,
+        height: BULLET_E_H,
+        damage: 1,
+        target: "buddy" as const,
+      };
+    }
     if (target.kind === "rock") {
       // #2844: diverted to flak — same two guns, same timer, aimed at the rock; outside the cap
       const len = Math.hypot(target.x - ox, target.y - oy) || 1;
@@ -2366,7 +2446,7 @@ function tickCarrier(enemy: Enemy, dtMs: number, ctx: CarrierCtx): EnemyTickResu
     shootTimer -= dtMs;
     if (shootTimer <= 0) {
       shootTimer = roll("twin");
-      bullets = carrierTwinVolley(e, chooseCarrierTarget(ctx));
+      bullets = carrierTwinVolley(e, chooseCarrierTarget(ctx, peekNextId()));
     }
   }
 
@@ -3049,11 +3129,24 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     playerY: state.player.y,
     canvasH: state.canvasH,
     flakRock: null, // set below once the Carrier's position is known
+    buddy: null,
   };
   const carrierNow = roster.find((e) => e.isAlive && e.tier === "Carrier");
   if (carrierNow && stage && stage !== "protected" && !state.flakDisabled) {
     // #2844: an exposed Carrier diverts its twin volley to an approaching rock (never while armored)
     carrierCtx.flakRock = carrierFlakRock(carrierNow, state.asteroids, carrierArmoredIn(roster));
+  }
+  // #2845: fire at Buddy. Every diversion below REPLACES a shot that was about to go at the player
+  // (same ship, same timer, same bullet) — no ship gains a gun or any cadence because Buddy is here.
+  let buddyIncoming = state.enemyBullets.filter((b) => b.target === "buddy").length;
+  let buddyShotsDrawn = 0;
+  if (carrierNow && buddyIncoming + 2 <= BUDDY_MAX_INCOMING) {
+    carrierCtx.buddy = buddyTargetFor(
+      carrierNow,
+      state.buddyShips,
+      carrierArmoredIn(roster),
+      state.canvasW
+    );
   }
   let tickTierStats = state.tierStats;
   const newCarrierBeams: CarrierBeam[] = [...state.carrierBeams];
@@ -3105,6 +3198,23 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     for (const raw of [result.bullet, ...(result.bullets ?? [])]) {
       if (!raw) continue;
       let b = raw;
+      // #2845: this ship's fire decision — the shot it was about to fire at the player may go to
+      // Buddy instead (the Carrier decided inside chooseCarrierTarget). Rng-free (a hash of the
+      // bullet id), so Buddy's presence never perturbs the seeded stream.
+      if (!b.flak && b.target !== "buddy" && enemy.tier !== "Carrier") {
+        const buddy =
+          buddyIncoming < BUDDY_MAX_INCOMING
+            ? buddyTargetFor(enemy, state.buddyShips, false, state.canvasW)
+            : null;
+        if (buddy && buddyDivertRoll(b.id) < BUDDY_TARGETING[enemy.tier].divert) {
+          b = { ...b, ...aimAtBuddy(b.x, b.y, buddy, enemy.tier, b.id), target: "buddy" };
+        }
+      } else if (b.target === "buddy" && buddyIncoming >= BUDDY_MAX_INCOMING) {
+        // the Carrier chose Buddy on the tick's opening count, but ships ahead of it in the roster
+        // have since filled the pressure cap — that volley goes back to the player
+        const vel = aimVelocity(b.x, enemy.y, state.player.x, state.player.y, GUARDIAN_BULLET_VY);
+        b = { ...b, vx: vel.vx, vy: vel.vy, target: undefined };
+      }
       if (evading && !b.flak) b = { ...b, ...degradeAim(b.vx, b.vy, enemy.tier, rng) };
       if (b.flak) {
         // #2844: flak is outside the cap — its price was paid in the ship's fire timer. Only the
@@ -3122,6 +3232,10 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
       } else if (liveEnemyBulletCount < enemyBulletCap && enemyWeaponsFree) {
         newEnemyBullets.push(b);
         liveEnemyBulletCount++;
+        if (b.target === "buddy") {
+          buddyIncoming++;
+          buddyShotsDrawn++;
+        }
       }
     }
     // #2843: a released beam is its own entity from here on
@@ -3192,6 +3306,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   }
 
   if (routEscaped > 0) runStats = bumpRun(runStats, { routEscaped });
+  if (buddyShotsDrawn > 0) runStats = bumpRun(runStats, { buddyShotsDrawn }); // #2845
 
   // #1031: straggler aggression — when ≤3 enemies survive in a Playing wave,
   // all Formation enemies immediately start wiggling
@@ -3278,71 +3393,489 @@ function tickPowerUps(state: StarSwarmState, dtMs: number): StarSwarmState {
 }
 
 // ---------------------------------------------------------------------------
-// Buddy ships (#1035)
+// Buddy (#1035, #2845) — a durable, targetable allied ship
 // ---------------------------------------------------------------------------
+//
+// Buddy flies in from a side edge to a standoff lane below the formation (Entering), strafes
+// there making BUDDY_BURSTS attack runs — it lines up under its target and fires one piercing
+// spread burst per run (OnStation) — then peels off (Leaving). It has BUDDY_HP hit points;
+// hostile shots, released Carrier beams and rocks damage it, and at 0 it is destroyed (its
+// unfired bursts are lost, its fired shots fly on). Every Buddy decision is deterministic and
+// rng-free (stateless hashes of entity ids), so Buddy never perturbs the seeded stream.
+
+/** Stateless [0, 1) roll for a key — a divert decision or an aim error, never the seeded rng. */
+function buddyDivertRoll(key: number): number {
+  return hashFrac(key * 7.7713 + 1.37);
+}
+
+/**
+ * #2845: does Buddy notice this hazard at all? A per-hazard, per-Buddy hash against `chance`
+ * (see BUDDY_NOTICE) — deterministic, and the imperfection in Buddy's otherwise strong evasion.
+ */
+export function buddyNotices(buddyId: number, hazardId: number, chance: number): boolean {
+  return hashFrac(hazardId * 12.9898 + buddyId * 4.1414 + 0.5) < chance;
+}
+
+/** #2845: Buddy's hit circle (with its velocity) — the asteroid contract's input. */
+export function buddyThreatCircle(b: BuddyShip, pad = 0): ThreatCircle {
+  return { x: b.x, y: b.y, r: BUDDY_HURT_RADIUS + pad, vx: b.vx, vy: b.vy };
+}
+
+/**
+ * #2845: the Buddy `shooter` may divert a shot to — the nearest one on screen, in range and far
+ * enough below it (enemy guns point down); null if none. The armored Carrier never targets Buddy
+ * (it has no aimed guns then anyway); from the moment the last Guardian dies it does.
+ */
+export function buddyTargetFor(
+  shooter: Pick<Enemy, "x" | "y" | "tier">,
+  buddies: readonly BuddyShip[],
+  carrierArmored: boolean,
+  canvasW = CANVAS_W
+): BuddyShip | null {
+  if (shooter.tier === "Carrier" && carrierArmored) return null;
+  let best: BuddyShip | null = null;
+  let bestD = BUDDY_TARGET_RANGE * BUDDY_TARGET_RANGE;
+  for (const b of buddies) {
+    if (b.hp <= 0 || b.x < 0 || b.x > canvasW || b.y < 0) continue;
+    const dy = b.y - shooter.y;
+    if (dy < BUDDY_TARGET_BELOW) continue;
+    const dx = b.x - shooter.x;
+    const d = dx * dx + dy * dy;
+    if (d <= bestD) {
+      best = b;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+/**
+ * #2845: a shot's velocity from (ox, oy) at Buddy, by tier (BUDDY_TARGETING): its speed, how much
+ * of Buddy's motion it leads, and an aim error drawn from a hash of `key`. Grunts are slow, blind
+ * to motion and wild; the Carrier is fast, leads fully and barely misses.
+ */
+export function aimAtBuddy(
+  ox: number,
+  oy: number,
+  buddy: Pick<BuddyShip, "x" | "y" | "vx" | "vy">,
+  tier: EnemyTier,
+  key: number
+): { vx: number; vy: number } {
+  const t = BUDDY_TARGETING[tier];
+  const flight = Math.hypot(buddy.x - ox, buddy.y - oy) / t.speed;
+  const tx = buddy.x + buddy.vx * flight * t.lead;
+  const ty = buddy.y + buddy.vy * flight * t.lead;
+  const err = (hashFrac(key * 3.7331 + 0.21) * 2 - 1) * t.aimError;
+  const ang = Math.atan2(ty - oy, tx - ox) + err;
+  return { vx: Math.cos(ang) * t.speed, vy: Math.sin(ang) * t.speed };
+}
+
+/**
+ * #2845 allied collision policy — an explicit rule, not an omission: only enemy-owned shots can
+ * hurt the player or Buddy. Player shots (Buddy's burst included) pass through both allies
+ * harmlessly, and player/Buddy shots never collide with each other (nothing tests one player shot
+ * against another). The player and Buddy's hulls never collide either. Both still meet hostiles
+ * and rocks normally.
+ */
+export function shotHarmsAllies(b: Pick<Bullet, "owner">): boolean {
+  return b.owner === "enemy";
+}
+
+/** #2845: what Buddy fires at — the exposed Carrier first, else the formation's centre. */
+function buddyAimTarget(state: StarSwarmState): Vec2 | null {
+  const carrier = state.enemies.find((e) => e.isAlive && e.tier === "Carrier");
+  if (carrier && !carrierArmoredIn(state.enemies)) return { x: carrier.x, y: carrier.y };
+  // the armored Carrier is off the list: its field would stop the burst
+  const ships = state.enemies.filter(
+    (e) => e.isAlive && e.tier !== "Carrier" && e.y >= 0 && e.phase !== "SwoopIn"
+  );
+  if (ships.length === 0) return null;
+  return {
+    x: ships.reduce((s, e) => s + e.x, 0) / ships.length,
+    y: ships.reduce((s, e) => s + e.y, 0) / ships.length,
+  };
+}
+
+/** Buddy's lowest allowed lane — it keeps clear of the player's. */
+function buddyFloorY(canvasH: number): number {
+  return canvasH - PLAYER_Y_FROM_BOTTOM - BUDDY_PLAYER_GAP;
+}
+
+/**
+ * #2845: where Buddy wants to be right now. A lane below the lowest ship holding formation, and
+ * never within BUDDY_STANDOFF of the Carrier (the vertical gap alone guarantees it); strafing
+ * ±BUDDY_STRAFE about its target line, except on an attack run (the last BUDDY_RUN_MS before a
+ * burst), when it lines up under the target and climbs BUDDY_RUN_RISE — still outside the
+ * standoff. The floor (above the player lane) wins if the Carrier dives deep on its own run.
+ */
+export function buddyStation(
+  state: StarSwarmState,
+  b: Pick<BuddyShip, "ageMs" | "burstTimer" | "burstsLeft" | "phase">
+): Vec2 {
+  const { canvasW, canvasH } = state;
+  const floor = buddyFloorY(canvasH);
+  let formationBottom = 0;
+  for (const e of state.enemies) {
+    if (e.isAlive && (e.phase === "Formation" || e.phase === "Wiggling")) {
+      formationBottom = Math.max(formationBottom, e.y + e.height / 2);
+    }
+  }
+  const carrier = state.enemies.find((e) => e.isAlive && e.tier === "Carrier");
+  const standoffY = carrier ? carrier.y + BUDDY_STANDOFF : -Infinity;
+  let y = Math.max(formationBottom + BUDDY_FORMATION_GAP, canvasH * 0.4, standoffY);
+  const target = buddyAimTarget(state);
+  const runIn = b.phase === "OnStation" && b.burstsLeft > 0 && b.burstTimer <= BUDDY_RUN_MS;
+  let x: number;
+  if (target && runIn) {
+    x = target.x;
+    y = Math.max(y - BUDDY_RUN_RISE, standoffY);
+  } else {
+    const cx = target ? target.x : canvasW / 2;
+    x = cx + BUDDY_STRAFE * Math.sin((2 * Math.PI * b.ageMs) / BUDDY_STRAFE_PERIOD);
+  }
+  return {
+    x: Math.max(20, Math.min(canvasW - 20, x)),
+    y: Math.min(floor, y),
+  };
+}
+
+/** #2843: a released beam as a chain of overlapping circles covering its length. */
+function beamHazards(b: CarrierBeam): Hazard[] {
+  const out: Hazard[] = [];
+  const step = b.halfWidth * 1.5;
+  for (let d = 0; d <= b.length; d += step) {
+    out.push({ x: b.x, y: b.y - d, vx: 0, vy: b.vy, r: b.halfWidth });
+  }
+  return out;
+}
+
+/**
+ * #2845: the hostiles Buddy is dodging — the enemy shots (flak and shots at the player included),
+ * released Carrier beams and threatening rocks (`asteroidThreatens` over BUDDY_ROCK_LOOKAHEAD_MS)
+ * that it noticed (BUDDY_NOTICE). Player shots are allied and never listed.
+ */
+export function buddyHazards(state: StarSwarmState, b: BuddyShip): Hazard[] {
+  const out: Hazard[] = [];
+  for (const e of state.enemyBullets) {
+    if (!shotHarmsAllies(e)) continue;
+    if (Math.abs(e.x - b.x) > 280 || Math.abs(e.y - b.y) > 360) continue; // can't arrive in time
+    if (!buddyNotices(b.id, e.id, BUDDY_NOTICE.shot)) continue;
+    out.push({ x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: Math.max(e.width, e.height) / 2 });
+  }
+  for (const beam of state.carrierBeams) {
+    if (buddyNotices(b.id, beam.id, BUDDY_NOTICE.beam)) out.push(...beamHazards(beam));
+  }
+  const circle = buddyThreatCircle(b, BUDDY_MARGIN);
+  for (const a of state.asteroids) {
+    if (!asteroidThreatens(a, circle, BUDDY_ROCK_LOOKAHEAD_MS)) continue;
+    if (!buddyNotices(b.id, a.id, BUDDY_NOTICE.rock)) continue;
+    out.push({ x: a.x, y: a.y, vx: a.vx, vy: a.vy, r: a.radius });
+  }
+  return out;
+}
+
+/** How dangerous steering from Buddy's spot for (tx, ty) is over the next ~700 ms. 0 = clear. */
+function buddyDanger(
+  b: BuddyShip,
+  hazards: readonly Hazard[],
+  tx: number,
+  ty: number,
+  speed: number
+): number {
+  const dx = tx - b.x;
+  const dy = ty - b.y;
+  const len = Math.hypot(dx, dy);
+  let danger = 0;
+  for (const t of BUDDY_LOOKAHEAD_MS) {
+    const step = len > 0 ? Math.min(len, speed * t) / len : 0;
+    const sx = b.x + dx * step;
+    const sy = b.y + dy * step;
+    const weight = 1 / (1 + t / 250);
+    for (const h of hazards) {
+      const reach = h.r + BUDDY_HURT_RADIUS + BUDDY_MARGIN;
+      const hx = h.x + h.vx * t - sx;
+      const hy = h.y + h.vy * t - sy;
+      if (hx * hx + hy * hy < reach * reach) danger += weight;
+    }
+  }
+  return danger;
+}
+
+const BUDDY_DODGE_DX = [-90, -60, -30, 0, 30, 60, 90] as const;
+const BUDDY_DODGE_DY = [-40, 0, 40] as const;
+
+/**
+ * #2845: Buddy's evasion — pick the point to steer for. With nothing noticed it is simply its
+ * station. Otherwise it scores its station and a bounded ring of nearby points (±90 px across,
+ * ±40 px up/down) against every noticed hazard at its capped speed, and takes the safest, pulled
+ * toward its station; on station no point inside the Carrier standoff is considered. Strong (it sees 700 ms
+ * ahead), bounded (BUDDY_SPEED, a small ring) and imperfect (BUDDY_NOTICE misses, and it only
+ * re-plans every BUDDY_REPLAN_MS).
+ */
+function planBuddyGoal(
+  state: StarSwarmState,
+  b: BuddyShip,
+  desired: Vec2,
+  speed: number,
+  clampToField: boolean
+): Vec2 {
+  const hazards = buddyHazards(state, b);
+  if (hazards.length === 0) return desired;
+  const carrier = state.enemies.find((e) => e.isAlive && e.tier === "Carrier");
+  const floor = buddyFloorY(state.canvasH) + 30;
+  // the standoff holds while dodging too — a dodge never ducks in toward the Carrier
+  const ceiling = Math.max(state.canvasH * 0.2, carrier ? carrier.y + BUDDY_STANDOFF : 0);
+  const candidates: Vec2[] = [desired];
+  for (const dx of BUDDY_DODGE_DX) {
+    for (const dy of BUDDY_DODGE_DY) {
+      let x = b.x + dx;
+      let y = b.y + dy;
+      if (clampToField) {
+        x = Math.max(16, Math.min(state.canvasW - 16, x));
+        y = Math.min(floor, Math.max(ceiling, y));
+      }
+      candidates.push({ x, y });
+    }
+  }
+  let best = desired;
+  let bestCost = Infinity;
+  for (const c of candidates) {
+    let cost = buddyDanger(b, hazards, c.x, c.y, speed) * 1000;
+    cost += Math.hypot(c.x - desired.x, c.y - desired.y) * 0.05;
+    if (cost < bestCost) {
+      bestCost = cost;
+      best = c;
+    }
+  }
+  return best;
+}
+
+/** #2845: one attack-run burst — a piercing (not armor-piercing) fan at `target`. */
+function buddyBurst(b: BuddyShip, target: Vec2 | null, room: number): Bullet[] {
+  const count =
+    BUDDY_BULLET_COUNT_MIN +
+    Math.floor(
+      hashFrac(b.id * 9.13 + b.burstsLeft * 2.71) *
+        (BUDDY_BULLET_COUNT_MAX - BUDDY_BULLET_COUNT_MIN + 1)
+    );
+  const base = target ? Math.atan2(target.y - b.y, target.x - b.x) : -Math.PI / 2;
+  const out: Bullet[] = [];
+  // #2334: Buddy's shots are player-owned — they respect the player's hard bullet cap
+  for (let i = 0; i < Math.min(count, room); i++) {
+    const angle = count === 1 ? base : base + ((i / (count - 1)) * 2 - 1) * BUDDY_SPREAD_HALF;
+    out.push({
+      id: nextId(),
+      x: b.x,
+      y: b.y,
+      vx: Math.cos(angle) * BUDDY_BULLET_SPEED,
+      vy: Math.sin(angle) * BUDDY_BULLET_SPEED,
+      owner: "player",
+      width: BULLET_E_W,
+      height: BULLET_E_H,
+      damage: 1,
+      piercing: true, // multi-hit through ordinary hulls…
+      // …but not armorPiercing: the escorted Carrier's field stops it (#2845)
+      source: "buddy",
+    });
+  }
+  return out;
+}
+
+/** #2845: a fresh Buddy entering from a side edge (the side is a hash of its id — rng-free). */
+function makeBuddy(state: StarSwarmState): BuddyShip {
+  const id = nextId();
+  const fromLeft = hashFrac(id * 5.19 + 0.3) < 0.5;
+  const station = buddyStation(state, {
+    ageMs: 0,
+    burstTimer: BUDDY_FIRST_BURST_MS,
+    burstsLeft: BUDDY_BURSTS,
+    phase: "Entering",
+  });
+  const x = fromLeft ? -30 : state.canvasW + 30;
+  return {
+    id,
+    x,
+    y: station.y,
+    vx: 0,
+    vy: 0,
+    phase: "Entering",
+    hp: BUDDY_HP,
+    hitFlashTimer: 0,
+    ageMs: 0,
+    stationMs: BUDDY_STATION_MS,
+    burstsLeft: BUDDY_BURSTS,
+    burstTimer: BUDDY_FIRST_BURST_MS,
+    planMs: 0,
+    goalX: x,
+    goalY: station.y,
+    facingRight: fromLeft,
+    hitRockIds: [],
+  };
+}
+
+/** #2845: launch a Buddy (pickup or dev panel) and count it. */
+function launchBuddy(state: StarSwarmState): StarSwarmState {
+  return {
+    ...state,
+    buddyShips: [...state.buddyShips, makeBuddy(state)],
+    runStats: bumpRun(state.runStats, { buddyLaunched: 1 }),
+  };
+}
+
+/** #2845: true on the tick a Buddy is destroyed (the screen announces it). */
+export function buddyJustLost(prev: StarSwarmState, next: StarSwarmState): boolean {
+  return next.runStats.buddyLost > prev.runStats.buddyLost;
+}
 
 function tickBuddyShips(state: StarSwarmState, dtMs: number): StarSwarmState {
   if (state.buddyShips.length === 0) return state;
-
+  const { canvasW, canvasH } = state;
   const newPlayerBullets = [...state.playerBullets];
-  const updatedBuddies: BuddyShip[] = [];
+  const updated: BuddyShip[] = [];
+  // Nothing left to fight, or the wave is being extracted: every Buddy peels off (unfired bursts
+  // are lost). A Buddy in flight during swoop-in holds its fire (weaponsFree), like every gun.
+  const standDown = state.phase === "Extraction" || !state.enemies.some((e) => e.isAlive);
 
-  for (const buddy of state.buddyShips) {
-    const newT = buddy.pathT + dtMs / buddy.pathDuration;
-    const pos = evalCubic(buddy.path, Math.min(newT, 1));
+  for (const b0 of state.buddyShips) {
+    let b: BuddyShip = {
+      ...b0,
+      ageMs: b0.ageMs + dtMs,
+      hitFlashTimer: Math.max(0, b0.hitFlashTimer - dtMs),
+      planMs: b0.planMs - dtMs,
+    };
+    if (standDown && b.phase !== "Leaving") b = { ...b, phase: "Leaving" };
 
-    // Fire spread burst once at BUDDY_FIRE_AT_T
-    let hasFired = buddy.hasFired;
-    // #2842: like every other gun, the buddy only opens fire during combat
-    if (!hasFired && newT >= BUDDY_FIRE_AT_T && weaponsFree(state)) {
-      hasFired = true;
-      const bulletCount =
-        BUDDY_BULLET_COUNT_MIN +
-        Math.floor(Math.random() * (BUDDY_BULLET_COUNT_MAX - BUDDY_BULLET_COUNT_MIN + 1));
-      const aliveEnemies = state.enemies.filter((e) => e.isAlive);
-      let aimX = pos.x;
-      let aimY = pos.y + 1;
-      if (aliveEnemies.length > 0) {
-        aimX = aliveEnemies.reduce((s, e) => s + e.x, 0) / aliveEnemies.length;
-        aimY = aliveEnemies.reduce((s, e) => s + e.y, 0) / aliveEnemies.length;
+    // ── phase and attack runs ──
+    if (b.phase === "Entering") {
+      const st = buddyStation(state, b);
+      if (Math.hypot(st.x - b.x, st.y - b.y) < 10 || b.ageMs > 2500)
+        b = { ...b, phase: "OnStation" };
+    } else if (b.phase === "OnStation") {
+      let { burstTimer, burstsLeft, stationMs } = b;
+      stationMs -= dtMs;
+      burstTimer -= dtMs;
+      if (burstTimer <= 0 && burstsLeft > 0) {
+        if (weaponsFree(state)) {
+          const room = MAX_PLAYER_BULLETS - newPlayerBullets.length;
+          newPlayerBullets.push(...buddyBurst(b, buddyAimTarget(state), Math.max(0, room)));
+          burstsLeft--;
+          burstTimer = BUDDY_BURST_INTERVAL;
+          if (burstsLeft === 0) stationMs = Math.min(stationMs, 800); // a beat, then away
+        } else {
+          burstTimer = 0; // hold the run until combat allows fire
+        }
       }
-      const dx = aimX - pos.x;
-      const dy = aimY - pos.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const baseDirX = dist > 1 ? dx / dist : 0;
-      const baseDirY = dist > 1 ? dy / dist : 1;
-      const baseAngle = Math.atan2(baseDirY, baseDirX);
-      const spreadHalf = Math.PI / 6; // ±30° total fan
-      for (let i = 0; i < bulletCount; i++) {
-        // #2334: buddy-ship bullets are player-owned — respect the same hard cap tickPlayer
-        // enforces, so a burst can't push playerBullets past it during heavy Lightning fire.
-        if (newPlayerBullets.length >= MAX_PLAYER_BULLETS) break;
-        const angle =
-          bulletCount === 1
-            ? baseAngle
-            : baseAngle + ((i / (bulletCount - 1)) * 2 - 1) * spreadHalf;
-        newPlayerBullets.push({
-          id: nextId(),
-          x: pos.x,
-          y: pos.y,
-          vx: Math.cos(angle) * BUDDY_BULLET_SPEED,
-          vy: Math.sin(angle) * BUDDY_BULLET_SPEED,
-          owner: "player",
-          width: BULLET_E_W,
-          height: BULLET_E_H,
-          damage: 1,
-          piercing: true,
-        });
-      }
+      b = { ...b, burstTimer, burstsLeft, stationMs };
+      if (stationMs <= 0) b = { ...b, phase: "Leaving" };
     }
 
-    // Remove when path complete and off screen
-    if (newT < 1.2) {
-      updatedBuddies.push({ ...buddy, x: pos.x, y: pos.y, pathT: newT, hasFired });
+    // ── steering: station → evasion plan → capped move ──
+    const leaving = b.phase === "Leaving";
+    const desired: Vec2 = leaving
+      ? { x: b.x < canvasW / 2 ? -60 : canvasW + 60, y: b.y - 80 }
+      : buddyStation(state, b);
+    const speed = b.phase === "OnStation" ? BUDDY_SPEED : BUDDY_TRANSIT_SPEED;
+    let goal: Vec2 = { x: b.goalX, y: b.goalY };
+    if (b.planMs <= 0) {
+      goal = planBuddyGoal(state, b, desired, speed, b.phase === "OnStation");
+      b = { ...b, planMs: BUDDY_REPLAN_MS, goalX: goal.x, goalY: goal.y };
     }
+    const dx = goal.x - b.x;
+    const dy = goal.y - b.y;
+    const len = Math.hypot(dx, dy);
+    const step = len > 0 ? Math.min(len, speed * dtMs) / len : 0;
+    const x = b.x + dx * step;
+    const y = b.y + dy * step;
+    const vx = dtMs > 0 ? (x - b.x) / dtMs : 0;
+    const vy = dtMs > 0 ? (y - b.y) / dtMs : 0;
+    const facingRight = Math.abs(vx) > 0.03 ? vx > 0 : b.facingRight;
+    b = { ...b, x, y, vx, vy, facingRight };
+
+    const gone = leaving && (x < -30 || x > canvasW + 30 || y < -30 || y > canvasH + 30);
+    if (!gone) updated.push(b);
   }
 
-  return { ...state, buddyShips: updatedBuddies, playerBullets: newPlayerBullets };
+  return { ...state, buddyShips: updated, playerBullets: newPlayerBullets };
+}
+
+/**
+ * #2845: hostiles against Buddy. Enemy shots (any tier, flak and shots meant for the player
+ * included) and released Carrier beams that touch Buddy's hit circle are spent on it — a shot
+ * deals its damage, a beam BUDDY_BEAM_DAMAGE. A rock deals BUDDY_ROCK_DAMAGE once per rock
+ * (`asteroidHits`); a small one shatters, a large one flies on. The player's shield never covers
+ * Buddy, and player shots are allied (`shotHarmsAllies`). At 0 HP Buddy explodes and is removed —
+ * its unfired bursts go with it, but the shots it already fired fly on (they are separate
+ * entities in `playerBullets`).
+ */
+function resolveBuddyHits(
+  buddies: readonly BuddyShip[],
+  enemyBullets: readonly Bullet[],
+  beams: readonly CarrierBeam[],
+  rocks: Asteroid[],
+  explosions: Explosion[]
+): { buddies: BuddyShip[]; enemyBullets: Bullet[]; beams: CarrierBeam[]; lost: number } {
+  if (buddies.length === 0) {
+    return { buddies: [], enemyBullets: [...enemyBullets], beams: [...beams], lost: 0 };
+  }
+  const spentShots = new Set<number>();
+  const spentBeams = new Set<number>();
+  const out: BuddyShip[] = [];
+  let lost = 0;
+  for (const b0 of buddies) {
+    let b = b0;
+    let damage = 0;
+    for (const s of enemyBullets) {
+      if (spentShots.has(s.id) || !shotHarmsAllies(s)) continue;
+      if (!collideCircleAABB(b.x, b.y, BUDDY_HURT_RADIUS, s.x, s.y, s.width, s.height)) continue;
+      spentShots.add(s.id);
+      damage += s.damage;
+    }
+    for (const beam of beams) {
+      if (spentBeams.has(beam.id)) continue;
+      const hit = collideCircleAABB(
+        b.x,
+        b.y,
+        BUDDY_HURT_RADIUS,
+        beam.x,
+        beam.y - beam.length / 2,
+        beam.halfWidth * 2,
+        beam.length
+      );
+      if (!hit) continue;
+      spentBeams.add(beam.id);
+      damage += BUDDY_BEAM_DAMAGE;
+    }
+    const circle = buddyThreatCircle(b);
+    for (let ri = 0; ri < rocks.length; ri++) {
+      const rock = rocks[ri]!;
+      if (b.hitRockIds.includes(rock.id) || !asteroidHits(rock, circle)) continue;
+      damage += BUDDY_ROCK_DAMAGE;
+      b = { ...b, hitRockIds: [...b.hitRockIds, rock.id] };
+      rocks[ri] =
+        rock.kind === "small"
+          ? { ...rock, hp: 0, shattered: true }
+          : { ...rock, hitFlashTimer: ASTEROID_HIT_FLASH_MS };
+    }
+    if (damage === 0) {
+      out.push(b);
+      continue;
+    }
+    const hp = b.hp - damage;
+    if (hp <= 0) {
+      explosions.push(spawnExplosion(b.x, b.y));
+      lost++;
+      continue;
+    }
+    out.push({ ...b, hp, hitFlashTimer: HIT_FLASH_DURATION });
+  }
+  return {
+    buddies: out,
+    enemyBullets: spentShots.size
+      ? enemyBullets.filter((s) => !spentShots.has(s.id))
+      : [...enemyBullets],
+    beams: spentBeams.size ? beams.filter((x) => !spentBeams.has(x.id)) : [...beams],
+    lost,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -3434,7 +3967,7 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
     if (!enemy.isAlive) return enemy;
 
     for (const b of state.playerBullets) {
-      if (!b.piercing && hitBulletIds.has(b.id)) continue;
+      if (hitBulletIds.has(b.id)) continue; // spent (a non-piercing hit, or a field deflection)
       if (b.piercing) {
         const alreadyHit = b.hitEnemyIds?.includes(enemy.id);
         const hitThisTick = newPiercingHits.get(b.id)?.includes(enemy.id);
@@ -3450,9 +3983,11 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
         hitBulletIds.add(b.id);
       }
 
-      // #2484: an escorted Carrier shrugs off ordinary shots — the bullet is spent, the force-field
-      // ring plays, no damage. Piercing shots (lightning super-state, buddy burst) go through.
-      if (enemy.tier === "Carrier" && carrierArmored && !b.piercing) {
+      // #2484/#2845: an escorted Carrier shrugs off every shot that isn't armor-piercing — the
+      // bullet is spent on the field (a piercing Buddy shot included: multi-hit through ordinary
+      // hulls is not armor bypass), the ring plays, no damage. Lightning is the explicit exception.
+      if (enemy.tier === "Carrier" && carrierArmored && !b.armorPiercing) {
+        hitBulletIds.add(b.id);
         armorDeflects++;
         return { ...enemy, hitFlashTimer: HIT_FLASH_DURATION };
       }
@@ -3604,33 +4139,9 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
       });
       if (bombCaught > 0) runStats = bumpRun(runStats, { routCaught: bombCaught });
     } else if (collected.type === "buddy") {
-      // #1035: spawn a buddy ship
-      const aliveEnemies = enemies.filter((e) => e.isAlive);
-      const targetX =
-        aliveEnemies.length > 0
-          ? aliveEnemies.reduce((sum, e) => sum + e.x, 0) / aliveEnemies.length
-          : state.canvasW / 2;
-      const targetY =
-        aliveEnemies.length > 0
-          ? aliveEnemies.reduce((sum, e) => sum + e.y, 0) / aliveEnemies.length
-          : state.canvasH * 0.4;
-      const fromLeft = Math.random() > 0.5;
-      const path = buddyShipPath(fromLeft, targetX, targetY, state.canvasW, state.canvasH);
-      buddyShips = [
-        ...buddyShips,
-        {
-          id: nextId(),
-          x: fromLeft ? -40 : state.canvasW + 40,
-          y: state.canvasH * 0.3,
-          path,
-          pathT: 0,
-          pathDuration: BUDDY_SHIP_DURATION,
-          hasFired: false,
-          targetX,
-          targetY,
-          fromLeft,
-        },
-      ];
+      // #1035/#2845: launch Buddy
+      buddyShips = [...buddyShips, makeBuddy({ ...state, enemies })];
+      runStats = bumpRun(runStats, { buddyLaunched: 1 });
     } else {
       // lightning or shield: duration buff
       activePowerUp = { remainingMs: POWERUP_DURATION, type: collected.type, shieldAbsorbed: 0 };
@@ -3654,6 +4165,21 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
     currentEnemyBullets = absorbed.bullets;
     rocks = absorbed.rocks;
     if (absorbed.broken > 0) runStats = bumpRun(runStats, { rocksBrokenByEnemy: absorbed.broken }); // #2491
+  }
+
+  // #2845: hostiles ↔ Buddy — before the player, so a shot that reaches Buddy first is spent there
+  {
+    const hit = resolveBuddyHits(
+      buddyShips,
+      currentEnemyBullets,
+      carrierBeams,
+      rocks,
+      newExplosions
+    );
+    buddyShips = hit.buddies;
+    currentEnemyBullets = hit.enemyBullets;
+    carrierBeams = hit.beams;
+    if (hit.lost > 0) runStats = bumpRun(runStats, { buddyLost: hit.lost });
   }
 
   if (player.invincibleTimer <= 0) {
@@ -3959,12 +4485,9 @@ export function liveHazards(state: StarSwarmState): Hazard[] {
     if (a.hp > 0) hazards.push({ x: a.x, y: a.y, vx: a.vx, vy: a.vy, r: a.radius });
   }
   // #2843: a beam is a long band, not a circle — cover it with a chain of overlapping circles
-  for (const b of state.carrierBeams) {
-    const step = b.halfWidth * 1.5;
-    for (let d = 0; d <= b.length; d += step) {
-      hazards.push({ x: b.x, y: b.y - d, vx: 0, vy: b.vy, r: b.halfWidth });
-    }
-  }
+  for (const b of state.carrierBeams) hazards.push(...beamHazards(b));
+  // #2845: Buddy, and the shots it fires, are allied — never a hazard to the ship. Enemy shots
+  // aimed at Buddy are enemy shots like any other and are listed above.
   return hazards;
 }
 
@@ -4085,11 +4608,12 @@ function beginExtraction(state: StarSwarmState): StarSwarmState {
  * play other than by their own hit or despawn. Projectiles are never removed because the ship
  * that fired them died (see the #2776 invariants); they persist until this boundary.
  *
- * Clears: player shots (Buddy shots are player-owned, so included), enemy shots (aimed, burst,
- * twin-laser, flak), asteroids, buddy ships, #2843's released Carrier beams, and any beam
- * charge or attack-run brace still on a Carrier. Plug-in point: a new transient combat entity
- * (#2845's Buddy projectiles/state) must be cleared here (and in the reset test in
- * engine.test.ts), so nothing from wave N can interact with wave N+1.
+ * Clears: player shots (Buddy's shots are player-owned, so included), enemy shots (aimed, burst,
+ * twin-laser, flak, and #2845's shots at Buddy), asteroids, Buddy ships (with their HP, bursts
+ * and steering state, #2845), #2843's released Carrier beams, and any beam charge or attack-run
+ * brace still on a Carrier. Plug-in point: a new transient combat entity must be cleared here
+ * (and in the reset tests in engine.test.ts / buddy.test.ts), so nothing from wave N can
+ * interact with wave N+1.
  */
 export function clearTransientCombat(state: StarSwarmState): StarSwarmState {
   return {
@@ -4214,37 +4738,7 @@ export function applyPowerUp(state: StarSwarmState, type: PowerUpType): StarSwar
     };
   }
 
-  if (type === "buddy") {
-    const aliveEnemies = state.enemies.filter((e) => e.isAlive);
-    const targetX =
-      aliveEnemies.length > 0
-        ? aliveEnemies.reduce((sum, e) => sum + e.x, 0) / aliveEnemies.length
-        : state.canvasW / 2;
-    const targetY =
-      aliveEnemies.length > 0
-        ? aliveEnemies.reduce((sum, e) => sum + e.y, 0) / aliveEnemies.length
-        : state.canvasH * 0.4;
-    const fromLeft = Math.random() > 0.5;
-    const path = buddyShipPath(fromLeft, targetX, targetY, state.canvasW, state.canvasH);
-    return {
-      ...state,
-      buddyShips: [
-        ...state.buddyShips,
-        {
-          id: nextId(),
-          x: fromLeft ? -40 : state.canvasW + 40,
-          y: state.canvasH * 0.3,
-          path,
-          pathT: 0,
-          pathDuration: BUDDY_SHIP_DURATION,
-          hasFired: false,
-          targetX,
-          targetY,
-          fromLeft,
-        },
-      ],
-    };
-  }
+  if (type === "buddy") return launchBuddy(state); // #2845
 
   // lightning or shield: replace any active duration buff
   return {

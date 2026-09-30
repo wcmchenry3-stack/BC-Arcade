@@ -130,6 +130,9 @@ const RUN_STAT_LINES: readonly (readonly [string, keyof RunStats])[] = [
   ["Rocks spawned", "rocksSpawned"],
   ["Rocks broken by player", "rocksBrokenByPlayer"],
   ["Rocks broken by enemies", "rocksBrokenByEnemy"],
+  ["Buddy launched", "buddyLaunched"], // #2845
+  ["Buddy lost", "buddyLost"],
+  ["Shots drawn by Buddy", "buddyShotsDrawn"],
 ];
 
 /**
@@ -374,6 +377,11 @@ function StarSwarmGame() {
     },
     [playRout, t]
   );
+
+  // #2845: Buddy going down has no on-screen text beyond the explosion — speak it.
+  const handleBuddyLost = useCallback(() => {
+    AccessibilityInfo.announceForAccessibility(t("a11y.buddyDown"));
+  }, [t]);
 
   // #2484: the Carrier's armor dropping is a state change with no on-screen text — speak it.
   const handleCarrierExposed = useCallback(() => {
@@ -679,6 +687,7 @@ function StarSwarmGame() {
               onExplosion={playExplosion}
               onBossWave={handleBossWave}
               onRout={handleRout}
+              onBuddyLost={handleBuddyLost}
               onCarrierExposed={handleCarrierExposed}
               onCarrierEvent={handleCarrierEvent}
               onUpgrade={handleUpgrade}

@@ -14,6 +14,7 @@ import {
   BEAM_SPEED,
   ATTACK_RUN_BRACE_MS,
   BULLET_C_W,
+  BUDDY_HP,
 } from "../engine";
 import { carrierOps, carrierBeamOps } from "../render/carrier";
 import { initStarfield } from "../starfield";
@@ -28,7 +29,7 @@ import {
   type DrawOp,
   type LoadedSprites,
 } from "../render/frame";
-import type { Bullet, CarrierBeam, Enemy, PowerUpType, StarSwarmState } from "../types";
+import type { BuddyShip, Bullet, CarrierBeam, Enemy, PowerUpType, StarSwarmState } from "../types";
 
 const ALL: LoadedSprites = {
   playerShip: true,
@@ -133,10 +134,33 @@ function releasedBeam(over: Partial<CarrierBeam> = {}): CarrierBeam {
 const byKey = (ops: DrawOp[], key: string) => ops.find((o) => o.key === key);
 const keys = (ops: DrawOp[]) => ops.map((o) => o.key);
 
+/** #2845: a Buddy ship on station with the given overrides. */
+function buddyOf(over: Partial<BuddyShip> = {}): BuddyShip {
+  return {
+    id: 1,
+    x: 100,
+    y: 300,
+    vx: 0,
+    vy: 0,
+    phase: "OnStation",
+    hp: BUDDY_HP,
+    hitFlashTimer: 0,
+    ageMs: 0,
+    stationMs: 5000,
+    burstsLeft: 1,
+    burstTimer: 1000,
+    planMs: 0,
+    goalX: 100,
+    goalY: 300,
+    facingRight: true,
+    hitRockIds: [],
+    ...over,
+  };
+}
+
 describe("buildFrame — scene order and background", () => {
   it("starts with the background fill, then stars, and draws every layer back to front", () => {
     const sf = initStarfield(CANVAS_W, CANVAS_H);
-    const path = { p0: { x: 0, y: 0 }, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, p3: { x: 0, y: 0 } };
     const s = blank({
       enemyBullets: [bullet({ id: 1 })],
       playerBullets: [bullet({ id: 2, owner: "player" })],
@@ -148,20 +172,7 @@ describe("buildFrame — scene order and background", () => {
       carrierBeams: [releasedBeam({ id: 8 })],
       activePowerUp: { type: "shield", remainingMs: 5000, shieldAbsorbed: 0 },
       player: { ...blank().player, hullFlashTimer: 100 },
-      buddyShips: [
-        {
-          id: 5,
-          x: 50,
-          y: 50,
-          path,
-          pathT: 0,
-          pathDuration: 1,
-          hasFired: false,
-          targetX: 0,
-          targetY: 0,
-          fromLeft: true,
-        },
-      ],
+      buddyShips: [buddyOf({ id: 5, x: 50, y: 50, hp: 2 })],
       powerUps: [
         { id: 6, type: "bomb", x: 50, y: 50, vy: 0, width: 24, height: 24, despawnTimer: 1 },
       ],
@@ -205,6 +216,9 @@ describe("buildFrame — scene order and background", () => {
       "shield-ring",
       "hull-flash",
       "buddy-5",
+      "buddy-5-hp-track",
+      "buddy-5-hp-0",
+      "buddy-5-hp-1",
       "pu-6",
       "rock-7",
       "rock-7-edge",
@@ -553,18 +567,10 @@ describe("buildFrame — player", () => {
 
 describe("buildFrame — buddies, power-ups, rocks, explosions, bomb flash", () => {
   it("buddy ships face their direction of travel", () => {
-    const base = {
-      path: { p0: { x: 0, y: 0 }, p1: { x: 0, y: 0 }, p2: { x: 0, y: 0 }, p3: { x: 0, y: 0 } },
-      pathT: 0,
-      pathDuration: 1,
-      hasFired: false,
-      targetX: 0,
-      targetY: 0,
-    };
     const s = blank({
       buddyShips: [
-        { ...base, id: 1, x: 100, y: 200, fromLeft: true },
-        { ...base, id: 2, x: 300, y: 200, fromLeft: false },
+        buddyOf({ id: 1, x: 100, y: 200, facingRight: true }),
+        buddyOf({ id: 2, x: 300, y: 200, facingRight: false }),
       ],
     });
     const ops = buildFrame(s, NO_STARS, OPTS);

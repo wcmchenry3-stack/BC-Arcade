@@ -31,6 +31,10 @@ export interface RunStatsBreadcrumbData {
   readonly rocksSpawned: number;
   readonly rocksBrokenByPlayer: number;
   readonly rocksBrokenByEnemy: number;
+  /** #2845 */
+  readonly buddyLaunched: number;
+  readonly buddyLost: number;
+  readonly buddyShotsDrawn: number;
   readonly tiers: Readonly<Record<EnemyTier, RunStatsTierData>>;
 }
 

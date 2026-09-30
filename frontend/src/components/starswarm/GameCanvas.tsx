@@ -20,6 +20,7 @@ import {
   decayMissionCompleteTimer,
   isBossWave,
   routJustStarted,
+  buddyJustLost,
   fleeingCount,
   carrierJustExposed,
   throwAsteroid,
@@ -160,6 +161,8 @@ interface Props {
   onBossWave?: () => void;
   /** #2489: called once when the wave's grunts rout, with how many are fleeing. */
   onRout?: (count: number) => void;
+  /** #2845: called once when a Buddy ship is destroyed. */
+  onBuddyLost?: () => void;
   onBonusLife?: () => void;
   onPowerUpCollect?: (type: PowerUpType) => void;
   /** #2484: called once when the last Guardian dies and the Carrier's armor drops. */
@@ -196,6 +199,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onExplosion,
       onBossWave,
       onRout,
+      onBuddyLost,
       onBonusLife,
       onPowerUpCollect,
       onCarrierExposed,
@@ -277,6 +281,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onExplosionRef = useRef(onExplosion);
     const onBossWaveRef = useRef(onBossWave);
     const onRoutRef = useRef(onRout);
+    const onBuddyLostRef = useRef(onBuddyLost);
     const onBonusLifeRef = useRef(onBonusLife);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const onCarrierExposedRef = useRef(onCarrierExposed);
@@ -318,6 +323,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     useEffect(() => {
       onRoutRef.current = onRout;
     }, [onRout]);
+    useEffect(() => {
+      onBuddyLostRef.current = onBuddyLost;
+    }, [onBuddyLost]);
     useEffect(() => {
       onBonusLifeRef.current = onBonusLife;
     }, [onBonusLife]);
@@ -635,6 +643,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                   AccessibilityInfo.announceForAccessibility(tRef.current(pickupCueLabelKey(cue)));
               }
               if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
+              if (buddyJustLost(prev, applied)) onBuddyLostRef.current?.(); // #2845
               // #2842: the wave clears on the last kill — extraction starts (no freeze, #2352);
               // the wave counter bumps later, once the AI has flown the ship out and the field
               // has had its hard reset.

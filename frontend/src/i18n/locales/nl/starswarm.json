@@ -27,6 +27,7 @@
   "a11y.carrierFinalStand": "Laatste gevecht moederschip. Het valt sneller aan.",
   "a11y.bossWave": "Bossgolf. Alleen het moederschip en zijn wachters.",
   "a11y.rout": "Vluchtende vijanden: {{count}}. Vang ze voor ze ontsnappen.",
+  "a11y.buddyDown": "Begeleidend schip vernietigd.",
   "hud.guns": "KANON L",
   "hud.hull": "ROMP",
   "a11y.gunsUp": "Kanonniveau {{level}}.",

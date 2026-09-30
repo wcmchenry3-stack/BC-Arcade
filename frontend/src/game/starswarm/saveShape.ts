@@ -97,6 +97,9 @@ const BULLET: KeySpec<Bullet> = {
   piercing: "optional",
   hitEnemyIds: "optional",
   flak: "optional",
+  armorPiercing: "optional", // #2845
+  source: "optional",
+  target: "optional",
 };
 
 // #2843
@@ -141,17 +144,25 @@ const POWER_UP: KeySpec<PowerUp> = {
   despawnTimer: "required",
 };
 
+// #2845: a real allied ship — HP, steering and attack-run state
 const BUDDY_SHIP: KeySpec<BuddyShip> = {
   id: "required",
   x: "required",
   y: "required",
-  path: "required",
-  pathT: "required",
-  pathDuration: "required",
-  hasFired: "required",
-  targetX: "required",
-  targetY: "required",
-  fromLeft: "required",
+  vx: "required",
+  vy: "required",
+  phase: "required",
+  hp: "required",
+  hitFlashTimer: "required",
+  ageMs: "required",
+  stationMs: "required",
+  burstsLeft: "required",
+  burstTimer: "required",
+  planMs: "required",
+  goalX: "required",
+  goalY: "required",
+  facingRight: "required",
+  hitRockIds: "required",
 };
 
 const ASTEROID: KeySpec<Asteroid> = {
@@ -199,6 +210,9 @@ const RUN_STATS: KeySpec<RunStats> = {
   rocksSpawned: "required",
   rocksBrokenByPlayer: "required",
   rocksBrokenByEnemy: "required",
+  buddyLaunched: "required", // #2845
+  buddyLost: "required",
+  buddyShotsDrawn: "required",
 };
 
 // #2837
@@ -331,7 +345,7 @@ export function fitsSaveShape(v: unknown): v is StarSwarmState {
     allFit(v.carrierBeams, (b) => fits(b, CARRIER_BEAM)) &&
     allFit(v.explosions, (e) => fits(e, EXPLOSION)) &&
     allFit(v.powerUps, (p) => fits(p, POWER_UP)) &&
-    allFit(v.buddyShips, (b) => fits(b, BUDDY_SHIP) && fitsBezier(b.path)) &&
+    allFit(v.buddyShips, (b) => fits(b, BUDDY_SHIP) && Array.isArray(b.hitRockIds)) &&
     allFit(v.asteroids, (a) => fits(a, ASTEROID)) &&
     (v.activePowerUp === null || fits(v.activePowerUp, ACTIVE_POWER_UP)) &&
     (v.extraction === null || fits(v.extraction, EXTRACTION)) &&

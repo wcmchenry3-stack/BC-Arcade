@@ -18,10 +18,10 @@ The ship is clamped to the playable horizontal bounds. Firing is continuous whil
 active during combat (never during swoop-in or the wave-clear extraction — see
 [Wave Structure](#wave-structure)).
 
-> **#2776 refinement boundary.** This document describes current `dev`. Of the #2776 epic, the
-> wave lifecycle (#2842), upgrade-pickup communication (#2847), the edge-drag regression (#2846)
-> and the staged Carrier encounter (#2843) have landed. Asteroid battlefield rules (#2844) and
-> Buddy as an allied ship (#2845) are still to come; their sections will change with them.
+> **#2776 refinement boundary.** This document describes current `dev`. Every #2776 child story
+> has landed: the wave lifecycle (#2842), the staged Carrier encounter (#2843), the asteroid
+> battlefield rules (#2844), Buddy as an allied ship (#2845), the edge-drag regression (#2846) and
+> upgrade-pickup communication (#2847).
 
 ## Controls
 
@@ -119,12 +119,14 @@ time; salvage/hull upgrade pickups do not consume that slot.
 | 0–1   |    33% |        33% |       17% |   17% |
 | 2+    |    25% |        25% |       25% |   25% |
 
-- **Lightning:** 5 seconds; faster fire, 4-damage piercing shots, can penetrate Carrier armor.
-- **Shield:** 5 seconds; absorbs incoming damage while active.
+- **Lightning:** 5 seconds; faster fire, 4-damage piercing shots that are also **armor-piercing**
+  (`armorPiercing`): the one explicit exception that gets through the escorted Carrier's field.
+- **Shield:** 5 seconds; absorbs incoming damage while active (the player's only, never Buddy's).
 - **Smart Bomb:** instant; clears enemy bullets/asteroids, deals 1 damage to every alive enemy,
   respects Carrier armor, and awards normal base-score credit for kills (no dive multiplier).
-- **Buddy:** launches a companion ship that fires one 5–7-shot piercing spread burst toward the
-  enemy cluster; its shots share the player-bullet cap.
+- **Buddy:** launches an allied ship with its own HP that flies three attack runs, each a 5–7-shot
+  piercing spread burst, draws enemy fire and can be shot down. See [Buddy](#buddy-2845). Its
+  shots share the player-bullet cap.
 
 Collecting Lightning or Shield replaces the currently active duration power-up.
 
@@ -136,12 +138,12 @@ accessibility strings, docs, tests and telemetry. Boss _waves_ keep their name (
 `phase.bossWave`, `a11y.bossWave`). The sprite file is still `enemy-boss.webp` (its asset
 credits refer to it); the code knows it as `enemyGuardian`.
 
-| Tier     | Count / wave          | HP  | Points | Behaviour                                                                                                                                                                                                                                                               |
-| -------- | --------------------- | --- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Grunt    | 16–40 (2–5 rows of 8) | 1   | 100    | Single shots, partly aimed; deep dives from wave 1; can ram                                                                                                                                                                                                             |
-| Elite    | 16 (2 rows of 8)      | 2   | 200    | Always-aimed shots; shallow dives early, deep dives + circling once ≤35% Grunts/Elites remain                                                                                                                                                                           |
-| Guardian | 4                     | 4   | 400    | Silent until ≤35% Grunts/Elites remain, then 3–5 shot bursts; dives when ≤3 enemies remain                                                                                                                                                                              |
-| Carrier  | 1 (top row, #2484)    | 8   | 1000   | Never joins the formation's dives. **Armored while any Guardian lives**: ordinary shots ring off it; piercing shots (lightning, buddy burst) get through. Staged boss encounter: traveling beam, twin lasers, reinforcements and its own attack run (#2843), see below. |
+| Tier     | Count / wave          | HP  | Points | Behaviour                                                                                                                                                                                                                                                                                                         |
+| -------- | --------------------- | --- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Grunt    | 16–40 (2–5 rows of 8) | 1   | 100    | Single shots, partly aimed; deep dives from wave 1; can ram                                                                                                                                                                                                                                                       |
+| Elite    | 16 (2 rows of 8)      | 2   | 200    | Always-aimed shots; shallow dives early, deep dives + circling once ≤35% Grunts/Elites remain                                                                                                                                                                                                                     |
+| Guardian | 4                     | 4   | 400    | Silent until ≤35% Grunts/Elites remain, then 3–5 shot bursts; dives when ≤3 enemies remain                                                                                                                                                                                                                        |
+| Carrier  | 1 (top row, #2484)    | 8   | 1000   | Never joins the formation's dives. **Armored while any Guardian lives**: every shot that is not armor-piercing is spent on its field, Buddy's piercing burst included; only Lightning gets through. Staged boss encounter: traveling beam, twin lasers, reinforcements and its own attack run (#2843), see below. |
 
 Diving enemies score 2×. The Carrier and Guardians are excluded from the "non-leader" thresholds
 that drive Elite/Guardian escalation (`isLeaderTier`; state `startingNonLeaderCount`,
@@ -198,20 +200,24 @@ accelerates off the top of the screen, still dodging. When the ship is off-scree
 `clearTransientCombat(state)` is the single, explicit wave-boundary cleanup. It runs just before
 `buildWaveState` builds wave N+1, and it clears:
 
-- all player shots (Buddy shots are player-owned, so included);
-- all enemy shots (aimed, burst, twin-laser, flak) and every released Carrier beam (#2843);
+- all player shots (Buddy's shots are player-owned, so included);
+- all enemy shots (aimed, burst, twin-laser, flak, and #2845's shots at Buddy) and every released
+  Carrier beam (#2843);
 - all asteroids;
-- buddy ships, and any beam charge or attack-run brace still on a Carrier.
+- every Buddy ship, with its HP, remaining bursts and steering state (#2845), and any beam charge
+  or attack-run brace still on a Carrier.
 
 Nothing from wave N can interact with wave N+1. The new wave also re-centres the ship on its lane
 and drops falling pickups and any active Lightning/Shield, as before.
 
 **Projectile persistence.** Apart from this boundary, a projectile leaves play only by hitting
 something, despawning off-screen, or a Smart Bomb. The death of the ship that fired it never
-removes it. **Plug-in point:** any new transient combat entity (#2845's Buddy projectiles/state)
-must be cleared in `clearTransientCombat` and, if hostile, listed in `liveHazards` so the
-autopilot dodges it. #2843's released Carrier beam is both: `liveHazards` covers its length with a
-chain of overlapping circles.
+removes it: Buddy's shots fly on after Buddy dies, and a Carrier shot at Buddy still lands after
+the Carrier dies. **Plug-in point:** any new transient combat entity must be cleared in
+`clearTransientCombat` and, if hostile, listed in `liveHazards` so the autopilot dodges it. #2843's
+released Carrier beam is both: `liveHazards` covers its length with a chain of overlapping circles.
+Buddy and its shots are allied, so they are cleared but never listed; enemy shots aimed at Buddy
+are enemy shots and are listed like any other.
 
 ### Boss waves
 
@@ -294,8 +300,10 @@ a rock. An exposed Carrier with a live rock approaching within `CARRIER_FLAK_RAN
 `carrierFlakRock`) **diverts its whole twin volley to flak at that rock**. The volley is the same two
 guns on the same timer, so the diversion replaces a player-directed volley and adds no cadence. The
 flak bolts are marked `flak` (amber, outside `bulletCap()`; the price was the volley they replaced).
-The armored Carrier never flaks (its force field handles rocks). #2845 (fire at Buddy) plugs in here
-the same way. The #2487 per-ship flak roll no longer applies to the Carrier.
+The armored Carrier never flaks (its force field handles rocks). #2845: failing a rock, an exposed
+Carrier may put the volley on **Buddy** instead (`CarrierTarget` kind `buddy`, see
+[Buddy](#buddy-2845)) — again the same two guns on the same timer. The #2487 per-ship flak roll no
+longer applies to the Carrier.
 
 ### Attack run
 
@@ -330,6 +338,144 @@ bolt (glow, core and a white-hot head) and the brace ring/chevron. The native Pi
 (`buildFrame`) appends it, and the web canvas replays the same ops, so the two cannot drift.
 Sounds: `starswarm.beamcharge` (charge and attack-run brace), `starswarm.beamfire` (release),
 `starswarm.reinforce`, and the boss-wave sting for the final stand (all reused files, #2492).
+
+## Buddy (#2845)
+
+Buddy is a real allied ship, not a ghost: it has HP, it evades, enemies shoot at it, and it can be
+destroyed. Its value is its own offence plus the enemy fire it draws away from the player.
+
+### Sortie
+
+`applyPowerUp(s, "buddy")` or a Buddy pickup launches one (`runStats.buddyLaunched`). It enters
+from a side edge (picked by a hash of its id) and flies through three phases (`BuddyPhase`):
+
+1. **Entering**: flies to its station at `BUDDY_TRANSIT_SPEED` (0.34 px/ms).
+2. **OnStation**: holds a lane 55 px below the lowest ship in formation (never above 40% of the
+   canvas height, never within 90 px of the player lane), strafing ±55 px about its target line.
+   It makes `BUDDY_BURSTS` (3) **attack runs**: the first comes 700 ms after it arrives, then one
+   every 2.2 s. For the last `BUDDY_RUN_MS` (700 ms) before each burst it lines up under its target
+   and climbs 24 px, then fires one 5–7-shot piercing spread (±20°, 0.5 px/ms) at it. Its target is
+   the exposed Carrier; otherwise it is the centre of the other ships on screen. The armored Carrier
+   is never Buddy's target, because the field would stop the burst.
+3. **Leaving**: 0.8 s after its last burst, after `BUDDY_STATION_MS` (9 s) on station, or as soon
+   as the wave's last enemy dies (extraction), it peels off the nearer side edge. Bursts it has not
+   fired are lost.
+
+**Standoff.** On station Buddy never comes within `BUDDY_STANDOFF` (150 px) of the Carrier: its
+lane is at least that far below the Carrier, and its evasion never dodges up into that band. So
+it makes attack runs from a distance, never a point-blank pass through the Carrier. The only
+exception is the floor: if the Carrier's own attack run dives deeper than the floor minus 150 px,
+Buddy holds its floor lane, just above the player's.
+
+### Durability
+
+`BUDDY_HP` is 10 (the tuning range is 8–12, Carrier-class or a little tougher). Hostiles damage
+Buddy, and the player's shield never covers it:
+
+| Source                                                                                      | Damage                                 | Then                                        |
+| ------------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------- |
+| Any enemy shot (any tier, the exposed Carrier's twin fire, flak, shots aimed at the player) | the shot's damage (1)                  | the shot is spent on Buddy                  |
+| Released Carrier beam                                                                       | `BUDDY_BEAM_DAMAGE` (3)                | the beam is spent on Buddy                  |
+| Asteroid (`asteroidHits`)                                                                   | `BUDDY_ROCK_DAMAGE` (2), once per rock | a small rock shatters, a large one flies on |
+
+Hostiles resolve against Buddy before the player in the same tick, so a shot that reaches Buddy
+first is spent there. At 0 HP Buddy explodes and is removed (`runStats.buddyLost`,
+`buddyJustLost`, which drives the screen's `a11y.buddyDown` announcement). Its unfired bursts go
+with it. The shots it already fired are separate entities and fly on.
+
+The HP bar is shared geometry (`render/buddy.ts`, `buddyOps`). It shows one pip per hit point
+above the ship: green, then amber at half, then red at a quarter. A hit flashes a ring. The native
+Picture appends it after each Buddy sprite, and the web canvas replays the same ops. The sprite
+faces its direction of travel (`facingRight`).
+
+### Enemy targeting and finite capacity
+
+Every tier may shoot at Buddy, but it costs them. **A shot at Buddy replaces a shot at the player.**
+No ship gains a gun or any cadence because Buddy is on the field.
+
+- **Ordinary ships.** Grunts, Elites and Guardians fire from formation, dives, circling or bursts.
+  When one of them is about to release a shot at the player, and a Buddy is on screen, within
+  380 px and at least 20 px below it, that same bullet (same ship, same timer, same id) is
+  re-aimed at Buddy on a divert roll. The roll is a stateless hash of the bullet id, so it never
+  draws from the seeded rng. The bullet is tagged `target: "buddy"`.
+- **Carrier.** Its volley goes through the `chooseCarrierTarget` seam. A threatening rock comes
+  first (#2844), then Buddy on the Carrier's divert roll, then the player. `CarrierTarget` has the
+  kinds `player`, `rock` and `buddy`. The armored Carrier never targets Buddy (`buddyTargetFor`
+  returns null), because it has no aimed guns then. **From the moment the last Guardian dies** it
+  treats Buddy as hostile. It does not wait for its final stand.
+- **Not focus-fired.** At most `BUDDY_MAX_INCOMING` (3) shots may be in flight at Buddy. Past that
+  cap, ships keep shooting at the player, and a Carrier volley already chosen for Buddy is turned
+  back onto the player.
+
+`BUDDY_TARGETING` sets each tier's effectiveness (`aimAtBuddy`). The ordering is the design, and
+tests hold it:
+
+| Tier     | Divert chance | Shot speed (px/ms) | Aim error (± rad) | Leads Buddy's motion |
+| -------- | ------------: | -----------------: | ----------------: | -------------------: |
+| Grunt    |           12% |               0.28 |              0.22 |                   0% |
+| Elite    |           25% |               0.35 |              0.12 |                  40% |
+| Guardian |           40% |               0.46 |              0.06 |                  75% |
+| Carrier  | 55% (exposed) |               0.52 |              0.02 |                 100% |
+
+A ship that is evading a rock still has its aim degraded (#2844), whichever target it chose.
+`runStats.buddyShotsDrawn` counts the diverted shots. A counterfactual test holds the invariant:
+with the same seed, the enemy's player-directed plus Buddy-directed fire never exceeds its
+player-directed fire without Buddy.
+
+### Evasion
+
+Buddy actively dodges enemy shots, released Carrier beams and rocks (`buddyHazards`). A rock
+counts only when `asteroidThreatens(rock, buddyThreatCircle(b, 6), 900)` says it will reach Buddy.
+Every `BUDDY_REPLAN_MS` (140 ms) Buddy scores its station and a ring of nearby points (±90 px
+across, ±40 px up or down) against those hazards over a 720 ms lookahead, sampled every 40 ms at
+its capped speed. It steers for the safest point, pulled toward its station.
+
+- **Strong.** It sees 720 ms ahead and weighs near danger most.
+- **Bounded and readable.** On station it moves at no more than `BUDDY_SPEED` (0.2 px/ms), within
+  a small ring, and stays inside the field and outside the Carrier standoff.
+- **Imperfect.** It notices each hazard only with `BUDDY_NOTICE` odds (shots 80%, beams 90%, rocks
+  85%), decided by a stateless hash of the hazard's id, and it reacts only on re-plans. An
+  unnoticed hazard is simply not dodged.
+
+Player shots are allied and never count as hazards to Buddy.
+
+### Allied collision policy
+
+The player and Buddy are allies. These are explicit rules, with `shotHarmsAllies` as the one
+predicate (only enemy-owned shots hurt an ally), not omissions:
+
+- player shots pass through Buddy harmlessly;
+- Buddy's shots (player-owned, `source: "buddy"`) pass through the player harmlessly;
+- player and Buddy shots never collide with or cancel each other;
+- the player's hull and Buddy's hull overlapping costs neither anything.
+
+Both still meet hostiles and rocks normally. Buddy's shots kill enemies, pierce ordinary hulls and
+are spent on rocks. Enemy hulls do not ram Buddy: divers fly the player's lane, and ramming is a
+player-only rule.
+
+### Carrier armor
+
+Multi-hit and armor bypass are now separate `Bullet` flags. `piercing` means multi-hit through
+ordinary hulls (one hit per enemy per bullet). `armorPiercing` means the shot gets through the
+escorted Carrier's field. Buddy's burst is `piercing` only, so the armored Carrier's field
+**spends** those shots (ring, `runStats.armorDeflects`, no damage). Lightning is both, as the one
+explicit exception. Once exposed, the Carrier is Buddy's first target.
+
+### Projectile persistence
+
+Every released shot is its own entity, so these trades are valid:
+
+- Buddy fires, then dies, and its shots still kill the Carrier.
+- The Carrier fires at Buddy, then dies, and its shot still lands.
+- In near-simultaneous mutual destruction, both die on the same tick.
+
+### Extraction and reset
+
+On the wave's last kill every Buddy switches to Leaving. `weaponsFree` is false, so it fires
+nothing new. `hazardsLive` is true, so shots already in flight can still damage it. The extraction
+autopilot dodges shots aimed at Buddy (they are ordinary enemy shots), and Buddy and its shots are
+never hazards to the player. `clearTransientCombat` removes every Buddy and every shot either side
+fired, and `saveShape` persists Buddy's full state.
 
 ## In-Run Ship Upgrades (#2488)
 
@@ -523,8 +669,10 @@ Enemies, the extraction autopilot and Buddy ask the same pure questions through 
 A `ThreatCircle` is `{ x, y, r, vx?, vy? }`; give it a velocity to have the test run in the
 relative frame. Pad `r` for a safety margin. A destroyed rock (hp <= 0) never threatens or hits.
 Buddy owns its own HP, avoidance odds and damage response; this contract only says which rocks
-threaten and which have hit. Rocks deal 1 damage to ships (`rocksStrikeEnemies`); when #2845 adds
-Buddy it should use `asteroidHits` and the same one-hit-per-rock rule.
+threaten and which have hit. Rocks deal 1 damage to enemy ships (`rocksStrikeEnemies`). Buddy
+(#2845) uses the same contract: `asteroidThreatens` against `buddyThreatCircle` for its evasion,
+`asteroidHits` for impact, and the same one-hit-per-rock rule (`hitRockIds`); it takes
+`BUDDY_ROCK_DAMAGE`.
 
 **Counters.** `state.tierStats` records per tier: rolls, dodged, pathRolls, pathDodged, struck and
 flak. They carry across waves and reset on a new game; see _Telemetry_ below for how to read them.
@@ -537,8 +685,9 @@ Two sets of counters live on the engine state, both carried across waves and res
 - `runStats` (whole run): reinforcements launched, armor deflections (ordinary shots the escorted
   Carrier shrugged off), beam hits on the player (released Carrier beams that cost plating or a
   life — a shield-absorbed beam is not one), rocks spawned, rocks broken by the player's shots and by
-  enemy shots (flak included; a bomb or a hull shatter credits nobody), and fleeing grunts caught
-  (shot or bombed) or escaped (#2489).
+  enemy shots (flak included; a bomb or a hull shatter credits nobody), fleeing grunts caught
+  (shot or bombed) or escaped (#2489), and (#2845) Buddy ships launched, Buddy ships lost, and enemy
+  shots drawn by Buddy (each one a shot that would have gone at the player).
 
 `dodgeRateByTier(state)` is the pure selector the dev panel and the breadcrumb share: one row per
 tier with the base odds, the effective odds at this run's difficulty, and the counts.
@@ -726,9 +875,8 @@ cached JWT is the client's navigation/offline cache. See
 
 ## Current Refinement Work
 
-The broad game contract is documented above. Of the #2776 epic, #2844 (asteroid battlefield rules,
-including armored-vs-exposed Carrier asteroid behaviour and flak's attention cost) and #2845 (Buddy
-as an allied ship, including Carrier targeting of Buddy through `chooseCarrierTarget`) remain.
-Update the affected sections as they land.
+The broad game contract is documented above, including all of the #2776 epic. Buddy's tuning
+numbers (`BUDDY_HP`, `BUDDY_TARGETING`, `BUDDY_NOTICE`) are starting values; set them from
+survival-time data (`runStats.buddyLost` against `buddyLaunched`, and `buddyShotsDrawn`).
 
 Other active bugs/tuning work belongs in GitHub rather than a duplicated Known Issues list.

@@ -27,6 +27,7 @@
   "a11y.carrierFinalStand": "Última resistência da nave-mãe. Ela ataca mais rápido.",
   "a11y.bossWave": "Onda de chefe. Apenas a nave-mãe e seus guardiões.",
   "a11y.rout": "Tropas em fuga: {{count}}. Alcance-as antes que escapem.",
+  "a11y.buddyDown": "Nave parceira destruída.",
   "hud.guns": "ARMAS L",
   "hud.hull": "CASCO",
   "a11y.gunsUp": "Nível das armas {{level}}.",

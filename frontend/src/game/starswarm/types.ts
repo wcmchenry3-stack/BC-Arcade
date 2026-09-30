@@ -191,6 +191,12 @@ export interface RunStats {
   readonly rocksBrokenByPlayer: number;
   /** Rocks enemy shots broke, flak included. */
   readonly rocksBrokenByEnemy: number;
+  /** #2845: Buddy ships launched (pickups and dev-panel triggers). */
+  readonly buddyLaunched: number;
+  /** #2845: Buddy ships destroyed (shot, beamed or rock-struck to 0 HP). */
+  readonly buddyLost: number;
+  /** #2845: enemy shots diverted to Buddy — each one replaced a shot at the player. */
+  readonly buddyShotsDrawn: number;
 }
 
 /**
@@ -242,6 +248,16 @@ export interface Bullet {
   readonly hitEnemyIds?: readonly number[];
   /** #2487: an enemy shot fired at an asteroid — outside bulletCap(), drawn in a distinct colour. */
   readonly flak?: boolean;
+  /**
+   * #2845: goes through the escorted Carrier's force field. A separate concept from `piercing`
+   * (multi-hit through ordinary hulls): Lightning shots are both; Buddy's burst is piercing only,
+   * so the armored Carrier's field stops it.
+   */
+  readonly armorPiercing?: boolean;
+  /** #2845: a player-owned shot Buddy fired (allied with the player, never hits it). */
+  readonly source?: "buddy";
+  /** #2845: an enemy shot aimed at Buddy — it replaced a player-directed shot (finite capacity). */
+  readonly target?: "buddy";
 }
 
 export interface Player {
@@ -286,22 +302,48 @@ export interface PowerUp {
   readonly despawnTimer: number;
 }
 
-/** Companion ship that sweeps across the screen and fires a spread burst (#1035). */
+/**
+ * #2845: Buddy's flight phase. Entering: flying in from a side edge to its station. OnStation:
+ * strafing at its standoff lane, evading and making attack runs (one burst each). Leaving: out of
+ * bursts, out of station time, or the wave is being extracted — it peels off the nearer side edge.
+ */
+export type BuddyPhase = "Entering" | "OnStation" | "Leaving";
+
+/**
+ * Companion ship (#1035), a real allied ship since #2845: it has HP and can be destroyed, enemies
+ * of every tier may divert fire to it (finite capacity: a shot at Buddy replaces a shot at the
+ * player), and it evades hostile fire and rocks. Its bursts are player-owned shots tagged
+ * `source: "buddy"`; they persist after Buddy dies.
+ */
 export interface BuddyShip {
   readonly id: number;
   readonly x: number;
   readonly y: number;
-  readonly path: CubicBezier;
-  readonly pathT: number;
-  readonly pathDuration: number;
-  /** true once the spread burst has been fired (fires once at pathT ≥ 0.45). */
-  readonly hasFired: boolean;
-  /** Cluster center X captured at spawn time — burst aims here. */
-  readonly targetX: number;
-  /** Cluster center Y captured at spawn time — burst aims here. */
-  readonly targetY: number;
-  /** true = entered from left edge; false = entered from right. */
-  readonly fromLeft: boolean;
+  /** Current velocity (px/ms) — what enemies lead their aim with. */
+  readonly vx: number;
+  readonly vy: number;
+  readonly phase: BuddyPhase;
+  /** Remaining hit points; Buddy is removed (destroyed) the tick this reaches 0. */
+  readonly hp: number;
+  /** ms remaining for the hit flash; 0 when not flashing. */
+  readonly hitFlashTimer: number;
+  /** ms Buddy has been in play (drives its strafe). */
+  readonly ageMs: number;
+  /** ms left on station before it peels off. */
+  readonly stationMs: number;
+  /** Attack-run bursts it still has to fire; lost if Buddy dies or leaves first. */
+  readonly burstsLeft: number;
+  /** ms until its next burst (the attack run lines up during the last BUDDY_RUN_MS). */
+  readonly burstTimer: number;
+  /** ms until it re-plans its evasion (its reaction latency). */
+  readonly planMs: number;
+  /** The point it is currently steering for. */
+  readonly goalX: number;
+  readonly goalY: number;
+  /** Sprite facing: true = nose to the right. */
+  readonly facingRight: boolean;
+  /** Rocks that have already struck it — one hit per rock, like any ship. */
+  readonly hitRockIds: readonly number[];
 }
 
 /** #2486: errant asteroid — a neutral hazard both sides can hit and be hit by. */

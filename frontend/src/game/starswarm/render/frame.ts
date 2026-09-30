@@ -17,6 +17,7 @@ import {
   asteroidOutline,
   hashFrac,
 } from "../engine";
+import { buddyOps } from "./buddy";
 import { carrierOps } from "./carrier";
 import { isUpgradePickup, upgradePickupOps } from "./pickups";
 import type { UpgradePickupType } from "./pickups";
@@ -351,11 +352,12 @@ export function buildFrame(
         sprite: "buddyShip",
         ...rect,
         fit: "fill",
-        flipX: !buddy.fromLeft,
+        flipX: !buddy.facingRight,
       });
     } else {
       ops.push({ k: "rect", key: `buddy-${buddy.id}`, ...rect, color: "rgba(0,120,255,0.8)" });
     }
+    ops.push(...buddyOps(buddy, BUDDY_SIZE)); // #2845 HP bar + hit flash, shared with web
   }
 
   // Power-ups — sprites with procedural fallbacks; #2488 salvage and hull are procedural

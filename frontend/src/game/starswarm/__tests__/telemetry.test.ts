@@ -27,6 +27,9 @@ function finished(): StarSwarmState {
       rocksSpawned: 5,
       rocksBrokenByPlayer: 3,
       rocksBrokenByEnemy: 1,
+      buddyLaunched: 2,
+      buddyLost: 1,
+      buddyShotsDrawn: 9,
     },
     tierStats: {
       ...emptyTierStats(),
@@ -53,6 +56,9 @@ describe("runStatsBreadcrumbData", () => {
       rocksSpawned: 5,
       rocksBrokenByPlayer: 3,
       rocksBrokenByEnemy: 1,
+      buddyLaunched: 2,
+      buddyLost: 1,
+      buddyShotsDrawn: 9,
       tiers: {
         Grunt: { effective: expect.any(Number), rolls: 10, dodged: 3, struck: 6, flak: 2 },
         Elite: { effective: expect.any(Number), rolls: 0, dodged: 0, struck: 0, flak: 0 },

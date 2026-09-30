@@ -27,6 +27,7 @@
   "a11y.carrierFinalStand": "Letztes Gefecht des Trägers. Er greift schneller an.",
   "a11y.bossWave": "Boss-Welle. Nur der Träger und seine Wächter.",
   "a11y.rout": "Fliehende Gegner: {{count}}. Schnapp sie dir, bevor sie entkommen.",
+  "a11y.buddyDown": "Begleitschiff zerstört.",
   "hud.guns": "WAFFEN L",
   "hud.hull": "RUMPF",
   "a11y.gunsUp": "Waffen Level {{level}}.",

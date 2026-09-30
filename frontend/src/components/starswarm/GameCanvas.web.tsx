@@ -17,6 +17,7 @@ import {
   showMissionCompleteBanner,
   isBossWave,
   routJustStarted,
+  buddyJustLost,
   fleeingCount,
   carrierJustExposed,
   isCarrierArmored,
@@ -40,6 +41,7 @@ import {
   drawPickupOps,
 } from "../../game/starswarm/render/pickups";
 import type { UpgradePickupType } from "../../game/starswarm/render/pickups";
+import { buddyOps } from "../../game/starswarm/render/buddy";
 import { carrierOps } from "../../game/starswarm/render/carrier";
 import {
   pickupCues,
@@ -234,6 +236,8 @@ interface Props {
   onBossWave?: () => void;
   /** #2489: called once when the wave's grunts rout, with how many are fleeing. */
   onRout?: (count: number) => void;
+  /** #2845: called once when a Buddy ship is destroyed. */
+  onBuddyLost?: () => void;
   onPowerUpCollect?: (type: PowerUpType) => void;
   /** #2484: called once when the last Guardian dies and the Carrier's armor drops. */
   onCarrierExposed?: () => void;
@@ -266,6 +270,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onExplosion,
       onBossWave,
       onRout,
+      onBuddyLost,
       onPowerUpCollect,
       onCarrierExposed,
       onCarrierEvent,
@@ -316,6 +321,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onExplosionRef = useRef(onExplosion);
     const onBossWaveRef = useRef(onBossWave);
     const onRoutRef = useRef(onRout);
+    const onBuddyLostRef = useRef(onBuddyLost);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const onCarrierExposedRef = useRef(onCarrierExposed);
     const onCarrierEventRef = useRef(onCarrierEvent);
@@ -401,6 +407,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     useEffect(() => {
       onRoutRef.current = onRout;
     }, [onRout]);
+    useEffect(() => {
+      onBuddyLostRef.current = onBuddyLost;
+    }, [onBuddyLost]);
     useEffect(() => {
       const wasPaused = isPausedRef.current;
       isPausedRef.current = isPaused;
@@ -747,11 +756,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         }
       }
 
-      // #1035 Buddy ships — blue ship sprite; flip for right-entry
+      // #1035 Buddy ships — blue ship sprite, facing its travel; #2845 HP bar (shared ops)
       for (const buddy of state.buddyShips) {
         const img = imgs.buddyShip;
         ctx.save();
-        if (!buddy.fromLeft) {
+        if (!buddy.facingRight) {
           ctx.translate(buddy.x, 0);
           ctx.scale(-1, 1);
           ctx.translate(-buddy.x, 0);
@@ -763,6 +772,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           ctx.fillRect(buddy.x - 17, buddy.y - 17, 34, 34);
         }
         ctx.restore();
+        drawPickupOps(ctx, buddyOps(buddy, 34));
       }
 
       // Power-ups — Kenney CC0 sprites with procedural fallback
@@ -1093,6 +1103,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 pickupCueRef.current = { cue: cues[cues.length - 1]!, startedAt: Date.now() };
               }
               if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
+              if (buddyJustLost(prev, applied)) onBuddyLostRef.current?.(); // #2845
               if (applied.explosions.length > prev.explosions.length) {
                 onExplosionRef.current?.();
               }

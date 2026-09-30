@@ -27,6 +27,7 @@
   "a11y.carrierFinalStand": "모함의 최후 저항. 공격이 더 빨라집니다.",
   "a11y.bossWave": "보스 웨이브. 모함과 가디언만 남았습니다.",
   "a11y.rout": "도주 중인 잡병: {{count}}. 탈출하기 전에 처치하세요.",
+  "a11y.buddyDown": "동료 함선이 격추되었습니다.",
   "hud.guns": "무기 L",
   "hud.hull": "선체",
   "a11y.gunsUp": "무기 레벨 {{level}}.",
