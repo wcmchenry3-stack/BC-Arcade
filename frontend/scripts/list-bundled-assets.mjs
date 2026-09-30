@@ -4,18 +4,19 @@
  * (require("...") / import "...") and which are not, so the asset-rights audit
  * (docs/audits/ASSET-RIGHTS-AUDIT.md) can be repeated for later releases.
  *
- *   node scripts/list-bundled-assets.js          # human-readable
- *   node scripts/list-bundled-assets.js --json   # machine-readable
+ *   node scripts/list-bundled-assets.mjs          # human-readable
+ *   node scripts/list-bundled-assets.mjs --json   # machine-readable
  *
  * Static scan only: test files (__tests__, *.test.*) are ignored. Dev-only screens
  * (src/screens/__dev__) are reported separately because they are not user-facing.
  * Metro bundles only what is referenced, so "unreferenced" files are not shipped.
  * Also lists third-party fonts/icon sets imported from npm (not files under assets/).
  */
-const fs = require("fs");
-const path = require("path");
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = path.resolve(__dirname, "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const assetsDir = path.join(root, "assets");
 const EXT = /\.(png|webp|jpe?g|gif|svg|mp3|ogg|wav|m4a|json|ttf|otf|mp4|lottie)$/i;
 

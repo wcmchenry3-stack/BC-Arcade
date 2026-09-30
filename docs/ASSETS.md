@@ -62,7 +62,7 @@ https://drive.google.com/drive/folders/1LW97pBFsqfG67bQKvQwkhMlLBswzIVhm
 
 Full rights inventory: [`docs/audits/ASSET-RIGHTS-AUDIT.md`](audits/ASSET-RIGHTS-AUDIT.md) (#2782). It lists
 every shipped file, what is verified and what is not. Repeat it before each release that adds
-assets: `node frontend/scripts/list-bundled-assets.js` lists what code actually bundles.
+assets: `node frontend/scripts/list-bundled-assets.mjs` lists what code actually bundles.
 
 Source records live beside the assets: `sounds/SOUND_CREDITS.md` for audio and a `CREDITS.md` beside
 each Star Swarm sprite folder.

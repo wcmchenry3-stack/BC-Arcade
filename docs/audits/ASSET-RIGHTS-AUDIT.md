@@ -9,16 +9,16 @@ The issue stays open until the owner clears the items in [Section 5](#5-unverifi
 
 ## 1. Method and evidence
 
-| Question                 | How it was answered                                                                                                                                                                                                                                                |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| What ships?              | Static trace of every `require("....ext")` / import that resolves into `frontend/assets/` from `App.tsx`, `index.ts` and `src/` (tests excluded), plus the icon/splash paths in `app.json`. Repeatable: `node frontend/scripts/list-bundled-assets.js` (`--json`). |
-| Metro vs `app.json`      | `app.json` sets `assetBundlePatterns: ["assets/**"]`, but Metro only packages what code references, and the native projects are committed. "Not bundled" below means unreferenced by code; treat the whole folder as shipping if that config is ever honoured.     |
-| Premium games            | Blackjack, Cascade, Hearts, Star Swarm and Mahjong are compiled in but hidden by the entitlement gate, so their assets are in the v1.0 binary and are audited here.                                                                                                |
-| Native resources         | `frontend/android/app/src/main/res` and `frontend/ios/GamingApp/Images.xcassets` listed directly.                                                                                                                                                                  |
-| npm fonts / icon fonts   | Only what `App.tsx` and `src/` import. License text read from the published packages (`@expo-google-fonts/*@0.4.x` `LICENSE_FONT`; `@expo/vector-icons@15.1.1` `LICENSE`).                                                                                         |
-| Source / license records | `frontend/assets/sounds/SOUND_CREDITS.md`, `frontend/assets/starswarm/CREDITS.md`, `frontend/assets/starswarm/powerups/CREDITS.md`, `ATTRIBUTION.md`, `docs/ASSETS.md`.                                                                                            |
-| Git history              | The clone is shallow (earliest commit 2026-04-27), so `git log --follow` cannot reach the origin of any asset that predates it. History gave no provenance for the icon, logo, Mahjong SVGs or Cascade art; nothing is inferred from it.                           |
-| Embedded metadata        | Checked PNG/WebP/SVG metadata (none present) and Ogg `TITLE` tags (present on Kenney audio, used as a hint only, never as proof).                                                                                                                                  |
+| Question                 | How it was answered                                                                                                                                                                                                                                                 |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What ships?              | Static trace of every `require("....ext")` / import that resolves into `frontend/assets/` from `App.tsx`, `index.ts` and `src/` (tests excluded), plus the icon/splash paths in `app.json`. Repeatable: `node frontend/scripts/list-bundled-assets.mjs` (`--json`). |
+| Metro vs `app.json`      | `app.json` sets `assetBundlePatterns: ["assets/**"]`, but Metro only packages what code references, and the native projects are committed. "Not bundled" below means unreferenced by code; treat the whole folder as shipping if that config is ever honoured.      |
+| Premium games            | Blackjack, Cascade, Hearts, Star Swarm and Mahjong are compiled in but hidden by the entitlement gate, so their assets are in the v1.0 binary and are audited here.                                                                                                 |
+| Native resources         | `frontend/android/app/src/main/res` and `frontend/ios/GamingApp/Images.xcassets` listed directly.                                                                                                                                                                   |
+| npm fonts / icon fonts   | Only what `App.tsx` and `src/` import. License text read from the published packages (`@expo-google-fonts/*@0.4.x` `LICENSE_FONT`; `@expo/vector-icons@15.1.1` `LICENSE`).                                                                                          |
+| Source / license records | `frontend/assets/sounds/SOUND_CREDITS.md`, `frontend/assets/starswarm/CREDITS.md`, `frontend/assets/starswarm/powerups/CREDITS.md`, `ATTRIBUTION.md`, `docs/ASSETS.md`.                                                                                             |
+| Git history              | The clone is shallow (earliest commit 2026-04-27), so `git log --follow` cannot reach the origin of any asset that predates it. History gave no provenance for the icon, logo, Mahjong SVGs or Cascade art; nothing is inferred from it.                            |
+| Embedded metadata        | Checked PNG/WebP/SVG metadata (none present) and Ogg `TITLE` tags (present on Kenney audio, used as a hint only, never as proof).                                                                                                                                   |
 
 Not found anywhere in the app: Lottie/animation JSON, video, GIF, bundled `.ttf`/`.otf` files under
 `assets/`. Dev-only screens reference no extra assets.
@@ -185,7 +185,7 @@ marked open; delete the six stale credit entries and `freecell-invalid-move.mp3`
    `freecell-game-win.mp3` with a CC0 sound and remove the attribution duty.
 2. Owner resolves U1-U6 above; then update the table and flip the status.
 3. Repeat the audit before the premium update: run
-   `node frontend/scripts/list-bundled-assets.js`, diff against Section 3, and record every new file
+   `node frontend/scripts/list-bundled-assets.mjs`, diff against Section 3, and record every new file
    in the matching credits file. Star Swarm (#2571), Cascade (#1795) and BGM (#1779/#1787) work
    should add credits entries as they land.
 4. Link this document and the owner's answers in the release record for v1.0.
