@@ -214,8 +214,10 @@ The purchase implementation must:
 - verify transaction state is actually entitled (not revoked/refunded/invalid as applicable);
 - persist enough authoritative transaction identity to make processing idempotent;
 - allow the same legitimate transaction to be re-validated/restored without double-grant side effects;
-- reject reuse of one transaction to mint entitlement for unrelated sessions/accounts;
+- reject reuse of one transaction to mint entitlement for unrelated sessions/accounts, except under the explicitly designed transfer rule below;
 - define how restore/reinstall/device-change transfers ownership under the product's identity model.
+
+**Designed transfer rule (anonymous-session model, [docs/IAP.md §4](docs/IAP.md#4-ownership-model)).** Until optional accounts exist (#144), the transfer rule is a *capped cross-session link*: a verified store purchase may be linked to at most `MAX_SESSIONS_PER_PURCHASE = 5` sessions, and to at most `MAX_NEW_LINKS_PER_PURCHASE_PER_30D = 3` new sessions in any rolling 30 days. A link beyond either limit is **rejected** (`409 link_limit`); existing links are never evicted, and unlinking happens only via support. Purchase endpoints are rate limited per session, per client IP and per store transaction key. Every link and refusal is audited in `purchase_events`. A transaction presented beyond these limits is "rejected" in the sense of §14.
 
 “Mark every purchase token used once and reject it forever” is **not** sufficient: store restoration legitimately re-presents prior purchases. The invariant is **idempotent, ownership-consistent processing**, not one-shot parsing.
 
@@ -231,6 +233,10 @@ Before IAP ships, explicitly decide and test what owns a purchase:
 A bare, forgeable `X-Session-ID` must not be the only proof that a caller owns a purchase.
 
 The design must support legitimate restore while preventing one captured transaction from being attached to arbitrary session ids.
+
+**Decision (docs/IAP.md §4).** The store purchase (Apple `originalTransactionId`, Google `purchaseToken`) owns the entitlement; sessions are where it is used. Proof of ownership is store-signed evidence verified server-side, not the session ID. The initial purchase is bound to the buying session by a one-way derivative of `X-Session-ID` (Apple `appAccountToken = uuid5(namespace, session)`, Google `obfuscatedAccountId = SHA-256(session)`; the raw session ID is never sent to a store), which the server recomputes and compares. Restore to other sessions follows the capped cross-session link rule in §10.
+
+**Accepted residual risk.** A user who extracts valid store evidence from their own device can share it with a bounded number of other installs (at most four more, at most three new in any 30 days) before the purchase refuses new links. True binding to a person needs optional accounts (#144); Apple `deviceVerification` binding is later hardening. Neither is a launch requirement.
 
 ## 12. Replay and refund/revocation handling
 
@@ -276,8 +282,8 @@ Before premium content is enabled in a store build:
 
 - [ ] Store transaction/receipt validation is implemented server-side.
 - [ ] Transaction processing is idempotent and restore-safe.
-- [ ] Purchase ownership binding is documented and tested.
-- [ ] Replay across unrelated sessions cannot mint entitlement.
+- [ ] Purchase ownership binding is documented (docs/IAP.md §4) and tested.
+- [ ] Replay across unrelated sessions cannot mint entitlement beyond the designed capped-link transfer rule (§10): a link past `MAX_SESSIONS_PER_PURCHASE` or `MAX_NEW_LINKS_PER_PURCHASE_PER_30D` is rejected, with per-IP and per-store-key rate limits in place.
 - [ ] Refund/revocation behavior is implemented or explicitly accepted with store-compliant rationale.
 - [ ] `game_entitlements` remains server authority.
 - [ ] Premium generic/game-specific routes are covered by authorization tests.

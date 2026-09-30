@@ -45,6 +45,7 @@ import type {
   StarSwarmState,
 } from "../game/starswarm/types";
 import { reportRunStats } from "../game/starswarm/telemetry";
+import { summarizeScoreLedger } from "../game/starswarm/scoreLedger";
 import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
 import FrameStatsReadout from "../components/starswarm/FrameStatsReadout";
 import type { FrameStatsSummary } from "../game/starswarm/render/frameStats";
@@ -331,7 +332,12 @@ function StarSwarmGame() {
       // keeps no play clock, and a made-up 0 would read as a real time.
       const outcome = recordedOutcome("ended");
       const payload = { outcome, wave_reached: wave, difficulty_tier: tier };
-      const gameId = syncComplete({ outcome, finalScore, result: payload }, payload);
+      // #2837: where the score came from, wave by wave — in the result only, not the event.
+      const ledger = canvasRef.current?.getState()?.scoreLedger;
+      const result = ledger
+        ? { ...payload, score_breakdown: summarizeScoreLedger(ledger, finalScore) }
+        : payload;
+      const gameId = syncComplete({ outcome, finalScore, result }, payload);
       // The card reads the run's rank on its tier's board (shown when it is the player's best).
       if (gameId) {
         void submitRank({ gameId });
