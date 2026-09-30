@@ -224,7 +224,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         )
     );
     const sfRef = useRef<StarfieldState>(initStarfield(width, height));
-    const inputRef = useRef({ playerX: width / 2, fire: true });
+    const inputRef = useRef({ playerX: initialState?.player.x ?? width / 2, fire: true });
     const infiniteLivesRef = useRef(false);
     // Assign during render (not via effect) so the reset effect always reads the
     // latest devOptions even though devOptions is not in its dependency array.

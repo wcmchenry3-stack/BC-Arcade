@@ -286,7 +286,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         )
     );
     const sfRef = useRef<StarfieldState>(initStarfield(width, height));
-    const inputRef = useRef({ playerX: width / 2, fire: true });
+    const inputRef = useRef({ playerX: initialState?.player.x ?? width / 2, fire: true });
     const infiniteLivesRef = useRef(false);
     const devOptionsRef = useRef<DevOptions | undefined>(devOptions);
     devOptionsRef.current = devOptions;
