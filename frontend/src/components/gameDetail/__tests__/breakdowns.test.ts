@@ -29,6 +29,21 @@ describe("parseHeartsBreakdown", () => {
     expect(parseHeartsBreakdown({ ...ok, final_scores: [1, 26, 26, 26] })?.reconciled).toBe(false);
   });
 
+  it("finds the moon shooter when the human isn't seat 0", () => {
+    const b = parseHeartsBreakdown({
+      hand_scores: [
+        [26, 26, 0, 26],
+        [5, 5, 13, 3],
+      ],
+      final_scores: [31, 31, 13, 29],
+      human_seat: 2,
+    });
+    expect(b?.humanSeat).toBe(2);
+    expect(b?.hands[0]?.moonSeat).toBe(2);
+    expect(b?.hands[1]?.moonSeat).toBeNull();
+    expect(b?.reconciled).toBe(true);
+  });
+
   it("orders the human first", () => {
     expect(heartsSeatOrder(2)).toEqual([2, 0, 1, 3]);
   });
@@ -39,13 +54,60 @@ describe("parseYachtBreakdown", () => {
     const b = parseYachtBreakdown({ scorecard: { categories: { ones: 3 } } }, 3);
     expect(b?.player.categories.twos).toBeUndefined();
     expect(b?.player.complete).toBe(false);
-    expect(b?.reconciled).toBe(true);
+    expect(b?.playerReconciled).toBe(true);
   });
 
   it("is not reconciled when its total differs from the final score", () => {
-    expect(parseYachtBreakdown({ scorecard: { categories: { ones: 3 } } }, 5)?.reconciled).toBe(
-      false
+    expect(
+      parseYachtBreakdown({ scorecard: { categories: { ones: 3 } } }, 5)?.playerReconciled
+    ).toBe(false);
+  });
+
+  it.each([
+    ["an upper bonus without the upper section filled", { upper_bonus: 35 }, 38],
+    [
+      "a Yacht bonus total that isn't 100 per bonus",
+      { yacht_bonus_count: 1, yacht_bonus_total: 50 },
+      53,
+    ],
+    ["a Yacht bonus without a Yacht", { yacht_bonus_count: 1, yacht_bonus_total: 100 }, 103],
+  ])("is not reconciled with %s, even when the total matches", (_, extra, score) => {
+    const b = parseYachtBreakdown({ scorecard: { categories: { ones: 3 }, ...extra } }, score);
+    expect(b?.playerReconciled).toBe(false);
+  });
+
+  it("uses the server's flag only when there is no score to check the card against", () => {
+    const md = { scorecard: { categories: { ones: 3 } }, scorecard_reconciled: false };
+    expect(parseYachtBreakdown(md, 3)?.playerReconciled).toBe(true);
+    expect(parseYachtBreakdown(md, null)?.playerReconciled).toBe(false);
+  });
+
+  it("checks each vs card against its own score", () => {
+    const b = parseYachtBreakdown(
+      {
+        scorecard: { categories: { ones: 3 } },
+        opponent_scorecard: { categories: { twos: 4 } },
+        opponent_score: 6,
+      },
+      3
     );
+    expect(b?.playerReconciled).toBe(true);
+    expect(b?.opponentReconciled).toBe(false);
+  });
+
+  it("keeps a good player card beside a bad opponent card in vs", () => {
+    const b = parseYachtBreakdown(
+      {
+        scorecard: { categories: { ones: 3 } },
+        opponent_scorecard: { categories: { ones: -2 } },
+        opponent_score: 10,
+      },
+      3
+    );
+    expect(b?.player.total).toBe(3);
+    expect(b?.opponent).toBeNull();
+    expect(b?.playerReconciled).toBe(true);
+    expect(b?.opponentReconciled).toBe(true);
   });
 
   it.each([
@@ -72,6 +134,23 @@ describe("parseStarSwarmBreakdown", () => {
     expect(
       parseStarSwarmBreakdown({ score_breakdown: { v: 1, waves: [{ wave: 1, total: 1 }] } }, 1)
     ).toBeNull();
+  });
+
+  it.each([
+    ["not an object", "junk"],
+    ["missing its span", { total: 10, pts: { Grunt: 10 } }],
+    ["non-integer points", { first: 1, last: 2, total: 10, pts: { Grunt: "10" } }],
+  ])("is null when `earlier` is %s", (_, earlier) => {
+    expect(
+      parseStarSwarmBreakdown({ score_breakdown: { v: 1, earlier, waves: [] } }, 10)
+    ).toBeNull();
+  });
+
+  it("parses a zero-score run as an empty breakdown, not a missing one", () => {
+    const md = { score_breakdown: { v: 1, waves: [] } };
+    expect(parseStarSwarmBreakdown(md, 0)).toEqual({ rows: [], unattributed: 0, reconciled: true });
+    expect(parseStarSwarmBreakdown(md, null)?.reconciled).toBe(true);
+    expect(parseStarSwarmBreakdown(md, 500)?.reconciled).toBe(false);
   });
 
   it("sorts a wave's sources, highest first, and keeps unknown ones", () => {

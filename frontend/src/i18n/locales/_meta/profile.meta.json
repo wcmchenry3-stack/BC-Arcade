@@ -647,6 +647,42 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "detail.starswarm.chip": {
+    "component": "GameDetailScreen",
+    "description": "Star Swarm score source chip: the source's name and its points, e.g. 'Grunt 1,200'.",
+    "tone": "neutral",
+    "characterLimit": 32,
+    "placeholders": ["{{label}}", "{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.noPoints": {
+    "component": "GameDetailScreen",
+    "description": "Game Details line in Star Swarm's points-by-wave card for a run that scored nothing.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.yacht.playerUnreconciled": {
+    "component": "GameDetailScreen",
+    "description": "Game Details note under a vs Yacht scorecard when the player's card doesn't add up to their final score.",
+    "tone": "neutral, factual",
+    "characterLimit": 70,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.yacht.opponentUnreconciled": {
+    "component": "GameDetailScreen",
+    "description": "Game Details note under a vs Yacht scorecard when the computer's card doesn't add up to its final score.",
+    "tone": "neutral, factual",
+    "characterLimit": 84,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "level.title": {
     "component": "LevelProgress",
     "description": "Label on the Arcade Level card at the top of Profile (and Home), above the level number.",

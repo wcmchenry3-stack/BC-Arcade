@@ -69,7 +69,15 @@ export function YachtSection({ breakdown }: { breakdown: YachtBreakdown }) {
 
   const partial = cards.some((c) => !c.complete);
   const notes = [
-    breakdown.reconciled ? null : t("profile:detail.unreconciled"),
+    // Per card: only the one that doesn't add up gets the note.
+    breakdown.playerReconciled
+      ? null
+      : t(
+          breakdown.opponent
+            ? "profile:detail.yacht.playerUnreconciled"
+            : "profile:detail.unreconciled"
+        ),
+    breakdown.opponentReconciled ? null : t("profile:detail.yacht.opponentUnreconciled"),
     partial ? t("profile:detail.yacht.partial") : null,
   ].filter(Boolean);
 

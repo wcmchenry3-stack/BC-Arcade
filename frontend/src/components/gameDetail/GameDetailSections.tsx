@@ -8,7 +8,13 @@ import { HeartsSection } from "./HeartsSection";
 import { StarSwarmSection } from "./StarSwarmSection";
 import { YachtSection } from "./YachtSection";
 
-type SectionRenderer = (detail: GameDetailResponse) => React.ReactElement | null;
+/** A rendered breakdown and the fact keys it already shows (so the facts list skips them). */
+interface RenderedSection {
+  readonly node: React.ReactElement;
+  readonly covers: readonly string[];
+}
+
+type SectionRenderer = (detail: GameDetailResponse) => RenderedSection | null;
 
 /**
  * Games whose saved result can explain their score (#2840), keyed by
@@ -18,33 +24,38 @@ type SectionRenderer = (detail: GameDetailResponse) => React.ReactElement | null
 export const BREAKDOWN_SECTIONS: Readonly<Record<string, SectionRenderer>> = {
   hearts: (d) => {
     const b = parseHeartsBreakdown(d.metadata ?? {});
-    return b ? <HeartsSection breakdown={b} /> : null;
+    return b ? { node: <HeartsSection breakdown={b} />, covers: [] } : null;
   },
   yacht: (d) => {
     const b = parseYachtBreakdown(d.metadata ?? {}, d.final_score);
-    return b ? <YachtSection breakdown={b} /> : null;
+    if (!b) return null;
+    // The computer's score stays a fact when its card wasn't saved.
+    const covers = ["upper_bonus", "yacht_bonus_total", ...(b.opponent ? ["opponent_score"] : [])];
+    return { node: <YachtSection breakdown={b} />, covers };
   },
   starswarm: (d) => {
     const b = parseStarSwarmBreakdown(d.metadata ?? {}, d.final_score);
-    return b ? <StarSwarmSection breakdown={b} /> : null;
+    return b ? { node: <StarSwarmSection breakdown={b} />, covers: [] } : null;
   },
 };
 
 /**
  * The game-specific part of the detail screen, under the shared summary card:
- * the saved breakdown where the game has one (or a note that none was saved,
- * never a zeroed one), then the game's whitelisted facts.
+ * the saved breakdown where the game has one (or, for a finished game, a note
+ * that none was saved, never a zeroed one), then the game's whitelisted facts.
  */
 export function GameDetailSections({ detail }: { detail: GameDetailResponse }) {
   const { t } = useTranslation(["profile"]);
   const renderSection = BREAKDOWN_SECTIONS[detail.game_type];
   const section = renderSection ? renderSection(detail) : null;
-  const facts = gameFacts(t, detail, { hasBreakdown: section != null });
+  const facts = gameFacts(t, detail, new Set(section?.covers ?? []));
+  // An unfinished game has no result yet, so nothing "wasn't saved".
+  const showNoBreakdown = renderSection != null && section == null && detail.completed_at != null;
 
   return (
     <>
-      {section}
-      {renderSection && section == null && (
+      {section?.node}
+      {showNoBreakdown && (
         <DetailCard note={t("profile:detail.noBreakdown")} testID="detail-no-breakdown" />
       )}
       {facts.length > 0 && (

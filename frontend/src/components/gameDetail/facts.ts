@@ -18,15 +18,14 @@ export interface FactDef {
   readonly labelKey: string;
   /** "chips" formats with the chips unit; default is a bare number. */
   readonly unit?: "chips";
-  /** Only shown when the game's breakdown section has nothing to show (it covers this value). */
-  readonly legacyOnly?: boolean;
 }
 
 export const GAME_FACTS: Readonly<Record<string, readonly FactDef[]>> = {
+  // Hidden while the scorecard shows them (the section's `covers`).
   yacht: [
-    { key: "upper_bonus", labelKey: "yacht:score.bonusLabel", legacyOnly: true },
-    { key: "yacht_bonus_total", labelKey: "yacht:bonus.yachtLabel", legacyOnly: true },
-    { key: "opponent_score", labelKey: "profile:detail.fact.opponentScore", legacyOnly: true },
+    { key: "upper_bonus", labelKey: "yacht:score.bonusLabel" },
+    { key: "yacht_bonus_total", labelKey: "yacht:bonus.yachtLabel" },
+    { key: "opponent_score", labelKey: "profile:detail.fact.opponentScore" },
   ],
   hearts: [{ key: "hands_played", labelKey: "profile:detail.fact.handsPlayed" }],
   starswarm: [{ key: "wave_reached", labelKey: "profile:detail.fact.waveReached" }],
@@ -49,6 +48,7 @@ export const GAME_FACTS: Readonly<Record<string, readonly FactDef[]>> = {
     { key: "final_chips", labelKey: "profile:detail.fact.finalChips", unit: "chips" },
   ],
   solitaire: [{ key: "moves", labelKey: "profile:detail.fact.moves" }],
+  freecell: [{ key: "moves", labelKey: "profile:detail.fact.moves" }],
   sudoku: [{ key: "errors", labelKey: "profile:detail.fact.errors" }],
   mahjong: [{ key: "pairs", labelKey: "profile:detail.fact.pairs" }],
 };
@@ -61,17 +61,18 @@ export interface Fact {
 
 /**
  * The whitelisted facts `game` carries, labelled and formatted. A value that
- * isn't a finite number is skipped, never shown as 0.
+ * isn't a finite number is skipped, never shown as 0. `covered` holds the
+ * keys the game's breakdown section already shows (Yacht's bonuses on its card).
  */
 export function gameFacts(
   t: TFunction,
   game: Pick<GameRow, "game_type" | "metadata">,
-  { hasBreakdown }: { hasBreakdown: boolean }
+  covered: ReadonlySet<string> = new Set()
 ): Fact[] {
   const defs = GAME_FACTS[game.game_type] ?? [];
   const facts: Fact[] = [];
   for (const def of defs) {
-    if (def.legacyOnly && hasBreakdown) continue;
+    if (covered.has(def.key)) continue;
     const raw = game.metadata?.[def.key];
     if (typeof raw !== "number" || !Number.isFinite(raw)) continue;
     facts.push({

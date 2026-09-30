@@ -42,12 +42,15 @@ export function TableRow({
   a11yLabel,
   kind = "body",
   isLast,
+  labelFlex = 2,
   testID,
 }: {
   cells: readonly React.ReactNode[];
   a11yLabel?: string;
   kind?: "head" | "body" | "sub" | "total";
   isLast?: boolean;
+  /** Flex of the label column against 1 per value column: lower gives the values more room. */
+  labelFlex?: number;
   testID?: string;
 }) {
   const { colors } = useTheme();
@@ -64,10 +67,11 @@ export function TableRow({
       ]}
       accessible={a11yLabel != null}
       accessibilityLabel={a11yLabel}
+      accessibilityRole={kind === "head" ? "header" : undefined}
       testID={testID}
     >
       {cells.map((cell, i) => (
-        <View key={i} style={i === 0 ? styles.labelCell : styles.valueCell}>
+        <View key={i} style={i === 0 ? [styles.labelCell, { flex: labelFlex }] : styles.valueCell}>
           {typeof cell === "string" || typeof cell === "number" ? (
             <Text
               style={[
@@ -76,6 +80,10 @@ export function TableRow({
                 strong && styles.strong,
                 kind === "head" && styles.headText,
               ]}
+              // A value column stays one line: it shrinks to fit (large text) rather than wrap.
+              numberOfLines={i === 0 ? undefined : 1}
+              adjustsFontSizeToFit={i !== 0}
+              minimumFontScale={0.6}
             >
               {cell}
             </Text>

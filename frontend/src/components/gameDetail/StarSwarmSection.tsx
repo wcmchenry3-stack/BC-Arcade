@@ -88,7 +88,7 @@ export function StarSwarmSection({ breakdown }: { breakdown: StarSwarmBreakdown 
                 ]}
               >
                 <Text style={[styles.chipText, { color: colors.textMuted }]}>
-                  {`${s.label} ${s.value}`}
+                  {t("profile:detail.starswarm.chip", { label: s.label, value: s.value })}
                 </Text>
               </View>
             ))}
@@ -115,6 +115,11 @@ export function StarSwarmSection({ breakdown }: { breakdown: StarSwarmBreakdown 
       testID="detail-starswarm"
     >
       {rows}
+      {rows.length === 0 && breakdown.unattributed === 0 && (
+        <Text style={[styles.empty, { color: colors.textMuted }]} testID="starswarm-no-points">
+          {t("profile:detail.starswarm.noPoints")}
+        </Text>
+      )}
       {breakdown.unattributed !== 0 &&
         renderRow(
           "other",
@@ -129,6 +134,7 @@ export function StarSwarmSection({ breakdown }: { breakdown: StarSwarmBreakdown 
 
 const styles = StyleSheet.create({
   row: { paddingVertical: 10, paddingHorizontal: 4 },
+  empty: { fontSize: 14, paddingVertical: 10, paddingHorizontal: 4 },
   rowHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   rowLabel: { fontSize: 14, fontWeight: "700", flexShrink: 1, paddingRight: 8 },
   rowPoints: { fontSize: 14, fontWeight: "600", fontVariant: ["tabular-nums"] },

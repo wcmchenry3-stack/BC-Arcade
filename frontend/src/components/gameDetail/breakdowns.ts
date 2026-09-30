@@ -127,11 +127,39 @@ export interface YachtBreakdown {
   readonly player: YachtCard;
   readonly opponent: YachtCard | null;
   /**
-   * The server's `scorecard_reconciled`, and the player's card adds up to the
-   * game's final score. False means show the card without claiming it
-   * explains the total.
+   * Each card adds up to its score and keeps the bonus rules (checked here,
+   * per card). False means show the card without claiming it explains the
+   * total. `opponentReconciled` is true when there is no opponent card.
    */
-  readonly reconciled: boolean;
+  readonly playerReconciled: boolean;
+  readonly opponentReconciled: boolean;
+}
+
+const UPPER_BONUS_THRESHOLD = 63;
+const UPPER_BONUS_VALUE = 35;
+const YACHT_BONUS_VALUE = 100;
+const YACHT_MAX = 50;
+
+/** The card's bonuses follow the rules (docs/games/yacht.md, "Bonus accounting"). */
+function bonusesFollowRules(card: YachtCard): boolean {
+  const upperFilled = YACHT_UPPER.every((k) => card.categories[k] != null);
+  const expectedUpper =
+    upperFilled && card.upperSubtotal >= UPPER_BONUS_THRESHOLD ? UPPER_BONUS_VALUE : 0;
+  return (
+    card.upperBonus === expectedUpper &&
+    card.yachtBonusTotal === card.yachtBonusCount * YACHT_BONUS_VALUE &&
+    (card.yachtBonusCount === 0 || card.categories.yacht === YACHT_MAX)
+  );
+}
+
+/**
+ * Whether `card` explains `score`, checked locally. When there is no score
+ * to compare its total with, the server's `scorecard_reconciled` (which
+ * covers both cards) stands in for that half of the check.
+ */
+function cardReconciles(card: YachtCard, score: unknown, serverFlag: unknown): boolean {
+  if (!bonusesFollowRules(card)) return false;
+  return isInt(score) ? score === card.total : serverFlag !== false;
 }
 
 function parseYachtCard(raw: unknown): YachtCard | null {
@@ -170,9 +198,13 @@ export function parseYachtBreakdown(
   const player = parseYachtCard(metadata.scorecard);
   if (player == null) return null;
   const opponent = parseYachtCard(metadata.opponent_scorecard);
-  const reconciled =
-    metadata.scorecard_reconciled !== false && (finalScore == null || finalScore === player.total);
-  return { player, opponent, reconciled };
+  const flag = metadata.scorecard_reconciled;
+  return {
+    player,
+    opponent,
+    playerReconciled: cardReconciles(player, finalScore, flag),
+    opponentReconciled: opponent == null || cardReconciles(opponent, metadata.opponent_score, flag),
+  };
 }
 
 // ─── Star Swarm ──────────────────────────────────────────────────────────────
@@ -237,8 +269,8 @@ export function parseStarSwarmBreakdown(
     rows.push(row);
   }
   const unattributed = raw.unattributed == null ? 0 : raw.unattributed;
+  // A run that scored nothing is a valid `{v: 1, waves: []}`: an empty breakdown, not a missing one.
   if (!isInt(unattributed)) return null;
-  if (rows.length === 0 && unattributed === 0) return null;
   const rowsAddUp = rows.every((r) => sum(r.sources.map((s) => s.points)) === r.total);
   const total = sum(rows.map((r) => r.total)) + unattributed;
   return {

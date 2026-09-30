@@ -222,6 +222,13 @@ describe("GameDetailScreen — Hearts hand table", () => {
     expect(screen.queryByText(/may not fully explain/)).toBeNull();
   });
 
+  it("marks the column-header row as a header", async () => {
+    await renderGame(HEARTS);
+    expect(
+      screen.getByRole("header", { name: "Hand, You, Opponent 1, Opponent 2, Opponent 3" })
+    ).toBeTruthy();
+  });
+
   it("marks a moon hand and explains the mark", async () => {
     await renderGame(HEARTS);
     expect(screen.getByTestId("hearts-moon-2")).toHaveTextContent("★ 0");
@@ -266,7 +273,7 @@ describe("GameDetailScreen — Yacht scorecard", () => {
       threes: 9,
       fours: 12,
       fives: 15,
-      sixes: 18,
+      sixes: 12,
       three_of_a_kind: 22,
       four_of_a_kind: 0,
       full_house: 25,
@@ -279,10 +286,10 @@ describe("GameDetailScreen — Yacht scorecard", () => {
     yacht_bonus_count: 1,
     yacht_bonus_total: 100,
   };
-  // 63 upper + 187 lower + 100 = 350
+  // 57 upper (no bonus) + 187 lower + 100 = 344
   const SOLO = {
     game_type: "yacht" as const,
-    final_score: 350,
+    final_score: 344,
     metadata: { scorecard: FULL, scorecard_reconciled: true, upper_bonus: 0 },
   };
 
@@ -291,14 +298,14 @@ describe("GameDetailScreen — Yacht scorecard", () => {
     expect(screen.getByText("Scorecard")).toBeTruthy();
     expect(screen.getByText("Upper Section")).toBeTruthy();
     expect(screen.getByText("Lower Section")).toBeTruthy();
-    expect(screen.getByTestId("yacht-cat-sixes").props.accessibilityLabel).toBe("Sixes, You: 18");
+    expect(screen.getByTestId("yacht-cat-sixes").props.accessibilityLabel).toBe("Sixes, You: 12");
     expect(screen.getByTestId("yacht-upper-subtotal").props.accessibilityLabel).toBe(
-      "Upper subtotal, You: 63"
+      "Upper subtotal, You: 57"
     );
     expect(screen.getByTestId("yacht-yacht-bonus").props.accessibilityLabel).toBe(
       "Yacht Bonus, You: 100"
     );
-    expect(screen.getByTestId("yacht-total").props.accessibilityLabel).toBe("Total, You: 350");
+    expect(screen.getByTestId("yacht-total").props.accessibilityLabel).toBe("Total, You: 344");
     expect(screen.queryByText("CPU")).toBeNull();
     expect(screen.queryByText(/may not fully explain/)).toBeNull();
     // The card covers the bonuses: no legacy facts.
@@ -310,11 +317,11 @@ describe("GameDetailScreen — Yacht scorecard", () => {
     await renderGame({
       ...SOLO,
       outcome: "win",
-      metadata: { ...SOLO.metadata, opponent_scorecard: cpu, opponent_score: 250 },
+      metadata: { ...SOLO.metadata, opponent_scorecard: cpu, opponent_score: 244 },
     });
     expect(screen.getByText("CPU")).toBeTruthy();
     expect(screen.getByTestId("yacht-total").props.accessibilityLabel).toBe(
-      "Total, You: 350, CPU: 250"
+      "Total, You: 344, CPU: 244"
     );
   });
 
@@ -332,10 +339,58 @@ describe("GameDetailScreen — Yacht scorecard", () => {
     expect(screen.getByText(/A dash marks a category/)).toBeTruthy();
   });
 
-  it("notes a card the server couldn't reconcile, and still shows it", async () => {
-    await renderGame({ ...SOLO, metadata: { ...SOLO.metadata, scorecard_reconciled: false } });
+  it("notes a card that doesn't add up to the final score, and still shows it", async () => {
+    await renderGame({ ...SOLO, final_score: 400 });
     expect(screen.getByTestId("yacht-total")).toBeTruthy();
     expect(screen.getByText("This breakdown may not fully explain the final score.")).toBeTruthy();
+  });
+
+  it("checks the card itself, not the server's flag, when it has a score to check against", async () => {
+    await renderGame({ ...SOLO, metadata: { ...SOLO.metadata, scorecard_reconciled: false } });
+    expect(screen.queryByText(/may not fully explain/)).toBeNull();
+  });
+
+  it("falls back to the server's flag with no final score to check against", async () => {
+    await renderGame({
+      ...SOLO,
+      final_score: null,
+      metadata: { ...SOLO.metadata, scorecard_reconciled: false },
+    });
+    expect(screen.getByText("This breakdown may not fully explain the final score.")).toBeTruthy();
+  });
+
+  it("notes an upper bonus the card doesn't earn", async () => {
+    await renderGame({
+      ...SOLO,
+      final_score: 379,
+      metadata: { ...SOLO.metadata, scorecard: { ...FULL, upper_bonus: 35 } },
+    });
+    expect(screen.getByText("This breakdown may not fully explain the final score.")).toBeTruthy();
+  });
+
+  it("notes only the vs card that doesn't reconcile", async () => {
+    const cpu = { ...FULL, yacht_bonus_count: 0, yacht_bonus_total: 0 };
+    await renderGame({
+      ...SOLO,
+      outcome: "win",
+      metadata: { ...SOLO.metadata, opponent_scorecard: cpu, opponent_score: 300 },
+    });
+    expect(screen.getByText("The computer's card may not fully explain its score.")).toBeTruthy();
+    expect(screen.queryByText("Your card may not fully explain your score.")).toBeNull();
+    expect(screen.queryByText(/This breakdown may not/)).toBeNull();
+  });
+
+  it("keeps the computer's score as a fact when its card wasn't saved", async () => {
+    await renderGame({
+      ...SOLO,
+      outcome: "win",
+      metadata: { ...SOLO.metadata, opponent_scorecard: "junk", opponent_score: 244 },
+    });
+    expect(screen.queryByText("CPU")).toBeNull();
+    expect(screen.getByTestId("fact-opponent_score").props.accessibilityLabel).toBe(
+      "Computer's score: 244"
+    );
+    expect(screen.queryByTestId("fact-upper_bonus")).toBeNull();
   });
 
   it("shows a legacy game's total and saved bonus, with no invented card", async () => {
@@ -343,7 +398,7 @@ describe("GameDetailScreen — Yacht scorecard", () => {
       ...SOLO,
       metadata: { upper_bonus: 35, yacht_bonus_total: 0, scorecard_reconciled: false },
     });
-    expect(screen.getByText("350 pts")).toBeTruthy();
+    expect(screen.getByText("344 pts")).toBeTruthy();
     expect(screen.getByText("No score breakdown was saved for this game.")).toBeTruthy();
     expect(screen.queryByTestId("detail-yacht")).toBeNull();
     expect(screen.getByTestId("fact-upper_bonus").props.accessibilityLabel).toBe("Upper bonus: 35");
@@ -410,6 +465,22 @@ describe("GameDetailScreen — Star Swarm points by wave", () => {
     expect(screen.queryByTestId("detail-starswarm")).toBeNull();
     expect(screen.getByText("33,400 pts")).toBeTruthy();
   });
+
+  it("shows a run that scored nothing as such, not as a missing breakdown", async () => {
+    await renderGame({
+      ...RUN,
+      final_score: 0,
+      metadata: { ...RUN.metadata, score_breakdown: { v: 1, waves: [] } },
+    });
+    expect(screen.getByText("No points scored")).toBeTruthy();
+    expect(screen.queryByTestId("detail-no-breakdown")).toBeNull();
+    expect(screen.queryByText(/may not fully explain/)).toBeNull();
+  });
+
+  it("says nothing about a missing breakdown for an unfinished run", async () => {
+    await renderGame({ ...RUN, completed_at: null, outcome: null, metadata: {} });
+    expect(screen.queryByTestId("detail-no-breakdown")).toBeNull();
+  });
 });
 
 describe("GameDetailScreen — facts for other games", () => {
@@ -434,8 +505,17 @@ describe("GameDetailScreen — facts for other games", () => {
     expect(screen.queryByText(/fruits|secret_blob/)).toBeNull();
   });
 
+  it("shows FreeCell's moves", async () => {
+    await renderGame({
+      game_type: "freecell",
+      final_score: 87,
+      metadata: { won: true, moves: 87 },
+    });
+    expect(screen.getByLabelText("Moves: 87")).toBeTruthy();
+  });
+
   it("shows no facts card or breakdown note for a game with neither", async () => {
-    await renderGame({ game_type: "freecell", final_score: 87, metadata: { moves: 87 } });
+    await renderGame({ game_type: "daily_word", final_score: null, metadata: { guesses_used: 4 } });
     expect(screen.queryByTestId("detail-facts")).toBeNull();
     expect(screen.queryByTestId("detail-no-breakdown")).toBeNull();
   });
