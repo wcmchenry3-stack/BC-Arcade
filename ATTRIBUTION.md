@@ -32,8 +32,11 @@ For details, see [CC BY-SA 4.0 Deed](https://creativecommons.org/licenses/by-sa/
   - Source: https://freesound.org/people/humanoide9000/sounds/466133/
   - License: https://creativecommons.org/licenses/by/4.0/
 
-All other audio and sprites are CC0 or Pixabay Content License and need no attribution. Full asset
-inventory: [`docs/audits/ASSET-RIGHTS-AUDIT.md`](docs/audits/ASSET-RIGHTS-AUDIT.md).
+All other **verified** audio and sprites are CC0 or Pixabay Content License and need no attribution.
+Assets whose source or license is not yet recorded (for example the three Blackjack sounds, the
+Mahjong tiles, the Cascade art and the app icon) are **unverified**, not cleared; their attribution
+obligations are unknown until the owner confirms or replaces them. Full asset inventory and the
+unverified list: [`docs/audits/ASSET-RIGHTS-AUDIT.md`](docs/audits/ASSET-RIGHTS-AUDIT.md).
 
 ## Build Script Attribution
 

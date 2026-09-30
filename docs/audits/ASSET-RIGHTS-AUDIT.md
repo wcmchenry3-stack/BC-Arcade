@@ -3,7 +3,7 @@
 Issue: #2782 (part of #2777). Scope: every asset compiled into the iOS/Android binary at
 `version 1.0.9` (`frontend/app.json`, build 10009). Audit date: 2026-09-30.
 
-Status: **inventory complete; rights for 4 groups of assets are UNVERIFIED and need the owner to
+Status: **inventory complete; rights for 6 groups of assets (U1–U6) are UNVERIFIED and need the owner to
 confirm or replace them; one CC-BY attribution is legally required and has no in-app surface yet.**
 The issue stays open until the owner clears the items in [Section 5](#5-unverified--owner-action-list).
 
