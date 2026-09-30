@@ -15,7 +15,7 @@ Legend: `[ ]` not run, `[x]` pass, `[!]` fail (link bug), `[n/a]` not applicable
 | Version / build number | | |
 | Source branch + commit SHA | | |
 | Build system + run link | Xcode Cloud workflow / build # | `./gradlew bundleRelease` on (machine) |
-| API target (must be production) | `BC_API_TARGET` unset -> `games-api.buffingchi.com` | AAB grep check below |
+| API target (must be production) | `BC_API_TARGET` unset -> `games-api.buffingchi.com` (`select_api_target.sh`, #2774) | AAB grep check below |
 | Distributed via | TestFlight build # / App Store Connect | Play track + release name |
 | Tester / date | | |
 
@@ -58,9 +58,10 @@ Legend: `[ ]` not run, `[x]` pass, `[!]` fail (link bug), `[n/a]` not applicable
 
 | Check | Result | Evidence |
 | --- | --- | --- |
-| Android: `grep -a -c "https://dev-games-api.buffingchi.com" app/build/generated/assets/react/release/index.android.bundle` prints 0 | | |
-| Android: same grep for `https://games-api.buffingchi.com` prints > 0 | | |
-| iOS: Xcode Cloud workflow has no `BC_API_TARGET=prelaunch`; source branch `main` (see #2774 for the guard) | | |
+| Android (from `frontend/android`): `grep -a -c "https://dev-games-api.buffingchi.com" app/build/generated/assets/react/release/index.android.bundle` prints 0 | | |
+| Android (from `frontend/android`): same grep for `https://games-api.buffingchi.com` prints > 0 | | |
+| iOS: Xcode Cloud workflow has no `BC_API_TARGET=prelaunch` (unset -> games-api; the merged #2774 `select_api_target.sh` fails the build for a non-`main` source branch) | | |
+| Android (required): `bundleRelease` built from `main` at the tagged release SHA (checked-out HEAD equals the release tag). Mirrors the iOS main-branch rule: a local `bundleRelease` from dev or a feature branch would ship dev code against the production API | | |
 | On device: 7 tiles, 3 tabs, no debug panels, no premium tiles | | |
 | Sentry environment is `production` for the build (#851) | | |
 
@@ -136,7 +137,7 @@ Related issues and context (from #2783):
 - Release-plan wording corrections (seven tiles, three tabs): #2732.
 - Offline/error/empty states, battery, audio, performance budgets: #856, #1156, #1786, #853.
 - Security/build work: #843, #845, #846, #847, #848 and CI issues. Production backup/plan: #2593.
-- Prevent dev builds from targeting the production API (iOS Xcode Cloud guard): PR #2774.
+- Prevent dev builds from targeting the production API (iOS Xcode Cloud guard, merged): PR #2774. Android has no equivalent script guard, so the `main`-at-tagged-SHA row above is a manual check.
 - Other docs: docs/IOS.md, docs/ANDROID-CI.md, docs/RELEASE-PLAN-2026-10.md, docs/TESTING.md.
 
 ## 8. Sign-off

@@ -50,9 +50,12 @@ Gradle builds — no prebuild step happens in CI.
     ...) unless `UPLOAD_STORE_FILE` names an existing, non-debug keystore and the
     other three `UPLOAD_*` properties are set. The only opt-out is
     `-PALLOW_DEBUG_SIGNED_RELEASE=true`, passed by the CI release smoke build
-    (no signing secret exists in CI). Never use it for anything uploaded to Play.
+    (no signing secret exists in CI) and allowed for local, never-uploaded
+    profiling/smoke builds. Gradle logs a warning when it is active. Never use it
+    for anything uploaded to Play or distributed. The guard also rejects
+    `UPLOAD_KEY_ALIAS=androiddebugkey`.
   - After building, verify the bundle itself:
-    `scripts/verify-aab-signing.sh app/build/outputs/bundle/release/app-release.aab "<Play Console upload SHA-1 or SHA-256>"`.
+    `scripts/verify-aab-signing.sh frontend/android/app/build/outputs/bundle/release/app-release.aab "<Play Console upload SHA-1 or SHA-256>"`.
     It prints both fingerprints, rejects the Android debug certificate and
     exits non-zero on mismatch. Take the expected value from Play Console ->
     App integrity -> Play app signing -> Upload key certificate.

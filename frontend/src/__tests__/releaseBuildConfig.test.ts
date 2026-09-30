@@ -11,8 +11,9 @@
  *  - entitlements/__tests__/premiumRoutes.test.ts   (premium route registry),
  *  - screens/__tests__/HomeScreen.test.tsx           (seven home tiles),
  *  - navigation/__tests__/mainTabs.test.tsx          (three tabs).
- * iOS API-target selection at Xcode Cloud time is tightened by PR #2774; this
- * file only pins the Android/JS side (tracked .env.production).
+ * iOS API-target selection at Xcode Cloud time is enforced by ios/ci_scripts/
+ * select_api_target.sh (PR #2774, merged); this file only pins the Android/JS
+ * side (tracked .env.production).
  *
  * What it adds, by reading the real source/config files (Jest cannot render
  * App.tsx):
@@ -49,7 +50,7 @@ const SHARED_ROUTES = ["Home", "Leaderboard", "GameStats", "Scorecard"];
 // Mahjong debug screens are only navigable from the (hidden) Mahjong game.
 const MAHJONG_DEBUG_ROUTES = ["MahjongLayoutInspector", "MahjongLayoutDetail"];
 const PRODUCTION_API_URL = "https://games-api.buffingchi.com";
-const PURCHASE_WORDS = /paywall|purchase|upgrade|subscri|checkout/i;
+const PURCHASE_WORDS = /paywall|purchase|checkout|billing|iap/i;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -151,7 +152,8 @@ describe("no deep-link surface can open a screen", () => {
     const app = read("App.tsx");
     expect(app).not.toMatch(/\blinking\s*=/);
     expect(app).not.toMatch(/Linking\.(addEventListener|getInitialURL)/);
-    expect(app).toMatch(/<NavigationContainer>/);
+    expect(app).toContain("<NavigationContainer");
+    expect(app).not.toMatch(/<NavigationContainer[^>]*\blinking=/);
   });
 
   it("Android has no inbound VIEW/BROWSABLE intent-filter or custom scheme", () => {
@@ -170,8 +172,8 @@ describe("no deep-link surface can open a screen", () => {
 describe("production build targets the production API (Android / JS side)", () => {
   // Expo (production mode, e.g. Gradle bundleRelease) ranks .env.production
   // above the tracked .env, so .env's pre-launch URL never wins over it.
-  // iOS API selection is enforced in ios/ci_scripts/ci_post_clone.sh and
-  // tightened by PR #2774; docs/ANDROID-CI.md covers the AAB bundle check.
+  // iOS API selection is enforced in ios/ci_scripts/ci_post_clone.sh via
+  // select_api_target.sh (PR #2774); docs/ANDROID-CI.md covers the AAB bundle check.
   const env = read(".env.production");
 
   it(".env.production sets EXPO_PUBLIC_API_URL to exactly the production API", () => {
@@ -192,20 +194,42 @@ describe("production build targets the production API (Android / JS side)", () =
 });
 
 describe("Android release cannot silently fall back to debug signing (#2783)", () => {
+  // These are string-presence checks on build.gradle / workflow YAML: jest has
+  // no Android SDK, so the Gradle logic itself is never executed here.
   const gradle = read("android/app/build.gradle");
-  const ci = fs.readFileSync(path.join(frontendRoot, "../.github/workflows/ci.yml"), "utf-8");
+  const workflowsDir = path.join(frontendRoot, "../.github/workflows");
+  const workflows = fs
+    .readdirSync(workflowsDir)
+    .filter((f) => /\.ya?ml$/.test(f))
+    .map((f) => ({ name: f, text: fs.readFileSync(path.join(workflowsDir, f), "utf-8") }));
 
   it("release-artifact tasks fail without a real upload keystore unless explicitly opted out", () => {
     expect(gradle).toContain("ALLOW_DEBUG_SIGNED_RELEASE");
     expect(gradle).toMatch(/throw new GradleException\(\s*"Refusing to build a release artifact/);
     expect(gradle).toMatch(/store\.name == 'debug\.keystore'/);
+    expect(gradle).toContain("androiddebugkey");
+    expect(gradle).toContain(
+      "/^(assemble|bundle|install|package|sign|validateSigning)Release(Bundle)?$/"
+    );
+    expect(gradle).toMatch(/logger\.warn\(/);
   });
 
-  it("only the CI release smoke build opts into debug-signed release", () => {
-    const optIns = ci.split("\n").filter((l) => l.includes("ALLOW_DEBUG_SIGNED_RELEASE"));
-    expect(optIns).toHaveLength(1);
-    const smoke = ci.slice(ci.indexOf("./gradlew assembleRelease"));
-    expect(smoke.slice(0, 400)).toContain("-PALLOW_DEBUG_SIGNED_RELEASE=true");
+  it("only the CI android-release-smoke step opts into debug-signed release", () => {
+    const optIns = workflows.flatMap((w) =>
+      w.text
+        .split("\n")
+        .filter((l) => l.includes("ALLOW_DEBUG_SIGNED_RELEASE"))
+        .map(() => w.name)
+    );
+    expect(optIns).toEqual(["ci.yml"]);
+
+    const ci = workflows.find((w) => w.name === "ci.yml")!.text;
+    // The flag must sit inside the assembleRelease command of the smoke step
+    // (a single shell command ending at the first blank line / next step).
+    const start = ci.indexOf("./gradlew assembleRelease");
+    expect(start).toBeGreaterThan(-1);
+    const command = ci.slice(start).split(/\n\s*-\s+name:|\n\s*\n/)[0];
+    expect(command).toContain("-PALLOW_DEBUG_SIGNED_RELEASE=true");
     expect(read("android/gradle.properties")).not.toMatch(/^ALLOW_DEBUG_SIGNED_RELEASE/m);
   });
 });

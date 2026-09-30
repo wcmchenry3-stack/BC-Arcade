@@ -8,8 +8,9 @@
 #
 # The expected value is copied from Play Console -> App integrity -> Play app
 # signing -> Upload key certificate (SHA-1 or SHA-256; colons, spaces and case
-# are ignored). Exit codes: 0 match (or nothing to compare, fingerprints
-# printed), 1 mismatch or debug certificate, 2 usage/tool error.
+# are ignored; an optional leading SHA1:/SHA-256: label is stripped). Exit
+# codes: 0 match (or nothing to compare, fingerprints printed), 1 mismatch,
+# unsigned bundle or debug certificate, 2 usage/tool error.
 #
 # Needs keytool (JDK). An AAB is a signed zip: jarsigner signs META-INF/*.RSA,
 # which keytool -printcert -jarfile reads. See docs/RELEASE-ACCEPTANCE-v1.0.md.
@@ -27,11 +28,21 @@ if ! command -v keytool >/dev/null 2>&1; then
   exit 2
 fi
 
-out="$(keytool -printcert -jarfile "$aab" 2>&1)" || {
-  echo "keytool could not read a signature from $aab (unsigned bundle?):" >&2
+# -J-Duser.language=en pins keytool's output to English so the parsing below
+# (and the "Not a signed jar file" check) works on localized JDKs.
+rc=0
+out="$(keytool -J-Duser.language=en -printcert -jarfile "$aab" 2>&1)" || rc=$?
+case "$out" in
+  *"Not a signed jar file"*)
+    echo "FAIL: $aab is not signed (unsigned bundle). Rebuild with the upload keystore configured (docs/ANDROID-CI.md)." >&2
+    exit 1
+    ;;
+esac
+if [ "$rc" -ne 0 ]; then
+  echo "keytool failed (exit $rc) while reading $aab:" >&2
   echo "$out" >&2
-  exit 1
-}
+  exit 2
+fi
 
 # keytool prints "SHA1:" / "SHA256:" (older JDKs "SHA1:"; some "SHA-1:").
 sha1="$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*SHA-\{0,1\}1:[[:space:]]*//p' | head -n1)"
@@ -49,10 +60,12 @@ if [ -z "$sha1" ] || [ -z "$sha256" ]; then
 fi
 
 # Reject the Android debug certificate outright (debug-signing fallback).
-if printf '%s' "$owner" | grep -qi 'CN=Android Debug'; then
-  echo "FAIL: bundle is signed with the Android DEBUG certificate. Play rejects it; rebuild with the upload keystore." >&2
-  exit 1
-fi
+case "$owner" in
+  *[Cc][Nn]=[Aa]ndroid\ [Dd]ebug*)
+    echo "FAIL: bundle is signed with the Android DEBUG certificate. Play rejects it; rebuild with the upload keystore." >&2
+    exit 1
+    ;;
+esac
 
 if [ -z "$expected" ]; then
   echo "No expected fingerprint given: compare the values above with Play Console -> App integrity -> Upload key certificate."
@@ -60,6 +73,10 @@ if [ -z "$expected" ]; then
 fi
 
 norm() { printf '%s' "$1" | tr -d ': \t\r\n' | tr '[:lower:]' '[:upper:]'; }
+# Play Console / keytool copy-paste may carry an algorithm label ("SHA1:", "SHA-256:", ...).
+case "$expected" in
+  [Ss][Hh][Aa]-1:*|[Ss][Hh][Aa]1:*|[Ss][Hh][Aa]-256:*|[Ss][Hh][Aa]256:*) expected="${expected#*:}" ;;
+esac
 want="$(norm "$expected")"
 if [ "$want" = "$(norm "$sha1")" ]; then
   echo "OK: matches the expected SHA-1."

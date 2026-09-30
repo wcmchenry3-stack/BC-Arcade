@@ -188,7 +188,8 @@ gradle.taskGraph.whenReady { graph ->
 // configure debug/other tasks — but a debug-signed AAB is rejected by Play, and a
 // debug-signed APK must never be mistaken for a store build. Any task that
 // produces or signs a release artifact therefore fails unless a real upload
-// keystore is configured. CI's release smoke build has no secret, so it opts in
+// keystore is configured. CI's release smoke build has no secret, and local
+// profiling/smoke builds that are never uploaded don't need one, so both opt in
 // explicitly with -PALLOW_DEBUG_SIGNED_RELEASE=true (see .github/workflows/ci.yml).
 def resolveUploadKeystoreProblem = { ->
     def path = findProperty('UPLOAD_STORE_FILE')
@@ -202,6 +203,9 @@ def resolveUploadKeystoreProblem = { ->
     if (!store.isFile()) {
         return "UPLOAD_STORE_FILE does not exist (${path})"
     }
+    if (findProperty('UPLOAD_KEY_ALIAS') == 'androiddebugkey') {
+        return "UPLOAD_KEY_ALIAS is the debug key alias (androiddebugkey)"
+    }
     for (prop in ['UPLOAD_STORE_PASSWORD', 'UPLOAD_KEY_ALIAS', 'UPLOAD_KEY_PASSWORD']) {
         if (!findProperty(prop)) {
             return "${prop} is not set"
@@ -211,16 +215,22 @@ def resolveUploadKeystoreProblem = { ->
 }
 gradle.taskGraph.whenReady { graph ->
     def signsRelease = graph.allTasks.any {
-        it.project == project && it.name =~ /^(assemble|bundle|package|sign|validateSigning|install).*Release/
+        it.project == project && it.name =~ /^(assemble|bundle|install|package|sign|validateSigning)Release(Bundle)?$/
     }
-    if (signsRelease && findProperty('ALLOW_DEBUG_SIGNED_RELEASE') != 'true') {
+    def debugSignedOptOut = findProperty('ALLOW_DEBUG_SIGNED_RELEASE') == 'true'
+    if (signsRelease && debugSignedOptOut) {
+        logger.warn("WARNING: ALLOW_DEBUG_SIGNED_RELEASE=true - this release is DEBUG-SIGNED and must " +
+            "never be uploaded to Play Console or distributed.")
+    }
+    if (signsRelease && !debugSignedOptOut) {
         def problem = resolveUploadKeystoreProblem()
         if (problem != null) {
             throw new GradleException(
                 "Refusing to build a release artifact without the Play upload keystore: ${problem}. " +
                 "A debug-signed release is rejected by Play Console. Set the UPLOAD_* properties in " +
                 "~/.gradle/gradle.properties (docs/ANDROID-CI.md, \"Signing configuration\"). " +
-                "CI smoke builds only: pass -PALLOW_DEBUG_SIGNED_RELEASE=true.")
+                "For CI smoke builds or local never-uploaded profiling/smoke builds only: " +
+                "pass -PALLOW_DEBUG_SIGNED_RELEASE=true.")
         }
     }
 }
