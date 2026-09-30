@@ -277,8 +277,11 @@ alive. Each stage is more aggressive than the last, and the stage only escalates
   wave-clear extraction. Killing the Carrier mid-charge cancels only the unreleased charge.
 - **Hit.** A beam that touches the ship's hurt circle is spent on it, shield-absorbed or not. So
   one beam costs at most one plate or one life (shield → hull → life), and `runStats.beamHits`
-  counts it once. Beams pass through rocks (asteroid semantics are #2844's). The enemy-fire dev
-  toggle stops a charge from releasing anything.
+  counts it once. **Beams pass through rocks** (#2844): a released beam and an asteroid never
+  interact. The beam is not absorbed, it does not damage the rock, and the rock does not block it.
+  This keeps the beam a readable lane threat (a rock drifting across the lane can't silently eat it),
+  and keeps rocks cover against bullets only. The beam stays in `liveHazards` alongside rocks so the
+  extraction autopilot dodges both. The enemy-fire dev toggle stops a charge from releasing anything.
 
 ### Twin lasers
 
@@ -286,10 +289,13 @@ In the exposed and final-stand stages only: a pair of aimed shots (±14 px) per 
 against `bulletCap()`.
 
 **Finite combat capacity.** The Carrier's timers decide _when_ it fires and how much;
-`chooseCarrierTarget` decides only _where_. The player is the only target today. #2844 (flak at a
-rock) and #2845 (fire at Buddy) must plug their target choice in there. A diverted volley replaces
-the player-directed one on the same timer and never adds a volley or a gun. The one existing
-exception, the #2487 flak roll, is outside this seam and is #2844's to fold in.
+`chooseCarrierTarget` decides only _where_. The target is a `CarrierTarget`: the player, or (#2844)
+a rock. An exposed Carrier with a live rock approaching within `CARRIER_FLAK_RANGE` (180 px,
+`carrierFlakRock`) **diverts its whole twin volley to flak at that rock**. The volley is the same two
+guns on the same timer, so the diversion replaces a player-directed volley and adds no cadence. The
+flak bolts are marked `flak` (amber, outside `bulletCap()`; the price was the volley they replaced).
+The armored Carrier never flaks (its force field handles rocks). #2845 (fire at Buddy) plugs in here
+the same way. The #2487 per-ship flak roll no longer applies to the Carrier.
 
 ### Attack run
 
@@ -378,20 +384,20 @@ they still roll to dodge rocks and can be struck by them.
 - "ROUT!" banner (`phase.rout`) while any grunt is fleeing, a `starswarm.rout` sting and an
   `a11y.rout` announcement with the count. Dev panel: "Rout off" restores the old mop-up ending.
 
-## Hazards: Errant Asteroids (#2486)
+## Hazards: Errant Asteroids (#2486, #2844)
 
-From wave 2, a rock drifts in from a top corner every 12–20 s of the Playing phase (never during
-swoop-in, the wave-clear extraction or a boss wave; at most 2 in flight from timed spawns). It is a
-neutral third party:
+From wave 2, a rock crosses the field every 12-20 s of the Playing phase (never during swoop-in,
+the wave-clear extraction or a boss wave; at most 2 in flight from timed spawns). It is a neutral
+third party:
 
 - **Both sides can hit it.** Any bullet, from either owner and piercing or not, that reaches a rock is
   spent on it, so a large rock is temporary cover. Large rocks (22 px, 6 HP) split into two small
-  ones (12 px, 2 HP); small ones are removed.
-- **It hits both sides.** A rock deals 1 damage to any ship it touches, once per ship — including
+  ones (12 px, 2 HP); small ones are removed. Released Carrier beams pass through rocks.
+- **It hits both sides.** A rock deals 1 damage to any ship it touches, once per ship, including
   reinforcements still swooping in mid-combat once they are on screen (during the wave's own
-  swoop-in nothing takes damage, #2842). A small rock shatters on impact; a large one keeps
-  going. The Carrier's force field shatters any rock harmlessly (ring plays). On the player it acts
-  like a shot: the shield absorbs it, otherwise it costs a life; either way it shatters.
+  swoop-in nothing takes damage, #2842). A small rock shatters on impact; a large one keeps going.
+  On the player it acts like a shot: the shield absorbs it, otherwise it costs a life; either way
+  it shatters. For the Carrier see _Carrier vs asteroids_ below.
 - **Nobody scores.** Breaking a rock and enemies a rock kills award no points and don't advance the
   power-up kill counter (they do count toward wave clear and the Elite/Guardian thresholds).
 - The smart bomb clears rocks. Rocks in flight stay live through the wave-clear extraction and are
@@ -403,29 +409,122 @@ neutral third party:
 
 Salvage drops are #2488.
 
-### Enemy AI: asteroid response (#2487)
+### Entry geometry (#2844)
+
+`planAsteroidEntry(canvasW, canvasH, radius, actors, rand)` plans one rock. It draws an entry
+region, an off-screen start point, a point in the play space to cross and a speed:
+
+| Region             | Odds | Start (always fully off-screen)                |
+| ------------------ | ---- | ---------------------------------------------- |
+| left edge          | 28%  | just left of the canvas, y in 4-54% of height  |
+| right edge         | 28%  | just right of the canvas, y in 4-54% of height |
+| top edge           | 26%  | just above the canvas, x in 10-90% of width    |
+| upper-left corner  | 9%   | up to 20 px diagonally beyond the corner       |
+| upper-right corner | 9%   | up to 20 px diagonally beyond the corner       |
+
+The rock is aimed through a random point in 15-85% of the width and 25-70% of the height, at
+0.15-0.22 px/ms (size still 65% large / 35% small). A candidate is rejected and redrawn (up to
+`ASTEROID_ENTRY_ATTEMPTS` = 8) unless it:
+
+- heads downward at least `ASTEROID_MIN_ANGLE` (0.3 rad) below horizontal: no flat skim;
+- spends at least half the canvas width of path inside the field (`ASTEROID_MIN_CROSS_FRAC`): it
+  crosses meaningful space instead of skimming a corner;
+- leaves at least 1.5 s (`ASTEROID_MIN_REACTION_MS`) between touching the screen and being able to
+  reach the player's row (`asteroidEntryMetrics`);
+- does not start overlapping any ship, including reinforcements waiting off-screen, or Buddy.
+
+If the random attempts all fail (common on a short landscape canvas), a deterministic fallback scans
+side-edge entries at the slowest speed over fixed angles, so a timed spawn is not dropped; it obeys
+the same fairness rules. If even that is blocked by ships, no rock spawns this time (the timer still resets). Everything is
+drawn from the seeded `rng()`, so a seeded run replays exactly. Timed spawns still respect
+`MAX_ASTEROIDS`.
+
+### Enemy AI: asteroid response (#2487, #2844)
 
 When a rock will cross a ship's hitbox within the next 700 ms (sampled at +200/+400/+700 ms
-against where the ship will be — on its path if it is swooping, diving or returning), the ship
-rolls **once per rock** to dodge. Success chance is `base × difficulty paramScale`, capped at 97%:
+against where the ship will be, on its path if it is swooping, diving or returning), the ship is
+**threatened** and rolls **once per rock** to dodge. Success chance is `base × difficulty
+paramScale`, capped at 97%. Only threatened ships react: a far-off ship is untouched.
 
 | Tier     | Dodge base | Flak base | Dodge action                                         |
 | -------- | ---------- | --------- | ---------------------------------------------------- |
 | Grunt    | 25%        | 30%       | formation: 22 px sidestep (600 ms); on a path: nudge |
 | Elite    | 55%        | 70%       | same                                                 |
 | Guardian | 80%        | 90%       | same                                                 |
-| Carrier  | never      | 100%      | rocks shatter on its force field                     |
+| Carrier  | never      | see below | heavy: no sidestep, see _Carrier vs asteroids_       |
 
 A path nudge splits the curve at the ship's current progress and shifts the _remaining_ segment's
 control points 40 px away from the rock, restarting it from the ship's position with the time it
-had left — the ship doesn't jump, and it still arrives where it was going. Ships still off-screen (`pathT < 0`)
-are not threatened; circling ships never dodge. A failed roll takes no action, so the collision
-follows naturally and reads as a botched dodge.
+had left: the ship doesn't jump, and it still arrives where it was going. Ships still off-screen
+(`pathT < 0`) are not threatened; circling ships never dodge. A failed roll takes no action, so the
+collision follows naturally and reads as a botched dodge.
 
 **Flak.** A ship holding formation fires one aimed shot at a rock approaching within 120 px
 (probability `flak base × min(1.3, paramScale)`, 900 ms cooldown per ship). Flak is an enemy
 bullet marked `flak`: it is drawn amber, sits outside `bulletCap()`, is spent on the rock like any
 shot, and can still hit the player if it misses. The dev "Enemy missiles off" toggle silences it.
+
+**Attention cost (finite combat capacity).** Answering a rock is paid for out of the ship's own
+offensive capacity, never on top of it. All three costs act on the ship's next-shot timer or aim
+and scale by tier (`ASTEROID_ATTENTION`, `asteroidAttention(tier)`). The order is the design: Grunt
+most distracted, then Elite, then Guardian, then Carrier least.
+
+| Tier     | Threatened (once per rock) | Flak fired | Aim spread while evading |
+| -------- | -------------------------- | ---------- | ------------------------ |
+| Grunt    | +350 ms                    | +1200 ms   | 0.60                     |
+| Elite    | +220 ms                    | +800 ms    | 0.40                     |
+| Guardian | +120 ms                    | +450 ms    | 0.22                     |
+| Carrier  | +60 ms                     | +250 ms\*  | 0.10 (it never evades)   |
+
+- **Nearby threat:** a mild local distraction. `withAsteroidAttention(timer, tier, "threat")` adds
+  the threat cost to the ship's next-shot timer once per rock, whether or not its dodge roll succeeds.
+- **Debt, not just a timer bump:** every cost is also booked as `enemy.attentionMs`, a floor that
+  is re-applied under the ship's next-shot timer after every tick. A dive launch (which zeroes the
+  timer) or the straggler rule (which caps it) therefore cannot cash the debt in early.
+- **Flak engagement** (only for a ship the rock actually threatens; a rock passing wide costs
+  nothing): firing flak adds the flak cost to the same timer, so the gun that shot at the
+  rock is not also shooting at the player. Flak stays outside the global bullet cap; the timer is
+  what pays for it.
+- **Active dodge:** a successful dodge (sidestep or nudge) sets `enemy.evadeMs` to 600 ms. While it
+  runs, the ship still fires, but each player-directed shot's `vx` is kicked sideways by
+  0.5-1 × the tier's aim spread × the shot's speed, in a random direction (`degradeAim`). It is
+  always a real miss-angle, bigger for the more distracted tiers. Flak is never degraded.
+- \* The Carrier's flak is its twin volley diverted (below), so its cost is the volley it replaces.
+
+### Carrier vs asteroids (#2844)
+
+Immunity derives from the armor state, never from `tier === "Carrier"`. `rocksStrikeEnemies` takes
+`armored` (the tick's starting roster, like the rest of #2484's armor rule):
+
+- **Armored** (any Guardian alive): the force field shatters the rock, the ring plays, the Carrier
+  takes no damage, and `runStats.armorDeflects` counts it. Flagged as shattered, so the rock does not
+  split or pay salvage.
+- **Exposed** (the tick after the last Guardian dies): the Carrier is an ordinary hull. The rock
+  deals 1 damage (once per rock, like any ship) and a large rock keeps going. A Carrier the rock kills
+  still drops its hull plating. No score is awarded (rocks never pay).
+- **Heavy:** the Carrier never sidesteps and never nudges its path. A rock bearing down takes a small
+  attention cost (above) and, while exposed, the Carrier's twin volley is diverted to flak at the
+  rock (`carrierFlakRock` / `chooseCarrierTarget`), replacing a player-directed volley with no extra
+  cadence. The armored Carrier ignores rocks entirely.
+
+### Shared threat and collision contract (for Buddy, #2845)
+
+Enemies, the extraction autopilot and Buddy ask the same pure questions through these exports:
+
+| Helper                                         | Answers                                                               |
+| ---------------------------------------------- | --------------------------------------------------------------------- |
+| `asteroidThreatens(rock, circle, lookaheadMs)` | Exact closest-approach: will the rock reach the circle in the window? |
+| `asteroidHits(rock, circle)`                   | Overlap right now, circle vs circle                                   |
+| `asteroidHitsBox(rock, box)`                   | Overlap right now, circle vs a centred box (how ships are hit)        |
+| `enemyThreatCircle(enemy)`                     | A ship's hitbox as a `ThreatCircle`                                   |
+| `liveHazards(state)`                           | Every hostile thing in flight, rocks included, as moving circles      |
+| `ASTEROID_STATS`, `MAX_ASTEROIDS`              | Rock radius/HP and the in-flight cap                                  |
+
+A `ThreatCircle` is `{ x, y, r, vx?, vy? }`; give it a velocity to have the test run in the
+relative frame. Pad `r` for a safety margin. A destroyed rock (hp <= 0) never threatens or hits.
+Buddy owns its own HP, avoidance odds and damage response; this contract only says which rocks
+threaten and which have hit. Rocks deal 1 damage to ships (`rocksStrikeEnemies`); when #2845 adds
+Buddy it should use `asteroidHits` and the same one-hit-per-rock rule.
 
 **Counters.** `state.tierStats` records per tier: rolls, dodged, pathRolls, pathDodged, struck and
 flak. They carry across waves and reset on a new game; see _Telemetry_ below for how to read them.

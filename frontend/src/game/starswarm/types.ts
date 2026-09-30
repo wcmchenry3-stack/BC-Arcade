@@ -143,6 +143,14 @@ export interface Enemy {
   readonly rolledAsteroidIds: readonly number[];
   /** #2487: ms until this ship may fire flak at an asteroid again. */
   readonly flakCooldown: number;
+  /** #2844: ms left in which this ship counts as evading a rock — its player-directed aim is degraded. */
+  readonly evadeMs: number;
+  /**
+   * #2844: remaining attention debt (ms) from answering rocks. While it is > 0 the ship's next-shot
+   * timer is held at or above it after every tick, so no phase change (a dive launch resets
+   * shootTimer to 0, the straggler rule caps it) can cash the debt in early.
+   */
+  readonly attentionMs: number;
 }
 
 /** #2487: per-tier asteroid-response counters (carried across waves, reset on a new game). */
