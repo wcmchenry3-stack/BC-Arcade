@@ -5,13 +5,15 @@ The purchase service never talks to Apple or Google itself. It is handed a
 an :class:`AppleVerifier` or :class:`GoogleVerifier`. That keeps the ownership,
 link-cap and entitlement logic (this story) independent of the store clients:
 
-* **#2786** implements ``AppleVerifier`` with ``app-store-server-library``
+* **#2786** (shipped) implements ``AppleVerifier`` as
+  ``purchases.apple_store.AppStoreVerifier`` with ``app-store-server-library``
   (``SignedDataVerifier`` per allowed environment, then App Store Server API
-  *Get Transaction Info*; docs/IAP.md §6.2).
+  *Get Transaction Info* when configured; docs/IAP.md §6.2).
 * **#2787** implements ``GoogleVerifier`` with the Play Developer API
   (``purchases.products.get`` / ``acknowledge``; docs/IAP.md §7.2-7.3).
 
-Until then the providers in ``purchases/apple.py`` / ``purchases/google.py``
+While a store is not configured (Apple: no ``APPLE_BUNDLE_ID``; Google: until
+#2787) the providers in ``purchases/apple.py`` / ``purchases/google.py``
 return the ``NotConfigured*`` verifiers below, and every purchase call answers
 ``503 store_unavailable``: nothing is granted from unverified evidence.
 
@@ -153,7 +155,7 @@ class GoogleVerifier(Protocol):
 
 
 class NotConfiguredAppleVerifier:
-    """Default until #2786 ships real verification: every call is ``503``."""
+    """Used while Apple verification is not configured: every call is ``503``."""
 
     async def verify(self, evidence: AppleEvidence) -> VerifiedPurchase:
         raise PurchaseError(503, "store_unavailable")

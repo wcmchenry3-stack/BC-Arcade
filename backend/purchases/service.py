@@ -35,7 +35,7 @@ import json
 import logging
 import uuid
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
@@ -604,6 +604,67 @@ async def apply_store_state(
         await db.rollback()
         return False
     return changed
+
+
+async def purchase_exists(db: AsyncSession, platform: str, store_key: str) -> bool:
+    return (
+        await db.execute(
+            select(Purchase.id).where(
+                Purchase.platform == platform, Purchase.store_key == store_key
+            )
+        )
+    ).first() is not None
+
+
+async def record_store_purchase(
+    db: AsyncSession,
+    verified: VerifiedPurchase,
+    *,
+    dedupe_key: str | None = None,
+    event_at: datetime | None = None,
+) -> bool:
+    """Record a purchase the store told us about before any client posted it.
+
+    For a verified notification (Apple ``ONE_TIME_CHARGE``, or a ``REFUND`` /
+    ``REVOKE`` for a purchase no session has presented yet). Upserts the
+    ``purchases`` row from the verified transaction — **no session is linked**,
+    so nothing is granted; a later client post links it (subject to §4) and a
+    later post of an older JWS cannot undo a newer revoke (event ordering).
+    If the row already exists the usual upsert rules apply and linked sessions
+    are recomputed on a state change.
+
+    ``dedupe_key`` makes a redelivery a no-op. Returns False for a duplicate,
+    an environment outside the allow-list or a product that is not a premium
+    game (nothing written). Commits.
+    """
+    if dedupe_key is not None and await _dedupe_seen(db, dedupe_key):
+        return False
+    if verified.environment not in allowed_environments(verified.platform):
+        return False
+    try:
+        game_slug = await _premium_slug_for(db, verified.product_id)
+    except PurchaseError:
+        return False
+    if event_at is not None:
+        verified = replace(verified, event_at=event_at)
+    try:
+        purchase, previous = await upsert_purchase(db, verified, game_slug)
+        if dedupe_key is not None and await _dedupe_seen(db, dedupe_key):
+            await db.rollback()
+            return False
+        if previous is not None and previous != purchase.state:
+            _event(db, purchase, "state_changed", previous=previous, state=purchase.state)
+            await _recompute_all_links(db, purchase)
+        _event(db, purchase, "notification", dedupe_key=dedupe_key, state=purchase.state)
+        await db.commit()
+    except PurchaseError:
+        # Same store key, different product: bad evidence, nothing written.
+        await db.rollback()
+        return False
+    except IntegrityError:
+        await db.rollback()
+        return False
+    return True
 
 
 async def delete_purchase(db: AsyncSession, purchase_id: uuid.UUID) -> bool:

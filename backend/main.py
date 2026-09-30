@@ -156,14 +156,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     _warn_if_dev_override_active()
     app.state.retention_task = _start_daily_word_retention()
+    app.state.apple_replay_task = _start_apple_notification_replay()
     try:
         await _db_health_check()
         yield
     finally:
         try:
-            await _stop_daily_word_retention(app.state.retention_task)
+            await _stop_apple_notification_replay(app.state.apple_replay_task)
         finally:
-            app.state.retention_task = None
+            app.state.apple_replay_task = None
+            try:
+                await _stop_daily_word_retention(app.state.retention_task)
+            finally:
+                app.state.retention_task = None
 
 
 app = FastAPI(
@@ -380,6 +385,35 @@ async def _stop_daily_word_retention(task: asyncio.Task | None) -> None:
         )
     elif not task.cancelled():
         task.result()  # re-raises a crash, as `await task` did
+
+
+# App Store notification-history replay (#2786, docs/IAP.md §6.5): replays the
+# last 48 h of App Store Server Notifications at startup and then daily, so a
+# webhook Apple gave up on is still applied. Runs only when Apple verification
+# and the App Store Server API are configured; idempotent across instances
+# (notificationUUID dedupe). Manual run: `python scripts/apple_replay_notifications.py`.
+def _start_apple_notification_replay() -> asyncio.Task | None:
+    if not is_configured():
+        return None
+    from purchases import apple
+
+    verifier = apple.configured_verifier()
+    if verifier is None or not verifier.has_api:
+        return None
+    from db.base import get_session_factory
+    from purchases.apple_notifications import run_replay_loop
+
+    return asyncio.create_task(run_replay_loop(apple.configured_verifier, get_session_factory))
+
+
+async def _stop_apple_notification_replay(task: asyncio.Task | None) -> None:
+    """Cancel the replay task, bounded like the retention task (#2667)."""
+    if task is None:
+        return
+    task.cancel()
+    done, _ = await asyncio.wait({task}, timeout=RETENTION_STOP_TIMEOUT_SECONDS)
+    if not done:
+        _audit_log.warning(json.dumps({"event": "apple_replay_stop_timeout"}))
 
 
 DB_PING_TIMEOUT_SECONDS = 5.0
