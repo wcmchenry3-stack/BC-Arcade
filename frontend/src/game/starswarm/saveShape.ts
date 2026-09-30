@@ -81,6 +81,9 @@ const ENEMY: KeySpec<Enemy> = {
   rolledAsteroidIds: "required",
   flakCooldown: "required",
   evadeMs: "required",
+  flinchMs: "required",
+  reactedAsteroidIds: "required",
+  reactedPhase: "required",
   attentionMs: "required",
 };
 
