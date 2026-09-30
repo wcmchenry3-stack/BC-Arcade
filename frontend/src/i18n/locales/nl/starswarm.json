@@ -31,6 +31,10 @@
   "a11y.gunsDown": "Kanon terug naar niveau {{level}}.",
   "a11y.hullUp": "Rompplaten {{level}}.",
   "a11y.hullHit": "Rompplaten absorbeerden de klap.",
+  "hud.cueGuns": "KANON +1",
+  "hud.cueGunsMax": "KANON MAX",
+  "hud.cueHull": "ROMP +1",
+  "hud.cueHullMax": "ROMP MAX",
   "result.reachedWave": "Golf {{wave}} bereikt",
   "result.wave": "Golf"
 }

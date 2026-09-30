@@ -1,4 +1,38 @@
-import { heartsLeaderboardScore, heartsResult, heartsStandings } from "../result";
+import {
+  buildHeartsCompletedResult,
+  heartsLeaderboardScore,
+  heartsResult,
+  heartsStandings,
+} from "../result";
+
+describe("buildHeartsCompletedResult (#2838)", () => {
+  // Hand 2 is a moon shot by seat 2: 0 for the shooter, 26 for the others.
+  const history = [
+    [10, 5, 8, 3],
+    [26, 26, 0, 26],
+    [9, 4, 6, 7],
+  ];
+  const totals = [45, 35, 14, 36];
+
+  it("carries the post-moon hand rows, totals and leaderboard value", () => {
+    const r = buildHeartsCompletedResult(totals, history);
+    expect(r).toEqual({
+      final_score: 55,
+      vs_result: "loss",
+      hand_scores: history,
+      final_scores: totals,
+      human_seat: 0,
+    });
+    for (let i = 0; i < 4; i++) {
+      expect(history.reduce((s, row) => s + row[i]!, 0)).toBe(totals[i]);
+    }
+  });
+
+  it("copies the rows so later state changes can't alias the payload", () => {
+    const r = buildHeartsCompletedResult(totals, history);
+    expect(r.hand_scores[0]).not.toBe(history[0]);
+  });
+});
 
 describe("heartsResult (#2506)", () => {
   it("is a win when the human alone has the lowest score", () => {

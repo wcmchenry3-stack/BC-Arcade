@@ -31,6 +31,10 @@
   "a11y.gunsDown": "武器レベルが{{level}}に低下。",
   "a11y.hullUp": "装甲プレート{{level}}。",
   "a11y.hullHit": "装甲プレートが被弾を吸収した。",
+  "hud.cueGuns": "武器 +1",
+  "hud.cueGunsMax": "武器 MAX",
+  "hud.cueHull": "装甲 +1",
+  "hud.cueHullMax": "装甲 MAX",
   "result.reachedWave": "ウェーブ{{wave}}に到達",
   "result.wave": "ウェーブ"
 }
