@@ -3,12 +3,17 @@
 **Status:** contract for owner review (#2785). The backend core has shipped
 (#840): the `purchases` / `purchase_links` / `purchase_events` schema,
 `POST /purchases/{apple,google}`, link caps, derived `game_entitlements` and
-the store-verifier interface (§8.4). Real store verification, webhooks and
-crons (#2786 Apple, #2787 Google) and the paywall (#841) have not shipped;
-until they do, the purchase routes answer `503 store_unavailable`. Those
-stories build to the interfaces defined here. Where this document and an older issue disagree,
-this document wins; where it and shipped code disagree, fix one of them in the
-same PR.
+the store-verifier interface (§8.4). **The Apple server side has shipped
+(#2786, §6.6):** real signed-transaction verification, the App Store Server
+Notifications V2 webhook and the notification-history replay. It is
+**dormant** until `APPLE_BUNDLE_ID` (and friends, §16) are set: until then
+`POST /purchases/apple` and the webhook answer `503 store_unavailable`. The
+Apple **client** part of #2786 (the `expo-iap` adapter, StoreKit sandbox
+testing, reviewer notes) waits until v1.0 is submitted (§6.6). Google (#2787)
+and the paywall (#841) build to the interfaces defined here; until Google
+ships, `POST /purchases/google` answers `503 store_unavailable`. Where this
+document and an older issue disagree, this document wins; where it and
+shipped code disagree, fix one of them in the same PR.
 
 Related: [PRODUCT.md — Monetization](PRODUCT.md#monetization) (product rules),
 [ARCHITECTURE.md §10](ARCHITECTURE.md#10-premium-entitlements) (the entitlement
@@ -278,8 +283,8 @@ with no user action. The explicit **Restore Purchases** button also calls
 - Library: Apple's official
   [`app-store-server-library`](https://pypi.org/project/app-store-server-library/)
   (Python, `3.1.x`), using `SignedDataVerifier` with Apple's root certificates.
-  The root certificates are public and may be committed under
-  `backend/purchases/apple_roots/`.
+  The root certificate is public and is committed as
+  `backend/purchases/certs/AppleRootCA-G3.cer` (§6.6).
 - **One verifier and one API client per allowed environment.** The library's
   `SignedDataVerifier` and `AppStoreServerAPIClient` are each bound to one
   environment. At startup, build a `SignedDataVerifier` and an
@@ -296,11 +301,13 @@ with no user action. The explicit **Restore Purchases** button also calls
      lies about its environment fails here.
   3. Check `bundleId == com.buffingchi.games`.
   4. Check `productId` is in the catalog and `type == Non-Consumable`.
-  5. Check there is no `revocationDate`.
-  6. Fetch the authoritative state with the **same environment's** App Store
-     Server API client, **Get Transaction Info**
-     (`/inApps/v1/transactions/{transactionId}`). This also catches a JWS that
-     has since been revoked.
+  5. When the App Store Server API is configured, fetch the authoritative
+     state with the **same environment's** client, **Get Transaction Info**
+     (`/inApps/v1/transactions/{transactionId}`), and verify that JWS the same
+     way. This also catches a JWS that has since been revoked. Without API
+     credentials this step is skipped (§6.6).
+  6. A `revocationDate` makes the answer `revoked` (the response says
+     `status: "revoked"`, `finish: true`); otherwise `owned`.
   7. Upsert on `originalTransactionId`.
 - Record `appAccountToken`, `inAppOwnershipType`, `environment`,
   `purchaseDate` and `transactionId`.
@@ -347,10 +354,158 @@ groups invite-only, or accept the risk (§17 Q5).
   - Anything else → `200`, ignored.
 - Idempotency: `notificationUUID` goes in `purchase_events`. A duplicate is a
   no-op returning `200`.
-- Backstop: a daily Render cron calls **Get Notification History** for the last
-  48 h and replays anything missed.
+- Backstop: a daily job calls **Get Notification History** for the last 48 h
+  and replays anything missed (as built: an in-process task, §6.6).
 - `CONSUMPTION_REQUEST` does not apply to non-consumables. No refund UI in the
   app; users request refunds through Apple.
+
+### 6.6 As built (#2786, server side)
+
+**Split.** #2786 was split by owner decision. The **server side** below is on
+`dev`. The **client side** waits until v1.0 is submitted, because v1.0 must
+ship with no store SDK (`frontend/src/__tests__/releaseBuildConfig.test.ts`).
+Remaining client work, still under #2786:
+
+- the `expo-iap` StoreKit 2 adapter, registered through
+  `PurchaseAdapterFactory` via `registerPurchaseAdapterFactory`
+  (`frontend/src/purchases/selectAdapter.ts`, §9.4), with the
+  transaction listener started at app launch (§6.1) and `appAccountToken =
+  uuid5(APP_ACCOUNT_NS, sessionId)` passed on `requestPurchase`;
+- the `expo-iap` dependency, native build checks (Xcode Cloud) and the
+  `releaseBuildConfig` guard update for the premium binary;
+- the Apple sandbox matrix of §14 against a backend with the dev override off;
+- App Review notes (§15) and submitting the five products with the binary.
+
+**Library choice.** Apple's official
+[`app-store-server-library`](https://github.com/apple/app-store-server-library-python)
+`3.1.2` (MIT). It runs on Python 3.11 (Render) and 3.13, needs no change to
+any pinned dependency (it adds `pyOpenSSL`, `attrs`, `cattrs`, `asn1` and
+`enum-compat`, all pinned in `backend/requirements.txt`), and `pip-audit -r
+requirements.txt` is clean. Hand-rolling the chain checks with `cryptography`
++ PyJWT would duplicate Apple's own reference code (marker OIDs, OCSP,
+effective-date rules) for no gain.
+
+**Verification strategy** (`backend/purchases/apple_store.py`,
+`AppStoreVerifier`):
+
+1. The environment named in the **unverified** payload picks a
+   `SignedDataVerifier`; only `Production` and `Sandbox` verifiers are ever
+   built, and only for environments in `APPLE_IAP_ENVIRONMENTS`. Anything else
+   is `422 environment_not_allowed`. (The library skips signature checks for
+   `Xcode` / `LocalTesting`; we never build those.)
+2. The library verifies the JWS: header `alg` must be `ES256` (no `none`, no
+   HMAC); `x5c` must hold exactly three certificates; the leaf and
+   intermediate must chain to a **trusted root we supply** (the `x5c` root is
+   ignored), under OpenSSL `X509_STRICT`; the leaf must carry Apple's
+   receipt-signing OID `1.2.840.113635.100.6.11.1` and the intermediate the
+   WWDR OID `1.2.840.113635.100.6.2.1`. Certificate validity is checked at the
+   JWS `signedDate`; with online checks on (the default) both certificates
+   are also checked by OCSP against Apple and validity is checked at the
+   current time. Then the signature, then `bundleId` (`422 wrong_app`) and the
+   signed `environment`.
+3. `productId` must follow the catalog convention and `type` must be
+   `Non-Consumable` (`422 unknown_product`); the service then requires
+   `game_types.is_premium` for the slug.
+4. With API credentials, **Get Transaction Info** re-reads the transaction and
+   the answer is verified by the same environment's verifier; it must name
+   the same `originalTransactionId` and product. API `400`/`404` →
+   `422 verification_failed`; auth, rate-limit, `5xx` or network errors →
+   `503 store_unavailable`.
+5. The result is normalized (§8.4 table): `store_key = originalTransactionId`,
+   `ownership_type` from `inAppOwnershipType`, `account_token =
+   appAccountToken` (the ownership check stays in the service), `event_at =
+   signedDate`, `purchased_at = purchaseDate`, and a `revocationDate` gives
+   `state = revoked` with `revoked_at` and a `revocation_reason` of
+   `refund_app_issue` / `refund_other` (from `revocationReason`) or
+   `family_revoke` (from `revocationType`).
+
+Verification runs in a worker thread (pyOpenSSL and OCSP are blocking).
+Failure codes: a bad signature, untrusted chain, missing marker OID, expired
+certificate or payload the library cannot parse is `422 verification_failed`;
+an OCSP responder that cannot be reached is `503 store_unavailable`.
+
+**Pending / Ask to Buy.** StoreKit 2 creates no transaction (so no JWS) while
+an Ask-to-Buy request waits; Apple never reports `pending` to this server.
+An approval arrives later as an ordinary transaction through the listener
+(`source: "sync"`) or as a `ONE_TIME_CHARGE` notification, and is `owned`.
+A declined request never reaches the server.
+
+**Trusted root.** `backend/purchases/certs/AppleRootCA-G3.cer` is **Apple
+Root CA - G3** (DER), the root Apple lists for App Store signed data at
+<https://www.apple.com/certificateauthority/>. SHA-256 fingerprint
+`63:34:3A:BF:B8:9A:6A:03:EB:B5:7E:9B:3F:5F:A7:BE:7C:4F:5C:75:6F:30:17:B3:A8:C4:88:C3:65:3E:91:79`
+(valid 2014-04-30 to 2039-04-30). The code refuses to load a file with any
+other fingerprint (`APPLE_ROOT_CA_G3_SHA256`). To re-verify, download it from
+Apple and compare `openssl x509 -inform DER -in AppleRootCA-G3.cer -noout
+-fingerprint -sha256`. Tests never use it to verify: they generate a
+throwaway CA (`backend/tests/apple_jws.py`) and trust that instead.
+
+**Dormant by default.** `load_config()` returns nothing, and both Apple routes
+answer `503 store_unavailable`, unless `APPLE_BUNDLE_ID` is set and, when
+`Production` is allowed, `APPLE_APP_ID` too. A half-set API key (one or two
+of the three `APPLE_IAP_*` key variables), an unknown environment list or an
+unreadable private key also leaves it dormant, with an
+`apple_iap_misconfigured` warning (variable **names** only) in the audit log.
+The configuration is read once per process.
+
+**Webhook.** `POST /purchases/apple/notifications`, body `{"signedPayload":
+"<JWS>"}`, no session header. Enter these in App Store Connect → App
+Information → App Store Server Notifications, **Version 2**:
+
+| Field                       | URL                                                                                 |
+| --------------------------- | ----------------------------------------------------------------------------------- |
+| Production Server URL       | `https://games-api.buffingchi.com/purchases/apple/notifications`                    |
+| Sandbox Server URL          | `https://games-api.buffingchi.com/purchases/apple/notifications` once live (App Review and TestFlight purchases are recorded on production, §6.4); `https://dev-games-api.buffingchi.com/purchases/apple/notifications` while the dev backend is the purchase-testing backend (§17 Q6) |
+
+Behavior (`backend/purchases/apple_notifications.py`):
+
+- `signedPayload` is verified as in step 2, choosing the verifier from
+  `data.environment` (or `summary.environment`); for `Production` the
+  `appAppleId` must equal `APPLE_APP_ID`. The embedded
+  `signedTransactionInfo` is verified too, pinned to the same environment.
+- `REFUND` / `REVOKE` → `revoked`, `REFUND_REVERSED` → `owned`, through
+  `apply_store_state(..., event_at=<notification signedDate>,
+  dedupe_key=<notificationUUID>)`. For a purchase no client has posted yet,
+  and for every `ONE_TIME_CHARGE`, the transaction is recorded from its own
+  verified state with **no session link** (`record_store_purchase`): it
+  grants nothing, and a later post of an older JWS cannot undo a refund
+  (event ordering, §8.4).
+- `TEST` → `200 {"status": "test"}`. Any other type (`CONSUMPTION_REQUEST`,
+  `REFUND_DECLINED`, subscription types) and any product outside the catalog
+  → `200 {"status": "ignored"}`, so Apple stops retrying.
+- Responses: `200 {"status": "applied" | "unchanged" | "ignored" | "test"}`
+  (`unchanged` covers duplicates and stale events); `400 invalid_request` for
+  a malformed body; `422 verification_failed` / `wrong_app` /
+  `environment_not_allowed` for a payload that fails verification (Apple
+  retries, then gives up; nothing is applied); `503 store_unavailable` while
+  dormant or when OCSP is unreachable (Apple retries); `413` over 32 KB
+  (the `/purchases` body cap); `429` past 300 requests a minute per IP.
+- Logs carry the notification type, outcome and `notificationUUID` only;
+  rejections log the status and code only, never the payload. Sentry never
+  receives request bodies, and `signedPayload` is on the scrub list.
+
+**Replay.** `replay_notification_history()` asks **Get Notification History**
+for the last 48 h, per allowed environment with an API client, follows
+pagination (at most 100 pages), and feeds every `signedPayload` through the
+webhook handler, so dedupe and ordering are the same. A payload that fails
+verification is counted and skipped; an API error ends that environment's run
+and the next run retries. It runs **in-process** at startup and then every
+24 h (`main.py` lifespan, like the Daily Word retention task), only when the
+database, Apple verification **and** the API key are configured. Several
+instances running it at once are harmless (dedupe). Manual run, from
+`backend/` in a Render shell: `python scripts/apple_replay_notifications.py
+--hours 168` (Apple keeps 180 days of history).
+
+**Environments.** `APPLE_IAP_ENVIRONMENTS` (default `Production,Sandbox`,
+§6.4) decides which verifiers and API clients exist; the service checks the
+verified environment again before writing. Production needs `APPLE_APP_ID`.
+
+**Owner steps before this does anything.** Create the five Non-Consumables
+(§2, §17 store setup); create an In-App Purchase key (App Store Connect →
+Users and Access → Integrations → In-App Purchase) and set the `APPLE_*`
+variables (§16) on the API service; enter the two notification URLs above
+and send a test notification (App Store Connect, or the API's *Request a Test
+Notification*), which should log `apple_notification … "outcome": "test"`.
 
 ---
 
@@ -600,7 +755,8 @@ POST /purchases/google/notifications   Pub/Sub push envelope, OIDC bearer
 
 **Cron jobs** (Render cron, daily):
 
-- Apple notification-history replay.
+- Apple notification-history replay (shipped by #2786 as an in-process daily
+  task plus a manual script, §6.6).
 - Google voided-purchases poll.
 - Google unacknowledged-purchase sweep.
 
@@ -803,6 +959,85 @@ runners make wall-clock time noisy.
   apparent IP and escape the per-IP limit. Known issue, fixed globally in a
   follow-up (SECURITY.md §9 "Known issue: X-Forwarded-For spoofing"); the
   per-session and per-`store_key` limits still apply.
+
+_#2786 note:_ the bucket-burn risk is unchanged. The route still counts the
+per-`store_key` bucket before calling the verifier, because with API
+credentials the verifier makes a store call (Get Transaction Info).
+
+### 8.5 Delete My Data and purchase records (owner decision, #2786)
+
+Applies to **both** stores: Apple now, Google (#2787) must follow the identical
+rule and extend the same `DELETE /me` code path and test.
+
+**What `DELETE /me` deletes** (`backend/me/router.py`), in addition to the
+v1.0 data ([DATA-INVENTORY.md](DATA-INVENTORY.md)):
+
+- the session's `purchase_links` rows — the link between the install ID and a
+  store purchase;
+- the session's `game_entitlements` rows, derived and legacy alike (already
+  deleted in v1.0). No recompute is needed: nothing else is derived from this
+  session's links.
+
+**What it keeps.** The `purchases` rows and their `purchase_events` stay. They
+are the **store transaction record** (store IDs, product, dates,
+environment, state and state history), kept to handle refunds and
+chargebacks, detect fraud and link abuse, and establish or defend legal
+claims. Proposed legal basis: GDPR Art. 17(3)(b) (legal obligation, e.g.
+tax and accounting records) and 17(3)(e) (legal claims), and legitimate
+interests in fraud prevention. **[OWNER TO CONFIRM: legal basis and
+retention period, e.g. the statutory accounting period plus the store
+refund/chargeback window.]** No expiry job exists yet; one must be added once
+the period is decided.
+
+**No retained column holds the install ID.** Two retained values are
+**pseudonymous derivatives** of it, one-way and not reversible, but
+recomputable by anyone who still holds the old install ID:
+
+| Retained value                       | What it is                                                         |
+| ------------------------------------ | ------------------------------------------------------------------ |
+| `purchases.account_token`            | Apple `appAccountToken = uuid5(APP_ACCOUNT_NS, install ID)` (§4); Google `obfuscatedExternalAccountId = SHA-256(install ID)` (#2787). The same value is inside the store's own transaction record, so deleting ours would not remove it from Apple or Google. |
+| `purchase_events.session_hash`       | SHA-256 of the install ID, on audit rows (link, refusal).          |
+
+After Delete My Data the app starts a new install ID and discards the old
+one, so on our side nothing ties the retained rows to the new install. This is
+not redesigned here; it is disclosed.
+
+**Restore afterwards.** The purchase belongs to the store account, not the
+install: Restore Purchases (or the launch sync) re-presents the store's
+signed transaction and links the new install ID, subject to the §4 link caps.
+The deleted link no longer counts toward `MAX_SESSIONS_PER_PURCHASE`; the
+30-day new-link limit still counts only rows that exist.
+
+**Store policy.** Apple: account deletion must remove data "the developer
+isn't legally required to maintain" (guest/auto-generated accounts
+included), and "if local laws or regulations require that you maintain some
+data, let your users know"
+([Offering account deletion in your app](https://developer.apple.com/support/offering-account-deletion-in-your-app/)).
+Google Play: data may be retained "for legitimate reasons such as security,
+fraud prevention, or regulatory compliance", but the retention must be
+disclosed, for example in the privacy policy, and in the Data safety
+deletion answers (Play Console Help, *Understanding Google Play's app account
+deletion requirements*; User Data policy). The premium-update gate tracks this
+([RELEASE-ACCEPTANCE-premium.md §7](RELEASE-ACCEPTANCE-premium.md#7-dependencies-and-store-setup)).
+
+**Proposed privacy-policy paragraph for the premium update** (not yet in
+`docs/privacy-policy.html`; add it with the premium update, after owner/legal
+review):
+
+> **Purchases.** When you buy premium access, Apple or Google processes the
+> payment; we never receive your payment details. We receive and store the
+> store's record of the purchase: the store's transaction identifiers, the
+> product, the purchase, refund or revocation dates and status, the store
+> environment, and a one-way code derived from your app install ID that the
+> app gives the store so we can match the purchase to your install. We use
+> these records to unlock the game you bought, restore it on a new install,
+> handle refunds and chargebacks, and prevent fraud. **Delete My Data** removes
+> the link between these records and your install, and the unlocks on that
+> install. We keep the transaction records themselves for [OWNER TO CONFIRM:
+> period] because we may need them for refunds, chargebacks, fraud prevention,
+> tax and accounting obligations, and legal claims. You can restore your
+> purchases on a new install at any time with Restore Purchases, using the
+> same Apple or Google account.
 
 ---
 
@@ -1131,10 +1366,12 @@ Sentry (SECURITY.md §13).
 
 | Variable                                                   | Purpose                                                                                      |
 | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `APPLE_IAP_ISSUER_ID`, `APPLE_IAP_KEY_ID`                  | App Store Server API key identity (App Store Connect → Integrations → In-App Purchase key).  |
-| `APPLE_IAP_PRIVATE_KEY`                                    | The `.p8` key (PEM string).                                                                  |
-| `APPLE_BUNDLE_ID` (`com.buffingchi.games`), `APPLE_APP_ID` | Verifier inputs. `APPLE_APP_ID` is the numeric Apple ID, needed for production verification. |
-| `APPLE_IAP_ENVIRONMENTS`                                   | `Production,Sandbox` in production (§6.4). Default when unset: `Production,Sandbox`.         |
+| `APPLE_BUNDLE_ID` (`com.buffingchi.games`)                 | **Required** to turn Apple verification on (#2786). Unset → both Apple routes stay `503 store_unavailable` (§6.6). |
+| `APPLE_APP_ID`                                             | The app's numeric Apple ID. **Required** when `Production` is allowed; also checked on Production notifications. |
+| `APPLE_IAP_ENVIRONMENTS`                                   | `Production,Sandbox` in production (§6.4). Default when unset: `Production,Sandbox`. Only `Production` and `Sandbox` are honoured. |
+| `APPLE_IAP_ISSUER_ID`, `APPLE_IAP_KEY_ID`                  | Optional. App Store Server API key identity (App Store Connect → Integrations → In-App Purchase key). Set all three `APPLE_IAP_*` key variables or none. |
+| `APPLE_IAP_PRIVATE_KEY`                                    | Optional, with the two above. The `.p8` key (PEM string; `\n`-escaped newlines are accepted). Enables Get Transaction Info on every client post and the notification-history replay. |
+| `APPLE_IAP_ONLINE_CHECKS`                                  | Optional. OCSP revocation checks of Apple's signing certificates; on unless set to `false` / `0` / `off`. Needs outbound HTTPS to Apple's OCSP responder. |
 | `GOOGLE_PLAY_ENVIRONMENTS`                                 | Allowed Google environments, `production,test` (default). Drop `test` to refuse license-tester purchases. |
 | `GOOGLE_PLAY_PACKAGE_NAME` (`com.buffingchi.games`)        | Package check.                                                                               |
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`                         | Service-account key.                                                                         |

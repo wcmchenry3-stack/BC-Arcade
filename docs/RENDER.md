@@ -55,6 +55,19 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `ADMIN_API_TOKEN`          | prod-only value                                                 | dev value                                                               | Dashboard secret    |
 | `ENTITLEMENT_DEV_OVERRIDE` | **must not exist**                                              | set (unlocks every premium game for every session)                      | Dashboard, dev only |
 | `RENDER_GIT_COMMIT`        | injected by Render — becomes the Sentry `release`               | ←                                                                       | Render (automatic)  |
+| `APPLE_BUNDLE_ID`          | set when Apple purchases go live (#2786)                        | set on the purchase-testing backend                                     | Dashboard secret    |
+| `APPLE_APP_ID`             | set with `APPLE_BUNDLE_ID` (required while Production is allowed) | ←                                                                     | Dashboard secret    |
+| `APPLE_IAP_ENVIRONMENTS`   | optional; default `Production,Sandbox`                          | optional                                                                | Dashboard           |
+| `APPLE_IAP_ISSUER_ID`      | optional (App Store Server API); set all three `APPLE_IAP_*` key vars or none | ←                                                         | Dashboard secret    |
+| `APPLE_IAP_KEY_ID`         | ↑                                                               | ↑                                                                       | Dashboard secret    |
+| `APPLE_IAP_PRIVATE_KEY`    | ↑ (the `.p8` PEM)                                               | ↑                                                                       | Dashboard secret    |
+| `APPLE_IAP_ONLINE_CHECKS`  | optional; OCSP checks, on unless `false`                        | optional                                                                | Dashboard           |
+
+The `APPLE_*` variables are **unset by default**: Apple verification stays
+dormant and `POST /purchases/apple` and `POST /purchases/apple/notifications`
+answer `503 store_unavailable`. Meanings, the webhook URLs to enter in App
+Store Connect and the replay job are in [IAP.md §6.6 and §16](IAP.md#66-as-built-2786-server-side).
+Never put values in `render.yaml` or the repo.
 
 `ENVIRONMENT` unset means `development` — an API never reports to Sentry's
 `production` environment by accident. `ENVIRONMENT=test` additionally registers
