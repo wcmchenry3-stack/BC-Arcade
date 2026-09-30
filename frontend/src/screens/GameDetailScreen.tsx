@@ -13,6 +13,21 @@ import type { GameDetailResponse } from "../api/types";
 import { formatMetric, gameMetric, outcomeLabel } from "../api/outcomeDisplay";
 import type { ProfileStackParamList } from "../types/navigation";
 import { formatTimestamp } from "../utils/formatTimestamp";
+import { ApiError, isNetworkError } from "../game/_shared/httpClient";
+import { GameDetailSections } from "../components/gameDetail/GameDetailSections";
+
+/**
+ * Why the detail couldn't load. `unavailable` is the server refusing it (403:
+ * another player's game; 404: not synced yet, or gone): asking again won't
+ * help, and nothing about the game is shown.
+ */
+type LoadError = "offline" | "unavailable" | "failed";
+
+function loadErrorOf(e: unknown): LoadError {
+  if (isNetworkError(e)) return "offline";
+  if (e instanceof ApiError && (e.status === 403 || e.status === 404)) return "unavailable";
+  return "failed";
+}
 
 type Props = {
   navigation: NativeStackNavigationProp<ProfileStackParamList, "GameDetail">;
@@ -32,11 +47,11 @@ export default function GameDetailScreen({ navigation, route }: Props) {
   const { gameId } = route.params;
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation(["profile", ...GAME_TITLE_NAMESPACES]);
+  const { t } = useTranslation(["profile", "stats", ...GAME_TITLE_NAMESPACES]);
 
   const [detail, setDetail] = useState<GameDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LoadError | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -44,9 +59,15 @@ export default function GameDetailScreen({ navigation, route }: Props) {
       const d = await statsApi.getGameDetail(gameId, false);
       setDetail(d);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setDetail(null);
+      setError(loadErrorOf(e));
     }
   }, [gameId]);
+
+  const retry = useCallback(() => {
+    setLoading(true);
+    load().finally(() => setLoading(false));
+  }, [load]);
 
   useEffect(() => {
     let active = true;
@@ -63,7 +84,14 @@ export default function GameDetailScreen({ navigation, route }: Props) {
   if (loading) {
     body = <EmptyState kind="loading" />;
   } else if (error || !detail) {
-    body = <EmptyState kind="error" message={t("detail.loadError")} />;
+    body = (
+      <EmptyState
+        kind="error"
+        message={t(error === "offline" ? "detail.offline" : "detail.loadError")}
+        retry={error === "unavailable" ? undefined : { label: t("stats:retry"), onPress: retry }}
+        testID="game-detail-error"
+      />
+    );
   } else {
     const metric = gameMetric(detail);
     body = (
@@ -102,6 +130,7 @@ export default function GameDetailScreen({ navigation, route }: Props) {
             isLast
           />
         </View>
+        <GameDetailSections detail={detail} />
       </ScrollView>
     );
   }
