@@ -62,11 +62,23 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `APPLE_IAP_KEY_ID`         | ↑                                                               | ↑                                                                       | Dashboard secret    |
 | `APPLE_IAP_PRIVATE_KEY`    | ↑ (the `.p8` PEM)                                               | ↑                                                                       | Dashboard secret    |
 | `APPLE_IAP_ONLINE_CHECKS`  | leave unset (on); `off` is refused in production                | optional; `off` allowed for local testing                               | Dashboard           |
+| `GOOGLE_PLAY_PACKAGE_NAME` | set when Google purchases go live (#2787): `com.buffingchi.games` | set on the purchase-testing backend                                   | Dashboard           |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | required with the package name: the Play API service-account key JSON | ← (same account is fine; the key is per service)             | Dashboard secret    |
+| `GOOGLE_RTDN_AUDIENCE`     | required with the package name: `https://games-api.buffingchi.com/purchases/google/notifications` | `https://dev-games-api.buffingchi.com/purchases/google/notifications` | Dashboard |
+| `GOOGLE_RTDN_PUSH_SA`      | required with the package name: the Pub/Sub push service-account email | ← (its own push subscription)                                   | Dashboard           |
+| `GOOGLE_PLAY_ENVIRONMENTS` | **set `production`** (the default `production,test` lets licence testers unlock for free) | leave the default `production,test`                   | Dashboard           |
 
 The `APPLE_*` variables are **unset by default**: Apple verification stays
 dormant and `POST /purchases/apple` and `POST /purchases/apple/notifications`
 answer `503 store_unavailable`. Meanings, the webhook URLs to enter in App
 Store Connect and the replay job are in [IAP.md §6.6 and §16](IAP.md#66-as-built-2786-server-side).
+The `GOOGLE_*` variables are **unset by default** too: `POST /purchases/google`
+and `POST /purchases/google/notifications` answer `503 store_unavailable`
+until all four required ones are set (a half-set configuration stays
+dormant and is reported to Sentry by reason code). Service-account
+permissions, the Pub/Sub push subscription, the RTDN URL and the daily
+voided-purchases / acknowledgement jobs are in
+[IAP.md §7.6 and §16](IAP.md#76-as-built-2787-server-side).
 Never put values in `render.yaml` or the repo.
 
 `ENVIRONMENT` unset means `development` — an API never reports to Sentry's

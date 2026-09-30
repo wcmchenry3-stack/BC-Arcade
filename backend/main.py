@@ -44,6 +44,11 @@ from stats.router import router as stats_router
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 _audit_log = logging.getLogger("audit")
+# httpx logs every request URL at INFO ("HTTP Request: GET .../tokens/<token>").
+# Store API URLs carry credentials in the path (Google purchaseToken, Apple
+# transaction IDs), so the HTTP client loggers only speak up for warnings (#2787).
+for _http_logger in ("httpx", "httpcore"):
+    logging.getLogger(_http_logger).setLevel(logging.WARNING)
 
 # ---------------------------------------------------------------------------
 # Sentry — no-op when SENTRY_DSN is unset (local dev)
@@ -56,7 +61,10 @@ _audit_log = logging.getLogger("audit")
 # pseudonymous ID — the Privacy Policy says crash reports carry no identifier.
 # The store evidence of POST /purchases/* (#840) is a bearer credential for a
 # paid purchase: purchase_token (Google), signed_transaction / signedPayload
-# (Apple JWS) and the store_key derived from either.
+# (Apple JWS) and the store_key derived from either. Google Play (#2787) adds
+# the Play API / RTDN spelling purchaseToken, the obfuscated account id (a
+# session derivative), the order id, and the service-account key; the RTDN
+# bearer token is "authorization", already in the SDK's default denylist.
 SENTRY_SCRUBBED_KEYS = [
     "x-session-id",
     "x-admin-token",
@@ -65,6 +73,12 @@ SENTRY_SCRUBBED_KEYS = [
     "signed_transaction",
     "signedPayload",
     "store_key",
+    "purchaseToken",
+    "obfuscatedExternalAccountId",
+    "account_token",
+    "orderId",
+    "service_account_json",
+    "service_account_info",
 ]
 
 # SQLAlchemy appends the statement and its bound values to every DBAPIError
@@ -93,7 +107,51 @@ def _sentry_before_send(event: dict, hint: dict) -> dict:
                 logentry[key] = _strip_sql(logentry[key])
     if isinstance(event.get("message"), str):
         event["message"] = _strip_sql(event["message"])
-    return event
+    return _redact_store_ids(event)
+
+
+# Store API URLs carry credentials in their path or query: Google Play
+# `.../purchases/productsv2/tokens/<purchaseToken>` and `.../products/<id>/tokens/<token>:acknowledge`,
+# Apple `/inApps/v1/transactions/<transactionId>` and `/inApps/v1/history/<id>`,
+# and pagination tokens (`?paginationToken=` for Apple notification history,
+# `?token=` for Google voided purchases). The SDK's HTTP integrations (httpx,
+# stdlib http.client) put full URLs into span descriptions and data and into
+# breadcrumbs, which no key denylist catches — so every string in those is
+# rewritten (#2787 security review B1). `before_send` does not run on
+# transactions, hence the separate transaction and breadcrumb hooks.
+_STORE_ID_PATTERNS = (
+    (re.compile(r"(/tokens/)[^/?#:\s\"']+"), r"\1[redacted]"),
+    (re.compile(r"(/transactions/)[^/?#\s\"']+"), r"\1[redacted]"),
+    (re.compile(r"(/history/)[^/?#\s\"']+"), r"\1[redacted]"),
+    (re.compile(r"((?:[?&]|^)(?:paginationToken|token)=)[^&#\s\"']+"), r"\1[redacted]"),
+)
+
+
+def _redact_text(text: str) -> str:
+    for pattern, replacement in _STORE_ID_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _redact_store_ids(value):
+    """Recursively redact store IDs in every string of a dict / list structure."""
+    if isinstance(value, str):
+        return _redact_text(value)
+    if isinstance(value, dict):
+        return {k: _redact_store_ids(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_store_ids(v) for v in value]
+    return value
+
+
+def _sentry_before_send_transaction(event: dict, hint: dict) -> dict:
+    """Redact store IDs from a performance transaction (span descriptions, span data, breadcrumbs)."""
+    return _redact_store_ids(event)
+
+
+def _sentry_before_breadcrumb(crumb: dict, hint: dict) -> dict:
+    """Redact store IDs from a breadcrumb (HTTP client breadcrumbs carry the full URL)."""
+    return _redact_store_ids(crumb)
 
 
 def _sentry_options(dsn: str) -> dict:
@@ -122,6 +180,12 @@ def _sentry_options(dsn: str) -> dict:
             denylist=DEFAULT_DENYLIST + SENTRY_SCRUBBED_KEYS, recursive=True
         ),
         "before_send": _sentry_before_send,
+        # Hooks rather than disabling the HTTP integrations: they cover httpx
+        # (Google Play, the Apple API client) and stdlib http.client alike,
+        # including any client added later, and keep outbound-call spans for
+        # latency debugging.
+        "before_send_transaction": _sentry_before_send_transaction,
+        "before_breadcrumb": _sentry_before_breadcrumb,
     }
 
 
@@ -158,18 +222,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _warn_if_dev_override_active()
     app.state.retention_task = _start_daily_word_retention()
     app.state.apple_replay_task = _start_apple_notification_replay()
+    app.state.google_jobs_task = _start_google_play_jobs()
     try:
         await _db_health_check()
         yield
     finally:
         try:
-            await _stop_apple_notification_replay(app.state.apple_replay_task)
+            await _stop_purchase_task(app.state.google_jobs_task, "google_jobs_stop_timeout")
         finally:
-            app.state.apple_replay_task = None
+            app.state.google_jobs_task = None
             try:
-                await _stop_daily_word_retention(app.state.retention_task)
+                await _stop_apple_notification_replay(app.state.apple_replay_task)
             finally:
-                app.state.retention_task = None
+                app.state.apple_replay_task = None
+                try:
+                    await _stop_daily_word_retention(app.state.retention_task)
+                finally:
+                    app.state.retention_task = None
 
 
 app = FastAPI(
@@ -463,12 +532,37 @@ def _start_apple_notification_replay() -> asyncio.Task | None:
 
 async def _stop_apple_notification_replay(task: asyncio.Task | None) -> None:
     """Cancel the replay task, bounded like the retention task (#2667)."""
+    await _stop_purchase_task(task, "apple_replay_stop_timeout")
+
+
+async def _stop_purchase_task(task: asyncio.Task | None, timeout_event: str) -> None:
+    """Cancel a background purchase job, waiting at most RETENTION_STOP_TIMEOUT_SECONDS."""
     if task is None:
         return
     task.cancel()
     done, _ = await asyncio.wait({task}, timeout=RETENTION_STOP_TIMEOUT_SECONDS)
     if not done:
-        _audit_log.warning(json.dumps({"event": "apple_replay_stop_timeout"}))
+        _audit_log.warning(json.dumps({"event": timeout_event}))
+
+
+# Google Play jobs (#2787, docs/IAP.md §7.6): the voided-purchases poll (last
+# 48 h) and the unacknowledged-purchase sweep, at startup and then daily. Runs
+# only when Google verification is configured; idempotent across instances
+# (per-void dedupe keys; acknowledgement is safe to repeat). Manual run:
+# `python scripts/google_play_jobs.py`.
+def _start_google_play_jobs() -> asyncio.Task | None:
+    if not is_configured():
+        return None
+    from purchases import google
+
+    if google.configured_verifier() is None:
+        return None
+    from db.base import get_session_factory
+    from purchases.google_notifications import run_google_jobs_loop
+
+    return asyncio.create_task(
+        run_google_jobs_loop(google.configured_verifier, get_session_factory)
+    )
 
 
 DB_PING_TIMEOUT_SECONDS = 5.0

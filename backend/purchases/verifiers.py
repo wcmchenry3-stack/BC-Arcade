@@ -9,11 +9,13 @@ link-cap and entitlement logic (this story) independent of the store clients:
   ``purchases.apple_store.AppStoreVerifier`` with ``app-store-server-library``
   (``SignedDataVerifier`` per allowed environment, then App Store Server API
   *Get Transaction Info* when configured; docs/IAP.md §6.2).
-* **#2787** implements ``GoogleVerifier`` with the Play Developer API
-  (``purchases.products.get`` / ``acknowledge``; docs/IAP.md §7.2-7.3).
+* **#2787** (shipped) implements ``GoogleVerifier`` as
+  ``purchases.google_play.PlayVerifier`` with the Play Developer API
+  (``purchases.productsv2.getproductpurchasev2`` / ``products.acknowledge``;
+  docs/IAP.md §7.6).
 
-While a store is not configured (Apple: no ``APPLE_BUNDLE_ID``; Google: until
-#2787) the providers in ``purchases/apple.py`` / ``purchases/google.py``
+While a store is not configured (Apple: no ``APPLE_BUNDLE_ID``; Google: no
+``GOOGLE_PLAY_PACKAGE_NAME`` or a half-set configuration) the providers in ``purchases/apple.py`` / ``purchases/google.py``
 return the ``NotConfigured*`` verifiers below, and every purchase call answers
 ``503 store_unavailable``: nothing is granted from unverified evidence.
 
@@ -75,14 +77,17 @@ class VerifiedPurchase:
     ========================  =============================  ==================================
     ``store_key``             ``originalTransactionId``      ``purchaseToken``
     ``transaction_id``        latest ``transactionId``       ``orderId``
-    ``environment``           Production→production,         ``purchaseType == 0`` → test,
+    ``environment``           Production→production,         ``testPurchaseContext`` → test,
                               Sandbox→sandbox                otherwise production
     ``ownership_type``        ``inAppOwnershipType``         always ``purchased``
-    ``state``                 owned / revoked                ``purchaseState`` 0→owned,
-                              (``revocationDate`` set)       2→pending; voided→revoked
+    ``state``                 owned / revoked                PURCHASED→owned, PENDING→pending,
+                              (``revocationDate`` set)       CANCELLED→revoked (completed) or
+                                                             cancelled; voided→revoked
     ``account_token``         ``appAccountToken``            ``obfuscatedExternalAccountId``
-    ``acknowledged``          n/a (False)                    ``acknowledgementState == 1``
+    ``acknowledged``          n/a (False)                    ``acknowledgementState`` ACKNOWLEDGED
     ========================  =============================  ==================================
+
+    Google fields are from ``productsv2.getproductpurchasev2`` (IAP.md §7.6).
     """
 
     platform: Platform
@@ -98,8 +103,9 @@ class VerifiedPurchase:
     revocation_reason: str | None = None
     acknowledged: bool = False
     # When the store says this state held: Apple ``signedDate`` of the
-    # transaction/notification, Google ``eventTimeMillis`` (RTDN) or the time
-    # the Play API was read. None → the service uses the time the request
+    # transaction/notification; Google ``purchaseCompletionTime`` for owned,
+    # the epoch for pending, ``eventTimeMillis`` / ``voidedTimeMillis`` for
+    # notifications and the poll. None → the service uses the time the request
     # started verifying. A transition older than the purchase's
     # ``state_changed_at`` is ignored (IAP.md §8.4, out-of-order store state).
     event_at: datetime | None = None
@@ -162,7 +168,7 @@ class NotConfiguredAppleVerifier:
 
 
 class NotConfiguredGoogleVerifier:
-    """Default until #2787 ships real verification: every call is ``503``."""
+    """Used while Google verification is not configured: every call is ``503``."""
 
     async def verify(self, evidence: GoogleEvidence) -> VerifiedPurchase:
         raise PurchaseError(503, "store_unavailable")
