@@ -314,20 +314,40 @@ When a security check is added/removed, update this section only after verifying
 - `docs/STORE-PRIVACY-ANSWERS.md` — store-facing data declarations
 - `docs/FEEDBACK-OBSERVABILITY.md` — diagnostics/feedback data handling (once canonical PR lands)
 
-## 16. Dependabot and alert notifications
+## 16. Dependabot triage automation and Resend email
 
-Dependabot is configured in `.github/dependabot.yml` (weekly npm, pip and GitHub Actions updates; CVE fixes are grouped separately as `security-updates`). It opens pull requests and raises GitHub security alerts. Nothing in the repository sends email about them.
+Dependabot itself is configured in `.github/dependabot.yml` (weekly npm, pip and GitHub Actions updates; CVE fixes grouped as `security-updates`). This repo contains no email code and no Resend references.
 
-**Resend (email API) is not referenced anywhere in this repository.** A full case-insensitive search of `.github/` (workflows and `dependabot.yml`), `scripts/`, `backend/`, `frontend/`, `docs/`, `render.yaml` and any Cloudflare config found no `resend`, `RESEND_*` secret names, `api.resend.com` calls or `re_` API keys. No workflow or script sends email. If the owner uses Resend for Dependabot or security alerts, it is configured outside the repo (for example a GitHub App, a webhook relay, a Cloudflare Worker or the Resend dashboard), and its details cannot be verified from the code.
+Whether GitHub Dependabot security alerts are enabled is a repository setting and cannot be verified from the code. [OWNER TO CONFIRM: Dependabot alerts enabled in repo settings.] Do not treat them as a fallback for the triage email until that is confirmed.
 
-Owner to record here once confirmed:
+The triage automation lives in the org-level repo `wcmchenry3-stack/.github`, not here. Its source of truth is that repo's `dependabot-triage/README.md`; this section only records the facts that matter for BC Arcade.
 
-| Item | Value |
+| Item | Detail |
 | --- | --- |
-| Purpose | Developer alerts only (assumed, unconfirmed). No player data is sent from this repo to Resend. |
-| Trigger | Unknown: where the integration lives (GitHub App, webhook, dashboard) and which events fire it |
-| Recipients | Unknown (record by role, not personal address) |
-| Secret name and storage | Unknown (record the name only, never the value) |
-| Sending domain | Unknown |
-| Key rotation | Create a new key in the Resend dashboard, update it wherever the integration stores it, then revoke the old key |
-| Failure mode | If the key is revoked or expires, alert emails stop silently; GitHub's own Dependabot alerts and PRs are unaffected, so check the repo's Security tab periodically |
+| Workflow | "Scheduled Dependabot Triage" (`.github/workflows/scheduled-dependabot-triage.yml` in the `.github` repo) |
+| Trigger | Daily cron at 06:00 UTC, plus `workflow_dispatch` (dry-run is the default). The nightly run has been live since 2026-08-29. |
+| Scope | Dependabot PRs in the repos enabled in `dependabot-triage/config.yml`, including BC Arcade (it waits about 45 minutes for BC Arcade CI). It may comment, rebase and merge them. |
+| Email | One stack-wide report per run, sent through Resend's HTTP API (`dependabot-triage/report.py`). Subject prefix "Dependabot Triage". |
+| Content | Counts, reasons and decisions from the run ledger (repo, PR and dependency metadata) plus one paragraph written by Claude Haiku 4.5. |
+| Recipient | The repository owner (role only; no address is recorded in docs). |
+| Sender and domain | `dependabot-triage@mail.buffingchi.com`. The domain `mail.buffingchi.com` must stay verified in Resend. |
+| Secrets | GitHub Actions secrets in the `.github` repo: `RESEND_API_KEY` (email), `ANTHROPIC_API_KEY` (pay-as-you-go, separate from any Claude subscription) and `DEPENDABOT_TRIAGE_TOKEN` (fine-grained PAT). |
+| Kill switch | A `HOLD` file at the root of the `.github` repo halts runs. |
+
+### Security notes
+
+- An automated job can merge Dependabot PRs into BC Arcade. It is gated by the triage guard tests and BC Arcade's CI, but a compromised token or a weak guard means unreviewed dependency changes could reach `dev`.
+- `DEPENDABOT_TRIAGE_TOKEN` has pull-requests and contents access on the target repos only, deliberately without Administration or Actions access. Keep it that way.
+- No player data goes to Resend or Anthropic from this job; only repo, PR and dependency metadata. It is an internal developer notification.
+
+### Rotating the Resend key
+
+1. Create a new send-only key in Resend, restricted to `mail.buffingchi.com`.
+2. Update the `RESEND_API_KEY` secret in the `wcmchenry3-stack/.github` repo.
+3. Trigger a manual dry run and confirm the email arrives.
+4. Revoke the old key.
+
+### If it breaks
+
+- If `RESEND_API_KEY` is unset, the script logs "not sending email" and carries on, so reports stop silently. Resend errors are logged in the run.
+- The ledger is still uploaded as a run artifact (90 days) and metrics are committed to the `.github` repo, so check the workflow runs there if reports stop arriving.

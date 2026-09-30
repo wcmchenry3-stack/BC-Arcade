@@ -108,6 +108,7 @@ Anthropic API) are **owner to check**: search the repo's issues for feedback-fil
 | Supabase on AWS (Oregon) | Processor: production Postgres (dev uses Render Postgres)                                                                                                                 | all §2 tables                                                                 |
 | Sentry (US)              | Processor: crash, metrics, breadcrumbs, feedback                                                                                                                          | §4, §5                                                                        |
 | Cloudflare               | Processor for DNS and network routing/proxy of our domains (`docs/RENDER.md`, `docs/ARCHITECTURE.md` §774; Bot Fight Mode is on, per `ci.yml`). Not involved in feedback. | request metadata and traffic in transit; no app-level data stored by us there |
+| Resend, Anthropic | Internal tooling, no player data: the org-level Dependabot triage job emails the owner (Resend) and drafts a summary paragraph (Anthropic) from repo, PR and dependency metadata only (`SECURITY.md` §16) |
 | Apple / Google           | Store, crash reports via their own programs if the user opted in on the device                                                                                            | outside our control; v1.0 has no purchases                                    |
 
 No ad networks, no analytics SDKs, no data brokers, no sale or advertising share. **Tracking: none.** No ATT prompt.
@@ -182,7 +183,7 @@ leaderboards from game records); diagnostics are App Functionality only.
 
 ## Owner confirmations
 
-- **Resend (email API):** the owner reports using it for Dependabot/security alerts, but it is not referenced in this repo (see `SECURITY.md` §16). If it only sends developer alerts, add it to §6 as internal developer notifications only, receiving no player data. If any player data could reach it, decide whether to add it as a processor here and in the privacy policy.
+- **Resend key scope:** confirm the Resend key used by the org-level Dependabot triage job is send-only and restricted to `mail.buffingchi.com` (`SECURITY.md` §16).
 - **IP addresses in Render request logs:** confirm the declaration approach. Currently covered under Device ID and stated as not
   joined to anything (Apple/Google have no IP-address type).
 
