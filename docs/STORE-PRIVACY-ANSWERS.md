@@ -12,16 +12,16 @@ pinned by `frontend/src/__tests__/privacyManifest.test.ts`) and these forms.
 
 ## What the app collects (row numbers used below)
 
-| #   | Data                                                                                                     | Where it goes                                          | Keyed to                                                             | Optional?                                    |
-| --- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------- | -------------------------------------------- |
-| 1   | Random per-install ID (`X-Session-ID`)                                                                   | Our API → Postgres                                     | —                                                                    | No                                           |
-| 2   | Game records: game, start/end, duration, outcome, score, per-game settings; Daily Word guesses           | Our API → Postgres                                     | install ID                                                           | No                                           |
-| 3   | Per-move event logs                                                                                      | Our API → Postgres (`game_events`)                     | install ID (via the game)                                            | No                                           |
-| 4   | Automatic warn/error log entries                                                                         | Our API → Postgres (`bug_logs`)                        | install ID                                                           | No                                           |
-| 5   | Crash, performance and diagnostic reports, breadcrumbs, sessions                                         | Sentry                                                 | Sentry's own random install ID (`user.id`); not our ID               | No (no in-app switch; see DATA-INVENTORY §7) |
-| 6   | Feedback title + description, optional `session-logs.txt`                                                | Sentry User Feedback                                   | Sentry install ID only (no name/email/our ID)                        | **Yes**, only if submitted                   |
-| 7   | IP address in request logs                                                                               | Render logs (Cloudflare proxies traffic)               | not joined to anything                                               | No                                           |
-| 8   | **Generated leaderboard name** (`Adjective Animal N`) + opt-in; shown publicly with score, rank and date | Our API → Postgres (`players`), shown to other players | install ID (server-side only; the public response never includes it) | **Yes**, only after pressing Join            |
+| #   | Data                                                                                                                                                 | Where it goes                                          | Keyed to                                                             | Optional?                                    |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------- | -------------------------------------------- |
+| 1   | Random per-install ID (`X-Session-ID`)                                                                                                               | Our API → Postgres                                     | —                                                                    | No                                           |
+| 2   | Game records: game, start/end, duration, outcome, score, per-game settings; Daily Word guesses                                                       | Our API → Postgres                                     | install ID                                                           | No                                           |
+| 3   | Per-move event logs                                                                                                                                  | Our API → Postgres (`game_events`)                     | install ID (via the game)                                            | No                                           |
+| 4   | Automatic warn/error log entries                                                                                                                     | Our API → Postgres (`bug_logs`)                        | install ID                                                           | No                                           |
+| 5   | Crash, performance and diagnostic reports, breadcrumbs, sessions (app); server-side performance traces, sampled 10%, no install ID, headers scrubbed | Sentry                                                 | Sentry's own random install ID (`user.id`); not our ID               | No (no in-app switch; see DATA-INVENTORY §7) |
+| 6   | Feedback title + description, optional `session-logs.txt`                                                                                            | Sentry User Feedback                                   | Sentry install ID only (no name/email/our ID)                        | **Yes**, only if submitted                   |
+| 7   | IP address in request logs                                                                                                                           | Render logs (Cloudflare proxies traffic)               | not joined to anything                                               | No                                           |
+| 8   | **Generated leaderboard name** (`Adjective Animal N`) + opt-in; shown publicly with score, rank and date                                             | Our API → Postgres (`players`), shown to other players | install ID (server-side only; the public response never includes it) | **Yes**, only after pressing Join            |
 
 Not collected: real name, email, phone, contacts, location, photos, advertising ID, purchases, health, financial or
 browsing data. No ads, no third-party analytics SDK, **no tracking** (`audits/ATT-AUDIT.md`).
@@ -46,7 +46,9 @@ No data is "used to track you".
 | Diagnostics → **Performance Data**      | 5    | Yes       | **Yes**            | No                | App Functionality            |
 | Diagnostics → **Other Diagnostic Data** | 4, 5 | Yes       | **Yes**            | No                | App Functionality            |
 
-Everything else → not collected. IP addresses are not an Apple data type unless used to derive location, which the app does not do.
+Everything else → not collected. **Purposes rationale:** Analytics appears only on Product Interaction / Gameplay Content
+(Apple) and App interactions (Google), because stored game records feed our own stats, XP and leaderboards; diagnostics rows are
+App Functionality only (no analytics SDK), and the manifest and DATA-INVENTORY.md say the same. IP addresses are not an Apple data type unless used to derive location, which the app does not do.
 
 **Why every row is "linked".** Apple treats data as linked when it is tied to the user "via their account, device, or details".
 The install ID ties rows 1-4 and 8 together in our database. Sentry attaches its own random install ID to every event
@@ -85,9 +87,9 @@ Shared = Yes (no other row changes).
 | Device or other IDs (install ID; Sentry install ID)       | 1, 5 | Yes       | No     | No                    | Required            | App functionality            |
 | App activity → App interactions                           | 2, 3 | Yes       | No     | No                    | Required            | App functionality, Analytics |
 | App activity → Other user-generated content               | 6    | Yes       | No     | No                    | **Optional**        | App functionality            |
-| App info and performance → Crash logs                     | 5    | Yes       | No     | No                    | Required            | App functionality, Analytics |
-| App info and performance → Diagnostics                    | 4, 5 | Yes       | No     | No                    | Required            | App functionality, Analytics |
-| App info and performance → Other app performance data     | 5    | Yes       | No     | No                    | Required            | App functionality, Analytics |
+| App info and performance → Crash logs                     | 5    | Yes       | No     | No                    | Required            | App functionality            |
+| App info and performance → Diagnostics                    | 4, 5 | Yes       | No     | No                    | Required            | App functionality            |
+| App info and performance → Other app performance data     | 5    | Yes       | No     | No                    | Required            | App functionality            |
 
 Not declared: Name, Email, Location, Financial info (no purchases in v1.0), Photos, Audio (no recording: the Android manifest has no
 `RECORD_AUDIO`), Contacts. Google's form has no IP-address type. This **supersedes #2014's checklist**.

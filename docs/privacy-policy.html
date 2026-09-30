@@ -139,18 +139,23 @@
       >) for crash reporting and performance monitoring. A report can include
       the error message and stack trace, app version, device model, operating
       system version, device state such as free memory and storage, and timing
-      measurements. We have Sentry's option to send personal identifiers turned
-      off, and reports never contain a name or email because we do not have one.
-      Your anonymous session ID is removed from server reports before they are
-      sent. Sentry's software does give each installation its own random
-      identifier, unrelated to our session ID, so reports from one installation
-      can be recognised as coming from the same app install. Reports may also
-      include a short trail of recent app events (for example which screen you
-      opened, or which of our server addresses the app called). Sentry keeps
-      this data for 90 days. There is currently no in-app switch for these
-      reports; to object, email us (see Contact). Because we cannot tell which
-      Sentry reports are yours, Delete my data does not reach them; they expire
-      on their own.
+      measurements. Our server also sends Sentry a sample of server-side
+      performance traces (how long requests take); these carry no installation
+      identifier and our request headers are scrubbed from them. We have
+      Sentry's option to send personal identifiers turned off, and reports never
+      contain a name or email because we do not have one. Your anonymous session
+      ID is removed from server reports before they are sent. Sentry is set not
+      to store IP addresses [OWNER TO CONFIRM: Sentry "Prevent Storing of IP
+      Addresses" enabled]. Sentry's software does give each installation its own
+      random identifier, unrelated to our session ID, so reports from one
+      installation can be recognised as coming from the same app install.
+      Reports may also include a short trail of recent app events (for example
+      which screen you opened, or which of our server addresses the app called).
+      Sentry keeps this data for 90 days [OWNER TO CONFIRM: Sentry retention
+      setting]. There is currently no in-app switch for these reports; to
+      object, email us (see Contact). Because we cannot tell which Sentry
+      reports are yours, Delete my data does not reach them; they expire on
+      their own.
     </p>
 
     <h3>Feedback you choose to send</h3>
@@ -162,7 +167,8 @@
       reproduce the problem. It is not published anywhere, it is not linked to a
       name or email because we do not ask for one, it is tied only to the random
       Sentry installation identifier described above, and Sentry keeps it for 90
-      days. Please do not include personal information in feedback.
+      days [OWNER TO CONFIRM: Sentry retention setting]. Please do not include
+      personal information in feedback.
     </p>
 
     <h3>Server logs</h3>
@@ -259,7 +265,10 @@
         for inactive sessions.]
       </li>
       <li>Daily Word guesses: 14 days</li>
-      <li>Sentry reports and feedback: 90 days</li>
+      <li>
+        Sentry reports and feedback: 90 days [OWNER TO CONFIRM: Sentry retention
+        setting]
+      </li>
       <li>Server logs: a limited period set by our hosting provider</li>
       <li>
         Backups: our database provider keeps routine backups, so a deleted

@@ -116,7 +116,7 @@ choice, not a transfer to a third party.
 **Facts.** Collected automatically with no setting. Purposes: fixing crashes and regressions and judging launch stability.
 Data: technical (error, stack, OS/device model, app version, timings, breadcrumbs) plus a random Sentry install ID. No name,
 email, advertising ID, location, gameplay content, or our install ID; no cross-app or cross-site tracking; no ads; no profiling;
-no replay; no performance traces; IPs not inferred by the SDK (`sendDefaultPii:false`). Retention 90 days.
+no replay; no client performance traces (the backend samples server traces at 10% with no install ID, headers scrubbed); IPs not inferred by the SDK (`sendDefaultPii:false`). Retention 90 days.
 
 **Assessment.**
 
@@ -159,7 +159,8 @@ solitaire, sudoku, mahjong, cascade, hearts and sort (`backend/*/models.py`, opt
 
 `NSMicrophoneUsageDescription` is present in `frontend/ios/GamingApp/Info.plist` (text: "...Microphone access
 is not used."). No shipped app code records audio (no `getUserMedia`/recorder/permission call in `frontend/src`;
-`app.json` sets `recordAudioAndroid:false` and `iosMicrophonePermission:false`; Android has no `RECORD_AUDIO`). **However**
+`app.json`: the `react-native-audio-api` plugin sets `iosMicrophonePermission:false`, the `expo-audio` plugin sets
+`recordAudioAndroid:false` and `enableBackgroundPlayback/Recording:false`; Android has no `RECORD_AUDIO`). **However**
 `expo-audio` compiles its recorder (`AudioRecorder.swift`, `AudioRecordingRequester.swift`) into the binary. App Store
 Connect's static check (ITMS-90683) can reject a binary that references protected-resource APIs without the matching purpose
 string, so the key is **kept, deliberately**. Result: the app never prompts for or uses the microphone; no data declaration is
@@ -169,9 +170,15 @@ needed; removal was not done because it is not clearly safe (owner could test re
 
 See [`STORE-PRIVACY-ANSWERS.md`](STORE-PRIVACY-ANSWERS.md) (per data type) and [`privacy-policy.html`](privacy-policy.html).
 Native manifest: `frontend/ios/GamingApp/PrivacyInfo.xcprivacy`, pinned by
-`frontend/src/__tests__/privacyManifest.test.ts`. Known drift: `frontend/app.json` `ios.privacyManifests` still lists an empty
-`NSPrivacyCollectedDataTypes`; `ios/` is committed and is what builds, so `app.json` is not used, but a `prebuild` would regenerate
-from it (fix with a separate change if `prebuild` is ever run).
+`frontend/src/__tests__/privacyManifest.test.ts`. `frontend/app.json` `ios.privacyManifests` now mirrors the xcprivacy file
+(collected types, purposes and required-reason API codes; the same test asserts it), so a `prebuild` regenerates the same manifest;
+the former drift is fixed. Analytics is a purpose only on Product Interaction / Gameplay Content (first-party stats, XP and
+leaderboards from game records); diagnostics are App Functionality only.
+
+## Owner confirmations
+
+- **IP addresses in Render request logs:** confirm the declaration approach. Currently covered under Device ID and stated as not
+  joined to anything (Apple/Google have no IP-address type).
 
 ## Premium update (not v1.0)
 

@@ -28,6 +28,42 @@ function collectedDataTypes(xml: string): Record<string, { linked: boolean; trac
   return out;
 }
 
+const APP_JSON = path.resolve(__dirname, "../../app.json");
+
+/** Collected types with purposes (short names), keyed like collectedDataTypes. */
+function collectedPurposes(
+  xml: string
+): Record<string, { linked: boolean; tracking: boolean; purposes: string[] }> {
+  const section = (xml.split("<key>NSPrivacyCollectedDataTypes</key>")[1] ?? "").split(
+    "<key>NSPrivacyTracking</key>"
+  )[0]!;
+  const base = collectedDataTypes(xml);
+  const out: Record<string, { linked: boolean; tracking: boolean; purposes: string[] }> = {};
+  for (const dict of section.split("<dict>").slice(1)) {
+    const type = /<string>NSPrivacyCollectedDataType(\w+)<\/string>/.exec(dict)?.[1];
+    if (!type || !base[type]) continue;
+    const purposes = [
+      ...dict.matchAll(/<string>(NSPrivacyCollectedDataTypePurpose\w+)<\/string>/g),
+    ].map((m) => m[1]!);
+    out[type] = { ...base[type]!, purposes: purposes.sort() };
+  }
+  return out;
+}
+
+/** `NSPrivacyAccessedAPITypes`: category -> sorted reason codes. */
+function accessedApis(xml: string): Record<string, string[]> {
+  const section = (xml.split("<key>NSPrivacyAccessedAPITypes</key>")[1] ?? "").split(
+    "<key>NSPrivacyCollectedDataTypes</key>"
+  )[0]!;
+  const out: Record<string, string[]> = {};
+  for (const dict of section.split("<dict>").slice(1)) {
+    const cat = /<string>(NSPrivacyAccessedAPICategory\w+)<\/string>/.exec(dict)?.[1];
+    if (!cat) continue;
+    out[cat] = [...dict.matchAll(/<string>([A-Z0-9]{4}\.\d)<\/string>/g)].map((m) => m[1]!).sort();
+  }
+  return out;
+}
+
 describe("iOS privacy manifest", () => {
   const xml = fs.readFileSync(MANIFEST, "utf8");
 
@@ -52,5 +88,35 @@ describe("iOS privacy manifest", () => {
   it("declares no tracking", () => {
     expect(xml).toMatch(/<key>NSPrivacyTracking<\/key>\s*<false\/>/);
     expect(xml).toMatch(/<key>NSPrivacyTrackingDomains<\/key>\s*<array\s*\/>/);
+  });
+
+  it("app.json privacyManifests mirrors the committed manifest (prebuild parity)", () => {
+    const app = JSON.parse(fs.readFileSync(APP_JSON, "utf8"));
+    const pm = app.expo.ios.privacyManifests;
+
+    expect(pm.NSPrivacyTracking).toBe(false);
+    expect(pm.NSPrivacyTrackingDomains).toEqual([]);
+
+    const fromJson: Record<string, { linked: boolean; tracking: boolean; purposes: string[] }> = {};
+    for (const d of pm.NSPrivacyCollectedDataTypes) {
+      fromJson[String(d.NSPrivacyCollectedDataType).replace("NSPrivacyCollectedDataType", "")] = {
+        linked: d.NSPrivacyCollectedDataTypeLinked,
+        tracking: d.NSPrivacyCollectedDataTypeTracking,
+        purposes: [...d.NSPrivacyCollectedDataTypePurposes].sort(),
+      };
+    }
+    expect(fromJson).toEqual(collectedPurposes(xml));
+
+    const apis: Record<string, string[]> = {};
+    for (const d of pm.NSPrivacyAccessedAPITypes) {
+      apis[d.NSPrivacyAccessedAPIType] = [...d.NSPrivacyAccessedAPITypeReasons].sort();
+    }
+    expect(apis).toEqual(accessedApis(xml));
+    expect(Object.keys(apis).sort()).toEqual([
+      "NSPrivacyAccessedAPICategoryDiskSpace",
+      "NSPrivacyAccessedAPICategoryFileTimestamp",
+      "NSPrivacyAccessedAPICategorySystemBootTime",
+      "NSPrivacyAccessedAPICategoryUserDefaults",
+    ]);
   });
 });
