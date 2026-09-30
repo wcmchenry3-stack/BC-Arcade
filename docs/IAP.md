@@ -770,6 +770,30 @@ applyToken(rawToken: string): Promise<void>; // validate, cache (AsyncStorage) a
 - **Outcome states.** loading, cancelled (silent), pending (Ask to Buy),
   awaiting_server, `not_linkable` (contact support link, `SUPPORT_URL`), retryable
   and non-retryable errors, already owned (goes straight to the game).
+  Buy is disabled while a purchase is in flight (a ref guards double taps),
+  while a pending / awaiting-server / non-retryable notice is showing, and while
+  the initial entitlement bootstrap is loading. A `TransactionEvent` error for
+  the paywall's game clears a stale "pending" notice.
+- **Entitlement races.** `EntitlementProvider` keeps a generation counter that
+  `applyToken` and every fetch (launch and refresh) bump; a fetch that resolves
+  after a newer generation is dropped, so it cannot overwrite, persist or
+  trigger revocation cleanup from an older token. `applyToken` applies in
+  memory first and persists best-effort (storage errors go to Sentry).
+- **Deferred / not built in #841** (recorded so they are not mistaken for done):
+  - `src/purchases/purchasesApi.ts` (typed `POST /purchases/*` client): deferred
+    to #2786 / #2787, which are the first callers.
+  - Premium game routes redirecting to the paywall when reached without
+    entitlement (§9.3 Entry): deferred. They still render `LockedGameScreen`.
+  - Game art on the paywall (§9.3 Contents): deferred; the paywall shows the
+    game name and description only.
+  - §9.3 copy line "no ads, lives or in-game purchases": the shipped copy is
+    "One-time purchase" and "Unlimited replay" only. It deliberately makes no
+    "no ads / no in-game purchases" claim until that is confirmed for every game.
+- **Note for #2786 (real adapter).** `PurchaseProvider`'s effect cleanup does not
+  await `adapter.dispose()` before a React StrictMode re-init, so the real
+  adapter must tolerate `init()` after an un-awaited `dispose()`. `syncOwned`
+  runs only after a successful `init()`, and the once-flag is set only after a
+  sync succeeds, so a failed sync is retried.
 
 ---
 
@@ -824,8 +848,14 @@ separate product decision.
 ## 13. Visibility and release gating
 
 - **v1.0 (current store builds):** the five games are in `HIDDEN_GAMES`, a
-  compiled constant (ARCHITECTURE §10.7). No purchase code ships. Nothing is
-  locked or teased.
+  compiled constant (ARCHITECTURE §10.7). Nothing is locked or teased.
+  _(Amended by #841; owner to confirm.)_ The original wording, "No purchase
+  code ships", no longer holds literally: the paywall UI and the purchase
+  adapters (`unavailable`, `fake`) are compiled in but **unreachable** in v1.0.
+  That is guaranteed by: no `Paywall` route registered (`visiblePremiumRoutes()`
+  is empty), the unavailable adapter always selected, no store SDK dependency
+  or billing permission (iOS/Android), and the Settings Restore row hidden.
+  Pinned by `frontend/src/__tests__/releaseBuildConfig.test.ts`.
 - **Premium update:** the reviewed binary contains the paywall, the adapter
   and the products. It removes the five slugs from `HIDDEN_GAMES`, and they
   appear as locked tiles. The products are submitted **with that binary**.
