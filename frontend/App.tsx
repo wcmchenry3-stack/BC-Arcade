@@ -33,6 +33,7 @@ import {
   type PremiumRouteName,
 } from "./src/entitlements/premiumRoutes";
 import { MAIN_TABS, type MainTabName } from "./src/navigation/mainTabs";
+import { PurchaseProvider } from "./src/purchases/PurchaseProvider";
 import { SoundProvider } from "./src/game/_shared/SoundContext";
 import { CardDeckProvider } from "./src/game/_shared/decks/CardDeckContext";
 import { BlackjackGameProvider } from "./src/game/blackjack/BlackjackGameContext";
@@ -217,6 +218,7 @@ const LazyGameStatsScreen = withSuspense(LazyScreens.GameStats, "game_stats");
 const LazyGameDetailScreen = withSuspense(LazyScreens.GameDetail, "game_detail");
 const LazySettingsScreen = withSuspense(LazyScreens.Settings, "settings");
 const LazyScorecardScreen = withSuspense(LazyScreens.Scorecard, "scorecard");
+const LazyPaywallScreen = withSuspense(LazyScreens.Paywall, "paywall");
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
@@ -300,23 +302,35 @@ function AppInner() {
   return (
     <NetworkProvider>
       <EntitlementProvider>
-        <SoundProvider>
-          <ThemeProvider>
-            <CardDeckProvider>
-              <BlackjackGameProvider>
-                <HeartsRoundsProvider>
-                  <YachtScorecardProvider>
-                    <NavigationContainer>
-                      <Stack.Navigator screenOptions={{ headerShown: false }}>
-                        <Stack.Screen name="MainTabs" component={MainTabs} />
-                      </Stack.Navigator>
-                    </NavigationContainer>
-                  </YachtScorecardProvider>
-                </HeartsRoundsProvider>
-              </BlackjackGameProvider>
-            </CardDeckProvider>
-          </ThemeProvider>
-        </SoundProvider>
+        <PurchaseProvider>
+          <SoundProvider>
+            <ThemeProvider>
+              <CardDeckProvider>
+                <BlackjackGameProvider>
+                  <HeartsRoundsProvider>
+                    <YachtScorecardProvider>
+                      <NavigationContainer>
+                        <Stack.Navigator screenOptions={{ headerShown: false }}>
+                          <Stack.Screen name="MainTabs" component={MainTabs} />
+                          {/* The paywall modal (#841) exists only where a premium game is
+                            visible; in v1.0 store builds no premium game is, so there is
+                            no route to it (releaseBuildConfig.test.ts). */}
+                          {visiblePremiumRoutes().length > 0 && (
+                            <Stack.Screen
+                              name="Paywall"
+                              component={LazyPaywallScreen}
+                              options={{ presentation: "modal" }}
+                            />
+                          )}
+                        </Stack.Navigator>
+                      </NavigationContainer>
+                    </YachtScorecardProvider>
+                  </HeartsRoundsProvider>
+                </BlackjackGameProvider>
+              </CardDeckProvider>
+            </ThemeProvider>
+          </SoundProvider>
+        </PurchaseProvider>
       </EntitlementProvider>
     </NetworkProvider>
   );

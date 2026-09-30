@@ -6,3 +6,9 @@
  */
 export const PRIVACY_POLICY_URL = "https://buffingchi.com/privacy";
 export const TERMS_OF_SERVICE_URL = "https://buffingchi.com/terms";
+
+/**
+ * Where a player is sent when a valid purchase cannot be used on this install
+ * (docs/IAP.md §5, `not_linkable`). Keep in step with the store listings.
+ */
+export const SUPPORT_URL = "https://buffingchi.com/support";

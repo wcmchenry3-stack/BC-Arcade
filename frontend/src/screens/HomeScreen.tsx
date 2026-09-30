@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Alert,
   AppState,
   View,
   Text,
@@ -11,11 +10,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, type NavigationProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Sentry from "@sentry/react-native";
-import type { HomeStackParamList } from "../types/navigation";
+import type { HomeStackParamList, RootStackParamList } from "../types/navigation";
 import { newGame as newYachtGame } from "../game/yacht/engine";
 import { loadGame as loadYachtGame } from "../game/yacht/storage";
 import { isAiTurnPending } from "../game/yacht/vsTurn";
@@ -66,6 +65,14 @@ export default function HomeScreen() {
   const { colors } = useTheme();
   const { canPlay } = useEntitlements();
   const insets = useSafeAreaInsets();
+  // A locked premium tile opens the paywall modal (#841). It is on the root
+  // stack, so navigate() bubbles up from this nested stack. Only visible games
+  // have tiles, and the modal is registered only where one is visible.
+  const openPaywall = (gameSlug: string) => {
+    (navigation as unknown as NavigationProp<RootStackParamList>).navigate("Paywall", {
+      gameSlug,
+    });
+  };
   const { width } = useWindowDimensions();
 
   const numColumns = width < SINGLE_COL_BREAKPOINT ? 1 : 2;
@@ -306,7 +313,7 @@ export default function HomeScreen() {
       <View style={[styles.cardWrapper, numColumns === 1 && styles.cardWrapperFull]}>
         <Pressable
           style={[styles.card, { backgroundColor: colors.surfaceHigh }]}
-          onPress={isLocked ? () => Alert.alert(t("common:home.locked.comingSoon")) : item.action}
+          onPress={isLocked ? () => openPaywall(item.slug) : item.action}
           accessibilityRole="button"
           accessibilityLabel={
             isLocked

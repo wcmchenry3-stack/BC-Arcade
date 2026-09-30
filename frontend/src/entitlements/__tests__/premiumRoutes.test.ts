@@ -5,7 +5,7 @@
  */
 import { PREMIUM_GAMES } from "../EntitlementContext";
 import { __forceStoreBuildForTests } from "../gameVisibility";
-import { PREMIUM_ROUTES, visiblePremiumRoutes } from "../premiumRoutes";
+import { PREMIUM_ROUTES, entryRouteForSlug, visiblePremiumRoutes } from "../premiumRoutes";
 
 describe("premiumRoutes", () => {
   afterEach(() => {
@@ -40,5 +40,12 @@ describe("premiumRoutes", () => {
     }
     const routeNames = PREMIUM_ROUTES.map((r) => r.route);
     expect(new Set(routeNames).size).toBe(routeNames.length);
+  });
+
+  it("entryRouteForSlug gives each premium game's first route and nothing for free games", () => {
+    expect(entryRouteForSlug("blackjack")).toBe("BlackjackBetting");
+    expect(entryRouteForSlug("cascade")).toBe("Cascade");
+    expect(entryRouteForSlug("yacht")).toBeUndefined();
+    for (const slug of PREMIUM_GAMES) expect(entryRouteForSlug(slug)).toBeDefined();
   });
 });
