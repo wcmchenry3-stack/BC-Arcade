@@ -334,6 +334,81 @@ export const FLAK_RANGE = 120; // px
 export const FLAK_COOLDOWN = 900; // ms per ship
 const FLAK_LEAD_MS = 300; // aim at where the rock will be
 const FLAK_SPEED = 0.42; // px/ms
+export const CARRIER_FLAK_RANGE = 180; // px — the Carrier is big, so it reaches further than a fighter
+
+/**
+ * #2844: what answering an asteroid costs a ship, by tier — the finite-combat-capacity rule.
+ * Every figure is "how much of this ship's offence it gives up", so the ordering is the design:
+ * Grunt is the most distracted, then Elite, then Guardian, then Carrier (the least).
+ *  - threatMs: a rock bearing down on the ship — a mild local distraction, added to the ship's
+ *    next-shot timer (once per rock).
+ *  - flakMs: firing flak at a rock — added to the same timer, so the gun that shot the rock is not
+ *    also shooting at the player. Flak itself stays outside bulletCap(); this is what pays for it.
+ *  - aimSpread: while evading, the ship's player-directed shots stray sideways by
+ *    (0.5–1 × aimSpread × the shot's speed).
+ */
+export interface AsteroidAttention {
+  readonly threatMs: number;
+  readonly flakMs: number;
+  readonly aimSpread: number;
+}
+export const ASTEROID_ATTENTION: Readonly<Record<EnemyTier, AsteroidAttention>> = {
+  Grunt: { threatMs: 350, flakMs: 1200, aimSpread: 0.6 },
+  Elite: { threatMs: 220, flakMs: 800, aimSpread: 0.4 },
+  Guardian: { threatMs: 120, flakMs: 450, aimSpread: 0.22 },
+  Carrier: { threatMs: 60, flakMs: 250, aimSpread: 0.1 },
+};
+
+/** #2844: a tier's attention costs (see ASTEROID_ATTENTION). */
+export function asteroidAttention(tier: EnemyTier): AsteroidAttention {
+  return ASTEROID_ATTENTION[tier];
+}
+
+/**
+ * #2844: a ship's next-shot timer after spending attention on a rock. Pure; `kind` picks the cost.
+ * The delay is added on top of whatever time is left, so a ship already about to fire is pushed
+ * back by the full amount rather than merely reset.
+ */
+export function withAsteroidAttention(
+  shootTimer: number,
+  tier: EnemyTier,
+  kind: "threat" | "flak"
+): number {
+  const a = ASTEROID_ATTENTION[tier];
+  return Math.max(0, shootTimer) + (kind === "flak" ? a.flakMs : a.threatMs);
+}
+
+/**
+ * #2844: a ship pays attention to a rock: its next-shot timer slips back AND the same amount is
+ * booked as `attentionMs` debt, a floor that tickEnemies re-applies after every tick so a phase
+ * change (dive launch, straggler cap) cannot erase it.
+ */
+function payAttention<E extends Pick<Enemy, "tier" | "shootTimer" | "attentionMs">>(
+  e: E,
+  kind: "threat" | "flak"
+): E {
+  const a = ASTEROID_ATTENTION[e.tier];
+  return {
+    ...e,
+    shootTimer: withAsteroidAttention(e.shootTimer, e.tier, kind),
+    attentionMs: e.attentionMs + (kind === "flak" ? a.flakMs : a.threatMs),
+  };
+}
+
+/**
+ * #2844: degrade a player-directed shot's aim while its ship is evading. The velocity gets a
+ * sideways kick of (0.5–1 × the tier's aimSpread × |vy|) in a random direction — always a real
+ * miss, never a no-op, bigger for the more distracted tiers. `rand` supplies two draws.
+ */
+export function degradeAim(
+  vx: number,
+  vy: number,
+  tier: EnemyTier,
+  rand: () => number
+): { vx: number; vy: number } {
+  const mag = (0.5 + 0.5 * rand()) * ASTEROID_ATTENTION[tier].aimSpread * Math.abs(vy);
+  return { vx: vx + (rand() < 0.5 ? -mag : mag), vy };
+}
 
 // #2486: errant asteroids — a neutral hazard that damages both sides and absorbs bullets
 export const MAX_ASTEROIDS = 2; // timed spawns stop at this many in flight; a split may briefly exceed it
@@ -342,10 +417,12 @@ export const ASTEROID_INTERVAL_MIN = 12_000; // ms between timed spawns (Playing
 export const ASTEROID_INTERVAL_MAX = 20_000;
 const ASTEROID_SPEED_MIN = 0.15; // px/ms
 const ASTEROID_SPEED_MAX = 0.22;
-const ASTEROID_ENTRY_Y_MIN = 40; // spawn band down the top corners
-const ASTEROID_ENTRY_Y_MAX = 100;
-const ASTEROID_ANGLE_MIN = 0.55; // rad below horizontal — crosses the formation, then the player lane
-const ASTEROID_ANGLE_MAX = 0.9;
+// #2844: entry geometry — where a rock may come from and how its crossing is vetted
+const ASTEROID_ENTRY_EDGE = 6; // px of clearance beyond the radius, so a rock starts fully off-screen
+export const ASTEROID_ENTRY_ATTEMPTS = 8; // candidate trajectories tried per spawn before giving up
+export const ASTEROID_MIN_CROSS_FRAC = 0.5; // in-field path length, as a fraction of canvas width
+export const ASTEROID_MIN_REACTION_MS = 1500; // on-screen time before a rock can reach the player row
+const ASTEROID_MIN_ANGLE = 0.3; // rad below horizontal — never a flat skim along the top
 const ASTEROID_LARGE_CHANCE = 0.65;
 export const ASTEROID_HIT_FLASH_MS = 120;
 export const ASTEROID_STATS: Record<AsteroidKind, { radius: number; hp: number }> = {
@@ -849,20 +926,248 @@ function makeAsteroid(kind: AsteroidKind, x: number, y: number, vx: number, vy: 
   };
 }
 
-/** A rock entering from a random top corner, heading down and across the formation. */
-function spawnAsteroid(canvasW: number, kind?: AsteroidKind): Asteroid {
+// ── #2844 shared asteroid threat / collision contract ─────────────────────────────────────────
+// Everything that needs to ask "is this rock a danger to that thing?" or "did it hit?" — enemies,
+// the extraction autopilot and (#2845) Buddy — goes through these pure helpers, so the rules
+// cannot drift between consumers. A "circle" is any ship or hitbox reduced to a centre + radius.
+
+/** A thing a rock can threaten or strike: a centre, a radius, and optionally its own velocity (px/ms). */
+export interface ThreatCircle {
+  readonly x: number;
+  readonly y: number;
+  readonly r: number;
+  readonly vx?: number;
+  readonly vy?: number;
+}
+
+/** The part of a rock the contract reads — an `Asteroid` satisfies it. */
+export type RockLike = Pick<Asteroid, "x" | "y" | "vx" | "vy" | "radius" | "hp">;
+
+/** True when the rock's body overlaps the circle right now. A destroyed rock (hp <= 0) never does. */
+export function asteroidHits(rock: RockLike, circle: ThreatCircle): boolean {
+  if (rock.hp <= 0) return false;
+  return circleCircle(rock.x, rock.y, rock.radius, circle.x, circle.y, circle.r);
+}
+
+/** Same as asteroidHits for a centred axis-aligned box (`width` × `height`) — how enemy ships are hit. */
+export function asteroidHitsBox(
+  rock: RockLike,
+  box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
+): boolean {
+  if (rock.hp <= 0) return false;
+  return collideCircleAABB(rock.x, rock.y, rock.radius, box.x, box.y, box.width, box.height);
+}
+
+/**
+ * Will this rock's body reach the circle within `lookaheadMs`, both moving in straight lines at
+ * their current velocities? Exact closest-approach over [0, lookaheadMs] (no sampling gaps), so a
+ * fast rock cannot tunnel between checks. True if it already overlaps. `circle.r` should include
+ * any safety margin the consumer wants; Buddy's "strong but imperfect" avoidance lives in how it
+ * reacts to this, not in the test itself.
+ */
+export function asteroidThreatens(
+  rock: RockLike,
+  circle: ThreatCircle,
+  lookaheadMs: number
+): boolean {
+  if (rock.hp <= 0) return false;
+  const reach = rock.radius + circle.r;
+  const px = rock.x - circle.x;
+  const py = rock.y - circle.y;
+  if (px * px + py * py <= reach * reach) return true;
+  const vx = rock.vx - (circle.vx ?? 0);
+  const vy = rock.vy - (circle.vy ?? 0);
+  const v2 = vx * vx + vy * vy;
+  if (v2 === 0) return false;
+  const t = Math.max(0, Math.min(lookaheadMs, -(px * vx + py * vy) / v2));
+  const cx = px + vx * t;
+  const cy = py + vy * t;
+  return cx * cx + cy * cy <= reach * reach;
+}
+
+/** A ship's hitbox as a threat circle (half the longer side). */
+export function enemyThreatCircle(e: Pick<Enemy, "x" | "y" | "width" | "height">): ThreatCircle {
+  return { x: e.x, y: e.y, r: Math.max(e.width, e.height) / 2 };
+}
+
+// ── #2844 entry geometry ──────────────────────────────────────────────────────────────────────
+
+export type AsteroidEntryRegion = "left" | "right" | "top" | "topLeft" | "topRight";
+
+export interface AsteroidEntry {
+  readonly region: AsteroidEntryRegion;
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
+}
+
+/** Relative odds of each entry region: broad side edges, the top edge, and the upper corners. */
+const ASTEROID_REGION_WEIGHTS: readonly (readonly [AsteroidEntryRegion, number])[] = [
+  ["left", 0.28],
+  ["right", 0.28],
+  ["top", 0.26],
+  ["topLeft", 0.09],
+  ["topRight", 0.09],
+];
+
+/** How a candidate crossing measures up (see `asteroidEntryMetrics`). */
+export interface AsteroidEntryMetrics {
+  /** Path length (px) the rock's centre spends inside the canvas. */
+  readonly crossPx: number;
+  /** ms from the rock first touching the screen until it can reach the player's row; Infinity if never. */
+  readonly reactionMs: number;
+}
+
+/**
+ * Measure a trajectory by stepping it (20 ms) — pure, deterministic. The player row is where the
+ * ship sits (`playerY`); "can reach" means the rock's edge gets down to the ship's top.
+ */
+export function asteroidEntryMetrics(
+  entry: Pick<AsteroidEntry, "x" | "y" | "vx" | "vy">,
+  radius: number,
+  canvasW: number,
+  canvasH: number
+): AsteroidEntryMetrics {
+  const STEP = 20;
+  const speed = Math.hypot(entry.vx, entry.vy);
+  const playerTop = canvasH - PLAYER_Y_FROM_BOTTOM - PLAYER_H / 2;
+  let crossPx = 0;
+  let enteredAt = -1;
+  let reactionMs = Infinity;
+  for (let t = 0; t <= 60_000; t += STEP) {
+    const x = entry.x + entry.vx * t;
+    const y = entry.y + entry.vy * t;
+    const touching =
+      x + radius > 0 && x - radius < canvasW && y + radius > 0 && y - radius < canvasH;
+    if (touching && enteredAt < 0) enteredAt = t;
+    if (x >= 0 && x <= canvasW && y >= 0 && y <= canvasH) crossPx += speed * STEP;
+    if (enteredAt >= 0 && y + radius >= playerTop && x > -radius && x < canvasW + radius) {
+      reactionMs = t - enteredAt;
+      break;
+    }
+    if (enteredAt >= 0 && !touching) break; // left the screen without ever reaching the player row
+    if (enteredAt < 0 && (y - radius > canvasH || x < -400 || x > canvasW + 400)) break;
+  }
+  return { crossPx, reactionMs };
+}
+
+/**
+ * #2844: plan one rock's off-screen entry and crossing trajectory. Picks an entry region (a broad
+ * left/right edge band, the top edge, or an upper corner), a point in the play space to cross, and
+ * a speed; the rock starts fully off-screen and is aimed through that point. A candidate is
+ * rejected unless it
+ *  - points downward by at least ASTEROID_MIN_ANGLE (no flat skim),
+ *  - spends at least ASTEROID_MIN_CROSS_FRAC × canvasWidth of path inside the field,
+ *  - leaves at least ASTEROID_MIN_REACTION_MS before it can reach the player's row, and
+ *  - does not start overlapping any of `actors` (ships waiting off-screen, for instance).
+ * Up to ASTEROID_ENTRY_ATTEMPTS candidates are drawn from `rand`; returns null if none is fair.
+ * Pure: the same `rand` stream yields the same plan, so seeded runs replay exactly.
+ */
+export function planAsteroidEntry(
+  canvasW: number,
+  canvasH: number,
+  radius: number,
+  actors: readonly ThreatCircle[],
+  rand: () => number
+): AsteroidEntry | null {
+  const off = radius + ASTEROID_ENTRY_EDGE;
+  const fair = (x: number, y: number, vx: number, vy: number): boolean => {
+    if (Math.atan2(vy, Math.abs(vx)) < ASTEROID_MIN_ANGLE) return false;
+    if (actors.some((a) => circleCircle(x, y, radius, a.x, a.y, a.r))) return false;
+    const m = asteroidEntryMetrics({ x, y, vx, vy }, radius, canvasW, canvasH);
+    return (
+      m.crossPx >= ASTEROID_MIN_CROSS_FRAC * canvasW && m.reactionMs >= ASTEROID_MIN_REACTION_MS
+    );
+  };
+  for (let attempt = 0; attempt < ASTEROID_ENTRY_ATTEMPTS; attempt++) {
+    let pick = rand();
+    let region: AsteroidEntryRegion = "left";
+    for (const [r, w] of ASTEROID_REGION_WEIGHTS) {
+      region = r;
+      if (pick < w) break;
+      pick -= w;
+    }
+    let x: number;
+    let y: number;
+    switch (region) {
+      case "left":
+        x = -off;
+        y = canvasH * (0.04 + 0.5 * rand());
+        break;
+      case "right":
+        x = canvasW + off;
+        y = canvasH * (0.04 + 0.5 * rand());
+        break;
+      case "top":
+        x = canvasW * (0.1 + 0.8 * rand());
+        y = -off;
+        break;
+      case "topLeft":
+        x = -off - 20 * rand();
+        y = -off - 20 * rand();
+        break;
+      default:
+        x = canvasW + off + 20 * rand();
+        y = -off - 20 * rand();
+    }
+    const tx = canvasW * (0.15 + 0.7 * rand());
+    const ty = canvasH * (0.25 + 0.45 * rand());
+    const speed = ASTEROID_SPEED_MIN + rand() * (ASTEROID_SPEED_MAX - ASTEROID_SPEED_MIN);
+    const len = Math.hypot(tx - x, ty - y) || 1;
+    const vx = ((tx - x) / len) * speed;
+    const vy = ((ty - y) / len) * speed;
+    if (fair(x, y, vx, vy)) return { region, x, y, vx, vy };
+  }
+  // Deterministic fallback, so a timed spawn is not silently dropped on an awkward canvas (a
+  // landscape tablet is short, and a random aim is often too steep to cross far enough before it
+  // reaches the player row): scan side-edge entries at the slowest speed over a fixed set of
+  // angles, starting at a rand()-chosen offset for variety. The same fairness rules apply.
+  const FALLBACK_Y = [0.04, 0.15, 0.3] as const;
+  const FALLBACK_ANGLE = [0.35, 0.5, 0.65, 0.8, 0.95] as const;
+  const combos: { region: AsteroidEntryRegion; y: number; angle: number }[] = [];
+  for (const region of ["left", "right"] as const) {
+    for (const fy of FALLBACK_Y) {
+      for (const angle of FALLBACK_ANGLE) combos.push({ region, y: canvasH * fy, angle });
+    }
+  }
+  const start = Math.floor(rand() * combos.length);
+  for (let i = 0; i < combos.length; i++) {
+    const c = combos[(start + i) % combos.length]!;
+    const dir = c.region === "left" ? 1 : -1;
+    const x = c.region === "left" ? -off : canvasW + off;
+    const vx = dir * Math.cos(c.angle) * ASTEROID_SPEED_MIN;
+    const vy = Math.sin(c.angle) * ASTEROID_SPEED_MIN;
+    if (fair(x, c.y, vx, vy)) return { region: c.region, x, y: c.y, vx, vy };
+  }
+  return null;
+}
+
+/** Everything a fresh rock must not start on top of: live ships (even off-screen ones), the player, Buddy. */
+function entryActors(state: StarSwarmState): ThreatCircle[] {
+  const out: ThreatCircle[] = [
+    {
+      x: state.player.x,
+      y: state.player.y,
+      r: Math.max(state.player.width, state.player.height) / 2,
+    },
+  ];
+  for (const e of state.enemies) if (e.isAlive) out.push(enemyThreatCircle(e));
+  for (const b of state.buddyShips) out.push({ x: b.x, y: b.y, r: PLAYER_H / 2 });
+  return out;
+}
+
+/** A rock entering from a planned off-screen point (#2844); null if no fair trajectory was found. */
+function spawnAsteroid(state: StarSwarmState, kind?: AsteroidKind): Asteroid | null {
   const k: AsteroidKind = kind ?? (rng() < ASTEROID_LARGE_CHANCE ? "large" : "small");
-  const r = ASTEROID_STATS[k].radius;
-  const fromLeft = rng() < 0.5;
-  const angle = ASTEROID_ANGLE_MIN + rng() * (ASTEROID_ANGLE_MAX - ASTEROID_ANGLE_MIN);
-  const speed = ASTEROID_SPEED_MIN + rng() * (ASTEROID_SPEED_MAX - ASTEROID_SPEED_MIN);
-  return makeAsteroid(
-    k,
-    fromLeft ? -r : canvasW + r,
-    ASTEROID_ENTRY_Y_MIN + rng() * (ASTEROID_ENTRY_Y_MAX - ASTEROID_ENTRY_Y_MIN),
-    (fromLeft ? 1 : -1) * Math.cos(angle) * speed,
-    Math.sin(angle) * speed
+  const entry = planAsteroidEntry(
+    state.canvasW,
+    state.canvasH,
+    ASTEROID_STATS[k].radius,
+    entryActors(state),
+    rng
   );
+  return entry ? makeAsteroid(k, entry.x, entry.y, entry.vx, entry.vy) : null;
 }
 
 /** Timed spawns happen only mid-wave: never during swoop-in, bonus waves or game over. */
@@ -883,9 +1188,11 @@ function canSpawnAsteroid(state: StarSwarmState): boolean {
  */
 export function throwAsteroid(state: StarSwarmState, kind?: AsteroidKind): StarSwarmState {
   if (!weaponsFree(state) || state.asteroids.length >= MAX_ASTEROIDS) return state;
+  const rock = spawnAsteroid(state, kind);
+  if (!rock) return state;
   return {
     ...state,
-    asteroids: [...state.asteroids, spawnAsteroid(state.canvasW, kind)],
+    asteroids: [...state.asteroids, rock],
     runStats: bumpRun(state.runStats, { rocksSpawned: 1 }), // #2491
   };
 }
@@ -912,8 +1219,11 @@ function tickAsteroids(state: StarSwarmState, dtMs: number): StarSwarmState {
     if (nextAsteroidTimer <= 0) {
       nextAsteroidTimer = asteroidInterval();
       if (canSpawnAsteroid({ ...state, asteroids })) {
-        asteroids = [...asteroids, spawnAsteroid(canvasW)];
-        runStats = bumpRun(runStats, { rocksSpawned: 1 }); // #2491
+        const rock = spawnAsteroid({ ...state, asteroids });
+        if (rock) {
+          asteroids = [...asteroids, rock];
+          runStats = bumpRun(runStats, { rocksSpawned: 1 }); // #2491
+        }
       }
     }
   }
@@ -964,17 +1274,27 @@ function absorbBulletsIntoRocks<B extends Bullet>(
 
 /**
  * Rocks ram ships: one hit per enemy per rock, in any phase once the ship is on screen
- * (`pathT >= 0` — swooping reinforcements included). The Carrier's force field shatters the
- * rock instead; a small rock shatters on whatever it hits, a large one keeps going.
+ * (`pathT >= 0` — swooping reinforcements included). A small rock shatters on whatever it hits,
+ * a large one keeps going.
+ *
+ * #2844: the Carrier's immunity comes from its armor, not its tier. `armored` (the tick's
+ * starting roster, see tickCollisions) means its force field is up: the rock shatters on the
+ * field and the Carrier takes nothing. With the last Guardian gone `armored` is false and the
+ * Carrier is an ordinary hull — it takes the rock's hit like any ship (a Carrier the rock kills
+ * still drops its hull plating, via `drops`).
  */
 function rocksStrikeEnemies(
   rocks: readonly Asteroid[],
   enemies: readonly Enemy[],
   explosions: Explosion[],
-  struck: EnemyTier[] // #2487: tiers hit, for tierStats
-): { rocks: Asteroid[]; enemies: Enemy[] } {
+  struck: EnemyTier[], // #2487: tiers hit, for tierStats
+  armored: boolean,
+  drops: PowerUp[],
+  canvasH: number
+): { rocks: Asteroid[]; enemies: Enemy[]; deflects: number } {
   const outRocks = [...rocks];
   const outEnemies = [...enemies];
+  let deflects = 0;
   for (let ri = 0; ri < outRocks.length; ri++) {
     let rock = outRocks[ri]!;
     if (rock.hp <= 0) continue;
@@ -982,16 +1302,18 @@ function rocksStrikeEnemies(
       const e = outEnemies[ei]!;
       if (!e.isAlive || (e.pathT < 0 && e.phase !== "Fleeing") || rock.hitEnemyIds.includes(e.id))
         continue;
-      if (!collideCircleAABB(rock.x, rock.y, rock.radius, e.x, e.y, e.width, e.height)) continue;
-      if (e.tier === "Carrier") {
+      if (!asteroidHitsBox(rock, e)) continue;
+      if (e.tier === "Carrier" && armored) {
         outEnemies[ei] = { ...e, hitFlashTimer: HIT_FLASH_DURATION };
         rock = { ...rock, hp: 0, shattered: true };
+        deflects++;
         break;
       }
       const newHp = e.hp - 1;
       struck.push(e.tier);
       if (newHp <= 0) {
         explosions.push(spawnExplosion(e.x, e.y));
+        if (e.tier === "Carrier") drops.push(makePickup("hull", e.x, e.y, canvasH)); // #2488
         outEnemies[ei] = { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
       } else {
         outEnemies[ei] = { ...e, hp: newHp, hitFlashTimer: HIT_FLASH_DURATION };
@@ -1008,7 +1330,7 @@ function rocksStrikeEnemies(
     }
     outRocks[ri] = rock;
   }
-  return { rocks: outRocks, enemies: outEnemies };
+  return { rocks: outRocks, enemies: outEnemies, deflects };
 }
 
 /**
@@ -1322,10 +1644,20 @@ function dodgeOffset(e: Enemy): number {
 }
 
 /**
- * #2487: each live ship looks at each live rock once. In formation it may also fire flak at a
- * rock approaching within range; on screen (pathT ≥ 0), not circling and not the Carrier, it
- * rolls once per rock to dodge — a sidestep in formation, a path nudge on a path. A failed roll
- * takes no action; the collision then follows naturally. All rolls use the seeded rng().
+ * #2487/#2844: each live ship looks at each live rock once. Only a ship the rock actually
+ * threatens (`rockThreatens`: nearby, approaching or on a projected path into it) reacts — a
+ * far-off ship is untouched. Reacting costs attention, paid out of the ship's own next-shot timer
+ * (finite combat capacity, see ASTEROID_ATTENTION):
+ *  - a threatening rock is a mild distraction (threatMs), once per rock per ship;
+ *  - firing flak (formation ships only; the Carrier's flak is a diverted volley, see
+ *    chooseCarrierTarget) adds flakMs to the timer, so the flak displaces player-directed fire
+ *    instead of riding on top of it. Flak stays outside bulletCap() — the timer pays for it;
+ *  - a successful dodge (sidestep in formation, a path nudge on a path) starts `evadeMs`, during
+ *    which the ship's player-directed shots are degraded (degradeAim, applied in tickEnemies).
+ * On screen (pathT >= 0), not circling and not the Carrier, a ship rolls once per rock to dodge.
+ * The armored Carrier ignores rocks (its force field shatters them); an exposed Carrier pays the
+ * threat distraction but never dodges — it stays heavy. A failed roll takes no action; the
+ * collision then follows naturally. All rolls use the seeded rng().
  */
 function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmState {
   const stats: Record<EnemyTier, TierStats> = { ...state.tierStats };
@@ -1333,11 +1665,14 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
   const paramScale = difficultyParamScale(state.difficulty);
   const flakScale = Math.min(FLAK_SCALE_CAP, paramScale);
   const rocks = state.asteroids.filter((a) => a.hp > 0);
+  const carrierExposed = carrierStageIn(state.enemies) !== null && !carrierArmoredIn(state.enemies);
 
   const enemies = state.enemies.map((e0) => {
     if (!e0.isAlive) return e0;
     let e = e0;
     if (e.flakCooldown > 0) e = { ...e, flakCooldown: Math.max(0, e.flakCooldown - dtMs) };
+    if (e.evadeMs > 0) e = { ...e, evadeMs: Math.max(0, e.evadeMs - dtMs) };
+    if (e.attentionMs > 0) e = { ...e, attentionMs: Math.max(0, e.attentionMs - dtMs) };
     if (e.dodge) {
       const t = e.dodge.t + dtMs;
       e = t >= e.dodge.dur ? { ...e, dodge: null } : { ...e, dodge: { ...e.dodge, t } };
@@ -1345,12 +1680,16 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
     // pathT < 0 means "still off screen" for a swoop-in — a fleeing grunt in its stagger is on
     // screen and fair game (#2489)
     if (rocks.length === 0 || (e.pathT < 0 && e.phase !== "Fleeing")) return e;
+    // the armored Carrier's force field handles rocks; it never reacts
+    if (e.tier === "Carrier" && !carrierExposed) return e;
 
     for (const a of rocks) {
-      // Flak: a formation ship shoots at a rock coming its way
+      // Flak: a formation ship shoots at a rock coming its way (the Carrier's is its twin volley)
       if (
+        e.tier !== "Carrier" &&
         e.phase === "Formation" &&
         e.flakCooldown <= 0 &&
+        rockThreatens(a, e) && // only a ship this rock actually threatens reacts (and pays)
         weaponsFree(state) && // #2842: no new fire outside combat
         !state.enemyFireDisabled &&
         !state.flakDisabled // #2491 dev toggle
@@ -1375,7 +1714,8 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
               damage: 1,
               flak: true,
             });
-            e = { ...e, flakCooldown: FLAK_COOLDOWN };
+            // #2844: the attention cost — this ship's next player-directed shot slips back
+            e = payAttention({ ...e, flakCooldown: FLAK_COOLDOWN }, "flak");
             bumpStat(stats, e.tier, { flak: 1 });
           }
         }
@@ -1383,16 +1723,17 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
 
       // Dodge: one roll per rock per ship (the #2491 dev toggle skips the roll entirely, so the
       // counters only ever describe rolls that were actually taken)
-      if (
-        state.dodgeDisabled ||
-        e.tier === "Carrier" ||
-        e.phase === "Circling" ||
-        e.rolledAsteroidIds.includes(a.id)
-      ) {
+      if (e.phase === "Circling" || e.rolledAsteroidIds.includes(a.id)) continue;
+      if (e.tier === "Carrier") {
+        // #2844: heavy — no sidestep, but a rock bearing down still takes its attention (once)
+        if (rockThreatens(a, e)) {
+          e = payAttention({ ...e, rolledAsteroidIds: [...e.rolledAsteroidIds, a.id] }, "threat");
+        }
         continue;
       }
-      if (!rockThreatens(a, e)) continue;
-      e = { ...e, rolledAsteroidIds: [...e.rolledAsteroidIds, a.id] };
+      if (state.dodgeDisabled || !rockThreatens(a, e)) continue;
+      // #2844 mild distraction
+      e = payAttention({ ...e, rolledAsteroidIds: [...e.rolledAsteroidIds, a.id] }, "threat");
       const onPath = PATH_PHASES.has(e.phase) && e.path !== null;
       bumpStat(stats, e.tier, { rolls: 1, pathRolls: onPath ? 1 : 0 });
       if (rng() < dodgeChance(e.tier, paramScale)) {
@@ -1401,6 +1742,7 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
         e = onPath
           ? nudgeRemainingPath(e, dir)
           : { ...e, dodge: { dir, t: 0, dur: DODGE_SIDESTEP_MS } };
+        e = { ...e, evadeMs: DODGE_SIDESTEP_MS }; // #2844: aim suffers while evading
       }
     }
     return e;
@@ -1458,6 +1800,8 @@ function makeEnemy(idx: number, slot: SlotDef, canvasW: number): Enemy {
     dodge: null,
     rolledAsteroidIds: [],
     flakCooldown: 0,
+    evadeMs: 0,
+    attentionMs: 0,
   };
 }
 
@@ -1814,6 +2158,8 @@ interface CarrierCtx {
   playerX: number;
   playerY: number;
   canvasH: number;
+  /** #2844: a rock the exposed Carrier would answer with flak this tick (see `carrierFlakRock`); else null. */
+  flakRock: CarrierFlakRock | null;
 }
 const NO_CARRIER_CTX: CarrierCtx = {
   playing: false,
@@ -1824,32 +2170,89 @@ const NO_CARRIER_CTX: CarrierCtx = {
   playerX: 0,
   playerY: 0,
   canvasH: CANVAS_H,
+  flakRock: null,
 };
 
+/** #2844: the part of a rock the Carrier's flak choice needs. */
+export type CarrierFlakRock = Pick<Asteroid, "x" | "y" | "vx" | "vy">;
+
 /**
- * #2843 finite-capacity seam: where a Carrier volley goes. The Carrier's own timers decide
- * *when* it fires and how much; this decides only *where*. The player is the only target today.
- * #2844 (flak at a rock) and #2845 (fire at Buddy) plug their choice in here: a diverted volley
- * replaces the player-directed one on the same timer — it never adds a volley or a gun.
+ * #2843/#2844 finite-capacity seam: where a Carrier volley goes. The Carrier's own timers decide
+ * *when* it fires and how much; this decides only *where*. A volley aimed at a rock REPLACES the
+ * player-directed one on the same timer — it never adds a volley, a gun or any cadence. #2845
+ * (fire at Buddy) plugs in here the same way.
  */
-export interface CarrierTarget {
-  readonly kind: "player";
-  readonly x: number;
-  readonly y: number;
+export type CarrierTarget =
+  | { readonly kind: "player"; readonly x: number; readonly y: number }
+  | {
+      readonly kind: "rock";
+      /** Lead point the flak is aimed at. */
+      readonly x: number;
+      readonly y: number;
+    };
+
+/**
+ * #2844: the nearest live rock an *exposed* Carrier would divert its volley to — approaching and
+ * within CARRIER_FLAK_RANGE. Null while armored (its force field handles rocks), with flak
+ * disabled, or when nothing is coming. Pure and rng-free, so a Carrier's diverted volley never
+ * perturbs the seeded stream.
+ */
+export function carrierFlakRock(
+  carrier: Pick<Enemy, "x" | "y">,
+  rocks: readonly Asteroid[],
+  armored: boolean
+): CarrierFlakRock | null {
+  if (armored) return null;
+  let best: Asteroid | null = null;
+  let bestD = CARRIER_FLAK_RANGE * CARRIER_FLAK_RANGE;
+  for (const a of rocks) {
+    if (a.hp <= 0) continue;
+    const dx = a.x - carrier.x;
+    const dy = a.y - carrier.y;
+    if (a.vx * -dx + a.vy * -dy <= 0) continue; // not approaching
+    const d = dx * dx + dy * dy;
+    if (d < bestD) {
+      best = a;
+      bestD = d;
+    }
+  }
+  return best;
 }
 
 function chooseCarrierTarget(ctx: CarrierCtx): CarrierTarget {
+  if (ctx.flakRock) {
+    const r = ctx.flakRock;
+    return { kind: "rock", x: r.x + r.vx * FLAK_LEAD_MS, y: r.y + r.vy * FLAK_LEAD_MS };
+  }
   return { kind: "player", x: ctx.playerX, y: ctx.playerY };
 }
 
 /** #2485/#2699: the Carrier's twin lasers, aimed at `target`. */
 function carrierTwinVolley(c: Enemy, target: CarrierTarget): Bullet[] {
   return [-TWIN_FIRE_OFFSET, TWIN_FIRE_OFFSET].map((dx) => {
-    const vel = aimVelocity(c.x + dx, c.y, target.x, target.y, GUARDIAN_BULLET_VY);
+    const ox = c.x + dx;
+    const oy = c.y + c.height / 2;
+    if (target.kind === "rock") {
+      // #2844: diverted to flak — same two guns, same timer, aimed at the rock; outside the cap
+      const len = Math.hypot(target.x - ox, target.y - oy) || 1;
+      return {
+        id: nextId(),
+        x: ox,
+        y: oy,
+        vx: ((target.x - ox) / len) * FLAK_SPEED,
+        vy: ((target.y - oy) / len) * FLAK_SPEED,
+        owner: "enemy" as const,
+        width: BULLET_E_W,
+        height: BULLET_E_H,
+        damage: 1,
+        flak: true,
+      };
+    }
+    const vel = aimVelocity(ox, c.y, target.x, target.y, GUARDIAN_BULLET_VY);
     return {
       id: nextId(),
-      x: c.x + dx,
-      y: c.y + c.height / 2,
+      x: ox,
+      y: oy,
       vx: vel.vx,
       vy: vel.vy,
       owner: "enemy" as const,
@@ -2636,7 +3039,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
   // #2843: the Carrier acts on its stage as of the tick's starting roster; an escalation since
   // the stage it last acted on (state.carrierStage) pulls its timers in (see tickCarrier)
   const stage = carrierStageIn(roster);
-  const carrierCtx: CarrierCtx = {
+  const carrierCtx: { -readonly [K in keyof CarrierCtx]: CarrierCtx[K] } = {
     playing: state.phase === "Playing",
     stage,
     prevStage: state.carrierStage,
@@ -2645,7 +3048,14 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     playerX: state.player.x,
     playerY: state.player.y,
     canvasH: state.canvasH,
+    flakRock: null, // set below once the Carrier's position is known
   };
+  const carrierNow = roster.find((e) => e.isAlive && e.tier === "Carrier");
+  if (carrierNow && stage && stage !== "protected" && !state.flakDisabled) {
+    // #2844: an exposed Carrier diverts its twin volley to an approaching rock (never while armored)
+    carrierCtx.flakRock = carrierFlakRock(carrierNow, state.asteroids, carrierArmoredIn(roster));
+  }
+  let tickTierStats = state.tierStats;
   const newCarrierBeams: CarrierBeam[] = [...state.carrierBeams];
   let routEscaped = 0; // #2489: fleeing grunts that reached the edge this tick
   let enemies = roster.map((enemy, idx) => {
@@ -2689,8 +3099,27 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     if (e.isAlive && e.hitFlashTimer > 0) {
       e = { ...e, hitFlashTimer: Math.max(0, e.hitFlashTimer - dtMs) };
     }
-    for (const b of [result.bullet, ...(result.bullets ?? [])]) {
-      if (b && liveEnemyBulletCount < enemyBulletCap && enemyWeaponsFree) {
+    // #2844: a ship that is evading a rock shoots worse — player-directed shots only (flak is
+    // already aimed at the rock)
+    const evading = enemy.evadeMs > 0;
+    for (const raw of [result.bullet, ...(result.bullets ?? [])]) {
+      if (!raw) continue;
+      let b = raw;
+      if (evading && !b.flak) b = { ...b, ...degradeAim(b.vx, b.vy, enemy.tier, rng) };
+      if (b.flak) {
+        // #2844: flak is outside the cap — its price was paid in the ship's fire timer. Only the
+        // Carrier's diverted volley reaches here (a volley that replaced a player-directed one).
+        if (enemyWeaponsFree) {
+          newEnemyBullets.push(b);
+          tickTierStats = {
+            ...tickTierStats,
+            [enemy.tier]: {
+              ...tickTierStats[enemy.tier],
+              flak: tickTierStats[enemy.tier].flak + 1,
+            },
+          };
+        }
+      } else if (liveEnemyBulletCount < enemyBulletCap && enemyWeaponsFree) {
         newEnemyBullets.push(b);
         liveEnemyBulletCount++;
       }
@@ -2784,6 +3213,14 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     }
   }
 
+  // #2844: the attention debt is a floor under every ship's next-shot timer, whatever the phase
+  // changes above did to it (a dive launch zeroes the timer; the straggler rule caps it)
+  enemies = enemies.map((e) =>
+    e.isAlive && e.attentionMs > 0 && e.shootTimer < e.attentionMs
+      ? { ...e, shootTimer: e.attentionMs }
+      : e
+  );
+
   return {
     ...state,
     enemies,
@@ -2796,6 +3233,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     reinforceTimer,
     reinforcedThisWave,
     carrierBeams: newCarrierBeams,
+    tierStats: tickTierStats,
     // #2843: only in combat does the Carrier act on (and so "consume") a stage change
     carrierStage: state.phase === "Playing" ? stage : state.carrierStage,
     runStats,
@@ -3063,9 +3501,18 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
     playerBullets = absorbed.bullets;
     if (absorbed.broken > 0) runStats = bumpRun(runStats, { rocksBrokenByPlayer: absorbed.broken }); // #2491
     const struckTiers: EnemyTier[] = [];
-    const struck = rocksStrikeEnemies(absorbed.rocks, enemies, newExplosions, struckTiers);
+    const struck = rocksStrikeEnemies(
+      absorbed.rocks,
+      enemies,
+      newExplosions,
+      struckTiers,
+      carrierArmored, // #2844: the field is judged on the tick's starting roster
+      newDrops,
+      state.canvasH
+    );
     rocks = struck.rocks;
     enemies = struck.enemies;
+    if (struck.deflects > 0) runStats = bumpRun(runStats, { armorDeflects: struck.deflects });
     if (struckTiers.length > 0) {
       const next = { ...tierStats };
       for (const tier of struckTiers) bumpStat(next, tier, { struck: 1 });
