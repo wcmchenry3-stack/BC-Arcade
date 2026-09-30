@@ -8,8 +8,8 @@
  * layers consume the returned state verbatim.
  */
 
-import puzzleBank from "./puzzles.json";
-import miniPuzzleBank from "./puzzles_mini.json";
+import { PACKED_CLASSIC_BANK, PACKED_MINI_BANK } from "./puzzleBanks.generated";
+import { decodePuzzleBank, type PuzzleBank } from "./puzzleCodec";
 import type {
   CellValue,
   Difficulty,
@@ -187,12 +187,20 @@ function mapGrid(
 // Public API
 // ---------------------------------------------------------------------------
 
-type PuzzleBank = Record<Difficulty, readonly string[]>;
-const CLASSIC_BANK = puzzleBank as PuzzleBank;
-const MINI_BANK = miniPuzzleBank as PuzzleBank;
+// The banks ship packed (see puzzleCodec.ts, #2869) and are unpacked on first
+// use, once per variant per app session.
+const banks: Partial<Record<Variant, PuzzleBank>> = {};
 
 function bankFor(variant: Variant): PuzzleBank {
-  return variant === "mini" ? MINI_BANK : CLASSIC_BANK;
+  let bank = banks[variant];
+  if (!bank) {
+    bank =
+      variant === "mini"
+        ? decodePuzzleBank(PACKED_MINI_BANK, MINI_CONFIG.size * MINI_CONFIG.size)
+        : decodePuzzleBank(PACKED_CLASSIC_BANK, CLASSIC_CONFIG.size * CLASSIC_CONFIG.size);
+    banks[variant] = bank;
+  }
+  return bank;
 }
 
 /** Pick a random puzzle of the given difficulty/variant and build fresh state. */
