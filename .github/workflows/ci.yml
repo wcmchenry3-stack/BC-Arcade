@@ -699,7 +699,7 @@ jobs:
           | Delta vs 4.5 MB baseline | ${DELTA_STR} |
           | Hard limit | 8.0 MB |
 
-          _Measured from \`dist/index.android.bundle\` (uncompressed Hermes bytecode). See [PERFORMANCE.md](../blob/${GITHUB_HEAD_REF}/docs/PERFORMANCE.md#js-bundle-size-guardrail) for details._"
+          _Measured from \`dist/index.android.bundle\`, minified JS (pre-Hermes). See [PERFORMANCE.md](../blob/${GITHUB_HEAD_REF}/docs/PERFORMANCE.md#js-bundle-size-guardrail) for details._"
           gh pr comment "${{ github.event.pull_request.number }}" \
             --body "$COMMENT" \
             --edit-last 2>/dev/null || \

@@ -7,7 +7,7 @@
  * cost ~370 KB of the JS bundle. Instead `scripts/pack-sudoku-puzzles.ts`
  * packs each difficulty's puzzles into one string (all puzzles joined,
  * zlib-compressed, base64-encoded) in `puzzleBanks.generated.ts`, ~155 KB in
- * all. The engine decodes a bank the first time a game asks for it.
+ * all. The engine unpacks one difficulty the first time a game asks for it.
  *
  * `puzzleBanks.test.ts` checks that the generated module decodes to exactly
  * the JSON banks, so a regenerated JSON without a re-pack fails CI.

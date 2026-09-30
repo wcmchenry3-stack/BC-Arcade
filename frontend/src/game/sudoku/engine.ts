@@ -9,7 +9,7 @@
  */
 
 import { PACKED_CLASSIC_BANK, PACKED_MINI_BANK } from "./puzzleBanks.generated";
-import { decodePuzzleBank, type PuzzleBank } from "./puzzleCodec";
+import { decodePuzzles } from "./puzzleCodec";
 import type {
   CellValue,
   Difficulty,
@@ -187,20 +187,21 @@ function mapGrid(
 // Public API
 // ---------------------------------------------------------------------------
 
-// The banks ship packed (see puzzleCodec.ts, #2869) and are unpacked on first
-// use, once per variant per app session.
-const banks: Partial<Record<Variant, PuzzleBank>> = {};
+// The banks ship packed (see puzzleCodec.ts, #2869). Each difficulty is
+// unpacked the first time a game asks for it, once per app session.
+const pools = new Map<string, readonly string[]>();
 
-function bankFor(variant: Variant): PuzzleBank {
-  let bank = banks[variant];
-  if (!bank) {
-    bank =
-      variant === "mini"
-        ? decodePuzzleBank(PACKED_MINI_BANK, MINI_CONFIG.size * MINI_CONFIG.size)
-        : decodePuzzleBank(PACKED_CLASSIC_BANK, CLASSIC_CONFIG.size * CLASSIC_CONFIG.size);
-    banks[variant] = bank;
+function poolFor(variant: Variant, difficulty: Difficulty): readonly string[] | undefined {
+  const key = `${variant}/${difficulty}`;
+  let pool = pools.get(key);
+  if (!pool) {
+    const packed = (variant === "mini" ? PACKED_MINI_BANK : PACKED_CLASSIC_BANK)[difficulty];
+    if (packed === undefined) return undefined;
+    const { size } = variantConfig(variant);
+    pool = decodePuzzles(packed, size * size);
+    pools.set(key, pool);
   }
-  return bank;
+  return pool;
 }
 
 /** Pick a random puzzle of the given difficulty/variant and build fresh state. */
@@ -209,7 +210,7 @@ export function loadPuzzle(
   variant: Variant = "classic",
   rng: () => number = Math.random
 ): SudokuState {
-  const pool = bankFor(variant)[difficulty];
+  const pool = poolFor(variant, difficulty);
   if (!pool || pool.length === 0) {
     throw new Error(`No puzzles available for ${variant}/${difficulty}`);
   }
