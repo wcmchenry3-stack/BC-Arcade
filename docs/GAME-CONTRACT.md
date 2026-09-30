@@ -283,6 +283,8 @@ All metadata models use `extra="forbid"` to prevent arbitrary data from being si
 
 **Completion merge:** `PATCH /games/{id}/complete` merges the validated result block into `games.metadata` (`merge_result_metadata` in `games/leaderboard.py`; the board's limit check merges the same way). Creation-time keys win, so a result can't rewrite `player_name` or a partition. A creation key holding `null` has no value to protect and doesn't win: the result's value fills it (a Star Swarm run created with `difficulty_tier: null` keeps the tier its completion reports). A `null` in the result never clears a creation value.
 
+**Hearts result** (#2838): `HeartsResult` adds the optional `hand_scores` / `final_scores` / `human_seat` breakdown of a finished game. A breakdown that is malformed or doesn't reconcile is dropped, not rejected (a 400 on `/complete` would dead-letter the game). See [`games/hearts.md`](games/hearts.md).
+
 **Adding a metadata model:**
 
 1. Create a `*Metadata(BaseModel)` class in `backend/<game>/models.py` with `model_config = ConfigDict(extra="forbid")`.

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from games.board import SCORE_METRIC, BoardDefinition
 from games.protocol import default_stats_shape
-from hearts.models import HeartsMetadata
+from hearts.models import HeartsMetadata, HeartsResult
 from vocab import GameType
 
 
@@ -17,7 +17,7 @@ class HeartsModule:
 
     game_type = GameType.HEARTS
     metadata_model = HeartsMetadata
-    result_model = None
+    result_model = HeartsResult
     has_winner = True
     # ``final_score`` is 100 - penalty points. qualifying_outcomes stays None:
     # a lost or drawn hand still has a real score, so win/loss/push all count.

@@ -697,13 +697,26 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
       outcome: "win",
       finalScore: 54,
       durationMs: expect.any(Number),
-      result: { final_score: 54, vs_result: "win" },
+      // #2838: the per-hand path rides along (the fixture's saved history is empty, so it does not reconcile; the server drops that).
+      result: {
+        final_score: 54,
+        vs_result: "win",
+        hand_scores: [[1, 0, 0, 0]],
+        final_scores: [46, 100, 63, 52],
+        human_seat: 0,
+      },
     });
     // The AIs' three 400 ms turns ran on the clock (plus the test's own waits).
     const { durationMs } = summary as { durationMs: number };
     expect(durationMs).toBeGreaterThanOrEqual(1200);
     expect(durationMs).toBeLessThan(10_000);
-    expect(payload).toEqual({ final_score: 54, vs_result: "win" });
+    expect(payload).toEqual({
+      final_score: 54,
+      vs_result: "win",
+      hand_scores: [[1, 0, 0, 0]],
+      final_scores: [46, 100, 63, 52],
+      human_seat: 0,
+    });
   });
 
   it("a restored game's play time carries on from its save", async () => {
