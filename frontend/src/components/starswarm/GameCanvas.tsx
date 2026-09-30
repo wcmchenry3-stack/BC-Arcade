@@ -26,6 +26,7 @@ import {
   carrierBeamJustFired,
   reinforcementsJustLaunched,
   upgradeEvents,
+  PLAYER_W,
 } from "../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { areTestHooksEnabled, isPreLaunchApiBuild } from "../../game/_shared/envFlags";
@@ -86,6 +87,12 @@ export interface DevOptions {
 
 export interface GameCanvasHandle {
   setPlayerX: (x: number) => void;
+  /**
+   * The X the ship is (or is about to be) at: the last `setPlayerX` value clamped to the play
+   * field. Unlike `getState().player.x` this is current even while the engine is not ticking
+   * (pre-wave countdown), so it is the right drag anchor for a new gesture.
+   */
+  getPlayerX: () => number;
   setFire: (fire: boolean) => void;
   /** Inject a power-up activation mid-game for dev-panel testing (#1039). */
   triggerPowerUp: (type: PowerUpType) => void;
@@ -217,7 +224,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         )
     );
     const sfRef = useRef<StarfieldState>(initStarfield(width, height));
-    const inputRef = useRef({ playerX: width / 2, fire: true });
+    const inputRef = useRef({ playerX: initialState?.player.x ?? width / 2, fire: true });
     const infiniteLivesRef = useRef(false);
     // Assign during render (not via effect) so the reset effect always reads the
     // latest devOptions even though devOptions is not in its dependency array.
@@ -387,6 +394,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         setPlayerX(x) {
           inputRef.current.playerX = x;
         },
+        getPlayerX() {
+          const hw = PLAYER_W / 2;
+          return Math.max(hw, Math.min(width - hw, inputRef.current.playerX));
+        },
         setFire(fire) {
           inputRef.current.fire = fire;
         },
@@ -407,7 +418,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           return stats ? summarizeFrameStats(stats, performance.now()) : null;
         },
       }),
-      []
+      [width]
     );
 
     // Prop-driven reset: fires when resetTick increments (new game requested from parent).
