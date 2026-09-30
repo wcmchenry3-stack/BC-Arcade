@@ -1,3 +1,5 @@
+import type { ScoreLedger } from "./scoreLedger";
+
 /** #2484: Carrier — one per wave, top row, never dives, armored while its Boss escorts live. */
 export type EnemyTier = "Grunt" | "Elite" | "Boss" | "Carrier";
 
@@ -349,6 +351,8 @@ export interface StarSwarmState {
    * down like any other cosmetic timer (compare `bombFlashTimer`).
    */
   readonly missionCompleteTimer: number;
+  /** #2837: points by wave and source — see scoreLedger.ts. Carries across waves, reset per run. */
+  readonly scoreLedger: ScoreLedger;
 }
 
 /** Input snapshot consumed by each `tick` call. */

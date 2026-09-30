@@ -21,6 +21,16 @@ import type {
   HullLevel,
   UpgradeEvent,
 } from "./types";
+import {
+  WAVE_CLEAR_SOURCE,
+  addScore,
+  award,
+  commitAwards,
+  emptyScoreLedger,
+  recordScore,
+  scoreSource,
+  type ScorePoints,
+} from "./scoreLedger";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1478,6 +1488,7 @@ function buildWaveState(
     playerFireDisabled: false,
     enemyFireDisabled: false,
     missionCompleteTimer: 0,
+    scoreLedger: emptyScoreLedger(), // #2837: startNextWave carries the run's ledger over
   };
 }
 
@@ -1503,7 +1514,9 @@ export function tick(state: StarSwarmState, dtMs: number, input: StarSwarmInput)
   s = tickAsteroids(s, scaledDt); // #2486
   s = tickPowerUps(s, scaledDt);
   s = tickBuddyShips(s, scaledDt);
-  s = tickCollisions(s); // score updated by kills here
+  const awards: ScorePoints = {}; // #2837
+  s = tickCollisions(s, awards); // score updated by kills here
+  s = commitAwards(s, awards);
   s = tickBonusLives(state, s); // #1078: after score updated; un-GameOvers if bonus life rescues player
   s = tickExplosions(s, scaledDt);
   s = checkPhaseTransitions(s);
@@ -2502,7 +2515,8 @@ function spawnExplosion(x: number, y: number): Explosion {
   return { id: nextId(), x, y, frame: 0, frameTimer: EXPLOSION_FRAME_MS };
 }
 
-function tickCollisions(state: StarSwarmState): StarSwarmState {
+// #2837: `awards` collects this tick's points by source; tick() commits them to the ledger.
+function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSwarmState {
   const { player } = state;
   let score = state.score;
   const newExplosions: Explosion[] = [...state.explosions];
@@ -2572,7 +2586,8 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
           enemy.phase === "Diving" || enemy.phase === "Circling" || enemy.phase === "Fleeing";
         const mult = onTheMove ? DIVE_SCORE_MULT : 1;
         if (enemy.phase === "Fleeing") routCaught++;
-        score += Math.round(base * mult * scoreMult);
+        const mod = enemy.phase === "Fleeing" ? "rout" : onTheMove ? "dive" : undefined; // #2837
+        score += award(awards, scoreSource(enemy.tier, mod), Math.round(base * mult * scoreMult));
         if (state.phase === "Playing") killsSinceLastDrop++;
         return { ...enemy, hp: 0, isAlive: false, hitFlashTimer: 0 };
       }
@@ -2683,7 +2698,12 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
           // #2488: the Carrier drops plating however it dies
           if (e.tier === "Carrier") newDrops.push(makePickup("hull", e.x, e.y, state.canvasH));
           if (e.phase === "Fleeing") bombCaught++; // #2489: caught is caught, even at 1×
-          score += Math.round(TIER_SCORE[e.tier] * scoreMult); // no dive multiplier for bomb kills
+          // no dive multiplier for bomb kills
+          score += award(
+            awards,
+            scoreSource(e.tier, "bomb"),
+            Math.round(TIER_SCORE[e.tier] * scoreMult)
+          );
           if (state.phase === "Playing") killsSinceLastDrop++;
           return { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
         }
@@ -2819,7 +2839,11 @@ function tickCollisions(state: StarSwarmState): StarSwarmState {
             ? enemies.map((e) => {
                 if (e.id === rammingEnemyId) {
                   newExplosions.push(spawnExplosion(e.x, e.y));
-                  score += Math.round(TIER_SCORE[e.tier] * DIVE_SCORE_MULT * scoreMult);
+                  score += award(
+                    awards,
+                    scoreSource(e.tier, "ram"),
+                    Math.round(TIER_SCORE[e.tier] * DIVE_SCORE_MULT * scoreMult)
+                  );
                   return { ...e, hp: 0, isAlive: false };
                 }
                 return e;
@@ -3007,10 +3031,7 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
       const waveClearBonus = waveClearBonusPoints(state.wave, state.difficulty);
       // Note: invincibleTimer and bombFlashTimer don't need resetting here —
       // startNextWave() → buildWaveState() unconditionally resets both on every wave.
-      const next = startNextWave({
-        ...state,
-        score: state.score + waveClearBonus,
-      });
+      const next = startNextWave(addScore(state, WAVE_CLEAR_SOURCE, waveClearBonus)); // #2837
       return { ...next, missionCompleteTimer: MISSION_COMPLETE_BANNER_MS };
     }
     return state;
@@ -3021,7 +3042,7 @@ function checkPhaseTransitions(state: StarSwarmState): StarSwarmState {
 
 function startNextWave(state: StarSwarmState): StarSwarmState {
   const nextWave = state.wave + 1;
-  return buildWaveState(
+  const next = buildWaveState(
     state.canvasW,
     state.canvasH,
     nextWave,
@@ -3040,6 +3061,7 @@ function startNextWave(state: StarSwarmState): StarSwarmState {
     state.tierStats,
     state.runStats
   );
+  return { ...next, scoreLedger: state.scoreLedger }; // #2837: the ledger carries across waves
 }
 
 // ---------------------------------------------------------------------------
@@ -3063,6 +3085,7 @@ export function applyPowerUp(state: StarSwarmState, type: PowerUpType): StarSwar
     const newExplosions: Explosion[] = [...state.explosions];
     const sm = difficultyMultiplier(state.difficulty);
     let score = state.score;
+    const awards: ScorePoints = {}; // #2837
     let killsSinceLastDrop = state.killsSinceLastDrop;
     const armoredNow = carrierArmoredIn(state.enemies); // #2484
     const drops: PowerUp[] = []; // #2488
@@ -3078,7 +3101,7 @@ export function applyPowerUp(state: StarSwarmState, type: PowerUpType): StarSwar
           frame: 0,
           frameTimer: EXPLOSION_FRAME_MS,
         });
-        score += Math.round(TIER_SCORE[e.tier] * sm);
+        score += award(awards, scoreSource(e.tier, "bomb"), Math.round(TIER_SCORE[e.tier] * sm));
         killsSinceLastDrop++;
         // #2488: the Carrier drops plating however it dies
         if (e.tier === "Carrier") drops.push(makePickup("hull", e.x, e.y, state.canvasH));
@@ -3095,6 +3118,7 @@ export function applyPowerUp(state: StarSwarmState, type: PowerUpType): StarSwar
       powerUps: [...state.powerUps, ...drops],
       explosions: newExplosions,
       score,
+      scoreLedger: recordScore(state.scoreLedger, state.wave, awards), // #2837
       killsSinceLastDrop,
       bombFlashTimer: BOMB_FLASH_DURATION,
     };
