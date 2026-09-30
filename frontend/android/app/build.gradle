@@ -183,6 +183,47 @@ gradle.taskGraph.whenReady { graph ->
         }
     }
 }
+// Release signing guard (#2783). The `release` signingConfig above falls back to
+// debug.keystore when the UPLOAD_* properties are absent so that Gradle can still
+// configure debug/other tasks — but a debug-signed AAB is rejected by Play, and a
+// debug-signed APK must never be mistaken for a store build. Any task that
+// produces or signs a release artifact therefore fails unless a real upload
+// keystore is configured. CI's release smoke build has no secret, so it opts in
+// explicitly with -PALLOW_DEBUG_SIGNED_RELEASE=true (see .github/workflows/ci.yml).
+def resolveUploadKeystoreProblem = { ->
+    def path = findProperty('UPLOAD_STORE_FILE')
+    if (!path) {
+        return "UPLOAD_STORE_FILE is not set"
+    }
+    def store = file(path)
+    if (store.name == 'debug.keystore') {
+        return "UPLOAD_STORE_FILE points at the debug keystore (${path})"
+    }
+    if (!store.isFile()) {
+        return "UPLOAD_STORE_FILE does not exist (${path})"
+    }
+    for (prop in ['UPLOAD_STORE_PASSWORD', 'UPLOAD_KEY_ALIAS', 'UPLOAD_KEY_PASSWORD']) {
+        if (!findProperty(prop)) {
+            return "${prop} is not set"
+        }
+    }
+    return null
+}
+gradle.taskGraph.whenReady { graph ->
+    def signsRelease = graph.allTasks.any {
+        it.project == project && it.name =~ /^(assemble|bundle|package|sign|validateSigning|install).*Release/
+    }
+    if (signsRelease && findProperty('ALLOW_DEBUG_SIGNED_RELEASE') != 'true') {
+        def problem = resolveUploadKeystoreProblem()
+        if (problem != null) {
+            throw new GradleException(
+                "Refusing to build a release artifact without the Play upload keystore: ${problem}. " +
+                "A debug-signed release is rejected by Play Console. Set the UPLOAD_* properties in " +
+                "~/.gradle/gradle.properties (docs/ANDROID-CI.md, \"Signing configuration\"). " +
+                "CI smoke builds only: pass -PALLOW_DEBUG_SIGNED_RELEASE=true.")
+        }
+    }
+}
 // The flag changes the bundle's contents, so it is a task input: flipping it
 // can never leave a previously built bundle UP-TO-DATE.
 tasks.matching { it.name ==~ /createBundle.*JsAndAssets/ }.configureEach { task ->
