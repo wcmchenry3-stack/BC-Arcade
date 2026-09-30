@@ -1,4 +1,4 @@
-"""Apple (App Store) boundary for ``POST /purchases/apple`` (#840; verification is #2786).
+"""Apple (App Store) boundary for ``POST /purchases/apple`` (#840) and its verifier (#2786).
 
 What lives here now:
 
@@ -10,12 +10,12 @@ What lives here now:
 * :func:`get_apple_verifier` — the FastAPI dependency that supplies the
   :class:`~purchases.verifiers.AppleVerifier`.
 
-TODO(#2786): replace ``get_apple_verifier``'s body with a verifier built from
-``APPLE_IAP_*`` / ``APPLE_BUNDLE_ID`` / ``APPLE_APP_ID`` / ``APPLE_IAP_ENVIRONMENTS``
-(one ``SignedDataVerifier`` + ``AppStoreServerAPIClient`` per allowed
-environment, IAP.md §6.2), and add ``POST /purchases/apple/notifications``
-(ASSN v2, §6.5) plus the notification-history replay cron. Both should call
-``purchases.service.apply_store_state`` for REFUND / REVOKE / REFUND_REVERSED.
+The real verifier is :class:`purchases.apple_store.AppStoreVerifier`
+(#2786), built from the environment on first use. Without ``APPLE_BUNDLE_ID``
+(docs/IAP.md §16) the dependency keeps returning
+:class:`~purchases.verifiers.NotConfiguredAppleVerifier`, so every Apple call
+answers ``503 store_unavailable`` — the dormant default. The ASSN v2 webhook
+and the notification-history replay live in ``purchases/apple_notifications.py``.
 """
 
 from __future__ import annotations
@@ -72,9 +72,26 @@ def parse_store_key(signed_transaction: str) -> str:
     return str(key)
 
 
-_verifier: AppleVerifier = NotConfiguredAppleVerifier()
+_NOT_CONFIGURED = NotConfiguredAppleVerifier()
+_verifier: AppleVerifier | None = None
+
+
+def configured_verifier():  # -> purchases.apple_store.AppStoreVerifier | None
+    """The real verifier built from the environment (cached), or None when dormant."""
+    global _verifier
+    if _verifier is None:
+        from .apple_store import build_from_env
+
+        _verifier = build_from_env() or _NOT_CONFIGURED
+    return None if _verifier is _NOT_CONFIGURED else _verifier
+
+
+def reset_apple_verifier() -> None:
+    """Forget the cached verifier so the next call re-reads the environment (tests)."""
+    global _verifier
+    _verifier = None
 
 
 def get_apple_verifier() -> AppleVerifier:
     """FastAPI dependency. Tests override it via ``app.dependency_overrides``."""
-    return _verifier
+    return configured_verifier() or _NOT_CONFIGURED
