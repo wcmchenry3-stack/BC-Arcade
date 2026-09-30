@@ -27,7 +27,12 @@ Drafts for #828: [`privacy-policy.html`](privacy-policy.html), [`terms-of-servic
 4. **Governing law** (ToS §13) and **liability cap** (ToS §9).
 5. **Sentry project setting** "Prevent Storing of IP Addresses" — turn it on; the policy assumes Sentry does not keep IPs.
 6. **Age rating vs. "not directed at children under 13"** — Blackjack is simulated gambling, which raises the store age rating; keep the two consistent when filling in the ASC / Play questionnaires (#823, #825).
-7. **App Privacy / Data Safety forms** (#823, #2014) must match this policy: Diagnostics (crash, performance) **and** gameplay/"other user content" data linked to a device-scoped identifier, not used for tracking. "Data not collected" would be inaccurate.
+7. **App Privacy / Data Safety forms** (#823, #2014) must match this policy. **Superseded 2026-09-30 (#2779):** the verified
+   inventory is [DATA-INVENTORY.md](DATA-INVENTORY.md) and the per-type answers are in
+   [STORE-PRIVACY-ANSWERS.md](STORE-PRIVACY-ANSWERS.md) (now includes the optional generated leaderboard name, the Sentry install
+   ID, and "linked" for diagnostics/feedback). The policy text is a **draft pending owner/legal review**; new open items:
+   Sentry 90-day retention and IP setting to verify, database backup window, legacy feedback issues from the old Cloudflare-worker
+   path, and the diagnostics consent decision (DATA-INVENTORY §7).
 
 ### Not legal advice
 
