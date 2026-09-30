@@ -33,15 +33,19 @@ describe("iOS privacy manifest", () => {
 
   it("declares exactly the data types the app collects", () => {
     expect(collectedDataTypes(xml)).toEqual({
-      // Keyed to the anonymous per-install session ID → linked.
+      // Keyed to the anonymous per-install session ID (X-Session-ID) → linked.
       UserID: { linked: true, tracking: false },
+      // Sentry's own random install ID (user.id) rides on every Sentry event, so
+      // diagnostics and feedback are linked to a device-level ID (#2779).
+      DeviceID: { linked: true, tracking: false },
       GameplayContent: { linked: true, tracking: false },
+      // The server-generated public leaderboard name (opt-in; docs/DATA-INVENTORY.md).
+      OtherUserContent: { linked: true, tracking: false },
       ProductInteraction: { linked: true, tracking: false },
-      // Sentry: feedback and diagnostics carry no identifier.
-      CustomerSupport: { linked: false, tracking: false },
-      CrashData: { linked: false, tracking: false },
-      PerformanceData: { linked: false, tracking: false },
-      OtherDiagnosticData: { linked: false, tracking: false },
+      CustomerSupport: { linked: true, tracking: false },
+      CrashData: { linked: true, tracking: false },
+      PerformanceData: { linked: true, tracking: false },
+      OtherDiagnosticData: { linked: true, tracking: false },
     });
   });
 

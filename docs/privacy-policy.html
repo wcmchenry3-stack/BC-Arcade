@@ -29,14 +29,16 @@
   </head>
   <body>
     <h1>Privacy Policy</h1>
-    <p><strong>BC Arcade</strong> — Last updated: September 20, 2026</p>
+    <p><strong>BC Arcade</strong> — Last updated: September 30, 2026</p>
 
     <h2>Overview</h2>
     <p>
       BC Arcade is a free collection of classic games for iOS and Android, also
       playable at games.buffingchi.com. It is published by Buffing Chi ("we",
-      "us"). There are no accounts, no ads and no tracking. This policy explains
-      what the app collects, why, where it is kept, and how to delete it.
+      "us"). There are no accounts, no ads and no tracking. The leaderboards are
+      optional and public, and show a name we generate for you, never text you
+      type. This policy explains what the app collects, why, what is public,
+      where it is kept, and how to remove or delete it.
     </p>
 
     <h2>What We Collect</h2>
@@ -46,10 +48,10 @@
       On first launch the app generates a random identifier and stores it on
       your device. It is sent to our server with each request so that your
       scores and statistics can be kept together. It is not derived from your
-      device, your name or any other identifier, and we never ask for your name,
-      email address or phone number. Because it can single out one installation
-      of the app, privacy laws such as the GDPR treat it as pseudonymous
-      personal data, and we handle it that way.
+      device, your name or any other identifier, and we never ask you for your
+      name, email address or phone number. Because it can single out one
+      installation of the app, privacy laws such as the GDPR treat it as
+      pseudonymous personal data, and we handle it that way.
     </p>
 
     <h3>Gameplay data</h3>
@@ -68,12 +70,55 @@
         diagnose bugs
       </li>
       <li>Which games your session is entitled to open</li>
+      <li>
+        Your guesses in the Daily Word puzzle, kept for that day's puzzle and
+        removed automatically after 14 days
+      </li>
     </ul>
     <p>
       Statistics, leaderboard rankings, Arcade XP, player level and daily
       challenge progress are calculated from these records. When you are
       offline, results are queued on your device and sent the next time the app
       has a connection.
+    </p>
+
+    <h3>Public leaderboards (optional)</h3>
+    <p>
+      You are on no leaderboard unless you choose to join. If you press
+      <strong>Join leaderboards</strong> (in Profile, or from the prompt after a
+      result), our server gives you a generated name such as "Brave Otter 4821".
+      You cannot type your own name, and names are not unique.
+    </p>
+    <ul>
+      <li>
+        <strong>What other players can see:</strong> your generated name, your
+        score on that board, your rank and the date. Nothing you typed, and not
+        your session ID.
+      </li>
+      <li>
+        <strong>What we keep:</strong> the generated name is stored with your
+        anonymous session ID, and every finished game from this installation is
+        ranked under it. Changing your name (<strong>Get a new name</strong>)
+        changes it on all of those scores.
+      </li>
+      <li>
+        <strong>How to leave:</strong> Profile &rarr;
+        <strong>Leave leaderboards</strong> deletes your generated name and
+        removes you from every leaderboard at once. Joining again gives a new
+        name. Your private game history and statistics stay on your device and
+        in your session until you delete them (see below).
+      </li>
+      <li>
+        <strong>How to erase everything:</strong> Settings &rarr;
+        <strong>Delete my data</strong> also deletes your generated name.
+      </li>
+    </ul>
+    <p>
+      Earlier versions of the app let you type a name. If you typed one then, it
+      is not shown publicly: you were moved to a generated name, but a copy of
+      what you typed may still sit in the private record of those games on our
+      server (visible only to your session). <strong>Delete my data</strong>
+      removes it.
     </p>
 
     <h3>Automatic error logs</h3>
@@ -84,9 +129,11 @@
       and fix bugs.
     </p>
 
-    <h3>Crash and performance reports (Sentry)</h3>
+    <h3>Crash and performance reports (Sentry) &mdash; diagnostics</h3>
     <p>
-      The app and our server use <strong>Sentry</strong> (<a
+      Unlike the data above, these reports are not needed to play the games;
+      they help us find and fix problems, and they are sent automatically. The
+      app and our server use <strong>Sentry</strong> (<a
         href="https://sentry.io/privacy/"
         >sentry.io</a
       >) for crash reporting and performance monitoring. A report can include
@@ -95,18 +142,27 @@
       measurements. We have Sentry's option to send personal identifiers turned
       off, and reports never contain a name or email because we do not have one.
       Your anonymous session ID is removed from server reports before they are
-      sent. Sentry keeps this data for 90 days.
+      sent. Sentry's software does give each installation its own random
+      identifier, unrelated to our session ID, so reports from one installation
+      can be recognised as coming from the same app install. Reports may also
+      include a short trail of recent app events (for example which screen you
+      opened, or which of our server addresses the app called). Sentry keeps
+      this data for 90 days. There is currently no in-app switch for these
+      reports; to object, email us (see Contact). Because we cannot tell which
+      Sentry reports are yours, Delete my data does not reach them; they expire
+      on their own.
     </p>
 
     <h3>Feedback you choose to send</h3>
     <p>
       If you use the in-app feedback form, what you submit is sent to Sentry,
       the same service we use for crash reports: the title and description you
-      type, whether it is a bug report or a suggestion, and the app's recent
-      warning and error messages to help us reproduce the problem. It is not
-      published anywhere, it is not linked to a name or email because we do not
-      ask for one, and Sentry keeps it for 90 days. Please do not include
-      personal information in feedback.
+      type, whether it is a bug report or a suggestion, and, if there are any, a
+      text file of the app's recent warning and error messages to help us
+      reproduce the problem. It is not published anywhere, it is not linked to a
+      name or email because we do not ask for one, it is tied only to the random
+      Sentry installation identifier described above, and Sentry keeps it for 90
+      days. Please do not include personal information in feedback.
     </p>
 
     <h3>Server logs</h3>
@@ -121,7 +177,9 @@
     <h2>What We Do Not Collect</h2>
     <ul>
       <li>
-        No name, email address, phone number or contacts — there are no accounts
+        No real name, email address, phone number or contacts — there are no
+        accounts. The only name in the app is the optional generated leaderboard
+        name
       </li>
       <li>
         No advertising identifier (IDFA / Android advertising ID) and no
@@ -136,6 +194,7 @@
     <h2>Data Stored on Your Device</h2>
     <ul>
       <li>Your anonymous session ID</li>
+      <li>Your generated leaderboard name, if you joined</li>
       <li>Preferences such as theme, language and sound</li>
       <li>Games in progress, so they survive closing the app</li>
       <li>Results and event logs waiting to be sent while you are offline</li>
@@ -149,6 +208,11 @@
         <strong>To provide the games you asked for</strong> — saving results,
         statistics, progress and leaderboards (performance of our agreement with
         you under the Terms of Service).
+      </li>
+      <li>
+        <strong>Your choice</strong> &mdash; showing you on the public
+        leaderboards, which only happens after you press Join and stops when you
+        leave.
       </li>
       <li>
         <strong>Our legitimate interests</strong> in keeping the service secure
@@ -175,7 +239,9 @@
       </li>
       <li><strong>Sentry</strong> — crash and performance reports</li>
       <li>
-        <strong>Cloudflare</strong> — DNS and network routing for our domains
+        <strong>Cloudflare</strong> — DNS and network routing for our domains;
+        our server traffic passes through it. It is not used for feedback or
+        analytics
       </li>
     </ul>
     <p>
@@ -188,25 +254,34 @@
     <h2>How Long We Keep It</h2>
     <ul>
       <li>
-        Gameplay data and error logs: until you delete them (see below). [OWNER
-        TO CONFIRM: a maximum retention period for inactive sessions.]
+        Gameplay data, error logs and your generated leaderboard name: until you
+        delete them (see below). [OWNER TO CONFIRM: a maximum retention period
+        for inactive sessions.]
       </li>
-      <li>Sentry reports: 90 days</li>
+      <li>Daily Word guesses: 14 days</li>
+      <li>Sentry reports and feedback: 90 days</li>
       <li>Server logs: a limited period set by our hosting provider</li>
+      <li>
+        Backups: our database provider keeps routine backups, so a deleted
+        record can remain in a backup until that backup expires [OWNER TO
+        CONFIRM: backup window].
+      </li>
       <li>
         Data on your device: until you delete your data in the app or uninstall
         it
       </li>
     </ul>
 
-    <h2>Deleting Your Data</h2>
+    <h2>Leaving the Leaderboards and Deleting Your Data</h2>
     <p>
-      Open <strong>Settings</strong> in the app, choose
+      To leave the leaderboards only, open <strong>Profile</strong> and choose
+      <strong>Leave leaderboards</strong>. To delete everything, open
+      <strong>Settings</strong> in the app, choose
       <strong>Delete my data</strong> and confirm. This permanently deletes the
-      game records, event logs, entitlements and error logs linked to your
-      session ID from our server, and clears the session ID and any queued
-      results from your device. It cannot be undone. The next time you play, the
-      app starts a new anonymous session.
+      game records, event logs, Daily Word guesses, entitlements, error logs and
+      generated leaderboard name linked to your session ID from our server, and
+      clears the session ID and any queued results from your device. It cannot
+      be undone. The next time you play, the app starts a new anonymous session.
     </p>
     <p>
       Because we do not know who you are, the in-app button is the only way we
@@ -240,8 +315,10 @@
     <h2>Children's Privacy</h2>
     <p>
       BC Arcade is not directed at children under 13, and we do not knowingly
-      collect personal information from them. If you believe a child has used
-      the app and want their data removed, use <strong>Delete my data</strong>
+      collect personal information from them. The leaderboards show only
+      generated names, never text a player types. If you believe a child has
+      used the app and want their data removed, use
+      <strong>Delete my data</strong>
       on that device or contact us.
     </p>
 
