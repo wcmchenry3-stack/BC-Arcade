@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.dialect import dialect_insert
 from db.models import Player
 from players.generated import generate_display_name
-from players.schemas import clean_display_name
+from players.schemas import clean_display_name, is_default_legacy_name
 
 
 async def get_display_name(db: AsyncSession, session_id: str) -> str | None:
@@ -85,11 +85,14 @@ async def remember_legacy_opt_in(db: AsyncSession, session_id: str | None, raw: 
     ``player_name`` in the creation metadata instead. Under the model those
     builds use, typing a name *was* the choice to appear on the boards, so the
     choice is kept, but the typed text never becomes public: the player gets
-    (or keeps) a generated name. Silently skipped without a valid player id or
-    a non-blank name.
+    (or keeps) a generated name. Silently skipped without a valid player id,
+    without a non-blank name, or when the name is a default the build filled
+    in (``You``, ``Player``, ...; ``schemas.LEGACY_DEFAULT_NAMES``), which was
+    never a deliberate choice.
     """
     if not session_id:
         return
-    if clean_display_name(raw, truncate=True) is None:
+    name = clean_display_name(raw)
+    if name is None or is_default_legacy_name(name):
         return
     await join_leaderboards(db, session_id)

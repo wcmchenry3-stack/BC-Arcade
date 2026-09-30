@@ -9,7 +9,8 @@ decision, docs/LEADERBOARD-IDENTITIES.md):
              generated name; any request body is ignored, so no client text
              can become public. Joining again keeps the current name;
 - ``POST /players/me/reroll``  swap the name for another generated one
-             (404 when the caller hasn't joined: a reroll never opts in);
+             (404 when the caller hasn't joined: a reroll never opts in;
+             limited to ``PLAYER_REROLL_RATE_LIMIT`` on top of the write limit);
 - ``DELETE`` leave every leaderboard.
 
 Every board shows the name for all of the player's finished games, and a
@@ -39,6 +40,10 @@ router = APIRouter()
 # Keyed by session, like the games write routes.
 PLAYER_READ_RATE_LIMIT = "60/minute"
 PLAYER_WRITE_RATE_LIMIT = "10/minute"
+# On top of the write limit: rerolling is a name picker, not a stream of fresh
+# public identities (a reroll every few seconds would let one player cycle
+# through names on the boards).
+PLAYER_REROLL_RATE_LIMIT = "5/hour"
 
 
 def _db_error(what: str, detail: str, exc: SQLAlchemyError) -> HTTPException:
@@ -84,6 +89,7 @@ async def put_my_player(request: Request) -> PlayerResponse:
 
 @router.post("/me/reroll", response_model=PlayerResponse)
 @limiter.limit(PLAYER_WRITE_RATE_LIMIT, key_func=session_key)
+@limiter.limit(PLAYER_REROLL_RATE_LIMIT, key_func=session_key)
 async def reroll_my_player(request: Request) -> PlayerResponse:
     """Give the caller a different generated name. 404 if they haven't joined."""
     sid = get_session_id(request)

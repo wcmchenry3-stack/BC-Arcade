@@ -359,6 +359,17 @@ async def test_a_legacy_name_that_is_not_a_valid_display_name_is_ignored(
     assert _get(client, me) == {"display_name": None}
 
 
+@pytest.mark.parametrize(
+    "default", ["You", "you", " Player ", "PLAYER 1", "player1", "Guest", "Anonymous", "anon", "Me"]
+)
+async def test_a_legacy_default_name_does_not_opt_in(client: TestClient, default: str) -> None:
+    """A name the old build filled in was never the player's choice to go public."""
+    me = _sid()
+    await _grant_all(me)
+    _play(client, me, "cascade", 700, player_name=default)
+    assert _get(client, me) == {"display_name": None}
+
+
 async def test_replaying_complete_on_a_finished_row_changes_nothing(client: TestClient) -> None:
     """Regression guard: with the name on the player, a replayed completion has
     nothing left to duplicate or rewrite (#2624)."""
@@ -408,15 +419,23 @@ def test_put_rate_limit_is_enforced(client: TestClient) -> None:
     assert _join(client, _sid()).status_code == 200
 
 
-def test_reroll_rate_limit_is_enforced(client: TestClient) -> None:
-    from players.router import PLAYER_WRITE_RATE_LIMIT
+def test_reroll_has_its_own_tighter_rate_limit(client: TestClient) -> None:
+    from players.router import PLAYER_REROLL_RATE_LIMIT, PLAYER_WRITE_RATE_LIMIT
 
-    allowed = int(PLAYER_WRITE_RATE_LIMIT.split("/")[0])
+    allowed = int(PLAYER_REROLL_RATE_LIMIT.split("/")[0])
+    assert PLAYER_REROLL_RATE_LIMIT.endswith("/hour")
+    assert allowed < int(PLAYER_WRITE_RATE_LIMIT.split("/")[0])
+    limits = [str(lim.limit) for lim in limiter._route_limits["players.router.reroll_my_player"]]
+    assert len(limits) == 2
     sid = _sid()
     _join_name(client, sid)
     statuses = [_reroll(client, sid).status_code for _ in range(allowed + 1)]
-    assert statuses[-1] == 429
-    assert 200 in statuses
+    assert statuses == [200] * allowed + [429]
+    # Per session: another player can still reroll, and joining isn't affected.
+    other = _sid()
+    _join_name(client, other)
+    assert _reroll(client, other).status_code == 200
+    assert _join(client, sid).status_code == 200
 
 
 SECRET_SID = "0f0f0f0f-dead-4bee-8f00-000000000000"

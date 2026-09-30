@@ -16,16 +16,24 @@ boards. So each of those players keeps their opted-in status, but their typed
 text is replaced by a freshly generated name. Nobody without a row is added:
 unnamed players stay off every board until they choose to join.
 
+Except defaults: a row whose typed name is one a build filled in for the
+player (``You``, ``Player``, ``Guest``, ...; ``_DEFAULT_NAMES``) was not a
+deliberate choice to go public, so that row is deleted (not on any board;
+the player can join from Profile) rather than given a generated name.
+
 The typed text is not kept anywhere by this migration. (Older rows may still
 carry a ``metadata.player_name`` on their own ``games`` rows; that is private
 to the player's session and never read by a board.)
 
 Constants are literal, not imported from the app: a migration must keep
 meaning what it meant when written (see ``0027_players_display_name``). The
-word lists are ``players/generated.py``'s at the time of writing.
+word lists and blocked numbers are ``players/generated.py``'s at the time of
+writing, the defaults ``players/schemas.py``'s; ``tests/test_generated_names.py``
+checks they still match.
 
-Downgrade is a documented no-op: the typed names cannot be restored, and the
-generated names are valid names under the previous schema.
+Downgrade is a documented no-op: the typed names cannot be restored (nor the
+deleted default-name rows), and the generated names are valid names under the
+previous schema.
 """
 
 import secrets
@@ -61,6 +69,25 @@ _ANIMALS = (
 )  # fmt: skip
 _NUMBER_MIN = 10
 _NUMBER_MAX = 9999
+# Numbers never used in a name (``players/generated.py``'s rules at the time
+# of writing): one of these values, containing one of these digit runs, or
+# ending in one of these suffixes.
+_BLOCKED_VALUES = frozenset({14, 18, 69, 88, 187, 311, 420, 666, 911, 1312, 1488})
+_BLOCKED_DIGITS = ("1488", "1312", "69", "420", "666")
+_BLOCKED_SUFFIXES = ("88",)
+_BLOCKED_NUMBERS = frozenset(
+    n
+    for n in range(_NUMBER_MIN, _NUMBER_MAX + 1)
+    if n in _BLOCKED_VALUES
+    or any(bad in str(n) for bad in _BLOCKED_DIGITS)
+    or str(n).endswith(_BLOCKED_SUFFIXES)
+)
+# Typed names that were a build's default, not the player's choice (compared
+# trimmed and case-insensitively; ``players/schemas.py``'s list at the time of
+# writing). Their players are taken off the boards instead of being renamed.
+_DEFAULT_NAMES = frozenset(
+    {"", "you", "player", "guest", "anonymous", "anon", "me", "player 1", "player1"}
+)
 _BATCH = 1000
 
 _rng = secrets.SystemRandom()
@@ -74,16 +101,27 @@ _players = sa.table(
 
 
 def generated_name() -> str:
-    return (
-        f"{_rng.choice(_ADJECTIVES)} {_rng.choice(_ANIMALS)} "
-        f"{_rng.randint(_NUMBER_MIN, _NUMBER_MAX)}"
-    )
+    adjective, animal = _rng.choice(_ADJECTIVES), _rng.choice(_ANIMALS)
+    number = _rng.randint(_NUMBER_MIN, _NUMBER_MAX)
+    while number in _BLOCKED_NUMBERS:
+        number = _rng.randint(_NUMBER_MIN, _NUMBER_MAX)
+    return f"{adjective} {animal} {number}"
+
+
+def _is_default_name(name: str | None) -> bool:
+    return (name or "").strip().casefold() in _DEFAULT_NAMES
 
 
 def upgrade() -> None:
     bind = op.get_bind()
-    # Fully read before any update runs on the same connection.
-    session_ids = [row[0] for row in bind.execute(sa.select(_players.c.session_id))]
+    # Fully read before any write runs on the same connection.
+    rows = bind.execute(sa.select(_players.c.session_id, _players.c.display_name)).all()
+    defaults = [sid for sid, name in rows if _is_default_name(name)]
+    session_ids = [sid for sid, name in rows if not _is_default_name(name)]
+    for start in range(0, len(defaults), _BATCH):
+        bind.execute(
+            _players.delete().where(_players.c.session_id.in_(defaults[start : start + _BATCH]))
+        )
     now = datetime.now(timezone.utc)
     stmt = (
         _players.update()

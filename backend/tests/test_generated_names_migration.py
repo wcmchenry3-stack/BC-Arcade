@@ -72,8 +72,29 @@ def test_named_players_stay_on_the_boards_under_generated_names(db_path: Path) -
     assert set(players) == set(named)
     for sid, old in zip(named, typed, strict=True):
         assert is_generated_display_name(players[sid]), players[sid]
-        # Even a typed name that happened to look generated is replaced.
-        assert players[sid] != old
+        if not is_generated_display_name(old):
+            assert players[sid] != old
+    # A typed name that happened to look generated is regenerated too; the
+    # draw could land on the same name, so only its shape is checked above.
+
+
+def test_players_with_a_default_name_are_taken_off_the_boards(db_path: Path) -> None:
+    """A build's default (``You``, ``Player``...) was never a choice to go public."""
+    _alembic(db_path, "upgrade", _BEFORE)
+    defaults = {str(uuid.uuid4()): name for name in ("You", " player ", "GUEST", "Player 1")}
+    chosen = str(uuid.uuid4())
+    with sqlite3.connect(db_path) as conn:
+        for sid, name in {**defaults, chosen: "Ada"}.items():
+            conn.execute(
+                "INSERT INTO players (session_id, display_name) VALUES (?, ?)", (sid, name)
+            )
+        conn.commit()
+
+    _alembic(db_path, "upgrade", _REVISION)
+    with sqlite3.connect(db_path) as conn:
+        players = _players(conn)
+    assert set(players) == {chosen}
+    assert is_generated_display_name(players[chosen])
 
 
 def test_upgrade_with_no_players_is_a_no_op(db_path: Path) -> None:

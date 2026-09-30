@@ -1,6 +1,6 @@
 """Server-generated public leaderboard names (#2778).
 
-Launch decision (docs/decisions/0001-generated-leaderboard-identities.md):
+Launch decision (docs/LEADERBOARD-IDENTITIES.md):
 a player never types public text. Joining the leaderboards gives them a name
 made here from two curated word lists and a number, e.g. ``Brave Otter 4821``,
 and "get a new name" picks another one. Nothing a client sends is ever stored
@@ -149,6 +149,30 @@ ANIMALS: tuple[str, ...] = (
 NUMBER_MIN = 10
 NUMBER_MAX = 9999
 
+# Numbers with a well-known hateful, sexual, violent or drug meaning are never
+# part of a name. A number is blocked when it is one of ``_BLOCKED_VALUES``,
+# contains one of ``_BLOCKED_DIGITS`` anywhere, or ends in one of
+# ``_BLOCKED_SUFFIXES`` (``88`` as a trailing tag). Migration
+# ``0030_generated_player_names`` keeps a literal copy of these rules;
+# ``tests/test_generated_names.py`` checks the two copies match.
+_BLOCKED_VALUES: frozenset[int] = frozenset({14, 18, 69, 88, 187, 311, 420, 666, 911, 1312, 1488})
+_BLOCKED_DIGITS: tuple[str, ...] = ("1488", "1312", "69", "420", "666")
+_BLOCKED_SUFFIXES: tuple[str, ...] = ("88",)
+
+
+def _is_blocked_number(number: int) -> bool:
+    digits = str(number)
+    return (
+        number in _BLOCKED_VALUES
+        or any(bad in digits for bad in _BLOCKED_DIGITS)
+        or digits.endswith(_BLOCKED_SUFFIXES)
+    )
+
+
+_BLOCKED_NUMBERS: frozenset[int] = frozenset(
+    n for n in range(NUMBER_MIN, NUMBER_MAX + 1) if _is_blocked_number(n)
+)
+
 _rng = secrets.SystemRandom()
 
 _PATTERN = re.compile(r"^(?P<adj>[A-Za-z]+) (?P<animal>[A-Za-z]+) (?P<number>[1-9][0-9]{1,3})$")
@@ -158,12 +182,14 @@ def generate_display_name(*, exclude: str | None = None) -> str:
     """A random ``Adjective Animal N`` name, never equal to ``exclude``.
 
     ``exclude`` is the player's current name, so a reroll always changes it.
+    A number in ``_BLOCKED_NUMBERS`` is drawn again.
     """
     while True:
-        name = (
-            f"{_rng.choice(ADJECTIVES)} {_rng.choice(ANIMALS)} "
-            f"{_rng.randint(NUMBER_MIN, NUMBER_MAX)}"
-        )
+        adjective, animal = _rng.choice(ADJECTIVES), _rng.choice(ANIMALS)
+        number = _rng.randint(NUMBER_MIN, NUMBER_MAX)
+        while number in _BLOCKED_NUMBERS:
+            number = _rng.randint(NUMBER_MIN, NUMBER_MAX)
+        name = f"{adjective} {animal} {number}"
         if name != exclude:
             return name
 
@@ -177,4 +203,5 @@ def is_generated_display_name(name: str) -> bool:
         match["adj"] in ADJECTIVES
         and match["animal"] in ANIMALS
         and NUMBER_MIN <= int(match["number"]) <= NUMBER_MAX
+        and int(match["number"]) not in _BLOCKED_NUMBERS
     )
