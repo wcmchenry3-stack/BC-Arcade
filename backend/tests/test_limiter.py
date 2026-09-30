@@ -9,8 +9,12 @@ peer and prove a forged ``X-Forwarded-For`` cannot move a caller's bucket.
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
+import sys
 import uuid
 from collections.abc import Callable, Iterator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,7 +27,12 @@ from limiter import (
     ProxyTrust,
     _real_ip,
     client_ip,
+    client_ip_bucket,
+    ip_bucket,
     load_proxy_trust,
+    log_proxy_trust,
+    proxy_header_debug,
+    proxy_header_debug_enabled,
     session_key,
 )
 
@@ -215,6 +224,59 @@ def test_ipv6_peer_is_returned_as_is() -> None:
 
 def test_no_client_and_no_headers_is_unknown() -> None:
     assert client_ip(make_request(peer=None), CLOUDFLARE) == "unknown"
+    assert client_ip_bucket(make_request(peer=None), CLOUDFLARE) == "unknown"
+
+
+@pytest.mark.parametrize("value", ["fe80::1%eth0", "2001:db8::1%1"])
+def test_ipv6_with_zone_id_is_rejected(value: str) -> None:
+    assert client_ip(make_request([cf(value)]), CLOUDFLARE) == PEER
+    assert client_ip(make_request([xff(f"1.2.3.4, {value}")]), RENDER) == PEER
+
+
+# ---------------------------------------------------------------------------
+# Rate-limit buckets: IPv4 per address, IPv6 per /64
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("value", "bucket"),
+    [
+        ("198.51.100.7", "198.51.100.7"),
+        ("2001:db8:1:2:aaaa:bbbb:cccc:dddd", "2001:db8:1:2::/64"),
+        ("2001:DB8:1:2::1", "2001:db8:1:2::/64"),
+        ("::ffff:198.51.100.7", "198.51.100.7"),
+        ("testclient", "testclient"),
+        ("unknown", "unknown"),
+    ],
+)
+def test_ip_bucket(value: str, bucket: str) -> None:
+    assert ip_bucket(value) == bucket
+
+
+def test_ipv6_rotation_within_a_64_shares_one_bucket() -> None:
+    keys = {
+        client_ip_bucket(make_request([cf(f"2001:db8:1:2::{i:x}")]), CLOUDFLARE)
+        for i in range(1, 50)
+    } | {client_ip_bucket(make_request([cf("2001:db8:1:2:ffff:ffff:ffff:ffff")]), CLOUDFLARE)}
+    assert keys == {"2001:db8:1:2::/64"}
+
+
+def test_ipv6_different_64s_are_split() -> None:
+    a = client_ip_bucket(make_request([cf("2001:db8:1:2::1")]), CLOUDFLARE)
+    b = client_ip_bucket(make_request([cf("2001:db8:1:3::1")]), CLOUDFLARE)
+    assert a != b
+
+
+def test_bucket_and_log_forms(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(limiter_module, "_TRUST", RENDER)
+    req = make_request([xff("1.2.3.4, 2001:db8:1:2::abcd")])
+    assert client_ip(req) == "2001:db8:1:2::abcd"  # logs keep the full address
+    assert _real_ip(req) == "2001:db8:1:2::/64"  # the limiter key is the /64
+    assert session_key(req) == "2001:db8:1:2::/64"
+
+
+def test_ipv6_peer_is_bucketed_by_64() -> None:
+    assert client_ip_bucket(make_request(peer="2001:db8::2"), NONE) == "2001:db8::/64"
 
 
 # ---------------------------------------------------------------------------
@@ -368,3 +430,130 @@ def test_rate_limit_log_records_resolved_ip(
     text = caplog.text
     assert '"ip": "198.51.100.7"' in text
     assert '"ip": "1.2.3.4"' not in text
+
+
+def test_ipv6_client_rotating_within_its_64_is_throttled(proxied: TestClient) -> None:
+    # One caller walks through its own /64; the /64 bucket still fills.
+    for i in range(1, 121):
+        r = proxied.get("/health", headers={"CF-Connecting-IP": f"2001:db8:7:7::{i:x}"})
+        assert r.status_code != 429, f"call {i} throttled"
+    last = proxied.get("/health", headers={"CF-Connecting-IP": "2001:db8:7:7::ffff"})
+    assert last.status_code == 429
+    other = proxied.get("/health", headers={"CF-Connecting-IP": "2001:db8:7:8::1"})
+    assert other.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Startup log, wrong-mode warning, dev-only raw header log
+# ---------------------------------------------------------------------------
+
+
+def test_startup_log_names_mode_and_hops(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(limiter_module, "_TRUST", ProxyTrust("render", 2))
+    monkeypatch.delenv("LOG_PROXY_HEADERS", raising=False)
+    with caplog.at_level(logging.INFO, logger="audit"):
+        log_proxy_trust()
+    assert '"event": "client_ip_trust"' in caplog.text
+    assert '"mode": "render"' in caplog.text and '"hops": 2' in caplog.text
+    assert "log_proxy_headers_ignored" not in caplog.text
+
+
+def test_startup_log_says_when_header_logging_is_refused_in_production(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("LOG_PROXY_HEADERS", "1")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setattr(limiter_module, "_LOG_PROXY_HEADERS", False)
+    with caplog.at_level(logging.INFO, logger="audit"):
+        log_proxy_trust()
+    assert "log_proxy_headers_ignored" in caplog.text
+
+
+@pytest.mark.parametrize("trust", [RENDER, NONE])
+def test_cf_header_in_a_non_cloudflare_mode_warns_once(
+    trust: ProxyTrust, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(limiter_module, "_warned_cf_header_ignored", False)
+    with caplog.at_level(logging.WARNING, logger="audit"):
+        client_ip(make_request([xff("198.51.100.7")]), trust)  # no CF header: silent
+        assert "client_ip_cf_header_ignored" not in caplog.text
+        for _ in range(3):
+            client_ip(make_request([cf("198.51.100.7")]), trust)
+    assert caplog.text.count("client_ip_cf_header_ignored") == 1
+    assert f'"mode": "{trust.mode}"' in caplog.text
+
+
+def test_cf_header_in_cloudflare_mode_does_not_warn(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(limiter_module, "_warned_cf_header_ignored", False)
+    with caplog.at_level(logging.WARNING, logger="audit"):
+        client_ip(make_request([cf("198.51.100.7")]), CLOUDFLARE)
+    assert "client_ip_cf_header_ignored" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("env", "enabled"),
+    [
+        ({}, False),
+        ({"LOG_PROXY_HEADERS": "0"}, False),
+        ({"LOG_PROXY_HEADERS": "1"}, True),
+        ({"LOG_PROXY_HEADERS": "1", "ENVIRONMENT": "development"}, True),
+        ({"LOG_PROXY_HEADERS": "1", "ENVIRONMENT": "production"}, False),
+    ],
+)
+def test_proxy_header_debug_is_dev_only(env: dict[str, str], enabled: bool) -> None:
+    assert proxy_header_debug_enabled(env) is enabled
+
+
+def test_proxy_header_debug_off_by_default() -> None:
+    assert limiter_module._LOG_PROXY_HEADERS is False
+    assert proxy_header_debug(make_request([cf("198.51.100.7")])) is None
+
+
+def test_proxy_header_debug_shows_raw_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(limiter_module, "_LOG_PROXY_HEADERS", True)
+    req = make_request([cf("5.6.7.8"), xff("1.2.3.4, 9.9.9.9, 104.23.0.1, 198.51.100.7")])
+    assert proxy_header_debug(req) == {
+        "cf_connecting_ip": ["5.6.7.8"],
+        "xff_count": 4,
+        "xff_tail": ["9.9.9.9", "104.23.0.1", "198.51.100.7"],
+        "peer": PEER,
+    }
+
+
+def test_request_log_carries_raw_headers_only_when_enabled(
+    proxied: TestClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO, logger="audit"):
+        proxied.get("/health", headers={"CF-Connecting-IP": "5.6.7.8"})
+    assert '"proxy"' not in caplog.text
+    caplog.clear()
+    monkeypatch.setattr(limiter_module, "_LOG_PROXY_HEADERS", True)
+    with caplog.at_level(logging.INFO, logger="audit"):
+        proxied.get("/health", headers={"CF-Connecting-IP": "5.6.7.8"})
+    assert '"proxy": {"cf_connecting_ip": ["5.6.7.8"]' in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Fail closed: the app does not start with a bad setting
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("env", [{"TRUSTED_PROXY_MODE": "leftmost"}, {"TRUSTED_PROXY_HOPS": "0"}])
+def test_importing_the_app_with_bad_config_raises(env: dict[str, str]) -> None:
+    backend = Path(__file__).resolve().parent.parent
+    result = subprocess.run(
+        [sys.executable, "-c", "import main"],
+        cwd=backend,
+        env={**os.environ, **env},
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "ValueError" in result.stderr
+    assert next(iter(env)) in result.stderr

@@ -30,7 +30,7 @@ from entitlements.dependencies import EntitlementError
 from entitlements.router import router as entitlements_router
 from entitlements.service import is_dev_override_active
 from games.router import router as games_router
-from limiter import client_ip, limiter
+from limiter import client_ip, limiter, log_proxy_trust, proxy_header_debug
 from logs.router import router as logs_router
 from me.router import router as me_router
 from players.router import router as players_router
@@ -49,6 +49,7 @@ _audit_log = logging.getLogger("audit")
 # transaction IDs), so the HTTP client loggers only speak up for warnings (#2787).
 for _http_logger in ("httpx", "httpcore"):
     logging.getLogger(_http_logger).setLevel(logging.WARNING)
+log_proxy_trust()
 
 # ---------------------------------------------------------------------------
 # Sentry — no-op when SENTRY_DSN is unset (local dev)
@@ -79,6 +80,15 @@ SENTRY_SCRUBBED_KEYS = [
     "orderId",
     "service_account_json",
     "service_account_info",
+    # Client IP headers (#2863). The SDK's header filter already drops
+    # X-Forwarded-For and X-Real-IP; the Cloudflare ones and Forwarded it does
+    # not know. All five are listed so the rule does not depend on SDK
+    # internals — the Privacy Policy says Sentry does not store IP addresses.
+    "cf-connecting-ip",
+    "true-client-ip",
+    "x-forwarded-for",
+    "x-real-ip",
+    "forwarded",
 ]
 
 # SQLAlchemy appends the statement and its bound values to every DBAPIError
@@ -458,6 +468,9 @@ async def request_logger(request: Request, call_next) -> Response:
         record["event"] = "body_too_large"
     elif response.status_code >= 500:
         record["event"] = "server_error"
+    proxy = proxy_header_debug(request)  # None unless LOG_PROXY_HEADERS=1 (dev only)
+    if proxy is not None:
+        record["proxy"] = proxy
 
     _audit_log.info(json.dumps(record))
     return response

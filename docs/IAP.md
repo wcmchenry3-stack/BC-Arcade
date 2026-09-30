@@ -1337,9 +1337,10 @@ runners make wall-clock time noisy.
   (#2786's `SignedDataVerifier` is local and cheap), or key it by
   `(store_key, session)` as well.
 - ~~**Per-IP limit trusts `X-Forwarded-For`.**~~ Fixed in #2863: the
-  per-IP limit is keyed by `limiter.client_ip`, which trusts only
+  per-IP limit is keyed by `limiter.client_ip_bucket`, which trusts only
   `CF-Connecting-IP` or the `X-Forwarded-For` entry appended by Render's
-  proxy, never the client-controlled left-most one. What remains is the
+  proxy, never the client-controlled left-most one, and buckets IPv6 by
+  /64. What remains is the
   `*.onrender.com` bypass question in SECURITY.md §9 ("Client IP trust
   model"), which the owner confirms.
 
