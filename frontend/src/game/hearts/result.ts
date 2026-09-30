@@ -27,6 +27,34 @@ export function heartsLeaderboardScore(humanPoints: number): number {
   return Math.max(0, 100 - humanPoints);
 }
 
+/**
+ * The `result` block a finished game sends on completion (#2838): the
+ * leaderboard value and outcome, plus the round-by-round path to it. Rows come
+ * from the engine's `scoreHistory` (post moon adjustment: 0 for the shooter,
+ * 26 for each opponent), in seat order; `human` is the human's seat.
+ */
+export type HeartsCompletedResult = {
+  readonly final_score: number;
+  readonly vs_result: HeartsResult["outcome"];
+  readonly hand_scores: number[][];
+  readonly final_scores: number[];
+  readonly human_seat: number;
+};
+
+export function buildHeartsCompletedResult(
+  cumulativeScores: readonly number[],
+  scoreHistory: readonly (readonly number[])[],
+  human = 0
+): HeartsCompletedResult {
+  return {
+    final_score: heartsLeaderboardScore(cumulativeScores[human] ?? 0),
+    vs_result: heartsResult(cumulativeScores, human).outcome,
+    hand_scores: scoreHistory.map((row) => [...row]),
+    final_scores: [...cumulativeScores],
+    human_seat: human,
+  };
+}
+
 export interface Standing {
   readonly seat: number;
   readonly score: number;
