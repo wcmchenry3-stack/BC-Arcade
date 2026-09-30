@@ -888,7 +888,7 @@ export default function HeartsScreen() {
           rank: leaderboard.rank,
           isBest: leaderboard.isBest,
           playerName: leaderboard.playerName,
-          onProvideName: leaderboard.provideName,
+          onJoinLeaderboards: leaderboard.joinLeaderboards,
           onRetry: leaderboard.retry,
         }}
         onViewLeaderboard={openLeaderboard}

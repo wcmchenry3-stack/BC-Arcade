@@ -150,12 +150,12 @@ def _sid() -> str:
     return str(uuid.uuid4())
 
 
-def _name_and_rank(client: TestClient, sid: str, game_id: Any, name: str) -> dict:
-    """Name the player (``PUT /players/me``), then ``GET /games/{id}/rank``.
+def _name_and_rank(client: TestClient, sid: str, game_id: Any, _label: str = "") -> dict:
+    """Join the boards (``PUT /players/me``), then ``GET /games/{id}/rank``.
 
     Returns ``{rank, is_best}`` for a ranked game, else ``{reason}``.
     """
-    r = client.put("/players/me", headers=_headers(sid), json={"display_name": name})
+    r = client.put("/players/me", headers=_headers(sid))
     assert r.status_code == 200, r.text
     r = client.get(f"/games/{game_id}/rank", headers=_headers(sid))
     assert r.status_code == 200, r.text
@@ -458,7 +458,8 @@ async def test_exact_rank_outside_the_top_ten(client: TestClient) -> None:
     assert len(_board(client, "solitaire")["entries"]) == 10
     full = _board(client, "solitaire?limit=20")["entries"]
     assert len(full) == 13
-    assert (full[-1]["player_name"], full[-1]["rank"]) == ("Me", 13)
+    me = client.get("/players/me", headers=_headers(sid)).json()["display_name"]
+    assert (full[-1]["player_name"], full[-1]["rank"]) == (me, 13)
 
 
 async def test_rank_honours_asc_direction_and_tiebreak(
@@ -830,14 +831,15 @@ async def test_named_session_row_appears_exactly_once(client: TestClient, game_t
         return _name_and_rank(client, sid, game_id, "Solo")
 
     assert play(5) == {"rank": 1, "is_best": True}
+    solo = client.get("/players/me", headers=_headers(sid)).json()["display_name"]
     entries = _board(client, path, sid)["entries"]
-    assert [(e["player_name"], e["value"]) for e in entries] == [("Solo", 5)]
+    assert [(e["player_name"], e["value"]) for e in entries] == [(solo, 5)]
 
     # A second named game from the same player still leaves one entry.
     worse = 3 if board.direction == "desc" else 7
     assert play(worse) == {"rank": 1, "is_best": False}
     entries = _board(client, path, sid)["entries"]
-    assert [(e["player_name"], e["value"]) for e in entries] == [("Solo", 5)]
+    assert [(e["player_name"], e["value"]) for e in entries] == [(solo, 5)]
 
 
 # ---------------------------------------------------------------------------
@@ -1068,9 +1070,8 @@ def _db_error() -> Exception:
 
 
 class _NoRow:
-    # ``set_display_name`` (#2675) reads its upsert's rowcount instead of a
-    # pre-read; these tests only exercise the commit/execute failure paths,
-    # so the value itself is irrelevant.
+    # These tests only exercise the commit/execute failure paths, so the
+    # value itself is irrelevant.
     rowcount = 0
 
     def scalar_one_or_none(self) -> None:

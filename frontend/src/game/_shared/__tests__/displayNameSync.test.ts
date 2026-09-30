@@ -4,26 +4,32 @@ import { waitFor } from "@testing-library/react-native";
 
 const mockPutMe = jest.fn();
 const mockDeleteMe = jest.fn();
+const mockRerollMe = jest.fn();
+const mockGetMe = jest.fn();
 jest.mock("../../../api/players", () => ({
   playersApi: {
     putMe: (...args: unknown[]) => mockPutMe(...args),
     deleteMe: (...args: unknown[]) => mockDeleteMe(...args),
+    rerollMe: (...args: unknown[]) => mockRerollMe(...args),
+    getMe: (...args: unknown[]) => mockGetMe(...args),
   },
 }));
 
 import {
+  clearDisplayName,
   loadDisplayName,
-  normalizeDisplayName,
   resetDisplayNameCacheForTests,
-  saveDisplayName,
-  setDisplayNameSaveHook,
+  storeAssignedDisplayName,
 } from "../displayName";
 import {
   clearDisplayNameSync,
   flushDisplayNameSync,
-  registerDisplayNameSync,
-  isDisplayNameRemovalPending,
-  removeDisplayName,
+  forgetSyncedDisplayName,
+  getLeaderboardSyncPending,
+  joinLeaderboards,
+  leaveLeaderboards,
+  refreshDisplayNameFromServer,
+  rerollDisplayName,
   resetDisplayNameSyncForTests,
   syncDisplayNameOnLaunch,
 } from "../displayNameSync";
@@ -33,398 +39,425 @@ import { clearSession } from "../session";
 const NAME_KEY = "player_display_name";
 const PENDING_KEY = "player_display_name_pending_sync";
 const SYNCED_KEY = "player_display_name_synced";
+const LEGACY_MIGRATED_KEY = "player_display_name_legacy_migrated";
 
-const ok = (name: string) => Promise.resolve({ display_name: name });
+const GENERATED = "Brave Otter 4821";
 const offline = () => Promise.reject(new TypeError("Network request failed"));
 
-function sentNames(): string[] {
-  return mockPutMe.mock.calls.map((c) => c[0] as string);
-}
+/** The server's state for this player: null = not on the boards. */
+let serverName: string | null = null;
 
 beforeEach(async () => {
   await AsyncStorage.clear();
   resetDisplayNameCacheForTests();
   resetDisplayNameSyncForTests();
-  setDisplayNameSaveHook(null);
+  serverName = null;
   mockPutMe.mockReset();
-  mockPutMe.mockImplementation(ok);
+  mockPutMe.mockImplementation(() => {
+    serverName = serverName ?? GENERATED;
+    return Promise.resolve({ display_name: serverName });
+  });
   mockDeleteMe.mockReset();
-  mockDeleteMe.mockResolvedValue(undefined);
+  mockDeleteMe.mockImplementation(() => {
+    serverName = null;
+    return Promise.resolve(undefined);
+  });
+  mockRerollMe.mockReset();
+  mockRerollMe.mockImplementation(() => {
+    if (serverName == null) return Promise.reject(new ApiError("Not on the leaderboards.", 404));
+    serverName = "Calm Owl 12";
+    return Promise.resolve({ display_name: serverName });
+  });
+  mockGetMe.mockReset();
+  mockGetMe.mockImplementation(() => Promise.resolve({ display_name: serverName }));
   (Sentry.captureMessage as jest.Mock).mockClear();
-  registerDisplayNameSync();
 });
 
-afterAll(() => setDisplayNameSaveHook(null));
-
-describe("saveDisplayName → PUT /players/me", () => {
-  it("sends the saved (trimmed) name once", async () => {
-    await expect(saveDisplayName("  Riley ")).resolves.toBe("Riley");
+describe("joinLeaderboards → PUT /players/me (#2778)", () => {
+  it("sends a bodiless join and stores the generated name the server assigns", async () => {
+    await expect(joinLeaderboards()).resolves.toBe(true);
     await expect(flushDisplayNameSync()).resolves.toBe(true);
-    expect(sentNames()).toEqual(["Riley"]);
+    expect(mockPutMe).toHaveBeenCalledTimes(1);
+    expect(mockPutMe).toHaveBeenCalledWith();
+    await expect(loadDisplayName()).resolves.toBe(GENERATED);
     await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBeNull();
+    await expect(getLeaderboardSyncPending()).resolves.toBeNull();
   });
 
-  it("sends nothing for a name it rejects", async () => {
-    await expect(saveDisplayName("   ")).resolves.toBeNull();
-    await flushDisplayNameSync();
-    expect(mockPutMe).not.toHaveBeenCalled();
-  });
-
-  it("sends nothing when no sync is registered (no NetworkContext)", async () => {
-    setDisplayNameSaveHook(null);
-    await saveDisplayName("Riley");
-    expect(mockPutMe).not.toHaveBeenCalled();
-  });
-
-  it("still saves locally when the sync hook throws", async () => {
-    setDisplayNameSaveHook(() => {
-      throw new Error("boom");
-    });
-    await expect(saveDisplayName("Riley")).resolves.toBe("Riley");
-    expect(Sentry.captureException).toHaveBeenCalled();
-  });
-});
-
-describe("offline", () => {
-  it("collapses saves into one pending sync holding the latest name", async () => {
+  it("offline: keeps the join pending with no name yet, then sends it once", async () => {
+    const online = mockPutMe.getMockImplementation();
     mockPutMe.mockImplementation(offline);
-    await saveDisplayName("William");
-    await saveDisplayName("Will");
-    await saveDisplayName("Bill");
+    await joinLeaderboards();
     await expect(flushDisplayNameSync()).resolves.toBe(false);
-    await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBe("Bill");
+    await expect(getLeaderboardSyncPending()).resolves.toBe("join");
+    await expect(loadDisplayName()).resolves.toBeNull();
 
-    // Back online: one PUT, with the latest name.
-    mockPutMe.mockReset();
-    mockPutMe.mockImplementation(ok);
+    mockPutMe.mockClear();
+    mockPutMe.mockImplementation(online);
     await expect(flushDisplayNameSync()).resolves.toBe(true);
-    expect(sentNames()).toEqual(["Bill"]);
-    await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBeNull();
+    expect(mockPutMe).toHaveBeenCalledTimes(1);
+    await expect(loadDisplayName()).resolves.toBe(GENERATED);
   });
 
-  it("keeps the name pending on a server error or a backend without the route", async () => {
-    mockPutMe.mockRejectedValueOnce(new ApiError("Server error", 503));
-    await saveDisplayName("Riley");
-    await expect(flushDisplayNameSync()).resolves.toBe(true); // the queued retry succeeds
-    mockPutMe.mockReset();
-    mockPutMe.mockRejectedValue(new ApiError("Not Found", 404));
-    await saveDisplayName("Sam");
-    await expect(flushDisplayNameSync()).resolves.toBe(false);
-    await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBe("Sam");
-  });
-
-  it("drops a name the server will never accept instead of retrying it", async () => {
-    mockPutMe.mockRejectedValue(new ApiError("invalid", 422));
-    await saveDisplayName("Riley");
+  it("drops a join the server will never accept", async () => {
+    mockPutMe.mockRejectedValue(new ApiError("bad session", 400));
+    await joinLeaderboards();
     await expect(flushDisplayNameSync()).resolves.toBe(true);
     await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBeNull();
     expect(Sentry.captureMessage).toHaveBeenCalledWith(
-      "displayNameSync: server rejected the display name",
+      "displayNameSync: server rejected the leaderboard request",
       expect.objectContaining({ level: "warning" })
     );
-    const calls = mockPutMe.mock.calls.length;
-    await flushDisplayNameSync();
-    expect(mockPutMe).toHaveBeenCalledTimes(calls);
   });
 
-  it("doesn't resend a rejected name on every launch", async () => {
-    mockPutMe.mockRejectedValue(new ApiError("invalid", 422));
-    await saveDisplayName("Riley");
-    await flushDisplayNameSync();
-    const calls = mockPutMe.mock.calls.length;
-    resetDisplayNameCacheForTests();
-    registerDisplayNameSync();
-    await syncDisplayNameOnLaunch();
-    expect(mockPutMe).toHaveBeenCalledTimes(calls);
+  it("treats an older build's slot holding typed text as a join, never sending the text", async () => {
+    await AsyncStorage.setItem(PENDING_KEY, "Riley");
+    await expect(flushDisplayNameSync()).resolves.toBe(true);
+    expect(mockPutMe).toHaveBeenCalledWith();
+    await expect(loadDisplayName()).resolves.toBe(GENERATED);
   });
 
-  it("sends a name saved during an in-flight PUT right after it", async () => {
+  it("concurrent flushes of one pending join send it once", async () => {
+    await AsyncStorage.setItem(PENDING_KEY, "__join_every_leaderboard__");
+    await Promise.all([flushDisplayNameSync(), flushDisplayNameSync(), flushDisplayNameSync()]);
+    expect(mockPutMe).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("leaveLeaderboards → DELETE /players/me (#2637)", () => {
+  beforeEach(async () => {
+    await joinLeaderboards();
+    await flushDisplayNameSync();
+    mockPutMe.mockClear();
+  });
+
+  it("forgets the local name and sends one DELETE", async () => {
+    await expect(leaveLeaderboards()).resolves.toBe(true);
+    await expect(loadDisplayName()).resolves.toBeNull();
+    await expect(AsyncStorage.getItem(NAME_KEY)).resolves.toBeNull();
+    await expect(flushDisplayNameSync()).resolves.toBe(true);
+    expect(mockDeleteMe).toHaveBeenCalledTimes(1);
+    await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBeNull();
+  });
+
+  it("keeps an offline leave pending and sends it on reconnect", async () => {
+    const online = mockDeleteMe.getMockImplementation();
+    mockDeleteMe.mockImplementation(offline);
+    await leaveLeaderboards();
+    await expect(flushDisplayNameSync()).resolves.toBe(false);
+    await expect(getLeaderboardSyncPending()).resolves.toBe("leave");
+    mockDeleteMe.mockClear();
+    mockDeleteMe.mockImplementation(online);
+    await expect(flushDisplayNameSync()).resolves.toBe(true);
+    expect(mockDeleteMe).toHaveBeenCalledTimes(1);
+    await expect(getLeaderboardSyncPending()).resolves.toBeNull();
+  });
+
+  it("a later join replaces an unsent leave: only the PUT goes out", async () => {
+    const online = mockDeleteMe.getMockImplementation();
+    mockDeleteMe.mockImplementation(offline);
+    await leaveLeaderboards();
+    await flushDisplayNameSync();
+    mockDeleteMe.mockClear();
+    mockDeleteMe.mockImplementation(online);
+
+    await joinLeaderboards();
+    await expect(flushDisplayNameSync()).resolves.toBe(true);
+    expect(mockDeleteMe).not.toHaveBeenCalled();
+    expect(mockPutMe).toHaveBeenCalledTimes(1);
+  });
+
+  it("a leave made while a join is in flight wins: the join's name isn't stored", async () => {
+    await leaveLeaderboards();
+    await flushDisplayNameSync();
     let release: (v: { display_name: string }) => void = () => {};
     mockPutMe.mockImplementationOnce(
       () => new Promise((resolve) => (release = resolve as typeof release))
     );
-    await saveDisplayName("First");
+    await joinLeaderboards();
     await waitFor(() => expect(mockPutMe).toHaveBeenCalledTimes(1));
-    await saveDisplayName("Second"); // First's PUT is still in flight
-    release({ display_name: "First" });
+    await leaveLeaderboards(); // the join's PUT is still in flight
+    release({ display_name: GENERATED });
     await expect(flushDisplayNameSync()).resolves.toBe(true);
-    expect(sentNames()).toEqual(["First", "Second"]);
-    await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBeNull();
+    expect(mockDeleteMe).toHaveBeenCalledTimes(2);
+    await expect(loadDisplayName()).resolves.toBeNull();
+  });
+
+  it("changes nothing when the leave can't be stored in the slot", async () => {
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error("disk"));
+    await expect(leaveLeaderboards()).resolves.toBe(false);
+    expect(mockDeleteMe).not.toHaveBeenCalled();
+    await expect(loadDisplayName()).resolves.toBe(GENERATED);
+  });
+
+  it("finishes a half-done leave at launch: clears the device name, sends only the DELETE", async () => {
+    const online = mockDeleteMe.getMockImplementation();
+    mockDeleteMe.mockImplementation(offline);
+    (AsyncStorage.removeItem as jest.Mock).mockRejectedValueOnce(new Error("disk"));
+    await leaveLeaderboards();
+    await flushDisplayNameSync();
+    await expect(AsyncStorage.getItem(NAME_KEY)).resolves.toBe(GENERATED);
+    mockDeleteMe.mockClear();
+    mockDeleteMe.mockImplementation(online);
+
+    resetDisplayNameCacheForTests(); // next launch
+    resetDisplayNameSyncForTests();
+    await expect(syncDisplayNameOnLaunch()).resolves.toBe(true);
+    expect(mockDeleteMe).toHaveBeenCalledTimes(1);
+    expect(mockPutMe).not.toHaveBeenCalled();
+    await expect(AsyncStorage.getItem(NAME_KEY)).resolves.toBeNull();
   });
 });
 
-describe("launch", () => {
-  it("syncs a stored name that was never synced, once", async () => {
-    // Saved by a build from before #2624: stored locally, never sent.
-    await AsyncStorage.setItem("player_display_name", "Riley");
+describe("rerollDisplayName → POST /players/me/reroll", () => {
+  it("stores the new generated name", async () => {
+    await joinLeaderboards();
+    await flushDisplayNameSync();
+    await expect(rerollDisplayName()).resolves.toEqual({
+      status: "rerolled",
+      name: "Calm Owl 12",
+    });
+    await expect(loadDisplayName()).resolves.toBe("Calm Owl 12");
+  });
+
+  it("sends a pending join first", async () => {
+    await AsyncStorage.setItem(PENDING_KEY, "__join_every_leaderboard__");
+    await expect(rerollDisplayName()).resolves.toEqual({
+      status: "rerolled",
+      name: "Calm Owl 12",
+    });
+    expect(mockPutMe).toHaveBeenCalledTimes(1);
+  });
+
+  it("offline: fails and keeps the current name", async () => {
+    await joinLeaderboards();
+    await flushDisplayNameSync();
+    mockRerollMe.mockImplementationOnce(offline);
+    await expect(rerollDisplayName()).resolves.toEqual({ status: "failed" });
+    await expect(loadDisplayName()).resolves.toBe(GENERATED);
+  });
+
+  it("never opts in: a 404 is `not_joined` (not a failure) and clears the name locally", async () => {
+    await storeAssignedDisplayName("Stale Name 10");
+    await expect(rerollDisplayName()).resolves.toEqual({ status: "not_joined" });
+    expect(mockPutMe).not.toHaveBeenCalled();
+    await expect(loadDisplayName()).resolves.toBeNull();
+  });
+
+  it("a refresh started before the reroll can't overwrite the new name with the old one", async () => {
+    await joinLeaderboards();
+    await flushDisplayNameSync();
+    let release: (v: { display_name: string | null }) => void = () => {};
+    mockGetMe.mockImplementationOnce(
+      () => new Promise((resolve) => (release = resolve as typeof release))
+    );
+    const refreshing = refreshDisplayNameFromServer();
+    await waitFor(() => expect(mockGetMe).toHaveBeenCalledTimes(1));
+    await expect(rerollDisplayName()).resolves.toEqual({
+      status: "rerolled",
+      name: "Calm Owl 12",
+    });
+    release({ display_name: GENERATED }); // the stale, pre-reroll answer
+    await refreshing;
+    await expect(loadDisplayName()).resolves.toBe("Calm Owl 12");
+  });
+
+  it("a refresh started while the reroll is in flight can't overwrite the new name", async () => {
+    await joinLeaderboards();
+    await flushDisplayNameSync();
+    let releaseReroll: (v: { display_name: string }) => void = () => {};
+    mockRerollMe.mockImplementationOnce(
+      () => new Promise((resolve) => (releaseReroll = resolve as typeof releaseReroll))
+    );
+    let releaseGet: (v: { display_name: string | null }) => void = () => {};
+    mockGetMe.mockImplementationOnce(
+      () => new Promise((resolve) => (releaseGet = resolve as typeof releaseGet))
+    );
+    const rerolling = rerollDisplayName();
+    await waitFor(() => expect(mockRerollMe).toHaveBeenCalledTimes(1));
+    const refreshing = refreshDisplayNameFromServer();
+    await waitFor(() => expect(mockGetMe).toHaveBeenCalledTimes(1));
+    releaseReroll({ display_name: "Calm Owl 12" });
+    await rerolling;
+    releaseGet({ display_name: GENERATED });
+    await refreshing;
+    await expect(loadDisplayName()).resolves.toBe("Calm Owl 12");
+  });
+});
+
+describe("launch and refresh", () => {
+  it("sends nothing and stores nothing for a player who never joined", async () => {
     await expect(syncDisplayNameOnLaunch()).resolves.toBe(true);
-    expect(sentNames()).toEqual(["Riley"]);
+    expect(mockPutMe).not.toHaveBeenCalled();
+    await expect(loadDisplayName()).resolves.toBeNull();
+  });
+
+  it("turns a name typed before #2624 (never synced) into a join, once, under a generated name", async () => {
+    await AsyncStorage.setItem(NAME_KEY, "Riley");
+    await expect(syncDisplayNameOnLaunch()).resolves.toBe(true);
+    expect(mockPutMe).toHaveBeenCalledTimes(1);
+    expect(mockPutMe).toHaveBeenCalledWith();
+    await expect(loadDisplayName()).resolves.toBe(GENERATED);
 
     resetDisplayNameCacheForTests(); // a later launch
     await syncDisplayNameOnLaunch();
-    expect(sentNames()).toEqual(["Riley"]);
+    expect(mockPutMe).toHaveBeenCalledTimes(1);
   });
 
-  it("sends nothing when no name is stored", async () => {
+  it("replaces a synced typed name with the server's generated one (migration 0030)", async () => {
+    const { getOrCreateSessionId } = jest.requireActual("../session");
+    const sessionId = await getOrCreateSessionId();
+    await AsyncStorage.setItem(NAME_KEY, "Riley");
+    await AsyncStorage.setItem(
+      SYNCED_KEY,
+      JSON.stringify({ session_id: sessionId, name: "Riley" })
+    );
+    serverName = "Sunny Seal 77";
+    await syncDisplayNameOnLaunch();
+    expect(mockPutMe).not.toHaveBeenCalled();
+    await expect(loadDisplayName()).resolves.toBe("Sunny Seal 77");
+  });
+
+  it("clears the device's name when the server has none", async () => {
+    await joinLeaderboards();
+    await flushDisplayNameSync();
+    serverName = null;
+    await refreshDisplayNameFromServer();
+    await expect(loadDisplayName()).resolves.toBeNull();
+  });
+
+  it("doesn't refresh over a pending intent", async () => {
+    mockPutMe.mockImplementation(offline);
+    await joinLeaderboards();
+    await flushDisplayNameSync();
+    await refreshDisplayNameFromServer();
+    expect(mockGetMe).not.toHaveBeenCalled();
+  });
+
+  it("ignores a refresh answer that arrives after a join", async () => {
+    let release: (v: { display_name: string | null }) => void = () => {};
+    mockGetMe.mockImplementationOnce(
+      () => new Promise((resolve) => (release = resolve as typeof release))
+    );
+    const refreshing = refreshDisplayNameFromServer();
+    await waitFor(() => expect(mockGetMe).toHaveBeenCalledTimes(1));
+    await joinLeaderboards();
+    await flushDisplayNameSync();
+    release({ display_name: null });
+    await refreshing;
+    await expect(loadDisplayName()).resolves.toBe(GENERATED);
+  });
+
+  it("leaves the device's name alone when the refresh fails", async () => {
+    await storeAssignedDisplayName(GENERATED);
+    mockGetMe.mockImplementationOnce(offline);
+    await refreshDisplayNameFromServer();
+    await expect(loadDisplayName()).resolves.toBe(GENERATED);
+  });
+
+  it("never re-joins a new player id just because the old name is still on the device", async () => {
+    await syncDisplayNameOnLaunch(); // this build's first launch
+    await joinLeaderboards();
+    await flushDisplayNameSync();
+    await clearSession();
+    resetDisplayNameCacheForTests();
+    serverName = null;
+    await syncDisplayNameOnLaunch();
+    expect(mockPutMe).toHaveBeenCalledTimes(1);
+    // The server has no name for the new id, so the device forgets the old one.
+    await expect(loadDisplayName()).resolves.toBeNull();
+  });
+
+  it("runs the legacy migration once only, even if it found nothing to convert", async () => {
+    await syncDisplayNameOnLaunch(); // nothing stored: the migration still counts as done
+    await expect(AsyncStorage.getItem(LEGACY_MIGRATED_KEY)).resolves.toBe("1");
+
+    // A name that appears on the device later is never turned into a join.
+    await AsyncStorage.setItem(NAME_KEY, "Riley");
+    resetDisplayNameCacheForTests();
     await syncDisplayNameOnLaunch();
     expect(mockPutMe).not.toHaveBeenCalled();
   });
 
-  it("retries a launch sync that failed on the next launch", async () => {
-    await AsyncStorage.setItem("player_display_name", "Riley");
-    mockPutMe.mockImplementationOnce(offline);
-    await expect(syncDisplayNameOnLaunch()).resolves.toBe(false);
-    resetDisplayNameCacheForTests();
-    await expect(syncDisplayNameOnLaunch()).resolves.toBe(true);
-    expect(sentNames()).toEqual(["Riley", "Riley"]);
-  });
-
-  it("syncs again for a new player id (e.g. after Delete my data)", async () => {
-    await saveDisplayName("Riley");
-    await flushDisplayNameSync();
-    await clearSession();
-    resetDisplayNameCacheForTests();
-    await syncDisplayNameOnLaunch();
-    expect(sentNames()).toEqual(["Riley", "Riley"]);
-  });
-
-  it("sends the current name, not an older pending one", async () => {
-    mockPutMe.mockImplementation(offline);
-    await saveDisplayName("Old");
-    await flushDisplayNameSync();
-    // The pending slot still says "Old" but the stored name moved on (e.g.
-    // the slot write failed after a later save).
-    await AsyncStorage.setItem("player_display_name", "New");
-    resetDisplayNameCacheForTests();
-    mockPutMe.mockReset();
-    mockPutMe.mockImplementation(ok);
-    await syncDisplayNameOnLaunch();
-    expect(sentNames()).toEqual(["New"]);
-  });
-});
-
-describe("replays", () => {
-  it("a replayed sync has no second effect", async () => {
-    await saveDisplayName("Riley");
-    await flushDisplayNameSync();
-    expect(sentNames()).toEqual(["Riley"]);
-
-    // Reconnect, foreground and launch triggers all find nothing to send.
-    await Promise.all([flushDisplayNameSync(), flushDisplayNameSync()]);
-    await syncDisplayNameOnLaunch();
-    expect(sentNames()).toEqual(["Riley"]);
-  });
-
-  it("concurrent flushes of one pending name send it once", async () => {
-    await AsyncStorage.setItem(PENDING_KEY, "Riley");
-    await Promise.all([flushDisplayNameSync(), flushDisplayNameSync(), flushDisplayNameSync()]);
-    expect(sentNames()).toEqual(["Riley"]);
-  });
-});
-
-describe("name rule matches the server", () => {
-  it.each(["\u0085", "a\u001fb", "a\u0000b", "\u001c", "tab\there"])(
-    "rejects a name with a control character (%j)",
-    (raw) => {
-      expect(normalizeDisplayName(raw)).toBeNull();
+  it("opts nobody in when the migration can't be recorded", async () => {
+    await AsyncStorage.setItem(NAME_KEY, "Riley");
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const original = setItem.getMockImplementation();
+    setItem.mockImplementation((key: string, value: string) =>
+      key === LEGACY_MIGRATED_KEY ? Promise.reject(new Error("disk full")) : original?.(key, value)
+    );
+    try {
+      await syncDisplayNameOnLaunch();
+    } finally {
+      setItem.mockImplementation(original);
     }
-  );
-
-  it("still accepts ordinary names", () => {
-    expect(normalizeDisplayName("  Zoë O'Neil ")).toBe("Zoë O'Neil");
+    expect(mockPutMe).not.toHaveBeenCalled();
   });
 });
 
 describe("clearDisplayNameSync (Delete my data)", () => {
-  it("waits for a PUT in flight, then forgets the pending and settled state", async () => {
+  it("a partly failed Delete my data (name clear fails) never re-joins on a later launch", async () => {
+    await syncDisplayNameOnLaunch(); // this build's first launch
+    await joinLeaderboards();
+    await flushDisplayNameSync();
+    expect(mockPutMe).toHaveBeenCalledTimes(1);
+
+    // Settings' sequence: forget the sync state, erase the server's copy…
+    await clearDisplayNameSync();
+    serverName = null;
+    // …then the local name clear fails, so Settings stops before the session.
+    const removeItem = AsyncStorage.removeItem as jest.Mock;
+    removeItem.mockImplementationOnce(() => Promise.reject(new Error("disk")));
+    await expect(clearDisplayName()).resolves.toBe(false);
+    await expect(AsyncStorage.getItem(NAME_KEY)).resolves.toBe(GENERATED);
+
+    // Next launch, even under a new player id and with the marker gone.
+    await clearSession();
+    await AsyncStorage.removeItem(SYNCED_KEY);
+    resetDisplayNameCacheForTests();
+    resetDisplayNameSyncForTests();
+    await syncDisplayNameOnLaunch();
+    expect(mockPutMe).toHaveBeenCalledTimes(1);
+    await expect(loadDisplayName()).resolves.toBeNull();
+  });
+
+  it("a partly failed Delete my data on an install that never ran the migration doesn't re-join", async () => {
+    await AsyncStorage.setItem(NAME_KEY, "Riley"); // never launched this build yet
+    await clearDisplayNameSync();
+    resetDisplayNameCacheForTests();
+    await syncDisplayNameOnLaunch();
+    expect(mockPutMe).not.toHaveBeenCalled();
+  });
+
+  it("keeps the settled marker until the server delete has succeeded", async () => {
+    await joinLeaderboards();
+    await flushDisplayNameSync();
+    await clearDisplayNameSync();
+    await expect(AsyncStorage.getItem(SYNCED_KEY)).resolves.not.toBeNull();
+    await forgetSyncedDisplayName();
+    await expect(AsyncStorage.getItem(SYNCED_KEY)).resolves.toBeNull();
+  });
+
+  it("waits for a PUT in flight, then forgets the pending state", async () => {
     let release: (v: { display_name: string }) => void = () => {};
     mockPutMe.mockImplementationOnce(
       () => new Promise((resolve) => (release = resolve as typeof release))
     );
-    await saveDisplayName("Riley");
+    await joinLeaderboards();
     await waitFor(() => expect(mockPutMe).toHaveBeenCalledTimes(1));
 
     let cleared = false;
     const clearing = clearDisplayNameSync().then(() => (cleared = true));
     await Promise.resolve();
     expect(cleared).toBe(false); // still waiting for the in-flight PUT
-    release({ display_name: "Riley" });
+    release({ display_name: GENERATED });
     await clearing;
 
     await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBeNull();
-    await expect(AsyncStorage.getItem(SYNCED_KEY)).resolves.toBeNull();
+    await expect(AsyncStorage.getItem(LEGACY_MIGRATED_KEY)).resolves.toBe("1");
   });
 
   it("never rejects", async () => {
     await expect(clearDisplayNameSync()).resolves.toBeUndefined();
-  });
-});
-
-describe("removeDisplayName → DELETE /players/me (#2637)", () => {
-  it("forgets the local name and sends one DELETE", async () => {
-    await saveDisplayName("Riley");
-    await flushDisplayNameSync();
-
-    await expect(removeDisplayName()).resolves.toBe(true);
-    await expect(loadDisplayName()).resolves.toBeNull();
-    await expect(AsyncStorage.getItem("player_display_name")).resolves.toBeNull();
-    await expect(flushDisplayNameSync()).resolves.toBe(true);
-    expect(mockDeleteMe).toHaveBeenCalledTimes(1);
-    await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBeNull();
-  });
-
-  it("keeps an offline removal pending and sends it on reconnect", async () => {
-    await saveDisplayName("Riley");
-    await flushDisplayNameSync();
-    mockDeleteMe.mockImplementation(offline);
-
-    await expect(removeDisplayName()).resolves.toBe(true);
-    await expect(flushDisplayNameSync()).resolves.toBe(false);
-    await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.not.toBeNull();
-
-    // Reconnect (NetworkContext flushes): the removal goes out once.
-    mockDeleteMe.mockReset();
-    mockDeleteMe.mockResolvedValue(undefined);
-    await expect(flushDisplayNameSync()).resolves.toBe(true);
-    expect(mockDeleteMe).toHaveBeenCalledTimes(1);
-    await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBeNull();
-  });
-
-  it("sends a removal left pending at the next launch, without resending the name", async () => {
-    await saveDisplayName("Riley");
-    await flushDisplayNameSync();
-    mockDeleteMe.mockImplementation(offline);
-    await removeDisplayName();
-    await flushDisplayNameSync();
-
-    mockDeleteMe.mockReset();
-    mockDeleteMe.mockResolvedValue(undefined);
-    resetDisplayNameCacheForTests(); // a later launch
-    resetDisplayNameSyncForTests();
-    await expect(syncDisplayNameOnLaunch()).resolves.toBe(true);
-    expect(mockDeleteMe).toHaveBeenCalledTimes(1);
-    expect(sentNames()).toEqual(["Riley"]);
-  });
-
-  it("replaces an unsent name: only the DELETE goes out", async () => {
-    mockPutMe.mockImplementation(offline);
-    await saveDisplayName("Riley");
-    await flushDisplayNameSync();
-    mockPutMe.mockReset();
-    mockPutMe.mockImplementation(ok);
-
-    await removeDisplayName();
-    await expect(flushDisplayNameSync()).resolves.toBe(true);
-    expect(mockPutMe).not.toHaveBeenCalled();
-    expect(mockDeleteMe).toHaveBeenCalledTimes(1);
-  });
-
-  it("is replaced by a later save: only the new name goes out", async () => {
-    mockDeleteMe.mockImplementation(offline);
-    await saveDisplayName("Riley");
-    await flushDisplayNameSync();
-    await removeDisplayName();
-    await flushDisplayNameSync();
-    mockPutMe.mockClear();
-    mockDeleteMe.mockClear();
-
-    await saveDisplayName("Sam");
-    await expect(flushDisplayNameSync()).resolves.toBe(true);
-    expect(sentNames()).toEqual(["Sam"]);
-    expect(mockDeleteMe).not.toHaveBeenCalled();
-  });
-
-  it("sends the DELETE after a PUT already in flight, not before it", async () => {
-    const order: string[] = [];
-    let release: () => void = () => {};
-    mockPutMe.mockImplementationOnce((name: string) =>
-      new Promise<void>((resolve) => (release = resolve)).then(() => {
-        order.push("PUT");
-        return { display_name: name };
-      })
-    );
-    mockDeleteMe.mockImplementation(() => {
-      order.push("DELETE");
-      return Promise.resolve();
-    });
-    await saveDisplayName("Riley");
-    await waitFor(() => expect(mockPutMe).toHaveBeenCalledTimes(1));
-
-    await removeDisplayName(); // Riley's PUT is still in flight
-    release();
-    await expect(flushDisplayNameSync()).resolves.toBe(true);
-    expect(order).toEqual(["PUT", "DELETE"]);
-  });
-
-  it("changes nothing when the removal can't be stored in the slot", async () => {
-    // "Bob" is saved but unsent (offline).
-    mockPutMe.mockImplementation(offline);
-    await saveDisplayName("Bob");
-    await flushDisplayNameSync();
-    mockPutMe.mockClear();
-    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error("disk"));
-
-    await expect(removeDisplayName()).resolves.toBe(false);
-
-    // Nothing sent, nothing cleared: the device still has Bob, with Bob pending.
-    expect(mockPutMe).not.toHaveBeenCalled();
-    expect(mockDeleteMe).not.toHaveBeenCalled();
-    await expect(loadDisplayName()).resolves.toBe("Bob");
-    await expect(AsyncStorage.getItem(NAME_KEY)).resolves.toBe("Bob");
-    await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBe("Bob");
-    await expect(isDisplayNameRemovalPending()).resolves.toBe(false);
-  });
-
-  it("still sends the DELETE when the device clear fails after the removal is stored", async () => {
-    await saveDisplayName("Riley");
-    await flushDisplayNameSync();
-    mockDeleteMe.mockImplementation(offline);
-    // Stands in for an app kill between the two steps: the slot holds the
-    // removal, the device still holds the name.
-    (AsyncStorage.removeItem as jest.Mock).mockRejectedValueOnce(new Error("disk"));
-
-    await expect(removeDisplayName()).resolves.toBe(true);
-    await flushDisplayNameSync();
-    await expect(isDisplayNameRemovalPending()).resolves.toBe(true);
-
-    mockDeleteMe.mockReset();
-    mockDeleteMe.mockResolvedValue(undefined);
-    await expect(flushDisplayNameSync()).resolves.toBe(true);
-    expect(mockDeleteMe).toHaveBeenCalledTimes(1);
-    await expect(isDisplayNameRemovalPending()).resolves.toBe(false);
-  });
-
-  it("finishes a half-done removal at launch: clears the device name, sends only the DELETE", async () => {
-    await saveDisplayName("Riley");
-    await flushDisplayNameSync();
-    mockDeleteMe.mockImplementation(offline);
-    (AsyncStorage.removeItem as jest.Mock).mockRejectedValueOnce(new Error("disk"));
-    await removeDisplayName();
-    await flushDisplayNameSync();
-    await expect(AsyncStorage.getItem(NAME_KEY)).resolves.toBe("Riley");
-
-    // Next launch.
-    mockDeleteMe.mockReset();
-    mockDeleteMe.mockResolvedValue(undefined);
-    resetDisplayNameCacheForTests();
-    resetDisplayNameSyncForTests();
-    await expect(syncDisplayNameOnLaunch()).resolves.toBe(true);
-    expect(mockDeleteMe).toHaveBeenCalledTimes(1);
-    expect(sentNames()).toEqual(["Riley"]); // not sent again
-    await expect(AsyncStorage.getItem(NAME_KEY)).resolves.toBeNull();
-  });
-
-  it("reports a removal as pending until the server confirms it", async () => {
-    await saveDisplayName("Riley");
-    await flushDisplayNameSync();
-    await expect(isDisplayNameRemovalPending()).resolves.toBe(false);
-    mockDeleteMe.mockImplementation(offline);
-    await removeDisplayName();
-    await flushDisplayNameSync();
-    await expect(isDisplayNameRemovalPending()).resolves.toBe(true);
-
-    mockDeleteMe.mockResolvedValue(undefined);
-    await flushDisplayNameSync();
-    await expect(isDisplayNameRemovalPending()).resolves.toBe(false);
   });
 });

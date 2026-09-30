@@ -10,6 +10,13 @@ def _real_ip(request: Request) -> str:
     Render's load balancer sets X-Forwarded-For to the real client IP.
     Without this, all requests share the load balancer's IP and hit the
     same rate-limit bucket, making per-IP limiting ineffective.
+
+    TODO(follow-up, SECURITY.md §9 "Known issue: X-Forwarded-For"): this trusts
+    the *first* hop, which the client controls — a client that sends its own
+    X-Forwarded-For picks its bucket and escapes every per-IP limit (including
+    the /purchases per-IP limit, #840). Take the right-most hop appended by
+    Render's proxy instead; left unchanged here because it moves every
+    existing per-IP bucket.
     """
     xff = request.headers.get("X-Forwarded-For")
     if xff:

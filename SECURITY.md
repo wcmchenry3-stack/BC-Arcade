@@ -104,7 +104,9 @@ Each row is unique by:
 - `session_id`;
 - `game_slug`.
 
-The table exists today, but production IAP receipt/transaction validation that grants those rows is still future work under the premium/IAP epic.
+For purchased games the rows are derived from `purchase_links` joined to `owned` `purchases` rows, in the same transaction as every link or purchase-state change (#840, [docs/IAP.md §8.1](docs/IAP.md#81-schema-one-reversible-alembic-migration)); rows that predate purchases carry `source = 'legacy'` and are left alone. `POST /purchases/{apple,google}` writes them only from a store-verified answer. Real Apple/Google verification (#2786/#2787) has not shipped, so today those routes answer `503 store_unavailable` and grant nothing.
+
+The admin `PATCH /games/catalog/{id}` refuses an `is_premium` change for a game in the product catalog or with any recorded purchase (`409 is_premium_migration_only`), so a paid game cannot be flipped free from the API.
 
 ### `GET /entitlements`
 
@@ -200,6 +202,10 @@ Current cross-cutting controls include:
 
 A statement that “every endpoint has exactly the same auth or rate-limit model” would be inaccurate; public catalog/challenge routes and session-scoped routes intentionally differ.
 
+**Known issue: X-Forwarded-For spoofing.** `backend/limiter.py` `_real_ip` keys every per-IP limit on the *first* `X-Forwarded-For` hop, which the client controls: a client that sends its own header picks its bucket and escapes per-IP limits, including the `/purchases` per-IP limit (#840). The fix (trust only the hop appended by Render's proxy) changes every existing per-IP bucket, so it is tracked as a separate follow-up rather than changed with #840; a `TODO` in `_real_ip` points here. Until then, per-session and per-store-key limits still apply to `/purchases`.
+
+**Sentry.** Crash reports never carry request bodies (`max_request_body_size="never"`) or frame locals; header and payload keys `x-session-id`, `session_id`, `x-admin-token`, `purchase_token`, `signed_transaction`, `signedPayload` and `store_key` are scrubbed at any depth (case-insensitive); and SQLAlchemy `[SQL: ...]` / `[parameters: ...]` fragments and Postgres `DETAIL:` lines are cut from exception messages (`backend/main.py`, #840).
+
 # IAP / Paid-Entitlement Readiness Gate
 
 Paid entitlements raise the impact of session replay and transaction replay. The following gate must be completed before the first premium purchase flow ships.
@@ -275,6 +281,8 @@ The premium/IAP release gate should include automated or integration coverage fo
 - production configuration has no dev entitlement override.
 
 Link the concrete implementation tests from the IAP epic (#822 / current premium implementation work) when they exist.
+
+**Covered by #840** (`backend/tests/test_purchases.py`, store verification faked at the verifier boundary): verified purchase → entitlement; idempotent replay and restore without a duplicate grant; foreign account token on `source: "purchase"` → `403 ownership_mismatch`; link caps → `409 link_limit` with no eviction; revocation removes access for every linked session and the refund reversal restores it; the returned and `GET /entitlements` JWT reflect the database; premium `POST /games` rejects an unentitled or revoked session; per-session, per-IP and per-store-key rate limits; free-game regression. **Still open:** forged/invalid store evidence against real signature verification (#2786/#2787), duplicate webhooks through the real notification routes, and the production-config check.
 
 ## 15. Readiness checklist
 

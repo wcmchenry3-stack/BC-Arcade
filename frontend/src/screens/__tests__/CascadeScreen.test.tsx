@@ -14,7 +14,10 @@ import CascadeScreen from "../CascadeScreen";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
-import { resetDisplayNameCacheForTests, saveDisplayName } from "../../game/_shared/displayName";
+import {
+  resetDisplayNameCacheForTests,
+  storeAssignedDisplayName,
+} from "../../game/_shared/displayName";
 
 jest.mock("expo-blur", () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
@@ -48,7 +51,7 @@ jest.mock("../../api/stats", () => ({
   statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
 }));
 jest.mock("../../api/players", () => ({
-  playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
+  playersApi: { putMe: jest.fn(() => Promise.resolve({ display_name: "Brave Otter 4821" })) },
 }));
 jest.mock("../../game/_shared/flushQueuedGames", () => ({
   flushQueuedGames: jest.fn(() => Promise.resolve()),
@@ -694,7 +697,7 @@ describe("CascadeScreen — result card (#2515)", () => {
 
   // #2632: the card reads the synced game's rank instead of PATCH /cascade/score/{id}.
   it("shows the synced game's rank under the display name automatically", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const renderer = await playToGameOver(1234);
     expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
     expect(findCard(renderer)?.props.submission).toEqual(
@@ -724,7 +727,7 @@ describe("CascadeScreen — result card (#2515)", () => {
   });
 
   it("Play Again clears the card and the submission", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const renderer = await playToGameOver(1234);
     await act(() => {
       findCard(renderer)?.props.onPlayAgain();
@@ -736,7 +739,7 @@ describe("CascadeScreen — result card (#2515)", () => {
   });
 
   it("a fruit-set switch after game over lets the next game submit again", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     await playToGameOver(1234);
     expect(mockGetGameRank).toHaveBeenCalledTimes(1);
 
@@ -755,7 +758,7 @@ describe("CascadeScreen — result card (#2515)", () => {
   });
 
   it("shows a save error, with no retry, when the game has no sync id", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     mockStartGame.mockReturnValue(null as unknown as string);
     const renderer = await playToGameOver(1234);
     expect(mockGetGameRank).not.toHaveBeenCalled();

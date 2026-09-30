@@ -95,7 +95,7 @@ jest.mock("../../api/stats", () => ({
   statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
 }));
 jest.mock("../../api/players", () => ({
-  playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
+  playersApi: { putMe: jest.fn(() => Promise.resolve({ display_name: "Brave Otter 4821" })) },
 }));
 // The hook's foreground clock (#2684) is held still by the shared mock
 // jest.setup.ts pins (#2710), so the summaries below carry only what the
@@ -860,19 +860,16 @@ describe("SolitaireScreen — result card (#2509)", () => {
     );
   });
 
-  it("asks for a display name once when none is set, then shows the rank", async () => {
+  it("asks the player to join once when not on the boards, then shows the rank", async () => {
     const api = await winNow();
-    const input = await api.findByLabelText("Pick a display name for leaderboards");
+    const join = await api.findByRole("button", { name: "Join leaderboards" });
     expect(mockGetGameRank).not.toHaveBeenCalled();
 
     await act(async () => {
-      await fireEvent.changeText(input, "Alice");
-    });
-    await act(async () => {
-      await fireEvent.press(api.getByRole("button", { name: "Save" }));
+      await fireEvent.press(join);
     });
     await waitFor(() => {
-      expect(api.getByText("Saved as Alice · #3 on the leaderboard")).toBeTruthy();
+      expect(api.getByText("Saved as Brave Otter 4821 · #3 on the leaderboard")).toBeTruthy();
     });
     expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
   });

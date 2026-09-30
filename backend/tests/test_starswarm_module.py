@@ -384,9 +384,10 @@ def test_a_null_creation_tier_takes_the_tier_from_the_result() -> None:
     metadata = client.get(f"/games/{gid}", headers=_headers(_SID)).json()["metadata"]
     assert metadata["difficulty_tier"] == "Captain"
 
-    r = client.put("/players/me", headers=_headers(_SID), json={"display_name": "Ace"})
+    r = client.put("/players/me", headers=_headers(_SID))
     assert r.status_code == 200, r.text
-    assert _names(_board("?difficulty_tier=Captain")) == [("Ace", 5000)]
+    ace = r.json()["display_name"]
+    assert _names(_board("?difficulty_tier=Captain")) == [(ace, 5000)]
     assert _board("?difficulty_tier=LieutenantJG")["entries"] == []
 
 
@@ -626,9 +627,10 @@ def test_a_completed_run_stores_its_breakdown_and_the_owner_reads_it_back() -> N
         assert sum(w["pts"].values()) == w["total"] == w["end"] - w["start"]
     assert sum(w["total"] for w in stored["waves"]) == detail["final_score"]
     # The run still ranks on its tier's board.
-    r = client.put("/players/me", headers=_headers(_SID), json={"display_name": "Ace"})
+    r = client.put("/players/me", headers=_headers(_SID))
     assert r.status_code == 200, r.text
-    assert _names(_board("?difficulty_tier=Captain")) == [("Ace", _final(bd))]
+    name = r.json()["display_name"]
+    assert _names(_board("?difficulty_tier=Captain")) == [(name, _final(bd))]
 
 
 def test_the_worst_case_breakdown_is_accepted_over_http() -> None:

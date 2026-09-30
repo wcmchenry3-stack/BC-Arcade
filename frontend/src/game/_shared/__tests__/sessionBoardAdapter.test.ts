@@ -2,7 +2,11 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { sessionBoardAdapter } from "../sessionBoardAdapter";
 import { useLeaderboardSubmit } from "../useLeaderboardSubmit";
-import { loadDisplayName, resetDisplayNameCacheForTests, saveDisplayName } from "../displayName";
+import {
+  loadDisplayName,
+  resetDisplayNameCacheForTests,
+  storeAssignedDisplayName,
+} from "../displayName";
 import { ApiError } from "../httpClient";
 import type { GameRankResponse } from "../../../api/types";
 
@@ -17,8 +21,15 @@ jest.mock("../flushQueuedGames", () => ({
 }));
 
 const mockFlushDisplayNameSync = jest.fn(() => Promise.resolve(true));
+// Joining (#2778) stores the server's generated name once the sync confirms it.
+const mockJoin = jest.fn(async () => {
+  await storeAssignedDisplayName("Brave Otter 4821");
+  return true;
+});
 jest.mock("../displayNameSync", () => ({
   flushDisplayNameSync: () => mockFlushDisplayNameSync(),
+  joinLeaderboards: () => mockJoin(),
+  getLeaderboardSyncPending: () => Promise.resolve(null),
 }));
 
 const mockNetwork = { isOnline: true, isInitialized: true };
@@ -60,7 +71,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
   });
 
   it("named and online: fetches the rank and reports it as saved", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     mockGetRank.mockResolvedValue(ranked(3));
     const { result } = await setup();
 
@@ -76,7 +87,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
   });
 
   it("keeps the best entry's rank when this game isn't that entry (#2633)", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     mockGetRank.mockResolvedValue(ranked(3, false));
     const { result } = await setup();
     await act(() => result.current.submit({ gameId: "g-1" }));
@@ -86,7 +97,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
   });
 
   it("marks the game as the best entry when the server says so, and reset clears it", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     mockGetRank.mockResolvedValueOnce(ranked(3, false)).mockResolvedValueOnce(ranked(2));
     const { result } = await setup();
     await act(() => result.current.submit({ gameId: "g-1" }));
@@ -99,7 +110,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
   });
 
   it("shows a rank outside the top ten as saved with no rank, like the other cards", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     mockGetRank.mockResolvedValue(ranked(25));
     const { result } = await setup();
     await act(() => result.current.submit({ gameId: "g-1" }));
@@ -107,7 +118,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     expect(result.current.rank).toBeNull();
   });
 
-  it("no display name: asks for one, then provideName saves it and fetches the rank", async () => {
+  it("not on the boards: asks to join, then joining fetches the rank", async () => {
     mockGetRank.mockResolvedValue(ranked(2));
     const { result } = await setup();
 
@@ -117,19 +128,20 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
 
     let accepted = false;
     await act(async () => {
-      accepted = await result.current.provideName(" Riley ");
+      accepted = await result.current.joinLeaderboards();
     });
 
     expect(accepted).toBe(true);
-    await expect(loadDisplayName()).resolves.toBe("Riley");
+    expect(mockJoin).toHaveBeenCalledTimes(1);
+    await expect(loadDisplayName()).resolves.toBe("Brave Otter 4821");
     expect(mockFlushDisplayNameSync).toHaveBeenCalled();
     expect(mockGetRank).toHaveBeenCalledWith("g-1");
     expect(result.current.status).toBe("saved");
     expect(result.current.rank).toBe(2);
   });
 
-  it("asks for a name when the server has none for the player", async () => {
-    await saveDisplayName("Riley");
+  it("asks to join when the server has no name for the player", async () => {
+    await storeAssignedDisplayName("Riley");
     mockGetRank.mockResolvedValueOnce(unranked("no_name")).mockResolvedValueOnce(ranked(1));
     const { result } = await setup();
 
@@ -137,14 +149,14 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     expect(result.current.status).toBe("needsName");
 
     await act(async () => {
-      await result.current.provideName("Riley");
+      await result.current.joinLeaderboards();
     });
     expect(result.current.status).toBe("saved");
     expect(result.current.rank).toBe(1);
   });
 
-  it("keeps saving, not a name prompt, while the name is still waiting to sync", async () => {
-    await saveDisplayName("Riley");
+  it("keeps saving, not a join prompt, while the join is still waiting to sync", async () => {
+    await storeAssignedDisplayName("Riley");
     mockFlushDisplayNameSync.mockResolvedValue(false);
     mockGetRank.mockResolvedValue(unranked("no_name"));
     const { result } = await setup();
@@ -154,7 +166,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
   });
 
   it("offline: shows offline with nothing queued, then fetches the rank on reconnect", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     mockNetwork.isOnline = false;
     mockGetRank.mockResolvedValue(ranked(4));
     const { result, rerender } = await setup();
@@ -171,7 +183,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     expect(result.current.rank).toBe(4);
   });
 
-  it("offline with no name: provideName saves it, then the rank comes on reconnect", async () => {
+  it("offline and not on the boards: joining, then the rank comes on reconnect", async () => {
     mockNetwork.isOnline = false;
     mockGetRank.mockResolvedValue(ranked(1));
     const { result, rerender } = await setup();
@@ -179,7 +191,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     await act(() => result.current.submit({ gameId: "g-1" }));
     expect(result.current.status).toBe("needsName");
     await act(async () => {
-      await result.current.provideName("Riley");
+      await result.current.joinLeaderboards();
     });
     expect(result.current.status).toBe("offline");
 
@@ -190,7 +202,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
   });
 
   it("retries a 404 from before the game has synced", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     mockGetRank
       .mockRejectedValueOnce(new ApiError("Game not found.", 404))
       .mockResolvedValueOnce(ranked(5));
@@ -204,7 +216,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
   });
 
   it("retries not_finished while the completion hasn't landed yet", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     mockGetRank.mockResolvedValueOnce(unranked("not_finished")).mockResolvedValueOnce(ranked(6));
     const { result } = await setup();
 
@@ -215,7 +227,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
   });
 
   it("a not_finished that outlasts the retries stays pending (the hook asks again)", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     mockGetRank.mockResolvedValue(unranked("not_finished"));
     const { result } = await setup();
 
@@ -228,7 +240,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
   it.each(["not_rankable", "board_disabled"] as const)(
     "%s is final at once: unranked, no retry",
     async (reason) => {
-      await saveDisplayName("Riley");
+      await storeAssignedDisplayName("Riley");
       mockGetRank.mockResolvedValue(unranked(reason));
       const { result } = await setup();
 
@@ -241,7 +253,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
   );
 
   it("a 404 that outlasts the retries is an error, and retry() asks again", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     mockGetRank.mockRejectedValue(new ApiError("Game not found.", 404));
     const { result } = await setup();
 

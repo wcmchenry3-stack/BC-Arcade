@@ -391,6 +391,141 @@ describe("EntitlementProvider", () => {
 // Unit tests for parseRawToken
 // ---------------------------------------------------------------------------
 
+describe("refresh() and applyToken() (#841)", () => {
+  it("applyToken unlocks the game at once, with no network call, and caches the token", async () => {
+    await renderProvider();
+    expect(ctx.canPlay("cascade")).toBe(false);
+    mockRequest.mockClear();
+
+    const token = makeToken(makePayload(["cascade"]));
+    await act(async () => {
+      await ctx.applyToken(token);
+    });
+
+    expect(ctx.canPlay("cascade")).toBe(true);
+    expect(mockRequest).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem(TOKEN_STORAGE_KEY)).toBe(token);
+    expect(await AsyncStorage.getItem(CACHED_AT_STORAGE_KEY)).not.toBeNull();
+  });
+
+  it("applyToken rejects an undecodable token and leaves entitlements unchanged", async () => {
+    mockRequest.mockResolvedValue({
+      token: makeToken(makePayload(["hearts"])),
+      expires_at: "2099-01-01T00:00:00Z",
+    });
+    await renderProvider();
+    await act(async () => {
+      await expect(ctx.applyToken("not.a-jwt")).rejects.toThrow();
+    });
+    expect(ctx.canPlay("hearts")).toBe(true);
+  });
+
+  it("applyToken rejects an expired token", async () => {
+    await renderProvider();
+    await act(async () => {
+      await expect(ctx.applyToken(makeToken(makePayload(["cascade"], -60_000)))).rejects.toThrow();
+    });
+    expect(ctx.canPlay("cascade")).toBe(false);
+  });
+
+  it("refresh re-fetches GET /entitlements and applies the result", async () => {
+    await renderProvider();
+    expect(ctx.canPlay("starswarm")).toBe(false);
+    mockRequest.mockResolvedValue({
+      token: makeToken(makePayload(["starswarm"])),
+      expires_at: "2099-01-01T00:00:00Z",
+    });
+    await act(async () => {
+      await ctx.refresh();
+    });
+    expect(ctx.canPlay("starswarm")).toBe(true);
+  });
+
+  it("refresh keeps current entitlements when the network fails", async () => {
+    mockRequest.mockResolvedValue({
+      token: makeToken(makePayload(["hearts"])),
+      expires_at: "2099-01-01T00:00:00Z",
+    });
+    await renderProvider();
+    mockRequest.mockRejectedValue(new Error("offline"));
+    await act(async () => {
+      await ctx.refresh();
+    });
+    expect(ctx.canPlay("hearts")).toBe(true);
+  });
+});
+
+describe("stale fetch vs applyToken race (#841)", () => {
+  const response = (games: string[]) => ({
+    token: makeToken(makePayload(games)),
+    expires_at: "2099-01-01T00:00:00Z",
+  });
+
+  it("a refresh started before applyToken cannot overwrite, persist or revoke the fresher token", async () => {
+    await renderProvider();
+    let resolveOld: (v: unknown) => void = () => {};
+    mockRequest.mockReturnValueOnce(new Promise((r) => (resolveOld = r)));
+
+    let refreshDone!: Promise<void>;
+    await act(async () => {
+      refreshDone = ctx.refresh();
+    });
+    const fresh = makeToken(makePayload(["cascade", "hearts"]));
+    await act(async () => {
+      await ctx.applyToken(fresh);
+    });
+    expect(ctx.canPlay("cascade")).toBe(true);
+    expect(ctx.canPlay("hearts")).toBe(true);
+
+    // The older GET now resolves with a stale token that lacks hearts.
+    await act(async () => {
+      resolveOld(response(["cascade"]));
+      await refreshDone;
+    });
+
+    expect(ctx.canPlay("cascade")).toBe(true);
+    expect(ctx.canPlay("hearts")).toBe(true);
+    expect(await AsyncStorage.getItem(TOKEN_STORAGE_KEY)).toBe(fresh);
+    await flushAsync();
+    expect(mockClearHearts).not.toHaveBeenCalled();
+  });
+
+  it("the initial bootstrap fetch cannot overwrite a token applied while it was in flight", async () => {
+    let resolveBoot: (v: unknown) => void = () => {};
+    mockRequest.mockReturnValueOnce(new Promise((r) => (resolveBoot = r)));
+    await render(
+      <EntitlementProvider>
+        <Probe />
+      </EntitlementProvider>
+    );
+    await flushAsync();
+    expect(ctx.isLoading).toBe(true);
+
+    const fresh = makeToken(makePayload(["cascade"]));
+    await act(async () => {
+      await ctx.applyToken(fresh);
+    });
+    await act(async () => {
+      resolveBoot(response([]));
+    });
+    await flushAsync();
+
+    expect(ctx.isLoading).toBe(false);
+    expect(ctx.canPlay("cascade")).toBe(true);
+    expect(await AsyncStorage.getItem(TOKEN_STORAGE_KEY)).toBe(fresh);
+  });
+
+  it("applyToken still applies in memory when persisting fails", async () => {
+    await renderProvider();
+    const spy = jest.spyOn(AsyncStorage, "setMany").mockRejectedValueOnce(new Error("disk full"));
+    await act(async () => {
+      await ctx.applyToken(makeToken(makePayload(["cascade"])));
+    });
+    expect(ctx.canPlay("cascade")).toBe(true);
+    spy.mockRestore();
+  });
+});
+
 describe("parseRawToken", () => {
   it("returns valid+unexpired for a token with a future exp", async () => {
     const result = await parseRawToken(makeToken(makePayload(["cascade"])));

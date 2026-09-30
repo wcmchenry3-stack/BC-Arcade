@@ -140,14 +140,15 @@ async def test_overlong_ai_difficulty_is_rejected(client: TestClient) -> None:
 
 async def test_a_players_games_make_one_board_entry(client: TestClient) -> None:
     sid = await _entitled_sid()
-    r = client.put("/players/me", headers=_headers(sid), json={"display_name": "Riley"})
+    r = client.put("/players/me", headers=_headers(sid))
     assert r.status_code == 200, r.text
+    riley = r.json()["display_name"]
 
     best = _play(client, sid, penalty=46, outcome="win")
     worse = _play(client, sid, penalty=70, outcome="loss")
     _play(client, sid, penalty=60, outcome="push")
 
-    assert _board(client, sid) == [("Riley", 54)]
+    assert _board(client, sid) == [(riley, 54)]
 
     # The card's rank lookup: the best game ranks, the worse one isn't the best.
     r = client.get(f"/games/{best}/rank", headers=_headers(sid))

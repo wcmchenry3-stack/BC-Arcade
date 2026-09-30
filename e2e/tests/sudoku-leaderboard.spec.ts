@@ -106,20 +106,17 @@ test.describe("Sudoku — result card + leaderboard", () => {
     await expect(card.getByRole("button", { name: "Home" })).toBeVisible();
   });
 
-  test("asks for a display name once when none is set, then shows the rank", async ({
+  test("asks the player to join once when not on the boards, then shows the rank", async ({
     page,
   }) => {
     const calls = await routeSudokuApi(page);
     await solveNearWinPuzzle(page);
 
-    const nameInput = page.getByLabel("Pick a display name for leaderboards");
-    await expect(nameInput).toBeVisible({ timeout: 5_000 });
-    const save = page.getByRole("button", { name: "Save" });
-    await expect(save).toBeDisabled();
+    const join = page.getByRole("button", { name: "Join leaderboards" });
+    await expect(join).toBeVisible({ timeout: 5_000 });
     expect(calls.rankLookups).toEqual([]);
 
-    await nameInput.fill("Tester");
-    await save.click();
+    await join.click();
 
     await expect(
       page.getByText("Saved as Tester · #1 on the leaderboard"),

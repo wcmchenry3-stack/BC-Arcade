@@ -362,6 +362,8 @@ A finished game's `result` block carries, next to `final_score` and `vs_result`,
 
 The server keeps the breakdown only if it reconciles: 1-60 rows of four integers in 0-26, each row summing to 26 or being the moon pattern (`0, 26, 26, 26`, sum 78; the engine has no other scoring variants), four non-negative totals, each seat's deltas summing to its total, and, when the result block sends `final_score`, an integer equal to the request body's `final_score` (which becomes `games.final_score`) and to `max(0, 100 - final_scores[human_seat])` (a float, bool or string does not reconcile). Anything else drops the three keys and keeps the rest of the result, so a bad breakdown never returns a 400 that would dead-letter the game; the drop is logged and sent to Sentry as a warning with the failed check (no ids or scores). Builds without the fields, and abandons (`hands_played` only), validate as before; the leaderboard value stays `final_score`.
 
+The owner sees it on Game Details (Profile → Recent Games → a game; `frontend/src/components/gameDetail/`, #2840) as a hands × seats table, the human first as "You" and the others as numbered opponents, with moon hands marked ★ and a totals row. A game without the breakdown (older builds, abandons, dropped) shows its total and a "no breakdown saved" note, never zeroed hands.
+
 ## Premium / visibility
 
 Hearts is one of the games hidden from the v1.0 store build. It remains visible in development, internal/test and pre-launch-API builds under the shared visibility rules.

@@ -51,12 +51,22 @@ export interface EntitlementContextValue {
   canPlay: (gameSlug: string) => boolean;
   isLoading: boolean;
   lastRefreshed: Date | null;
+  /** Re-fetch GET /entitlements and apply it. Network failures keep the current entitlements. */
+  refresh: () => Promise<void>;
+  /**
+   * Validate, cache and apply a token returned by the purchase/restore endpoints
+   * (docs/IAP.md §9.2) so `canPlay` updates at once. Rejects on an invalid or
+   * expired token without changing entitlements.
+   */
+  applyToken: (rawToken: string) => Promise<void>;
 }
 
 const EntitlementContext = createContext<EntitlementContextValue>({
   canPlay: (slug) => !PREMIUM_GAMES.has(slug),
   isLoading: true,
   lastRefreshed: null,
+  refresh: async () => {},
+  applyToken: async () => {},
 });
 
 const _entitlementsClient = createGameClient({ apiTag: "entitlements" });
@@ -109,19 +119,26 @@ export async function loadCachedEntitlements(): Promise<Set<string>> {
 // the cache when the token is expired or undecodable (clock skew, TTL edge case).
 async function fetchAndApplyToken(
   setEntitledGames: (games: Set<string>) => void,
-  setLastRefreshed: (date: Date) => void
+  setLastRefreshed: (date: Date) => void,
+  isStale: () => boolean
 ): Promise<void> {
   const rawToken = await fetchRawToken();
   const result = await parseRawToken(rawToken);
+  // A newer token (applyToken) or fetch superseded this one while it was in
+  // flight: drop it rather than overwrite/persist fresher entitlements.
+  if (isStale()) return;
   if (result.valid && !result.expired) {
     await AsyncStorage.setMany({
       [TOKEN_STORAGE_KEY]: rawToken,
       [CACHED_AT_STORAGE_KEY]: new Date().toISOString(),
     });
+    if (isStale()) return;
     setEntitledGames(new Set(result.payload.entitled_games));
     setLastRefreshed(new Date());
   } else {
-    setEntitledGames(await loadCachedEntitlements());
+    const cached = await loadCachedEntitlements();
+    if (isStale()) return;
+    setEntitledGames(cached);
   }
 }
 
@@ -130,10 +147,18 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
   const [isLoading, setIsLoading] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const prevEntitledRef = useRef<Set<string> | null>(null);
+  // Bumped by every fetch start and every applyToken; a fetch whose generation
+  // changed before it resolved is stale and must not apply or persist.
+  const generationRef = useRef(0);
 
   const refresh = useCallback(async () => {
+    const gen = ++generationRef.current;
     try {
-      await fetchAndApplyToken(setEntitledGames, setLastRefreshed);
+      await fetchAndApplyToken(
+        setEntitledGames,
+        setLastRefreshed,
+        () => generationRef.current !== gen
+      );
     } catch (e) {
       // Network errors (isNetworkError) are swallowed — in-memory state stays as-is.
       // Unlike init(), refresh() intentionally does not fall back to cache:
@@ -149,12 +174,33 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
     }
   }, []);
 
+  const applyToken = useCallback(async (rawToken: string) => {
+    const result = await parseRawToken(rawToken);
+    if (!result.valid || result.expired) throw new Error("Invalid or expired entitlement token");
+    // Apply in memory first (invalidating any in-flight fetch), then persist
+    // best-effort: a storage failure must not undo a verified purchase.
+    generationRef.current++;
+    setEntitledGames(new Set(result.payload.entitled_games));
+    setLastRefreshed(new Date());
+    try {
+      await AsyncStorage.setMany({
+        [TOKEN_STORAGE_KEY]: rawToken,
+        [CACHED_AT_STORAGE_KEY]: new Date().toISOString(),
+      });
+    } catch (e) {
+      Sentry.captureException(e, { tags: { subsystem: "entitlements", op: "applyTokenPersist" } });
+    }
+  }, []);
+
   useEffect(() => {
     async function init() {
+      const gen = ++generationRef.current;
+      const isStale = () => generationRef.current !== gen;
       try {
-        await fetchAndApplyToken(setEntitledGames, setLastRefreshed);
+        await fetchAndApplyToken(setEntitledGames, setLastRefreshed, isStale);
       } catch {
-        setEntitledGames(await loadCachedEntitlements());
+        const cached = await loadCachedEntitlements();
+        if (!isStale()) setEntitledGames(cached);
       } finally {
         setIsLoading(false);
       }
@@ -211,7 +257,7 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
   );
 
   return (
-    <EntitlementContext.Provider value={{ canPlay, isLoading, lastRefreshed }}>
+    <EntitlementContext.Provider value={{ canPlay, isLoading, lastRefreshed, refresh, applyToken }}>
       {children}
     </EntitlementContext.Provider>
   );

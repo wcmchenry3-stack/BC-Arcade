@@ -116,6 +116,73 @@ class TestSentryUnit:
         assert "Bearer abc" not in repr(headers)  # default denylist still applies
         assert headers["User-Agent"] == "BCArcade/1.0.9"
 
+    def test_sentry_scrubs_purchase_evidence_case_insensitively(self):
+        """Store credentials from /purchases (#840) never reach Sentry, at any depth."""
+        import main
+        from main import _sentry_options
+
+        assert main
+        opts = _sentry_options("https://key@o0.ingest.sentry.io/0")
+        assert opts["max_request_body_size"] == "never"
+        assert opts["include_local_variables"] is False
+        secrets = {
+            "purchase_token": "gp-token-secret",
+            "Signed_Transaction": "eyJ.jws.secret",
+            "SIGNEDPAYLOAD": "eyJ.notification.secret",
+            "store_key": "2000000123456789",
+            "Session_ID": "11111111-2222-4333-8444-555555555555",
+        }
+        event = {
+            "request": {
+                "url": "https://games-api.buffingchi.com/purchases/google",
+                "headers": {"x-SESSION-id": "11111111-2222-4333-8444-555555555555"},
+                "data": {"body": dict(secrets)},
+            },
+            "extra": {"nested": {"deeper": dict(secrets)}},
+            "breadcrumbs": {"values": [{"data": dict(secrets)}]},
+        }
+        opts["event_scrubber"].scrub_event(event)
+        for value in secrets.values():
+            assert value not in repr(event)
+
+    def test_sentry_before_send_strips_sql_and_parameters(self):
+        from main import SQL_REDACTED, _sentry_options
+
+        before_send = _sentry_options("https://key@o0.ingest.sentry.io/0")["before_send"]
+        sqlite_msg = (
+            "(sqlite3.IntegrityError) UNIQUE constraint failed: purchases.store_key\n"
+            "[SQL: INSERT INTO purchases (id, store_key) VALUES (?, ?)]\n"
+            "[parameters: ('abc', '2000000123456789')]\n"
+            "(Background on this error at: https://sqlalche.me/e/20/gkpj)"
+        )
+        pg_msg = (
+            "(sqlalchemy.dialects.postgresql.asyncpg.IntegrityError) duplicate key value "
+            'violates unique constraint "uq_purchases_platform_store_key"\n'
+            "DETAIL:  Key (platform, store_key)=(google, gp-token-secret) already exists.\n"
+            "[SQL: INSERT INTO purchases ...]\n[parameters: ('gp-token-secret',)]"
+        )
+        event = {
+            "exception": {"values": [{"value": sqlite_msg}, {"value": pg_msg}]},
+            "logentry": {"message": "failed [parameters: ('11111111-2222',)]"},
+            "message": "boom [SQL: SELECT 1]",
+        }
+        out = before_send(event, {})
+        text = repr(out)
+        for leaked in ("2000000123456789", "gp-token-secret", "INSERT INTO", "11111111-2222"):
+            assert leaked not in text
+        first = out["exception"]["values"][0]["value"]
+        assert first.startswith("(sqlite3.IntegrityError) UNIQUE constraint failed")
+        assert first.endswith(SQL_REDACTED)
+        assert out["message"] == "boom" + SQL_REDACTED
+
+    def test_sentry_before_send_leaves_plain_messages_alone(self):
+        from main import _sentry_options
+
+        before_send = _sentry_options("https://key@o0.ingest.sentry.io/0")["before_send"]
+        event = {"exception": {"values": [{"value": "ValueError: nope"}, {}]}}
+        assert before_send(event, {})["exception"]["values"][0]["value"] == "ValueError: nope"
+        assert before_send({}, {}) == {}
+
     def test_sentry_captures_callable(self):
         """Verify that Sentry's core capture functions are available."""
         assert callable(sentry_sdk.capture_exception)

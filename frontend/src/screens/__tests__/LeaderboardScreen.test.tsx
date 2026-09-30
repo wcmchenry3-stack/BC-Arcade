@@ -255,6 +255,16 @@ describe("LeaderboardScreen — columns and labels", () => {
     expect(screen.getByLabelText(/^Rank 2, Bob, Score 900, /)).toBeTruthy();
   });
 
+  // A player's game detail is owner-only (#2840): a board row is not a link to it.
+  it("rows are not buttons, so no entry opens another player's game", async () => {
+    mockGetLeaderboard.mockResolvedValue(board(ROWS));
+    await renderBoard("solitaire");
+    await screen.findByText("Alice");
+    const row = screen.getByLabelText(/^Rank 1, Alice, /);
+    expect(row.props.accessibilityRole).not.toBe("button");
+    expect(row.props.onPress).toBeUndefined();
+  });
+
   it("writes the score in the app's language, not the device's (#2754)", async () => {
     // The device is on German; the app is in English.
     jest.spyOn(Number.prototype, "toLocaleString").mockImplementation(function (this: number) {

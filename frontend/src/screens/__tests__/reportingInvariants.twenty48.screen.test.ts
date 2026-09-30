@@ -69,7 +69,7 @@ jest.mock("../../api/stats", () => ({
   statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
 }));
 jest.mock("../../api/players", () => ({
-  playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
+  playersApi: { putMe: jest.fn(() => Promise.resolve({ display_name: "Brave Otter 4821" })) },
 }));
 jest.mock("../../game/_shared/flushQueuedGames", () => ({
   flushQueuedGames: jest.fn(() => Promise.resolve()),
@@ -77,6 +77,13 @@ jest.mock("../../game/_shared/flushQueuedGames", () => ({
 jest.mock("../../game/_shared/displayNameSync", () => ({
   ...jest.requireActual("../../game/_shared/displayNameSync"),
   flushDisplayNameSync: jest.fn(() => Promise.resolve(true)),
+  // Joining stores the server's generated name at once (#2778).
+  joinLeaderboards: async () => {
+    await jest
+      .requireActual("../../game/_shared/displayName")
+      .storeAssignedDisplayName("Brave Otter 4821");
+    return true;
+  },
 }));
 
 // useGameSync (and its outcome guard) is real; the client it records through is not.

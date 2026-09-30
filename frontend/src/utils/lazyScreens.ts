@@ -25,6 +25,7 @@ const factories = {
   GameDetail: () => import("../screens/GameDetailScreen"),
   Settings: () => import("../screens/SettingsScreen"),
   Scorecard: () => import("../screens/ScorecardScreen"),
+  Paywall: () => import("../screens/PaywallScreen"),
 } as const;
 
 export const LazyScreens = {
@@ -48,6 +49,7 @@ export const LazyScreens = {
   GameStats: React.lazy(factories.GameStats),
   GameDetail: React.lazy(factories.GameDetail),
   Settings: React.lazy(factories.Settings),
+  Paywall: React.lazy(factories.Paywall),
   Scorecard: React.lazy(factories.Scorecard),
 } as const;
 
