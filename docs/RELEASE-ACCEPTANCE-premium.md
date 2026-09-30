@@ -170,7 +170,9 @@ Games: **BJ** Blackjack, **SS** Star Swarm, **CA** Cascade, **HE** Hearts, **MJ*
 |                                                                                                                          | Android  | [ ] | [ ] | [ ] | [ ] | [ ] | #2787                             |
 | Buying one game does not unlock the other four                                                                           | iOS      | [ ] | [ ] | [ ] | [ ] | [ ] |                                   |
 |                                                                                                                          | Android  | [ ] | [ ] | [ ] | [ ] | [ ] |                                   |
-| Cancelled and pending purchases leave the game locked and show a clear message                                           | iOS      | [ ] | [ ] | [ ] | [ ] | [ ] |                                   |
+| Cancelled purchase returns to the paywall silently (no message) and the game stays locked (IAP.md §5, §9.3)              | iOS      | [ ] | [ ] | [ ] | [ ] | [ ] |                                   |
+|                                                                                                                          | Android  | [ ] | [ ] | [ ] | [ ] | [ ] |                                   |
+| Pending purchase (Ask to Buy / slow payment) keeps the game locked and shows "Waiting for approval"                      | iOS      | [ ] | [ ] | [ ] | [ ] | [ ] |                                   |
 |                                                                                                                          | Android  | [ ] | [ ] | [ ] | [ ] | [ ] |                                   |
 | Restore Purchases (visible on the paywall and in Settings) unlocks owned games without recharging                        | iOS      | [ ] | [ ] | [ ] | [ ] | [ ] | Apple 3.1.1                       |
 |                                                                                                                          | Android  | [ ] | [ ] | [ ] | [ ] | [ ] |                                   |
