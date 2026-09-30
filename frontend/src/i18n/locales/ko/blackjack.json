@@ -59,7 +59,6 @@
   "betting.tapToAdd": "배팅하려면 칩을 탭하세요",
   "chip.addLabel": "배팅에 {{amount}} 추가",
   "chip.disabledLabel": "{{amount}} 칩 사용 불가",
-  "chip.vipCredits": "VIP",
   "rules.title": "테이블 규칙",
   "rules.toggleLabel": "테이블 규칙 전환",
   "rules.dealerSoft17": "딜러 소프트 17",

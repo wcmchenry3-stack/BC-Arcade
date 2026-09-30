@@ -59,7 +59,6 @@
   "betting.tapToAdd": "Нажмите фишки для ставки",
   "chip.addLabel": "Добавить {{amount}} к ставке",
   "chip.disabledLabel": "Фишка {{amount}} недоступна",
-  "chip.vipCredits": "VIP",
   "rules.title": "Правила стола",
   "rules.toggleLabel": "Переключить правила стола",
   "rules.dealerSoft17": "Дилер мягкие 17",

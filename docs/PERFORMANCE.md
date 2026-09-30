@@ -233,7 +233,8 @@ To measure, run:
 
 ```bash
 cd frontend/android
-./gradlew bundleDebug   # or bundleRelease with signing config
+./gradlew bundleDebug   # or: ./gradlew bundleRelease -PALLOW_DEBUG_SIGNED_RELEASE=true
+# (local, never-uploaded builds only: the result is debug-signed; docs/ANDROID-CI.md)
 
 # Then use bundletool to extract per-ABI APKs and inspect .so sizes:
 bundletool build-apks --bundle=app/build/outputs/bundle/debug/app-debug.aab \
@@ -469,7 +470,9 @@ adb logcat -s ReactNativeJS | grep cold-start
 adb logcat -s ReactNativeJS | grep cold-start
 ```
 
-Build for release before measuring: `cd frontend/android && ./gradlew assembleRelease`
+Build for release before measuring: `cd frontend/android && ./gradlew assembleRelease -PALLOW_DEBUG_SIGNED_RELEASE=true`
+
+> Local release builds fail without the Play upload keystore unless you pass `-PALLOW_DEBUG_SIGNED_RELEASE=true`. That opt-out is fine for local profiling/smoke builds, but the result is debug-signed: never upload or distribute it (docs/ANDROID-CI.md).
 
 **iOS — read from device:**
 

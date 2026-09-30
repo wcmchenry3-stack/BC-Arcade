@@ -45,7 +45,7 @@ For individual game rules, scoring, and engine details see [`docs/games/`](games
 
 ## Monetization
 
-BC Arcade offers complete free games and, when purchases launch, complete premium games. A premium purchase grants access to a game, not currency, lives, moves, retries, continued play, or a stronger version of a free game. This is a premium catalog, **not freemium gameplay**. Premium access is controlled by a server-issued entitlement JWT; see [`docs/ARCHITECTURE.md §10`](ARCHITECTURE.md#10-premium-entitlements) for the technical model.
+BC Arcade offers complete free games and, when purchases launch, complete premium games. A premium purchase grants access to a game, not currency, lives, moves, retries, continued play, or a stronger version of a free game. This is a premium catalog, **not freemium gameplay**. Premium access is controlled by a server-issued entitlement JWT; see [`docs/ARCHITECTURE.md §10`](ARCHITECTURE.md#10-premium-entitlements) for the technical model. The purchase model — one non-consumable product per premium game, restore, refunds and the product catalog — is specified in [`docs/IAP.md`](IAP.md).
 
 **Golden rules:**
 

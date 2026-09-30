@@ -569,6 +569,28 @@ describe("SyncWorker", () => {
     expect(bodyFor(without)["result"]).toEqual({});
   });
 
+  // #2839: a Yacht completion queued offline is flushed with its scorecard intact.
+  it("PATCH /complete carries a Yacht scorecard through the offline queue unchanged", async () => {
+    const scorecard = {
+      categories: { ones: 3, yacht: 50, sixes: 30 },
+      upper_bonus: 0,
+      yacht_bonus_count: 1,
+      yacht_bonus_total: 100,
+    };
+    api.defaultResponse = ok();
+    const gid = startPlayed("yacht");
+    client.completeGame(gid, {
+      finalScore: 183,
+      outcome: "completed",
+      result: { final_score: 183, outcome: "completed", scorecard },
+    });
+    await flushMicro();
+    await worker.flush();
+    const body = api.calls.find((c) => c.method === "PATCH" && c.path === `/games/${gid}/complete`)!
+      .body as Record<string, unknown>;
+    expect((body["result"] as Record<string, unknown>)["scorecard"]).toEqual(scorecard);
+  });
+
   // #2619: only the game's own active-time measurement is play time. Anything
   // but a positive duration is sent as null — never wall-clock time.
   describe("duration_ms", () => {

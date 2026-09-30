@@ -59,7 +59,6 @@
   "betting.tapToAdd": "Touchez les jetons pour miser",
   "chip.addLabel": "Ajouter {{amount}} à la mise",
   "chip.disabledLabel": "Jeton de {{amount}} non disponible",
-  "chip.vipCredits": "VIP",
   "rules.title": "Règles de la table",
   "rules.toggleLabel": "Basculer les règles de la table",
   "rules.dealerSoft17": "Croupier 17 souple",
