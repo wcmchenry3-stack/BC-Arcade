@@ -20,12 +20,12 @@ active.
 > **#2776 refinement boundary.** This document describes current `dev`. #2776 will tighten
 > pre-wave invulnerability/firing, wave-clear extraction and cleanup, Carrier beam
 > lifecycle/cadence, Carrier late-stage aggression/dives, the right-edge drag regression, and
-> upgrade-pickup communication. Those sections should be updated with #2776; the rest of the game
+> (upgrade-pickup communication landed in #2847). Those sections should be updated with #2776; the rest of the game
 > specification is not blocked on that work.
 
 ## Controls
 
-- Drag horizontally to move the player ship.
+- Drag horizontally to move the player ship. Each new touch anchors on the ship's current position (including during the pre-wave countdown, when the engine is frozen), and reversing at either edge moves the ship immediately.
 - The ship auto-fires; there is no ammunition economy.
 - Pause suspends and saves the run for resume.
 - New Game starts a clean run and abandons the old server session if one is open.
@@ -198,7 +198,7 @@ The old Free Fire Zone / shooting-gallery bonus wave no longer exists.
 #2776 will replace the fixed/metronomic beam reset with bounded randomness, make a released beam an
 independent traveling hazard, add protected → exposed → final-stand aggression, allow
 Carrier-specific attack runs/dives after armor loss, increase final-stand behavioral pressure, and
-make salvage/hull pickups more self-explanatory. Until then, the current rules above describe
+(pickup communication: see #2847 under In-Run Ship Upgrades). Until then, the current rules above describe
 `dev`.
 - Sounds: `starswarm.beamcharge`, `starswarm.beamfire`, `starswarm.reinforce` (reused files, #2492).
 
@@ -216,8 +216,22 @@ the leaderboard stays fair.
   rammer still dies), flashes a ring on the ship and grants 600 ms of grace. Lightning still
   multiplies fire rate on top of the gun level (its piercing shots at every level).
 - `MAX_PLAYER_BULLETS` is 40 (was 20): L3 fires four bullets a volley.
-- Collecting salvage at L3 or plating at 2 does nothing (and awards no points).
+- Collecting salvage at L3 or plating at 2 does nothing (and awards no points) — but still shows
+  the `GUNS MAX` / `HULL MAX` cue, so the player knows the pickup registered.
 - HUD shows `GUNS L{n} · HULL ◆◆`; the screen speaks `a11y.gunsUp/gunsDown/hullUp/hullHit`.
+- **Pickup look (#2847).** Both pickups share `render/pickups.ts` (`upgradePickupOps`), replayed by
+  the native Picture and the web canvas alike. Timed power-ups are round sprites; upgrade pickups
+  are angular, pulse a halo ring (phase from `despawnTimer`, so no clock) and carry a white glyph:
+  amber crate with an up-chevron (guns), cyan hex plate with a plus (hull). The halo and glyph mark
+  them as rewards, never rocks (grey-brown, spinning); the shape and halo keep them apart from
+  timed power-ups.
+- **Pickup cue (#2847).** `render/pickupCue.ts` (`pickupCues(prev, next)`) fires `GUNS +1` /
+  `HULL +1` on a ladder rise, or `GUNS MAX` / `HULL MAX` when a pickup is collected at the top of
+  its ladder (spotted as a pickup that vanished onto the ship). The toast is drawn under the HUD
+  ladder line in the pickup's accent colour, pops in, drifts up and fades over `PICKUP_CUE_MS`
+  (1.3 s), and is non-modal. Native animates it on the UI thread; it is hidden from screen readers
+  because `a11y.gunsUp/hullUp` already speak the change. Strings: `hud.cueGuns`, `hud.cueGunsMax`,
+  `hud.cueHull`, `hud.cueHullMax`. Mechanics are untouched — the cue only reads two states.
 - Dev panel: "salvage" and "hull" buttons under Power-ups (`applyPowerUp`).
 - Sounds `starswarm.salvage`, `starswarm.hullup`, `starswarm.hullhit` reuse existing files (#2492).
 
@@ -474,7 +488,6 @@ After #2776 lands, update the affected sections for:
 - wave-clear AI extraction and hard transient reset;
 - Carrier beam lifecycle/randomized cadence;
 - Carrier exposed/final-stage aggression and attack runs;
-- right-edge drag regression behavior/testing;
-- salvage/hull pickup communication.
+- right-edge drag regression behavior/testing.
 
 Other active bugs/tuning work belongs in GitHub rather than a duplicated Known Issues list.
