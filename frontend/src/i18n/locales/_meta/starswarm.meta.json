@@ -251,6 +251,42 @@
     "doNotTranslate": [],
     "notes": "#2488."
   },
+  "hud.cueGuns": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue after collecting a salvage crate; guns went up one level.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#2847. Short floating cue on the canvas; all caps in English, matching hud.guns/hud.hull."
+  },
+  "hud.cueGunsMax": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue after collecting a salvage crate when guns are already at the top level.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#2847. Short floating cue on the canvas; all caps in English, matching hud.guns/hud.hull."
+  },
+  "hud.cueHull": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue after collecting hull plating; plating went up one level.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#2847. Short floating cue on the canvas; all caps in English, matching hud.guns/hud.hull."
+  },
+  "hud.cueHullMax": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue after collecting hull plating when plating is already full.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#2847. Short floating cue on the canvas; all caps in English, matching hud.guns/hud.hull."
+  },
   "a11y.gunsUp": {
     "component": "StarSwarmScreen",
     "description": "Screen-reader cue after collecting a salvage crate.",

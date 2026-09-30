@@ -31,6 +31,10 @@
   "a11y.gunsDown": "Waffenlevel: {{level}}, gesunken.",
   "a11y.hullUp": "Rumpfpanzerung {{level}}.",
   "a11y.hullHit": "Rumpfpanzerung absorbierte den Treffer.",
+  "hud.cueGuns": "WAFFEN +1",
+  "hud.cueGunsMax": "WAFFEN MAX",
+  "hud.cueHull": "RUMPF +1",
+  "hud.cueHullMax": "RUMPF MAX",
   "result.reachedWave": "Welle {{wave}} erreicht",
   "result.wave": "Welle"
 }

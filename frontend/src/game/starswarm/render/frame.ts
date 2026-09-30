@@ -19,6 +19,8 @@ import {
   asteroidOutline,
   hashFrac,
 } from "../engine";
+import { isUpgradePickup, upgradePickupOps } from "./pickups";
+import type { UpgradePickupType } from "./pickups";
 import type { StarfieldState } from "../starfield";
 import type { EnemyTier, PowerUpType, StarSwarmState } from "../types";
 
@@ -405,45 +407,9 @@ export function buildFrame(
     const sprite = POWERUP_SPRITE[pu.type];
     if (sprite && loaded[sprite]) {
       ops.push({ k: "image", key, sprite, x: lx, y: ly, w: pw, h: ph, fit: "contain" });
-    } else if (pu.type === "salvage") {
-      ops.push({
-        k: "rect",
-        key,
-        x: lx + pw * 0.15,
-        y: ly + ph * 0.15,
-        w: pw * 0.7,
-        h: ph * 0.7,
-        color: "#ffb020",
-      });
-      ops.push({
-        k: "rect",
-        key: `${key}-band`,
-        x: lx + pw * 0.15,
-        y: ly + ph * 0.45,
-        w: pw * 0.7,
-        h: ph * 0.1,
-        color: "#7a4d08",
-      });
-    } else if (pu.type === "hull") {
-      ops.push({
-        k: "poly",
-        key,
-        points: [
-          pu.x,
-          ly,
-          lx + pw,
-          ly + ph * 0.25,
-          lx + pw,
-          ly + ph * 0.75,
-          pu.x,
-          ly + ph,
-          lx,
-          ly + ph * 0.75,
-          lx,
-          ly + ph * 0.25,
-        ],
-        color: "#00aaff",
-      });
+    } else if (isUpgradePickup(pu.type)) {
+      // #2847: salvage crate / hull plating — shared geometry, halo + glyph
+      ops.push(...upgradePickupOps(pu as typeof pu & { type: UpgradePickupType }));
     } else if (pu.type === "shield") {
       ops.push({ k: "circle", key, cx: pu.x, cy: pu.y, r: pw * 0.4, color: "rgba(0,170,255,0.9)" });
     } else if (pu.type === "bomb") {

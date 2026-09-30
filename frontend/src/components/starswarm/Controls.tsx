@@ -66,10 +66,12 @@ export default function Controls({
       activeDragRef.current = e.y > dragZoneY;
       autopilotDuringDragRef.current = false;
       if (activeDragRef.current) {
-        // Use engine's authoritative player.x as the drag anchor so it can never
-        // drift out of sync with playerXRef.
-        const engineX = canvasRef.current?.getState()?.player.x;
-        const anchorX = engineX ?? playerXRef.current;
+        // Anchor on the canvas's commanded ship X, not getState().player.x: the engine only
+        // copies input into player.x on a tick, and ticks are frozen during the pre-wave
+        // countdown, so engine X can be stale there and the ship would jump back on touch.
+        const handle = canvasRef.current;
+        const anchorX =
+          handle?.getPlayerX?.() ?? handle?.getState()?.player.x ?? playerXRef.current;
         playerXRef.current = anchorX;
         shipXAtDragStartRef.current = anchorX;
       }
@@ -77,16 +79,19 @@ export default function Controls({
     .onChange((e) => {
       if (!activeDragRef.current) return;
       // #2842: the wave-clear autopilot moves the ship on its own (and the next wave re-centres
-      // it). A drag held through that is ignored, then re-anchored on the engine's ship so
-      // control resumes from where the ship is instead of snapping back under the finger.
-      const state = canvasRef.current?.getState();
+      // it). A drag held through that is ignored, then re-anchored on the ship (the canvas
+      // keeps its commanded X on the autopilot's) so control resumes from where the ship is
+      // instead of snapping back under the finger.
+      const handle = canvasRef.current;
+      const state = handle?.getState();
       if (state?.phase === "Extraction") {
         autopilotDuringDragRef.current = true;
         return;
       }
       if (autopilotDuringDragRef.current && state) {
         autopilotDuringDragRef.current = false;
-        shipXAtDragStartRef.current = state.player.x - e.translationX / scale;
+        const shipX = handle?.getPlayerX?.() ?? state.player.x;
+        shipXAtDragStartRef.current = shipX - e.translationX / scale;
       }
       const hw = PLAYER_W / 2;
       const rawX = shipXAtDragStartRef.current + e.translationX / scale;

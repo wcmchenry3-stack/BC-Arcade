@@ -31,6 +31,10 @@
   "a11y.gunsDown": "무기 레벨이 {{level}}로 하락.",
   "a11y.hullUp": "선체 장갑 {{level}}.",
   "a11y.hullHit": "선체 장갑이 피해를 흡수했습니다.",
+  "hud.cueGuns": "무기 +1",
+  "hud.cueGunsMax": "무기 MAX",
+  "hud.cueHull": "선체 +1",
+  "hud.cueHullMax": "선체 MAX",
   "result.reachedWave": "웨이브 {{wave}} 도달",
   "result.wave": "웨이브"
 }

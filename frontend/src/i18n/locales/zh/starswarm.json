@@ -31,6 +31,10 @@
   "a11y.gunsDown": "炮组降至 {{level}} 级。",
   "a11y.hullUp": "船体装甲提升至 {{level}} 级。",
   "a11y.hullHit": "船体装甲吸收了这次打击。",
+  "hud.cueGuns": "炮组 +1",
+  "hud.cueGunsMax": "炮组 满级",
+  "hud.cueHull": "船体 +1",
+  "hud.cueHullMax": "船体 满级",
   "result.reachedWave": "到达第 {{wave}} 波",
   "result.wave": "波次"
 }

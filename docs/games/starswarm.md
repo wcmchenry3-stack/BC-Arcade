@@ -15,17 +15,18 @@ A fresh run starts with **3 lives**, **Guns L1**, **Hull 0**, score 0 at wave 1,
 Starfleet difficulty tier.
 
 The ship is clamped to the playable horizontal bounds. Firing is continuous while gameplay input is
-active.
+active during combat (never during swoop-in or the wave-clear extraction — see
+[Wave Structure](#wave-structure)).
 
 > **#2776 refinement boundary.** This document describes current `dev`. #2776 will tighten
-> pre-wave invulnerability/firing, wave-clear extraction and cleanup, Carrier beam
-> lifecycle/cadence, Carrier late-stage aggression/dives, the right-edge drag regression, and
-> upgrade-pickup communication. Those sections should be updated with #2776; the rest of the game
-> specification is not blocked on that work.
+> Carrier beam lifecycle/cadence, Carrier late-stage aggression/dives, the right-edge drag
+> regression, and (upgrade-pickup communication landed in #2847; the wave lifecycle landed in
+> #2842). Those sections should be updated with #2776; the rest of the game specification is
+> not blocked on that work.
 
 ## Controls
 
-- Drag horizontally to move the player ship.
+- Drag horizontally to move the player ship. Each new touch anchors on the ship's current position (including during the pre-wave countdown, when the engine is frozen), and reversing at either edge moves the ship immediately. While the wave-clear autopilot flies the ship (#2842) the drag is ignored; a drag held through it picks up from the ship's new position rather than snapping back under the finger.
 - The ship auto-fires; there is no ammunition economy.
 - Pause suspends and saves the run for resume.
 - New Game starts a clean run and abandons the old server session if one is open.
@@ -142,27 +143,66 @@ helper for the armor state; the screen announces `a11y.carrierExposed` when it d
 
 ## Wave Structure
 
-Every wave begins with the enemy formation swooping into place. The UI presents a 3-second combat
-countdown before active play.
+Each wave runs through one lifecycle (#2842), with the engine phase in brackets:
 
-**Current implementation caveat:** the engine moves from `SwoopIn` to `Playing` as soon as all
-enemies arrive, while the visible countdown is owned by the screen. Player fire is not centrally
-phase-gated today. #2776 will make swoop-in/countdown true invulnerable setup time.
+```
+countdown (screen, engine frozen) → swoop-in [SwoopIn] → combat [Playing]
+  → last kill → extraction [Extraction] → hard reset → next wave's countdown
+```
 
-### Current wave clear
+### Wave entry: countdown and swoop-in
 
-When no enemy remains alive, current `dev`:
+A new wave opens behind the screen's 3-second countdown (`WAVE_COUNTDOWN_MS`). The engine does not
+tick during it, so nothing can happen then. The formation then swoops into place (`SwoopIn`). That is
+safe setup time, gated centrally in the engine:
 
-1. awards the wave-clear bonus;
-2. immediately constructs the next wave;
-3. shows a non-blocking MISSION COMPLETE banner;
-4. carries player bullets into the new wave;
-5. carries enemy bullets but marks them harmless;
-6. carries active asteroids.
+- **No new fire, from anyone.** `weaponsFree(state)` is true only in `Playing`. It gates player
+  fire, enemy shots (a ship that reaches its slot early holds its fire), flak, Buddy bursts, timed
+  asteroid spawns and dev-panel throws. The Carrier's beam and twin lasers only run in `Playing`.
+- **Everyone is invulnerable.** `hazardsLive(state)` is false in `SwoopIn`, so `tick()` skips
+  collision resolution entirely. No shot, rock, beam or ram damages the player or any enemy, and
+  no incoming enemy can be pre-damaged.
 
-There is no blocking WinTransition/autopilot today. #2776 will replace this with a short AI
-extraction/natural-hazard-resolution sequence followed by a hard transient reset before the next
-formation enters.
+Combat begins on the tick the last ship reaches formation, which is after the countdown has
+finished. A resumed save skips the countdown and resumes in whatever phase it was saved in.
+
+### Wave clear: live extraction
+
+When the last enemy dies (shot, rammed, rock-struck, or a routed grunt escaping), the engine
+enters `Extraction` (`waveJustCleared(prev, next)` marks the tick). It:
+
+1. awards the wave-clear bonus (once) and raises the non-blocking MISSION COMPLETE banner;
+2. stops manual fire (`weaponsFree` is false) and hands the ship to an AI autopilot
+   (`isAutopilot`). Input is ignored, and the screen keeps its commanded X on the ship;
+3. keeps everything already in flight **live and harmful**: player shots, enemy shots (including
+   ones whose ship is dead) and asteroids keep moving and resolving. A hit still goes shield →
+   hull → life, and can end the run. Nothing is frozen and nothing is spawned.
+
+The autopilot (`tickExtractionPilot`, deterministic) scores candidate lanes against every
+`liveHazards(state)` entry over a 700 ms lookahead and steers for the safest one at
+`PILOT_SPEED`. It holds the lane for at least `EXTRACTION_HOLD_MIN_MS` (500 ms) while hazards
+resolve. Once nothing can still reach it, or at `EXTRACTION_HOLD_MAX_MS` (2.5 s) regardless, it
+accelerates off the top of the screen, still dodging. When the ship is off-screen, or at
+`EXTRACTION_MAX_MS` (6 s) whatever happens, the hard reset runs.
+
+### Hard boundary reset
+
+`clearTransientCombat(state)` is the single, explicit wave-boundary cleanup. It runs just before
+`buildWaveState` builds wave N+1, and it clears:
+
+- all player shots (Buddy shots are player-owned, so included);
+- all enemy shots (aimed, burst, twin-laser, flak);
+- all asteroids;
+- buddy ships and any Carrier beam.
+
+Nothing from wave N can interact with wave N+1. The new wave also re-centres the ship on its lane
+and drops falling pickups and any active Lightning/Shield, as before.
+
+**Projectile persistence.** Apart from this boundary, a projectile leaves play only by hitting
+something, despawning off-screen, or a Smart Bomb. The death of the ship that fired it never
+removes it. **Plug-in point:** any new transient combat entity (#2843's independent traveling
+Carrier beam, #2845's Buddy projectiles/state) must be cleared in `clearTransientCombat` and, if
+hostile, listed in `liveHazards` so the autopilot dodges it.
 
 ### Boss waves
 
@@ -171,7 +211,7 @@ Boss waves are **5, 9, 13, …** and contain only 1 Carrier + 4 Boss escorts.
 - Boss escalation is active from the first tick.
 - Carrier beam cadence is 1.5× faster.
 - No Carrier reinforcements.
-- No timed asteroid spawns (although a carried asteroid can currently enter).
+- No timed asteroid spawns, and nothing carries in from the previous wave (#2842 hard reset).
 - Wave-clear bonus is doubled.
 - CARRIER SIGHTED banner/sound/accessibility announcement play during entry.
 
@@ -198,7 +238,7 @@ The old Free Fire Zone / shooting-gallery bonus wave no longer exists.
 #2776 will replace the fixed/metronomic beam reset with bounded randomness, make a released beam an
 independent traveling hazard, add protected → exposed → final-stand aggression, allow
 Carrier-specific attack runs/dives after armor loss, increase final-stand behavioral pressure, and
-make salvage/hull pickups more self-explanatory. Until then, the current rules above describe
+(pickup communication: see #2847 under In-Run Ship Upgrades). Until then, the current rules above describe
 `dev`.
 - Sounds: `starswarm.beamcharge`, `starswarm.beamfire`, `starswarm.reinforce` (reused files, #2492).
 
@@ -216,8 +256,22 @@ the leaderboard stays fair.
   rammer still dies), flashes a ring on the ship and grants 600 ms of grace. Lightning still
   multiplies fire rate on top of the gun level (its piercing shots at every level).
 - `MAX_PLAYER_BULLETS` is 40 (was 20): L3 fires four bullets a volley.
-- Collecting salvage at L3 or plating at 2 does nothing (and awards no points).
+- Collecting salvage at L3 or plating at 2 does nothing (and awards no points) — but still shows
+  the `GUNS MAX` / `HULL MAX` cue, so the player knows the pickup registered.
 - HUD shows `GUNS L{n} · HULL ◆◆`; the screen speaks `a11y.gunsUp/gunsDown/hullUp/hullHit`.
+- **Pickup look (#2847).** Both pickups share `render/pickups.ts` (`upgradePickupOps`), replayed by
+  the native Picture and the web canvas alike. Timed power-ups are round sprites; upgrade pickups
+  are angular, pulse a halo ring (phase from `despawnTimer`, so no clock) and carry a white glyph:
+  amber crate with an up-chevron (guns), cyan hex plate with a plus (hull). The halo and glyph mark
+  them as rewards, never rocks (grey-brown, spinning); the shape and halo keep them apart from
+  timed power-ups.
+- **Pickup cue (#2847).** `render/pickupCue.ts` (`pickupCues(prev, next)`) fires `GUNS +1` /
+  `HULL +1` on a ladder rise, or `GUNS MAX` / `HULL MAX` when a pickup is collected at the top of
+  its ladder (spotted as a pickup that vanished onto the ship). The toast is drawn under the HUD
+  ladder line in the pickup's accent colour, pops in, drifts up and fades over `PICKUP_CUE_MS`
+  (1.3 s), and is non-modal. Native animates it on the UI thread; it is hidden from screen readers
+  because `a11y.gunsUp/hullUp` already speak the change. Strings: `hud.cueGuns`, `hud.cueGunsMax`,
+  `hud.cueHull`, `hud.cueHullMax`. Mechanics are untouched — the cue only reads two states.
 - Dev panel: "salvage" and "hull" buttons under Power-ups (`applyPowerUp`).
 - Sounds `starswarm.salvage`, `starswarm.hullup`, `starswarm.hullhit` reuse existing files (#2492).
 
@@ -243,19 +297,21 @@ they still roll to dodge rocks and can be struck by them.
 ## Hazards: Errant Asteroids (#2486)
 
 From wave 2, a rock drifts in from a top corner every 12–20 s of the Playing phase (never during
-swoop-in or a boss wave; at most 2 in flight from timed spawns). It is a neutral third party:
+swoop-in, the wave-clear extraction or a boss wave; at most 2 in flight from timed spawns). It is a
+neutral third party:
 
 - **Both sides can hit it.** Any bullet, from either owner and piercing or not, that reaches a rock is
   spent on it, so a large rock is temporary cover. Large rocks (22 px, 6 HP) split into two small
   ones (12 px, 2 HP); small ones are removed.
 - **It hits both sides.** A rock deals 1 damage to any ship it touches, once per ship — including
-  ships still swooping in once they are on screen. A small rock shatters on impact; a large one keeps
+  reinforcements still swooping in mid-combat once they are on screen (during the wave's own
+  swoop-in nothing takes damage, #2842). A small rock shatters on impact; a large one keeps
   going. The Carrier's force field shatters any rock harmlessly (ring plays). On the player it acts
   like a shot: the shield absorbs it, otherwise it costs a life; either way it shatters.
 - **Nobody scores.** Breaking a rock and enemies a rock kills award no points and don't advance the
   power-up kill counter (they do count toward wave clear and the Elite/Boss thresholds).
-- The smart bomb clears rocks. Rocks in flight carry across a wave boundary like bullets do, boss
-  waves included (only the timed spawner sits out there, #2490).
+- The smart bomb clears rocks. Rocks in flight stay live through the wave-clear extraction and are
+  cleared by the hard reset before the next wave (#2842); none ever carries into a new wave.
 - Dev panel: "Asteroids off" (timed spawns) and "Throw asteroid" (`throwAsteroid()` in the engine).
 - Drawn as one of 4 Kenney meteor sprites (picked per rock, reused at both `large`/`small` sizes
   since collision uses the radius, not the art), spinning at `spin` rad/ms; falls back to the
@@ -387,7 +443,7 @@ The engine (`engine.ts`) is pure and ticks on the JS thread in the canvas's RAF 
 drawing decision for the native canvas lives in `render/frame.ts`: `buildFrame(state, starfield,
 { loaded, width, height })` returns a flat, back-to-front display list of primitive ops (`fill`,
 `rect`, `circle`, `image`, `poly`) — plain data, no Skia objects. Sprite-vs-fallback choices, the
-Carrier's armor ring, hit-flash bursts, the beam, harmless-bullet dimming, the invincibility
+Carrier's armor ring, hit-flash bursts, the beam, the invincibility
 blink and the #2334 hidden-ship-at-game-over rule are all decided there and unit-tested in
 `__tests__/frame.test.ts`. `render/drawFrame.ts` replays the ops and decides nothing (see below).
 
@@ -451,11 +507,8 @@ The broad game contract is documented above. #2776 is a focused polish/transitio
 
 After #2776 lands, update the affected sections for:
 
-- pre-wave firing/invulnerability/countdown;
-- wave-clear AI extraction and hard transient reset;
 - Carrier beam lifecycle/randomized cadence;
 - Carrier exposed/final-stage aggression and attack runs;
-- right-edge drag regression behavior/testing;
-- salvage/hull pickup communication.
+- right-edge drag regression behavior/testing.
 
 Other active bugs/tuning work belongs in GitHub rather than a duplicated Known Issues list.
