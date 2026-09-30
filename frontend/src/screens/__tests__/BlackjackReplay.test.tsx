@@ -17,7 +17,15 @@ import BlackjackTableScreen from "../BlackjackTableScreen";
 import { BlackjackGameProvider, useBlackjackGame } from "../../game/blackjack/BlackjackGameContext";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { loadGame } from "../../game/blackjack/storage";
-import { newGame, placeBet, stand, EngineState } from "../../game/blackjack/engine";
+import {
+  newGame,
+  placeBet,
+  hit,
+  stand,
+  setRng,
+  createSeededRng,
+  EngineState,
+} from "../../game/blackjack/engine";
 import { TABLE_CONFIGS } from "../../game/blackjack/tables";
 
 const mockShellNavigate = jest.fn();
@@ -53,15 +61,24 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
   },
 }));
 
+// A genuinely lost run: all-in on a seeded deck, then play until the hand loses.
+// Deterministic — the first seed that busts the player out is always the same.
 function bustedState(): EngineState {
-  for (let i = 0; i < 50; i++) {
-    const s = placeBet(
-      newGame(undefined, { startingChips: 100, betMin: 5, betMax: 25, runGoal: 250 }),
-      25
-    );
-    if (s.phase === "player") return { ...stand(s), chips: 0 };
+  try {
+    for (let seed = 1; seed <= 200; seed++) {
+      setRng(createSeededRng(seed));
+      let s = placeBet(
+        newGame(undefined, { startingChips: 100, betMin: 5, betMax: 100, runGoal: 250 }),
+        100
+      );
+      for (let i = 0; i < 12 && s.phase === "player"; i++) s = hit(s);
+      if (s.phase === "player") s = stand(s);
+      if (s.phase === "result" && s.chips === 0) return s;
+    }
+  } finally {
+    setRng(Math.random);
   }
-  throw new Error("no player phase");
+  throw new Error("no losing all-in found");
 }
 
 const MONEY_COPY =
@@ -84,9 +101,10 @@ describe("Blackjack replay after a run ends (#2788)", () => {
     );
     const card = within(await screen.findByTestId("blackjack-result"));
     const buttons = card.getAllByRole("button");
-    expect(buttons.map((b) => b.props.accessibilityLabel ?? "").sort()).toEqual(
-      expect.arrayContaining(["Play Again", "Home"])
-    );
+    expect(buttons.map((b) => String(b.props.accessibilityLabel ?? "")).sort()).toEqual([
+      "Home",
+      "Play Again",
+    ]);
     for (const b of buttons)
       expect(String(b.props.accessibilityLabel ?? "")).not.toMatch(MONEY_COPY);
     expect(card.queryByText(MONEY_COPY)).toBeNull();
@@ -97,13 +115,14 @@ describe("Blackjack replay after a run ends (#2788)", () => {
     // Straight to the table picker: no paywall or purchase screen in between.
     expect(nav.replace).toHaveBeenCalledWith("BlackjackBetting");
     expect(nav.navigate).not.toHaveBeenCalled();
+    expect(mockShellNavigate).not.toHaveBeenCalled();
   });
 
   it.each(TABLE_CONFIGS.map((t) => [t.id, t]))(
     "after a bust-out, Play Again then the %s table starts a fresh full-stack run",
     async (_id, t) => {
       const table = t as (typeof TABLE_CONFIGS)[number];
-      (loadGame as jest.Mock).mockResolvedValue({ ...bustedState(), chips: 0 });
+      (loadGame as jest.Mock).mockResolvedValue(bustedState());
       const hook = await renderHook(() => useBlackjackGame(), {
         wrapper: ({ children }) => <BlackjackGameProvider>{children}</BlackjackGameProvider>,
       });
