@@ -828,7 +828,7 @@ Each tier values a move as **points banked now + λ × the optimal expected poin
 
 Head to head, Hard beats Easy ~92% and Medium ~72% of the time. The nightly calibration gate (`frontend/src/game/yacht/sim/gate.ts`, `.github/workflows/yacht-sim-gate.yml`) guards these numbers, and the regret gate checks each tier's per-decision quality against the oracle ([TESTING.md](TESTING.md)).
 
-**Runtime.** The table ships compressed (~0.9 MB of JS) and decodes on first use (~0.3 s on a dev machine; slower on-device). `GameScreen` calls `preloadOracleTable()` when a VS game's difficulty is set, so the first AI turn doesn't pay for it. After that a decision is a few milliseconds.
+**Runtime.** The table ships compressed (~0.6 MB of JS) and decodes on first use (~0.3 s on a dev machine; slower on-device). `GameScreen` calls `preloadOracleTable()` when a VS game's difficulty is set, so the first AI turn doesn't pay for it. After that a decision is a few milliseconds.
 
 ## 14. Result, leaderboard and stats screens
 

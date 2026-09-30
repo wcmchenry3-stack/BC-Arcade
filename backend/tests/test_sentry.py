@@ -90,6 +90,61 @@ class TestSentryUnit:
 
         assert _sentry_options("https://key@o0.ingest.sentry.io/0")["send_default_pii"] is False
 
+    def test_captured_event_carries_no_client_ip_header(self):
+        """A real event, captured through the SDK with main's options, holds none of the
+        client-IP headers (#2863): the Privacy Policy says Sentry stores no IP address.
+        The SDK's own header filter knows only X-Forwarded-For and X-Real-IP."""
+        from fastapi import FastAPI
+        from sentry_sdk.transport import Transport
+        from starlette.testclient import TestClient
+
+        import main
+
+        class Capture(Transport):
+            def __init__(self, options=None):
+                super().__init__(options)
+                self.events: list[dict] = []
+
+            def capture_envelope(self, envelope):
+                for item in envelope.items:
+                    if item.type in ("event", "transaction"):
+                        self.events.append(item.payload.json)
+
+        app = FastAPI()
+
+        @app.get("/boom")
+        def boom():
+            raise RuntimeError("boom")
+
+        capture = Capture()
+        opts = main._sentry_options("https://key@o0.ingest.sentry.io/0")
+        opts.update(transport=capture, traces_sample_rate=1.0)
+        ips = {
+            "CF-Connecting-IP": "198.51.100.71",
+            "True-Client-IP": "198.51.100.72",
+            "X-Forwarded-For": "198.51.100.73, 10.0.0.1",
+            "X-Real-IP": "198.51.100.74",
+            "Forwarded": "for=198.51.100.75",
+        }
+        old_client = sentry_sdk.get_client()
+        try:
+            sentry_sdk.init(**opts)
+            with TestClient(app, raise_server_exceptions=False) as client:
+                r = client.get("/boom", headers={**ips, "User-Agent": "BCArcade/1.0.9"})
+            assert r.status_code == 500
+            sentry_sdk.flush()
+        finally:
+            sentry_sdk.get_global_scope().set_client(old_client)
+
+        errors = [e for e in capture.events if e.get("exception")]
+        assert errors, "no error event captured"
+        for event in capture.events:
+            text = repr(event)
+            for value in ("198.51.100.7", "10.0.0.1"):
+                assert value not in text
+        # The headers block is there (so the check above is not vacuous).
+        assert errors[0]["request"]["headers"]["user-agent"] == "BCArcade/1.0.9"
+
     def test_sentry_scrubs_session_and_admin_headers(self):
         """X-Session-ID (pseudonymous player ID) and X-Admin-Token (a secret) must not reach
         Sentry. sentry-sdk's default denylist matches keys exactly and contains neither."""

@@ -55,6 +55,9 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `ADMIN_API_TOKEN`          | prod-only value                                                 | dev value                                                               | Dashboard secret    |
 | `ENTITLEMENT_DEV_OVERRIDE` | **must not exist**                                              | set (unlocks every premium game for every session)                      | Dashboard, dev only |
 | `RENDER_GIT_COMMIT`        | injected by Render — becomes the Sentry `release`               | ←                                                                       | Render (automatic)  |
+| `TRUSTED_PROXY_MODE`       | `cloudflare` (the default; set explicitly)                      | `cloudflare`                                                            | `render.yaml`       |
+| `TRUSTED_PROXY_HOPS`       | leave unset (`1`: Render's proxy)                               | ←                                                                       | —                   |
+| `LOG_PROXY_HEADERS`        | **must not exist** (ignored when `ENVIRONMENT=production`)      | `1` only while running the owner checks below, then remove it           | Dashboard, dev only |
 | `APPLE_BUNDLE_ID`          | set when Apple purchases go live (#2786)                        | set on the purchase-testing backend                                     | Dashboard secret    |
 | `APPLE_APP_ID`             | set with `APPLE_BUNDLE_ID` (required while Production is allowed) | ←                                                                     | Dashboard secret    |
 | `APPLE_IAP_ENVIRONMENTS`   | optional; default `Production,Sandbox`                          | optional                                                                | Dashboard           |
@@ -84,6 +87,120 @@ Never put values in `render.yaml` or the repo.
 `ENVIRONMENT` unset means `development` — an API never reports to Sentry's
 `production` environment by accident. `ENVIRONMENT=test` additionally registers
 the `/debug/error` route; never set it on Render.
+
+### Client IP and rate-limit keys
+
+Per-IP rate limits and the request log key on `client_ip` in
+`backend/limiter.py` (trust model: [SECURITY.md §9](../SECURITY.md)).
+The path is client → Cloudflare → Render's proxy → uvicorn; the socket peer
+uvicorn sees is Render's proxy.
+
+| `TRUSTED_PROXY_MODE` | Client IP is                                                                                             | Use when                                                         |
+| -------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `cloudflare`         | `CF-Connecting-IP`; if absent or invalid, the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` from the right; else the peer | The hostname is proxied by Cloudflare (prod and dev). **Default.** |
+| `render`             | the `X-Forwarded-For` entry `TRUSTED_PROXY_HOPS` from the right; else the peer                            | Render only, no Cloudflare proxy in front                        |
+| `none`               | the socket peer                                                                                          | uvicorn with no proxy at all (local)                             |
+
+`TRUSTED_PROXY_HOPS` (default `1`, max `10`) is the number of trusted proxies
+that append to `X-Forwarded-For` in front of the app. Render's proxy is one.
+Do not raise it to reach "past" Cloudflare in `render` mode: the extra entry
+would be client-controlled on any request that skips Cloudflare. An invalid
+value in either variable stops the app at boot.
+
+Do **not** add `--forwarded-allow-ips` / `FORWARDED_ALLOW_IPS` to the uvicorn
+start command: uvicorn would then rewrite the peer from `X-Forwarded-For`
+before the resolver sees it.
+
+Rate-limit buckets are per IPv4 address and per IPv6 **/64** (one
+subscriber's usual allocation, so rotating addresses inside it does not buy
+fresh buckets). The request log's `"ip"` keeps the full address.
+
+At startup the API logs `{"event": "client_ip_trust", "mode": …, "hops": …}`.
+If the mode is not `cloudflare` and a request arrives carrying
+`CF-Connecting-IP`, it logs `client_ip_cf_header_ignored` once per process:
+the mode is probably wrong for that host and callers may be sharing buckets.
+
+Changing the mode moves every per-IP bucket; the limiter's storage is
+in-memory, so counters simply start again (as on every deploy).
+
+Two operational traps:
+
+- **A blueprint sync overwrites the dashboard.** `render.yaml` sets
+  `TRUSTED_PROXY_MODE: cloudflare`; syncing or applying a blueprint replaces
+  whatever the dashboard holds. Change the mode in `render.yaml` too, or not
+  at all.
+- **Migrations run before the check.** The start command is
+  `alembic upgrade head && uvicorn …`, and Alembic does not import the app, so
+  a bad `TRUSTED_PROXY_MODE` / `TRUSTED_PROXY_HOPS` applies pending migrations
+  and *then* fails to boot. Render keeps the previous instance serving — on
+  the new schema.
+
+#### Owner checks
+
+The resolved `"ip"` cannot answer these questions: if Render's own edge is
+Cloudflare, every request carries a genuine `CF-Connecting-IP` and the log
+shows your address whatever the headers underneath look like. So look at the
+raw headers:
+
+1. On **`bc-arcade-api-dev` only**, set `LOG_PROXY_HEADERS=1` and deploy. The
+   startup line shows `"log_proxy_headers": true`, and every request line gains
+   `"proxy": {"cf_connecting_ip": […], "xff_count": n, "xff_tail": [last 3 entries], "peer": …}`
+   — the headers exactly as they reached uvicorn. (The API ignores the flag
+   when `ENVIRONMENT=production`.)
+2. Note your own public address (`YOUR_IP` below). The forged values are
+   documentation addresses: `192.0.2.10`, `192.0.2.20`.
+
+**A. Through the owner's Cloudflare zone**
+
+`curl -H 'X-Forwarded-For: 192.0.2.10' -H 'CF-Connecting-IP: 192.0.2.20' https://dev-games-api.buffingchi.com/health`
+
+| `cf_connecting_ip` | Meaning |
+| --- | --- |
+| `["YOUR_IP"]` | Cloudflare is in front and replaced the forged value. Expected. |
+| `["192.0.2.20"]` | Nothing replaced it — the record is not proxied, or not through Cloudflare. `cloudflare` mode is **unsafe on this host**; stop and report. |
+| `[]` | No Cloudflare anywhere on the path. `cloudflare` mode falls back to `X-Forwarded-For`; check C decides whether that is safe. |
+
+**B. Straight to Render, forged `CF-Connecting-IP`** (skips the owner's zone)
+
+`curl -H 'CF-Connecting-IP: 192.0.2.20' https://gaming-app-api-dev.onrender.com/health`
+
+| `cf_connecting_ip` | Meaning |
+| --- | --- |
+| `["YOUR_IP"]` | Render's own edge is Cloudflare and replaces the header. The bypass cannot forge a bucket. (It also means restricting inbound IPs to Cloudflare ranges would block nothing.) |
+| `[]` | Render strips the header. The bypass cannot forge it; the resolver uses the `X-Forwarded-For` fallback (check C). |
+| `["192.0.2.20"]` | **The bypass is open:** anyone using the `onrender.com` hostname picks their bucket. Apply the mitigation below. |
+
+**C. Straight to Render, forged `X-Forwarded-For`**
+
+`curl -H 'X-Forwarded-For: 192.0.2.10' https://gaming-app-api-dev.onrender.com/health`
+
+| last `xff_tail` entry | Meaning |
+| --- | --- |
+| `YOUR_IP` | Render appends the connecting client. `TRUSTED_PROXY_HOPS=1` is right and the fallback is safe. |
+| `192.0.2.10` | Render passes the client's list through without appending. The right-most entry is forgeable: `render` mode and the `cloudflare` fallback are **unsafe**; report it. |
+| another address (e.g. a Cloudflare range) | Render's edge adds its own hop. `render` mode would bucket everyone by that address; keep `cloudflare`, which is fine as long as B showed `["YOUR_IP"]`. |
+
+(Without the flag, check C alone can be run by setting
+`TRUSTED_PROXY_MODE=render` on dev for the test and reading the resolved
+`"ip"`: `YOUR_IP` / `192.0.2.10` / other have the same meanings.)
+
+3. **Remove `LOG_PROXY_HEADERS`** and redeploy — the lines hold raw client
+   addresses and forged values.
+4. Cloudflare DNS: is `games-api` **proxied** (orange cloud)? The prod CNAMEs
+   were added DNS-only on Sep 22 so Render could issue its certificate; dev is
+   proxied (CI's Bot Fight Mode note). Render behaves the same for both
+   services, so B and C carry over to prod; A needs the record proxied.
+
+**Mitigation if B shows the bypass open**, in this order:
+
+1. **Disable the `onrender.com` subdomain on the prod API** (Render service
+   settings; `renderSubdomainPolicy`). Keep dev's: CI's backend-health job
+   uses `gaming-app-api-dev.onrender.com`.
+2. **A shared-secret header**: a Cloudflare Transform Rule adds it on the
+   proxied hostname and the API rejects requests without it (needs code).
+3. Restricting the service's inbound IPs to Cloudflare's published ranges is
+   **weak** if Render's own edge is Cloudflare — direct requests then arrive
+   from Cloudflare addresses too.
 
 ### Static site (`bc-arcade-frontend`, `bc-arcade-frontend-dev`)
 

@@ -531,11 +531,84 @@ Cold-start timing via `performance.now()` instrumentation (`src/utils/appTiming.
 
 ### Hard limit
 
-The `android-bundle-check` CI job enforces a **5.5 MB hard limit** on the uncompressed Hermes bytecode bundle (`dist/index.android.bundle`). The job fails if the limit is exceeded. Additionally, `bundlesize2` runs against the `"bundlesize"` config in `frontend/package.json` to provide a structured pass/fail report.
+The `android-bundle-check` CI job enforces an **8.0 MB hard limit** (`MAX_BYTES=8388608`) on `dist/index.android.bundle`. The job fails if the limit is exceeded. Additionally, `bundlesize2` runs against the `"bundlesize"` config in `frontend/package.json` to provide a structured pass/fail report. "MB" here means 1,048,576 bytes, as in CI.
 
-**Baseline at time of implementation:** 4.5 MB (pre-#554/#555 measurement from PERFORMANCE.md asset inventory). The limit was set at 4.5 MB × 1.11 ≈ 5.0 MB to allow ~10% headroom for normal feature growth.
+**What is measured.** CI builds the file with `npx expo export:embed --platform android --dev false` and no `--bytecode` flag, so it is **minified JavaScript, before Hermes compiles it**. Gradle compiles that JS to Hermes bytecode later in the release build. The number tracks what we ship closely but not exactly. For example, the minifier escapes every non-ASCII character in the translations as `\uXXXX`, which adds about 240 KB to the measured file but nothing to the bytecode.
 
-**Updated (#688 — card deck system):** Adding `react-native-svg` for the Classic card deck pushed the bundle to 5.01 MB. Limit raised to 5.5 MB (5.01 MB × 1.10 ≈ 5.5 MB) to restore headroom.
+**Real bytecode, for context.** The Hermes bytecode for the 7.27 MB bundle below is 9,351,141 bytes (about 9.35 million bytes, or 8.92 MB in CI's units), measured with `hermesc -O -emit-binary` from `node_modules/hermes-compiler`. It is larger than the JS. If the limit is ever re-based on bytecode, start from that figure.
+
+**History.**
+
+- 4.5 MB: baseline when the guardrail was added (#556 / #581). The first limit was 5.0 MB.
+- 5.5 MB: limit raised for `react-native-svg` and the Classic card deck (#688).
+- 6.0 MB: limit raised for Expo SDK 56 and new games (#1977).
+- 8.0 MB: limit raised for `@sentry/react-native` 7 → 8 (#1965).
+- **7.74 MB → 7.27 MB (2026-09-30, #2869).** The bundle had reached 7.74 MB (8,114,007 bytes), 280 KB under the limit, before the premium client work (`expo-iap`, the five premium games made visible). Two behaviour-preserving changes cut 483 KB and left **752 KB of headroom** (769,634 bytes):
+
+| Change                                                                                                                                                                       | Bundle after              | Saved  |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ------ |
+| Baseline (`dev` at e5bb82b2)                                                                                                                                                 | 8,114,007 B (7.74 MB)     | –      |
+| Yacht oracle table: delta + zigzag + byte planes before zlib (`frontend/src/game/yacht/oracle/tableCodec.ts`). Values bit-identical, pinned by `pinnedEV.test.ts`.           | 7,828,231 B (7.47 MB)     | 279 KB |
+| Sudoku puzzle banks shipped packed (`puzzleBanks.generated.ts`, from `scripts/pack-sudoku-puzzles.ts`). JSON stays the source of truth; `puzzleBanks.test.ts` pins equality. | **7,618,974 B (7.27 MB)** | 204 KB |
+
+The final row is CI's exact command with `--reset-cache`. The earlier rows were built with `--sourcemap-output` as well, which adds about 100 bytes (see below).
+
+### Measuring and analysing the bundle
+
+Build the bundle as CI does, with a source map added, then run the analysis script (from `frontend/`):
+
+```bash
+mkdir -p dist
+npx expo export:embed --platform android --dev false \
+  --entry-file "$(node -e "require('expo/scripts/resolveAppEntry')" . android absolute | tail -n 1)" \
+  --bundle-output dist/index.android.bundle \
+  --assets-dest /tmp/assets \
+  --sourcemap-output dist/index.android.bundle.map
+stat --printf="%s\n" dist/index.android.bundle   # CI's number, plus ~100 B (below)
+node scripts/analyze-bundle.mjs 25               # top 25 contributors
+```
+
+`--sourcemap-output` appends a `//# sourceMappingURL=index.android.bundle.map` line, which adds about 100 bytes (95 on the 7.27 MB bundle). Leave it off, and add `--reset-cache`, to reproduce CI's figure to the byte. `scripts/analyze-bundle.mjs` runs `source-map-explorer` and groups mapped code by npm package, or by directory for app code. Metro emits JSON modules (translations, puzzle data, icon glyph maps) without source mappings, so `source-map-explorer` lumps them into "[unmapped]". The script finds those modules in the bundle text and labels them instead. `dist/` is gitignored; delete it when you're done, since the map is about 20 MB.
+
+**Top contributors after #2869 (7.27 MB):**
+
+| #   | Contributor                                                                      | KB    | Share |
+| --- | -------------------------------------------------------------------------------- | ----- | ----- |
+| 1   | JSON: translations (13 locales × 19 namespaces)                                  | 840.5 | 11.3% |
+| 2   | npm: react-native-reanimated                                                     | 739.0 | 9.9%  |
+| 3   | src/game/yacht/ (oracle table 599 KB)                                            | 618.5 | 8.3%  |
+| 4   | npm: react-native                                                                | 566.0 | 7.6%  |
+| 5   | npm: @sentry/conventions                                                         | 340.4 | 4.6%  |
+| 6   | npm: @sentry/core                                                                | 339.6 | 4.6%  |
+| 7   | npm: @sentry/react-native                                                        | 295.7 | 4.0%  |
+| 8   | npm: @shopify/react-native-skia                                                  | 264.6 | 3.6%  |
+| 9   | JSON: icon glyph maps (@expo/vector-icons MaterialCommunityIcons, MaterialIcons) | 225.4 | 3.0%  |
+| 10  | Bundle glue, license comments, whitespace                                        | 203.4 | 2.7%  |
+| 11  | npm: react-native-gesture-handler                                                | 187.8 | 2.5%  |
+| 12  | src/game/sudoku/ (packed banks 155 KB)                                           | 165.4 | 2.2%  |
+| 13  | npm: @sentry/replay                                                              | 123.6 | 1.7%  |
+| 14  | npm: react-reconciler                                                            | 111.3 | 1.5%  |
+| 15  | [no source] (Metro prelude and polyfills)                                        | 110.1 | 1.5%  |
+| 16  | npm: @sentry/browser                                                             | 101.8 | 1.4%  |
+| 17  | npm: react-native-svg                                                            | 101.8 | 1.4%  |
+| 18  | npm: expo                                                                        | 92.8  | 1.2%  |
+| 19  | JSON: other data (Mahjong layouts and other game data)                           | 91.1  | 1.2%  |
+| 20  | npm: react-native-worklets                                                       | 90.5  | 1.2%  |
+
+Sentry packages together (`conventions`, `core`, `react-native`, `replay`, `browser`, `browser-utils`, `feedback`, `react`) come to about 1.3 MB.
+
+### Options not taken (yet)
+
+These were looked at for #2869 and left alone, either because they wouldn't reduce the shipped size or because they need an owner decision:
+
+- **Inlining Sentry's attribute-name constants at build time** (341 KB). Sentry imports about 25 string constants from `@sentry/conventions/attributes`, a 340 KB module that Metro can't tree-shake. A Babel plugin that replaced them with their values was built and measured for #2869, then dropped: it couples the build to a transitive Sentry package, and the owner declined it.
+- **Lazy-loading game screens and engines.** Native Metro doesn't split bundles: a lazy `require` or `React.lazy` still puts the module in `index.android.bundle`. It only defers evaluation. The screens are already lazy for startup (see _Lazy Loading Decision_ above).
+- **Keeping non-active translations out of the bundle.** Every locale is reachable through `import()` in `src/i18n/localeLoaders.ts`, and native Metro bundles every `import()` target. Moving translations out would mean downloading them (breaks offline play) or shipping them as native assets read at runtime (new native-asset code path). Not worth it while there's headroom.
+- **Minifier `ascii_only: false`.** Would cut ~240 KB from the measured file by writing translations as UTF-8 instead of `\uXXXX` escapes. It doesn't change the Hermes bytecode, so it would only move the metric. If we do it, it should come with measuring real bytecode instead (below).
+- **Measure Hermes bytecode in CI** (`expo export:embed --bytecode`, or the `.hbc` from the Gradle build) so the guardrail tracks what ships. The limit would need re-basing (see _Real bytecode_ above), which is an owner decision.
+- **Icon glyph-map subset** (225 KB). `createIconSet` with only the glyphs we use. Needs every icon name to be static, which is not yet true everywhere.
+- **Expo experimental tree shaking** (`EXPO_UNSTABLE_TREE_SHAKING`). Could trim Sentry's tracing, replay and feedback code, which we don't use, but it changes how every module is bundled and has to be set in the Gradle and Xcode Cloud builds too. Not measured.
+- **Raising the limit.** Not needed now. If it is later, record the owner's approval and the reason here, following _Updating the limit_ below.
 
 ### Updating the limit
 
@@ -548,7 +621,7 @@ Commit the update in the same PR as the size-increasing change so reviewers can 
 
 ### PR comment
 
-Every pull request receives an automated comment from `android-bundle-check` showing the current bundle size and delta vs the 4.5 MB baseline. No action is needed unless the delta is large or the hard limit is breached.
+Every pull request receives an automated comment from `android-bundle-check` showing the current bundle size and delta vs the original 4.5 MB baseline. No action is needed unless the delta is large or the hard limit is breached.
 
 For new game additions specifically, the reviewer checklist in [`docs/GAME-CONTRACT.md` — Size Budget](GAME-CONTRACT.md#size-budget) requires the delta to stay ≤ 200 KB.
 
