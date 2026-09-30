@@ -18,7 +18,8 @@
  * missing from the transition math, not the ~254.59 this test pins to.
  */
 
-import { optimalStateEV } from "../oracle";
+import { getOracleTable, optimalStateEV } from "../oracle";
+import { ORACLE_TABLE_SCALE } from "../tableCodec";
 import { newGame } from "../../engine";
 
 const PUBLISHED_OPTIMAL_EV = 254.5896;
@@ -39,5 +40,26 @@ describe("pinned optimal EV — shipped table vs published reference", () => {
     const ev = await optimalStateEV(newGame());
     const NO_JOKER_OPTIMAL_EV = 245.87;
     expect(ev).toBeGreaterThan(NO_JOKER_OPTIMAL_EV + 3); // clearly above, not just barely
+  });
+});
+
+describe("shipped table contents — pinned checksum (#2869)", () => {
+  // FNV-1a over every stored Uint16 (low byte, then high byte), taken from the
+  // 2026-09-24 table before #2869 re-encoded it with delta + byte planes. A
+  // codec change that alters any single value — or a re-solve that should
+  // have updated this pin alongside it — fails here.
+  it("decodes to exactly the values the 2026-09-24 table held", () => {
+    const table = getOracleTable();
+    let hash = 0x811c9dc5;
+    let sum = 0;
+    for (let i = 0; i < table.length; i++) {
+      const stored = Math.round(table[i]! * ORACLE_TABLE_SCALE);
+      sum += stored;
+      hash = Math.imul(hash ^ (stored & 0xff), 0x01000193);
+      hash = Math.imul(hash ^ (stored >>> 8), 0x01000193);
+    }
+    expect(table.length).toBe(786_432);
+    expect(sum).toBe(6_435_413_622);
+    expect((hash >>> 0).toString(16)).toBe("b2483c36");
   });
 });
