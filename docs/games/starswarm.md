@@ -642,6 +642,21 @@ most distracted, then Elite, then Guardian, then Carrier least.
   always a real miss-angle, bigger for the more distracted tiers. Flak is never degraded.
 - \* The Carrier's flak is its twin volley diverted (below), so its cost is the volley it replaces.
 
+### Known gap: divers barely react to rocks (#2881)
+
+Every on-screen ship that is not Circling is threat-checked, and `predictEnemyPos` does follow a
+diver's Bezier path, so a diving ship is detected and pays its attention debt like any other. What
+it lacks is anything the player can _see_: flak is formation-only (`phase === "Formation"` in
+`tickAsteroidThreats`), a Circling ship is skipped entirely, the aim degrade is invisible, and the
+path nudge shifts control points 40 px, which peaks at about 30 px of lateral travel, less than a
+large rock plus a hull needs to clear. `frontend/src/game/starswarm/sim/asteroidAwareness.ts` is a
+seeded headless sim over the real `tick()` that measures this per phase (threat, reaction and hit
+rates, and how often a "successful" dodge still collides). `measureAwareness()` is pure and returns
+plain data, so a future gate can diff it against a baseline. Run the full sweep with
+`SIM=1 npx jest src/game/starswarm/__tests__/asteroidAwareness.sim.test.ts`; the fast smoke runs
+with the normal suite. The sim's `PROPOSED_POLICY` is an out-of-engine prototype of the diver
+reactions under discussion in #2881; nothing in the game uses it.
+
 ### Carrier vs asteroids (#2844)
 
 Immunity derives from the armor state, never from `tier === "Carrier"`. `rocksStrikeEnemies` takes
