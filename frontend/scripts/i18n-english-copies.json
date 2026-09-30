@@ -85,12 +85,25 @@
     },
     "profile": {
       "ar": ["level.xpTotal"],
-      "de": ["level.value", "level.xpTotal"],
-      "es": ["level.xpTotal"],
-      "fr-CA": ["level.xpTotal", "stats.sessions"],
+      "de": [
+        "detail.hearts.hand",
+        "detail.hearts.handA11y",
+        "detail.starswarm.source.Boss",
+        "detail.starswarm.source.Elite",
+        "level.value",
+        "level.xpTotal"
+      ],
+      "es": ["detail.hearts.total", "level.xpTotal"],
+      "fr-CA": ["detail.hearts.total", "level.xpTotal", "stats.sessions"],
       "hi": ["level.xpTotal"],
-      "nl": ["level.xpTotal"],
-      "pt": ["level.xpTotal"],
+      "nl": [
+        "detail.hearts.hand",
+        "detail.hearts.handA11y",
+        "detail.starswarm.source.Boss",
+        "detail.starswarm.source.Elite",
+        "level.xpTotal"
+      ],
+      "pt": ["detail.hearts.total", "detail.starswarm.source.Elite", "level.xpTotal"],
       "ru": ["level.xpTotal"]
     },
     "result": {

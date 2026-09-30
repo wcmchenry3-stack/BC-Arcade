@@ -381,7 +381,7 @@ bypasses the ledger. It is bounded:
 the ledger keeps the last 20 scoring waves in detail and folds older ones into `earlier`, and the
 summary folds further until its compact JSON is ≤ 4 KiB (`BREAKDOWN_MAX_BYTES`), so the whole result
 stays well under the backend's 8 KiB limit (worst case measured ≈ 4.3 KB as the server counts it).
-The breakdown is in the result only, not the `game_ended` event. Display is #2840.
+The breakdown is in the result only, not the `game_ended` event. The owner sees it on Game Details (Profile → Recent Games → a run; `frontend/src/components/gameDetail/`, #2840) as one row per wave with its sources, the `earlier` fold as one "Waves X–Y" row, and a note when it doesn't add up to the score.
 
 `StarSwarmResult` checks the block adds up (per wave `end - start == total == sum(pts)`, each
 wave starting at the previous `end` or at `earlier.total`, waves strictly ascending, strict
