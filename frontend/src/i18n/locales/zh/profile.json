@@ -40,6 +40,7 @@
   "boards.notOnBoards": "你尚未加入任何排行榜。加入后将以随机生成的名字显示。",
   "boards.join": "加入排行榜",
   "boards.joining": "正在加入… 恢复联网后将显示你的名字。",
+  "boards.joiningOnline": "正在加入… 你的排行榜名字马上就会显示。",
   "boards.joinError": "无法加入排行榜，请重试。",
   "boards.onBoardsAs": "在排行榜上显示为“{{name}}”。",
   "boards.generatedHelper": "每个人都使用生成的名字，让排行榜保持友好。",

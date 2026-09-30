@@ -40,6 +40,7 @@
   "boards.notOnBoards": "どのランキングにも参加していません。参加すると、ランダムに作られた名前で表示されます。",
   "boards.join": "ランキングに参加",
   "boards.joining": "参加しています… オンラインに戻ると名前が表示されます。",
+  "boards.joiningOnline": "参加しています… まもなくランキング名が表示されます。",
   "boards.joinError": "ランキングに参加できませんでした。もう一度お試しください。",
   "boards.onBoardsAs": "ランキングでの名前：「{{name}}」",
   "boards.generatedHelper": "全員に自動生成の名前が付くので、ランキングは安心して楽しめます。",

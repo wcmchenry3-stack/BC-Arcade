@@ -23,10 +23,13 @@
  *   app kill mid-request keeps it for the next trigger.
  * - **Triggers.** Every join/leave, app launch, and — alongside `SyncWorker` —
  *   reconnect and return to the foreground (`NetworkContext`).
- * - **Launch.** Finishes a stored leave's device clear; otherwise, a name this
- *   device holds that was never confirmed for this player id (typed before
- *   #2624 shipped, when setting a name was how a player joined) becomes a
- *   join, so that choice is kept — under a generated name. Then, with nothing
+ * - **Launch.** Finishes a stored leave's device clear. Once per install
+ *   (`LEGACY_MIGRATED_KEY`), a name this device holds that was never confirmed
+ *   for this player id (typed before #2624 shipped, when setting a name was
+ *   how a player joined) becomes a join, so that choice is kept — under a
+ *   generated name. After that one run, launch never turns a stored name into
+ *   a join (e.g. a name left behind by a partly failed "Delete my data" must
+ *   not silently re-join the player). Then, with nothing
  *   pending, the device's copy is refreshed from `GET /players/me`: the
  *   server is the source of truth for the name (it replaced typed names in
  *   migration 0030) and for whether the player is on the boards at all.
@@ -40,7 +43,12 @@
  *
  * "Delete my data" calls `clearDisplayNameSync` first: it waits for a sync
  * already in flight (which could otherwise put the player back on the boards
- * after the server deleted them) and forgets the pending and settled state.
+ * after the server deleted them) and forgets the pending intent. Only after
+ * the server delete succeeds does it call `forgetSyncedDisplayName`.
+ *
+ * Every local intent and every reroll bumps `localGeneration`, so a
+ * `GET /players/me` refresh started before one can't overwrite its result
+ * with the stale answer.
  */
 
 import { useEffect, useState } from "react";
@@ -54,6 +62,12 @@ import { getOrCreateSessionId } from "./session";
 
 const PENDING_KEY = "player_display_name_pending_sync";
 const SYNCED_KEY = "player_display_name_synced";
+/**
+ * Set once the one-time legacy-name conversion (see `syncDisplayNameOnLaunch`)
+ * has run on this install, whatever its outcome, and by "Delete my data".
+ * Never removed: after it is set, no stored name ever turns into a join.
+ */
+const LEGACY_MIGRATED_KEY = "player_display_name_legacy_migrated";
 
 /** The slot value meaning "join the leaderboards". */
 const JOIN = "__join_every_leaderboard__";
@@ -105,8 +119,9 @@ function setSlotMirror(value: string | null): void {
   slotListeners.forEach((l) => l());
 }
 
-// Bumped by every local intent (join, leave, "Delete my data"), so a server
-// answer that was requested before it can't overwrite it.
+// Bumped by every local intent (join, leave, "Delete my data") and by a
+// reroll (when it starts and once it has stored its name), so a server answer
+// that was requested before it can't overwrite it.
 let localGeneration = 0;
 
 /** Clears the slot unless a newer intent replaced `value` meanwhile. */
@@ -262,27 +277,42 @@ export async function leaveLeaderboards(): Promise<boolean> {
   return true;
 }
 
+export type RerollResult =
+  | { status: "rerolled"; name: string }
+  /** The server says the player isn't on the leaderboards (404); the device now matches. */
+  | { status: "not_joined" }
+  /** Offline, a server error, or a pending intent that couldn't be sent. */
+  | { status: "failed" };
+
 /**
  * "Get a new name": asks the server for a different generated name. Online
- * only. Sends any pending join or leave first. Resolves to the new name, or
- * null when it couldn't be changed (offline, a pending intent that couldn't be
- * sent, or the player isn't on the leaderboards — a reroll never opts in).
+ * only. Sends any pending join or leave first. A reroll never opts anyone in:
+ * when the player isn't on the leaderboards it resolves `not_joined` (not a
+ * connectivity failure) and forgets the name on the device.
  */
-export async function rerollDisplayName(): Promise<string | null> {
-  if (!(await flushDisplayNameSync())) return null;
+export async function rerollDisplayName(): Promise<RerollResult> {
+  if (!(await flushDisplayNameSync())) return { status: "failed" };
+  // Invalidates any refresh already in flight: its GET may answer with the
+  // name this reroll is about to replace.
+  localGeneration += 1;
   const generation = localGeneration;
   try {
     const { display_name: name } = await playersApi.rerollMe();
-    if (name == null || generation !== localGeneration) return null;
+    if (name == null || generation !== localGeneration) return { status: "failed" };
     await storeAssignedDisplayName(name);
     await markSynced(name);
-    return name;
+    // And any refresh started while the POST was in flight.
+    localGeneration += 1;
+    return { status: "rerolled", name };
   } catch (e) {
-    if (e instanceof ApiError && e.status === 404 && generation === localGeneration) {
-      // The server says the player isn't on the leaderboards: match it.
-      await clearDisplayName();
+    if (e instanceof ApiError && e.status === 404) {
+      if (generation === localGeneration) {
+        // The server says the player isn't on the leaderboards: match it.
+        await clearDisplayName();
+      }
+      return { status: "not_joined" };
     }
-    return null;
+    return { status: "failed" };
   }
 }
 
@@ -312,9 +342,24 @@ export async function refreshDisplayNameFromServer(): Promise<void> {
 }
 
 /**
- * On launch: finish a stored leave's device clear, or turn a name the server
- * was never confirmed to hold for this player id into a join (once); flush
- * whatever is pending; then refresh the device's copy from the server.
+ * The one-time install migration: a name typed before #2624 (stored, never
+ * confirmed for this player id) becomes a join. The flag is written first and
+ * the join only if that write succeeded, so this can never run twice; if it
+ * can't be recorded, nobody is opted in.
+ */
+async function migrateLegacyNameOnce(): Promise<void> {
+  if ((await getItem(LEGACY_MIGRATED_KEY)) != null) return;
+  const name = await loadDisplayName();
+  const unsynced = name != null && !(await isSynced(name));
+  if (!(await setItem(LEGACY_MIGRATED_KEY, "1"))) return;
+  if (unsynced) await writeSlot(JOIN);
+}
+
+/**
+ * On launch: finish a stored leave's device clear, or (once per install) turn
+ * a name the server was never confirmed to hold for this player id into a
+ * join; flush whatever is pending; then refresh the device's copy from the
+ * server.
  */
 export async function syncDisplayNameOnLaunch(): Promise<boolean> {
   await slotWrites;
@@ -324,8 +369,7 @@ export async function syncDisplayNameOnLaunch(): Promise<boolean> {
     // after it would have replaced the slot, so any stored name is the old one.
     await clearDisplayName();
   } else if (slot == null) {
-    const name = await loadDisplayName();
-    if (name != null && !(await isSynced(name))) await writeSlot(JOIN);
+    await migrateLegacyNameOnce();
   }
   const settled = await flushDisplayNameSync();
   if (settled) await refreshDisplayNameFromServer();
@@ -358,19 +402,34 @@ export function useLeaderboardSyncPending(): LeaderboardSyncPending {
 }
 
 /**
- * "Delete my data": waits for any sync in flight, then forgets the pending
- * intent and the settled marker. Call it before erasing the server's copy, so
- * no PUT can land after the delete. Never rejects.
+ * "Delete my data", step one: waits for any sync in flight, then forgets the
+ * pending intent and marks the legacy migration done, so no name left on the
+ * device can ever turn into a join again. Call it before erasing the server's
+ * copy, so no PUT can land after the delete. The settled marker is kept until
+ * the server delete has succeeded (`forgetSyncedDisplayName`). Never rejects.
  */
 export async function clearDisplayNameSync(): Promise<void> {
   localGeneration += 1;
   await slotWrites;
   await Promise.allSettled([running, queued].filter((p) => p != null));
+  await setItem(LEGACY_MIGRATED_KEY, "1");
   try {
-    await Promise.all([AsyncStorage.removeItem(PENDING_KEY), AsyncStorage.removeItem(SYNCED_KEY)]);
+    await AsyncStorage.removeItem(PENDING_KEY);
     setSlotMirror(null);
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "displayNameSync", op: "clearAll" } });
+  }
+}
+
+/**
+ * "Delete my data", after the server delete succeeded: forgets which name the
+ * server was confirmed to hold. Never rejects.
+ */
+export async function forgetSyncedDisplayName(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(SYNCED_KEY);
+  } catch (e) {
+    Sentry.captureException(e, { tags: { subsystem: "displayNameSync", op: "forgetSynced" } });
   }
 }
 

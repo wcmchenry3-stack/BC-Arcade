@@ -40,6 +40,7 @@
   "boards.notOnBoards": "Du stehst auf keiner Bestenliste. Tritt bei, um mit einem zufällig erzeugten Namen zu erscheinen.",
   "boards.join": "Bestenlisten beitreten",
   "boards.joining": "Beitritt läuft … Dein Name erscheint, sobald du wieder online bist.",
+  "boards.joiningOnline": "Beitritt läuft … Dein Bestenlisten-Name erscheint gleich.",
   "boards.joinError": "Beitritt zu den Bestenlisten fehlgeschlagen. Versuch es erneut.",
   "boards.onBoardsAs": "Auf Bestenlisten als „{{name}}“.",
   "boards.generatedHelper": "Alle bekommen einen erzeugten Namen, damit die Listen freundlich bleiben.",

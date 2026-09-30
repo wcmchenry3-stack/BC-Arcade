@@ -40,6 +40,7 @@
   "boards.notOnBoards": "No estás en ninguna clasificación. Únete para aparecer con un nombre generado al azar.",
   "boards.join": "Unirse a las clasificaciones",
   "boards.joining": "Uniéndote… Tu nombre aparecerá cuando vuelvas a estar en línea.",
+  "boards.joiningOnline": "Uniéndote… Tu nombre en las clasificaciones aparecerá en un momento.",
   "boards.joinError": "No se pudo unir a las clasificaciones. Inténtalo de nuevo.",
   "boards.onBoardsAs": "En las clasificaciones como «{{name}}».",
   "boards.generatedHelper": "Todos reciben un nombre generado, así las clasificaciones son amables.",

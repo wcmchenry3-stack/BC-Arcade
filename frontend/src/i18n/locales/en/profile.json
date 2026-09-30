@@ -40,6 +40,7 @@
   "boards.notOnBoards": "You're not on any leaderboard. Join to appear under a randomly generated name.",
   "boards.join": "Join leaderboards",
   "boards.joining": "Joining… Your leaderboard name will appear when you're back online.",
+  "boards.joiningOnline": "Joining… Your leaderboard name will appear in a moment.",
   "boards.joinError": "Couldn't join the leaderboards. Try again.",
   "boards.onBoardsAs": "On leaderboards as “{{name}}”.",
   "boards.generatedHelper": "Everyone gets a generated name, so boards stay friendly.",

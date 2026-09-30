@@ -40,6 +40,7 @@
   "boards.notOnBoards": "Je staat op geen enkele ranglijst. Doe mee om te verschijnen onder een willekeurig gegenereerde naam.",
   "boards.join": "Meedoen met ranglijsten",
   "boards.joining": "Aanmelden… Je naam verschijnt zodra je weer online bent.",
+  "boards.joiningOnline": "Aanmelden… Je ranglijstnaam verschijnt zo.",
   "boards.joinError": "Meedoen met de ranglijsten is mislukt. Probeer het opnieuw.",
   "boards.onBoardsAs": "Op ranglijsten als ‘{{name}}’.",
   "boards.generatedHelper": "Iedereen krijgt een gegenereerde naam, zo blijven de ranglijsten vriendelijk.",

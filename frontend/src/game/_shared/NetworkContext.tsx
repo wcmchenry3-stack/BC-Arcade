@@ -47,7 +47,8 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
     // What an older build left in the removed score queue (#2644).
     void clearLegacyScoreQueue();
     // Any pending join/leave is retried, a name typed before #2624 becomes a
-    // join (#2778), and the device's copy of the name is refreshed.
+    // join on this build's first launch only (#2778), and the device's copy
+    // of the name is refreshed.
     syncDisplayNameOnLaunch().catch((e) => {
       Sentry.captureException(e, { tags: { subsystem: "displayNameSync", op: "launch" } });
     });

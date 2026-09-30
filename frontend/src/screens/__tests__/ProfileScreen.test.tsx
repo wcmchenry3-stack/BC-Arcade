@@ -12,6 +12,7 @@ import {
   leaveLeaderboards,
   resetDisplayNameSyncForTests,
 } from "../../game/_shared/displayNameSync";
+import { ApiError } from "../../game/_shared/httpClient";
 import type { StatsResponse, GameHistoryResponse, GameOutcome } from "../../api/types";
 
 const mockNetwork = { isOnline: true };
@@ -509,6 +510,7 @@ describe("ProfileScreen — leaderboard membership (#2637, #2778)", () => {
     "You're not on any leaderboard. Join to appear under a randomly generated name.";
   const LEAVING = "Leaving the leaderboards… It will sync when you're back online.";
   const JOINING = "Joining… Your leaderboard name will appear when you're back online.";
+  const JOINING_ONLINE = "Joining… Your leaderboard name will appear in a moment.";
   const onBoardsAs = (name: string) => `On leaderboards as “${name}”.`;
 
   /** On the boards as `name`, on this device and on the server. */
@@ -560,6 +562,7 @@ describe("ProfileScreen — leaderboard membership (#2637, #2778)", () => {
   });
 
   it("shows a join as pending while offline, then the name once it syncs", async () => {
+    mockNetwork.isOnline = false;
     mockPutMe.mockRejectedValue(new TypeError("Network request failed"));
     await renderScreen();
     await waitFor(() => expect(screen.getByText(NOT_ON_BOARDS)).toBeTruthy());
@@ -574,6 +577,55 @@ describe("ProfileScreen — leaderboard membership (#2637, #2778)", () => {
       await expect(flushDisplayNameSync()).resolves.toBe(true);
     });
     await waitFor(() => expect(screen.getByText(onBoardsAs(GENERATED))).toBeTruthy());
+  });
+
+  it("doesn't claim to be offline while a join is pending online", async () => {
+    mockPutMe.mockRejectedValue(new ApiError("unavailable", 503));
+    await renderScreen();
+    await waitFor(() => expect(screen.getByText(NOT_ON_BOARDS)).toBeTruthy());
+
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: JOIN }));
+    });
+    await waitFor(() => expect(screen.getByText(JOINING_ONLINE)).toBeTruthy());
+    expect(screen.queryByText(JOINING)).toBeNull();
+  });
+
+  it("lets the player cancel a pending join with Leave", async () => {
+    mockNetwork.isOnline = false;
+    mockPutMe.mockRejectedValue(new TypeError("Network request failed"));
+    mockDeleteMe.mockRejectedValue(new TypeError("Network request failed"));
+    await renderScreen();
+    await waitFor(() => expect(screen.getByText(NOT_ON_BOARDS)).toBeTruthy());
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: JOIN }));
+    });
+    await waitFor(() => expect(screen.getByText(JOINING)).toBeTruthy());
+
+    await fireEvent.press(screen.getByTestId("profile-cancel-join"));
+    expect(screen.getByText("Leave the leaderboards?")).toBeTruthy();
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("profile-remove-name-confirm-confirm"));
+    });
+
+    // The unsent join is replaced by a leave: no PUT can go out any more.
+    await waitFor(() => expect(screen.getByText(LEAVING)).toBeTruthy());
+    await expect(AsyncStorage.getItem(PENDING_KEY)).resolves.toBe(
+      "__remove_display_name_from_every_leaderboard__"
+    );
+  });
+
+  it("shows no connection error when a reroll finds the player isn't on the boards", async () => {
+    await renderWithName();
+    mockRerollMe.mockRejectedValue(new ApiError("Not on the leaderboards.", 404));
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("profile-reroll-name"));
+    });
+    await waitFor(() => expect(screen.getByText(NOT_ON_BOARDS)).toBeTruthy());
+    expect(
+      screen.queryByText("Couldn't get a new name. Check your connection and try again.")
+    ).toBeNull();
+    expect(mockPutMe).not.toHaveBeenCalled();
   });
 
   it("gets a new generated name", async () => {

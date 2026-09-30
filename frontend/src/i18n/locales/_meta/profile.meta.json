@@ -361,7 +361,16 @@
   },
   "boards.joining": {
     "component": "ProfileScreen (LeaderboardMembership)",
-    "description": "Shown on Profile after the player joined while the join hasn't reached the server yet (usually offline), so no name is known yet.",
+    "description": "Shown on Profile, while the device is offline, after the player joined and the join hasn't reached the server yet, so no name is known yet. (Online, boards.joiningOnline is shown instead.)",
+    "tone": "neutral",
+    "characterLimit": 90,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.joiningOnline": {
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Shown on Profile after the player joined while online and the join is still on its way to the server, so no name is known yet. Must not suggest the player is offline.",
     "tone": "neutral",
     "characterLimit": 90,
     "placeholders": [],
@@ -406,7 +415,7 @@
   },
   "boards.rerollError": {
     "component": "ProfileScreen (LeaderboardMembership)",
-    "description": "Error shown when a new generated name couldn't be fetched (usually offline).",
+    "description": "Error shown when a new generated name couldn't be fetched (usually offline). Not shown when the player turned out not to be on the leaderboards.",
     "tone": "apologetic, clear",
     "characterLimit": 86,
     "placeholders": [],

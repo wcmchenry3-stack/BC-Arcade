@@ -40,6 +40,7 @@
   "boards.notOnBoards": "Vous n'êtes dans aucun classement. Rejoignez-les pour apparaître sous un nom généré au hasard.",
   "boards.join": "Rejoindre les classements",
   "boards.joining": "Inscription en cours… Votre nom apparaîtra dès que vous serez de retour en ligne.",
+  "boards.joiningOnline": "Inscription en cours… Votre nom de classement apparaîtra dans un instant.",
   "boards.joinError": "Impossible de rejoindre les classements. Réessayez.",
   "boards.onBoardsAs": "Dans les classements sous « {{name}} ».",
   "boards.generatedHelper": "Tout le monde reçoit un nom généré, pour des classements amicaux.",

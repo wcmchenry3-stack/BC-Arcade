@@ -40,6 +40,7 @@
   "boards.notOnBoards": "어떤 리더보드에도 참여하지 않았어요. 참여하면 무작위로 만들어진 이름으로 표시돼요.",
   "boards.join": "리더보드 참여",
   "boards.joining": "참여 중… 다시 온라인이 되면 이름이 표시돼요.",
+  "boards.joiningOnline": "참여 중… 잠시 후 리더보드 이름이 표시돼요.",
   "boards.joinError": "리더보드에 참여하지 못했어요. 다시 시도해 주세요.",
   "boards.onBoardsAs": "랭킹에 “{{name}}”(으)로 표시됩니다.",
   "boards.generatedHelper": "모두 자동 생성된 이름을 사용해서 리더보드가 친근하게 유지돼요.",

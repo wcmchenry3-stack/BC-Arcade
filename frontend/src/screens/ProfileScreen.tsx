@@ -138,7 +138,8 @@ function deriveBentoTiles(
  * player off every board.
  *
  * States, in order: a leave still waiting to reach the server; a join still
- * waiting (no name yet); on the boards under a name; not on any board.
+ * waiting (no name yet; it can be cancelled with "Leave"); on the boards under
+ * a name; not on any board.
  */
 function LeaderboardMembership() {
   const { colors } = useTheme();
@@ -167,9 +168,11 @@ function LeaderboardMembership() {
   const handleReroll = useCallback(async () => {
     setError(null);
     setBusy("reroll");
-    const next = await rerollDisplayName();
+    const result = await rerollDisplayName();
     setBusy(null);
-    if (next == null) setError("reroll");
+    // "not_joined": the device now shows the not-on-boards state, which says
+    // it all; it isn't a connection problem.
+    if (result.status === "failed") setError("reroll");
   }, []);
 
   const handleLeave = useCallback(async () => {
@@ -215,13 +218,24 @@ function LeaderboardMembership() {
     );
   } else if (name == null && pending === "join") {
     body = (
-      <Text
-        accessibilityLiveRegion="polite"
-        testID="profile-joining"
-        style={[styles.presenceText, { color: colors.textMuted }]}
-      >
-        {t("boards.joining")}
-      </Text>
+      <>
+        <Text
+          accessibilityLiveRegion="polite"
+          testID="profile-joining"
+          style={[styles.presenceText, { color: colors.textMuted }]}
+        >
+          {t(isOnline ? "boards.joiningOnline" : "boards.joining")}
+        </Text>
+        {link(
+          t("boards.leave"),
+          "account-remove-outline",
+          () => {
+            setError(null);
+            setConfirmVisible(true);
+          },
+          "profile-cancel-join"
+        )}
+      </>
     );
   } else if (name != null) {
     body = (

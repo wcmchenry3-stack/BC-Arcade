@@ -40,6 +40,7 @@
   "boards.notOnBoards": "Você não está em nenhuma classificação. Participe para aparecer com um nome gerado aleatoriamente.",
   "boards.join": "Participar das classificações",
   "boards.joining": "Entrando… Seu nome aparecerá quando você voltar a ficar online.",
+  "boards.joiningOnline": "Entrando… Seu nome nos placares aparecerá em instantes.",
   "boards.joinError": "Não foi possível participar das classificações. Tente novamente.",
   "boards.onBoardsAs": "Nos rankings como “{{name}}”.",
   "boards.generatedHelper": "Todos recebem um nome gerado, para manter as classificações amigáveis.",
