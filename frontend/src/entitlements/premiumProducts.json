@@ -1,0 +1,10 @@
+{
+  "productIdPrefix": "com.buffingchi.games.premium.",
+  "products": [
+    { "gameSlug": "blackjack", "productId": "com.buffingchi.games.premium.blackjack" },
+    { "gameSlug": "cascade", "productId": "com.buffingchi.games.premium.cascade" },
+    { "gameSlug": "hearts", "productId": "com.buffingchi.games.premium.hearts" },
+    { "gameSlug": "mahjong", "productId": "com.buffingchi.games.premium.mahjong" },
+    { "gameSlug": "starswarm", "productId": "com.buffingchi.games.premium.starswarm" }
+  ]
+}
