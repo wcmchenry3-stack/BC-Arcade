@@ -1,7 +1,20 @@
 import type { ScoreLedger } from "./scoreLedger";
 
-/** #2484: Carrier — one per wave, top row, never dives, armored while its Boss escorts live. */
-export type EnemyTier = "Grunt" | "Elite" | "Boss" | "Carrier";
+/**
+ * Enemy tiers, lightest to heaviest: Grunt → Elite → Guardian → Carrier. #2843: the escort tier
+ * was called "Boss" before; it is "Guardian" everywhere now (boss *waves* keep their name).
+ * #2484: Carrier — one per wave, top row, armored while its Guardian escorts live.
+ */
+export type EnemyTier = "Grunt" | "Elite" | "Guardian" | "Carrier";
+
+/**
+ * #2843: the Carrier's aggression stage, each more aggressive than the last. Derived from the
+ * live roster (`carrierStage` in engine.ts):
+ * - protected: a Guardian escort lives, so the Carrier is armored;
+ * - exposed: the last Guardian is dead, so armor is down, but other enemies still fight;
+ * - finalStand: the Carrier is the only meaningful (non-fleeing) enemy left.
+ */
+export type CarrierStage = "protected" | "exposed" | "finalStand";
 
 /** Pickups. lightning/shield are 5 s buffs, buddy/bomb are instant (#980–#1035); salvage and hull
  * are #2488 in-run upgrades: salvage raises the gun level, hull adds plating. */
@@ -39,7 +52,8 @@ export type EnemyPhase =
   | "Diving" // following Bézier arc toward player (#977)
   | "Circling" // looping around a fixed center point
   | "Returning" // following Bézier path back to formation slot
-  | "Fleeing"; // #2489: grunt rout — Bézier path off the top edge; no shooting, diving or ramming
+  | "Fleeing" // #2489: grunt rout — Bézier path off the top edge; no shooting, diving or ramming
+  | "AttackRun"; // #2843: the exposed Carrier's heavy swoop toward the player lane and back
 
 /**
  * #2842: the wave lifecycle. SwoopIn is safe setup time (nothing fires, nothing takes damage);
@@ -113,12 +127,16 @@ export interface Enemy {
   readonly hitFlashTimer: number;
   /** Countdown ms for Wiggling phase; 0 otherwise (#975). */
   readonly wiggleTimer: number;
-  /** Shots remaining in the active Boss burst; 0 = start a new burst (#979). */
+  /** Shots remaining in the active Guardian burst; 0 = start a new burst (#979). */
   readonly burstShotsLeft: number;
-  /** #2485: Carrier sweep-beam state; "idle" for every other tier. */
+  /** #2485/#2843: Carrier beam charge state; "idle" for every other tier. */
   readonly beamPhase: BeamPhase;
   /** #2485: ms left in the current beam phase (idle = until the next charge). */
   readonly beamTimer: number;
+  /** #2843: Carrier attack-run telegraph state; "idle" for every other tier. */
+  readonly runPhase: AttackRunPhase;
+  /** #2843: ms left in the current run phase (idle = until the next brace). */
+  readonly runTimer: number;
   /** #2487: an in-progress formation sidestep away from an asteroid; null when not dodging. */
   readonly dodge: { readonly dir: 1 | -1; readonly t: number; readonly dur: number } | null;
   /** #2487: asteroids this ship has already rolled against — one roll per rock per ship. */
@@ -153,7 +171,7 @@ export interface RunStats {
   readonly reinforced: number;
   /** Ordinary shots spent on the escorted Carrier's force field. */
   readonly armorDeflects: number;
-  /** Carrier beam sweeps that cost hull plating or a life (a shield-absorbed sweep isn't one). */
+  /** Carrier beams that cost hull plating or a life (a shield-absorbed beam isn't one). */
   readonly beamHits: number;
   /** #2489: fleeing grunts the player shot down (or bombed). */
   readonly routCaught: number;
@@ -167,11 +185,36 @@ export interface RunStats {
   readonly rocksBrokenByEnemy: number;
 }
 
-/** #2485: the Carrier's sweep beam — telegraph, then a vertical beam it drags across the lane. */
-export type BeamPhase = "idle" | "charge" | "fire";
+/**
+ * #2485/#2843: the Carrier's beam weapon. It charges on the Carrier (the telegraph), then the
+ * release spawns an independent `CarrierBeam`. Killing the Carrier mid-charge cancels only the
+ * charge; a released beam flies on regardless of what happens to the ship that fired it.
+ */
+export type BeamPhase = "idle" | "charge";
+
+/**
+ * #2843: a released Carrier beam — a fast, heavy bolt travelling straight down its column. An
+ * independent battlefield entity: it persists after the Carrier dies, and leaves play only by
+ * reaching the player (hit or shield-absorbed), leaving the screen, a Smart Bomb, or the
+ * wave-boundary reset (`clearTransientCombat`).
+ */
+export interface CarrierBeam {
+  readonly id: number;
+  /** Column centre, px. */
+  readonly x: number;
+  /** Leading (bottom) edge, px; the bolt trails `length` px above it. */
+  readonly y: number;
+  /** Downward speed, px/ms. */
+  readonly vy: number;
+  readonly length: number;
+  readonly halfWidth: number;
+}
+
+/** #2843: the Carrier's attack-run telegraph. The run itself is the "AttackRun" enemy phase. */
+export type AttackRunPhase = "idle" | "brace";
 
 /** #2485: Carrier moments the screen reacts to (sound, haptics, screen-reader announcements). */
-export type CarrierEvent = "beamCharge" | "beamFire" | "reinforce";
+export type CarrierEvent = "beamCharge" | "beamFire" | "reinforce" | "attackRun" | "finalStand";
 
 export interface Bullet {
   readonly id: number;
@@ -294,10 +337,17 @@ export interface StarSwarmState {
   readonly nextAsteroidTimer: number;
   /** Dev: suppress timed asteroid spawns (dev-panel throws still work). */
   readonly asteroidsDisabled: boolean;
-  /** #2485: ms until the Carrier's next reinforcement launch (Playing phase only). */
+  /** #2485/#2843: ms until the Carrier's next reinforcement launch (randomized, Playing only). */
   readonly reinforceTimer: number;
   /** #2485: grunts launched by the Carrier this wave — capped at half the wave's grunt slots. */
   readonly reinforcedThisWave: number;
+  /** #2843: released Carrier beams in flight (see CarrierBeam). */
+  readonly carrierBeams: readonly CarrierBeam[];
+  /**
+   * #2843: the Carrier stage the engine last acted on — `carrierStage(state)` is the live
+   * value; the engine compares the two to react to an escalation. null with no Carrier alive.
+   */
+  readonly carrierStage: CarrierStage | null;
   /** #2487: asteroid-response counters per tier (see TierStats). */
   readonly tierStats: Readonly<Record<EnemyTier, TierStats>>;
   /** #2491: whole-run counters (see RunStats). */
@@ -322,8 +372,8 @@ export interface StarSwarmState {
   readonly bonusLivesAwarded: number;
   /** ms remaining for the slow-motion window after a bonus life is awarded (#1078); 0 when inactive. */
   readonly bonusLifeSlowMoTimer: number;
-  /** Non-Boss enemy count at wave start; used for Boss dive eligibility (#978). */
-  readonly startingNonBossCount: number;
+  /** Non-Guardian enemy count at wave start; used for Guardian dive eligibility (#978). */
+  readonly startingNonLeaderCount: number;
   /** Enemy kills since last power-up drop (Playing phase only). */
   readonly killsSinceLastDrop: number;
   /** Kill count target to trigger the next drop (includes ±2 jitter). */
@@ -337,15 +387,15 @@ export interface StarSwarmState {
     readonly type: PowerUpType;
     readonly shieldAbsorbed: number;
   } | null;
-  /** True once ≤35% non-boss enemies remain; latches true and never resets mid-wave. */
-  readonly bossThresholdCrossed: boolean;
-  /** True once ≤3 enemies remain (Stage 3); enables boss deep dive + body collision. */
-  readonly bossDeepThresholdCrossed: boolean;
+  /** True once ≤35% non-leader enemies remain; latches true and never resets mid-wave. */
+  readonly guardianThresholdCrossed: boolean;
+  /** True once ≤3 enemies remain (Stage 3); enables Guardian deep dive + body collision. */
+  readonly guardianDeepThresholdCrossed: boolean;
   /** When true, ≤3 surviving enemies immediately break formation and go fully aggressive. */
   readonly stragglerEnabled: boolean;
   /** When true (dev panel), straggler aggression is suppressed regardless of enemy count (#1039). */
   readonly pauseStraggler: boolean;
-  /** #2489: latched once the wave's grunts have routed (no Elite, Boss or Carrier left alive). */
+  /** #2489: latched once the wave's grunts have routed (no Elite, Guardian or Carrier left alive). */
   readonly routed: boolean;
   /** Dev (#2489): grunts never rout — the old hunt-the-last-three ending, for comparison. */
   readonly routDisabled: boolean;

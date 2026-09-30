@@ -152,7 +152,7 @@ describe("award paths (#2837)", () => {
     let s: StarSwarmState = {
       ...s0,
       enemies: s0.enemies.map((e) =>
-        e.tier === "Boss"
+        e.tier === "Guardian"
           ? { ...e, isAlive: false, hp: 0 }
           : e.tier === "Carrier"
             ? { ...e, hp: 1 }
@@ -302,7 +302,7 @@ describe("reconciliation (#2837)", () => {
 });
 
 describe("bounded result block (#2837)", () => {
-  const TIERS: EnemyTier[] = ["Grunt", "Elite", "Boss", "Carrier"];
+  const TIERS: EnemyTier[] = ["Grunt", "Elite", "Guardian", "Carrier"];
   const MODS = [undefined, "dive", "rout", "bomb", "ram"] as const;
 
   /** Every source on every wave, with big numbers: a worst case no real run reaches. */
@@ -356,7 +356,7 @@ describe("bounded result block (#2837)", () => {
         Grunt: 4000,
         "Grunt:dive": 800,
         Elite: 1600,
-        Boss: 1600,
+        Guardian: 1600,
         Carrier: 1000,
         clear: w * 500,
       });

@@ -822,7 +822,7 @@ pre-launch API (#2567, as Hearts does), so store builds never show it.
    _Flak off_ removes the enemy's other defence so only dodging is in play. _Enemy missiles off_
    silences flak too (it is an enemy bullet), so leave it on when measuring flak.
 5. _Kill escorts_ destroys every non-Carrier ship at once, which is the fastest way to reach the
-   Carrier's exposed state, its lone twin lasers and the plating drop.
+   Carrier's final stand (#2843: fast twin lasers, beams and attack runs) and the plating drop.
 6. The panel refreshes 4× a second from a timer; the game keeps running underneath, so pause
    (header button) when you want a still reading.
 

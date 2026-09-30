@@ -459,7 +459,7 @@ def test_a_board_for_a_tier_the_client_cannot_send_is_400(tier: str) -> None:
 # #2837: the per-wave score breakdown
 # ---------------------------------------------------------------------------
 
-_TIER_IDS = ("Grunt", "Elite", "Boss", "Carrier")
+_TIER_IDS = ("Grunt", "Elite", "Guardian", "Carrier")  # the tier ids since #2843 (was "Boss")
 _MODS = ("", ":dive", ":rout", ":bomb", ":ram")
 
 
@@ -536,7 +536,8 @@ def test_an_older_builds_result_has_no_breakdown() -> None:
 
 
 def test_breakdown_sources_are_an_open_set() -> None:
-    # A renamed tier (Boss -> Guardian, #2776) or a new modifier is kept, not rejected.
+    # A renamed tier (Boss -> Guardian, #2843: older builds still send "Boss") or a new modifier
+    # is kept, not rejected.
     wave = {"wave": 1, "start": 0, "end": 800, "total": 800}
     wave["pts"] = {"Guardian": 400, "Guardian:bomb": 400}
     bd = {"v": 1, "waves": [wave], "extra": 1}

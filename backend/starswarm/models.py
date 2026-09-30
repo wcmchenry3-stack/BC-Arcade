@@ -82,8 +82,9 @@ MAX_BREAKDOWN_WAVES = 64
 MAX_BREAKDOWN_SOURCES = 48
 
 SourceKey = Annotated[str, StringConstraints(min_length=1, max_length=32)]
-"""A point source: an enemy tier id (``Grunt``, ``Elite``, ``Boss``,
-``Carrier``, or whatever the engine calls a tier next), optionally with a
+"""A point source: an enemy tier id (``Grunt``, ``Elite``, ``Guardian`` —
+``Boss`` from builds before #2843 — ``Carrier``, or whatever the engine
+calls a tier next), optionally with a
 ``:dive`` / ``:rout`` / ``:bomb`` / ``:ram`` modifier, or ``clear`` for the
 wave-clear bonus. An open set: an unknown source is kept, not rejected."""
 

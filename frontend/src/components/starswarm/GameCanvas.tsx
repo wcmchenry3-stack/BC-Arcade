@@ -26,6 +26,8 @@ import {
   killEscorts,
   carrierBeamJustStarted,
   carrierBeamJustFired,
+  carrierAttackRunJustStarted,
+  carrierFinalStandJustStarted,
   reinforcementsJustLaunched,
   upgradeEvents,
   waveJustCleared,
@@ -160,9 +162,9 @@ interface Props {
   onRout?: (count: number) => void;
   onBonusLife?: () => void;
   onPowerUpCollect?: (type: PowerUpType) => void;
-  /** #2484: called once when the last Boss escort dies and the Carrier's armor drops. */
+  /** #2484: called once when the last Guardian dies and the Carrier's armor drops. */
   onCarrierExposed?: () => void;
-  /** #2485: beam telegraph, beam firing, reinforcement launch. */
+  /** #2485/#2843: beam charge and release, reinforcements, attack run, final stand. */
   onCarrierEvent?: (kind: CarrierEvent) => void;
   /** #2488: a gun or hull ladder change (pickup collected, plating hit, level lost). */
   onUpgrade?: (ev: UpgradeEvent) => void;
@@ -618,6 +620,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               if (carrierBeamJustFired(prev, applied)) onCarrierEventRef.current?.("beamFire");
               if (reinforcementsJustLaunched(prev, applied))
                 onCarrierEventRef.current?.("reinforce");
+              // #2843: attack-run telegraph and a final stand after the armor was already down
+              if (carrierAttackRunJustStarted(prev, applied))
+                onCarrierEventRef.current?.("attackRun");
+              if (carrierFinalStandJustStarted(prev, applied))
+                onCarrierEventRef.current?.("finalStand");
               for (const ev of upgradeEvents(prev, applied)) onUpgradeRef.current?.(ev); // #2488
               // #2847: the newest cue wins if two land on one tick
               const cues = pickupCues(prev, applied);

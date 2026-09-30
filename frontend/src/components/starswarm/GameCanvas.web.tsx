@@ -23,11 +23,11 @@ import {
   asteroidOutline,
   throwAsteroid,
   killEscorts,
-  carrierBeam,
   carrierBeamJustStarted,
   carrierBeamJustFired,
+  carrierAttackRunJustStarted,
+  carrierFinalStandJustStarted,
   reinforcementsJustLaunched,
-  BEAM_HALF_WIDTH,
   upgradeEvents,
   waveJustCleared,
   isAutopilot,
@@ -40,6 +40,7 @@ import {
   drawPickupOps,
 } from "../../game/starswarm/render/pickups";
 import type { UpgradePickupType } from "../../game/starswarm/render/pickups";
+import { carrierOps } from "../../game/starswarm/render/carrier";
 import {
   pickupCues,
   pickupCueFrame,
@@ -61,7 +62,7 @@ import playerShipSrc from "../../../assets/starswarm/player-ship.webp";
 import buddyShipSrc from "../../../assets/starswarm/buddy-ship.webp";
 import enemyGruntSrc from "../../../assets/starswarm/enemy-grunt.webp";
 import enemyEliteSrc from "../../../assets/starswarm/enemy-elite.webp";
-import enemyBossSrc from "../../../assets/starswarm/enemy-boss.webp";
+import enemyGuardianSrc from "../../../assets/starswarm/enemy-boss.webp";
 import enemyCarrierSrc from "../../../assets/starswarm/enemy-carrier.webp";
 import bulletPlayerSrc from "../../../assets/starswarm/bullet-player.webp";
 import bulletEnemySrc from "../../../assets/starswarm/bullet-enemy.webp";
@@ -126,7 +127,7 @@ const C = {
   bulletPlayer: "#00ffcc",
   enemyGrunt: "#8888ff",
   enemyElite: "#ff88ff",
-  enemyBoss: "#ffff44",
+  enemyGuardian: "#ffff44",
   enemyCarrier: "#b06cff",
   asteroid: "#8b6a47",
   asteroidFlash: "#e8d3b8",
@@ -176,7 +177,7 @@ interface Images {
   buddyShip: HTMLImageElement | null;
   enemyGrunt: HTMLImageElement | null;
   enemyElite: HTMLImageElement | null;
-  enemyBoss: HTMLImageElement | null;
+  enemyGuardian: HTMLImageElement | null;
   enemyCarrier: HTMLImageElement | null;
   bulletPlayer: HTMLImageElement | null;
   bulletEnemy: HTMLImageElement | null;
@@ -234,9 +235,9 @@ interface Props {
   /** #2489: called once when the wave's grunts rout, with how many are fleeing. */
   onRout?: (count: number) => void;
   onPowerUpCollect?: (type: PowerUpType) => void;
-  /** #2484: called once when the last Boss escort dies and the Carrier's armor drops. */
+  /** #2484: called once when the last Guardian dies and the Carrier's armor drops. */
   onCarrierExposed?: () => void;
-  /** #2485: beam telegraph, beam firing, reinforcement launch. */
+  /** #2485/#2843: beam charge and release, reinforcements, attack run, final stand. */
   onCarrierEvent?: (kind: CarrierEvent) => void;
   /** #2488: a gun or hull ladder change (pickup collected, plating hit, level lost). */
   onUpgrade?: (ev: UpgradeEvent) => void;
@@ -340,7 +341,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       buddyShip: null,
       enemyGrunt: null,
       enemyElite: null,
-      enemyBoss: null,
+      enemyGuardian: null,
       enemyCarrier: null,
       bulletPlayer: null,
       bulletEnemy: null,
@@ -433,7 +434,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           loadImg(buddyShipSrc as number),
           loadImg(enemyGruntSrc as number),
           loadImg(enemyEliteSrc as number),
-          loadImg(enemyBossSrc as number),
+          loadImg(enemyGuardianSrc as number),
           loadImg(enemyCarrierSrc as number),
           loadImg(bulletPlayerSrc as number),
           loadImg(bulletEnemySrc as number),
@@ -450,7 +451,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           buddyShip,
           enemyGrunt,
           enemyElite,
-          enemyBoss,
+          enemyGuardian,
           enemyCarrier,
           bulletPlayer,
           bulletEnemy,
@@ -466,7 +467,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           buddyShip: buddyShip ?? null,
           enemyGrunt: enemyGrunt ?? null,
           enemyElite: enemyElite ?? null,
-          enemyBoss: enemyBoss ?? null,
+          enemyGuardian: enemyGuardian ?? null,
           enemyCarrier: enemyCarrier ?? null,
           bulletPlayer: bulletPlayer ?? null,
           bulletEnemy: bulletEnemy ?? null,
@@ -612,7 +613,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               ? imgs.enemyElite
               : enemy.tier === "Carrier"
                 ? imgs.enemyCarrier
-                : imgs.enemyBoss;
+                : imgs.enemyGuardian;
         if (img) {
           ctx.drawImage(
             img,
@@ -629,7 +630,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 ? C.enemyElite
                 : enemy.tier === "Carrier"
                   ? C.enemyCarrier
-                  : C.enemyBoss;
+                  : C.enemyGuardian;
           ctx.fillRect(
             enemy.x - enemy.width / 2,
             enemy.y - enemy.height / 2,
@@ -661,7 +662,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           ctx.stroke();
         }
 
-        // HP pips — Elite (2), Boss (4), Carrier (8); Grunt always has 1 HP so pips are omitted
+        // HP pips — Elite (2), Guardian (4), Carrier (8); Grunt always has 1 HP so pips are omitted
         if (enemy.tier !== "Grunt") {
           const totalPips = enemy.tier === "Elite" ? 2 : enemy.tier === "Carrier" ? 8 : 4;
           const pipW = 4;
@@ -677,23 +678,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         }
       }
 
-      // #2485 Carrier sweep beam — telegraph, then the beam
-      const beam = carrierBeam(state);
-      if (beam) {
-        if (beam.phase === "charge") {
-          ctx.fillStyle = `rgba(176,108,255,${(0.1 + beam.progress * 0.35).toFixed(3)})`;
-          ctx.fillRect(beam.x - 2, beam.y, 4, height);
-          ctx.beginPath();
-          ctx.arc(beam.x, beam.y + 6, 4 + beam.progress * 8, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(176,108,255,${(0.4 + beam.progress * 0.5).toFixed(3)})`;
-          ctx.fill();
-        } else {
-          ctx.fillStyle = "rgba(176,108,255,0.35)";
-          ctx.fillRect(beam.x - BEAM_HALF_WIDTH - 4, beam.y, BEAM_HALF_WIDTH * 2 + 8, height);
-          ctx.fillStyle = "rgba(230,205,255,0.9)";
-          ctx.fillRect(beam.x - BEAM_HALF_WIDTH * 0.5, beam.y, BEAM_HALF_WIDTH, height);
-        }
-      }
+      // #2485/#2843 Carrier telegraphs and released beams — the native geometry, replayed
+      drawPickupOps(ctx, carrierOps(state));
 
       // Player (blink during invincibility)
       const blink =
@@ -1095,6 +1081,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               if (carrierBeamJustFired(prev, applied)) onCarrierEventRef.current?.("beamFire");
               if (reinforcementsJustLaunched(prev, applied))
                 onCarrierEventRef.current?.("reinforce");
+              // #2843: attack-run telegraph and a final stand after the armor was already down
+              if (carrierAttackRunJustStarted(prev, applied))
+                onCarrierEventRef.current?.("attackRun");
+              if (carrierFinalStandJustStarted(prev, applied))
+                onCarrierEventRef.current?.("finalStand");
               for (const ev of upgradeEvents(prev, applied)) onUpgradeRef.current?.(ev); // #2488
               // #2847: the newest cue wins if two land on one tick
               const cues = pickupCues(prev, applied);

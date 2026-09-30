@@ -9,10 +9,13 @@ import {
   HIT_FLASH_DURATION,
   ASTEROID_HIT_FLASH_MS,
   BEAM_CHARGE_MS,
-  BEAM_FIRE_MS,
   BEAM_HALF_WIDTH,
+  BEAM_LENGTH,
+  BEAM_SPEED,
+  ATTACK_RUN_BRACE_MS,
   BULLET_C_W,
 } from "../engine";
+import { carrierOps, carrierBeamOps } from "../render/carrier";
 import { initStarfield } from "../starfield";
 import {
   buildFrame,
@@ -25,14 +28,14 @@ import {
   type DrawOp,
   type LoadedSprites,
 } from "../render/frame";
-import type { Bullet, Enemy, PowerUpType, StarSwarmState } from "../types";
+import type { Bullet, CarrierBeam, Enemy, PowerUpType, StarSwarmState } from "../types";
 
 const ALL: LoadedSprites = {
   playerShip: true,
   buddyShip: true,
   enemyGrunt: true,
   enemyElite: true,
-  enemyBoss: true,
+  enemyGuardian: true,
   enemyCarrier: true,
   bulletPlayer: true,
   puShield: true,
@@ -50,7 +53,7 @@ const NONE: LoadedSprites = {
   buddyShip: false,
   enemyGrunt: false,
   enemyElite: false,
-  enemyBoss: false,
+  enemyGuardian: false,
   enemyCarrier: false,
   bulletPlayer: false,
   puShield: false,
@@ -116,6 +119,17 @@ function bullet(over: Partial<Bullet> = {}): Bullet {
     ...over,
   };
 }
+function releasedBeam(over: Partial<CarrierBeam> = {}): CarrierBeam {
+  return {
+    id: 1,
+    x: 180,
+    y: 400,
+    vy: BEAM_SPEED,
+    length: BEAM_LENGTH,
+    halfWidth: BEAM_HALF_WIDTH,
+    ...over,
+  };
+}
 const byKey = (ops: DrawOp[], key: string) => ops.find((o) => o.key === key);
 const keys = (ops: DrawOp[]) => ops.map((o) => o.key);
 
@@ -126,11 +140,12 @@ describe("buildFrame — scene order and background", () => {
     const s = blank({
       enemyBullets: [bullet({ id: 1 })],
       playerBullets: [bullet({ id: 2, owner: "player" })],
-      // escorted Carrier mid-flash and firing its beam
+      // escorted Carrier mid-flash and charging its beam, with an earlier beam still in flight
       enemies: [
-        enemyOf("Carrier", { id: 3, hitFlashTimer: 100, beamPhase: "fire", beamTimer: 500 }),
-        enemyOf("Boss", { id: 11 }),
+        enemyOf("Carrier", { id: 3, hitFlashTimer: 100, beamPhase: "charge", beamTimer: 300 }),
+        enemyOf("Guardian", { id: 11 }),
       ],
+      carrierBeams: [releasedBeam({ id: 8 })],
       activePowerUp: { type: "shield", remainingMs: 5000, shieldAbsorbed: 0 },
       player: { ...blank().player, hullFlashTimer: 100 },
       buddyShips: [
@@ -180,8 +195,11 @@ describe("buildFrame — scene order and background", () => {
       "en-3-flash",
       "en-3-flash-ring",
       "en-11",
-      "beam-glow",
-      "beam-core",
+      "beam-telegraph",
+      "beam-charge",
+      "cbeam-8-glow",
+      "cbeam-8-core",
+      "cbeam-8-head",
       "player",
       "shield",
       "shield-ring",
@@ -206,7 +224,7 @@ describe("buildFrame — scene order and background", () => {
 
   it("every key is unique within a frame", () => {
     const s = blank({
-      enemies: [enemyOf("Carrier", { id: 7, hitFlashTimer: 100 }), enemyOf("Boss", { id: 8 })],
+      enemies: [enemyOf("Carrier", { id: 7, hitFlashTimer: 100 }), enemyOf("Guardian", { id: 8 })],
       powerUps: [
         { id: 9, type: "salvage", x: 50, y: 50, vy: 0, width: 24, height: 24, despawnTimer: 1 },
       ],
@@ -288,14 +306,14 @@ describe("buildFrame — enemies", () => {
       enemies: [
         enemyOf("Grunt", { id: 1 }),
         enemyOf("Elite", { id: 2 }),
-        enemyOf("Boss", { id: 3 }),
+        enemyOf("Guardian", { id: 3 }),
         enemyOf("Carrier", { id: 4 }),
       ],
     });
     const ops = buildFrame(s, NO_STARS, OPTS);
     expect(byKey(ops, "en-1")).toMatchObject({ k: "image", sprite: "enemyGrunt" });
     expect(byKey(ops, "en-2")).toMatchObject({ k: "image", sprite: "enemyElite" });
-    expect(byKey(ops, "en-3")).toMatchObject({ k: "image", sprite: "enemyBoss" });
+    expect(byKey(ops, "en-3")).toMatchObject({ k: "image", sprite: "enemyGuardian" });
     expect(byKey(ops, "en-4")).toMatchObject({ k: "image", sprite: "enemyCarrier" });
     const bare = buildFrame(s, NO_STARS, { ...OPTS, loaded: NONE });
     expect(byKey(bare, "en-1")).toMatchObject({ k: "rect", color: "#8888ff" });
@@ -304,9 +322,9 @@ describe("buildFrame — enemies", () => {
     expect(byKey(bare, "en-4")).toMatchObject({ k: "rect", color: "#b06cff" });
   });
 
-  it("the Carrier wears its force-field ring only while a Boss escort lives", () => {
+  it("the Carrier wears its force-field ring only while a Guardian escort lives", () => {
     const carrier = enemyOf("Carrier", { id: 1 });
-    const escorted = blank({ enemies: [carrier, enemyOf("Boss", { id: 2 })] });
+    const escorted = blank({ enemies: [carrier, enemyOf("Guardian", { id: 2 })] });
     const ring = byKey(buildFrame(escorted, NO_STARS, OPTS), "en-1-ring");
     expect(ring).toMatchObject({
       k: "circle",
@@ -318,7 +336,7 @@ describe("buildFrame — enemies", () => {
     });
     const exposed = blank({ enemies: [carrier] });
     expect(byKey(buildFrame(exposed, NO_STARS, OPTS), "en-1-ring")).toBeUndefined();
-    // a Boss never wears one
+    // a Guardian never wears one
     expect(byKey(buildFrame(escorted, NO_STARS, OPTS), "en-2-ring")).toBeUndefined();
   });
 
@@ -354,13 +372,13 @@ describe("buildFrame — enemies", () => {
   });
 });
 
-describe("buildFrame — Carrier beam", () => {
-  const withBeam = (beamPhase: "idle" | "charge" | "fire", beamTimer: number) =>
+describe("buildFrame — Carrier beam (#2485, #2843)", () => {
+  const withBeam = (beamPhase: "idle" | "charge", beamTimer: number) =>
     blank({ enemies: [enemyOf("Carrier", { id: 1, beamPhase, beamTimer })] });
 
-  it("no beam while idle", () => {
+  it("no beam while idle and nothing released", () => {
     const ops = buildFrame(withBeam("idle", 5000), NO_STARS, OPTS);
-    expect(ops.some((o) => o.key.startsWith("beam-"))).toBe(false);
+    expect(ops.some((o) => o.key.startsWith("beam-") || o.key.startsWith("cbeam-"))).toBe(false);
   });
 
   it("charge: a thin telegraph line and a growing orb, brightening with progress", () => {
@@ -382,25 +400,65 @@ describe("buildFrame — Carrier beam", () => {
       r: 8,
       color: "rgba(176,108,255,0.650)",
     });
-    expect(byKey(ops, "beam-glow")).toBeUndefined();
   });
 
-  it("fire: a wide glow and a bright core the full canvas height", () => {
-    const s = withBeam("fire", BEAM_FIRE_MS);
-    const c = s.enemies[0]!;
-    const ops = buildFrame(s, NO_STARS, OPTS);
-    expect(byKey(ops, "beam-glow")).toMatchObject({
-      x: c.x - BEAM_HALF_WIDTH - 4,
+  it("a released beam is a traveling bolt: glow, core and head over its own length, not full height", () => {
+    const b = releasedBeam({ id: 9, x: 120, y: 300 });
+    const ops = buildFrame(blank({ carrierBeams: [b] }), NO_STARS, OPTS);
+    expect(byKey(ops, "cbeam-9-glow")).toEqual({
+      k: "rect",
+      key: "cbeam-9-glow",
+      x: 120 - BEAM_HALF_WIDTH - 4,
+      y: 300 - BEAM_LENGTH,
       w: BEAM_HALF_WIDTH * 2 + 8,
-      h: s.canvasH,
+      h: BEAM_LENGTH,
       color: "rgba(176,108,255,0.35)",
     });
-    expect(byKey(ops, "beam-core")).toMatchObject({
-      x: c.x - BEAM_HALF_WIDTH * 0.5,
+    expect(byKey(ops, "cbeam-9-core")).toMatchObject({
+      x: 120 - BEAM_HALF_WIDTH * 0.5,
       w: BEAM_HALF_WIDTH,
-      color: "rgba(230,205,255,0.9)",
+      h: BEAM_LENGTH,
     });
+    expect(byKey(ops, "cbeam-9-head")).toMatchObject({ k: "circle", cx: 120, cy: 300 });
+    expect(BEAM_LENGTH).toBeLessThan(CANVAS_H / 2);
+  });
+
+  it("a released beam still draws with no Carrier alive — it is its own entity", () => {
+    const ops = buildFrame(blank({ enemies: [], carrierBeams: [releasedBeam()] }), NO_STARS, OPTS);
+    expect(byKey(ops, "cbeam-1-core")).toBeDefined();
     expect(byKey(ops, "beam-telegraph")).toBeUndefined();
+  });
+
+  it("attack-run brace: an amber ring tightening around the Carrier and a chevron below it", () => {
+    const at = (runTimer: number) =>
+      blank({ enemies: [enemyOf("Carrier", { id: 1, runPhase: "brace", runTimer })] });
+    const early = buildFrame(at(ATTACK_RUN_BRACE_MS), NO_STARS, OPTS);
+    const late = buildFrame(at(0), NO_STARS, OPTS);
+    const ring0 = byKey(early, "carrier-brace-ring") as Extract<DrawOp, { k: "circle" }>;
+    const ring1 = byKey(late, "carrier-brace-ring") as Extract<DrawOp, { k: "circle" }>;
+    expect(ring0.color).toContain("255,170,40");
+    expect(ring1.r).toBeLessThan(ring0.r);
+    expect(byKey(late, "carrier-brace-chevron")).toMatchObject({ k: "poly" });
+    // not bracing: no telegraph
+    const idle = buildFrame(withBeam("idle", 5000), NO_STARS, OPTS);
+    expect(byKey(idle, "carrier-brace-ring")).toBeUndefined();
+  });
+
+  it("native and web share one geometry: buildFrame embeds carrierOps verbatim", () => {
+    const s = blank({
+      enemies: [
+        enemyOf("Carrier", { id: 1, beamPhase: "charge", beamTimer: 200, runPhase: "idle" }),
+      ],
+      carrierBeams: [releasedBeam({ id: 4 }), releasedBeam({ id: 5, y: 520 })],
+    });
+    const shared = carrierOps(s);
+    const ops = buildFrame(s, NO_STARS, OPTS);
+    const start = ops.findIndex((o) => o.key === shared[0]!.key);
+    expect(ops.slice(start, start + shared.length)).toEqual(shared);
+    expect(shared.filter((o) => o.key.startsWith("cbeam-"))).toEqual([
+      ...carrierBeamOps(s.carrierBeams[0]!),
+      ...carrierBeamOps(s.carrierBeams[1]!),
+    ]);
   });
 });
 

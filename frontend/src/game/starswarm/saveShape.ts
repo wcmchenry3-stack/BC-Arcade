@@ -13,6 +13,7 @@ import type {
   Asteroid,
   BuddyShip,
   Bullet,
+  CarrierBeam,
   CubicBezier,
   Enemy,
   Explosion,
@@ -74,6 +75,8 @@ const ENEMY: KeySpec<Enemy> = {
   burstShotsLeft: "required",
   beamPhase: "required",
   beamTimer: "required",
+  runPhase: "required",
+  runTimer: "required",
   dodge: "required",
   rolledAsteroidIds: "required",
   flakCooldown: "required",
@@ -92,6 +95,16 @@ const BULLET: KeySpec<Bullet> = {
   piercing: "optional",
   hitEnemyIds: "optional",
   flak: "optional",
+};
+
+// #2843
+const CARRIER_BEAM: KeySpec<CarrierBeam> = {
+  id: "required",
+  x: "required",
+  y: "required",
+  vy: "required",
+  length: "required",
+  halfWidth: "required",
 };
 
 const PLAYER: KeySpec<Player> = {
@@ -211,6 +224,8 @@ const STATE: KeySpec<StarSwarmState> = {
   asteroidsDisabled: "required",
   reinforceTimer: "required",
   reinforcedThisWave: "required",
+  carrierBeams: "required",
+  carrierStage: "required",
   tierStats: "required",
   runStats: "required",
   dodgeDisabled: "required",
@@ -224,12 +239,12 @@ const STATE: KeySpec<StarSwarmState> = {
   formationSwayDir: "required",
   bonusLivesAwarded: "required",
   bonusLifeSlowMoTimer: "required",
-  startingNonBossCount: "required",
+  startingNonLeaderCount: "required",
   killsSinceLastDrop: "required",
   dropJitterTarget: "required",
   activePowerUp: "required",
-  bossThresholdCrossed: "required",
-  bossDeepThresholdCrossed: "required",
+  guardianThresholdCrossed: "required",
+  guardianDeepThresholdCrossed: "required",
   stragglerEnabled: "required",
   pauseStraggler: "required",
   routed: "required",
@@ -247,6 +262,7 @@ const SPECS = {
   PLAYER,
   ENEMY,
   BULLET,
+  CARRIER_BEAM,
   EXPLOSION,
   POWER_UP,
   BUDDY_SHIP,
@@ -310,6 +326,7 @@ export function fitsSaveShape(v: unknown): v is StarSwarmState {
     allFit(v.enemies, fitsEnemy) &&
     allFit(v.playerBullets, (b) => fits(b, BULLET)) &&
     allFit(v.enemyBullets, (b) => fits(b, BULLET)) &&
+    allFit(v.carrierBeams, (b) => fits(b, CARRIER_BEAM)) &&
     allFit(v.explosions, (e) => fits(e, EXPLOSION)) &&
     allFit(v.powerUps, (p) => fits(p, POWER_UP)) &&
     allFit(v.buddyShips, (b) => fits(b, BUDDY_SHIP) && fitsBezier(b.path)) &&
