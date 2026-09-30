@@ -14,7 +14,11 @@ The store-purchase schema of docs/IAP.md §8.1:
 * ``purchase_events`` — audit trail and webhook idempotency (``dedupe_key``).
 * ``game_entitlements`` gains ``purchase_id``, ``last_verified_at`` and
   ``source`` (default ``'legacy'``, so every existing row stays a legacy row
-  that the purchase recompute never touches).
+  that the purchase recompute never touches). Its ``purchase_id`` foreign key
+  is ``ON DELETE SET NULL``: deleting one purchase must not drop access that
+  another owned purchase still justifies, so the recompute decides.
+* ``purchases.state_changed_at`` orders store state: a transition older than
+  it is ignored (out-of-order webhooks, stale client re-posts).
 
 Identity is still the anonymous ``X-Session-ID``; restoring a purchase to a new
 session goes through verified store evidence and the capped link rule
@@ -57,6 +61,7 @@ def upgrade() -> None:
         sa.Column("account_token", sa.Text(), nullable=True),
         sa.Column("purchased_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("verified_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("state_changed_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("acknowledged_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("revocation_reason", sa.Text(), nullable=True),
@@ -144,7 +149,7 @@ def upgrade() -> None:
             "purchases",
             ["purchase_id"],
             ["id"],
-            ondelete="CASCADE",
+            ondelete="SET NULL",
         )
         batch.create_check_constraint(
             "ck_game_entitlements_source",
@@ -155,7 +160,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Access derived from a purchase must not outlive the purchase tables.
-    op.execute(sa.text("DELETE FROM game_entitlements WHERE purchase_id IS NOT NULL"))
+    op.execute(sa.text("DELETE FROM game_entitlements WHERE source <> 'legacy'"))
     with op.batch_alter_table("game_entitlements") as batch:
         batch.drop_index("game_entitlements_purchase_id_idx")
         batch.drop_constraint("ck_game_entitlements_source", type_="check")

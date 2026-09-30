@@ -169,8 +169,10 @@ class GameEntitlement(Base):
     For purchased games these rows are *derived* (docs/IAP.md §8.1): a
     ``(session_id, game_slug)`` row exists exactly when one of the session's
     ``purchase_links`` joins an ``owned`` purchase of that game, and
-    ``purchase_id`` points at one such purchase. ``purchases/service.py``
-    keeps it in step in the same transaction as every link or state change.
+    ``purchase_id`` points at one such purchase (set NULL if that purchase is
+    deleted; the next recompute re-points or removes the row).
+    ``purchases/service.py`` keeps it in step in the same transaction as every
+    link or state change.
     Rows with ``source = 'legacy'`` (no ``purchase_id``) predate purchases and
     are never touched by that recompute.
     """
@@ -194,7 +196,7 @@ class GameEntitlement(Base):
     purchase_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid,
         ForeignKey(
-            "purchases.id", ondelete="CASCADE", name="fk_game_entitlements_purchase_id_purchases"
+            "purchases.id", ondelete="SET NULL", name="fk_game_entitlements_purchase_id_purchases"
         ),
         nullable=True,
     )
@@ -250,6 +252,10 @@ class Purchase(Base):
     account_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     purchased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Store time of the latest applied state transition (Apple signedDate, Google
+    # eventTimeMillis, or when a client POST started verifying). Older answers
+    # and notifications are ignored (docs/IAP.md §8.4).
+    state_changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revocation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

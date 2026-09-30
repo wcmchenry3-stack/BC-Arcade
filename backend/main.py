@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -48,11 +49,50 @@ _audit_log = logging.getLogger("audit")
 # ---------------------------------------------------------------------------
 
 
-# Request headers the SDK would otherwise forward verbatim. Its default denylist
-# matches keys exactly and knows neither of ours: X-Admin-Token is a secret, and
-# X-Session-ID is the player's pseudonymous ID — the Privacy Policy says crash
-# reports carry no identifier.
-SENTRY_SCRUBBED_HEADERS = ["x-session-id", "x-admin-token"]
+# Keys the SDK would otherwise forward verbatim. Its default denylist knows none
+# of ours (the SDK lowercases both sides, so matching is case-insensitive):
+# X-Admin-Token is a secret, and X-Session-ID / session_id is the player's
+# pseudonymous ID — the Privacy Policy says crash reports carry no identifier.
+# The store evidence of POST /purchases/* (#840) is a bearer credential for a
+# paid purchase: purchase_token (Google), signed_transaction / signedPayload
+# (Apple JWS) and the store_key derived from either.
+SENTRY_SCRUBBED_KEYS = [
+    "x-session-id",
+    "x-admin-token",
+    "session_id",
+    "purchase_token",
+    "signed_transaction",
+    "signedPayload",
+    "store_key",
+]
+
+# SQLAlchemy appends the statement and its bound values to every DBAPIError
+# message ("[SQL: ...]", "[parameters: ...]"), and Postgres adds a
+# "DETAIL:  Key (...)=(...)" line to constraint errors. Those values can be
+# session ids or store keys, so they are cut before an event leaves.
+_SQL_FRAGMENT = re.compile(r"\s*\[(?:SQL|parameters): .*", re.DOTALL)
+_PG_DETAIL = re.compile(r"\n?[ \t]*DETAIL: [^\n]*")
+SQL_REDACTED = " [SQL redacted]"
+
+
+def _strip_sql(text: str) -> str:
+    stripped = _PG_DETAIL.sub("", _SQL_FRAGMENT.sub("", text))
+    return stripped + SQL_REDACTED if stripped != text else text
+
+
+def _sentry_before_send(event: dict, hint: dict) -> dict:
+    """Remove SQL statements, bound parameters and constraint details from an event."""
+    for exc in (event.get("exception") or {}).get("values") or []:
+        if isinstance(exc.get("value"), str):
+            exc["value"] = _strip_sql(exc["value"])
+    logentry = event.get("logentry")
+    if isinstance(logentry, dict):
+        for key in ("message", "formatted"):
+            if isinstance(logentry.get(key), str):
+                logentry[key] = _strip_sql(logentry[key])
+    if isinstance(event.get("message"), str):
+        event["message"] = _strip_sql(event["message"])
+    return event
 
 
 def _sentry_options(dsn: str) -> dict:
@@ -62,6 +102,11 @@ def _sentry_options(dsn: str) -> dict:
     defaults to "development" — sentry-sdk's own default is "production", which
     tagged every dev-API event as production (#851). `release` is the deployed
     commit, which Render injects as RENDER_GIT_COMMIT.
+
+    Request bodies are never attached (``max_request_body_size="never"``): the
+    SDK has only a global switch, and /purchases bodies are store credentials
+    (#840). Frame locals are off for the same reason — the repr of a local (a
+    request model, a verifier's evidence) is not caught by a key denylist.
     """
     return {
         "dsn": dsn,
@@ -70,7 +115,12 @@ def _sentry_options(dsn: str) -> dict:
         "environment": os.environ.get("ENVIRONMENT", "development"),
         "release": os.environ.get("RENDER_GIT_COMMIT"),
         "send_default_pii": False,
-        "event_scrubber": EventScrubber(denylist=DEFAULT_DENYLIST + SENTRY_SCRUBBED_HEADERS),
+        "max_request_body_size": "never",
+        "include_local_variables": False,
+        "event_scrubber": EventScrubber(
+            denylist=DEFAULT_DENYLIST + SENTRY_SCRUBBED_KEYS, recursive=True
+        ),
+        "before_send": _sentry_before_send,
     }
 
 

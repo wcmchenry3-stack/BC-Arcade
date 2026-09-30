@@ -14,7 +14,18 @@ Invariants:
   refused with ``409 link_limit``; nothing is ever evicted.
 * ``game_entitlements`` is *derived* for purchased games by
   :func:`recompute_entitlement`, in the same transaction as every link or
-  state change. Legacy rows (no ``purchase_id``) are never touched.
+  state change. Legacy rows (``source = 'legacy'``) are never touched.
+* ``purchases.state_changed_at`` is the store time of the latest applied
+  transition. A verified answer or notification whose event time is older is
+  ignored, so out-of-order webhooks and stale client re-posts cannot undo a
+  newer state.
+* ``owned`` never regresses to ``pending``.
+
+Concurrency (Postgres): the purchase row is locked (``FOR UPDATE``) before any
+link or state change; derived rows are written with one ``INSERT ... ON
+CONFLICT DO UPDATE``, after locking the existing row, and several sessions are
+always recomputed in ``(session_id, game_slug)`` order so two transactions
+never lock the same rows in opposite orders.
 """
 
 from __future__ import annotations
@@ -23,18 +34,20 @@ import hashlib
 import json
 import logging
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.dialect import dialect_insert
 from db.models import GameEntitlement, GameType, Purchase, PurchaseEvent, PurchaseLink
 
 from . import apple, google
-from .verifiers import PurchaseError, VerifiedPurchase
+from .verifiers import PurchaseError, VerifiedPurchase, allowed_environments
 
 # Owner-tunable (docs/IAP.md §4, §17 Q4).
 MAX_SESSIONS_PER_PURCHASE = 5
@@ -52,6 +65,17 @@ _audit_log = logging.getLogger("audit")
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _utc(dt: datetime) -> datetime:
+    """``dt`` as an aware UTC datetime (SQLite hands back naive values)."""
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+
+
+def _is_stale(purchase: Purchase, event_at: datetime) -> bool:
+    """True when ``event_at`` is older than the purchase's last applied transition."""
+    changed = purchase.state_changed_at
+    return changed is not None and _utc(event_at) < _utc(changed)
 
 
 def session_hash(session_id: str) -> str:
@@ -91,9 +115,27 @@ async def recompute_entitlement(db: AsyncSession, session_id: str, game_slug: st
     """Make the session's ``game_entitlements`` row for ``game_slug`` match its links.
 
     A row exists exactly when some ``purchase_links`` row of this session joins
-    an ``owned`` purchase of ``game_slug`` (IAP.md §8.1). A legacy row (no
-    ``purchase_id``) is left as it is. Does not commit.
+    an ``owned`` purchase of ``game_slug`` (IAP.md §8.1). A legacy row is left
+    as it is. A purchase-derived row whose purchase was deleted (``purchase_id``
+    set NULL by the foreign key) is re-pointed at another qualifying purchase
+    or removed. Does not commit.
+
+    Race-safe on Postgres: the existing row is locked first and the qualifying
+    purchase is looked up *after* that lock, so a delete never acts on an
+    answer a concurrent grant has since changed; the write is a single
+    ``INSERT ... ON CONFLICT (session_id, game_slug) DO UPDATE``, so two
+    concurrent grants cannot both insert.
     """
+    where = (
+        GameEntitlement.session_id == session_id,
+        GameEntitlement.game_slug == game_slug,
+    )
+    existing = (
+        await db.execute(select(GameEntitlement.source).where(*where).with_for_update())
+    ).first()
+    if existing is not None and existing.source == "legacy":
+        return
+
     qualifying = (
         await db.execute(
             select(Purchase.id, PurchaseLink.source, PurchaseLink.last_verified_at)
@@ -107,51 +149,61 @@ async def recompute_entitlement(db: AsyncSession, session_id: str, game_slug: st
             .limit(1)
         )
     ).first()
-    row = (
-        await db.execute(
-            select(GameEntitlement).where(
-                GameEntitlement.session_id == session_id,
-                GameEntitlement.game_slug == game_slug,
-            )
-        )
-    ).scalar_one_or_none()
 
-    if row is not None and row.purchase_id is None and row.source == "legacy":
-        return
     if qualifying is None:
-        if row is not None:
-            await db.delete(row)
-        return
-    purchase_id, source, last_verified_at = qualifying
-    if row is None:
-        db.add(
-            GameEntitlement(
-                session_id=session_id,
-                game_slug=game_slug,
-                purchase_id=purchase_id,
-                source=source,
-                last_verified_at=last_verified_at,
+        if existing is not None:
+            await db.execute(
+                delete(GameEntitlement)
+                .where(*where, GameEntitlement.source != "legacy")
+                .execution_options(synchronize_session=False)
             )
-        )
-    else:
-        row.purchase_id = purchase_id
-        row.source = source
-        row.last_verified_at = last_verified_at
-    await db.flush()
+        return
+
+    purchase_id, source, last_verified_at = qualifying
+    stmt = dialect_insert(db, GameEntitlement).values(
+        id=uuid.uuid4(),
+        session_id=session_id,
+        game_slug=game_slug,
+        purchase_id=purchase_id,
+        source=source,
+        last_verified_at=last_verified_at,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["session_id", "game_slug"],
+        set_={
+            "purchase_id": stmt.excluded.purchase_id,
+            "source": stmt.excluded.source,
+            "last_verified_at": stmt.excluded.last_verified_at,
+        },
+        # A legacy row that appeared concurrently still wins.
+        where=GameEntitlement.source != "legacy",
+    )
+    await db.execute(stmt.execution_options(synchronize_session=False))
 
 
 async def _recompute_all_links(db: AsyncSession, purchase: Purchase) -> None:
-    sessions = (
+    """Recompute every linked session, in a fixed ``(session_id, game_slug)`` order.
+
+    The order is what keeps two transactions that recompute overlapping
+    sessions (a revoke and a link, two revokes of one session's purchases)
+    from taking row locks in opposite orders and deadlocking.
+    """
+    await _recompute_sessions(
+        db,
         (
             await db.execute(
                 select(PurchaseLink.session_id).where(PurchaseLink.purchase_id == purchase.id)
             )
         )
         .scalars()
-        .all()
+        .all(),
+        purchase.game_slug,
     )
-    for sid in sessions:
-        await recompute_entitlement(db, sid, purchase.game_slug)
+
+
+async def _recompute_sessions(db: AsyncSession, session_ids: Iterable[str], game_slug: str) -> None:
+    for sid in sorted(set(session_ids)):
+        await recompute_entitlement(db, sid, game_slug)
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +260,11 @@ async def _premium_slug_for(db: AsyncSession, product_id: str) -> str:
     return slug
 
 
-def _apply_verified(purchase: Purchase, v: VerifiedPurchase, now: datetime) -> None:
+def _apply_verified(
+    purchase: Purchase, v: VerifiedPurchase, now: datetime, event_at: datetime
+) -> None:
+    if purchase.state != v.state or purchase.state_changed_at is None:
+        purchase.state_changed_at = event_at
     purchase.state = v.state
     purchase.verified_at = now
     purchase.environment = v.environment
@@ -242,14 +298,25 @@ async def _lock_purchase(db: AsyncSession, platform: str, store_key: str) -> Pur
 
 
 async def upsert_purchase(
-    db: AsyncSession, verified: VerifiedPurchase, game_slug: str
+    db: AsyncSession,
+    verified: VerifiedPurchase,
+    game_slug: str,
+    *,
+    observed_at: datetime | None = None,
 ) -> tuple[Purchase, str | None]:
     """Insert or refresh the ``purchases`` row; return it and its previous state.
 
     The previous state is None for a new row. The row is locked for the rest
     of the transaction. Does not commit.
+
+    The answer's event time is ``verified.event_at``, else ``observed_at``
+    (when the caller started verifying), else now. The stored state is left
+    as it is — and an audit event says why — when the answer is older than
+    the purchase's ``state_changed_at`` (``stale_ignored``) or would move an
+    ``owned`` purchase back to ``pending`` (``regression_refused``).
     """
     now = _now()
+    event_at = _utc(verified.event_at or observed_at or now)
     purchase = await _lock_purchase(db, verified.platform, verified.store_key)
     if purchase is None:
         purchase = Purchase(
@@ -261,8 +328,9 @@ async def upsert_purchase(
             environment=verified.environment,
             ownership_type=verified.ownership_type,
             verified_at=now,
+            state_changed_at=event_at,
         )
-        _apply_verified(purchase, verified, now)
+        _apply_verified(purchase, verified, now, event_at)
         db.add(purchase)
         try:
             await db.flush()
@@ -281,7 +349,19 @@ async def upsert_purchase(
         # One store key never changes product; a mismatch means bad evidence.
         raise PurchaseError(422, "verification_failed")
     previous = purchase.state
-    _apply_verified(purchase, verified, now)
+    if previous != verified.state and _is_stale(purchase, event_at):
+        # An answer read before a newer store event (a webhook's revoke, a
+        # refund reversal) was applied must not undo it.
+        _event(db, purchase, "stale_ignored", state=verified.state, current=previous)
+    elif previous == "owned" and verified.state == "pending":
+        # A completed purchase never goes back to pending; a store answering
+        # so is inconsistent. Keep the grant and flag it.
+        _audit_log.warning(
+            json.dumps({"event": "purchase_regression_refused", "purchase_id": str(purchase.id)})
+        )
+        _event(db, purchase, "regression_refused", state=verified.state, current=previous)
+    else:
+        _apply_verified(purchase, verified, now, event_at)
     await db.flush()
     return purchase, previous
 
@@ -374,15 +454,24 @@ async def process_verified_purchase(
     session_id: str,
     source: Source,
     verified: VerifiedPurchase,
+    observed_at: datetime | None = None,
 ) -> PurchaseResult:
     """The whole of ``POST /purchases/{apple,google}`` after verification (IAP.md §8.2).
 
     Idempotent: a pure function of (verified store state, calling session).
     Commits. Raises :class:`PurchaseError` for 403/409/422 — a 403/409 still
-    commits the purchase row and the refusal event first.
+    commits the purchase row and the refusal event first. ``observed_at`` is
+    when the request started verifying (the answer's event time when the
+    verifier gives none; see :func:`upsert_purchase`).
+
+    An environment outside :func:`~purchases.verifiers.allowed_environments`
+    is ``422 environment_not_allowed`` before anything is written, whatever
+    the verifier returned.
     """
+    if verified.environment not in allowed_environments(verified.platform):
+        raise PurchaseError(422, "environment_not_allowed")
     game_slug = await _premium_slug_for(db, verified.product_id)
-    purchase, previous = await upsert_purchase(db, verified, game_slug)
+    purchase, previous = await upsert_purchase(db, verified, game_slug, observed_at=observed_at)
     if previous is not None and previous != purchase.state:
         _event(db, purchase, "state_changed", previous=previous, state=purchase.state)
         await _recompute_all_links(db, purchase)
@@ -426,6 +515,12 @@ async def mark_acknowledged(db: AsyncSession, purchase_id: uuid.UUID) -> None:
 # ---------------------------------------------------------------------------
 
 
+async def _dedupe_seen(db: AsyncSession, dedupe_key: str) -> bool:
+    return (
+        await db.execute(select(PurchaseEvent.id).where(PurchaseEvent.dedupe_key == dedupe_key))
+    ).first() is not None
+
+
 async def apply_store_state(
     db: AsyncSession,
     *,
@@ -434,50 +529,116 @@ async def apply_store_state(
     state: Literal["owned", "revoked", "cancelled"],
     reason: str | None = None,
     dedupe_key: str | None = None,
+    event_at: datetime | None = None,
 ) -> bool:
     """Set a known purchase's state from a verified store notification, and recompute.
 
     For Apple ``REFUND`` / ``REVOKE`` (→ revoked), ``REFUND_REVERSED`` (→ owned),
     Google voided purchases (→ revoked) and ``ONE_TIME_PRODUCT_CANCELED``
     (→ cancelled). Links are kept, so a reversal restores access to every
-    still-linked session at once. ``dedupe_key`` (the notification id) makes a
-    redelivery a no-op. Returns False when nothing changed (duplicate, unknown
-    purchase, or already in that state). Commits.
+    still-linked session at once.
+
+    ``event_at`` is the store's time for the event — Apple ``signedDate``, Google
+    ``eventTimeMillis`` / ``voidedTimeMillis`` — and defaults to now. A
+    transition older than the purchase's ``state_changed_at`` is ignored (and
+    audited as ``stale_ignored``), so notifications delivered out of order
+    cannot undo a newer state.
+
+    ``dedupe_key`` (the notification id) makes a redelivery a no-op. It is
+    checked again after the purchase row lock, and a unique-key race on commit
+    (two deliveries of one notification in parallel) rolls back to the same
+    no-op. Returns False when nothing changed (duplicate, unknown purchase,
+    stale, or already in that state). Commits.
     """
-    if dedupe_key is not None:
-        seen = (
-            await db.execute(select(PurchaseEvent.id).where(PurchaseEvent.dedupe_key == dedupe_key))
-        ).first()
-        if seen is not None:
-            return False
+    if dedupe_key is not None and await _dedupe_seen(db, dedupe_key):
+        return False
     purchase = await _lock_purchase(db, platform, store_key)
     if purchase is None:
         return False
-    previous = purchase.state
-    if previous == state:
-        _event(db, purchase, "notification", dedupe_key=dedupe_key, state=state)
-        await db.commit()
+    # A parallel delivery may have committed while this one waited for the lock.
+    if dedupe_key is not None and await _dedupe_seen(db, dedupe_key):
+        await db.rollback()
         return False
     now = _now()
-    purchase.state = state
-    purchase.verified_at = now
-    if state == "revoked":
-        purchase.revoked_at = now
-        purchase.revocation_reason = reason
-    elif state == "owned":
-        purchase.revoked_at = None
-        purchase.revocation_reason = None
-    _event(
-        db,
-        purchase,
-        "state_changed",
-        dedupe_key=dedupe_key,
-        previous=previous,
-        state=state,
-        reason=reason,
+    at = _utc(event_at or now)
+    previous = purchase.state
+    changed = False
+    try:
+        if previous == state:
+            _event(db, purchase, "notification", dedupe_key=dedupe_key, state=state)
+        elif _is_stale(purchase, at):
+            _event(
+                db,
+                purchase,
+                "stale_ignored",
+                dedupe_key=dedupe_key,
+                state=state,
+                current=previous,
+                reason=reason,
+            )
+        else:
+            purchase.state = state
+            purchase.state_changed_at = at
+            purchase.verified_at = now
+            if state == "revoked":
+                purchase.revoked_at = at
+                purchase.revocation_reason = reason
+            elif state == "owned":
+                purchase.revoked_at = None
+                purchase.revocation_reason = None
+            _event(
+                db,
+                purchase,
+                "state_changed",
+                dedupe_key=dedupe_key,
+                previous=previous,
+                state=state,
+                reason=reason,
+            )
+            await db.flush()
+            await _recompute_all_links(db, purchase)
+            changed = True
+        await db.commit()
+    except IntegrityError:
+        # The dedupe_key was committed by a parallel delivery after both checks.
+        await db.rollback()
+        return False
+    return changed
+
+
+async def delete_purchase(db: AsyncSession, purchase_id: uuid.UUID) -> bool:
+    """Delete a purchase (support or sandbox clean-up) and recompute its sessions.
+
+    Its links cascade away; derived ``game_entitlements`` rows keep existing
+    with ``purchase_id`` set NULL by the foreign key and are then re-pointed at
+    another qualifying purchase or removed. Delete purchases through this
+    function: a raw SQL delete leaves those rows until the session's next
+    recompute. Returns False for an unknown id. Commits.
+    """
+    purchase = (
+        await db.execute(select(Purchase).where(Purchase.id == purchase_id).with_for_update())
+    ).scalar_one_or_none()
+    if purchase is None:
+        return False
+    game_slug = purchase.game_slug
+    sessions = (
+        (
+            await db.execute(
+                select(PurchaseLink.session_id).where(PurchaseLink.purchase_id == purchase_id)
+            )
+        )
+        .scalars()
+        .all()
     )
+    _event(db, None, "deleted", purchase_ref=str(purchase_id), game_slug=game_slug)
+    await db.execute(
+        delete(PurchaseLink)
+        .where(PurchaseLink.purchase_id == purchase_id)
+        .execution_options(synchronize_session=False)
+    )
+    await db.delete(purchase)
     await db.flush()
-    await _recompute_all_links(db, purchase)
+    await _recompute_sessions(db, sessions, game_slug)
     await db.commit()
     return True
 

@@ -31,7 +31,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from db.dialect import dialect_insert, dialect_name
 from db.models import EventType, Game, GameEvent, GameType
-from entitlements.service import _ALL_PREMIUM_SLUGS
+from entitlements.service import ALL_PREMIUM_SLUGS
 from games.board import SCORE_METRIC, BoardDefinition
 from games.filters import SWEPT_KEY, is_swept, not_abandoned, not_swept, without_swept
 from games.leaderboard import check_completion_limits, merge_result_metadata
@@ -958,7 +958,7 @@ async def patch_game_type(
     if (
         is_premium is not None
         and is_premium != gt.is_premium
-        and (gt.name in _ALL_PREMIUM_SLUGS or await slug_has_purchases(session, gt.name))
+        and (gt.name in ALL_PREMIUM_SLUGS or await slug_has_purchases(session, gt.name))
     ):
         raise GameServiceError(409, "is_premium_migration_only")
     if is_premium is not None:

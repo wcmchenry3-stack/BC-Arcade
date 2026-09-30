@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections.abc import Callable, Coroutine
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -71,6 +72,18 @@ class _InvalidRequestRoute(APIRoute):
 router = APIRouter(route_class=_InvalidRequestRoute)
 
 
+def _session_id(request: Request) -> str:
+    """``X-Session-ID``, or the contract's ``400 invalid_request`` (IAP.md §8.2).
+
+    The shared ``session.get_session_id`` answers with a free-text detail;
+    these routes speak only the documented codes.
+    """
+    try:
+        return get_session_id(request)
+    except HTTPException:
+        raise HTTPException(status_code=400, detail="invalid_request") from None
+
+
 def _hit_store_key_limit(platform: str, store_key: str) -> None:
     # Bucketed by a hash so raw store keys never sit in limiter storage.
     bucket = hashlib.sha256(f"{platform}:{store_key}".encode()).hexdigest()
@@ -89,6 +102,7 @@ async def _complete(
     session_id: str,
     source: service.Source,
     verified: VerifiedPurchase,
+    observed_at: datetime,
     platform: str,
     store_key: str,
     google_verifier: GoogleVerifier | None = None,
@@ -100,7 +114,11 @@ async def _complete(
     factory = get_session_factory()
     async with factory() as db:
         result = await service.process_verified_purchase(
-            db, session_id=session_id, source=source, verified=verified
+            db,
+            session_id=session_id,
+            source=source,
+            verified=verified,
+            observed_at=observed_at,
         )
         if result.needs_acknowledgement and google_verifier and google_evidence:
             try:
@@ -135,15 +153,18 @@ async def post_apple_purchase(
     verifier: AppleVerifier = Depends(apple.get_apple_verifier),  # noqa: B008
 ) -> PurchaseResponse:
     """Verify an App Store transaction and link it to this session."""
-    sid = get_session_id(request)
+    sid = _session_id(request)
     try:
         store_key = apple.parse_store_key(body.signed_transaction)
         _hit_store_key_limit("apple", store_key)
+        # Taken before the store call: a stale answer must lose to a newer event.
+        observed_at = datetime.now(timezone.utc)
         verified = await verifier.verify(AppleEvidence(signed_transaction=body.signed_transaction))
         return await _complete(
             session_id=sid,
             source=body.source,
             verified=verified,
+            observed_at=observed_at,
             platform="apple",
             store_key=store_key,
         )
@@ -160,12 +181,13 @@ async def post_google_purchase(
     verifier: GoogleVerifier = Depends(get_google_verifier),  # noqa: B008
 ) -> PurchaseResponse:
     """Verify a Google Play purchase, link it to this session and acknowledge it."""
-    sid = get_session_id(request)
+    sid = _session_id(request)
     try:
         if service.slug_for_product(body.product_id) is None:
             raise PurchaseError(422, "unknown_product")
         _hit_store_key_limit("google", body.purchase_token)
         evidence = GoogleEvidence(product_id=body.product_id, purchase_token=body.purchase_token)
+        observed_at = datetime.now(timezone.utc)
         verified = await verifier.verify(evidence)
         if verified.product_id != body.product_id:
             raise PurchaseError(422, "verification_failed")
@@ -173,6 +195,7 @@ async def post_google_purchase(
             session_id=sid,
             source=body.source,
             verified=verified,
+            observed_at=observed_at,
             platform="google",
             store_key=body.purchase_token,
             google_verifier=verifier,

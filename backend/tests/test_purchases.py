@@ -77,7 +77,7 @@ def verified(
         product_id=product_id,
         store_key=store_key,
         transaction_id=f"txn-{store_key}",
-        environment="sandbox",
+        environment=kw.pop("environment", "sandbox" if platform == "apple" else "test"),  # type: ignore[arg-type]
         ownership_type=ownership_type,  # type: ignore[arg-type]
         state=state,  # type: ignore[arg-type]
         purchased_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
@@ -718,11 +718,25 @@ def test_malformed_apple_request_is_400_invalid_request(
     assert fake_apple.calls == 0
 
 
-def test_purchase_requires_session_header(client: TestClient) -> None:
-    r = client.post(
-        "/purchases/apple", json={"signed_transaction": make_jws("1"), "source": "sync"}
-    )
+@pytest.mark.parametrize("headers", [{}, {"X-Session-ID": "not-a-uuid"}, {"X-Session-ID": " "}])
+def test_purchase_requires_session_header(
+    client: TestClient, fake_apple: FakeAppleVerifier, headers: dict[str, str]
+) -> None:
+    for path, body in (
+        ("/purchases/apple", {"signed_transaction": make_jws("1"), "source": "sync"}),
+        ("/purchases/google", {"product_id": HEARTS, "purchase_token": "t", "source": "sync"}),
+    ):
+        r = client.post(path, json=body, headers=headers)
+        assert r.status_code == 400
+        assert r.json()["detail"] == "invalid_request"
+    assert fake_apple.calls == 0
+
+
+def test_other_routes_keep_their_session_header_detail(client: TestClient) -> None:
+    # The invalid_request mapping is scoped to /purchases.
+    r = client.get("/entitlements")
     assert r.status_code == 400
+    assert r.json()["detail"] != "invalid_request"
 
 
 def test_realistic_jws_size_is_not_rejected_as_too_large(
@@ -831,6 +845,7 @@ async def test_patch_cannot_change_tier_of_game_with_purchases(
                 state="owned",
                 environment="test",
                 verified_at=datetime.now(timezone.utc),
+                state_changed_at=datetime.now(timezone.utc),
             )
         )
         await db.commit()
@@ -839,3 +854,339 @@ async def test_patch_cannot_change_tier_of_game_with_purchases(
         f"/games/catalog/{gid}", json={"is_premium": True}, headers={"X-Admin-Token": _ADMIN}
     )
     assert r.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# Review hardening: dedupe race, concurrent recompute, event ordering,
+# environment allow-list, owned→pending, purchase deletion (PR #2862)
+# ---------------------------------------------------------------------------
+
+
+async def purchase_row(store_key: str) -> Purchase:
+    async with get_session_factory()() as db:
+        return (
+            await db.execute(select(Purchase).where(Purchase.store_key == store_key))
+        ).scalar_one()
+
+
+async def apply_state(store_key: str, state: str, **kw: object) -> bool:
+    async with get_session_factory()() as db:
+        return await purchase_service.apply_store_state(
+            db, platform="apple", store_key=store_key, state=state, **kw  # type: ignore[arg-type]
+        )
+
+
+async def test_dedupe_key_committed_while_waiting_for_lock_is_a_noop(
+    client: TestClient, fake_apple: FakeAppleVerifier, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sid = new_sid()
+    fake_apple.answers["1000"] = verified("1000")
+    assert post_apple(client, sid, "1000").status_code == 200
+    original = purchase_service._lock_purchase
+
+    async def lock_then_race(db, platform, store_key):  # type: ignore[no-untyped-def]
+        purchase = await original(db, platform, store_key)
+        # A parallel delivery of the same notification commits while this one
+        # waited for the row lock.
+        async with get_session_factory()() as other:
+            other.add(PurchaseEvent(kind="state_changed", dedupe_key="race-1", detail={}))
+            await other.commit()
+        return purchase
+
+    monkeypatch.setattr(purchase_service, "_lock_purchase", lock_then_race)
+    assert await apply_state("1000", "revoked", reason="REFUND", dedupe_key="race-1") is False
+    assert (await purchase_row("1000")).state == "owned"
+    assert await count(PurchaseEvent, PurchaseEvent.dedupe_key == "race-1") == 1
+    assert jwt_games(client, sid) == ["hearts"]
+
+
+async def test_dedupe_unique_violation_on_commit_rolls_back_to_noop(
+    client: TestClient, fake_apple: FakeAppleVerifier, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sid = new_sid()
+    fake_apple.answers["1000"] = verified("1000")
+    assert post_apple(client, sid, "1000").status_code == 200
+    async with get_session_factory()() as db:
+        db.add(PurchaseEvent(kind="state_changed", dedupe_key="race-2", detail={}))
+        await db.commit()
+
+    async def never_seen(db, key):  # type: ignore[no-untyped-def]
+        return False  # both checks raced past the other delivery
+
+    monkeypatch.setattr(purchase_service, "_dedupe_seen", never_seen)
+    assert await apply_state("1000", "revoked", reason="REFUND", dedupe_key="race-2") is False
+    assert (await purchase_row("1000")).state == "owned"
+    assert await count(PurchaseEvent, PurchaseEvent.dedupe_key == "race-2") == 1
+    assert jwt_games(client, sid) == ["hearts"]
+
+
+async def test_two_owned_purchases_for_one_session_game_upsert_without_conflict(
+    client: TestClient, fake_apple: FakeAppleVerifier
+) -> None:
+    sid = new_sid()
+    fake_apple.answers["own"] = verified("own")
+    fake_apple.answers["family"] = verified("family", ownership_type="family_shared")
+    # Sequentially, in either order and repeated: one row, never an IntegrityError.
+    for key in ("own", "family", "own", "family"):
+        assert post_apple(client, sid, key).status_code == 200
+    assert await count(GameEntitlement, GameEntitlement.session_id == sid) == 1
+    async with get_session_factory()() as db:
+        await purchase_service.recompute_entitlement(db, sid, "hearts")
+        await purchase_service.recompute_entitlement(db, sid, "hearts")
+        await db.commit()
+    assert await count(GameEntitlement, GameEntitlement.session_id == sid) == 1
+
+
+async def test_recompute_upserts_over_a_row_a_concurrent_grant_inserted(
+    client: TestClient, fake_apple: FakeAppleVerifier, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sid = new_sid()
+    fake_apple.answers["own"] = verified("own")
+    fake_apple.answers["family"] = verified("family", ownership_type="family_shared")
+    assert post_apple(client, sid, "own").status_code == 200
+    assert post_apple(client, sid, "family").status_code == 200
+    own_id = (await purchase_row("own")).id
+    family_id = (await purchase_row("family")).id
+    async with get_session_factory()() as db:
+        await db.execute(
+            GameEntitlement.__table__.delete().where(GameEntitlement.session_id == sid)
+        )
+        await db.commit()
+
+    original = purchase_service.dialect_insert
+    pending: list = []
+
+    async def rival() -> None:
+        # Another transaction (the family purchase's grant) inserts and
+        # commits the same (session_id, game_slug) between this one's read
+        # and its write.
+        async with get_session_factory()() as other:
+            other.add(
+                GameEntitlement(
+                    session_id=sid, game_slug="hearts", purchase_id=family_id, source="sync"
+                )
+            )
+            await other.commit()
+        rival_ran.append(True)
+
+    rival_ran: list[bool] = []
+
+    def insert_after_rival(db, table):  # type: ignore[no-untyped-def]
+        pending.append(rival())
+        return original(db, table)
+
+    monkeypatch.setattr(purchase_service, "dialect_insert", insert_after_rival)
+    async with get_session_factory()() as db:
+        # Run the rival right before the upsert executes.
+        real_execute = db.execute
+
+        async def execute(stmt, *a, **k):  # type: ignore[no-untyped-def]
+            while pending:
+                await pending.pop()
+            return await real_execute(stmt, *a, **k)
+
+        db.execute = execute  # type: ignore[method-assign]
+        await purchase_service.recompute_entitlement(db, sid, "hearts")
+        await db.commit()
+    assert rival_ran == [True]
+    row = await entitlement(sid)
+    assert row is not None and row.purchase_id == own_id  # the earliest link wins
+    assert await count(GameEntitlement, GameEntitlement.session_id == sid) == 1
+
+
+async def test_recompute_all_links_locks_sessions_in_sorted_order(
+    client: TestClient, fake_apple: FakeAppleVerifier, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_apple.answers["1000"] = verified("1000")
+    sids = sorted((new_sid() for _ in range(3)), reverse=True)
+    for sid in sids:
+        assert post_apple(client, sid, "1000").status_code == 200
+    seen: list[str] = []
+    original = purchase_service.recompute_entitlement
+
+    async def record(db, session_id, game_slug):  # type: ignore[no-untyped-def]
+        seen.append(session_id)
+        await original(db, session_id, game_slug)
+
+    monkeypatch.setattr(purchase_service, "recompute_entitlement", record)
+    assert await apply_state("1000", "revoked")
+    assert seen == sorted(sids)
+
+
+async def test_refund_older_than_refund_reversed_is_ignored(
+    client: TestClient, fake_apple: FakeAppleVerifier
+) -> None:
+    sid = new_sid()
+    fake_apple.answers["1000"] = verified("1000")
+    assert post_apple(client, sid, "1000").status_code == 200
+    t0 = datetime.now(timezone.utc)
+    assert await apply_state(
+        "1000", "revoked", reason="REFUND", dedupe_key="n1", event_at=t0 + timedelta(hours=1)
+    )
+    assert await apply_state("1000", "owned", dedupe_key="n2", event_at=t0 + timedelta(hours=2))
+    # A second REFUND notification signed before the reversal arrives last.
+    assert not await apply_state(
+        "1000", "revoked", reason="REFUND", dedupe_key="n3", event_at=t0 + timedelta(minutes=90)
+    )
+    purchase = await purchase_row("1000")
+    assert purchase.state == "owned" and purchase.revoked_at is None
+    assert jwt_games(client, sid) == ["hearts"]
+    stale = await count(
+        PurchaseEvent, PurchaseEvent.kind == "stale_ignored", PurchaseEvent.dedupe_key == "n3"
+    )
+    assert stale == 1
+    # And its redelivery is still a no-op.
+    assert not await apply_state(
+        "1000", "revoked", dedupe_key="n3", event_at=t0 + timedelta(hours=3)
+    )
+    assert (await purchase_row("1000")).state == "owned"
+
+
+async def test_stale_owned_answer_after_webhook_revoke_is_ignored(
+    client: TestClient, fake_apple: FakeAppleVerifier
+) -> None:
+    sid = new_sid()
+    fake_apple.answers["1000"] = verified("1000")
+    assert post_apple(client, sid, "1000").status_code == 200
+    revoked_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+    assert await apply_state("1000", "revoked", reason="REFUND", event_at=revoked_at)
+
+    # The client's verifier read the store before the refund: its "owned"
+    # (default event time = when verification started) loses.
+    r = post_apple(client, sid, "1000")
+    assert r.status_code == 200
+    assert r.json()["status"] == "revoked" and token_games(r.json()) == []
+    # An explicit store time older than the revoke loses too.
+    fake_apple.answers["1000"] = verified("1000", event_at=revoked_at - timedelta(seconds=1))
+    assert post_apple(client, sid, "1000").json()["status"] == "revoked"
+    assert (await purchase_row("1000")).state == "revoked"
+    assert await count(PurchaseEvent, PurchaseEvent.kind == "stale_ignored") == 2
+
+    # A newer store answer (the refund was reversed) is applied.
+    fake_apple.answers["1000"] = verified("1000", event_at=revoked_at + timedelta(seconds=1))
+    assert post_apple(client, sid, "1000").json()["status"] == "owned"
+    assert jwt_games(client, sid) == ["hearts"]
+
+
+async def test_verified_event_time_orders_client_answers(
+    client: TestClient, fake_google: FakeGoogleVerifier
+) -> None:
+    sid = new_sid()
+    t0 = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    fake_google.answers["gtok"] = verified("gtok", platform="google", event_at=t0)
+    assert post_google(client, sid, "gtok").status_code == 200
+    stored = (await purchase_row("gtok")).state_changed_at
+    assert purchase_service._utc(stored) == t0
+
+
+@pytest.mark.parametrize(
+    ("platform", "environment", "setting"),
+    [
+        ("apple", "test", None),  # not an Apple environment at all
+        ("apple", "sandbox", "Production"),  # sandbox switched off
+        ("google", "sandbox", None),
+        ("google", "test", "production"),
+    ],
+)
+async def test_environment_outside_allow_list_is_rejected_even_if_verified(
+    client: TestClient,
+    fake_apple: FakeAppleVerifier,
+    fake_google: FakeGoogleVerifier,
+    monkeypatch: pytest.MonkeyPatch,
+    platform: str,
+    environment: str,
+    setting: str | None,
+) -> None:
+    var = "APPLE_IAP_ENVIRONMENTS" if platform == "apple" else "GOOGLE_PLAY_ENVIRONMENTS"
+    if setting is None:
+        monkeypatch.delenv(var, raising=False)
+    else:
+        monkeypatch.setenv(var, setting)
+    answer = verified("k1", platform=platform, environment=environment)
+    if platform == "apple":
+        fake_apple.answers["k1"] = answer
+        r = post_apple(client, new_sid(), "k1")
+    else:
+        fake_google.answers["k1"] = answer
+        r = post_google(client, new_sid(), "k1")
+    assert r.status_code == 422
+    assert r.json()["detail"] == "environment_not_allowed"
+    assert await count(Purchase) == 0 and await count(PurchaseLink) == 0
+
+
+def test_allowed_environments_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
+    from purchases.verifiers import allowed_environments
+
+    monkeypatch.delenv("APPLE_IAP_ENVIRONMENTS", raising=False)
+    monkeypatch.delenv("GOOGLE_PLAY_ENVIRONMENTS", raising=False)
+    assert allowed_environments("apple") == {"production", "sandbox"}
+    assert allowed_environments("google") == {"production", "test"}
+    monkeypatch.setenv("APPLE_IAP_ENVIRONMENTS", " Production , ")
+    assert allowed_environments("apple") == {"production"}
+    assert allowed_environments("amazon") == frozenset()
+
+
+async def test_owned_never_regresses_to_pending(
+    client: TestClient, fake_google: FakeGoogleVerifier, caplog: pytest.LogCaptureFixture
+) -> None:
+    sid = new_sid()
+    fake_google.answers["gtok"] = verified("gtok", platform="google")
+    assert post_google(client, sid, "gtok").json()["status"] == "owned"
+    fake_google.answers["gtok"] = verified(
+        "gtok", platform="google", state="pending", event_at=datetime.now(timezone.utc)
+    )
+    with caplog.at_level("WARNING", logger="audit"):
+        r = post_google(client, sid, "gtok")
+    assert r.status_code == 200 and r.json()["status"] == "owned"
+    assert (await purchase_row("gtok")).state == "owned"
+    assert jwt_games(client, sid) == ["hearts"]
+    assert await count(PurchaseEvent, PurchaseEvent.kind == "regression_refused") == 1
+    assert any("purchase_regression_refused" in rec.getMessage() for rec in caplog.records)
+
+
+async def test_deleting_one_purchase_keeps_access_through_another(
+    client: TestClient, fake_apple: FakeAppleVerifier
+) -> None:
+    sid = new_sid()
+    fake_apple.answers["own"] = verified("own")
+    fake_apple.answers["family"] = verified("family", ownership_type="family_shared")
+    assert post_apple(client, sid, "own").status_code == 200
+    assert post_apple(client, sid, "family").status_code == 200
+    own_id = (await purchase_row("own")).id
+    family_id = (await purchase_row("family")).id
+    assert (await entitlement(sid)).purchase_id == own_id
+
+    async with get_session_factory()() as db:
+        assert await purchase_service.delete_purchase(db, own_id)
+    row = await entitlement(sid)
+    assert row is not None and row.purchase_id == family_id
+    assert jwt_games(client, sid) == ["hearts"]
+
+    async with get_session_factory()() as db:
+        assert await purchase_service.delete_purchase(db, family_id)
+        assert not await purchase_service.delete_purchase(db, family_id)
+    assert await entitlement(sid) is None
+    assert jwt_games(client, sid) == []
+    assert await count(PurchaseEvent, PurchaseEvent.kind == "deleted") == 2
+
+
+async def test_foreign_key_sets_null_and_recompute_repairs_the_row(
+    client: TestClient, fake_apple: FakeAppleVerifier
+) -> None:
+    sid = new_sid()
+    fake_apple.answers["own"] = verified("own")
+    fake_apple.answers["family"] = verified("family", ownership_type="family_shared")
+    assert post_apple(client, sid, "own").status_code == 200
+    assert post_apple(client, sid, "family").status_code == 200
+    own_id = (await purchase_row("own")).id
+    family_id = (await purchase_row("family")).id
+    async with get_session_factory()() as db:
+        # A raw delete (not delete_purchase): the FK keeps the row, unpointed.
+        await db.execute(Purchase.__table__.delete().where(Purchase.id == own_id))
+        await db.commit()
+    row = await entitlement(sid)
+    assert row is not None and row.purchase_id is None and row.source != "legacy"
+    async with get_session_factory()() as db:
+        await purchase_service.recompute_entitlement(db, sid, "hearts")
+        await db.commit()
+    assert (await entitlement(sid)).purchase_id == family_id

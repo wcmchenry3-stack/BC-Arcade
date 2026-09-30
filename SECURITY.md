@@ -202,6 +202,10 @@ Current cross-cutting controls include:
 
 A statement that “every endpoint has exactly the same auth or rate-limit model” would be inaccurate; public catalog/challenge routes and session-scoped routes intentionally differ.
 
+**Known issue: X-Forwarded-For spoofing.** `backend/limiter.py` `_real_ip` keys every per-IP limit on the *first* `X-Forwarded-For` hop, which the client controls: a client that sends its own header picks its bucket and escapes per-IP limits, including the `/purchases` per-IP limit (#840). The fix (trust only the hop appended by Render's proxy) changes every existing per-IP bucket, so it is tracked as a separate follow-up rather than changed with #840; a `TODO` in `_real_ip` points here. Until then, per-session and per-store-key limits still apply to `/purchases`.
+
+**Sentry.** Crash reports never carry request bodies (`max_request_body_size="never"`) or frame locals; header and payload keys `x-session-id`, `session_id`, `x-admin-token`, `purchase_token`, `signed_transaction`, `signedPayload` and `store_key` are scrubbed at any depth (case-insensitive); and SQLAlchemy `[SQL: ...]` / `[parameters: ...]` fragments and Postgres `DETAIL:` lines are cut from exception messages (`backend/main.py`, #840).
+
 # IAP / Paid-Entitlement Readiness Gate
 
 Paid entitlements raise the impact of session replay and transaction replay. The following gate must be completed before the first premium purchase flow ships.

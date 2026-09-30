@@ -27,6 +27,7 @@ codes (IAP.md §8.2) instead of returning a partial result:
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, Protocol, runtime_checkable
@@ -94,6 +95,40 @@ class VerifiedPurchase:
     revoked_at: datetime | None = None
     revocation_reason: str | None = None
     acknowledged: bool = False
+    # When the store says this state held: Apple ``signedDate`` of the
+    # transaction/notification, Google ``eventTimeMillis`` (RTDN) or the time
+    # the Play API was read. None → the service uses the time the request
+    # started verifying. A transition older than the purchase's
+    # ``state_changed_at`` is ignored (IAP.md §8.4, out-of-order store state).
+    event_at: datetime | None = None
+
+
+# Environments accepted by default when the env vars are unset — the production
+# settings of IAP.md §6.4 and §7.2 (§17 Q5 accepts Sandbox / license testers).
+_DEFAULT_ENVIRONMENTS: dict[str, str] = {
+    "apple": "Production,Sandbox",
+    "google": "production,test",
+}
+_ENVIRONMENT_VARS: dict[str, str] = {
+    "apple": "APPLE_IAP_ENVIRONMENTS",
+    "google": "GOOGLE_PLAY_ENVIRONMENTS",
+}
+
+
+def allowed_environments(platform: str) -> frozenset[str]:
+    """The normalized environments this deployment accepts for ``platform``.
+
+    Read from ``APPLE_IAP_ENVIRONMENTS`` / ``GOOGLE_PLAY_ENVIRONMENTS``
+    (comma-separated, case-insensitive: ``Production,Sandbox`` /
+    ``production,test``) on every call. The verifiers of #2786 / #2787 must
+    apply the same list before any store call; the purchase service checks
+    it again on the verified answer (defence in depth).
+    """
+    var = _ENVIRONMENT_VARS.get(platform)
+    if var is None:
+        return frozenset()
+    raw = os.environ.get(var) or _DEFAULT_ENVIRONMENTS[platform]
+    return frozenset(e.strip().lower() for e in raw.split(",") if e.strip())
 
 
 @runtime_checkable

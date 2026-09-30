@@ -56,6 +56,9 @@ def test_upgrade_marks_existing_rows_legacy_and_downgrade_reverts(tmp_path: Path
     with sqlite3.connect(db_path) as conn:
         assert {"purchases", "purchase_links", "purchase_events"} <= _tables(conn)
         assert {"purchase_id", "last_verified_at", "source"} <= _columns(conn, "game_entitlements")
+        assert "state_changed_at" in _columns(conn, "purchases")
+        fk = [r for r in conn.execute("PRAGMA foreign_key_list(game_entitlements)")]
+        assert [(r[2], r[6]) for r in fk if r[3] == "purchase_id"] == [("purchases", "SET NULL")]
         assert conn.execute(
             "SELECT source, purchase_id FROM game_entitlements WHERE session_id = ?",
             (legacy_sid,),
@@ -63,9 +66,9 @@ def test_upgrade_marks_existing_rows_legacy_and_downgrade_reverts(tmp_path: Path
 
         conn.execute(
             "INSERT INTO purchases (id, platform, store_key, product_id, game_slug, state, "
-            "environment, verified_at) VALUES (?, 'apple', '1000', "
+            "environment, verified_at, state_changed_at) VALUES (?, 'apple', '1000', "
             "'com.buffingchi.games.premium.hearts', 'hearts', 'owned', 'sandbox', "
-            "CURRENT_TIMESTAMP)",
+            "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             (purchase_id,),
         )
         conn.execute(
@@ -77,14 +80,24 @@ def test_upgrade_marks_existing_rows_legacy_and_downgrade_reverts(tmp_path: Path
         try:
             conn.execute(
                 "INSERT INTO purchases (id, platform, store_key, product_id, game_slug, state, "
-                "environment, verified_at) VALUES (?, 'apple', '1000', 'p', 'hearts', 'owned', "
-                "'sandbox', CURRENT_TIMESTAMP)",
+                "environment, verified_at, state_changed_at) VALUES (?, 'apple', '1000', 'p', "
+                "'hearts', 'owned', 'sandbox', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 (uuid.uuid4().hex,),
             )
         except sqlite3.IntegrityError:
             pass
         else:  # pragma: no cover
             raise AssertionError("duplicate (platform, store_key) accepted")
+
+    # Deleting a purchase keeps the derived row (purchase_id → NULL) for the
+    # recompute to decide; downgrade still removes it with the other
+    # purchase-derived rows.
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("DELETE FROM purchases WHERE id = ?", (purchase_id,))
+        assert conn.execute(
+            "SELECT source, purchase_id FROM game_entitlements WHERE session_id = ?", (buyer,)
+        ).fetchone() == ("sync", None)
 
     _alembic(db_path, "downgrade", _BEFORE)
     with sqlite3.connect(db_path) as conn:
