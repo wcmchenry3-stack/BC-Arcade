@@ -137,6 +137,14 @@ frontend/src/
 - Radii increase monotonically with tier
 - Radii are identical across all sets for the same tier (physics skin-agnostic)
 
+**releaseBuildConfig.test.ts** (#2783)
+
+- Store build exposes exactly the seven free games: `App.tsx` registers only free/shared routes, premium routes come only from `visiblePremiumRoutes()`
+- No purchase/paywall/IAP dependency, screen or route; no deep-link surface (no `linking` config, no Android VIEW intent-filter)
+- `.env.production` targets exactly the production API; gradle config hard-codes no dev API
+- Android release-signing guard is present and only the CI smoke build opts out
+- Manual evidence for the rest of the release check: `docs/RELEASE-ACCEPTANCE-v1.0.md`
+
 ### Notes
 
 - Physics engine (Matter.js) is not unit-tested — third-party, no jest DOM available.

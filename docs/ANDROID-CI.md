@@ -43,11 +43,22 @@ Gradle builds — no prebuild step happens in CI.
     which intentionally contains no signing values.
   - Verify with `./gradlew :app:signingReport` — the `release` variant's SHA-1 must
     match Play Console → App integrity → Upload key certificate.
-  - When the properties are absent, `app/build.gradle` falls back to the debug
-    keystore. That is what CI relies on: no workflow reads a signing secret, and
-    the release smoke build passes debug-key `-P` flags explicitly. A
-    debug-signed bundle is rejected by Play, so never upload a build made
-    without the user-level file in place.
+  - **No silent debug-signing fallback (#2783).** The `release` signingConfig
+    still names `debug.keystore` when the properties are absent (so Gradle can
+    configure debug tasks), but `app/build.gradle` fails any release-artifact
+    task (`assembleRelease`, `bundleRelease`, `package*Release`, `sign*Release`,
+    ...) unless `UPLOAD_STORE_FILE` names an existing, non-debug keystore and the
+    other three `UPLOAD_*` properties are set. The only opt-out is
+    `-PALLOW_DEBUG_SIGNED_RELEASE=true`, passed by the CI release smoke build
+    (no signing secret exists in CI) and allowed for local, never-uploaded
+    profiling/smoke builds. Gradle logs a warning when it is active. Never use it
+    for anything uploaded to Play or distributed. The guard also rejects
+    `UPLOAD_KEY_ALIAS=androiddebugkey`.
+  - After building, verify the bundle itself:
+    `scripts/verify-aab-signing.sh frontend/android/app/build/outputs/bundle/release/app-release.aab "<Play Console upload SHA-1 or SHA-256>"`.
+    It prints both fingerprints, rejects the Android debug certificate and
+    exits non-zero on mismatch. Take the expected value from Play Console ->
+    App integrity -> Play app signing -> Upload key certificate.
 
 **Critical**: Never commit keystores, keystore passwords, or `local.properties`.
 Keystores and `local.properties` are gitignored; passwords belong only in the
