@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
 
 from games.registry import get_module
 from vocab import GameType
@@ -185,13 +184,86 @@ def test_pre_2839_payloads_are_unchanged(old: dict[str, Any]) -> None:
         {"categories": {}, "upper_bonus": 36},
         {"categories": {}, "yacht_bonus_count": 13},
         {"categories": {}, "yacht_bonus_total": 1300},
-        {"categories": {}, "extra": 1},
         {"ones": 1},  # categories missing
+        "not a card",
+        [1, 2],
     ],
 )
-def test_out_of_shape_scorecard_is_rejected(scorecard: dict[str, Any]) -> None:
-    with pytest.raises(ValidationError):
-        YachtResult.model_validate(_result(scorecard=scorecard))
+def test_out_of_shape_scorecard_is_dropped_flagged_and_reported(
+    scorecard: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reports: list[tuple[Any, ...]] = []
+    monkeypatch.setattr("games.service._report_rejected_result", lambda *a: reports.append(a))
+    out = _dump(_result(final_score=10, scorecard=scorecard))
+    assert "scorecard" not in out
+    assert out["scorecard_reconciled"] is False
+    assert out["final_score"] == 10
+    assert len(reports) == 1 and reports[0][0] == "yacht"
+
+
+def test_a_bad_opponent_card_is_dropped_but_the_players_kept(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("games.service._report_rejected_result", lambda *a: None)
+    out = _dump(
+        _result(
+            final_score=3,
+            scorecard=_card({"ones": 3}),
+            opponent_score=5,
+            opponent_scorecard={"categories": {"bogus": 5}},
+        )
+    )
+    assert out["scorecard"]["categories"] == {"ones": 3}
+    assert "opponent_scorecard" not in out
+    assert out["scorecard_reconciled"] is False
+
+
+def test_unknown_key_inside_a_card_does_not_invalidate_it() -> None:
+    card = {**_card({"ones": 3}), "future_field": 1}
+    out = _dump(_result(final_score=3, scorecard=card))
+    assert out["scorecard_reconciled"] is True
+    assert out["scorecard"]["categories"] == {"ones": 3}
+
+
+def test_player_card_reconciles_to_the_complete_body_score() -> None:
+    raw = _result(final_score=_FULL_TOTAL, scorecard=_card(_FULL, upper_bonus=35))
+    ok = YachtResult.model_validate(raw, context={"final_score": _FULL_TOTAL})
+    assert ok.model_dump(exclude_unset=True)["scorecard_reconciled"] is True
+    # The row's score differs from what the card (and the result's copy) says.
+    bad = YachtResult.model_validate(raw, context={"final_score": 999})
+    assert bad.model_dump(exclude_unset=True)["scorecard_reconciled"] is False
+    # The card matches the body but the result's own copy disagrees.
+    skew = _result(final_score=1, scorecard=_card(_FULL, upper_bonus=35))
+    out = YachtResult.model_validate(skew, context={"final_score": _FULL_TOTAL})
+    assert out.model_dump(exclude_unset=True)["scorecard_reconciled"] is False
+
+
+@pytest.mark.parametrize("context", [None, {}, {"final_score": None}])
+def test_without_a_body_score_the_result_copy_is_used(context: Any) -> None:
+    raw = _result(final_score=_FULL_TOTAL, scorecard=_card(_FULL, upper_bonus=35))
+    out = YachtResult.model_validate(raw, context=context)
+    assert out.model_dump(exclude_unset=True)["scorecard_reconciled"] is True
+
+
+def test_null_card_is_no_card() -> None:
+    out = _dump(_result(scorecard=None))
+    assert "scorecard" not in out
+    assert "scorecard_reconciled" not in out
+
+
+@pytest.mark.parametrize(
+    "legacy",
+    [
+        {"final_score": 12.5, "outcome": "x" * 50},
+        {"final_score": -3, "upper_bonus": "35", "yacht_bonus_total": None},
+        {"final_score": "180", "opponent_score": 1.0, "vs_result": "y" * 99},
+        {"outcome": None, "final_score": True},
+    ],
+)
+def test_legacy_top_level_oddities_pass_through_unchanged(legacy: dict[str, Any]) -> None:
+    out = _dump(legacy)
+    assert out == legacy
+    assert [type(v) for v in out.values()] == [type(v) for v in legacy.values()]
 
 
 def test_client_cannot_set_the_reconciled_flag() -> None:
@@ -214,13 +286,19 @@ async def test_service_validates_and_returns_the_stored_block() -> None:
     assert stored["scorecard_reconciled"] is False  # 50 is not 345
 
 
-async def test_service_rejects_a_bad_card_and_an_oversize_result() -> None:
+async def test_service_completes_with_a_bad_card_dropped_and_rejects_only_oversize(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from games import service
 
-    bad = _result(scorecard={"categories": {"bogus": 1}})
-    with pytest.raises(service.GameServiceError) as e:
-        await service._validate_result(None, None, bad, "yacht", module)  # type: ignore[arg-type]
-    assert e.value.status_code == 400
+    reports: list[Any] = []
+    monkeypatch.setattr("games.service._report_rejected_result", lambda *a: reports.append(a))
+    bad = _result(final_score=10, scorecard={"categories": {"bogus": 1}})
+    stored = await service._validate_result(None, None, bad, "yacht", module)  # type: ignore[arg-type]
+    assert "scorecard" not in stored
+    assert stored["scorecard_reconciled"] is False
+    assert stored["final_score"] == 10
+    assert len(reports) == 1
     big = _result(pad="x" * 9000)
     with pytest.raises(service.GameServiceError):
         await service._validate_result(None, None, big, "yacht", module)  # type: ignore[arg-type]

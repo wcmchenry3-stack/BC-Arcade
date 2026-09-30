@@ -184,6 +184,7 @@ export default function GameScreen({ navigation, route }: Props) {
     enqueue: syncEnqueue,
     complete: syncComplete,
     getGameId: syncGetGameId,
+    setProgressSnapshot: syncSetProgressSnapshot,
     resetPlayWindow: syncResetPlayWindow,
   } = useGameSync("yacht");
 
@@ -219,6 +220,17 @@ export default function GameScreen({ navigation, route }: Props) {
     // the row records who won, a tie is `push`). #2839: both scorecards go in.
     return buildEndedPayload(s, outcome, opponent, vsOutcome, recordedOutcome);
   }
+
+  // #2839: the hook's own abandons (unmount, navigation) carry the partial
+  // scorecard too, built by the same helper as the New Game abandon. An
+  // abandoned row never ranks and is excluded from progression and the daily
+  // challenge, so this only adds the saved detail. The row's score column is
+  // untouched: the snapshot has no `finalScore`.
+  useEffect(() => {
+    syncSetProgressSnapshot(() => ({
+      result: endedPayload(gameStateRef.current, "abandoned"),
+    }));
+  }, [syncSetProgressSnapshot]);
 
   // When the mode modal is shown on first render we defer syncStart to the
   // handler so the session only starts once the player has chosen a mode.

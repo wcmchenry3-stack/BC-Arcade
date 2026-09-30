@@ -620,6 +620,14 @@ describe("GameScreen — gameEventClient instrumentation (#368)", () => {
     if (abandonCall === undefined) throw new Error("Expected completeGame call");
     const [, summary] = abandonCall;
     expect(summary.outcome).toBe("abandoned");
+    // #2839: the unmount abandon carries the (empty so far) card, and no score.
+    expect(summary.result).toEqual(
+      expect.objectContaining({
+        outcome: "abandoned",
+        scorecard: expect.objectContaining({ categories: {} }),
+      })
+    );
+    expect(summary.finalScore).toBeUndefined();
   });
 
   it("does not double-fire game_ended: completeGame on unmount is skipped after natural end", async () => {

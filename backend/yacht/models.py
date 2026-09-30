@@ -1,9 +1,20 @@
+import logging
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    ValidationError,
+    ValidationInfo,
+    model_validator,
+)
 
 AiDifficulty = Literal["easy", "medium", "hard"]
 YachtMode = Literal["solo", "vs"]
+
+logger = logging.getLogger(__name__)
 
 
 class YachtMetadata(BaseModel):
@@ -50,7 +61,7 @@ CATEGORY_MAX: dict[str, int] = {
 """Highest value each category can hold, Joker scores included (a Joker prices
 Full House / Small / Large Straight at their flat 25 / 30 / 40 and the sum
 categories at the dice sum, all within these). Keys mirror ``CATEGORIES`` in
-``frontend/src/game/yacht/engine.ts`` (``test_yacht_models.py`` parses both)."""
+``frontend/src/game/yacht/engine.ts`` (``test_yacht_result.py::test_category_keys_match_the_engine`` parses both)."""
 
 UPPER_CATEGORIES = ("ones", "twos", "threes", "fours", "fives", "sixes")
 UPPER_BONUS_THRESHOLD = 63
@@ -111,12 +122,14 @@ class YachtScorecard(BaseModel):
       0 to 12), earned only once the Yacht category holds 50. It is on top of
       the Joker category score, not instead of it.
 
-    A card that breaks these rules is stored and flagged
-    (``YachtResult.scorecard_reconciled``), never rejected: a 400 on
-    ``/complete`` dead-letters the game in the app.
+    This model is the *validity test* for a card, not a gate on the request:
+    ``YachtResult`` drops a card that fails it and completes the game anyway
+    (a 400 on ``/complete`` dead-letters the game in the app). A card that is
+    valid but does not add up is kept and flagged. Unknown keys beside
+    ``categories`` are ignored, so a newer build can add to the card.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     categories: YachtCategories
     upper_bonus: StrictInt = Field(default=0, ge=0, le=UPPER_BONUS_VALUE)
@@ -142,39 +155,44 @@ class YachtScorecard(BaseModel):
         )
 
 
+def _is_int(v: Any) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
 class YachtResult(BaseModel):
     """Result block sent on ``PATCH /games/{id}/complete`` (#2449, #2839).
 
-    Mirrors ``endedPayload`` in ``GameScreen.tsx``. Builds before #2839 send
-    only ``final_score``, ``upper_bonus``, ``yacht_bonus_total`` and
-    ``outcome`` (plus, for a finished vs game, ``opponent_score`` and
-    ``vs_result``); those stay valid, and unknown keys are kept as they were
-    before this model existed (the 8 KiB cap in ``games.service`` bounds them).
+    Mirrors ``endedPayload`` in ``GameScreen.tsx``. This model **never rejects
+    a completion**: a 400 is dead-lettered by the app's sync worker, losing the
+    score, the leaderboard row and the XP. Every field but the two cards is
+    undeclared, so ``final_score``, ``upper_bonus``, ``yacht_bonus_total``,
+    ``outcome``, ``opponent_score``, ``vs_result`` and any unknown key are
+    stored exactly as sent, as they were before this model existed (the 8 KiB
+    cap in ``games.service`` bounds them).
 
     ``scorecard`` is the player's card and ``opponent_scorecard`` the
     computer's, sent only when the computer finished (the same condition as
-    ``opponent_score``). An abandoned game sends whatever is filled. The top
-    level ``final_score`` / ``upper_bonus`` / ``yacht_bonus_total`` still mean
-    the player's, and the ranking (``games.final_score``) is untouched.
+    ``opponent_score``: a vs game completed while the computer is still
+    playing, e.g. on unmount, has no opponent card). Every abandon
+    (New Game, or the hook's unmount abandon via the progress snapshot)
+    carries the partial card; abandoned rows never rank. The player's card is
+    reconciled against the ``/complete`` body's ``final_score`` when the
+    service passes it as validation context (else the result's own copy), and
+    the result's copy must agree. The top level ``final_score`` still means the player's, and ranking is untouched.
 
-    ``scorecard_reconciled`` is written by the server, never trusted from the
-    client: true when every scorecard present adds up to its total
-    (``final_score`` / ``opponent_score``) and follows the bonus rules. It is
-    left out when no scorecard came. Only the shape and bounds are enforced
-    (a 400 there means the sender is not a Yacht client); a card that does not
-    add up is stored and flagged, so a client bug cannot dead-letter a game.
+    A card is validated as ``YachtScorecard`` (category keys, integer bounds).
+    One that fails is dropped, ``scorecard_reconciled`` is set false and the
+    drop is reported (log + Sentry); the game still completes. A valid card
+    that does not add up to its total, or breaks the bonus rules, is stored
+    and flagged the same way. ``scorecard_reconciled`` is server-written (a
+    client's value is discarded): true only when every card present is valid
+    and reconciles. It is left out when no card came.
     """
 
     model_config = ConfigDict(extra="allow")
 
-    final_score: int | None = Field(default=None, ge=0)
-    upper_bonus: int | None = Field(default=None, ge=0)
-    yacht_bonus_total: int | None = Field(default=None, ge=0)
-    outcome: str | None = Field(default=None, max_length=32)
-    opponent_score: int | None = Field(default=None, ge=0)
-    vs_result: str | None = Field(default=None, max_length=32)
-    scorecard: YachtScorecard | None = None
-    opponent_scorecard: YachtScorecard | None = None
+    scorecard: Any = None
+    opponent_scorecard: Any = None
     scorecard_reconciled: bool | None = None
 
     @model_validator(mode="before")
@@ -184,17 +202,62 @@ class YachtResult(BaseModel):
             data = {k: v for k, v in data.items() if k != "scorecard_reconciled"}
         return data
 
+    def _drop(self, field: str) -> None:
+        setattr(self, field, None)
+        self.__pydantic_fields_set__.discard(field)
+
     @model_validator(mode="after")
-    def _reconcile(self) -> "YachtResult":
+    def _validate_and_reconcile(self, info: ValidationInfo) -> "YachtResult":
+        extra = self.model_extra or {}
+        # ``final_score`` of the /complete body, when the service passes it as
+        # validation context (it may not, or may be None: an abandon has none).
+        context = info.context if isinstance(info.context, dict) else {}
+        body_score = context.get("final_score")
         checks: list[bool] = []
-        if self.scorecard is not None:
-            checks.append(self.scorecard.is_consistent())
-            if self.final_score is not None:
-                checks.append(self.scorecard.total() == self.final_score)
-        if self.opponent_scorecard is not None:
-            checks.append(self.opponent_scorecard.is_consistent())
-            if self.opponent_score is not None:
-                checks.append(self.opponent_scorecard.total() == self.opponent_score)
+        for field, total_key in (
+            ("scorecard", "final_score"),
+            ("opponent_scorecard", "opponent_score"),
+        ):
+            raw = getattr(self, field)
+            if raw is None:
+                self._drop(field)  # `null` is "no card"
+                continue
+            try:
+                card = YachtScorecard.model_validate(raw)
+            except ValidationError as e:
+                errors = e.errors()
+                _report_dropped_card(
+                    field,
+                    ", ".join(".".join(str(p) for p in err["loc"]) for err in errors),
+                    sorted({err["type"] for err in errors}),
+                )
+                self._drop(field)
+                checks.append(False)
+                continue
+            setattr(self, field, card.model_dump(exclude_unset=True))
+            checks.append(card.is_consistent())
+            total = extra.get(total_key)
+            if field == "scorecard" and _is_int(body_score):
+                # The row's ``final_score`` (the /complete body) is what ranks,
+                # so the card must explain it, and the result's copy must agree.
+                checks.append(card.total() == body_score)
+                checks.append(total is None or total == body_score)
+            else:
+                checks.append(_is_int(total) and card.total() == total)
         if checks:
             self.scorecard_reconciled = all(checks)
         return self
+
+
+def _report_dropped_card(field: str, fields: str, error_types: list[str]) -> None:
+    """Log and send to Sentry a card dropped from an otherwise valid result.
+
+    Same channel as a rejected result (``games.service``), but the game still
+    completes. Field paths and error types only, no values or identifiers.
+    """
+    from games.service import _report_rejected_result
+
+    logger.warning("Yacht %s dropped from the result: %s", field, fields)
+    _report_rejected_result(
+        "yacht", f"{field} dropped", {"fields": fields, "error_types": error_types}
+    )

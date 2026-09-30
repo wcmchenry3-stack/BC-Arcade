@@ -189,7 +189,7 @@ The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.t
 "any" means every non-abandoned row. Notes on the declarations:
 
 - **Yacht** 1575 is the theoretical maximum with bonus Yachts, recomputed from `engine.ts` in `tests/test_board_definitions.py`. Solo and vs-the-computer games share the board; the session metadata records `mode` (`solo` | `vs`) and, for a vs game, `difficulty` (#2630). The legacy `POST /yacht/score` and `GET /yacht/scores` were removed in #2630.
-- **Yacht result** (#2839): `YachtResult` also stores the final category scorecard (`scorecard`, and `opponent_scorecard` for a finished vs game) beside the unchanged `final_score`, with a server-written `scorecard_reconciled`. A card that fails to add up is flagged, never rejected. Bonus accounting and bounds: [`games/yacht.md`](games/yacht.md#saved-final-scorecard-2839).
+- **Yacht result** (#2839): `YachtResult` also stores the final category scorecard (`scorecard`, and `opponent_scorecard` for a finished vs game) beside the unchanged `final_score`, with a server-written `scorecard_reconciled`. A malformed card is dropped and one that fails to add up is flagged; neither rejects the completion. Bonus accounting and bounds: [`games/yacht.md`](games/yacht.md#saved-final-scorecard-2839).
 - **Sudoku** scores `DIFFICULTY_BASE[difficulty] - 10 × errors` (`SudokuScreen.tsx`), so each difficulty has its own cap. Rows from before #748 carry no `variant` and count as `classic`, as in `sudoku/router.py`.
 - **Daily Word**'s best is the fewest guesses in a won game; a loss is not a best.
 - **Twenty48** has one global board with no ceiling (#2519 decisions 1 and 14). A `kept_playing` completion counts like `completed`.

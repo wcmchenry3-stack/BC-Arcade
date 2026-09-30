@@ -372,11 +372,18 @@ async def test_pre_2839_result_still_completes(client: TestClient) -> None:
     "scorecard",
     [{"categories": {"bogus": 1}}, {"categories": {"ones": 99}}, {"categories": {"chance": -3}}],
 )
-def test_out_of_shape_card_is_400(client: TestClient, scorecard: dict) -> None:
+async def test_out_of_shape_card_still_completes_with_the_card_dropped(
+    client: TestClient, scorecard: dict
+) -> None:
+    """A 400 would dead-letter the game; the score and row are kept."""
     sid = _sid()
     game_id = _create(client, sid, SOLO).json()["id"]
     result = {"final_score": 10, "outcome": "completed", "scorecard": scorecard}
-    assert _complete(client, sid, game_id, result, score=10).status_code == 400
+    assert _complete(client, sid, game_id, result, score=10).status_code == 200
+    row = await _row(game_id)
+    assert row.final_score == 10
+    assert "scorecard" not in row.game_metadata
+    assert row.game_metadata["scorecard_reconciled"] is False
 
 
 def test_result_over_the_size_cap_is_400(client: TestClient) -> None:
