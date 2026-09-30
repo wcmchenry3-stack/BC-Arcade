@@ -8,6 +8,7 @@ would dead-letter the run.
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 import uuid
@@ -27,6 +28,7 @@ from games.protocol import GameModule
 from games.registry import get_module
 from games.service import _MAX_RESULT_BYTES
 from main import app
+from starswarm import models as starswarm_models
 from starswarm.models import (
     DEFAULT_DIFFICULTY_TIER,
     DIFFICULTY_TIERS,
@@ -691,3 +693,148 @@ def test_only_the_owner_can_read_a_runs_breakdown() -> None:
     r = client.get(f"/games/{gid}", headers=_headers(str(uuid.uuid4())))
     assert r.status_code == 403
     assert "score_breakdown" not in r.text
+
+
+# --- invariants, reconciliation and Sentry reporting (#2837 review) ----------
+
+
+@pytest.fixture
+def sentry_messages(monkeypatch) -> list[tuple[str, dict]]:
+    calls: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        starswarm_models.sentry_sdk,
+        "capture_message",
+        lambda message, **kw: calls.append((message, kw)),
+    )
+    return calls
+
+
+def _validated(bd: object, context: dict | None = None):
+    return StarSwarmResult.model_validate({"score_breakdown": bd}, context=context).score_breakdown
+
+
+def _with(bd: dict, path: tuple, value: object) -> dict:
+    out = copy.deepcopy(bd)
+    target = out
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    return out
+
+
+def _folded() -> dict:
+    """A breakdown with an ``earlier`` bucket: waves 1-2 folded, 3-4 detailed."""
+    bd = _breakdown(4)
+    folded = bd["waves"][:2]
+    pts: dict[str, int] = {}
+    for w in folded:
+        for k, v in w["pts"].items():
+            pts[k] = pts.get(k, 0) + v
+    earlier = {"first": 1, "last": 2, "total": sum(pts.values()), "pts": pts}
+    return {"v": 1, "earlier": earlier, "waves": bd["waves"][2:]}
+
+
+@pytest.mark.parametrize(
+    "context", [None, {}, {"final_score": None}], ids=["none", "empty", "null"]
+)
+def test_a_consistent_breakdown_is_kept_without_a_final_score(context, sentry_messages) -> None:
+    assert _validated(_breakdown(3), context) is not None
+    assert _validated(_folded(), context) is not None
+    assert sentry_messages == []
+
+
+def test_a_breakdown_that_reconciles_with_the_final_score_is_kept(sentry_messages) -> None:
+    bd = _folded()
+    assert _validated(bd, {"final_score": _final(bd)}) is not None
+    with_gap = {**bd, "unattributed": 50}
+    assert _validated(with_gap, {"final_score": _final(bd) + 50}) is not None
+
+
+def test_a_breakdown_that_does_not_reconcile_is_dropped(sentry_messages) -> None:
+    bd = _breakdown(2)
+    assert _validated(bd, {"final_score": _final(bd) + 1}) is None
+    assert _validated({**bd, "unattributed": 5}, {"final_score": _final(bd)}) is None
+    reasons = [kw["fingerprint"][1] for _, kw in sentry_messages]
+    assert reasons == ["breakdown_unreconciled", "breakdown_unreconciled"]
+
+
+def _mutations() -> list[tuple[str, dict]]:
+    bd = _breakdown(3)
+    f = _folded()
+    w0 = bd["waves"][0]
+    return [
+        ("end-start-not-total", _with(bd, ("waves", 0, "end"), w0["end"] + 1)),
+        ("total-not-sum", _with(_with(bd, ("waves", 0, "total"), 1), ("waves", 0, "end"), 1)),
+        ("start-not-previous-end", _with(bd, ("waves", 1, "start"), 0)),
+        ("first-wave-not-at-zero", _with(bd, ("waves", 0, "start"), 7)),
+        ("not-ascending", _with(bd, ("waves", 1, "wave"), 1)),
+        ("earlier-first-after-last", _with(f, ("earlier", "first"), 9)),
+        ("earlier-total-not-sum", _with(f, ("earlier", "total"), 1)),
+        ("wave-not-after-earlier", _with(f, ("waves", 0, "start"), 0)),
+        ("wave-inside-earlier", _with(f, ("waves", 0, "wave"), 2)),
+    ]
+
+
+@pytest.mark.parametrize("bd", [m[1] for m in _mutations()], ids=[m[0] for m in _mutations()])
+def test_an_inconsistent_breakdown_is_dropped_and_reported(bd, sentry_messages) -> None:
+    assert _validated(bd) is None
+    assert len(sentry_messages) == 1
+    _message, kw = sentry_messages[0]
+    assert kw["level"] == "warning"
+    assert kw["fingerprint"] == ["starswarm-result-breakdown-dropped", "breakdown_inconsistent"]
+    assert kw["extras"]["fields"].startswith("score_breakdown")
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("waves", 0, "pts", "Grunt"), -1000),
+        (("waves", 0, "pts", "Grunt"), True),
+        (("waves", 0, "pts", "Grunt"), 1000.0),
+        (("waves", 0, "total"), "2900"),
+        (("waves", 0, "wave"), 1.0),
+        (("unattributed",), 1.5),
+    ],
+    ids=["negative-points", "bool", "float", "numeric-string", "float-wave", "float-gap"],
+)
+def test_breakdown_numbers_are_strict_non_negative_ints(path, value, sentry_messages) -> None:
+    assert _validated(_with(_breakdown(1), path, value)) is None
+    _message, kw = sentry_messages[0]
+    assert kw["fingerprint"] == ["starswarm-result-breakdown-dropped", "invalid"]
+
+
+def test_the_drop_report_carries_field_paths_and_types_but_no_values(
+    sentry_messages, caplog
+) -> None:
+    secret = 987_654_321
+    bd = _with(_breakdown(1), ("waves", 0, "pts", "Grunt"), -secret)
+    assert _validated(bd) is None
+    _message, kw = sentry_messages[0]
+    assert kw["extras"]["fields"] == "score_breakdown.waves.0.pts.Grunt"
+    assert kw["extras"]["error_types"] == ["greater_than_equal"]
+    assert str(secret) not in repr(sentry_messages)
+    assert "score_breakdown.waves.0.pts.Grunt [greater_than_equal]" in caplog.text
+
+
+def test_a_top_level_type_error_names_the_field_in_the_log(sentry_messages, caplog) -> None:
+    assert _validated("not-an-object") is None
+    assert "score_breakdown [model_type]" in caplog.text
+
+
+def test_a_kept_breakdown_with_unattributed_points_is_reported(sentry_messages) -> None:
+    bd = {**_breakdown(2), "unattributed": 40}
+    kept = _validated(bd, {"final_score": _final(bd)})
+    assert kept is not None and kept.unattributed == 40
+    assert [kw["fingerprint"] for _, kw in sentry_messages] == [
+        ["starswarm-result-breakdown-dropped", "unattributed"]
+    ]
+
+
+def test_an_inconsistent_breakdown_does_not_fail_the_completion(sentry_messages) -> None:
+    gid = _start(_SID)
+    bd = _with(_breakdown(2), ("waves", 1, "start"), 0)
+    r = _complete(gid, 1234, {"outcome": "completed", "wave_reached": 2, "score_breakdown": bd})
+    assert r.status_code == 200, r.text
+    detail = client.get(f"/games/{gid}", headers=_headers(_SID)).json()
+    assert detail["final_score"] == 1234
+    assert detail["metadata"]["score_breakdown"] is None

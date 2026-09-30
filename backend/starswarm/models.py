@@ -13,15 +13,20 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Any, Literal, get_args
 
+import sentry_sdk
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictInt,
     StringConstraints,
     ValidationError,
+    ValidationInfo,
     ValidatorFunctionWrapHandler,
     field_validator,
+    model_validator,
 )
+from pydantic_core import PydanticCustomError
 
 logger = logging.getLogger(__name__)
 
@@ -82,25 +87,40 @@ SourceKey = Annotated[str, StringConstraints(min_length=1, max_length=32)]
 ``:dive`` / ``:rout`` / ``:bomb`` / ``:ram`` modifier, or ``clear`` for the
 wave-clear bonus. An open set: an unknown source is kept, not rejected."""
 
-ScorePoints = Annotated[dict[SourceKey, int], Field(max_length=MAX_BREAKDOWN_SOURCES)]
+Points = Annotated[StrictInt, Field(ge=0)]
+ScorePoints = Annotated[dict[SourceKey, Points], Field(max_length=MAX_BREAKDOWN_SOURCES)]
+
+# Error types the invariant checks raise; the drop report's reason names them.
+INCONSISTENT = "breakdown_inconsistent"
+UNRECONCILED = "breakdown_unreconciled"
+
+
+def _inconsistent(what: str) -> PydanticCustomError:
+    return PydanticCustomError(
+        INCONSISTENT, "score_breakdown is inconsistent: {what}", {"what": what}
+    )
 
 
 class StarSwarmWaveScore(BaseModel):
-    """One wave that scored: ``end - start == total == sum(pts)``."""
+    """One wave that scored: ``end - start == total == sum(pts)``.
 
-    wave: int = Field(ge=0)
-    start: int
-    end: int
-    total: int
+    ``start``/``end`` are the ledger's running total, which leaves out any
+    ``unattributed`` points, so they can trail the live score by that much.
+    """
+
+    wave: StrictInt = Field(ge=0)
+    start: Points
+    end: Points
+    total: Points
     pts: ScorePoints
 
 
 class StarSwarmEarlierScore(BaseModel):
     """Waves ``first``..``last`` folded together to keep the block bounded; they start at 0."""
 
-    first: int = Field(ge=0)
-    last: int = Field(ge=0)
-    total: int
+    first: StrictInt = Field(ge=0)
+    last: StrictInt = Field(ge=0)
+    total: Points
     pts: ScorePoints
 
 
@@ -112,10 +132,41 @@ class StarSwarmScoreBreakdown(BaseModel):
     are ignored so a newer build's additions don't fail the block.
     """
 
-    v: int = 1
+    v: StrictInt = 1
     earlier: StarSwarmEarlierScore | None = None
     waves: list[StarSwarmWaveScore] = Field(default_factory=list, max_length=MAX_BREAKDOWN_WAVES)
-    unattributed: int | None = None
+    unattributed: StrictInt | None = None
+
+    @model_validator(mode="after")
+    def _check_invariants(self, info: ValidationInfo) -> StarSwarmScoreBreakdown:
+        """The block adds up: per wave, across waves, and (when the completion's
+        ``final_score`` is in the validation context) to the run's score."""
+        running = 0
+        if self.earlier is not None:
+            if self.earlier.first > self.earlier.last:
+                raise _inconsistent("earlier.first > earlier.last")
+            if self.earlier.total != sum(self.earlier.pts.values()):
+                raise _inconsistent("earlier.total != sum(earlier.pts)")
+            running = self.earlier.total
+        prev_wave: int | None = None
+        for w in self.waves:
+            if prev_wave is not None and w.wave <= prev_wave:
+                raise _inconsistent("waves not strictly ascending")
+            if self.earlier is not None and w.wave <= self.earlier.last:
+                raise _inconsistent("wave inside earlier")
+            if w.end - w.start != w.total or w.total != sum(w.pts.values()):
+                raise _inconsistent("wave end - start != total != sum(pts)")
+            if w.start != running:
+                raise _inconsistent("wave start != previous end")
+            running = w.end
+            prev_wave = w.wave
+        context = info.context if isinstance(info.context, dict) else {}
+        final_score = context.get("final_score")
+        if final_score is not None and running + (self.unattributed or 0) != final_score:
+            raise PydanticCustomError(
+                UNRECONCILED, "score_breakdown does not add up to final_score"
+            )
+        return self
 
 
 class StarSwarmResult(BaseModel):
@@ -147,10 +198,38 @@ class StarSwarmResult(BaseModel):
         breakdown beats dead-lettering the whole run.
         """
         try:
-            return handler(value)
+            breakdown = handler(value)
         except ValidationError as e:
+            errors = e.errors()[:5]
+            fields = [
+                ".".join(["score_breakdown", *(str(p) for p in err["loc"])]) for err in errors
+            ]
+            types = sorted({err["type"] for err in errors})
+            reason = next((t for t in (UNRECONCILED, INCONSISTENT) if t in types), "invalid")
             logger.warning(
                 "starswarm: dropped a malformed score_breakdown (%s)",
-                ", ".join(".".join(str(p) for p in err["loc"]) for err in e.errors()[:5]),
+                ", ".join(f"{f} [{err['type']}]" for f, err in zip(fields, errors, strict=True)),
             )
+            _report_dropped_breakdown(reason, fields=fields, error_types=types)
             return None
+        if isinstance(breakdown, StarSwarmScoreBreakdown) and breakdown.unattributed:
+            # Kept, but some points bypassed the ledger: a scoring path that
+            # doesn't go through scoreLedger.ts (drift detector).
+            _report_dropped_breakdown("unattributed", fields=["score_breakdown.unattributed"])
+        return breakdown
+
+
+def _report_dropped_breakdown(
+    reason: str, *, fields: list[str], error_types: list[str] | None = None
+) -> None:
+    """Send a dropped (or drifting) Star Swarm breakdown to Sentry (#2837).
+
+    Field paths and error types only, never values. One issue per ``reason``.
+    """
+    sentry_sdk.capture_message(
+        f"starswarm result: score_breakdown {reason}",
+        level="warning",
+        fingerprint=["starswarm-result-breakdown-dropped", reason],
+        tags={"game_type": "starswarm", "reason": reason},
+        extras={"fields": ", ".join(fields), "error_types": error_types or []},
+    )

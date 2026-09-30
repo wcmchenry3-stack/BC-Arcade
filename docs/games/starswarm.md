@@ -374,11 +374,25 @@ treat the source set as open.
 Game over sends it as the result's `score_breakdown`:
 `{v: 1, earlier?: {first, last, total, pts}, waves: [{wave, start, end, total, pts}], unattributed?}`.
 The run starts at 0 and waves that scored nothing are absent; `earlier.total` + every
-`waves[].total` + `unattributed` (present only when non-zero) equals `final_score`. It is bounded:
+`waves[].total` + `unattributed` (present only when non-zero) equals `final_score`. A wave's
+`start`/`end` are the ledger's running total and exclude `unattributed` points; the backend
+reports a kept breakdown with non-zero `unattributed` to Sentry as a sign that a scoring path
+bypasses the ledger. It is bounded:
 the ledger keeps the last 20 scoring waves in detail and folds older ones into `earlier`, and the
 summary folds further until its compact JSON is ≤ 4 KiB (`BREAKDOWN_MAX_BYTES`), so the whole result
 stays well under the backend's 8 KiB limit (worst case measured ≈ 4.3 KB as the server counts it).
 The breakdown is in the result only, not the `game_ended` event. Display is #2840.
+
+`StarSwarmResult` checks the block adds up (per wave `end - start == total == sum(pts)`, each
+wave starting at the previous `end` or at `earlier.total`, waves strictly ascending, strict
+non-negative integers) and, when the completion's `final_score` is in the validation context,
+that it reconciles to it. A block that fails is dropped to `null` and reported to Sentry
+(`starswarm-result-breakdown-dropped`, field paths and error types only); the run still completes
+and ranks.
+
+Adding `scoreLedger` to the saved state changed `SAVE_FINGERPRINT`, so a run paused on a build
+before #2837 is discarded once, not restored, after the update (Star Swarm is hidden in store
+builds, so this is accepted).
 
 ## Leaderboard and Run Reporting
 

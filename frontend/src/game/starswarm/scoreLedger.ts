@@ -79,8 +79,15 @@ function sumPts(pts: Readonly<ScorePoints>): number {
   return total;
 }
 
+/** No own keys — without allocating a key array on every tick. */
+function isEmpty(pts: Readonly<ScorePoints>): boolean {
+  for (const k in pts) if (Object.prototype.hasOwnProperty.call(pts, k)) return false;
+  return true;
+}
+
 function foldOldest(ledger: ScoreLedger, count: number): ScoreLedger {
-  const folded = ledger.waves.slice(0, Math.max(0, count));
+  if (count <= 0) return ledger;
+  const folded = ledger.waves.slice(0, count);
   const head = folded[0];
   const tail = folded[folded.length - 1];
   if (!head || !tail) return ledger;
@@ -98,7 +105,7 @@ export function recordScore(
   wave: number,
   awards: Readonly<ScorePoints>
 ): ScoreLedger {
-  if (Object.keys(awards).length === 0) return ledger;
+  if (isEmpty(awards)) return ledger;
   const last = ledger.waves[ledger.waves.length - 1];
   let waves: WaveScore[];
   if (last && last.wave === wave) {
@@ -148,7 +155,9 @@ export interface EarlierBreakdown {
 /**
  * The `score_breakdown` result block. The run starts at 0; waves that scored nothing are
  * absent. `earlier.total` + every `waves[].total` + `unattributed` = the final score, and each
- * wave's `start` is the score before it (`end` = `start` + `total`).
+ * wave's `start` is the ledger's running total before it (`end` = `start` + `total`).
+ * `start`/`end` exclude `unattributed` points, so when there are any they trail the live score
+ * by that much (the backend checks this shape and reports a non-zero `unattributed`).
  */
 export interface ScoreBreakdown {
   readonly v: number;
