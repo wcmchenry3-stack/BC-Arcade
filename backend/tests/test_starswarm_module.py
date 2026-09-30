@@ -838,3 +838,18 @@ def test_an_inconsistent_breakdown_does_not_fail_the_completion(sentry_messages)
     detail = client.get(f"/games/{gid}", headers=_headers(_SID)).json()
     assert detail["final_score"] == 1234
     assert detail["metadata"]["score_breakdown"] is None
+
+
+def test_a_breakdown_that_disagrees_with_the_body_score_is_dropped_over_http(
+    sentry_messages,
+) -> None:
+    # _validate_result passes the PATCH body's final_score as validation context.
+    gid = _start(_SID)
+    bd = _breakdown(2)
+    result = {"outcome": "completed", "wave_reached": 2, "score_breakdown": bd}
+    r = _complete(gid, _final(bd) + 100, result)
+    assert r.status_code == 200, r.text
+    detail = client.get(f"/games/{gid}", headers=_headers(_SID)).json()
+    assert detail["final_score"] == _final(bd) + 100
+    assert detail["metadata"]["score_breakdown"] is None
+    assert [kw["fingerprint"][1] for _, kw in sentry_messages] == ["breakdown_unreconciled"]
