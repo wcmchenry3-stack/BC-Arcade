@@ -183,6 +183,7 @@ export default function Scorecard({
               return (
                 <Pressable
                   key={tab}
+                  testID={`yacht-tab-${tab}`}
                   style={[styles.tab, { borderBottomColor: isActive ? tabColor : "transparent" }]}
                   onPress={() => setActiveTab(tab)}
                   accessibilityRole="tab"

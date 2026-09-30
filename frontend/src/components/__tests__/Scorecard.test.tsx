@@ -81,6 +81,14 @@ describe("Scorecard — tabs", () => {
     expect(tabs[0]?.props.accessibilityState?.selected).toBe(false);
     expect(tabs[1]?.props.accessibilityState?.selected).toBe(true);
   });
+
+  // The Maestro result-submission flow switches tabs by these ids (#2643).
+  it("gives each tab a stable testID", async () => {
+    const { getByTestId, getAllByRole } = await renderScorecard();
+    expect(getByTestId("yacht-tab-upper")).toBe(getAllByRole("tab")[0]);
+    await fireEvent.press(getByTestId("yacht-tab-lower"));
+    expect(getByTestId("score-row-chance")).toBeTruthy();
+  });
 });
 
 describe("Scorecard — wide layout (≥600dp)", () => {

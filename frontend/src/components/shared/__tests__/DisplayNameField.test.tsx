@@ -78,4 +78,28 @@ describe("DisplayNameField", () => {
 
     expect(screen.getByText("Couldn't save your name. Try again.")).toBeTruthy();
   });
+
+  // The Maestro result-submission flow (#2643) types into `-input` and
+  // submits with the keyboard's return key, falling back to `-save`.
+  it("derives input and Save testIDs from its testID, and saves on submit", async () => {
+    const onSaved = jest.fn();
+    await render(
+      <ThemeProvider>
+        <DisplayNameField label="Display name" helper="h" onSaved={onSaved} testID="prompt" />
+      </ThemeProvider>
+    );
+    const input = await screen.findByTestId("prompt-input");
+    expect(input).toBe(screen.getByLabelText("Display name"));
+    expect(screen.getByTestId("prompt-save")).toBe(screen.getByRole("button", { name: "Save" }));
+
+    await fireEvent.changeText(input, "Maestro12345");
+    await fireEvent(input, "submitEditing");
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith("Maestro12345"));
+  });
+
+  it("adds no testIDs when it has none", async () => {
+    await renderField();
+    expect(screen.queryByTestId("undefined-input")).toBeNull();
+    expect(screen.getByLabelText("Display name").props.testID).toBeUndefined();
+  });
 });

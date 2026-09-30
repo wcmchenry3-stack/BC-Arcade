@@ -4128,6 +4128,7 @@ exports[`GameResultModal — submission line shows the offline state 1`] = `
                   "justifyContent": "center",
                 }
               }
+              testID="game-result-submission-offline"
             >
               <Text
                 allowFontScaling={false}
@@ -4491,6 +4492,7 @@ exports[`GameResultModal — submission line shows the one-time name prompt and 
                       },
                     ]
                   }
+                  testID="result-name-prompt-input"
                   value=""
                 />
                 <View
@@ -4541,6 +4543,7 @@ exports[`GameResultModal — submission line shows the one-time name prompt and 
                       },
                     ]
                   }
+                  testID="result-name-prompt-save"
                 >
                   <Text
                     style={

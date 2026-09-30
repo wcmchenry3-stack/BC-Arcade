@@ -1,0 +1,40 @@
+appId: com.buffingchi.games
+---
+# Subflow: take the player's display name off the (real dev API) leaderboards
+# so the boards testers see don't keep a Maestro bot entry (#2637, #2643).
+#
+# Used twice by leaderboard/result-submission.yaml: as its last step (which
+# then asserts `profile-not-on-boards` itself), and from its onFlowComplete
+# hook when the flow failed after typing the name and before that step — the
+# app may then be anywhere (a modal, the leaderboard, a crash).
+#
+# So: relaunch WITHOUT clearState (the saved name and the session must
+# survive), reach Home through the same launcher handling every flow uses,
+# then Profile → "Remove my name from leaderboards" → confirm.
+- launchApp
+- runFlow: after-launch.yaml
+- tapOn:
+    id: "tab-profile"
+# The only tolerant step: is there a name to remove at all? (A failure before
+# the name reached the device leaves nothing to do.) Once the button is
+# there, every step is required.
+- runFlow:
+    when:
+      visible:
+        id: "profile-remove-name"
+    commands:
+      - tapOn:
+          id: "profile-remove-name"
+      - extendedWaitUntil:
+          visible:
+            id: "profile-remove-name-confirm-confirm"
+          timeout: 5000
+      - tapOn:
+          id: "profile-remove-name-confirm-confirm"
+      # Wait for DELETE /players/me to land ("profile-name-removing" shows
+      # until it does). Returning earlier would let the next flow's
+      # `launchApp: clearState` wipe the pending removal before it is sent.
+      - extendedWaitUntil:
+          visible:
+            id: "profile-not-on-boards"
+          timeout: 60000

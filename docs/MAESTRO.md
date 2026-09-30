@@ -59,6 +59,7 @@ A shared `detect-maestro-scope.yml` reusable workflow (mirrors `detect-e2e-scope
 
 - **Push to `main`**, a **manual `workflow_dispatch`**, a **PR targeting `main`**, or a change to a shared/infra path (`frontend/src/theme/**`, `frontend/src/game/_shared/**`, `e2e/maestro/**`, `.github/workflows/**`, etc.) → full suite, same as before.
 - **PR into `dev`** touching only specific games → only those games' flow directories run, plus `home` (always included — cheap, catches nav regressions). `offline/` only ever runs as part of the full suite.
+- `leaderboard/` (result submission, #2643) is also **full suite only** — it has no paths-filter category. It runs against the deployed dev API rather than the PR's backend, so a PR's changed paths can't tell whether it is relevant, and its full 13-turn Yacht game is too costly on the `macos-15` runner to repeat for every Yacht-UI PR. See [`e2e/maestro/README.md`](../e2e/maestro/README.md#result-submission-flow-leaderboard).
 - A PR touching nothing Maestro-relevant (backend-only, docs-only) skips the job entirely — no emulator/simulator boot.
 
 The job summary heading includes the resolved scope, e.g. `Maestro Android Smoke (selective: home solitaire freecell)`.
@@ -87,3 +88,4 @@ iOS is ~12× more expensive due to the `macos-15` runner rate. Keep iOS flows as
 | Offline mode (`toggleAirplaneMode`) | Maestro (Android) | Requires OS-level network control |
 | App launch on real/simulated device | Maestro | Verifies the native bundle boots and renders the home screen |
 | Backend API, scoring submission | Backend tests | FastAPI `TestClient`; no browser or device needed |
+| Result card → name prompt → rank → leaderboard → name removal, on a native build | Maestro (`leaderboard/result-submission.yaml`) | The one native end-to-end check of submission (#2643); runs against the real dev API, full suite only, see [`e2e/maestro/README.md`](../e2e/maestro/README.md#result-submission-flow-leaderboard) |

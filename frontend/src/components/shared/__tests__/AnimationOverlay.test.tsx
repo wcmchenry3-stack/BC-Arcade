@@ -112,3 +112,23 @@ describe("AnimationOverlay — accessibility (#2711)", () => {
     expect(queryByRole("button", { name: "Skip celebration" })).toBeNull();
   });
 });
+
+describe("AnimationOverlay — dismissTestID (#2643)", () => {
+  it("puts the id on the backdrop only while shown, and pressing it dismisses", async () => {
+    const onDismiss = jest.fn();
+    const { queryByTestId, getByTestId, rerender } = await render(
+      <AnimationOverlay visible={false} onDismiss={onDismiss} dismissTestID="cele" />
+    );
+    // Not merely hidden from queries: the idle overlay carries no such id at all.
+    expect(queryByTestId("cele", { includeHiddenElements: true })).toBeNull();
+
+    await rerender(<AnimationOverlay visible onDismiss={onDismiss} dismissTestID="cele" />);
+    await fireEvent.press(getByTestId("cele"));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("adds no id when none is given", async () => {
+    const { getByRole } = await render(<AnimationOverlay visible onDismiss={jest.fn()} />);
+    expect(getByRole("button", { name: "Skip celebration" }).props.testID).toBeUndefined();
+  });
+});

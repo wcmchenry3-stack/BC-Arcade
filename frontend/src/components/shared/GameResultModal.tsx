@@ -379,7 +379,9 @@ export function ResultCard({
 
       {detail ? <View style={styles.detail}>{detail}</View> : null}
 
-      {submission ? <SubmissionLine submission={submission} colors={colors} /> : null}
+      {submission ? (
+        <SubmissionLine submission={submission} colors={colors} testID={`${testID}-submission`} />
+      ) : null}
       {onViewLeaderboard ? (
         <Pressable
           testID={`${testID}-leaderboard`}
@@ -468,7 +470,23 @@ function Hero({
   );
 }
 
-function SubmissionLine({ submission, colors }: { submission: ResultSubmission; colors: Colors }) {
+/** The suffix of the submission line's testID; see `SubmissionLine`. */
+type SubmissionLineState = "saving" | "ranked" | "saved" | "offline" | "error";
+
+/**
+ * The line's testID is `${testID}-${state}`: `saving`, `ranked` (saved, with
+ * a "#N" rank), `saved` (saved, no rank), `offline` or `error`. Native E2E
+ * flows (Maestro, #2643) wait on a state without matching translated copy.
+ */
+function SubmissionLine({
+  submission,
+  colors,
+  testID,
+}: {
+  submission: ResultSubmission;
+  colors: Colors;
+  testID: string;
+}) {
   const { t } = useTranslation("result");
   const { status, rank, isBest, playerName, onProvideName, onRetry } = submission;
 
@@ -494,8 +512,10 @@ function SubmissionLine({ submission, colors }: { submission: ResultSubmission; 
   let icon: IconName = "check";
   let text: string;
   let color = colors.textMuted;
+  let state: SubmissionLineState;
   switch (status) {
     case "saved":
+      state = rank == null ? "saved" : "ranked";
       // The rank is always the player's best entry's (#2633): this game's
       // placing when it is that entry, else "Your best: #N".
       text =
@@ -506,23 +526,32 @@ function SubmissionLine({ submission, colors }: { submission: ResultSubmission; 
             : t("submission.savedRanked", { name: playerName ?? "", rank });
       break;
     case "offline":
+      state = "offline";
       icon = "cloud-off-outline";
       text = t("submission.offline");
       break;
     case "error":
+      state = "error";
       icon = "alert-circle-outline";
       text = t("submission.error");
       color = colors.error;
       break;
     case "submitting":
+      state = "saving";
       icon = "cloud-upload-outline";
       text = t("submission.saving");
       break;
+    default: {
+      // A new LeaderboardSubmitStatus must choose its line (and testID) here.
+      const unhandled: never = status;
+      throw new Error(`Unhandled submission status: ${String(unhandled)}`);
+    }
   }
 
   return (
     <View style={styles.submission}>
       <View
+        testID={`${testID}-${state}`}
         style={styles.submissionLine}
         accessible
         accessibilityLiveRegion="polite"

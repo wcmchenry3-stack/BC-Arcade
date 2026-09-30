@@ -3,7 +3,7 @@ import { AccessibilityInfo, Pressable, StyleSheet, Text } from "react-native";
 import { NavigationContext } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import GameResultModal, {
   CELEBRATION_MAX_MS,
@@ -247,6 +247,28 @@ describe("GameResultModal — submission line", () => {
     );
     await fireEvent.press(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(onProvideName).toHaveBeenCalledWith("Riley"));
+  });
+
+  // Native E2E (Maestro, #2643) waits on these ids instead of translated copy.
+  it.each([
+    [{ status: "submitting" }, "saving", "Saving your score…"],
+    [{ status: "saved", rank: 3, playerName: "Riley" }, "ranked", /#3 on the leaderboard/],
+    [{ status: "saved", rank: 5, isBest: false, playerName: "Riley" }, "ranked", /Your best: #5/],
+    [{ status: "saved", rank: null, playerName: "Riley" }, "saved", "Saved as Riley"],
+    [{ status: "offline" }, "offline", /Saved offline/],
+    [{ status: "error" }, "error", "Couldn't save your score."],
+  ] as const)("tags the %o line as '%s'", async (submission, state, text) => {
+    await renderCard({ submission, testID: "yacht-result" });
+    const line = within(screen.getByTestId(`yacht-result-submission-${state}`));
+    expect(line.getByText(text)).toBeTruthy();
+    // Only the "ranked" line shows a "#N" rank.
+    expect(line.queryByText(/#\d+/) != null).toBe(state === "ranked");
+  });
+
+  it("puts the name prompt's input and Save under stable ids", async () => {
+    await renderCard({ submission: { status: "needsName", onProvideName: jest.fn() } });
+    expect(screen.getByTestId("result-name-prompt-input")).toBeTruthy();
+    expect(screen.getByTestId("result-name-prompt-save")).toBeTruthy();
   });
 });
 

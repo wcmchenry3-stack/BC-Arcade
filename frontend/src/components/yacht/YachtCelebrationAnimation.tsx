@@ -40,8 +40,10 @@ export function YachtCelebrationAnimation({ visible, onDismiss, variant = "yacht
     reducedMotion: { mode: "static", doneAfterMs: 1500 },
   });
 
+  // `yacht-celebration` is on the backdrop only while shown: Maestro taps it
+  // away when present (#2643).
   return (
-    <AnimationOverlay visible={visible} onDismiss={onDismiss}>
+    <AnimationOverlay visible={visible} onDismiss={onDismiss} dismissTestID="yacht-celebration">
       <View style={styles.content} pointerEvents="none">
         {FACE_OFFSETS.map((offset, i) => (
           <Animated.Text

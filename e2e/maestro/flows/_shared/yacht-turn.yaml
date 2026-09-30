@@ -1,0 +1,55 @@
+appId: com.buffingchi.games
+---
+# Subflow: play one solo Yacht turn — roll once, then score ${category}.
+# Caller must set: ${category}  (score-row testID suffix, e.g. "ones")
+#                  ${tab}       (scorecard tab holding it: "upper" / "lower")
+#                  ${celebrate} ("true" only where scoring can celebrate,
+#                                else "false" — always pass it explicitly)
+#
+# Rolling never shows anything over the board. Scoring can: the engine emits
+# a `yacht` event when the Yacht box scores 50 and a `joker` event for a
+# Yacht bonus (game/yacht/engine.ts score()), and GameScreen shows a
+# full-screen YachtCelebrationAnimation for either. Its backdrop would
+# swallow the next turn's first tap, so on a `celebrate: "true"` turn it is
+# tapped away if it is actually on screen (`yacht-celebration` exists only
+# while it shows; it also auto-dismisses after ~2.8s).
+#
+# The check is gated on `celebrate` because a `when: visible` that is false
+# costs Maestro's ~7s lookup timeout; with result-submission.yaml's order
+# (Yacht box 12th, Chance 13th) only the 12th turn can celebrate before the
+# game ends. A 13th-turn joker is left alone: the result card is open over
+# the board then, and a tap at the backdrop's centre would land on the card.
+#
+# The tabs only exist below 600dp wide (Scorecard.tsx WIDE_BREAKPOINT); on a
+# tablet both sections show at once, so the tab tap is optional.
+- tapOn:
+    id: "yacht-tab-${tab}"
+    optional: true
+- tapOn:
+    id: "yacht-roll-button"
+# DiceRow's hint is `yacht-dice-hint-rolled` once this turn has rolled.
+- extendedWaitUntil:
+    visible:
+      id: "yacht-dice-hint-rolled"
+    timeout: 5000
+- tapOn:
+    id: "score-row-${category}"
+# `typeof` so an unset variable can't throw a ReferenceError.
+- runFlow:
+    when:
+      true: ${typeof celebrate !== 'undefined' && celebrate === 'true'}
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "yacht-celebration"
+          commands:
+            - tapOn:
+                id: "yacht-celebration"
+# Scoring ends the turn: the hint goes back to `yacht-dice-hint-ready`.
+# Waiting for "rolled" to go (not for "ready" to appear) also holds after the
+# 13th category, when the result card covers the board.
+- extendedWaitUntil:
+    notVisible:
+      id: "yacht-dice-hint-rolled"
+    timeout: 5000

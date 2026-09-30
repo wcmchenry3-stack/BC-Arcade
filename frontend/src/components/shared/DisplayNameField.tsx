@@ -16,6 +16,7 @@ export interface DisplayNameFieldProps {
   helper: string;
   /** Called with the saved name after a successful save. */
   onSaved?: (name: string) => void;
+  /** The input gets `${testID}-input` and the Save button `${testID}-save`. */
   testID?: string;
 }
 
@@ -69,6 +70,7 @@ export default function DisplayNameField({
       <Text style={[styles.label, { color: colors.textMuted }]}>{label}</Text>
       <View style={styles.row}>
         <TextInput
+          testID={testID ? `${testID}-input` : undefined}
           value={draft}
           onChangeText={(text) => {
             edited.current = true;
@@ -93,6 +95,7 @@ export default function DisplayNameField({
           ]}
         />
         <Pressable
+          testID={testID ? `${testID}-save` : undefined}
           onPress={handleSave}
           disabled={!canSave}
           accessibilityRole="button"

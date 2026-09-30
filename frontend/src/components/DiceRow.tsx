@@ -91,7 +91,10 @@ export default function DiceRow({
           />
         ))}
       </View>
+      {/* State-keyed id so native E2E (Maestro, #2643) can tell "rolled this
+          turn" from "turn not started" without matching translated copy. */}
       <Text
+        testID={rollsUsed > 0 ? "yacht-dice-hint-rolled" : "yacht-dice-hint-ready"}
         style={[styles.hint, isCompact && styles.hintCompact, { color: colors.textMuted }]}
         accessibilityLiveRegion="polite"
       >

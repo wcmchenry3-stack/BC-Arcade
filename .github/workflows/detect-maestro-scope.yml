@@ -106,6 +106,8 @@ jobs:
               - 'frontend/src/screens/SortScreen*'
               - 'frontend/src/game/sort/**'
               - 'backend/sort/**'
+            # No `leaderboard` category on purpose: that flow directory is
+            # full-suite only (see the guard and the `scope` step below).
             shared:
               - 'frontend/App.tsx'
               - 'frontend/app.json'
@@ -137,7 +139,7 @@ jobs:
         id: guard
         run: |
           actual=$(ls e2e/maestro/flows | grep -v '^_shared$' | sort | tr '\n' ' ' | xargs)
-          expected=$(echo "blackjack cascade daily-word freecell hearts home mahjong offline solitaire sort starswarm sudoku twenty48 yacht" | tr ' ' '\n' | sort | tr '\n' ' ' | xargs)
+          expected=$(echo "blackjack cascade daily-word freecell hearts home leaderboard mahjong offline solitaire sort starswarm sudoku twenty48 yacht" | tr ' ' '\n' | sort | tr '\n' ' ' | xargs)
           if [[ "$actual" != "$expected" ]]; then
             echo "::error::e2e/maestro/flows/ directories ($actual) don't match detect-maestro-scope.yml's hardcoded full-suite list ($expected). Update the full-suite list AND add/remove a matching paths-filter category when a game's Maestro flows are added or removed."
             exit 1
@@ -177,6 +179,13 @@ jobs:
             [[ "${{ steps.filter.outputs.sudoku }}"     == "true" ]] && projects="$projects sudoku"
             [[ "${{ steps.filter.outputs.daily_word }}" == "true" ]] && projects="$projects daily-word"
             [[ "${{ steps.filter.outputs.sort }}"       == "true" ]] && projects="$projects sort"
+            # leaderboard/ (#2643) is excluded from selective runs, like
+            # offline: it runs against the DEPLOYED dev API, not the PR's
+            # backend, so a PR's paths can't tell whether it is relevant, and
+            # its full 13-turn Yacht game is too costly on the iOS runner to
+            # repeat for every Yacht-UI PR. It runs whenever the full suite
+            # does (push to main, workflow_dispatch, PRs into main, shared
+            # path changes).
             # home is cheap and catches nav regressions — include it, but
             # only once at least one real game matched (a docs/backend-only
             # PR must still resolve to nothing).
