@@ -29,6 +29,7 @@ import {
   reinforcementsJustLaunched,
   BEAM_HALF_WIDTH,
   upgradeEvents,
+  PLAYER_W,
 } from "../../game/starswarm/engine";
 import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
@@ -191,6 +192,8 @@ export interface DevOptions {
 
 export interface GameCanvasHandle {
   setPlayerX: (x: number) => void;
+  /** See GameCanvas.tsx — the commanded ship X, current even while the engine is frozen. */
+  getPlayerX: () => number;
   setFire: (fire: boolean) => void;
   triggerPowerUp: (type: PowerUpType) => void;
   /** Throw an asteroid now — dev-panel testing (#2486). */
@@ -470,6 +473,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         setPlayerX(x) {
           inputRef.current.playerX = x;
         },
+        getPlayerX() {
+          const hw = PLAYER_W / 2;
+          return Math.max(hw, Math.min(width - hw, inputRef.current.playerX));
+        },
         setFire(fire) {
           inputRef.current.fire = fire;
         },
@@ -489,7 +496,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           return null;
         },
       }),
-      []
+      [width]
     );
 
     useEffect(() => {

@@ -25,7 +25,7 @@ active.
 
 ## Controls
 
-- Drag horizontally to move the player ship.
+- Drag horizontally to move the player ship. Each new touch anchors on the ship's current position (including during the pre-wave countdown, when the engine is frozen), and reversing at either edge moves the ship immediately.
 - The ship auto-fires; there is no ammunition economy.
 - Pause suspends and saves the run for resume.
 - New Game starts a clean run and abandons the old server session if one is open.
