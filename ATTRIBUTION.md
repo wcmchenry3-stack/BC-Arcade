@@ -26,6 +26,15 @@ When distributing or modifying this project:
 
 For details, see [CC BY-SA 4.0 Deed](https://creativecommons.org/licenses/by-sa/4.0/).
 
+## Audio (CC BY 4.0)
+
+- **"Victory fanfare"** by humanoide9000 on Freesound, used as `frontend/assets/sounds/freecell-game-win.mp3` (FreeCell and Bottle Sort win sound; re-encoded to MP3)
+  - Source: https://freesound.org/people/humanoide9000/sounds/466133/
+  - License: https://creativecommons.org/licenses/by/4.0/
+
+All other audio and sprites are CC0 or Pixabay Content License and need no attribution. Full asset
+inventory: [`docs/audits/ASSET-RIGHTS-AUDIT.md`](docs/audits/ASSET-RIGHTS-AUDIT.md).
+
 ## Build Script Attribution
 
 The script that builds the Hindi word list (`backend/scripts/gen_hindi_valid_words.py`) handles downloading and filtering Wiktionary data with proper Wikimedia rate-limiting compliance:
