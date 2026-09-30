@@ -41,11 +41,25 @@ export type EnemyPhase =
   | "Returning" // following Bézier path back to formation slot
   | "Fleeing"; // #2489: grunt rout — Bézier path off the top edge; no shooting, diving or ramming
 
+/**
+ * #2842: the wave lifecycle. SwoopIn is safe setup time (nothing fires, nothing takes damage);
+ * Playing is combat; Extraction is the live wind-down after the last kill (already-fired shots
+ * and rocks stay real while the AI flies the ship out), ended by the hard transient reset
+ * (`clearTransientCombat` in engine.ts) just before the next wave is built.
+ */
 export type GamePhase =
-  | "SwoopIn" // wave intro — enemies filling the grid
+  | "SwoopIn" // wave intro — enemies filling the grid; every actor invulnerable, nobody fires
   | "Playing" // normal combat
-  | "WaveClear" // brief pause before next wave (legacy / backward-compat)
+  | "Extraction" // #2842: last enemy down — the AI flies the ship out through surviving hazards
   | "GameOver";
+
+/** #2842: the AI's hold on the player ship between the wave's last kill and the next wave. */
+export interface Extraction {
+  /** ms since the wave's last enemy died. */
+  readonly elapsedMs: number;
+  /** ms the ship has spent climbing out of the lane; 0 while it still holds the lane, dodging. */
+  readonly climbMs: number;
+}
 
 export interface Vec2 {
   readonly x: number;
@@ -175,10 +189,6 @@ export interface Bullet {
    * bullets aren't consumed on hit, so without this a slow bullet overlapping a big hitbox
    * (e.g. the Carrier) for several ticks would re-deal damage every tick it stays inside it. */
   readonly hitEnemyIds?: readonly number[];
-  /** Enemy bullet already in flight when the wave it was fired in cleared — keeps moving and
-   * rendering normally until it exits the screen, but can no longer hit the player (see #2352
-   * follow-up: the wave-clear autopilot dodge was removed, this replaces it non-blockingly). */
-  readonly harmless?: boolean;
   /** #2487: an enemy shot fired at an asteroid — outside bulletCap(), drawn in a distinct colour. */
   readonly flak?: boolean;
 }
@@ -296,8 +306,10 @@ export interface StarSwarmState {
   readonly dodgeDisabled: boolean;
   /** Dev (#2491): enemies never fire flak at a rock. */
   readonly flakDisabled: boolean;
-  /** General-purpose countdown timer (WaveClear pause, etc.). */
+  /** General-purpose phase timer (reserved; no phase uses it today). */
   readonly phaseTimer: number;
+  /** #2842: the AI extraction in progress; non-null exactly while phase is "Extraction". */
+  readonly extraction: Extraction | null;
   readonly canvasW: number;
   readonly canvasH: number;
   /** ms until the next dive-AI trigger fires. */
@@ -347,7 +359,7 @@ export interface StarSwarmState {
   readonly enemyFireDisabled: boolean;
   /**
    * ms remaining to show the non-blocking "MISSION COMPLETE" / "PERFECT" wave-clear banner.
-   * Purely cosmetic — gameplay is never paused for this (#2352); set on wave clear, counts
+   * Purely cosmetic — gameplay is never paused for this (#2352); set on the last kill, counts
    * down like any other cosmetic timer (compare `bombFlashTimer`).
    */
   readonly missionCompleteTimer: number;

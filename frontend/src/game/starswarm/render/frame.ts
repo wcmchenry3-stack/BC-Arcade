@@ -19,7 +19,6 @@ import {
   asteroidOutline,
   hashFrac,
 } from "../engine";
-import { HARMLESS_BULLET_OPACITY } from "../constants";
 import { isUpgradePickup, upgradePickupOps } from "./pickups";
 import type { UpgradePickupType } from "./pickups";
 import type { StarfieldState } from "../starfield";
@@ -211,7 +210,8 @@ export function buildFrame(
     });
   }
 
-  // Enemy bullets — harmless carry-overs from a cleared wave are dimmed; #2487 flak is amber
+  // Enemy bullets — #2487 flak is amber. #2842: every shot in flight is live (none is ever
+  // "harmless"), so none is dimmed.
   for (const b of state.enemyBullets) {
     ops.push({
       k: "rect",
@@ -221,7 +221,6 @@ export function buildFrame(
       w: b.width,
       h: b.height,
       color: b.flak ? "#ffd27a" : "#ff4422",
-      opacity: b.harmless ? HARMLESS_BULLET_OPACITY : 1,
     });
   }
 
