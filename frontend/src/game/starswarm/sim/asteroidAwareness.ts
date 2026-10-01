@@ -199,6 +199,7 @@ export function runTrial(
   const forced = forcePhase(s, id, cell);
   if (!forced) return null;
   s = forced;
+  // control: no sidestep, nudge or flak. Flinch stays (it only degrades aim, never motion).
   if (mode === "control") s = { ...s, dodgeDisabled: true, flakDisabled: true };
   // let the target fire during the window so distraction / aim degrade have something to act on
   s = patch(s, id, { shootTimer: cell.phase === "Formation" ? 250 : 500 });
@@ -244,10 +245,10 @@ export function runTrial(
       if (s.tierStats.Carrier.flak > prevFlakStat) out.flak = true;
     } else if (cur.flakCooldown > prev.flakCooldown) out.flak = true;
     if (cur.flinchMs > prev.flinchMs) out.flinched = true;
-    if (cur.evadeMs > prev.evadeMs || (cur.path !== prev.path && cur.pathT < prev.pathT)) {
-      out.dodged = true;
-      if (cur.path !== prev.path) out.pathNudged = true;
-    }
+    // a real dodge: a sidestep started, or the remaining path was bent in place (same phase, restarted)
+    const bent = cur.phase === prev.phase && cur.path !== prev.path && cur.pathT < prev.pathT;
+    if (bent) out.pathNudged = true;
+    if (bent || (cur.dodge !== null && prev.dodge === null)) out.dodged = true;
     if (prev.evadeMs > 0) {
       const fresh = s.enemyBullets.filter(
         (b: Bullet) =>

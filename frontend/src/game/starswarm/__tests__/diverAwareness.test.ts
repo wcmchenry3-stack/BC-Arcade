@@ -124,8 +124,9 @@ function scenario(
   const s: StarSwarmState = {
     ...base,
     asteroids: [rock],
-    enemies: base.enemies.map((e) =>
-      e.id === ship.id ? { ...e, ...patch, shootTimer: 1e9, hp: 99 } : e
+    enemies: base.enemies.map(
+      (e) =>
+        e.id === ship.id ? { ...e, ...patch, shootTimer: 1e9, hp: 99 } : { ...e, flakCooldown: 1e9 } // the others stay quiet: the test is about one ship
     ),
   };
   return { s, id: ship.id, rock, path };
@@ -153,15 +154,71 @@ describe("Diver asteroid awareness (#2881)", () => {
         // Grunt flinch chance is 1: always the wobble cue and the aim-degrade window
         expect(e.flinchMs).toBe(FLINCH_MS);
         expect(e.evadeMs).toBeGreaterThanOrEqual(FLINCH_MS);
-        if (e.flakCooldown > 0) {
+        if (phase === "Fleeing") {
+          // a routed ship never shoots: flinch and nudge only
+          expect(e.flakCooldown).toBe(0);
+          expect(after.enemyBullets).toHaveLength(0);
+        } else if (e.flakCooldown > 0) {
           flaks++;
           expect(after.enemyBullets.some((b) => b.flak)).toBe(true);
         }
       }
-      expect(flaks).toBeGreaterThan(0);
-      expect(flaks).toBeLessThan(SEEDS.length);
+      if (phase === "Fleeing") expect(flaks).toBe(0);
+      else {
+        expect(flaks).toBeGreaterThan(0);
+        expect(flaks).toBeLessThan(SEEDS.length);
+      }
     }
   );
+
+  it("diver flak keeps the formation envelope: no flak at a far or a receding rock", () => {
+    const sc = scenario("Guardian", "Diving");
+    // threatens within the 700 ms lookahead, but starts well outside FLAK_RANGE (120 px)
+    const far: Asteroid = { ...sc.rock, x: sc.rock.x - 150, y: sc.rock.y - 100, vx: 0.3, vy: 0.2 };
+    // moving away from the ship the whole time
+    const ship = byId(sc.s, sc.id);
+    const receding: Asteroid = {
+      ...sc.rock,
+      x: ship.x + 20,
+      y: ship.y + 20,
+      vx: 0.05,
+      vy: 0.05,
+    };
+    for (const rock of [far, receding]) {
+      for (const seed of SEEDS) {
+        const after = after1({ ...sc.s, asteroids: [rock] }, seed);
+        expect(after.enemyBullets.some((b) => b.flak)).toBe(false);
+        expect(byId(after, sc.id).flakCooldown).toBe(0);
+      }
+    }
+    // control: the in-envelope rock does flak for some seed
+    expect(SEEDS.some((sd) => after1(sc.s, sd).enemyBullets.some((b) => b.flak))).toBe(true);
+  });
+
+  it("dev toggles: dodge off still lets divers flak and flinch; flak off silences all flak", () => {
+    const sc = scenario("Guardian", "Diving");
+    let flakWithDodgeOff = 0;
+    let flinched = 0;
+    for (const seed of SEEDS) {
+      const e = byId(after1({ ...sc.s, dodgeDisabled: true }, seed), sc.id);
+      if (e.flakCooldown > 0) flakWithDodgeOff++;
+      if (e.flinchMs > 0) flinched++;
+      // dodgeDisabled gates the nudges: the path is untouched
+      expect(e.path!.p1.x).toBe(sc.path!.p1.x);
+      const noFlak = after1({ ...sc.s, flakDisabled: true }, seed);
+      expect(noFlak.enemyBullets.some((b) => b.flak)).toBe(false);
+      expect(byId(noFlak, sc.id).flakCooldown).toBe(0);
+    }
+    expect(flakWithDodgeOff).toBeGreaterThan(0);
+    expect(flinched).toBeGreaterThan(0);
+    // formation flak with flak off, dodge on: also silent
+    const { s: base, ship } = waveWith("Guardian");
+    const rock = makeRock({ x: ship.x, y: ship.y });
+    for (const seed of SEEDS.slice(0, 30)) {
+      const a = after1({ ...base, asteroids: [rock], flakDisabled: true }, seed);
+      expect(a.enemyBullets.some((b) => b.flak)).toBe(false);
+    }
+  });
 
   it("a ship the rock does not threaten does not react", () => {
     const sc = scenario("Grunt", "Diving");

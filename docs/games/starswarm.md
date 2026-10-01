@@ -672,7 +672,7 @@ the seeded `rng()`:
 - **Circling** is no longer skipped: it is detected, pays the threat cost and gets flinch and flak.
   It has no sidestep or path, so the ordinary dodge roll does not apply to it.
 - The armored Carrier and the exposed Carrier's AttackRun are unchanged (the latter never evades).
-  The dev "Dodge off" and "Flak off" toggles also silence the matching reactions.
+  A Fleeing ship never fires, so it gets flinch and the late nudge only. Diver flak uses the same envelope as formation flak (rock approaching and within `FLAK_RANGE`). The dev "Dodge off" toggle gates only the dodge roll and the nudges, and "Flak off" gates all flak (formation and diver); the flinch is gated by neither.
 
 `frontend/src/game/starswarm/sim/asteroidAwareness.ts` is a seeded headless sim over the real
 `tick()` that measures each phase (threat, flinch, flak, dodge and hit rates, and how often a

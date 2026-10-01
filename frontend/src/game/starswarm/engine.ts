@@ -1641,6 +1641,13 @@ function predictEnemyPos(e: Enemy, ms: number): Vec2 {
   return { x: e.x, y: e.y };
 }
 
+/** Flak envelope shared by formation and diver flak: the rock is approaching and within range. */
+function flakEngages(a: Asteroid, e: Enemy): boolean {
+  const dx = a.x - e.x;
+  const dy = a.y - e.y;
+  return a.vx * -dx + a.vy * -dy > 0 && dx * dx + dy * dy < FLAK_RANGE * FLAK_RANGE;
+}
+
 /** Will this rock cross the ship's hitbox within the lookahead window? */
 function rockThreatens(a: Asteroid, e: Enemy): boolean {
   for (const ms of DODGE_LOOKAHEAD_MS) {
@@ -1769,6 +1776,7 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
     for (const a of rocks) {
       const canFlak =
         e.tier !== "Carrier" &&
+        e.phase !== "Fleeing" && // a routed ship never shoots; it has no player shot to displace
         e.flakCooldown <= 0 &&
         weaponsFree(state) && // #2842: no new fire outside combat
         !state.enemyFireDisabled &&
@@ -1796,12 +1804,7 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
 
       // Flak: a formation ship shoots at a rock coming its way (the Carrier's is its twin volley)
       if (e.phase === "Formation" && canFlak && rockThreatens(a, e)) {
-        const dx = a.x - e.x;
-        const dy = a.y - e.y;
-        const approaching = a.vx * -dx + a.vy * -dy > 0;
-        if (approaching && dx * dx + dy * dy < FLAK_RANGE * FLAK_RANGE) {
-          if (rng() < FLAK_BASE[e.tier] * flakScale) fireFlak();
-        }
+        if (flakEngages(a, e) && rng() < FLAK_BASE[e.tier] * flakScale) fireFlak();
       }
 
       // Dodge: one roll per rock per ship (the #2491 dev toggle skips the roll entirely, so the
@@ -1809,7 +1812,7 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
       const alreadyRolled = e.rolledAsteroidIds.includes(a.id);
       const reactive = e.tier !== "Carrier" && REACTION_PHASES.has(e.phase);
       const reacted = reactive && e.reactedAsteroidIds.includes(a.id);
-      if (alreadyRolled && (!reactive || reacted)) continue;
+      if (reactive ? reacted : alreadyRolled) continue;
       if (e.tier === "Carrier") {
         // #2844: heavy — no sidestep, but a rock bearing down still takes its attention (once)
         if (rockThreatens(a, e)) {
@@ -1817,10 +1820,12 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
         }
         continue;
       }
-      if (state.dodgeDisabled || !rockThreatens(a, e)) continue;
+      // #2491: dodgeDisabled gates only the dodge roll and the nudges; flinch is ungated and
+      // flakDisabled (canFlak) alone gates flak
+      if ((state.dodgeDisabled && !reactive) || !rockThreatens(a, e)) continue;
       const onPath = PATH_PHASES.has(e.phase) && e.path !== null;
       let dodgedNow = false;
-      if (!alreadyRolled) {
+      if (!alreadyRolled && !state.dodgeDisabled) {
         // #2844 mild distraction
         e = payAttention({ ...e, rolledAsteroidIds: [...e.rolledAsteroidIds, a.id] }, "threat");
         if (e.phase !== "Circling") {
@@ -1847,11 +1852,13 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
       if (
         canFlak &&
         e.flakCooldown <= 0 &&
+        flakEngages(a, e) && // same envelope as formation flak: approaching and within range
         rng() < FLAK_BASE[e.tier] * DIVER_FLAK_FACTOR * flakScale
       ) {
         fireFlak();
       }
       if (
+        !state.dodgeDisabled &&
         !dodgedNow &&
         onPath &&
         e.pathT >= 0 &&
