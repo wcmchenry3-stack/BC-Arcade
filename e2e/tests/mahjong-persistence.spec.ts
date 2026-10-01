@@ -1,7 +1,7 @@
 /**
  * mahjong-persistence.spec.ts — GH #1146
  *
- * Persistence: inject a mid-game state (score=100, pairsRemoved=5), navigate
+ * Persistence: inject a mid-game state (5 s played, pairsRemoved=5), navigate
  * to Mahjong, verify the HUD reflects the injected values, navigate away,
  * return, and confirm the values are unchanged.
  *
@@ -28,7 +28,7 @@ const MID_GAME_STATE = {
   dealId: "abcd",
 };
 
-test("SCORE and PAIRS persist after navigating away and back", async ({ page }) => {
+test("play clock and PAIRS persist after navigating away and back", async ({ page }) => {
   await injectMahjongState(page, MID_GAME_STATE);
 
   await page.getByRole("button", { name: "Play Mahjong Solitaire" }).click();
@@ -36,7 +36,9 @@ test("SCORE and PAIRS persist after navigating away and back", async ({ page }) 
     .getByRole("heading", { name: "Mahjong Solitaire", exact: true })
     .waitFor({ timeout: 10_000 });
 
-  await expect(page.getByText(/^SCORE\s+100/).first()).toBeVisible({ timeout: 5_000 });
+  // The clock carries the 5 s banked in the save (#2747): never reset to 0:00.
+  await expect(page.getByText(/^TIME\s+\d+:\d{2}$/).first()).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText(/^TIME\s+0:0[0-4]$/)).toHaveCount(0);
   await expect(page.getByText(/^PAIRS\s+5\/72/).first()).toBeVisible({ timeout: 5_000 });
 
   // Navigate away — MahjongScreen saves state on every state change.
@@ -49,7 +51,9 @@ test("SCORE and PAIRS persist after navigating away and back", async ({ page }) 
     .getByRole("heading", { name: "Mahjong Solitaire", exact: true })
     .waitFor({ timeout: 10_000 });
 
-  // Injected score and pairs should survive the round-trip.
-  await expect(page.getByText(/^SCORE\s+100/).first()).toBeVisible({ timeout: 5_000 });
+  // Injected play time and pairs should survive the round-trip.
+  // The clock carries the 5 s banked in the save (#2747): never reset to 0:00.
+  await expect(page.getByText(/^TIME\s+\d+:\d{2}$/).first()).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText(/^TIME\s+0:0[0-4]$/)).toHaveCount(0);
   await expect(page.getByText(/^PAIRS\s+5\/72/).first()).toBeVisible({ timeout: 5_000 });
 });

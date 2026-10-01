@@ -39,9 +39,9 @@ test.describe("Mahjong — smoke tests", () => {
     ).toBeVisible();
   });
 
-  test("score and remaining-tile display is visible", async ({ page }) => {
+  test("play clock and remaining-tile display is visible", async ({ page }) => {
     await gotoMahjong(page);
-    await expect(page.getByText(/^SCORE\s+\d/).first()).toBeVisible();
+    await expect(page.getByText(/^TIME\s+\d+:\d{2}$/).first()).toBeVisible();
     await expect(page.getByText(/^PAIRS\s+\d/).first()).toBeVisible();
   });
 

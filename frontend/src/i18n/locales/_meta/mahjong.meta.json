@@ -62,6 +62,15 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "hud.elapsed": {
+    "component": "MahjongScreen HUD (accessibility)",
+    "description": "Screen-reader label of the on-screen play clock (the time that ranks the clear). Not announced every second.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["{{time}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "hud.deal": {
     "component": "MahjongScreen",
     "description": "Short uppercase label preceding the 4-char deal ID code in the HUD (e.g. 'DEAL #A3F2').",

@@ -6,6 +6,7 @@
   "hud.score": "ניקוד",
   "hud.pairs": "זוגות",
   "hud.time": "זמן",
+  "hud.elapsed": "זמן שחלף {{time}}",
   "hud.deal": "חלוקה",
   "action.shuffle": "ערבוב",
   "action.shuffleLabel": "ערבבו את האבנים שנותרו לסידור חדש שניתן לפתור",

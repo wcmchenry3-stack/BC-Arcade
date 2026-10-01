@@ -12,7 +12,7 @@ from blackjack.module import module as blackjack_module
 from cascade.module import module as cascade_module
 from daily_word.module import module as daily_word_module
 from games import service
-from games.board import SCORE_METRIC, BoardDefinition
+from games.board import COLUMN_METRICS, BoardDefinition
 from games.protocol import GameModule, default_stats_shape
 from games.registry import _REGISTRY, get_module
 from hearts.module import module as hearts_module
@@ -193,7 +193,7 @@ def test_board_keys_are_carried_by_the_module(name, mod) -> None:
     keys = list(board.partitions)
     if board.tiebreak is not None:
         keys.append(board.tiebreak[0])
-    if board.metric != SCORE_METRIC:
+    if board.metric not in COLUMN_METRICS:
         keys.append(board.metric)
     missing = [k for k in keys if not _carryable(mod, k)]
     assert not missing, f"{name}: board keys {missing} are not in its metadata/result model"

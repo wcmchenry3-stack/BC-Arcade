@@ -4,7 +4,7 @@
  *
  * The keys come from the game's board (`BOARDS[gameType].partitions`). The
  * values come from the board when it lists them (`partitionValues`, e.g. Star
- * Swarm's ten tiers), else from the game's own constants below (Sudoku's
+ * Swarm's ten tiers, Mahjong's layouts), else from the game's own constants below (Sudoku's
  * difficulties and variants), else from the per-partition caps.
  */
 
@@ -37,6 +37,14 @@ const PARTITION_META: Partial<Record<GameType, Readonly<Record<string, Partition
       values: VARIANTS,
       groupLabel: (t) => t("sudoku:variant.groupLabel"),
       valueLabel: (t, v) => t(`sudoku:variant.${v}`, { defaultValue: v }),
+    },
+  },
+  mahjong: {
+    // One board per layout (#2747); the values come from the board, in the
+    // app's registry order (Turtle first).
+    layout: {
+      groupLabel: (t) => t("leaderboard:partition.layout"),
+      valueLabel: (t, v) => t(`mahjong:layout.${v}`, { defaultValue: v }),
     },
   },
   starswarm: {

@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { GameLeaderboardEntry } from "../api/stats";
-import { formatNumber } from "../api/statsDisplay";
+import { formatBoardValue } from "../api/outcomeDisplay";
 import type { BoardDefinition, GameType } from "../api/vocab";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { EmptyState } from "../components/shared/EmptyState";
@@ -34,7 +34,7 @@ import type { LeaderboardParams } from "../types/navigation";
 import { formatDate } from "../utils/formatTimestamp";
 
 /** Metric labels the boards declare (`BoardDefinition.labelKey`). */
-const METRIC_LABEL_KEYS = new Set(["score", "moves", "level"]);
+const METRIC_LABEL_KEYS = new Set(["score", "moves", "level", "time"]);
 
 export interface LeaderboardScreenProps {
   /** `Leaderboard` in the Home stack, the screen's only route (#2634). */
@@ -211,9 +211,15 @@ function Board({
 
   const renderItem = useCallback(
     ({ item }: { item: GameLeaderboardEntry }) => (
-      <EntryRow entry={item} metricLabel={metricLabel} t={t} colors={colors} />
+      <EntryRow
+        entry={item}
+        labelKey={board.labelKey}
+        metricLabel={metricLabel}
+        t={t}
+        colors={colors}
+      />
     ),
-    [metricLabel, t, colors]
+    [board.labelKey, metricLabel, t, colors]
   );
 
   let body: React.ReactNode;
@@ -260,7 +266,14 @@ function Board({
             <Text style={[styles.yourBestLabel, { color: colors.textMuted }]}>
               {t("leaderboard:yourBest")}
             </Text>
-            <EntryRow entry={me} metricLabel={metricLabel} t={t} colors={colors} pinned />
+            <EntryRow
+              entry={me}
+              labelKey={board.labelKey}
+              metricLabel={metricLabel}
+              t={t}
+              colors={colors}
+              pinned
+            />
           </View>
         ) : null}
       </>
@@ -396,19 +409,22 @@ function ColumnHeader({
 
 function EntryRow({
   entry,
+  labelKey,
   metricLabel,
   t,
   colors,
   pinned = false,
 }: {
   entry: GameLeaderboardEntry;
+  /** The board's `labelKey`: "time" values are milliseconds, shown as m:ss. */
+  labelKey: string;
   metricLabel: string;
   t: TFunction;
   colors: Colors;
   pinned?: boolean;
 }) {
   const mine = !!entry.is_me;
-  const value = formatNumber(t, entry.value);
+  const value = formatBoardValue(t, labelKey, entry.value);
   const date = formatDate(t, entry.completed_at);
   const a11yLabel = pinned
     ? t("leaderboard:a11y.yourBest", { rank: entry.rank, metric: metricLabel, value, date })

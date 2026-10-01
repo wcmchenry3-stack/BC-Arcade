@@ -6,6 +6,7 @@
   "hud.score": "得分",
   "hud.pairs": "对数",
   "hud.time": "时间",
+  "hud.elapsed": "已用时间 {{time}}",
   "hud.deal": "局数",
   "action.shuffle": "洗牌",
   "action.shuffleLabel": "将剩余的牌重新洗成一个可解的新排列",

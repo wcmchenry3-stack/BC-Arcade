@@ -6,6 +6,7 @@
   "hud.score": "PUNKTE",
   "hud.pairs": "PAARE",
   "hud.time": "ZEIT",
+  "hud.elapsed": "Vergangene Zeit: {{time}}",
   "hud.deal": "RUNDE",
   "action.shuffle": "MISCHEN",
   "action.shuffleLabel": "Übrige Steine zu einer neuen lösbaren Anordnung mischen",

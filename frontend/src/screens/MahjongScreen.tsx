@@ -58,6 +58,7 @@ import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { usePausableClock } from "../hooks/usePausableClock";
 import { PillButton } from "../components/shared/PillButton";
+import { PlayClockText } from "../components/shared/PlayClockText";
 import GameResultModal from "../components/shared/GameResultModal";
 import GameCanvas from "../components/mahjong/GameCanvas";
 import { useMahjongCamera } from "../game/mahjong/layout";
@@ -66,6 +67,7 @@ import {
   createGame,
   DEADLOCK_OVERLAY_DELAY_MS,
   elapsedMs,
+  nextBestTime,
   getAllFreePairs,
   getAnyFreePair,
   hasFreePairs,
@@ -301,7 +303,9 @@ function FlyingPair({
 
 /** What the win card shows beyond the final state. */
 interface WinSummary {
-  readonly bestScore: number;
+  /** The fastest clear of this layout on this device, this one included. */
+  readonly bestTimeMs: number;
+  /** This clear is faster than every earlier one on this layout (#2747). */
   readonly isNewBest: boolean;
 }
 
@@ -324,11 +328,17 @@ export default function MahjongScreen() {
   const [winSummary, setWinSummary] = useState<WinSummary | null>(null);
   const leaderboard = useLeaderboardSubmit(mahjongBoard);
   const { submit: submitRank, reset: resetSubmission } = leaderboard;
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openLeaderboard = useLeaderboardLink(navigation, "mahjong");
+  // The card's "View leaderboard" link and the ⋯ menu item (#2633) open the
+  // board of the layout on screen: each layout has its own (#2747).
+  const openLeaderboard = useLeaderboardLink(navigation, "mahjong", {
+    layout: state?.currentLayoutId ?? "turtle",
+  });
+  // The HUD clock's screen-reader label; stable, so the clock's own
+  // one-second tick is the only thing that re-renders it.
+  const clockA11yLabel = useCallback((time: string) => t("hud.elapsed", { time }), [t]);
   const [stats, setStats] = useState<MahjongStats>({
     bestScore: 0,
-    bestTimeMs: 0,
+    bestTimeMsByLayout: {},
     gamesPlayed: 0,
     gamesWon: 0,
   });
@@ -752,18 +762,19 @@ export default function MahjongScreen() {
         // The finished game is the leaderboard entry (#2624): the card only
         // asks where it ranks. Only a win completed in this session has one.
         if (gameId) void submitRank({ gameId });
-        const priorBest = statsRef.current.bestScore;
-        setWinSummary({
-          bestScore: Math.max(finalScore, priorBest),
-          isNewBest: finalScore > priorBest,
-        });
+        // Fastest clear wins, per layout like the boards (#2747), and only a
+        // plausible one counts: an old save resumed with no time banked can
+        // finish under the ranking floor.
+        const layoutId = state.currentLayoutId ?? "turtle";
+        setWinSummary(nextBestTime(statsRef.current.bestTimeMsByLayout[layoutId] ?? 0, finalMs));
         setStats((prev) => {
+          const best = nextBestTime(prev.bestTimeMsByLayout[layoutId] ?? 0, finalMs).bestTimeMs;
           const updated: MahjongStats = {
             ...prev,
             gamesWon: prev.gamesWon + 1,
             bestScore: finalScore > prev.bestScore ? finalScore : prev.bestScore,
-            bestTimeMs:
-              prev.bestTimeMs === 0 || finalMs < prev.bestTimeMs ? finalMs : prev.bestTimeMs,
+            bestTimeMsByLayout:
+              best > 0 ? { ...prev.bestTimeMsByLayout, [layoutId]: best } : prev.bestTimeMsByLayout,
           };
           saveStats(updated).catch(() => {});
           return updated;
@@ -1075,16 +1086,29 @@ export default function MahjongScreen() {
         <View style={{ flex: 1, alignItems: "center" }}>
           <View style={styles.hudRow} accessibilityRole="summary">
             <View style={styles.hudGroup}>
+              {/* The play clock that ranks (#2747), in place of the score: while
+                  playing, the score is 10 per pair, which PAIRS already shows.
+                  The score stays on the result card. */}
               {__DEV__ ? (
                 <Pressable onLongPress={() => setDevPanelOpen((o) => !o)} accessibilityRole="none">
-                  <Text style={[styles.hudText, { color: colors.text }]}>
-                    {t("hud.score")} {state.score}
-                  </Text>
+                  <PlayClockText
+                    startedAt={state.startedAt}
+                    accumulatedMs={state.accumulatedMs}
+                    label={t("hud.time")}
+                    accessibilityLabel={clockA11yLabel}
+                    style={[styles.hudText, { color: colors.text }]}
+                    testID="mahjong-clock"
+                  />
                 </Pressable>
               ) : (
-                <Text style={[styles.hudText, { color: colors.text }]}>
-                  {t("hud.score")} {state.score}
-                </Text>
+                <PlayClockText
+                  startedAt={state.startedAt}
+                  accumulatedMs={state.accumulatedMs}
+                  label={t("hud.time")}
+                  accessibilityLabel={clockA11yLabel}
+                  style={[styles.hudText, { color: colors.text }]}
+                  testID="mahjong-clock"
+                />
               )}
               <Text style={[styles.hudText, { color: colors.textMuted }]}>
                 {t("hud.pairs")} {state.pairsRemoved}/72
@@ -1249,7 +1273,12 @@ export default function MahjongScreen() {
               ? tResult("subtitle.pairsCleared", { count: state.pairsRemoved })
               : tResult("subtitle.noFreePairs")
           }
-          hero={{ kind: "score", label: tResult("stat.score"), value: state.score }}
+          // A clear ranks by its time (#2747), so the win card leads with it.
+          hero={
+            state.isComplete
+              ? { kind: "score", label: tResult("stat.time"), value: formatMs(elapsedMs(state)) }
+              : { kind: "score", label: tResult("stat.score"), value: state.score }
+          }
           isNewBest={state.isComplete && (winSummary?.isNewBest ?? false)}
           // A deadlock one undo away from a live board isn't final: offer the
           // undo the header had before the card covered it.
@@ -1268,12 +1297,16 @@ export default function MahjongScreen() {
               </Pressable>
             ) : undefined
           }
-          stats={[
-            { label: tResult("stat.time"), value: formatMs(elapsedMs(state)) },
-            ...(state.isComplete && winSummary && winSummary.bestScore > 0
-              ? [{ label: tResult("stat.best"), value: winSummary.bestScore }]
-              : []),
-          ]}
+          stats={
+            state.isComplete
+              ? [
+                  { label: tResult("stat.score"), value: state.score },
+                  ...(winSummary && winSummary.bestTimeMs > 0
+                    ? [{ label: tResult("stat.best"), value: formatMs(winSummary.bestTimeMs) }]
+                    : []),
+                ]
+              : [{ label: tResult("stat.time"), value: formatMs(elapsedMs(state)) }]
+          }
           submission={
             state.isComplete
               ? {

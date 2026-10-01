@@ -15,7 +15,7 @@ import pytest
 from pydantic import ValidationError
 
 from db.models import Game
-from games.board import FINAL_TIEBREAK, SCORE_METRIC, BoardDefinition
+from games.board import DURATION_METRIC, FINAL_TIEBREAK, SCORE_METRIC, BoardDefinition
 from games.leaderboard import _unrankable_reason
 from games.registry import get_module
 
@@ -57,9 +57,30 @@ def test_defaults() -> None:
     assert board.partition_defaults == ()
     assert board.partition_values == ()
     assert board.max_value is None
+    assert board.min_value == 0
     assert board.partition_max_values == ()
     assert board.qualifying_outcomes is None
     assert board.enabled is True
+
+
+def test_min_value_must_be_non_negative_and_within_the_caps() -> None:
+    BoardDefinition(metric=DURATION_METRIC, direction="asc", label_key="time", min_value=5)
+    with pytest.raises(ValidationError):
+        BoardDefinition(metric=DURATION_METRIC, direction="asc", label_key="time", min_value=-1)
+    with pytest.raises(ValidationError):
+        BoardDefinition(
+            metric=SCORE_METRIC, direction="desc", label_key="score", max_value=10, min_value=11
+        )
+    with pytest.raises(ValidationError):
+        BoardDefinition(
+            metric=SCORE_METRIC,
+            direction="desc",
+            label_key="score",
+            partitions=("difficulty",),
+            max_value=100,
+            min_value=20,
+            partition_max_values=(("difficulty", "easy", 10),),
+        )
 
 
 def test_final_tiebreak_is_earliest_completion() -> None:
@@ -242,7 +263,7 @@ def test_sudoku_max_value_for(partition: dict, cap: int) -> None:
         ("yacht", SCORE_METRIC, "desc", None, (), 1575, None, True),
         ("solitaire", SCORE_METRIC, "desc", None, (), 1245, None, True),
         ("freecell", SCORE_METRIC, "asc", None, (), None, None, True),
-        ("mahjong", SCORE_METRIC, "desc", None, (), 1220, None, True),
+        ("mahjong", DURATION_METRIC, "asc", None, ("layout",), None, ("win",), True),
         ("hearts", SCORE_METRIC, "desc", None, (), 100, None, True),
         ("sudoku", SCORE_METRIC, "desc", None, ("difficulty", "variant"), 300, None, True),
         ("cascade", SCORE_METRIC, "desc", None, (), None, None, True),
@@ -266,8 +287,8 @@ def test_declared_board(
     assert board.enabled is enabled
 
 
-@pytest.mark.parametrize("game", sorted(set(_GAMES) - {"sudoku", "starswarm"}))
-def test_only_sudoku_and_starswarm_have_partition_rules(game: str) -> None:
+@pytest.mark.parametrize("game", sorted(set(_GAMES) - {"sudoku", "starswarm", "mahjong"}))
+def test_only_partitioned_games_have_partition_rules(game: str) -> None:
     board = _board(game)
     assert board.partition_defaults == ()
     assert board.partition_values == ()
@@ -296,9 +317,11 @@ def test_partition_values_fill_every_board_and_nothing_else_ranks(game: str) -> 
                 model.model_validate({key: value})
 
         def reason(value: str, key: str = key) -> str | None:
+            qualifying = mod.board.qualifying_outcomes
             row = Game(
                 final_score=1,
-                outcome="completed",
+                duration_ms=mod.board.min_value + 1,
+                outcome=qualifying[0] if qualifying else "completed",
                 completed_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
                 game_metadata={mod.board.metric: 1, key: value},
             )
@@ -363,15 +386,66 @@ def test_solitaire_max_value_recomputed_from_engine() -> None:
     assert _board("solitaire").max_value == expected == 1245
 
 
-def test_mahjong_max_value_recomputed_from_engine() -> None:
-    """1220: every pair on the largest layout plus the completion bonus."""
-    c = _ts_constants(_FRONTEND_GAME / "mahjong" / "engine.ts")
-    registry = (_FRONTEND_GAME / "mahjong" / "layouts" / "registry.ts").read_text(encoding="utf-8")
-    tile_counts = [int(n) for n in re.findall(r"tileCount:\s*(\d+)", registry)]
-    assert tile_counts, "no tileCount found in the Mahjong layout registry"
+def _mahjong_registry() -> str:
+    return (_FRONTEND_GAME / "mahjong" / "layouts" / "registry.ts").read_text(encoding="utf-8")
 
-    expected = max(tile_counts) // 2 * c["SCORE_PER_PAIR"] + c["SCORE_COMPLETE_BONUS"]
-    assert _board("mahjong").max_value == expected == 1220
+
+def test_mahjong_layouts_match_the_app_registry() -> None:
+    """Every layout the app offers has a board, and only those (#2747)."""
+    from mahjong.models import LAYOUTS
+
+    registry = _mahjong_registry()
+    listed = registry[registry.index("export const LAYOUTS") :]
+    app_ids = tuple(re.findall(r'^\s+id:\s*"([a-z0-9_]+)"', listed, re.MULTILINE))
+    assert app_ids, "no layout id found in the Mahjong layout registry"
+    assert LAYOUTS == app_ids
+    assert _board("mahjong").partition_values == (("layout", LAYOUTS),)
+    # No default: a row from before #2627 (no layout) ranks on no board.
+    assert _board("mahjong").partition_default("layout") is None
+
+
+def test_mahjong_clear_time_floor_is_half_a_second_per_pair() -> None:
+    """The floor assumes 72 pairs, so every layout must be 144 tiles."""
+    from mahjong.models import MIN_CLEAR_MS
+
+    tile_counts = {int(n) for n in re.findall(r"tileCount:\s*(\d+)", _mahjong_registry())}
+    assert tile_counts == {144}
+    assert MIN_CLEAR_MS == 72 * 500 == 36_000
+    assert _board("mahjong").min_value == MIN_CLEAR_MS
+    # The app's device best time uses the same floor (MAHJONG_MIN_CLEAR_MS).
+    engine = _ts_constants(_FRONTEND_GAME / "mahjong" / "engine.ts")
+    assert engine["MAHJONG_MIN_CLEAR_MS"] == MIN_CLEAR_MS
+
+
+@pytest.mark.parametrize(
+    ("duration_ms", "outcome", "layout", "reason"),
+    [
+        (36_000, "win", "turtle", None),
+        (600_000, "win", "x_wing", None),
+        (35_999, "win", "turtle", "duration_ms must be an integer from 36000"),
+        (0, "win", "turtle", "duration_ms must be an integer from 36000"),
+        (None, "win", "turtle", "Game has no duration_ms."),
+        (90_000, "loss", "turtle", "This game's outcome is not ranked."),
+        (90_000, "completed", "turtle", "This game's outcome is not ranked."),
+        (90_000, "win", None, "This game's board does not exist."),
+        (90_000, "win", "forged", "This game's board does not exist."),
+    ],
+)
+def test_which_mahjong_rows_rank(
+    duration_ms: int | None, outcome: str, layout: str | None, reason: str | None
+) -> None:
+    row = Game(
+        final_score=1220,
+        duration_ms=duration_ms,
+        outcome=outcome,
+        completed_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        game_metadata={} if layout is None else {"layout": layout},
+    )
+    got = _unrankable_reason(_board("mahjong"), row)
+    if reason is None:
+        assert got is None
+    else:
+        assert got is not None and got.startswith(reason), got
 
 
 def test_yacht_max_value_recomputed_from_engine() -> None:

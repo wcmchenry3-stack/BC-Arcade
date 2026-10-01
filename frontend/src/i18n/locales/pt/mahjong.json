@@ -6,6 +6,7 @@
   "hud.score": "PONTOS",
   "hud.pairs": "PARES",
   "hud.time": "TEMPO",
+  "hud.elapsed": "Tempo decorrido {{time}}",
   "hud.deal": "RODADA",
   "action.shuffle": "EMBARALHAR",
   "action.shuffleLabel": "Embaralhe as peças numa nova disposição com solução",

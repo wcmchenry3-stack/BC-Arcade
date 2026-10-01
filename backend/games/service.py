@@ -23,7 +23,7 @@ from typing import Any
 
 import sentry_sdk
 from pydantic import ValidationError
-from sqlalchemy import ColumnElement, Text, case, func, literal, select, update
+from sqlalchemy import ColumnElement, Text, and_, case, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -32,7 +32,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from db.dialect import dialect_insert, dialect_name
 from db.models import EventType, Game, GameEvent, GameType
 from entitlements.service import ALL_PREMIUM_SLUGS
-from games.board import SCORE_METRIC, BoardDefinition
+from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
 from games.filters import SWEPT_KEY, is_swept, not_abandoned, not_swept, without_swept
 from games.leaderboard import check_completion_limits, merge_result_metadata
 from games.legacy_outcomes import might_be_legacy_win, win_update
@@ -407,13 +407,36 @@ def _metadata_number(key: str, dialect: str) -> ColumnElement:
     return case((func.jsonb_typeof(value) == "number", value.as_float()))
 
 
+def _rankable_duration(board: BoardDefinition) -> ColumnElement[bool]:
+    """A ``duration_ms`` row that could be on one of the board's boards (#2747).
+
+    At or above ``min_value``, and in a partition that has a board: a value
+    from ``partition_values``, or a missing one where the key has a default.
+    Mahjong's best is then its fastest clear on a known layout, as the boards
+    rank it; a row with no layout (before #2627) is not a best.
+    """
+    conditions: list[ColumnElement[bool]] = [Game.duration_ms >= board.min_value]
+    for key in board.partitions:
+        col = Game.game_metadata[key].as_string()
+        allowed = board.allowed_values(key)
+        has_default = board.partition_default(key) is not None
+        if allowed is not None:
+            ok = col.in_(allowed)
+            conditions.append(or_(ok, col.is_(None)) if has_default else ok)
+        elif not has_default:
+            conditions.append(col.is_not(None))
+    return and_(*conditions)
+
+
 @functools.cache
 def _best_candidate(dialect: str) -> ColumnElement:
     """Each row's board metric when the row can be its game's best, else NULL.
 
     A row qualifies when it is not abandoned and, if its board sets
     ``qualifying_outcomes``, its outcome is one of them (Daily Word: wins
-    only). The value is ``final_score`` or the metadata key the board names.
+    only). The value is ``final_score``, ``duration_ms`` (Mahjong's clear
+    time, #2747; only from the board's ``min_value`` up, as on the board) or
+    the metadata key the board names.
 
     Boards are static, so the expression is built once per dialect and
     reused by every request.
@@ -423,11 +446,13 @@ def _best_candidate(dialect: str) -> ColumnElement:
         board = _registered_module(game_type.value).board
         if board.metric == SCORE_METRIC and board.qualifying_outcomes is None:
             continue  # the ELSE branch below
-        value = (
-            Game.final_score
-            if board.metric == SCORE_METRIC
-            else _metadata_number(board.metric, dialect)
-        )
+        value: ColumnElement
+        if board.metric == SCORE_METRIC:
+            value = Game.final_score
+        elif board.metric == DURATION_METRIC:
+            value = case((_rankable_duration(board), Game.duration_ms))
+        else:
+            value = _metadata_number(board.metric, dialect)
         if board.qualifying_outcomes is not None:
             value = case((Game.outcome.in_(board.qualifying_outcomes), value))
         whens.append((GameType.name == game_type.value, value))
