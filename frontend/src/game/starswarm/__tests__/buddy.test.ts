@@ -21,6 +21,8 @@ import {
   shotHarmsAllies,
   chooseCarrierTarget,
   buddyBurstCount,
+  engineCounters,
+  restoreEngineCounters,
   MAX_PLAYER_BULLETS,
   asteroidThreatens,
   buddyThreatCircle,
@@ -669,6 +671,38 @@ describe("allied collision policy (#2845)", () => {
     expect(s.enemies.find((e) => e.id === g.id)!.isAlive).toBe(false);
     expect(s.playerBullets.some((b) => b.id === intoRock.id)).toBe(false);
     expect(s.asteroids.find((a) => a.id === rock.id)!.hp).toBe(ASTEROID_STATS.large.hp - 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("Buddy id stream (#2880)", () => {
+  it("launching a Buddy never shifts the main id stream (counterfactual alignment)", () => {
+    let base = settled(5);
+    base = withEnemies(base, () => true, { hp: 1e6 }); // nothing dies: no explosion ids
+    base = { ...base, enemyFireDisabled: true, asteroidsDisabled: true, flakDisabled: true };
+    const counters = engineCounters();
+    let withB = applyPowerUp(base, "buddy");
+    let fanSeen = false;
+    const mainIds: number[] = [];
+    for (let t = 0; t < 4000; t += 16) {
+      withB = tick(withB, 16, ASIDE);
+      if (withB.playerBullets.some((b) => b.source === "buddy")) fanSeen = true;
+      mainIds.push(engineCounters().nextId);
+    }
+    expect(fanSeen).toBe(true);
+    // Buddy's own ids live in a separate range
+    expect(engineCounters().buddyNextId).toBeGreaterThan(1_000_000_000);
+    // ...and the control branch from the same counters allocates the same main ids tick for tick
+    _resetIds();
+    restoreEngineCounters(counters);
+    let without = base;
+    const controlIds: number[] = [];
+    for (let t = 0; t < 4000; t += 16) {
+      without = tick(without, 16, ASIDE);
+      controlIds.push(engineCounters().nextId);
+    }
+    expect(controlIds).toEqual(mainIds);
   });
 });
 

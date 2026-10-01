@@ -536,31 +536,45 @@ Runs per sortie (3), finite capacity (no extra enemy fire) and determinism are u
 at 200 seeds per cell (`--preset proposal`, same seeds before and after), range over the ten
 difficulties Ensign to Fleet Admiral:
 
-| Measure (target band)                                                     | Before                | After                                                           |
-| ------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------- |
-| One sortie vs a full 45-ship wave, duel: fleet killed, mean (15–30%)      | 43–52%                | 27–30%                                                          |
-| …p90 (≤ 35%) / max                                                        | 47–58% / 51–64%       | 29–33% / 33–38%                                                 |
-| …wave cleared by the sortie alone (never)                                 | 0%                    | 0%                                                              |
-| Duel, exposed Carrier: Buddy destroyed (25–40%)                           | 0–1%                  | 2% (Ens), 11% (LtJG), 21% (Lt), 17% (LCdr), 30–44% (Cdr and up) |
-| …Carrier solo-killed by Buddy (≤ 35%)                                     | 96–100%               | 3–41% (Ens 41%, VAdm 30%, rest ≤ 21%)                           |
-| With the player, exposed Carrier: Buddy's share of Carrier damage (≤ 25%) | 13–40%                | 9–21%                                                           |
-| With the player: Carrier time-to-kill with / without Buddy                | 1.5–2.2 s / 1.6–3.6 s | 1.5–3.1 s / 1.6–3.6 s                                           |
-| Normal waves, with the player: Buddy destroyed (≤ 10%)                    | 0%                    | 0–2%                                                            |
+| Measure (target band)                                                     | Before                | After                                                                                  |
+| ------------------------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------- |
+| One sortie vs a full 45-ship wave, duel: fleet killed, mean (15–30%)      | 42–54%                | 27–29%                                                                                 |
+| …p90 (≤ 35%) / max                                                        | 44–60% / 51–64%       | 29–33% / 31–38%                                                                        |
+| …wave cleared by the sortie alone (never)                                 | 0%                    | 0%                                                                                     |
+| Duel, exposed Carrier: Buddy destroyed (25–40%)                           | 0–1%                  | Ens 1, LtJG 10, Lt 20, LCdr 16, Cdr 28, Capt 35, RAdm 27, VAdm 34, Adm 36, FAdm 36 (%) |
+| …Carrier solo-killed by Buddy (≤ 35%)                                     | 95–100%               | 0–35% (Ens 35, VAdm 24, rest ≤ 18)                                                     |
+| With the player, exposed Carrier: Buddy's share of Carrier damage (≤ 25%) | 12–40%                | 8–19%                                                                                  |
+| With the player: Carrier time-to-kill with / without Buddy                | 1.5–2.3 s / 1.6–3.6 s | 1.5–3.1 s / 1.6–3.6 s                                                                  |
+| Normal waves, with the player: Buddy destroyed (≤ 10%)                    | 0–1%                  | 0–1%                                                                                   |
 
-Where it misses the band. Low difficulties are under the duel band (Ensign 2%, Lt. JG 11%, Lt.
-21%, Lt. Cdr. 17% destroyed) because the Carrier fires slowly there; Captain (44%) is above it,
-since cadence scaling is capped from Commander up. The autoplay boss-start run at Rear Admiral is an
-outlier (42% destroyed). Both are accepted; HP was not tuned further. At `BUDDY_HP` 8 the duel
-rates are Ens 2%, LtJG 23%, Capt 52%, FAdm 44% (HP 9: 2%, 11%, 44%, 34%), which fixes the low end
-and overshoots the top, so 9 was kept. The autoplay pilot is more accurate than a human, so a real
-Carrier fight lands between the autoplay and duel numbers; waves 3 and 5 only, pickups disabled.
+Where it misses the band. Low difficulties are under the duel band (Ensign 1%, Lt. JG 10%, Lt. Cdr.
+16% destroyed; Lt. is at 20%) because the Carrier fires slowly there. Nothing is above it (the top
+is 36%). The autoplay boss-start run at Rear Admiral is an outlier (33% destroyed, the rest of
+the row is 0–12%). HP was not tuned further. At `BUDDY_HP` 8 the duel rates are Ens 3%, LtJG 21%,
+Capt 46%, FAdm 46% (HP 9: 1%, 10%, 35%, 36%), which fixes the low end and overshoots the top, so
+9 was kept. The autoplay pilot is more accurate than a human, so a real Carrier fight lands
+between the autoplay and duel numbers; waves 3 and 5 only, pickups disabled.
+
+**Counterfactual alignment.** Buddy's own entities (the ship, its shots, its wreck's explosion)
+take ids from a separate range (`BUDDY_ID_BASE`, a second counter carried in `engineCounters()`
+as the optional `buddyNextId`). Carrier targeting and every hazard-notice hash are keyed on ids,
+so with one shared counter a with-Buddy branch drifts from the without-Buddy branch just because
+Buddy allocated ids. Now the main stream is identical in both, and the paired time-to-kill and
+player-hit comparisons hold; a test pins it. Buddy's range is seeded from the main counter's
+position at launch (read only), so its id, and with it its side, fan size and noticing, still vary run to run.
+
+**Sweeps.** `SWEEPS`, `CANDIDATES` and `OFFENSE` are deltas on the **pre-#2880** tuning
+(`LEGACY`), so `--preset sensitivity|offense|candidates` reproduce the investigation. `BASE` is
+the shipped engine, and `--preset shipped` is a small sweep around it (HP 8/10, evade speed,
+aimed-notice chance). The no-evade and notice sweeps also set the aimed-notice chance
+(`aimedNotice`), because `BUDDY_NOTICE` no longer covers shots aimed at Buddy.
 
 The files follow the Hearts sim layout, and are ready for a regression gate (#2884):
 
 | File                            | Role                                                                                                                                                    |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sim/balance.ts`                | Pure and deterministic, with no output. `runCell` / `measureCell(engine, {scenario, difficulty, pilot, variant, seeds})` returns a plain `CellSummary`. |
-| `sim/presets.ts`                | The variants, `engineFor`, and the presets: `fast`, `baseline`, `offense`, `sensitivity`, `candidates`, `proposal`.                                     |
+| `sim/presets.ts`                | The variants, `engineFor`, and the presets: `fast`, `baseline`, `offense`, `sensitivity`, `candidates`, `shipped`, `proposal`.                          |
 | `sim/report.ts`                 | Markdown tables built from `CellSummary`.                                                                                                               |
 | `scripts/simulate-starswarm.ts` | The CLI.                                                                                                                                                |
 

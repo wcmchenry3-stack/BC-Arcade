@@ -716,6 +716,20 @@ function nextId(): number {
   return _nextId++;
 }
 
+/**
+ * #2880: Buddy's own entities (the ship, its shots, its wreck's explosion) draw ids from a
+ * separate range, so launching a Buddy never shifts the main id stream. Carrier targeting and
+ * Buddy/pilot hazard-notice hashes are keyed on ids, and the balance sim's with/without-Buddy
+ * counterfactual needs both branches to see the same keys for the same world. Gameplay is
+ * otherwise unchanged. The range sits far above any id a run reaches.
+ */
+const BUDDY_ID_BASE = 1_000_000_000;
+let _nextBuddyId = BUDDY_ID_BASE;
+
+function nextBuddyId(): number {
+  return _nextBuddyId++;
+}
+
 /** The id the next entity will get — a deterministic, rng-free key (#2845 Carrier volley roll). */
 function peekNextId(): number {
   return _nextId;
@@ -724,6 +738,7 @@ function peekNextId(): number {
 /** Reset for testing only. */
 export function _resetIds(): void {
   _nextId = 1;
+  _nextBuddyId = BUDDY_ID_BASE;
 }
 
 /**
@@ -733,10 +748,12 @@ export function _resetIds(): void {
 export interface EngineCounters {
   readonly nextId: number;
   readonly seed: number;
+  /** #2880: Buddy's separate id counter. Absent in saves from before it existed. */
+  readonly buddyNextId?: number;
 }
 
 export function engineCounters(): EngineCounters {
-  return { nextId: _nextId, seed: _seed };
+  return { nextId: _nextId, seed: _seed, buddyNextId: _nextBuddyId };
 }
 
 /** Counters a save may carry: a positive integer id counter and a 32-bit seed. */
@@ -748,7 +765,9 @@ export function isEngineCounters(v: unknown): v is EngineCounters {
     (nextId as number) >= 1 &&
     Number.isInteger(seed) &&
     (seed as number) >= 0 &&
-    (seed as number) <= 0xffffffff
+    (seed as number) <= 0xffffffff &&
+    ((v as Record<string, unknown>).buddyNextId === undefined ||
+      Number.isSafeInteger((v as Record<string, unknown>).buddyNextId))
   );
 }
 
@@ -760,6 +779,7 @@ export function isEngineCounters(v: unknown): v is EngineCounters {
 export function restoreEngineCounters(counters: EngineCounters): void {
   if (!isEngineCounters(counters)) return;
   _nextId = Math.max(_nextId, counters.nextId);
+  _nextBuddyId = Math.max(_nextBuddyId, counters.buddyNextId ?? BUDDY_ID_BASE);
   _seed = counters.seed >>> 0;
 }
 
@@ -3684,7 +3704,7 @@ function buddyBurst(b: BuddyShip, target: Vec2 | null): Bullet[] {
   for (let i = 0; i < count; i++) {
     const angle = count === 1 ? base : base + ((i / (count - 1)) * 2 - 1) * BUDDY_SPREAD_HALF;
     out.push({
-      id: nextId(),
+      id: nextBuddyId(),
       x: b.x,
       y: b.y,
       vx: Math.cos(angle) * BUDDY_BULLET_SPEED,
@@ -3704,7 +3724,11 @@ function buddyBurst(b: BuddyShip, target: Vec2 | null): Bullet[] {
 
 /** #2845: a fresh Buddy entering from a side edge (the side is a hash of its id — rng-free). */
 function makeBuddy(state: StarSwarmState): BuddyShip {
-  const id = nextId();
+  // Seed Buddy's range from where the main stream is at launch (read-only: nothing is allocated
+  // from it), so Buddy's id — which keys its side, fan size and noticing — still differs run to
+  // run instead of being the same 1e9 every time. Only ever moves forward, so ids stay unique.
+  _nextBuddyId = Math.max(_nextBuddyId, BUDDY_ID_BASE + peekNextId() * 100);
+  const id = nextBuddyId();
   const fromLeft = hashFrac(id * 5.19 + 0.3) < 0.5;
   const station = buddyStation(state, {
     ageMs: 0,
@@ -3885,7 +3909,7 @@ function resolveBuddyHits(
     }
     const hp = b.hp - damage;
     if (hp <= 0) {
-      explosions.push(spawnExplosion(b.x, b.y));
+      explosions.push(spawnExplosion(b.x, b.y, nextBuddyId()));
       lost++;
       continue;
     }
@@ -3951,8 +3975,8 @@ function beamHitsPlayer(b: CarrierBeam, p: Player): boolean {
 // Collisions
 // ---------------------------------------------------------------------------
 
-function spawnExplosion(x: number, y: number): Explosion {
-  return { id: nextId(), x, y, frame: 0, frameTimer: EXPLOSION_FRAME_MS };
+function spawnExplosion(x: number, y: number, id: number = nextId()): Explosion {
+  return { id, x, y, frame: 0, frameTimer: EXPLOSION_FRAME_MS };
 }
 
 // #2837: `awards` collects this tick's points by source; tick() commits them to the ledger.

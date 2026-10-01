@@ -462,14 +462,19 @@ function postBullet(s: StarSwarmState, id: number): Bullet | undefined {
   return s.playerBullets.find((b) => b.id === id);
 }
 
-/** Where a new enemy bullet came from: the nearest live ship to its origin. */
-function shooterTier(s: StarSwarmState, b: Bullet): EnemyTier {
+/**
+ * Where a new enemy bullet came from: the nearest live ship to its origin. `firedFrom` is the
+ * roster the tick started with: a ship that fires and is killed in the same tick is dead in `s`
+ * but is still the shooter.
+ */
+function shooterTier(s: StarSwarmState, b: Bullet, firedFrom?: StarSwarmState): EnemyTier {
+  const wasAlive = new Set(firedFrom?.enemies.filter((e) => e.isAlive).map((e) => e.id));
   const ox = b.x - b.vx * DT;
   const oy = b.y - b.vy * DT;
   let best: EnemyTier = "Grunt";
   let bestD = Infinity;
   for (const e of s.enemies) {
-    if (!e.isAlive) continue;
+    if (!e.isAlive && !wasAlive.has(e.id)) continue;
     const d = Math.hypot(e.x - ox, e.y + e.height / 2 - oy);
     if (d < bestD) {
       bestD = d;
@@ -493,6 +498,32 @@ interface Tracker {
 }
 
 /**
+ * Test hook: attribute a single tick (pre → post) to a fresh record, as a sortie in progress.
+ * Pass a spec whose scenario/difficulty match the states; Buddy damage lands in `buddyDamage`,
+ * `playerDamage` and the Carrier fields.
+ */
+export function attributeTick(
+  E: Engine,
+  pre: StarSwarmState,
+  post: StarSwarmState,
+  spec: RunSpec
+): RunRecord {
+  const rec = emptyRecord(spec, true, true);
+  const tr: Tracker = {
+    shooter: new Map(),
+    drawnIds: new Set(),
+    beamSeen: new Set(),
+    beamCounted: new Set(),
+    runActive: false,
+    runMin: Infinity,
+    burstOf: new Map(),
+    bursts: 0,
+  };
+  observe(E, pre, post, rec, tr, -1, true);
+  return rec;
+}
+
+/**
  * Attribute one tick's events (pre → post) to the record. Buddy is the single launched ship.
  */
 function observe(
@@ -507,7 +538,7 @@ function observe(
   // provenance of new enemy shots
   for (const b of post.enemyBullets) {
     if (tr.shooter.has(b.id)) continue;
-    const tier = shooterTier(post, b);
+    const tier = shooterTier(post, b, pre);
     tr.shooter.set(b.id, tier);
     if (b.target === "buddy") {
       rec.drawn[tier]++;
@@ -539,7 +570,15 @@ function observe(
   const postIds = new Set(post.playerBullets.map((b) => b.id));
   const vanished = pre.playerBullets
     .filter((b) => b.source === "buddy" && !postIds.has(b.id))
-    .map((b) => ({ id: b.id, x: b.x + b.vx * DT, y: b.y + b.vy * DT, w: b.width, h: b.height }));
+    .map((b) => ({
+      id: b.id,
+      x: b.x + b.vx * DT,
+      y: b.y + b.vy * DT,
+      w: b.width,
+      h: b.height,
+      // ships this shot already hit on earlier ticks: it cannot be what hurt them now
+      hit: b.hitEnemyIds ?? [],
+    }));
   const preEnemies = new Map(pre.enemies.map((e) => [e.id, e]));
   for (const e of post.enemies) {
     const was = preEnemies.get(e.id);
@@ -549,6 +588,7 @@ function observe(
     if (!buddyHitsOn.has(e.id)) {
       const overlapped = vanished.find(
         (b) =>
+          !b.hit.includes(e.id) &&
           Math.abs(b.x - e.x) < (b.w + e.width) / 2 + 1 &&
           Math.abs(b.y - e.y) < (b.h + e.height) / 2 + 1
       );
