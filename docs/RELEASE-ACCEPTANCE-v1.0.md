@@ -124,7 +124,21 @@ Apple review runs on IPv6-only (NAT64) networks. Test the store build (TestFligh
 | Legal links open | | |
 | Sentry event delivery (optional) | | |
 
-## 7. Blockers and follow-ups
+## 7. Store build requirements
+
+Checked 2026-10-01 against `dev` (Expo SDK 57.0.24, React Native 0.86.3). Re-check each row against the linked source before every submission; store rules change. Status: PASS = verified from the repo or artifacts, UNKNOWN = cannot be verified from the repo (say what to check).
+
+| Requirement (source, read 2026-10-01) | Status | Evidence |
+| --- | --- | --- |
+| **iOS export compliance.** Standard algorithms and crypto built into Apple's OS need no export documentation; declaring `ITSAppUsesNonExemptEncryption` in Info.plist skips the encryption questions on each submission ([App Store Connect Help: overview of export compliance](https://developer.apple.com/help/app-store-connect/manage-app-information/overview-of-export-compliance)). | PASS | Audit: no crypto/cipher/TLS library in `package.json`; no CommonCrypto/CryptoKit/Security use in `ios/GamingApp/*.swift`; no crypto in `android/app/src/main`. JS uses only `fetch` over HTTPS (OS TLS), `crypto.randomUUID`/`getRandomValues` for IDs (`src/game/_shared/uuid.ts`), and base64-decodes the entitlement JWT payload without client-side verification (`src/entitlements/EntitlementContext.tsx`). FFmpeg is disabled in `react-native-audio-api` (`disableFFmpeg`, `disableAudioapiFFmpeg=true`). Declared in `ios/GamingApp/Info.plist` and mirrored in `app.json` (`ios.config.usesNonExemptEncryption`, `ios.infoPlist`); `npx expo config --type introspect` resolves it to false. Guarded by `src/__tests__/releaseBuildConfig.test.ts`. Re-evaluate before adding any non-OS crypto. |
+| **Play target API level.** New apps and updates must target API 36 from 2026-08-31 (extension available to 2026-11-01) ([developer.android.com: target API level](https://developer.android.com/google/play/requirements/target-sdk)). | PASS | `android/app/build.gradle` reads `rootProject.ext.targetSdkVersion`, set by the `expo-root-project` plugin from the React Native version catalog (`node_modules/react-native/gradle/libs.versions.toml`): `targetSdk = 36`, `compileSdk = 36`, `minSdk = 24`. Nothing in `gradle.properties` or `app.json` overrides it. Confirm the "Target SDK" Play Console shows for the uploaded AAB. |
+| **Play 16 KB memory page size** (apps targeting API 35+ with native code, 64-bit; Play blocks non-compliant updates from 2027-02-01 per the page) ([developer.android.com: page sizes](https://developer.android.com/guide/practices/page-sizes)). | PASS (static), AAB check pending | AGP 8.12.0 (≥ 8.5.1 zip-aligns uncompressed libs; `expo.useLegacyPackaging=false`). NDK 27.1.12297006 (r27 needs `-Wl,-z,max-page-size=16384`): the RN Gradle plugin adds `-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON` to the app's CMake build, and reanimated, worklets, gesture-handler, screens, svg, skia, audio-api and expo-modules-core set it or the linker flag themselves. Prebuilt `.so` files checked with `llvm-readelf -lW` (all LOAD segments `0x4000`, arm64-v8a and x86_64): `react-android-0.86.3`, `hermes-android` 0.17.0 and 250829098.0.17, `fbjni-0.7.0` (incl. `libc++_shared.so`), `sentry-native-ndk-0.16.6`. Skia ships static `.a` libs (linked into a 16 KB-aligned `.so`); audio-api's prebuilt FFmpeg `.so` files are excluded because FFmpeg is disabled. Not yet run: `zipalign -c -P 16 -v 4` on a release AAB/APK (no Android SDK in the agent environment). Run it on the release machine and check Play Console's App bundle explorer for 16 KB warnings. |
+| **App Store Connect Xcode/SDK.** Since 2026-04-28 uploads must be built with Xcode 26 or later using the iOS 26 SDK; from 2026-09-09 apps must target iOS 13 or later ([Apple: upcoming requirements](https://developer.apple.com/news/upcoming-requirements/)). | Deployment target PASS; Xcode version UNKNOWN | `IPHONEOS_DEPLOYMENT_TARGET = 16.4` in every pbxproj configuration and `ios.deploymentTarget` 16.4 in `ios/Podfile.properties.json` (≥ 13). The Xcode version is set per workflow in App Store Connect → Xcode Cloud → Manage Workflows → Environment, not in the repo (`ios/ci_scripts/` and docs/IOS.md do not pin it). Confirm the release workflow uses Xcode 26.x (or "Latest Release") and record the Xcode version from the build log in section 1. |
+| **Privacy manifest** (#2779). | PASS | `ios/GamingApp/PrivacyInfo.xcprivacy` exists, is in the GamingApp target's Resources phase (pbxproj), and `src/__tests__/privacyManifest.test.ts` pins it and its `app.json` mirror. |
+
+Sources blocked from the agent environment on 2026-10-01: `dl.google.com` (Android SDK/NDK downloads, so `./gradlew` could not run), `repo.reactnative.dev` (react-android was fetched from the Maven Central GCS mirror instead) and `docs.expo.dev`.
+
+## 8. Blockers and follow-ups
 
 | Item | Linked issue / PR | Severity | Status |
 | --- | --- | --- | --- |
@@ -141,7 +155,7 @@ Related issues and context (from #2783):
 - Prevent dev builds from targeting the production API (iOS Xcode Cloud guard, merged): PR #2774. Android has no equivalent script guard, so the `main`-at-tagged-SHA row above is a manual check.
 - Other docs: docs/IOS.md, docs/ANDROID-CI.md, docs/RELEASE-PLAN-2026-10.md, docs/TESTING.md.
 
-## 8. Sign-off
+## 9. Sign-off
 
 | Role | Name | Date | Decision (accept / reject) |
 | --- | --- | --- | --- |

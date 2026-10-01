@@ -297,3 +297,30 @@ describe("Android release cannot silently fall back to debug signing (#2783)", (
     expect(read("android/gradle.properties")).not.toMatch(/^ALLOW_DEBUG_SIGNED_RELEASE/m);
   });
 });
+
+describe("iOS export compliance declares exempt (OS-only) encryption", () => {
+  // The app's only encryption is HTTPS through the OS networking/TLS stack
+  // (plus crypto.randomUUID for IDs), which is exempt, so App Store Connect
+  // must not prompt for export compliance on each build. If you add custom or
+  // non-OS crypto (e.g. a crypto/cipher library, SQLCipher, a VPN/E2E SDK),
+  // re-evaluate the declaration instead of updating this test.
+  // See docs/RELEASE-ACCEPTANCE-v1.0.md "Store build requirements".
+  it("Info.plist sets ITSAppUsesNonExemptEncryption to false", () => {
+    const plist = read("ios/GamingApp/Info.plist");
+    expect(plist).toMatch(/<key>ITSAppUsesNonExemptEncryption<\/key>\s*<false\/>/);
+    expect(plist.match(/<key>ITSAppUsesNonExemptEncryption<\/key>/g)).toHaveLength(1);
+  });
+
+  it("app.json mirrors it so a prebuild keeps the same value", () => {
+    const ios = JSON.parse(read("app.json")).expo.ios;
+    expect(ios.config.usesNonExemptEncryption).toBe(false);
+    expect(ios.infoPlist.ITSAppUsesNonExemptEncryption).toBe(false);
+  });
+
+  it("depends on no third-party encryption library", () => {
+    const pkg = JSON.parse(read("package.json"));
+    const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
+    const cryptoLib = /crypt|cipher|sodium|openssl|tweetnacl|jose|node-forge|sqlcipher|aes-/i;
+    expect(deps.filter((d) => cryptoLib.test(d))).toEqual([]);
+  });
+});

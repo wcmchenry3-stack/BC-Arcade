@@ -19,6 +19,7 @@ import {
 } from "../engine";
 import { buddyOps } from "./buddy";
 import { carrierOps } from "./carrier";
+import { flinchWobble } from "./flinch";
 import { isUpgradePickup, upgradePickupOps } from "./pickups";
 import type { UpgradePickupType } from "./pickups";
 import type { StarfieldState } from "../starfield";
@@ -240,10 +241,23 @@ export function buildFrame(
   const armored = isCarrierArmored(state);
   for (const e of state.enemies) {
     if (!e.isAlive) continue;
-    const rect = { x: e.x - e.width / 2, y: e.y - e.height / 2, w: e.width, h: e.height };
+    const wobble = flinchWobble(e.flinchMs); // #2881: reaction cue
+    const rect = {
+      x: e.x - e.width / 2 + wobble.dx,
+      y: e.y - e.height / 2,
+      w: e.width,
+      h: e.height,
+    };
     const sprite = TIER_SPRITE[e.tier];
     if (loaded[sprite]) {
-      ops.push({ k: "image", key: `en-${e.id}`, sprite, ...rect, fit: "fill" });
+      ops.push({
+        k: "image",
+        key: `en-${e.id}`,
+        sprite,
+        ...rect,
+        fit: "fill",
+        ...(wobble.rotate !== 0 ? { rotate: wobble.rotate } : {}),
+      });
     } else {
       ops.push({ k: "rect", key: `en-${e.id}`, ...rect, color: TIER_FALLBACK[e.tier] });
     }
