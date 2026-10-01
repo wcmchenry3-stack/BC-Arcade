@@ -6,6 +6,7 @@
   "hud.score": "POINTS",
   "hud.pairs": "PAIRES",
   "hud.time": "TEMPS",
+  "hud.elapsed": "Temps écoulé {{time}}",
   "hud.deal": "DONNE",
   "action.shuffle": "MÉLANGER",
   "action.shuffleLabel": "Mélanger les tuiles en une nouvelle disposition soluble",

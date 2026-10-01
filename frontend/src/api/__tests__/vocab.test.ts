@@ -1,5 +1,6 @@
 import { BOARDS, GAME_OUTCOMES, GAME_TYPES, type BoardDefinition, type GameType } from "../vocab";
 import { DIFFICULTY_TIERS } from "../../game/starswarm/engine";
+import { LAYOUTS } from "../../game/mahjong/layouts/registry";
 
 // Type-level: BOARDS must be keyed by exactly the GameType union (#2617).
 type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
@@ -14,6 +15,7 @@ const BOARD_FIELDS = [
   "partitionDefaults",
   "partitionValues",
   "maxValue",
+  "minValue",
   "partitionMaxValues",
   "qualifyingOutcomes",
   "enabled",
@@ -53,6 +55,8 @@ describe("BOARDS (generated from backend GameModule.board)", () => {
       expect(new Set(values).size).toBe(values.length);
     }
     if (board.maxValue !== null) expect(board.maxValue).toBeGreaterThanOrEqual(0);
+    expect(board.minValue).toBeGreaterThanOrEqual(0);
+    if (board.maxValue !== null) expect(board.minValue).toBeLessThanOrEqual(board.maxValue);
     for (const [key, caps] of Object.entries(board.partitionMaxValues)) {
       expect(board.partitions).toContain(key);
       expect(board.maxValue).not.toBeNull();
@@ -92,5 +96,17 @@ describe("BOARDS (generated from backend GameModule.board)", () => {
     const starswarm = BOARDS.starswarm;
     expect(starswarm?.partitionValues).toEqual({ difficulty_tier: [...DIFFICULTY_TIERS] });
     expect(starswarm?.partitionDefaults).toEqual({ difficulty_tier: "LieutenantJG" });
+  });
+
+  it("ranks Mahjong by fastest clear, one board per app layout (#2747)", () => {
+    const mahjong = BOARDS.mahjong;
+    expect(mahjong?.metric).toBe("duration_ms");
+    expect(mahjong?.direction).toBe("asc");
+    expect(mahjong?.labelKey).toBe("time");
+    expect(mahjong?.qualifyingOutcomes).toEqual(["win"]);
+    expect(mahjong?.partitionValues).toEqual({ layout: LAYOUTS.map((l) => l.id) });
+    // No default: a clear from before #2627 has no layout and ranks nowhere.
+    expect(mahjong?.partitionDefaults).toEqual({});
+    expect(mahjong?.minValue).toBe(36_000);
   });
 });

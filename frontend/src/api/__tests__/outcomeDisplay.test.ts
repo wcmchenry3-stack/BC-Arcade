@@ -1,5 +1,6 @@
 import i18n from "i18next";
 import {
+  formatBoardValue,
   formatMetric,
   gameMetric,
   knownOutcome,
@@ -182,5 +183,26 @@ describe("gameMetric", () => {
     expect(
       gameMetric({ game_type: "sort", final_score: 5, metadata: { level_reached: "19" } }).value
     ).toBeNull();
+  });
+});
+
+describe("time metrics (#2747)", () => {
+  it("reads duration_ms for Mahjong's fastest-clear board", () => {
+    expect(
+      gameMetric({ game_type: "mahjong", final_score: 1220, duration_ms: 187_000, metadata: {} })
+    ).toEqual({ value: 187_000, labelKey: "time" });
+    expect(gameMetric({ game_type: "mahjong", final_score: 1220, metadata: {} }).value).toBeNull();
+  });
+
+  it("shows a time as a clock, with or without its label", () => {
+    expect(formatMetric(t, "time", 187_000)).toBe("3:07");
+    expect(formatMetric(t, "time", 3_723_000)).toBe("1:02:03");
+    expect(formatMetric(t, "time", null)).toBe("—");
+    expect(formatBoardValue(t, "time", 65_900)).toBe("1:05");
+  });
+
+  it("leaves every other board value a grouped number", () => {
+    expect(formatBoardValue(t, "score", 1200)).toBe("1,200");
+    expect(formatBoardValue(t, null, 87)).toBe("87");
   });
 });

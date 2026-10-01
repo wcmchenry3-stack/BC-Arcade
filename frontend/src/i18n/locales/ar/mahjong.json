@@ -6,6 +6,7 @@
   "hud.score": "النقاط",
   "hud.pairs": "الأزواج",
   "hud.time": "الوقت",
+  "hud.elapsed": "الوقت المنقضي {{time}}",
   "hud.deal": "توزيع",
   "action.shuffle": "خلط",
   "action.shuffleLabel": "اخلط البلاطات المتبقية في ترتيب جديد قابل للحل",

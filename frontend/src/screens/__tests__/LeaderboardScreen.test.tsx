@@ -238,6 +238,20 @@ describe("LeaderboardScreen — columns and labels", () => {
     expect(screen.getByTestId("leaderboard-direction")).toHaveTextContent("Lower is better");
   });
 
+  it("labels Mahjong's metric Time and shows clear times as a clock (#2747)", async () => {
+    mockGetLeaderboard.mockResolvedValue(
+      board([entry(1, "Fast", 125_400), entry(2, "Slow", 3_723_000)])
+    );
+    await renderBoard("mahjong");
+    const columns = await screen.findByTestId("leaderboard-columns", HIDDEN);
+    expect(within(columns).getByText("Time", HIDDEN)).toBeTruthy();
+    expect(screen.getByText("2:05")).toBeTruthy();
+    expect(screen.getByText("1:02:03")).toBeTruthy();
+    expect(screen.getByLabelText(/^Rank 1, Fast, Time 2:05, /)).toBeTruthy();
+    // Fastest clear ranks first.
+    expect(screen.getByTestId("leaderboard-direction")).toHaveTextContent("Lower is better");
+  });
+
   it("labels Sort's metric Level", async () => {
     mockGetLeaderboard.mockResolvedValue(board([entry(1, "Alice", 23)]));
     await renderBoard("sort");
@@ -345,6 +359,30 @@ describe("LeaderboardScreen — partitions", () => {
       { difficulty_tier: "LieutenantJG" },
       { limit: 50 }
     );
+  });
+
+  it("opens Mahjong on the layout it was given, with every layout under Layout (#2747)", async () => {
+    await renderBoard("mahjong", { layout: "spider" });
+    expect(mockGetLeaderboard).toHaveBeenCalledWith("mahjong", { layout: "spider" }, { limit: 50 });
+    const group = picker("layout");
+    expect(group.props.accessibilityLabel).toBe("Layout");
+    expect(within(group).getAllByRole("radio")).toHaveLength(25);
+    expect(screen.getByRole("radio", { name: "Spider" })).toBeChecked();
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole("radio", { name: "X-Wing" }));
+    });
+    expect(mockGetLeaderboard).toHaveBeenLastCalledWith(
+      "mahjong",
+      { layout: "x_wing" },
+      { limit: 50 }
+    );
+  });
+
+  it("opens Mahjong on Turtle when no layout is given", async () => {
+    await renderBoard("mahjong");
+    expect(mockGetLeaderboard).toHaveBeenCalledWith("mahjong", { layout: "turtle" }, { limit: 50 });
+    expect(screen.getByRole("radio", { name: "Turtle" })).toBeChecked();
   });
 
   it("offers Star Swarm's ten tiers under Tier", async () => {

@@ -6,6 +6,7 @@
   "hud.score": "점수",
   "hud.pairs": "짝",
   "hud.time": "시간",
+  "hud.elapsed": "경과 시간 {{time}}",
   "hud.deal": "판",
   "action.shuffle": "섞기",
   "action.shuffleLabel": "남은 패를 풀 수 있는 새 배치로 섞습니다",
