@@ -1,7 +1,10 @@
 import React from "react";
 import { fireEvent, render } from "@testing-library/react-native";
 import { ThemeProvider } from "../../../../theme/ThemeContext";
+import { Dimensions } from "react-native";
 import SortBoard from "../SortBoard";
+import { DEFAULT_BOTTLE_HEIGHT, DEFAULT_BOTTLE_WIDTH } from "../BottleView";
+import { computeBoardLayout, MIN_TOUCH_TARGET } from "../gridGeometry";
 import type { Color, SortState } from "../../types";
 
 function withTheme(children: React.ReactNode) {
@@ -111,14 +114,18 @@ describe("SortBoard", () => {
     expect(getAllByLabelText(/^Bottle \d/).length).toBeGreaterThan(0);
   });
 
-  it("accepts onPourComplete prop and does not call it on initial render", async () => {
-    // Guards that the prop exists in the interface and is not spuriously invoked.
-    // The Reanimated jest mock does not execute animation callbacks, so the actual
-    // call-through (runOnJS(notifyPourComplete)() at animation end) is covered by
-    // the SortScreen regression test for issue #1567.
+  it("does not call onPourComplete while a laid-out pour is still animating", async () => {
+    // Guards that the prop is not spuriously invoked once the ghost animation
+    // runs. The Reanimated jest mock does not execute animation callbacks, so
+    // the actual call-through (runOnJS(notifyPourComplete)() at animation end)
+    // is covered by the SortScreen regression test for issue #1567.
     const onPourComplete = jest.fn();
     const state = mkState([["red", "red", "blue", "blue"], []]);
-    await render(
+    const { getByTestId, rerender } = await render(
+      withTheme(<SortBoard state={state} onBottleTap={jest.fn()} />)
+    );
+    await layoutRows(getByTestId, { x: 8, y: 40 }, [{ x: 0, y: 0, cellXs: [0, 100] }]);
+    await rerender(
       withTheme(
         <SortBoard
           state={state}
@@ -130,7 +137,93 @@ describe("SortBoard", () => {
         />
       )
     );
+    expect(getByTestId("pour-ghost-overlay", { includeHiddenElements: true })).toBeTruthy();
     expect(onPourComplete).not.toHaveBeenCalled();
+  });
+
+  it(
+    "completes a pour that starts before the grid is laid out, drawing no " +
+      "ring or stream, so the board can't freeze (regression #2297)",
+    async () => {
+      // Right after Next Level the new board has no onLayout data yet. The
+      // pour must neither be drawn from guessed coordinates nor be dropped:
+      // SortScreen only applies the move and clears isPouring in
+      // onPourComplete, so a dropped pour left every tap, Undo and Hint dead.
+      const onPourComplete = jest.fn();
+      const state = mkState([["red", "red", "blue", "blue"], ["blue"], []]);
+      const { queryByTestId } = await render(
+        withTheme(
+          <SortBoard
+            state={state}
+            onBottleTap={jest.fn()}
+            pouringFrom={1}
+            pouringTo={0}
+            onPourComplete={onPourComplete}
+          />
+        )
+      );
+      expect(queryByTestId("pour-ghost-overlay", { includeHiddenElements: true })).toBeNull();
+      expect(queryByTestId("pour-dst-ring", { includeHiddenElements: true })).toBeNull();
+      expect(onPourComplete).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it(
+    "remounts the grid when the bottle count changes in place, so every row " +
+      "and cell reports its layout again (regression #2297)",
+    async () => {
+      // Positions are cleared on a bottle-count change. RN only fires onLayout
+      // for a view whose frame changed, so a reused row/cell that kept its frame
+      // would never report again and its bottle could never be poured.
+      const levelA = mkState([["red"], ["blue"], ["green"], ["yellow"], ["orange"]]);
+      const { getByTestId, rerender } = await render(
+        withTheme(<SortBoard state={levelA} onBottleTap={jest.fn()} />)
+      );
+      const gridA = getByTestId("sort-grid");
+      const rowA = getByTestId("sort-row-0");
+      const cellA = getByTestId("bottle-cell-0");
+
+      const levelB = mkState([["red"], ["blue"], ["green"], ["yellow"], ["orange"], []]);
+      await rerender(withTheme(<SortBoard state={levelB} onBottleTap={jest.fn()} />));
+      expect(getByTestId("sort-grid")).not.toBe(gridA);
+      expect(getByTestId("sort-row-0")).not.toBe(rowA);
+      expect(getByTestId("bottle-cell-0")).not.toBe(cellA);
+
+      // Same bottle count (a move, an undo): no remount.
+      const gridB = getByTestId("sort-grid");
+      const levelB2 = mkState([["red"], ["blue"], ["green"], ["yellow"], [], ["orange"]]);
+      await rerender(withTheme(<SortBoard state={levelB2} onBottleTap={jest.fn()} />));
+      expect(getByTestId("sort-grid")).toBe(gridB);
+    }
+  );
+
+  it("gives each bottle a cell-wide tap area via hitSlop (#2207)", async () => {
+    // 16 bottles (level 23): a 4×4 grid on a board short enough that the
+    // bottles are narrower than a 48pt tap target.
+    const state = mkState(Array.from({ length: 16 }, () => ["red"] as Color[]));
+    const { getByTestId, getAllByLabelText } = await render(
+      withTheme(<SortBoard state={state} onBottleTap={jest.fn()} availableHeight={400} />)
+    );
+    const { width: screenW } = Dimensions.get("window");
+    const layout = computeBoardLayout(16, screenW - 32, 400, {
+      width: DEFAULT_BOTTLE_WIDTH,
+      height: DEFAULT_BOTTLE_HEIGHT,
+    });
+    expect(layout.bottleW).toBeLessThan(MIN_TOUCH_TARGET);
+    expect(layout.slotW).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET);
+
+    for (let idx = 0; idx < 16; idx++) {
+      expect(getByTestId(`bottle-cell-${idx}`)).toHaveStyle({ width: layout.slotW });
+    }
+    const bottles = getAllByLabelText(/^Bottle \d/);
+    expect(bottles).toHaveLength(16);
+    for (const b of bottles) {
+      expect(b.props.hitSlop).toEqual(layout.hitSlop);
+      expect(b.props.hitSlop.left + layout.bottleW + b.props.hitSlop.right).toBeCloseTo(
+        layout.slotW,
+        6
+      );
+    }
   });
 
   it("renders cross-row pour without crashing (regression #1803)", async () => {
@@ -258,10 +351,14 @@ describe("SortBoard", () => {
     await rerender(
       withTheme(<SortBoard state={state} onBottleTap={onBottleTap} pouringFrom={1} pouringTo={5} />)
     );
-    // Ring is inset 4px around the destination: left = 8 + 50 + 100 - 4,
-    // top = 40 + 150 + 0 - 4.
+    // Ring is inset 4px around the destination bottle, which sits centered in
+    // its cell: left = 8 + 50 + 100 + bottleInsetX - 4, top = 40 + 150 + 0 - 4.
+    const { bottleInsetX } = computeBoardLayout(7, Dimensions.get("window").width - 32, 480, {
+      width: DEFAULT_BOTTLE_WIDTH,
+      height: DEFAULT_BOTTLE_HEIGHT,
+    });
     const ring = getByTestId("pour-dst-ring", { includeHiddenElements: true });
-    expect(ring).toHaveStyle({ left: 154, top: 186 });
+    expect(ring).toHaveStyle({ left: 154 + bottleInsetX, top: 186 });
   });
 
   it("suppresses a pour until the row layout lands, not just the cell layout", async () => {
