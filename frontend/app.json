@@ -15,6 +15,12 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.buffingchi.games",
       "buildNumber": "10009",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
       "privacyManifests": {
         "NSPrivacyAccessedAPITypes": [
           {
