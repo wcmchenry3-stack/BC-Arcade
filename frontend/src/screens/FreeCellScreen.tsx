@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Sentry from "@sentry/react-native";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -128,17 +129,31 @@ export default function FreeCellScreen() {
     autoCompletingRef.current = true;
     setAutoCompleting(true);
 
+    const release = () => {
+      autoCompletingRef.current = false;
+      setAutoCompleting(false);
+    };
+
     const step = (current: FreeCellState) => {
       if (!isMountedRef.current) return;
-      const next = autoComplete(current);
-      if (next === current || next.isComplete) {
-        setState(next === current ? current : next);
-        autoCompletingRef.current = false;
-        setAutoCompleting(false);
-        return;
+      // The board is input-locked while this runs (#2225), so every way out
+      // of a step — including a throw — must release the lock, or the player
+      // is left with a board that rejects every tap.
+      let scheduled = false;
+      try {
+        const next = autoComplete(current);
+        if (next === current || next.isComplete) {
+          setState(next === current ? current : next);
+          return;
+        }
+        setState(next);
+        autoStepTimeoutRef.current = setTimeout(() => step(next), AUTO_STEP_MS);
+        scheduled = true;
+      } catch (e) {
+        Sentry.captureException(e, { tags: { subsystem: "autoComplete", game: "freecell" } });
+      } finally {
+        if (!scheduled) release();
       }
-      setState(next);
-      autoStepTimeoutRef.current = setTimeout(() => step(next), AUTO_STEP_MS);
     };
 
     autoStepTimeoutRef.current = setTimeout(() => step(fromState), AUTO_STEP_MS);
