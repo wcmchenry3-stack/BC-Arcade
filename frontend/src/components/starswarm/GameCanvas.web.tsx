@@ -43,6 +43,7 @@ import {
 import type { UpgradePickupType } from "../../game/starswarm/render/pickups";
 import { buddyOps } from "../../game/starswarm/render/buddy";
 import { carrierOps } from "../../game/starswarm/render/carrier";
+import { flinchWobble } from "../../game/starswarm/render/flinch";
 import {
   pickupCues,
   pickupCueFrame,
@@ -623,6 +624,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               : enemy.tier === "Carrier"
                 ? imgs.enemyCarrier
                 : imgs.enemyGuardian;
+        const wobble = flinchWobble(enemy.flinchMs); // #2881: reaction cue
+        ctx.save();
+        ctx.translate(enemy.x + wobble.dx, enemy.y);
+        ctx.rotate(wobble.rotate);
+        ctx.translate(-enemy.x, -enemy.y);
         if (img) {
           ctx.drawImage(
             img,
@@ -647,6 +653,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             enemy.height
           );
         }
+        ctx.restore();
         // #2484: steady force-field ring while the Carrier's escorts still shield it
         if (enemy.tier === "Carrier" && carrierArmored) {
           ctx.beginPath();
