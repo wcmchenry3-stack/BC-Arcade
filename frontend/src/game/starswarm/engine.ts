@@ -204,10 +204,10 @@ export const POWERUP_DURATION = 5000; // ms of super state (lightning / shield)
 const BOMB_FLASH_DURATION = 300; // ms
 
 // #1035/#2845: Buddy — a durable, targetable allied ship
-/** #2845: Buddy's hit points. Tuning range 8–12 (Carrier-class or a little tougher). */
-export const BUDDY_HP = 10;
+/** #2845: Buddy's hit points. Tuning range 8–12; #2880 rebalance settled on 9 (offense was the problem, not toughness). */
+export const BUDDY_HP = 9;
 export const BUDDY_HURT_RADIUS = 11; // px — Buddy's hit circle (a bigger hull than the player's forgiveness circle)
-export const BUDDY_SPEED = 0.2; // px/ms — the bound on its evasive and station-keeping moves
+export const BUDDY_SPEED = 0.14; // px/ms — the bound on its evasive and station-keeping moves
 const BUDDY_TRANSIT_SPEED = 0.34; // px/ms — flying in and peeling off
 export const BUDDY_STATION_MS = 9000; // ms on station before it peels off
 export const BUDDY_BURSTS = 3; // attack runs per sortie — one spread burst each
@@ -216,8 +216,10 @@ export const BUDDY_BURST_INTERVAL = 2200; // ms between bursts
 export const BUDDY_RUN_MS = 700; // the attack run: it lines up under its target this long before a burst
 const BUDDY_RUN_RISE = 24; // px it climbs toward the target on an attack run (never inside the standoff)
 const BUDDY_BULLET_SPEED = 0.5; // px/ms
-const BUDDY_BULLET_COUNT_MIN = 5;
-const BUDDY_BULLET_COUNT_MAX = 7;
+const BUDDY_BULLET_COUNT_MIN = 3; // #2880: was 5–7
+const BUDDY_BULLET_COUNT_MAX = 4;
+/** #2880: a Buddy shot is spent after hitting this many ships (was unlimited pierce). */
+export const BUDDY_PIERCE_HITS = 2;
 const BUDDY_SPREAD_HALF = Math.PI / 9; // ±20° fan
 /** #2845: Buddy never closes inside this distance of the Carrier on station — no point-blank passes. */
 export const BUDDY_STANDOFF = 150; // px
@@ -225,7 +227,7 @@ const BUDDY_FORMATION_GAP = 55; // px Buddy keeps below the lowest ship holding 
 const BUDDY_PLAYER_GAP = 90; // px Buddy keeps above the player lane (its floor)
 const BUDDY_STRAFE = 55; // px either side of its target line while strafing
 const BUDDY_STRAFE_PERIOD = 3200; // ms per strafe cycle
-export const BUDDY_REPLAN_MS = 140; // ms reaction latency between evasion re-plans (imperfection)
+export const BUDDY_REPLAN_MS = 220; // ms reaction latency between evasion re-plans (imperfection)
 // sampled every 40 ms so even a fast shot (0.5 px/ms) can't slip between samples of a ~22 px reach
 const BUDDY_LOOKAHEAD_MS = Array.from({ length: 19 }, (_, i) => i * 40); // 0 … 720 ms
 const BUDDY_MARGIN = 6; // px of slack its evasion keeps from a hazard
@@ -236,6 +238,8 @@ export const BUDDY_ROCK_LOOKAHEAD_MS = 900; // rock threat window (asteroidThrea
  * is simply not dodged: strong, readable, imperfect.
  */
 export const BUDDY_NOTICE = { shot: 0.8, beam: 0.9, rock: 0.85 } as const;
+/** #2880: notice chance for a shot aimed at Buddy (a deliberate, leading shot); other shots keep BUDDY_NOTICE.shot. */
+export const BUDDY_NOTICE_AIMED = 0.6;
 export const BUDDY_BEAM_DAMAGE = 3; // a released Carrier beam is heavy
 export const BUDDY_ROCK_DAMAGE = 2; // per rock (one hit per rock, like any ship)
 /** #2845: at most this many enemy shots may be in flight at Buddy — it draws fire, it isn't focus-fired. */
@@ -739,6 +743,20 @@ function nextId(): number {
   return _nextId++;
 }
 
+/**
+ * #2880: Buddy's own entities (the ship, its shots, its wreck's explosion) draw ids from a
+ * separate range, so launching a Buddy never shifts the main id stream. Carrier targeting and
+ * Buddy/pilot hazard-notice hashes are keyed on ids, and the balance sim's with/without-Buddy
+ * counterfactual needs both branches to see the same keys for the same world. Gameplay is
+ * otherwise unchanged. The range sits far above any id a run reaches.
+ */
+const BUDDY_ID_BASE = 1_000_000_000;
+let _nextBuddyId = BUDDY_ID_BASE;
+
+function nextBuddyId(): number {
+  return _nextBuddyId++;
+}
+
 /** The id the next entity will get — a deterministic, rng-free key (#2845 Carrier volley roll). */
 function peekNextId(): number {
   return _nextId;
@@ -747,6 +765,7 @@ function peekNextId(): number {
 /** Reset for testing only. */
 export function _resetIds(): void {
   _nextId = 1;
+  _nextBuddyId = BUDDY_ID_BASE;
 }
 
 /**
@@ -756,10 +775,12 @@ export function _resetIds(): void {
 export interface EngineCounters {
   readonly nextId: number;
   readonly seed: number;
+  /** #2880: Buddy's separate id counter. Absent in saves from before it existed. */
+  readonly buddyNextId?: number;
 }
 
 export function engineCounters(): EngineCounters {
-  return { nextId: _nextId, seed: _seed };
+  return { nextId: _nextId, seed: _seed, buddyNextId: _nextBuddyId };
 }
 
 /** Counters a save may carry: a positive integer id counter and a 32-bit seed. */
@@ -771,7 +792,9 @@ export function isEngineCounters(v: unknown): v is EngineCounters {
     (nextId as number) >= 1 &&
     Number.isInteger(seed) &&
     (seed as number) >= 0 &&
-    (seed as number) <= 0xffffffff
+    (seed as number) <= 0xffffffff &&
+    ((v as Record<string, unknown>).buddyNextId === undefined ||
+      Number.isSafeInteger((v as Record<string, unknown>).buddyNextId))
   );
 }
 
@@ -783,6 +806,7 @@ export function isEngineCounters(v: unknown): v is EngineCounters {
 export function restoreEngineCounters(counters: EngineCounters): void {
   if (!isEngineCounters(counters)) return;
   _nextId = Math.max(_nextId, counters.nextId);
+  _nextBuddyId = Math.max(_nextBuddyId, counters.buddyNextId ?? BUDDY_ID_BASE);
   _seed = counters.seed >>> 0;
 }
 
@@ -3649,7 +3673,8 @@ export function buddyHazards(state: StarSwarmState, b: BuddyShip): Hazard[] {
   for (const e of state.enemyBullets) {
     if (!shotHarmsAllies(e)) continue;
     if (Math.abs(e.x - b.x) > 280 || Math.abs(e.y - b.y) > 360) continue; // can't arrive in time
-    if (!buddyNotices(b.id, e.id, BUDDY_NOTICE.shot)) continue;
+    if (!buddyNotices(b.id, e.id, e.target === "buddy" ? BUDDY_NOTICE_AIMED : BUDDY_NOTICE.shot))
+      continue;
     out.push({ x: e.x, y: e.y, vx: e.vx, vy: e.vy, r: Math.max(e.width, e.height) / 2 });
   }
   for (const beam of state.carrierBeams) {
@@ -3763,7 +3788,7 @@ function buddyBurst(b: BuddyShip, target: Vec2 | null): Bullet[] {
   for (let i = 0; i < count; i++) {
     const angle = count === 1 ? base : base + ((i / (count - 1)) * 2 - 1) * BUDDY_SPREAD_HALF;
     out.push({
-      id: nextId(),
+      id: nextBuddyId(),
       x: b.x,
       y: b.y,
       vx: Math.cos(angle) * BUDDY_BULLET_SPEED,
@@ -3773,6 +3798,7 @@ function buddyBurst(b: BuddyShip, target: Vec2 | null): Bullet[] {
       height: BULLET_E_H,
       damage: 1,
       piercing: true, // multi-hit through ordinary hulls…
+      pierceLeft: BUDDY_PIERCE_HITS, // …but only this many (#2880)
       // …but not armorPiercing: the escorted Carrier's field stops it (#2845)
       source: "buddy",
     });
@@ -3782,7 +3808,11 @@ function buddyBurst(b: BuddyShip, target: Vec2 | null): Bullet[] {
 
 /** #2845: a fresh Buddy entering from a side edge (the side is a hash of its id — rng-free). */
 function makeBuddy(state: StarSwarmState): BuddyShip {
-  const id = nextId();
+  // Seed Buddy's range from where the main stream is at launch (read-only: nothing is allocated
+  // from it), so Buddy's id — which keys its side, fan size and noticing — still differs run to
+  // run instead of being the same 1e9 every time. Only ever moves forward, so ids stay unique.
+  _nextBuddyId = Math.max(_nextBuddyId, BUDDY_ID_BASE + peekNextId() * 100);
+  const id = nextBuddyId();
   const fromLeft = hashFrac(id * 5.19 + 0.3) < 0.5;
   const station = buddyStation(state, {
     ageMs: 0,
@@ -3963,7 +3993,7 @@ function resolveBuddyHits(
     }
     const hp = b.hp - damage;
     if (hp <= 0) {
-      explosions.push(spawnExplosion(b.x, b.y));
+      explosions.push(spawnExplosion(b.x, b.y, nextBuddyId()));
       lost++;
       continue;
     }
@@ -4029,8 +4059,8 @@ function beamHitsPlayer(b: CarrierBeam, p: Player): boolean {
 // Collisions
 // ---------------------------------------------------------------------------
 
-function spawnExplosion(x: number, y: number): Explosion {
-  return { id: nextId(), x, y, frame: 0, frameTimer: EXPLOSION_FRAME_MS };
+function spawnExplosion(x: number, y: number, id: number = nextId()): Explosion {
+  return { id, x, y, frame: 0, frameTimer: EXPLOSION_FRAME_MS };
 }
 
 // #2837: `awards` collects this tick's points by source; tick() commits them to the ledger.
@@ -4080,6 +4110,13 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
         const hits = newPiercingHits.get(b.id);
         if (hits) hits.push(enemy.id);
         else newPiercingHits.set(b.id, [enemy.id]);
+        // #2880: a capped shot (Buddy's) is spent on its last allowed hit — the hit still lands.
+        // Lightning and the player's own piercing carry no counter and are never capped.
+        if (
+          b.pierceLeft !== undefined &&
+          b.pierceLeft - (newPiercingHits.get(b.id)?.length ?? 0) <= 0
+        )
+          hitBulletIds.add(b.id);
       } else {
         hitBulletIds.add(b.id);
       }
@@ -4127,7 +4164,11 @@ function tickCollisions(state: StarSwarmState, awards: ScorePoints = {}): StarSw
     .map((b) => {
       const hits = newPiercingHits.get(b.id);
       if (!hits) return b;
-      return { ...b, hitEnemyIds: [...(b.hitEnemyIds ?? []), ...hits] };
+      return {
+        ...b,
+        hitEnemyIds: [...(b.hitEnemyIds ?? []), ...hits],
+        ...(b.pierceLeft !== undefined ? { pierceLeft: b.pierceLeft - hits.length } : {}),
+      };
     });
 
   // #2486: rocks are cover — any shot that reaches one is spent on it (piercing shots included),

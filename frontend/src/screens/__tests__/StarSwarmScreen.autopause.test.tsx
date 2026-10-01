@@ -369,7 +369,11 @@ describe("StarSwarmScreen — a paused run survives the process (#2645)", () => 
     expect(saved.gameState.score).toBe(2500);
     expect(saved.difficulty).toBe("Commander");
     expect(saved).not.toHaveProperty("gameId");
-    expect(saved.counters).toEqual({ nextId: expect.any(Number), seed: expect.any(Number) });
+    expect(saved.counters).toEqual({
+      nextId: expect.any(Number),
+      seed: expect.any(Number),
+      buddyNextId: expect.any(Number), // #2880
+    });
   });
 
   it("resuming clears the save — the run is live again", async () => {

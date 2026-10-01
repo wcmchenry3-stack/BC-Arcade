@@ -21,6 +21,8 @@ import {
   shotHarmsAllies,
   chooseCarrierTarget,
   buddyBurstCount,
+  engineCounters,
+  restoreEngineCounters,
   MAX_PLAYER_BULLETS,
   asteroidThreatens,
   buddyThreatCircle,
@@ -35,6 +37,8 @@ import {
   BUDDY_ROCK_DAMAGE,
   BUDDY_MAX_INCOMING,
   BUDDY_BURSTS,
+  BUDDY_PIERCE_HITS,
+  BUDDY_NOTICE_AIMED,
   BUDDY_HURT_RADIUS,
   BUDDY_ROCK_LOOKAHEAD_MS,
   BEAM_SPEED,
@@ -186,7 +190,7 @@ function hazardId(buddyId: number, noticed: boolean, chance: number, from = 500_
 
 describe("Buddy durability (#2845)", () => {
   it("launches with BUDDY_HP (tuning range 8–12) and counts the launch", () => {
-    expect(BUDDY_HP).toBeGreaterThanOrEqual(8);
+    expect(BUDDY_HP).toBe(9); // #2880: offense was the problem, not toughness (sim: HP 8 vs 9)
     expect(BUDDY_HP).toBeLessThanOrEqual(12);
     const s = applyPowerUp(settled(), "buddy");
     expect(s.buddyShips).toHaveLength(1);
@@ -558,7 +562,7 @@ describe("Buddy evasion (#2845)", () => {
     const rock = rockAt({
       id: hazardId(4343, true, BUDDY_NOTICE.rock),
       x: 180,
-      y: 0,
+      y: 200,
       vx: 0,
       vy: 0.2,
     });
@@ -578,7 +582,9 @@ describe("Buddy evasion (#2845)", () => {
       if (buddyHazards(s, cur).length > 0) reacted = true;
     }
     expect(reacted).toBe(true);
-    expect(s.buddyShips[0]!.hp).toBe(BUDDY_HP);
+    // #2880: a slower Buddy (0.14 px/ms) no longer always clears a rock, but a rock still lands at
+    // most once (BUDDY_ROCK_DAMAGE) — it never piles up.
+    expect(s.buddyShips[0]!.hp).toBeGreaterThanOrEqual(BUDDY_HP - BUDDY_ROCK_DAMAGE);
     expect(BUDDY_ROCK_LOOKAHEAD_MS).toBeGreaterThan(0);
   });
 
@@ -665,6 +671,120 @@ describe("allied collision policy (#2845)", () => {
     expect(s.enemies.find((e) => e.id === g.id)!.isAlive).toBe(false);
     expect(s.playerBullets.some((b) => b.id === intoRock.id)).toBe(false);
     expect(s.asteroids.find((a) => a.id === rock.id)!.hp).toBe(ASTEROID_STATS.large.hp - 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("Buddy id stream (#2880)", () => {
+  it("launching a Buddy never shifts the main id stream (counterfactual alignment)", () => {
+    let base = settled(5);
+    base = withEnemies(base, () => true, { hp: 1e6 }); // nothing dies: no explosion ids
+    base = { ...base, enemyFireDisabled: true, asteroidsDisabled: true, flakDisabled: true };
+    const counters = engineCounters();
+    let withB = applyPowerUp(base, "buddy");
+    let fanSeen = false;
+    const mainIds: number[] = [];
+    for (let t = 0; t < 4000; t += 16) {
+      withB = tick(withB, 16, ASIDE);
+      if (withB.playerBullets.some((b) => b.source === "buddy")) fanSeen = true;
+      mainIds.push(engineCounters().nextId);
+    }
+    expect(fanSeen).toBe(true);
+    // Buddy's own ids live in a separate range
+    expect(engineCounters().buddyNextId).toBeGreaterThan(1_000_000_000);
+    // ...and the control branch from the same counters allocates the same main ids tick for tick
+    _resetIds();
+    restoreEngineCounters(counters);
+    let without = base;
+    const controlIds: number[] = [];
+    for (let t = 0; t < 4000; t += 16) {
+      without = tick(without, 16, ASIDE);
+      controlIds.push(engineCounters().nextId);
+    }
+    expect(controlIds).toEqual(mainIds);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("Buddy shot hit cap (#2880)", () => {
+  /** A formation of tough Grunts and one wide shot parked over all of them. */
+  function overFormation(shotOver: Partial<Bullet>): { s: StarSwarmState; hp: number } {
+    const base = settled();
+    // no Carrier: its force field would spend a non-armor-piercing shot (a separate rule)
+    const s0 = withEnemies(
+      { ...base, enemies: base.enemies.filter((e) => e.tier !== "Carrier") },
+      () => true,
+      { hp: 50 }
+    );
+    const alive = s0.enemies.filter((e) => e.isAlive);
+    const cx = alive.reduce((a, e) => a + e.x, 0) / alive.length;
+    const cy = alive.reduce((a, e) => a + e.y, 0) / alive.length;
+    const shot = playerShot({ x: cx, y: cy, width: 900, height: 900, damage: 1, ...shotOver });
+    return { s: { ...s0, playerBullets: [shot] }, hp: 50 };
+  }
+  const damaged = (s: StarSwarmState, hp: number) =>
+    s.enemies.filter((e) => e.isAlive && e.hp < hp).length;
+
+  it("a Buddy burst carries the cap; the tuning is 2 hits, a 3-4 shot fan", () => {
+    expect(BUDDY_PIERCE_HITS).toBe(2);
+    expect(BUDDY_NOTICE_AIMED).toBeLessThan(0.8);
+    let s = settled();
+    s = {
+      ...s,
+      buddyShips: [buddyOf({ x: 200, y: 420, burstsLeft: 1, burstTimer: 0 })],
+    };
+    s = tick(s, 16, ASIDE);
+    const fan = s.playerBullets.filter((b) => b.source === "buddy");
+    expect(fan.length).toBeGreaterThanOrEqual(3);
+    expect(fan.length).toBeLessThanOrEqual(4);
+    for (const b of fan) {
+      expect(b.piercing).toBe(true);
+      expect(b.armorPiercing).toBeUndefined();
+      expect(b.pierceLeft).toBe(BUDDY_PIERCE_HITS);
+    }
+    expect(fitsSaveShape(JSON.parse(JSON.stringify(s)))).toBe(true);
+  });
+
+  it("passes through 2 enemies and is then spent, even with many overlapping in one tick", () => {
+    const { s, hp } = overFormation({ source: "buddy", piercing: true, pierceLeft: 2 });
+    const next = tick(s, 16, ASIDE);
+    expect(damaged(next, hp)).toBe(2);
+    expect(next.playerBullets.some((b) => b.source === "buddy")).toBe(false);
+  });
+
+  it("the counter persists across ticks: one hit now, the last hit later", () => {
+    const base = settled();
+    const g = base.enemies.find((e) => e.tier === "Grunt")!;
+    const shot = playerShot({
+      x: g.x,
+      y: g.y,
+      width: 6,
+      height: 6,
+      source: "buddy",
+      piercing: true,
+      pierceLeft: 2,
+    });
+    let s: StarSwarmState = { ...base, playerBullets: [shot] };
+    s = withEnemies(s, (e) => e.id === g.id, { hp: 50 });
+    s = tick(s, 16, ASIDE);
+    const left = s.playerBullets.find((b) => b.id === shot.id);
+    expect(left?.pierceLeft).toBe(1);
+    expect(left?.hitEnemyIds).toEqual([g.id]);
+    expect(fitsSaveShape(JSON.parse(JSON.stringify(s)))).toBe(true);
+  });
+
+  it("does not cap Lightning (piercing + armorPiercing) or the player's own piercing", () => {
+    for (const over of [
+      { piercing: true, armorPiercing: true, damage: 4 },
+      { piercing: true },
+    ] as Partial<Bullet>[]) {
+      const { s, hp } = overFormation(over);
+      const next = tick(s, 16, ASIDE);
+      expect(damaged(next, hp)).toBeGreaterThan(BUDDY_PIERCE_HITS);
+      expect(next.playerBullets.some((b) => b.piercing)).toBe(true);
+    }
   });
 });
 
