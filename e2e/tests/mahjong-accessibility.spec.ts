@@ -45,10 +45,14 @@ test.describe("Mahjong Solitaire — accessibility", () => {
     ).toBeVisible({ timeout: 5_000 });
   });
 
-  test("HUD score and pairs counters are visible to assistive technologies", async ({
+  test("HUD play clock and pairs counters are visible to assistive technologies", async ({
     page,
   }) => {
-    await expect(page.getByText(/^SCORE\s+\d/).first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/^TIME\s+\d+:\d{2}$/).first()).toBeVisible({ timeout: 5_000 });
+    // The clock's own label, read on focus (never announced every second, #2747).
+    await expect(page.getByLabel(/^Elapsed time \d+:\d{2}$/).first()).toBeVisible({
+      timeout: 5_000,
+    });
     await expect(page.getByText(/^PAIRS\s+\d/).first()).toBeVisible({ timeout: 5_000 });
   });
 

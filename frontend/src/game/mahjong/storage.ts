@@ -20,15 +20,35 @@ import * as Sentry from "@sentry/react-native";
 import type { LayoutMeta, MahjongState } from "./types";
 import { resolveLayoutId } from "./layouts/registry";
 import { clockForSave, clockOnLoad } from "../_shared/playClock";
+import { plausibleBestMs } from "./engine";
 
 const GAME_KEY = "mahjong_game";
 const STATS_KEY = "mahjong_stats_v1";
 
 export interface MahjongStats {
   bestScore: number;
-  bestTimeMs: number;
+  /**
+   * The fastest clear on this device, per layout id (#2747): each layout has
+   * its own board, so a fast clear on an easy layout is no best on a hard
+   * one. Only clears at or above MAHJONG_MIN_CLEAR_MS count. Saves from
+   * before #2747 kept one `bestTimeMs` across every layout; it can't be
+   * attributed to a layout, so it is dropped on load (it would otherwise
+   * show as a false best on some layout).
+   */
+  bestTimeMsByLayout: Readonly<Record<string, number>>;
   gamesPlayed: number;
   gamesWon: number;
+}
+
+/** The stored per-layout bests: plausible numbers only (see `plausibleBestMs`). */
+function loadBestTimes(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [layoutId, ms] of Object.entries(raw as Record<string, unknown>)) {
+    const best = typeof ms === "number" ? plausibleBestMs(ms) : 0;
+    if (best > 0) out[layoutId] = best;
+  }
+  return out;
 }
 
 function stripNestedUndo(state: MahjongState): MahjongState {
@@ -95,7 +115,12 @@ export async function clearGame(): Promise<void> {
   }
 }
 
-const EMPTY_STATS: MahjongStats = { bestScore: 0, bestTimeMs: 0, gamesPlayed: 0, gamesWon: 0 };
+const EMPTY_STATS: MahjongStats = {
+  bestScore: 0,
+  bestTimeMsByLayout: {},
+  gamesPlayed: 0,
+  gamesWon: 0,
+};
 
 export async function loadStats(): Promise<MahjongStats> {
   try {
@@ -104,7 +129,9 @@ export async function loadStats(): Promise<MahjongStats> {
     const parsed = JSON.parse(raw);
     return {
       bestScore: typeof parsed.bestScore === "number" ? parsed.bestScore : 0,
-      bestTimeMs: typeof parsed.bestTimeMs === "number" ? parsed.bestTimeMs : 0,
+      // Per layout (#2747); a best under the ranking floor is a broken clock
+      // and is dropped, and the old cross-layout `bestTimeMs` is ignored.
+      bestTimeMsByLayout: loadBestTimes(parsed.bestTimeMsByLayout),
       gamesPlayed: typeof parsed.gamesPlayed === "number" ? parsed.gamesPlayed : 0,
       gamesWon: typeof parsed.gamesWon === "number" ? parsed.gamesWon : 0,
     };

@@ -27,7 +27,7 @@ from db.base import get_session_factory, is_configured
 from db.models import Game
 from mahjong.models import MahjongMetadata
 from mahjong.module import module as mahjong_module
-from tests.test_generic_leaderboard import _grant_all, _headers, _set_name, _sid
+from tests.test_generic_leaderboard import _grant_all, _headers, _seed, _set_name, _sid
 
 # ---------------------------------------------------------------------------
 # MahjongMetadata.layout
@@ -291,3 +291,46 @@ async def test_stats_best_is_the_fastest_clear(client: TestClient) -> None:
     stats = r.json()["by_game"]["mahjong"]
     assert stats["best_value"] == 120_000
     assert stats["best_label_key"] == "time"
+
+
+@live
+@pytest.mark.parametrize(
+    ("game_type", "meta"),
+    [("mahjong", {"layout": "turtle"}), ("solitaire", {})],
+)
+async def test_a_swept_row_is_unfinished_not_unrankable(
+    client: TestClient, game_type: str, meta: dict[str, Any]
+) -> None:
+    """A row the stale-game sweep closed (completed_at set, no duration) may
+    still be replaced by its real completion, so the rank route says
+    ``not_finished`` (retryable) on the duration board as on a score board."""
+    sid = await _player("Riley")
+    game_id = await _seed(
+        game_type,
+        sid,
+        name="Riley",
+        outcome="abandoned",
+        meta={**meta, "swept": True},
+    )
+    assert _rank(client, str(game_id), sid)["reason"] == "not_finished"
+
+
+@live
+async def test_stats_best_ignores_clears_that_rank_nowhere(client: TestClient) -> None:
+    """``/stats/me`` best agrees with the boards: a clear with no layout or an
+    unknown one is not the best, however fast (#2747)."""
+    sid = await _player("Riley")
+    _win(client, sid, 150_000, layout="turtle")
+    _win(client, sid, 50_000, layout="not_a_layout")
+    r = client.post("/games", headers=_headers(sid), json={"game_type": "mahjong", "metadata": {}})
+    assert r.status_code == 200, r.text
+    r = client.patch(
+        f"/games/{r.json()['id']}/complete",
+        headers=_headers(sid),
+        json={"outcome": "win", "duration_ms": 40_000, "result": {"won": True, "pairs": 72}},
+    )
+    assert r.status_code == 200, r.text
+
+    r = client.get("/stats/me", headers=_headers(sid))
+    assert r.status_code == 200, r.text
+    assert r.json()["by_game"]["mahjong"]["best_value"] == 150_000

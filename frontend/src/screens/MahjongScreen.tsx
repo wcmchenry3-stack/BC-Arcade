@@ -67,6 +67,7 @@ import {
   createGame,
   DEADLOCK_OVERLAY_DELAY_MS,
   elapsedMs,
+  nextBestTime,
   getAllFreePairs,
   getAnyFreePair,
   hasFreePairs,
@@ -302,9 +303,9 @@ function FlyingPair({
 
 /** What the win card shows beyond the final state. */
 interface WinSummary {
-  /** The fastest clear on this device, this one included (any layout). */
+  /** The fastest clear of this layout on this device, this one included. */
   readonly bestTimeMs: number;
-  /** This clear is faster than every earlier one (#2747: time ranks). */
+  /** This clear is faster than every earlier one on this layout (#2747). */
   readonly isNewBest: boolean;
 }
 
@@ -337,7 +338,7 @@ export default function MahjongScreen() {
   const clockA11yLabel = useCallback((time: string) => t("hud.elapsed", { time }), [t]);
   const [stats, setStats] = useState<MahjongStats>({
     bestScore: 0,
-    bestTimeMs: 0,
+    bestTimeMsByLayout: {},
     gamesPlayed: 0,
     gamesWon: 0,
   });
@@ -761,17 +762,19 @@ export default function MahjongScreen() {
         // The finished game is the leaderboard entry (#2624): the card only
         // asks where it ranks. Only a win completed in this session has one.
         if (gameId) void submitRank({ gameId });
-        // Fastest clear wins (#2747); 0 means no earlier clear.
-        const priorBestMs = statsRef.current.bestTimeMs;
-        const isNewBest = priorBestMs === 0 || finalMs < priorBestMs;
-        setWinSummary({ bestTimeMs: isNewBest ? finalMs : priorBestMs, isNewBest });
+        // Fastest clear wins, per layout like the boards (#2747), and only a
+        // plausible one counts: an old save resumed with no time banked can
+        // finish under the ranking floor.
+        const layoutId = state.currentLayoutId ?? "turtle";
+        setWinSummary(nextBestTime(statsRef.current.bestTimeMsByLayout[layoutId] ?? 0, finalMs));
         setStats((prev) => {
+          const best = nextBestTime(prev.bestTimeMsByLayout[layoutId] ?? 0, finalMs).bestTimeMs;
           const updated: MahjongStats = {
             ...prev,
             gamesWon: prev.gamesWon + 1,
             bestScore: finalScore > prev.bestScore ? finalScore : prev.bestScore,
-            bestTimeMs:
-              prev.bestTimeMs === 0 || finalMs < prev.bestTimeMs ? finalMs : prev.bestTimeMs,
+            bestTimeMsByLayout:
+              best > 0 ? { ...prev.bestTimeMsByLayout, [layoutId]: best } : prev.bestTimeMsByLayout,
           };
           saveStats(updated).catch(() => {});
           return updated;

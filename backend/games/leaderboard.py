@@ -78,7 +78,7 @@ from games.board import (
     BoardDefinition,
     Direction,
 )
-from games.filters import not_abandoned
+from games.filters import is_swept, not_abandoned
 from games.protocol import GameModule
 from games.ranking import compute_rank
 from games.registry import get_module
@@ -555,9 +555,11 @@ def _not_finished(board: BoardDefinition, game: Game) -> bool:
     route); every other cause in ``_unrankable_reason`` is permanent.
 
     ``duration_ms`` is written by the completion itself, so a completed game
-    without one never gets one: it is unrankable, not unfinished (#2747).
+    without one never gets one: it is unrankable, not unfinished (#2747). A row
+    the stale-game sweep closed (``metadata.swept``) is not completed: the real
+    completion can still replace it, so it stays unfinished on every board.
     """
-    if game.completed_at is None:
+    if game.completed_at is None or is_swept(game.game_metadata):
         return True
     return board.metric != DURATION_METRIC and _metric_value(board, game) is None
 
