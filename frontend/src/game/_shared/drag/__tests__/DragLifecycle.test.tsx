@@ -303,6 +303,32 @@ describe("drag lifecycle (#2772)", () => {
     expect(queryByTestId("drag-overlay-ghost")).toBeNull();
   });
 
+  it("another card unmounting mid-drag does not cancel this drag", async () => {
+    const { getByTestId, rerender } = await render(<Board />);
+    await pan("b").start();
+    expect(ctxRef!.dragState?.source).toEqual(srcB);
+    await rerender(<Board showA={false} />);
+    expect(ctxRef!.dragState?.source).toEqual(srcB);
+    expect(getByTestId("drag-overlay-ghost")).toBeTruthy();
+  });
+
+  it("a card that dragged earlier and then unmounts does not cancel a later drag", async () => {
+    const { rerender } = await render(<Board />);
+    const a = pan("a");
+    await a.start();
+    await a.end(IN_ZONE, true); // dropped, cleared
+    await pan("b").start();
+    await rerender(<Board showA={false} />);
+    expect(ctxRef!.dragState?.source).toEqual(srcB);
+  });
+
+  it("another card becoming non-draggable mid-drag does not cancel this drag", async () => {
+    const { rerender } = await render(<Board />);
+    await pan("b").start();
+    await rerender(<Board draggableA={false} />);
+    expect(ctxRef!.dragState?.source).toEqual(srcB);
+  });
+
   it("the source card becoming non-draggable mid-drag clears the drag", async () => {
     const { getByTestId, rerender } = await render(<Board />);
     await pan("a").start();
@@ -410,5 +436,24 @@ describe("drag lifecycle across threads (#2772 root cause)", () => {
       runOnUIThread(() => springCallbacks.splice(0).forEach((cb) => cb(true)));
     });
     expect(state(getByTestId)).toBe("idle");
+  });
+
+  it("rapid re-grab: A's spring landing before B's start reaches the UI thread keeps B", async () => {
+    await render(<Board />);
+    await act(() => {
+      ctxRef!.startDrag(srcA, cardA);
+    });
+    await act(() => flushUI());
+    // A is dropped nowhere and springs home; B is grabbed on the JS thread…
+    await act(() => {
+      ctxRef!.snapBackAndClear();
+      ctxRef!.startDrag(srcB, cardB);
+    });
+    // …and A's spring finishes on the UI thread before B's writes land there.
+    await act(() => {
+      runOnUIThread(() => springCallbacks.splice(0).forEach((cb) => cb(true)));
+      flushUI();
+    });
+    expect(ctxRef!.dragState?.source).toEqual(srcB);
   });
 });

@@ -9,7 +9,7 @@ import Animated, {
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSharedValue, runOnJS } from "react-native-reanimated";
 import { useDragContext, isCardInDragStack } from "./DragContext";
-import type { DragCard, DragSource } from "./DragContext";
+import type { DragCard, DragSource, DragState } from "./DragContext";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyProps = Record<string, any>;
@@ -69,8 +69,13 @@ export function DraggableCard({
     cancelDrag,
   } = useDragContext();
 
+  // The drag this card started, kept on the JS thread. The cancel effects
+  // below compare it with the context's current drag instead of reading the
+  // `panActivated` shared value from JS (a JS read of a shared value can be a
+  // stale cached copy, #2772) — and so only ever cancel this card's own drag.
+  const ownDragRef = useRef<DragState | null>(null);
   const triggerStartDrag = useCallback(() => {
-    startDrag(dragSource, dragCards);
+    ownDragRef.current = startDrag(dragSource, dragCards);
   }, [dragSource, dragCards, startDrag]);
 
   const panActivated = useSharedValue(false);
@@ -82,6 +87,13 @@ export function DraggableCard({
   const pan = Gesture.Pan().minPointers(1).minDistance(5).enabled(draggable);
   if (hitSlop) pan.hitSlop(hitSlop);
   pan
+    .onBegin(() => {
+      "worklet";
+      // A new touch on this card: forget any activation whose end was lost
+      // (the handler was dropped), so a later finalize can't snap back a
+      // drag this pan never started.
+      panActivated.value = false;
+    })
     .onStart((e) => {
       "worklet";
       panActivated.value = true;
@@ -134,21 +146,15 @@ export function DraggableCard({
   const cancelDragRef = useRef(cancelDrag);
   cancelDragRef.current = cancelDrag;
   useEffect(() => {
-    if (draggable) return undefined;
-    if (panActivated.value) {
-      panActivated.value = false;
-      cancelDragRef.current("draggableDisabled");
-    }
-    return undefined;
-  }, [draggable, panActivated]);
+    if (draggable || ownDragRef.current === null) return;
+    cancelDragRef.current("draggableDisabled", ownDragRef.current);
+    ownDragRef.current = null;
+  }, [draggable]);
   useEffect(
     () => () => {
-      if (panActivated.value) {
-        panActivated.value = false;
-        cancelDragRef.current("sourceUnmounted");
-      }
+      if (ownDragRef.current !== null) cancelDragRef.current("sourceUnmounted", ownDragRef.current);
     },
-    [panActivated]
+    []
   );
 
   const tap = Gesture.Tap().maxDistance(8);

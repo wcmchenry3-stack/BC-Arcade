@@ -71,13 +71,16 @@ export interface DragContextValue {
   containerRef: AnimatedRef<Animated.View>;
 
   // JS-thread actions
-  startDrag: (source: DragSource, cards: DragCard[]) => void;
+  /** Starts a drag and returns its state, which identifies it to `cancelDrag`. */
+  startDrag: (source: DragSource, cards: DragCard[]) => DragState;
   endDrag: (absoluteX: number, absoluteY: number) => void;
   snapBackAndClear: () => void;
   /** Ends the current drag immediately (no spring-back) and invalidates any
    *  snap-back still in flight. Used when a gesture can no longer report its
-   *  own end: the app leaves the foreground, or the dragged card unmounts. */
-  cancelDrag: (reason: string) => void;
+   *  own end: the app leaves the foreground, or the dragged card unmounts.
+   *  With `only`, cancels only if that drag (from `startDrag`) is the
+   *  current one, so a card can't cancel another card's drag. */
+  cancelDrag: (reason: string, only?: DragState) => void;
 
   // Drop zone registry
   registerDropZone: (id: string, entry: DropZoneEntry) => void;
@@ -167,8 +170,9 @@ export function DragProvider({
   );
 
   const cancelDrag = useCallback(
-    (reason: string) => {
+    (reason: string, only?: DragState) => {
       if (dragStateRef.current === null) return;
+      if (only !== undefined && dragStateRef.current !== only) return;
       const source = dragStateRef.current.source;
       dragGenRef.current += 1;
       // Park the ghost at the origin so nothing can flash at the last finger
@@ -231,6 +235,7 @@ export function DragProvider({
           boundsPreRefresh: zonesWithBounds,
         },
       });
+      return state;
     },
     [cancelFallback, getLegalDropIds]
   );
