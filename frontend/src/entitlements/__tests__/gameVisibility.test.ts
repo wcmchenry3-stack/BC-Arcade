@@ -182,12 +182,13 @@ describe("gameVisibility", () => {
         "utf-8"
       );
       const selectorPath = path.join(frontendRoot, "ios/ci_scripts/select_api_target.sh");
-      const script = postClone + "\n" + fs.readFileSync(selectorPath, "utf-8");
+      const selectorScript = fs.readFileSync(selectorPath, "utf-8");
+      const script = postClone + "\n" + selectorScript;
 
       function selectTarget(env: Record<string, string> = {}) {
         return spawnSync(
           "/bin/sh",
-          ["-c", '. "$1"; printf "SELECTED=%s\\n" "$API_URL"', "test", selectorPath],
+          ["-c", `${selectorScript}\nprintf "SELECTED=%s\\n" "$API_URL"`],
           {
             encoding: "utf-8",
             // Do not inherit a developer's workflow/API settings.
