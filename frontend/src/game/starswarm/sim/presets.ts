@@ -56,12 +56,11 @@ function twinCadence(k: number): string {
 // Behaviour prototypes (exact-snippet patches; each throws if its anchor moved)
 // ---------------------------------------------------------------------------
 
-/** Each Buddy shot is spent after piercing `n` ships (today: unlimited). */
+/** Each Buddy shot is spent after hitting `n` ships (shipped: BUDDY_PIERCE_HITS; Infinity = the pre-#2880 unlimited pierce). */
 export function pierceCap(n: number): SourcePatch {
   return {
-    find: `        else newPiercingHits.set(b.id, [enemy.id]);`,
-    replace: `        else newPiercingHits.set(b.id, [enemy.id]);
-        if (b.source === "buddy" && (b.hitEnemyIds?.length ?? 0) + (newPiercingHits.get(b.id)?.length ?? 0) >= ${n}) hitBulletIds.add(b.id);`,
+    find: `pierceLeft: BUDDY_PIERCE_HITS,`,
+    replace: `pierceLeft: ${n},`,
   };
 }
 
@@ -103,8 +102,8 @@ export function shotDamage(dmg: number): SourcePatch {
 /** Buddy notices shots aimed at it (a deliberate, leading shot) with `chance` instead of BUDDY_NOTICE.shot. */
 export function aimedNotice(chance: number): SourcePatch {
   return {
-    find: `if (!buddyNotices(b.id, e.id, BUDDY_NOTICE.shot)) continue;`,
-    replace: `if (!buddyNotices(b.id, e.id, e.target === "buddy" ? ${chance} : BUDDY_NOTICE.shot)) continue;`,
+    find: `e.target === "buddy" ? BUDDY_NOTICE_AIMED : BUDDY_NOTICE.shot`,
+    replace: `e.target === "buddy" ? ${chance} : BUDDY_NOTICE.shot`,
   };
 }
 
@@ -235,16 +234,21 @@ export const CANDIDATES: readonly Variant[] = [
 ];
 
 /**
- * The proposed set (#2880), applied here as a sim-only override. See the report on the issue
- * for how it was chosen.
+ * The Buddy tuning before the #2880 rebalance (fan 5–7, unlimited pierce, 10 HP, 0.2 px/ms evade,
+ * 140 ms replan, 0.8 notice for shots aimed at Buddy), as a sim-only override — the "before" column.
+ * The shipped engine (BASE) carries the rebalanced values.
  */
-export const PROPOSAL: Variant = {
-  ...core(
-    "core+hp8+spd0.14+replan220+aimed60",
-    { BUDDY_HP: "8", BUDDY_SPEED: "0.14", BUDDY_REPLAN_MS: "220" },
-    [aimedNotice(0.6)]
-  ),
-  name: "proposal",
+const LEGACY_CONSTS = {
+  BUDDY_BULLET_COUNT_MIN: "5",
+  BUDDY_BULLET_COUNT_MAX: "7",
+  BUDDY_HP: "10",
+  BUDDY_SPEED: "0.2",
+  BUDDY_REPLAN_MS: "140",
+};
+const LEGACY_PATCHES: readonly SourcePatch[] = [pierceCap(Infinity), aimedNotice(0.8)];
+export const LEGACY: Variant = {
+  name: "legacy (pre-#2880)",
+  spec: { consts: LEGACY_CONSTS, patches: LEGACY_PATCHES },
 };
 
 /**
@@ -260,8 +264,8 @@ const FANS: readonly (readonly [string, number, number])[] = [
   ["fan2-4", 2, 4],
   ["fan2", 2, 2],
 ];
-const PIERCE: readonly (readonly [string, SourcePatch | null])[] = [
-  ["pierce∞", null],
+const PIERCE: readonly (readonly [string, SourcePatch])[] = [
+  ["pierce∞", pierceCap(Infinity)],
   ["pierce2", pierceCap(2)],
   ["pierce1", pierceCap(1)],
 ];
@@ -273,9 +277,9 @@ export const OFFENSE: readonly Variant[] = [
   ...FANS.flatMap(([fan, min, max]) =>
     PIERCE.map(([pierce, patch]) => ({
       name: `${fan} ${pierce}`,
-      spec: { consts: fanConsts(min, max), patches: patch ? [patch] : [] },
+      spec: { consts: fanConsts(min, max), patches: [patch] },
     }))
-  ).map((v) => (v.name === "fan5-7 pierce∞" ? { ...BASE, name: "base (fan5-7 pierce∞)" } : v)),
+  ),
   ...FANS.filter(([fan]) => ["fan5-7", "fan4", "fan2-4"].includes(fan)).map(([fan, min, max]) => ({
     name: `${fan} pierce∞ dmg0.5`,
     spec: { consts: fanConsts(min, max), patches: [shotDamage(0.5)] },
@@ -283,11 +287,14 @@ export const OFFENSE: readonly Variant[] = [
   {
     // the pre-#2845 Buddy: one 5–7-shot piercing fan (±30°) per sortie
     name: "old single pass (1 run, ±30°)",
-    spec: { consts: { BUDDY_BURSTS: "1", BUDDY_SPREAD_HALF: "Math.PI / 6" } },
+    spec: {
+      consts: { ...LEGACY_CONSTS, BUDDY_BURSTS: "1", BUDDY_SPREAD_HALF: "Math.PI / 6" },
+      patches: LEGACY_PATCHES,
+    },
   },
 ];
 
-export const VARIANTS: readonly Variant[] = [...SWEEPS, ...OFFENSE, ...CANDIDATES, PROPOSAL];
+export const VARIANTS: readonly Variant[] = [...SWEEPS, ...OFFENSE, ...CANDIDATES, LEGACY];
 
 // ---------------------------------------------------------------------------
 // Presets
@@ -420,18 +427,18 @@ export const PRESETS: Readonly<Record<string, Preset>> = {
       },
     ],
   },
-  /** Baseline vs the proposal on the same seeds, every scenario × difficulty. */
+  /** Shipped tuning (baseline) vs the pre-#2880 tuning on the same seeds, every scenario × difficulty. */
   proposal: {
     seeds: 200,
     groups: [
       {
-        variants: [BASE, PROPOSAL],
+        variants: [LEGACY, BASE],
         pilots: [PILOTS.normal],
         scenarios: SCENARIOS,
         difficulties: ALL_DIFFICULTIES,
       },
       {
-        variants: [BASE, PROPOSAL],
+        variants: [LEGACY, BASE],
         pilots: [PILOTS.duel],
         scenarios: ["boss-exposed", "normal-exposed", "normal-start"],
         difficulties: ALL_DIFFICULTIES,

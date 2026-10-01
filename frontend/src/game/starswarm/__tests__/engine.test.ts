@@ -2542,7 +2542,7 @@ describe("Player bullet cap (#2334)", () => {
   });
 
   // #2334: buddy-ship bullets are player-owned but were pushed with no cap check, so a
-  // spread burst (5-7 bullets) could push playerBullets past MAX_PLAYER_BULLETS.
+  // spread burst (3-4 bullets) could push playerBullets past MAX_PLAYER_BULLETS.
   it("buddy ship spread burst does not push playerBullets past MAX_PLAYER_BULLETS", () => {
     let s = initStarSwarm(CANVAS_W, CANVAS_H);
     s = advanceMs(s, 8000);
@@ -3179,7 +3179,7 @@ describe("#1035 Buddy Ship", () => {
       }
     }
     expect(s.buddyShips.length).toBe(0);
-    expect(buddyShots).toBeGreaterThanOrEqual(5);
+    expect(buddyShots).toBeGreaterThanOrEqual(3);
   });
 });
 

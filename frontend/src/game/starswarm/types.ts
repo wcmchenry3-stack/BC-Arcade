@@ -246,6 +246,8 @@ export interface Bullet {
    * bullets aren't consumed on hit, so without this a slow bullet overlapping a big hitbox
    * (e.g. the Carrier) for several ticks would re-deal damage every tick it stays inside it. */
   readonly hitEnemyIds?: readonly number[];
+  /** #2880: hits a capped piercing shot (Buddy's) may still make; spent at 0. Absent = unlimited. */
+  readonly pierceLeft?: number;
   /** #2487: an enemy shot fired at an asteroid — outside bulletCap(), drawn in a distinct colour. */
   readonly flak?: boolean;
   /**

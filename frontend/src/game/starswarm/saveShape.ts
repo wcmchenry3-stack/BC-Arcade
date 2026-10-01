@@ -96,6 +96,7 @@ const BULLET: KeySpec<Bullet> = {
   damage: "required",
   piercing: "optional",
   hitEnemyIds: "optional",
+  pierceLeft: "optional", // #2880
   flak: "optional",
   armorPiercing: "optional", // #2845
   source: "optional",

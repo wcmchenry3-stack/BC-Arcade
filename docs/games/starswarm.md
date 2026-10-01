@@ -124,8 +124,8 @@ time; salvage/hull upgrade pickups do not consume that slot.
 - **Shield:** 5 seconds; absorbs incoming damage while active (the player's only, never Buddy's).
 - **Smart Bomb:** instant; clears enemy bullets/asteroids, deals 1 damage to every alive enemy,
   respects Carrier armor, and awards normal base-score credit for kills (no dive multiplier).
-- **Buddy:** launches an allied ship with its own HP that flies three attack runs, each a 5–7-shot
-  piercing spread burst, draws enemy fire and can be shot down. See [Buddy](#buddy-2845). Its
+- **Buddy:** launches an allied ship with its own HP that flies three attack runs, each a 3–4-shot
+  spread burst whose shots stop after two hits, draws enemy fire and can be shot down. See [Buddy](#buddy-2845). Its
   shots share the player-bullet cap.
 
 Collecting Lightning or Shield replaces the currently active duration power-up.
@@ -354,7 +354,10 @@ from a side edge (picked by a hash of its id) and flies through three phases (`B
    canvas height, never within 90 px of the player lane), strafing ±55 px about its target line.
    It makes `BUDDY_BURSTS` (3) **attack runs**: the first comes 700 ms after it arrives, then one
    every 2.2 s. For the last `BUDDY_RUN_MS` (700 ms) before each burst it lines up under its target
-   and climbs 24 px, then fires one 5–7-shot piercing spread (±20°, 0.5 px/ms) at it. Its target is
+   and climbs 24 px, then fires one 3–4-shot spread (±20°, 0.5 px/ms) at it. Each shot is `piercing` but capped: it carries
+   `pierceLeft` (starts at `BUDDY_PIERCE_HITS`, 2), loses one per ship it hits, and is spent on the
+   last (that hit still lands). The counter is persisted in `saveShape`. Lightning and the player's
+   own piercing carry no counter and are never capped. Its target is
    the exposed Carrier; otherwise it is the centre of the other ships on screen. The armored Carrier
    is never Buddy's target, because the field would stop the burst. A burst is only spent when
    the whole fan fits under the player-bullet cap (`MAX_PLAYER_BULLETS`, which Buddy's shots
@@ -372,7 +375,8 @@ Buddy holds its floor lane, just above the player's.
 
 ### Durability
 
-`BUDDY_HP` is 10 (the tuning range is 8–12, Carrier-class or a little tougher). Hostiles damage
+`BUDDY_HP` is 9 (#2880: the offense was the problem, not toughness, so HP only moved 10 → 9;
+the sim also measured 8, see [Balance simulation](#balance-simulation-2880)). Hostiles damage
 Buddy, and the player's shield never covers it:
 
 | Source                                                                                      | Damage                                 | Then                                        |
@@ -431,15 +435,17 @@ player-directed fire without Buddy.
 
 Buddy actively dodges enemy shots, released Carrier beams and rocks (`buddyHazards`). A rock
 counts only when `asteroidThreatens(rock, buddyThreatCircle(b, 6), 900)` says it will reach Buddy.
-Every `BUDDY_REPLAN_MS` (140 ms) Buddy scores its station and a ring of nearby points (±90 px
+Every `BUDDY_REPLAN_MS` (220 ms) Buddy scores its station and a ring of nearby points (±90 px
 across, ±40 px up or down) against those hazards over a 720 ms lookahead, sampled every 40 ms at
 its capped speed. It steers for the safest point, pulled toward its station.
 
 - **Strong.** It sees 720 ms ahead and weighs near danger most.
-- **Bounded and readable.** On station it moves at no more than `BUDDY_SPEED` (0.2 px/ms), within
+- **Bounded and readable.** On station it moves at no more than `BUDDY_SPEED` (0.14 px/ms), within
   a small ring, and stays inside the field and outside the Carrier standoff.
 - **Imperfect.** It notices each hazard only with `BUDDY_NOTICE` odds (shots 80%, beams 90%, rocks
-  85%), decided by a stateless hash of the hazard's id, and it reacts only on re-plans. An
+  85%), decided by a stateless hash of the hazard's id, and it reacts only on re-plans. A shot
+  _aimed at Buddy_ (`target: "buddy"`, a deliberate leading shot) uses its own, lower
+  `BUDDY_NOTICE_AIMED` (60%) instead of the 80% shot rate; beams and rocks are unchanged. An
   unnoticed hazard is simply not dodged.
 
 Player shots are allied and never count as hazards to Buddy.
@@ -454,7 +460,7 @@ predicate (only enemy-owned shots hurt an ally), not omissions:
 - player and Buddy shots never collide with or cancel each other;
 - the player's hull and Buddy's hull overlapping costs neither anything.
 
-Both still meet hostiles and rocks normally. Buddy's shots kill enemies, pierce ordinary hulls and
+Both still meet hostiles and rocks normally. Buddy's shots kill enemies, pierce up to two ordinary hulls and
 are spent on rocks. Enemy hulls do not ram Buddy: divers fly the player's lane, and ramming is a
 player-only rule.
 
@@ -462,7 +468,7 @@ player-only rule.
 
 Multi-hit and armor bypass are now separate `Bullet` flags. `piercing` means multi-hit through
 ordinary hulls (one hit per enemy per bullet). `armorPiercing` means the shot gets through the
-escorted Carrier's field. Buddy's burst is `piercing` only, so the armored Carrier's field
+escorted Carrier's field. Buddy's burst is `piercing` only (plus the `pierceLeft` hit cap, a third, Buddy-only concept), so the armored Carrier's field
 **spends** those shots (ring, `runStats.armorDeflects`, no damage). Lightning is both, as the one
 explicit exception. Once exposed, the Carrier is Buddy's first target.
 
@@ -512,6 +518,43 @@ Buddy's attack runs fired it. The attribution is checked against Buddy's real HP
   never modified. An anchor that no longer matches throws, and the smoke test re-applies every
   preset. The variants and presets are in `sim/presets.ts`.
 
+**Rebalance and results.** The sim found Buddy's problem was per-sortie _output_, not toughness: 3
+runs of 5–7 shots with unlimited pierce wiped 43–52% of a normal wave per sortie and solo-killed
+the exposed Carrier 96–100% of the time, while its evasion kept it at about 0% destroyed. The
+shipped tuning (the sim's `legacy (pre-#2880)` variant is the old one; `base` is the real engine):
+
+| Setting                             | Before    | Now                                          |
+| ----------------------------------- | --------- | -------------------------------------------- |
+| Fan size                            | 5–7       | 3–4                                          |
+| Hits per Buddy shot                 | unlimited | 2 (`BUDDY_PIERCE_HITS`, `Bullet.pierceLeft`) |
+| `BUDDY_HP`                          | 10        | 9                                            |
+| `BUDDY_SPEED` (evade)               | 0.2 px/ms | 0.14                                         |
+| `BUDDY_REPLAN_MS`                   | 140       | 220                                          |
+| Notice chance, shots aimed at Buddy | 0.8       | 0.6 (`BUDDY_NOTICE_AIMED`)                   |
+
+Runs per sortie (3), finite capacity (no extra enemy fire) and determinism are unchanged. Results
+at 200 seeds per cell (`--preset proposal`, same seeds before and after), range over the ten
+difficulties Ensign to Fleet Admiral:
+
+| Measure (target band)                                                     | Before                | After                                                           |
+| ------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------- |
+| One sortie vs a full 45-ship wave, duel: fleet killed, mean (15–30%)      | 43–52%                | 27–30%                                                          |
+| …p90 (≤ 35%) / max                                                        | 47–58% / 51–64%       | 29–33% / 33–38%                                                 |
+| …wave cleared by the sortie alone (never)                                 | 0%                    | 0%                                                              |
+| Duel, exposed Carrier: Buddy destroyed (25–40%)                           | 0–1%                  | 2% (Ens), 11% (LtJG), 21% (Lt), 17% (LCdr), 30–44% (Cdr and up) |
+| …Carrier solo-killed by Buddy (≤ 35%)                                     | 96–100%               | 3–41% (Ens 41%, VAdm 30%, rest ≤ 21%)                           |
+| With the player, exposed Carrier: Buddy's share of Carrier damage (≤ 25%) | 13–40%                | 9–21%                                                           |
+| With the player: Carrier time-to-kill with / without Buddy                | 1.5–2.2 s / 1.6–3.6 s | 1.5–3.1 s / 1.6–3.6 s                                           |
+| Normal waves, with the player: Buddy destroyed (≤ 10%)                    | 0%                    | 0–2%                                                            |
+
+Where it misses the band. Low difficulties are under the duel band (Ensign 2%, Lt. JG 11%, Lt.
+21%, Lt. Cdr. 17% destroyed) because the Carrier fires slowly there; Captain (44%) is above it,
+since cadence scaling is capped from Commander up. The autoplay boss-start run at Rear Admiral is an
+outlier (42% destroyed). Both are accepted; HP was not tuned further. At `BUDDY_HP` 8 the duel
+rates are Ens 2%, LtJG 23%, Capt 52%, FAdm 44% (HP 9: 2%, 11%, 44%, 34%), which fixes the low end
+and overshoots the top, so 9 was kept. The autoplay pilot is more accurate than a human, so a real
+Carrier fight lands between the autoplay and duel numbers; waves 3 and 5 only, pickups disabled.
+
 The files follow the Hearts sim layout, and are ready for a regression gate (#2884):
 
 | File                            | Role                                                                                                                                                    |
@@ -531,7 +574,7 @@ npx tsx scripts/simulate-starswarm.ts --preset baseline --jobs 4 --md /tmp/base.
 npx tsx scripts/simulate-starswarm.ts --preset offense --jobs 4       # fan / pierce / damage, 3 runs fixed
 npx tsx scripts/simulate-starswarm.ts --preset sensitivity --jobs 4   # one-at-a-time sweeps
 npx tsx scripts/simulate-starswarm.ts --preset candidates --jobs 4    # survivability combos on the offense core
-npx tsx scripts/simulate-starswarm.ts --preset proposal --jobs 4      # base vs the proposal, same seeds
+npx tsx scripts/simulate-starswarm.ts --preset proposal --jobs 4      # pre-#2880 tuning vs the shipped one, same seeds
 # filters: --seeds 200 --seed-base 0 --diffs Captain,Ensign --scenarios boss-exposed
 #          --pilots autoplay,duel --variants base,hp8
 npx tsx scripts/simulate-starswarm.ts --merge /tmp/a.json,/tmp/b.json --md /tmp/all.md
