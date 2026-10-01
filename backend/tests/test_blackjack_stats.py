@@ -10,13 +10,16 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterator
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from blackjack.module import module as blackjack_module
 from db.base import get_session_factory, is_configured
-from db.models import GameEntitlement
+from db.models import Game, GameEntitlement, GameType
+from games.board import MAX_BOARD_VALUE
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -63,8 +66,12 @@ def _play_run(
     final_chips: int,
     metadata: dict,
     final_score: int | None = None,
-) -> None:
-    """One run as the app sends it: create with the run aggregates, then complete."""
+    expect_status: int = 200,
+) -> str:
+    """One run as the app sends it: create with the run aggregates, then complete.
+
+    Returns the game id.
+    """
     r = client.post(
         "/games", headers=_headers(sid), json={"game_type": "blackjack", "metadata": metadata}
     )
@@ -83,7 +90,8 @@ def _play_run(
     if final_score is not None:
         body["final_score"] = final_score
     r = client.patch(f"/games/{gid}/complete", headers=_headers(sid), json=body)
-    assert r.status_code == 200, r.text
+    assert r.status_code == expect_status, r.text
+    return gid
 
 
 def test_blackjack_has_a_winner() -> None:
@@ -167,3 +175,134 @@ async def test_pre_2628_completed_runs_are_not_wins(client: TestClient) -> None:
     assert bj["won"] is None
     assert bj["lost"] is None
     assert bj["current_win_streak"] is None
+
+
+# ---------------------------------------------------------------------------
+# #2745 — a finished run's score is its closing chips
+# ---------------------------------------------------------------------------
+
+
+async def _stored_final_score(gid: str) -> int | None:
+    factory = get_session_factory()
+    async with factory() as db:
+        return (
+            await db.execute(select(Game.final_score).where(Game.id == uuid.UUID(gid)))
+        ).scalar_one()
+
+
+async def test_finished_run_without_final_score_scores_its_closing_chips(
+    client: TestClient,
+) -> None:
+    """Installed builds, offline-queued completions and the unmount/kill "win"
+    path send only ``result.final_chips``; Best and the stored score use it."""
+    sid = str(uuid.uuid4())
+    await _grant_blackjack(sid)
+    win = _play_run(client, sid, outcome="win", final_chips=2600, metadata={})
+    loss = _play_run(client, sid, outcome="loss", final_chips=0, metadata={})
+
+    assert await _stored_final_score(win) == 2600
+    assert await _stored_final_score(loss) == 0
+    bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
+    assert bj["best_value"] == 2600
+    assert bj["best_label_key"] == "chips"
+    assert bj["extras"]["best_chips"] == 2600
+    assert bj["extras"]["current_chips"] == 0
+
+
+async def test_finished_run_with_matching_final_score_is_stored_as_sent(
+    client: TestClient,
+) -> None:
+    sid = str(uuid.uuid4())
+    await _grant_blackjack(sid)
+    gid = _play_run(client, sid, outcome="win", final_chips=3100, metadata={}, final_score=3100)
+
+    assert await _stored_final_score(gid) == 3100
+    bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
+    assert bj["best_value"] == 3100
+    assert bj["extras"]["best_chips"] == 3100
+
+
+@pytest.mark.parametrize(
+    "final_chips,final_score",
+    [
+        (2600, 2700),  # final_score must equal final_chips
+        (-1, None),  # chips are never negative
+        (MAX_BOARD_VALUE + 1, None),  # above the 32-bit games column
+    ],
+)
+async def test_invalid_closing_chips_are_rejected(
+    client: TestClient, final_chips: int, final_score: int | None
+) -> None:
+    sid = str(uuid.uuid4())
+    await _grant_blackjack(sid)
+    gid = _play_run(
+        client,
+        sid,
+        outcome="win",
+        final_chips=final_chips,
+        metadata={},
+        final_score=final_score,
+        expect_status=400,
+    )
+    assert await _stored_final_score(gid) is None
+
+
+async def test_abandoned_run_keeps_no_score_and_never_counts_toward_best(
+    client: TestClient,
+) -> None:
+    sid = str(uuid.uuid4())
+    await _grant_blackjack(sid)
+    _play_run(client, sid, outcome="loss", final_chips=0, metadata={})
+    abandoned = _play_run(client, sid, outcome="abandoned", final_chips=5000, metadata={})
+
+    assert await _stored_final_score(abandoned) is None
+    bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
+    assert bj["best_value"] == 0
+    assert bj["extras"]["best_chips"] == 0
+    assert bj["extras"]["current_chips"] == 0
+
+
+async def test_rows_stored_before_2745_count_toward_best(client: TestClient) -> None:
+    """Rows already stored with only ``metadata.final_chips`` (no final_score)
+    count toward Best at read time: no backfill migration."""
+    sid = str(uuid.uuid4())
+    factory = get_session_factory()
+    async with factory() as db:
+        gt_id = (
+            await db.execute(select(GameType.id).where(GameType.name == "blackjack"))
+        ).scalar_one()
+        for outcome, chips in (("win", 1800), ("completed", 900), ("abandoned", 9000)):
+            db.add(
+                Game(
+                    session_id=sid,
+                    game_type_id=gt_id,
+                    completed_at=datetime.now(timezone.utc),
+                    outcome=outcome,
+                    final_score=None,
+                    game_metadata={"hands_won": 2, "final_chips": chips},
+                )
+            )
+        await db.commit()
+
+    bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
+    assert bj["best_value"] == 1800
+
+
+@pytest.mark.parametrize(
+    "final_score,outcome,result,expected",
+    [
+        (None, "win", {"final_chips": 2600}, 2600),
+        (None, "loss", {"final_chips": 0}, 0),
+        (None, "completed", {"final_chips": 400}, 400),
+        (None, None, {"final_chips": 400}, 400),
+        (2600, "win", {"final_chips": 2600}, 2600),
+        (None, "abandoned", {"final_chips": 800}, None),
+        (7, "abandoned", {"final_chips": 800}, 7),
+        (None, "win", {}, None),
+        (None, "win", {"final_chips": True}, None),
+    ],
+)
+def test_derive_final_score(
+    final_score: int | None, outcome: str | None, result: dict, expected: int | None
+) -> None:
+    assert blackjack_module.derive_final_score(final_score, outcome, result) == expected

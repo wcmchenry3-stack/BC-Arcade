@@ -22,7 +22,11 @@ Adding a new game
    to correct a validated result against server-side state before it is
    stored — see ``backend/daily_word/module.py`` (#2541). Not part of the
    Protocol: ``games/service.py`` looks it up with ``getattr``.
-7. Declare ``board`` — a ``BoardDefinition`` (``games/board.py``) saying how
+7. Optionally define ``derive_final_score(final_score, outcome, result) -> int | None``
+   to fill in the stored ``final_score`` from the validated result when the
+   client left it out — see ``backend/blackjack/module.py`` (#2745). Not part
+   of the Protocol either: ``complete_game`` looks it up with ``getattr``.
+8. Declare ``board`` — a ``BoardDefinition`` (``games/board.py``) saying how
    the game is ranked — then regenerate ``frontend/src/api/vocab.ts`` with
    ``python backend/scripts/gen_vocab_ts.py`` (#2617).
 """

@@ -26,6 +26,7 @@ jest.mock("../../_shared/lastDifficulty", () => ({
 }));
 
 const mockSetProgressSnapshot = jest.fn((_getter: () => ProgressSnapshot) => {});
+const mockComplete = jest.fn();
 
 jest.mock("../../_shared/useGameSync", () => ({
   useGameSync: () => ({
@@ -33,7 +34,7 @@ jest.mock("../../_shared/useGameSync", () => ({
     resume: jest.fn(() => false),
     markStarted: jest.fn(),
     enqueue: jest.fn(),
-    complete: jest.fn(),
+    complete: (...args: unknown[]) => mockComplete(...args),
     close: jest.fn(),
     setProgressSnapshot: (getter: () => ProgressSnapshot) => mockSetProgressSnapshot(getter),
     getGameId: jest.fn(() => "game-1"),
@@ -122,5 +123,71 @@ describe("BlackjackGameContext progress snapshot (#2682)", () => {
     // already recorded for it (#2682 review).
     expect(latestSnapshot().outcome).toBeUndefined();
     expect(result.current.engine?.phase).toBe("victory"); // sanity: goal really is preset
+  });
+});
+
+describe("BlackjackGameContext completion payload (#2745)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  /** Picks the first table and resolves one hand that leaves `chips`. */
+  async function playOneHand(chips: number, extra: Record<string, unknown> = {}) {
+    const hook = await renderHook(() => useBlackjackGame(), { wrapper });
+    await act(async () => {});
+    await act(async () => {
+      hook.result.current.handleTableSelect(TABLE_CONFIGS[0]!);
+    });
+    await act(async () => {
+      hook.result.current.apply((s) => ({
+        ...s,
+        phase: "result",
+        outcome: "win",
+        bet: 10,
+        payout: 10,
+        chips,
+        ...extra,
+      }));
+    });
+    return hook;
+  }
+
+  function lastSummary(): Record<string, unknown> {
+    const call = mockComplete.mock.calls.at(-1);
+    if (!call) throw new Error("complete was never called");
+    return call[0] as Record<string, unknown>;
+  }
+
+  it("sends the closing chips as final_score on a won run", async () => {
+    const { result } = await playOneHand(260, { phase: "victory" });
+    await act(async () => {
+      await result.current.handleCashOut();
+    });
+
+    const summary = lastSummary();
+    expect(summary.outcome).toBe("win");
+    expect(summary.finalScore).toBe(260);
+    expect((summary.result as { final_chips: number }).final_chips).toBe(260);
+  });
+
+  it("sends final_score 0 on a lost run (chips exhausted)", async () => {
+    await playOneHand(0, { outcome: "lose", payout: -10 });
+
+    const summary = lastSummary();
+    expect(summary.outcome).toBe("loss");
+    expect(summary.finalScore).toBe(0);
+    expect((summary.result as { final_chips: number }).final_chips).toBe(0);
+  });
+
+  it("sends no final_score on an abandoned run", async () => {
+    const { result } = await playOneHand(120);
+    await act(async () => {
+      await result.current.handlePlayAgain();
+    });
+
+    const summary = lastSummary();
+    expect(summary.outcome).toBe("abandoned");
+    expect(summary).not.toHaveProperty("finalScore");
+    expect((summary.result as { final_chips: number }).final_chips).toBe(120);
   });
 });

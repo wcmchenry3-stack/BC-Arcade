@@ -181,7 +181,7 @@ The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.t
 | Sudoku     | `final_score`   | desc      | —         | `difficulty`, `variant` (`classic`) | 300 (easy 100, medium 200, hard 300) | any                 | yes     |
 | Cascade    | `final_score`   | desc      | —         | —                                   | —                                    | any                 | yes     |
 | Sort       | `level_reached` | desc      | —         | —                                   | 23                                   | any                 | yes     |
-| Blackjack  | `final_score`   | desc      | —         | —                                   | —                                    | any                 | no      |
+| Blackjack  | `final_chips`   | desc      | —         | —                                   | —                                    | any                 | no      |
 | Daily Word | `guesses_used`  | asc       | —         | —                                   | —                                    | `win`               | no      |
 | Twenty48   | `final_score`   | desc      | —         | —                                   | —                                    | any                 | yes     |
 | Star Swarm | `final_score`   | desc      | —         | `difficulty_tier` (`LieutenantJG`)  | —                                    | any                 | yes     |
@@ -197,6 +197,7 @@ The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.t
 - **Legacy rows:** the removed per-game routes wrote their rows under unattributable `*-anon` sessions, with values unlike the boards' declarations (Yacht's stored `400 - raw`, Sort's the level in `final_score`). Migrations 0026 (#2622) and 0029 (#2644, after the routes were gone) deleted them; any written during the deploy window after 0029 are kept off every board by the `*-anon` filter (rule 3).
 - **Sort** (#2625): every solved level is a session row with `won: true` and the `level` actually played, its `moves` and `undos` (`SortResult`). Every solve, replays included, is scored with the player's standing after it: `final_score` and `level_reached` are the highest level solved, and `total_moves` is the sum of the player's best moves over levels 1 to it (`@sort/best_moves`; left out when one of them has no best on record). `total_moves` is recorded but not ranked (#2746): levels are random per request, so players on the same level rank by the earliest completion. The board keeps each player's best row, their first solve of their highest level; a replay never displaces it. Abandons carry no score and never rank.
 - **FreeCell** (#2632): a win sends `final_score = moveCount` (installed builds still send none). Abandons carry no score and never rank.
+- **Blackjack** (#2745): the metric is the run's closing balance, `final_chips` from the result block (`BlackjackResult`: an integer from 0 to 2³¹−1), so Stats "Best" reads it from every non-abandoned row, including rows stored before #2745 with no `final_score`. A finished run (`win` / `loss`) also sends it as `final_score`, which must equal `final_chips` (400 otherwise); when a completion leaves `final_score` out (older builds, offline-queued completions, the unmount / killed-process `win`), `BlackjackModule.derive_final_score` fills it in from `final_chips`. Abandons carry no score and never count. The board stays disabled.
 
 Every `GameType` has a module since #2623, so no game exports `null`.
 
@@ -311,7 +312,7 @@ There is no game-specific logic in `service.py`.
 
 | Key              | Type               | Description                                                                                                                                                                 |
 | ---------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `best`           | `int \| None`      | highest non-abandoned `final_score` (Blackjack's `best_chips`)                                                                                                              |
+| `best`           | `int \| None`      | highest non-abandoned `final_score` (Blackjack's `best_chips`; `best_value` reads Blackjack's `final_chips`, #2745)                                                         |
 | `last_played_at` | `datetime \| None` | most recent `completed_at`, ignoring rows the stale-session sweep closed (§1.7)                                                                                             |
 | `latest_score`   | `int \| None`      | `final_score` of the most recently completed non-abandoned game                                                                                                             |
 | `metadata`       | `dict`             | `games.metadata` of the most recently started **finished** row (`completed_at` set), whatever its outcome, abandons included (Blackjack writes its run aggregates at start) |
