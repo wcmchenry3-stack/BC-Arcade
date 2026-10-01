@@ -66,6 +66,17 @@
 	-->
 	<key>EXDevMenuShowsAtLaunch</key>
 	<false/>
+	<!--
+	  Export compliance: the app uses only encryption built into the OS (HTTPS
+	  via URLSession/NSURLSession and the system TLS stack), so it is exempt.
+	  Declaring false here skips the per-build "Missing Compliance" prompt in
+	  App Store Connect / TestFlight. Mirrored in app.json
+	  (ios.config.usesNonExemptEncryption and ios.infoPlist) so a prebuild keeps it.
+	  Re-evaluate before adding any custom or non-OS crypto. See
+	  docs/RELEASE-ACCEPTANCE-v1.0.md "Store build requirements".
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSMinimumSystemVersion</key>
 	<string>12.0</string>
 	<key>LSRequiresIPhoneOS</key>
