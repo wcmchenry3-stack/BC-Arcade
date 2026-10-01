@@ -22,9 +22,14 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from db.base import get_session_factory, is_configured
 from db.models import Game, GameEntitlement, GameType, Player
 from games import leaderboard
-from games.board import SCORE_METRIC
 from limiter import limiter, session_key
 from players.generated import is_generated_display_name
+from tests.test_generic_leaderboard import (
+    CREATE_METADATA,
+    PARTITION_QUERY,
+    completion_body,
+    metric_value,
+)
 from vocab import GameType as GameTypeEnum
 
 pytestmark = pytest.mark.skipif(
@@ -35,14 +40,6 @@ pytestmark = pytest.mark.skipif(
 ENABLED_BOARDS = sorted(
     gt.value for gt in GameTypeEnum if leaderboard.enabled_board(gt.value) is not None
 )
-CREATE_METADATA: dict[str, dict[str, Any]] = {
-    "sudoku": {"difficulty": "easy"},
-    "starswarm": {"difficulty_tier": "Captain"},
-}
-PARTITION_QUERY: dict[str, str] = {
-    "sudoku": "?difficulty=easy",
-    "starswarm": "?difficulty_tier=Captain",
-}
 
 
 @pytest.fixture()
@@ -112,11 +109,8 @@ def _play(client: TestClient, sid: str, game_type: str, value: int, **create_met
     assert r.status_code == 200, r.text
     game_id = r.json()["id"]
     board = leaderboard.enabled_board(game_type)
-    body: dict[str, Any] = {"outcome": "completed"}
-    if board is not None and board.metric != SCORE_METRIC:
-        body["result"] = {board.metric: value}
-    else:
-        body["final_score"] = value
+    assert board is not None, game_type
+    body = completion_body(board, value)
     r = client.patch(f"/games/{game_id}/complete", headers=_headers(sid), json=body)
     assert r.status_code == 200, r.text
     return game_id
@@ -280,11 +274,14 @@ async def test_a_player_is_absent_until_they_join(client: TestClient, game_type:
     sid = _sid()
     await _grant_all(sid)
     path = f"{game_type}{PARTITION_QUERY.get(game_type, '')}"
-    _play(client, sid, game_type, 5)
+    board = leaderboard.enabled_board(game_type)
+    assert board is not None, game_type
+    value = metric_value(board, 5)
+    _play(client, sid, game_type, value)
     assert _entries(client, path, sid) == []
 
     name = _join_name(client, sid)
-    assert _entries(client, path, sid) == [(name, 5)]
+    assert _entries(client, path, sid) == [(name, value)]
 
     assert client.delete("/players/me", headers=_headers(sid)).status_code == 204
     assert _entries(client, path, sid) == []

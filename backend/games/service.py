@@ -32,7 +32,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from db.dialect import dialect_insert, dialect_name
 from db.models import EventType, Game, GameEvent, GameType
 from entitlements.service import ALL_PREMIUM_SLUGS
-from games.board import SCORE_METRIC, BoardDefinition
+from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
 from games.filters import SWEPT_KEY, is_swept, not_abandoned, not_swept, without_swept
 from games.leaderboard import check_completion_limits, merge_result_metadata
 from games.legacy_outcomes import might_be_legacy_win, win_update
@@ -413,7 +413,9 @@ def _best_candidate(dialect: str) -> ColumnElement:
 
     A row qualifies when it is not abandoned and, if its board sets
     ``qualifying_outcomes``, its outcome is one of them (Daily Word: wins
-    only). The value is ``final_score`` or the metadata key the board names.
+    only). The value is ``final_score``, ``duration_ms`` (Mahjong's clear
+    time, #2747; only from the board's ``min_value`` up, as on the board) or
+    the metadata key the board names.
 
     Boards are static, so the expression is built once per dialect and
     reused by every request.
@@ -423,11 +425,13 @@ def _best_candidate(dialect: str) -> ColumnElement:
         board = _registered_module(game_type.value).board
         if board.metric == SCORE_METRIC and board.qualifying_outcomes is None:
             continue  # the ELSE branch below
-        value = (
-            Game.final_score
-            if board.metric == SCORE_METRIC
-            else _metadata_number(board.metric, dialect)
-        )
+        value: ColumnElement
+        if board.metric == SCORE_METRIC:
+            value = Game.final_score
+        elif board.metric == DURATION_METRIC:
+            value = case((Game.duration_ms >= board.min_value, Game.duration_ms))
+        else:
+            value = _metadata_number(board.metric, dialect)
         if board.qualifying_outcomes is not None:
             value = case((Game.outcome.in_(board.qualifying_outcomes), value))
         whens.append((GameType.name == game_type.value, value))

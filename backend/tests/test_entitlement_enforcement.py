@@ -119,13 +119,17 @@ async def test_create_game_entitled_premium_proceeds(client: TestClient, session
 
 _PREMIUM_BOARDS = ("cascade", "hearts", "mahjong", "starswarm")
 _FREE_BOARDS = ("freecell", "solitaire", "sudoku")
+# Mahjong has one board per layout and no default (#2747).
+_BOARD_QUERY = {"mahjong": "?layout=turtle"}
 
 
 @pytest.mark.parametrize("game", _PREMIUM_BOARDS)
 def test_premium_board_no_entitlement_returns_403(
     client: TestClient, session_id: str, game: str
 ) -> None:
-    r = client.get(f"/games/leaderboard/{game}", headers=_headers(session_id))
+    r = client.get(
+        f"/games/leaderboard/{game}{_BOARD_QUERY.get(game, '')}", headers=_headers(session_id)
+    )
     assert r.status_code == 403
     assert r.json()["game"] == game
 
@@ -136,7 +140,9 @@ async def test_premium_board_entitled_session_passes(
     client: TestClient, session_id: str, game: str
 ) -> None:
     await _grant(session_id, game)
-    r = client.get(f"/games/leaderboard/{game}", headers=_headers(session_id))
+    r = client.get(
+        f"/games/leaderboard/{game}{_BOARD_QUERY.get(game, '')}", headers=_headers(session_id)
+    )
     assert r.status_code == 200, r.text
 
 

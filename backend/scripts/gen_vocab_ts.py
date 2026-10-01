@@ -206,7 +206,7 @@ export const HAS_WINNER: Readonly<Record<GameType, boolean>> = {{
 
 /** How one game is ranked on its leaderboard (backend/games/board.py). */
 export interface BoardDefinition {{
-  /** "final_score" (the games column) or a key in the game's metadata. */
+  /** "final_score" or "duration_ms" (games columns) or a key in the game's metadata. */
   readonly metric: string;
   /** "desc": higher is better. "asc": lower is better. */
   readonly direction: "asc" | "desc";
@@ -222,6 +222,8 @@ export interface BoardDefinition {{
   readonly partitionValues: Readonly<Record<string, readonly string[]>>;
   /** Highest legitimate metric value on any board; null = no ceiling. */
   readonly maxValue: number | null;
+  /** Lowest metric value that ranks (e.g. Mahjong's fastest plausible clear, in ms). */
+  readonly minValue: number;
   /** Partition key -> partition value -> tighter cap for that partition. */
   readonly partitionMaxValues: Readonly<Record<string, Readonly<Record<string, number>>>>;
   /** Outcomes that count toward the board and "best"; null = any non-abandoned row. */

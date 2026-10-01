@@ -26,7 +26,8 @@ Rules every board follows
   (#2622), but a deploy runs 0029 while the old instance still serves the
   routes, so rows written in that window survive it. This filter keeps them
   off every board.
-- **Only sane values rank**: the metric must be an integer from 0 to the
+- **Only sane values rank**: the metric must be an integer from the board's
+  ``min_value`` (0 unless set; Mahjong's clear-time floor, #2747) to the
   row's effective cap (``board.max_value_for``, or ``MAX_BOARD_VALUE`` when
   uncapped). A tie-break that isn't an integer in ``[0, MAX_BOARD_VALUE]``
   counts as missing. Rows stored before these rules were enforced on write
@@ -69,7 +70,14 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.expression import FunctionElement
 
 from db.models import PLAYER_DISPLAY_NAME_MAX_LENGTH, Game, GameType
-from games.board import MAX_BOARD_VALUE, SCORE_METRIC, BoardDefinition, Direction
+from games.board import (
+    COLUMN_METRICS,
+    DURATION_METRIC,
+    MAX_BOARD_VALUE,
+    SCORE_METRIC,
+    BoardDefinition,
+    Direction,
+)
 from games.filters import not_abandoned
 from games.protocol import GameModule
 from games.ranking import compute_rank
@@ -287,14 +295,17 @@ def display_name(stored: Any) -> str:
 
 
 def metric_expr(board: BoardDefinition, cap: int) -> ColumnElement:
-    """The ranked value: the ``final_score`` column or a metadata integer.
+    """The ranked value: the ``final_score`` or ``duration_ms`` column, or a
+    metadata integer.
 
     A metadata metric outside ``[0, cap]`` or not an integer reads as NULL.
-    ``final_score`` is returned bare (so ``games_game_type_score_idx`` still
-    applies); ``board_filters`` bounds it.
+    A column metric is returned bare (so ``games_game_type_score_idx`` still
+    applies to ``final_score``); ``board_filters`` bounds it.
     """
     if board.metric == SCORE_METRIC:
         return Game.final_score
+    if board.metric == DURATION_METRIC:
+        return Game.duration_ms
     return metadata_count(board.metric, cap)
 
 
@@ -335,8 +346,10 @@ def board_filters(
         # Only players with a display name rank; all their games count (#2624).
         has_display_name(Game.session_id),
     ]
-    if board.metric == SCORE_METRIC:
-        filters += [metric >= 0, metric <= cap]
+    if board.metric in COLUMN_METRICS:
+        filters += [metric >= board.min_value, metric <= cap]
+    elif board.min_value > 0:
+        filters.append(metric >= board.min_value)
     if board.qualifying_outcomes is not None:
         filters.append(Game.outcome.in_(board.qualifying_outcomes))
     for key, value in partition.items():
@@ -529,6 +542,8 @@ async def _session_best(
 def _metric_value(board: BoardDefinition, game: Game) -> Any:
     if board.metric == SCORE_METRIC:
         return game.final_score
+    if board.metric == DURATION_METRIC:
+        return game.duration_ms
     return (game.game_metadata or {}).get(board.metric)
 
 
@@ -538,8 +553,13 @@ def _not_finished(board: BoardDefinition, game: Game) -> bool:
     A completion still in the app's sync queue looks exactly like this, so it
     is the one unrankable cause that can change (``not_finished`` on the rank
     route); every other cause in ``_unrankable_reason`` is permanent.
+
+    ``duration_ms`` is written by the completion itself, so a completed game
+    without one never gets one: it is unrankable, not unfinished (#2747).
     """
-    return game.completed_at is None or _metric_value(board, game) is None
+    if game.completed_at is None:
+        return True
+    return board.metric != DURATION_METRIC and _metric_value(board, game) is None
 
 
 def _unrankable_reason(board: BoardDefinition, game: Game) -> str | None:
@@ -547,18 +567,24 @@ def _unrankable_reason(board: BoardDefinition, game: Game) -> str | None:
     if _not_finished(board, game):
         return "Game has no final score."
     value = _metric_value(board, game)
+    if value is None:
+        return f"Game has no {board.metric}."
     if game.outcome == GameOutcome.ABANDONED.value:
         return "Abandoned games are not ranked."
     if board.qualifying_outcomes is not None and game.outcome not in board.qualifying_outcomes:
         return "This game's outcome is not ranked."
     partition = row_partition(board, game.game_metadata or {})
-    if any(v is not None and not board.is_allowed(k, v) for k, v in partition.items()):
+    if any(v is None for v in partition.values()):
+        # e.g. a Mahjong clear from before #2627 records no layout, and the
+        # board has no default for it (#2747): no board can be named for it.
+        return "This game's board does not exist."
+    if any(not board.is_allowed(k, v) for k, v in partition.items() if v is not None):
         # e.g. a Star Swarm tier the backend doesn't know yet: stored, so the
         # run isn't lost, but there is no board to rank it on.
         return "This game's board does not exist."
     cap = metric_cap(board, partition)
-    if not _is_count(value) or value > cap:
-        return f"{board.metric} must be an integer from 0 to {cap} to be ranked."
+    if not _is_count(value) or value < board.min_value or value > cap:
+        return f"{board.metric} must be an integer from {board.min_value} to {cap} to be ranked."
     return None
 
 
@@ -701,13 +727,21 @@ def board_limit_violation(
 
     A negative ``final_score`` is *not* rejected: a 400 here dead-letters the
     game in the app's sync worker and its stats are lost. The board and rank
-    queries ignore such rows instead.
+    queries ignore such rows instead. Likewise a metric below the board's
+    ``min_value`` (an implausibly fast Mahjong clear, #2747) is stored and
+    ignored, never rejected.
+
+    A ``duration_ms`` metric is not checked here: it is a validated column of
+    the completion body (non-negative), not part of the result, and the board
+    bounds it on read.
     """
     if board is None:
         return None
     metric = board.metric
-    if metric == SCORE_METRIC:
-        value: Any = final_score
+    if metric == DURATION_METRIC:
+        value: Any = None
+    elif metric == SCORE_METRIC:
+        value = final_score
     else:
         value = metadata.get(metric)
         if value is not None and not _is_count(value):

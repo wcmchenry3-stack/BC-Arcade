@@ -67,7 +67,7 @@ export const HAS_WINNER: Readonly<Record<GameType, boolean>> = {
 
 /** How one game is ranked on its leaderboard (backend/games/board.py). */
 export interface BoardDefinition {
-  /** "final_score" (the games column) or a key in the game's metadata. */
+  /** "final_score" or "duration_ms" (games columns) or a key in the game's metadata. */
   readonly metric: string;
   /** "desc": higher is better. "asc": lower is better. */
   readonly direction: "asc" | "desc";
@@ -83,6 +83,8 @@ export interface BoardDefinition {
   readonly partitionValues: Readonly<Record<string, readonly string[]>>;
   /** Highest legitimate metric value on any board; null = no ceiling. */
   readonly maxValue: number | null;
+  /** Lowest metric value that ranks (e.g. Mahjong's fastest plausible clear, in ms). */
+  readonly minValue: number;
   /** Partition key -> partition value -> tighter cap for that partition. */
   readonly partitionMaxValues: Readonly<Record<string, Readonly<Record<string, number>>>>;
   /** Outcomes that count toward the board and "best"; null = any non-abandoned row. */
@@ -102,6 +104,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionDefaults: {},
     partitionValues: {},
     maxValue: 1575,
+    minValue: 0,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
@@ -115,6 +118,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionDefaults: {},
     partitionValues: {},
     maxValue: null,
+    minValue: 0,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
@@ -128,6 +132,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionDefaults: {},
     partitionValues: {},
     maxValue: null,
+    minValue: 0,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: false,
@@ -141,6 +146,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionDefaults: {},
     partitionValues: {},
     maxValue: null,
+    minValue: 0,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
@@ -154,6 +160,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionDefaults: {},
     partitionValues: {},
     maxValue: 1245,
+    minValue: 0,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
@@ -167,6 +174,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionDefaults: {},
     partitionValues: {},
     maxValue: 100,
+    minValue: 0,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
@@ -182,6 +190,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     },
     partitionValues: {},
     maxValue: 300,
+    minValue: 0,
     partitionMaxValues: {
       difficulty: {
         easy: 100,
@@ -193,16 +202,45 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     enabled: true,
   },
   mahjong: {
-    metric: "final_score",
-    direction: "desc",
+    metric: "duration_ms",
+    direction: "asc",
     tiebreak: null,
-    labelKey: "score",
-    partitions: [],
+    labelKey: "time",
+    partitions: ["layout"],
     partitionDefaults: {},
-    partitionValues: {},
-    maxValue: 1220,
+    partitionValues: {
+      layout: [
+        "turtle",
+        "pyramid",
+        "square",
+        "arena",
+        "four_rivers",
+        "butterfly",
+        "fish",
+        "spider",
+        "cat",
+        "snowflake",
+        "castle",
+        "bridge",
+        "gate",
+        "double_pyramid",
+        "anchor",
+        "crown",
+        "shield",
+        "heart",
+        "hourglass",
+        "the_key",
+        "diamond",
+        "x_wing",
+        "maze",
+        "zig_zag",
+        "concentric_squares",
+      ],
+    },
+    maxValue: null,
+    minValue: 36000,
     partitionMaxValues: {},
-    qualifyingOutcomes: null,
+    qualifyingOutcomes: ["win"],
     enabled: true,
   },
   starswarm: {
@@ -229,6 +267,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
       ],
     },
     maxValue: null,
+    minValue: 0,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
@@ -242,6 +281,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionDefaults: {},
     partitionValues: {},
     maxValue: null,
+    minValue: 0,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
@@ -255,6 +295,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionDefaults: {},
     partitionValues: {},
     maxValue: 23,
+    minValue: 0,
     partitionMaxValues: {},
     qualifyingOutcomes: null,
     enabled: true,
@@ -268,6 +309,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     partitionDefaults: {},
     partitionValues: {},
     maxValue: null,
+    minValue: 0,
     partitionMaxValues: {},
     qualifyingOutcomes: ["win"],
     enabled: false,
