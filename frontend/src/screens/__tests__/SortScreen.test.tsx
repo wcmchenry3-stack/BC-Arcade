@@ -642,6 +642,27 @@ describe("SortScreen — level advance to a different grid shape (regression #22
   });
 });
 
+describe("SortScreen — board sizing (#2207)", () => {
+  it("sizes the board to the container's height inside its padding", async () => {
+    sortApi.getLevels.mockResolvedValue({
+      levels: [{ id: 1, bottles: [["red", "red", "red"], ["red"]] }],
+    });
+    const { findByLabelText, getByTestId } = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await findByLabelText("Level 1"));
+    });
+    await act(async () => {
+      await fireEvent(getByTestId("sort-board"), "layout", {
+        nativeEvent: { layout: { x: 0, y: 0, width: 375, height: 500 } },
+      });
+    });
+    // 500 tall minus 16 of padding top and bottom: the grid must fit in 468,
+    // not overflow into the padding (and out of the board's touch bounds).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((global as any).__sortBoardLastProps.availableHeight).toBe(468);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // #2512 — the shared result card, leaderboard auto-submit and game sync
 // ---------------------------------------------------------------------------
@@ -1129,7 +1150,9 @@ describe("SortScreen — result card (#2512)", () => {
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
     const [, summary] = mockCompleteGame.mock.calls[0]!;
     expect(summary.outcome).toBe("abandoned");
-    expect(summary.result).toEqual({ won: false, level: 1, moves: 0 });
+    // The pour lands: the board isn't laid out under jest, so SortBoard skips
+    // the animation and completes it at once (#2297).
+    expect(summary.result).toEqual({ won: false, level: 1, moves: 1 });
     expect(summary.durationMs).toBe(40_000);
   });
 });

@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
+import type { Insets } from "react-native";
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
@@ -94,6 +95,12 @@ export interface BottleViewProps {
   readonly bottleWidth?: number;
   readonly bottleHeight?: number;
   readonly onTap?: () => void;
+  /**
+   * Extends the tap area past the bottle's visual bounds, so narrow bottles on
+   * dense levels still get a full-size touch target (#2207). SortBoard sizes it
+   * from computeBoardLayout so neighbouring targets never overlap.
+   */
+  readonly hitSlop?: Insets;
   /** When true: renders the SVG only — no touch wrapper, no a11y views, no bounce. */
   readonly isGhost?: boolean;
 }
@@ -108,6 +115,7 @@ export default function BottleView({
   bottleWidth = DEFAULT_BOTTLE_WIDTH,
   bottleHeight = DEFAULT_BOTTLE_HEIGHT,
   onTap,
+  hitSlop,
   isGhost = false,
 }: BottleViewProps) {
   const { t } = useTranslation("sort");
@@ -266,6 +274,7 @@ export default function BottleView({
     <TouchableOpacity
       onPress={onTap}
       disabled={!onTap}
+      hitSlop={hitSlop}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       activeOpacity={0.8}

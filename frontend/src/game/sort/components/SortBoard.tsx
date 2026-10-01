@@ -22,11 +22,12 @@ import BottleView, {
   FLASK_CAVITY,
   LIQUID_COLORS,
 } from "./BottleView";
-import { computeGridShape } from "./gridGeometry";
+import { computeBoardLayout } from "./gridGeometry";
 
 const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
 
-const BOTTLE_GAP = 12;
+// Horizontal padding around the board — matches SortScreen's boardContainer.
+const BOARD_HORIZONTAL_PAD = 32;
 
 interface Offset {
   x: number;
@@ -38,20 +39,22 @@ interface CellLayout extends Offset {
 }
 
 /**
- * Position of a bottle within the board: grid + row + cell offsets. Undefined
- * until both the cell's and its row's onLayout have landed, so a pour is
- * suppressed rather than drawn from a partial (row-less) position.
+ * Position of a bottle's top-left corner within the board: grid + row + cell
+ * offsets, plus the bottle's inset within its (wider) cell. Undefined until
+ * both the cell's and its row's onLayout have landed, so a pour is never drawn
+ * from a partial (row-less) position.
  */
 function resolveBottlePos(
   grid: Offset,
   rowOffsets: readonly Offset[],
-  cell: CellLayout | undefined
+  cell: CellLayout | undefined,
+  bottleInsetX: number
 ): Offset | undefined {
   const row = cell ? rowOffsets[cell.row] : undefined;
   if (!cell || !row) return undefined;
-  return { x: grid.x + row.x + cell.x, y: grid.y + row.y + cell.y };
+  return { x: grid.x + row.x + cell.x + bottleInsetX, y: grid.y + row.y + cell.y };
 }
-const ASPECT_RATIO = DEFAULT_BOTTLE_WIDTH / DEFAULT_BOTTLE_HEIGHT; // ≈ 0.333
+const BOTTLE_SIZE = { width: DEFAULT_BOTTLE_WIDTH, height: DEFAULT_BOTTLE_HEIGHT };
 
 export interface SortBoardProps {
   readonly state: SortState;
@@ -121,7 +124,13 @@ export default function SortBoard({
   const { width: screenW } = useWindowDimensions();
 
   const numBottles = state.bottles.length;
-  const { numCols, numRows, rowCounts } = useMemo(() => computeGridShape(numBottles), [numBottles]);
+  // Scale bottles to the available height and width; each bottle gets a cell
+  // that is at least a full-size tap target wide (#2207).
+  const avH = availableHeight && availableHeight > 0 ? availableHeight : 480;
+  const { rowCounts, bottleW, bottleH, slotW, rowGap, bottleInsetX, hitSlop } = useMemo(
+    () => computeBoardLayout(numBottles, screenW - BOARD_HORIZONTAL_PAD, avH, BOTTLE_SIZE),
+    [numBottles, screenW, avH]
+  );
   // Row descriptors (start index into state.bottles + bottle count), derived
   // from rowCounts — used to slice bottles into explicit row groups below
   // (see #2426: relying on flexWrap to infer row breaks from a computed
@@ -135,17 +144,6 @@ export default function SortBoard({
       return { start, count };
     });
   }, [rowCounts]);
-
-  // Scale bottles to fill available height without overflow
-  const avH = availableHeight && availableHeight > 0 ? availableHeight : 480;
-  const maxBottleH = Math.max(60, (avH - BOTTLE_GAP * (numRows - 1)) / numRows);
-  const bottleHFromHeight = Math.min(DEFAULT_BOTTLE_HEIGHT, maxBottleH);
-
-  // Also clamp to horizontal space so bottles never overflow screen width
-  const horizPad = 32;
-  const maxBottleW = (screenW - horizPad - BOTTLE_GAP * (numCols - 1)) / numCols;
-  const bottleW = Math.min(bottleHFromHeight * ASPECT_RATIO, maxBottleW);
-  const bottleH = bottleW / ASPECT_RATIO;
 
   // Reduce-motion: fall back to tilt-only (no ghost overlay)
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -162,7 +160,12 @@ export default function SortBoard({
   const rowOffsetsRef = useRef<Offset[]>([]);
   const cellLayoutsRef = useRef<CellLayout[]>([]);
   const bottlePos = (idx: number) =>
-    resolveBottlePos(gridOffsetRef.current, rowOffsetsRef.current, cellLayoutsRef.current[idx]);
+    resolveBottlePos(
+      gridOffsetRef.current,
+      rowOffsetsRef.current,
+      cellLayoutsRef.current[idx],
+      bottleInsetX
+    );
 
   // SortScreen also forces a fresh SortBoard instance on every level change
   // (key={currentLevelId}), which alone gives the refs above a clean start.
@@ -172,6 +175,12 @@ export default function SortBoard({
   // #2297). A different bottle count means a different grid (numCols, numRows
   // and rowCounts), so cached positions from the previous level's layout no
   // longer describe the new one.
+  //
+  // The grid view below is keyed on numBottles for the same reason: RN only
+  // fires onLayout for a view whose frame changed, so after this reset a row
+  // or cell that happened to keep its frame would never report again and its
+  // bottle could never be poured from or into. Remounting the grid makes every
+  // row and cell report afresh.
   //
   // Uses useLayoutEffect (not useEffect) so the reset is committed
   // synchronously, before React/React Native can deliver any onLayout event
@@ -261,11 +270,17 @@ export default function SortBoard({
 
     const srcPos = bottlePos(pouringFrom);
     const dstPos = bottlePos(pouringTo);
-    if (!srcPos || !dstPos) return;
-
     const sourceBottle = stateRef.current.bottles[pouringFrom];
     const dstBottle = stateRef.current.bottles[pouringTo];
-    if (!sourceBottle) return;
+    if (!srcPos || !dstPos || !sourceBottle) {
+      // No trustworthy position yet (a pour started before this grid's
+      // onLayout landed, e.g. right after Next Level): draw nothing rather than
+      // a ring/stream from stale or partial coordinates (#2297), but still
+      // finish the pour. SortScreen applies the move and clears isPouring only
+      // in onPourComplete, so returning without it left the board frozen.
+      notifyPourComplete();
+      return;
+    }
 
     // Use visual x-position (not index) so cross-row pours tilt toward the
     // actual destination — index order breaks in multi-row grids (e.g. level 15).
@@ -434,8 +449,9 @@ export default function SortBoard({
   return (
     <View accessibilityLabel={t("a11y.boardRegion")} accessibilityRole="none" style={styles.board}>
       <View
+        key={numBottles}
         testID="sort-grid"
-        style={[styles.grid, { gap: BOTTLE_GAP }]}
+        style={[styles.grid, { gap: rowGap }]}
         onLayout={(e) => {
           gridOffsetRef.current = {
             x: e.nativeEvent.layout.x,
@@ -447,7 +463,7 @@ export default function SortBoard({
           <View
             key={rowIdx}
             testID={`sort-row-${rowIdx}`}
-            style={[styles.gridRow, { gap: BOTTLE_GAP }]}
+            style={styles.gridRow}
             onLayout={(e) => {
               rowOffsetsRef.current[rowIdx] = {
                 x: e.nativeEvent.layout.x,
@@ -463,7 +479,10 @@ export default function SortBoard({
                   testID={`bottle-cell-${idx}`}
                   style={[
                     styles.bottleCell,
-                    { width: bottleW },
+                    // Cells tile the row edge to edge: the space between
+                    // bottles is the cell's own margin around its centered
+                    // bottle, which the bottle's hitSlop reaches (#2207).
+                    { width: slotW },
                     idx === pouringFrom && ghost !== null ? styles.bottleHidden : null,
                   ]}
                   onLayout={(e) => {
@@ -485,6 +504,7 @@ export default function SortBoard({
                     colorblindMode={colorblindMode}
                     bottleWidth={bottleW}
                     bottleHeight={bottleH}
+                    hitSlop={hitSlop}
                     onTap={handlers[idx]}
                   />
                 </View>
