@@ -13,6 +13,9 @@ interface Props {
   onCellPress: (row: number, col: number) => void;
 }
 
+/** Gap between a cell's highlight and the separators around it (see the wrapper below). */
+const CELL_INSET = 2;
+
 export default function SudokuGrid({
   grid,
   selectedRow,
@@ -57,6 +60,11 @@ export default function SudokuGrid({
                 key={`${r}-${c}`}
                 style={{
                   flex: 1,
+                  // Opaque surface + inset: the translucent selected / match / peer
+                  // washes in SudokuCell never touch a separator, so every border
+                  // sits next to `surface` (>= 3:1, WCAG 1.4.11) in every cell state.
+                  backgroundColor: colors.surface,
+                  padding: CELL_INSET,
                   borderLeftWidth: c === 0 ? 0 : isBoxLeft ? 2 : hairline,
                   borderLeftColor: isBoxLeft ? strongColor : colors.border,
                   borderTopWidth: r === 0 ? 0 : isBoxTop ? 2 : hairline,

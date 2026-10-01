@@ -49,6 +49,41 @@ describe.each([
   );
 });
 
+// SudokuCell tints a cell with `accent` + alpha hex (AA selected, 55 match, 22
+// peer) over `surface`. Composite those the way the screen does.
+function composite(fg: string, alphaHex: string, bg: string): string {
+  const a = parseInt(alphaHex, 16) / 255;
+  const ch = (i: number) =>
+    Math.round(parseInt(fg.slice(i, i + 2), 16) * a + parseInt(bg.slice(i, i + 2), 16) * (1 - a))
+      .toString(16)
+      .padStart(2, "0");
+  return `#${ch(1)}${ch(3)}${ch(5)}`;
+}
+
+describe.each([
+  ["dark", dark],
+  ["light", light],
+] as [string, Colors][])("%s sudoku separator vs cell states (#2208)", (_name, palette) => {
+  it("the opaque surface that borders every separator clears 3:1", () => {
+    // SudokuGrid insets each cell's highlight inside an opaque `surface`
+    // wrapper, so a separator only ever touches `surface`, never a tint.
+    expect(contrast(palette.boxBorder, palette.surface)).toBeGreaterThanOrEqual(3);
+  });
+
+  it("reports the composited tints, which the inset keeps off the separator", () => {
+    // Un-inset, the separator would border these. Dark: the selected tint sits
+    // mid-luminance, so no colour reaches 3:1 on both it and `surface`.
+    const tints = ["AA", "55", "22"].map((a) => composite(palette.accent, a, palette.surface));
+    expect(tints).toHaveLength(3);
+    if (palette === dark) {
+      const selected = tints[0]!;
+      expect(contrast(palette.boxBorder, selected)).toBeLessThan(3);
+      expect(contrast("#ffffff", selected)).toBeLessThan(3); // brightest possible
+      expect(contrast("#000000", palette.surface)).toBeLessThan(3); // darkest possible
+    }
+  });
+});
+
 it("uses a lighter scrim in light mode than in dark mode", () => {
   const alpha = (rgba: string) => Number(rgba.match(/[\d.]+\)$/)?.[0].replace(")", ""));
   expect(alpha(light.overlay)).toBeLessThan(alpha(dark.overlay));
