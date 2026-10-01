@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import type { LayoutChangeEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Sentry from "@sentry/react-native";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -46,6 +48,7 @@ const AUTO_STEP_MS = 120;
 const TABLEAU_COLS = 8;
 const COL_GAP = 2;
 const SCREEN_H_PADDING = 24;
+const BANNER_MARGIN_TOP = 8;
 
 /** The result card reads the synced game's rank on the session board (#2632). */
 const freecellBoard = sessionBoardAdapter("freecell");
@@ -126,17 +129,31 @@ export default function FreeCellScreen() {
     autoCompletingRef.current = true;
     setAutoCompleting(true);
 
+    const release = () => {
+      autoCompletingRef.current = false;
+      setAutoCompleting(false);
+    };
+
     const step = (current: FreeCellState) => {
       if (!isMountedRef.current) return;
-      const next = autoComplete(current);
-      if (next === current || next.isComplete) {
-        setState(next === current ? current : next);
-        autoCompletingRef.current = false;
-        setAutoCompleting(false);
-        return;
+      // The board is input-locked while this runs (#2225), so every way out
+      // of a step — including a throw — must release the lock, or the player
+      // is left with a board that rejects every tap.
+      let scheduled = false;
+      try {
+        const next = autoComplete(current);
+        if (next === current || next.isComplete) {
+          setState(next === current ? current : next);
+          return;
+        }
+        setState(next);
+        autoStepTimeoutRef.current = setTimeout(() => step(next), AUTO_STEP_MS);
+        scheduled = true;
+      } catch (e) {
+        Sentry.captureException(e, { tags: { subsystem: "autoComplete", game: "freecell" } });
+      } finally {
+        if (!scheduled) release();
       }
-      setState(next);
-      autoStepTimeoutRef.current = setTimeout(() => step(next), AUTO_STEP_MS);
     };
 
     autoStepTimeoutRef.current = setTimeout(() => step(fromState), AUTO_STEP_MS);
@@ -333,6 +350,48 @@ export default function FreeCellScreen() {
   const undoDisabled =
     state === null || state.undoStack.length === 0 || state.isComplete || autoCompleting;
   const hintDisabled = state === null || state.isComplete || autoCompleting;
+  // The height the board and the no-moves banner share, so tall tableau
+  // columns compress to stay on screen (#1108).
+  const [boardAreaHeight, setBoardAreaHeight] = useState<number | undefined>(undefined);
+  const [bannerHeight, setBannerHeight] = useState(0);
+  const handleBoardAreaLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = e.nativeEvent.layout.height;
+    setBoardAreaHeight((prev) => (prev === h ? prev : h));
+  }, []);
+  const handleBannerLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = e.nativeEvent.layout.height + BANNER_MARGIN_TOP;
+    setBannerHeight((prev) => (prev === h ? prev : h));
+  }, []);
+  // Last resort (#1108 review): if the board is still taller than its area —
+  // a long column at the minimum spacing in a short landscape window
+  // (Android rotates; iPad allows landscape) — it scrolls so no card is ever
+  // out of reach. Only then: the usual portrait board keeps a plain View, so
+  // no ScrollView sits under its drag gestures.
+  const [boardContentHeight, setBoardContentHeight] = useState(0);
+  const handleBoardContentLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = e.nativeEvent.layout.height;
+    setBoardContentHeight((prev) => (prev === h ? prev : h));
+  }, []);
+  const boardOverflows = boardAreaHeight !== undefined && boardContentHeight > boardAreaHeight + 1;
+  const boardAvailableHeight =
+    boardAreaHeight === undefined
+      ? undefined
+      : Math.max(0, boardAreaHeight - (showNoMovesBanner ? bannerHeight : 0));
+
+  const wrapBoard = (content: React.ReactElement) =>
+    boardOverflows ? (
+      <ScrollView
+        testID="freecell-board-scroll"
+        style={styles.boardScroll}
+        bounces={false}
+        showsVerticalScrollIndicator
+      >
+        {content}
+      </ScrollView>
+    ) : (
+      content
+    );
+
   const cardSize = useResponsiveCardSize(
     CARD_WIDTH,
     CARD_HEIGHT,
@@ -387,32 +446,48 @@ export default function FreeCellScreen() {
             />
 
             <View
-              testID="freecell-board"
-              style={styles.boardWrap}
-              accessibilityLabel={t("freecell:a11y.boardRegion")}
+              testID="freecell-board-area"
+              style={styles.boardArea}
+              onLayout={handleBoardAreaLayout}
             >
-              <FreeCellBoard state={state} onMove={handleMove} />
-            </View>
+              {wrapBoard(
+                <View testID="freecell-board-content" onLayout={handleBoardContentLayout}>
+                  <View
+                    testID="freecell-board"
+                    style={styles.boardWrap}
+                    accessibilityLabel={t("freecell:a11y.boardRegion")}
+                  >
+                    <FreeCellBoard
+                      state={state}
+                      onMove={handleMove}
+                      inputLocked={autoCompleting}
+                      availableHeight={boardAvailableHeight}
+                    />
+                  </View>
 
-            {showNoMovesBanner && (
-              <View
-                style={[
-                  styles.noMovesBanner,
-                  { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-                ]}
-                accessibilityRole="alert"
-                accessibilityLiveRegion="assertive"
-              >
-                <Text style={[styles.noMovesText, { color: colors.text }]}>
-                  {t("freecell:noMoves.message")}
-                </Text>
-                <PillButton
-                  label={t("freecell:action.undo")}
-                  onPress={handleUndo}
-                  disabled={undoDisabled}
-                />
-              </View>
-            )}
+                  {showNoMovesBanner && (
+                    <View
+                      onLayout={handleBannerLayout}
+                      style={[
+                        styles.noMovesBanner,
+                        { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
+                      ]}
+                      accessibilityRole="alert"
+                      accessibilityLiveRegion="assertive"
+                    >
+                      <Text style={[styles.noMovesText, { color: colors.text }]}>
+                        {t("freecell:noMoves.message")}
+                      </Text>
+                      <PillButton
+                        label={t("freecell:action.undo")}
+                        onPress={handleUndo}
+                        disabled={undoDisabled}
+                      />
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
           </View>
         </CardSizeContext.Provider>
       )}
@@ -474,7 +549,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 8,
+    marginTop: BANNER_MARGIN_TOP,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 12,
@@ -485,6 +560,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontWeight: "600",
+  },
+  boardArea: {
+    flex: 1,
+  },
+  boardScroll: {
+    flex: 1,
   },
   boardWrap: {
     alignSelf: "stretch",

@@ -896,11 +896,18 @@ describe("SolitaireScreen — result card (#2509)", () => {
     const api = await mountOneMoveFromWin();
     await playWinningMove(api);
 
-    // The cascade plays over the board before the card appears.
+    // The cascade plays over the board before the card appears (#2201): it is
+    // on screen while the result card (a native Modal) is not mounted at all.
+    // (The cascade is decorative, hidden from screen readers, so the query
+    // has to include hidden elements.)
+    const hidden = { includeHiddenElements: true };
+    expect(await api.findByTestId("solitaire-win-cascade", hidden)).toBeTruthy();
     expect(api.queryByTestId("solitaire-result")).toBeNull();
     const card = within(
       await api.findByTestId("solitaire-result", undefined, { timeout: WIN_CASCADE_MS + 2000 })
     );
+    // …and is gone once the card is up, so nothing plays underneath it.
+    expect(api.queryByTestId("solitaire-win-cascade", hidden)).toBeNull();
 
     // 61 s beats the 90 s best. The loaded game's clock runs from the load
     // (#2750), so the win adds the few ms the test itself takes.

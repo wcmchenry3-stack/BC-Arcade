@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
+import type { LayoutChangeEvent } from "react-native";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "../../theme/ThemeContext";
@@ -34,18 +35,52 @@ type Selection =
 export interface FreeCellBoardProps {
   readonly state: FreeCellState;
   readonly onMove: (move: Move) => void;
+  /**
+   * True while the screen is applying moves on its own (Auto-Complete). Taps
+   * and drops are then rejected with the invalid-move feedback instead of
+   * being validated against a board that is about to change and silently
+   * dropped by `onMove` (#2225).
+   */
+  readonly inputLocked?: boolean;
+  /**
+   * Height (px) the whole board may take on screen. Tall tableau columns
+   * compress to fit what's left below the top row, so every card stays on
+   * screen and reachable (#1108). Omitted: the natural budget.
+   */
+  readonly availableHeight?: number;
 }
 
-export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
+export default function FreeCellBoard({
+  state,
+  onMove,
+  inputLocked = false,
+  availableHeight,
+}: FreeCellBoardProps) {
   const { t } = useTranslation("freecell");
   const { colors } = useTheme();
   const { cardWidth } = useCardSize();
   const boardWidth = TABLEAU_COLS * cardWidth + (TABLEAU_COLS - 1) * COL_GAP;
   const [selection, setSelection] = useState<Selection>(null);
   const lastTapRef = useRef<{ key: string; time: number } | null>(null);
+  const [topRowHeight, setTopRowHeight] = useState<number | null>(null);
+  const handleTopRowLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = e.nativeEvent.layout.height;
+    setTopRowHeight((prev) => (prev === h ? prev : h));
+  }, []);
+  const tableauMaxHeight =
+    availableHeight !== undefined && topRowHeight !== null
+      ? Math.max(0, availableHeight - topRowHeight - ROW_GAP)
+      : undefined;
 
   const { play: playInvalidMove } = useSound("freecell.invalidMove", FREECELL_SOUNDS);
   const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
+
+  /** Rejects a tap while input is locked; true when the caller must stop. */
+  function rejectIfLocked(): boolean {
+    if (!inputLocked) return false;
+    triggerIllegal();
+    return true;
+  }
 
   function tryMove(move: Move) {
     if (validateMove(state, move)) {
@@ -57,6 +92,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
   }
 
   function handleTableauCardPress(col: number, index: number) {
+    if (rejectIfLocked()) return;
     const pile = state.tableau[col];
     if (pile === undefined) return;
     const card = pile[index];
@@ -82,21 +118,28 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
       setSelection(null);
       return;
     }
-    if (selection.kind === "tableau") {
-      tryMove({
-        type: "tableau-to-tableau",
-        fromCol: selection.col,
-        fromIndex: selection.index,
-        toCol: col,
-      });
-    } else if (selection.kind === "freecell") {
-      tryMove({ type: "freecell-to-tableau", fromCell: selection.cell, toCol: col });
-    } else {
-      tryMove({ type: "foundation-to-tableau", fromSuit: selection.suit, toCol: col });
-    }
+    const move: Move =
+      selection.kind === "tableau"
+        ? {
+            type: "tableau-to-tableau",
+            fromCol: selection.col,
+            fromIndex: selection.index,
+            toCol: col,
+          }
+        : selection.kind === "freecell"
+          ? { type: "freecell-to-tableau", fromCell: selection.cell, toCol: col }
+          : { type: "foundation-to-tableau", fromSuit: selection.suit, toCol: col };
+    // An illegal destination is rejected with feedback and the selection is
+    // kept, so the obvious next tap on a legal destination still moves the
+    // selected card (#1563). The tap is still recorded in `lastTapRef` above,
+    // so a second tap on this same card within DOUBLE_TAP_MS completes a
+    // double-tap to the foundation for it (#2225) — the double-tap check runs
+    // before any selection handling.
+    tryMove(move);
   }
 
   function handleTableauEmptyPress(col: number) {
+    if (rejectIfLocked()) return;
     if (selection === null) return;
     if (selection.kind === "tableau") {
       tryMove({
@@ -113,6 +156,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
   }
 
   function handleFreeCellPress(cell: number) {
+    if (rejectIfLocked()) return;
     const key = `freecell:${cell}`;
     const now = Date.now();
     const last = lastTapRef.current;
@@ -135,6 +179,8 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
       return;
     }
     if (selection.kind === "tableau") {
+      // An occupied cell is rejected and the selection kept; tapping it again
+      // within DOUBLE_TAP_MS still sends its card to the foundation (#2225).
       tryMove({ type: "tableau-to-freecell", fromCol: selection.col, toCell: cell });
     } else {
       setSelection(null); // freecell-to-freecell and foundation-to-freecell are not valid moves
@@ -142,6 +188,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
   }
 
   function handleFoundationPress(suit: Suit) {
+    if (rejectIfLocked()) return;
     if (selection === null) {
       if (state.foundations[suit].length > 0) {
         setSelection({ kind: "foundation", suit });
@@ -167,7 +214,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
 
   const handleDropToTableau = useCallback(
     (source: DragSource, toCol: number): boolean => {
-      if (source.game !== "freecell") return false;
+      if (inputLocked || source.game !== "freecell") return false;
       if (source.type === "tableau") {
         if (
           !validateMove(state, {
@@ -209,12 +256,12 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
       }
       return false;
     },
-    [state, onMove]
+    [state, onMove, inputLocked]
   );
 
   const handleDropToFoundation = useCallback(
     (source: DragSource): boolean => {
-      if (source.game !== "freecell") return false;
+      if (inputLocked || source.game !== "freecell") return false;
       if (source.type === "tableau") {
         if (!validateMove(state, { type: "tableau-to-foundation", fromCol: source.col }))
           return false;
@@ -231,24 +278,24 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
       }
       return false;
     },
-    [state, onMove]
+    [state, onMove, inputLocked]
   );
 
   const handleDropToFreeCell = useCallback(
     (source: DragSource, toCell: number): boolean => {
-      if (source.game !== "freecell" || source.type !== "tableau") return false;
+      if (inputLocked || source.game !== "freecell" || source.type !== "tableau") return false;
       if (!validateMove(state, { type: "tableau-to-freecell", fromCol: source.col, toCell }))
         return false;
       onMove({ type: "tableau-to-freecell", fromCol: source.col, toCell });
       setSelection(null);
       return true;
     },
-    [state, onMove]
+    [state, onMove, inputLocked]
   );
 
   const getLegalDropIds = useCallback(
     (source: DragSource, cards: DragCard[]): string[] => {
-      if (source.game !== "freecell") return [];
+      if (inputLocked || source.game !== "freecell") return [];
       const ids: string[] = [];
 
       // Tableau columns.
@@ -294,7 +341,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
 
       return ids;
     },
-    [state]
+    [state, inputLocked]
   );
 
   const hint = state.hint;
@@ -325,6 +372,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
           accessibilityLabel={t("a11y.boardRegion")}
         >
           <View
+            onLayout={handleTopRowLayout}
             style={[
               styles.topRow,
               {
@@ -403,6 +451,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
                 onEmptyPress={handleTableauEmptyPress}
                 dropId={`freecell-tableau-${col}`}
                 onDrop={(source) => handleDropToTableau(source, col)}
+                maxHeight={tableauMaxHeight}
               />
             ))}
           </View>

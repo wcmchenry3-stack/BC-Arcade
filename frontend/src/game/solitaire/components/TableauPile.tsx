@@ -24,6 +24,24 @@ import type { SharedValue } from "react-native-reanimated";
 
 const FACE_UP_OFFSET = 28;
 const FACE_DOWN_OFFSET = 20;
+/**
+ * Floor for the visible stripe of a covered face-up card (#2220): enough to
+ * read its rank and suit and to hit it (WCAG 2.5.8's 24 px), however small
+ * the cards scale on a narrow phone.
+ */
+export const MIN_FACE_UP_STRIPE = 24;
+
+/** Face-up / face-down stacking offsets for a card width (#2220). */
+export function computeTableauOffsets(cardWidth: number): {
+  faceUpOffset: number;
+  faceDownOffset: number;
+} {
+  const scale = cardWidth / CARD_WIDTH;
+  return {
+    faceUpOffset: Math.max(MIN_FACE_UP_STRIPE, Math.round(FACE_UP_OFFSET * scale)),
+    faceDownOffset: Math.round(FACE_DOWN_OFFSET * scale),
+  };
+}
 
 export interface TableauPileProps {
   readonly pile: readonly Card[];
@@ -54,9 +72,7 @@ export default function TableauPile({
   const { colors } = useTheme();
   const { t } = useTranslation("solitaire");
   const { cardWidth, cardHeight } = useCardSize();
-  const scale = cardWidth / CARD_WIDTH;
-  const faceUpOffset = Math.round(FACE_UP_OFFSET * scale);
-  const faceDownOffset = Math.round(FACE_DOWN_OFFSET * scale);
+  const { faceUpOffset, faceDownOffset } = computeTableauOffsets(cardWidth);
 
   const highlightStyle: ViewStyle = {
     borderColor: colors.accent,

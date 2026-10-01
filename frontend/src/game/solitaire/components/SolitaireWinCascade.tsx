@@ -122,6 +122,7 @@ export function SolitaireWinCascade({ onDone }: Props) {
 
   return (
     <View
+      testID="solitaire-win-cascade"
       style={StyleSheet.absoluteFill}
       pointerEvents="none"
       accessibilityElementsHidden
