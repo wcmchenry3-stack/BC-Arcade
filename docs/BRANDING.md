@@ -38,42 +38,44 @@ Tokens live in `frontend/src/theme/ThemeContext.tsx`. Import via `useTheme()` �
 
 ### Dark theme (canonical, matches Stitch)
 
-| Token          | Hex       | Purpose                                |
-| -------------- | --------- | -------------------------------------- |
-| `background`   | `#0e0e13` | App background, surface-dim equivalent |
-| `surface`      | `#19191f` | Cards, containers                      |
-| `surfaceAlt`   | `#1f1f26` | Elevated surfaces, nav bars            |
-| `surfaceHigh`  | `#25252c` | Highest elevation, modals              |
-| `border`       | `#2e2e38` | Dividers, faint outlines               |
-| `text`         | `#e8e8f0` | Primary text on surfaces               |
-| `textMuted`    | `#a0a0ac` | Secondary text, labels                 |
-| `textOnAccent` | `#0e0e13` | Text on accent-filled buttons          |
-| `accent`       | `#8ff5ff` | Cyan primary — CTAs, highlights        |
-| `accentBright` | `#00eefc` | Accent gradient stop, neon glow        |
-| `secondary`    | `#d674ff` | Magenta secondary — combo, alt state   |
-| `tertiary`     | `#cafd00` | Lime tertiary — tertiary accents       |
-| `error`        | `#ff716c` | Errors, critical mass                  |
-| `bonus`        | `#4ade80` | Positive confirmations                 |
+| Token          | Hex       | Purpose                                                                        |
+| -------------- | --------- | ------------------------------------------------------------------------------ |
+| `background`   | `#0e0e13` | App background, surface-dim equivalent                                         |
+| `surface`      | `#19191f` | Cards, containers                                                              |
+| `surfaceAlt`   | `#1f1f26` | Elevated surfaces, nav bars                                                    |
+| `surfaceHigh`  | `#25252c` | Highest elevation, modals                                                      |
+| `border`       | `#2e2e38` | Dividers, faint outlines                                                       |
+| `boxBorder`    | `#7a7a88` | Structural separators (Sudoku 3×3 boxes), ≥ 3:1 on every surface (WCAG 1.4.11) |
+| `text`         | `#e8e8f0` | Primary text on surfaces                                                       |
+| `textMuted`    | `#a0a0ac` | Secondary text, labels                                                         |
+| `textOnAccent` | `#0e0e13` | Text on accent-filled buttons                                                  |
+| `accent`       | `#8ff5ff` | Cyan primary — CTAs, highlights                                                |
+| `accentBright` | `#00eefc` | Accent gradient stop, neon glow                                                |
+| `secondary`    | `#d674ff` | Magenta secondary — combo, alt state                                           |
+| `tertiary`     | `#cafd00` | Lime tertiary — tertiary accents                                               |
+| `error`        | `#ff716c` | Errors, critical mass                                                          |
+| `bonus`        | `#4ade80` | Positive confirmations                                                         |
 
 ### Light theme
 
 Stitch only ships a dark mockup. The light theme is **first-class** and maintained by us — we keep it so users on bright environments or with system-level light preference aren't forced into dark. It is intentionally not a mechanical inversion of dark: it uses a warm cream ground, and accent hues are desaturated/darkened so they don't vibrate on cream.
 
-| Token          | Hex       | Purpose                                 |
-| -------------- | --------- | --------------------------------------- |
-| `background`   | `#f5ecd7` | App background (cream)                  |
-| `surface`      | `#fbf4e2` | Cards, containers                       |
-| `surfaceAlt`   | `#eddfbf` | Elevated surfaces                       |
-| `surfaceHigh`  | `#fff8e8` | Highest elevation, modals               |
-| `border`       | `#d8c9a6` | Dividers, faint outlines                |
-| `text`         | `#1a1412` | Primary text                            |
-| `textMuted`    | `#6b5e4a` | Secondary text                          |
-| `accent`       | `#1bc5d4` | Teal — fills and decoration, not text   |
-| `accentBright` | `#00a8b8` | Accent-filled buttons (dark text on it) |
-| `secondary`    | `#a34fc4` | Darkened magenta                        |
-| `tertiary`     | `#8fa800` | Darkened lime                           |
-| `error`        | `#d94a42` | Errors                                  |
-| `bonus`        | `#2da557` | Positive confirmations (large text/UI)  |
+| Token          | Hex       | Purpose                                                                        |
+| -------------- | --------- | ------------------------------------------------------------------------------ |
+| `background`   | `#f5ecd7` | App background (cream)                                                         |
+| `surface`      | `#fbf4e2` | Cards, containers                                                              |
+| `surfaceAlt`   | `#eddfbf` | Elevated surfaces                                                              |
+| `surfaceHigh`  | `#fff8e8` | Highest elevation, modals                                                      |
+| `border`       | `#d8c9a6` | Dividers, faint outlines                                                       |
+| `boxBorder`    | `#1a1412` | Structural separators (Sudoku 3×3 boxes), ≥ 3:1 on every surface (WCAG 1.4.11) |
+| `text`         | `#1a1412` | Primary text                                                                   |
+| `textMuted`    | `#6b5e4a` | Secondary text                                                                 |
+| `accent`       | `#1bc5d4` | Teal — fills and decoration, not text                                          |
+| `accentBright` | `#00a8b8` | Accent-filled buttons (dark text on it)                                        |
+| `secondary`    | `#a34fc4` | Darkened magenta                                                               |
+| `tertiary`     | `#8fa800` | Darkened lime                                                                  |
+| `error`        | `#d94a42` | Errors                                                                         |
+| `bonus`        | `#2da557` | Positive confirmations (large text/UI)                                         |
 
 The light header bar stays dark (`headerBg` `#1a1412`) over the cream body.
 

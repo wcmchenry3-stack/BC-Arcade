@@ -13,6 +13,8 @@ export interface Colors {
   /** Subtle peer highlight — same row, column, or 3×3 box as the selected Sudoku cell. */
   surfacePeer: string;
   border: string;
+  /** Structural separators that must reach WCAG 1.4.11 (>= 3:1) on every surface, e.g. Sudoku 3×3 box borders (#2208). */
+  boxBorder: string;
   text: string;
   textMuted: string;
   textFilled: string;
@@ -110,6 +112,8 @@ export const dark: Colors = {
   surfaceAlt: TOKENS.darkSurfaceAlt,
   surfaceHigh: TOKENS.darkSurfaceHigh,
   border: "#2e2e38",
+  // WCAG 1.4.11: 3.60:1 on surfaceHigh, 4.14:1 on surface, 4.55:1 on background
+  boxBorder: "#7a7a88",
   text: "#e8e8f0",
   // WCAG AA: 5.83:1 on #25252c, 5.05:1 on #303034, 7.45:1 on #0e0e13
   textMuted: "#a0a0ac",
@@ -158,6 +162,8 @@ export const light: Colors = {
   surfaceAlt: TOKENS.lightSurfaceAlt,
   surfaceHigh: TOKENS.lightSurfaceHigh,
   border: "#d8c9a6",
+  // WCAG 1.4.11: 13.8:1 or better on every cream surface
+  boxBorder: "#1a1412",
   text: "#1a1412",
   textMuted: "#6b5e4a",
   textFilled: "#b5a684",

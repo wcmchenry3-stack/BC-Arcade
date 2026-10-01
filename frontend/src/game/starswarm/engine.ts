@@ -378,6 +378,33 @@ const DODGE_MARGIN = 6; // px of slack around the ship's hitbox
 export const DODGE_SIDESTEP = 22; // px, formation sidestep amplitude
 export const DODGE_SIDESTEP_MS = 600; // sine out-and-back
 export const DODGE_PATH_NUDGE = 40; // px, control-point shift for ships on a path
+// #2881: diving ships stay committed but visibly react. One opportunity per rock per phase.
+/** Phases (other than Formation, which has its own flak/sidestep) that get the #2881 reactions. */
+export const REACTION_PHASES: ReadonlySet<string> = new Set([
+  "Diving",
+  "Returning",
+  "Fleeing",
+  "Wiggling",
+  "Circling",
+]);
+export const FLINCH_CHANCE: Record<EnemyTier, number> = {
+  Grunt: 1,
+  Elite: 0.85,
+  Guardian: 0.6,
+  Carrier: 0,
+};
+export const FLINCH_MS = 450; // evade window (aim degrade) and wobble cue length
+export const FLINCH_WOBBLE_PX = 3; // peak lateral jitter of the wobble cue
+export const FLINCH_WOBBLE_TILT = 0.22; // peak tilt, radians
+export const FLINCH_WOBBLE_PERIOD_MS = 90;
+export const DIVER_FLAK_FACTOR = 0.8; // x FLAK_BASE x difficulty scale, for non-formation flak
+export const LATE_NUDGE_CHANCE: Record<EnemyTier, number> = {
+  Grunt: 0.35,
+  Elite: 0.5,
+  Guardian: 0.6,
+  Carrier: 0,
+};
+export const LATE_NUDGE_PX = 60; // control-point shift; the dive endpoint (p3) stays fixed
 export const FLAK_BASE: Record<EnemyTier, number> = {
   Grunt: 0.3,
   Elite: 0.7,
@@ -1638,6 +1665,13 @@ function predictEnemyPos(e: Enemy, ms: number): Vec2 {
   return { x: e.x, y: e.y };
 }
 
+/** Flak envelope shared by formation and diver flak: the rock is approaching and within range. */
+function flakEngages(a: Asteroid, e: Enemy): boolean {
+  const dx = a.x - e.x;
+  const dy = a.y - e.y;
+  return a.vx * -dx + a.vy * -dy > 0 && dx * dx + dy * dy < FLAK_RANGE * FLAK_RANGE;
+}
+
 /** Will this rock cross the ship's hitbox within the lookahead window? */
 function rockThreatens(a: Asteroid, e: Enemy): boolean {
   for (const ms of DODGE_LOOKAHEAD_MS) {
@@ -1678,11 +1712,15 @@ export function splitRemaining(path: CubicBezier, t: number): CubicBezier {
 }
 
 /** Shift a path's middle control points sideways; p0 and the destination (p3) are untouched. */
-export function nudgePath(path: CubicBezier, dir: 1 | -1): CubicBezier {
+export function nudgePath(
+  path: CubicBezier,
+  dir: 1 | -1,
+  px: number = DODGE_PATH_NUDGE
+): CubicBezier {
   return {
     p0: path.p0,
-    p1: { x: path.p1.x + dir * DODGE_PATH_NUDGE, y: path.p1.y },
-    p2: { x: path.p2.x + dir * DODGE_PATH_NUDGE, y: path.p2.y },
+    p1: { x: path.p1.x + dir * px, y: path.p1.y },
+    p2: { x: path.p2.x + dir * px, y: path.p2.y },
     p3: path.p3,
   };
 }
@@ -1693,12 +1731,12 @@ export function nudgePath(path: CubicBezier, dir: 1 | -1): CubicBezier {
  * with the duration it had left, so speed along the path is unchanged. (Nudging the original
  * control points in place would pull the ship's current position sideways by up to ~30 px.)
  */
-function nudgeRemainingPath(e: Enemy, dir: 1 | -1): Enemy {
+function nudgeRemainingPath(e: Enemy, dir: 1 | -1, px: number = DODGE_PATH_NUDGE): Enemy {
   const t = Math.max(0, Math.min(1, e.pathT));
   if (t >= 1 || !e.path) return e;
   return {
     ...e,
-    path: nudgePath(splitRemaining(e.path, t), dir),
+    path: nudgePath(splitRemaining(e.path, t), dir, px),
     pathT: 0,
     pathDuration: e.pathDuration * (1 - t),
   };
@@ -1721,7 +1759,14 @@ function dodgeOffset(e: Enemy): number {
  *    instead of riding on top of it. Flak stays outside bulletCap() — the timer pays for it;
  *  - a successful dodge (sidestep in formation, a path nudge on a path) starts `evadeMs`, during
  *    which the ship's player-directed shots are degraded (degradeAim, applied in tickEnemies).
- * On screen (pathT >= 0), not circling and not the Carrier, a ship rolls once per rock to dodge.
+ * On screen (pathT >= 0) and not the Carrier, a ship rolls once per rock to dodge (a Circling ship
+ * has no sidestep or path to bend, so it is detected and pays the threat cost but skips the roll).
+ * #2881: ships in REACTION_PHASES (Wiggling, Diving, Returning, Fleeing, Circling) also get, once
+ * per rock per phase (reactedAsteroidIds resets on a phase change), while threatened: a flinch
+ * (FLINCH_CHANCE; evadeMs + the flinchMs wobble cue), flak at the rock (FLAK_BASE x DIVER_FLAK_FACTOR,
+ * paid through payAttention so it displaces a shot), and, if the normal dodge did not happen, a
+ * late LATE_NUDGE_PX path nudge that leaves the dive endpoint fixed. The armored Carrier is
+ * unchanged and the exposed Carrier never reacts.
  * The armored Carrier ignores rocks (its force field shatters them); an exposed Carrier pays the
  * threat distraction but never dodges — it stays heavy. A failed roll takes no action; the
  * collision then follows naturally. All rolls use the seeded rng().
@@ -1739,6 +1784,8 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
     let e = e0;
     if (e.flakCooldown > 0) e = { ...e, flakCooldown: Math.max(0, e.flakCooldown - dtMs) };
     if (e.evadeMs > 0) e = { ...e, evadeMs: Math.max(0, e.evadeMs - dtMs) };
+    if (e.flinchMs > 0) e = { ...e, flinchMs: Math.max(0, e.flinchMs - dtMs) };
+    if (e.reactedPhase !== e.phase) e = { ...e, reactedAsteroidIds: [], reactedPhase: e.phase };
     if (e.attentionMs > 0) e = { ...e, attentionMs: Math.max(0, e.attentionMs - dtMs) };
     if (e.dodge) {
       const t = e.dodge.t + dtMs;
@@ -1751,46 +1798,45 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
     if (e.tier === "Carrier" && !carrierExposed) return e;
 
     for (const a of rocks) {
-      // Flak: a formation ship shoots at a rock coming its way (the Carrier's is its twin volley)
-      if (
+      const canFlak =
         e.tier !== "Carrier" &&
-        e.phase === "Formation" &&
+        e.phase !== "Fleeing" && // a routed ship never shoots; it has no player shot to displace
         e.flakCooldown <= 0 &&
-        rockThreatens(a, e) && // only a ship this rock actually threatens reacts (and pays)
         weaponsFree(state) && // #2842: no new fire outside combat
         !state.enemyFireDisabled &&
-        !state.flakDisabled // #2491 dev toggle
-      ) {
-        const dx = a.x - e.x;
-        const dy = a.y - e.y;
-        const approaching = a.vx * -dx + a.vy * -dy > 0;
-        if (approaching && dx * dx + dy * dy < FLAK_RANGE * FLAK_RANGE) {
-          if (rng() < FLAK_BASE[e.tier] * flakScale) {
-            const tx = a.x + a.vx * FLAK_LEAD_MS;
-            const ty = a.y + a.vy * FLAK_LEAD_MS;
-            const len = Math.hypot(tx - e.x, ty - e.y) || 1;
-            flakShots.push({
-              id: nextId(),
-              x: e.x,
-              y: e.y,
-              vx: ((tx - e.x) / len) * FLAK_SPEED,
-              vy: ((ty - e.y) / len) * FLAK_SPEED,
-              owner: "enemy",
-              width: BULLET_E_W,
-              height: BULLET_E_H,
-              damage: 1,
-              flak: true,
-            });
-            // #2844: the attention cost — this ship's next player-directed shot slips back
-            e = payAttention({ ...e, flakCooldown: FLAK_COOLDOWN }, "flak");
-            bumpStat(stats, e.tier, { flak: 1 });
-          }
-        }
+        !state.flakDisabled; // #2491 dev toggle
+      const fireFlak = (): void => {
+        const tx = a.x + a.vx * FLAK_LEAD_MS;
+        const ty = a.y + a.vy * FLAK_LEAD_MS;
+        const len = Math.hypot(tx - e.x, ty - e.y) || 1;
+        flakShots.push({
+          id: nextId(),
+          x: e.x,
+          y: e.y,
+          vx: ((tx - e.x) / len) * FLAK_SPEED,
+          vy: ((ty - e.y) / len) * FLAK_SPEED,
+          owner: "enemy",
+          width: BULLET_E_W,
+          height: BULLET_E_H,
+          damage: 1,
+          flak: true,
+        });
+        // #2844: the attention cost — this ship's next player-directed shot slips back
+        e = payAttention({ ...e, flakCooldown: FLAK_COOLDOWN }, "flak");
+        bumpStat(stats, e.tier, { flak: 1 });
+      };
+
+      // Flak: a formation ship shoots at a rock coming its way (the Carrier's is its twin volley)
+      if (e.phase === "Formation" && canFlak && rockThreatens(a, e)) {
+        if (flakEngages(a, e) && rng() < FLAK_BASE[e.tier] * flakScale) fireFlak();
       }
 
       // Dodge: one roll per rock per ship (the #2491 dev toggle skips the roll entirely, so the
       // counters only ever describe rolls that were actually taken)
-      if (e.phase === "Circling" || e.rolledAsteroidIds.includes(a.id)) continue;
+      const alreadyRolled = e.rolledAsteroidIds.includes(a.id);
+      const reactive = e.tier !== "Carrier" && REACTION_PHASES.has(e.phase);
+      const reacted = reactive && e.reactedAsteroidIds.includes(a.id);
+      if (reactive ? reacted : alreadyRolled) continue;
       if (e.tier === "Carrier") {
         // #2844: heavy — no sidestep, but a rock bearing down still takes its attention (once)
         if (rockThreatens(a, e)) {
@@ -1798,18 +1844,53 @@ function tickAsteroidThreats(state: StarSwarmState, dtMs: number): StarSwarmStat
         }
         continue;
       }
-      if (state.dodgeDisabled || !rockThreatens(a, e)) continue;
-      // #2844 mild distraction
-      e = payAttention({ ...e, rolledAsteroidIds: [...e.rolledAsteroidIds, a.id] }, "threat");
+      // #2491: dodgeDisabled gates only the dodge roll and the nudges; flinch is ungated and
+      // flakDisabled (canFlak) alone gates flak
+      if ((state.dodgeDisabled && !reactive) || !rockThreatens(a, e)) continue;
       const onPath = PATH_PHASES.has(e.phase) && e.path !== null;
-      bumpStat(stats, e.tier, { rolls: 1, pathRolls: onPath ? 1 : 0 });
-      if (rng() < dodgeChance(e.tier, paramScale)) {
-        bumpStat(stats, e.tier, { dodged: 1, pathDodged: onPath ? 1 : 0 });
+      let dodgedNow = false;
+      if (!alreadyRolled && !state.dodgeDisabled) {
+        // #2844 mild distraction
+        e = payAttention({ ...e, rolledAsteroidIds: [...e.rolledAsteroidIds, a.id] }, "threat");
+        if (e.phase !== "Circling") {
+          // a circling ship has no sidestep or path to bend: it is detected and pays, then reacts
+          bumpStat(stats, e.tier, { rolls: 1, pathRolls: onPath ? 1 : 0 });
+          if (rng() < dodgeChance(e.tier, paramScale)) {
+            dodgedNow = true;
+            bumpStat(stats, e.tier, { dodged: 1, pathDodged: onPath ? 1 : 0 });
+            const dir: 1 | -1 = e.x < a.x + a.vx * 400 ? -1 : 1;
+            e = onPath
+              ? nudgeRemainingPath(e, dir)
+              : { ...e, dodge: { dir, t: 0, dur: DODGE_SIDESTEP_MS } };
+            e = { ...e, evadeMs: DODGE_SIDESTEP_MS }; // #2844: aim suffers while evading
+          }
+        }
+      }
+
+      // #2881: the visible reactions — once per rock per phase, only for a threatened ship
+      if (!reactive) continue;
+      e = { ...e, reactedAsteroidIds: [...e.reactedAsteroidIds, a.id] };
+      if (rng() < FLINCH_CHANCE[e.tier]) {
+        e = { ...e, evadeMs: Math.max(e.evadeMs, FLINCH_MS), flinchMs: FLINCH_MS };
+      }
+      if (
+        canFlak &&
+        e.flakCooldown <= 0 &&
+        flakEngages(a, e) && // same envelope as formation flak: approaching and within range
+        rng() < FLAK_BASE[e.tier] * DIVER_FLAK_FACTOR * flakScale
+      ) {
+        fireFlak();
+      }
+      if (
+        !state.dodgeDisabled &&
+        !dodgedNow &&
+        onPath &&
+        e.pathT >= 0 &&
+        e.pathT < 1 &&
+        rng() < LATE_NUDGE_CHANCE[e.tier]
+      ) {
         const dir: 1 | -1 = e.x < a.x + a.vx * 400 ? -1 : 1;
-        e = onPath
-          ? nudgeRemainingPath(e, dir)
-          : { ...e, dodge: { dir, t: 0, dur: DODGE_SIDESTEP_MS } };
-        e = { ...e, evadeMs: DODGE_SIDESTEP_MS }; // #2844: aim suffers while evading
+        e = nudgeRemainingPath(e, dir, LATE_NUDGE_PX); // p3 untouched: the dive stays committed
       }
     }
     return e;
@@ -1868,6 +1949,9 @@ function makeEnemy(idx: number, slot: SlotDef, canvasW: number): Enemy {
     rolledAsteroidIds: [],
     flakCooldown: 0,
     evadeMs: 0,
+    flinchMs: 0,
+    reactedAsteroidIds: [],
+    reactedPhase: "SwoopIn",
     attentionMs: 0,
   };
 }

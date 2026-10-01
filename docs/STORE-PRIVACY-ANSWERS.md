@@ -97,9 +97,13 @@ Not declared: Name, Email, Location, Financial info (no purchases in v1.0), Phot
 
 ## Age rating questionnaires — things to decide, not answers
 
-- **Blackjack is simulated gambling.** Answer the simulated-gambling questions truthfully (play chips only, no real money, no
-  prizes, no purchases). Expect it to raise the rating on both stores; check the regional effect in both consoles' previews.
-  Fallback: hide Blackjack in v1.0 with the visibility gate (`gameVisibility.ts`), before screenshots.
+- **v1.0 ships 7 free games (Yacht, Solitaire, FreeCell, Bottle Sort, Daily Word, 2048, Sudoku) and no Blackjack.** The rated
+  build contains no simulated gambling, so every gambling answer is No / None and the v1.0 rating is 4+ / Everyone / PEGI 3
+  (see `STORE-LISTING.md` §1). Blackjack and Star Swarm are premium games, hidden in the store build, and affect the age
+  rating only in the premium update (#2790): Blackjack is simulated gambling (play chips only, no real money, no prizes, no
+  purchases) and will raise the rating on both stores, so re-run the questionnaires then and check the regional effect.
+  _Note (2026-10-01): this section previously treated Blackjack as simulated gambling in v1.0, from before the 2026-09-23
+  Blackjack/Yacht tier swap._
 - Keep the rating consistent with the policy's "not directed at children under 13".
 - **User-to-user communication: none. User-generated content visible to others: none** (leaderboard names are
   server-generated from curated word lists; players cannot type public text, so no UGC moderation/reporting flow applies, see

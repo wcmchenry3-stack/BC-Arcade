@@ -723,10 +723,11 @@ paramScale`, capped at 97%. Only threatened ships react: a far-off ship is untou
 A path nudge splits the curve at the ship's current progress and shifts the _remaining_ segment's
 control points 40 px away from the rock, restarting it from the ship's position with the time it
 had left: the ship doesn't jump, and it still arrives where it was going. Ships still off-screen
-(`pathT < 0`) are not threatened; circling ships never dodge. A failed roll takes no action, so the
+(`pathT < 0`) are not threatened; circling ships are detected but have nothing to sidestep with,
+so they skip the roll (see _Diver awareness_). A failed roll takes no action, so the
 collision follows naturally and reads as a botched dodge.
 
-**Flak.** A ship holding formation fires one aimed shot at a rock approaching within 120 px
+**Flak.** A ship holding formation (divers and circlers: see _Diver awareness_) fires one aimed shot at a rock approaching within 120 px
 (probability `flak base × min(1.3, paramScale)`, 900 ms cooldown per ship). Flak is an enemy
 bullet marked `flak`: it is drawn amber, sits outside `bulletCap()`, is spent on the rock like any
 shot, and can still hit the player if it misses. The dev "Enemy missiles off" toggle silences it.
@@ -757,6 +758,45 @@ most distracted, then Elite, then Guardian, then Carrier least.
   0.5-1 × the tier's aim spread × the shot's speed, in a random direction (`degradeAim`). It is
   always a real miss-angle, bigger for the more distracted tiers. Flak is never degraded.
 - \* The Carrier's flak is its twin volley diverted (below), so its cost is the volley it replaces.
+
+### Diver awareness (#2881)
+
+Diving ships stay committed to their path and may still hit a rock, but they visibly react. In
+`tickAsteroidThreats`, a ship in **Wiggling, Diving, Returning, Fleeing or Circling** (`REACTION_PHASES`)
+that a rock threatens gets one reaction opportunity per rock **per phase**: `reactedAsteroidIds`
+is cleared whenever the ship's phase changes, so a ship that rolled against a rock in formation can
+still react when it dives, with no per-tick spam. The opportunity is three independent rolls, all on
+the seeded `rng()`:
+
+| Tier     | Flinch (`FLINCH_CHANCE`) | Late nudge (`LATE_NUDGE_CHANCE`) | Flak at the rock                         |
+| -------- | ------------------------ | -------------------------------- | ---------------------------------------- |
+| Grunt    | 100%                     | 35%                              | `FLAK_BASE` x 0.8 x min(1.3, paramScale) |
+| Elite    | 85%                      | 50%                              | same                                     |
+| Guardian | 60%                      | 60%                              | same                                     |
+| Carrier  | never                    | never                            | unchanged (diverted twin volley)         |
+
+- **Flinch.** Sets `evadeMs` to `FLINCH_MS` (450 ms), so the existing aim degrade applies to
+  player-directed shots, and `flinchMs`, which drives a render-only wobble (`flinchWobble` in
+  `render/flinch.ts`: a decaying lateral jitter of up to 3 px and a tilt of up to 0.22 rad, shared by
+  the native display list and the web canvas).
+- **Flak** (`DIVER_FLAK_FACTOR`). Pays the tier's `flakMs` into `shootTimer` and `attentionMs`
+  through `payAttention`, so it displaces a shot at the player rather than adding one. It respects
+  the per-ship `flakCooldown` and stays outside `bulletCap()`.
+- **Late nudge** (`LATE_NUDGE_PX` = 60). Only when the ordinary dodge did not happen on this
+  tick: the remaining path segment's control points shift 60 px away from the rock; p0 and the dive
+  endpoint p3 are untouched. It needs a path, so Wiggling and Circling ships get flinch and flak only.
+- **Circling** is no longer skipped: it is detected, pays the threat cost and gets flinch and flak.
+  It has no sidestep or path, so the ordinary dodge roll does not apply to it.
+- The armored Carrier and the exposed Carrier's AttackRun are unchanged (the latter never evades).
+  A Fleeing ship never fires, so it gets flinch and the late nudge only. Diver flak uses the same envelope as formation flak (rock approaching and within `FLAK_RANGE`). The dev "Dodge off" toggle gates only the dodge roll and the nudges, and "Flak off" gates all flak (formation and diver); the flinch is gated by neither.
+
+`frontend/src/game/starswarm/sim/asteroidAwareness.ts` is a seeded headless sim over the real
+`tick()` that measures each phase (threat, flinch, flak, dodge and hit rates, and how often a
+"successful" dodge still collides) against a control run with dodge and flak disabled.
+`measureAwareness()` is pure and returns plain data, so a future gate can diff it against a
+baseline. Run the full sweep with
+`SIM=1 npx jest src/game/starswarm/__tests__/asteroidAwareness.sim.test.ts`; the fast smoke runs
+with the normal suite. Unit tests are in `__tests__/diverAwareness.test.ts`.
 
 ### Carrier vs asteroids (#2844)
 

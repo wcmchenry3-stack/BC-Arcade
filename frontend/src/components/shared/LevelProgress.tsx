@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
+import { formatNumber } from "../../api/statsDisplay";
 
 export interface LevelProgressProps {
   level: number;
@@ -41,7 +42,7 @@ export default function LevelProgress({
   const nextLevel = level + 1;
   const caption = isMaxLevel
     ? t("level.max")
-    : t("level.xpToNext", { xp: xpForNextLevel.toLocaleString(), level: nextLevel });
+    : t("level.xpToNext", { xp: formatNumber(t, xpForNextLevel), level: nextLevel });
 
   return (
     <View style={[styles.card, { backgroundColor: colors.surfaceAlt }]}>
@@ -49,7 +50,7 @@ export default function LevelProgress({
       <View style={styles.valueRow}>
         <Text style={[styles.value, { color: colors.text }]}>{t("level.value", { level })}</Text>
         <Text style={[styles.totalXp, { color: colors.textMuted }]}>
-          {t("level.xpTotal", { xp: totalXp.toLocaleString() })}
+          {t("level.xpTotal", { xp: formatNumber(t, totalXp) })}
         </Text>
       </View>
       <View

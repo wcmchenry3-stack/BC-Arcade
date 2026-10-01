@@ -145,6 +145,16 @@ export interface Enemy {
   readonly flakCooldown: number;
   /** #2844: ms left in which this ship counts as evading a rock — its player-directed aim is degraded. */
   readonly evadeMs: number;
+  /** #2881: ms left of the visible flinch wobble (render cue); 0 when not flinching. */
+  readonly flinchMs: number;
+  /**
+   * #2881: rocks this ship has already had its flinch/flak/late-nudge reaction opportunity against
+   * in `reactedPhase`. Cleared on every phase change, so a ship gets one opportunity per rock per
+   * phase (a ship that rolled in formation can still react when it dives) without per-tick spam.
+   */
+  readonly reactedAsteroidIds: readonly number[];
+  /** #2881: the phase `reactedAsteroidIds` belongs to. */
+  readonly reactedPhase: Enemy["phase"];
   /**
    * #2844: remaining attention debt (ms) from answering rocks. While it is > 0 the ship's next-shot
    * timer is held at or above it after every tick, so no phase change (a dive launch resets
