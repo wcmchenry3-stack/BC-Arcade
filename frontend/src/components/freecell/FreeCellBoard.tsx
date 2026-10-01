@@ -34,9 +34,16 @@ type Selection =
 export interface FreeCellBoardProps {
   readonly state: FreeCellState;
   readonly onMove: (move: Move) => void;
+  /**
+   * True while the screen is applying moves on its own (Auto-Complete). Taps
+   * and drops are then rejected with the invalid-move feedback instead of
+   * being validated against a board that is about to change and silently
+   * dropped by `onMove` (#2225).
+   */
+  readonly inputLocked?: boolean;
 }
 
-export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
+export default function FreeCellBoard({ state, onMove, inputLocked = false }: FreeCellBoardProps) {
   const { t } = useTranslation("freecell");
   const { colors } = useTheme();
   const { cardWidth } = useCardSize();
@@ -46,6 +53,13 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
 
   const { play: playInvalidMove } = useSound("freecell.invalidMove", FREECELL_SOUNDS);
   const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
+
+  /** Rejects a tap while input is locked; true when the caller must stop. */
+  function rejectIfLocked(): boolean {
+    if (!inputLocked) return false;
+    triggerIllegal();
+    return true;
+  }
 
   function tryMove(move: Move) {
     if (validateMove(state, move)) {
@@ -57,6 +71,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
   }
 
   function handleTableauCardPress(col: number, index: number) {
+    if (rejectIfLocked()) return;
     const pile = state.tableau[col];
     if (pile === undefined) return;
     const card = pile[index];
@@ -82,21 +97,30 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
       setSelection(null);
       return;
     }
-    if (selection.kind === "tableau") {
-      tryMove({
-        type: "tableau-to-tableau",
-        fromCol: selection.col,
-        fromIndex: selection.index,
-        toCol: col,
-      });
-    } else if (selection.kind === "freecell") {
-      tryMove({ type: "freecell-to-tableau", fromCell: selection.cell, toCol: col });
-    } else {
-      tryMove({ type: "foundation-to-tableau", fromSuit: selection.suit, toCol: col });
+    const move: Move =
+      selection.kind === "tableau"
+        ? {
+            type: "tableau-to-tableau",
+            fromCol: selection.col,
+            fromIndex: selection.index,
+            toCol: col,
+          }
+        : selection.kind === "freecell"
+          ? { type: "freecell-to-tableau", fromCell: selection.cell, toCol: col }
+          : { type: "foundation-to-tableau", fromSuit: selection.suit, toCol: col };
+    if (validateMove(state, move)) {
+      tryMove(move);
+      return;
     }
+    // Not a destination for the selected card: the player is picking this
+    // card instead (the first tap of a double-tap to the foundation, say), so
+    // select it rather than spending the tap on a rejected move (#2225).
+    // Matches Solitaire's re-select on an illegal tableau tap.
+    setSelection({ kind: "tableau", col, index });
   }
 
   function handleTableauEmptyPress(col: number) {
+    if (rejectIfLocked()) return;
     if (selection === null) return;
     if (selection.kind === "tableau") {
       tryMove({
@@ -113,6 +137,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
   }
 
   function handleFreeCellPress(cell: number) {
+    if (rejectIfLocked()) return;
     const key = `freecell:${cell}`;
     const now = Date.now();
     const last = lastTapRef.current;
@@ -135,13 +160,20 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
       return;
     }
     if (selection.kind === "tableau") {
-      tryMove({ type: "tableau-to-freecell", fromCol: selection.col, toCell: cell });
+      const move: Move = { type: "tableau-to-freecell", fromCol: selection.col, toCell: cell };
+      if (!validateMove(state, move) && state.freeCells[cell] !== null) {
+        // An occupied cell: pick its card instead (#2225, see above).
+        setSelection({ kind: "freecell", cell });
+        return;
+      }
+      tryMove(move);
     } else {
       setSelection(null); // freecell-to-freecell and foundation-to-freecell are not valid moves
     }
   }
 
   function handleFoundationPress(suit: Suit) {
+    if (rejectIfLocked()) return;
     if (selection === null) {
       if (state.foundations[suit].length > 0) {
         setSelection({ kind: "foundation", suit });
@@ -167,7 +199,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
 
   const handleDropToTableau = useCallback(
     (source: DragSource, toCol: number): boolean => {
-      if (source.game !== "freecell") return false;
+      if (inputLocked || source.game !== "freecell") return false;
       if (source.type === "tableau") {
         if (
           !validateMove(state, {
@@ -209,12 +241,12 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
       }
       return false;
     },
-    [state, onMove]
+    [state, onMove, inputLocked]
   );
 
   const handleDropToFoundation = useCallback(
     (source: DragSource): boolean => {
-      if (source.game !== "freecell") return false;
+      if (inputLocked || source.game !== "freecell") return false;
       if (source.type === "tableau") {
         if (!validateMove(state, { type: "tableau-to-foundation", fromCol: source.col }))
           return false;
@@ -231,24 +263,24 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
       }
       return false;
     },
-    [state, onMove]
+    [state, onMove, inputLocked]
   );
 
   const handleDropToFreeCell = useCallback(
     (source: DragSource, toCell: number): boolean => {
-      if (source.game !== "freecell" || source.type !== "tableau") return false;
+      if (inputLocked || source.game !== "freecell" || source.type !== "tableau") return false;
       if (!validateMove(state, { type: "tableau-to-freecell", fromCol: source.col, toCell }))
         return false;
       onMove({ type: "tableau-to-freecell", fromCol: source.col, toCell });
       setSelection(null);
       return true;
     },
-    [state, onMove]
+    [state, onMove, inputLocked]
   );
 
   const getLegalDropIds = useCallback(
     (source: DragSource, cards: DragCard[]): string[] => {
-      if (source.game !== "freecell") return [];
+      if (inputLocked || source.game !== "freecell") return [];
       const ids: string[] = [];
 
       // Tableau columns.
@@ -294,7 +326,7 @@ export default function FreeCellBoard({ state, onMove }: FreeCellBoardProps) {
 
       return ids;
     },
-    [state]
+    [state, inputLocked]
   );
 
   const hint = state.hint;
