@@ -146,7 +146,8 @@ const SAMPLE_GAMES: GameHistoryResponse = {
   items: [
     game("g1", "yacht", 280, "completed"),
     game("g2", "twenty48", 15240, "win"),
-    game("g3", "blackjack", 1450, "push"),
+    // Blackjack ranks its closing chips (metadata.final_chips, #2745).
+    { ...game("g3", "blackjack", 1450, "push"), metadata: { final_chips: 1450 } },
     game("g4", "hearts", 45, "loss"),
     game("g5", "twenty48", 20480, "kept_playing"),
     game("g6", "freecell", 87, "abandoned"),

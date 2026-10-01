@@ -36,6 +36,7 @@ import {
   CompleteSummary,
   PendingGame,
   isOrphanResumable,
+  isPlainRecord,
 } from "./pendingGamesStore";
 import { generateUUID } from "./uuid";
 import { assertOutcomeAllowed } from "./outcomeGuard";
@@ -77,9 +78,15 @@ export interface GameEventClient {
   /**
    * Record the outcome override a killed-process sweep should use for this
    * game in place of `abandoned` (#2682), from the game's registered progress
-   * snapshot. Only "win" is honored; pass null to clear it.
+   * snapshot. Only "win" is honored; pass null to clear it. `result` is the
+   * snapshot's result block, if it has one: the sweep attaches it to the win
+   * (#2745).
    */
-  setProgressOutcome(gameId: string, outcome: "win" | null): void;
+  setProgressOutcome(
+    gameId: string,
+    outcome: "win" | null,
+    result?: Record<string, unknown> | null
+  ): void;
   /**
    * Finish a game: queue its `game_ended` event, then mark it completed, so
    * SyncWorker sends the event before the PATCH. An unstarted game is marked
@@ -164,8 +171,15 @@ export class GameEventClientImpl implements GameEventClient {
     this.enqueueEventInternal(gameId, event);
   }
 
-  setProgressOutcome(gameId: string, outcome: "win" | null): void {
-    this.fireAndForget(this.games.setProgressOutcome(gameId, outcome), "setProgressOutcome");
+  setProgressOutcome(
+    gameId: string,
+    outcome: "win" | null,
+    result?: Record<string, unknown> | null
+  ): void {
+    this.fireAndForget(
+      this.games.setProgressOutcome(gameId, outcome, result),
+      "setProgressOutcome"
+    );
   }
 
   completeGame(
@@ -316,7 +330,10 @@ export class GameEventClientImpl implements GameEventClient {
    * run reached its goal before the process was killed — in which case it
    * records `win` instead, so the streak and stats it earned are not lost.
    * Only "win" is trusted; anything else on disk (an older build, corrupt
-   * state) falls back to `abandoned`.
+   * state) falls back to `abandoned`. A win carries the result block persisted
+   * with it, when the game kept one (#2745: Blackjack's closing chips, which
+   * the server scores); a plain object only, else no result. An abandon
+   * carries none, as before.
    * Its `completedAt` is the last time the device saw the session alive — its
    * last event, else its start (older records have no `lastEventAt`) — not the
    * time of this launch, which could be days later. No `durationMs` is known,
@@ -325,7 +342,11 @@ export class GameEventClientImpl implements GameEventClient {
   private abandonOrphan(gameId: string, game: PendingGame): void {
     const completedAt = game.lastEventAt ?? game.startedAt;
     const outcome = game.progressOutcome === "win" ? "win" : "abandoned";
-    this.completeGame(gameId, { outcome }, undefined, { completedAt });
+    const summary: CompleteSummary = { outcome };
+    if (outcome === "win" && isPlainRecord(game.progressResult)) {
+      summary.result = { ...game.progressResult };
+    }
+    this.completeGame(gameId, summary, undefined, { completedAt });
   }
 
   private enqueueEventInternal(gameId: string, event: EnqueueEventInput): void {

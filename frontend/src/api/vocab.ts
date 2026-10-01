@@ -120,7 +120,7 @@ export const BOARDS: Readonly<Record<GameType, BoardDefinition | null>> = {
     enabled: true,
   },
   blackjack: {
-    metric: "final_score",
+    metric: "final_chips",
     direction: "desc",
     tiebreak: null,
     labelKey: "chips",

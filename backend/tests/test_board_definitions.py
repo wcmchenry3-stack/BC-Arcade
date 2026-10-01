@@ -247,7 +247,7 @@ def test_sudoku_max_value_for(partition: dict, cap: int) -> None:
         ("sudoku", SCORE_METRIC, "desc", None, ("difficulty", "variant"), 300, None, True),
         ("cascade", SCORE_METRIC, "desc", None, (), None, None, True),
         ("sort", "level_reached", "desc", None, (), 23, None, True),
-        ("blackjack", SCORE_METRIC, "desc", None, (), None, None, False),
+        ("blackjack", "final_chips", "desc", None, (), None, None, False),
         ("daily_word", "guesses_used", "asc", None, (), None, ("win",), False),
         ("twenty48", SCORE_METRIC, "desc", None, (), None, None, True),
         ("starswarm", SCORE_METRIC, "desc", None, ("difficulty_tier",), None, None, True),

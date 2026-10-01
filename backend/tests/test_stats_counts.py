@@ -560,8 +560,16 @@ async def test_stats_me_blackjack_chips_are_in_extras_only(
 ) -> None:
     sid = _sid()
     meta = {"best_run_chips": 3000, "total_runs": 5, "runs_completed": 2}
-    await _add(sid, "blackjack", at=0, final_score=2400, metadata=meta)
-    await _add(sid, "blackjack", at=1, final_score=1800, metadata={**meta, "total_runs": 6})
+    # A completed row carries its closing chips in metadata (the board metric,
+    # #2745) and, mirrored, in final_score.
+    await _add(sid, "blackjack", at=0, final_score=2400, metadata={**meta, "final_chips": 2400})
+    await _add(
+        sid,
+        "blackjack",
+        at=1,
+        final_score=1800,
+        metadata={**meta, "total_runs": 6, "final_chips": 1800},
+    )
 
     bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
     assert bj["extras"] == {

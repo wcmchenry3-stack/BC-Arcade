@@ -225,13 +225,14 @@ Outcomes:
 
 There is **no public Blackjack leaderboard**. The backend board definition is disabled because chips are a run balance rather than a competitive score.
 
-## Stats — current limitation
+## Stats
 
-The board definition uses a chips-labelled `final_score` as the generic Stats "Best" metric, but current Blackjack completion code sends closing chips only in `result.final_chips` and leaves `final_score` null.
+A run's score is its closing balance (#2745).
 
-Therefore current server Stats cannot populate the intended Best/current-chip values.
-
-This is a known implementation mismatch tracked by **#2745**. Do not document Best chips as working until that issue lands.
+- The board metric is `final_chips` (from the result block), labelled `chips`. Stats "Best" (`best_value`) is the highest `final_chips` over non-abandoned runs. It is read when Stats is requested, so runs stored before #2745 with no `final_score` count too.
+- A finished run (`win` or `loss`) also sends its closing chips as `final_score`. The server rejects (400) a non-abandoned completion that sends a `final_score` without an equal `final_chips`, and any `final_chips` that is negative or above 2³¹−1.
+- When a completion has no `final_score` (older builds, offline-queued completions, or the unmount / killed-process `win`), the server fills it in from `final_chips` (`BlackjackModule.derive_final_score`). A run killed after reaching its goal keeps its latest result block on the device with the `win` override, so the launch sweep's `win` carries `final_chips` too. `extras.best_chips` and `extras.current_chips` read `final_score`, so they cover runs completed from #2745 on.
+- An abandoned run never counts toward Best and stores no `final_score`.
 
 On-device Blackjack run history is separate and continues to use the locally stored run records.
 
@@ -255,7 +256,6 @@ Premium entitlement mechanics are shared platform behavior; see [ARCHITECTURE.md
 ## Open behavior dependencies
 
 - #2788 — release verification of the arcade economy/free replay contract.
-- #2745 — server Stats Best/current chips mismatch.
 - #1911 — incomplete cosmetic reward system.
 - #1127 — future Blackjack difficulty design.
 - #175 — late surrender.

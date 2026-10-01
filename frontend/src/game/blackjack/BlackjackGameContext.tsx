@@ -240,8 +240,16 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       // No durationMs of its own (#2684): wall-clock time since the session
       // began would count backgrounded time, so useGameSync's active-play
       // window supplies it.
+      // #2745: a finished run's score is its closing balance, so win and loss
+      // send it as final_score too (the backend checks it equals final_chips,
+      // and fills it in itself for builds that leave it out). An abandon
+      // carries no score.
+      const finalScore =
+        runOutcome !== "abandoned" && typeof result.final_chips === "number"
+          ? result.final_chips
+          : undefined;
       syncComplete(
-        { outcome, result },
+        finalScore !== undefined ? { finalScore, outcome, result } : { outcome, result },
         {
           total_hands: totalHandsRef.current,
           outcome,
@@ -448,6 +456,10 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         const next = fn(prev);
         setEngine(next);
         saveGame({ ...next, events: undefined });
+        // Ahead of the render's effect, so the progress snapshot that
+        // emitTransitionEvents' events persist for a killed-process win
+        // carries this hand's chips, not the previous one's (#2745).
+        engineRef.current = next;
         emitTransitionEvents(prev, next, action);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : String(e));

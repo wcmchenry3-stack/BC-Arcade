@@ -389,6 +389,44 @@ describe("GameEventClient", () => {
         expect(g?.completedAt).toBe(1_090_000);
       });
 
+      it("a killed Blackjack win carries the persisted result, closing chips included (#2745)", async () => {
+        const id = client.startGame("blackjack");
+        client.markStarted(id);
+        const result = { hands_won: 4, hands_played: 7, starting_chips: 100, final_chips: 240 };
+        client.setProgressOutcome(id, "win", result);
+        // A later hand updates the snapshot: the latest one is kept.
+        client.setProgressOutcome(id, "win", { ...result, hands_played: 8, final_chips: 265 });
+        now.mockReturnValue(1_090_000);
+        client.enqueueEvent(id, { type: "hand_resolved" });
+        now.mockReturnValue(1_000_000 + DAY);
+
+        const next = await relaunch();
+        await next.client.init();
+
+        const g = next.games.get(id);
+        expect(g?.completeSummary).toEqual({
+          outcome: "win",
+          result: { hands_won: 4, hands_played: 8, starting_chips: 100, final_chips: 265 },
+        });
+        expect(g?.completedAt).toBe(1_090_000);
+      });
+
+      it("ignores a persisted result that is not a plain object", async () => {
+        const id = client.startGame("blackjack");
+        client.markStarted(id);
+        client.setProgressOutcome(id, "win", { final_chips: 240 });
+        await flushMicrotasks();
+        const raw = JSON.parse((await AsyncStorage.getItem("pending_games_v1")) ?? "{}");
+        raw[id].progressResult = [240];
+        await AsyncStorage.setItem("pending_games_v1", JSON.stringify(raw));
+        now.mockReturnValue(1_000_000 + DAY);
+
+        const next = await relaunch();
+        await next.client.init();
+
+        expect(next.games.get(id)?.completeSummary).toEqual({ outcome: "win" });
+      });
+
       it("a session with no override is still swept as abandoned", async () => {
         const id = client.startGame("yacht");
         client.markStarted(id);

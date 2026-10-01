@@ -821,6 +821,16 @@ async def complete_game(
     validated_result = without_swept(
         await _validate_result(session, game, result, name, mod, final_score)
     )
+    # Optional per-game hook: a game whose score is part of its result block
+    # fills in a missing ``final_score`` from it, or rejects one that doesn't
+    # match it (Blackjack's closing chips, #2745).
+    derive_final_score = getattr(mod, "derive_final_score", None)
+    if derive_final_score is not None:
+        try:
+            final_score = derive_final_score(final_score, outcome, validated_result)
+        except ValueError as e:
+            _report_rejected_result(name, "final_score mismatch", {"outcome": outcome})
+            raise GameServiceError(400, f"Invalid final_score for {name}: {e}")
     # The board's caps and value types (#2618, absorbs #2215).
     violation = check_completion_limits(name, mod, game, final_score, validated_result)
     if violation is not None:
