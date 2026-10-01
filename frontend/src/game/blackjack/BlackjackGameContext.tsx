@@ -456,6 +456,10 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         const next = fn(prev);
         setEngine(next);
         saveGame({ ...next, events: undefined });
+        // Ahead of the render's effect, so the progress snapshot that
+        // emitTransitionEvents' events persist for a killed-process win
+        // carries this hand's chips, not the previous one's (#2745).
+        engineRef.current = next;
         emitTransitionEvents(prev, next, action);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : String(e));

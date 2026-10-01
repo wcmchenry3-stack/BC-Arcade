@@ -27,13 +27,14 @@ jest.mock("../../_shared/lastDifficulty", () => ({
 
 const mockSetProgressSnapshot = jest.fn((_getter: () => ProgressSnapshot) => {});
 const mockComplete = jest.fn();
+const mockEnqueue = jest.fn();
 
 jest.mock("../../_shared/useGameSync", () => ({
   useGameSync: () => ({
     start: jest.fn(),
     resume: jest.fn(() => false),
     markStarted: jest.fn(),
-    enqueue: jest.fn(),
+    enqueue: (...args: unknown[]) => mockEnqueue(...args),
     complete: (...args: unknown[]) => mockComplete(...args),
     close: jest.fn(),
     setProgressSnapshot: (getter: () => ProgressSnapshot) => mockSetProgressSnapshot(getter),
@@ -177,6 +178,23 @@ describe("BlackjackGameContext completion payload (#2745)", () => {
     expect(summary.outcome).toBe("loss");
     expect(summary.finalScore).toBe(0);
     expect((summary.result as { final_chips: number }).final_chips).toBe(0);
+  });
+
+  it("the snapshot read while a hand's events are queued has that hand's chips (#2745)", async () => {
+    // The real useGameSync reads the snapshot on every enqueue and persists
+    // it with a win override, for the killed-process sweep.
+    const seen: (number | null)[] = [];
+    mockEnqueue.mockImplementation((event: { type: string }) => {
+      if (event.type === "hand_resolved") {
+        const r = latestSnapshot().result as { final_chips: number | null };
+        seen.push(r.final_chips);
+      }
+    });
+    await playOneHand(260, { phase: "victory" });
+
+    expect(seen).toEqual([260]);
+    expect(latestSnapshot().outcome).toBe("win");
+    mockEnqueue.mockReset();
   });
 
   it("sends no final_score on an abandoned run", async () => {

@@ -438,6 +438,22 @@ describe("useGameSync", () => {
     expect(mockSetProgressOutcome).toHaveBeenCalledWith("test-game-id", "win");
   });
 
+  it("mirrors the snapshot's result with a win, for the sweep to attach (#2745)", async () => {
+    const { result } = await renderHook(() => useGameSync("blackjack"));
+    await act(() => {
+      result.current.start();
+      result.current.setProgressSnapshot(() => ({
+        outcome: "win",
+        result: { hands_won: 3, final_chips: 260 },
+      }));
+      result.current.markStarted();
+    });
+    expect(mockSetProgressOutcome).toHaveBeenCalledWith("test-game-id", "win", {
+      hands_won: 3,
+      final_chips: 260,
+    });
+  });
+
   it("mirrors nothing while the snapshot reports no outcome", async () => {
     const { result } = await renderHook(() => useGameSync("blackjack"));
     await act(() => {
