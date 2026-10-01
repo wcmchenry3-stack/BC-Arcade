@@ -129,15 +129,13 @@ export default function FreeCellBoard({
         : selection.kind === "freecell"
           ? { type: "freecell-to-tableau", fromCell: selection.cell, toCol: col }
           : { type: "foundation-to-tableau", fromSuit: selection.suit, toCol: col };
-    if (validateMove(state, move)) {
-      tryMove(move);
-      return;
-    }
-    // Not a destination for the selected card: the player is picking this
-    // card instead (the first tap of a double-tap to the foundation, say), so
-    // select it rather than spending the tap on a rejected move (#2225).
-    // Matches Solitaire's re-select on an illegal tableau tap.
-    setSelection({ kind: "tableau", col, index });
+    // An illegal destination is rejected with feedback and the selection is
+    // kept, so the obvious next tap on a legal destination still moves the
+    // selected card (#1563). The tap is still recorded in `lastTapRef` above,
+    // so a second tap on this same card within DOUBLE_TAP_MS completes a
+    // double-tap to the foundation for it (#2225) — the double-tap check runs
+    // before any selection handling.
+    tryMove(move);
   }
 
   function handleTableauEmptyPress(col: number) {
@@ -181,13 +179,9 @@ export default function FreeCellBoard({
       return;
     }
     if (selection.kind === "tableau") {
-      const move: Move = { type: "tableau-to-freecell", fromCol: selection.col, toCell: cell };
-      if (!validateMove(state, move) && state.freeCells[cell] !== null) {
-        // An occupied cell: pick its card instead (#2225, see above).
-        setSelection({ kind: "freecell", cell });
-        return;
-      }
-      tryMove(move);
+      // An occupied cell is rejected and the selection kept; tapping it again
+      // within DOUBLE_TAP_MS still sends its card to the foundation (#2225).
+      tryMove({ type: "tableau-to-freecell", fromCol: selection.col, toCell: cell });
     } else {
       setSelection(null); // freecell-to-freecell and foundation-to-freecell are not valid moves
     }

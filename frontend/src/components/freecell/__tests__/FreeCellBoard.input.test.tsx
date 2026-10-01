@@ -91,11 +91,47 @@ describe("FreeCellBoard — double-tap with another card selected (#2225)", () =
     await fireEvent.press(getByLabelText("3 of Hearts")); // select A
     expect(getByLabelText("3 of Hearts (selected)")).toBeTruthy();
     await fireEvent.press(getByLabelText("A of Diamonds")); // tap 1 on B
-    // Not spent as a rejected 3♥ → A♦ move: B is now the selection.
-    expect(mockPlay).not.toHaveBeenCalled();
-    await fireEvent.press(getByLabelText("A of Diamonds (selected)")); // tap 2 on B
+    // 3♥ can't go on A♦: rejected with feedback, A stays selected…
+    expect(mockPlay).toHaveBeenCalledTimes(1);
+    expect(getByLabelText("3 of Hearts (selected)")).toBeTruthy();
+    expect(onMove).not.toHaveBeenCalled();
+    // …but the tap still starts a double-tap on B.
+    await fireEvent.press(getByLabelText("A of Diamonds")); // tap 2 on B
     expect(onMove).toHaveBeenCalledTimes(1);
     expect(onMove).toHaveBeenCalledWith({ type: "tableau-to-foundation", fromCol: 3 });
+  });
+
+  it("a slow second tap on B is a second (rejected) move attempt, not a double-tap", async () => {
+    jest.useFakeTimers();
+    try {
+      const { getByLabelText, onMove } = await renderBoard(false);
+      await fireEvent.press(getByLabelText("3 of Hearts"));
+      await fireEvent.press(getByLabelText("A of Diamonds"));
+      jest.advanceTimersByTime(301);
+      await fireEvent.press(getByLabelText("A of Diamonds"));
+      expect(onMove).not.toHaveBeenCalled();
+      expect(getByLabelText("3 of Hearts (selected)")).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // Mirrors e2e/tests/freecell-errors.spec.ts "board is usable after an
+  // invalid move attempt" (#1563).
+  it("an invalid destination keeps the selection, so the next legal tap moves it", async () => {
+    const { getByLabelText, onMove } = await renderBoard(false);
+    await fireEvent.press(getByLabelText("3 of Hearts")); // ambiguous → selects
+    await fireEvent.press(getByLabelText("A of Diamonds")); // invalid destination
+    expect(onMove).not.toHaveBeenCalled();
+    expect(getByLabelText("3 of Hearts (selected)")).toBeTruthy();
+    await fireEvent.press(getByLabelText("4 of Spades")); // legal destination
+    expect(onMove).toHaveBeenCalledTimes(1);
+    expect(onMove).toHaveBeenCalledWith({
+      type: "tableau-to-tableau",
+      fromCol: 0,
+      fromIndex: 0,
+      toCol: 2,
+    });
   });
 
   it("double-tapping an occupied free cell sends it to the foundation while a tableau card is selected", async () => {
