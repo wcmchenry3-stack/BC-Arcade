@@ -1462,7 +1462,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         "width": "100%",
       },
       {
-        "borderColor": "#4a4a56",
+        "borderColor": "#7a7a88",
         "borderRadius": 4,
         "borderWidth": 2,
         "overflow": "hidden",
@@ -1483,11 +1483,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 0,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 0,
           "flex": 1,
         }
@@ -1569,7 +1569,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderLeftWidth": 0.5,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 0,
           "flex": 1,
         }
@@ -1629,9 +1629,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 0,
           "flex": 1,
         }
@@ -1689,11 +1689,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 0,
           "flex": 1,
         }
@@ -1755,7 +1755,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderLeftWidth": 0.5,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 0,
           "flex": 1,
         }
@@ -1815,9 +1815,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 0,
           "flex": 1,
         }
@@ -1875,11 +1875,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 0,
           "flex": 1,
         }
@@ -1941,7 +1941,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderLeftWidth": 0.5,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 0,
           "flex": 1,
         }
@@ -2001,9 +2001,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 0,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 0,
           "flex": 1,
         }
@@ -2070,7 +2070,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 0,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -2196,7 +2196,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -2256,7 +2256,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -2382,7 +2382,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -2442,7 +2442,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -2568,7 +2568,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 0,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -2635,9 +2635,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 0,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -2697,7 +2697,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
@@ -2759,11 +2759,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -2821,9 +2821,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -2883,7 +2883,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
@@ -2945,11 +2945,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -3007,9 +3007,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -3069,7 +3069,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
@@ -3131,11 +3131,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 0,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -3204,11 +3204,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 0,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -3270,7 +3270,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderLeftWidth": 0.5,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -3330,9 +3330,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -3390,11 +3390,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -3456,7 +3456,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderLeftWidth": 0.5,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -3516,9 +3516,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -3576,11 +3576,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -3642,7 +3642,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderLeftWidth": 0.5,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -3702,9 +3702,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 0,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -3771,7 +3771,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 0,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -3897,7 +3897,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -3957,7 +3957,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -4103,7 +4103,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -4163,7 +4163,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -4289,7 +4289,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 0,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -4356,9 +4356,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 0,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -4418,7 +4418,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
@@ -4480,11 +4480,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -4542,9 +4542,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -4604,7 +4604,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
@@ -4666,11 +4666,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -4728,9 +4728,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -4790,7 +4790,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
@@ -4852,11 +4852,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 2,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 0,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -4925,11 +4925,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 0,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -4991,7 +4991,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderLeftWidth": 0.5,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -5051,9 +5051,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -5111,11 +5111,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -5177,7 +5177,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderLeftWidth": 0.5,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -5237,9 +5237,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -5297,11 +5297,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -5363,7 +5363,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderLeftWidth": 0.5,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -5423,9 +5423,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 0,
-          "borderTopColor": "#4a4a56",
+          "borderTopColor": "#7a7a88",
           "borderTopWidth": 2,
           "flex": 1,
         }
@@ -5492,7 +5492,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 0,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -5618,7 +5618,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -5678,7 +5678,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -5804,7 +5804,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -5864,7 +5864,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
         {
           "borderBottomColor": "#2e2e38",
           "borderBottomWidth": 0.5,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -5990,7 +5990,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
           "borderBottomWidth": 0.5,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 0,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -6057,9 +6057,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 0,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 0,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -6119,7 +6119,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 0,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
@@ -6181,11 +6181,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 0,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -6243,9 +6243,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 0,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -6305,7 +6305,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 0,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
@@ -6367,11 +6367,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 0,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 2,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,
@@ -6429,9 +6429,9 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 0,
-          "borderLeftColor": "#4a4a56",
+          "borderLeftColor": "#7a7a88",
           "borderLeftWidth": 2,
           "borderRightColor": "#2e2e38",
           "borderRightWidth": 0.5,
@@ -6491,7 +6491,7 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 0,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
@@ -6553,11 +6553,11 @@ exports[`SudokuGrid matches snapshot with a typical mid-game state 1`] = `
     <View
       style={
         {
-          "borderBottomColor": "#4a4a56",
+          "borderBottomColor": "#7a7a88",
           "borderBottomWidth": 0,
           "borderLeftColor": "#2e2e38",
           "borderLeftWidth": 0.5,
-          "borderRightColor": "#4a4a56",
+          "borderRightColor": "#7a7a88",
           "borderRightWidth": 0,
           "borderTopColor": "#2e2e38",
           "borderTopWidth": 0.5,

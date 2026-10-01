@@ -35,6 +35,20 @@ describe.each([
   });
 });
 
+// WCAG 1.4.11 non-text contrast (>= 3:1): Sudoku's 3x3 box separators carry
+// structural information, so they must be visible on every surface (#2208).
+describe.each([
+  ["dark", dark],
+  ["light", light],
+] as [string, Colors][])("%s boxBorder token (#2208)", (_name, palette) => {
+  it.each(["background", "surface", "surfacePeer", "surfaceAlt", "surfaceHigh"] as const)(
+    "reaches 3:1 on %s",
+    (surface) => {
+      expect(contrast(palette.boxBorder, palette[surface])).toBeGreaterThanOrEqual(3);
+    }
+  );
+});
+
 it("uses a lighter scrim in light mode than in dark mode", () => {
   const alpha = (rgba: string) => Number(rgba.match(/[\d.]+\)$/)?.[0].replace(")", ""));
   expect(alpha(light.overlay)).toBeLessThan(alpha(dark.overlay));

@@ -20,9 +20,9 @@ export default function SudokuGrid({
   variant,
   onCellPress,
 }: Props) {
-  const { colors, theme } = useTheme();
+  const { colors } = useTheme();
   const { size, boxRows, boxCols } = variantConfig(variant);
-  const strongColor = theme === "dark" ? colors.textFilled : colors.text;
+  const strongColor = colors.boxBorder;
 
   // Digit of the currently-selected cell (0 = empty / nothing to match).
   const selectedValue =
