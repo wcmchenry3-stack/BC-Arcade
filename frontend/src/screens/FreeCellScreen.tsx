@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import type { LayoutChangeEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -46,6 +47,7 @@ const AUTO_STEP_MS = 120;
 const TABLEAU_COLS = 8;
 const COL_GAP = 2;
 const SCREEN_H_PADDING = 24;
+const BANNER_MARGIN_TOP = 8;
 
 /** The result card reads the synced game's rank on the session board (#2632). */
 const freecellBoard = sessionBoardAdapter("freecell");
@@ -333,6 +335,23 @@ export default function FreeCellScreen() {
   const undoDisabled =
     state === null || state.undoStack.length === 0 || state.isComplete || autoCompleting;
   const hintDisabled = state === null || state.isComplete || autoCompleting;
+  // The height the board and the no-moves banner share, so tall tableau
+  // columns compress to stay on screen (#1108).
+  const [boardAreaHeight, setBoardAreaHeight] = useState<number | undefined>(undefined);
+  const [bannerHeight, setBannerHeight] = useState(0);
+  const handleBoardAreaLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = e.nativeEvent.layout.height;
+    setBoardAreaHeight((prev) => (prev === h ? prev : h));
+  }, []);
+  const handleBannerLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = e.nativeEvent.layout.height + BANNER_MARGIN_TOP;
+    setBannerHeight((prev) => (prev === h ? prev : h));
+  }, []);
+  const boardAvailableHeight =
+    boardAreaHeight === undefined
+      ? undefined
+      : Math.max(0, boardAreaHeight - (showNoMovesBanner ? bannerHeight : 0));
+
   const cardSize = useResponsiveCardSize(
     CARD_WIDTH,
     CARD_HEIGHT,
@@ -386,33 +405,41 @@ export default function FreeCellScreen() {
               ]}
             />
 
-            <View
-              testID="freecell-board"
-              style={styles.boardWrap}
-              accessibilityLabel={t("freecell:a11y.boardRegion")}
-            >
-              <FreeCellBoard state={state} onMove={handleMove} inputLocked={autoCompleting} />
-            </View>
-
-            {showNoMovesBanner && (
+            <View style={styles.boardArea} onLayout={handleBoardAreaLayout}>
               <View
-                style={[
-                  styles.noMovesBanner,
-                  { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-                ]}
-                accessibilityRole="alert"
-                accessibilityLiveRegion="assertive"
+                testID="freecell-board"
+                style={styles.boardWrap}
+                accessibilityLabel={t("freecell:a11y.boardRegion")}
               >
-                <Text style={[styles.noMovesText, { color: colors.text }]}>
-                  {t("freecell:noMoves.message")}
-                </Text>
-                <PillButton
-                  label={t("freecell:action.undo")}
-                  onPress={handleUndo}
-                  disabled={undoDisabled}
+                <FreeCellBoard
+                  state={state}
+                  onMove={handleMove}
+                  inputLocked={autoCompleting}
+                  availableHeight={boardAvailableHeight}
                 />
               </View>
-            )}
+
+              {showNoMovesBanner && (
+                <View
+                  onLayout={handleBannerLayout}
+                  style={[
+                    styles.noMovesBanner,
+                    { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
+                  ]}
+                  accessibilityRole="alert"
+                  accessibilityLiveRegion="assertive"
+                >
+                  <Text style={[styles.noMovesText, { color: colors.text }]}>
+                    {t("freecell:noMoves.message")}
+                  </Text>
+                  <PillButton
+                    label={t("freecell:action.undo")}
+                    onPress={handleUndo}
+                    disabled={undoDisabled}
+                  />
+                </View>
+              )}
+            </View>
           </View>
         </CardSizeContext.Provider>
       )}
@@ -474,7 +501,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 8,
+    marginTop: BANNER_MARGIN_TOP,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 12,
@@ -485,6 +512,9 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontWeight: "600",
+  },
+  boardArea: {
+    flex: 1,
   },
   boardWrap: {
     alignSelf: "stretch",

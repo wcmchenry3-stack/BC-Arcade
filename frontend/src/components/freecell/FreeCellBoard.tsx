@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
+import type { LayoutChangeEvent } from "react-native";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "../../theme/ThemeContext";
@@ -41,15 +42,35 @@ export interface FreeCellBoardProps {
    * dropped by `onMove` (#2225).
    */
   readonly inputLocked?: boolean;
+  /**
+   * Height (px) the whole board may take on screen. Tall tableau columns
+   * compress to fit what's left below the top row, so every card stays on
+   * screen and reachable (#1108). Omitted: the natural budget.
+   */
+  readonly availableHeight?: number;
 }
 
-export default function FreeCellBoard({ state, onMove, inputLocked = false }: FreeCellBoardProps) {
+export default function FreeCellBoard({
+  state,
+  onMove,
+  inputLocked = false,
+  availableHeight,
+}: FreeCellBoardProps) {
   const { t } = useTranslation("freecell");
   const { colors } = useTheme();
   const { cardWidth } = useCardSize();
   const boardWidth = TABLEAU_COLS * cardWidth + (TABLEAU_COLS - 1) * COL_GAP;
   const [selection, setSelection] = useState<Selection>(null);
   const lastTapRef = useRef<{ key: string; time: number } | null>(null);
+  const [topRowHeight, setTopRowHeight] = useState<number | null>(null);
+  const handleTopRowLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = e.nativeEvent.layout.height;
+    setTopRowHeight((prev) => (prev === h ? prev : h));
+  }, []);
+  const tableauMaxHeight =
+    availableHeight !== undefined && topRowHeight !== null
+      ? Math.max(0, availableHeight - topRowHeight - ROW_GAP)
+      : undefined;
 
   const { play: playInvalidMove } = useSound("freecell.invalidMove", FREECELL_SOUNDS);
   const { shakeX, triggerIllegal } = useCardSelection(playInvalidMove);
@@ -357,6 +378,7 @@ export default function FreeCellBoard({ state, onMove, inputLocked = false }: Fr
           accessibilityLabel={t("a11y.boardRegion")}
         >
           <View
+            onLayout={handleTopRowLayout}
             style={[
               styles.topRow,
               {
@@ -435,6 +457,7 @@ export default function FreeCellBoard({ state, onMove, inputLocked = false }: Fr
                 onEmptyPress={handleTableauEmptyPress}
                 dropId={`freecell-tableau-${col}`}
                 onDrop={(source) => handleDropToTableau(source, col)}
+                maxHeight={tableauMaxHeight}
               />
             ))}
           </View>
