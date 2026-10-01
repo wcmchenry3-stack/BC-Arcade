@@ -45,6 +45,7 @@ import type {
   StarSwarmState,
 } from "../game/starswarm/types";
 import { reportRunStats } from "../game/starswarm/telemetry";
+import { summarizeScoreLedger } from "../game/starswarm/scoreLedger";
 import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
 import FrameStatsReadout from "../components/starswarm/FrameStatsReadout";
 import type { FrameStatsSummary } from "../game/starswarm/render/frameStats";
@@ -129,6 +130,9 @@ const RUN_STAT_LINES: readonly (readonly [string, keyof RunStats])[] = [
   ["Rocks spawned", "rocksSpawned"],
   ["Rocks broken by player", "rocksBrokenByPlayer"],
   ["Rocks broken by enemies", "rocksBrokenByEnemy"],
+  ["Buddy launched", "buddyLaunched"], // #2845
+  ["Buddy lost", "buddyLost"],
+  ["Shots drawn by Buddy", "buddyShotsDrawn"],
 ];
 
 /**
@@ -331,7 +335,12 @@ function StarSwarmGame() {
       // keeps no play clock, and a made-up 0 would read as a real time.
       const outcome = recordedOutcome("ended");
       const payload = { outcome, wave_reached: wave, difficulty_tier: tier };
-      const gameId = syncComplete({ outcome, finalScore, result: payload }, payload);
+      // #2837: where the score came from, wave by wave — in the result only, not the event.
+      const ledger = canvasRef.current?.getState()?.scoreLedger;
+      const result = ledger
+        ? { ...payload, score_breakdown: summarizeScoreLedger(ledger, finalScore) }
+        : payload;
+      const gameId = syncComplete({ outcome, finalScore, result }, payload);
       // The card reads the run's rank on its tier's board (shown when it is the player's best).
       if (gameId) {
         void submitRank({ gameId });
@@ -369,13 +378,19 @@ function StarSwarmGame() {
     [playRout, t]
   );
 
+  // #2845: Buddy going down has no on-screen text beyond the explosion — speak it.
+  const handleBuddyLost = useCallback(() => {
+    AccessibilityInfo.announceForAccessibility(t("a11y.buddyDown"));
+  }, [t]);
+
   // #2484: the Carrier's armor dropping is a state change with no on-screen text — speak it.
   const handleCarrierExposed = useCallback(() => {
     AccessibilityInfo.announceForAccessibility(t("a11y.carrierExposed"));
   }, [t]);
 
-  // #2485: beam telegraph and reinforcement launches — sound plus a spoken cue, since neither
-  // has on-screen text and the beam gives the player only ~0.6 s to react.
+  // #2485/#2843: beam telegraph, reinforcement launches, attack-run telegraph and the final
+  // stand — sound plus a spoken cue, since none has on-screen text and the beam gives the
+  // player only ~0.6 s to react.
   const handleCarrierEvent = useCallback(
     (kind: CarrierEvent) => {
       playCarrierEvent(kind);
@@ -383,6 +398,10 @@ function StarSwarmGame() {
         AccessibilityInfo.announceForAccessibility(t("a11y.carrierBeam"));
       } else if (kind === "reinforce") {
         AccessibilityInfo.announceForAccessibility(t("a11y.reinforcements"));
+      } else if (kind === "attackRun") {
+        AccessibilityInfo.announceForAccessibility(t("a11y.carrierAttackRun"));
+      } else if (kind === "finalStand") {
+        AccessibilityInfo.announceForAccessibility(t("a11y.carrierFinalStand"));
       }
     },
     [playCarrierEvent, t]
@@ -668,6 +687,7 @@ function StarSwarmGame() {
               onExplosion={playExplosion}
               onBossWave={handleBossWave}
               onRout={handleRout}
+              onBuddyLost={handleBuddyLost}
               onCarrierExposed={handleCarrierExposed}
               onCarrierEvent={handleCarrierEvent}
               onUpgrade={handleUpgrade}
@@ -801,7 +821,7 @@ function StarSwarmGame() {
             rank: leaderboard.rank,
             isBest: leaderboard.isBest,
             playerName: leaderboard.playerName,
-            onProvideName: leaderboard.provideName,
+            onJoinLeaderboards: leaderboard.joinLeaderboards,
             onRetry: leaderboard.retry,
           }}
           onViewLeaderboard={openLeaderboard}

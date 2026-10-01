@@ -12,7 +12,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from db.base import get_session_factory, is_configured
-from db.models import BugLog, GameEntitlement
+from db.models import (
+    BugLog,
+    DailyWordProgress,
+    GameEntitlement,
+    Player,
+    Purchase,
+    PurchaseEvent,
+    PurchaseLink,
+)
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -155,3 +163,101 @@ async def test_delete_me_does_not_affect_other_sessions(
     assert r.status_code == 204
 
     assert await _count_entitlements(other_session_id) == 1
+
+
+async def _seed_daily_word_progress(session_id: str) -> None:
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(
+            DailyWordProgress(
+                session_id=session_id, puzzle_id="2026-09-30:en", guesses=["crane"], solved=False
+            )
+        )
+        await db.commit()
+
+
+async def _count(model: type, session_id: str) -> int:
+    factory = get_session_factory()
+    async with factory() as db:
+        return (
+            await db.execute(
+                select(func.count()).select_from(model).where(model.session_id == session_id)
+            )
+        ).scalar_one()
+
+
+async def test_delete_me_removes_daily_word_progress(client: TestClient, session_id: str) -> None:
+    """Guess records are session-keyed personal data (#2779), not left to retention."""
+    await _seed_daily_word_progress(session_id)
+    assert await _count(DailyWordProgress, session_id) == 1
+
+    r = client.delete("/me", headers=_headers(session_id))
+    assert r.status_code == 204
+
+    assert await _count(DailyWordProgress, session_id) == 0
+
+
+async def test_delete_me_removes_leaderboard_name(client: TestClient, session_id: str) -> None:
+    """Joining creates the players row every board reads; Delete My Data drops it."""
+    assert client.put("/players/me", headers=_headers(session_id)).status_code == 200
+    assert await _count(Player, session_id) == 1
+
+    r = client.delete("/me", headers=_headers(session_id))
+    assert r.status_code == 204
+
+    assert await _count(Player, session_id) == 0
+    assert client.get("/players/me", headers=_headers(session_id)).json()["display_name"] is None
+
+
+async def test_delete_me_removes_purchase_links_but_keeps_store_records(
+    client: TestClient, session_id: str, other_session_id: str
+) -> None:
+    """Delete My Data unlinks this install from its purchases (#2786, IAP.md §8.5).
+
+    The `purchases` row and its `purchase_events` are the store's transaction
+    record and stay; the other install's link and entitlement are untouched.
+    """
+    now = datetime.now(timezone.utc)
+    factory = get_session_factory()
+    async with factory() as db:
+        purchase = Purchase(
+            platform="apple",
+            store_key="erase-1",
+            product_id="com.buffingchi.games.premium.hearts",
+            game_slug="hearts",
+            state="owned",
+            environment="sandbox",
+            verified_at=now,
+            state_changed_at=now,
+        )
+        db.add(purchase)
+        await db.flush()
+        for sid in (session_id, other_session_id):
+            db.add(
+                PurchaseLink(
+                    purchase_id=purchase.id,
+                    session_id=sid,
+                    source="sync",
+                    last_verified_at=now,
+                    created_at=now,
+                )
+            )
+            db.add(
+                GameEntitlement(
+                    session_id=sid, game_slug="hearts", purchase_id=purchase.id, source="sync"
+                )
+            )
+        db.add(PurchaseEvent(purchase_id=purchase.id, kind="linked", detail={}))
+        await db.commit()
+
+    r = client.delete("/me", headers=_headers(session_id))
+    assert r.status_code == 204
+
+    assert await _count(PurchaseLink, session_id) == 0
+    assert await _count(PurchaseLink, other_session_id) == 1
+    assert await _count(GameEntitlement, session_id) == 0
+    assert await _count(GameEntitlement, other_session_id) == 1
+    async with factory() as db:
+        assert (await db.execute(select(func.count()).select_from(Purchase))).scalar_one() == 1
+        events = (await db.execute(select(func.count()).select_from(PurchaseEvent))).scalar_one()
+        assert events == 1

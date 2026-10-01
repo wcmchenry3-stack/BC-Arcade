@@ -31,12 +31,18 @@ export async function routeSessionBoard(
       body: JSON.stringify({ ranked: true, rank, is_best: true, reason: null }),
     });
   });
+  // /players/me as the server behaves since #2778: a join (PUT, no body)
+  // assigns a generated name, GET reads it, DELETE leaves. The name is
+  // "Tester" so a device that already holds that name keeps it.
+  let boardName: string | null = null;
   await page.route("**/players/me", async (route) => {
-    const body = JSON.parse(route.request().postData() ?? "{}");
+    const method = route.request().method();
+    if (method === "PUT") boardName = "Tester";
+    if (method === "DELETE") boardName = null;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ display_name: body.display_name ?? null }),
+      body: JSON.stringify({ display_name: boardName }),
     });
   });
   await page.route(legacyPattern, async (route) => {

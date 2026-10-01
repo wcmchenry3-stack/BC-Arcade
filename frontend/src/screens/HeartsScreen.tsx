@@ -40,7 +40,7 @@ import {
   savePlayerNames,
   validateName,
 } from "../game/hearts/playerNames";
-import { heartsLeaderboardScore, heartsResult } from "../game/hearts/result";
+import { buildHeartsCompletedResult, heartsResult } from "../game/hearts/result";
 import {
   clockMs,
   pauseClock,
@@ -460,21 +460,34 @@ export default function HeartsScreen() {
     if (gameState?.phase !== "game_over") return;
     // The game is over: its clock stops at its play time.
     clockRef.current = pauseClock(clockRef.current);
-    const finalScore = heartsLeaderboardScore(gameState.cumulativeScores[HUMAN] ?? 0);
     // #2517: record who won — the same outcome the result card shows.
-    const { outcome } = heartsResult(gameState.cumulativeScores, HUMAN);
-    const result = { final_score: finalScore, vs_result: outcome };
+    // #2838: with the per-hand scores (post moon adjustment) behind it.
+    const result = buildHeartsCompletedResult(
+      gameState.cumulativeScores,
+      gameState.scoreHistory,
+      HUMAN
+    );
+    const finalScore = result.final_score;
+    const outcome = result.vs_result;
     // The play clock's active time (#2629); a 0 goes out as unknown (resolveDurationMs).
     const durationMs = clockMs(clockRef.current);
     const gameId = syncComplete(
       { outcome: recordedOutcome(outcome), finalScore, durationMs, result },
-      result
+      // The analytics event gets the score only; the per-hand history stays in
+      // the completion result, not duplicated into game_events (#2838).
+      { final_score: result.final_score, vs_result: result.vs_result }
     );
     if (!gameId) return;
     // Kept beside the saved game-over state, so a reopened card asks again.
     void saveFinishedGameId(gameId);
     void submitRank({ gameId });
-  }, [gameState?.phase, gameState?.cumulativeScores, syncComplete, submitRank]);
+  }, [
+    gameState?.phase,
+    gameState?.cumulativeScores,
+    gameState?.scoreHistory,
+    syncComplete,
+    submitRank,
+  ]);
 
   useEffect(() => {
     if (gameState?.phase === "game_over" && !gameOverFiredRef.current) {
@@ -875,7 +888,7 @@ export default function HeartsScreen() {
           rank: leaderboard.rank,
           isBest: leaderboard.isBest,
           playerName: leaderboard.playerName,
-          onProvideName: leaderboard.provideName,
+          onJoinLeaderboards: leaderboard.joinLeaderboards,
           onRetry: leaderboard.retry,
         }}
         onViewLeaderboard={openLeaderboard}

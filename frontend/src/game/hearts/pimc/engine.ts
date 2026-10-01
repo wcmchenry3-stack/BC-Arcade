@@ -10,7 +10,7 @@
  * same deals (common random numbers), so the comparison between cards isn't
  * swamped by deal-to-deal noise.
  *
- * The #2240 spike (docs/HEARTS_PIMC_SPIKE.md) found +6.8pp win share for
+ * The #2240 spike (docs/research/HEARTS_PIMC_SPIKE.md) found +6.8pp win share for
  * this approach over the utility AI alone, with a biased sampler; this
  * version samples exactly.
  *
@@ -38,7 +38,7 @@ export interface PimcConfig {
 
 /**
  * End-of-hand rollouts with inference, 32 deals a move. Measured against a
- * Schemer field on duplicate deals (docs/HEARTS_PIMC_SPIKE.md, #2587):
+ * Schemer field on duplicate deals (docs/research/HEARTS_PIMC_SPIKE.md, #2587):
  * - vs Daring on the same cards: +21pp win share at 8 deals, +23pp at 16,
  *   +33pp at 32 (Node: 11 / 20 / 38 ms a move);
  * - 64 deals over 32: +4.2 ± 3.8pp — diminishing returns;

@@ -600,9 +600,9 @@ describe("HomeScreen — locked game UI (#1054)", () => {
     mockCanPlay.mockImplementation((slug: string) => slug !== "cascade");
   });
 
-  it("renders locked card with 'Coming soon' label for unentitled premium game", async () => {
+  it("renders locked card with 'Locked' label for unentitled premium game", async () => {
     const { getByLabelText } = await renderScreen();
-    expect(getByLabelText("Cascade — Coming soon")).toBeTruthy();
+    expect(getByLabelText("Cascade — Locked, tap to unlock")).toBeTruthy();
   });
 
   it("does not show play label for locked card", async () => {
@@ -610,11 +610,12 @@ describe("HomeScreen — locked game UI (#1054)", () => {
     expect(queryByLabelText("Play Cascade")).toBeNull();
   });
 
-  it("tapping locked card shows coming soon alert, not navigation", async () => {
+  it("tapping locked card opens the paywall modal for that game, not the game (#841)", async () => {
     const { getByLabelText } = await renderScreen();
-    await fireEvent.press(getByLabelText("Cascade — Coming soon"));
-    expect(Alert.alert).toHaveBeenCalledWith("This game is coming soon");
+    await fireEvent.press(getByLabelText("Cascade — Locked, tap to unlock"));
+    expect(mockNavigate).toHaveBeenCalledWith("Paywall", { gameSlug: "cascade" });
     expect(mockNavigate).not.toHaveBeenCalledWith("Cascade");
+    expect(Alert.alert).not.toHaveBeenCalled();
   });
 
   it("free games render and navigate normally when a premium game is locked", async () => {

@@ -17,20 +17,40 @@ import {
   showMissionCompleteBanner,
   isBossWave,
   routJustStarted,
+  buddyJustLost,
   fleeingCount,
   carrierJustExposed,
   isCarrierArmored,
   asteroidOutline,
   throwAsteroid,
   killEscorts,
-  carrierBeam,
   carrierBeamJustStarted,
   carrierBeamJustFired,
+  carrierAttackRunJustStarted,
+  carrierFinalStandJustStarted,
   reinforcementsJustLaunched,
-  BEAM_HALF_WIDTH,
   upgradeEvents,
+  waveJustCleared,
+  isAutopilot,
+  PLAYER_W,
 } from "../../game/starswarm/engine";
-import { HARMLESS_BULLET_OPACITY, WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
+import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
+import {
+  isUpgradePickup,
+  upgradePickupOps,
+  drawPickupOps,
+} from "../../game/starswarm/render/pickups";
+import type { UpgradePickupType } from "../../game/starswarm/render/pickups";
+import { buddyOps } from "../../game/starswarm/render/buddy";
+import { carrierOps } from "../../game/starswarm/render/carrier";
+import { flinchWobble } from "../../game/starswarm/render/flinch";
+import {
+  pickupCues,
+  pickupCueFrame,
+  pickupCueLabelKey,
+  pickupCueColor,
+} from "../../game/starswarm/render/pickupCue";
+import type { PickupCue } from "../../game/starswarm/render/pickupCue";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import type { StarfieldState } from "../../game/starswarm/starfield";
 import type {
@@ -45,7 +65,7 @@ import playerShipSrc from "../../../assets/starswarm/player-ship.webp";
 import buddyShipSrc from "../../../assets/starswarm/buddy-ship.webp";
 import enemyGruntSrc from "../../../assets/starswarm/enemy-grunt.webp";
 import enemyEliteSrc from "../../../assets/starswarm/enemy-elite.webp";
-import enemyBossSrc from "../../../assets/starswarm/enemy-boss.webp";
+import enemyGuardianSrc from "../../../assets/starswarm/enemy-boss.webp";
 import enemyCarrierSrc from "../../../assets/starswarm/enemy-carrier.webp";
 import bulletPlayerSrc from "../../../assets/starswarm/bullet-player.webp";
 import bulletEnemySrc from "../../../assets/starswarm/bullet-enemy.webp";
@@ -110,7 +130,7 @@ const C = {
   bulletPlayer: "#00ffcc",
   enemyGrunt: "#8888ff",
   enemyElite: "#ff88ff",
-  enemyBoss: "#ffff44",
+  enemyGuardian: "#ffff44",
   enemyCarrier: "#b06cff",
   asteroid: "#8b6a47",
   asteroidFlash: "#e8d3b8",
@@ -160,7 +180,7 @@ interface Images {
   buddyShip: HTMLImageElement | null;
   enemyGrunt: HTMLImageElement | null;
   enemyElite: HTMLImageElement | null;
-  enemyBoss: HTMLImageElement | null;
+  enemyGuardian: HTMLImageElement | null;
   enemyCarrier: HTMLImageElement | null;
   bulletPlayer: HTMLImageElement | null;
   bulletEnemy: HTMLImageElement | null;
@@ -191,6 +211,8 @@ export interface DevOptions {
 
 export interface GameCanvasHandle {
   setPlayerX: (x: number) => void;
+  /** See GameCanvas.tsx — the commanded ship X, current even while the engine is frozen. */
+  getPlayerX: () => number;
   setFire: (fire: boolean) => void;
   triggerPowerUp: (type: PowerUpType) => void;
   /** Throw an asteroid now — dev-panel testing (#2486). */
@@ -215,10 +237,12 @@ interface Props {
   onBossWave?: () => void;
   /** #2489: called once when the wave's grunts rout, with how many are fleeing. */
   onRout?: (count: number) => void;
+  /** #2845: called once when a Buddy ship is destroyed. */
+  onBuddyLost?: () => void;
   onPowerUpCollect?: (type: PowerUpType) => void;
-  /** #2484: called once when the last Boss escort dies and the Carrier's armor drops. */
+  /** #2484: called once when the last Guardian dies and the Carrier's armor drops. */
   onCarrierExposed?: () => void;
-  /** #2485: beam telegraph, beam firing, reinforcement launch. */
+  /** #2485/#2843: beam charge and release, reinforcements, attack run, final stand. */
   onCarrierEvent?: (kind: CarrierEvent) => void;
   /** #2488: a gun or hull ladder change (pickup collected, plating hit, level lost). */
   onUpgrade?: (ev: UpgradeEvent) => void;
@@ -247,6 +271,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onExplosion,
       onBossWave,
       onRout,
+      onBuddyLost,
       onPowerUpCollect,
       onCarrierExposed,
       onCarrierEvent,
@@ -283,7 +308,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         )
     );
     const sfRef = useRef<StarfieldState>(initStarfield(width, height));
-    const inputRef = useRef({ playerX: width / 2, fire: true });
+    const inputRef = useRef({ playerX: initialState?.player.x ?? width / 2, fire: true });
     const infiniteLivesRef = useRef(false);
     const devOptionsRef = useRef<DevOptions | undefined>(devOptions);
     devOptionsRef.current = devOptions;
@@ -297,6 +322,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onExplosionRef = useRef(onExplosion);
     const onBossWaveRef = useRef(onBossWave);
     const onRoutRef = useRef(onRout);
+    const onBuddyLostRef = useRef(onBuddyLost);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const onCarrierExposedRef = useRef(onCarrierExposed);
     const onCarrierEventRef = useRef(onCarrierEvent);
@@ -308,6 +334,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const killEscortsRef = useRef(false); // #2491
     const isPausedRef = useRef(isPaused);
     const prevScoreRef = useRef(0);
+    // #2847: the pickup cue on screen — when it started and what it says
+    const pickupCueRef = useRef<{ cue: PickupCue; startedAt: number } | null>(null);
     const prevLivesRef = useRef(stateRef.current.player.lives);
     const prevPhaseRef = useRef(stateRef.current.phase);
     // #2352: wave clear now advances the wave in the same tick (no WinTransition phase to
@@ -320,7 +348,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       buddyShip: null,
       enemyGrunt: null,
       enemyElite: null,
-      enemyBoss: null,
+      enemyGuardian: null,
       enemyCarrier: null,
       bulletPlayer: null,
       bulletEnemy: null,
@@ -381,6 +409,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onRoutRef.current = onRout;
     }, [onRout]);
     useEffect(() => {
+      onBuddyLostRef.current = onBuddyLost;
+    }, [onBuddyLost]);
+    useEffect(() => {
       const wasPaused = isPausedRef.current;
       isPausedRef.current = isPaused;
       if (wasPaused && !isPaused) lastFrameTimeRef.current = 0;
@@ -413,7 +444,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           loadImg(buddyShipSrc as number),
           loadImg(enemyGruntSrc as number),
           loadImg(enemyEliteSrc as number),
-          loadImg(enemyBossSrc as number),
+          loadImg(enemyGuardianSrc as number),
           loadImg(enemyCarrierSrc as number),
           loadImg(bulletPlayerSrc as number),
           loadImg(bulletEnemySrc as number),
@@ -430,7 +461,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           buddyShip,
           enemyGrunt,
           enemyElite,
-          enemyBoss,
+          enemyGuardian,
           enemyCarrier,
           bulletPlayer,
           bulletEnemy,
@@ -446,7 +477,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           buddyShip: buddyShip ?? null,
           enemyGrunt: enemyGrunt ?? null,
           enemyElite: enemyElite ?? null,
-          enemyBoss: enemyBoss ?? null,
+          enemyGuardian: enemyGuardian ?? null,
           enemyCarrier: enemyCarrier ?? null,
           bulletPlayer: bulletPlayer ?? null,
           bulletEnemy: bulletEnemy ?? null,
@@ -470,6 +501,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         setPlayerX(x) {
           inputRef.current.playerX = x;
         },
+        getPlayerX() {
+          const hw = PLAYER_W / 2;
+          return Math.max(hw, Math.min(width - hw, inputRef.current.playerX));
+        },
         setFire(fire) {
           inputRef.current.fire = fire;
         },
@@ -489,7 +524,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           return null;
         },
       }),
-      []
+      [width]
     );
 
     useEffect(() => {
@@ -559,14 +594,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       }
       ctx.globalAlpha = 1;
 
-      // Enemy bullets — harmless carry-overs from a cleared wave (see Bullet.harmless) are
-      // dimmed so the player can tell they no longer need dodging.
+      // Enemy bullets (#2842: every one in flight is live, so none is dimmed)
       for (const b of state.enemyBullets) {
         ctx.fillStyle = b.flak ? C.bulletFlak : C.bulletEnemy; // #2487: flak at rocks reads as amber
-        ctx.globalAlpha = b.harmless ? HARMLESS_BULLET_OPACITY : 1;
         ctx.fillRect(b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
       }
-      ctx.globalAlpha = 1;
 
       // Player bullets — charge bullets (wider) use bulletCharge sprite / cyan fallback
       for (const b of state.playerBullets) {
@@ -591,7 +623,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               ? imgs.enemyElite
               : enemy.tier === "Carrier"
                 ? imgs.enemyCarrier
-                : imgs.enemyBoss;
+                : imgs.enemyGuardian;
+        const wobble = flinchWobble(enemy.flinchMs); // #2881: reaction cue
+        ctx.save();
+        ctx.translate(enemy.x + wobble.dx, enemy.y);
+        ctx.rotate(wobble.rotate);
+        ctx.translate(-enemy.x, -enemy.y);
         if (img) {
           ctx.drawImage(
             img,
@@ -608,7 +645,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 ? C.enemyElite
                 : enemy.tier === "Carrier"
                   ? C.enemyCarrier
-                  : C.enemyBoss;
+                  : C.enemyGuardian;
           ctx.fillRect(
             enemy.x - enemy.width / 2,
             enemy.y - enemy.height / 2,
@@ -616,6 +653,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             enemy.height
           );
         }
+        ctx.restore();
         // #2484: steady force-field ring while the Carrier's escorts still shield it
         if (enemy.tier === "Carrier" && carrierArmored) {
           ctx.beginPath();
@@ -640,7 +678,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           ctx.stroke();
         }
 
-        // HP pips — Elite (2), Boss (4), Carrier (8); Grunt always has 1 HP so pips are omitted
+        // HP pips — Elite (2), Guardian (4), Carrier (8); Grunt always has 1 HP so pips are omitted
         if (enemy.tier !== "Grunt") {
           const totalPips = enemy.tier === "Elite" ? 2 : enemy.tier === "Carrier" ? 8 : 4;
           const pipW = 4;
@@ -656,23 +694,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         }
       }
 
-      // #2485 Carrier sweep beam — telegraph, then the beam
-      const beam = carrierBeam(state);
-      if (beam) {
-        if (beam.phase === "charge") {
-          ctx.fillStyle = `rgba(176,108,255,${(0.1 + beam.progress * 0.35).toFixed(3)})`;
-          ctx.fillRect(beam.x - 2, beam.y, 4, height);
-          ctx.beginPath();
-          ctx.arc(beam.x, beam.y + 6, 4 + beam.progress * 8, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(176,108,255,${(0.4 + beam.progress * 0.5).toFixed(3)})`;
-          ctx.fill();
-        } else {
-          ctx.fillStyle = "rgba(176,108,255,0.35)";
-          ctx.fillRect(beam.x - BEAM_HALF_WIDTH - 4, beam.y, BEAM_HALF_WIDTH * 2 + 8, height);
-          ctx.fillStyle = "rgba(230,205,255,0.9)";
-          ctx.fillRect(beam.x - BEAM_HALF_WIDTH * 0.5, beam.y, BEAM_HALF_WIDTH, height);
-        }
-      }
+      // #2485/#2843 Carrier telegraphs and released beams — the native geometry, replayed
+      drawPickupOps(ctx, carrierOps(state));
 
       // Player (blink during invincibility)
       const blink =
@@ -740,11 +763,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         }
       }
 
-      // #1035 Buddy ships — blue ship sprite; flip for right-entry
+      // #1035 Buddy ships — blue ship sprite, facing its travel; #2845 HP bar (shared ops)
       for (const buddy of state.buddyShips) {
         const img = imgs.buddyShip;
         ctx.save();
-        if (!buddy.fromLeft) {
+        if (!buddy.facingRight) {
           ctx.translate(buddy.x, 0);
           ctx.scale(-1, 1);
           ctx.translate(-buddy.x, 0);
@@ -756,6 +779,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           ctx.fillRect(buddy.x - 17, buddy.y - 17, 34, 34);
         }
         ctx.restore();
+        drawPickupOps(ctx, buddyOps(buddy, 34));
       }
 
       // Power-ups — Kenney CC0 sprites with procedural fallback
@@ -786,24 +810,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         } else if (pu.type === "buddy") {
           ctx.fillStyle = C.powerUpBuddy;
           ctx.fillRect(lx + pw * 0.2, ly + ph * 0.2, pw * 0.6, ph * 0.6);
-        } else if (pu.type === "salvage") {
-          // #2488 salvage crate — gold with a strap
-          ctx.fillStyle = "#ffb020";
-          ctx.fillRect(lx + pw * 0.15, ly + ph * 0.15, pw * 0.7, ph * 0.7);
-          ctx.fillStyle = "#7a4d08";
-          ctx.fillRect(lx + pw * 0.15, ly + ph * 0.45, pw * 0.7, ph * 0.1);
-        } else if (pu.type === "hull") {
-          // #2488 hull plating — cyan hexagon
-          ctx.fillStyle = "#00aaff";
-          ctx.beginPath();
-          ctx.moveTo(pu.x, ly);
-          ctx.lineTo(lx + pw, ly + ph * 0.25);
-          ctx.lineTo(lx + pw, ly + ph * 0.75);
-          ctx.lineTo(pu.x, ly + ph);
-          ctx.lineTo(lx, ly + ph * 0.75);
-          ctx.lineTo(lx, ly + ph * 0.25);
-          ctx.closePath();
-          ctx.fill();
+        } else if (isUpgradePickup(pu.type)) {
+          // #2847: shared geometry with the native renderer (render/pickups.ts)
+          drawPickupOps(ctx, upgradePickupOps(pu as typeof pu & { type: UpgradePickupType }));
         } else {
           ctx.fillStyle = C.powerUpLightning;
           ctx.beginPath();
@@ -888,6 +897,28 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         width / 2,
         38
       );
+
+      // #2847: pickup cue — "GUNS +1" / "HULL +1" / "GUNS MAX" toast under the ladder line
+      const pc = pickupCueRef.current;
+      if (pc) {
+        const f = pickupCueFrame(Date.now() - pc.startedAt);
+        if (f) {
+          ctx.save();
+          ctx.globalAlpha = f.opacity;
+          ctx.font = "bold 18px 'Courier New', monospace";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = pickupCueColor(pc.cue.kind);
+          ctx.shadowColor = "#000000";
+          ctx.shadowBlur = 4;
+          ctx.translate(width / 2, 66 + f.offsetY);
+          ctx.scale(f.scale, f.scale);
+          ctx.fillText(t(pickupCueLabelKey(pc.cue)), 0, 0);
+          ctx.restore();
+        } else {
+          pickupCueRef.current = null;
+        }
+      }
 
       // Phase overlays
       ctx.textAlign = "center";
@@ -1067,8 +1098,19 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               if (carrierBeamJustFired(prev, applied)) onCarrierEventRef.current?.("beamFire");
               if (reinforcementsJustLaunched(prev, applied))
                 onCarrierEventRef.current?.("reinforce");
+              // #2843: attack-run telegraph and a final stand after the armor was already down
+              if (carrierAttackRunJustStarted(prev, applied))
+                onCarrierEventRef.current?.("attackRun");
+              if (carrierFinalStandJustStarted(prev, applied))
+                onCarrierEventRef.current?.("finalStand");
               for (const ev of upgradeEvents(prev, applied)) onUpgradeRef.current?.(ev); // #2488
+              // #2847: the newest cue wins if two land on one tick
+              const cues = pickupCues(prev, applied);
+              if (cues.length > 0) {
+                pickupCueRef.current = { cue: cues[cues.length - 1]!, startedAt: Date.now() };
+              }
               if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
+              if (buddyJustLost(prev, applied)) onBuddyLostRef.current?.(); // #2845
               if (applied.explosions.length > prev.explosions.length) {
                 onExplosionRef.current?.();
               }
@@ -1076,18 +1118,20 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
                 if (applied.phase !== "GameOver") onPlayerHitRef.current?.();
               }
               prevLivesRef.current = applied.player.lives;
-              // #2352: wave clear no longer freezes gameplay behind a WinTransition phase —
-              // the wave counter bumps in the same tick the last enemy dies. Detect that bump
-              // directly instead of watching for a phase transition.
-              const waveJustCleared = applied.wave > prevWaveRef.current;
+              // #2842: the wave clears on the last kill (extraction starts); the wave counter
+              // bumps later, once the AI has flown the ship out and the field has been reset.
+              if (waveJustCleared(prev, applied)) onWaveClearRef.current?.();
+              // While the AI flies the ship, keep the input on it so control resumes in place.
+              if (isAutopilot(applied)) inputRef.current.playerX = applied.player.x;
+              const waveStarted = applied.wave > prevWaveRef.current;
               prevWaveRef.current = applied.wave;
-              if (waveJustCleared) {
-                onWaveClearRef.current?.();
-                // #2490: a boss wave announces itself on top of the wave-clear jingle
+              if (waveStarted) {
+                inputRef.current.playerX = applied.player.x; // back on station, centred
+                // #2490: a boss wave announces itself as it opens
                 if (isBossWave(applied.wave)) onBossWaveRef.current?.();
               }
-              // A fresh clear starts the countdown immediately (every wave opens on SwoopIn).
-              if (waveJustCleared && applied.phase === "SwoopIn") {
+              // Every new wave opens on SwoopIn behind the countdown.
+              if (waveStarted && applied.phase === "SwoopIn") {
                 countdownMsRef.current = WAVE_COUNTDOWN_MS;
               }
               prevPhaseRef.current = applied.phase;

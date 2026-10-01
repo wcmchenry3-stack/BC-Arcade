@@ -59,7 +59,6 @@
   "betting.tapToAdd": "Tap chips to bet",
   "chip.addLabel": "Add {{amount}} to bet",
   "chip.disabledLabel": "{{amount}}-chip not available",
-  "chip.vipCredits": "VIP",
   "rules.title": "Table Rules",
   "rules.toggleLabel": "Toggle table rules",
   "rules.dealerSoft17": "Dealer soft 17",

@@ -59,7 +59,6 @@
   "betting.tapToAdd": "शर्त लगाने के लिए चिप्स टैप करें",
   "chip.addLabel": "शर्त में {{amount}} जोड़ें",
   "chip.disabledLabel": "{{amount}} चिप उपलब्ध नहीं",
-  "chip.vipCredits": "VIP",
   "rules.title": "टेबल नियम",
   "rules.toggleLabel": "टेबल नियम टॉगल करें",
   "rules.dealerSoft17": "डीलर सॉफ्ट 17",

@@ -1,4 +1,4 @@
-# Manual QA: results, leaderboards, stats and Profile
+> **Verification procedure.** This checklist validates the current reporting system; it is not the product specification. See [LEADERBOARDS.md](LEADERBOARDS.md) for current behavior and [GAME-CONTRACT.md](GAME-CONTRACT.md) for the integration contract.\n\n# Manual QA: results, leaderboards, stats and Profile
 
 A hand check of the leaderboards and scoring epic (#2519). Run it on real iOS and Android builds: the store-configuration builds (Wed 30 build #2 and the RC) and any TestFlight or Play test build that carries these changes.
 
@@ -22,11 +22,11 @@ This replaces native automation for now. The Maestro result-submission flow (#26
 
 Play one quick game to the end. A 2048 loss, an easy Sudoku or a solo Yacht game all work.
 
-- [ ] The result card asks **"Pick a display name for leaderboards"** once. Save a name.
-- [ ] The card's line becomes **"Saved as ‹name› · #N on the leaderboard"**, or "Saved as ‹name› · Your best: #N" when this wasn't your best game.
+- [ ] The result card asks **"Join the leaderboards?"** once, with a **Join leaderboards** button and **no text field** (#2778). Press it.
+- [ ] The card's line becomes **"Saved as ‹generated name› · #N on the leaderboard"** (e.g. "Brave Otter 4821"), or "Saved as ‹name› · Your best: #N" when this wasn't your best game.
 - [ ] **"View leaderboard"** opens that game's leaderboard with **your row highlighted** in the list, or pinned below it when you're outside the top 50.
 - [ ] Going back returns to the result card. The card doesn't announce itself again, and nothing covers the leaderboard screen.
-- [ ] Play the same game again. The name prompt does **not** appear a second time.
+- [ ] Play the same game again. The join prompt does **not** appear a second time.
 
 ## 3. Offline result
 
@@ -71,12 +71,17 @@ Open each game's ⋯ menu and check its items.
 - [ ] Recent games show an icon **and** a label for every result: win, loss, tie, completed, kept playing, abandoned.
 - [ ] Tap a recent game. The detail screen shows the same localised result label.
 
-## 8. Remove my name
+## 8. Leaderboard membership (#2778)
 
-- [ ] **Profile → "Remove my name from leaderboards" → Remove.** Profile then says "You're not on any leaderboard…".
+- [ ] Profile shows **"On leaderboards as “‹generated name›”."** and there is no name text field anywhere in the app.
+- [ ] **Profile → "Get a new name".** The name changes to another generated name, and the leaderboard shows the new name on your row.
+- [ ] **Offline:** "Get a new name" is disabled.
+- [ ] **Profile → "Leave leaderboards" → Leave.** Profile then says "You're not on any leaderboard…" and shows **Join leaderboards**.
 - [ ] Open a leaderboard. Your row is gone.
-- [ ] Save a name again in Profile. Your row is back on the board.
-- [ ] **Offline:** remove your name. It shows "Removing your name… It will sync when you're back online.", and it syncs once you reconnect.
+- [ ] **Join leaderboards** in Profile. Your row is back on the board under a new generated name.
+- [ ] **Offline:** leave. It shows "Leaving the leaderboards… It will sync when you're back online.", and it syncs once you reconnect.
+- [ ] **Offline:** join. It shows "Joining… Your leaderboard name will appear when you're back online.", and the generated name appears once you reconnect.
+- [ ] **Upgrade from a build with a typed name** (migration 0030): after the update, Profile and the boards show a generated name, not the typed one, and you are still on the boards. A player who never set a name is still **not** on any board.
 
 ## 9. Delete my data
 

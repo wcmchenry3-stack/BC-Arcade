@@ -56,7 +56,7 @@ test.describe("Mahjong — error paths", () => {
     }
 
     // HUD must remain visible — game did not crash
-    await expect(page.getByText(/^SCORE\s+\d/).first()).toBeVisible({
+    await expect(page.getByText(/^TIME\s+\d+:\d{2}$/).first()).toBeVisible({
       timeout: 3_000,
     });
     await expect(page.getByText(/^PAIRS\s+\d/).first()).toBeVisible();
@@ -121,7 +121,7 @@ test.describe("Mahjong — error paths", () => {
     await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
 
     // HUD still visible — game continues despite earlier server error
-    await expect(page.getByText(/^SCORE\s+\d/).first()).toBeVisible({
+    await expect(page.getByText(/^TIME\s+\d+:\d{2}$/).first()).toBeVisible({
       timeout: 3_000,
     });
     await expect(page.getByRole("alert")).not.toBeAttached();

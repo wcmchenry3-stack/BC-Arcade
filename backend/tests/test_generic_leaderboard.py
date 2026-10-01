@@ -22,7 +22,7 @@ from sqlalchemy import event, select
 from db.base import get_session_factory, is_configured
 from db.models import Game, GameEntitlement, GameType, Player
 from games import leaderboard
-from games.board import SCORE_METRIC
+from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
 from games.registry import get_module
 from limiter import _real_ip, limiter, session_key
 from vocab import GameType as GameTypeEnum
@@ -48,11 +48,43 @@ DISABLED_BOARDS = sorted(
 CREATE_METADATA: dict[str, dict[str, Any]] = {
     "sudoku": {"difficulty": "easy"},
     "starswarm": {"difficulty_tier": "Captain"},
+    "mahjong": {"layout": "turtle"},
 }
 PARTITION_QUERY: dict[str, str] = {
     "sudoku": "?difficulty=easy",
     "starswarm": "?difficulty_tier=Captain",
+    "mahjong": "?layout=turtle",
 }
+
+
+def metric_value(board: BoardDefinition, n: int) -> int:
+    """A small test value ``n`` lifted onto the board's range: ``n`` itself,
+    or ``n`` above ``min_value`` (Mahjong's clear-time floor, #2747), so the
+    order of test values is the order of stored values."""
+    return board.min_value + n
+
+
+def metric_fields(board: BoardDefinition, value: int) -> dict[str, Any]:
+    """``_seed`` keyword arguments that store ``value`` as the board's metric."""
+    if board.metric == SCORE_METRIC:
+        return {"score": value}
+    if board.metric == DURATION_METRIC:
+        return {"duration_ms": value}
+    return {"meta": {board.metric: value}}
+
+
+def completion_body(board: BoardDefinition, value: int) -> dict[str, Any]:
+    """A ``PATCH /games/{id}/complete`` body whose row ranks with ``value``."""
+    body: dict[str, Any] = {
+        "outcome": board.qualifying_outcomes[0] if board.qualifying_outcomes else "completed"
+    }
+    if board.metric == SCORE_METRIC:
+        body["final_score"] = value
+    elif board.metric == DURATION_METRIC:
+        body["duration_ms"] = value
+    else:
+        body["result"] = {board.metric: value}
+    return body
 
 
 @pytest.fixture()
@@ -103,6 +135,7 @@ async def _seed(
     minutes: int = 0,
     outcome: str | None = "completed",
     meta: dict[str, Any] | None = None,
+    duration_ms: int | None = None,
 ) -> uuid.UUID:
     """Insert one finished row directly.
 
@@ -125,6 +158,7 @@ async def _seed(
                 game_metadata=metadata,
                 players=[],
                 final_score=score,
+                duration_ms=duration_ms,
                 outcome=outcome,
                 started_at=T0 + timedelta(minutes=minutes) - timedelta(seconds=30),
                 completed_at=T0 + timedelta(minutes=minutes),
@@ -150,12 +184,12 @@ def _sid() -> str:
     return str(uuid.uuid4())
 
 
-def _name_and_rank(client: TestClient, sid: str, game_id: Any, name: str) -> dict:
-    """Name the player (``PUT /players/me``), then ``GET /games/{id}/rank``.
+def _name_and_rank(client: TestClient, sid: str, game_id: Any, _label: str = "") -> dict:
+    """Join the boards (``PUT /players/me``), then ``GET /games/{id}/rank``.
 
     Returns ``{rank, is_best}`` for a ranked game, else ``{reason}``.
     """
-    r = client.put("/players/me", headers=_headers(sid), json={"display_name": name})
+    r = client.put("/players/me", headers=_headers(sid))
     assert r.status_code == 200, r.text
     r = client.get(f"/games/{game_id}/rank", headers=_headers(sid))
     assert r.status_code == 200, r.text
@@ -337,15 +371,10 @@ async def test_sentinel_rows_never_rank(client: TestClient, game_type: str) -> N
     board = leaderboard.enabled_board(game_type)
     assert board is not None, game_type
     outcome = board.qualifying_outcomes[0] if board.qualifying_outcomes else "completed"
-    meta = dict(CREATE_METADATA.get(game_type, {}))
-    score: int | None = 10
-    if board.metric != SCORE_METRIC:
-        meta[board.metric] = 10
-        score = None
-    await _seed(
-        game_type, f"{game_type}-anon", score=score, name="OldClient", outcome=outcome, meta=meta
-    )
-    await _seed(game_type, _sid(), score=score, name="Real", outcome=outcome, meta=meta)
+    fields = metric_fields(board, metric_value(board, 10))
+    fields["meta"] = {**CREATE_METADATA.get(game_type, {}), **fields.get("meta", {})}
+    await _seed(game_type, f"{game_type}-anon", name="OldClient", outcome=outcome, **fields)
+    await _seed(game_type, _sid(), name="Real", outcome=outcome, **fields)
     viewer = _sid()
     await _grant_all(viewer)  # three of the seven boards are premium
     body = _board(client, game_type + PARTITION_QUERY.get(game_type, ""), viewer)
@@ -458,7 +487,8 @@ async def test_exact_rank_outside_the_top_ten(client: TestClient) -> None:
     assert len(_board(client, "solitaire")["entries"]) == 10
     full = _board(client, "solitaire?limit=20")["entries"]
     assert len(full) == 13
-    assert (full[-1]["player_name"], full[-1]["rank"]) == ("Me", 13)
+    me = client.get("/players/me", headers=_headers(sid)).json()["display_name"]
+    assert (full[-1]["player_name"], full[-1]["rank"]) == (me, 13)
 
 
 async def test_rank_honours_asc_direction_and_tiebreak(
@@ -820,24 +850,23 @@ async def test_named_session_row_appears_exactly_once(client: TestClient, game_t
     await _grant_all(sid)
     path = f"{game_type}{PARTITION_QUERY.get(game_type, '')}"
 
-    def play(value: int) -> dict:
+    def play(n: int) -> dict:
         game_id = _create(client, sid, game_type)
-        if board.metric == SCORE_METRIC:
-            r = _complete(client, sid, game_id, final_score=value)
-        else:
-            r = _complete(client, sid, game_id, result={board.metric: value})
+        r = _complete(client, sid, game_id, **completion_body(board, metric_value(board, n)))
         assert r.status_code == 200, r.text
         return _name_and_rank(client, sid, game_id, "Solo")
 
+    best = metric_value(board, 5)
     assert play(5) == {"rank": 1, "is_best": True}
+    solo = client.get("/players/me", headers=_headers(sid)).json()["display_name"]
     entries = _board(client, path, sid)["entries"]
-    assert [(e["player_name"], e["value"]) for e in entries] == [("Solo", 5)]
+    assert [(e["player_name"], e["value"]) for e in entries] == [(solo, best)]
 
     # A second named game from the same player still leaves one entry.
     worse = 3 if board.direction == "desc" else 7
     assert play(worse) == {"rank": 1, "is_best": False}
     entries = _board(client, path, sid)["entries"]
-    assert [(e["player_name"], e["value"]) for e in entries] == [("Solo", 5)]
+    assert [(e["player_name"], e["value"]) for e in entries] == [(solo, best)]
 
 
 # ---------------------------------------------------------------------------
@@ -1068,9 +1097,8 @@ def _db_error() -> Exception:
 
 
 class _NoRow:
-    # ``set_display_name`` (#2675) reads its upsert's rowcount instead of a
-    # pre-read; these tests only exercise the commit/execute failure paths,
-    # so the value itself is irrelevant.
+    # These tests only exercise the commit/execute failure paths, so the
+    # value itself is irrelevant.
     rowcount = 0
 
     def scalar_one_or_none(self) -> None:

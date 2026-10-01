@@ -162,8 +162,8 @@
     "notes": null
   },
   "namePrompt.label": {
-    "component": "GameResultModal (SubmissionLine → DisplayNameField)",
-    "description": "Label for the one-time display-name prompt shown in the result card's submission slot, before a first score can be saved to a leaderboard.",
+    "component": "GameResultModal (SubmissionLine → JoinLeaderboardsPrompt)",
+    "description": "Title of the one-time prompt in the result card's submission slot, asking whether to join the public leaderboards.",
     "tone": "neutral, inviting",
     "characterLimit": 51,
     "placeholders": [],
@@ -171,13 +171,31 @@
     "notes": null
   },
   "namePrompt.helper": {
-    "component": "GameResultModal (SubmissionLine → DisplayNameField)",
-    "description": "Helper text under the one-time display-name prompt on the result card.",
+    "component": "GameResultModal (SubmissionLine → JoinLeaderboardsPrompt)",
+    "description": "Helper text under the one-time join prompt: the name is generated, and can be changed or the boards left later in Profile.",
     "tone": "neutral, reassuring",
-    "characterLimit": 68,
+    "characterLimit": 96,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": "Refers to the Profile screen, where the name can be changed later."
+    "notes": "Refers to the Profile screen."
+  },
+  "namePrompt.join": {
+    "component": "GameResultModal (SubmissionLine → JoinLeaderboardsPrompt)",
+    "description": "Button (and accessibility label) in the result card's one-time prompt that joins the public leaderboards.",
+    "tone": "functional",
+    "characterLimit": 32,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "namePrompt.joinError": {
+    "component": "GameResultModal (SubmissionLine → JoinLeaderboardsPrompt)",
+    "description": "Error shown under the result card's join prompt when the join couldn't be stored.",
+    "tone": "apologetic, clear",
+    "characterLimit": 72,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
   },
   "a11y.announce": {
     "component": "GameResultModal (useResultFeedback)",

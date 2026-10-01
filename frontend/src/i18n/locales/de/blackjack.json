@@ -59,7 +59,6 @@
   "betting.tapToAdd": "Chips antippen zum Wetten",
   "chip.addLabel": "{{amount}} zum Einsatz hinzufügen",
   "chip.disabledLabel": "{{amount}}-Chip nicht verfügbar",
-  "chip.vipCredits": "VIP",
   "rules.title": "Tischregeln",
   "rules.toggleLabel": "Tischregeln umschalten",
   "rules.dealerSoft17": "Dealer weiche 17",

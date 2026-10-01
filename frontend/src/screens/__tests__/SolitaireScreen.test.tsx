@@ -95,7 +95,7 @@ jest.mock("../../api/stats", () => ({
   statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
 }));
 jest.mock("../../api/players", () => ({
-  playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
+  playersApi: { putMe: jest.fn(() => Promise.resolve({ display_name: "Brave Otter 4821" })) },
 }));
 // The hook's foreground clock (#2684) is held still by the shared mock
 // jest.setup.ts pins (#2710), so the summaries below carry only what the
@@ -860,19 +860,16 @@ describe("SolitaireScreen — result card (#2509)", () => {
     );
   });
 
-  it("asks for a display name once when none is set, then shows the rank", async () => {
+  it("asks the player to join once when not on the boards, then shows the rank", async () => {
     const api = await winNow();
-    const input = await api.findByLabelText("Pick a display name for leaderboards");
+    const join = await api.findByRole("button", { name: "Join leaderboards" });
     expect(mockGetGameRank).not.toHaveBeenCalled();
 
     await act(async () => {
-      await fireEvent.changeText(input, "Alice");
-    });
-    await act(async () => {
-      await fireEvent.press(api.getByRole("button", { name: "Save" }));
+      await fireEvent.press(join);
     });
     await waitFor(() => {
-      expect(api.getByText("Saved as Alice · #3 on the leaderboard")).toBeTruthy();
+      expect(api.getByText("Saved as Brave Otter 4821 · #3 on the leaderboard")).toBeTruthy();
     });
     expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
   });
@@ -899,11 +896,18 @@ describe("SolitaireScreen — result card (#2509)", () => {
     const api = await mountOneMoveFromWin();
     await playWinningMove(api);
 
-    // The cascade plays over the board before the card appears.
+    // The cascade plays over the board before the card appears (#2201): it is
+    // on screen while the result card (a native Modal) is not mounted at all.
+    // (The cascade is decorative, hidden from screen readers, so the query
+    // has to include hidden elements.)
+    const hidden = { includeHiddenElements: true };
+    expect(await api.findByTestId("solitaire-win-cascade", hidden)).toBeTruthy();
     expect(api.queryByTestId("solitaire-result")).toBeNull();
     const card = within(
       await api.findByTestId("solitaire-result", undefined, { timeout: WIN_CASCADE_MS + 2000 })
     );
+    // …and is gone once the card is up, so nothing plays underneath it.
+    expect(api.queryByTestId("solitaire-win-cascade", hidden)).toBeNull();
 
     // 61 s beats the 90 s best. The loaded game's clock runs from the load
     // (#2750), so the win adds the few ms the test itself takes.

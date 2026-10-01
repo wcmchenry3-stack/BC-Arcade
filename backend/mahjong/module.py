@@ -6,9 +6,9 @@ structural subtyping — no inheritance required.
 
 from __future__ import annotations
 
-from games.board import SCORE_METRIC, BoardDefinition
+from games.board import DURATION_METRIC, BoardDefinition
 from games.protocol import default_stats_shape
-from mahjong.models import MahjongMetadata, MahjongResult
+from mahjong.models import LAYOUTS, MIN_CLEAR_MS, MahjongMetadata, MahjongResult
 from vocab import GameType
 
 
@@ -21,12 +21,22 @@ class MahjongModule:
     # ``won: true`` (a cleared board) is stored as ``win`` (#2703,
     # games.legacy_outcomes), the rest stay ``completed``: no winner.
     has_winner = True
-    # 72 pairs x SCORE_PER_PAIR (10) + SCORE_COMPLETE_BONUS (500); every layout
-    # is 144 tiles. Recomputed from the engine in tests/test_board_definitions.py.
-    # qualifying_outcomes stays None: a deadlocked game is recorded as a loss
-    # with no ``final_score``, so it can't rank on a ``final_score`` board anyway.
+    # Fastest clear wins (#2747): the play time of a cleared board
+    # (``games.duration_ms``, the app's pausable play clock), lower is better,
+    # one board per layout. Only wins rank: a deadlock is a ``loss`` and a
+    # legacy ``completed`` row was never cleared. A clear under MIN_CLEAR_MS
+    # (or with no duration) is stored but never ranks. Rows from before #2627
+    # carry no ``layout``; there is deliberately no ``partition_defaults``
+    # entry for it, so they rank on no board rather than on Turtle's, which
+    # they may never have been played on.
     board = BoardDefinition(
-        metric=SCORE_METRIC, direction="desc", label_key="score", max_value=1220
+        metric=DURATION_METRIC,
+        direction="asc",
+        label_key="time",
+        partitions=("layout",),
+        partition_values=(("layout", LAYOUTS),),
+        min_value=MIN_CLEAR_MS,
+        qualifying_outcomes=("win",),
     )
 
     def stats_shape(self, raw_stats: dict) -> dict:

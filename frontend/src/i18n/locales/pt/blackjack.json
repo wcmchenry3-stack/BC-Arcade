@@ -59,7 +59,6 @@
   "betting.tapToAdd": "Toque nas fichas para apostar",
   "chip.addLabel": "Adicionar {{amount}} à aposta",
   "chip.disabledLabel": "Ficha de {{amount}} indisponível",
-  "chip.vipCredits": "VIP",
   "rules.title": "Regras da mesa",
   "rules.toggleLabel": "Alternar regras da mesa",
   "rules.dealerSoft17": "Dealer 17 suave",

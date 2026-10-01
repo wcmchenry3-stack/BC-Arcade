@@ -36,6 +36,16 @@ describe("oracle table codec", () => {
     }
   });
 
+  it("round-trips the widest possible jumps between neighbours exactly", () => {
+    // The delta + zigzag step must survive 0 → max → 0 swings (unreachable
+    // zero slots sit next to real values in the table).
+    const original = [0, 655.35, 0, 655.35, 655.34, 0.01, 0, 327.68, 327.67, 0];
+    const decoded = decodeOracleTable(encodeOracleTable(original), original.length);
+    original.forEach((v, i) =>
+      expect(Math.round(decoded[i]! * ORACLE_TABLE_SCALE)).toBe(Math.round(v * ORACLE_TABLE_SCALE))
+    );
+  });
+
   it("rejects values outside the Uint16 range", () => {
     expect(() => encodeOracleTable([-1])).toThrow(/out of Uint16 range/);
     expect(() => encodeOracleTable([700])).toThrow(/out of Uint16 range/);

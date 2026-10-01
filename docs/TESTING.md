@@ -69,6 +69,12 @@ backend/tests/
 
 ## Frontend
 
+Localization architecture, locale/namespace contributor workflow, formatting
+rules, and the purpose of the i18n guards are canonicalized in
+[I18N.md](I18N.md). This testing guide should document how to run the checks,
+not duplicate the product localization contract.
+
+
 ### Setup
 
 ```bash
@@ -130,6 +136,14 @@ frontend/src/
 - Every fruit has non-empty name, emoji, and color
 - Radii increase monotonically with tier
 - Radii are identical across all sets for the same tier (physics skin-agnostic)
+
+**releaseBuildConfig.test.ts** (#2783)
+
+- Store build exposes exactly the seven free games: `App.tsx` registers only free/shared routes, premium routes come only from `visiblePremiumRoutes()`
+- No purchase/paywall/IAP dependency, screen or route; no deep-link surface (no `linking` config, no Android VIEW intent-filter)
+- `.env.production` targets exactly the production API; gradle config hard-codes no dev API
+- Android release-signing guard is present and only the CI smoke build opts out
+- Manual evidence for the rest of the release check: `docs/RELEASE-ACCEPTANCE-v1.0.md`
 
 ### Notes
 
@@ -274,7 +288,7 @@ bot can win a dice game on luck while playing badly, or lose while playing
 perfectly. The regret metric grades individual decisions instead: for each
 hold or category choice the AI makes, "EV-loss" is `optimalEV - chosenEV`,
 computed against the exact ground-truth oracle (`frontend/src/game/yacht/oracle/`,
-[`docs/YACHT_ORACLE.md`](YACHT_ORACLE.md)) — the Yacht analogue of chess's
+[`docs/research/YACHT_ORACLE.md`](research/YACHT_ORACLE.md)) — the Yacht analogue of chess's
 average centipawn loss. Implementation: `oracle/regret.ts` (per-decision
 EV-loss + blunder banding) and `oracle/regretAggregate.ts` (summaries,
 worst-decision tail, and a Welch's-t-test significance check), unit-tested in
@@ -691,6 +705,23 @@ The noise ladder still holds on noise plays: Cautious − Schemer is +476
 [450, 503] and Schemer − Daring +232 [217, 246]. Each mistake is cheaper and
 less often a blunder; the personas simply make more of them.
 
+### Star Swarm Buddy balance simulation (#2880)
+
+This is a seeded, headless harness over the real Star Swarm engine. An autoplayed player,
+invincible or not, fights while Buddy is launched through the real power-up path. The harness
+reports, per difficulty × wave type:
+
+- Buddy's destruction rate and killers, and its HP;
+- the shots it draws, and whether they hit;
+- its damage and kill share, and its per-sortie kills and share of the fleet;
+- the Carrier's time-to-kill, with and without Buddy, on the same seeds.
+
+It lives in `frontend/src/game/starswarm/sim/`, and its CLI is `scripts/simulate-starswarm.ts`. A
+fast smoke preset runs with the normal jest suite. The full runs use the CLI
+(`npx tsx scripts/simulate-starswarm.ts --preset baseline --jobs 4`). How to run it, shard it and
+override tuning in the sim only:
+[starswarm.md → Balance simulation](games/starswarm.md#balance-simulation-2880).
+
 ## Manual repros
 
 ### Hearts: tab-switch state preservation (#745)
@@ -808,7 +839,7 @@ pre-launch API (#2567, as Hearts does), so store builds never show it.
    _Flak off_ removes the enemy's other defence so only dodging is in play. _Enemy missiles off_
    silences flak too (it is an enemy bullet), so leave it on when measuring flak.
 5. _Kill escorts_ destroys every non-Carrier ship at once, which is the fastest way to reach the
-   Carrier's exposed state, its lone twin lasers and the plating drop.
+   Carrier's final stand (#2843: fast twin lasers, beams and attack runs) and the plating drop.
 6. The panel refreshes 4× a second from a timer; the game keeps running underneath, so pause
    (header button) when you want a still reading.
 

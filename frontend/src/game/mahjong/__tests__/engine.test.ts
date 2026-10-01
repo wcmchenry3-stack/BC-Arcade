@@ -5,6 +5,9 @@
  */
 
 import {
+  MAHJONG_MIN_CLEAR_MS,
+  nextBestTime,
+  plausibleBestMs,
   createGame,
   createSeededRng,
   elapsedMs,
@@ -1205,5 +1208,34 @@ describe.each(LAYOUTS.map((m) => m.id))("createGame — %s", (id) => {
 
   it("initial board has at least one free pair", () => {
     expect(hasFreePairs(state.tiles)).toBe(true);
+  });
+});
+
+describe("device best time (#2747)", () => {
+  it("uses the backend's ranking floor: half a second per pair", () => {
+    expect(MAHJONG_MIN_CLEAR_MS).toBe(72 * 500);
+  });
+
+  it("treats a time under the floor as no best", () => {
+    expect(plausibleBestMs(35_999)).toBe(0);
+    expect(plausibleBestMs(0)).toBe(0);
+    expect(plausibleBestMs(Number.NaN)).toBe(0);
+    expect(plausibleBestMs(36_000)).toBe(36_000);
+  });
+
+  it("keeps the fastest plausible clear", () => {
+    expect(nextBestTime(0, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: true });
+    expect(nextBestTime(90_000, 60_000)).toEqual({ bestTimeMs: 60_000, isNewBest: true });
+    expect(nextBestTime(60_000, 90_000)).toEqual({ bestTimeMs: 60_000, isNewBest: false });
+    expect(nextBestTime(60_000, 60_000)).toEqual({ bestTimeMs: 60_000, isNewBest: false });
+  });
+
+  it("never takes a clear under the floor as a best", () => {
+    expect(nextBestTime(0, 5_000)).toEqual({ bestTimeMs: 0, isNewBest: false });
+    expect(nextBestTime(90_000, 5_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
+  });
+
+  it("ignores a stored best under the floor, so a real clear beats it", () => {
+    expect(nextBestTime(4_000, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: true });
   });
 });

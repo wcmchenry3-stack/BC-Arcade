@@ -24,11 +24,21 @@ jest.mock("../../game/_shared/displayNameSync", () => ({
   clearDisplayNameSync: jest.fn(async () => {
     mockCalls.push("clearDisplayNameSync");
   }),
+  forgetSyncedDisplayName: jest.fn(async () => {
+    mockCalls.push("forgetSyncedDisplayName");
+  }),
 }));
+const mockClearDisplayName = jest.fn(async () => {
+  mockCalls.push("clearDisplayName");
+  return true;
+});
 jest.mock("../../game/_shared/displayName", () => ({
-  clearDisplayName: jest.fn(async () => {
-    mockCalls.push("clearDisplayName");
-    return true;
+  clearDisplayName: () => mockClearDisplayName(),
+}));
+jest.mock("../../game/_shared/session", () => ({
+  ...jest.requireActual("../../game/_shared/session"),
+  clearSession: jest.fn(async () => {
+    mockCalls.push("clearSession");
   }),
 }));
 
@@ -172,6 +182,52 @@ describe("SettingsScreen", () => {
       mockCalls.indexOf("deleteMyData")
     );
     expect(mockCalls.indexOf("deleteMyData")).toBeLessThan(mockCalls.indexOf("clearDisplayName"));
+  });
+
+  it("Delete my data clears the local name before the session, and the synced marker only after the server delete (#2778)", async () => {
+    mockCalls.length = 0;
+    await renderScreen();
+    await fireEvent.press(screen.getByTestId("delete-data-button"));
+    await fireEvent.press(screen.getByTestId("delete-data-confirm"));
+    await waitFor(() => expect(mockCalls).toContain("clearSession"));
+    expect(mockCalls.indexOf("clearDisplayName")).toBeLessThan(mockCalls.indexOf("clearSession"));
+    expect(mockCalls.indexOf("deleteMyData")).toBeLessThan(
+      mockCalls.indexOf("forgetSyncedDisplayName")
+    );
+  });
+
+  it("Delete my data stops and shows an error when the local name can't be cleared (#2778)", async () => {
+    mockCalls.length = 0;
+    mockClearDisplayName.mockImplementationOnce(async () => {
+      mockCalls.push("clearDisplayName");
+      return false;
+    });
+    await renderScreen();
+    await fireEvent.press(screen.getByTestId("delete-data-button"));
+    await fireEvent.press(screen.getByTestId("delete-data-confirm"));
+    await waitFor(() =>
+      expect(screen.getByText("Deletion failed — please try again")).toBeTruthy()
+    );
+    expect(mockCalls).toContain("clearDisplayName");
+    expect(mockCalls).not.toContain("clearSession");
+    expect(mockCalls).not.toContain("forgetSyncedDisplayName");
+  });
+
+  it("Delete my data keeps the synced marker when the server delete fails (#2778)", async () => {
+    mockCalls.length = 0;
+    const { statsApi } = jest.requireMock("../../api/stats");
+    (statsApi.deleteMyData as jest.Mock).mockImplementationOnce(async () => {
+      mockCalls.push("deleteMyData");
+      throw new Error("offline");
+    });
+    await renderScreen();
+    await fireEvent.press(screen.getByTestId("delete-data-button"));
+    await fireEvent.press(screen.getByTestId("delete-data-confirm"));
+    await waitFor(() =>
+      expect(screen.getByText("Deletion failed — please try again")).toBeTruthy()
+    );
+    expect(mockCalls).not.toContain("forgetSyncedDisplayName");
+    expect(mockCalls).not.toContain("clearSession");
   });
 
   it("Delete my data forgets the stats screen's remembered /stats/me (#2635)", async () => {

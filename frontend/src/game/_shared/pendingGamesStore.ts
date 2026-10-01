@@ -88,6 +88,19 @@ export interface PendingGame {
    * a corrupted or older-build value on disk is never trusted blindly.
    */
   progressOutcome?: "win" | null;
+  /**
+   * The game's progress-snapshot result block at the last "win" override
+   * (#2745), e.g. Blackjack's closing chips. Optional and per game: only a
+   * game whose snapshot reports both a win and a `result` has one. The sweep
+   * attaches it to the `win` it records, so the server gets what the
+   * in-process abandon would have sent. Cleared with the override.
+   */
+  progressResult?: Record<string, unknown> | null;
+}
+
+/** A plain JSON object (not null, not an array). */
+export function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -367,12 +380,28 @@ export class PendingGamesStore {
    * Record the outcome override a killed-process sweep should use for this
    * game in place of `abandoned` (#2682) — set from the game's registered
    * progress snapshot while it plays, so it survives the process that set it.
-   * No-op on a completed game (nothing left to sweep).
+   * `result`, when given with a "win", is the snapshot's result block, kept
+   * for the sweep to attach (#2745); a null outcome clears it. Writes only
+   * when something changed. No-op on a completed game (nothing left to sweep).
    */
-  setProgressOutcome(gameId: string, outcome: "win" | null): Promise<void> {
+  setProgressOutcome(
+    gameId: string,
+    outcome: "win" | null,
+    result?: Record<string, unknown> | null
+  ): Promise<void> {
     const game = this.games.get(gameId);
-    if (!game || game.completed || game.progressOutcome === outcome) return Promise.resolve();
+    if (!game || game.completed) return Promise.resolve();
+    const nextResult = outcome === "win" && isPlainRecord(result) ? { ...result } : null;
+    const prevResult = game.progressResult ?? null;
+    if (
+      game.progressOutcome === outcome &&
+      JSON.stringify(prevResult) === JSON.stringify(nextResult)
+    ) {
+      return Promise.resolve();
+    }
     game.progressOutcome = outcome;
+    if (nextResult !== null) game.progressResult = nextResult;
+    else delete game.progressResult;
     return this.persist();
   }
 

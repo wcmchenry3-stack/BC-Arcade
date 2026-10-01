@@ -2,7 +2,7 @@
  * mahjong-tile-interaction.spec.ts — GH #1146
  *
  * Tile interaction: tap the canvas at several locations, confirm the HUD
- * (SCORE / PAIRS) remains visible and no error alert is raised.
+ * (TIME / PAIRS) remains visible and no error alert is raised.
  *
  * Canvas layout is non-deterministic, so assertions target HUD visibility
  * and crash-freedom rather than specific tile-match outcomes.
@@ -34,7 +34,7 @@ test.describe("Mahjong — tile interaction", () => {
       await page.mouse.click(cx - 40, cy);
       await page.mouse.click(cx + 40, cy);
     }
-    await expect(page.getByText(/^SCORE\s+\d/).first()).toBeVisible();
+    await expect(page.getByText(/^TIME\s+\d+:\d{2}$/).first()).toBeVisible();
     await expect(page.getByText(/^PAIRS\s+\d/).first()).toBeVisible();
     await expect(page.getByRole("alert")).not.toBeAttached();
   });

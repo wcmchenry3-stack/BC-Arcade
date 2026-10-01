@@ -153,9 +153,11 @@ test.describe("Mahjong — layout select screen", () => {
       .waitFor({ timeout: 10_000 });
 
     // With a saved game, the app resumes directly in play view (no layout select).
-    await expect(page.getByText(/^SCORE\s+70/).first()).toBeVisible({
+    // The clock carries the 35 s banked in the save (#2747); it never resets.
+    await expect(page.getByText(/^TIME\s+\d+:\d{2}$/).first()).toBeVisible({
       timeout: 10_000,
     });
+    await expect(page.getByText(/^TIME\s+0:[0-2]\d$/)).toHaveCount(0);
     await expect(page.getByText(/^PAIRS\s+7\/72/).first()).toBeVisible({
       timeout: 5_000,
     });
@@ -176,9 +178,11 @@ test.describe("Mahjong — layout select screen", () => {
       .waitFor({ timeout: 10_000 });
 
     // State should survive the restart.
-    await expect(page.getByText(/^SCORE\s+70/).first()).toBeVisible({
+    // The clock carries the 35 s banked in the save (#2747); it never resets.
+    await expect(page.getByText(/^TIME\s+\d+:\d{2}$/).first()).toBeVisible({
       timeout: 10_000,
     });
+    await expect(page.getByText(/^TIME\s+0:[0-2]\d$/)).toHaveCount(0);
     await expect(page.getByText(/^PAIRS\s+7\/72/).first()).toBeVisible({
       timeout: 5_000,
     });

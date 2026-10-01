@@ -1,4 +1,6 @@
-import React, { createContext, useCallback, useContext, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { AppState } from "react-native";
+import type { AppStateStatus } from "react-native";
 import Animated from "react-native-reanimated";
 import { useSharedValue, useAnimatedRef, runOnJS, withSpring } from "react-native-reanimated";
 import type { SharedValue, AnimatedRef } from "react-native-reanimated";
@@ -69,9 +71,16 @@ export interface DragContextValue {
   containerRef: AnimatedRef<Animated.View>;
 
   // JS-thread actions
-  startDrag: (source: DragSource, cards: DragCard[]) => void;
+  /** Starts a drag and returns its state, which identifies it to `cancelDrag`. */
+  startDrag: (source: DragSource, cards: DragCard[]) => DragState;
   endDrag: (absoluteX: number, absoluteY: number) => void;
   snapBackAndClear: () => void;
+  /** Ends the current drag immediately (no spring-back) and invalidates any
+   *  snap-back still in flight. Used when a gesture can no longer report its
+   *  own end: the app leaves the foreground, or the dragged card unmounts.
+   *  With `only`, cancels only if that drag (from `startDrag`) is the
+   *  current one, so a card can't cancel another card's drag. */
+  cancelDrag: (reason: string, only?: DragState) => void;
 
   // Drop zone registry
   registerDropZone: (id: string, entry: DropZoneEntry) => void;
@@ -92,6 +101,11 @@ export function useDragContext(): DragContextValue {
 // ---------------------------------------------------------------------------
 
 const SNAP_SPRING = { duration: 250, dampingRatio: 0.8 };
+/** Clears a snap-back whose spring callback never arrives (an animation
+ *  dropped while the app was inactive, say). Longer than SNAP_SPRING so the
+ *  normal path always wins. */
+export const SNAP_BACK_FALLBACK_MS = 600;
+const EMPTY_IDS: ReadonlySet<string> = new Set();
 
 export interface DragProviderProps {
   children: React.ReactNode;
@@ -114,23 +128,86 @@ export function DragProvider({
   const containerOffsetX = useSharedValue(0);
   const containerOffsetY = useSharedValue(0);
   const containerRef = useAnimatedRef<Animated.View>();
-  // Incremented each time a new drag starts; the snap-back callback compares
-  // against the generation it captured to avoid clearing a superseding drag.
-  const dragGeneration = useSharedValue(0);
+  // Incremented each time a drag starts or is cancelled; a snap-back captures
+  // it and only clears if no newer drag has begun since (#2772).
+  //
+  // This MUST live on the JS thread. It used to be a shared value, but a JS
+  // write to a shared value is applied on the UI thread asynchronously and a
+  // JS read returns a cached copy until the UI thread has applied it. When a
+  // gesture's start and end reach the JS thread back to back (a short flick,
+  // a system-cancelled touch, or any moment the JS thread is busy — e.g. the
+  // pause/save work an iOS `inactive` transition now triggers, #2750),
+  // snapBackAndClear read the *old* generation while the spring callback on
+  // the UI thread compared against the *new* one, so clearDrag never ran:
+  // the ghost card froze on screen and every drop target kept its highlight.
+  const dragGenRef = useRef(0);
+  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dropZonesRef = useRef<Map<string, DropZoneEntry>>(new Map());
   const dropZoneBoundsRef = useRef<Map<string, CachedDropZone>>(new Map());
   const dragStateRef = useRef<DragState | null>(null);
 
-  const clearDrag = useCallback(() => {
-    setDragState(null);
-    setLegalTargetIds(new Set());
-    dragStateRef.current = null;
+  const cancelFallback = useCallback(() => {
+    if (fallbackTimerRef.current !== null) {
+      clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
   }, []);
+
+  const clearDrag = useCallback(() => {
+    cancelFallback();
+    setDragState(null);
+    setLegalTargetIds(EMPTY_IDS as Set<string>);
+    dragStateRef.current = null;
+  }, [cancelFallback]);
+
+  /** Clears only if no newer drag started since `gen` was captured. */
+  const clearIfCurrent = useCallback(
+    (gen: number) => {
+      if (dragGenRef.current === gen) clearDrag();
+    },
+    [clearDrag]
+  );
+
+  const cancelDrag = useCallback(
+    (reason: string, only?: DragState) => {
+      if (dragStateRef.current === null) return;
+      if (only !== undefined && dragStateRef.current !== only) return;
+      const source = dragStateRef.current.source;
+      dragGenRef.current += 1;
+      // Park the ghost at the origin so nothing can flash at the last finger
+      // position before the next drag's own onStart writes.
+      cardX.value = originX.value;
+      cardY.value = originY.value;
+      clearDrag();
+      Sentry.addBreadcrumb({
+        category: "drag",
+        level: "info",
+        message: "drag.cancelled",
+        data: { reason, source: JSON.stringify(source) },
+      });
+    },
+    [cardX, cardY, clearDrag, originX, originY]
+  );
+
+  // The app leaving the foreground mid-drag (iOS `inactive` for Control
+  // Center, a notification, an edge swipe; or `background`) cancels the touch
+  // natively, but that cancel can be lost while the JS thread is suspended or
+  // busy with the pause/save work. Drop any drag outright so nothing is left
+  // floating on return (#2772).
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
+      if (next !== "active") cancelDrag(`appState:${next}`);
+    });
+    return () => sub?.remove();
+  }, [cancelDrag]);
+
+  useEffect(() => cancelFallback, [cancelFallback]);
 
   const startDrag = useCallback(
     (source: DragSource, cards: DragCard[]) => {
-      dragGeneration.value += 1;
+      dragGenRef.current += 1;
+      cancelFallback();
       const state: DragState = { cards, source };
       dragStateRef.current = state;
       setDragState(state);
@@ -158,23 +235,31 @@ export function DragProvider({
           boundsPreRefresh: zonesWithBounds,
         },
       });
+      return state;
     },
-    [dragGeneration, getLegalDropIds]
+    [cancelFallback, getLegalDropIds]
   );
 
   const snapBackAndClear = useCallback(() => {
-    // Capture the generation at the moment snap-back starts. If a new drag
-    // begins before the spring callback fires (interrupting it), the generation
-    // will have incremented and clearDrag will be skipped — the new drag's own
-    // lifecycle owns the cleanup. Without this guard, the snap-back callback
-    // could clear a drag that started after this one.
-    const gen = dragGeneration.value;
+    // Nothing to return: the drop already cleared it (onFinalize after an
+    // accepted onEnd), or it was cancelled.
+    if (dragStateRef.current === null) return;
+    // Capture the generation on the JS thread (see dragGenRef). If a new drag
+    // begins before the spring finishes, the generation moves on and this
+    // snap-back's clear is skipped — the new drag owns the state now.
+    const gen = dragGenRef.current;
     cardX.value = withSpring(originX.value, SNAP_SPRING);
     cardY.value = withSpring(originY.value, SNAP_SPRING, () => {
       "worklet";
-      if (dragGeneration.value === gen) runOnJS(clearDrag)();
+      runOnJS(clearIfCurrent)(gen);
     });
-  }, [cardX, cardY, clearDrag, dragGeneration, originX, originY]);
+    // Never let a lost spring callback strand the drag.
+    cancelFallback();
+    fallbackTimerRef.current = setTimeout(() => {
+      fallbackTimerRef.current = null;
+      clearIfCurrent(gen);
+    }, SNAP_BACK_FALLBACK_MS);
+  }, [cancelFallback, cardX, cardY, clearIfCurrent, originX, originY]);
 
   const endDrag = useCallback(
     (absoluteX: number, absoluteY: number) => {
@@ -334,6 +419,7 @@ export function DragProvider({
     startDrag,
     endDrag,
     snapBackAndClear,
+    cancelDrag,
     registerDropZone,
     unregisterDropZone,
     updateDropZoneLayout,

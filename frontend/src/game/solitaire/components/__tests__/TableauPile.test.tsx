@@ -1,9 +1,12 @@
 import React from "react";
+import { StyleSheet } from "react-native";
 import { render, fireEvent } from "@testing-library/react-native";
 
 import { ThemeProvider } from "../../../../theme/ThemeContext";
 import type { Card, Rank, Suit } from "../../types";
-import TableauPile from "../TableauPile";
+import TableauPile, { computeTableauOffsets, MIN_FACE_UP_STRIPE } from "../TableauPile";
+import { CARD_WIDTH } from "../CardView";
+import { CardSizeContext, computeCardSize, MIN_CARD_W } from "../../../_shared/CardSizeContext";
 import { DragProvider } from "../../../_shared/drag/DragContext";
 
 function withTheme(children: React.ReactNode) {
@@ -108,5 +111,36 @@ describe("TableauPile — hitSlop on buried cards (#1248)", () => {
     const { getByTestId } = await render(withTheme(<TableauPile pile={pile} colIndex={0} />));
     expect(getByTestId("solitaire-tableau-0-card-0")).toBeTruthy();
     expect(getByTestId("solitaire-tableau-0-card-1")).toBeTruthy();
+  });
+});
+
+describe("TableauPile — covered-card stripe floor (#2220)", () => {
+  it("never lets a face-up stripe drop below 24 px, even at the minimum card width", () => {
+    for (let width = MIN_CARD_W; width <= CARD_WIDTH; width++) {
+      expect(computeTableauOffsets(width).faceUpOffset).toBeGreaterThanOrEqual(MIN_FACE_UP_STRIPE);
+    }
+    // Natural size is unchanged.
+    expect(computeTableauOffsets(CARD_WIDTH)).toEqual({ faceUpOffset: 28, faceDownOffset: 20 });
+  });
+
+  it("uses the floor for every covered face-up card on a narrow phone", async () => {
+    // Solitaire's card width on a 320 dp screen.
+    const { cardWidth, cardHeight } = computeCardSize(320, CARD_WIDTH, 74, 7, 6, 24);
+    const pile = [card("spades", 9, false), card("hearts", 8), card("clubs", 7), card("hearts", 6)];
+    const { getByTestId } = await render(
+      withTheme(
+        <CardSizeContext.Provider value={{ cardWidth, cardHeight }}>
+          <TableauPile pile={pile} colIndex={0} />
+        </CardSizeContext.Provider>
+      )
+    );
+    const top = (i: number) =>
+      (
+        StyleSheet.flatten(getByTestId(`solitaire-tableau-0-card-${i}`).props.style) as {
+          top: number;
+        }
+      ).top;
+    expect(top(2) - top(1)).toBeGreaterThanOrEqual(MIN_FACE_UP_STRIPE);
+    expect(top(3) - top(2)).toBeGreaterThanOrEqual(MIN_FACE_UP_STRIPE);
   });
 });

@@ -28,3 +28,12 @@ export type PremiumRouteName = PremiumRoute["route"];
 export function visiblePremiumRoutes(): PremiumRoute[] {
   return PREMIUM_ROUTES.filter(({ slug }) => isGameVisible(slug));
 }
+
+/**
+ * The route that opens a premium game (its first registered route), used to
+ * land the player in the game once it is unlocked. Undefined for a slug that
+ * has no premium route.
+ */
+export function entryRouteForSlug(slug: string): PremiumRouteName | undefined {
+  return PREMIUM_ROUTES.find((r) => r.slug === slug)?.route;
+}

@@ -4,6 +4,13 @@ This document is policy. It applies to every game shipped in this repo. New game
 must be designed to fit; existing games that don't fit are tracked in linked
 issues for migration.
 
+Use this file for **system ownership and data-flow boundaries**. Use
+[GAME-CONTRACT.md](GAME-CONTRACT.md) for the normative game/session integration
+contract, [GAMEPLAY_STANDARDS.md](GAMEPLAY_STANDARDS.md) for shared gameplay/UI
+engineering rules, and the per-game files under [docs/games/](games/) for actual
+gameplay rules. Dedicated subsystem documents should own their detailed product
+rules rather than duplicating them here.
+
 ## 1. Core principle
 
 **Offline-first single-player. Server-authoritative multi-player.**
@@ -26,7 +33,7 @@ different trust model and is treated separately.
 ### 2.2 The server owns
 
 - Persistence: game records, final scores, event logs.
-- Identity and auth (when introduced).
+- Pseudonymous install identity (`X-Session-ID`) and the optional, server-generated leaderboard name (#2778); account authentication remains future work.
 - **Boundary security:** input validation, payload size caps, rate limits,
   content sanitization, ORM-only DB access. The OWASP layer stays even though
   rule enforcement leaves. See §6.
@@ -38,6 +45,70 @@ different trust model and is treated separately.
 - Validate game rules.
 - Recompute scores from event logs.
 - Hold in-memory session state for single-player games.
+
+## 2.4 Backend map
+
+The backend is a **shared reporting/persistence service**, not twelve separate
+game servers.
+
+`backend/main.py` creates the FastAPI application and mounts a small set of
+shared product routers plus the few game-specific services that genuinely need
+server behavior.
+
+| Area | Location | Responsibility |
+| --- | --- | --- |
+| Shared game sessions | `backend/games/` | Create/complete games, append events, ranking, board definitions, progression helpers, shared schemas |
+| Game vocabulary | `backend/vocab.py` | Canonical `GameType` and `GameOutcome` vocabulary |
+| Database | `backend/db/` | SQLAlchemy engine/session setup and persisted models |
+| Schema migrations | `backend/alembic/` | The only production schema-evolution path |
+| Stats / Profile data | `backend/stats/` | Cross-game and per-game aggregates over shared session rows |
+| Player display name | `backend/players/` | Opt-in leaderboard membership and the server-generated public name for the pseudonymous player id (#2778) |
+| Entitlements | `backend/entitlements/` | Which premium games the current session may open |
+| Daily Challenge | `backend/daily_challenge/` | Frozen daily goal schedules, evaluation and streak derivation |
+| Daily Word | `backend/daily_word/` | Daily puzzle/guess service, one of the deliberate server-side gameplay exceptions |
+| Internal bug logs | `backend/logs/` | Session-linked diagnostic log ingestion |
+| Delete-my-data | `backend/me/` | Player/session data deletion |
+| Bottle Sort level service | `backend/sort/` | Generated/verified level sets |
+| Per-game descriptors | `backend/<game>/module.py` | `GameModule` metadata/result models, winner semantics, board definition and Stats shaping—not a second rule engine |
+
+Most per-game backend directories are **descriptors**, not gameplay services.
+A normal single-player game's rules stay in the TypeScript engine on the
+client. Adding a Python module for a game does not mean the server replays or
+validates that game's moves.
+
+### One game module contract
+
+Every registered game exposes a `GameModule` that tells the shared backend:
+
+- its canonical game type;
+- whether the game has a winner concept;
+- how creation metadata/result data are validated;
+- how its public board / Stats "Best" value are defined;
+- any game-specific Stats shaping.
+
+The normative protocol, route behavior, outcome vocabulary, and new-game
+checklist live in [GAME-CONTRACT.md](GAME-CONTRACT.md). This architecture file
+does not duplicate them.
+
+### Generated backend → frontend vocabulary
+
+`backend/scripts/gen_vocab_ts.py` generates shared product vocabulary into
+`frontend/src/api/vocab.ts`, including values such as:
+
+- game/outcome vocabulary;
+- winner semantics;
+- board definitions.
+
+`backend/tests/test_vocab.py` is the drift guard. When the backend declaration
+changes, regenerate the client vocabulary rather than hand-maintaining a second
+configuration.
+
+### Persistence
+
+Production schema changes go through Alembic migrations. The production API
+uses Supabase as plain PostgreSQL; dev uses its separate Render Postgres
+database; local development/CI can use SQLite. Environment/deploy details belong
+in [RENDER.md](RENDER.md), not duplicated here.
 
 ## 3. The rule engine — written once
 
@@ -88,7 +159,7 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
   device, never re-sent); and `eventStore` drops rows older than 7 days and
   evicts over its cap (see "Queue cap" below). So a row that never got a 2xx
   can still leave the device.
-- `displayNameSync` — one pending display-name sync (see below).
+- `displayNameSync` — one pending leaderboard join or leave (see below).
 - `PendingGamesStore`, `eventStore` and `displayNameSync`
   (`pendingGamesStore.ts`, `eventStore.ts`, `displayNameSync.ts`) are
   AsyncStorage-backed and survive app kill. `useGameSync`'s and `SyncWorker`'s
@@ -104,29 +175,30 @@ AsyncStorage key is cleared at launch and by "Delete my data"
 `POST /daily-word/guess` checks each guess against the server's answer during
 play; it is not a result write.
 
-**Identity and display name (#2624, #2519 decisions 17–18).** A player is
-their player id: the app's `game_session_id`, sent as `X-Session-ID` (one per
-install; a reinstall or a new device is a new player until accounts, #1047).
-Their display name is a property of the player, not of a game: the server
-keeps one per player (`players` table, `PUT/GET/DELETE /players/me`), it can
-change at any time, and no history is kept. Every leaderboard ranks only
-players who have one, counts all of their finished games, and shows the
-current name, so a rename applies to all of their history at once. A player
-with no name is on no board.
+**Identity and leaderboard name (#2624, #2519 decisions 17–18, #2778).** A
+player is their player id: the app's `game_session_id`, sent as `X-Session-ID`
+(one per install; a reinstall or a new device is a new player until accounts,
+#1047). Their public name is a property of the player, not of a game, and it
+is **generated by the server, never typed** (decision record:
+[LEADERBOARD-IDENTITIES.md](LEADERBOARD-IDENTITIES.md)). The server keeps one
+per player (`players` table): `PUT /players/me` (no body) joins the boards and
+assigns a name such as "Brave Otter 4821", `POST /players/me/reroll` swaps it
+for another generated one, and `DELETE /players/me` leaves. Every leaderboard
+ranks only players who have joined, counts all of their finished games, and
+shows the current name, so a new name applies to all of their history at once.
+A player who hasn't joined is on no board.
 
-The app sends the name when it is saved (`saveDisplayName` →
-`PUT /players/me`). Offline or on failure it keeps **one** pending sync
-holding the latest name — five offline saves send one PUT — and flushes it on
-reconnect and foreground alongside the queues above; on launch, a stored name
-the server was never sent is synced once. Profile's "Remove my name from
-leaderboards" (#2637) first stores a removal (`DELETE /players/me`) in the
-same one-slot queue and only then forgets the name on the device, so the
-DELETE can't be lost (launch finishes a device clear a kill interrupted). The
-latest intent wins: a removal replaces an unsent name, a later save replaces
-an unsent removal, and an offline removal goes out on the next reconnect,
-foreground or launch; Profile shows it as pending until then. When the device
-has no name, Profile asks `GET /players/me` (online) and offers removal of a
-name the server still has. See `frontend/src/game/_shared/displayNameSync.ts`.
+The app keeps **one** pending intent, join or leave, in an AsyncStorage slot
+(`displayNameSync.ts`). The latest intent wins, and the slot is cleared only
+once the server confirms it. It is flushed on reconnect and foreground
+alongside the queues above, and on launch. A leave is stored in the slot
+before the device forgets the name, so the DELETE can't be lost (launch
+finishes a device clear a kill interrupted). The generated name reaches the
+device from the join's response. At launch (after the flush) and when Profile
+opens online, the device's copy is refreshed from `GET /players/me`, because
+the server is the source of truth: migration 0030 replaced typed names. A name
+typed on the device before #2624 that the server was never sent becomes a
+join, once. "Get a new name" is online only.
 
 **Safe replays (idempotency).** Retries are the normal case, so every write
 the app makes is safe to repeat (`backend/games/service.py` module docstring):
@@ -135,8 +207,9 @@ the app makes is safe to repeat (`backend/games/service.py` module docstring):
 can't be completed again — the first completion wins and a replayed
 `PATCH /games/{id}/complete` returns the row unchanged (`complete_game`), the
 one exception being a row the stale-session sweep closed (#2621, below), which
-a real completion replaces. `PUT /players/me` with the current name writes
-nothing, and `DELETE /players/me` without one deletes nothing (#2624). With the
+a real completion replaces. `PUT /players/me` from a player who has already
+joined keeps their name and writes nothing, and `DELETE /players/me` without
+one deletes nothing (#2624, #2778). With the
 name on the player there is no per-game name left to duplicate. The per-game
 `POST /<game>/score` routes, which inserted a row per call, were removed in
 #2644, and migrations 0026 and 0029 deleted the unattributable `*-anon` rows
@@ -148,6 +221,12 @@ What we log:
 - **Outcomes:** final score, completion / abandonment, duration, metadata.
 - **Gameplay event logs:** per-move or per-action records, useful for analytics
   and for diagnosing reported bugs.
+
+Player-submitted feedback, automatic Sentry diagnostics, and session-linked
+internal bug logs are separate channels. Their current data flows and privacy
+boundaries are documented in
+[FEEDBACK-OBSERVABILITY.md](FEEDBACK-OBSERVABILITY.md); this architecture
+section owns only the shared offline event/session pipeline.
 
 **Result envelope (#2449).** `PATCH /games/{id}/complete` accepts an optional
 `result` dict alongside `final_score` / `outcome` / `duration_ms`. Each game
@@ -315,22 +394,40 @@ we queue — not a signal to bump the cap.
 
 ## 5. Eviction policy
 
-When the queue is over budget, evict oldest entries from the lowest non-empty
-tier first.
+The queue's priority number controls **sync/processing order**, not a simple
+"evict P3 before P2 before P0" hierarchy. Capacity eviction deliberately
+protects lifecycle rows first and then uses age across the remaining pool.
 
-| Tier                   | Contents                                          | Eviction order        |
-| ---------------------- | ------------------------------------------------- | --------------------- |
-| **P0** (most precious) | High-priority bug reports / crashes               | last to evict         |
-| **P1**                 | Game outcomes (final score, completion, duration) | evicted after P2 / P3 |
-| **P2**                 | Low-priority bug reports / user feedback          | evicted after P3      |
-| **P3**                 | Normal gameplay event logs                        | first to evict        |
+When the queue exceeds either the 5,000-row or 5 MB cap:
 
-Bug priority is **assigned automatically by the client**, not by the user:
+1. **P1 lifecycle rows are protected while any non-P1 rows remain.** These
+   events describe the load-bearing game lifecycle (for example
+   `game_started`, `game_ended`, and `hand_resolved`).
+2. **P0 bug logs, P2 mid-tier events, and P3 granular events form one FIFO
+   eviction pool.** The oldest row in that combined pool is evicted first,
+   regardless of tier. A newer granular event can therefore outlive an older
+   bug log.
+3. **If the queue consists only of lifecycle rows, P1 is still FIFO-evictable.**
+   It is last-to-evict, not permanently immune to the hard cap.
+4. Rows older than the queue TTL are removed independently of capacity
+   eviction.
 
-- Unhandled crash, error, or hang → **P0**.
-- User-submitted feedback or in-app bug report → **P2**.
+This policy is intentional (#486) and is enforced by `eventStore.ts` plus the
+queue-cap tests. It replaced the older pure tier-walk policy because preserving
+fresh events sometimes requires evicting older nominally "higher-priority"
+rows.
 
-Users do not pick a priority. The client classifies.
+The current priority assignments still matter for batching/sync behavior:
+
+| Tier | Typical contents |
+| --- | --- |
+| **P0** | Bug logs |
+| **P1** | Lifecycle events |
+| **P2** | Mid-tier gameplay events such as score/bet/deal/merge |
+| **P3** | Granular gameplay events |
+
+Bug/event priority is assigned automatically by the client; users do not choose
+a priority.
 
 ## 6. Boundary security
 
@@ -401,8 +498,8 @@ issues are not authoritative.
 rules are the same for every game — most importantly **one entry per player**
 (#2519 decision 12): rows are grouped by player (`session_id`, the install,
 until accounts in #1047) and only each player's best row is listed and
-ranked, so a replay that doesn't beat it never appears. Only players with a
-display name rank (decisions 17–18). The rules and routes are in
+ranked, so a replay that doesn't beat it never appears. Only players who have joined the
+leaderboards rank, under a server-generated name (decisions 17–18, #2778). The rules and routes are in
 [GAME-CONTRACT.md — Leaderboard routes](GAME-CONTRACT.md#leaderboard-routes-2618);
 each game's board (metric, direction, partitions, cap) is in §1.3 there and
 in its own page under [`docs/games/`](games/). The per-game score and
@@ -415,30 +512,54 @@ BC Arcade has a server-authoritative premium access layer that is independent of
 game rule enforcement. Entitlements control _which games a session may open_, not
 how those games behave once open.
 
+How purchases feed this system (store verification, the `purchases` table, restore,
+refunds, the product catalog) is specified in [IAP.md](IAP.md). Purchases write
+`game_entitlements` rows; they do not add a second entitlement model.
+
 ### 10.1 How it works
 
-1. The client calls `GET /entitlements` on startup (and on foreground-resume if
-   the cached token is within 1 hour of expiry).
+1. The client calls `GET /entitlements` on startup and on every foreground-resume.
+   Purchase and restore responses also carry a fresh token ([IAP.md §8.2](IAP.md#82-endpoints)).
 2. The server returns an **RS256-signed JWT** containing:
    - `sub`: session_id
    - `entitled_games`: array of game slugs the session may access
    - `iat` / `exp`: issued-at and expiry (24-hour TTL)
 3. The token is cached in AsyncStorage by `EntitlementContext.tsx`.
 4. Before navigating to any premium game, the context checks `entitled_games`.
-   If the game is absent, the UI shows an upgrade prompt instead.
+   If the game is absent, the UI shows the paywall instead ([IAP.md §9](IAP.md#9-frontend-contract--841)).
 
 ### 10.2 Offline grace period
 
-Tokens remain valid for **7 days past expiry** when the device is offline. If
-a token is missing or expired beyond the grace period, the app shows a
-"Reconnect to restore premium access" message. Free games are always accessible
-regardless of token state.
+The client may reuse the cached entitlement set for **7 days past JWT expiry**
+when it cannot refresh (reviewed for paid access and retained: [IAP.md §10](IAP.md#10-entitlement-refresh-policy)). If the cache is missing or beyond the grace period,
+premium access is denied locally until the app reconnects. Free games remain
+accessible.
 
-### 10.3 Route protection
+This grace is client-side continuity only. Once online, current server
+authorization comes from the session's database entitlement rows, not from a
+client-presented JWT claim.
 
-Every premium API endpoint uses the `require_entitlement(game_slug)` FastAPI
-dependency. A missing or invalid token returns `403 not_entitled`. This prevents
-score submission from a session that has lost its entitlement between sessions.
+### 10.3 Server authorization
+
+The JWT is the app's signed entitlement cache; it is **not** the server's
+authorization credential.
+
+Server-side premium checks use the validated `X-Session-ID` and current
+`game_entitlements` rows:
+
+- generic `POST /games` calls `check_entitlement` before creating a premium
+  game session;
+- a premium game's own backend router uses
+  `require_entitlement(game_slug)` when it exposes game-specific endpoints;
+- shared game operations remain scoped to the session that owns the game row.
+
+This means editing/decoding the cached client JWT cannot grant server-side
+premium access. An already-open game is allowed to finish under the product rule
+that entitlement changes do not interrupt gameplay.
+
+The current session id is a client-held UUID, not an authenticated account
+credential. The paid-IAP ownership/replay gate and the exact current trust model
+are documented in [../SECURITY.md](../SECURITY.md).
 
 ### 10.4 Dev override
 
@@ -452,7 +573,11 @@ entitlement checks and grant access to every game. Never set this in production.
 | Backend — JWT issuance           | `backend/entitlements/service.py`                         |
 | Backend — Route guard            | `backend/entitlements/dependencies.py`                    |
 | Frontend — Token cache & context | `frontend/src/entitlements/EntitlementContext.tsx`        |
-| DB — entitlement rows            | `backend/alembic/versions/0014_game_types_premium_cat.py` |
+| DB — premium flag                | `backend/alembic/versions/0014_game_types_premium_cat.py` |
+| DB — entitlement rows            | `backend/alembic/versions/0015_add_game_entitlements.py`  |
+| DB — purchases, links, events    | `backend/alembic/versions/0031_add_purchases.py`          |
+| Backend — purchase routes/logic  | `backend/purchases/` ([IAP.md §8.4](IAP.md#84-implementation-notes-840)) |
+| Store product catalog            | `frontend/src/entitlements/premiumProducts.json`          |
 
 ### 10.6 Adding a premium game
 
@@ -460,6 +585,9 @@ entitlement checks and grant access to every game. Never set this in production.
 2. Add the game slug to `PREMIUM_GAMES` in `EntitlementContext.tsx`.
 3. Add `require_entitlement("<slug>")` to every route in `backend/<game>/router.py`.
 4. Document the tier in `docs/games/<game>.md`.
+4a. Add its store product to `frontend/src/entitlements/premiumProducts.json` and create the
+   product in both store consoles ([IAP.md §2](IAP.md#2-catalog)); the premium-products drift
+   tests fail until the catalog matches `is_premium`.
 5. While v1.0 hides premium games (§10.7), also add the slug to `HIDDEN_GAMES` in
    `gameVisibility.ts` and its route to `PREMIUM_ROUTES` in `premiumRoutes.ts`
    (plus the unguarded screen in `App.tsx`'s `PREMIUM_SCREEN_BASES`). The
@@ -568,7 +696,13 @@ lands:
 
 ### 10.9 Premium difficulty levels
 
-A single level of a game can be premium too (#1129). List it under the game's
+**Product policy:** [PRODUCT.md](PRODUCT.md#monetization) permits premium access
+to complete games, not paid levels or modes inside a free game. No premium
+difficulty levels are configured. The machinery below exists in the client,
+but must not be used to create freemium gameplay; #1129 needs review against
+this policy before any level is listed.
+
+The existing mechanism can mark a single level of a game as premium (#1129). List it under the game's
 key in `PREMIUM_LEVELS` (`frontend/src/entitlements/premiumLevels.ts`); none
 is listed yet. Every level picker (the shared `DifficultyPicker`, the Star
 Swarm tier picker, the Blackjack table cards and Next Table) goes through
@@ -627,109 +761,57 @@ Operational detail — env vars, first deploy, connection rules — is in
 
 ---
 
+## 11.1 Infrastructure and external services
+
+BC Arcade intentionally keeps external-service responsibilities narrow. This is
+the system map; operational commands, environment variables and secrets belong
+in their runbooks.
+
+| Service | What BC Arcade uses it for | What happens if it is unavailable | Operational source |
+| --- | --- | --- | --- |
+| **GitHub** | Source, PR review, Actions/CI, dependency/security automation and repository history | Development/release automation stops; already-installed apps continue to run | Root workflows + testing/build docs |
+| **Render** | Dev/prod FastAPI services and secondary Expo Web sites; dev Postgres | Server reads/sync/entitlement/daily services are unavailable; offline-capable single-player continues locally and queues writes | [RENDER.md](RENDER.md) |
+| **Supabase** | Production PostgreSQL only, through the session pooler | Production server features that require DB access fail; local single-player can continue until sync/read services are needed | [RENDER.md](RENDER.md) |
+| **Sentry** | Native app + backend crashes/errors/performance and in-app User Feedback | Diagnostics/feedback visibility is reduced; gameplay should continue | `sentryConfig.ts`, backend `main.py`; canonical feedback/observability doc under #2805 |
+| **Cloudflare** | DNS/TLS/network routing for BC Arcade domains | Custom domains/routing may fail even when Render services are healthy | Render/domain configuration |
+| **Apple/Xcode Cloud/App Store Connect** | iOS build/sign/test/distribution toolchain | New iOS builds/releases stop; installed builds are unaffected | [IOS.md](IOS.md) |
+| **Google Play / Gradle signing toolchain** | Android build/sign/test/distribution | New Android releases stop; installed builds are unaffected | [ANDROID-CI.md](ANDROID-CI.md) |
+
+### Secrets and configuration ownership
+
+This public repository documents **secret names and required placement, never
+secret values**. Runtime credentials live in the appropriate service/dashboard
+or the owner's password manager. Do not paste secrets into source, issues,
+documentation, PR descriptions, or tool arguments.
+
+For the concrete Render/Supabase environment topology and variable inventory,
+use [RENDER.md](RENDER.md). Build-time API-target rules live in
+[IOS.md](IOS.md) and [ANDROID-CI.md](ANDROID-CI.md).
+
 ## 12. Daily cross-game challenge
 
-One challenge a day, three goals — **Daily Word always, plus two other games** —
-the thread that makes the arcade one product rather than a folder of games (App
-Review guideline 4.2). Backend: `backend/daily_challenge/`.
+Daily Challenge is a shared read-side product system built on completed
+`games` rows: three goals per local day, frozen per date/slate, plus an
+app-wide derived streak.
 
-- **Derived, then frozen (#2493).** A day's challenge is derived from
-  `date.toordinal()` and `DAILY_CHALLENGE_SALT` for the player's **local** date
-  (`tz_offset_minutes`, the same convention as `/daily-word/today`): the
-  non-Daily-Word games sit in a salt-shuffled rotation and each day steps two
-  places along it, so the day's two games never repeat the previous day's. The
-  salt is a per-environment secret, so the schedule cannot be read off the
-  public repo. (The day ordinal, not Daily Word's `YYYYMMDD` number, whose jumps
-  at month ends can repeat a pick.) Tiers rotate by day too. That derivation
-  (`template_for` in `definitions.py`) is only the policy for a day nobody has
-  seen yet: the first request for a (date, slate) pair writes the result to the
-  `daily_challenge_days` table (`DailyChallengeDay` in `backend/db/models.py`,
-  migration `0019_add_daily_challenge_days`), and every later request reads that
-  row back (`backend/daily_challenge/schedule.py`). Retuning the goal pool, a
-  target or the salt therefore only changes days not yet frozen. Goals are
-  stored as self-contained specs, so a frozen day survives a goal leaving the
-  pool.
-- **Completion is a read-side view.** `GET /daily-challenge/status` reads the
-  day's frozen template (`schedule.get_or_create_template`: one SELECT, plus an
-  INSERT on the first request for that day and slate), then runs one query over
-  the session's own `games` rows finished inside the local day and evaluates the
-  goals in Python. It is the data `PATCH /games/{id}/complete`
-  already writes, so a game played offline counts as soon as the sync queue
-  uploads it (§4) — by the time it was played, not the time it was uploaded.
-- **Goals are per game, over the result envelope (#2449).** No one measure fits
-  every game, so each game owns three goals (easy / medium / hard) in its own
-  terms — moves, pairs, highest tile, chips, guesses. Each goal is a predicate
-  over one row's measures: the result block in `games.metadata` plus the
-  `final_score` / `duration_ms` columns (`game_facts`). It is met if any one of
-  the player's games of that type satisfies it. `games.outcome` is never read —
-  a game reports `won` and its progress on abandon, so progress goals ("make 10
-  moves") credit a game the player left, and `won` goals need a win. The fields
-  each game must send are listed in `definitions.py`.
-- **Rules the pick enforces (tested):** Daily Word every day; two distinct other
-  games; none repeated from the previous day; at most one goal per day that
-  requires a win (luck-dependent — a Klondike deal is not always winnable), the
-  win slot rotating by day and any extra win goal falling back to that game's
-  easy goal, which never needs a win.
-- **Two slates, resolved per request (#2454).** `FREE_GOAL_POOL` (the six free
-  games) and a superset `PREMIUM_GOAL_POOL` are static spec tables; which slate a
-  session gets is a live database fact. `resolve_slate` runs one join over
-  `game_types.is_premium` and the session's `game_entitlements`: a session gets
-  the **premium** slate only if it owns **every** premium game that day's premium
-  template names — otherwise it would be handed a goal in a game it cannot open —
-  else the free slate. `ENTITLEMENT_DEV_OVERRIDE` counts every named premium
-  game as owned (§10.4) but follows the same rule, so dev never reports a slate
-  production would not. Premium-only goal specs are post-launch (#2458), so today
-  the two templates are identical, every session resolves to the free slate —
-  override or not — and `resolve_slate` runs no query. The slate choice is live: each slate's
-  template is frozen per day, but which slate a session gets is not pinned, so
-  a mid-day entitlement change swaps the challenge on the next `/status`. Two
-  guards keep the static pool honest: a test
-  fails if any free-pool game is premium in `game_types` (the pool would then
-  name a game a free player cannot open), and the free pool is disjoint from the
-  premium slugs, which a store build hides (§10.7).
-- **`/today` is always the free slate; only `/status` can be premium.** `/today`
-  has no session, so it never resolves a slate; it reads (or, on the day's first
-  request, freezes) the free template through the same
-  `schedule.get_or_create_template`. For an entitled session the goal
-  list therefore comes from `/status`, which can differ from `/today` in the goals
-  themselves, not just their completion — a client must not build its goals from
-  `/today` and only read completion off `/status` (#2455).
-- **Streak: replayed over frozen days (#2456, #2493).** `streak_days` on
-  `GET /stats/me` is the number of consecutive local days with at least 2 of that
-  day's 3 goals met — a count only, no reward, and no streak table: the streak
-  itself is not stored. `compute_streak` (`backend/daily_challenge/streak.py`)
-  reads each past day's frozen template (`schedule.get_or_create_templates`; a day
-  never requested before is frozen on that call) and scores it with the same
-  `evaluate_template` the live `/status` uses, so there is one definition of a day
-  and of a goal. The run ends **today** if today already has 2 of 3, otherwise
-  **yesterday** (today is not failed, just unfinished). One windowed query over the
-  player's games grouped by day in Python — never a query per day — plus one query
-  per slate for the window's frozen templates, and the premium slate's and the
-  session's entitlements only when some day's free and premium templates differ
-  (not until #2458). Capped at 60 days: a value of 60 means "at least 60", shown as
-  "60+". `/stats/me` takes the same optional `tz_offset_minutes` as
-  `/daily-challenge/*`; old clients omit it and get UTC days. A streak failure is
-  logged and returns 0 rather than taking down the XP/level fields the same response
-  carries. Owner decision, 2026-09-20 — not in the original release plan.
-  Accepted approximations: past days use the session's _current_ entitlements, so
-  once premium goals exist a purchase or refund re-scores the window under the other
-  slate; one UTC offset covers the whole window, so a daylight-saving change moves a
-  game finished within an hour of local midnight onto the neighbouring day; and
-  history is client-reported (`completed_at` is accepted up to a year back), so a
-  streak can be fabricated — fine for a count with no reward, to be revisited before
-  it earns anything (#2469).
-- **No copy on the wire.** Responses carry `kind` (per game, e.g. `won`,
-  `moves_at_least`, `highest_tile_at_least`), `game_type` and `target`; the
-  client words them in its own i18n namespace.
+The current product rules, goal scheduling/evaluation, free/premium slate
+resolution, API behavior, streak algorithm, offline implications, and the
+known UTC-offset/DST limitation are canonicalized in
+[DAILY-CHALLENGE.md](DAILY-CHALLENGE.md).
 
-| Route                         | Auth                         | Limit  |
-| ----------------------------- | ---------------------------- | ------ |
-| `GET /daily-challenge/today`  | none (IP-keyed)              | 60/min |
-| `GET /daily-challenge/status` | `X-Session-ID` (session-key) | 60/min |
+At the architecture level, the important boundaries are:
+
+- normal games write their existing shared session/result data; they do not
+  call a separate challenge-completion endpoint;
+- `backend/daily_challenge/` reads those rows and freezes each day's assigned
+  goal specs in `daily_challenge_days`;
+- the challenge and streak are derived views, not mutable counters;
+- the Home card consumes the session-scoped status route and localizes goal
+  copy on the client.
 
 ## 13. Yacht computer opponent
 
-Since #2246 (architecture decision #2269, epic #2283) all three Yacht difficulties are **one optimal engine, handicapped**. There is no separate "medium brain". The engine is the solved-game oracle (`frontend/src/game/yacht/oracle/`, [YACHT_ORACLE.md](YACHT_ORACLE.md)); `frontend/src/game/yacht/ai.ts` reads it for every decision.
+Since #2246 (architecture decision #2269, epic #2283) all three Yacht difficulties are **one optimal engine, handicapped**. There is no separate "medium brain". The engine is the solved-game oracle (`frontend/src/game/yacht/oracle/`, [research/YACHT_ORACLE.md](research/YACHT_ORACLE.md)); `frontend/src/game/yacht/ai.ts` reads it for every decision.
 
 Each tier values a move as **points banked now + λ × the optimal expected points still to come**, then picks among near-best options with a capped softmax:
 
@@ -746,27 +828,29 @@ Each tier values a move as **points banked now + λ × the optimal expected poin
 
 Head to head, Hard beats Easy ~92% and Medium ~72% of the time. The nightly calibration gate (`frontend/src/game/yacht/sim/gate.ts`, `.github/workflows/yacht-sim-gate.yml`) guards these numbers, and the regret gate checks each tier's per-decision quality against the oracle ([TESTING.md](TESTING.md)).
 
-**Runtime.** The table ships compressed (~0.9 MB of JS) and decodes on first use (~0.3 s on a dev machine; slower on-device). `GameScreen` calls `preloadOracleTable()` when a VS game's difficulty is set, so the first AI turn doesn't pay for it. After that a decision is a few milliseconds.
+**Runtime.** The table ships compressed (~0.6 MB of JS) and decodes on first use (~0.3 s on a dev machine; slower on-device). `GameScreen` calls `preloadOracleTable()` when a VS game's difficulty is set, so the first AI turn doesn't pay for it. After that a decision is a few milliseconds.
 
 ## 14. Result, leaderboard and stats screens
 
-Where a recorded game shows up in the app (#2519 plan §4.4). Each surface has
-one job and reads the server; none of them writes a score.
+BC Arcade has five distinct player-facing reporting surfaces: the end-of-game
+result card, one-game leaderboards, one-game Stats, live Scorecards, and the
+cross-game personal Profile.
 
-| Surface                                                   | Job                                | What it reads                                                                                                                                                                                                                                                                                                                                                       |
-| --------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Result card** (`components/shared/GameResultModal.tsx`) | The end of _this_ game             | Its rank line from `useLeaderboardSubmit(sessionBoardAdapter(game))`: `submit({ gameId })` asks `GET /games/{id}/rank` (#2677) and shows "#N on the leaderboard" or "Your best: #N", asks once for a display name, or shows nothing for a game on no board. A "View leaderboard" link appears when the game has an openable board (`useLeaderboardLink`).           |
-| **Leaderboard** (`screens/LeaderboardScreen.tsx`, #2633)  | Top players of _one_ game's board  | `GET /games/leaderboard/{game_type}`: one entry per player, with a partition picker where the board has partitions. The player's own row is highlighted (`is_me`); when it is outside the list, their best is pinned below with its exact rank (`me`). Opened from the result card, the game's ⋯ menu and its Game stats screen (all through `useLeaderboardLink`). |
-| **Game stats** (`screens/GameStatsScreen.tsx`, #2635)     | _My_ history in _this_ game        | `GET /stats/me` → `by_game[gameType]`. The last response is cached in memory for the app session, keyed by session id (`hooks/useMyStats.ts`), and cleared by Settings → Delete my data (`clearMyStatsCache`). Blackjack links to its on-device run history.                                                                                                        |
-| **Scorecard** (`screens/ScorecardScreen.tsx`, #2636)      | The live view of the match in play | Game state on the device. Only Hearts, Yacht and Blackjack have one (`SCORECARD_GAMES`, `navigation/scorecards.ts`).                                                                                                                                                                                                                                                |
-| **Profile** (`screens/ProfileScreen.tsx`, #2637)          | Cross-game _personal_ summary      | `GET /stats/me`: only tiles that mean the same for every game (sessions, completed, completion rate, time played, games tried, favourite) and one row per game with that game's own best and win rate. No cross-game score. Also "Remove my name from leaderboards" (§4).                                                                                           |
+Their current product behavior and ranking model are documented in
+[LEADERBOARDS.md](LEADERBOARDS.md). The normative integration contract—what a
+game records, how `BoardDefinition` works, and how `GameShell` /
+`useGameSync` connect those surfaces—remains
+[GAME-CONTRACT.md](GAME-CONTRACT.md).
 
-`GameShell` takes a required `gameType` prop and adds the ⋯ menu's "Stats"
-item itself, plus "Scorecard" for a game in `SCORECARD_GAMES`; `null` is only
-for a screen that is not one game's play screen. What each game reports and
-where the player sees it is in its page under [`docs/games/`](games/).
+At the architecture level, the important boundary is:
 
-**Testing.** Maestro is paused past v1.0 ([MAESTRO.md](MAESTRO.md)); these
-screens are checked by hand with
-[MANUAL-QA-LEADERBOARDS.md](MANUAL-QA-LEADERBOARDS.md) on iOS and Android
-builds.
+- completed/history/ranking surfaces read the shared server-side game/session
+  model;
+- a Scorecard reads the live game already running on the device;
+- no surface submits an independent per-game score outside the shared game
+  session contract;
+- Profile aggregates only metrics that are comparable across games and never
+  invents a cross-game score.
+
+Manual device verification lives in
+[MANUAL-QA-LEADERBOARDS.md](MANUAL-QA-LEADERBOARDS.md).

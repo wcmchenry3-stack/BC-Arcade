@@ -13,6 +13,7 @@ import React from "react";
 import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AccessibilityInfo } from "react-native";
+import * as Sentry from "@sentry/react-native";
 import FreeCellScreen from "../FreeCellScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import type { FreeCellState } from "../../game/freecell/types";
@@ -53,12 +54,18 @@ import { loadGame, loadStats } from "../../game/freecell/storage";
 
 // The real engine; one test swaps in a fixed deal for New Game / Play Again.
 const mockDealGame = jest.fn();
+// …and one makes an Auto-Complete step throw.
+const mockAutoComplete = jest.fn();
 jest.mock("../../game/freecell/engine", () => {
   const actual = jest.requireActual("../../game/freecell/engine");
   return {
     ...actual,
     dealGame: (...args: unknown[]) =>
       mockDealGame.getMockImplementation() ? mockDealGame(...args) : actual.dealGame(...args),
+    autoComplete: (...args: unknown[]) =>
+      mockAutoComplete.getMockImplementation()
+        ? mockAutoComplete(...args)
+        : actual.autoComplete(...args),
   };
 });
 
@@ -72,7 +79,7 @@ jest.mock("../../api/stats", () => ({
   statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
 }));
 jest.mock("../../api/players", () => ({
-  playersApi: { putMe: jest.fn((name: string) => Promise.resolve({ display_name: name })) },
+  playersApi: { putMe: jest.fn(() => Promise.resolve({ display_name: "Brave Otter 4821" })) },
 }));
 jest.mock("../../game/_shared/flushQueuedGames", () => ({
   flushQueuedGames: jest.fn(() => Promise.resolve()),
@@ -380,6 +387,77 @@ describe("FreeCellScreen — records a per-session game (#2452)", () => {
 // #2508 — the shared result card and leaderboard auto-submit
 // ---------------------------------------------------------------------------
 
+describe("FreeCellScreen — board taller than its area scrolls (#1108 review)", () => {
+  afterEach(() => (loadGame as jest.Mock).mockResolvedValue(null));
+
+  const layout = (height: number) => ({
+    nativeEvent: { layout: { x: 0, y: 0, width: 360, height } },
+  });
+
+  it("uses a plain View while the board fits, and a ScrollView once it doesn't", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(REVERSIBLE_ONLY_STATE);
+    const r = await renderScreen();
+    await waitFor(() => r.getByLabelText("Hint"));
+    await act(async () => {
+      fireEvent(r.getByTestId("freecell-board-area"), "layout", layout(500));
+      fireEvent(r.getByTestId("freecell-board-content"), "layout", layout(420));
+    });
+    expect(r.queryByTestId("freecell-board-scroll")).toBeNull();
+
+    // A short landscape window: even the minimum spacing can't fit.
+    await act(async () => {
+      fireEvent(r.getByTestId("freecell-board-area"), "layout", layout(150));
+    });
+    expect(r.getByTestId("freecell-board-scroll")).toBeTruthy();
+    // The whole board is still inside it, so every card stays reachable.
+    expect(
+      within(r.getByTestId("freecell-board-scroll")).getByTestId("freecell-board")
+    ).toBeTruthy();
+
+    // Back to a tall window: the plain View returns.
+    await act(async () => {
+      fireEvent(r.getByTestId("freecell-board-area"), "layout", layout(500));
+    });
+    expect(r.queryByTestId("freecell-board-scroll")).toBeNull();
+  });
+});
+
+describe("FreeCellScreen — Auto-Complete always releases the input lock (#2225)", () => {
+  afterEach(async () => {
+    mockAutoComplete.mockReset();
+    await act(async () => {
+      jest.runAllTimers();
+    });
+    (loadGame as jest.Mock).mockResolvedValue(null);
+  });
+
+  it("a step that throws unlocks the board and reports to Sentry", async () => {
+    (loadGame as jest.Mock).mockResolvedValue(nearlyWon(11));
+    mockAutoComplete.mockImplementation(() => {
+      throw new Error("boom");
+    });
+    const { getByLabelText } = await renderScreen();
+    await waitFor(() => getByLabelText("Hint"));
+    // Locked while the step is pending.
+    expect(getByLabelText("Hint")).toBeDisabled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS);
+    });
+
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ tags: { subsystem: "autoComplete", game: "freecell" } })
+    );
+    // Unlocked: Hint is usable again and a tap on a card selects it.
+    expect(getByLabelText("Hint")).not.toBeDisabled();
+    await act(async () => {
+      await fireEvent.press(getByLabelText("K of Spades"));
+    });
+    expect(getByLabelText(/K of Spades \(selected\)/)).toBeTruthy();
+  });
+});
+
 describe("FreeCellScreen — result card (#2508)", () => {
   let reduceMotion: jest.SpyInstance;
 
@@ -431,17 +509,16 @@ describe("FreeCellScreen — result card (#2508)", () => {
     expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
   });
 
-  it("asks for a display name once when none is set, then shows the rank", async () => {
+  it("asks the player to join once when not on the boards, then shows the rank", async () => {
     const r = await winInOneMove();
-    const input = await r.findByLabelText("Pick a display name for leaderboards");
+    const join = await r.findByRole("button", { name: "Join leaderboards" });
     expect(mockGetGameRank).not.toHaveBeenCalled();
     await act(async () => {
-      await fireEvent.changeText(input, "Riley");
+      await fireEvent.press(join);
     });
-    await act(async () => {
-      await fireEvent.press(r.getByRole("button", { name: "Save" }));
-    });
-    await waitFor(() => expect(r.getByText("Saved as Riley · #2 on the leaderboard")).toBeTruthy());
+    await waitFor(() =>
+      expect(r.getByText("Saved as Brave Otter 4821 · #2 on the leaderboard")).toBeTruthy()
+    );
     expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
   });
 

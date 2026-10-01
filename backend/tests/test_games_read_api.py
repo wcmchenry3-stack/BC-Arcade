@@ -63,11 +63,12 @@ def _create_and_complete(
     r = client.post("/games", headers=_headers(sid), json=body)
     assert r.status_code == 200, r.text
     gid = r.json()["id"]
-    r = client.patch(
-        f"/games/{gid}/complete",
-        headers=_headers(sid),
-        json={"final_score": final_score, "outcome": outcome, "duration_ms": 10_000},
-    )
+    complete: dict = {"final_score": final_score, "outcome": outcome, "duration_ms": 10_000}
+    if game_type == "blackjack":
+        # As the app sends it: a Blackjack score is its closing chips, and a
+        # finished run's final_score must come with them (#2745).
+        complete["result"] = {"hands_won": 1, "final_chips": final_score}
+    r = client.patch(f"/games/{gid}/complete", headers=_headers(sid), json=complete)
     assert r.status_code == 200, r.text
     return gid
 

@@ -82,7 +82,7 @@
   },
   "phase.bossWave": {
     "component": "GameCanvas",
-    "description": "Overlay banner while a boss wave's ships swoop in: the Carrier and its four Boss escorts, nothing else (#2490).",
+    "description": "Overlay banner while a boss wave's ships swoop in: the Carrier and its four Guardian escorts, nothing else (#2490).",
     "tone": "dramatic, arcade",
     "characterLimit": 20,
     "placeholders": [],
@@ -91,7 +91,7 @@
   },
   "phase.rout": {
     "component": "GameCanvas",
-    "description": "Overlay banner while the wave's surviving grunts flee for the top edge after every Elite, Boss and Carrier is destroyed (#2489).",
+    "description": "Overlay banner while the wave's surviving grunts flee for the top edge after every Elite, Guardian and Carrier is destroyed (#2489).",
     "tone": "dramatic, arcade",
     "characterLimit": 12,
     "placeholders": [],
@@ -190,7 +190,7 @@
   },
   "a11y.carrierExposed": {
     "component": "StarSwarmScreen",
-    "description": "Screen-reader announcement when the last Boss escort dies and the Carrier's force field drops, so it can now be damaged by ordinary shots.",
+    "description": "Screen-reader announcement when the last Guardian (the Carrier's escort tier) dies and the Carrier's force field drops, so it can now be damaged by ordinary shots.",
     "tone": "neutral, urgent",
     "characterLimit": 60,
     "placeholders": [],
@@ -199,7 +199,7 @@
   },
   "a11y.carrierBeam": {
     "component": "StarSwarmScreen",
-    "description": "Screen-reader announcement when the Carrier starts charging its sweep beam; the player has about 0.6 s to move out of the column below it.",
+    "description": "Screen-reader announcement when the Carrier starts charging its beam; the player has about 0.6 s before a fast bolt travels down the column below it.",
     "tone": "urgent",
     "characterLimit": 45,
     "placeholders": [],
@@ -215,6 +215,24 @@
     "doNotTranslate": [],
     "notes": "See #2485."
   },
+  "a11y.carrierAttackRun": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader announcement when the exposed Carrier braces for an attack run: it is about to swoop down toward the player's column and back (#2843).",
+    "tone": "urgent",
+    "characterLimit": 45,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Carrier is the large top-row enemy ship (#2484)."
+  },
+  "a11y.carrierFinalStand": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader announcement when the Carrier is the last enemy left and enters its most aggressive stage (#2843).",
+    "tone": "neutral, urgent",
+    "characterLimit": 60,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Carrier is the large top-row enemy ship (#2484)."
+  },
   "a11y.bossWave": {
     "component": "StarSwarmScreen",
     "description": "Screen-reader announcement when a boss wave begins (#2490).",
@@ -222,7 +240,7 @@
     "characterLimit": 60,
     "placeholders": [],
     "doNotTranslate": [],
-    "notes": "Carrier is the large top-row enemy ship (#2484); escorts are its four Bosses."
+    "notes": "Carrier is the large top-row enemy ship (#2484); Guardians are its four escort ships (the tier was called Boss before #2843). 'Boss wave' is the stage name and stays."
   },
   "a11y.rout": {
     "component": "StarSwarmScreen",
@@ -232,6 +250,15 @@
     "placeholders": ["{{count}}"],
     "doNotTranslate": [],
     "notes": "{{count}} is an integer (1–40). Phrased so the number can sit after a colon and avoid plural forms."
+  },
+  "a11y.buddyDown": {
+    "component": "StarSwarmScreen",
+    "description": "Screen-reader announcement when the player's allied companion ship (the Buddy power-up) is shot down (#2845).",
+    "tone": "neutral, urgent",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Buddy is the friendly wingman ship launched by the Buddy power-up; translate as 'companion/wingman ship', not as a name."
   },
   "hud.guns": {
     "component": "GameCanvas",
@@ -250,6 +277,42 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "#2488."
+  },
+  "hud.cueGuns": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue after collecting a salvage crate; guns went up one level.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#2847. Short floating cue on the canvas; all caps in English, matching hud.guns/hud.hull."
+  },
+  "hud.cueGunsMax": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue after collecting a salvage crate when guns are already at the top level.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#2847. Short floating cue on the canvas; all caps in English, matching hud.guns/hud.hull."
+  },
+  "hud.cueHull": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue after collecting hull plating; plating went up one level.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#2847. Short floating cue on the canvas; all caps in English, matching hud.guns/hud.hull."
+  },
+  "hud.cueHullMax": {
+    "component": "GameCanvas / GameCanvas.web",
+    "description": "Floating cue after collecting hull plating when plating is already full.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "#2847. Short floating cue on the canvas; all caps in English, matching hud.guns/hud.hull."
   },
   "a11y.gunsUp": {
     "component": "StarSwarmScreen",

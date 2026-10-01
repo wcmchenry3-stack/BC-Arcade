@@ -14,8 +14,20 @@ import {
   type LeaderboardAdapter,
   type RankLookup,
 } from "../useLeaderboardSubmit";
-import { resetDisplayNameCacheForTests, saveDisplayName, loadDisplayName } from "../displayName";
+import {
+  resetDisplayNameCacheForTests,
+  storeAssignedDisplayName,
+  loadDisplayName,
+} from "../displayName";
 import { ApiError } from "../httpClient";
+
+// Joining stores the server's generated name at once (the sync itself is
+// covered by displayNameSync.test.ts); `mockJoin` can be made to fail.
+const mockJoin = jest.fn();
+jest.mock("../displayNameSync", () => ({
+  joinLeaderboards: () => mockJoin(),
+  getLeaderboardSyncPending: () => Promise.resolve(null),
+}));
 
 jest.mock("../flushQueuedGames", () => ({
   flushQueuedGames: jest.fn(() => Promise.resolve()),
@@ -60,6 +72,11 @@ async function setOnline(isOnline: boolean, rerender: (props: object) => Promise
 beforeEach(async () => {
   await AsyncStorage.clear();
   resetDisplayNameCacheForTests();
+  mockJoin.mockReset();
+  mockJoin.mockImplementation(async () => {
+    await storeAssignedDisplayName("Brave Otter 4821");
+    return true;
+  });
   mockNetwork.isOnline = true;
   mockNetwork.isInitialized = true;
 });
@@ -118,7 +135,7 @@ describe("retryUntilGameSynced", () => {
 
 describe("useLeaderboardSubmit", () => {
   it("looks the rank up under the display name", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const { result, submit } = await setup();
 
     await act(() => result.current.submit({ gameId: "g-1" }));
@@ -127,7 +144,7 @@ describe("useLeaderboardSubmit", () => {
     expect(result.current).toMatchObject({ status: "saved", rank: 3, playerName: "Riley" });
   });
 
-  it("asks for a name first, then looks the waiting game up", async () => {
+  it("asks the player to join first, then looks the waiting game up under the generated name", async () => {
     const { result, submit } = await setup();
 
     await act(() => result.current.submit({ gameId: "g-1" }));
@@ -136,22 +153,24 @@ describe("useLeaderboardSubmit", () => {
 
     let accepted = false;
     await act(async () => {
-      accepted = await result.current.provideName(" Riley ");
+      accepted = await result.current.joinLeaderboards();
     });
 
     expect(accepted).toBe(true);
-    expect(submit).toHaveBeenCalledWith("Riley", { gameId: "g-1" });
-    expect(result.current.status).toBe("saved");
-    await expect(loadDisplayName()).resolves.toBe("Riley");
+    expect(mockJoin).toHaveBeenCalledTimes(1);
+    expect(submit).toHaveBeenCalledWith("Brave Otter 4821", { gameId: "g-1" });
+    expect(result.current).toMatchObject({ status: "saved", playerName: "Brave Otter 4821" });
+    await expect(loadDisplayName()).resolves.toBe("Brave Otter 4821");
   });
 
-  it("rejects an invalid name and keeps waiting", async () => {
+  it("keeps waiting when the join can't be stored", async () => {
+    mockJoin.mockResolvedValue(false);
     const { result, submit } = await setup();
     await act(() => result.current.submit({ gameId: "g-1" }));
 
     let accepted = true;
     await act(async () => {
-      accepted = await result.current.provideName("   ");
+      accepted = await result.current.joinLeaderboards();
     });
 
     expect(accepted).toBe(false);
@@ -160,7 +179,7 @@ describe("useLeaderboardSubmit", () => {
   });
 
   it("looks up only once per game until reset", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     const { result, submit } = await setup();
 
     await act(() => result.current.submit({ gameId: "g-1" }));
@@ -175,7 +194,7 @@ describe("useLeaderboardSubmit", () => {
   });
 
   it("ignores a previous game's lookup that finishes after reset()", async () => {
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
     let finishOld: (lookup: RankLookup) => void = () => {};
     const submit = jest.fn(() => new Promise<RankLookup>((resolve) => (finishOld = resolve)));
     const { result } = await setup(submit);
@@ -202,7 +221,7 @@ describe("useLeaderboardSubmit: offline, pending, backoff and errors (#2677)", (
   beforeEach(async () => {
     jest.useFakeTimers();
     jest.mocked(Sentry.captureException).mockClear();
-    await saveDisplayName("Riley");
+    await storeAssignedDisplayName("Riley");
   });
 
   afterEach(() => {
@@ -232,7 +251,7 @@ describe("useLeaderboardSubmit: offline, pending, backoff and errors (#2677)", (
     expect(submit).toHaveBeenCalledTimes(1);
   });
 
-  it("needsName asks for a name; provideName fetches again", async () => {
+  it("needsName asks the player to join; joinLeaderboards fetches again", async () => {
     const submit = jest
       .fn()
       .mockResolvedValueOnce({ kind: "needsName" })
@@ -245,10 +264,14 @@ describe("useLeaderboardSubmit: offline, pending, backoff and errors (#2677)", (
     expect(submit).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      await result.current.provideName("Robin");
+      await result.current.joinLeaderboards();
     });
-    expect(submit).toHaveBeenLastCalledWith("Robin", PAYLOAD);
-    expect(result.current).toMatchObject({ status: "saved", rank: 1, playerName: "Robin" });
+    expect(submit).toHaveBeenLastCalledWith("Brave Otter 4821", PAYLOAD);
+    expect(result.current).toMatchObject({
+      status: "saved",
+      rank: 1,
+      playerName: "Brave Otter 4821",
+    });
   });
 
   it("offline: no queue item; fetches on reconnect, and only once", async () => {

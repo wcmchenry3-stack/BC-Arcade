@@ -4291,7 +4291,7 @@ exports[`GameResultModal — submission line shows the offline state 1`] = `
 </Modal>
 `;
 
-exports[`GameResultModal — submission line shows the one-time name prompt and hands the saved name back 1`] = `
+exports[`GameResultModal — submission line shows the one-time join prompt, with no name field, and joins on press (#2778) 1`] = `
 <Modal
   accessibilityViewIsModal={true}
   animationType="fade"
@@ -4452,113 +4452,8 @@ exports[`GameResultModal — submission line shows the one-time name prompt and 
                   ]
                 }
               >
-                Pick a display name for leaderboards
+                Join the leaderboards?
               </Text>
-              <View
-                style={
-                  {
-                    "flexDirection": "row",
-                    "gap": 8,
-                  }
-                }
-              >
-                <TextInput
-                  accessibilityLabel="Pick a display name for leaderboards"
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                  maxLength={32}
-                  onChangeText={[Function]}
-                  onSubmitEditing={[Function]}
-                  placeholder="Your name"
-                  placeholderTextColor="#a0a0ac"
-                  returnKeyType="done"
-                  style={
-                    [
-                      {
-                        "borderRadius": 10,
-                        "borderWidth": 1.5,
-                        "flex": 1,
-                        "fontFamily": "Manrope_600SemiBold",
-                        "fontSize": 16,
-                        "height": 48,
-                        "minWidth": 0,
-                        "paddingHorizontal": 14,
-                      },
-                      {
-                        "backgroundColor": "#25252c",
-                        "borderColor": "#a0a0ac",
-                        "color": "#e8e8f0",
-                      },
-                    ]
-                  }
-                  value=""
-                />
-                <View
-                  accessibilityLabel="Save"
-                  accessibilityRole="button"
-                  accessibilityState={
-                    {
-                      "busy": false,
-                      "checked": undefined,
-                      "disabled": true,
-                      "expanded": undefined,
-                      "selected": undefined,
-                    }
-                  }
-                  accessibilityValue={
-                    {
-                      "max": undefined,
-                      "min": undefined,
-                      "now": undefined,
-                      "text": undefined,
-                    }
-                  }
-                  accessible={true}
-                  collapsable={false}
-                  focusable={true}
-                  onBlur={[Function]}
-                  onClick={[Function]}
-                  onFocus={[Function]}
-                  onResponderGrant={[Function]}
-                  onResponderMove={[Function]}
-                  onResponderRelease={[Function]}
-                  onResponderTerminate={[Function]}
-                  onResponderTerminationRequest={[Function]}
-                  onStartShouldSetResponder={[Function]}
-                  style={
-                    [
-                      {
-                        "alignItems": "center",
-                        "borderRadius": 10,
-                        "height": 48,
-                        "justifyContent": "center",
-                        "minWidth": 72,
-                        "paddingHorizontal": 18,
-                      },
-                      {
-                        "backgroundColor": "#00eefc",
-                        "opacity": 0.4,
-                      },
-                    ]
-                  }
-                >
-                  <Text
-                    style={
-                      [
-                        {
-                          "fontFamily": "Manrope_700Bold",
-                          "fontSize": 15,
-                        },
-                        {
-                          "color": "#0e0e13",
-                        },
-                      ]
-                    }
-                  >
-                    Save
-                  </Text>
-                </View>
-              </View>
               <Text
                 style={
                   [
@@ -4567,13 +4462,78 @@ exports[`GameResultModal — submission line shows the one-time name prompt and 
                       "fontSize": 13,
                     },
                     {
-                      "color": "#a0a0ac",
+                      "color": "#e8e8f0",
                     },
                   ]
                 }
               >
-                Asked once. Change it anytime in Profile.
+                You'll appear under a generated name. Get a new one or leave anytime in Profile.
               </Text>
+              <View
+                accessibilityLabel="Join leaderboards"
+                accessibilityRole="button"
+                accessibilityState={
+                  {
+                    "busy": false,
+                    "checked": undefined,
+                    "disabled": false,
+                    "expanded": undefined,
+                    "selected": undefined,
+                  }
+                }
+                accessibilityValue={
+                  {
+                    "max": undefined,
+                    "min": undefined,
+                    "now": undefined,
+                    "text": undefined,
+                  }
+                }
+                accessible={true}
+                collapsable={false}
+                focusable={true}
+                onBlur={[Function]}
+                onClick={[Function]}
+                onFocus={[Function]}
+                onResponderGrant={[Function]}
+                onResponderMove={[Function]}
+                onResponderRelease={[Function]}
+                onResponderTerminate={[Function]}
+                onResponderTerminationRequest={[Function]}
+                onStartShouldSetResponder={[Function]}
+                style={
+                  [
+                    {
+                      "alignItems": "center",
+                      "borderRadius": 10,
+                      "justifyContent": "center",
+                      "minHeight": 48,
+                      "paddingHorizontal": 18,
+                    },
+                    {
+                      "backgroundColor": "#00eefc",
+                      "opacity": 1,
+                    },
+                  ]
+                }
+                testID="result-name-prompt-join"
+              >
+                <Text
+                  style={
+                    [
+                      {
+                        "fontFamily": "Manrope_700Bold",
+                        "fontSize": 15,
+                      },
+                      {
+                        "color": "#0e0e13",
+                      },
+                    ]
+                  }
+                >
+                  Join leaderboards
+                </Text>
+              </View>
             </View>
           </View>
           <View

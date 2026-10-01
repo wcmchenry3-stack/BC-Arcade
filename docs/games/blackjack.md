@@ -1,85 +1,263 @@
 # Blackjack
 
-**Category:** Card
-**Tier:** Premium (hidden in the v1.0 store build — simulated gambling; decision 2026-09-23)
-**Status:** In Development
+**Category:** Card  
+**Tier:** Premium  
+**Status:** In development
 
-## How to Play
+BC Arcade Blackjack uses familiar Blackjack rules inside an **arcade run**. The chips are fictional run resources: they cannot be purchased, redeemed, withdrawn, exchanged for money, or used to buy another chance. Premium purchase/entitlement grants access to the game itself, never chips or paid continuation.
 
-Standard casino Blackjack. The player competes against the dealer (AI). The goal is to get a hand value as close to 21 as possible without going over ("busting"), and closer than the dealer.
+If a run ends, an entitled player can start another run without a transaction or payment gate.
 
-### Card Values
+Shared session, offline, result-card and Stats behavior lives in [GAME-CONTRACT.md](../GAME-CONTRACT.md). This file owns Blackjack-specific gameplay, run progression and chip semantics.
 
-- Number cards (2–10): face value
-- Jack, Queen, King: 10
-- Ace: 1 or 11 (whichever is more favorable)
+## Arcade economy
 
-### Actions
+The terms **chips**, **bet**, **payout**, **Blackjack**, and **High Roller** describe the internal game mechanic only.
 
-| Action      | When available                                                        |
-| ----------- | --------------------------------------------------------------------- |
-| Hit         | Take another card                                                     |
-| Stand       | End your turn                                                         |
-| Double Down | Double the bet, take exactly one more card                            |
-| Split       | When dealt two cards of the same rank — split into two separate hands |
+Current product contract:
 
-### Outcomes
+- every table starts the player with a fresh configured chip stack;
+- the player cannot buy chips;
+- there is no real-money wager;
+- chips have no cash value and cannot be redeemed;
+- there is no cash-out to money;
+- "Cash Out" means **finish the successful arcade run and bank its in-game completion/history**;
+- losing all chips ends that run, but does not lock the player out of starting another;
+- no continue, extra life, refill, or second chance is sold for money.
 
-- **Blackjack** (Ace + 10-value on first two cards): pays 3:2
-- **Win**: player total > dealer total, or dealer busts: pays 1:1
-- **Push**: equal totals — bet returned
-- **Loss**: player total < dealer total, or player busts
+This is the behavior #2788 verifies for the premium release.
 
-### Table Tiers
+## Run rules at a glance
 
-Blackjack uses a chip-based progression system across three tables:
+| Stage       | Rule                                                                                                                                                                                                                                                                                                 |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Start       | Player picks a table (Beginner is always open). The run starts with that table's fixed starting chips (100 / 250 / 500). No chips carry over from any earlier run.                                                                                                                                   |
+| Betting     | Bets stay within the table's min/max and can never exceed the current stack; a stack below the table minimum may only bet all-in. A zero-chip run cannot bet at all (the engine rejects any bet, including 0). Double and split need enough uncommitted chips. There is no way to add chips mid-run. |
+| Progression | Chips move only by hand settlement (3:2 natural, 1:1 win, push, loss). Reaching the goal opens the victory phase (Cash Out or Keep Playing).                                                                                                                                                         |
+| End         | Goal reached then Cash Out (win), chips reach zero (loss, or win if the goal was already reached), or New Game / quit before the goal (abandoned).                                                                                                                                                   |
+| Persisted   | Local engine state (for resume) and a local run record per run with hands played. The server records one game row per run with outcome, hands and starting/final chips. Chips are never restored into a new run: every run opens with the table's fixed stack.                                       |
+| Scored      | The backend (`backend/blackjack/module.py`) records the run's final chips as its score and shows best and latest chips in Stats. The leaderboard is disabled, and there is no chip currency.                                                                                                         |
+| Replay      | After any end, **Play Again** / **New Game** returns to the table picker and a table pick starts a fresh run immediately. No purchase, paywall or entitlement re-check sits between runs beyond the normal access gating for the game.                                                               |
 
-| Table        | Starting chips | Run goal | Min bet | Max bet |
-| ------------ | -------------- | -------- | ------- | ------- |
-| Beginner     | 100            | 250      | 5       | 25      |
-| Intermediate | 250            | 750      | 10      | 50      |
-| High Roller  | 500            | 1500     | 25      | 200     |
+## Automated verification (#2788)
 
-Reaching the run goal on one table unlocks the next. Tables also unlock cosmetics (table themes, card backs, chip styles) for milestone achievements — e.g. winning back from ≤25% chip stack.
+- `frontend/src/game/blackjack/__tests__/economy.test.ts`: no Blackjack source imports a purchase/IAP/paywall module or an entitlement check other than the per-level `premiumLevels` lock; no chip buy/refill/restore/redeem/continue identifiers; every table always opens with its configured stack; wagers beyond the stack are rejected; a zero-chip run cannot bet (including a zero wager) and has no engine path forward except a new run; English copy has no buy/continue wording. The source scans are a tripwire, not a security boundary.
+- `frontend/src/screens/__tests__/BlackjackReplay.test.tsx`: the out-of-chips card offers only Play Again and Home (no buy/continue copy), Play Again goes straight to the table picker, and each table then starts a fresh full-stack run.
+- Existing coverage: run outcome recording (#2628) and Play Again after a bust-out in `BlackjackTableScreen.test.tsx`.
 
-## Scoring (Persistence)
+## Manual device checklist (iOS and Android)
 
-Blackjack has **no leaderboard**: chips are a balance, not a score. Its board is declared disabled (`enabled=False`) and only describes the per-game "best" in Stats.
+Automated tests do not replace device evidence. On each of an iOS and an Android build, with premium access granted, record pass/fail and screenshots:
 
-- **Metric and direction:** `final_score`, higher is better, labelled `chips` (`board` in `backend/blackjack/module.py`; `BOARDS.blackjack` in `frontend/src/api/vocab.ts`). The app sends no `final_score`, though: `endSession` in `frontend/src/game/blackjack/BlackjackGameContext.tsx` completes with `{ outcome, result }` only, so the column is `null` on every row current builds write. The chips go in the result block instead.
-- **Tie-break:** none; the board is disabled.
-- **Partitions:** none.
-- **Recorded, not partitioned:** creation metadata (`BlackjackMetadata`): `best_run_chips`, `total_runs`, `runs_completed` and `current_table`, computed on the device from its run history. Result (`BlackjackResult`): `hands_won`, `hands_played`, `starting_chips`, `final_chips`.
-- **Max value:** none (`max_value` unset).
-- **Outcomes:** `has_winner = True`. A session is one run at a table. It records `win` when the run reached its goal, even if the player chose Keep Playing and later ran out of chips (a Cash Out is a win too). It records `loss` when the chips ran out before the goal. New Game before the goal is `abandoned`, and so is leaving the game before the goal (`useGameSync`'s unmount abandon, with the result block). A run that has already reached its goal records `win` however its session ends, even on an unmount or when the app is killed: the progress snapshot (`syncSetProgressSnapshot` in `BlackjackGameContext.tsx`) carries an `outcome: "win"` override, which the hook's own abandon uses and mirrors to the device on every action, so the killed-process sweep records `win` too (#2682). The override applies only once the session has played a hand or continues a killed one. A session with no hand played records no result: `close()` discards it, or abandons it if it was marked started. Builds before #2628 sent `completed`; the server stores one with `final_chips` > 0 as `win` (`backend/games/legacy_outcomes.py`), and the rest stay `completed`, a finish with no winner.
-- **Duration:** `useGameSync`'s active-play window. Blackjack sends no duration of its own.
-- **How it reaches the server:** the `useGameSync("blackjack")` session row. `SyncWorker` sends `POST /games` once the player has acted and `PATCH /games/{id}/complete` when the run ends. Blackjack has no router of its own. The result card asks for no rank: `GET /games/{id}/rank` would answer `board_disabled`.
-- **Where the player sees it:** the table and Victory screens (`BlackjackTableScreen`, `BlackjackVictoryScreen`), and Stats (`GameStatsScreen`, #2635): sessions, wins, losses, win rate and streaks, time played, and a link to the on-device run history (`BlackjackStatsScreen`). The Stats "Best" reads the highest `final_score`, so it stays empty for rows current builds write. There is no Leaderboard entry point (`openableBoard` in `frontend/src/game/_shared/leaderboardAvailability.ts`). Store builds hide Blackjack entirely (`HIDDEN_GAMES`, `frontend/src/entitlements/gameVisibility.ts`).
+1. Start Beginner: chips read 100, goal 250; no purchase or "get chips" control appears anywhere (table picker, betting, table, menu, Stats).
+2. Lose every chip: the result card shows "Out of Chips" with only Play Again and Home.
+3. Tap Play Again: the table picker appears at once with no purchase sheet, paywall or loading gate; pick Beginner and confirm chips are back to 100.
+4. Repeat with airplane mode on: replay still starts (offline).
+5. Reach the goal, choose Keep Playing, then bust: the result is still a win and Play Again starts a fresh run.
+6. New Game mid-run: confirm dialog, then a fresh run at the picked table.
+7. Force-quit mid-hand and relaunch: the run resumes with the same chips; after finishing it, a new run still starts free.
+8. Read the store listing, paywall and Premium screens: copy sells access to the game only, never chips, extra chances, lives or continues.
 
-## Client-Side Engine
+## Objective and card values
 
-- Location: `frontend/src/game/blackjack/engine.ts`
-- Supporting files:
-  - `frontend/src/game/blackjack/tables.ts` — table tier config
-  - `frontend/src/game/blackjack/unlocks.ts` — cosmetic unlock logic
-- Key exports: hand evaluation, dealer AI logic, bet validation, split/double-down rules
+The player competes against the dealer. Build a hand as close to 21 as possible without going over, and beat the dealer's resolved total.
 
-## Backend
+- 2–10: face value.
+- Jack / Queen / King: 10.
+- Ace: 11 when possible, otherwise 1 as needed to avoid busting.
 
-- Module: `backend/blackjack/module.py`
-- Endpoints: none of its own. Sessions use the generic `/games` routes.
-- Metadata model: `BlackjackMetadata`
-  - `best_run_chips: int | None`
-  - `total_runs: int | None`
-  - `runs_completed: int | None`
-  - `current_table: Literal["beginner","intermediate","high_roller"] | None`
-- Result model: `BlackjackResult`: `hands_won`, `hands_played`, `starting_chips`, `final_chips`
-- Stats: `stats_shape` moves `best` to `extras.best_chips` and `latest_score` to `extras.current_chips`. Both are read from `final_score`, which current builds leave `null` (see [Scoring](#scoring-persistence))
+A natural Blackjack is a two-card 21.
 
-## Entitlement
+## Dealer rules
 
-Tier TBD. If free: no entitlement check. If premium: requires a valid entitlement JWT; see [`docs/ARCHITECTURE.md §10`](../ARCHITECTURE.md#10-premium-entitlements).
+Default table rules use:
 
-## Known Issues / Limitations
+- 6 decks;
+- dealer stands on soft 17 (`hit_soft_17 = false`);
+- configured deck penetration of 0.75;
+- automatic reshuffle when the remaining engine deck is low.
 
-- #2745: the app sends no `final_score`, so Stats' "Best" (`best_chips`) and `current_chips` stay empty (see [Scoring](#scoring-persistence))
+The engine supports a rules object, but player-facing difficulty variants are separate future work and should not be inferred from the current table tiers.
+
+## Player actions
+
+### Hit
+
+Take another card.
+
+### Stand
+
+End action for the current hand and allow dealer/settlement logic to continue.
+
+### Double Down
+
+Available on an eligible two-card hand when enough uncommitted chips remain. The wager doubles and exactly one additional card is taken before the hand stands.
+
+### Split
+
+A two-card hand can split when the ranks match **or both cards are ten-valued**. The player must have enough uncommitted chips to fund the additional hand.
+
+The engine caps a run at **3 splits**.
+
+Split-ace restrictions are enforced by the engine; double-down is not available on a split-ace hand.
+
+### Surrender
+
+Not implemented. Late surrender remains separate backlog (#175) and must not be documented as current behavior.
+
+## Hand settlement
+
+For a non-split hand:
+
+- **Natural Blackjack:** +1.5× the bet (3:2 net payout).
+- **Win:** +1× the bet.
+- **Push:** no chip change.
+- **Loss:** −1× the bet.
+
+The engine stores chips as the current bankroll and applies the net delta at settlement.
+
+For split hands, each hand resolves independently against the dealer using its own wager.
+
+## Table progression
+
+BC Arcade currently has three arcade tables:
+
+| Table        | Starting chips | Run goal | Min bet | Max bet | Milestones |
+| ------------ | -------------: | -------: | ------: | ------: | ---------- |
+| Beginner     |            100 |      250 |       5 |      25 | 175, 220   |
+| Intermediate |            250 |      750 |      10 |      50 | 500, 625   |
+| High Roller  |            500 |     1500 |      25 |     200 | 1000, 1250 |
+
+The Beginner table is always unlocked.
+
+Completing a table's run goal unlocks the next table. Intermediate therefore depends on completing Beginner; High Roller depends on completing Intermediate.
+
+A table's min/max bet is enforced by the engine. If the player has fewer chips than the nominal minimum, the effective minimum becomes the player's remaining stack, allowing an all-in final wager rather than creating an unusable stranded balance.
+
+## Run lifecycle
+
+A **run** begins when the player selects a table and receives that table's starting chips.
+
+The run continues hand after hand until one of these things happens:
+
+### Goal reached
+
+When chips reach or exceed the table's run goal, the engine enters the victory phase.
+
+The player can then:
+
+- **Cash Out:** end the completed run and return to table selection.
+- **Keep Playing:** continue at the same table without another run goal.
+
+Once the run goal has been reached, that run is considered a **win** for server/reporting purposes even if the player chooses Keep Playing and later loses all remaining chips.
+
+### Chips reach zero before the goal
+
+The run ends as a **loss**.
+
+### New Game / leave before the goal
+
+A started run ends as **abandoned**.
+
+A session in which no hand was actually played records no Blackjack result.
+
+## Run history and comeback tracking
+
+Run records are stored locally and include table, opening/final chips, whether the table goal was reached, hands played, biggest win, chip low, outcome and timestamps.
+
+A "comeback" means the run:
+
+1. fell to at most 25% of its starting chips **before** reaching the goal; and
+2. later completed the table.
+
+A later bust after Keep Playing does not erase that completed comeback.
+
+## Milestones and cosmetic rewards
+
+The engine/table config can emit milestone events as the chip stack crosses configured amounts.
+
+There is also an existing local unlock model with three named cosmetic rewards:
+
+- Felt Classic — Beginner completion;
+- Indigo Card Back — Intermediate completion;
+- Gold Chip Set — High Roller completion.
+
+**These are not currently complete usable cosmetics.** #1911 tracks the missing visual assets, application logic and management UI.
+
+Until #1911 is resolved:
+
+- documentation must not imply that the player can equip/use these styles;
+- an earned unlock record/notification should be treated as unfinished reward plumbing, not a finished customization feature.
+
+## Persistence and resume
+
+The full local engine state is saved in AsyncStorage.
+
+A saved in-progress run can resume after relaunch. The shared game-session layer also attempts to resume the server session left open by the killed process.
+
+The engine keeps enough state to preserve whether a run goal had already been reached, including after Keep Playing.
+
+## Server reporting
+
+Backend module: `backend/blackjack/module.py`.
+
+A server game row represents one Blackjack run/session.
+
+Creation metadata can include:
+
+- best run chips from local history;
+- total runs;
+- completed runs;
+- current table.
+
+Result data includes:
+
+- hands won;
+- hands played;
+- starting chips;
+- final chips.
+
+Outcomes:
+
+- `win`: run goal was reached;
+- `loss`: chips reached zero before the goal;
+- `abandoned`: player left a started run before the goal.
+
+There is **no public Blackjack leaderboard**. The backend board definition is disabled because chips are a run balance rather than a competitive score.
+
+## Stats
+
+A run's score is its closing balance (#2745).
+
+- The board metric is `final_chips` (from the result block), labelled `chips`. Stats "Best" (`best_value`) is the highest `final_chips` over non-abandoned runs. It is read when Stats is requested, so runs stored before #2745 with no `final_score` count too.
+- A finished run (`win` or `loss`) also sends its closing chips as `final_score`. The server rejects (400) a non-abandoned completion that sends a `final_score` without an equal `final_chips`, and any `final_chips` that is negative or above 2³¹−1.
+- When a completion has no `final_score` (older builds, offline-queued completions, or the unmount / killed-process `win`), the server fills it in from `final_chips` (`BlackjackModule.derive_final_score`). A run killed after reaching its goal keeps its latest result block on the device with the `win` override, so the launch sweep's `win` carries `final_chips` too. `extras.best_chips` and `extras.current_chips` read `final_score`, so they cover runs completed from #2745 on.
+- An abandoned run never counts toward Best and stores no `final_score`.
+
+On-device Blackjack run history is separate and continues to use the locally stored run records.
+
+## Premium entitlement
+
+Blackjack is premium and hidden from the v1.0 store build because its simulated gambling mechanics affect store age-rating/product decisions.
+
+When premium access ships, the purchase grants access to **Blackjack as a game**. It does not sell chips, wagers, retries, or run continuation.
+
+Premium entitlement mechanics are shared platform behavior; see [ARCHITECTURE.md §10](../ARCHITECTURE.md#10-premium-entitlements).
+
+## Engine and key files
+
+- Engine: `frontend/src/game/blackjack/engine.ts`
+- Run/session provider: `frontend/src/game/blackjack/BlackjackGameContext.tsx`
+- Table definitions: `frontend/src/game/blackjack/tables.ts`
+- Local run history/storage: `frontend/src/game/blackjack/storage.ts`
+- Unlock plumbing: `frontend/src/game/blackjack/unlocks.ts`
+- Backend module: `backend/blackjack/module.py`
+
+## Open behavior dependencies
+
+- #2788 — release verification of the arcade economy/free replay contract.
+- #1911 — incomplete cosmetic reward system.
+- #1127 — future Blackjack difficulty design.
+- #175 — late surrender.
+
+These should remain separate implementation/product issues. This file describes current behavior and calls out only dependencies that materially change the documented contract.

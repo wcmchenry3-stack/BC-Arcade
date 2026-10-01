@@ -23,8 +23,9 @@ export function renderTableModule(values: ArrayLike<number>, info: TableBuildInf
  * regenerate after any change to stateKey.ts's scoring/transition rules —
  * a rule change here without a regenerate silently stales the oracle.
  *
- * Format (oracle/tableCodec.ts): ORACLE_TABLE_SIZE little-endian Uint16
- * values in 1/${ORACLE_TABLE_SCALE}ths of a point, zlib-compressed, base64-encoded.
+ * Format (oracle/tableCodec.ts): ORACLE_TABLE_SIZE Uint16 values in
+ * 1/${ORACLE_TABLE_SCALE}ths of a point, delta + zigzag coded and split into
+ * low/high byte planes, zlib-compressed, base64-encoded.
  * Index i is VTG(i) — expected additional score ("value to go") for
  * scorecard-state key i. See frontend/src/game/yacht/oracle/stateKey.ts for
  * the key encoding (mask, yachtStatus, upperCapped).

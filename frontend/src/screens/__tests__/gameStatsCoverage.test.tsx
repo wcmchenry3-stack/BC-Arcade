@@ -120,7 +120,9 @@ describe("every visible game has a stats screen (#2635)", () => {
       // No raw keys (e.g. "stats:tile.wins", "tile.best") anywhere on screen.
       const texts = renderedTexts();
       expect(texts).toContain("Sessions");
-      const raw = texts.filter((s) => /^[\w-]+:[\w.]+$|^[a-z]+\.[a-zA-Z.]+$/.test(s));
+      // A namespace starts with a letter: a time ("0:42", Mahjong's best
+      // clear, #2747) is not a key.
+      const raw = texts.filter((s) => /^[a-z][\w-]*:[\w.]+$|^[a-z]+\.[a-zA-Z.]+$/.test(s));
       expect(raw).toEqual([]);
     }
   );

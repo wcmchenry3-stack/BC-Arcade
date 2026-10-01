@@ -61,6 +61,9 @@ type ScreenView = "loading" | "select" | "play";
 /** The result card's rank lookup on Sort's session board (#2625, #2677). */
 const sortBoard = sessionBoardAdapter("sort");
 
+/** Padding inside the board container; SortBoard sizes bottles to what's left. */
+const BOARD_PADDING = 16;
+
 export default function SortScreen() {
   const { t } = useTranslation("sort");
   const { t: tResult } = useTranslation("result");
@@ -425,6 +428,16 @@ export default function SortScreen() {
   function handleSelectLevel(levelId: number) {
     const level = levels.find((l) => l.id === levelId);
     if (!level) return;
+    // Like handleResetLevel: no pour from the previous board may carry over
+    // to the new one (#2297) — neither its animation nor its pending move.
+    if (pourTimerRef.current !== null) {
+      clearTimeout(pourTimerRef.current);
+      pourTimerRef.current = null;
+    }
+    pendingPourRef.current = null;
+    setIsPouring(false);
+    setPouringFrom(null);
+    setPouringTo(null);
     abandonSession();
     // The level's play time starts now, though its session opens at the first
     // pour: the thinking time before that pour counts, and time on the level
@@ -619,7 +632,9 @@ export default function SortScreen() {
             onBottleTap={handleBottleTap}
             pouringFrom={pouringFrom}
             pouringTo={pouringTo}
-            availableHeight={boardHeight}
+            // onLayout reports the container's full height, padding included;
+            // the board itself only gets the space inside the padding (#2207).
+            availableHeight={Math.max(0, boardHeight - 2 * BOARD_PADDING)}
             pourHoldMs={pourHoldMs}
             onPourComplete={handlePourComplete}
           />
@@ -657,7 +672,7 @@ export default function SortScreen() {
             rank: leaderboardSubmit.rank,
             isBest: leaderboardSubmit.isBest,
             playerName: leaderboardSubmit.playerName,
-            onProvideName: leaderboardSubmit.provideName,
+            onJoinLeaderboards: leaderboardSubmit.joinLeaderboards,
             onRetry: leaderboardSubmit.retry,
           }}
           onViewLeaderboard={openLeaderboard}
@@ -696,7 +711,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: 16,
+    padding: BOARD_PADDING,
   },
 
   colorblindToggle: { alignItems: "center", paddingVertical: 8 },

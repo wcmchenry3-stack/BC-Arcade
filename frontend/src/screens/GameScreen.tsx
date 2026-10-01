@@ -34,6 +34,7 @@ import Scorecard from "../components/Scorecard";
 import VsScorecard from "../components/yacht/VsScorecard";
 import GameResultModal, { type GameOutcome } from "../components/shared/GameResultModal";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
+import { buildEndedPayload } from "../game/yacht/resultPayload";
 import YachtFinalScorecard from "../components/yacht/YachtFinalScorecard";
 import AiDifficultySelector from "../components/yacht/AiDifficultySelector";
 import { YachtCelebrationAnimation } from "../components/yacht/YachtCelebrationAnimation";
@@ -183,6 +184,7 @@ export default function GameScreen({ navigation, route }: Props) {
     enqueue: syncEnqueue,
     complete: syncComplete,
     getGameId: syncGetGameId,
+    setProgressSnapshot: syncSetProgressSnapshot,
     resetPlayWindow: syncResetPlayWindow,
   } = useGameSync("yacht");
 
@@ -214,22 +216,21 @@ export default function GameScreen({ navigation, route }: Props) {
     outcome: "completed" | "abandoned",
     opponent?: GameState | null
   ) {
-    const payload: Record<string, unknown> = {
-      final_score: s.total_score,
-      upper_bonus: s.upper_bonus,
-      yacht_bonus_total: s.yacht_bonus_total,
-      outcome,
-    };
-    // #2505: vs-mode games report who won once the CPU has finished.
-    if (opponent?.game_over && outcome === "completed") {
-      const vsResult = vsOutcome(s, opponent);
-      payload.opponent_score = opponent.total_score;
-      payload.vs_result = vsResult;
-      // #2517: the row records who won (a tie is `push`), not just "completed".
-      payload.outcome = recordedOutcome(vsResult);
-    }
-    return payload;
+    // #2505: vs-mode games report who won once the CPU has finished (#2517:
+    // the row records who won, a tie is `push`). #2839: both scorecards go in.
+    return buildEndedPayload(s, outcome, opponent, vsOutcome, recordedOutcome);
   }
+
+  // #2839: the hook's own abandons (unmount, navigation) carry the partial
+  // scorecard too, built by the same helper as the New Game abandon. An
+  // abandoned row never ranks and is excluded from progression and the daily
+  // challenge, so this only adds the saved detail. The row's score column is
+  // untouched: the snapshot has no `finalScore`.
+  useEffect(() => {
+    syncSetProgressSnapshot(() => ({
+      result: endedPayload(gameStateRef.current, "abandoned"),
+    }));
+  }, [syncSetProgressSnapshot]);
 
   // When the mode modal is shown on first render we defer syncStart to the
   // handler so the session only starts once the player has chosen a mode.
@@ -826,7 +827,7 @@ export default function GameScreen({ navigation, route }: Props) {
           rank: leaderboard.rank,
           isBest: leaderboard.isBest,
           playerName: leaderboard.playerName,
-          onProvideName: leaderboard.provideName,
+          onJoinLeaderboards: leaderboard.joinLeaderboards,
           onRetry: leaderboard.retry,
         }}
         onViewLeaderboard={openLeaderboard}

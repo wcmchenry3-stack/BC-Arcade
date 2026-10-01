@@ -45,6 +45,13 @@ jest.mock("../../game/_shared/flushQueuedGames", () => ({
 jest.mock("../../game/_shared/displayNameSync", () => ({
   ...jest.requireActual("../../game/_shared/displayNameSync"),
   flushDisplayNameSync: () => Promise.resolve(true),
+  // Joining stores the server's generated name at once (#2778).
+  joinLeaderboards: async () => {
+    await jest
+      .requireActual("../../game/_shared/displayName")
+      .storeAssignedDisplayName("Brave Otter 4821");
+    return true;
+  },
 }));
 
 // A stand-in for useGameSync that keeps the real hook's session rules:
@@ -562,6 +569,14 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
    * the game. The human led ♥5 and wins the trick (+1 point); the AIs follow
    * with diamonds.
    */
+  // Ten resolved hands (each row sums to 26) that add up to [45, 100, 63, 52],
+  // the pre-hand totals the result-card tests start from.
+  const PRIOR_HANDS = [
+    ...Array.from({ length: 5 }, () => [5, 10, 6, 5]),
+    ...Array.from({ length: 3 }, () => [4, 10, 7, 5]),
+    ...Array.from({ length: 2 }, () => [4, 10, 6, 6]),
+  ];
+
   function lastTrickState(cumulativeScores: number[]): HeartsState {
     return {
       _v: 3,
@@ -571,7 +586,7 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
       passDirection: "none",
       cumulativeScores,
       handScores: [0, 0, 0, 0],
-      scoreHistory: [],
+      scoreHistory: PRIOR_HANDS,
       passSelections: [[], [], [], []],
       passingComplete: true,
       heartsBroken: true,
@@ -697,12 +712,21 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
       outcome: "win",
       finalScore: 54,
       durationMs: expect.any(Number),
-      result: { final_score: 54, vs_result: "win" },
+      // #2838: the completion result carries the per-hand path: the ten prior
+      // hands plus the one just played, summing to the final totals.
+      result: {
+        final_score: 54,
+        vs_result: "win",
+        hand_scores: [...PRIOR_HANDS, [1, 0, 0, 0]],
+        final_scores: [46, 100, 63, 52],
+        human_seat: 0,
+      },
     });
     // The AIs' three 400 ms turns ran on the clock (plus the test's own waits).
     const { durationMs } = summary as { durationMs: number };
     expect(durationMs).toBeGreaterThanOrEqual(1200);
     expect(durationMs).toBeLessThan(10_000);
+    // The analytics payload is the score only, not the history (#2838).
     expect(payload).toEqual({ final_score: 54, vs_result: "win" });
   });
 
@@ -859,7 +883,7 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
   // just asks for the name again and then shows the rank.
   it("resumes the name prompt and the rank lookup after a remount", async () => {
     const first = await finishGame([45, 100, 63, 52]);
-    expect(await first.findByLabelText("Pick a display name for leaderboards")).toBeTruthy();
+    expect(await first.findByRole("button", { name: "Join leaderboards" })).toBeTruthy();
     await waitFor(() => expect(saveFinishedGameId).toHaveBeenCalledWith("hearts-game"));
     await first.unmount();
 
@@ -870,15 +894,12 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
     (loadFinishedGameId as jest.Mock).mockResolvedValue("hearts-game");
     (loadGame as jest.Mock).mockResolvedValue(gameOverState());
     const again = await renderScreen();
-    const input = await again.findByLabelText("Pick a display name for leaderboards");
+    const join = await again.findByRole("button", { name: "Join leaderboards" });
     await act(async () => {
-      await fireEvent.changeText(input, "Riley");
-    });
-    await act(async () => {
-      await fireEvent.press(again.getByRole("button", { name: "Save" }));
+      await fireEvent.press(join);
     });
     await waitFor(() =>
-      expect(again.getByText("Saved as Riley · #1 on the leaderboard")).toBeTruthy()
+      expect(again.getByText("Saved as Brave Otter 4821 · #1 on the leaderboard")).toBeTruthy()
     );
     expect(mockGetGameRank).toHaveBeenCalledTimes(1);
     expect(mockGetGameRank).toHaveBeenCalledWith("hearts-game");

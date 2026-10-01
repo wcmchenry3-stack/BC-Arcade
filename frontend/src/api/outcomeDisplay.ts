@@ -6,7 +6,8 @@
  * label.
  *
  * Also formats a board metric with its label ("412 pts", "87 moves",
- * "Level 19") for the per-game bests and the recent-game rows.
+ * "Level 19", or a clear time "3:07") for the per-game bests and the
+ * recent-game rows.
  */
 
 import type { ComponentProps } from "react";
@@ -15,6 +16,7 @@ import type { TFunction } from "i18next";
 import type { Colors } from "../theme/ThemeContext";
 import type { GameRow } from "./types";
 import { formatNumber } from "./statsDisplay";
+import { formatMs } from "../game/_shared/formatMs";
 import { BOARDS, GAME_OUTCOMES, type GameOutcome } from "./vocab";
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>["name"];
@@ -85,10 +87,26 @@ export function knownOutcome(outcome: string | null): OutcomeDisplay | null {
 /** Board label keys with a "stats:metric.*" string. Others show the bare number. */
 const METRIC_LABEL_KEYS = new Set(["score", "moves", "level", "guesses", "chips"]);
 
+/** The board label key of a metric in milliseconds (Mahjong's clear time, #2747). */
+export const TIME_LABEL_KEY = "time";
+
 /**
- * `value` with its label, e.g. "412 pts", "87 moves", "Level 19"; "—" when
- * there is no value. `labelKey` is the board's (`best_label_key`,
- * `BoardDefinition.labelKey`).
+ * A board value without its label: a "time" metric (milliseconds) as a clock,
+ * "3:07" or "1:02:03"; anything else as a localised number. The leaderboard
+ * rows show this under the metric's column header.
+ */
+export function formatBoardValue(
+  t: TFunction,
+  labelKey: string | null | undefined,
+  value: number
+): string {
+  return labelKey === TIME_LABEL_KEY ? formatMs(value) : formatNumber(t, value);
+}
+
+/**
+ * `value` with its label, e.g. "412 pts", "87 moves", "Level 19"; a time as
+ * the bare clock, "3:07"; "—" when there is no value. `labelKey` is the
+ * board's (`best_label_key`, `BoardDefinition.labelKey`).
  */
 export function formatMetric(
   t: TFunction,
@@ -96,23 +114,31 @@ export function formatMetric(
   value: number | null | undefined
 ): string {
   if (value == null) return "—";
+  if (labelKey === TIME_LABEL_KEY) return formatMs(value);
   const formatted = formatNumber(t, value);
   if (labelKey == null || !METRIC_LABEL_KEYS.has(labelKey)) return formatted;
   return t(`stats:metric.${labelKey}`, { count: value, value: formatted });
 }
 
 /**
- * One finished game's value of its board metric: `final_score`, or the
- * metadata key the board ranks by (Sort's `level_reached`, Daily Word's
- * `guesses_used`). Null when the game doesn't carry it.
+ * One finished game's value of its board metric: `final_score`,
+ * `duration_ms` (Mahjong's clear time), or the metadata key the board ranks
+ * by (Sort's `level_reached`, Daily Word's `guesses_used`). Null when the game
+ * doesn't carry it.
  */
-export function gameMetric(game: Pick<GameRow, "game_type" | "final_score" | "metadata">): {
+export function gameMetric(
+  game: Pick<GameRow, "game_type" | "final_score" | "metadata"> &
+    Partial<Pick<GameRow, "duration_ms">>
+): {
   value: number | null;
   labelKey: string;
 } {
   const board = BOARDS[game.game_type] ?? null;
   if (board == null || board.metric === "final_score") {
     return { value: game.final_score, labelKey: board?.labelKey ?? "score" };
+  }
+  if (board.metric === "duration_ms") {
+    return { value: game.duration_ms ?? null, labelKey: board.labelKey };
   }
   const raw = game.metadata?.[board.metric];
   return {

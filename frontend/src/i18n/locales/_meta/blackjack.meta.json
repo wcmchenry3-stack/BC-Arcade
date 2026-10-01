@@ -539,15 +539,6 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "chip.vipCredits": {
-    "component": "ChipButton",
-    "description": "Short badge marking a chip denomination as VIP-tier credits.",
-    "tone": "neutral",
-    "characterLimit": 8,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": "Currently unused in the app; reserved for a future VIP chip badge. 'VIP' is commonly kept untranslated as a borrowed term, but translate it if the locale uses a native equivalent."
-  },
   "rules.title": {
     "component": "BettingPanel",
     "description": "Heading for the collapsible table rules panel.",

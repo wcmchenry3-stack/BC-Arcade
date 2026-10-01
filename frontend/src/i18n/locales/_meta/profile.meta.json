@@ -278,6 +278,411 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "detail.offline": {
+    "component": "GameDetailScreen",
+    "description": "Game Details message when the game can't load because the device is offline.",
+    "tone": "calm, clear",
+    "characterLimit": 68,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.noBreakdown": {
+    "component": "GameDetailScreen",
+    "description": "Game Details note for an older game whose saved result has no score breakdown. Must not imply the breakdown was zero.",
+    "tone": "neutral",
+    "characterLimit": 70,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.unreconciled": {
+    "component": "GameDetailScreen",
+    "description": "Game Details note under a saved score breakdown that doesn't add up to the game's final score.",
+    "tone": "neutral, factual",
+    "characterLimit": 86,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.factsTitle": {
+    "component": "GameDetailScreen",
+    "description": "Game Details card title above a short list of the game's saved numbers (moves, undos, …).",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.cellA11y": {
+    "component": "GameDetailScreen",
+    "description": "Screen-reader text for one labelled value in a Game Details table, e.g. 'You: 12'.",
+    "tone": "neutral",
+    "characterLimit": 32,
+    "placeholders": ["{{label}}", "{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.fact.opponentScore": {
+    "component": "GameDetailScreen",
+    "description": "Game Details facts row label: the computer opponent's final score.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.fact.handsPlayed": {
+    "component": "GameDetailScreen",
+    "description": "Game Details facts row label: how many hands (card rounds) were played.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.fact.handsWon": {
+    "component": "GameDetailScreen",
+    "description": "Game Details facts row label: how many Blackjack hands were won.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.fact.waveReached": {
+    "component": "GameDetailScreen",
+    "description": "Game Details facts row label: the last Star Swarm wave the run reached.",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.fact.moves": {
+    "component": "GameDetailScreen",
+    "description": "Game Details facts row label: how many moves the player made.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.fact.undos": {
+    "component": "GameDetailScreen",
+    "description": "Game Details facts row label: how many moves the player undid.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.fact.drops": {
+    "component": "GameDetailScreen",
+    "description": "Game Details facts row label: how many fruits the player dropped in Cascade.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.fact.merges": {
+    "component": "GameDetailScreen",
+    "description": "Game Details facts row label: how many fruit merges happened in Cascade.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.fact.startingChips": {
+    "component": "GameDetailScreen",
+    "description": "Game Details facts row label: the Blackjack chip count at the start of the run.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.fact.finalChips": {
+    "component": "GameDetailScreen",
+    "description": "Game Details facts row label: the Blackjack chip count at the end of the run.",
+    "tone": "neutral",
+    "characterLimit": 18,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.fact.errors": {
+    "component": "GameDetailScreen",
+    "description": "Game Details facts row label: how many wrong numbers the player entered in Sudoku.",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.fact.pairs": {
+    "component": "GameDetailScreen",
+    "description": "Game Details facts row label: how many tile pairs were matched in Mahjong Solitaire.",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.hearts.title": {
+    "component": "GameDetailScreen",
+    "description": "Game Details card title above a Hearts table of each hand's penalty points per player.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.hearts.hand": {
+    "component": "GameDetailScreen",
+    "description": "Column header in the Hearts table: the hand (round) number.",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.hearts.opponent": {
+    "component": "GameDetailScreen",
+    "description": "Short column header in the Hearts table for a computer player, numbered 1–3 (no names are stored). Keep very short.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": ["{{n}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.hearts.opponentA11y": {
+    "component": "GameDetailScreen",
+    "description": "Screen-reader name of a computer player in the Hearts table, numbered 1–3.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": ["{{n}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.hearts.total": {
+    "component": "GameDetailScreen",
+    "description": "Label of the Hearts table's totals row.",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.hearts.handA11y": {
+    "component": "GameDetailScreen",
+    "description": "Screen-reader text for one row of the Hearts table; scores is a list like 'You: 3, Opponent 1: 13, …'.",
+    "tone": "neutral",
+    "characterLimit": 36,
+    "placeholders": ["{{n}}", "{{scores}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.hearts.totalA11y": {
+    "component": "GameDetailScreen",
+    "description": "Screen-reader text for the Hearts table's totals row; scores is a list like 'You: 40, Opponent 1: 101, …'.",
+    "tone": "neutral",
+    "characterLimit": 30,
+    "placeholders": ["{{scores}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.yacht.title": {
+    "component": "GameDetailScreen",
+    "description": "Game Details card title above a finished Yacht game's saved scorecard.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.yacht.partial": {
+    "component": "GameDetailScreen",
+    "description": "Game Details note under a Yacht scorecard from a game that ended early: '—' means the category was never scored (not 0).",
+    "tone": "neutral",
+    "characterLimit": 70,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.title": {
+    "component": "GameDetailScreen",
+    "description": "Game Details card title above a Star Swarm run's points per wave and where they came from.",
+    "tone": "neutral",
+    "characterLimit": 24,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.wave": {
+    "component": "GameDetailScreen",
+    "description": "Row label in Star Swarm's points-by-wave list.",
+    "tone": "neutral",
+    "characterLimit": 22,
+    "placeholders": ["{{wave}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.waves": {
+    "component": "GameDetailScreen",
+    "description": "Row label in Star Swarm's points-by-wave list for older waves summed into one row, e.g. 'Waves 1–12'.",
+    "tone": "neutral",
+    "characterLimit": 40,
+    "placeholders": ["{{first}}", "{{last}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.unattributed": {
+    "component": "GameDetailScreen",
+    "description": "Row label in Star Swarm's points-by-wave list for points not credited to a wave.",
+    "tone": "neutral",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.source.Grunt": {
+    "component": "GameDetailScreen",
+    "description": "Star Swarm score source chip: points from destroying this enemy type (the basic enemy ship).",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.source.Elite": {
+    "component": "GameDetailScreen",
+    "description": "Star Swarm score source chip: points from destroying this enemy type (a tougher ship).",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.source.Boss": {
+    "component": "GameDetailScreen",
+    "description": "Star Swarm score source chip: points from destroying this enemy type (the Carrier's escort).",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.source.Guardian": {
+    "component": "GameDetailScreen",
+    "description": "Star Swarm score source chip: points from destroying this enemy type (the Carrier's escort, formerly Boss).",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.source.Carrier": {
+    "component": "GameDetailScreen",
+    "description": "Star Swarm score source chip: points from destroying this enemy type (the large mothership).",
+    "tone": "neutral",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.source.clear": {
+    "component": "GameDetailScreen",
+    "description": "Star Swarm score source chip: the bonus for clearing a wave.",
+    "tone": "neutral",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.mod.dive": {
+    "component": "GameDetailScreen",
+    "description": "Star Swarm score source modifier, shown after the enemy name: shot down while diving (double points). Lowercase where the language has case.",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.mod.rout": {
+    "component": "GameDetailScreen",
+    "description": "Star Swarm score source modifier, shown after the enemy name: caught while fleeing (double points).",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.mod.bomb": {
+    "component": "GameDetailScreen",
+    "description": "Star Swarm score source modifier, shown after the enemy name: destroyed by a Smart Bomb.",
+    "tone": "neutral",
+    "characterLimit": 8,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.mod.ram": {
+    "component": "GameDetailScreen",
+    "description": "Star Swarm score source modifier, shown after the enemy name: destroyed by ramming the player's ship.",
+    "tone": "neutral",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.sourceWithMod": {
+    "component": "GameDetailScreen",
+    "description": "Star Swarm score source with its modifier, e.g. 'Grunt · dive'.",
+    "tone": "neutral",
+    "characterLimit": 32,
+    "placeholders": ["{{source}}", "{{mod}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.chip": {
+    "component": "GameDetailScreen",
+    "description": "Star Swarm score source chip: the source's name and its points, e.g. 'Grunt 1,200'.",
+    "tone": "neutral",
+    "characterLimit": 32,
+    "placeholders": ["{{label}}", "{{value}}"],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.starswarm.noPoints": {
+    "component": "GameDetailScreen",
+    "description": "Game Details line in Star Swarm's points-by-wave card for a run that scored nothing.",
+    "tone": "neutral",
+    "characterLimit": 26,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.yacht.playerUnreconciled": {
+    "component": "GameDetailScreen",
+    "description": "Game Details note under a vs Yacht scorecard when the player's card doesn't add up to their final score.",
+    "tone": "neutral, factual",
+    "characterLimit": 70,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "detail.yacht.opponentUnreconciled": {
+    "component": "GameDetailScreen",
+    "description": "Game Details note under a vs Yacht scorecard when the computer's card doesn't add up to its final score.",
+    "tone": "neutral, factual",
+    "characterLimit": 84,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "level.title": {
     "component": "LevelProgress",
     "description": "Label on the Arcade Level card at the top of Profile (and Home), above the level number.",
@@ -332,126 +737,144 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "displayName.label": {
-    "component": "DisplayNameField",
-    "description": "Label above the display-name input, shown on Profile (and reused for the one-time result-card prompt).",
+  "boards.title": {
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Label above the leaderboard-participation controls on Profile.",
     "tone": "neutral",
-    "characterLimit": 21,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "displayName.placeholder": {
-    "component": "DisplayNameField",
-    "description": "Placeholder text inside the empty display-name input.",
-    "tone": "casual",
-    "characterLimit": 11,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "displayName.helper": {
-    "component": "DisplayNameField",
-    "description": "Helper text under the display-name input on Profile, explaining what it's used for and its length limit.",
-    "tone": "neutral, helpful",
-    "characterLimit": 89,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": "1-32 is the fixed character-count limit for the name — keep the numbers."
-  },
-  "displayName.save": {
-    "component": "DisplayNameField",
-    "description": "Save button (and its accessibility label) for the display-name field.",
-    "tone": "functional",
-    "characterLimit": 13,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "displayName.saved": {
-    "component": "DisplayNameField",
-    "description": "Confirmation text shown under the field after the display name is saved successfully.",
-    "tone": "neutral, reassuring",
-    "characterLimit": 64,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "displayName.saveError": {
-    "component": "DisplayNameField",
-    "description": "Error text shown under the field when saving the display name fails.",
-    "tone": "apologetic, clear",
-    "characterLimit": 63,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "boards.removeName": {
-    "component": "ProfileScreen",
-    "description": "Button under the display-name field: removes the player's name from every leaderboard (after a confirmation).",
-    "tone": "neutral",
-    "characterLimit": 42,
+    "characterLimit": 17,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
   },
   "boards.notOnBoards": {
-    "component": "ProfileScreen",
-    "description": "Shown under the display-name field when the player has no name, so appears on no leaderboard.",
-    "tone": "neutral",
-    "characterLimit": 80,
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Shown on Profile when the player hasn't joined the leaderboards. Names are generated by the app; players never type one.",
+    "tone": "neutral, inviting",
+    "characterLimit": 112,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
   },
-  "boards.removeError": {
-    "component": "ProfileScreen",
-    "description": "Error shown when the name couldn't be removed on this device.",
-    "tone": "neutral",
-    "characterLimit": 70,
+  "boards.join": {
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Button (and its accessibility label) on Profile that joins the public leaderboards. The server then assigns a generated name.",
+    "tone": "functional",
+    "characterLimit": 32,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
   },
-  "boards.removing": {
-    "component": "ProfileScreen",
-    "description": "Shown under the display-name field after the player removed their name while the removal hasn't reached the server yet (usually offline).",
+  "boards.joining": {
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Shown on Profile, while the device is offline, after the player joined and the join hasn't reached the server yet, so no name is known yet. (Online, boards.joiningOnline is shown instead.)",
     "tone": "neutral",
-    "characterLimit": 100,
+    "characterLimit": 90,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.joiningOnline": {
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Shown on Profile after the player joined while online and the join is still on its way to the server, so no name is known yet. Must not suggest the player is offline.",
+    "tone": "neutral",
+    "characterLimit": 90,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.joinError": {
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Error shown when the join couldn't be stored on this device.",
+    "tone": "apologetic, clear",
+    "characterLimit": 72,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
   },
   "boards.onBoardsAs": {
-    "component": "ProfileScreen",
-    "description": "Shown under the display-name field when this device has no name but the server still shows the player on leaderboards under {{name}}.",
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Shown on Profile when the player is on the leaderboards, with their generated name.",
     "tone": "neutral",
     "characterLimit": 70,
     "placeholders": ["{{name}}"],
     "doNotTranslate": [],
-    "notes": "{{name}} is the player's own display name (up to 32 characters)."
+    "notes": "{{name}} is the player's server-generated name, e.g. \"Brave Otter 4821\" (English words, up to 32 characters). Never translate it."
+  },
+  "boards.generatedHelper": {
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Helper line under the player's generated leaderboard name, explaining why names are generated rather than typed.",
+    "tone": "friendly, reassuring",
+    "characterLimit": 86,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.reroll": {
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Button (and accessibility label) that swaps the player's generated name for another generated one. Needs a connection.",
+    "tone": "functional, playful",
+    "characterLimit": 22,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.rerollError": {
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Error shown when a new generated name couldn't be fetched (usually offline). Not shown when the player turned out not to be on the leaderboards.",
+    "tone": "apologetic, clear",
+    "characterLimit": 86,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.leave": {
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Button (and accessibility label) that takes the player off every leaderboard (after a confirmation).",
+    "tone": "neutral",
+    "characterLimit": 31,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.leaveError": {
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Error shown when leaving couldn't be stored on this device.",
+    "tone": "apologetic, clear",
+    "characterLimit": 68,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "boards.leaving": {
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Shown on Profile after the player left the leaderboards while that hasn't reached the server yet (usually offline).",
+    "tone": "neutral",
+    "characterLimit": 94,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
   },
   "boards.confirm.title": {
-    "component": "ProfileScreen",
-    "description": "Title of the dialog confirming removal of the player's name from leaderboards.",
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Title of the dialog confirming leaving the leaderboards.",
     "tone": "neutral",
-    "characterLimit": 26,
+    "characterLimit": 33,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
   },
   "boards.confirm.body": {
-    "component": "ProfileScreen",
-    "description": "Body of the dialog confirming removal of the player's name from leaderboards.",
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Body of the dialog confirming leaving the leaderboards. Rejoining later gives a new generated name.",
     "tone": "neutral",
-    "characterLimit": 140,
+    "characterLimit": 165,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
   },
   "boards.confirm.confirm": {
-    "component": "ProfileScreen",
-    "description": "Confirm button of the name-removal dialog.",
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Confirm button of the leave-leaderboards dialog.",
     "tone": "neutral",
     "characterLimit": 14,
     "placeholders": [],
@@ -459,8 +882,8 @@
     "notes": null
   },
   "boards.confirm.cancel": {
-    "component": "ProfileScreen",
-    "description": "Cancel button of the name-removal dialog.",
+    "component": "ProfileScreen (LeaderboardMembership)",
+    "description": "Cancel button of the leave-leaderboards dialog.",
     "tone": "neutral",
     "characterLimit": 14,
     "placeholders": [],

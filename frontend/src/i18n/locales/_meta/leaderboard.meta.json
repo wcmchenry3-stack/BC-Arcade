@@ -62,6 +62,15 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "metric.time": {
+    "component": "LeaderboardScreen",
+    "description": "Column header for a board ranked by time to finish (fastest wins, e.g. a Mahjong clear).",
+    "tone": "functional",
+    "characterLimit": 14,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "direction.asc": {
     "component": "LeaderboardScreen",
     "description": "Caption on boards where the lowest number ranks first (e.g. fewest moves).",
@@ -74,6 +83,15 @@
   "partition.tier": {
     "component": "LeaderboardScreen",
     "description": "Label of the Star Swarm difficulty-tier picker above the board.",
+    "tone": "functional",
+    "characterLimit": 16,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "partition.layout": {
+    "component": "LeaderboardScreen",
+    "description": "Label of the Mahjong layout picker above the board (one board per tile layout).",
     "tone": "functional",
     "characterLimit": 16,
     "placeholders": [],

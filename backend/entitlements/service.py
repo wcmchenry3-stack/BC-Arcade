@@ -21,7 +21,9 @@ from db.models import GameEntitlement
 
 # Keep in sync with is_premium=True rows (migrations 0014, 0016, 0020, 0022, 0023) —
 # update when adding a premium game.
-_ALL_PREMIUM_SLUGS = ["blackjack", "cascade", "hearts", "mahjong", "starswarm"]
+ALL_PREMIUM_SLUGS = ["blackjack", "cascade", "hearts", "mahjong", "starswarm"]
+# Pre-#840 private name, kept for existing imports.
+_ALL_PREMIUM_SLUGS = ALL_PREMIUM_SLUGS
 
 TOKEN_TTL_HOURS = 24
 ALGORITHM = "RS256"
@@ -94,7 +96,7 @@ def issue_token(session_id: str, entitled_games: list[str]) -> tuple[str, dateti
 async def get_entitled_games(db_session: AsyncSession | None, session_id: str) -> list[str]:
     """Return entitled game slugs; when DEV_OVERRIDE is active, returns all premium slugs."""
     if is_dev_override_active():
-        return list(_ALL_PREMIUM_SLUGS)
+        return list(ALL_PREMIUM_SLUGS)
     rows = (
         (
             await db_session.execute(

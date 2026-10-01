@@ -1,59 +1,40 @@
-"""Request/response schemas for ``/players/me`` (#2624)."""
+"""Request/response schemas for ``/players/me`` (#2624, #2778)."""
 
 from __future__ import annotations
 
-import unicodedata
-from typing import Annotated
+from pydantic import BaseModel
 
-from pydantic import AfterValidator, BaseModel
+# Names older builds filled in or suggested for the player rather than ones the
+# player chose (compared trimmed and case-insensitively, see
+# ``is_default_legacy_name``). Sending one of these was not a deliberate choice
+# to appear on the public boards, so it never opts anyone in. Migration
+# ``0030_generated_player_names`` keeps a literal copy of this list;
+# ``tests/test_generated_names.py`` checks the two copies match.
+LEGACY_DEFAULT_NAMES: frozenset[str] = frozenset(
+    {"", "you", "player", "guest", "anonymous", "anon", "me", "player 1", "player1"}
+)
 
-from db.models import PLAYER_DISPLAY_NAME_MAX_LENGTH
 
+def clean_display_name(raw: object) -> str | None:
+    """``raw`` trimmed, or ``None`` unless it is a non-blank string.
 
-def clean_display_name(raw: object, *, truncate: bool = False) -> str | None:
-    """``raw`` as a display name, or ``None`` when it can't be one.
-
-    Trimmed with ``str.strip()`` (the board trims the same way), 1-32
-    characters, and no control characters (Unicode ``Cc``): those render as
-    nothing on a board, and Postgres rejects NUL outright. ``truncate`` cuts
-    a longer name to 32 characters instead of refusing it, for names that
-    come from legacy routes (#2624 review).
+    Since #2778 no client text is ever stored as a public name, so nothing
+    about its content matters beyond this: it only decides whether an older
+    build *sent* a name (``POST /games`` metadata), which under the old model
+    was the player's choice to join the boards.
     """
     if not isinstance(raw, str):
         return None
-    name = raw.strip()
-    if truncate:
-        name = name[:PLAYER_DISPLAY_NAME_MAX_LENGTH].rstrip()
-    if not name or len(name) > PLAYER_DISPLAY_NAME_MAX_LENGTH:
-        return None
-    if any(unicodedata.category(c) == "Cc" for c in name):
-        return None
-    return name
+    return raw.strip() or None
 
 
-def _display_name(value: str) -> str:
-    name = clean_display_name(value)
-    if name is None:
-        raise ValueError(
-            f"must be 1-{PLAYER_DISPLAY_NAME_MAX_LENGTH} characters with no control characters"
-        )
-    return name
-
-
-DisplayName = Annotated[str, AfterValidator(_display_name)]
-"""A display name: 1-32 characters once surrounding whitespace is dropped,
-with no control characters (``clean_display_name``). The app applies the same
-rule (``normalizeDisplayName``), so a name it accepts is never refused here.
-"""
-
-
-class SetDisplayNameRequest(BaseModel):
-    """``PUT /players/me``."""
-
-    display_name: DisplayName
+def is_default_legacy_name(name: str) -> bool:
+    """Whether ``name`` is a default an older build filled in, not a choice."""
+    return name.strip().casefold() in LEGACY_DEFAULT_NAMES
 
 
 class PlayerResponse(BaseModel):
-    """The caller's display name, or ``null`` when none is set."""
+    """The caller's generated public name, or ``null`` when they are not on
+    the leaderboards."""
 
     display_name: str | None

@@ -6,6 +6,7 @@
   "hud.score": "SCORE",
   "hud.pairs": "PAIRS",
   "hud.time": "TIME",
+  "hud.elapsed": "Elapsed time {{time}}",
   "hud.deal": "DEAL",
   "action.shuffle": "SHUFFLE",
   "action.shuffleLabel": "Shuffle remaining tiles into a new solvable arrangement",

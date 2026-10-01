@@ -81,6 +81,27 @@ describe("PendingGamesStore", () => {
       expect(fresh.get("g1")?.progressOutcome).toBe("win");
     });
 
+    it("persists a win's result block and replaces it when it changes (#2745)", async () => {
+      await store.create("g1", "blackjack", {});
+      await store.setProgressOutcome("g1", "win", { final_chips: 240 });
+      await store.setProgressOutcome("g1", "win", { final_chips: 265 });
+      expect(store.get("g1")?.progressResult).toEqual({ final_chips: 265 });
+
+      const fresh = new PendingGamesStore();
+      await fresh.init();
+      expect(fresh.get("g1")?.progressResult).toEqual({ final_chips: 265 });
+    });
+
+    it("keeps no result without one, and clears it with the override", async () => {
+      await store.create("g1", "blackjack", {});
+      await store.setProgressOutcome("g1", "win");
+      expect(store.get("g1")?.progressResult).toBeUndefined();
+      await store.setProgressOutcome("g1", "win", { final_chips: 240 });
+      await store.setProgressOutcome("g1", null, { final_chips: 240 });
+      expect(store.get("g1")?.progressOutcome).toBeNull();
+      expect(store.get("g1")?.progressResult).toBeUndefined();
+    });
+
     it("clears the override when set to null", async () => {
       await store.create("g1", "yacht", {});
       await store.setProgressOutcome("g1", "win");

@@ -4,8 +4,10 @@ import Animated, {
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
+  withTiming,
+  Easing,
 } from "react-native-reanimated";
-import { StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, StyleSheet, Text, View } from "react-native";
 import { Canvas, Group, Picture, createPicture } from "@shopify/react-native-skia";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
@@ -18,14 +20,20 @@ import {
   decayMissionCompleteTimer,
   isBossWave,
   routJustStarted,
+  buddyJustLost,
   fleeingCount,
   carrierJustExposed,
   throwAsteroid,
   killEscorts,
   carrierBeamJustStarted,
   carrierBeamJustFired,
+  carrierAttackRunJustStarted,
+  carrierFinalStandJustStarted,
   reinforcementsJustLaunched,
   upgradeEvents,
+  waveJustCleared,
+  isAutopilot,
+  PLAYER_W,
 } from "../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
 import { areTestHooksEnabled, isPreLaunchApiBuild } from "../../game/_shared/envFlags";
@@ -48,6 +56,14 @@ import {
   drawImagesOf,
   sameDrawImages,
 } from "../../game/starswarm/assets";
+import {
+  pickupCues,
+  pickupCueFrame,
+  pickupCueLabelKey,
+  pickupCueColor,
+  PICKUP_CUE_MS,
+} from "../../game/starswarm/render/pickupCue";
+import type { PickupCue } from "../../game/starswarm/render/pickupCue";
 import { drawFrame } from "../../game/starswarm/render/drawFrame";
 import type { DrawImages } from "../../game/starswarm/render/drawFrame";
 import { buildFrame } from "../../game/starswarm/render/frame";
@@ -86,6 +102,12 @@ export interface DevOptions {
 
 export interface GameCanvasHandle {
   setPlayerX: (x: number) => void;
+  /**
+   * The X the ship is (or is about to be) at: the last `setPlayerX` value clamped to the play
+   * field. Unlike `getState().player.x` this is current even while the engine is not ticking
+   * (pre-wave countdown), so it is the right drag anchor for a new gesture.
+   */
+  getPlayerX: () => number;
   setFire: (fire: boolean) => void;
   /** Inject a power-up activation mid-game for dev-panel testing (#1039). */
   triggerPowerUp: (type: PowerUpType) => void;
@@ -139,11 +161,13 @@ interface Props {
   onBossWave?: () => void;
   /** #2489: called once when the wave's grunts rout, with how many are fleeing. */
   onRout?: (count: number) => void;
+  /** #2845: called once when a Buddy ship is destroyed. */
+  onBuddyLost?: () => void;
   onBonusLife?: () => void;
   onPowerUpCollect?: (type: PowerUpType) => void;
-  /** #2484: called once when the last Boss escort dies and the Carrier's armor drops. */
+  /** #2484: called once when the last Guardian dies and the Carrier's armor drops. */
   onCarrierExposed?: () => void;
-  /** #2485: beam telegraph, beam firing, reinforcement launch. */
+  /** #2485/#2843: beam charge and release, reinforcements, attack run, final stand. */
   onCarrierEvent?: (kind: CarrierEvent) => void;
   /** #2488: a gun or hull ladder change (pickup collected, plating hit, level lost). */
   onUpgrade?: (ev: UpgradeEvent) => void;
@@ -175,6 +199,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onExplosion,
       onBossWave,
       onRout,
+      onBuddyLost,
       onBonusLife,
       onPowerUpCollect,
       onCarrierExposed,
@@ -192,6 +217,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     ref
   ) => {
     const { t } = useTranslation("starswarm");
+    // Read from the frame loop without re-subscribing it on language change.
+    const tRef = useRef(t);
+    tRef.current = t;
     const images = useStarSwarmImages();
     // #2565: a stable image set for the UI thread — a new object only when an image loads, so
     // the picture worklet (which captures it) is rebuilt only when there is something to add.
@@ -217,7 +245,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         )
     );
     const sfRef = useRef<StarfieldState>(initStarfield(width, height));
-    const inputRef = useRef({ playerX: width / 2, fire: true });
+    const inputRef = useRef({ playerX: initialState?.player.x ?? width / 2, fire: true });
     const infiniteLivesRef = useRef(false);
     // Assign during render (not via effect) so the reset effect always reads the
     // latest devOptions even though devOptions is not in its dependency array.
@@ -253,6 +281,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     const onExplosionRef = useRef(onExplosion);
     const onBossWaveRef = useRef(onBossWave);
     const onRoutRef = useRef(onRout);
+    const onBuddyLostRef = useRef(onBuddyLost);
     const onBonusLifeRef = useRef(onBonusLife);
     const onPowerUpCollectRef = useRef(onPowerUpCollect);
     const onCarrierExposedRef = useRef(onCarrierExposed);
@@ -295,6 +324,9 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       onRoutRef.current = onRout;
     }, [onRout]);
     useEffect(() => {
+      onBuddyLostRef.current = onBuddyLost;
+    }, [onBuddyLost]);
+    useEffect(() => {
       onBonusLifeRef.current = onBonusLife;
     }, [onBonusLife]);
     useEffect(() => {
@@ -328,6 +360,23 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       })
     );
     const hudRef = useRef<HudState>(hud);
+    // #2847: the pickup cue toast — the label is rare React state, its fade a UI-thread animation
+    const [pickupCue, setPickupCue] = useState<PickupCue | null>(null);
+    const pickupCueElapsed = useSharedValue(PICKUP_CUE_MS);
+    const pickupCueStyle = useAnimatedStyle(() => {
+      const f = pickupCueFrame(pickupCueElapsed.value);
+      return f
+        ? { opacity: f.opacity, transform: [{ translateY: f.offsetY }, { scale: f.scale }] }
+        : { opacity: 0 };
+    });
+    const showPickupCueRef = useRef((cue: PickupCue) => {
+      setPickupCue(cue);
+      pickupCueElapsed.value = 0;
+      pickupCueElapsed.value = withTiming(PICKUP_CUE_MS, {
+        duration: PICKUP_CUE_MS,
+        easing: Easing.linear,
+      });
+    });
     // #2566: the two HUD values that move every frame drive animated styles on the UI thread.
     const [initialCues] = useState<HudCues>(() => hudCues(initialFrame.game));
     const missionOpacitySV = useSharedValue(initialCues.missionOpacity);
@@ -387,6 +436,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         setPlayerX(x) {
           inputRef.current.playerX = x;
         },
+        getPlayerX() {
+          const hw = PLAYER_W / 2;
+          return Math.max(hw, Math.min(width - hw, inputRef.current.playerX));
+        },
         setFire(fire) {
           inputRef.current.fire = fire;
         },
@@ -407,7 +460,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           return stats ? summarizeFrameStats(stats, performance.now()) : null;
         },
       }),
-      []
+      [width]
     );
 
     // Prop-driven reset: fires when resetTick increments (new game requested from parent).
@@ -575,20 +628,37 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               if (carrierBeamJustFired(prev, applied)) onCarrierEventRef.current?.("beamFire");
               if (reinforcementsJustLaunched(prev, applied))
                 onCarrierEventRef.current?.("reinforce");
+              // #2843: attack-run telegraph and a final stand after the armor was already down
+              if (carrierAttackRunJustStarted(prev, applied))
+                onCarrierEventRef.current?.("attackRun");
+              if (carrierFinalStandJustStarted(prev, applied))
+                onCarrierEventRef.current?.("finalStand");
               for (const ev of upgradeEvents(prev, applied)) onUpgradeRef.current?.(ev); // #2488
+              // #2847: the newest cue wins if two land on one tick
+              const cues = pickupCues(prev, applied);
+              if (cues.length > 0) showPickupCueRef.current(cues[cues.length - 1]!);
+              // A maxed pickup fires no upgrade event, so announce it here for screen readers.
+              for (const cue of cues) {
+                if (cue.max)
+                  AccessibilityInfo.announceForAccessibility(tRef.current(pickupCueLabelKey(cue)));
+              }
               if (routJustStarted(prev, applied)) onRoutRef.current?.(fleeingCount(applied)); // #2489
-              // #2352: wave clear no longer freezes gameplay behind a WinTransition phase —
-              // the wave counter bumps in the same tick the last enemy dies. Detect that bump
-              // directly instead of watching for a phase transition.
-              const waveJustCleared = applied.wave > prevWaveRef.current;
+              if (buddyJustLost(prev, applied)) onBuddyLostRef.current?.(); // #2845
+              // #2842: the wave clears on the last kill — extraction starts (no freeze, #2352);
+              // the wave counter bumps later, once the AI has flown the ship out and the field
+              // has had its hard reset.
+              if (waveJustCleared(prev, applied)) onWaveClearRef.current?.();
+              // While the AI flies the ship, keep the input on it so control resumes in place.
+              if (isAutopilot(applied)) inputRef.current.playerX = applied.player.x;
+              const waveStarted = applied.wave > prevWaveRef.current;
               prevWaveRef.current = applied.wave;
-              if (waveJustCleared) {
-                onWaveClearRef.current?.();
-                // #2490: a boss wave announces itself on top of the wave-clear jingle
+              if (waveStarted) {
+                inputRef.current.playerX = applied.player.x; // back on station, centred
+                // #2490: a boss wave announces itself as it opens
                 if (isBossWave(applied.wave)) onBossWaveRef.current?.();
               }
-              // A fresh clear starts the pre-wave countdown immediately (every wave opens on SwoopIn).
-              if (waveJustCleared && applied.phase === "SwoopIn") {
+              // Every new wave opens on SwoopIn behind the pre-wave countdown.
+              if (waveStarted && applied.phase === "SwoopIn") {
                 countdownMsRef.current = WAVE_COUNTDOWN_MS;
                 waveBannerCountdownRef.current = true;
               }
@@ -669,6 +739,19 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               {`${t("hud.guns")}${hud.guns} · ${t("hud.hull")} ${"◆".repeat(hud.hull) || "–"}`}
             </Text>
           </View>
+
+          {/* #2847: "GUNS +1" / "HULL +1" / "GUNS MAX" — non-modal, fades on its own. The spoken
+              cue comes from onUpgrade (or the MAX announcement above), so hide this from screen readers. */}
+          {pickupCue !== null && (
+            <Animated.Text
+              style={[styles.pickupCue, { color: pickupCueColor(pickupCue.kind) }, pickupCueStyle]}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              testID="starswarm-pickup-cue"
+            >
+              {t(pickupCueLabelKey(pickupCue))}
+            </Animated.Text>
+          )}
 
           {hud.bonusFlash && (
             <View style={styles.bonusLifeOverlay} pointerEvents="none">
@@ -856,6 +939,15 @@ const styles = StyleSheet.create({
     textShadowColor: "#ff8800",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 8,
+  },
+  pickupCue: {
+    alignSelf: "center",
+    marginTop: 8,
+    fontSize: 18,
+    fontWeight: "bold",
+    textShadowColor: "#000000",
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
   },
   hudDifficulty: {
     alignSelf: "center",

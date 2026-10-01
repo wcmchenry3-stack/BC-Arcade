@@ -36,7 +36,7 @@ from daily_challenge.definitions import (
 from daily_challenge.service import evaluate_goal
 from db.base import get_session_factory, is_configured
 from db.models import Game, GameEntitlement, GameType
-from entitlements.service import _ALL_PREMIUM_SLUGS
+from entitlements.service import ALL_PREMIUM_SLUGS
 
 # ---------------------------------------------------------------------------
 # definitions — no DB
@@ -172,7 +172,7 @@ def test_free_pool_has_the_six_free_games_and_never_a_premium_one() -> None:
         "freecell",
         "yacht",
     }
-    assert set(FREE_GOAL_POOL).isdisjoint(_ALL_PREMIUM_SLUGS)
+    assert set(FREE_GOAL_POOL).isdisjoint(ALL_PREMIUM_SLUGS)
 
 
 def test_pending_premium_goals_stay_out_of_every_live_pool() -> None:
@@ -180,7 +180,7 @@ def test_pending_premium_goals_stay_out_of_every_live_pool() -> None:
     # pool it would be picked for store builds, where the game does not exist.
     for pool in GOAL_POOLS.values():
         assert set(pool).isdisjoint(PENDING_PREMIUM_GOALS)
-    assert set(PENDING_PREMIUM_GOALS) <= set(_ALL_PREMIUM_SLUGS)
+    assert set(PENDING_PREMIUM_GOALS) <= set(ALL_PREMIUM_SLUGS)
     # The one-win rule's easy-goal fallback must hold for them too.
     assert all(goals[0].is_win is False for goals in PENDING_PREMIUM_GOALS.values())
     assert PENDING_PREMIUM_GOALS["blackjack"][1].is_win  # chips_gained is luck
@@ -835,7 +835,7 @@ async def test_a_premium_day_naming_no_premium_game_is_the_free_slate() -> None:
     # Real pools: until #2458 the premium pool holds only free games, so even a
     # session that owns every premium game has nothing to unlock.
     sid = str(uuid.uuid4())
-    await _grant(sid, *_ALL_PREMIUM_SLUGS)
+    await _grant(sid, *ALL_PREMIUM_SLUGS)
     assert await _slate(sid) == "free"
     assert template_for(_DAY, "premium") == template_for(_DAY, "free")
 

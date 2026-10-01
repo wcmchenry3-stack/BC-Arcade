@@ -147,25 +147,58 @@ describe("mahjong stats storage", () => {
 
   it("returns zero defaults when no stats saved", async () => {
     const stats = await loadStats();
-    expect(stats).toEqual({ bestScore: 0, bestTimeMs: 0, gamesPlayed: 0, gamesWon: 0 });
+    expect(stats).toEqual({ bestScore: 0, bestTimeMsByLayout: {}, gamesPlayed: 0, gamesWon: 0 });
   });
 
   it("saves and loads stats round-trip", async () => {
-    await saveStats({ bestScore: 1230, bestTimeMs: 185000, gamesPlayed: 10, gamesWon: 4 });
-    const loaded = await loadStats();
-    expect(loaded).toEqual({ bestScore: 1230, bestTimeMs: 185000, gamesPlayed: 10, gamesWon: 4 });
+    const stats = {
+      bestScore: 1230,
+      bestTimeMsByLayout: { turtle: 185000, spider: 240000 },
+      gamesPlayed: 10,
+      gamesWon: 4,
+    };
+    await saveStats(stats);
+    expect(await loadStats()).toEqual(stats);
   });
 
   it("returns zero defaults on corrupt stats payload", async () => {
     await AsyncStorage.setItem("mahjong_stats_v1", "not-json{");
     const stats = await loadStats();
-    expect(stats).toEqual({ bestScore: 0, bestTimeMs: 0, gamesPlayed: 0, gamesWon: 0 });
+    expect(stats).toEqual({ bestScore: 0, bestTimeMsByLayout: {}, gamesPlayed: 0, gamesWon: 0 });
+  });
+
+  // #2747: a best under the ranking floor came from a broken clock (an old
+  // save resumed with no time banked): it loads as no best, so a real clear
+  // can still set one.
+  it("drops a stored best time under the ranking floor", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_stats_v1",
+      JSON.stringify({
+        bestScore: 1220,
+        bestTimeMsByLayout: { turtle: 4_000, spider: 36_000, cat: "fast", fish: null },
+        gamesPlayed: 2,
+        gamesWon: 1,
+      })
+    );
+    expect((await loadStats()).bestTimeMsByLayout).toEqual({ spider: 36_000 });
+  });
+
+  // #2747: the old single best was across every layout and can't be
+  // attributed to one, so it is dropped rather than shown as some layout's.
+  it("ignores the old cross-layout best time", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_stats_v1",
+      JSON.stringify({ bestScore: 1220, bestTimeMs: 90_000, gamesPlayed: 2, gamesWon: 1 })
+    );
+    const stats = await loadStats();
+    expect(stats.bestTimeMsByLayout).toEqual({});
+    expect(stats).not.toHaveProperty("bestTimeMs");
   });
 
   it("coerces missing numeric fields to 0 on partial payload", async () => {
     await AsyncStorage.setItem("mahjong_stats_v1", JSON.stringify({ gamesPlayed: 5 }));
     const stats = await loadStats();
-    expect(stats).toEqual({ bestScore: 0, bestTimeMs: 0, gamesPlayed: 5, gamesWon: 0 });
+    expect(stats).toEqual({ bestScore: 0, bestTimeMsByLayout: {}, gamesPlayed: 5, gamesWon: 0 });
   });
 });
 

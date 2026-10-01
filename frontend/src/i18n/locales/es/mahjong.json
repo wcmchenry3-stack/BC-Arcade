@@ -6,6 +6,7 @@
   "hud.score": "PUNTOS",
   "hud.pairs": "PAREJAS",
   "hud.time": "TIEMPO",
+  "hud.elapsed": "Tiempo transcurrido {{time}}",
   "hud.deal": "RONDA",
   "action.shuffle": "MEZCLAR",
   "action.shuffleLabel": "Mezcla las fichas en una nueva disposición resoluble",

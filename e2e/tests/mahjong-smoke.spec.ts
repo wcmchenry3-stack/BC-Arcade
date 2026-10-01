@@ -39,9 +39,9 @@ test.describe("Mahjong — smoke tests", () => {
     ).toBeVisible();
   });
 
-  test("score and remaining-tile display is visible", async ({ page }) => {
+  test("play clock and remaining-tile display is visible", async ({ page }) => {
     await gotoMahjong(page);
-    await expect(page.getByText(/^SCORE\s+\d/).first()).toBeVisible();
+    await expect(page.getByText(/^TIME\s+\d+:\d{2}$/).first()).toBeVisible();
     await expect(page.getByText(/^PAIRS\s+\d/).first()).toBeVisible();
   });
 
@@ -65,10 +65,7 @@ test.describe("Mahjong — smoke tests", () => {
     const canvas = page.getByRole("img", { name: /Mahjong Solitaire/i });
     const box = await canvas.boundingBox();
     if (box) {
-      await page.mouse.click(
-        box.x + box.width / 2,
-        box.y + box.height / 2,
-      );
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     }
     await expect(page.getByRole("alert")).not.toBeVisible();
     await expect(canvas).toBeVisible();
@@ -80,6 +77,8 @@ test("Mahjong Solitaire card shows premium gate on home screen when not entitled
 }) => {
   await page.goto("/");
   await expect(
-    page.getByRole("button", { name: /Mahjong Solitaire — Coming soon/ }),
+    page.getByRole("button", {
+      name: /Mahjong Solitaire — Locked, tap to unlock/,
+    }),
   ).toBeVisible({ timeout: 10_000 });
 });

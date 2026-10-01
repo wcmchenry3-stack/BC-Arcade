@@ -1,8 +1,10 @@
 import React, { useState } from "react";
-import { View, Text, Pressable, StyleSheet, Switch, Linking } from "react-native";
+import { View, Text, Pressable, StyleSheet, Switch, Linking, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
+import { usePurchases } from "../purchases/PurchaseProvider";
+import { useRestorePurchases } from "../purchases/useRestorePurchases";
 import { useTheme, type ThemeMode } from "../theme/ThemeContext";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
@@ -17,7 +19,7 @@ import { eventStore } from "../game/_shared/eventStore";
 import { statsApi } from "../api/stats";
 import { clearMyStatsCache } from "../hooks/useMyStats";
 import { clearDisplayName } from "../game/_shared/displayName";
-import { clearDisplayNameSync } from "../game/_shared/displayNameSync";
+import { clearDisplayNameSync, forgetSyncedDisplayName } from "../game/_shared/displayNameSync";
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from "../config/legal";
 
 const THEME_MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -28,6 +30,10 @@ export default function SettingsScreen() {
   const { muted, setMuted } = useSoundSettings();
   const insets = useSafeAreaInsets();
   const { t } = useTranslation("common");
+  // Restore Purchases (Apple 3.1.1) exists only where purchases do: hidden with
+  // the unavailable adapter, i.e. web and v1.0 store builds.
+  const { isAvailable: purchasesAvailable } = usePurchases();
+  const restorer = useRestorePurchases();
 
   const themeLabel: Record<ThemeMode, string> = {
     system: t("theme.system", "System"),
@@ -59,13 +65,20 @@ export default function SettingsScreen() {
     try {
       // First, so a name sync in flight can't recreate the player's name on
       // the server after the delete (#2624).
+      // It also marks the legacy-name migration done, so a name left on the
+      // device can never turn into a join on a later launch (#2778 review).
       await clearDisplayNameSync();
       await statsApi.deleteMyData();
       // The stats screen's remembered /stats/me is this player's (#2635).
       clearMyStatsCache();
+      // The local name goes before the session, and a failure stops here: the
+      // device must not keep showing a name under a fresh player id.
+      if (!(await clearDisplayName())) {
+        throw new Error("deleteData: couldn't clear the local display name");
+      }
+      // Only now that the server copy is gone.
+      await forgetSyncedDisplayName();
       await Promise.all([
-        // The name too, or the next launch would send it again for the new session.
-        clearDisplayName(),
         clearSession(),
         pendingGamesStore.clearAll(),
         eventStore.clearAll(),
@@ -97,166 +110,207 @@ export default function SettingsScreen() {
     >
       <AppHeader title={t("nav.settings")} />
 
-      <View style={[styles.row, { borderColor: colors.border }]}>
-        <Text style={[styles.label, { color: colors.text }]}>{t("theme.label", "Theme")}</Text>
-        <View
-          style={[styles.segmented, { backgroundColor: colors.surfaceAlt }]}
-          accessibilityRole="radiogroup"
-          accessibilityLabel={t("theme.label", "Theme")}
-          testID="theme-mode-segmented"
-        >
-          {THEME_MODES.map((mode) => {
-            const active = mode === themeMode;
-            return (
-              <Pressable
-                key={mode}
-                onPress={() => setThemeMode(mode)}
-                style={[
-                  styles.segment,
-                  { backgroundColor: active ? colors.accent : "transparent" },
-                ]}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: active }}
-                // RN Web 0.21 drops accessibilityState; set aria-checked so web
-                // screen readers and the Playwright suite can observe selection.
-                aria-checked={active}
-                accessibilityLabel={themeLabel[mode]}
-                testID={`theme-mode-${mode}`}
-              >
-                <Text
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        testID="settings-scroll"
+      >
+        <View style={[styles.row, { borderColor: colors.border }]}>
+          <Text style={[styles.label, { color: colors.text }]}>{t("theme.label", "Theme")}</Text>
+          <View
+            style={[styles.segmented, { backgroundColor: colors.surfaceAlt }]}
+            accessibilityRole="radiogroup"
+            accessibilityLabel={t("theme.label", "Theme")}
+            testID="theme-mode-segmented"
+          >
+            {THEME_MODES.map((mode) => {
+              const active = mode === themeMode;
+              return (
+                <Pressable
+                  key={mode}
+                  onPress={() => setThemeMode(mode)}
                   style={[
-                    styles.segmentText,
-                    { color: active ? colors.textOnAccent : colors.text },
+                    styles.segment,
+                    { backgroundColor: active ? colors.accent : "transparent" },
                   ]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: active }}
+                  // RN Web 0.21 drops accessibilityState; set aria-checked so web
+                  // screen readers and the Playwright suite can observe selection.
+                  aria-checked={active}
+                  accessibilityLabel={themeLabel[mode]}
+                  testID={`theme-mode-${mode}`}
                 >
-                  {themeLabel[mode]}
-                </Text>
-              </Pressable>
-            );
-          })}
+                  <Text
+                    style={[
+                      styles.segmentText,
+                      { color: active ? colors.textOnAccent : colors.text },
+                    ]}
+                  >
+                    {themeLabel[mode]}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
-      </View>
 
-      <View style={[styles.row, { borderColor: colors.border }]}>
-        <Text style={[styles.label, { color: colors.text }]}>{t("deck.label")}</Text>
-        <View style={styles.pillGroup}>
-          {availableDecks.map((id) => {
-            const active = id === activeDeck.id;
-            return (
-              <Pressable
-                key={id}
-                onPress={() => setDeck(id)}
-                style={[
-                  styles.pill,
-                  { backgroundColor: active ? colors.accent : colors.surfaceAlt },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  active ? t("deck.selected", { name: id }) : t("deck.select", { name: id })
-                }
-                accessibilityState={{ selected: active }}
-                testID={`deck-pill-${id}`}
-              >
+        <View style={[styles.row, { borderColor: colors.border }]}>
+          <Text style={[styles.label, { color: colors.text }]}>{t("deck.label")}</Text>
+          <View style={styles.pillGroup}>
+            {availableDecks.map((id) => {
+              const active = id === activeDeck.id;
+              return (
+                <Pressable
+                  key={id}
+                  onPress={() => setDeck(id)}
+                  style={[
+                    styles.pill,
+                    { backgroundColor: active ? colors.accent : colors.surfaceAlt },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    active ? t("deck.selected", { name: id }) : t("deck.select", { name: id })
+                  }
+                  accessibilityState={{ selected: active }}
+                  testID={`deck-pill-${id}`}
+                >
+                  <Text
+                    style={[styles.pillText, { color: active ? colors.textOnAccent : colors.text }]}
+                  >
+                    {id.charAt(0).toUpperCase() + id.slice(1)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={[styles.row, { borderColor: colors.border }]}>
+          <Text style={[styles.label, { color: colors.text }]}>
+            {t("settings.language", "Language")}
+          </Text>
+          <LanguageSwitcher />
+        </View>
+
+        <View style={[styles.row, { borderColor: colors.border }]}>
+          <Text style={[styles.label, { color: colors.text }]}>
+            {t("settings.soundEffects", "Sound effects")}
+          </Text>
+          <Switch
+            value={!muted}
+            onValueChange={(enabled) => setMuted(!enabled)}
+            trackColor={{ false: colors.surfaceAlt, true: colors.accent }}
+            thumbColor={colors.textOnAccent}
+            accessibilityRole="switch"
+            accessibilityLabel={t("settings.soundEffects", "Sound effects")}
+            accessibilityState={{ checked: !muted }}
+            testID="sound-effects-toggle"
+          />
+        </View>
+
+        <View style={[styles.rowStacked, { borderColor: colors.border }]}>
+          <View style={styles.rowStackedText}>
+            <Text style={[styles.label, { color: colors.text }]}>
+              {t("clearLogs.label", "Clear local logs")}
+            </Text>
+            <Text style={[styles.description, { color: colors.text, opacity: 0.7 }]}>
+              {t("clearLogs.description")}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setConfirmVisible(true)}
+            style={[styles.destructive, { backgroundColor: colors.surfaceAlt }]}
+            testID="clear-logs-button"
+            accessibilityRole="button"
+            accessibilityLabel={t("clearLogs.label")}
+          >
+            <Text style={{ color: colors.text }}>{t("clearLogs.button", "Clear")}</Text>
+          </Pressable>
+        </View>
+
+        <View style={[styles.rowStacked, { borderColor: colors.border }]}>
+          <View style={styles.rowStackedText}>
+            <Text style={[styles.label, { color: colors.text }]}>
+              {t("deleteData.label", "Delete my data")}
+            </Text>
+            <Text style={[styles.description, { color: colors.text, opacity: 0.7 }]}>
+              {t("deleteData.description")}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setDeleteConfirmVisible(true)}
+            style={[styles.destructive, { backgroundColor: colors.error }]}
+            testID="delete-data-button"
+            accessibilityRole="button"
+            accessibilityLabel={t("deleteData.label")}
+          >
+            <Text style={[styles.destructiveText, { color: colors.textOnAccent }]}>
+              {t("deleteData.button", "Delete")}
+            </Text>
+          </Pressable>
+        </View>
+
+        {purchasesAvailable && (
+          <View style={[styles.rowStacked, { borderColor: colors.border }]}>
+            <View style={styles.rowStackedText}>
+              <Text style={[styles.label, { color: colors.text }]}>{t("paywall.restore")}</Text>
+              <Text style={[styles.description, { color: colors.text, opacity: 0.7 }]}>
+                {t("settings.restorePurchases.description")}
+              </Text>
+              {restorer.status !== "idle" && restorer.status !== "busy" && (
                 <Text
-                  style={[styles.pillText, { color: active ? colors.textOnAccent : colors.text }]}
+                  style={[styles.description, { color: colors.text }]}
+                  accessibilityLiveRegion="polite"
+                  testID={`restore-purchases-${restorer.status}`}
                 >
-                  {id.charAt(0).toUpperCase() + id.slice(1)}
+                  {t(`restore.${restorer.status}`)}
                 </Text>
-              </Pressable>
-            );
-          })}
+              )}
+            </View>
+            <Pressable
+              onPress={() => void restorer.restore()}
+              disabled={restorer.busy}
+              style={[
+                styles.destructive,
+                styles.restoreButton,
+                { backgroundColor: colors.surfaceAlt, opacity: restorer.busy ? 0.5 : 1 },
+              ]}
+              testID="restore-purchases-button"
+              accessibilityRole="button"
+              accessibilityLabel={t("paywall.restore")}
+              accessibilityState={{ disabled: restorer.busy, busy: restorer.busy }}
+            >
+              <Text style={{ color: colors.text }}>{t("paywall.restore")}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        <View style={styles.legalRow}>
+          <Pressable
+            onPress={() => openLegalUrl(PRIVACY_POLICY_URL)}
+            style={styles.legalLink}
+            testID="privacy-policy-link"
+            accessibilityRole="link"
+            accessibilityLabel={t("legal.privacyPolicy")}
+          >
+            <Text style={[styles.legalLinkText, { color: colors.text }]}>
+              {t("legal.privacyPolicy")}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => openLegalUrl(TERMS_OF_SERVICE_URL)}
+            style={styles.legalLink}
+            testID="terms-of-service-link"
+            accessibilityRole="link"
+            accessibilityLabel={t("legal.termsOfService")}
+          >
+            <Text style={[styles.legalLinkText, { color: colors.text }]}>
+              {t("legal.termsOfService")}
+            </Text>
+          </Pressable>
         </View>
-      </View>
-
-      <View style={[styles.row, { borderColor: colors.border }]}>
-        <Text style={[styles.label, { color: colors.text }]}>
-          {t("settings.language", "Language")}
-        </Text>
-        <LanguageSwitcher />
-      </View>
-
-      <View style={[styles.row, { borderColor: colors.border }]}>
-        <Text style={[styles.label, { color: colors.text }]}>
-          {t("settings.soundEffects", "Sound effects")}
-        </Text>
-        <Switch
-          value={!muted}
-          onValueChange={(enabled) => setMuted(!enabled)}
-          trackColor={{ false: colors.surfaceAlt, true: colors.accent }}
-          thumbColor={colors.textOnAccent}
-          accessibilityRole="switch"
-          accessibilityLabel={t("settings.soundEffects", "Sound effects")}
-          accessibilityState={{ checked: !muted }}
-          testID="sound-effects-toggle"
-        />
-      </View>
-
-      <View style={[styles.rowStacked, { borderColor: colors.border }]}>
-        <View style={styles.rowStackedText}>
-          <Text style={[styles.label, { color: colors.text }]}>
-            {t("clearLogs.label", "Clear local logs")}
-          </Text>
-          <Text style={[styles.description, { color: colors.text, opacity: 0.7 }]}>
-            {t("clearLogs.description")}
-          </Text>
-        </View>
-        <Pressable
-          onPress={() => setConfirmVisible(true)}
-          style={[styles.destructive, { backgroundColor: colors.surfaceAlt }]}
-          testID="clear-logs-button"
-          accessibilityRole="button"
-          accessibilityLabel={t("clearLogs.label")}
-        >
-          <Text style={{ color: colors.text }}>{t("clearLogs.button", "Clear")}</Text>
-        </Pressable>
-      </View>
-
-      <View style={[styles.rowStacked, { borderColor: colors.border }]}>
-        <View style={styles.rowStackedText}>
-          <Text style={[styles.label, { color: colors.text }]}>
-            {t("deleteData.label", "Delete my data")}
-          </Text>
-          <Text style={[styles.description, { color: colors.text, opacity: 0.7 }]}>
-            {t("deleteData.description")}
-          </Text>
-        </View>
-        <Pressable
-          onPress={() => setDeleteConfirmVisible(true)}
-          style={[styles.destructive, { backgroundColor: colors.error }]}
-          testID="delete-data-button"
-          accessibilityRole="button"
-          accessibilityLabel={t("deleteData.label")}
-        >
-          <Text style={[styles.destructiveText, { color: colors.textOnAccent }]}>
-            {t("deleteData.button", "Delete")}
-          </Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.legalRow}>
-        <Pressable
-          onPress={() => openLegalUrl(PRIVACY_POLICY_URL)}
-          style={styles.legalLink}
-          testID="privacy-policy-link"
-          accessibilityRole="link"
-          accessibilityLabel={t("legal.privacyPolicy")}
-        >
-          <Text style={[styles.legalLinkText, { color: colors.text }]}>
-            {t("legal.privacyPolicy")}
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => openLegalUrl(TERMS_OF_SERVICE_URL)}
-          style={styles.legalLink}
-          testID="terms-of-service-link"
-          accessibilityRole="link"
-          accessibilityLabel={t("legal.termsOfService")}
-        >
-          <Text style={[styles.legalLinkText, { color: colors.text }]}>
-            {t("legal.termsOfService")}
-          </Text>
-        </Pressable>
-      </View>
+      </ScrollView>
 
       <ConfirmModal
         visible={confirmVisible}
@@ -304,7 +358,9 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24 },
+  container: { flex: 1 },
+  scroll: { flex: 1 },
+  scrollContent: { padding: 24 },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -324,6 +380,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 16 },
   description: { fontSize: 13, marginTop: 4 },
   destructive: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+  restoreButton: { minHeight: 48, justifyContent: "center" },
   destructiveText: { fontWeight: "600" },
   legalRow: {
     flexDirection: "row",

@@ -6,6 +6,7 @@
   "hud.score": "स्कोर",
   "hud.pairs": "जोड़े",
   "hud.time": "समय",
+  "hud.elapsed": "समय बीता {{time}}",
   "hud.deal": "डील",
   "action.shuffle": "फेंटें",
   "action.shuffleLabel": "बची हुई टाइलों को एक नई हल होने वाली व्यवस्था में फेंटें",

@@ -27,6 +27,8 @@ import type { MahjongState } from "../../game/mahjong/types";
 // Module mocks
 // ---------------------------------------------------------------------------
 
+// Counts the board's renders: the HUD clock's tick must not re-render it (#2747).
+const mockCanvasRenders = { count: 0 };
 jest.mock("../../components/mahjong/GameCanvas", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { View, Pressable, Text } = require("react-native");
@@ -39,6 +41,7 @@ jest.mock("../../components/mahjong/GameCanvas", () => {
     onTilePress: (id: number) => void;
     hintIds: ReadonlySet<number>;
   }) {
+    mockCanvasRenders.count += 1;
     return (
       <View testID="game-canvas">
         {state.tiles.map((tile) => (
@@ -234,10 +237,14 @@ describe("MahjongScreen — mount and HUD", () => {
     expect(api.getByTestId("game-canvas")).toBeTruthy();
   });
 
-  it("renders score and pairs HUD on a fresh game", async () => {
+  it("renders the play clock and pairs HUD on a fresh game (#2747)", async () => {
     const api = await mount();
-    expect(api.getByText(/SCORE/)).toBeTruthy();
+    expect(api.getByTestId("mahjong-clock")).toHaveTextContent("TIME 0:00");
+    expect(api.getByTestId("mahjong-clock").props.accessibilityLabel).toBe("Elapsed time 0:00");
     expect(api.getByText(/PAIRS/)).toBeTruthy();
+    // The clock replaces the score readout: during play the score is 10 per
+    // pair, which PAIRS already shows. The result card still has it.
+    expect(api.queryByText(/SCORE/)).toBeNull();
   });
 });
 
@@ -388,16 +395,117 @@ describe("MahjongScreen — win result card (#2510)", () => {
     await waitFor(async () => {
       const stats = JSON.parse((await AsyncStorage.getItem("mahjong_stats_v1")) ?? "{}");
       expect(stats.gamesWon).toBe(1);
-      expect(stats.bestTimeMs).toBeGreaterThanOrEqual(90_000);
-      expect(stats.bestTimeMs).toBeLessThan(100_000);
+      // Per layout (#2747): the last-pair board is a Pyramid deal.
+      expect(stats.bestTimeMsByLayout.pyramid).toBeGreaterThanOrEqual(90_000);
+      expect(stats.bestTimeMsByLayout.pyramid).toBeLessThan(100_000);
     });
   });
 
   // #2704: the card's Time is the real play time, not the banked-on-pause 0.
+  // #2747: a clear ranks by it, so it is the card's hero, with the score and
+  // the best time (this first clear) below it.
   it("shows the real play time for a board cleared in one sitting", async () => {
     const api = await winInOneSitting();
     const card = within(await api.findByTestId("mahjong-result"));
+    expect(card.getAllByText("1:30")).toHaveLength(2); // the hero (Time) and Best
+    expect(card.getByText("Time")).toBeTruthy();
+    expect(card.getByText("Score")).toBeTruthy();
+    expect(card.getByText("New best")).toBeTruthy();
+  });
+
+  // Codex review on #2917: an old save resumed with no time banked finishes
+  // under the 36 s ranking floor. It is no best, and doesn't block real ones.
+  it("never records a clear under the ranking floor as the best time (#2747)", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify({ ...makeLastPairState(), accumulatedMs: 0, startedAt: null })
+    );
+    const api = await mount();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-0"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-1")); // cleared in ~0 s
+    });
+    const card = within(await api.findByTestId("mahjong-result"));
+    expect(card.queryByText("New best")).toBeNull();
+    expect(card.queryByText("Best")).toBeNull();
+    await waitFor(async () => {
+      const stats = JSON.parse((await AsyncStorage.getItem("mahjong_stats_v1")) ?? "{}");
+      expect(stats.gamesWon).toBe(1);
+      expect(stats.bestTimeMsByLayout).toEqual({});
+    });
+  });
+
+  it("lets a real clear beat a stored best under the floor (#2747)", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_stats_v1",
+      JSON.stringify({
+        bestScore: 1220,
+        bestTimeMsByLayout: { pyramid: 3_000 },
+        gamesPlayed: 3,
+        gamesWon: 1,
+      })
+    );
+    const api = await winInOneSitting(); // 1:30
+    const card = within(await api.findByTestId("mahjong-result"));
+    expect(card.getByText("New best")).toBeTruthy();
+    expect(card.getAllByText("1:30")).toHaveLength(2); // the hero and Best
+    await waitFor(async () => {
+      const stats = JSON.parse((await AsyncStorage.getItem("mahjong_stats_v1")) ?? "{}");
+      expect(stats.bestTimeMsByLayout.pyramid).toBeGreaterThanOrEqual(90_000);
+    });
+  });
+
+  it("is a new best only when faster than the best clear so far (#2747)", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_stats_v1",
+      JSON.stringify({
+        bestScore: 1220,
+        bestTimeMsByLayout: { pyramid: 60_000 },
+        gamesPlayed: 3,
+        gamesWon: 1,
+      })
+    );
+    const api = await winInOneSitting(); // 1:30 on Pyramid, slower than 1:00
+    const card = within(await api.findByTestId("mahjong-result"));
     expect(card.getByText("1:30")).toBeTruthy();
+    expect(card.getByText("1:00")).toBeTruthy(); // Best
+    expect(card.queryByText("New best")).toBeNull();
+  });
+
+  // Owner decision on #2747: the device best is per layout, like the boards.
+  it("a fast clear on another layout doesn't block a new best on this one", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_stats_v1",
+      JSON.stringify({
+        bestScore: 1220,
+        bestTimeMsByLayout: { turtle: 40_000 },
+        gamesPlayed: 3,
+        gamesWon: 1,
+      })
+    );
+    const api = await winInOneSitting(); // 1:30 on Pyramid
+    const card = within(await api.findByTestId("mahjong-result"));
+    expect(card.getByText("New best")).toBeTruthy();
+    expect(card.getAllByText("1:30")).toHaveLength(2); // the hero and Best
+    expect(card.queryByText("0:40")).toBeNull();
+    await waitFor(async () => {
+      const stats = JSON.parse((await AsyncStorage.getItem("mahjong_stats_v1")) ?? "{}");
+      expect(stats.bestTimeMsByLayout.turtle).toBe(40_000);
+      expect(stats.bestTimeMsByLayout.pyramid).toBeGreaterThanOrEqual(90_000);
+    });
+  });
+
+  it("doesn't show the old cross-layout best as this layout's", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_stats_v1",
+      JSON.stringify({ bestScore: 1220, bestTimeMs: 40_000, gamesPlayed: 3, gamesWon: 1 })
+    );
+    const api = await winInOneSitting();
+    const card = within(await api.findByTestId("mahjong-result"));
+    expect(card.getByText("New best")).toBeTruthy();
+    expect(card.queryByText("0:40")).toBeNull();
   });
 
   // #2704: a won board restored from storage keeps the time it was won with.
@@ -1152,7 +1260,11 @@ describe("MahjongScreen — layout metadata and menu (#2627)", () => {
     await act(async () => {
       await fireEvent.press(api.getByText("Leaderboard"));
     });
-    expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", { gameType: "mahjong" });
+    // Each layout has its own board (#2747): the menu opens the one on screen.
+    expect(mockNavigate).toHaveBeenCalledWith("Leaderboard", {
+      gameType: "mahjong",
+      partition: { layout: "turtle" },
+    });
   });
 
   it("has a Stats item that opens Mahjong's stats (#2635)", async () => {
@@ -1284,6 +1396,54 @@ describe("MahjongScreen — app background and relaunch (#2750)", () => {
     expect(lastSummary()).toEqual(
       expect.objectContaining({ outcome: "win", durationMs: PLAY_MS + 25_000 })
     );
+  });
+
+  // #2747: the HUD clock is the same play clock the win reports.
+  it("the HUD clock freezes in the background and stops at the win", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(lastPairState()));
+    const api = await mount();
+    // The result card hides the board from screen readers; the clock is still there.
+    const clock = () => api.getByTestId("mahjong-clock", { includeHiddenElements: true });
+    expect(clock()).toHaveTextContent("TIME 1:00"); // banked, not running yet
+    await tap(api, 0); // the clock runs
+    now += 20_000;
+    await setAppState("background");
+    expect(clock()).toHaveTextContent("TIME 1:20");
+    now += 2 * 60 * 60_000; // two hours away
+    await setAppState("active");
+    expect(clock()).toHaveTextContent("TIME 1:20");
+    now += 5_000;
+    await tap(api, 1); // clears the board
+    await api.findByTestId("mahjong-result");
+    expect(clock()).toHaveTextContent("TIME 1:25");
+    expect(lastSummary()).toEqual(expect.objectContaining({ durationMs: PLAY_MS + 25_000 }));
+
+    now += 10 * 60_000; // the card stays up: the clock doesn't move
+    await setAppState("background");
+    await setAppState("active");
+    expect(clock()).toHaveTextContent("TIME 1:25");
+  });
+
+  it("the HUD clock ticks each second without re-rendering the board", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(lastPairState()));
+    // Date stays the suite's mock; only the clock's timeout is faked.
+    jest.useFakeTimers({ doNotFake: ["Date", "nextTick", "queueMicrotask", "setImmediate"] });
+    try {
+      // A board under way: loading it runs its clock from now.
+      const api = await mount();
+      await tap(api, 0);
+      const rendersBefore = mockCanvasRenders.count;
+      for (let s = 1; s <= 5; s++) {
+        now += 1_000;
+        await act(async () => {
+          jest.advanceTimersByTime(1_000);
+        });
+      }
+      expect(api.getByTestId("mahjong-clock")).toHaveTextContent("TIME 1:05");
+      expect(mockCanvasRenders.count).toBe(rendersBefore);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   // The issue's example: a move, a two-day break, then the win.

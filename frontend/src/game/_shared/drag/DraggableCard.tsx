@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { Platform } from "react-native";
 import type { AccessibilityActionEvent, Insets } from "react-native";
 import Animated, {
@@ -9,7 +9,7 @@ import Animated, {
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSharedValue, runOnJS } from "react-native-reanimated";
 import { useDragContext, isCardInDragStack } from "./DragContext";
-import type { DragCard, DragSource } from "./DragContext";
+import type { DragCard, DragSource, DragState } from "./DragContext";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyProps = Record<string, any>;
@@ -66,10 +66,16 @@ export function DraggableCard({
     startDrag,
     endDrag,
     snapBackAndClear,
+    cancelDrag,
   } = useDragContext();
 
+  // The drag this card started, kept on the JS thread. The cancel effects
+  // below compare it with the context's current drag instead of reading the
+  // `panActivated` shared value from JS (a JS read of a shared value can be a
+  // stale cached copy, #2772) — and so only ever cancel this card's own drag.
+  const ownDragRef = useRef<DragState | null>(null);
   const triggerStartDrag = useCallback(() => {
-    startDrag(dragSource, dragCards);
+    ownDragRef.current = startDrag(dragSource, dragCards);
   }, [dragSource, dragCards, startDrag]);
 
   const panActivated = useSharedValue(false);
@@ -81,6 +87,13 @@ export function DraggableCard({
   const pan = Gesture.Pan().minPointers(1).minDistance(5).enabled(draggable);
   if (hitSlop) pan.hitSlop(hitSlop);
   pan
+    .onBegin(() => {
+      "worklet";
+      // A new touch on this card: forget any activation whose end was lost
+      // (the handler was dropped), so a later finalize can't snap back a
+      // drag this pan never started.
+      panActivated.value = false;
+    })
     .onStart((e) => {
       "worklet";
       panActivated.value = true;
@@ -108,15 +121,41 @@ export function DraggableCard({
       cardX.value = originX.value + e.translationX;
       cardY.value = originY.value + e.translationY;
     })
-    .onEnd((e) => {
+    // Every way an activated pan can end resolves the drag exactly once
+    // (#2772): a lift (onEnd success) hit-tests the drop; a cancel by the
+    // system (onEnd !success — iOS edge swipe, Control Center, an incoming
+    // call) snaps back instead of dropping where the touch happened to be;
+    // and onFinalize covers any end that skipped onEnd.
+    .onEnd((e, success) => {
       "worklet";
-      runOnJS(endDrag)(e.absoluteX, e.absoluteY);
-    })
-    .onFinalize((_e, success) => {
-      "worklet";
-      if (!success && panActivated.value) runOnJS(snapBackAndClear)();
+      if (!panActivated.value) return;
       panActivated.value = false;
+      if (success) runOnJS(endDrag)(e.absoluteX, e.absoluteY);
+      else runOnJS(snapBackAndClear)();
+    })
+    .onFinalize(() => {
+      "worklet";
+      if (!panActivated.value) return;
+      panActivated.value = false;
+      runOnJS(snapBackAndClear)();
     });
+
+  // A card that unmounts (its pile changed under the drag) or stops being
+  // draggable mid-pan has its native handler dropped: neither onEnd nor
+  // onFinalize will ever arrive, so end the drag here instead (#2772).
+  const cancelDragRef = useRef(cancelDrag);
+  cancelDragRef.current = cancelDrag;
+  useEffect(() => {
+    if (draggable || ownDragRef.current === null) return;
+    cancelDragRef.current("draggableDisabled", ownDragRef.current);
+    ownDragRef.current = null;
+  }, [draggable]);
+  useEffect(
+    () => () => {
+      if (ownDragRef.current !== null) cancelDragRef.current("sourceUnmounted", ownDragRef.current);
+    },
+    []
+  );
 
   const tap = Gesture.Tap().maxDistance(8);
   if (hitSlop) tap.hitSlop(hitSlop);

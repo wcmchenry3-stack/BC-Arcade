@@ -13,9 +13,11 @@ import type {
   Asteroid,
   BuddyShip,
   Bullet,
+  CarrierBeam,
   CubicBezier,
   Enemy,
   Explosion,
+  Extraction,
   Player,
   PowerUp,
   RunStats,
@@ -23,6 +25,7 @@ import type {
   TierStats,
   Vec2,
 } from "./types";
+import type { EarlierScore, ScoreLedger, WaveScore } from "./scoreLedger";
 
 type KeySpec<T> = {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -72,9 +75,16 @@ const ENEMY: KeySpec<Enemy> = {
   burstShotsLeft: "required",
   beamPhase: "required",
   beamTimer: "required",
+  runPhase: "required",
+  runTimer: "required",
   dodge: "required",
   rolledAsteroidIds: "required",
   flakCooldown: "required",
+  evadeMs: "required",
+  flinchMs: "required",
+  reactedAsteroidIds: "required",
+  reactedPhase: "required",
+  attentionMs: "required",
 };
 
 const BULLET: KeySpec<Bullet> = {
@@ -89,8 +99,21 @@ const BULLET: KeySpec<Bullet> = {
   damage: "required",
   piercing: "optional",
   hitEnemyIds: "optional",
-  harmless: "optional",
+  pierceLeft: "optional", // #2880
   flak: "optional",
+  armorPiercing: "optional", // #2845
+  source: "optional",
+  target: "optional",
+};
+
+// #2843
+const CARRIER_BEAM: KeySpec<CarrierBeam> = {
+  id: "required",
+  x: "required",
+  y: "required",
+  vy: "required",
+  length: "required",
+  halfWidth: "required",
 };
 
 const PLAYER: KeySpec<Player> = {
@@ -125,17 +148,25 @@ const POWER_UP: KeySpec<PowerUp> = {
   despawnTimer: "required",
 };
 
+// #2845: a real allied ship — HP, steering and attack-run state
 const BUDDY_SHIP: KeySpec<BuddyShip> = {
   id: "required",
   x: "required",
   y: "required",
-  path: "required",
-  pathT: "required",
-  pathDuration: "required",
-  hasFired: "required",
-  targetX: "required",
-  targetY: "required",
-  fromLeft: "required",
+  vx: "required",
+  vy: "required",
+  phase: "required",
+  hp: "required",
+  hitFlashTimer: "required",
+  ageMs: "required",
+  stationMs: "required",
+  burstsLeft: "required",
+  burstTimer: "required",
+  planMs: "required",
+  goalX: "required",
+  goalY: "required",
+  facingRight: "required",
+  hitRockIds: "required",
 };
 
 const ASTEROID: KeySpec<Asteroid> = {
@@ -160,6 +191,11 @@ const ACTIVE_POWER_UP: KeySpec<NonNullable<StarSwarmState["activePowerUp"]>> = {
   shieldAbsorbed: "required",
 };
 
+const EXTRACTION: KeySpec<Extraction> = {
+  elapsedMs: "required",
+  climbMs: "required",
+};
+
 const TIER_STATS: KeySpec<TierStats> = {
   rolls: "required",
   dodged: "required",
@@ -178,6 +214,18 @@ const RUN_STATS: KeySpec<RunStats> = {
   rocksSpawned: "required",
   rocksBrokenByPlayer: "required",
   rocksBrokenByEnemy: "required",
+  buddyLaunched: "required", // #2845
+  buddyLost: "required",
+  buddyShotsDrawn: "required",
+};
+
+// #2837
+const SCORE_LEDGER: KeySpec<ScoreLedger> = { waves: "required", earlier: "required" };
+const WAVE_SCORE: KeySpec<WaveScore> = { wave: "required", pts: "required" };
+const EARLIER_SCORE: KeySpec<EarlierScore> = {
+  first: "required",
+  last: "required",
+  pts: "required",
 };
 
 const STATE: KeySpec<StarSwarmState> = {
@@ -196,11 +244,14 @@ const STATE: KeySpec<StarSwarmState> = {
   asteroidsDisabled: "required",
   reinforceTimer: "required",
   reinforcedThisWave: "required",
+  carrierBeams: "required",
+  carrierStage: "required",
   tierStats: "required",
   runStats: "required",
   dodgeDisabled: "required",
   flakDisabled: "required",
   phaseTimer: "required",
+  extraction: "required",
   canvasW: "required",
   canvasH: "required",
   nextDiveTimer: "required",
@@ -208,12 +259,12 @@ const STATE: KeySpec<StarSwarmState> = {
   formationSwayDir: "required",
   bonusLivesAwarded: "required",
   bonusLifeSlowMoTimer: "required",
-  startingNonBossCount: "required",
+  startingNonLeaderCount: "required",
   killsSinceLastDrop: "required",
   dropJitterTarget: "required",
   activePowerUp: "required",
-  bossThresholdCrossed: "required",
-  bossDeepThresholdCrossed: "required",
+  guardianThresholdCrossed: "required",
+  guardianDeepThresholdCrossed: "required",
   stragglerEnabled: "required",
   pauseStraggler: "required",
   routed: "required",
@@ -223,6 +274,7 @@ const STATE: KeySpec<StarSwarmState> = {
   playerFireDisabled: "required",
   enemyFireDisabled: "required",
   missionCompleteTimer: "required",
+  scoreLedger: "required",
 };
 
 const SPECS = {
@@ -230,13 +282,18 @@ const SPECS = {
   PLAYER,
   ENEMY,
   BULLET,
+  CARRIER_BEAM,
   EXPLOSION,
   POWER_UP,
   BUDDY_SHIP,
   ASTEROID,
   ACTIVE_POWER_UP,
+  EXTRACTION,
   TIER_STATS,
   RUN_STATS,
+  SCORE_LEDGER,
+  WAVE_SCORE,
+  EARLIER_SCORE,
   VEC2,
   BEZIER,
   DODGE,
@@ -273,6 +330,14 @@ const fitsEnemy = (v: unknown) =>
   (v.dodge === null || fits(v.dodge, DODGE)) &&
   Array.isArray(v.rolledAsteroidIds);
 
+const fitsPts = (v: unknown) =>
+  isObject(v) && Object.values(v).every((n) => typeof n === "number" && Number.isFinite(n));
+
+const fitsScoreLedger = (v: unknown) =>
+  fits(v, SCORE_LEDGER) &&
+  allFit(v.waves, (w) => fits(w, WAVE_SCORE) && fitsPts(w.pts)) &&
+  (v.earlier === null || (fits(v.earlier, EARLIER_SCORE) && fitsPts(v.earlier.pts)));
+
 /** A parsed save's state fits this build's StarSwarmState, all the way down. */
 export function fitsSaveShape(v: unknown): v is StarSwarmState {
   if (!fits(v, STATE)) return false;
@@ -281,12 +346,15 @@ export function fitsSaveShape(v: unknown): v is StarSwarmState {
     allFit(v.enemies, fitsEnemy) &&
     allFit(v.playerBullets, (b) => fits(b, BULLET)) &&
     allFit(v.enemyBullets, (b) => fits(b, BULLET)) &&
+    allFit(v.carrierBeams, (b) => fits(b, CARRIER_BEAM)) &&
     allFit(v.explosions, (e) => fits(e, EXPLOSION)) &&
     allFit(v.powerUps, (p) => fits(p, POWER_UP)) &&
-    allFit(v.buddyShips, (b) => fits(b, BUDDY_SHIP) && fitsBezier(b.path)) &&
+    allFit(v.buddyShips, (b) => fits(b, BUDDY_SHIP) && Array.isArray(b.hitRockIds)) &&
     allFit(v.asteroids, (a) => fits(a, ASTEROID)) &&
     (v.activePowerUp === null || fits(v.activePowerUp, ACTIVE_POWER_UP)) &&
+    (v.extraction === null || fits(v.extraction, EXTRACTION)) &&
     fits(v.runStats, RUN_STATS) &&
+    fitsScoreLedger(v.scoreLedger) &&
     isObject(v.tierStats) &&
     Object.values(v.tierStats).every((t) => fits(t, TIER_STATS))
   );

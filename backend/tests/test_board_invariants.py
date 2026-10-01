@@ -34,10 +34,19 @@ from sqlalchemy import select
 
 from db.base import get_session_factory, is_configured
 from db.models import Game, GameType
-from games.board import SCORE_METRIC, BoardDefinition
+from games.board import BoardDefinition
 from games.leaderboard import SENTINEL_SESSION_SUFFIX, enabled_board
 from games.registry import get_module
-from tests.test_generic_leaderboard import ENABLED_BOARDS, _board, _grant_all, _headers, _seed, _sid
+from tests.test_generic_leaderboard import (
+    ENABLED_BOARDS,
+    _board,
+    _grant_all,
+    _headers,
+    _seed,
+    _sid,
+    completion_body,
+    metric_fields,
+)
 from vocab import GameType as GameTypeEnum
 
 pytestmark = pytest.mark.skipif(
@@ -112,9 +121,10 @@ def _board_path(game: str) -> str:
 def _better(board: BoardDefinition, steps: int) -> int:
     """A metric value ``steps`` better than 10 in the board's direction.
 
-    Every value used stays in [0, 20], inside every game's cap.
+    Every value used stays in [0, 20] above the board's ``min_value``
+    (Mahjong's clear-time floor, #2747), inside every game's cap.
     """
-    return 10 + steps if board.direction == "desc" else 10 - steps
+    return board.min_value + (10 + steps if board.direction == "desc" else 10 - steps)
 
 
 def _better_tiebreak(board: BoardDefinition, steps: int) -> int:
@@ -128,19 +138,19 @@ def _outcome(board: BoardDefinition) -> str:
 
 
 def _row(
-    board: BoardDefinition, value: int, tiebreak: int | None = None
-) -> tuple[int | None, dict[str, Any]]:
-    """``(final_score, metadata)`` for a row on ``_partition(board)``."""
-    meta: dict[str, Any] = dict(_partition(board))
-    score: int | None = None
-    if board.metric == SCORE_METRIC:
-        score = value
-    else:
-        meta[board.metric] = value
+    board: BoardDefinition,
+    value: int,
+    tiebreak: int | None = None,
+    partition: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """``_seed`` keyword arguments (metric and metadata) for a row on
+    ``partition`` (default ``_partition(board)``)."""
+    fields = metric_fields(board, value)
+    meta: dict[str, Any] = {**(partition or _partition(board)), **fields.pop("meta", {})}
     if tiebreak is not None:
         assert board.tiebreak is not None
         meta[board.tiebreak[0]] = tiebreak
-    return score, meta
+    return {**fields, "meta": meta}
 
 
 async def _seed_row(
@@ -154,16 +164,9 @@ async def _seed_row(
     meta: dict[str, Any] | None = None,
 ) -> uuid.UUID:
     board = _definition(game)
-    score, row_meta = _row(board, value, tiebreak)
-    return await _seed(
-        game,
-        sid,
-        score=score,
-        name=name,
-        minutes=minutes,
-        outcome=_outcome(board),
-        meta={**row_meta, **(meta or {})},
-    )
+    fields = _row(board, value, tiebreak)
+    fields["meta"] = {**fields["meta"], **(meta or {})}
+    return await _seed(game, sid, name=name, minutes=minutes, outcome=_outcome(board), **fields)
 
 
 def _play(
@@ -184,23 +187,22 @@ def _play(
     )
     assert r.status_code == 200, r.text
     game_id = r.json()["id"]
-    score, meta = _row(board, value, tiebreak)
-    result = {k: v for k, v in meta.items() if k not in board.partitions}
-    body: dict[str, Any] = {
-        "outcome": _outcome(board),
-        "completed_at": completed_at.isoformat(),
-        "result": result,
-    }
-    if score is not None:
-        body["final_score"] = score
+    body = completion_body(board, value)
+    result = dict(body.get("result", {}))
+    if tiebreak is not None:
+        assert board.tiebreak is not None
+        result[board.tiebreak[0]] = tiebreak
+    body.update(completed_at=completed_at.isoformat(), result=result)
     r = client.patch(f"/games/{game_id}/complete", headers=_headers(sid), json=body)
     assert r.status_code == 200, r.text
     return game_id
 
 
-def _set_display_name(client: TestClient, sid: str, name: str) -> None:
-    r = client.put("/players/me", headers=_headers(sid), json={"display_name": name})
+def _join(client: TestClient, sid: str) -> str:
+    """Join the boards (``PUT /players/me``); returns the generated name."""
+    r = client.put("/players/me", headers=_headers(sid))
     assert r.status_code == 200, r.text
+    return r.json()["display_name"]
 
 
 def _leaderboard(client: TestClient, game: str, sid: str) -> dict:
@@ -249,11 +251,11 @@ async def test_a_finished_game_ranks_once_its_player_has_a_name(
     assert body["me"] is None
     assert _rank(client, game_id, sid)["reason"] == "no_name"
 
-    _set_display_name(client, sid, "Solo")
+    solo = _join(client, sid)
 
     body = _leaderboard(client, game, sid)
     assert [(e["player_name"], e["value"], e["is_me"]) for e in body["entries"]] == [
-        ("Solo", _better(_definition(game), 0), True)
+        (solo, _better(_definition(game), 0), True)
     ]
     assert body["me"] == body["entries"][0]
     assert _rank(client, game_id, sid) == {
@@ -279,7 +281,7 @@ async def test_a_session_with_several_games_appears_once_with_its_best(
 
     sid = _sid()
     await _grant_all(sid)
-    _set_display_name(client, sid, "Me")
+    me = _join(client, sid)
     games = {
         "mid": _play(client, sid, game, _better(board, 0), completed_at=_recent(1)),
         # Equal best values: the tie-break decides (the later one has the better
@@ -305,7 +307,7 @@ async def test_a_session_with_several_games_appears_once_with_its_best(
     best = games["best_late" if tb else "best_early"]
 
     body = _leaderboard(client, game, sid)
-    assert _names(body) == ["Top", "Me", "Bottom"]
+    assert _names(body) == ["Top", me, "Bottom"]
     entry = body["entries"][1]
     assert (entry["rank"], entry["value"], entry["is_me"]) == (2, _better(board, 5), True)
     assert body["me"] == entry
@@ -446,33 +448,10 @@ async def test_abandoned_rows_excluded(
     abandoned row here would otherwise be first on its board."""
     board = _definition(game)
 
-    def row(value: int) -> tuple[int | None, dict[str, Any]]:
-        meta: dict[str, Any] = dict(partition)
-        if board.metric == SCORE_METRIC:
-            return value, meta
-        meta[board.metric] = value
-        return None, meta
-
-    kept_score, kept_meta = row(_better(board, 0))
-    await _seed(
-        game,
-        _sid(),
-        score=kept_score,
-        name="Kept",
-        minutes=0,
-        outcome=_outcome(board),
-        meta=kept_meta,
-    )
-    quit_score, quit_meta = row(_better(board, 9))
-    await _seed(
-        game,
-        _sid(),
-        score=quit_score,
-        name="Quit",
-        minutes=1,
-        outcome="abandoned",
-        meta=quit_meta,
-    )
+    kept = _row(board, _better(board, 0), partition=partition)
+    await _seed(game, _sid(), name="Kept", minutes=0, outcome=_outcome(board), **kept)
+    quit_row = _row(board, _better(board, 9), partition=partition)
+    await _seed(game, _sid(), name="Quit", minutes=1, outcome="abandoned", **quit_row)
 
     viewer = _sid()
     await _grant_all(viewer)

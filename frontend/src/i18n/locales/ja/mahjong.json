@@ -6,6 +6,7 @@
   "hud.score": "スコア",
   "hud.pairs": "ペア",
   "hud.time": "タイム",
+  "hud.elapsed": "経過時間 {{time}}",
   "hud.deal": "配牌",
   "action.shuffle": "シャッフル",
   "action.shuffleLabel": "残りの牌を解ける新しい配置にシャッフルします",

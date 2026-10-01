@@ -27,11 +27,14 @@ function finished(): StarSwarmState {
       rocksSpawned: 5,
       rocksBrokenByPlayer: 3,
       rocksBrokenByEnemy: 1,
+      buddyLaunched: 2,
+      buddyLost: 1,
+      buddyShotsDrawn: 9,
     },
     tierStats: {
       ...emptyTierStats(),
       Grunt: { rolls: 10, dodged: 3, pathRolls: 4, pathDodged: 1, struck: 6, flak: 2 },
-      Boss: { rolls: 2, dodged: 2, pathRolls: 0, pathDodged: 0, struck: 0, flak: 1 },
+      Guardian: { rolls: 2, dodged: 2, pathRolls: 0, pathDodged: 0, struck: 0, flak: 1 },
     },
   };
 }
@@ -53,10 +56,13 @@ describe("runStatsBreadcrumbData", () => {
       rocksSpawned: 5,
       rocksBrokenByPlayer: 3,
       rocksBrokenByEnemy: 1,
+      buddyLaunched: 2,
+      buddyLost: 1,
+      buddyShotsDrawn: 9,
       tiers: {
         Grunt: { effective: expect.any(Number), rolls: 10, dodged: 3, struck: 6, flak: 2 },
         Elite: { effective: expect.any(Number), rolls: 0, dodged: 0, struck: 0, flak: 0 },
-        Boss: { effective: expect.any(Number), rolls: 2, dodged: 2, struck: 0, flak: 1 },
+        Guardian: { effective: expect.any(Number), rolls: 2, dodged: 2, struck: 0, flak: 1 },
         Carrier: { effective: 0, rolls: 0, dodged: 0, struck: 0, flak: 0 },
       },
     });

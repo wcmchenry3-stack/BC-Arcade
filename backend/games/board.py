@@ -30,8 +30,10 @@ Ordering a board
 
 Where values live
 -----------------
-``metric`` is either ``SCORE_METRIC`` (``"final_score"``, the ``games``
-column) or a key in ``games.metadata``, which holds the creation-time metadata
+``metric`` is ``SCORE_METRIC`` (``"final_score"``, the ``games`` column),
+``DURATION_METRIC`` (``"duration_ms"``, the ``games`` column holding the play
+time the app reports on completion; Mahjong's fastest clear, #2747) or a key
+in ``games.metadata``, which holds the creation-time metadata
 merged with the validated result block. ``tiebreak`` and ``partitions`` keys
 always live in ``games.metadata``. A row that predates a partition key is read
 with that key's ``partition_defaults`` value (Sudoku rows from before #748 have
@@ -55,7 +57,16 @@ Direction = Literal["asc", "desc"]
 """``desc``: higher is better. ``asc``: lower is better (e.g. FreeCell moves)."""
 
 SCORE_METRIC = "final_score"
-"""The ``games.final_score`` column. Any other ``metric`` is a metadata key."""
+"""The ``games.final_score`` column."""
+
+DURATION_METRIC = "duration_ms"
+"""The ``games.duration_ms`` column: the play time (ms) the app reports on
+``PATCH /games/{id}/complete``, paused while the player is away. Ranked
+``asc`` (fastest first) by Mahjong (#2747). Any metric other than these two
+column metrics is a metadata key."""
+
+COLUMN_METRICS = frozenset({SCORE_METRIC, DURATION_METRIC})
+"""Metrics read from a ``games`` column rather than ``games.metadata``."""
 
 FINAL_TIEBREAK: tuple[str, Direction] = ("completed_at", "asc")
 """Breaks the last tie on every board: the earlier entry ranks higher."""
@@ -74,7 +85,8 @@ class BoardDefinition(BaseModel):
     Attributes
     ----------
     metric:
-        What is ranked: ``SCORE_METRIC`` or a ``games.metadata`` key.
+        What is ranked: ``SCORE_METRIC``, ``DURATION_METRIC`` or a
+        ``games.metadata`` key.
     direction:
         ``desc`` if a higher ``metric`` is better, ``asc`` if lower is better.
     tiebreak:
@@ -102,6 +114,12 @@ class BoardDefinition(BaseModel):
         Highest legitimate ``metric`` value on any of the game's boards, for
         submission validation (absorbs #2215). ``None`` means the game has no
         natural ceiling.
+    min_value:
+        Lowest ``metric`` value that ranks (default 0). A lower value is
+        stored, never rejected (a 4xx on completion would dead-letter the game
+        in the app), but no board or rank counts it. Mahjong sets a floor on
+        its clear time so an implausibly fast (or zero) duration can't top
+        the board (#2747).
     partition_max_values:
         ``(partition key, partition value, cap)`` triples: a tighter ceiling
         for rows in that partition, e.g. ``("difficulty", "easy", 100)`` for
@@ -129,6 +147,7 @@ class BoardDefinition(BaseModel):
     partition_defaults: tuple[tuple[str, str], ...] = ()
     partition_values: tuple[tuple[str, tuple[str, ...]], ...] = ()
     max_value: int | None = Field(default=None, ge=0)
+    min_value: int = Field(default=0, ge=0)
     partition_max_values: tuple[tuple[str, str, int], ...] = ()
     qualifying_outcomes: tuple[str, ...] | None = None
     enabled: bool = True
@@ -157,6 +176,9 @@ class BoardDefinition(BaseModel):
             if not self.is_allowed(key, value):
                 raise ValueError(f"partition_defaults value {key}={value} is not allowed")
 
+        if self.max_value is not None and self.min_value > self.max_value:
+            raise ValueError(f"min_value {self.min_value} exceeds max_value {self.max_value}")
+
         if self.partition_max_values and self.max_value is None:
             raise ValueError("partition_max_values needs an overall max_value")
         seen: set[tuple[str, str]] = set()
@@ -173,6 +195,10 @@ class BoardDefinition(BaseModel):
             if self.max_value is not None and cap > self.max_value:
                 raise ValueError(
                     f"partition_max_values cap {cap} for {key}={value} exceeds max_value"
+                )
+            if cap < self.min_value:
+                raise ValueError(
+                    f"partition_max_values cap {cap} for {key}={value} is below min_value"
                 )
 
         if self.qualifying_outcomes is not None:

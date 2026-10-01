@@ -11,10 +11,12 @@ import {
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
+import { formatNumber } from "../../api/statsDisplay";
 import { useTheme, type Colors } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import type { LeaderboardSubmitStatus } from "../../game/_shared/useLeaderboardSubmit";
-import DisplayNameField from "./DisplayNameField";
+import JoinLeaderboardsPrompt from "./JoinLeaderboardsPrompt";
 import { useIsScreenFocused } from "../../hooks/useIsScreenFocused";
 
 /**
@@ -58,8 +60,11 @@ export interface ResultSubmission {
    */
   isBest?: boolean | null;
   playerName?: string | null;
-  /** Saves the name from the one-time prompt and sends the waiting score. */
-  onProvideName?: (name: string) => Promise<boolean> | void;
+  /**
+   * The one-time "Join leaderboards" prompt (#2778): joins under a
+   * server-generated name and looks the waiting game's rank up.
+   */
+  onJoinLeaderboards?: () => Promise<boolean> | void;
   onRetry?: () => void;
 }
 
@@ -148,8 +153,8 @@ function fireHaptic(outcome: GameOutcome) {
   }
 }
 
-function formatValue(value: number | string): string {
-  return typeof value === "number" ? value.toLocaleString() : value;
+function formatValue(t: TFunction, value: number | string): string {
+  return typeof value === "number" ? formatNumber(t, value) : value;
 }
 
 /** The card's title for an outcome ("You Win!", "{{name}} Wins", …). */
@@ -188,12 +193,12 @@ export function useResultFeedback({
   const title = useResultTitle(outcome, winnerName);
   const heroA11y =
     hero?.kind === "score"
-      ? t("a11y.heroScore", { label: hero.label, value: formatValue(hero.value) })
+      ? t("a11y.heroScore", { label: hero.label, value: formatValue(t, hero.value) })
       : hero?.kind === "versus"
         ? t("a11y.heroVs", {
-            you: formatValue(hero.you),
+            you: formatValue(t, hero.you),
             opponent: hero.opponentLabel,
-            opponentScore: formatValue(hero.opponent),
+            opponentScore: formatValue(t, hero.opponent),
           })
         : "";
 
@@ -370,7 +375,9 @@ export function ResultCard({
         <View style={[styles.stats, { backgroundColor: colors.surfaceAlt }]}>
           {stats.slice(0, 4).map((s) => (
             <View key={s.label} style={styles.stat}>
-              <Text style={[styles.statValue, { color: colors.text }]}>{formatValue(s.value)}</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>
+                {formatValue(t, s.value)}
+              </Text>
               <Text style={[styles.statLabel, { color: colors.textMuted }]}>{s.label}</Text>
             </View>
           ))}
@@ -436,11 +443,12 @@ function Hero({
   youLabel: string;
   vsLabel: string;
 }) {
+  const { t } = useTranslation("result");
   if (hero.kind === "score") {
     return (
       <View style={styles.hero} accessible>
         <Text style={[styles.heroLabel, { color: colors.textMuted }]}>{hero.label}</Text>
-        <Text style={[styles.heroValue, { color: colors.text }]}>{formatValue(hero.value)}</Text>
+        <Text style={[styles.heroValue, { color: colors.text }]}>{formatValue(t, hero.value)}</Text>
       </View>
     );
   }
@@ -455,7 +463,7 @@ function Hero({
           { color: lead ? colors.text : colors.textMuted, opacity: lead ? 1 : 0.85 },
         ]}
       >
-        {formatValue(value)}
+        {formatValue(t, value)}
       </Text>
     </View>
   );
@@ -470,7 +478,7 @@ function Hero({
 
 function SubmissionLine({ submission, colors }: { submission: ResultSubmission; colors: Colors }) {
   const { t } = useTranslation("result");
-  const { status, rank, isBest, playerName, onProvideName, onRetry } = submission;
+  const { status, rank, isBest, playerName, onJoinLeaderboards, onRetry } = submission;
 
   // Nothing submitted yet (or this outcome isn't submitted), or the game is on
   // no board (#2677): no line at all.
@@ -479,14 +487,7 @@ function SubmissionLine({ submission, colors }: { submission: ResultSubmission; 
   if (status === "needsName") {
     return (
       <View style={[styles.namePrompt, { backgroundColor: colors.surfaceAlt }]}>
-        <DisplayNameField
-          testID="result-name-prompt"
-          label={t("namePrompt.label")}
-          helper={t("namePrompt.helper")}
-          onSaved={(name) => {
-            void onProvideName?.(name);
-          }}
-        />
+        <JoinLeaderboardsPrompt testID="result-name-prompt" onJoin={onJoinLeaderboards} />
       </View>
     );
   }

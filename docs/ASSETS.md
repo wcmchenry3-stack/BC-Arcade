@@ -60,11 +60,44 @@ https://drive.google.com/drive/folders/1LW97pBFsqfG67bQKvQwkhMlLBswzIVhm
 
 ## Credits and attribution
 
-Every shipped image and sound has its source recorded in the repo: `sounds/SOUND_CREDITS.md` for
-audio and a `CREDITS.md` beside each sprite folder. All current assets are Kenney CC0 or under
-the Pixabay Content License, neither of which requires attribution, so the app has no credits
-screen. If a CC-BY (or similar) asset is ever added, the license-snapshot policy in
-`SOUND_CREDITS.md` applies and an in-app credit becomes required.
+Full rights inventory: [`docs/audits/ASSET-RIGHTS-AUDIT.md`](audits/ASSET-RIGHTS-AUDIT.md) (#2782). It lists
+every shipped file, what is verified and what is not. Repeat it before each release that adds
+assets: `node frontend/scripts/list-bundled-assets.mjs` lists what code actually bundles.
+
+Source records live beside the assets: `sounds/SOUND_CREDITS.md` for audio and a `CREDITS.md` beside
+each Star Swarm sprite folder.
+
+### Required attribution (shipped in v1.0)
+
+| Asset                                                  | Creator and source                                                                          | License                                                   | Credit to show                                                                                       |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `sounds/freecell-game-win.mp3` (FreeCell, Bottle Sort) | humanoide9000, "victory-fanfare", https://freesound.org/people/humanoide9000/sounds/466133/ | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | "Victory fanfare" by humanoide9000 on Freesound, CC BY 4.0. Re-encoded to MP3 (low-quality preview). |
+
+The app has no credits or licenses screen yet, so this credit is not displayed in-app. That is an
+open gap tracked in the audit (Section 6, follow-up 1); until it is closed or the sound is replaced
+with a CC0 one, this table and `ATTRIBUTION.md` are the only place the credit appears.
+
+### License notices to carry with bundled fonts and icon fonts
+
+| Package                            | What ships                                             | License                                                         |
+| ---------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
+| `@expo-google-fonts/space-grotesk` | Space Grotesk 400, 700                                 | SIL OFL 1.1, (c) The Space Grotesk Project Authors; wrapper MIT |
+| `@expo-google-fonts/manrope`       | Manrope 400, 600, 700                                  | SIL OFL 1.1, (c) The Manrope Project Authors; wrapper MIT       |
+| `@expo/vector-icons`               | `MaterialIcons.ttf`, `MaterialCommunityIcons.ttf` only | Loader MIT; upstream icon fonts Apache 2.0                      |
+
+### Everything else
+
+All other recorded audio and sprites are Kenney CC0, Freesound CC0 or the Pixabay Content License,
+none of which requires attribution. Pixabay forbids redistributing the files on their own, so they
+must stay inside the app.
+
+**Not recorded (UNVERIFIED, owner must confirm or replace):** Mahjong tile SVGs (42), Cascade fruit
+and celestial art (48), app icon, splash and logo art (5 plus 29 native derivatives), Blackjack
+`bust`/`card-deal`/`push` sounds (3), Mahjong layouts (25, authorship only). Details in the audit.
+Do not add new assets without a source, license and download date in the matching credits file.
+
+If a CC-BY (or similar) asset is added, the license-snapshot policy in `SOUND_CREDITS.md` applies
+and an in-app credit is required.
 
 `src/__tests__/assetCredits.test.ts` fails if a Star Swarm sprite or sound ships without a
 credits entry.

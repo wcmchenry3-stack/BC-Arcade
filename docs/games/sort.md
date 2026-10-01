@@ -19,7 +19,13 @@ Bottle Sort (also called Color Sort) is a logic puzzle. A set of bottles contain
 
 ### Level Progression
 
-There are 23 levels, increasing in difficulty (3 to 14 colors). The app loads them from `GET /sort/levels`, which generates them on each request (`build_levels` in `backend/sort/generate_levels.py`, `LEVEL_SPECS`), so a level's color and bottle counts are fixed but its mixture is new each time. The app caches the last set for offline play. Completing a level unlocks the next.
+There are 23 levels, increasing in difficulty (3 to 14 colors). Completing a level unlocks the next.
+
+**Current v1 behavior:** `GET /sort/levels` generates a fresh solvable set on each request. A level number fixes its size/difficulty specification, not the exact bottle arrangement. The app caches the last fetched set for offline play.
+
+Every generated level is solver-verified before it is served. A candidate shuffle that is proven dead or cannot be proven solvable within the solver budget is discarded and regenerated; the API fails rather than knowingly serving an unproven board.
+
+**Future product decision:** #2761 proposes fixed seeded levels so "Level N" becomes the same puzzle for every player and move counts can become comparable again. That is not current behavior.
 
 ## Scoring (Persistence)
 
@@ -34,6 +40,14 @@ Every level played is its own session row (#2625): progress is not carried in on
 - **Duration:** `useGameSync`'s active-play window; Sort sends no duration of its own. Entering or restarting a level restarts the window (`resetPlayWindow`), so time on the level grid is not counted.
 - **How it reaches the server:** the `useGameSync("sort")` session row, opened at the level's first pour. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best row once. The legacy `POST /sort/score` was removed in #2644, and the unattributable rows it wrote (`sort-anon`) were deleted (#2622). Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the level's win card shows the rank through `sessionBoardAdapter` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu; "Best" there is the highest level reached.
+
+## Hint, Undo, Reset, and Level Navigation
+
+- **Hint:** runs the client-side solver asynchronously and returns the next suggested pour for the current board. A result computed for a board the player has already restarted or left is discarded rather than applied to stale state.
+- **Undo:** restores the previous bottle state and tracks the undo in the result metadata. It is disabled when there is no history.
+- **Reset/restart:** abandoning or resetting an in-progress level closes the active server session as abandoned once play has begun, then resets the active-play window for the new attempt.
+- **Level grid:** time spent browsing/selecting levels is not part of a level's active-play duration.
+- **Offline:** the cached level set remains playable when the level endpoint is unavailable.
 
 ## Client-Side Engine
 
@@ -59,7 +73,10 @@ Every level played is its own session row (#2625): progress is not carried in on
 
 Free: no entitlement check.
 
-## Known Issues / Limitations
+## Progression / comparability decision still open
 
-- Levels are random per request, so players on the same level are not ranked by moves, only by who got there first (#2746; see [Scoring](#scoring-persistence), Tie-break)
-- Before #2764, about 1 in 5 sets had a level with no solution, mostly the 9-color one-empty levels 14 and 16. A device can still hold such a set in its offline cache until it next fetches levels, and a dead board saved as "Continue Level N" stays there until the player starts that level again from the grid.
+The current random-per-request model means two players at "Level 19" may have solved different arrangements. That is why v1 deliberately has **no move-count tie-break**; players tied on highest level fall through to the shared completion-time tie-break.
+
+#2761 is the post-launch proposal to replace this with fixed seeded levels and restore a fair move-count comparison. Until that ships, documentation and leaderboard configuration must continue to describe levels as difficulty slots with fresh arrangements, not fixed puzzles.
+
+Older devices can still hold a pre-#2764 cached set containing an unsolvable board until they refresh their level set; newly generated sets are solver-verified.

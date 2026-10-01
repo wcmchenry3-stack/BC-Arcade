@@ -23,7 +23,7 @@ from typing import Any
 
 import sentry_sdk
 from pydantic import ValidationError
-from sqlalchemy import ColumnElement, Text, case, func, literal, select, update
+from sqlalchemy import ColumnElement, Text, and_, case, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -31,13 +31,15 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from db.dialect import dialect_insert, dialect_name
 from db.models import EventType, Game, GameEvent, GameType
-from games.board import SCORE_METRIC, BoardDefinition
+from entitlements.service import ALL_PREMIUM_SLUGS
+from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
 from games.filters import SWEPT_KEY, is_swept, not_abandoned, not_swept, without_swept
 from games.leaderboard import check_completion_limits, merge_result_metadata
 from games.legacy_outcomes import might_be_legacy_win, win_update
 from games.protocol import GameModule
 from games.registry import get_module
-from players.service import remember_legacy_name
+from players.service import remember_legacy_opt_in
+from purchases.service import slug_has_purchases
 from vocab import GameOutcome
 from vocab import GameType as VocabGameType
 
@@ -136,9 +138,9 @@ async def create_game(
     if valid_started_at is not None:
         game.started_at = valid_started_at
     session.add(game)
-    # A name in the creation metadata (builds before #2624) is also the
-    # player's display name, for the generic boards.
-    await remember_legacy_name(session, session_id, (metadata or {}).get("player_name"))
+    # A name in the creation metadata (builds before #2624) was the player
+    # joining the boards: keep that choice, under a generated name (#2778).
+    await remember_legacy_opt_in(session, session_id, (metadata or {}).get("player_name"))
     await session.commit()
     await session.refresh(game)
     return game
@@ -405,13 +407,36 @@ def _metadata_number(key: str, dialect: str) -> ColumnElement:
     return case((func.jsonb_typeof(value) == "number", value.as_float()))
 
 
+def _rankable_duration(board: BoardDefinition) -> ColumnElement[bool]:
+    """A ``duration_ms`` row that could be on one of the board's boards (#2747).
+
+    At or above ``min_value``, and in a partition that has a board: a value
+    from ``partition_values``, or a missing one where the key has a default.
+    Mahjong's best is then its fastest clear on a known layout, as the boards
+    rank it; a row with no layout (before #2627) is not a best.
+    """
+    conditions: list[ColumnElement[bool]] = [Game.duration_ms >= board.min_value]
+    for key in board.partitions:
+        col = Game.game_metadata[key].as_string()
+        allowed = board.allowed_values(key)
+        has_default = board.partition_default(key) is not None
+        if allowed is not None:
+            ok = col.in_(allowed)
+            conditions.append(or_(ok, col.is_(None)) if has_default else ok)
+        elif not has_default:
+            conditions.append(col.is_not(None))
+    return and_(*conditions)
+
+
 @functools.cache
 def _best_candidate(dialect: str) -> ColumnElement:
     """Each row's board metric when the row can be its game's best, else NULL.
 
     A row qualifies when it is not abandoned and, if its board sets
     ``qualifying_outcomes``, its outcome is one of them (Daily Word: wins
-    only). The value is ``final_score`` or the metadata key the board names.
+    only). The value is ``final_score``, ``duration_ms`` (Mahjong's clear
+    time, #2747; only from the board's ``min_value`` up, as on the board) or
+    the metadata key the board names.
 
     Boards are static, so the expression is built once per dialect and
     reused by every request.
@@ -421,11 +446,13 @@ def _best_candidate(dialect: str) -> ColumnElement:
         board = _registered_module(game_type.value).board
         if board.metric == SCORE_METRIC and board.qualifying_outcomes is None:
             continue  # the ELSE branch below
-        value = (
-            Game.final_score
-            if board.metric == SCORE_METRIC
-            else _metadata_number(board.metric, dialect)
-        )
+        value: ColumnElement
+        if board.metric == SCORE_METRIC:
+            value = Game.final_score
+        elif board.metric == DURATION_METRIC:
+            value = case((_rankable_duration(board), Game.duration_ms))
+        else:
+            value = _metadata_number(board.metric, dialect)
         if board.qualifying_outcomes is not None:
             value = case((Game.outcome.in_(board.qualifying_outcomes), value))
         whens.append((GameType.name == game_type.value, value))
@@ -816,7 +843,19 @@ async def complete_game(
     ).scalar_one()
     mod = get_module(name)
     # The sweep flag is server-written only: a result must not set it (#2621).
-    validated_result = without_swept(await _validate_result(session, game, result, name, mod))
+    validated_result = without_swept(
+        await _validate_result(session, game, result, name, mod, final_score)
+    )
+    # Optional per-game hook: a game whose score is part of its result block
+    # fills in a missing ``final_score`` from it, or rejects one that doesn't
+    # match it (Blackjack's closing chips, #2745).
+    derive_final_score = getattr(mod, "derive_final_score", None)
+    if derive_final_score is not None:
+        try:
+            final_score = derive_final_score(final_score, outcome, validated_result)
+        except ValueError as e:
+            _report_rejected_result(name, "final_score mismatch", {"outcome": outcome})
+            raise GameServiceError(400, f"Invalid final_score for {name}: {e}")
     # The board's caps and value types (#2618, absorbs #2215).
     violation = check_completion_limits(name, mod, game, final_score, validated_result)
     if violation is not None:
@@ -859,13 +898,17 @@ async def _validate_result(
     result: dict[str, Any] | None,
     name: str,
     mod: GameModule | None,
+    final_score: int | None = None,
 ) -> dict:
     """Validate *result* against the game module's ``result_model`` (#2449).
 
     ``name`` and ``mod`` are the game's type name and registered module, as
     ``complete_game`` resolved them. Games without a registered module or a
     ``result_model`` accept any dict unvalidated. Only fields the client
-    actually sent are returned. Results over ``_MAX_RESULT_BYTES`` are
+    actually sent are returned. The request body's ``final_score`` (what becomes
+    ``games.final_score``) is handed to the model as ``context={"final_score": ...}``
+    so a model can reconcile its block against it; models that don't read it
+    are unaffected. Results over ``_MAX_RESULT_BYTES`` are
     rejected — unvalidated games have no other bound.
     """
     if not result:
@@ -877,7 +920,9 @@ async def _validate_result(
     if result_model is None:
         return dict(result)
     try:
-        validated = result_model.model_validate(result).model_dump(exclude_unset=True)
+        validated = result_model.model_validate(
+            result, context={"final_score": final_score}
+        ).model_dump(exclude_unset=True)
     except ValidationError as e:
         errors = e.errors()
         fields = ", ".join(".".join(str(p) for p in err["loc"]) for err in errors)
@@ -941,6 +986,16 @@ async def patch_game_type(
     ).scalar_one_or_none()
     if gt is None:
         raise GameServiceError(404, "Game type not found.")
+    # docs/IAP.md §13: flipping a purchasable game to free would give it away;
+    # flipping it back without the store product leaves it unbuyable. A game in
+    # the product catalog, or with any recorded purchase, changes tier only by
+    # a migration shipped with the catalog JSON (#840).
+    if (
+        is_premium is not None
+        and is_premium != gt.is_premium
+        and (gt.name in ALL_PREMIUM_SLUGS or await slug_has_purchases(session, gt.name))
+    ):
+        raise GameServiceError(409, "is_premium_migration_only")
     if is_premium is not None:
         gt.is_premium = is_premium
     if category is not None:

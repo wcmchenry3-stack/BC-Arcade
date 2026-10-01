@@ -119,7 +119,11 @@ import { useIsScreenFocused } from "../../hooks/useIsScreenFocused";
  * carried a score would rank a half-finished game.
  */
 export interface ProgressSnapshot {
-  /** Per-game result block — must satisfy the backend `result_model`, if any. */
+  /**
+   * Per-game result block — must satisfy the backend `result_model`, if any.
+   * While `outcome` is "win" it is also persisted with the override, and the
+   * killed-process sweep's win carries it (#2745).
+   */
   result?: Record<string, unknown>;
   /**
    * The game's own active play time, if it measures one. A value > 0 wins
@@ -285,19 +289,22 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     // kill before the next ping still closes an unresumed session as a win.
     // A throwing getter, or anything but "win", is ignored; there is nothing
     // to persist for a game that never registered a snapshot.
+    // The snapshot's result block goes with it (#2745), so the sweep's win
+    // carries what this process's own abandon would have sent.
     const gid = gameIdRef.current;
     if (gid) {
-      let won = false;
+      let snapshot: ProgressSnapshot = {};
       try {
-        won = snapshotRef.current().outcome === "win";
+        snapshot = snapshotRef.current() ?? {};
       } catch {
         // Isolation: a broken getter must not block the window update.
       }
-      if (won) {
+      if (snapshot.outcome === "win") {
         // A game with no winner must never leave a "win" for the sweep (#2642).
         assertOutcomeAllowed(gameTypeRef.current, "win", "progressSnapshot");
         try {
-          gameEventClient.setProgressOutcome(gid, "win");
+          if (snapshot.result) gameEventClient.setProgressOutcome(gid, "win", snapshot.result);
+          else gameEventClient.setProgressOutcome(gid, "win");
         } catch {
           // Isolation.
         }

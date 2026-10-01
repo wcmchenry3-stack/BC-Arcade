@@ -33,6 +33,16 @@ Usage
         --variant mini \\
         --count 1000 \\
         --output frontend/src/game/sudoku/puzzles_mini.json
+
+The app doesn't bundle these JSON files directly. It ships a packed copy,
+``frontend/src/game/sudoku/puzzleBanks.generated.ts`` (#2869). After
+regenerating either file, re-pack from the repo root, then run Prettier on
+the generated file:
+
+    npx tsx scripts/pack-sudoku-puzzles.ts
+
+``frontend/src/game/sudoku/__tests__/puzzleBanks.test.ts`` fails until the
+packed banks match the JSON.
 """
 
 from __future__ import annotations

@@ -1,57 +1,175 @@
 # Solitaire
 
-**Category:** Card
-**Tier:** TBD
-**Status:** In Development
+**Category:** Card  
+**Tier:** Free in the v1.0 store build
 
-## How to Play
+BC Arcade Solitaire is Klondike with Draw-1 / Draw-3, a proven-solvable deal bank, hints, undo, auto-complete, local save/resume, and score-based ranking.
 
-Klondike Solitaire. The objective is to move all 52 cards onto the 4 foundation piles, sorted by suit from Ace to King.
+Shared session/offline/reporting behavior is defined by [GAME-CONTRACT.md](../GAME-CONTRACT.md). This page owns Solitaire-specific gameplay and scoring.
 
-### Layout
+## Objective and layout
 
-- **Stock** (draw pile): undealt cards; tap to draw
-- **Waste**: face-up cards drawn from stock
-- **Tableau** (7 columns): alternating-color sequences in descending rank; only face-up cards can be moved; can place any card or sequence on an empty column (Kings only to open column)
-- **Foundations** (4 piles, one per suit): built up from Ace to King
+Move all 52 cards to the four suit foundations, Ace through King.
 
-### Draw Mode
+- **Tableau:** seven columns; descending rank, alternating colors.
+- **Stock:** undealt face-down cards.
+- **Waste:** cards drawn from the stock; only the top waste card is playable.
+- **Foundations:** one per suit, built Ace → King.
 
-The player picks **Draw-1** or **Draw-3** before each deal (`PreGameModal` in `frontend/src/screens/SolitaireScreen.tsx`). In Draw-3, tapping the stock deals 3 cards to the waste. Only the top waste card is playable. Turning the waste back into the stock is free the first time; every later recycle costs 50 points (see [Scoring](#scoring-persistence)).
+The tableau starts with 1–7 cards by column, with only each column's top card face-up. The remaining 24 cards start in the stock.
 
-### Undo
+An empty tableau column accepts only a King or a King-led valid run.
 
-Undo steps back through the last 50 moves (`UNDO_CAP`). An undo restores the board and the score as they were before that move; the play timer keeps running.
+## Deals and draw modes
 
-## Scoring (Persistence)
+Before a new deal the player chooses:
 
-- **Metric and direction:** `final_score`, higher is better, labelled `score` (`board` in `backend/solitaire/module.py`; `BOARDS.solitaire` in `frontend/src/api/vocab.ts`). It is the engine's score at the win (`frontend/src/game/solitaire/engine.ts`). There is **no time bonus**: +5 waste to tableau, +10 to a foundation, +5 for each card turned face up, −15 foundation to tableau, −50 for each recycle after the first, −20 per hint, +500 on the win. The score never drops below 0.
-- **Tie-break:** none declared. Equal scores go to the earlier `completed_at`, the last tie-break on every board.
-- **Partitions:** none: Draw-1 and Draw-3 share one board (#591).
-- **Recorded, not partitioned:** creation metadata `draw_mode` (`1` | `3`, `SolitaireMetadata`, #2632); older builds send none. Result (`SolitaireResult`): `won` and `moves`.
-- **Max value:** 1245, recomputed from the engine's scoring constants in `backend/tests/test_board_definitions.py`.
-- **Outcomes:** `has_winner = False`. Only a won game records `completed`: there is no loss. A new deal during a game, or leaving the screen, records `abandoned` with `{ won: false, moves }` and no score, once a move has been made.
-- **Duration:** Solitaire's own timer (`startedAt` / `accumulatedMs` on the engine state, `applyTimer` in `engine.ts`). It wins over `useGameSync`'s window. It runs from the first move to the win and pauses while the player is away: another screen covers the game (navigation `blur`, #2743) or the app is in the background (`AppState`, #2750). `usePausableClock` (built on `usePauseWhileAway`) drives `pauseGame` / `resumeGame` for both as functional updates at the event's time, and resumes only once neither holds; it also starts paused when the screen mounts away, and pauses a game loaded while the player is away (`adoptLoaded`) and matches a move built from a board rendered before the player left or came back to their presence, pausing or resuming it (`matchPresence`). The clock's paused state is its own (`paused` on `PlayClock`): a move never restarts a paused clock, only the return does, and a clock that never started still starts on the first move. The pause also saves in its own event handler, before any render, from the latest state the screen computed; the pause is saved like any state change. The save banks the running segment into `accumulatedMs` and the load restarts the clock from the moment of loading (`clockForSave` / `clockOnLoad` in `frontend/src/game/_shared/playClock.ts`), so a relaunch keeps the play before an app kill and never counts the time the app was closed. A save from a build before #2750 carries a raw running `startedAt`: when the app was closed is unknown, so that running segment is dropped and the game counts from the load, keeping only what was banked.
-- **How it reaches the server:** the `useGameSync("solitaire")` session row, one per deal, with `draw_mode` as creation metadata. `SyncWorker` sends `POST /games` once the first move is made, and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best win once. The legacy `POST /solitaire/score` was removed in #2644. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
-- **Where the player sees it:** the win card shows the rank through `sessionBoardAdapter` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu.
+- **Draw-1:** draw one stock card at a time.
+- **Draw-3:** draw up to three; only the top waste card is playable.
 
-## Client-Side Engine
+Draw-1 and Draw-3 share one public leaderboard.
 
-- Location: `frontend/src/game/solitaire/engine.ts`
-- Key exports: `validateMove(state, move) → boolean`, `applyMove(state, move) → GameState`, auto-complete detection, recycle penalty logic
+Live deals come from `frontend/src/game/solitaire/seeds.json`, a bank of **provably solvable** seeds generated offline by `backend/scripts/gen_solitaire_seeds.py`. A seed reproduces the same deal deterministically.
 
-## Backend
+### Recycling the stock
 
-- Module: `backend/solitaire/module.py`
-- Endpoints: none of its own — the generic `/games` routes. The legacy `POST /solitaire/score` and `GET /solitaire/scores` were removed in #2644.
-- Metadata model: `SolitaireMetadata` — `player_name: str = ""` (max 64 chars), `draw_mode: 1 | 3 | None`
-- Result model: `SolitaireResult` — `won: bool`, `moves: int`
-- Scoring: see [Scoring](#scoring-persistence)
+When stock is empty, the waste can be recycled back into stock.
 
-## Entitlement
+- first recycle: free;
+- every later recycle: −50 points.
 
-Tier TBD. If free: no entitlement check.
+Score is floored at 0.
 
-## Known Issues / Limitations
+## Legal card movement
 
-- None tracked at this time
+### Tableau
+A face-up card/run can move onto a card exactly one rank higher and the opposite color.
+
+A moved tableau run itself must already be a valid alternating-color descending sequence.
+
+When a move uncovers a face-down tableau card, that newly exposed card flips face-up automatically.
+
+### Foundation
+Foundations build by suit from Ace upward.
+
+The top card of:
+- waste; or
+- a tableau column
+
+can move to its matching foundation when legal.
+
+A top foundation card can also be moved back to tableau when it fits; that retreat costs points.
+
+## Input
+
+Cards can be moved through the shared card-selection/drag interaction.
+
+The current UI uses tap-to-select rather than the older smart-single-tap auto-move experiment; the deprecated `resolveAutoMove()` helper remains in the engine only as tested reference code and is not current gameplay.
+
+A quick second activation on eligible cards can use the screen's explicit double-tap path where implemented, but ordinary legal selection/drag remains the core interaction.
+
+## Hint
+
+Hint highlights a productive legal move. It does **not** execute the move.
+
+Hint priority is:
+
+1. waste/tableau → foundation;
+2. tableau → tableau that reveals a face-down card;
+3. waste → tableau;
+4. other productive tableau → tableau moves.
+
+The hint engine filters obvious reversible tableau oscillations and excludes:
+- stock draws;
+- foundation → tableau retreats.
+
+If there is no productive hint, the Hint control is disabled.
+
+Each hint use costs **20 points**, floored at 0.
+
+## Undo
+
+Undo restores the board and score snapshot from before the previous state-changing move.
+
+- history cap: **50** snapshots;
+- timer continues according to the current presence state rather than rewinding to an old clock;
+- the screen's displayed move count is also decremented when Undo is used;
+- unavailable while auto-complete is running.
+
+## Auto-complete
+
+An Auto Complete action appears only when the engine can prove its own stepper can finish the deal.
+
+The proof requires all tableau cards to be face-up and simulates the exact auto-complete sequence to completion before offering the action.
+
+The stepper can:
+1. move waste → foundation;
+2. draw stock batches to waste;
+3. move tableau tops → foundation;
+4. make a narrow single-card tableau relocation only when it immediately exposes a foundation-ready card.
+
+It deliberately refuses deeper speculative rearrangements. If the stepper cannot prove the finish, Auto Complete is not offered.
+
+Auto-complete performs real game moves one step at a time, so:
+- normal scoring applies;
+- normal move counting applies;
+- the game timer/session behaves as if those moves were made normally.
+
+## Scoring
+
+The leaderboard ranks final score, higher is better.
+
+| Event | Score |
+| --- | ---: |
+| Waste → tableau | +5 |
+| Waste → foundation | +10 |
+| Tableau → foundation | +10 |
+| Reveal a face-down tableau card | +5 |
+| Foundation → tableau | −15 |
+| Recycle after the first | −50 |
+| Use Hint | −20 |
+| Complete all foundations | +500 |
+
+Score never falls below 0.
+
+There is **no time bonus**.
+
+The backend's declared maximum rankable score is **1245**.
+
+Equal scores use the shared final tie rule: earlier completion ranks first.
+
+## Timer and save/resume
+
+The active-play timer starts on the first real move and stops at the win.
+
+It pauses while:
+- the app backgrounds; or
+- another screen covers the game.
+
+The full deal state and banked active-play time are saved locally. Relaunching:
+- restores the board;
+- keeps previously accumulated active time;
+- does not count time while the app was closed.
+
+A save from an older pre-#2750 build cannot reconstruct an unbanked running segment, so that unknown segment is discarded on load.
+
+## Session outcome
+
+Solitaire has no loss outcome in the reporting contract.
+
+- Win → `completed`, with engine score as `final_score` and `{ won: true, moves }`.
+- Leaving or starting a new deal after play → `abandoned`, with no ranked score.
+- An untouched deal can be discarded without a meaningful played result.
+
+Creation metadata records `draw_mode` (1 or 3).
+
+For generic syncing, rank lookup, display names, Stats, and result-card behavior, see [GAME-CONTRACT.md](../GAME-CONTRACT.md).
+
+## Implementation
+
+- Engine: `frontend/src/game/solitaire/engine.ts`
+- Screen: `frontend/src/screens/SolitaireScreen.tsx`
+- Seed bank: `frontend/src/game/solitaire/seeds.json`
+- Seed generator/solver: `backend/scripts/gen_solitaire_seeds.py`
+- Storage: `frontend/src/game/solitaire/storage.ts`
+- Backend descriptor: `backend/solitaire/module.py`

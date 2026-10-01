@@ -13,13 +13,15 @@ import {
   BULLET_C_W,
   HIT_FLASH_DURATION,
   ASTEROID_HIT_FLASH_MS,
-  BEAM_HALF_WIDTH,
   isCarrierArmored,
-  carrierBeam,
   asteroidOutline,
   hashFrac,
 } from "../engine";
-import { HARMLESS_BULLET_OPACITY } from "../constants";
+import { buddyOps } from "./buddy";
+import { carrierOps } from "./carrier";
+import { flinchWobble } from "./flinch";
+import { isUpgradePickup, upgradePickupOps } from "./pickups";
+import type { UpgradePickupType } from "./pickups";
 import type { StarfieldState } from "../starfield";
 import type { EnemyTier, PowerUpType, StarSwarmState } from "../types";
 
@@ -38,7 +40,7 @@ export type SpriteKey =
   | "buddyShip"
   | "enemyGrunt"
   | "enemyElite"
-  | "enemyBoss"
+  | "enemyGuardian"
   | "enemyCarrier"
   | "bulletPlayer"
   | "puShield"
@@ -127,13 +129,13 @@ const BACKGROUND = "#000010";
 const TIER_SPRITE: Record<EnemyTier, Exclude<SpriteKey, "explosion">> = {
   Grunt: "enemyGrunt",
   Elite: "enemyElite",
-  Boss: "enemyBoss",
+  Guardian: "enemyGuardian",
   Carrier: "enemyCarrier",
 };
 const TIER_FALLBACK: Record<EnemyTier, string> = {
   Grunt: "#8888ff",
   Elite: "#ff88ff",
-  Boss: "#ffff44",
+  Guardian: "#ffff44",
   Carrier: "#b06cff",
 };
 const POWERUP_SPRITE: Partial<Record<PowerUpType, Exclude<SpriteKey, "explosion">>> = {
@@ -209,7 +211,8 @@ export function buildFrame(
     });
   }
 
-  // Enemy bullets — harmless carry-overs from a cleared wave are dimmed; #2487 flak is amber
+  // Enemy bullets — #2487 flak is amber. #2842: every shot in flight is live (none is ever
+  // "harmless"), so none is dimmed.
   for (const b of state.enemyBullets) {
     ops.push({
       k: "rect",
@@ -219,7 +222,6 @@ export function buildFrame(
       w: b.width,
       h: b.height,
       color: b.flak ? "#ffd27a" : "#ff4422",
-      opacity: b.harmless ? HARMLESS_BULLET_OPACITY : 1,
     });
   }
 
@@ -239,10 +241,23 @@ export function buildFrame(
   const armored = isCarrierArmored(state);
   for (const e of state.enemies) {
     if (!e.isAlive) continue;
-    const rect = { x: e.x - e.width / 2, y: e.y - e.height / 2, w: e.width, h: e.height };
+    const wobble = flinchWobble(e.flinchMs); // #2881: reaction cue
+    const rect = {
+      x: e.x - e.width / 2 + wobble.dx,
+      y: e.y - e.height / 2,
+      w: e.width,
+      h: e.height,
+    };
     const sprite = TIER_SPRITE[e.tier];
     if (loaded[sprite]) {
-      ops.push({ k: "image", key: `en-${e.id}`, sprite, ...rect, fit: "fill" });
+      ops.push({
+        k: "image",
+        key: `en-${e.id}`,
+        sprite,
+        ...rect,
+        fit: "fill",
+        ...(wobble.rotate !== 0 ? { rotate: wobble.rotate } : {}),
+      });
     } else {
       ops.push({ k: "rect", key: `en-${e.id}`, ...rect, color: TIER_FALLBACK[e.tier] });
     }
@@ -279,46 +294,8 @@ export function buildFrame(
     }
   }
 
-  // #2485 Carrier sweep beam — telegraph, then the beam
-  const beam = carrierBeam(state);
-  if (beam?.phase === "charge") {
-    ops.push({
-      k: "rect",
-      key: "beam-telegraph",
-      x: beam.x - 2,
-      y: beam.y,
-      w: 4,
-      h: state.canvasH,
-      color: `rgba(176,108,255,${(0.1 + beam.progress * 0.35).toFixed(3)})`,
-    });
-    ops.push({
-      k: "circle",
-      key: "beam-charge",
-      cx: beam.x,
-      cy: beam.y + 6,
-      r: 4 + beam.progress * 8,
-      color: `rgba(176,108,255,${(0.4 + beam.progress * 0.5).toFixed(3)})`,
-    });
-  } else if (beam?.phase === "fire") {
-    ops.push({
-      k: "rect",
-      key: "beam-glow",
-      x: beam.x - BEAM_HALF_WIDTH - 4,
-      y: beam.y,
-      w: BEAM_HALF_WIDTH * 2 + 8,
-      h: state.canvasH,
-      color: "rgba(176,108,255,0.35)",
-    });
-    ops.push({
-      k: "rect",
-      key: "beam-core",
-      x: beam.x - BEAM_HALF_WIDTH * 0.5,
-      y: beam.y,
-      w: BEAM_HALF_WIDTH,
-      h: state.canvasH,
-      color: "rgba(230,205,255,0.9)",
-    });
-  }
+  // #2485/#2843 Carrier telegraphs (beam charge, attack-run brace) and released beams
+  ops.push(...carrierOps(state));
 
   // Player and its overlays — one visibility rule for all of them
   const { player } = state;
@@ -389,11 +366,12 @@ export function buildFrame(
         sprite: "buddyShip",
         ...rect,
         fit: "fill",
-        flipX: !buddy.fromLeft,
+        flipX: !buddy.facingRight,
       });
     } else {
       ops.push({ k: "rect", key: `buddy-${buddy.id}`, ...rect, color: "rgba(0,120,255,0.8)" });
     }
+    ops.push(...buddyOps(buddy, BUDDY_SIZE)); // #2845 HP bar + hit flash, shared with web
   }
 
   // Power-ups — sprites with procedural fallbacks; #2488 salvage and hull are procedural
@@ -406,45 +384,9 @@ export function buildFrame(
     const sprite = POWERUP_SPRITE[pu.type];
     if (sprite && loaded[sprite]) {
       ops.push({ k: "image", key, sprite, x: lx, y: ly, w: pw, h: ph, fit: "contain" });
-    } else if (pu.type === "salvage") {
-      ops.push({
-        k: "rect",
-        key,
-        x: lx + pw * 0.15,
-        y: ly + ph * 0.15,
-        w: pw * 0.7,
-        h: ph * 0.7,
-        color: "#ffb020",
-      });
-      ops.push({
-        k: "rect",
-        key: `${key}-band`,
-        x: lx + pw * 0.15,
-        y: ly + ph * 0.45,
-        w: pw * 0.7,
-        h: ph * 0.1,
-        color: "#7a4d08",
-      });
-    } else if (pu.type === "hull") {
-      ops.push({
-        k: "poly",
-        key,
-        points: [
-          pu.x,
-          ly,
-          lx + pw,
-          ly + ph * 0.25,
-          lx + pw,
-          ly + ph * 0.75,
-          pu.x,
-          ly + ph,
-          lx,
-          ly + ph * 0.75,
-          lx,
-          ly + ph * 0.25,
-        ],
-        color: "#00aaff",
-      });
+    } else if (isUpgradePickup(pu.type)) {
+      // #2847: salvage crate / hull plating — shared geometry, halo + glyph
+      ops.push(...upgradePickupOps(pu as typeof pu & { type: UpgradePickupType }));
     } else if (pu.type === "shield") {
       ops.push({ k: "circle", key, cx: pu.x, cy: pu.y, r: pw * 0.4, color: "rgba(0,170,255,0.9)" });
     } else if (pu.type === "bomb") {

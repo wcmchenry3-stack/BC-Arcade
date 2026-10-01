@@ -45,21 +45,35 @@ For individual game rules, scoring, and engine details see [`docs/games/`](games
 
 ## Monetization
 
-BC Arcade launches with a premium tier — some games require purchase to access (exact free/premium split TBD). Premium access is controlled by a server-issued entitlement JWT; see [`docs/ARCHITECTURE.md §10`](ARCHITECTURE.md) for the technical model.
+BC Arcade offers complete free games and, when purchases launch, complete premium games. A premium purchase grants access to a game, not currency, lives, moves, retries, continued play, or a stronger version of a free game. This is a premium catalog, **not freemium gameplay**. Premium access is controlled by a server-issued entitlement JWT; see [`docs/ARCHITECTURE.md §10`](ARCHITECTURE.md#10-premium-entitlements) for the technical model. The purchase model — one non-consumable product per premium game, restore, refunds and the product catalog — is specified in [`docs/IAP.md`](IAP.md).
 
 **Golden rules:**
 
-- Never remove free functionality. Only add paid enhancements.
+- Once a game is offered free, keep its gameplay complete: no paid difficulty levels, modes, content inside that game, consumables, or pay-to-continue mechanics. New premium games can be added to the catalog.
 - Never block gameplay mid-session due to an entitlement change.
 - Free games must always be playable with zero friction — no login, no payment prompt.
+- No prompts that exploit a loss, depleted resource, streak, countdown, or interrupted session to solicit a purchase.
+
+### Advertising
+
+The initial release has no ads. Ads may be considered later; an ad-supported release must still follow these product rules:
+
+- Never interrupt an active game, hand, wave, puzzle, or natural replay flow. Do not require an ad to start, resume, finish, retry, or keep a result, reward, or streak.
+- No deceptive controls, disguised ads, accidental-tap placement, forced engagement, or pressure based on loss or scarcity. An ad must be clearly identifiable and easy to dismiss when dismissal is offered.
+- Do not make play deliberately slower or harder to sell an ad-free option. Do not give paid players a gameplay advantage over free players.
+- Keep ads out of essential navigation and score/history views. Any future placement, frequency, format, privacy implications, and store disclosure require a separate product review before implementation.
+
+Current no-ads statements in store and privacy materials describe the initial release; reassess those statements if ads are introduced.
 
 ## Identity Tiers
 
-| Tier | Description                 | Status             |
-| ---- | --------------------------- | ------------------ |
-| 0    | Anonymous (UUID session)    | Implemented        |
-| 1    | Optional name input         | Planned            |
-| 2    | Google/Apple SSO (optional) | Planned — see #144 |
+| Tier | Description                                                  | Status             |
+| ---- | ------------------------------------------------------------ | ------------------ |
+| 0    | Anonymous (UUID session)                                     | Implemented        |
+| 1    | Opt-in leaderboard membership under a server-generated name  | Implemented, #2778 |
+| 2    | Google/Apple SSO (optional)                                  | Planned — see #144 |
+
+Players never type a public name: joining the leaderboards gives them a generated name (for example "Brave Otter 4821") that they can swap for another generated name or withdraw. See [LEADERBOARD-IDENTITIES.md](LEADERBOARD-IDENTITIES.md).
 
 Login is always optional. Never block gameplay behind it. Prompt only after the user has played:
 

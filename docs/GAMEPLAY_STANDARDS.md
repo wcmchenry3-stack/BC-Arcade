@@ -91,7 +91,8 @@ function calculate<Name>Layout(input: <Name>LayoutInput): <Name>Layout { ... }
 ### Conventions
 
 - Call `useWindowDimensions()` + `useSafeAreaInsets()` at the screen level; pass the result into the layout function.
-- Clamp all sizes to a readable minimum. For cards: `cardWidth ≥ 36px`. For tiles: `tileWidth ≥ 28px`.
+- Clamp all sizes to a readable minimum. For cards: `cardWidth ≥ 36px` (`MIN_CARD_W` in `CardSizeContext.tsx`). For tiles: `tileWidth ≥ 28px`.
+- The visible stripe of a covered face-up card never drops below 24px (Solitaire's `MIN_FACE_UP_STRIPE`), so its rank and suit stay readable and tappable. FreeCell instead compresses a tall column to fit the screen (`computeCardOffset`, 12px floor at natural size).
 - If the board overflows the screen even at the minimum size, wrap in a `ScrollView` rather than squishing further.
 - Offsets between stacked items (tableau FACE_UP_OFFSET, Mahjong LAYER_DX/DY) must be derived proportionally from the computed tile/card size — never fixed.
 
@@ -102,7 +103,7 @@ function calculate<Name>Layout(input: <Name>LayoutInput): <Name>Layout { ... }
 | Solitaire   | `useResponsiveCardSize()` in `CardSizeContext`                                        | `scale = min(1, effectiveWidth / naturalBoardWidth)`             |
 | FreeCell    | Same `CardSizeContext`                                                                | Smaller default card (40×57) for 8-column fit                    |
 | Bottle Sort | Inline in `SortBoard.tsx`                                                             | `bottleH = min(defaultH, maxBottleH)` from `availableHeight`     |
-| Mahjong     | **Pending** (Epic [#1331](https://github.com/wcmchenry3-stack/BC-Arcade/issues/1331)) | Currently hardcoded — `calculateMahjongLayout()` to be extracted |
+| Mahjong     | `calculateMahjongLayout()` in `frontend/src/game/mahjong/layout.ts`                         | Responsive layout with tested fit/clamp behavior                  |
 
 ---
 
@@ -110,7 +111,13 @@ function calculate<Name>Layout(input: <Name>LayoutInput): <Name>Layout { ... }
 
 ### Rule
 
-Use `react-native-gesture-handler` for all touch input. Never use raw `onTouchStart`, browser drag events, or `PanResponder`. Never update React state on every frame of a gesture — that belongs in Layer 4 (shared values on the UI thread).
+Choose the simplest input primitive that preserves both gesture correctness and accessibility.
+
+- Use the shared RNGH/Reanimated gesture infrastructure when a control needs drag, pan, gesture composition, or UI-thread per-frame updates.
+- `Pressable` / `TouchableOpacity` are acceptable for simple tap-only game controls when there is no measured RNGH composition conflict. Their native activation path is often the most direct screen-reader surface.
+- Any custom `GestureDetector`-driven primary control must expose an equivalent assistive-technology activation path (for example `accessibilityActions` / `onAccessibilityAction` and iOS `onAccessibilityTap`).
+- Never use raw `onTouchStart`, browser drag events, or `PanResponder` for game input.
+- Never update React state on every frame of a gesture — that belongs in Layer 4 (shared values on the UI thread).
 
 ### Card games (drag required)
 
@@ -123,13 +130,18 @@ Use the shared drag system (see [§7](#7-shared-drag-system)).
 
 ### Board games (tap only)
 
-Use `Gesture.Tap()` from `react-native-gesture-handler` inside `<GestureDetector>`. Do not use `TouchableOpacity` or `Pressable` for primary game input — they do not compose correctly with RNGH gestures.
+For a simple tap-only board with no competing gesture recognizers, prefer an accessible native control such as `Pressable` / `TouchableOpacity`. Keep the element's role, label, disabled state, and activation behavior available to VoiceOver/TalkBack.
 
-**Exception:** Canvas-based games (Mahjong on native uses Skia, on web uses Canvas2D). These implement hit-testing inside `onPress` on the canvas root; RNGH is not used because there are no individual React elements per tile. This pattern must be documented in the game's component if used.
+Use `Gesture.Tap()` inside `<GestureDetector>` when the game genuinely needs RNGH composition or coordination with another gesture. In that case, the gesture surface must provide an explicit accessibility activation path that reaches the same validated action as the touch gesture.
+
+Current examples:
+- Bottle Sort intentionally keeps `TouchableOpacity` in `BottleView`; its bottles are accessible buttons and there is no competing RNGH gesture on that surface.
+- Blackjack and Sudoku likewise may keep their existing accessible tap controls unless a real gesture-contention problem justifies migration.
+- Canvas-based games (Mahjong on native uses Skia, on web uses Canvas2D) implement hit-testing at the canvas/root surface because there are no individual React elements per tile; the game must provide separate accessible state/actions where required.
 
 ### Conventions
 
-- Always set `activeOffsetX/Y` thresholds (we use `[-12, 12]`) to prevent spurious pan activation on vertical scroll.
+- Do not copy a global `activeOffsetX/Y` threshold into every gesture. Tune activation for the interaction and target size, and cover it with regression tests. The shared card drag system currently uses `minDistance(5)`; the former `activeOffsetX/Y([-12, 12])` setting was intentionally removed because it made narrow-card drags feel unresponsive.
 - Do not use `simultaneousHandlers` unless you have measured a specific conflict. It is rarely needed and introduces ordering bugs.
 - `GestureHandlerRootView` must wrap the entire app root — never nested, never missing. Its absence causes silent gesture failures on iOS.
 - Test gesture interactions on a **physical iOS device**, not just the simulator. The simulator does not faithfully reproduce iOS UIGestureRecognizer priority resolution.
@@ -140,7 +152,7 @@ Use `Gesture.Tap()` from `react-native-gesture-handler` inside `<GestureDetector
 | ----------- | ---------------------------------------------- | ---------------------------------------------------- |
 | Solitaire   | `DraggableCard` (Pan + Tap via shared system)  | `frontend/src/game/_shared/drag/DraggableCard.tsx`   |
 | FreeCell    | Same shared system + double-tap (300ms window) | `frontend/src/components/freecell/FreeCellBoard.tsx` |
-| Bottle Sort | `Gesture.Tap()` per bottle                     | `frontend/src/game/sort/components/SortBoard.tsx`    |
+| Bottle Sort | Accessible `TouchableOpacity` per bottle       | `frontend/src/game/sort/components/BottleView.tsx`   |
 | Mahjong     | `onPress` → canvas hit-test                    | `frontend/src/components/mahjong/GameCanvas.tsx`     |
 
 ---
@@ -291,7 +303,7 @@ Update `isCardInDragStack()` in the same file to handle the new variant.
 | ---------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------- |
 | `GestureHandlerRootView` not at app root | Pan gesture silently fails on iOS | Ensure it wraps `<App />` once, at the top                                       |
 | Parent `overflow: hidden`                | Ghost card invisible during drag  | Remove `overflow: hidden` from any ancestor of `DragContainer`                   |
-| `activeOffsetX/Y` too small              | Drag fires on every tap           | Keep threshold at `[-12, 12]` — the current value was tuned for this             |
+| Pan activation tuned too aggressively      | Drag fires on taps or feels sticky | Start from the shared card drag's tested `minDistance(5)`; change only with device regression coverage |
 | Testing only on simulator                | Works in sim, fails on device     | iOS UIGestureRecognizer priority differs from simulator; test on physical device |
 
 ---
@@ -316,8 +328,9 @@ This supplements the backend checklist in [`GAME-CONTRACT.md §3`](GAME-CONTRACT
 ### Gesture layer
 
 - [ ] Card games: uses shared `DragProvider` + `DraggableCard` + `DropTarget`
-- [ ] Board games: uses `Gesture.Tap()` inside `<GestureDetector>`, not `Pressable`/`TouchableOpacity`
+- [ ] Tap-only controls use an accessible native activation path; if `GestureDetector` is used for primary input, an equivalent screen-reader activation action is wired explicitly
 - [ ] Tap fallback works independently of drag (test with drag disabled)
+- [ ] Shared draggable cards expose an accessibility label plus activation action that reaches the same tap/move-validation path
 - [ ] Tested on a physical iOS device (not only simulator)
 
 ### Animation layer
