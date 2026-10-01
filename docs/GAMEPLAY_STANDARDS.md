@@ -91,7 +91,8 @@ function calculate<Name>Layout(input: <Name>LayoutInput): <Name>Layout { ... }
 ### Conventions
 
 - Call `useWindowDimensions()` + `useSafeAreaInsets()` at the screen level; pass the result into the layout function.
-- Clamp all sizes to a readable minimum. For cards: `cardWidth ≥ 36px`. For tiles: `tileWidth ≥ 28px`.
+- Clamp all sizes to a readable minimum. For cards: `cardWidth ≥ 36px` (`MIN_CARD_W` in `CardSizeContext.tsx`). For tiles: `tileWidth ≥ 28px`.
+- The visible stripe of a covered face-up card never drops below 24px (Solitaire's `MIN_FACE_UP_STRIPE`), so its rank and suit stay readable and tappable. FreeCell instead compresses a tall column to fit the screen (`computeCardOffset`, 12px floor at natural size).
 - If the board overflows the screen even at the minimum size, wrap in a `ScrollView` rather than squishing further.
 - Offsets between stacked items (tableau FACE_UP_OFFSET, Mahjong LAYER_DX/DY) must be derived proportionally from the computed tile/card size — never fixed.
 

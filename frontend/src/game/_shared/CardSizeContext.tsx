@@ -1,7 +1,14 @@
 import { createContext, useContext } from "react";
 import { useWindowDimensions } from "react-native";
 
-const MIN_CARD_W = 28; // ~half a finger-width minimum tap target
+/**
+ * Readable minimum card width (docs/GAMEPLAY_STANDARDS.md: `cardWidth ≥ 36px`,
+ * #2220). Only binds below the narrowest supported phones (iOS 16.4+ is
+ * 375 pt wide; FreeCell's 8 columns reach it under ~344 dp), where a board a
+ * few px wider than the content area spills into the screen's side padding
+ * rather than shrinking cards past legibility.
+ */
+export const MIN_CARD_W = 36;
 
 // default avoids 0×0 renders outside a Provider
 const DEFAULT_CARD_WIDTH = 52;

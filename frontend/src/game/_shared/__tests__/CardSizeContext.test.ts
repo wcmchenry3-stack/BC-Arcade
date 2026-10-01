@@ -1,4 +1,4 @@
-import { computeCardSize } from "../CardSizeContext";
+import { computeCardSize, MIN_CARD_W } from "../CardSizeContext";
 
 describe("computeCardSize", () => {
   it.each([320, 360, 1024, 1440])("snapshot at viewport width %i", (width) => {
@@ -55,5 +55,23 @@ describe("useResponsiveCardSize math (via computeCardSize) — three viewports",
     const { cardWidth } = computeCardSize(768, 52, 74, 7, 6, 24);
     // 768 is wide enough for natural card size
     expect(cardWidth).toBe(52);
+  });
+});
+
+describe("MIN_CARD_W (#2220)", () => {
+  it("matches the documented 36 px minimum (docs/GAMEPLAY_STANDARDS.md)", () => {
+    expect(MIN_CARD_W).toBe(36);
+  });
+
+  it("clamps both card games to it on a very narrow viewport", () => {
+    expect(computeCardSize(100, 52, 74, 7, 6).cardWidth).toBe(36);
+    expect(computeCardSize(100, 40, 57, 8, 2).cardWidth).toBe(36);
+  });
+
+  it("does not bind on the narrowest supported phones (375 pt iPhone, 360 dp Android)", () => {
+    for (const w of [360, 375]) {
+      expect(computeCardSize(w, 52, 74, 7, 6, 24).cardWidth).toBeGreaterThan(36);
+      expect(computeCardSize(w, 40, 57, 8, 2, 24).cardWidth).toBeGreaterThan(36);
+    }
   });
 });
