@@ -2,7 +2,7 @@
   "expo": {
     "name": "BC Arcade",
     "slug": "gaming-app",
-    "version": "1.0.9",
+    "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.buffingchi.games",
-      "buildNumber": "10009",
+      "buildNumber": "10010",
       "config": {
         "usesNonExemptEncryption": false
       },
@@ -126,7 +126,8 @@
         "foregroundImage": "./assets/adaptive-icon.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.buffingchi.games"
+      "package": "com.buffingchi.games",
+      "versionCode": 10010
     },
     "web": {
       "favicon": "./assets/favicon.png"

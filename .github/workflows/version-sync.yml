@@ -9,9 +9,17 @@ name: Version Sync
 # $(MARKETING_VERSION) / $(CURRENT_PROJECT_VERSION) from the pbxproj, so it
 # follows automatically. Guarded by frontend/src/__tests__/nativeVersionSync.test.ts.
 #
-# versionCode / CURRENT_PROJECT_VERSION formula:
-#   major * 10000 + minor * 100 + patch
-#   e.g. 1.0.6 → 10006, 1.1.0 → 10100, 2.0.0 → 20000
+# versionCode (Android build.gradle + app.json android.versionCode), mirrored
+# into app.json ios.buildNumber / pbxproj CURRENT_PROJECT_VERSION (Xcode Cloud
+# replaces the shipped iOS build number with its own counter, docs/IOS.md):
+#   formula = major * 10000 + minor * 100 + patch   (1.1.0 → 10100)
+#   - versionName already equals the release version → keep the current code
+#     (the release was pre-synced by hand, e.g. v1.0.0 at 10010);
+#   - otherwise → max(formula, current + 1).
+# The code therefore never decreases and never repeats, whatever the formula
+# says. Play rejects any upload whose versionCode is not above every code
+# already uploaded; v1.0.0 launched at 10010 because 10009 (1.0.9) existed.
+# Guarded by frontend/src/__tests__/nativeVersionSync.test.ts.
 
 on:
   release:
@@ -30,23 +38,50 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Parse version from tag
+      - name: Compute version and a never-decreasing versionCode
         id: ver
+        env:
+          TAG: ${{ github.event.release.tag_name }}
         run: |
-          TAG="${{ github.event.release.tag_name }}"
           VERSION="${TAG#v}"
-          IFS='.' read -r major minor patch <<< "$VERSION"
-          VERSION_CODE=$(( major * 10000 + minor * 100 + patch ))
-          echo "version=$VERSION"       >> "$GITHUB_OUTPUT"
+          if ! [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::Release tag '$TAG' is not vMAJOR.MINOR.PATCH" >&2
+            exit 1
+          fi
+          major=${BASH_REMATCH[1]}; minor=${BASH_REMATCH[2]}; patch=${BASH_REMATCH[3]}
+          FORMULA=$(( 10#$major * 10000 + 10#$minor * 100 + 10#$patch ))
+
+          GRADLE=frontend/android/app/build.gradle
+          CURRENT=$(sed -n 's/^ *versionCode \([0-9][0-9]*\)$/\1/p' "$GRADLE")
+          CURRENT_NAME=$(sed -n 's/^ *versionName "\([^"]*\)"$/\1/p' "$GRADLE")
+          if ! [[ "$CURRENT" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not read exactly one versionCode from $GRADLE" >&2
+            exit 1
+          fi
+
+          if [ "$CURRENT_NAME" = "$VERSION" ]; then
+            VERSION_CODE=$CURRENT
+          elif [ "$FORMULA" -gt "$CURRENT" ]; then
+            VERSION_CODE=$FORMULA
+          else
+            VERSION_CODE=$(( CURRENT + 1 ))
+          fi
+          echo "versionName $CURRENT_NAME -> $VERSION; versionCode $CURRENT -> $VERSION_CODE (formula $FORMULA)"
+          echo "version=$VERSION"           >> "$GITHUB_OUTPUT"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
 
-      - name: Patch frontend/package.json
+      - name: Patch frontend/package.json and package-lock.json
         run: |
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('frontend/package.json', 'utf8'));
             pkg.version = '${{ steps.ver.outputs.version }}';
             fs.writeFileSync('frontend/package.json', JSON.stringify(pkg, null, 2) + '\n');
+            // Only the two root version fields; dependency entries are untouched.
+            const lock = JSON.parse(fs.readFileSync('frontend/package-lock.json', 'utf8'));
+            lock.version = '${{ steps.ver.outputs.version }}';
+            lock.packages[''].version = '${{ steps.ver.outputs.version }}';
+            fs.writeFileSync('frontend/package-lock.json', JSON.stringify(lock, null, 2) + '\n');
           "
 
       - name: Patch frontend/app.json
@@ -56,6 +91,7 @@ jobs:
             const app = JSON.parse(fs.readFileSync('frontend/app.json', 'utf8'));
             app.expo.version = '${{ steps.ver.outputs.version }}';
             app.expo.ios.buildNumber = '${{ steps.ver.outputs.version_code }}';
+            app.expo.android.versionCode = ${{ steps.ver.outputs.version_code }};
             fs.writeFileSync('frontend/app.json', JSON.stringify(app, null, 2) + '\n');
           "
 
@@ -91,13 +127,15 @@ jobs:
             | File | Field | New value |
             |------|-------|-----------|
             | `frontend/package.json` | `version` | `${{ steps.ver.outputs.version }}` |
+            | `frontend/package-lock.json` | `version`, `packages[""].version` | `${{ steps.ver.outputs.version }}` |
             | `frontend/app.json` | `expo.version` | `${{ steps.ver.outputs.version }}` |
             | `frontend/app.json` | `expo.ios.buildNumber` | `${{ steps.ver.outputs.version_code }}` |
+            | `frontend/app.json` | `expo.android.versionCode` | `${{ steps.ver.outputs.version_code }}` |
             | `frontend/android/app/build.gradle` | `versionName` | `${{ steps.ver.outputs.version }}` |
             | `frontend/android/app/build.gradle` | `versionCode` | `${{ steps.ver.outputs.version_code }}` |
             | `frontend/ios/.../project.pbxproj` | `MARKETING_VERSION` | `${{ steps.ver.outputs.version }}` |
             | `frontend/ios/.../project.pbxproj` | `CURRENT_PROJECT_VERSION` | `${{ steps.ver.outputs.version_code }}` |
 
-            **versionCode formula:** `major × 10000 + minor × 100 + patch`
+            **versionCode:** kept if `versionName` already matched, else `max(major × 10000 + minor × 100 + patch, current + 1)`, so it never decreases.
 
             Closes #424
