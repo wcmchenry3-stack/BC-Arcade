@@ -59,14 +59,23 @@ class BlackjackModule:
         """The ``final_score`` to store for a completion (#2745).
 
         A finished run (any outcome but ``abandoned``) that sent no
-        ``final_score`` gets its validated ``final_chips``. A sent value is kept:
-        ``BlackjackResult`` has already rejected one that differs from
-        ``final_chips``. Abandons are stored exactly as sent.
+        ``final_score`` gets its validated ``final_chips``. A finished run that
+        does send one must also send ``final_chips``, and the two must be equal:
+        otherwise ``ValueError`` (``complete_game`` answers 400), so a stored
+        score always has the board metric beside it. Abandons are stored
+        exactly as sent.
         """
-        if final_score is not None or outcome == GameOutcome.ABANDONED.value:
+        if outcome == GameOutcome.ABANDONED.value:
             return final_score
-        chips = result.get(FINAL_CHIPS_KEY)
-        return chips if isinstance(chips, int) and not isinstance(chips, bool) else None
+        raw = result.get(FINAL_CHIPS_KEY)
+        chips = raw if isinstance(raw, int) and not isinstance(raw, bool) else None
+        if final_score is None:
+            return chips
+        if chips is None:
+            raise ValueError("final_score requires result.final_chips")
+        if final_score != chips:
+            raise ValueError("final_score must equal result.final_chips")
+        return final_score
 
     def stats_shape(self, raw_stats: dict) -> dict:
         meta: dict = raw_stats.get("metadata") or {}

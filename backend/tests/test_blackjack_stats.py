@@ -306,3 +306,87 @@ def test_derive_final_score(
     final_score: int | None, outcome: str | None, result: dict, expected: int | None
 ) -> None:
     assert blackjack_module.derive_final_score(final_score, outcome, result) == expected
+
+
+@pytest.mark.parametrize(
+    "final_score,outcome,result",
+    [
+        (2500, "win", {"hands_won": 1}),  # a score with no board metric
+        (2500, "loss", {}),
+        (2500, None, {"final_chips": True}),
+        (2500, "win", {"final_chips": 2400}),
+    ],
+)
+def test_derive_final_score_rejects_a_score_without_matching_chips(
+    final_score: int, outcome: str | None, result: dict
+) -> None:
+    with pytest.raises(ValueError):
+        blackjack_module.derive_final_score(final_score, outcome, result)
+
+
+def _create(client: TestClient, sid: str) -> str:
+    r = client.post(
+        "/games", headers=_headers(sid), json={"game_type": "blackjack", "metadata": {}}
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["id"]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"outcome": "win", "final_score": 2500, "result": {"hands_won": 1}},
+        {"outcome": "loss", "final_score": 2500},
+        {"outcome": "win", "final_score": 2500, "result": {"hands_won": 1, "final_chips": None}},
+    ],
+)
+async def test_finished_run_with_a_score_but_no_closing_chips_is_rejected(
+    client: TestClient, body: dict
+) -> None:
+    sid = str(uuid.uuid4())
+    await _grant_blackjack(sid)
+    gid = _create(client, sid)
+    r = client.patch(f"/games/{gid}/complete", headers=_headers(sid), json=body)
+    assert r.status_code == 400, r.text
+    assert await _stored_final_score(gid) is None
+
+
+async def test_abandon_with_a_score_and_no_chips_is_still_accepted(client: TestClient) -> None:
+    """Abandons keep their old semantics: stored as sent, never counted."""
+    sid = str(uuid.uuid4())
+    await _grant_blackjack(sid)
+    gid = _create(client, sid)
+    body = {"outcome": "abandoned", "final_score": 2500, "result": {"hands_won": 1}}
+    r = client.patch(f"/games/{gid}/complete", headers=_headers(sid), json=body)
+    assert r.status_code == 200, r.text
+    assert await _stored_final_score(gid) == 2500
+    bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
+    assert bj["best_value"] is None
+    assert bj["extras"]["best_chips"] is None
+
+
+async def test_killed_process_win_sweep_counts_its_closing_chips(client: TestClient) -> None:
+    """The app's orphan sweep closes a killed run that reached its goal as
+    ``win`` with the persisted progress result and no ``final_score`` or
+    duration (``gameEventClient.abandonOrphan``)."""
+    sid = str(uuid.uuid4())
+    await _grant_blackjack(sid)
+    gid = _create(client, sid)
+    body = {
+        "outcome": "win",
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "result": {
+            "hands_won": 4,
+            "hands_played": 7,
+            "starting_chips": 100,
+            "final_chips": 265,
+        },
+    }
+    r = client.patch(f"/games/{gid}/complete", headers=_headers(sid), json=body)
+    assert r.status_code == 200, r.text
+
+    assert await _stored_final_score(gid) == 265
+    bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
+    assert bj["best_value"] == 265
+    assert bj["extras"]["best_chips"] == 265
+    assert bj["won"] == 1
