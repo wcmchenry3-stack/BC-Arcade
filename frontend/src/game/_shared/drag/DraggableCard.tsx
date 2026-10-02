@@ -1,11 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { Platform } from "react-native";
 import type { AccessibilityActionEvent, Insets } from "react-native";
-import Animated, {
-  useAnimatedRef,
-  measure as rnMeasure,
-  useAnimatedStyle,
-} from "react-native-reanimated";
+import Animated, { useAnimatedRef, measure as rnMeasure } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSharedValue, runOnJS } from "react-native-reanimated";
 import { useDragContext, isCardInDragStack } from "./DragContext";
@@ -17,6 +13,9 @@ type AnyProps = Record<string, any>;
 // Stable reference — re-creating this array every render would otherwise
 // force a fresh accessibilityActions prop identity on every re-render.
 const ACTIVATE_ACCESSIBILITY_ACTION = [{ name: "activate" }] as const;
+
+const HIDDEN_STYLE = { opacity: 0 } as const;
+const VISIBLE_STYLE = { opacity: 1 } as const;
 
 export interface DraggableCardProps {
   children: React.ReactNode;
@@ -170,9 +169,11 @@ export function DraggableCard({
 
   const beingDragged = dragState !== null && isCardInDragStack(dragState.source, dragSource);
 
-  const dimmedStyle = useAnimatedStyle(() => ({
-    opacity: beingDragged ? 0 : 1,
-  }));
+  // A plain style, not useAnimatedStyle: `beingDragged` is React state, not a
+  // shared value, so an animated style only sees it through a worklet closure
+  // that the UI thread can leave stale. A stale 0 leaves the card invisible
+  // after it is dropped (#2929). React re-renders drive this reliably.
+  const dimmedStyle = beingDragged ? HIDDEN_STYLE : VISIBLE_STYLE;
 
   // On web, hitSlop is not a native prop — expand the hit area with padding
   // and compensate with negative margin so layout doesn't shift.
