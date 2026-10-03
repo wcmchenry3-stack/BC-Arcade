@@ -16,6 +16,7 @@ import {
   LOWER_CATEGORY_KEYS,
   CATEGORY_I18N_KEY,
 } from "../game/yacht/categories";
+import { bonusEarned } from "./scorecard/yachtScorecardModel";
 
 // 600dp catches tablets, Galaxy Fold unfolded (both orientations), and other wide-aspect
 // devices. On wide screens both sections render side-by-side without tabs.
@@ -52,7 +53,6 @@ export default function Scorecard({
   rollsUsed,
   gameOver,
   upperSubtotal,
-  upperBonus,
   yachtBonusCount,
   yachtBonusTotal,
   totalScore,
@@ -105,9 +105,12 @@ export default function Scorecard({
         <View style={[styles.bonusRow, { borderTopColor: colors.border }]}>
           <Text style={[styles.bonusLabel, { color: colors.textMuted }]}>{t("bonus.label")}</Text>
           <Text
-            style={[styles.bonusValue, { color: upperBonus > 0 ? colors.bonus : colors.textMuted }]}
+            style={[
+              styles.bonusValue,
+              { color: bonusEarned(upperSubtotal) ? colors.bonus : colors.textMuted },
+            ]}
           >
-            {upperBonus > 0
+            {bonusEarned(upperSubtotal)
               ? t("bonus.achieved", { subtotal: upperSubtotal })
               : t("bonus.progress", { subtotal: upperSubtotal })}
           </Text>

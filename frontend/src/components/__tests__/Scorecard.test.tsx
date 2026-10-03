@@ -171,6 +171,16 @@ describe("Scorecard", () => {
     const { getAllByText } = await renderScorecard({ upperSubtotal: 63, upperBonus: 35 });
     expect(getAllByText(/✓/).length).toBeGreaterThan(0);
   });
+
+  it("shows bonus achieved at exactly 63 even when engine upperBonus is still 0 (open upper rows)", async () => {
+    const { getAllByText } = await renderScorecard({ upperSubtotal: 63, upperBonus: 0 });
+    expect(getAllByText(/63 \/ 63 ✓/).length).toBeGreaterThan(0);
+  });
+
+  it("shows progress at 62", async () => {
+    const { queryAllByText } = await renderScorecard({ upperSubtotal: 62, upperBonus: 0 });
+    expect(queryAllByText(/✓/).length).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

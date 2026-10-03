@@ -8,6 +8,7 @@ import {
   LOWER_CATEGORY_KEYS,
   CATEGORY_I18N_KEY,
 } from "../../game/yacht/categories";
+import { UPPER_BONUS_VALUE, bonusCountdown, bonusEarned } from "../scorecard/yachtScorecardModel";
 
 export interface VsScorecardProps {
   playerScores: Record<string, number | null>;
@@ -30,11 +31,9 @@ export default function VsScorecard({
   playerPossibleScores,
   playerRollsUsed,
   playerGameOver,
-  playerUpperBonus,
   playerYachtBonusTotal,
   playerTotalScore,
   cpuScores,
-  cpuUpperBonus,
   cpuYachtBonusTotal,
   cpuTotalScore,
   isAiTurn,
@@ -211,9 +210,11 @@ export default function VsScorecard({
   }
 
   function renderBonusRow() {
-    const toGo = Math.max(0, 63 - playerUpperSubtotal);
-    const playerBonusUnlocked = playerUpperBonus > 0;
-    const cpuBonusUnlocked = cpuUpperBonus > 0;
+    // Earned once the subtotal reaches the threshold, even with upper rows still open
+    // (scores never decrease); the engine's upper_bonus only lands at section completion.
+    const toGo = bonusCountdown(playerUpperSubtotal);
+    const playerBonusUnlocked = bonusEarned(playerUpperSubtotal);
+    const cpuBonusUnlocked = bonusEarned(cpuUpperSubtotal);
     // The label tracks the player's progress toward the bonus. The CPU's bonus
     // status is shown in its cell (+35 / —) without a separate label, matching
     // the design spec where the label is intentionally player-scoped.
@@ -234,7 +235,7 @@ export default function VsScorecard({
               fontWeight: "700",
             }}
           >
-            {playerBonusUnlocked ? `+${playerUpperBonus}` : "—"}
+            {playerBonusUnlocked ? `+${UPPER_BONUS_VALUE}` : "—"}
           </Text>
         </View>
         <View style={[styles.vsCell, { backgroundColor: "transparent" }]}>
@@ -245,7 +246,7 @@ export default function VsScorecard({
               fontWeight: "700",
             }}
           >
-            {cpuBonusUnlocked ? `+${cpuUpperBonus}` : "—"}
+            {cpuBonusUnlocked ? `+${UPPER_BONUS_VALUE}` : "—"}
           </Text>
         </View>
       </View>
