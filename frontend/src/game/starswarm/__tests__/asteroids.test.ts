@@ -708,18 +708,18 @@ describe("Carrier vs asteroids (#2844)", () => {
       throw new Error("no volley");
     };
     const control = firstVolley(false);
-    expect(control.shots).toHaveLength(2);
+    expect(control.shots).toHaveLength(3); // alone with its Guardians dead: the final-stand volley
     expect(control.shots.every((b) => !b.flak)).toBe(true);
 
     const diverted = firstVolley(true);
-    // the same two guns fired, but both bolts went at the rock: none at the player
+    // the same guns fired, but every bolt went at the rock: none at the player
     expect(diverted.shots).toHaveLength(control.shots.length);
     expect(diverted.shots.every((b) => b.flak)).toBe(true);
     expect(diverted.shots.filter((b) => !b.flak)).toHaveLength(0);
     // paid for with attention: the volley left later than the undisturbed one, never sooner
     expect(diverted.i).toBeGreaterThanOrEqual(control.i);
     expect(carrierOf(diverted.t).shootTimer).toBeGreaterThan(0);
-    expect(diverted.t.tierStats.Carrier.flak).toBe(2);
+    expect(diverted.t.tierStats.Carrier.flak).toBe(control.shots.length);
   });
 
   it("the diverted volley replaces player-directed pressure over time, it never adds cadence", () => {

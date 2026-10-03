@@ -23,7 +23,10 @@ import {
   REINFORCE_COUNT,
   ATTACK_RUN,
   ATTACK_RUN_BRACE_MS,
+  BEAM_AIM_LOCK_FRAC,
+  BEAM_AIM_MAX_SLIDE,
   BEAM_CHARGE_MS,
+  beamAimSlide,
   BEAM_HALF_WIDTH,
   BEAM_LENGTH,
   BEAM_SPEED,
@@ -386,7 +389,7 @@ describe("Carrier cadence: bounded, seeded, staged (#2843)", () => {
     expect(run(43).volleys).not.toEqual(a.volleys);
   });
 
-  it("finite capacity: one twin volley (two shots) per roll — no other Carrier gun exists", () => {
+  it("finite capacity: one volley per roll (three shots alone in the final stand) — no other Carrier gun exists", () => {
     let s = alone(settled());
     s = withCarrier(s, { runTimer: 1e9, beamTimer: 1e9 });
     s = tick(s, 16, ASIDE);
@@ -398,9 +401,9 @@ describe("Carrier cadence: bounded, seeded, staged (#2843)", () => {
       s = { ...s, enemyBullets: [] };
     }
     const twin = carrierCadenceBounds("twin", "finalStand", "LieutenantJG", false)!;
-    expect(shots % 2).toBe(0);
-    expect(shots / 2).toBeLessThanOrEqual(Math.ceil(T / twin.min) + 1);
-    expect(shots / 2).toBeGreaterThanOrEqual(Math.floor(T / twin.max) - 1);
+    expect(shots % 3).toBe(0);
+    expect(shots / 3).toBeLessThanOrEqual(Math.ceil(T / twin.min) + 1);
+    expect(shots / 3).toBeGreaterThanOrEqual(Math.floor(T / twin.max) - 1);
   });
 });
 
@@ -741,5 +744,121 @@ describe("Boss wave: the lone Carrier stays an active climax (#2843)", () => {
     expect(volleys).toBeGreaterThan(15);
     expect(beams).toBeGreaterThanOrEqual(3);
     expect(runs).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("Solo Carrier: aimed beam and three-gun volley", () => {
+  const carrierOf = (s: StarSwarmState) => s.enemies.find((e) => e.tier === "Carrier")!;
+  const playerAt = (s: StarSwarmState, x: number): StarSwarmState => ({
+    ...s,
+    player: { ...s.player, x, invincibleTimer: 1e9 },
+  });
+
+  /** Tick until the Carrier releases a beam; returns the beam, the player x used and the state. */
+  function chargeAndRelease(
+    start: StarSwarmState,
+    playerX: (ms: number) => number
+  ): { beam: CarrierBeam; carrierX: number; lockedAt: number } {
+    let s = withCarrier(start, { beamPhase: "idle", beamTimer: 1, runTimer: 1e9, shootTimer: 1e9 });
+    let lockedAt = NaN;
+    for (let ms = 0; ms < 2000; ms += 16) {
+      const x = playerX(ms);
+      s = tick(playerAt(s, x), 16, { playerX: x, fire: false });
+      if (Number.isNaN(lockedAt) && carrierOf(s).beamPhase === "charge") lockedAt = x;
+      if (s.carrierBeams.length > 0) {
+        return { beam: s.carrierBeams[0]!, carrierX: carrierOf(s).x, lockedAt };
+      }
+    }
+    throw new Error("no beam released");
+  }
+
+  it("final stand: the beam comes down the player's column, locked for the last stretch of the charge", () => {
+    const base = alone(settled());
+    const { x } = carrierOf(base);
+    const aim = x + 30;
+    const fixed = chargeAndRelease(base, () => aim);
+    expect(Math.abs(fixed.beam.x - aim)).toBeLessThan(BEAM_HALF_WIDTH);
+    // a player who keeps running through the whole telegraph still clears it: the column is held
+    // from BEAM_AIM_LOCK_FRAC of the charge, so the last stretch is a fair dodge window
+    const pace = 0.2; // px/ms
+    const runner = chargeAndRelease(base, (ms) => aim + ms * pace);
+    const lockOffset = BEAM_CHARGE_MS * BEAM_AIM_LOCK_FRAC * pace;
+    expect(Math.abs(runner.beam.x - (aim + lockOffset))).toBeLessThan(BEAM_HALF_WIDTH + 4);
+    const playerAtRelease = aim + (BEAM_CHARGE_MS + 16) * pace;
+    expect(Math.abs(runner.beam.x - playerAtRelease)).toBeGreaterThan(BEAM_HALF_WIDTH);
+  });
+
+  it("final stand: the Carrier visibly slides toward the lock during the charge", () => {
+    let s = withCarrier(alone(settled()), {
+      beamPhase: "idle",
+      beamTimer: 1,
+      runTimer: 1e9,
+      shootTimer: 1e9,
+    });
+    const x0 = carrierOf(s).x;
+    const aim = x0 + 100;
+    const xs: number[] = [];
+    for (let ms = 0; ms < BEAM_CHARGE_MS - 32; ms += 16) {
+      s = tick(playerAt(s, aim), 16, { playerX: aim, fire: false });
+      if (carrierOf(s).beamPhase === "charge") xs.push(carrierOf(s).x);
+    }
+    expect(xs.length).toBeGreaterThan(10);
+    expect(xs[xs.length - 1]! - x0).toBeGreaterThan(40);
+    expect(xs[xs.length - 1]!).toBeGreaterThan(xs[0]!);
+  });
+
+  it("protected and exposed Carriers still fire straight down their own column", () => {
+    for (const stage of [settled(), exposed(settled())]) {
+      const start = withCarrier(stage, { x: 180 });
+      const { beam, carrierX } = chargeAndRelease(start, () => 330);
+      expect(Math.abs(beam.x - carrierX)).toBeLessThan(BEAM_HALF_WIDTH);
+      expect(Math.abs(beam.x - 330)).toBeGreaterThan(BEAM_HALF_WIDTH);
+    }
+  });
+
+  it("beamAimSlide: eases from where it stands to the lock, capped and kept off the edges", () => {
+    expect(beamAimSlide(180, 230, 0, CANVAS_W)).toBe(180);
+    expect(beamAimSlide(180, 230, BEAM_CHARGE_MS, CANVAS_W)).toBeCloseTo(230, 6);
+    const mid = beamAimSlide(180, 230, BEAM_CHARGE_MS / 2, CANVAS_W);
+    expect(mid).toBeGreaterThan(180);
+    expect(mid).toBeLessThan(230);
+    // far locks stop at the slide cap
+    expect(beamAimSlide(100, 1000, BEAM_CHARGE_MS, CANVAS_W)).toBeCloseTo(
+      Math.min(CANVAS_W - 24, 100 + BEAM_AIM_MAX_SLIDE),
+      6
+    );
+    expect(beamAimSlide(200, -500, BEAM_CHARGE_MS, CANVAS_W)).toBeCloseTo(
+      Math.max(24, 200 - BEAM_AIM_MAX_SLIDE),
+      6
+    );
+    // and never past the screen edge
+    expect(beamAimSlide(30, -100, BEAM_CHARGE_MS, CANVAS_W)).toBeGreaterThanOrEqual(24);
+    expect(beamAimSlide(330, 900, BEAM_CHARGE_MS, CANVAS_W)).toBeLessThanOrEqual(CANVAS_W - 24);
+  });
+
+  it("the volley is three shots alone in the final stand and two while exposed", () => {
+    const firstVolley = (s0: StarSwarmState) => {
+      // the first tick in a new stage re-rolls the timers, so give the first volley time to leave
+      let s = withCarrier(
+        {
+          ...s0,
+          enemies: s0.enemies.map((e) => (e.tier === "Carrier" ? e : { ...e, shootTimer: 1e9 })),
+        },
+        { shootTimer: 1, beamTimer: 1e9, runTimer: 1e9 }
+      );
+      for (let i = 0; i < 120; i++) {
+        s = tick(s, 16, ASIDE);
+        const c = carrierOf(s);
+        // only bolts leaving the Carrier's own guns (other ships may fire in the same tick)
+        const shots = s.enemyBullets.filter(
+          (b) => Math.abs(b.x - c.x) <= 20 && Math.abs(b.y - (c.y + c.height / 2)) < 12
+        );
+        if (shots.length) return { n: shots.length };
+      }
+      throw new Error("no volley");
+    };
+    expect(firstVolley(alone(settled(5))).n).toBe(3);
+    expect(carrierStage(exposed(settled()))).toBe("exposed"); // others still alive
+    expect(firstVolley(exposed(settled())).n).toBe(2);
   });
 });

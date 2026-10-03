@@ -285,6 +285,16 @@ export const BEAM_HALF_WIDTH = 12; // px either side of the released beam's colu
 export const BEAM_LENGTH = 140; // px, the released bolt's length
 export const BEAM_SPEED = 1.1; // px/ms — fast: a bolt crosses the lane in ~0.4 s
 const BEAM_WIGGLE_AMPLITUDE = 3; // px, during charge
+/**
+ * The solo Carrier (final stand) slides toward the player's column during the charge and fires
+ * straight down from there. It follows the player for the first BEAM_AIM_LOCK_FRAC of the charge,
+ * then locks the column, so the last stretch of the telegraph is a fair dodge window. The slide is
+ * capped so the Carrier never strays far from its station, and the target is kept clear of the
+ * screen edges.
+ */
+export const BEAM_AIM_LOCK_FRAC = 0.6;
+export const BEAM_AIM_MAX_SLIDE = 140; // px, furthest the Carrier slides off its station
+const BEAM_AIM_EDGE_MARGIN = 24; // px kept clear at each canvas edge
 const TWIN_FIRE_OFFSET = 14; // px either side of centre for the twin lasers
 export const CARRIER_CADENCE_CAP = 1.6; // paramScale is capped here for every Carrier cadence
 export const ATTACK_RUN_BRACE_MS = 800; // #2843: attack-run telegraph — the Carrier rears back
@@ -2399,9 +2409,15 @@ export function chooseCarrierTarget(ctx: CarrierCtx, key = 0): CarrierTarget {
   return { kind: "player", x: ctx.playerX, y: ctx.playerY };
 }
 
-/** #2485/#2699: the Carrier's twin lasers, aimed at `target`. */
-function carrierTwinVolley(c: Enemy, target: CarrierTarget): Bullet[] {
-  return [-TWIN_FIRE_OFFSET, TWIN_FIRE_OFFSET].map((dx) => {
+/**
+ * #2485/#2699: the Carrier's twin lasers, aimed at `target`. Alone in its final stand it adds a
+ * third, centre gun to the same volley (`centreGun`).
+ */
+function carrierTwinVolley(c: Enemy, target: CarrierTarget, centreGun = false): Bullet[] {
+  const offsets = centreGun
+    ? [-TWIN_FIRE_OFFSET, 0, TWIN_FIRE_OFFSET]
+    : [-TWIN_FIRE_OFFSET, TWIN_FIRE_OFFSET];
+  return offsets.map((dx) => {
     const ox = c.x + dx;
     const oy = c.y + c.height / 2;
     if (target.kind === "buddy") {
@@ -2449,6 +2465,23 @@ function carrierTwinVolley(c: Enemy, target: CarrierTarget): Bullet[] {
       damage: 1,
     };
   });
+}
+
+/**
+ * The Carrier's x part-way through an aimed charge: eased from where it stands toward the locked
+ * column `aimX` (clamped to BEAM_AIM_MAX_SLIDE and the canvas edges), reaching it as the charge
+ * ends, which is where the beam is released from.
+ */
+export function beamAimSlide(x: number, aimX: number, elapsedMs: number, canvasW: number): number {
+  const target = Math.min(
+    canvasW - BEAM_AIM_EDGE_MARGIN,
+    Math.max(
+      BEAM_AIM_EDGE_MARGIN,
+      x + Math.max(-BEAM_AIM_MAX_SLIDE, Math.min(BEAM_AIM_MAX_SLIDE, aimX - x))
+    )
+  );
+  const p = Math.min(1, Math.max(0, elapsedMs / BEAM_CHARGE_MS));
+  return x + (target - x) * (p * p * (3 - 2 * p));
 }
 
 /** #2843: a released beam, leaving the Carrier's emitter and heading straight down. */
@@ -2531,6 +2564,7 @@ function tickCarrier(enemy: Enemy, dtMs: number, ctx: CarrierCtx): EnemyTickResu
   // ── Beam ──
   let beamPhase: BeamPhase = e.beamPhase;
   let beamTimer = e.beamTimer;
+  let beamAimX = e.diveTargetX;
   let beam: CarrierBeam | undefined;
   if (beamPhase === "charge") {
     beamTimer -= dtMs;
@@ -2546,6 +2580,16 @@ function tickCarrier(enemy: Enemy, dtMs: number, ctx: CarrierCtx): EnemyTickResu
       beamTimer = BEAM_CHARGE_MS;
     }
   }
+  // solo Carrier: follow the player's column until the lock, then hold it. diveTargetX is free
+  // to reuse — a brace never starts mid-charge and re-captures it when it does, and a run in
+  // flight has already computed its path.
+  if (
+    stage === "finalStand" &&
+    beamPhase === "charge" &&
+    BEAM_CHARGE_MS - beamTimer < BEAM_CHARGE_MS * BEAM_AIM_LOCK_FRAC
+  ) {
+    beamAimX = ctx.playerX;
+  }
 
   // ── Twin lasers ──
   let shootTimer = e.shootTimer;
@@ -2554,12 +2598,16 @@ function tickCarrier(enemy: Enemy, dtMs: number, ctx: CarrierCtx): EnemyTickResu
     shootTimer -= dtMs;
     if (shootTimer <= 0) {
       shootTimer = roll("twin");
-      bullets = carrierTwinVolley(e, chooseCarrierTarget(ctx, peekNextId()));
+      bullets = carrierTwinVolley(
+        e,
+        chooseCarrierTarget(ctx, peekNextId()),
+        stage === "finalStand"
+      );
     }
   }
 
   // ── Attack run ──
-  let next: Enemy = { ...e, beamPhase, beamTimer, shootTimer };
+  let next: Enemy = { ...e, beamPhase, beamTimer, shootTimer, diveTargetX: beamAimX };
   if (running) {
     const newT = e.pathT + dtMs / e.pathDuration;
     if (newT >= 1 || !e.path) {
@@ -3290,6 +3338,10 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
           ...e,
           x: e.x + Math.sin((6 * Math.PI * elapsed) / BEAM_CHARGE_MS) * BEAM_WIGGLE_AMPLITUDE,
         };
+        // the solo Carrier slides to the locked column and fires from there (on station only)
+        if (stage === "finalStand" && e.phase === "Formation") {
+          e = { ...e, x: beamAimSlide(e.x, e.diveTargetX, elapsed, state.canvasW) };
+        }
       }
     }
     // #2487: a sidestep also carries through the pre-dive wiggle (which recomputes x each tick)
