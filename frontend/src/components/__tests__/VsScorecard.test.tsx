@@ -167,6 +167,14 @@ describe("VsScorecard — upper subtotal progress", () => {
     expect(getByText(/✓/)).toBeTruthy();
   });
 
+  it("unlocks at exactly 63 with an upper row still open (engine upperBonus still 0)", async () => {
+    const { getByText } = await renderVs({
+      playerScores: { ...emptyScores, twos: 8, threes: 15, fours: 20, fives: 20 },
+      playerUpperBonus: 0,
+    });
+    expect(getByText(/✓/)).toBeTruthy();
+  });
+
   it("shows countdown text when bonus is not yet unlocked", async () => {
     const { getByText } = await renderVs({
       playerScores: { ...emptyScores, ones: 3 },
