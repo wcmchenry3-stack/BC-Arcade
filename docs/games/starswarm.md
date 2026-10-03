@@ -257,6 +257,15 @@ alive. Each stage is more aggressive than the last, and the stage only escalates
   reinforcement 4 s, attack run 3 s. `carrierCadenceBounds(kind, stage, difficulty, bossWave)` is
   the source of truth; tests hold that each later stage has a shorter average and never a longer
   maximum.
+- **Solo Carrier (final stand only).** The beam is aimed: during the 600 ms charge the Carrier
+  slides toward the player's column (`Enemy.beamSlide`, px off its station), chasing at
+  `BEAM_AIM_SLIDE_SPEED` (0.4 px/ms) for the first `BEAM_AIM_LOCK_FRAC` (60%) of the charge, then
+  holding where it is for the last stretch, and releases straight down from there. After the
+  release it eases back to station at the same speed, so it never jumps. The slide is capped at
+  `BEAM_AIM_MAX_SLIDE` (140 px) and kept 24 px off the screen edges, and it only happens on
+  station: a charge that starts mid attack run doesn't slide until the run is over. The twin volley
+  gains a third, centre gun. Protected and exposed Carriers fire straight down their own column
+  with two guns.
 - Every interval is a seeded roll (`rollCarrierCadence`, the engine's `rng()`), uniform within its
   bounds. None is a fixed metronomic reset, and a seeded run replays exactly.
 - **Escalation.** On the first tick after a stage change, timers pull in. An action that just came
