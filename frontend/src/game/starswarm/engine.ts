@@ -287,13 +287,15 @@ export const BEAM_SPEED = 1.1; // px/ms — fast: a bolt crosses the lane in ~0.
 const BEAM_WIGGLE_AMPLITUDE = 3; // px, during charge
 /**
  * The solo Carrier (final stand) slides toward the player's column during the charge and fires
- * straight down from there. It follows the player for the first BEAM_AIM_LOCK_FRAC of the charge,
- * then locks the column, so the last stretch of the telegraph is a fair dodge window. The slide is
- * capped so the Carrier never strays far from its station, and the target is kept clear of the
- * screen edges.
+ * straight down from there. The slide is real state (`Enemy.beamSlide`, px off its station): it
+ * chases the player at BEAM_AIM_SLIDE_SPEED for the first BEAM_AIM_LOCK_FRAC of the charge, holds
+ * where it is for the rest (a fair dodge window), and eases back to station after the release at
+ * the same speed, so it never jumps. It is capped at BEAM_AIM_MAX_SLIDE and kept clear of the
+ * screen edges. A charge that starts mid attack run doesn't slide until the run is over.
  */
 export const BEAM_AIM_LOCK_FRAC = 0.6;
 export const BEAM_AIM_MAX_SLIDE = 140; // px, furthest the Carrier slides off its station
+export const BEAM_AIM_SLIDE_SPEED = 0.4; // px/ms, both ways
 const BEAM_AIM_EDGE_MARGIN = 24; // px kept clear at each canvas edge
 const TWIN_FIRE_OFFSET = 14; // px either side of centre for the twin lasers
 export const CARRIER_CADENCE_CAP = 1.6; // paramScale is capped here for every Carrier cadence
@@ -1953,6 +1955,7 @@ function makeEnemy(idx: number, slot: SlotDef, canvasW: number): Enemy {
     burstShotsLeft: 0,
     beamPhase: "idle",
     beamTimer: 0, // #2843: the Carrier's is rolled in buildWaveState / on launch; unused otherwise
+    beamSlide: 0, // px the solo Carrier has slid off its station to aim its beam
     runPhase: "idle",
     runTimer: 0, // #2843: rolled when the Carrier is exposed; unused otherwise
     dodge: null,
@@ -2319,6 +2322,7 @@ export interface CarrierCtx {
   playerX: number;
   playerY: number;
   canvasH: number;
+  canvasW: number;
   /** #2844: a rock the exposed Carrier would answer with flak this tick (see `carrierFlakRock`); else null. */
   flakRock: CarrierFlakRock | null;
   /**
@@ -2336,6 +2340,7 @@ const NO_CARRIER_CTX: CarrierCtx = {
   playerX: 0,
   playerY: 0,
   canvasH: CANVAS_H,
+  canvasW: CANVAS_W,
   flakRock: null,
   buddy: null,
 };
@@ -2468,20 +2473,21 @@ function carrierTwinVolley(c: Enemy, target: CarrierTarget, centreGun = false): 
 }
 
 /**
- * The Carrier's x part-way through an aimed charge: eased from where it stands toward the locked
- * column `aimX` (clamped to BEAM_AIM_MAX_SLIDE and the canvas edges), reaching it as the charge
- * ends, which is where the beam is released from.
+ * The slide offset that would put the Carrier over `playerX` (capped, and clear of the edges),
+ * from its station `stationX` (where it stands with no slide).
  */
-export function beamAimSlide(x: number, aimX: number, elapsedMs: number, canvasW: number): number {
-  const target = Math.min(
-    canvasW - BEAM_AIM_EDGE_MARGIN,
-    Math.max(
-      BEAM_AIM_EDGE_MARGIN,
-      x + Math.max(-BEAM_AIM_MAX_SLIDE, Math.min(BEAM_AIM_MAX_SLIDE, aimX - x))
-    )
+export function desiredBeamSlide(stationX: number, playerX: number, canvasW: number): number {
+  const capped = Math.max(-BEAM_AIM_MAX_SLIDE, Math.min(BEAM_AIM_MAX_SLIDE, playerX - stationX));
+  return Math.max(
+    BEAM_AIM_EDGE_MARGIN - stationX,
+    Math.min(canvasW - BEAM_AIM_EDGE_MARGIN - stationX, capped)
   );
-  const p = Math.min(1, Math.max(0, elapsedMs / BEAM_CHARGE_MS));
-  return x + (target - x) * (p * p * (3 - 2 * p));
+}
+
+/** One rate-limited step of the beam slide from `current` toward `target`. */
+export function stepBeamSlide(current: number, target: number, dtMs: number): number {
+  const maxStep = BEAM_AIM_SLIDE_SPEED * dtMs;
+  return current + Math.max(-maxStep, Math.min(maxStep, target - current));
 }
 
 /** #2843: a released beam, leaving the Carrier's emitter and heading straight down. */
@@ -2564,7 +2570,6 @@ function tickCarrier(enemy: Enemy, dtMs: number, ctx: CarrierCtx): EnemyTickResu
   // ── Beam ──
   let beamPhase: BeamPhase = e.beamPhase;
   let beamTimer = e.beamTimer;
-  let beamAimX = e.diveTargetX;
   let beam: CarrierBeam | undefined;
   if (beamPhase === "charge") {
     beamTimer -= dtMs;
@@ -2580,15 +2585,18 @@ function tickCarrier(enemy: Enemy, dtMs: number, ctx: CarrierCtx): EnemyTickResu
       beamTimer = BEAM_CHARGE_MS;
     }
   }
-  // solo Carrier: follow the player's column until the lock, then hold it. diveTargetX is free
-  // to reuse — a brace never starts mid-charge and re-captures it when it does, and a run in
-  // flight has already computed its path.
-  if (
-    stage === "finalStand" &&
-    beamPhase === "charge" &&
-    BEAM_CHARGE_MS - beamTimer < BEAM_CHARGE_MS * BEAM_AIM_LOCK_FRAC
-  ) {
-    beamAimX = ctx.playerX;
+  // solo Carrier: chase the player's column until the lock, hold it, then ease back to station
+  let beamSlide = e.beamSlide;
+  if (stage === "finalStand" && beamPhase === "charge" && e.phase === "Formation") {
+    if (BEAM_CHARGE_MS - beamTimer < BEAM_CHARGE_MS * BEAM_AIM_LOCK_FRAC) {
+      beamSlide = stepBeamSlide(
+        beamSlide,
+        desiredBeamSlide(e.x - e.beamSlide, ctx.playerX, ctx.canvasW),
+        dtMs
+      );
+    }
+  } else if (beamSlide !== 0) {
+    beamSlide = stepBeamSlide(beamSlide, 0, dtMs);
   }
 
   // ── Twin lasers ──
@@ -2607,7 +2615,7 @@ function tickCarrier(enemy: Enemy, dtMs: number, ctx: CarrierCtx): EnemyTickResu
   }
 
   // ── Attack run ──
-  let next: Enemy = { ...e, beamPhase, beamTimer, shootTimer, diveTargetX: beamAimX };
+  let next: Enemy = { ...e, beamPhase, beamTimer, shootTimer, beamSlide };
   if (running) {
     const newT = e.pathT + dtMs / e.pathDuration;
     if (newT >= 1 || !e.path) {
@@ -3284,6 +3292,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     playerX: state.player.x,
     playerY: state.player.y,
     canvasH: state.canvasH,
+    canvasW: state.canvasW,
     flakRock: null, // set below once the Carrier's position is known
     buddy: null,
   };
@@ -3328,6 +3337,7 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
     // #979: Guardian sways ±GUARDIAN_MAX_SWAY (20px) vs ±MAX_SWAY (40px) for other tiers
     if (e.isAlive && e.phase === "Formation") {
       e = { ...e, x: e.formationX + clampSway(e.tier, swayX) + dodgeOffset(e) }; // #2487 sidestep
+      if (e.beamSlide !== 0) e = { ...e, x: e.x + e.beamSlide }; // solo Carrier's aimed beam
     }
     if (e.isAlive && (e.phase === "Formation" || e.phase === "AttackRun")) {
       // #2485: beam telegraph — a quick shudder so the player has time to sidestep (#2843: on
@@ -3338,10 +3348,6 @@ function tickEnemies(state: StarSwarmState, dtMs: number): StarSwarmState {
           ...e,
           x: e.x + Math.sin((6 * Math.PI * elapsed) / BEAM_CHARGE_MS) * BEAM_WIGGLE_AMPLITUDE,
         };
-        // the solo Carrier slides to the locked column and fires from there (on station only)
-        if (stage === "finalStand" && e.phase === "Formation") {
-          e = { ...e, x: beamAimSlide(e.x, e.diveTargetX, elapsed, state.canvasW) };
-        }
       }
     }
     // #2487: a sidestep also carries through the pre-dive wiggle (which recomputes x each tick)

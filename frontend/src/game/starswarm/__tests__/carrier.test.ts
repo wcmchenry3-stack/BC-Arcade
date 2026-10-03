@@ -26,7 +26,9 @@ import {
   BEAM_AIM_LOCK_FRAC,
   BEAM_AIM_MAX_SLIDE,
   BEAM_CHARGE_MS,
-  beamAimSlide,
+  desiredBeamSlide,
+  stepBeamSlide,
+  BEAM_AIM_SLIDE_SPEED,
   BEAM_HALF_WIDTH,
   BEAM_LENGTH,
   BEAM_SPEED,
@@ -816,24 +818,79 @@ describe("Solo Carrier: aimed beam and three-gun volley", () => {
     }
   });
 
-  it("beamAimSlide: eases from where it stands to the lock, capped and kept off the edges", () => {
-    expect(beamAimSlide(180, 230, 0, CANVAS_W)).toBe(180);
-    expect(beamAimSlide(180, 230, BEAM_CHARGE_MS, CANVAS_W)).toBeCloseTo(230, 6);
-    const mid = beamAimSlide(180, 230, BEAM_CHARGE_MS / 2, CANVAS_W);
-    expect(mid).toBeGreaterThan(180);
-    expect(mid).toBeLessThan(230);
-    // far locks stop at the slide cap
-    expect(beamAimSlide(100, 1000, BEAM_CHARGE_MS, CANVAS_W)).toBeCloseTo(
-      Math.min(CANVAS_W - 24, 100 + BEAM_AIM_MAX_SLIDE),
-      6
+  it("desiredBeamSlide caps the slide and keeps the Carrier off the screen edges", () => {
+    expect(desiredBeamSlide(180, 230, CANVAS_W)).toBe(50);
+    expect(desiredBeamSlide(180, 1000, CANVAS_W)).toBe(
+      Math.min(BEAM_AIM_MAX_SLIDE, CANVAS_W - 24 - 180)
     );
-    expect(beamAimSlide(200, -500, BEAM_CHARGE_MS, CANVAS_W)).toBeCloseTo(
-      Math.max(24, 200 - BEAM_AIM_MAX_SLIDE),
-      6
-    );
-    // and never past the screen edge
-    expect(beamAimSlide(30, -100, BEAM_CHARGE_MS, CANVAS_W)).toBeGreaterThanOrEqual(24);
-    expect(beamAimSlide(330, 900, BEAM_CHARGE_MS, CANVAS_W)).toBeLessThanOrEqual(CANVAS_W - 24);
+    expect(desiredBeamSlide(180, -500, CANVAS_W)).toBe(Math.max(-BEAM_AIM_MAX_SLIDE, 24 - 180));
+    expect(30 + desiredBeamSlide(30, -100, CANVAS_W)).toBeGreaterThanOrEqual(24);
+    expect(330 + desiredBeamSlide(330, 900, CANVAS_W)).toBeLessThanOrEqual(CANVAS_W - 24);
+  });
+
+  it("stepBeamSlide moves at most the slide speed per step and never overshoots", () => {
+    expect(stepBeamSlide(0, 100, 16)).toBeCloseTo(BEAM_AIM_SLIDE_SPEED * 16, 6);
+    expect(stepBeamSlide(0, -100, 16)).toBeCloseTo(-BEAM_AIM_SLIDE_SPEED * 16, 6);
+    expect(stepBeamSlide(95, 100, 16)).toBe(100);
+    expect(stepBeamSlide(100, 100, 16)).toBe(100);
+  });
+
+  it("the slide is continuous: no jump when the beam releases, and it eases back to station", () => {
+    let s = withCarrier(alone(settled()), {
+      beamPhase: "idle",
+      beamTimer: 1,
+      runTimer: 1e9,
+      shootTimer: 1e9,
+    });
+    const aim = carrierOf(s).x + 120;
+    let last = carrierOf(s).x;
+    let maxStep = 0;
+    let released = false;
+    let slidMax = 0;
+    for (let ms = 0; ms < 3000; ms += 16) {
+      s = withCarrier(tick(playerAt(s, aim), 16, { playerX: aim, fire: false }), {
+        runTimer: 1e9,
+        shootTimer: 1e9,
+      });
+      if (s.carrierBeams.length > 0) released = true;
+      if (released) s = withCarrier(s, { beamTimer: 1e9 }); // no second charge
+      const c = carrierOf(s);
+      maxStep = Math.max(maxStep, Math.abs(c.x - last));
+      last = c.x;
+      slidMax = Math.max(slidMax, c.beamSlide);
+    }
+    expect(released).toBe(true);
+    expect(slidMax).toBeGreaterThan(60);
+    // a step is at most the slide speed plus the telegraph wiggle and station sway
+    expect(maxStep).toBeLessThan(BEAM_AIM_SLIDE_SPEED * 16 + 4);
+    expect(carrierOf(s).beamSlide).toBe(0); // back on station
+  });
+
+  it("a run that ends mid-charge doesn't teleport the Carrier", () => {
+    // charging in the final stand while on an attack run, the run about to end
+    let s = alone(settled());
+    s = withCarrier(s, {
+      phase: "AttackRun",
+      beamPhase: "charge",
+      beamTimer: 450,
+      runTimer: 1e9,
+      shootTimer: 1e9,
+      pathT: 0.999,
+      pathDuration: 100,
+    });
+    const aim = carrierOf(s).formationX + 130;
+    let last = carrierOf(s).x;
+    let sawFormation = false;
+    for (let ms = 0; ms < 400; ms += 16) {
+      s = tick(playerAt(s, aim), 16, { playerX: aim, fire: false });
+      const c = carrierOf(s);
+      if (c.phase === "Formation") {
+        if (sawFormation) expect(Math.abs(c.x - last)).toBeLessThan(BEAM_AIM_SLIDE_SPEED * 16 + 4);
+        sawFormation = true;
+      }
+      last = c.x;
+    }
+    expect(sawFormation).toBe(true);
   });
 
   it("the volley is three shots alone in the final stand and two while exposed", () => {
