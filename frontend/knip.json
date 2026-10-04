@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["../scripts/*.ts", "scripts/*.mjs", "scripts/*.js", "App.tsx", "index.ts"],
+  "project": ["src/**/*.{ts,tsx}", "scripts/*.{js,mjs}"],
+  "ignore": [
+    "src/screens/__dev__/**",
+    "**/*.web.tsx",
+    "**/*.web.ts",
+    "babel.config.js",
+    "metro.config.js"
+  ],
+  "ignoreDependencies": [
+    "@sentry/react-native",
+    "expo-localization",
+    "expo-audio",
+    "react-native-audio-api"
+  ],
+  "ignoreExportsUsedInFile": true
+}
