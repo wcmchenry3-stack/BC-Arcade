@@ -46,6 +46,17 @@ if [ -f "backend/requirements.txt" ]; then
           "cd backend && source .venv/bin/activate && ruff check --fix ."
       fi
     fi
+    # Backend file-length gate (#2951) — same script CI runs
+    if [ -f "backend/scripts/check_file_length.py" ]; then
+      if OUT=$(cd backend && python scripts/check_file_length.py 2>&1); then
+        print_ok "file-length"
+      else
+        FAIL=1
+        print_fail "file-length" \
+          "backend .py file(s) over 800 lines" \
+          "cd backend && python scripts/check_file_length.py"
+      fi
+    fi
     deactivate 2>/dev/null || true
   fi
 fi
