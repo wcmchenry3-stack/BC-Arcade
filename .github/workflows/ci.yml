@@ -592,6 +592,59 @@ jobs:
         run: node scripts/check-i18n-strings.js
         working-directory: frontend
 
+  # --- Refactor quality gates (#2951, epic #2950) ---------------------------
+  # Ratchets set at today's numbers so the epic's gains cannot silently regress.
+  # Thresholds and the quarterly lowering schedule: docs/TESTING.md.
+
+  backend-file-length:
+    name: Backend file length (<= 800 lines)
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # stdlib-only script: the runner's system python3 is enough
+      - name: Check backend .py files are <= 800 lines
+        run: python3 scripts/check_file_length.py
+        working-directory: backend
+
+  duplication:
+    name: Duplication (jscpd)
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: jscpd (fails above 2.5% duplicated lines)
+        run: >
+          npx --yes jscpd@4
+          --threshold 2.5 --min-lines 20 --min-tokens 70
+          --ignore "**/__tests__/**,**/mahjong/layouts/**,**/node_modules/**,**/.venv/**,**/*.generated.*,**/locales/**"
+          --format "typescript,tsx,python"
+          frontend/src backend
+
+  knip:
+    name: Unused code (knip)
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      # warn-only until 2026-11-04, then --strict; see #2951
+      - name: knip
+        run: npx knip --no-progress
+        continue-on-error: true
+
   openai-policy:
     needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     uses: wcmchenry3-stack/.github/.github/workflows/called-openai-policy.yml@main
