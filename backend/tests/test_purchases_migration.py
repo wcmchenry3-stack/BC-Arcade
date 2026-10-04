@@ -8,28 +8,13 @@ access derived from a purchase while keeping legacy rows.
 
 from __future__ import annotations
 
-import os
 import sqlite3
-import subprocess
-import sys
 import uuid
-from pathlib import Path
 
-_BACKEND = Path(__file__).resolve().parent.parent
+from tests._migration_helpers import MigrationDb
+
 _BEFORE = "0030_generated_player_names"
 _REVISION = "0031_add_purchases"
-
-
-def _alembic(db_path: Path, *args: str) -> None:
-    env = os.environ.copy()
-    env["DATABASE_URL"] = f"sqlite:///{db_path}"
-    subprocess.run(
-        [sys.executable, "-m", "alembic", *args],
-        cwd=_BACKEND,
-        env=env,
-        check=True,
-        capture_output=True,
-    )
 
 
 def _tables(conn: sqlite3.Connection) -> set[str]:
@@ -40,9 +25,11 @@ def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
     return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
 
 
-def test_upgrade_marks_existing_rows_legacy_and_downgrade_reverts(tmp_path: Path) -> None:
-    db_path = tmp_path / "purchases_migration.db"
-    _alembic(db_path, "upgrade", _BEFORE)
+def test_upgrade_marks_existing_rows_legacy_and_downgrade_reverts(
+    migration_db: MigrationDb,
+) -> None:
+    db_path, alembic = migration_db
+    alembic("upgrade", _BEFORE)
     legacy_sid = str(uuid.uuid4())
     with sqlite3.connect(db_path) as conn:
         conn.execute(
@@ -50,7 +37,7 @@ def test_upgrade_marks_existing_rows_legacy_and_downgrade_reverts(tmp_path: Path
             (uuid.uuid4().hex, legacy_sid),
         )
 
-    _alembic(db_path, "upgrade", _REVISION)
+    alembic("upgrade", _REVISION)
     purchase_id = uuid.uuid4().hex
     buyer = str(uuid.uuid4())
     with sqlite3.connect(db_path) as conn:
@@ -99,7 +86,7 @@ def test_upgrade_marks_existing_rows_legacy_and_downgrade_reverts(tmp_path: Path
             "SELECT source, purchase_id FROM game_entitlements WHERE session_id = ?", (buyer,)
         ).fetchone() == ("sync", None)
 
-    _alembic(db_path, "downgrade", _BEFORE)
+    alembic("downgrade", _BEFORE)
     with sqlite3.connect(db_path) as conn:
         assert not {"purchases", "purchase_links", "purchase_events"} & _tables(conn)
         assert "purchase_id" not in _columns(conn, "game_entitlements")
@@ -107,4 +94,4 @@ def test_upgrade_marks_existing_rows_legacy_and_downgrade_reverts(tmp_path: Path
         assert rows == [(legacy_sid,)]
 
     # And back up again cleanly.
-    _alembic(db_path, "upgrade", _REVISION)
+    alembic("upgrade", _REVISION)

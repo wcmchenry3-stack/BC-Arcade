@@ -8,30 +8,15 @@ re-upgrade round trip.
 
 from __future__ import annotations
 
-import os
 import sqlite3
-import subprocess
-import sys
 import uuid
-from pathlib import Path
 
 import pytest
 
-_BACKEND = Path(__file__).resolve().parent.parent
+from tests._migration_helpers import MigrationDb
+
 _BEFORE = "0023_sudoku_free"
 _REVISION = "0024_drop_blackjack_outcome"
-
-
-def _alembic(db_path: Path, *args: str) -> None:
-    env = os.environ.copy()
-    env["DATABASE_URL"] = f"sqlite:///{db_path}"
-    subprocess.run(
-        [sys.executable, "-m", "alembic", *args],
-        cwd=_BACKEND,
-        env=env,
-        check=True,
-        capture_output=True,
-    )
 
 
 def _insert_game(conn: sqlite3.Connection, outcome: str | None) -> str:
@@ -48,18 +33,14 @@ def _outcome(conn: sqlite3.Connection, gid: str) -> str | None:
     return conn.execute("SELECT outcome FROM games WHERE id = ?", (gid,)).fetchone()[0]
 
 
-@pytest.fixture
-def db_path(tmp_path: Path) -> Path:
-    return tmp_path / "outcome_migration.db"
-
-
-def test_upgrade_rewrites_blackjack_rows_and_rejects_new_ones(db_path: Path) -> None:
-    _alembic(db_path, "upgrade", _BEFORE)
+def test_upgrade_rewrites_blackjack_rows_and_rejects_new_ones(migration_db: MigrationDb) -> None:
+    db_path, alembic = migration_db
+    alembic("upgrade", _BEFORE)
     with sqlite3.connect(db_path) as conn:
         legacy = _insert_game(conn, "blackjack")
         kept = _insert_game(conn, "completed")
 
-    _alembic(db_path, "upgrade", _REVISION)
+    alembic("upgrade", _REVISION)
     with sqlite3.connect(db_path) as conn:
         assert _outcome(conn, legacy) == "win"
         assert _outcome(conn, kept) == "completed"
@@ -70,13 +51,14 @@ def test_upgrade_rewrites_blackjack_rows_and_rejects_new_ones(db_path: Path) -> 
             _insert_game(conn, outcome)
 
 
-def test_downgrade_round_trip(db_path: Path) -> None:
-    _alembic(db_path, "upgrade", _REVISION)
-    _alembic(db_path, "downgrade", _BEFORE)
+def test_downgrade_round_trip(migration_db: MigrationDb) -> None:
+    db_path, alembic = migration_db
+    alembic("upgrade", _REVISION)
+    alembic("downgrade", _BEFORE)
     with sqlite3.connect(db_path) as conn:
         # The old constraint accepts ``blackjack`` again.
         gid = _insert_game(conn, "blackjack")
-    _alembic(db_path, "upgrade", _REVISION)
+    alembic("upgrade", _REVISION)
     with sqlite3.connect(db_path) as conn:
         assert _outcome(conn, gid) == "win"
         with pytest.raises(sqlite3.IntegrityError):

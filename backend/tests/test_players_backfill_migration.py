@@ -10,30 +10,13 @@ completed named row, with sentinel ``*-anon`` sessions skipped.
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
-import subprocess
-import sys
 import uuid
-from pathlib import Path
 
-import pytest
+from tests._migration_helpers import MigrationDb
 
-_BACKEND = Path(__file__).resolve().parent.parent
 _BEFORE = "0026_delete_anon_leaderboard"
 _REVISION = "0027_players_display_name"
-
-
-def _alembic(db_path: Path, *args: str) -> None:
-    env = os.environ.copy()
-    env["DATABASE_URL"] = f"sqlite:///{db_path}"
-    subprocess.run(
-        [sys.executable, "-m", "alembic", *args],
-        cwd=_BACKEND,
-        env=env,
-        check=True,
-        capture_output=True,
-    )
 
 
 def _insert_game(
@@ -60,13 +43,9 @@ def _players(conn: sqlite3.Connection) -> dict[str, str]:
     return dict(conn.execute("SELECT session_id, display_name FROM players").fetchall())
 
 
-@pytest.fixture
-def db_path(tmp_path: Path) -> Path:
-    return tmp_path / "players_migration.db"
-
-
-def test_backfill_keeps_the_latest_named_row_per_real_session(db_path: Path) -> None:
-    _alembic(db_path, "upgrade", _BEFORE)
+def test_backfill_keeps_the_latest_named_row_per_real_session(migration_db: MigrationDb) -> None:
+    db_path, alembic = migration_db
+    alembic("upgrade", _BEFORE)
     renamed, long_named, unnamed, blank_latest = (str(uuid.uuid4()) for _ in range(4))
     with sqlite3.connect(db_path) as conn:
         # William six months ago, Bill today: the latest completion wins,
@@ -86,7 +65,7 @@ def test_backfill_keeps_the_latest_named_row_per_real_session(db_path: Path) -> 
         _insert_game(conn, "brandnew-anon", completed_minute=5, name="OldClient")
         conn.commit()
 
-    _alembic(db_path, "upgrade", _REVISION)
+    alembic("upgrade", _REVISION)
     with sqlite3.connect(db_path) as conn:
         assert _players(conn) == {
             renamed: "Bill",
@@ -99,24 +78,30 @@ def test_backfill_keeps_the_latest_named_row_per_real_session(db_path: Path) -> 
         assert created and updated
 
 
-def test_upgrade_on_an_empty_games_table_creates_an_empty_players_table(db_path: Path) -> None:
-    _alembic(db_path, "upgrade", _BEFORE)
-    _alembic(db_path, "upgrade", _REVISION)
+def test_upgrade_on_an_empty_games_table_creates_an_empty_players_table(
+    migration_db: MigrationDb,
+) -> None:
+    db_path, alembic = migration_db
+    alembic("upgrade", _BEFORE)
+    alembic("upgrade", _REVISION)
     with sqlite3.connect(db_path) as conn:
         assert _players(conn) == {}
 
 
-def test_downgrade_drops_the_table_and_re_upgrade_backfills_again(db_path: Path) -> None:
-    _alembic(db_path, "upgrade", _BEFORE)
+def test_downgrade_drops_the_table_and_re_upgrade_backfills_again(
+    migration_db: MigrationDb,
+) -> None:
+    db_path, alembic = migration_db
+    alembic("upgrade", _BEFORE)
     sid = str(uuid.uuid4())
     with sqlite3.connect(db_path) as conn:
         _insert_game(conn, sid, completed_minute=1, name="Ada")
         conn.commit()
-    _alembic(db_path, "upgrade", _REVISION)
-    _alembic(db_path, "downgrade", _BEFORE)
+    alembic("upgrade", _REVISION)
+    alembic("downgrade", _BEFORE)
     with sqlite3.connect(db_path) as conn:
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert "players" not in tables
-    _alembic(db_path, "upgrade", _REVISION)
+    alembic("upgrade", _REVISION)
     with sqlite3.connect(db_path) as conn:
         assert _players(conn) == {sid: "Ada"}
