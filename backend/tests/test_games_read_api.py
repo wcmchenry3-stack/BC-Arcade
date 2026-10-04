@@ -4,18 +4,18 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
 
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import GameEntitlement
 from games.progression import (
     BASE_XP_PER_GAME,
     LEVEL_THRESHOLDS,
     VARIETY_BONUS_PER_GAME_TYPE,
 )
+from tests.conftest import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -23,22 +23,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
 # Sudoku rows need creation metadata: SudokuMetadata forbids extras and
 # requires a difficulty tier.
 _HARD = {"difficulty": "hard"}
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 async def _grant(session_id: str, game_slug: str) -> None:

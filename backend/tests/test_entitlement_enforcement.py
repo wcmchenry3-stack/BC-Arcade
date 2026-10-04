@@ -11,7 +11,6 @@ Acceptance criteria:
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import Iterator
 
 import pytest
@@ -19,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from db.base import get_session_factory
 from db.models import GameEntitlement
+from tests.conftest import session_headers as _headers
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -31,15 +31,6 @@ def client() -> Iterator[TestClient]:
 
     with TestClient(app) as c:
         yield c
-
-
-@pytest.fixture()
-def session_id() -> str:
-    return str(uuid.uuid4())
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 async def _grant(session_id: str, game_slug: str) -> None:
@@ -128,7 +119,8 @@ def test_premium_board_no_entitlement_returns_403(
     client: TestClient, session_id: str, game: str
 ) -> None:
     r = client.get(
-        f"/games/leaderboard/{game}{_BOARD_QUERY.get(game, '')}", headers=_headers(session_id)
+        f"/games/leaderboard/{game}{_BOARD_QUERY.get(game, '')}",
+        headers=_headers(session_id),
     )
     assert r.status_code == 403
     assert r.json()["game"] == game
@@ -141,7 +133,8 @@ async def test_premium_board_entitled_session_passes(
 ) -> None:
     await _grant(session_id, game)
     r = client.get(
-        f"/games/leaderboard/{game}{_BOARD_QUERY.get(game, '')}", headers=_headers(session_id)
+        f"/games/leaderboard/{game}{_BOARD_QUERY.get(game, '')}",
+        headers=_headers(session_id),
     )
     assert r.status_code == 200, r.text
 

@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from itertools import product
 from typing import Any
@@ -32,7 +31,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import Game, GameType
 from games.board import BoardDefinition
 from games.leaderboard import SENTINEL_SESSION_SUFFIX, enabled_board
@@ -61,15 +60,6 @@ HAS_WINNER = sorted(name for name, mod in _MODULES.items() if mod is not None an
 SCORE_ONLY = sorted(
     name for name, mod in _MODULES.items() if mod is not None and not mod.has_winner
 )
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 def test_every_game_type_is_registered() -> None:

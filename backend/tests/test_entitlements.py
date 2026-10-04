@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import uuid
 from collections.abc import Iterator
 from datetime import datetime, timezone
 
@@ -20,11 +19,6 @@ def client() -> Iterator[TestClient]:
 
     with TestClient(app) as c:
         yield c
-
-
-@pytest.fixture()
-def session_id() -> str:
-    return str(uuid.uuid4())
 
 
 def _headers(sid: str) -> dict[str, str]:

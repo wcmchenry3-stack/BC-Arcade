@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -17,11 +16,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Text, cast, event, select, text
 from sqlalchemy.dialects import postgresql
 
-from db.base import get_engine, get_session_factory, is_configured
+from db.base import get_engine, get_session_factory
 from db.models import Game, GameType
 from games import service
 from games.filters import not_swept
 from games.service import STALE_GAME_AFTER, sweep_stale_games
+from tests.conftest import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -29,19 +29,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 _NOW = datetime.now(timezone.utc)
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 def _utc(ts: datetime | None) -> datetime | None:

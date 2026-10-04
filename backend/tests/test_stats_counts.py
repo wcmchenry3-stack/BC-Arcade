@@ -8,17 +8,17 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event, select
 
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import Game, GameType
 from games.progression import compute_progression
 from games.service import MAX_TIME_PLAYED_PER_GAME_MS, get_stats_for_session, win_streaks
+from tests.conftest import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -513,19 +513,6 @@ async def test_no_streak_query_without_results() -> None:
 # ---------------------------------------------------------------------------
 # API — /stats/me
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 async def test_stats_me_returns_the_comparable_fields(client: TestClient) -> None:

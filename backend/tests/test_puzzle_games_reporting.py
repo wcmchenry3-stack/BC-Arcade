@@ -11,29 +11,18 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from db.base import is_configured
 from tests.test_generic_leaderboard import _grant_all, _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping live API tests",
 )
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 @dataclass(frozen=True)

@@ -21,13 +21,10 @@ from freecell.module import module as freecell_module
 from games.protocol import GameModule
 from games.registry import get_module
 from main import app
+from tests.conftest import session_headers as _headers
 from vocab import GameType
 
 client = TestClient(app)
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 # ---------------------------------------------------------------------------

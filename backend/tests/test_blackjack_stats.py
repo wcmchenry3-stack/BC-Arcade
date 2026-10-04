@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 from datetime import datetime, timezone
 
 import pytest
@@ -17,9 +16,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from blackjack.module import module as blackjack_module
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType
 from games.board import MAX_BOARD_VALUE
+from tests.conftest import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -36,19 +36,6 @@ _EXTRAS_KEYS = {
     "runs_completed",
     "current_table",
 }
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 async def _grant_blackjack(sid: str) -> None:
@@ -73,7 +60,9 @@ def _play_run(
     Returns the game id.
     """
     r = client.post(
-        "/games", headers=_headers(sid), json={"game_type": "blackjack", "metadata": metadata}
+        "/games",
+        headers=_headers(sid),
+        json={"game_type": "blackjack", "metadata": metadata},
     )
     assert r.status_code == 200, r.text
     gid = r.json()["id"]

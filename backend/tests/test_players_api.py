@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -19,11 +18,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, OperationalError
 
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType, Player
 from games import leaderboard
 from limiter import limiter, session_key
 from players.generated import is_generated_display_name
+from tests.conftest import session_headers as _headers
 from tests.test_generic_leaderboard import (
     CREATE_METADATA,
     PARTITION_QUERY,
@@ -42,21 +42,8 @@ ENABLED_BOARDS = sorted(
 )
 
 
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
 def _sid() -> str:
     return str(uuid.uuid4())
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 async def _grant_all(sid: str) -> None:

@@ -14,13 +14,19 @@ Real Postgres is still used when DATABASE_URL is provided externally
 
 from __future__ import annotations
 
+import functools
 import os
 import subprocess
 import sys
 import tempfile
+import uuid
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
+
+from tests._migration_helpers import MigrationDb, run_alembic
 
 _TEST_DB_FILE: Path | None = None
 
@@ -158,3 +164,47 @@ async def _clean_db_tables():
         ):
             await conn.execute(text(f"DELETE FROM {table}"))
     yield
+
+
+# ---------------------------------------------------------------------------
+# Shared fixtures (#2953). Fixtures resolve by name, so a test file only has to
+# not define its own. A file that needs a *different* shape (no lifespan, no
+# Content-Type header, ...) keeps a local definition, which overrides these.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def client() -> Iterator[TestClient]:
+    """The app under ``TestClient`` with its lifespan running, against the test DB."""
+    from db.base import is_configured
+
+    assert is_configured()
+    from main import app
+
+    with TestClient(app) as c:
+        yield c
+
+
+@pytest.fixture()
+def session_id() -> str:
+    return str(uuid.uuid4())
+
+
+def session_headers(sid: str) -> dict[str, str]:
+    """JSON request headers for session ``sid``.
+
+    A plain function rather than a fixture: tests call it inline. Import it with
+    ``from tests.conftest import session_headers``.
+    """
+    return {"X-Session-ID": sid, "Content-Type": "application/json"}
+
+
+@pytest.fixture()
+def migration_db(tmp_path: Path) -> MigrationDb:
+    """A scratch SQLite path plus ``alembic(*args)`` bound to it.
+
+    Unpack as ``db_path, alembic = migration_db``; ``alembic("upgrade", rev)``
+    runs the CLI against that file (nothing is created until it first runs).
+    """
+    db_path = tmp_path / "migration.db"
+    return MigrationDb(db_path, functools.partial(run_alembic, db_path))

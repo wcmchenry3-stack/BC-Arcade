@@ -8,32 +8,18 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
 
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import GameEntitlement
+from tests.conftest import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping live API tests",
 )
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-@pytest.fixture()
-def session_id() -> str:
-    return str(uuid.uuid4())
 
 
 async def _grant(session_id: str, game_slug: str) -> None:
@@ -46,10 +32,6 @@ async def _grant(session_id: str, game_slug: str) -> None:
 @pytest.fixture(autouse=True)
 async def _yacht_entitlement(session_id: str) -> None:
     await _grant(session_id, "yacht")
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 def _new_game(client: TestClient, sid: str, game_type: str = "yacht") -> str:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 
 import pytest
 from pydantic import ValidationError
@@ -302,23 +301,6 @@ pytestmark_db = pytest.mark.skipif(
 )
 
 
-@pytest.fixture()
-def client() -> Iterator:
-    from db.base import is_configured
-
-    assert is_configured()
-    from fastapi.testclient import TestClient
-
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
-
-
 @pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping live API tests",
@@ -361,6 +343,7 @@ async def test_post_games_valid_cascade_metadata_accepted(client) -> None:
 from datetime import timedelta, timezone
 
 from games.service import _validate_client_timestamp
+from tests.conftest import session_headers as _headers
 
 
 def _now():

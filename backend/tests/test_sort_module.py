@@ -28,12 +28,9 @@ from main import app
 from sort.generate_levels import LEVEL_SPECS
 from sort.models import SortMetadata, SortResult
 from sort.module import module as sort_module
+from tests.conftest import session_headers as _headers
 
 client = TestClient(app)
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 def _sid() -> str:
