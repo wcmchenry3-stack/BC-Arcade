@@ -71,7 +71,7 @@ def test_retention_outlasts_the_offline_sync_window() -> None:
     twice as long."""
     ttl = _offline_queue_ttl()
     assert ttl >= timedelta(days=1), f"implausible TTL parsed: {ttl}"
-    assert RETENTION >= ttl * 2, f"retention {RETENTION} is under twice the queue TTL {ttl}"
+    assert ttl * 2 <= RETENTION, f"retention {RETENTION} is under twice the queue TTL {ttl}"
 
 
 async def test_prune_deletes_only_rows_past_retention() -> None:

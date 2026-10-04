@@ -80,8 +80,9 @@ def test_every_game_type_is_registered() -> None:
     assert HAS_WINNER and SCORE_ONLY
     # ENABLED_BOARDS (shared with test_generic_leaderboard) is every game type
     # whose module declares an enabled board.
-    assert ENABLED_BOARDS == sorted(
-        name for name, mod in _MODULES.items() if mod is not None and mod.board.enabled
+    assert (
+        sorted(name for name, mod in _MODULES.items() if mod is not None and mod.board.enabled)
+        == ENABLED_BOARDS
     )
     assert len(ENABLED_BOARDS) >= 8, ENABLED_BOARDS
 

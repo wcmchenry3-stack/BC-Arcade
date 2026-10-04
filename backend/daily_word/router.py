@@ -117,12 +117,12 @@ def _score_guess(answer: str, guess: str) -> list[dict]:
     tiles = [{"letter": c, "status": "absent"} for c in guess]
     answer_chars: list[str | None] = list(answer)
 
-    for i, (g, a) in enumerate(zip(guess, answer)):
+    for i, (g, a) in enumerate(zip(guess, answer)):  # noqa: B905
         if g == a:
             tiles[i]["status"] = "correct"
             answer_chars[i] = None
 
-    for i, tile in enumerate(tiles):
+    for i, tile in enumerate(tiles):  # noqa: B007
         if tile["status"] == "correct":
             continue
         c = tile["letter"]
@@ -196,7 +196,7 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
     try:
         date_str, lang = body.puzzle_id.rsplit(":", 1)
     except ValueError:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id")
+        raise HTTPException(status_code=422, detail="invalid_puzzle_id")  # noqa: B904
 
     if lang not in _SUPPORTED_LANGS:
         raise HTTPException(status_code=422, detail="invalid_puzzle_id")
@@ -212,7 +212,7 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
     try:
         answer = get_answer(body.puzzle_id)
     except ValueError:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id")
+        raise HTTPException(status_code=422, detail="invalid_puzzle_id")  # noqa: B904
 
     guess = body.guess.lower()  # no-op for Devanagari; NFC handles Hindi normalisation
     if lang == "hi":
@@ -301,7 +301,7 @@ async def get_answer_route(
     try:
         answer = get_answer(puzzle_id)
     except ValueError:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id")
+        raise HTTPException(status_code=422, detail="invalid_puzzle_id")  # noqa: B904
 
     sid = get_session_id(request)
     factory = get_session_factory()

@@ -21,10 +21,36 @@ line-length = 100
 line-length = 100
 
 [tool.ruff.lint]
-ignore = [
-    "E402",  # module-level import not at top — intentional in scripts that manipulate sys.path
+# Quality gates for the refactor epic (#2950 / #2951). Families are added at today's
+# numbers; ratchet by lowering max-complexity and re-enabling the families below.
+extend-select = [
+    "B",        # flake8-bugbear
+    "C901",     # mccabe complexity (threshold under [tool.ruff.lint.mccabe])
+    "RUF",      # ruff-specific rules
+    "PLR0912",  # too many branches
+    "PLR0915",  # too many statements
+    "SIM",      # flake8-simplify
+    "UP",       # pyupgrade
+    # Deliberately NOT enabled yet (too many non-autofixable findings to land without
+    # blanket noqa; ratchet in a follow-up, see #2951):
+    #   "ARG"     139 findings (ARG001 119, ARG005 15, ARG002 5) - FastAPI deps/fixtures/mocks
+    #   "PLR0913"  40 findings (too-many-arguments)
 ]
+ignore = [
+    "E402",  # module-level import not at top - intentional in scripts that manipulate sys.path
+    # RUF001-003 flag ambiguous unicode (en/em dashes, arrows) in strings/docstrings/comments.
+    # 29 findings, all stylistic noise rather than defects.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 12
 
 [tool.ruff.lint.per-file-ignores]
 "perf/locustfile.py" = ["RUF012"]  # Locust requires `tasks` as a plain class attribute, not ClassVar
-"sudoku/router.py" = ["B008"]  # fastapi.Path/Query must be called in the parameter default — that's how FastAPI's DI discovers them
+# One-off seed generators: long search routines, not shipped code (#2951).
+"scripts/**" = ["C901", "PLR0912", "B905", "RUF005"]
+# Test helpers: tuple concatenation / try-pass are fine for readability here.
+"tests/**" = ["SIM105", "RUF005"]

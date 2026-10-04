@@ -79,7 +79,7 @@ def _apply(state: list[list[str]], frm: int, to: int) -> list[list[str]]:
 
 
 def _solved(state: list[list[str]]) -> bool:
-    for b in state:
+    for b in state:  # noqa: SIM110
         if b and (len(b) < DEPTH or len(set(b)) > 1):
             return False
     return True

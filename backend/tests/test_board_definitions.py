@@ -398,7 +398,7 @@ def test_mahjong_layouts_match_the_app_registry() -> None:
     listed = registry[registry.index("export const LAYOUTS") :]
     app_ids = tuple(re.findall(r'^\s+id:\s*"([a-z0-9_]+)"', listed, re.MULTILINE))
     assert app_ids, "no layout id found in the Mahjong layout registry"
-    assert LAYOUTS == app_ids
+    assert app_ids == LAYOUTS
     assert _board("mahjong").partition_values == (("layout", LAYOUTS),)
     # No default: a row from before #2627 (no layout) ranks on no board.
     assert _board("mahjong").partition_default("layout") is None

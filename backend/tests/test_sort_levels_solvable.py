@@ -31,7 +31,7 @@ _CHEAP_LEVELS = frozenset(
 
 
 def test_cheap_levels_cover_every_one_empty_level() -> None:
-    assert _CHEAP_LEVELS == {1, 2, 3, 4, 5, 7, 9, 10, 12, 14, 16}
+    assert {1, 2, 3, 4, 5, 7, 9, 10, 12, 14, 16} == _CHEAP_LEVELS
 
 
 @pytest.mark.parametrize("seed", _SEEDS)

@@ -121,7 +121,7 @@ async def patch_game_type(
                 category=body.category,
             )
         except service.GameServiceError as e:
-            raise HTTPException(status_code=e.status_code, detail=e.detail)
+            raise HTTPException(status_code=e.status_code, detail=e.detail)  # noqa: B904
     return _gt_to_out(gt)
 
 
@@ -157,7 +157,7 @@ async def list_my_games(
         try:
             parsed_cursor = datetime.fromisoformat(cursor)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid cursor.")
+            raise HTTPException(status_code=400, detail="Invalid cursor.")  # noqa: B904
     factory = get_session_factory()
     async with factory() as db:
         # Close this player's games left open > 24 h before listing them (#2621).
@@ -303,7 +303,7 @@ async def get_game_detail(
                 include_events=bool(include_events),
             )
         except service.GameServiceError as e:
-            raise HTTPException(status_code=e.status_code, detail=e.detail)
+            raise HTTPException(status_code=e.status_code, detail=e.detail)  # noqa: B904
     row = detail.row
     events = None
     if detail.events is not None:
@@ -347,7 +347,7 @@ async def create_game(request: Request, body: CreateGameRequest) -> CreateGameRe
                 started_at=body.started_at,
             )
         except service.GameServiceError as e:
-            raise HTTPException(status_code=e.status_code, detail=e.detail)
+            raise HTTPException(status_code=e.status_code, detail=e.detail)  # noqa: B904
         return CreateGameResponse(id=game.id, started_at=game.started_at)
 
 
@@ -367,7 +367,7 @@ async def append_events(
                 events=[e.model_dump() for e in body.events],
             )
         except service.GameServiceError as e:
-            raise HTTPException(status_code=e.status_code, detail=e.detail)
+            raise HTTPException(status_code=e.status_code, detail=e.detail)  # noqa: B904
         return AppendEventsResponse(
             accepted=result.accepted,
             duplicates=result.duplicates,
@@ -395,7 +395,7 @@ async def complete_game(
                 result=body.result,
             )
         except service.GameServiceError as e:
-            raise HTTPException(status_code=e.status_code, detail=e.detail)
+            raise HTTPException(status_code=e.status_code, detail=e.detail)  # noqa: B904
         # Refresh with relationship loaded for response
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
