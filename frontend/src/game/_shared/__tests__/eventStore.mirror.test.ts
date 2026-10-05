@@ -128,9 +128,9 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     expect(tierWrites()).toEqual(["event_queue_v1/tier/0"]);
   });
 
-  it("the work per enqueue does not grow with the queue: at most 3 serialisations", async () => {
-    // One for the payload cap, one for the row's size, one for its tier —
-    // never one per queued row (the old stats recount), whatever the size.
+  it("against a 1,000-row queue across every tier, an enqueue still touches only its own tier", async () => {
+    // The other three tiers are neither re-read nor re-written to count the
+    // queue (the old stats recount), whatever its size.
     await store.seedRows(
       Array.from({ length: 1_000 }, (_, i): Row => ({
         id: `seed-${i}`,
@@ -140,16 +140,132 @@ describe("EventStore — in-memory mirror (#2959)", () => {
         event_type: "move",
         payload: { i },
         created_at: 1_000 + i,
-        priority: Priority.GRANULAR,
+        priority: ([1, 2, 3] as const)[i % 3] ?? Priority.GRANULAR,
         retry_count: 0,
         next_retry_at: null,
       }))
     );
-    const stringify = jest.spyOn(JSON, "stringify");
+    clearSpies();
     await move(store, 1_001);
-    const calls = stringify.mock.calls.length;
-    stringify.mockRestore();
-    expect(calls).toBeLessThanOrEqual(3);
+    expect(getItem).not.toHaveBeenCalled();
+    expect(tierWrites()).toEqual(["event_queue_v1/tier/3"]);
+    expect((await store.stats()).totalRows).toBe(1_001);
+  });
+
+  // -------------------------------------------------------------------------
+  // Failures leave the mirror consistent (PR #3016 review)
+  // -------------------------------------------------------------------------
+
+  describe("failures", () => {
+    /** Make the next tier write fail, restoring the mock whether or not it fired. */
+    async function withFailingWrite(run: () => Promise<void>): Promise<void> {
+      const original = setItem.getMockImplementation()!;
+      let armed = true;
+      setItem.mockImplementation(async (key: string, value: string) => {
+        if (armed && key.startsWith("event_queue_v1/tier/")) {
+          armed = false;
+          throw new Error("disk full");
+        }
+        return original(key, value);
+      });
+      try {
+        await run();
+        expect(armed).toBe(false); // the failure was exercised
+      } finally {
+        setItem.mockImplementation(original);
+      }
+    }
+
+    it("a load that fails on one tier counts nothing twice when the next call loads again", async () => {
+      // Five real rows across four tiers, written by a first store.
+      await move(store, 0);
+      await move(store, 1);
+      await lifecycle(store, 2);
+      await bug(store, 0);
+      await store.enqueueEvent({ game_id: "g", event_index: 3, event_type: "score", payload: {} });
+      const fresh = new EventStore();
+      const original = getItem.getMockImplementation()!;
+      getItem.mockImplementation(async (key: string) => {
+        if (key === "event_queue_v1/tier/2") throw new Error("CursorWindow: row too big");
+        return original(key);
+      });
+      try {
+        await expect(fresh.peek(10)).rejects.toThrow("row too big");
+      } finally {
+        getItem.mockImplementation(original);
+      }
+      logConfig.MAX_ROWS = 5;
+      expect(await fresh.stats()).toMatchObject({ totalRows: 5 });
+      expect(await fresh.evictToCapacity()).toBe(0);
+      expect(await fresh.peek(10)).toHaveLength(5);
+    });
+
+    it("a write that fails on enqueue rejects, leaves no trace in the mirror, and notifies no one", async () => {
+      const kept = await move(store, 0);
+      const listener = jest.fn();
+      store.onStats(listener);
+      await withFailingWrite(() => expect(move(store, 1)).rejects.toThrow("disk full"));
+      expect(listener).not.toHaveBeenCalled();
+      expect((await store.peek(10)).map((r) => r.id)).toEqual([kept.id]);
+      expect(await store.stats()).toMatchObject(await recount(store));
+      // The next instance over the same storage agrees with the mirror.
+      expect((await new EventStore().peek(10)).map((r) => r.id)).toEqual([kept.id]);
+      // And the store still works afterwards.
+      await move(store, 2);
+      expect(await store.peek(10)).toHaveLength(2);
+    });
+
+    it("a write that fails after eviction puts the evicted rows back", async () => {
+      logConfig.MAX_ROWS = 2;
+      const a = await move(store, 0);
+      const b = await move(store, 1);
+      await withFailingWrite(() => expect(move(store, 2)).rejects.toThrow("disk full"));
+      expect((await store.peek(10, everything)).map((r) => r.id).sort()).toEqual(
+        [a.id, b.id].sort()
+      );
+      expect(await store.stats()).toMatchObject({ totalRows: 2, byPriority: { 3: 2 } });
+      expect(await store.evictToCapacity()).toBe(0);
+    });
+
+    it("a write that fails on delete keeps the rows", async () => {
+      const a = await move(store, 0);
+      await move(store, 1); // the tier keeps a row, so the delete rewrites it
+      await bug(store, 0);
+      await withFailingWrite(() => expect(store.deleteByIds([a.id])).rejects.toThrow("disk full"));
+      expect(await store.peek(10)).toHaveLength(3);
+      expect(await store.stats()).toMatchObject(await recount(store));
+      expect(await new EventStore().peek(10)).toHaveLength(3);
+    });
+  });
+
+  it("the rows enqueue returns are copies: changing one changes nothing in the queue", async () => {
+    const returned = await move(store, 0);
+    returned.payload["huge"] = "x".repeat(10_000);
+    (returned as { dead_lettered?: boolean }).dead_lettered = true;
+    const [stored] = await store.peek(10);
+    expect(stored?.dead_lettered).toBeUndefined();
+    expect(stored?.payload).toEqual({ i: 0 });
+    expect(await store.stats()).toMatchObject(await recount(store));
+  });
+
+  it("the mirror owns its payloads: the caller's object changed after enqueue is not what is stored", async () => {
+    const data: Record<string, unknown> = { nested: { depth: 1 } };
+    await store.enqueueEvent({ game_id: "g", event_index: 0, event_type: "move", payload: data });
+    (data.nested as { depth: number }).depth = 2;
+    data["later"] = "x".repeat(5_000);
+    await bug(store, 0); // another write of the queue
+    const [stored] = await store.peek(10);
+    expect(stored?.payload).toEqual({ nested: { depth: 1 } });
+    expect(await store.stats()).toMatchObject(await recount(store));
+    // And what a restart reads is what was enqueued.
+    expect((await new EventStore().peek(10))[0]?.payload).toEqual({ nested: { depth: 1 } });
+  });
+
+  it("seedRows keeps copies, not the caller's objects", async () => {
+    const row: Row = { ...(await move(store, 0)), id: "seeded" };
+    await store.seedRows([row]);
+    row.created_at = 1;
+    expect((await store.stats()).oldestAt).not.toBe(1);
   });
 
   it("updateRows, markDeadLettered and deleteByIds write only the tiers they change, and never read", async () => {

@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import { useTheme } from "../../theme/ThemeContext";
+import { isAppInterrupted } from "../../game/_shared/appInterrupted";
 import { eventStore, QueueStats, StatsListener } from "../../game/_shared/eventStore";
 
 /**
@@ -120,7 +121,7 @@ export function CapacityWarningToast({
     arm();
 
     const appStateSub = AppState.addEventListener("change", (next: AppStateStatus) => {
-      if (next === "background" || next === "inactive") {
+      if (isAppInterrupted(next)) {
         disarm();
       } else if (next === "active" && intervalRef.current === null) {
         void runCheck();

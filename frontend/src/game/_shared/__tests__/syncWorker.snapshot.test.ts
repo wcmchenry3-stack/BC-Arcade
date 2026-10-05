@@ -14,7 +14,7 @@ import { GameEventClientImpl } from "../gameEventClient";
 import { PendingGamesStore } from "../pendingGamesStore";
 import { SyncResponse } from "../syncApi";
 import { SyncWorker } from "../syncWorker";
-import { resetLogConfig } from "../eventQueueConfig";
+import { logConfig, resetLogConfig } from "../eventQueueConfig";
 import { MockSyncApi, asSyncApi, err, flushMicro, ok } from "./helpers/syncWorkerFixtures";
 
 const getItem = AsyncStorage.getItem as jest.Mock;
@@ -120,10 +120,6 @@ describe("SyncWorker — one snapshot per pass (#2959)", () => {
       api.defaultResponse = ok();
       // The player finishes while this pass is posting the game's events.
       const request = jest.spyOn(api, "request");
-      request.mockImplementationOnce(async (method, path, body) => {
-        const res = await MockSyncApi.prototype.request.call(api, method, path, body);
-        return res;
-      });
       request.mockImplementation(async (method, path, body) => {
         const res: SyncResponse = await MockSyncApi.prototype.request.call(api, method, path, body);
         if (path.endsWith("/events") && !games.get(gid)?.completed) {
@@ -160,6 +156,103 @@ describe("SyncWorker — one snapshot per pass (#2959)", () => {
 
       expect(paths().filter((p) => p.startsWith("PATCH"))).toEqual([]);
       expect(games.get(gid)?.startedSynced).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // The snapshot sees every row (PR #3016 review)
+  // -------------------------------------------------------------------------
+
+  describe("snapshot limit", () => {
+    it("a MAX_ROWS lowered under the queue on disk still sends every event before the PATCH", async () => {
+      api.defaultResponse = ok();
+      const gid = startPlayed("yacht");
+      for (let i = 0; i < 6; i += 1) client.enqueueEvent(gid, { type: "roll", data: { i } });
+      client.completeGame(gid, { outcome: "completed", finalScore: 1 });
+      await flushMicro();
+      // 8 rows queued (game_started, 6 rolls, game_ended); the cap drops under them.
+      logConfig.MAX_ROWS = 3;
+
+      await worker.flush();
+
+      const sent = api.calls
+        .filter((c) => c.path.endsWith("/events"))
+        .flatMap((c) => (c.body as { events: Array<{ event_type: string }> }).events)
+        .map((e) => e.event_type);
+      expect(sent).toHaveLength(8);
+      expect(sent.filter((t) => t === "roll")).toHaveLength(6);
+      expect(sent).toContain("game_ended");
+      expect(paths()[paths().length - 1]).toBe(`PATCH /games/${gid}/complete`);
+      expect(await store.peek(100, { includeFuture: true })).toEqual([]);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Step 1's terminal 4xx dead-letters the parked rows too (PR #3016 review)
+  // -------------------------------------------------------------------------
+
+  describe("deadLetterGameAndEvents", () => {
+    it("rows parked by a per-row backoff do not come back as orphans once the game is forgotten", async () => {
+      const gid = startPlayed("yacht");
+      client.enqueueEvent(gid, { type: "roll" });
+      await flushMicro();
+      // Pass 1: created, then its events are refused with a 500 → parked.
+      api.onNext((p) => p === "/games", ok());
+      api.onNext((p) => p.endsWith("/events"), err(500));
+      await worker.flush(0);
+      const parked = await store.peek(100, { includeFuture: true });
+      expect(parked.every((r) => r.next_retry_at !== null && r.next_retry_at > 0)).toBe(true);
+      // The server loses the game; step 1 will recreate it...
+      await games.update(gid, { startedSynced: false });
+      // ...and refuses it for good.
+      api.onNext((p) => p === "/games", err(400));
+      const pass2 = await worker.flush(1_500);
+      expect(pass2.deadLettered).toBe(1);
+      expect(games.get(gid)).toBeUndefined();
+      const rows = await store.peek(100, { includeDeadLettered: true, includeFuture: true });
+      expect(rows).toHaveLength(2);
+      expect(rows.every((r) => r.dead_lettered)).toBe(true);
+
+      // Long after the backoff: nothing is posted as an orphan.
+      api.calls = [];
+      const pass3 = await worker.flush(1_000_000);
+      expect(pass3.deadLettered).toBe(0);
+      expect(paths()).toEqual([]);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // One 404 stops the game's chunks (PR #3016 review)
+  // -------------------------------------------------------------------------
+
+  describe("404 on a multi-chunk game", () => {
+    it("re-flips once and posts no further chunk of that game in the pass", async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const Sentry = require("@sentry/react-native");
+      Sentry.captureMessage.mockClear();
+      logConfig.GAME_EVENT_BATCH_SIZE = 2;
+      api.defaultResponse = ok();
+      api.onNext((p) => p.endsWith("/events"), err(404));
+      const gid = startPlayed("yacht");
+      for (let i = 0; i < 5; i += 1) client.enqueueEvent(gid, { type: "roll", data: { i } });
+      const other = startPlayed("sudoku");
+      await flushMicro();
+      const update = jest.spyOn(games, "update");
+
+      await worker.flush();
+
+      expect(paths().filter((p) => p === `POST /games/${gid}/events`)).toHaveLength(1);
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(
+        (Sentry.captureMessage as jest.Mock).mock.calls.filter(([m]: [string]) => m.includes("404"))
+      ).toHaveLength(1);
+      // The other game's events still went out in the same pass.
+      expect(paths()).toContain(`POST /games/${other}/events`);
+      // All 6 rows of the 404'd game are still live for the next pass.
+      const live = (await store.peek(100)).filter(
+        (r) => r.log_type === "game_event" && r.game_id === gid
+      );
+      expect(live).toHaveLength(6);
     });
   });
 

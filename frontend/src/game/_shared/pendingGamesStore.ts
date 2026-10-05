@@ -51,6 +51,8 @@ import * as Sentry from "@sentry/react-native";
 import type { GameOutcome } from "../../api/vocab";
 
 const STORAGE_KEY = "pending_games_v1";
+/** How many times in a row a coalesced counter write is retried when it fails. */
+const COUNTER_WRITE_ATTEMPTS = 3;
 
 export interface CompleteSummary {
   finalScore?: number | null;
@@ -246,9 +248,14 @@ export class PendingGamesStore {
   }
 
   private async persist(): Promise<void> {
+    await this.write();
+  }
+
+  /** The write behind `persist()`: false when it failed (reported, not thrown). */
+  private async write(): Promise<boolean> {
     if (this.batchDepth > 0) {
       this.batchDirty = true;
-      return;
+      return true;
     }
     try {
       // Never write before the saved games are loaded: the write would replace
@@ -257,10 +264,12 @@ export class PendingGamesStore {
       const obj: Record<string, PendingGame> = {};
       for (const [k, v] of this.games) obj[k] = v;
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+      return true;
     } catch (e) {
       Sentry.captureException(e, {
         tags: { subsystem: "pendingGamesStore", op: "persist" },
       });
+      return false;
     }
   }
 
@@ -317,13 +326,23 @@ export class PendingGamesStore {
   }
 
   private async drainCounter(): Promise<void> {
+    let failures = 0;
     while (this.counterWritten < this.counterVersion) {
-      // persist() serialises the map after the load, so every bump made by
-      // then is in the write; note the version it covers before it runs.
+      // The write serialises the map after the load, so every bump made by
+      // then is in it; note the version it covers before it runs.
       await this.load();
       const target = this.counterVersion;
-      await this.persist();
-      this.counterWritten = target;
+      if (await this.write()) {
+        this.counterWritten = target;
+        failures = 0;
+        continue;
+      }
+      // A failed write never counts as landed: retry a few times, then leave
+      // the counter marked unwritten so the next bump (or any other write of
+      // the map) carries it. Treating it as landed would let a kill resume a
+      // session on a stale event_index.
+      failures += 1;
+      if (failures >= COUNTER_WRITE_ATTEMPTS) return;
     }
   }
 

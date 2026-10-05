@@ -14,7 +14,9 @@
  * In-memory mirror (#2959): the four tiers are loaded from AsyncStorage once,
  * by the first operation, and kept in memory for the life of the process.
  * Every mutation changes the mirror and writes the changed tier(s) back
- * (write-through), so the on-disk format is exactly what it always was.
+ * (write-through), so the on-disk format is exactly what it always was; a
+ * write that fails puts the mirror back as it was (`transact`), so memory
+ * never holds a row the disk rejected.
  * `peek`, `stats`, `updateRows`, `deleteByIds` and `markDeadLettered` read
  * only the mirror; `readTier` runs only for the initial load (and, inside it,
  * for corruption recovery). `totalRows` and `sizeBytes` are kept up to date
@@ -136,6 +138,16 @@ export type StatsListener = (stats: QueueStats) => void;
 
 /** The mirrored tiers, once loaded. */
 type Tiers = Record<Priority, Row[]>;
+
+/** What `transact` puts back after a failed write. */
+interface MirrorState {
+  tiers: Tiers;
+  totalRows: number;
+  sizeBytes: number;
+  byLogType: Record<LogType, number>;
+  oldestAt: number | null;
+  oldestDirty: boolean;
+}
 
 /** How far over the caps the queue is; eviction stops once both are ≤ 0. */
 interface Overage {
@@ -270,6 +282,10 @@ export class EventStore {
   /** The mirrored tiers, loading them from disk the first time. Call under the lock. */
   private async mirror(): Promise<Tiers> {
     if (this.tiers) return this.tiers;
+    // A load that fails part-way (a native read error on one tier) leaves
+    // `this.tiers` null, so the next call loads again: start the counters
+    // from zero here, or the tiers read before the failure would count twice.
+    this.resetCounters();
     const tiers = emptyTiers();
     for (const tier of TIERS) {
       const rows = await this.readTier(tier);
@@ -278,6 +294,52 @@ export class EventStore {
     }
     this.tiers = tiers;
     return tiers;
+  }
+
+  /**
+   * Run one memory mutation and write the tiers it dirtied (#2959). `fn` must
+   * only replace tier arrays (copy-on-write), never change one in place, so
+   * that a failed write can put the saved arrays and counters back: a rejected
+   * mutation then leaves no trace in the mirror, as a rejected write left none
+   * before the mirror existed. Subscribers hear of the change only once it is
+   * on disk. Call under the lock.
+   */
+  private async transact<T>(fn: (tiers: Tiers, dirty: Set<Priority>) => T): Promise<T> {
+    const tiers = await this.mirror();
+    const saved = this.save(tiers);
+    const dirty = new Set<Priority>();
+    let result: T;
+    try {
+      result = fn(tiers, dirty);
+      await this.commit(tiers, dirty);
+    } catch (e) {
+      this.restore(tiers, saved);
+      throw e;
+    }
+    if (dirty.size > 0) this.notify();
+    return result;
+  }
+
+  private save(tiers: Tiers): MirrorState {
+    return {
+      tiers: { 0: tiers[0], 1: tiers[1], 2: tiers[2], 3: tiers[3] },
+      totalRows: this.totalRows,
+      sizeBytes: this.sizeBytes,
+      byLogType: { ...this.byLogType },
+      oldestAt: this.oldestAt,
+      oldestDirty: this.oldestDirty,
+    };
+  }
+
+  private restore(tiers: Tiers, saved: MirrorState): void {
+    for (const tier of TIERS) tiers[tier] = saved.tiers[tier];
+    this.totalRows = saved.totalRows;
+    this.sizeBytes = saved.sizeBytes;
+    this.byLogType = { ...saved.byLogType };
+    this.oldestAt = saved.oldestAt;
+    this.oldestDirty = saved.oldestDirty;
+    // `bytes` needs no restoring: a row put back without an entry is measured
+    // again on demand, and entries for rows that never landed are unreachable.
   }
 
   /** Account for a row entering the mirror. */
@@ -306,14 +368,18 @@ export class EventStore {
     }
   }
 
-  private resetMirror(): void {
-    this.tiers = emptyTiers();
+  private resetCounters(): void {
     this.bytes = new WeakMap();
     this.totalRows = 0;
     this.sizeBytes = 0;
     this.byLogType = { game_event: 0, bug_log: 0 };
     this.oldestAt = null;
     this.oldestDirty = false;
+  }
+
+  private resetMirror(): void {
+    this.tiers = emptyTiers();
+    this.resetCounters();
     this.meta = { warningLastShownAt: null };
   }
 
@@ -321,54 +387,57 @@ export class EventStore {
    * Drop every mirrored row `drop` matches, writing back only the tiers that
    * changed. Returns how many rows went.
    */
-  private async removeWhere(drop: (row: Row) => boolean): Promise<number> {
-    const tiers = await this.mirror();
-    let removed = 0;
-    for (const tier of TIERS) {
-      const rows = tiers[tier];
-      const kept: Row[] = [];
-      for (const row of rows) {
-        if (drop(row)) {
-          this.untrack(row);
-          removed += 1;
-        } else {
-          kept.push(row);
+  private removeWhere(drop: (row: Row) => boolean): Promise<number> {
+    return this.transact((tiers, dirty) => {
+      let removed = 0;
+      for (const tier of TIERS) {
+        const rows = tiers[tier];
+        const kept: Row[] = [];
+        for (const row of rows) {
+          if (drop(row)) {
+            this.untrack(row);
+            removed += 1;
+          } else {
+            kept.push(row);
+          }
+        }
+        if (kept.length !== rows.length) {
+          tiers[tier] = kept;
+          dirty.add(tier);
         }
       }
-      if (kept.length !== rows.length) {
-        tiers[tier] = kept;
-        await this.writeTier(tier, kept);
-      }
-    }
-    if (removed > 0) this.notify();
-    return removed;
+      return removed;
+    });
   }
 
   /**
    * Replace every mirrored row `replace` returns a row for (null leaves it),
    * writing back only the tiers that changed. Returns how many were replaced.
    */
-  private async replaceWhere(replace: (row: Row) => Row | null): Promise<number> {
-    const tiers = await this.mirror();
-    let replaced = 0;
-    for (const tier of TIERS) {
-      const rows = tiers[tier];
-      let dirty = false;
-      for (let i = 0; i < rows.length; i += 1) {
-        const row = rows[i];
-        if (row === undefined) continue;
-        const next = replace(row);
-        if (next === null) continue;
-        this.untrack(row);
-        this.track(next);
-        rows[i] = next;
-        dirty = true;
-        replaced += 1;
+  private replaceWhere(replace: (row: Row) => Row | null): Promise<number> {
+    return this.transact((tiers, dirty) => {
+      let replaced = 0;
+      for (const tier of TIERS) {
+        const rows = tiers[tier];
+        let copy: Row[] | null = null;
+        for (let i = 0; i < rows.length; i += 1) {
+          const row = rows[i];
+          if (row === undefined) continue;
+          const next = replace(row);
+          if (next === null) continue;
+          if (copy === null) copy = rows.slice();
+          this.untrack(row);
+          this.track(next);
+          copy[i] = next;
+          replaced += 1;
+        }
+        if (copy !== null) {
+          tiers[tier] = copy;
+          dirty.add(tier);
+        }
       }
-      if (dirty) await this.writeTier(tier, rows);
-    }
-    if (replaced > 0) this.notify();
-    return replaced;
+      return replaced;
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -384,20 +453,21 @@ export class EventStore {
     return this.withLock(async () => {
       await this.maybeDelay();
       const priority = logConfig.priorityForEvent("game_event", input.event_type);
+      const payload = this.ownPayload(input.payload, logConfig.MAX_EVENT_PAYLOAD_BYTES);
       const row: GameEventRow = {
         id: generateUUID(),
         log_type: "game_event",
         game_id: input.game_id,
         event_index: input.event_index,
         event_type: input.event_type,
-        payload: this.truncatePayload(input.payload, logConfig.MAX_EVENT_PAYLOAD_BYTES),
+        payload: payload.stored,
         created_at: Date.now(),
         priority,
         retry_count: 0,
         next_retry_at: null,
       };
       await this.insert(row);
-      return row;
+      return { ...row, payload: payload.copy };
     });
   }
 
@@ -409,32 +479,37 @@ export class EventStore {
   }): Promise<BugLogRow> {
     return this.withLock(async () => {
       await this.maybeDelay();
+      const payload = this.ownPayload(input.payload, logConfig.MAX_BUG_CONTEXT_BYTES);
       const row: BugLogRow = {
         id: generateUUID(),
         log_type: "bug_log",
         bug_uuid: input.bug_uuid,
         bug_level: input.bug_level,
         bug_source: input.bug_source,
-        payload: this.truncatePayload(input.payload, logConfig.MAX_BUG_CONTEXT_BYTES),
+        payload: payload.stored,
         created_at: Date.now(),
         priority: Priority.BUG_LOG,
         retry_count: 0,
         next_retry_at: null,
       };
       await this.insert(row);
-      return row;
+      return { ...row, payload: payload.copy };
     });
   }
 
-  /** Append one row to its tier, evict to capacity, and write the tiers that changed once. */
-  private async insert(row: Row): Promise<void> {
-    const tiers = await this.mirror();
-    tiers[row.priority].push(row);
-    this.track(row);
-    const dirty = new Set<Priority>([row.priority]);
-    this.evictToCapacityUnlocked(tiers, dirty);
-    await this.commit(tiers, dirty);
-    this.notify();
+  /**
+   * Append one row to its tier, evict to capacity, and write the tiers that
+   * changed once. The callers return a copy of the row: the mirror's own
+   * object is never handed out, so nothing outside can change it (or its
+   * cached size) behind the store's back.
+   */
+  private insert(row: Row): Promise<void> {
+    return this.transact((tiers, dirty) => {
+      tiers[row.priority] = tiers[row.priority].concat(row);
+      this.track(row);
+      dirty.add(row.priority);
+      this.evictToCapacityUnlocked(tiers, dirty);
+    });
   }
 
   /**
@@ -569,18 +644,20 @@ export class EventStore {
    */
   async seedRows(rows: Row[]): Promise<void> {
     if (rows.length === 0) return;
-    return this.withLock(async () => {
-      const tiers = await this.mirror();
-      const dirty = new Set<Priority>();
-      for (const row of rows) {
-        tiers[row.priority].push(row);
-        this.track(row);
-        dirty.add(row.priority);
-      }
-      this.evictToCapacityUnlocked(tiers, dirty);
-      await this.commit(tiers, dirty);
-      this.notify();
-    });
+    return this.withLock(() =>
+      this.transact((tiers, dirty) => {
+        const byTier = emptyTiers();
+        // Copies: the caller keeps its objects, the mirror keeps its own.
+        for (const row of rows) byTier[row.priority].push({ ...row });
+        for (const tier of TIERS) {
+          if (byTier[tier].length === 0) continue;
+          tiers[tier] = tiers[tier].concat(byTier[tier]);
+          for (const row of byTier[tier]) this.track(row);
+          dirty.add(tier);
+        }
+        this.evictToCapacityUnlocked(tiers, dirty);
+      })
+    );
   }
 
   /** Capacity warning state (read/updated by gameEventClient). */
@@ -618,14 +695,9 @@ export class EventStore {
    * its own; the enqueue and seed paths run one inside their own lock turn.
    */
   async evictToCapacity(): Promise<number> {
-    return this.withLock(async () => {
-      const tiers = await this.mirror();
-      const dirty = new Set<Priority>();
-      const evicted = this.evictToCapacityUnlocked(tiers, dirty);
-      await this.commit(tiers, dirty);
-      if (evicted > 0) this.notify();
-      return evicted;
-    });
+    return this.withLock(() =>
+      this.transact((tiers, dirty) => this.evictToCapacityUnlocked(tiers, dirty))
+    );
   }
 
   /**
@@ -714,7 +786,13 @@ export class EventStore {
     this.untrack(row);
   }
 
-  private statsUnlocked(tiers: Tiers): QueueStats {
+  /**
+   * The oldest `created_at` in the mirror. Kept up to date by inserts; after
+   * the oldest row leaves it is found again by one pass over the rows, here,
+   * on demand — never on the mutation itself (a flush deletes the oldest rows
+   * chunk after chunk).
+   */
+  private resolveOldestAt(tiers: Tiers): number | null {
     if (this.oldestDirty) {
       let oldest: number | null = null;
       for (const tier of TIERS) {
@@ -725,6 +803,14 @@ export class EventStore {
       this.oldestAt = oldest;
       this.oldestDirty = false;
     }
+    return this.oldestAt;
+  }
+
+  private statsUnlocked(tiers: Tiers): QueueStats {
+    return { ...this.countsUnlocked(tiers), oldestAt: this.resolveOldestAt(tiers) };
+  }
+
+  private countsUnlocked(tiers: Tiers): Omit<QueueStats, "oldestAt"> {
     return {
       totalRows: this.totalRows,
       sizeBytes: this.sizeBytes,
@@ -735,14 +821,23 @@ export class EventStore {
         2: tiers[2].length,
         3: tiers[3].length,
       },
-      oldestAt: this.oldestAt,
     };
   }
 
-  /** Tell every `onStats` subscriber the stats after a change. Call under the lock. */
+  /**
+   * Tell every `onStats` subscriber the stats after a change. Call under the
+   * lock. `oldestAt` is resolved only if a listener reads it (the toast does
+   * not), so a change costs no pass over the rows.
+   */
   private notify(): void {
     if (this.listeners.size === 0 || this.tiers === null) return;
-    const stats = this.statsUnlocked(this.tiers);
+    const tiers = this.tiers;
+    const stats = { ...this.countsUnlocked(tiers), oldestAt: null } as QueueStats;
+    Object.defineProperty(stats, "oldestAt", {
+      enumerable: true,
+      configurable: true,
+      get: () => this.resolveOldestAt(tiers),
+    });
     for (const listener of this.listeners) {
       try {
         listener(stats);
@@ -752,19 +847,30 @@ export class EventStore {
     }
   }
 
-  private truncatePayload(
+  /**
+   * The payload the mirror keeps (`stored`) and the one handed back to the
+   * caller (`copy`). Both are JSON round-trips of the caller's object — one
+   * stringify, which the size cap needs anyway, and two parses — so the mirror
+   * owns what it holds: however the caller's object or the returned row
+   * changes afterwards, the next write of the tier serialises what was
+   * enqueued, exactly as the disk held it before the mirror existed.
+   */
+  private ownPayload(
     payload: Record<string, unknown>,
     maxBytes: number
-  ): Record<string, unknown> {
+  ): { stored: Record<string, unknown>; copy: Record<string, unknown> } {
     const serialized = JSON.stringify(payload);
-    if (serialized.length <= maxBytes) return payload;
+    if (serialized.length <= maxBytes) {
+      return {
+        stored: JSON.parse(serialized) as Record<string, unknown>,
+        copy: JSON.parse(serialized) as Record<string, unknown>,
+      };
+    }
     // Oversized — replace with a stub. This preserves the enqueue contract
     // (payload is always an object) while preventing a single runaway row
     // from blowing the queue.
-    return {
-      _truncated: true,
-      _original_bytes: serialized.length,
-    };
+    const stub = { _truncated: true, _original_bytes: serialized.length };
+    return { stored: stub, copy: { ...stub } };
   }
 }
 

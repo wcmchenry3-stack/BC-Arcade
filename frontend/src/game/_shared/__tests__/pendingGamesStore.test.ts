@@ -410,5 +410,56 @@ describe("PendingGamesStore", () => {
       await fresh.init();
       expect(fresh.get("g1")?.nextEventIndex).toBe(2);
     });
+
+    it("a failed counter write is not counted as landed: it is retried and the counter reaches disk", async () => {
+      await store.create("g1", "yacht", {});
+      const setItem = AsyncStorage.setItem as jest.Mock;
+      const original = setItem.getMockImplementation()!;
+      let failOnce = true;
+      setItem.mockImplementation(async (key: string, value: string) => {
+        if (key === "pending_games_v1" && failOnce) {
+          failOnce = false;
+          throw new Error("disk full");
+        }
+        return original(key, value);
+      });
+      try {
+        setItem.mockClear();
+        store.nextEventIndex("g1");
+        await new Promise((r) => setTimeout(r, 10));
+        expect(pendingWrites()).toHaveLength(2); // the failure, then the retry
+      } finally {
+        setItem.mockImplementation(original);
+      }
+      const fresh = new PendingGamesStore();
+      await fresh.init();
+      expect(fresh.get("g1")?.nextEventIndex).toBe(1);
+    });
+
+    it("gives up after repeated failures and lets the next bump carry the counter", async () => {
+      await store.create("g1", "yacht", {});
+      const setItem = AsyncStorage.setItem as jest.Mock;
+      const original = setItem.getMockImplementation()!;
+      let failing = true;
+      setItem.mockImplementation(async (key: string, value: string) => {
+        if (key === "pending_games_v1" && failing) throw new Error("disk full");
+        return original(key, value);
+      });
+      try {
+        setItem.mockClear();
+        store.nextEventIndex("g1");
+        await new Promise((r) => setTimeout(r, 10));
+        expect(pendingWrites()).toHaveLength(3); // bounded retries, no spin
+        failing = false;
+        store.nextEventIndex("g1");
+        await new Promise((r) => setTimeout(r, 10));
+        expect(pendingWrites()).toHaveLength(4);
+      } finally {
+        setItem.mockImplementation(original);
+      }
+      const fresh = new PendingGamesStore();
+      await fresh.init();
+      expect(fresh.get("g1")?.nextEventIndex).toBe(2);
+    });
   });
 });

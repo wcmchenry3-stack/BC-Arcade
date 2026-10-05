@@ -75,6 +75,7 @@
 import * as Sentry from "@sentry/react-native";
 import { AppState, type AppStateStatus } from "react-native";
 
+import { isAppInterrupted } from "./appInterrupted";
 import { logConfig } from "./eventQueueConfig";
 import { BugLogRow, EventStore, GameEventRow, Row, eventStore } from "./eventStore";
 import { PendingGamesStore, pendingGamesStore } from "./pendingGamesStore";
@@ -122,11 +123,6 @@ function isAlreadyCompleted(res: { status: number; body: unknown }): boolean {
   );
 }
 
-/** Only `background` and `inactive` pause the schedule; any other state runs it. */
-function isPaused(state: unknown): boolean {
-  return state === "background" || state === "inactive";
-}
-
 const EMPTY: FlushResult = {
   attempted: 0,
   accepted: 0,
@@ -171,7 +167,7 @@ export class SyncWorker {
     if (this.appStateSub === null) {
       this.appStateSub = AppState.addEventListener("change", this.onAppStateChange);
     }
-    if (!isPaused(AppState.currentState)) this.armInterval();
+    if (!isAppInterrupted(AppState.currentState)) this.armInterval();
   }
 
   stop(): void {
@@ -189,7 +185,7 @@ export class SyncWorker {
 
   private readonly onAppStateChange = (next: AppStateStatus): void => {
     if (this.appStateSub === null) return; // stopped: a late event changes nothing
-    if (isPaused(next)) {
+    if (isAppInterrupted(next)) {
       this.disarmInterval();
       return;
     }
@@ -257,8 +253,10 @@ export class SyncWorker {
     for (const [gameId, game] of this.games.all()) {
       if (game.completed) completedAtSnapshot.add(gameId);
     }
-    // The store caps itself at MAX_ROWS, so this limit sees every live row.
-    const rows = await this.store.peek(logConfig.MAX_ROWS, { now });
+    // Every live row: the peek is in memory, and the cap is no limit — it can
+    // be lowered at runtime (or by a release) under a fuller queue on disk,
+    // and a game's unseen rows would let its PATCH go out before them.
+    const rows = await this.store.peek(Number.POSITIVE_INFINITY, { now });
     const byGame = new Map<string, GameEventRow[]>();
     const bugLogs: BugLogRow[] = [];
     for (const row of rows) {
@@ -342,6 +340,9 @@ export class SyncWorker {
         const chunk = events.slice(i, i + batchSize);
         const ok = await this.postEventBatch(gameId, chunk, result, now);
         if (!ok) return false;
+        // A 404 re-flipped startedSynced: the rest of the game's chunks would
+        // only 404 too (and each re-flip is a write). Step 1 recreates it next pass.
+        if (!this.games.get(gameId)?.startedSynced) break;
       }
       // Every chunk was accepted, dropped, parked or dead-lettered — unless a
       // 404 re-flipped startedSynced, in which case the rows are still live.
@@ -392,6 +393,7 @@ export class SyncWorker {
       const right = chunk.slice(mid);
       const okLeft = await this.postEventBatch(gameId, left, result, now);
       if (!okLeft) return false;
+      if (!this.games.get(gameId)?.startedSynced) return true; // the left half 404'd
       return this.postEventBatch(gameId, right, result, now);
     }
     if (res.status === 404) {
@@ -637,9 +639,16 @@ export class SyncWorker {
     }
   }
 
-  /** Step 1's terminal 4xx: every queued row of the game is dead-lettered. */
+  /**
+   * Step 1's terminal 4xx: every queued row of the game is dead-lettered,
+   * the rows a per-row backoff has parked included — the game is forgotten,
+   * so they would otherwise come back as orphans once their retry time passes.
+   */
   private async deadLetterGameAndEvents(gameId: string): Promise<void> {
-    const all = await this.store.peek(logConfig.MAX_ROWS, { includeDeadLettered: true });
+    const all = await this.store.peek(Number.POSITIVE_INFINITY, {
+      includeDeadLettered: true,
+      includeFuture: true,
+    });
     const ids = all
       .filter((r) => r.log_type === "game_event" && r.game_id === gameId)
       .map((r) => r.id);
