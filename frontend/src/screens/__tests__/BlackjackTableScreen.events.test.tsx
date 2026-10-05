@@ -203,10 +203,17 @@ describe("player actions", () => {
   });
 
   it("Split turns a pair into two hands", async () => {
-    await mountOn(playerPhase({ player_hand: [card("8"), card("8", "♥")] }));
+    // The deck is set so the two new cards (5 for the first hand, 4 for the second)
+    // make no new pair: the first hand cannot be split again.
+    await mountOn(
+      playerPhase({
+        player_hand: [card("8"), card("8", "♥")],
+        deck: [card("2", "♣"), card("2", "♦"), card("4", "♣"), card("5", "♣")],
+      })
+    );
     expect(screen.getByLabelText(/^Split —/).props.accessibilityState.disabled).toBe(false);
     await pressLabel(/^Split —/);
-    // Two hands now: the first is being played, so the table shows both bets.
+    // Two hands now, the first being played.
     await waitFor(() => expect(screen.getByLabelText(/^Split not available/)).toBeTruthy());
     expect(finished()).toBeNull();
   });
