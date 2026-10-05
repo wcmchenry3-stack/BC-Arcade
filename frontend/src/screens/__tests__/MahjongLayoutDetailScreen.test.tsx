@@ -4,9 +4,9 @@
  * the board be pinched and panned within the camera's zoom bounds.
  *
  * The board (GameCanvas) is stubbed to record what it is given. Pinch and pan handlers are
- * captured from the gesture builders, and shared values are made stable across renders (the
- * global Reanimated mock re-creates them), so a gesture's effect shows up in the board's
- * animated transform after a re-render.
+ * captured from the gesture builders; the global Reanimated mock keeps shared values stable
+ * across renders, so a gesture's effect shows up in the board's animated transform after a
+ * re-render.
  */
 import React from "react";
 import { StyleSheet } from "react-native";
@@ -16,6 +16,7 @@ import MahjongLayoutDetailScreen from "../MahjongLayoutDetailScreen";
 import { LAYOUTS, getLayout } from "../../game/mahjong/layouts/registry";
 import { createGame } from "../../game/mahjong/engine";
 import type { MahjongState } from "../../game/mahjong/types";
+import type { GestureHandlers } from "../../test-utils/mockScreenDeps";
 
 const mockGoBack = jest.fn();
 const mockRoute = { params: { layoutId: "turtle" } };
@@ -42,49 +43,11 @@ jest.mock("../../components/mahjong/GameCanvas", () => {
   };
 });
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-type Handler = (e?: any) => void;
-const mockGestures: Record<string, Record<string, Handler>> = {};
-jest.mock("react-native-gesture-handler", () => {
-  const builder = (kind: string) => () => {
-    const handlers: Record<string, Handler> = {};
-    mockGestures[kind] = handlers;
-    const b: any = new Proxy(
-      {},
-      {
-        get: (_t, prop: string) => (arg?: unknown) => {
-          if (prop.startsWith("on")) handlers[prop] = arg as Handler;
-          return b;
-        },
-      }
-    );
-    return b;
-  };
-  return {
-    GestureDetector: ({ children }: any) => children,
-    Gesture: {
-      Pinch: builder("pinch"),
-      Pan: builder("pan"),
-      Simultaneous: (...g: unknown[]) => g,
-    },
-  };
-});
-
-/* eslint-enable @typescript-eslint/no-explicit-any */
-
-// Stable shared values: one object per hook call site for the component's lifetime (the global
-// mock in jest.setup.ts hands out a fresh object on every render).
-const reanimated = jest.requireMock<Record<string, unknown>>("react-native-reanimated");
-const globalUseSharedValue = reanimated.useSharedValue;
-function useStableSharedValue(init: unknown) {
-  return React.useState(() => ({ value: init }))[0];
-}
-beforeAll(() => {
-  reanimated.useSharedValue = useStableSharedValue;
-});
-afterAll(() => {
-  reanimated.useSharedValue = globalUseSharedValue;
-});
+// Pinch and pan record their callbacks here (src/test-utils/mockScreenDeps.ts).
+const mockGestures: Record<string, GestureHandlers> = {};
+jest.mock("react-native-gesture-handler", () =>
+  mockScreenDeps().mockGestureHandler(() => mockGestures)
+);
 
 beforeEach(() => {
   mockGoBack.mockClear();

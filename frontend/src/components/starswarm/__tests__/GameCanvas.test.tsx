@@ -14,7 +14,7 @@
  */
 import React, { Profiler } from "react";
 import { AccessibilityInfo } from "react-native";
-import { act, render, screen } from "@testing-library/react-native";
+import { render, screen } from "@testing-library/react-native";
 import * as Sentry from "@sentry/react-native";
 import { useImage } from "@shopify/react-native-skia";
 
@@ -25,6 +25,12 @@ import { buildFrame } from "../../../game/starswarm/render/frame";
 import { drawFrame } from "../../../game/starswarm/render/drawFrame";
 import { pickupCues } from "../../../game/starswarm/render/pickupCue";
 import type { StarSwarmState } from "../../../game/starswarm/types";
+import {
+  CANVAS_TEST_H as H,
+  CANVAS_TEST_W as W,
+  createRafHarness,
+  seededStarSwarm,
+} from "./helpers/canvasFixtures";
 
 jest.mock("@shopify/react-native-skia", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -75,8 +81,6 @@ const actualPickupCues = jest.requireActual<
   typeof import("../../../game/starswarm/render/pickupCue")
 >("../../../game/starswarm/render/pickupCue").pickupCues;
 
-const W = 360;
-const H = 640;
 const mockEngine = engine as unknown as Record<string, jest.Mock>;
 const mockTick = engine.tick as unknown as jest.Mock;
 const mockBuildFrame = buildFrame as unknown as jest.Mock;
@@ -84,21 +88,14 @@ const mockDrawFrame = drawFrame as unknown as jest.Mock;
 const mockPickupCues = pickupCues as unknown as jest.Mock;
 const mockUseImage = useImage as unknown as jest.Mock;
 
-// --- a hand-cranked requestAnimationFrame -----------------------------------------------------
+// --- a hand-cranked requestAnimationFrame (helpers/canvasFixtures.ts) ------------------------
 
-let pendingFrame: ((ts: number) => void) | null = null;
-const realRaf = global.requestAnimationFrame;
-const realCaf = global.cancelAnimationFrame;
+const raf = createRafHarness({ frameMs: 16 });
+const { frame, frames } = raf;
+const seeded = seededStarSwarm;
 
 beforeEach(() => {
-  pendingFrame = null;
-  global.requestAnimationFrame = jest.fn((cb: (ts: number) => void) => {
-    pendingFrame = cb;
-    return 1;
-  }) as unknown as typeof requestAnimationFrame;
-  global.cancelAnimationFrame = jest.fn(() => {
-    pendingFrame = null;
-  });
+  raf.install();
   // Every wrapped engine function back to the real one; ticks are the identity unless a test
   // says otherwise, so nothing random happens between two frames.
   for (const [k, fn] of Object.entries(mockEngine)) {
@@ -118,32 +115,9 @@ beforeEach(() => {
   (Sentry.captureMessage as jest.Mock).mockClear();
 });
 
-afterAll(() => {
-  global.requestAnimationFrame = realRaf;
-  global.cancelAnimationFrame = realCaf;
-});
-
-let clock = 1000;
-/** Run one iteration of the canvas's RAF loop, `dt` ms after the previous one. */
-async function frame(dt = 16) {
-  clock += dt;
-  const cb = pendingFrame;
-  if (!cb) throw new Error("no frame requested");
-  pendingFrame = null;
-  await act(async () => cb(clock));
-}
-async function frames(n: number, dt = 16) {
-  for (let i = 0; i < n; i++) await frame(dt);
-}
-
-/** A live wave-1 game, seeded so it is the same every run. */
-function seeded(overrides: Partial<StarSwarmState> = {}): StarSwarmState {
-  return {
-    ...actualEngine.initStarSwarm(W, H, 1, 7, "LieutenantJG"),
-    phase: "Playing",
-    ...overrides,
-  };
-}
+// Spies (Date.now, performance.now, AccessibilityInfo) are restored even when a test fails.
+afterEach(() => jest.restoreAllMocks());
+afterAll(() => raf.uninstall());
 
 /** Make the next tick return `change(prev)`. */
 function nextTick(change: (s: StarSwarmState) => StarSwarmState) {
@@ -287,7 +261,16 @@ describe("Star Swarm GameCanvas (native) — frame publish gating (#2563)", () =
     mockDrawFrame.mockImplementation(() => {
       throw new Error("boom");
     });
-    await mount({ initialState: seeded() });
+    const { rerender } = await mount({ initialState: seeded() });
+    // Every render re-records the Picture (the Reanimated mock runs useDerivedValue inline), and
+    // HUD commits re-render too: the renderer keeps throwing, the report goes out once.
+    for (let score = 1; score <= 3; score++) {
+      nextTick((s) => ({ ...s, score }));
+      await frame();
+    }
+    await rerender({ highScore: 9999 });
+    expect(mockDrawFrame.mock.calls.length).toBeGreaterThan(2);
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
     expect(Sentry.captureMessage).toHaveBeenCalledWith(
       "starswarm.drawFrame: Error: boom",
       expect.objectContaining({ tags: { subsystem: "starswarm.render" } })
@@ -342,7 +325,6 @@ describe("Star Swarm GameCanvas (native) — HUD commits (#2566)", () => {
     expect(
       screen.getByTestId("starswarm-pickup-cue", { includeHiddenElements: true })
     ).toHaveTextContent("GUNS MAX");
-    announce.mockRestore();
   });
 
   it("flashes 1UP on a bonus life until the flash expires", async () => {
@@ -357,7 +339,6 @@ describe("Star Swarm GameCanvas (native) — HUD commits (#2566)", () => {
     now.mockReturnValue(52_000);
     await frame();
     expect(screen.queryByText("1UP")).toBeNull();
-    now.mockRestore();
   });
 });
 
@@ -600,7 +581,7 @@ describe("Star Swarm GameCanvas (native) — engine-event callbacks", () => {
       tags: { subsystem: "starswarm.loop" },
     });
     await frame();
-    expect(pendingFrame).not.toBeNull();
+    expect(raf.hasPendingFrame()).toBe(true);
   });
 
   it("uses the latest callback props without restarting the loop", async () => {
@@ -647,20 +628,19 @@ describe("Star Swarm GameCanvas (native) — imperative handle", () => {
     const { ref } = await mount({ initialState: state });
     expect(ref.current!.getState()).toBe(state);
     // RN hands RAF the performance.now() clock; the readout's window is measured on it too.
-    const now = jest.spyOn(performance, "now").mockImplementation(() => clock);
+    jest.spyOn(performance, "now").mockImplementation(() => raf.now());
     await frames(3);
     expect(ref.current!.getFrameStats()).toEqual(
       expect.objectContaining({ avgMs: 16, p95Ms: 16, frames: expect.any(Number) })
     );
-    now.mockRestore();
   });
 
   it("stops its frame loop on unmount", async () => {
     const { unmount } = await mount({ initialState: seeded() });
-    expect(pendingFrame).not.toBeNull();
+    expect(raf.hasPendingFrame()).toBe(true);
     await unmount();
     expect(global.cancelAnimationFrame).toHaveBeenCalled();
-    expect(pendingFrame).toBeNull();
+    expect(raf.hasPendingFrame()).toBe(false);
   });
 });
 

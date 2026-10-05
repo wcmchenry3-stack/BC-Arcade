@@ -12,6 +12,7 @@ import * as Haptics from "expo-haptics";
 import Controls, { hapticPlayerHit, hapticWaveClear } from "../Controls";
 import type { GameCanvasHandle } from "../GameCanvas";
 import { CANVAS_H, CANVAS_W, PLAYER_W } from "../../../game/starswarm/engine";
+import type { GestureHandlers } from "../../../test-utils/mockScreenDeps";
 
 jest.mock("expo-haptics", () => ({
   impactAsync: jest.fn(() => Promise.resolve()),
@@ -20,34 +21,12 @@ jest.mock("expo-haptics", () => ({
   NotificationFeedbackType: { Success: "success" },
 }));
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-type Handlers = Partial<Record<"onBegin" | "onChange" | "onEnd" | "onFinalize", (e: any) => void>>;
-const mockPan: { current: Handlers } = { current: {} };
-jest.mock("react-native-gesture-handler", () => ({
-  GestureDetector: ({ gesture, children }: any) => {
-    mockPan.current = gesture ? gesture.__handlers : {};
-    return children;
-  },
-  Gesture: {
-    Pan: () => {
-      const handlers: Handlers = {};
-      const b: any = new Proxy(
-        {},
-        {
-          get: (_t, prop: string) => {
-            if (prop === "__handlers") return handlers;
-            return (arg?: unknown) => {
-              if (prop.startsWith("on")) (handlers as any)[prop] = arg;
-              return b;
-            };
-          },
-        }
-      );
-      return b;
-    },
-  },
-}));
-/* eslint-enable @typescript-eslint/no-explicit-any */
+// The Pan gesture Controls builds on its last render records its callbacks here.
+const mockGestures: Record<string, GestureHandlers> = {};
+jest.mock("react-native-gesture-handler", () =>
+  mockScreenDeps().mockGestureHandler(() => mockGestures)
+);
+const pan = () => mockGestures.pan!;
 
 const SCALE = 1;
 const TOP_Y = 50; // well inside the top 60% (tap-to-pause zone)
@@ -71,9 +50,9 @@ async function mount(props: Partial<React.ComponentProps<typeof Controls>> = {})
 }
 
 function tapAt(y: number, translationX = 0) {
-  mockPan.current.onBegin!({ y });
-  mockPan.current.onEnd!({ y, translationX });
-  mockPan.current.onFinalize!({});
+  pan().onBegin!({ y });
+  pan().onEnd!({ y, translationX });
+  pan().onFinalize!({});
 }
 
 describe("Star Swarm Controls — pause card", () => {
@@ -127,9 +106,9 @@ describe("Star Swarm Controls — tap to pause", () => {
 
   it("a touch in the drag zone moves the ship, not the pause state", async () => {
     const { canvasRef, onPause } = await mount();
-    mockPan.current.onBegin!({ y: BOTTOM_Y });
-    mockPan.current.onChange!({ translationX: 20 });
-    mockPan.current.onEnd!({ y: BOTTOM_Y, translationX: 20 });
+    pan().onBegin!({ y: BOTTOM_Y });
+    pan().onChange!({ translationX: 20 });
+    pan().onEnd!({ y: BOTTOM_Y, translationX: 20 });
     expect(canvasRef.current.setPlayerX).toHaveBeenLastCalledWith(CANVAS_W / 2 + 20);
     expect(onPause).not.toHaveBeenCalled();
   });

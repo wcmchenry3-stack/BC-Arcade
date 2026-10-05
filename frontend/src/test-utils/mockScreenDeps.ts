@@ -128,6 +128,55 @@ export function mockNetwork({
   return { useNetwork: state ?? (() => ({ isOnline: online, isInitialized: true })) };
 }
 
+/** A gesture's recorded `on*` callbacks (`onBegin`, `onUpdate`, `onChange`, `onEnd`, ...). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type GestureHandlers = Record<string, ((e?: any) => void) | undefined>;
+
+/**
+ * `react-native-gesture-handler` whose builders record the callbacks a
+ * component registers, so a test can fire a gesture by calling them.
+ * `sink()` returns the record to write to (pass a getter: the factory runs
+ * before the test file's consts exist); each `Gesture.Pan()` / `Pinch()` /
+ * `Tap()` / `LongPress()` build replaces `sink().pan` / `.pinch` / ..., so
+ * after a render it holds the handlers of the gesture that render built.
+ * Every other builder method (`minDistance`, `runOnJS`, ...) chains.
+ * `GestureDetector` and `GestureHandlerRootView` render their children.
+ */
+export function mockGestureHandler(sink: () => Record<string, GestureHandlers>) {
+  const builder = (kind: string) => () => {
+    const handlers: GestureHandlers = {};
+    sink()[kind] = handlers;
+    const chain: object = new Proxy(
+      {},
+      {
+        get: (_target, prop) => {
+          // Symbol keys come from pretty-format / React inspecting the object.
+          if (typeof prop !== "string") return undefined;
+          return (arg?: unknown) => {
+            if (prop.startsWith("on")) handlers[prop] = arg as GestureHandlers[string];
+            return chain;
+          };
+        },
+      }
+    );
+    return chain;
+  };
+  const passThrough = ({ children }: { children?: unknown }) => children;
+  return {
+    GestureDetector: passThrough,
+    GestureHandlerRootView: passThrough,
+    Gesture: {
+      Pan: builder("pan"),
+      Pinch: builder("pinch"),
+      Tap: builder("tap"),
+      LongPress: builder("longPress"),
+      Simultaneous: (...gestures: unknown[]) => gestures[0],
+      Exclusive: (...gestures: unknown[]) => gestures[0],
+      Race: (...gestures: unknown[]) => gestures[0],
+    },
+  };
+}
+
 declare global {
   /** This module, for jest.mock factories; set in jest.setup.ts. */
   // eslint-disable-next-line no-var

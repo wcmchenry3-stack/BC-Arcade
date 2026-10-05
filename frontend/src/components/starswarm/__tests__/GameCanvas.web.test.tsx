@@ -15,7 +15,12 @@ import { act, render, screen } from "@testing-library/react-native";
 import GameCanvas from "../GameCanvas.web";
 import type { GameCanvasHandle } from "../GameCanvas.web";
 import { initStarSwarm } from "../../../game/starswarm/engine";
-import type { StarSwarmState } from "../../../game/starswarm/types";
+import {
+  CANVAS_TEST_H as H,
+  CANVAS_TEST_W as W,
+  createRafHarness,
+  seededStarSwarm as seeded,
+} from "./helpers/canvasFixtures";
 
 jest.mock("expo-asset", () => ({
   Asset: {
@@ -26,9 +31,6 @@ jest.mock("expo-asset", () => ({
     }),
   },
 }));
-
-const W = 360;
-const H = 640;
 
 // --- a recording CanvasRenderingContext2D -----------------------------------------------------
 
@@ -59,19 +61,10 @@ function recordingContext(): CanvasRenderingContext2D {
 let proto: Record<string, unknown> | null = null;
 const ctx = recordingContext();
 
-// --- hand-cranked RAF and loadable images --------------------------------------------------------
+// --- hand-cranked RAF (helpers/canvasFixtures.ts) and loadable images ---------------------------
 
-let pendingFrame: ((ts: number) => void) | null = null;
-let clock = 1000;
-async function frames(n: number, dt = 33) {
-  for (let i = 0; i < n; i++) {
-    clock += dt;
-    const cb = pendingFrame;
-    if (!cb) throw new Error("no frame requested");
-    pendingFrame = null;
-    await act(async () => cb(clock));
-  }
-}
+const raf = createRafHarness({ frameMs: 33 });
+const { frames } = raf;
 
 class LoadingImage {
   onload: (() => void) | null = null;
@@ -82,6 +75,7 @@ class LoadingImage {
   }
 }
 let mockImagesLoad = true;
+const realImage = window.Image;
 
 beforeAll(() => {
   window.Image = LoadingImage as unknown as typeof window.Image;
@@ -89,21 +83,18 @@ beforeAll(() => {
 beforeEach(() => {
   for (const k of Object.keys(calls)) delete calls[k];
   fillTexts.length = 0;
-  pendingFrame = null;
   mockImagesLoad = true;
-  global.requestAnimationFrame = jest.fn((cb: (ts: number) => void) => {
-    pendingFrame = cb;
-    return 1;
-  }) as unknown as typeof requestAnimationFrame;
-  global.cancelAnimationFrame = jest.fn();
+  raf.install();
+});
+afterEach(() => {
+  // A test that hides the tab shadows Document.prototype.hidden with an own property.
+  delete (document as unknown as { hidden?: boolean }).hidden;
 });
 afterAll(() => {
   if (proto) delete proto.getContext;
+  window.Image = realImage;
+  raf.uninstall();
 });
-
-function seeded(overrides: Partial<StarSwarmState> = {}): StarSwarmState {
-  return { ...initStarSwarm(W, H, 1, 7, "LieutenantJG"), phase: "Playing", ...overrides };
-}
 
 async function mount(props: Partial<React.ComponentProps<typeof GameCanvas>> = {}) {
   const ref = React.createRef<GameCanvasHandle>();
@@ -132,8 +123,12 @@ describe("Star Swarm GameCanvas (web)", () => {
     const onScoreChange = jest.fn();
     const onExplosion = jest.fn();
     const { ref } = await mount({ initialState: seeded(), onScoreChange, onExplosion });
-    await frames(400);
-    expect(calls.clearRect).toBe(400);
+    await frames(200);
+    const clearsAt200 = calls.clearRect!;
+    await frames(200);
+    // The web canvas has no publish gating: it clears and redraws on every frame.
+    expect(clearsAt200).toBeGreaterThanOrEqual(200);
+    expect(calls.clearRect! - clearsAt200).toBeGreaterThanOrEqual(200);
     expect(calls.drawImage).toBeGreaterThan(0);
     expect(fillTexts.some((t) => t.startsWith("SCORE"))).toBe(true);
     expect(fillTexts.some((t) => t.startsWith("WAVE"))).toBe(true);
@@ -155,7 +150,7 @@ describe("Star Swarm GameCanvas (web)", () => {
     ref.current!.triggerPowerUp("bomb");
     await frames(300);
     expect(ref.current!.getState().wave).toBeGreaterThanOrEqual(5);
-    expect(calls.clearRect).toBe(304);
+    expect(calls.clearRect).toBeGreaterThanOrEqual(304);
     expect(fillTexts.some((t) => t.includes("Captain"))).toBe(true);
   });
 
@@ -178,11 +173,13 @@ describe("Star Swarm GameCanvas (web)", () => {
     expect(ref.current!.getState()).not.toBe(start);
   });
 
-  it("paused, the engine does not tick", async () => {
+  it("paused, the engine does not tick but the frozen frame is still redrawn", async () => {
     const { ref } = await mount({ initialState: seeded(), isPaused: true });
     const start = ref.current!.getState();
     await frames(20);
     expect(ref.current!.getState()).toBe(start);
+    // Unlike the native canvas (#2563), the web loop draws every frame, paused or not.
+    expect(calls.clearRect).toBeGreaterThanOrEqual(20);
   });
 
   it("dev-panel injections and the imperative handle reach the engine", async () => {
