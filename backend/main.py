@@ -607,7 +607,7 @@ async def _db_health_check() -> None:
         await _ping_db()
         host = DATABASE_URL.split("@")[-1] if DATABASE_URL else ""
         _audit_log.info(json.dumps({"event": "db_connected", "url": host}))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         _audit_log.error(json.dumps({"event": "db_connect_failed", "error": str(exc)}))
 
 
@@ -630,7 +630,7 @@ async def health_db(request: Request) -> JSONResponse:
         return JSONResponse(status_code=503, content={"status": "unconfigured"})
     try:
         await _ping_db()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         # asyncio.TimeoutError stringifies to "" — log the type so a stall is legible.
         detail = str(exc) or type(exc).__name__
         _audit_log.error(json.dumps({"event": "db_health_failed", "error": detail}))

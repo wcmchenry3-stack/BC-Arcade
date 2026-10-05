@@ -93,7 +93,7 @@ def _stop_unless_single_alembic_head() -> None:
 
     try:
         heads = script_heads()
-    except Exception as exc:  # any failure to load the graph stops the run
+    except Exception as exc:  # noqa: BLE001 — any failure to load the graph stops the run
         pytest.exit(
             f"Could not read the Alembic migration graph: {type(exc).__name__}: {exc}",
             returncode=1,

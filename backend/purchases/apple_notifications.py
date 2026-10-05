@@ -169,7 +169,7 @@ async def replay_notification_history(
             )
             try:
                 page = await client.get_notification_history(token, request)
-            except Exception:  # APIException, network or timeout
+            except Exception:  # noqa: BLE001 — APIException, network or timeout
                 result.skipped_environments += 1
                 _log.warning(json.dumps({"event": "apple_replay_api_failed", "env": env}))
                 break
@@ -227,7 +227,7 @@ async def run_replay_loop(
                 replay_notification_history(get_verifier(), get_session_factory()),
                 timeout=timeout_s,
             )
-        except Exception as exc:  # any failure waits for the next cycle
+        except Exception as exc:  # noqa: BLE001 — any failure waits for the next cycle
             _log.warning(json.dumps({"event": "apple_replay_failed"}))
             with sentry_sdk.new_scope() as scope:
                 scope.set_tag("subsystem", "purchases.apple_replay")
