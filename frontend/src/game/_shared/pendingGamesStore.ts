@@ -18,6 +18,13 @@
  * Every write waits for that first read, so a game started before init()
  * resolves can neither be dropped by the load nor overwrite the saved games.
  *
+ * The counter's own write is coalesced (#2959): one write of the map is in
+ * flight at a time, and bumps during it fold into a single trailing write, so
+ * a burst of events in one tick costs one write and the on-disk lag is still
+ * one write — never a timer. A longer debounce would widen the window in
+ * which a kill loses increments, after which a resumed session would reuse an
+ * event_index the queue already holds (the server keeps the first).
+ *
  * Previous process (#2654): the games read from disk at init() — and not
  * created by this process — belong to an earlier app process. Any of them
  * still open was left behind when that process was killed (an "orphan");
@@ -149,6 +156,11 @@ export class PendingGamesStore {
   /** >0 while `batch()` runs: writes are deferred to one at its end. */
   private batchDepth = 0;
   private batchDirty = false;
+  /** The coalesced counter write (#2959): null when none is in flight. */
+  private counterWrite: Promise<void> | null = null;
+  /** Bumped by every counter change; `counterWritten` is the last one on disk. */
+  private counterVersion = 0;
+  private counterWritten = 0;
 
   /**
    * Load persisted state, then run the startup sweep if one is registered.
@@ -279,10 +291,40 @@ export class PendingGamesStore {
     const idx = game.nextEventIndex;
     game.nextEventIndex = idx + 1;
     game.lastEventAt = Date.now();
-    // Fire and forget — persistence lag is acceptable here because the
-    // event itself gets a durable write from eventStore.
-    this.persist().catch(() => undefined);
+    // Coalesced and fire-and-forget — persistence lag is acceptable here
+    // because the event itself gets a durable write from eventStore.
+    this.persistCounter();
     return idx;
+  }
+
+  /**
+   * Persist the counter change soon (#2959, see the header). Inside `batch()`
+   * the batch's single write covers it; otherwise one write runs at a time,
+   * and every bump during it lands in one trailing write.
+   */
+  private persistCounter(): void {
+    if (this.batchDepth > 0) {
+      this.batchDirty = true;
+      return;
+    }
+    this.counterVersion += 1;
+    if (this.counterWrite !== null) return;
+    this.counterWrite = this.drainCounter()
+      .catch(() => undefined)
+      .finally(() => {
+        this.counterWrite = null;
+      });
+  }
+
+  private async drainCounter(): Promise<void> {
+    while (this.counterWritten < this.counterVersion) {
+      // persist() serialises the map after the load, so every bump made by
+      // then is in the write; note the version it covers before it runs.
+      await this.load();
+      const target = this.counterVersion;
+      await this.persist();
+      this.counterWritten = target;
+    }
   }
 
   /**
@@ -418,6 +460,19 @@ export class PendingGamesStore {
     const game = this.games.get(gameId);
     if (!game || game.completeSynced) return Promise.resolve();
     game.completeSynced = true;
+    return this.persist();
+  }
+
+  /**
+   * Apply a partial change to a game's record and persist it (#2959).
+   * SyncWorker re-flips `startedSynced` through it after a 404, so the change
+   * reaches disk like every other write instead of bypassing `persist()`.
+   * No-op on an unknown game.
+   */
+  update(gameId: string, patch: Partial<PendingGame>): Promise<void> {
+    const game = this.games.get(gameId);
+    if (!game) return Promise.resolve();
+    Object.assign(game, patch);
     return this.persist();
   }
 
