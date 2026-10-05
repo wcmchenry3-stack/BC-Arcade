@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import random
 import unicodedata
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 # DAILY_WORD_SALT must be set in production; default 0 makes answer order trivially derivable.
@@ -46,7 +46,7 @@ _VALID: dict[str, frozenset[str]] = {"en": _VALID_EN, "hi": _VALID_HI}
 
 def _local_date(tz_offset_minutes: int, utc_now: datetime | None = None) -> datetime:
     if utc_now is None:
-        utc_now = datetime.now(timezone.utc)
+        utc_now = datetime.now(UTC)
     return utc_now + timedelta(minutes=tz_offset_minutes)
 
 

@@ -79,10 +79,7 @@ def _apply(state: list[list[str]], frm: int, to: int) -> list[list[str]]:
 
 
 def _solved(state: list[list[str]]) -> bool:
-    for b in state:
-        if b and (len(b) < DEPTH or len(set(b)) > 1):
-            return False
-    return True
+    return all(not (b and (len(b) < DEPTH or len(set(b)) > 1)) for b in state)
 
 
 def _from_json(bottles: list[list[str]]) -> list[list[str]]:

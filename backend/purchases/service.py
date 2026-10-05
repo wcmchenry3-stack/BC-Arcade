@@ -40,7 +40,7 @@ import logging
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from sqlalchemy import delete, func, select
@@ -68,12 +68,12 @@ _audit_log = logging.getLogger("audit")
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _utc(dt: datetime) -> datetime:
     """``dt`` as an aware UTC datetime (SQLite hands back naive values)."""
-    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
 
 def _is_stale(purchase: Purchase, event_at: datetime) -> bool:

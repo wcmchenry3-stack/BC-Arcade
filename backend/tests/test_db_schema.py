@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import func, select
@@ -130,7 +130,7 @@ async def test_game_events_and_buglog_roundtrip() -> None:
 
         bug = BugLog(
             session_id=sid,
-            logged_at=datetime.now(timezone.utc),
+            logged_at=datetime.now(UTC),
             level="warn",
             source="yacht.engine",
             message="dice reroll invariant violated",
@@ -193,7 +193,7 @@ async def test_invalid_level_fails_check() -> None:
     async with factory() as s:
         bug = BugLog(
             session_id="level-test",
-            logged_at=datetime.now(timezone.utc),
+            logged_at=datetime.now(UTC),
             level="info",  # not in ('warn','error','fatal')
             source="test",
             message="should fail",

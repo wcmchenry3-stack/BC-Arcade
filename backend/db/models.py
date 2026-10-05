@@ -18,8 +18,8 @@ pgcrypto.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from datetime import date as dt_date
-from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON,
@@ -207,7 +207,7 @@ class GameEntitlement(Base):
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Purchase(Base):

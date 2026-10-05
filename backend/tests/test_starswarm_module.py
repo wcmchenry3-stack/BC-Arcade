@@ -12,7 +12,7 @@ import copy
 import json
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -411,7 +411,7 @@ async def _seed(score: int, name: str, meta: dict) -> None:
                 players=[],
                 final_score=score,
                 outcome="completed",
-                completed_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                completed_at=datetime(2026, 1, 1, tzinfo=UTC),
             )
         )
         await db.commit()

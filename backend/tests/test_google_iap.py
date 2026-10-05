@@ -14,7 +14,7 @@ import logging
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
@@ -64,7 +64,7 @@ from tests.google_play_fakes import (
 
 
 def NOW() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +170,7 @@ async def count(model, *where) -> int:
 
 
 def utc(dt: datetime) -> datetime:
-    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
 
 
 def grant(client, h: Harness, token: str | None = None, **kw) -> tuple[str, str]:
@@ -1271,7 +1271,7 @@ async def test_jobs_loop_is_deterministic_and_survives_failures(monkeypatch) -> 
         if len(sleeps) == 3:
             raise asyncio.CancelledError
 
-    fixed = [datetime(2026, 9, 30, 12, tzinfo=timezone.utc)]
+    fixed = [datetime(2026, 9, 30, 12, tzinfo=UTC)]
 
     def clock() -> datetime:
         fixed[0] += timedelta(days=1)
@@ -1287,7 +1287,7 @@ async def test_jobs_loop_is_deterministic_and_survives_failures(monkeypatch) -> 
             lambda: None, get_session_factory, interval_s=77.0, sleep=fake_sleep, clock=clock
         )
     assert sleeps == [77.0] * 3
-    assert seen == [datetime(2026, 10, d, 12, tzinfo=timezone.utc) for d in (1, 2, 3)]
+    assert seen == [datetime(2026, 10, d, 12, tzinfo=UTC) for d in (1, 2, 3)]
     assert len(captured) == 3
 
 
@@ -1464,7 +1464,7 @@ async def test_replayed_far_future_purchased_cannot_block_a_later_void(client, g
     """Review S1: a captured push token replayed with eventTimeMillis in 2036."""
     tc = NOW() - timedelta(minutes=10)
     session, token = grant(client, gp, completed=tc)
-    future = datetime(2036, 1, 1, tzinfo=timezone.utc)
+    future = datetime(2036, 1, 1, tzinfo=UTC)
     replay = developer_notification(one_time=(1, token), event_at=future)
     post_rtdn(client, replay)
     assert utc((await row(token)).state_changed_at) < NOW()  # ordered by completion time
@@ -1477,7 +1477,7 @@ async def test_replayed_far_future_purchased_cannot_block_a_later_void(client, g
 async def test_far_future_event_time_is_clamped(client, gp) -> None:
     _, token = grant(client, gp)
     gp.play.purchases[token] = play_purchase(state="CANCELLED")
-    future = datetime(2036, 1, 1, tzinfo=timezone.utc)
+    future = datetime(2036, 1, 1, tzinfo=UTC)
     note = developer_notification(
         voided={"purchaseToken": token, "productType": 2}, event_at=future
     )

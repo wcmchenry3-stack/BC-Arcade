@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -265,7 +265,7 @@ def test_offline_sql_is_one_update_per_game(alembic: Alembic) -> None:
 # /stats/me reads the backfilled wins
 # ---------------------------------------------------------------------------
 
-_T0 = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+_T0 = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 
 
 async def _add(

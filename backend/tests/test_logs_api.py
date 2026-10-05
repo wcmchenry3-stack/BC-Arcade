@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,7 +20,7 @@ pytestmark = pytest.mark.skipif(
 def _log(level: str = "warn") -> dict:
     return {
         "id": str(uuid.uuid4()),
-        "logged_at": datetime.now(timezone.utc).isoformat(),
+        "logged_at": datetime.now(UTC).isoformat(),
         "level": level,
         "source": "test",
         "message": "something happened",

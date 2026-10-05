@@ -12,7 +12,7 @@ reuses it for all guess tasks (simulating a real player's session).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from locust import TaskSet, task
 
@@ -32,7 +32,7 @@ class DailyWordTasks(TaskSet):
         if resp.status_code == 200:
             self._puzzle_id = resp.json().get("puzzle_id", "")
         else:
-            local_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            local_date = datetime.now(UTC).strftime("%Y-%m-%d")
             self._puzzle_id = f"{local_date}:en"
 
     @task(3)
