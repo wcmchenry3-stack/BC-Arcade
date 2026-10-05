@@ -20,10 +20,6 @@ import type { StarSwarmState } from "../../game/starswarm/types";
 // state, and getState() returns an engine state); Controls is real, so the
 // overlay itself is asserted.
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockPopToTop = jest.fn();
 // Live navigation listeners, so a test can blur the screen (#2633).
 const mockNavListeners = new Map<string, Set<() => void>>();

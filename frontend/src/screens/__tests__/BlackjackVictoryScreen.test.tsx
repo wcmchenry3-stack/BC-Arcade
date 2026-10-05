@@ -16,10 +16,6 @@ jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({ navigate: mockShellNavigate }),
 }));
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 jest.mock("../../game/blackjack/storage", () => ({
   loadRuns: jest.fn().mockResolvedValue([]),
 }));

@@ -20,14 +20,6 @@ jest.mock("../../game/_shared/NetworkContext", () => ({
   useNetwork: () => ({ isOnline: mockNetwork.isOnline, isInitialized: true }),
 }));
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockNavigate = jest.fn();
 jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({ navigate: mockNavigate }),

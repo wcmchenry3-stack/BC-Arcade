@@ -22,10 +22,6 @@ import { BOARDS, GAME_TYPES, type GameType } from "../../api/vocab";
 import { isGameVisible } from "../../entitlements/gameVisibility";
 import { clearMyStatsCache } from "../../hooks/useMyStats";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockGetMyStats = jest.fn();
 jest.mock("../../api/stats", () => ({
   statsApi: { getMyStats: () => mockGetMyStats() },

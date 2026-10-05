@@ -38,10 +38,6 @@ jest.mock("../../entitlements/EntitlementContext", () => ({
     applyToken: mockApplyToken,
   }),
 }));
-
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
 jest.mock("../../components/shared/AppHeader", () => ({
   APP_HEADER_HEIGHT: 64,
   AppHeader: ({ title }: { title: string }) => {

@@ -132,14 +132,6 @@ jest.mock("@react-navigation/native", () => ({
   useFocusEffect: jest.fn(),
 }));
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 jest.useFakeTimers();
 
 async function renderScreen() {

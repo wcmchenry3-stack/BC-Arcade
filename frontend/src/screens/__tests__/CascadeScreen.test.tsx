@@ -19,10 +19,6 @@ import {
   storeAssignedDisplayName,
 } from "../../game/_shared/displayName";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
 // Captured so tests can fire "blur"/"focus" (a pushed Stats/Leaderboard/

@@ -14,10 +14,6 @@ import {
   rememberMyStats,
 } from "../../hooks/useMyStats";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockGetMyStats = jest.fn();
 jest.mock("../../api/stats", () => ({
   statsApi: { getMyStats: () => mockGetMyStats() },

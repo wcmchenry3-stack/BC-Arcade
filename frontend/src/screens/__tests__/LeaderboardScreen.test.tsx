@@ -8,10 +8,6 @@ import { ApiError } from "../../game/_shared/httpClient";
 import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
 import type { LeaderboardParams } from "../../types/navigation";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockGetLeaderboard = jest.fn();
 jest.mock("../../api/stats", () => ({
   statsApi: { getLeaderboard: (...args: unknown[]) => mockGetLeaderboard(...args) },

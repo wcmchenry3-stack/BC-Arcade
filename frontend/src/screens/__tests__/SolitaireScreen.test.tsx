@@ -28,10 +28,6 @@ import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 // more headroom rather than papering over it with retries.
 jest.setTimeout(15000);
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 // Capture the beforeRemove listener so tests can invoke it to simulate
 // back-navigation without rendering a full navigation container.
 const mockNavListeners = new Map<string, Array<() => void>>();

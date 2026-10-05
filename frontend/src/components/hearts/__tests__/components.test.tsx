@@ -9,10 +9,6 @@ import PassBanner from "../PassBanner";
 import { OpponentCapturedPile, SelfCapturedPile, penaltyPoints } from "../CapturedPile";
 import type { Card, TrickCard } from "../../../game/hearts/types";
 
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 async function wrap(ui: React.ReactElement) {
   return await render(<ThemeProvider>{ui}</ThemeProvider>);
 }

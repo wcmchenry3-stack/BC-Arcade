@@ -21,16 +21,8 @@ import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
 // ---------------------------------------------------------------------------
-// Global setup: expo-blur, navigation, storage
+// Global setup: navigation, storage
 // ---------------------------------------------------------------------------
-
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
 
 const mockNavigate = jest.fn();
 jest.mock("@react-navigation/native", () => ({

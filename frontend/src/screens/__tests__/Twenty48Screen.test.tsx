@@ -23,10 +23,6 @@ jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({ navigate: mockShellNavigate }),
 }));
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 // Mock storage — no saved game, no-op persistence.
 jest.mock("../../game/twenty48/storage", () => ({
   saveGame: jest.fn(),

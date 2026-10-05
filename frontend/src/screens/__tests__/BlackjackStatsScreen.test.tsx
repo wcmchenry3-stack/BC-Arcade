@@ -6,10 +6,6 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { loadGame, loadRuns } from "../../game/blackjack/storage";
 import type { RunRecord } from "../../game/blackjack/storage";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 jest.mock("../../game/blackjack/storage", () => ({
   saveGame: jest.fn(),
   clearGame: jest.fn(),

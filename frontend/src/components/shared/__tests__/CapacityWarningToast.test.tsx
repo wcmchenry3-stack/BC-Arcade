@@ -4,10 +4,6 @@ import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import { CapacityWarningToast } from "../CapacityWarningToast";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 async function renderWith(
   shouldShowCheck: () => Promise<boolean>,
   markShown: () => Promise<void> = () => Promise.resolve()

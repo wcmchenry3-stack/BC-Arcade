@@ -15,10 +15,6 @@ jest.mock("@react-navigation/native", () => ({
   useNavigation: () => ({ navigate: mockShellNavigate }),
 }));
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 // ---------------------------------------------------------------------------
 // Mock blackjack storage — no saved game by default, no-op persistence.
 // ---------------------------------------------------------------------------

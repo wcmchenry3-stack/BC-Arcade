@@ -21,10 +21,6 @@ jest.mock("../../game/yacht/engine", () => {
   return { ...actual, roll: (...args: unknown[]) => mockRoll(...args) };
 });
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 jest.mock("../../game/yacht/storage", () => ({
   saveGame: jest.fn(),
   clearGame: jest.fn().mockResolvedValue(undefined),

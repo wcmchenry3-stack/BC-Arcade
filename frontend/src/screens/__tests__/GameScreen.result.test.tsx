@@ -46,10 +46,6 @@ jest.mock("../../game/yacht/engine", () => {
   };
 });
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 jest.mock("../../game/yacht/storage", () => ({
   saveGame: jest.fn(),
   clearGame: jest.fn().mockResolvedValue(undefined),

@@ -15,10 +15,6 @@ const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregrou
 // The shared result card for Star Swarm (#2516). The Skia canvas is mocked: the
 // test drives its onGameOver callback the way the game loop does.
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
 jest.mock("@react-navigation/native", () => ({

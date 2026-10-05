@@ -25,14 +25,6 @@ jest.mock("../../entitlements/EntitlementContext", () => ({
   }),
 }));
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockPrefetch = jest.fn();
 jest.mock("../../utils/lazyScreens", () => ({
   prefetchLobbyGameScreens: (canPlay: (slug: string) => boolean) => mockPrefetch(canPlay),

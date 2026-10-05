@@ -4,14 +4,6 @@ import { render, screen, fireEvent } from "@testing-library/react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import BottomTabBar from "../BottomTabBar";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 34, left: 0, right: 0 }),
 }));

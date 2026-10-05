@@ -33,10 +33,6 @@ jest.mock("../../../game/_shared/withRetry", () => ({
   withRetry: <T,>(fn: () => Promise<T>) => fn(),
 }));
 
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 // A stable object — useNavigation is called on every render.
 const focusListeners = new Set<() => void>();
 const mockNavigation = {
