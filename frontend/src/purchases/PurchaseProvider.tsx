@@ -6,7 +6,7 @@
  */
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import * as Sentry from "@sentry/react-native";
-import { PREMIUM_GAMES, useEntitlements } from "../entitlements/EntitlementContext";
+import { PREMIUM_GAMES, useEntitlementGate } from "../entitlements/EntitlementContext";
 import { selectPurchaseAdapter } from "./selectAdapter";
 import type { PurchaseAdapter } from "./types";
 import { unavailablePurchaseAdapter } from "./unavailableAdapter";
@@ -30,7 +30,7 @@ export function PurchaseProvider({
   /** Test/dev seam: use this adapter instead of the selector's. */
   adapter?: PurchaseAdapter;
 }) {
-  const { canPlay, isLoading, applyToken, refresh } = useEntitlements();
+  const { canPlay, isLoading, applyToken, refresh } = useEntitlementGate();
 
   // The selector needs applyToken, which changes identity only if the
   // entitlement provider is replaced; a ref keeps the adapter stable.

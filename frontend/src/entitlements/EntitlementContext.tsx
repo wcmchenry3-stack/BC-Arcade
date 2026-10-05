@@ -1,4 +1,12 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { AppState, AppStateStatus } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
@@ -61,13 +69,33 @@ export interface EntitlementContextValue {
   applyToken: (rawToken: string) => Promise<void>;
 }
 
-const EntitlementContext = createContext<EntitlementContextValue>({
+/**
+ * What gates a game: `canPlay` (a new function only when the entitled games
+ * actually change), whether it can be trusted yet (`isLoading` flips once, at
+ * launch), and the two actions. Gated screens read this, so a foreground
+ * refresh that changes nothing does not re-render them (#2964).
+ */
+export type EntitlementGateValue = Omit<EntitlementContextValue, "lastRefreshed">;
+
+/** The volatile part: it changes on every refresh, even when nothing was granted or revoked. */
+export type EntitlementStatusValue = Pick<EntitlementContextValue, "lastRefreshed">;
+
+const EntitlementGateContext = createContext<EntitlementGateValue>({
   canPlay: (slug) => !PREMIUM_GAMES.has(slug),
   isLoading: true,
-  lastRefreshed: null,
   refresh: async () => {},
   applyToken: async () => {},
 });
+
+const EntitlementStatusContext = createContext<EntitlementStatusValue>({
+  lastRefreshed: null,
+});
+
+function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const item of a) if (!b.has(item)) return false;
+  return true;
+}
 
 const _entitlementsClient = createGameClient({ apiTag: "entitlements" });
 
@@ -151,11 +179,17 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
   // changed before it resolved is stale and must not apply or persist.
   const generationRef = useRef(0);
 
+  // A refresh that returns the games already held keeps the same set, so
+  // `canPlay` and the gate value keep their identity (#2964).
+  const applyEntitled = useCallback((next: Set<string>) => {
+    setEntitledGames((prev) => (prev !== null && sameSet(prev, next) ? prev : next));
+  }, []);
+
   const refresh = useCallback(async () => {
     const gen = ++generationRef.current;
     try {
       await fetchAndApplyToken(
-        setEntitledGames,
+        applyEntitled,
         setLastRefreshed,
         () => generationRef.current !== gen
       );
@@ -172,41 +206,46 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
         });
       }
     }
-  }, []);
+  }, [applyEntitled]);
 
-  const applyToken = useCallback(async (rawToken: string) => {
-    const result = await parseRawToken(rawToken);
-    if (!result.valid || result.expired) throw new Error("Invalid or expired entitlement token");
-    // Apply in memory first (invalidating any in-flight fetch), then persist
-    // best-effort: a storage failure must not undo a verified purchase.
-    generationRef.current++;
-    setEntitledGames(new Set(result.payload.entitled_games));
-    setLastRefreshed(new Date());
-    try {
-      await AsyncStorage.setMany({
-        [TOKEN_STORAGE_KEY]: rawToken,
-        [CACHED_AT_STORAGE_KEY]: new Date().toISOString(),
-      });
-    } catch (e) {
-      Sentry.captureException(e, { tags: { subsystem: "entitlements", op: "applyTokenPersist" } });
-    }
-  }, []);
+  const applyToken = useCallback(
+    async (rawToken: string) => {
+      const result = await parseRawToken(rawToken);
+      if (!result.valid || result.expired) throw new Error("Invalid or expired entitlement token");
+      // Apply in memory first (invalidating any in-flight fetch), then persist
+      // best-effort: a storage failure must not undo a verified purchase.
+      generationRef.current++;
+      applyEntitled(new Set(result.payload.entitled_games));
+      setLastRefreshed(new Date());
+      try {
+        await AsyncStorage.setMany({
+          [TOKEN_STORAGE_KEY]: rawToken,
+          [CACHED_AT_STORAGE_KEY]: new Date().toISOString(),
+        });
+      } catch (e) {
+        Sentry.captureException(e, {
+          tags: { subsystem: "entitlements", op: "applyTokenPersist" },
+        });
+      }
+    },
+    [applyEntitled]
+  );
 
   useEffect(() => {
     async function init() {
       const gen = ++generationRef.current;
       const isStale = () => generationRef.current !== gen;
       try {
-        await fetchAndApplyToken(setEntitledGames, setLastRefreshed, isStale);
+        await fetchAndApplyToken(applyEntitled, setLastRefreshed, isStale);
       } catch {
         const cached = await loadCachedEntitlements();
-        if (!isStale()) setEntitledGames(cached);
+        if (!isStale()) applyEntitled(cached);
       } finally {
         setIsLoading(false);
       }
     }
     init();
-  }, []);
+  }, [applyEntitled]);
 
   // Re-fetch on every foreground transition.
   useEffect(() => {
@@ -256,13 +295,42 @@ export function EntitlementProvider({ children }: { children: React.ReactNode })
     [entitledGames]
   );
 
+  const gate = useMemo<EntitlementGateValue>(
+    () => ({ canPlay, isLoading, refresh, applyToken }),
+    [canPlay, isLoading, refresh, applyToken]
+  );
+  const status = useMemo<EntitlementStatusValue>(() => ({ lastRefreshed }), [lastRefreshed]);
+
   return (
-    <EntitlementContext.Provider value={{ canPlay, isLoading, lastRefreshed, refresh, applyToken }}>
-      {children}
-    </EntitlementContext.Provider>
+    <EntitlementGateContext.Provider value={gate}>
+      <EntitlementStatusContext.Provider value={status}>
+        {children}
+      </EntitlementStatusContext.Provider>
+    </EntitlementGateContext.Provider>
   );
 }
 
+/**
+ * What a gated screen needs: `canPlay`, `isLoading`, `refresh`, `applyToken`.
+ * Prefer it to `useEntitlements()`: it does not re-render when a refresh only
+ * moves `lastRefreshed` (#2964).
+ */
+export function useEntitlementGate(): EntitlementGateValue {
+  return useContext(EntitlementGateContext);
+}
+
+/** `lastRefreshed`, which changes on every refresh. */
+export function useEntitlementStatus(): EntitlementStatusValue {
+  return useContext(EntitlementStatusContext);
+}
+
+/**
+ * The whole value, as before the split. It re-renders on every refresh (it
+ * reads `lastRefreshed`); a screen that only gates should use
+ * `useEntitlementGate()`.
+ */
 export function useEntitlements(): EntitlementContextValue {
-  return useContext(EntitlementContext);
+  const gate = useContext(EntitlementGateContext);
+  const { lastRefreshed } = useContext(EntitlementStatusContext);
+  return useMemo(() => ({ ...gate, lastRefreshed }), [gate, lastRefreshed]);
 }
