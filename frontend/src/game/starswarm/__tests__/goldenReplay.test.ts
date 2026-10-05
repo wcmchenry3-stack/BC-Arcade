@@ -5,8 +5,15 @@
  * the engine's two cosmetic `Math.random` calls, then drives the public API (`initStarSwarm`,
  * `tick`, `applyPowerUp`, `throwAsteroid`, `killEscorts`) with a scripted pilot for a fixed
  * number of ticks. Every CHECKPOINT_EVERY ticks it records a short summary plus a SHA-256 of
- * `JSON.stringify(state)`, and at the end the module counters (`engineCounters()`); the whole
- * record must equal `__fixtures__/golden-replay-seed42.json`.
+ * the canonical `JSON.stringify(state)`, and at the end the module counters (`engineCounters()`);
+ * the whole record must equal `__fixtures__/golden-replay-seed42.json`.
+ *
+ * Why the hash rounds: V8's `Math.sin/cos/exp/pow` may differ in the last bits between Node
+ * versions (the raw-float hash of one scenario diverged on Node 24 vs 22 with every gameplay
+ * field equal). Before hashing, every non-integer number is rounded to 6 decimal places and
+ * object keys are sorted (`canonical`), so the hash tracks the game, not the runtime's float
+ * noise or a refactor's key order. Integer and gameplay fields — score, lives, counts, phase,
+ * wave, carrier stage, ids and the engine counters — are compared exactly in the summaries.
  *
  * Contract:
  * - The Star Swarm engine split (#2988) is a pure move: this fixture must stay byte-identical
@@ -101,8 +108,32 @@ function dtFor(t: number): number {
   return t % 7 === 6 ? 33 : 16;
 }
 
+/** Decimal places kept for non-integer numbers in the hashed state (see the header). */
+const HASH_DECIMALS = 1e6;
+
+/**
+ * Runtime-independent form of a value: object keys sorted, non-integer finite numbers rounded
+ * to 6 decimal places (`-0` folded to `0`), integers and everything else unchanged.
+ */
+function canonical(v: unknown): unknown {
+  if (typeof v === "number") {
+    return Number.isFinite(v) && !Number.isInteger(v)
+      ? Math.round(v * HASH_DECIMALS) / HASH_DECIMALS + 0
+      : v;
+  }
+  if (Array.isArray(v)) return v.map(canonical);
+  if (v !== null && typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(v).sort()) out[k] = canonical((v as Record<string, unknown>)[k]);
+    return out;
+  }
+  return v;
+}
+
 function sha(state: StarSwarmState): string {
-  return createHash("sha256").update(JSON.stringify(state)).digest("hex");
+  return createHash("sha256")
+    .update(JSON.stringify(canonical(state)))
+    .digest("hex");
 }
 
 function summary(t: number, s: StarSwarmState) {
