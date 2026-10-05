@@ -154,10 +154,14 @@ def test_dev_override_lets_a_premium_game_through(
     assert r.status_code == 200, r.text
 
 
-def test_a_dev_override_that_is_not_true_does_not_lift_the_gate(
-    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("value", "active"),
+    [("", False), ("false", False), ("1", False), ("true", True), ("TRUE", True)],
+)
+def test_only_the_word_true_activates_the_dev_override(
+    monkeypatch: pytest.MonkeyPatch, value: str, active: bool
 ) -> None:
-    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "false")
-    r = client.post("/games", json={"game_type": "cascade"}, headers=_headers(session_id))
-    assert r.status_code == 403
-    assert r.json()["detail"] == "not_entitled"
+    from entitlements.service import is_dev_override_active
+
+    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", value)
+    assert is_dev_override_active() is active

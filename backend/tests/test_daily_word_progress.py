@@ -13,8 +13,7 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 import pytest
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from daily_word.progress import (
@@ -28,8 +27,10 @@ from db.base import get_session_factory
 from db.models import DailyWordProgress
 
 PUZZLE = "2026-09-20:en"
-# Seven distinct five-letter words: the first MAX_GUESSES spend a board.
-WORDS = ["nymph", "crwth", "phlox", "xylem", "squib", "jumbo", "vexed"]
+# Distinct five-letter words: the first MAX_GUESSES spend a board, one more is refused.
+WORDS = ["nymph", "crwth", "phlox", "xylem", "squib", "jumbo", "vexed", "fjord", "gawky"]
+assert len(WORDS) > MAX_GUESSES, "WORDS needs more than MAX_GUESSES distinct words"
+assert len(set(WORDS)) == len(WORDS)
 
 
 async def _guess(sid: str, guess: str, *, won: bool = False, puzzle: str = PUZZLE) -> GuessOutcome:
@@ -181,32 +182,49 @@ async def test_recorded_guess_count_is_zero_for_an_empty_row(session_id: str) ->
 # _get_or_create: two concurrent first guesses (the unique constraint's loser)
 # ---------------------------------------------------------------------------
 
+Hook = Callable[[int], Coroutine[Any, Any, None]]
 
-def _lose_the_insert(
+
+async def _drop_rows(sid: str) -> None:
+    async with get_session_factory()() as db:
+        await db.execute(delete(DailyWordProgress).where(DailyWordProgress.session_id == sid))
+        await db.commit()
+
+
+def _race_the_insert(
     monkeypatch: pytest.MonkeyPatch,
     db: AsyncSession,
     *,
     times: int,
-    on_loss: Callable[[int], Coroutine[Any, Any, None]] | None = None,
+    rival_lands: Hook,
+    rival_rolls_back: Hook | None = None,
 ) -> None:
-    """Make the next ``times`` flushes of ``db`` fail as if another writer got there first.
+    """Make ``db``'s first ``times`` explicit flushes collide with a rival's committed row.
 
-    ``on_loss(n)`` runs just before the n-th failure (1-based): it is where a
-    rival's committed row lands.
+    ``rival_lands(n)`` runs before the n-th flush (1-based) and commits the rival's row
+    through its own session, so the real flush then fails with the real UNIQUE violation.
+    ``rival_rolls_back(n)`` runs right after ``db``'s n-th rollback: it is where a winner
+    whose transaction later vanished takes its row back out.
     """
-    real_flush = db.flush
-    lost = 0
+    real_flush, real_rollback = db.flush, db.rollback
+    flushes = rollbacks = 0
 
     async def flush(*args: Any, **kwargs: Any) -> None:
-        nonlocal lost
-        if lost < times:
-            lost += 1
-            if on_loss is not None:
-                await on_loss(lost)
-            raise IntegrityError("INSERT INTO daily_word_progress", {}, Exception("unique"))
+        nonlocal flushes
+        flushes += 1
+        if flushes <= times:
+            await rival_lands(flushes)
         await real_flush(*args, **kwargs)
 
+    async def rollback() -> None:
+        nonlocal rollbacks
+        rollbacks += 1
+        await real_rollback()
+        if rival_rolls_back is not None:
+            await rival_rolls_back(rollbacks)
+
     monkeypatch.setattr(db, "flush", flush)
+    monkeypatch.setattr(db, "rollback", rollback)
 
 
 async def test_a_lost_insert_race_reuses_the_winners_row(
@@ -218,7 +236,7 @@ async def test_a_lost_insert_race_reuses_the_winners_row(
         await _guess(session_id, WORDS[0])
 
     async with get_session_factory()() as db:
-        _lose_the_insert(monkeypatch, db, times=1, on_loss=winner_commits)
+        _race_the_insert(monkeypatch, db, times=1, rival_lands=winner_commits)
         out = await record_guess(
             db, session_id=session_id, puzzle_id=PUZZLE, guess=WORDS[1], won=False
         )
@@ -232,14 +250,28 @@ async def test_a_lost_race_whose_winner_rolled_back_inserts_again(
     session_id: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The winner's transaction can vanish after the constraint fired; the guess still lands."""
+
+    async def winner_inserts(_n: int) -> None:
+        await _guess(session_id, WORDS[0])
+
+    async def winner_vanishes(_n: int) -> None:
+        await _drop_rows(session_id)
+
     async with get_session_factory()() as db:
-        _lose_the_insert(monkeypatch, db, times=1)
+        _race_the_insert(
+            monkeypatch,
+            db,
+            times=1,
+            rival_lands=winner_inserts,
+            rival_rolls_back=winner_vanishes,
+        )
         out = await record_guess(
-            db, session_id=session_id, puzzle_id=PUZZLE, guess=WORDS[0], won=False
+            db, session_id=session_id, puzzle_id=PUZZLE, guess=WORDS[1], won=False
         )
 
     assert out == GuessOutcome(allowed=True, replay=False, guesses_used=1, solved=False)
-    assert await _count(session_id) == 1
+    (row,) = await _rows(session_id)
+    assert row.guesses == [WORDS[1]], "the vanished winner's guess is gone, ours is recorded"
 
 
 async def test_losing_both_inserts_falls_back_to_the_committed_row(
@@ -247,12 +279,21 @@ async def test_losing_both_inserts_falls_back_to_the_committed_row(
 ) -> None:
     """If the retry loses too, the winner has committed by then: use its row, never a 500."""
 
-    async def winner_commits_before_second_loss(n: int) -> None:
-        if n == 2:
-            await _guess(session_id, WORDS[0])
+    async def winner_inserts(_n: int) -> None:
+        await _guess(session_id, WORDS[0])
+
+    async def first_winner_vanishes(n: int) -> None:
+        if n == 1:  # the second winner stays committed
+            await _drop_rows(session_id)
 
     async with get_session_factory()() as db:
-        _lose_the_insert(monkeypatch, db, times=2, on_loss=winner_commits_before_second_loss)
+        _race_the_insert(
+            monkeypatch,
+            db,
+            times=2,
+            rival_lands=winner_inserts,
+            rival_rolls_back=first_winner_vanishes,
+        )
         out = await record_guess(
             db, session_id=session_id, puzzle_id=PUZZLE, guess=WORDS[1], won=False
         )

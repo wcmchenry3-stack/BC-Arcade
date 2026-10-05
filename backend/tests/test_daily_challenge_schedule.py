@@ -8,9 +8,17 @@ from datetime import date
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from daily_challenge import schedule
-from daily_challenge.definitions import Template, _at_least, _won, goal_from_spec, goal_to_spec
+from daily_challenge.definitions import (
+    Slate,
+    Template,
+    _at_least,
+    _won,
+    goal_from_spec,
+    goal_to_spec,
+)
 from db.base import get_session_factory
 from db.models import DailyChallengeDay
 
@@ -118,6 +126,41 @@ async def test_reconstructed_goal_equals_the_original_even_outside_any_pool() ->
     assert frozen_again == template  # cache-hit path reconstructs correctly too
 
 
+def _commit_after_rival_freezes(
+    monkeypatch: pytest.MonkeyPatch,
+    db: AsyncSession,
+    factory: async_sessionmaker[AsyncSession],
+    day: date,
+    slate: Slate,
+    template: Template,
+) -> None:
+    """Make ``db``'s next commit land after a concurrent request froze ``day`` as ``template``.
+
+    The rival commits through its own session, so ``db``'s commit then fails with the
+    real unique-constraint violation, exactly as it does when two requests race.
+    """
+    real_commit = db.commit
+    rival_landed = False
+
+    async def commit() -> None:
+        nonlocal rival_landed
+        if not rival_landed:
+            rival_landed = True
+            async with factory() as rival:
+                await schedule.get_or_create_template(rival, day, slate, lambda: template)
+        await real_commit()
+
+    monkeypatch.setattr(db, "commit", commit)
+
+
+async def _frozen(slate: Slate) -> dict[date, str]:
+    async with get_session_factory()() as db:
+        rows = (
+            await db.execute(select(DailyChallengeDay).where(DailyChallengeDay.slate == slate))
+        ).scalars()
+        return {r.date: r.template_id for r in rows}
+
+
 @needs_db
 async def test_losing_the_freeze_race_trusts_the_committed_row(
     monkeypatch: pytest.MonkeyPatch,
@@ -126,52 +169,40 @@ async def test_losing_the_freeze_race_trusts_the_committed_row(
     answer wins and ours is dropped, so every caller sees one template per day."""
     factory = get_session_factory()
     async with factory() as db:
-        real_commit = db.commit
-        rival_landed = False
-
-        async def commit_after_rival_froze_the_day() -> None:
-            nonlocal rival_landed
-            if not rival_landed:
-                rival_landed = True
-                async with factory() as rival:
-                    await schedule.get_or_create_template(rival, _DAY, "free", lambda: _V1)
-            await real_commit()
-
-        monkeypatch.setattr(db, "commit", commit_after_rival_froze_the_day)
+        _commit_after_rival_freezes(monkeypatch, db, factory, _DAY, "free", _V1)
         result = await schedule.get_or_create_template(db, _DAY, "free", lambda: _V2)
 
     assert result == _V1
-    async with factory() as db:
-        rows = (
-            (await db.execute(select(DailyChallengeDay).where(DailyChallengeDay.slate == "free")))
-            .scalars()
-            .all()
-        )
-    assert [(r.date, r.template_id) for r in rows] == [(_DAY, "v1")]
+    assert await _frozen("free") == {_DAY: "v1"}
 
 
-@needs_db
-async def test_losing_the_race_on_one_day_keeps_our_answer_for_the_others(
+async def _two_day_batch_after_rival_froze_one_day(
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The rollback drops the whole batch, so a day the rival did not freeze falls back
-    to our own computation for this response."""
+) -> dict[date, Template]:
     factory = get_session_factory()
     async with factory() as db:
-        real_commit = db.commit
-        rival_landed = False
-
-        async def commit_after_rival_froze_one_day() -> None:
-            nonlocal rival_landed
-            if not rival_landed:
-                rival_landed = True
-                async with factory() as rival:
-                    await schedule.get_or_create_template(rival, _DAY, "free", lambda: _V1)
-            await real_commit()
-
-        monkeypatch.setattr(db, "commit", commit_after_rival_froze_one_day)
-        result = await schedule.get_or_create_templates(
+        _commit_after_rival_freezes(monkeypatch, db, factory, _DAY, "free", _V1)
+        return await schedule.get_or_create_templates(
             db, [_DAY, _OTHER_DAY], "free", lambda _d: _V2
         )
 
+
+@needs_db
+async def test_losing_the_race_on_one_day_still_answers_every_day(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The rival froze one day of a two-day batch: that day answers with the rival's
+    template, the other with our own computation."""
+    result = await _two_day_batch_after_rival_froze_one_day(monkeypatch)
     assert result == {_DAY: _V1, _OTHER_DAY: _V2}
+
+
+@needs_db
+@pytest.mark.xfail(strict=True, reason="#3013: lost freeze on the loser's path")
+async def test_losing_the_race_on_one_day_still_freezes_the_other_days(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A day is frozen the first time it is shown. After the loser's rollback the day the
+    rival did not freeze was answered but never written, so it is recomputed next time."""
+    await _two_day_batch_after_rival_froze_one_day(monkeypatch)
+    assert await _frozen("free") == {_DAY: "v1", _OTHER_DAY: "v2"}

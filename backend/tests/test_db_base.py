@@ -107,11 +107,23 @@ async def test_session_factory_is_built_once_and_does_not_expire_on_commit(
         await base.get_engine().dispose()
 
 
-async def test_get_session_yields_a_session_and_closes_it() -> None:
+async def test_get_session_yields_a_session_and_closes_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The FastAPI dependency: a usable session, closed when the request ends."""
+    closed: list[AsyncSession] = []
+    real_close = AsyncSession.close
+
+    async def tracking_close(self: AsyncSession) -> None:
+        closed.append(self)
+        await real_close(self)
+
+    monkeypatch.setattr(AsyncSession, "close", tracking_close)
+
     dependency = base.get_session()
     session = await anext(dependency)
     assert isinstance(session, AsyncSession)
-    assert session.in_transaction() is False
+    assert closed == [], "the session stays open while the request runs"
     with pytest.raises(StopAsyncIteration):
         await anext(dependency)
+    assert closed == [session]
