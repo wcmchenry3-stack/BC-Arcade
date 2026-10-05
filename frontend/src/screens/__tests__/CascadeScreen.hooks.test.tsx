@@ -101,6 +101,12 @@ async function mount() {
   return view;
 }
 
+/** Calls a hook the way a driver would, letting the state it sets settle. */
+const run = (call: () => void) =>
+  act(async () => {
+    call();
+  });
+
 const original = process.env.EXPO_PUBLIC_TEST_HOOKS;
 
 beforeEach(async () => {
@@ -158,30 +164,30 @@ describe("E2E test hooks", () => {
 
   it("a seed makes the drops come in the same order every time", async () => {
     await mount();
-    const dropsFor = (seed: number) => {
+    const dropsFor = async (seed: number) => {
       mockEngine.drop.mockClear();
-      hooks.__cascade_setSeed!(seed);
-      for (let i = 0; i < 6; i++) hooks.__cascade_dropAt!(100 + i);
+      await run(() => hooks.__cascade_setSeed!(seed));
+      for (let i = 0; i < 6; i++) await run(() => hooks.__cascade_dropAt!(100 + i));
       return mockEngine.drop.mock.calls.map(([tier]) => tier);
     };
-    const first = dropsFor(7);
+    const first = await dropsFor(7);
     expect(first).toHaveLength(6);
-    expect(dropsFor(7)).toEqual(first);
+    expect(await dropsFor(7)).toEqual(first);
   });
 
   it("dropAt drops the fruit that was up next, where it is told", async () => {
     await mount();
-    hooks.__cascade_setSeed!(3);
+    await run(() => hooks.__cascade_setSeed!(3));
     const next = hooks.__cascade_getState!().nextFruitTier;
-    hooks.__cascade_dropAt!(222);
+    await run(() => hooks.__cascade_dropAt!(222));
     expect(mockEngine.drop).toHaveBeenCalledWith(next, 222);
   });
 
   it("spawnTierAt drops a chosen tier without touching the queue", async () => {
     await mount();
-    hooks.__cascade_setSeed!(3);
+    await run(() => hooks.__cascade_setSeed!(3));
     const next = hooks.__cascade_getState!().nextFruitTier;
-    hooks.__cascade_spawnTierAt!(5, 100);
+    await run(() => hooks.__cascade_spawnTierAt!(5, 100));
     expect(mockEngine.drop).toHaveBeenCalledWith(5, 100);
     expect(hooks.__cascade_getState!().nextFruitTier).toBe(next);
   });
@@ -223,8 +229,8 @@ describe("E2E test hooks", () => {
     expect(screen.getByTestId("cascade-result")).toBeTruthy();
     expect(hooks.__cascade_getState!().gameOver).toBe(true);
 
-    hooks.__cascade_dropAt!(100);
-    hooks.__cascade_spawnTierAt!(2, 100);
+    await run(() => hooks.__cascade_dropAt!(100));
+    await run(() => hooks.__cascade_spawnTierAt!(2, 100));
     expect(mockEngine.drop).not.toHaveBeenCalled();
   });
 });
