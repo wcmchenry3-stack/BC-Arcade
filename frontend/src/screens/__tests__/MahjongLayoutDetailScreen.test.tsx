@@ -16,7 +16,8 @@ import MahjongLayoutDetailScreen from "../MahjongLayoutDetailScreen";
 import { LAYOUTS, getLayout } from "../../game/mahjong/layouts/registry";
 import { createGame } from "../../game/mahjong/engine";
 import type { MahjongState } from "../../game/mahjong/types";
-import type { GestureHandlers } from "../../test-utils/mockScreenDeps";
+import { detectedGesture } from "../../test-utils/mockScreenDeps";
+import type { DetectorRender } from "../../test-utils/mockScreenDeps";
 
 const mockGoBack = jest.fn();
 const mockRoute = { params: { layoutId: "turtle" } };
@@ -43,13 +44,17 @@ jest.mock("../../components/mahjong/GameCanvas", () => {
   };
 });
 
-// Pinch and pan record their callbacks here (src/test-utils/mockScreenDeps.ts).
-const mockGestures: Record<string, GestureHandlers> = {};
+// Every GestureDetector render records the gesture it was given (src/test-utils/mockScreenDeps.ts).
+const mockDetected: DetectorRender[] = [];
 jest.mock("react-native-gesture-handler", () =>
-  mockScreenDeps().mockGestureHandler(() => mockGestures)
+  mockScreenDeps().mockGestureHandler(() => mockDetected)
 );
+/** The board's pinch / pan, from the latest render. */
+const pinch = () => detectedGesture(mockDetected, "pinch")!;
+const pan = () => detectedGesture(mockDetected, "pan")!;
 
 beforeEach(() => {
+  mockDetected.length = 0;
   mockGoBack.mockClear();
   mockRoute.params.layoutId = "turtle";
   mockBoard.state = null;
@@ -104,21 +109,25 @@ describe("MahjongLayoutDetailScreen", () => {
     const start = boardTransform();
     expect(start).toMatchObject({ translateX: 0, translateY: 0 });
     const min = start.scale;
+    // One board gesture: pinch and pan recognised together.
+    const board = mockDetected.at(-1)!.gesture;
+    expect(board.kind).toBe("simultaneous");
+    expect(board.gestures.map((g) => g.kind)).toEqual(["pinch", "pan"]);
 
     // Zoom out past the fit: clamped at the fitted scale.
-    mockGestures.pinch!.onUpdate!({ scale: 0.25 });
+    pinch().onUpdate!({ scale: 0.25 });
     await rerender(<MahjongLayoutDetailScreen />);
     expect(boardTransform().scale).toBe(min);
 
     // Zoom in a little, release, then zoom in again from there.
-    mockGestures.pinch!.onUpdate!({ scale: 1.2 });
-    mockGestures.pinch!.onEnd!();
+    pinch().onUpdate!({ scale: 1.2 });
+    pinch().onEnd!();
     await rerender(<MahjongLayoutDetailScreen />);
     const zoomed = boardTransform().scale;
     expect(zoomed).toBeCloseTo(min * 1.2);
 
     // A huge pinch stops at the max zoom.
-    mockGestures.pinch!.onUpdate!({ scale: 1000 });
+    pinch().onUpdate!({ scale: 1000 });
     await rerender(<MahjongLayoutDetailScreen />);
     const max = boardTransform().scale;
     expect(max).toBeGreaterThan(zoomed);
@@ -127,11 +136,11 @@ describe("MahjongLayoutDetailScreen", () => {
 
   it("pans by the finger's translation, accumulating across gestures", async () => {
     const { rerender } = await render(<MahjongLayoutDetailScreen />);
-    mockGestures.pan!.onUpdate!({ translationX: 30, translationY: -20 });
-    mockGestures.pan!.onEnd!();
+    pan().onUpdate!({ translationX: 30, translationY: -20 });
+    pan().onEnd!();
     await rerender(<MahjongLayoutDetailScreen />);
     expect(boardTransform()).toMatchObject({ translateX: 30, translateY: -20 });
-    mockGestures.pan!.onUpdate!({ translationX: 5, translationY: 5 });
+    pan().onUpdate!({ translationX: 5, translationY: 5 });
     await rerender(<MahjongLayoutDetailScreen />);
     expect(boardTransform()).toMatchObject({ translateX: 35, translateY: -15 });
   });

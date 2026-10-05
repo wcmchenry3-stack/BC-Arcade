@@ -12,7 +12,8 @@ import * as Haptics from "expo-haptics";
 import Controls, { hapticPlayerHit, hapticWaveClear } from "../Controls";
 import type { GameCanvasHandle } from "../GameCanvas";
 import { CANVAS_H, CANVAS_W, PLAYER_W } from "../../../game/starswarm/engine";
-import type { GestureHandlers } from "../../../test-utils/mockScreenDeps";
+import { detectedGesture } from "../../../test-utils/mockScreenDeps";
+import type { DetectorRender } from "../../../test-utils/mockScreenDeps";
 
 jest.mock("expo-haptics", () => ({
   impactAsync: jest.fn(() => Promise.resolve()),
@@ -21,12 +22,16 @@ jest.mock("expo-haptics", () => ({
   NotificationFeedbackType: { Success: "success" },
 }));
 
-// The Pan gesture Controls builds on its last render records its callbacks here.
-const mockGestures: Record<string, GestureHandlers> = {};
+// Every GestureDetector render records the gesture it was given (src/test-utils/mockScreenDeps.ts).
+const mockDetected: DetectorRender[] = [];
 jest.mock("react-native-gesture-handler", () =>
-  mockScreenDeps().mockGestureHandler(() => mockGestures)
+  mockScreenDeps().mockGestureHandler(() => mockDetected)
 );
-const pan = () => mockGestures.pan!;
+/** The Pan of the most recently rendered Controls. */
+const pan = () => detectedGesture(mockDetected, "pan")!;
+beforeEach(() => {
+  mockDetected.length = 0;
+});
 
 const SCALE = 1;
 const TOP_Y = 50; // well inside the top 60% (tap-to-pause zone)
