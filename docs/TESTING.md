@@ -108,6 +108,40 @@ Don't suppress new errors with `@ts-ignore`/`@ts-expect-error` to get the job gr
 genuinely needs a larger refactor, suppress that single line with a comment linking a tracking
 issue.
 
+### Writing a screen test (#2954)
+
+`frontend/jest.setup.ts` mocks these for every test file, so a test doesn't mock them itself:
+`expo-blur` and `expo-linear-gradient` (render only their children),
+`react-native-safe-area-context` (zero insets), `react-native-gesture-handler`,
+`react-native-screens`, `react-native-reanimated`, `expo-audio`, `@react-navigation/bottom-tabs`,
+`@sentry/react-native`, `@react-native-async-storage/async-storage` (in-memory) and the pinned
+`game/_shared/foregroundClock`. A test that needs a different shape still calls `jest.mock` for
+that module; its own mock wins.
+
+The modules most screens need mocked per test (`@react-navigation/native`, `api/stats`,
+`game/_shared/gameEventClient`, `flushQueuedGames`, `displayNameSync`, `NetworkContext`) have
+factories in `frontend/src/test-utils/mockScreenDeps.ts`. `jest.mock` is hoisted above the
+imports, so a test reaches them through an accessor it declares itself — a `function`
+declaration (hoisted too) whose name starts with `mock` — and passes a `mock*` const the file
+declares later through `lazy()`:
+
+```ts
+function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
+  return jest.requireActual("../../test-utils/mockScreenDeps");
+}
+
+const mockStartGame = jest.fn();
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({ startGame: lazy(() => mockStartGame) });
+});
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+```
+
+Each factory keeps the shape the screen tests had before #2954, and takes overrides or options
+where tests differ; mock shapes decide what the screen sees, so change one only on purpose.
+Module mocks particular to one screen (its engine, canvas, storage) stay in that test file.
+
 ### Structure
 
 ```

@@ -15,27 +15,32 @@ import {
 import { ApiError } from "../../game/_shared/httpClient";
 import type { StatsResponse, GameHistoryResponse, GameOutcome } from "../../api/types";
 
+function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
+  return jest.requireActual("../../test-utils/mockScreenDeps");
+}
+
 const mockNetwork = { isOnline: true };
-jest.mock("../../game/_shared/NetworkContext", () => ({
-  useNetwork: () => ({ isOnline: mockNetwork.isOnline, isInitialized: true }),
-}));
+jest.mock("../../game/_shared/NetworkContext", () =>
+  mockScreenDeps().mockNetwork({ online: () => mockNetwork.isOnline })
+);
 
 const mockNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  useNavigation: () => ({ navigate: mockNavigate }),
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ navigate: mockNavigate }))
+);
 
 // Mock the stats API — each test sets the resolved values.
 const mockGetMyStats = jest.fn() as jest.Mock<Promise<StatsResponse>, []>;
 const mockGetMyGames = jest.fn() as jest.Mock<Promise<GameHistoryResponse>, [number?]>;
 const mockGetGameDetail = jest.fn();
-jest.mock("../../api/stats", () => ({
-  statsApi: {
+jest.mock("../../api/stats", () => {
+  const { lazy, mockStatsApi } = mockScreenDeps();
+  return mockStatsApi({
     getMyStats: () => mockGetMyStats(),
     getMyGames: (limit?: number) => mockGetMyGames(limit),
-    getGameDetail: (...args: unknown[]) => (mockGetGameDetail as unknown as jest.Mock)(...args),
-  },
-}));
+    getGameDetail: lazy(() => mockGetGameDetail),
+  });
+});
 
 // The leaderboard sync runs for real (its one-slot queue is under test); only
 // the HTTP calls are mocked.

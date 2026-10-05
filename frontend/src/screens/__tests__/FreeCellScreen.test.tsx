@@ -20,19 +20,23 @@ import type { FreeCellState } from "../../game/freecell/types";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
+function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
+  return jest.requireActual("../../test-utils/mockScreenDeps");
+}
+
 // ---------------------------------------------------------------------------
 // Global setup: navigation, storage
 // ---------------------------------------------------------------------------
 
 const mockNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  useNavigation: () => ({
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({
     popToTop: jest.fn(),
     goBack: jest.fn(),
     navigate: mockNavigate,
     addListener: jest.fn(() => jest.fn()),
-  }),
-}));
+  }))
+);
 
 jest.mock("../../game/freecell/storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
@@ -67,32 +71,27 @@ const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregrou
 
 // The result card reads the synced game's rank (#2632, sessionBoardAdapter).
 const mockGetGameRank = jest.fn();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetGameRank(gameId) })
+);
 jest.mock("../../api/players", () => ({
   playersApi: { putMe: jest.fn(() => Promise.resolve({ display_name: "Brave Otter 4821" })) },
 }));
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: jest.fn(() => Promise.resolve()),
-}));
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
 
 // Mock gameEventClient so the useGameSync wiring (#2452) can be asserted without the
 // real client, which would otherwise start a session on the first move.
 const mockStartGame = jest.fn<string, [string, Record<string, unknown>, Record<string, unknown>]>();
 const mockEnqueueEvent = jest.fn();
 const mockCompleteGame = jest.fn();
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as unknown as jest.Mock)(...args),
-    enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    enqueueEvent: lazy(() => mockEnqueueEvent),
+    completeGame: lazy(() => mockCompleteGame),
+  });
+});
 
 beforeEach(() => {
   mockStartGame.mockReset();

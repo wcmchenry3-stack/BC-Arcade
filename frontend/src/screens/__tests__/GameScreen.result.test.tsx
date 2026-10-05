@@ -16,6 +16,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { GameRankResponse } from "../../api/types";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
+function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
+  return jest.requireActual("../../test-utils/mockScreenDeps");
+}
+
 // useGameSync's foreground clock (#2684) is the shared mock jest.setup.ts pins
 // for every test (#2710): held still unless a test moves it, and never
 // subscribed to AppState, so the backgrounding tests see only the screen's own
@@ -28,10 +32,9 @@ const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregrou
 // GameShell's Stats item (#2635) navigates through useNavigation; these
 // screens take their navigation as a prop, so the hook gets its own mock.
 const mockShellNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ navigate: mockShellNavigate }),
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ navigate: mockShellNavigate }), { actual: true })
+);
 
 // Every roll shows five 6s, so the CPU's last category scores predictably.
 jest.mock("../../game/yacht/engine", () => {
@@ -54,30 +57,17 @@ jest.mock("../../game/yacht/storage", () => ({
   saveLastMode: jest.fn().mockResolvedValue(undefined),
 }));
 
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: jest.fn().mockReturnValue("yacht-game-id"),
-    enqueueEvent: jest.fn(),
-    completeGame: jest.fn(),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () =>
+  mockScreenDeps().mockGameEventClient({ startGame: jest.fn().mockReturnValue("yacht-game-id") })
+);
 
 // The card's leaderboard line (#2630) reads the rank from the session board.
 const mockGetRank = jest.fn<Promise<GameRankResponse>, [string]>();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getGameRank: (gameId: string) => mockGetRank(gameId) },
-}));
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: jest.fn(() => Promise.resolve()),
-}));
-jest.mock("../../game/_shared/displayNameSync", () => ({
-  ...jest.requireActual("../../game/_shared/displayNameSync"),
-  flushDisplayNameSync: jest.fn(() => Promise.resolve(true)),
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetRank(gameId) })
+);
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+jest.mock("../../game/_shared/displayNameSync", () => mockScreenDeps().mockDisplayNameSync());
 
 const completeGame = gameEventClient.completeGame as jest.Mock;
 const startGame = gameEventClient.startGame as jest.Mock;

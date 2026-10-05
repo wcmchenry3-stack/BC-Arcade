@@ -8,6 +8,10 @@ import { initState } from "../../game/sort/engine";
 import type { Color } from "../../game/sort/types";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
+function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
+  return jest.requireActual("../../test-utils/mockScreenDeps");
+}
+
 // ---------------------------------------------------------------------------
 // Mocks — factories must be self-contained (jest.mock is hoisted)
 // ---------------------------------------------------------------------------
@@ -50,32 +54,28 @@ jest.mock("../../game/sort/components/SortBoard", () => {
 const mockGoBack = jest.fn();
 const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ goBack: mockGoBack, popToTop: mockPopToTop, navigate: mockNavigate }),
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(
+    () => ({ goBack: mockGoBack, popToTop: mockPopToTop, navigate: mockNavigate }),
+    { actual: true }
+  )
+);
 
 // Per-session game sync (#2512): assert start/complete without the real client.
 const mockStartGame = jest.fn(() => "sort-game-id");
 const mockCompleteGame = jest.fn();
 // No killed session to resume unless a test says so (#2654).
 const mockResumeGame = jest.fn((): string | null => null);
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as jest.Mock)(...args),
-    resumeGame: (...args: unknown[]) => (mockResumeGame as jest.Mock)(...args),
-    enqueueEvent: jest.fn(),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    resumeGame: lazy(() => mockResumeGame),
+    completeGame: lazy(() => mockCompleteGame),
+  });
+});
 
-jest.mock("../../game/_shared/NetworkContext", () => ({
-  useNetwork: () => ({ isOnline: true, isInitialized: true }),
-}));
+jest.mock("../../game/_shared/NetworkContext", () => mockScreenDeps().mockNetwork());
 
 jest.mock("../../game/sort/api", () => ({
   sortApi: {
@@ -84,9 +84,7 @@ jest.mock("../../game/sort/api", () => ({
 }));
 
 // The board is the shared leaderboard screen (#2633): Sort never reads it itself.
-jest.mock("../../api/stats", () => ({
-  statsApi: { getLeaderboard: jest.fn() },
-}));
+jest.mock("../../api/stats", () => mockScreenDeps().mockStatsApi({ getLeaderboard: jest.fn() }));
 
 // The card's rank lookup (#2677): the real adapter's HTTP is covered by its own
 // tests; here we check Sort hands it the finished game.

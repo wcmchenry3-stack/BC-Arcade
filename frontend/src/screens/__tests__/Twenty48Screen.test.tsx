@@ -15,13 +15,16 @@ import { AppState, Platform } from "react-native";
 import type { AppStateStatus } from "react-native";
 (Platform as { OS: string }).OS = "web";
 
+function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
+  return jest.requireActual("../../test-utils/mockScreenDeps");
+}
+
 // GameShell's Stats item (#2635) navigates through useNavigation; these
 // screens take their navigation as a prop, so the hook gets its own mock.
 const mockShellNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ navigate: mockShellNavigate }),
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ navigate: mockShellNavigate }), { actual: true })
+);
 
 // Mock storage — no saved game, no-op persistence.
 jest.mock("../../game/twenty48/storage", () => ({
@@ -59,43 +62,31 @@ const mockCompleteGame = jest.fn() as unknown as jest.Mock<undefined, CompleteAr
 const mockResumeGame = jest.fn() as unknown as jest.Mock<string | null, [string, unknown?]>;
 const mockMarkStarted = jest.fn() as unknown as jest.Mock<undefined, [string]>;
 const mockDiscardGame = jest.fn() as unknown as jest.Mock<undefined, [string]>;
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as unknown as jest.Mock)(...args),
-    resumeGame: (...args: unknown[]) => (mockResumeGame as unknown as jest.Mock)(...args),
-    markStarted: (...args: unknown[]) => (mockMarkStarted as unknown as jest.Mock)(...args),
-    discardGame: (...args: unknown[]) => (mockDiscardGame as unknown as jest.Mock)(...args),
-    enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    resumeGame: lazy(() => mockResumeGame),
+    markStarted: lazy(() => mockMarkStarted),
+    discardGame: lazy(() => mockDiscardGame),
+    enqueueEvent: lazy(() => mockEnqueueEvent),
+    completeGame: lazy(() => mockCompleteGame),
+  });
+});
 // useGameSync's app-wide foreground clock (#2684) is held still by the shared
 // mock jest.setup.ts pins (#2710): Twenty48 sends its own timer, and where that
 // reads 0 (a fresh board) the hook's window would otherwise fill in real
 // elapsed test time.
 // The result card's rank lookup (#2631, #2677): GET /games/{id}/rank.
 const mockGetRank = jest.fn<Promise<GameRankResponse>, [string]>();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getGameRank: (gameId: string) => mockGetRank(gameId) },
-}));
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: jest.fn(() => Promise.resolve()),
-}));
-jest.mock("../../game/_shared/displayNameSync", () => ({
-  ...jest.requireActual("../../game/_shared/displayNameSync"),
-  flushDisplayNameSync: jest.fn(() => Promise.resolve(true)),
-  // Joining stores the server's generated name at once (#2778).
-  joinLeaderboards: async () => {
-    await jest
-      .requireActual("../../game/_shared/displayName")
-      .storeAssignedDisplayName("Brave Otter 4821");
-    return true;
-  },
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetRank(gameId) })
+);
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+// Joining stores the server's generated name at once (#2778).
+jest.mock("../../game/_shared/displayNameSync", () =>
+  mockScreenDeps().mockDisplayNameSync({}, { joinAs: "Brave Otter 4821" })
+);
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { GameRankResponse } from "../../api/types";
 import {

@@ -6,15 +6,18 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
 import type { GameState } from "../../game/yacht/types";
 
+function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
+  return jest.requireActual("../../test-utils/mockScreenDeps");
+}
+
 // Replace only `roll`; keep every other engine export (score, newGame, …) real.
 const mockRoll = jest.fn();
 // GameShell's Stats item (#2635) navigates through useNavigation; these
 // screens take their navigation as a prop, so the hook gets its own mock.
 const mockShellNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ navigate: mockShellNavigate }),
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ navigate: mockShellNavigate }), { actual: true })
+);
 
 jest.mock("../../game/yacht/engine", () => {
   const actual = jest.requireActual("../../game/yacht/engine");
@@ -29,17 +32,9 @@ jest.mock("../../game/yacht/storage", () => ({
   saveLastMode: jest.fn().mockResolvedValue(undefined),
 }));
 
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: jest.fn().mockReturnValue("test-game-id"),
-    enqueueEvent: jest.fn(),
-    completeGame: jest.fn(),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () =>
+  mockScreenDeps().mockGameEventClient({ startGame: jest.fn().mockReturnValue("test-game-id") })
+);
 
 // useGameSync's app-wide foreground clock (#2684) would subscribe to AppState
 // once, on first use — whichever test that lands in. The shared mock

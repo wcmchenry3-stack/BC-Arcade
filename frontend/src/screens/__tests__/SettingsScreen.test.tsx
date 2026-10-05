@@ -5,6 +5,10 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react-nativ
 import { ThemeProvider } from "../../theme/ThemeContext";
 import SettingsScreen from "../SettingsScreen";
 
+function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
+  return jest.requireActual("../../test-utils/mockScreenDeps");
+}
+
 const mockClearAll = jest.fn().mockResolvedValue(undefined);
 jest.mock("../../game/_shared/gameEventClient", () => ({
   gameEventClient: {
@@ -13,13 +17,13 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
 }));
 
 const mockCalls: string[] = [];
-jest.mock("../../api/stats", () => ({
-  statsApi: {
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({
     deleteMyData: jest.fn(async () => {
       mockCalls.push("deleteMyData");
     }),
-  },
-}));
+  })
+);
 jest.mock("../../game/_shared/displayNameSync", () => ({
   clearDisplayNameSync: jest.fn(async () => {
     mockCalls.push("clearDisplayNameSync");

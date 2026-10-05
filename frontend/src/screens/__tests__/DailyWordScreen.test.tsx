@@ -18,21 +18,24 @@ import { ApiError } from "../../game/_shared/httpClient";
 import type { DailyWordState } from "../../game/daily_word/types";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
+function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
+  return jest.requireActual("../../test-utils/mockScreenDeps");
+}
+
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
 const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ popToTop: mockPopToTop, navigate: mockNavigate }),
-  useRoute: () => ({ name: "DailyWord" }),
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ popToTop: mockPopToTop, navigate: mockNavigate }), {
+    actual: true,
+    useRoute: () => ({ name: "DailyWord" }),
+  })
+);
 
-jest.mock("../../game/_shared/NetworkContext", () => ({
-  useNetwork: () => ({ isOnline: true, isInitialized: true }),
-}));
+jest.mock("../../game/_shared/NetworkContext", () => mockScreenDeps().mockNetwork());
 
 jest.mock("../../game/daily_word/api", () => ({
   dailyWordApi: {
@@ -54,17 +57,13 @@ jest.mock("../../game/daily_word/storage", () => ({
 // useGameSync wiring makes (#2451) without initialising the real client.
 const mockStartGame = jest.fn();
 const mockCompleteGame = jest.fn();
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => mockStartGame(...args),
-    enqueueEvent: jest.fn(),
-    completeGame: (...args: unknown[]) => mockCompleteGame(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    completeGame: lazy(() => mockCompleteGame),
+  });
+});
 
 // The app-wide foreground-time counter behind useGameSync's active-play window
 // (#2684) is pinned for every test by jest.setup.ts (#2710), held still unless

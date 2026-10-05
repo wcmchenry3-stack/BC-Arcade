@@ -7,10 +7,13 @@ import { HeartsRoundsProvider, useHeartsRounds } from "../../game/hearts/RoundsC
 import { YachtScorecardProvider, useYachtScorecard } from "../../game/yacht/ScorecardContext";
 import { initialSessionStats } from "../../game/blackjack/sessionStats";
 
-jest.mock("@react-navigation/native", () => ({
-  useNavigation: () => ({ goBack: jest.fn() }),
-  useRoute: jest.fn(),
-}));
+function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
+  return jest.requireActual("../../test-utils/mockScreenDeps");
+}
+
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ goBack: jest.fn() }), { useRoute: jest.fn() })
+);
 
 // Mock the blackjack session-stats hook so the test doesn't need to mount
 // BlackjackGameProvider (which would trigger loadGame + useGameSync side

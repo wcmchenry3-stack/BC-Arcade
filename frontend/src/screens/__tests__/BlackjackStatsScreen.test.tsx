@@ -6,6 +6,10 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { loadGame, loadRuns } from "../../game/blackjack/storage";
 import type { RunRecord } from "../../game/blackjack/storage";
 
+function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
+  return jest.requireActual("../../test-utils/mockScreenDeps");
+}
+
 jest.mock("../../game/blackjack/storage", () => ({
   saveGame: jest.fn(),
   clearGame: jest.fn(),
@@ -14,30 +18,22 @@ jest.mock("../../game/blackjack/storage", () => ({
   loadRuns: jest.fn().mockResolvedValue([]),
 }));
 
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: jest.fn().mockReturnValue("session-id"),
-    enqueueEvent: jest.fn(),
-    completeGame: jest.fn(),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () =>
+  mockScreenDeps().mockGameEventClient({ startGame: jest.fn().mockReturnValue("session-id") })
+);
 
 // Make useFocusEffect behave like useEffect so it fires synchronously in tests.
 jest.mock("@react-navigation/native", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const mockReact = require("react") as typeof React;
-  return {
-    ...jest.requireActual("@react-navigation/native"),
-    // GameShell calls it (#2635); the run history has no Stats item.
-    useNavigation: () => ({ navigate: jest.fn() }),
+  // useNavigation is the default, () => ({ navigate: jest.fn() }): GameShell
+  // calls it (#2635); the run history has no Stats item.
+  return mockScreenDeps().mockNavigation(undefined, {
+    actual: true,
     useFocusEffect: (cb: () => void | (() => void)) => {
       mockReact.useEffect(cb, []);
     },
-  };
+  });
 });
 
 function mockNav() {

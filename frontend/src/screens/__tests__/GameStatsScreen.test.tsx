@@ -14,20 +14,24 @@ import {
   rememberMyStats,
 } from "../../hooks/useMyStats";
 
+function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
+  return jest.requireActual("../../test-utils/mockScreenDeps");
+}
+
 const mockGetMyStats = jest.fn();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getMyStats: () => mockGetMyStats() },
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getMyStats: () => mockGetMyStats() })
+);
 
 const mockFlushQueuedGames = jest.fn(() => Promise.resolve());
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: () => mockFlushQueuedGames(),
-}));
+jest.mock("../../game/_shared/flushQueuedGames", () =>
+  mockScreenDeps().mockFlushQueuedGames(() => mockFlushQueuedGames())
+);
 
 const mockNetwork = { isOnline: true, isInitialized: true };
-jest.mock("../../game/_shared/NetworkContext", () => ({
-  useNetwork: () => mockNetwork,
-}));
+jest.mock("../../game/_shared/NetworkContext", () =>
+  mockScreenDeps().mockNetwork({ state: () => mockNetwork })
+);
 
 const navigate = jest.fn();
 const goBack = jest.fn();

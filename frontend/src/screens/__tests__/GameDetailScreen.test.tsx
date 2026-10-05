@@ -5,14 +5,18 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import GameDetailScreen from "../GameDetailScreen";
 import type { GameDetailResponse } from "../../api/types";
 
+function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
+  return jest.requireActual("../../test-utils/mockScreenDeps");
+}
+
 const mockGetGameDetail = jest.fn() as jest.Mock<Promise<GameDetailResponse>, [string, boolean?]>;
-jest.mock("../../api/stats", () => ({
-  statsApi: {
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({
     getGameDetail: (gameId: string, include?: boolean) => mockGetGameDetail(gameId, include),
     getMyStats: jest.fn(),
     getMyGames: jest.fn(),
-  },
-}));
+  })
+);
 
 const SAMPLE_DETAIL: GameDetailResponse = {
   id: "abc-123",

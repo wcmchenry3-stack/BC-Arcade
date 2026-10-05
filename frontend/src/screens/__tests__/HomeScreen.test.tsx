@@ -11,6 +11,10 @@ import type { StatsResponse } from "../../api/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearMyStatsCache, useMyStats } from "../../hooks/useMyStats";
 
+function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
+  return jest.requireActual("../../test-utils/mockScreenDeps");
+}
+
 // ---------------------------------------------------------------------------
 // Mock entitlements — default: all games entitled (canPlay always true)
 // ---------------------------------------------------------------------------
@@ -41,9 +45,9 @@ jest.mock("../../game/yacht/storage", () => ({
 // Mock the stats API — the header's level pill reads /stats/me (#2391)
 // ---------------------------------------------------------------------------
 const mockGetMyStats = jest.fn() as jest.Mock<Promise<StatsResponse>, []>;
-jest.mock("../../api/stats", () => ({
-  statsApi: { getMyStats: () => mockGetMyStats() },
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getMyStats: () => mockGetMyStats() })
+);
 
 function statsAtLevel(level: number, streakDays = 0): StatsResponse {
   return {
@@ -73,9 +77,9 @@ jest.mock("../../game/_shared/syncWorker", () => ({
 
 // Connectivity — online by default; tests flip `isOnline`.
 const mockNetwork = { isOnline: true, isInitialized: true };
-jest.mock("../../game/_shared/NetworkContext", () => ({
-  useNetwork: () => mockNetwork,
-}));
+jest.mock("../../game/_shared/NetworkContext", () =>
+  mockScreenDeps().mockNetwork({ state: () => mockNetwork })
+);
 
 // ---------------------------------------------------------------------------
 // Mock navigation
@@ -83,24 +87,26 @@ jest.mock("../../game/_shared/NetworkContext", () => ({
 const mockNavigate = jest.fn();
 const mockAddListener = jest.fn((_event: string, _cb: () => void) => jest.fn());
 
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({
-    navigate: mockNavigate,
-    goBack: jest.fn(),
-    dispatch: jest.fn(),
-    reset: jest.fn(),
-    isFocused: jest.fn().mockReturnValue(true),
-    canGoBack: jest.fn().mockReturnValue(false),
-    addListener: (event: string, cb: () => void) => mockAddListener(event, cb),
-    removeListener: jest.fn(),
-    setParams: jest.fn(),
-    getParent: jest.fn(),
-    getState: jest.fn(),
-    setOptions: jest.fn(),
-    getId: jest.fn(),
-  }),
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(
+    () => ({
+      navigate: mockNavigate,
+      goBack: jest.fn(),
+      dispatch: jest.fn(),
+      reset: jest.fn(),
+      isFocused: jest.fn().mockReturnValue(true),
+      canGoBack: jest.fn().mockReturnValue(false),
+      addListener: (event: string, cb: () => void) => mockAddListener(event, cb),
+      removeListener: jest.fn(),
+      setParams: jest.fn(),
+      getParent: jest.fn(),
+      getState: jest.fn(),
+      setOptions: jest.fn(),
+      getId: jest.fn(),
+    }),
+    { actual: true }
+  )
+);
 
 // ---------------------------------------------------------------------------
 // Helpers
