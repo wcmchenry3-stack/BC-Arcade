@@ -36,7 +36,7 @@ from db.models import Game, GameType
 from games.board import BoardDefinition
 from games.leaderboard import SENTINEL_SESSION_SUFFIX, enabled_board
 from games.registry import get_module
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 from tests.test_generic_leaderboard import (
     ENABLED_BOARDS,
     _board,

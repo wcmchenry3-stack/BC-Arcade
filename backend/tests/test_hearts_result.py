@@ -13,7 +13,7 @@ from db.base import get_session_factory
 from db.models import GameEntitlement
 from hearts.models import HeartsResult
 from hearts.module import module
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 
 # Hand 2 is a moon shot by seat 2 (0 for the shooter, 26 for each opponent).
 HANDS = [[10, 5, 8, 3], [26, 26, 0, 26], [9, 4, 6, 7]]

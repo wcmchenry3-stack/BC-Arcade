@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
+from pathlib import Path
 
 import pytest
 
-from tests._migration_helpers import MigrationDb
+from tests._migration_helpers import Alembic
 
 _BEFORE = "0023_sudoku_free"
 _REVISION = "0024_drop_blackjack_outcome"
@@ -33,15 +34,16 @@ def _outcome(conn: sqlite3.Connection, gid: str) -> str | None:
     return conn.execute("SELECT outcome FROM games WHERE id = ?", (gid,)).fetchone()[0]
 
 
-def test_upgrade_rewrites_blackjack_rows_and_rejects_new_ones(migration_db: MigrationDb) -> None:
-    db_path, alembic = migration_db
+def test_upgrade_rewrites_blackjack_rows_and_rejects_new_ones(
+    migration_db_path: Path, alembic: Alembic
+) -> None:
     alembic("upgrade", _BEFORE)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         legacy = _insert_game(conn, "blackjack")
         kept = _insert_game(conn, "completed")
 
     alembic("upgrade", _REVISION)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         assert _outcome(conn, legacy) == "win"
         assert _outcome(conn, kept) == "completed"
         with pytest.raises(sqlite3.IntegrityError):
@@ -51,15 +53,14 @@ def test_upgrade_rewrites_blackjack_rows_and_rejects_new_ones(migration_db: Migr
             _insert_game(conn, outcome)
 
 
-def test_downgrade_round_trip(migration_db: MigrationDb) -> None:
-    db_path, alembic = migration_db
+def test_downgrade_round_trip(migration_db_path: Path, alembic: Alembic) -> None:
     alembic("upgrade", _REVISION)
     alembic("downgrade", _BEFORE)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         # The old constraint accepts ``blackjack`` again.
         gid = _insert_game(conn, "blackjack")
     alembic("upgrade", _REVISION)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         assert _outcome(conn, gid) == "win"
         with pytest.raises(sqlite3.IntegrityError):
             _insert_game(conn, "blackjack")

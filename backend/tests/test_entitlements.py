@@ -10,11 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from entitlements import service as entitlements_service
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid}
-
+from tests._helpers import session_headers as _headers
 
 # ---------------------------------------------------------------------------
 # Happy path

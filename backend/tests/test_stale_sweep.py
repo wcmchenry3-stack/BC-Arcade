@@ -21,7 +21,7 @@ from db.models import Game, GameType
 from games import service
 from games.filters import not_swept
 from games.service import STALE_GAME_AFTER, sweep_stale_games
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),

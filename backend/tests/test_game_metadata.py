@@ -15,7 +15,7 @@ from games.schemas import CreateGameRequest
 from hearts.models import HeartsMetadata
 from solitaire.models import SolitaireMetadata
 from sudoku.models import SudokuMetadata
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 
 # ---------------------------------------------------------------------------
 # BlackjackMetadata unit tests

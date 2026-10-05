@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 from tests.test_generic_leaderboard import _grant_all
 
 pytestmark = pytest.mark.skipif(

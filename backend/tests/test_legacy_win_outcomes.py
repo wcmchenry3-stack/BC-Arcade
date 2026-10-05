@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from games.legacy_outcomes import might_be_legacy_win
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 from tests.test_generic_leaderboard import _grant_all, _sid
 
 pytestmark = pytest.mark.skipif(

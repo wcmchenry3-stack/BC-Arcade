@@ -20,12 +20,14 @@ import tempfile
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
-from fastapi.testclient import TestClient
 
-from tests._alembic_heads import multiple_heads_message, script_heads
-from tests._migration_helpers import MigrationDb, run_alembic
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
+
+    from tests._migration_helpers import Alembic
 
 _TEST_DB_FILE: Path | None = None
 
@@ -61,6 +63,8 @@ def pytest_configure(config: pytest.Config) -> None:
 
     # Run alembic upgrade head using the sync sqlite URL (env.py strips the
     # +aiosqlite driver). We invoke the CLI so the stock alembic.ini loads.
+    from tests._migration_helpers import run_alembic
+
     result = run_alembic(db_path, "upgrade", "head", check=False)
     if result.returncode != 0:
         # The output is captured, so without this a failing migration shows
@@ -83,6 +87,8 @@ def _stop_unless_single_alembic_head() -> None:
     naming a missing revision) raises here, so that is caught and reported too
     rather than ending in an INTERNALERROR traceback.
     """
+    from tests._alembic_heads import multiple_heads_message, script_heads
+
     try:
         heads = script_heads()
     except Exception as exc:  # noqa: BLE001 — any failure to load the graph stops the run
@@ -156,6 +162,7 @@ async def _clean_db_tables():
 # Shared fixtures (#2953). Fixtures resolve by name, so a test file only has to
 # not define its own. A file that needs a *different* shape (no lifespan, no
 # Content-Type header, ...) keeps a local definition, which overrides these.
+# Plain helpers (``session_headers``) live in ``tests/_helpers.py``.
 # ---------------------------------------------------------------------------
 
 
@@ -165,6 +172,8 @@ def client() -> Iterator[TestClient]:
 
     ``pytest_configure`` guarantees ``DATABASE_URL``, so no configured-check here.
     """
+    from fastapi.testclient import TestClient
+
     from main import app
 
     with TestClient(app) as c:
@@ -176,21 +185,15 @@ def session_id() -> str:
     return str(uuid.uuid4())
 
 
-def session_headers(sid: str) -> dict[str, str]:
-    """JSON request headers for session ``sid``.
-
-    A plain function rather than a fixture: tests call it inline. Import it with
-    ``from tests.conftest import session_headers``.
-    """
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
+@pytest.fixture()
+def migration_db_path(tmp_path: Path) -> Path:
+    """A scratch SQLite path for a migration test (created by the first alembic run)."""
+    return tmp_path / "migration.db"
 
 
 @pytest.fixture()
-def migration_db(tmp_path: Path) -> MigrationDb:
-    """A scratch SQLite path plus ``alembic(*args)`` bound to it.
+def alembic(migration_db_path: Path) -> Alembic:
+    """``alembic(*args)`` bound to ``migration_db_path``: ``alembic("upgrade", rev)``."""
+    from tests._migration_helpers import run_alembic
 
-    Unpack as ``db_path, alembic = migration_db``; ``alembic("upgrade", rev)``
-    runs the CLI against that file (nothing is created until it first runs).
-    """
-    db_path = tmp_path / "migration.db"
-    return MigrationDb(db_path, functools.partial(run_alembic, db_path))
+    return functools.partial(run_alembic, migration_db_path)

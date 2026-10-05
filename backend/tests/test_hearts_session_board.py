@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from db.base import get_session_factory
 from db.models import Game, GameEntitlement
 from hearts.models import HeartsMetadata
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 
 # The opponent styles the app offers: ``AI_PRESETS`` in
 # ``frontend/src/game/hearts/types.ts``.

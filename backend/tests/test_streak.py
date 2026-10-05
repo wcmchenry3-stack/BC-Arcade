@@ -19,7 +19,7 @@ from daily_challenge.service import slate_for_games
 from daily_challenge.streak import GOALS_TO_QUALIFY, LOOKBACK_DAYS, compute_streak
 from db.base import get_session_factory, is_configured
 from db.models import Game, GameEntitlement, GameType
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 
 needs_db = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),

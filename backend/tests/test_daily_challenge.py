@@ -36,7 +36,7 @@ from daily_challenge.service import evaluate_goal
 from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType
 from entitlements.service import ALL_PREMIUM_SLUGS
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 
 # ---------------------------------------------------------------------------
 # definitions — no DB

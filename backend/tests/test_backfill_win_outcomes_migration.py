@@ -14,11 +14,12 @@ import json
 import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from games.legacy_outcomes import win_update
-from tests._migration_helpers import MigrationDb
+from tests._migration_helpers import Alembic
 
 _BEFORE = "0027_players_display_name"
 _REVISION = "0028_backfill_win_outcomes"
@@ -179,16 +180,15 @@ def _seed_old_rows(conn: sqlite3.Connection) -> tuple[set[str], set[str]]:
     return wins, others
 
 
-def test_upgrade_rewrites_only_the_certain_wins(migration_db: MigrationDb) -> None:
-    db_path, alembic = migration_db
+def test_upgrade_rewrites_only_the_certain_wins(migration_db_path: Path, alembic: Alembic) -> None:
     alembic("upgrade", _BEFORE)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         wins, others = _seed_old_rows(conn)
         conn.commit()
         before = _rows(conn)
 
     alembic("upgrade", _REVISION)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         after = _rows(conn)
 
     assert {gid for gid in after if after[gid] != before[gid]} == wins
@@ -203,10 +203,11 @@ def test_upgrade_rewrites_only_the_certain_wins(migration_db: MigrationDb) -> No
         assert after[gid] == before[gid]
 
 
-def test_the_twenty48_result_block_outcome_becomes_win(migration_db: MigrationDb) -> None:
-    db_path, alembic = migration_db
+def test_the_twenty48_result_block_outcome_becomes_win(
+    migration_db_path: Path, alembic: Alembic
+) -> None:
     alembic("upgrade", _BEFORE)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         kept = _insert(
             conn, "twenty48", "kept_playing", _t48(2048, "kept_playing"), initial_board=_FRESH_BOARD
         )
@@ -214,7 +215,7 @@ def test_the_twenty48_result_block_outcome_becomes_win(migration_db: MigrationDb
         conn.commit()
         mahjong_text = _rows(conn)[mahjong][1]
     alembic("upgrade", _REVISION)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         rows = _rows(conn)
     assert rows[kept][0] == "win"
     assert json.loads(rows[kept][1]) == _t48(2048, "win")
@@ -222,38 +223,35 @@ def test_the_twenty48_result_block_outcome_becomes_win(migration_db: MigrationDb
     assert rows[mahjong] == ("win", mahjong_text)
 
 
-def test_a_second_run_changes_nothing(migration_db: MigrationDb) -> None:
-    db_path, alembic = migration_db
+def test_a_second_run_changes_nothing(migration_db_path: Path, alembic: Alembic) -> None:
     alembic("upgrade", _BEFORE)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         _seed_old_rows(conn)
         conn.commit()
     first = alembic("upgrade", _REVISION)
     assert "{'mahjong': 1, 'twenty48': 3, 'blackjack': 1}" in first.stderr
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         after_first = _rows(conn)
 
     # Downgrade is a no-op, so the backfilled wins stay...
     alembic("downgrade", _BEFORE)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         assert _rows(conn) == after_first
     # ...and running the upgrade again finds nothing left to rewrite.
     second = alembic("upgrade", _REVISION)
     assert "{'mahjong': 0, 'twenty48': 0, 'blackjack': 0}" in second.stderr
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         assert _rows(conn) == after_first
 
 
-def test_upgrade_on_an_empty_games_table(migration_db: MigrationDb) -> None:
-    db_path, alembic = migration_db
+def test_upgrade_on_an_empty_games_table(migration_db_path: Path, alembic: Alembic) -> None:
     alembic("upgrade", _BEFORE)
     alembic("upgrade", _REVISION)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         assert _rows(conn) == {}
 
 
-def test_offline_sql_is_one_update_per_game(migration_db: MigrationDb) -> None:
-    _, alembic = migration_db
+def test_offline_sql_is_one_update_per_game(alembic: Alembic) -> None:
     out = alembic("upgrade", f"{_BEFORE}:{_REVISION}", "--sql").stdout
     updates = [s for s in out.split(";") if "UPDATE games SET outcome='win'" in s]
     assert len(updates) == 3

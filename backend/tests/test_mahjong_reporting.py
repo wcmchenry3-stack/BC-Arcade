@@ -26,7 +26,7 @@ from db.base import get_session_factory
 from db.models import Game
 from mahjong.models import MahjongMetadata
 from mahjong.module import module as mahjong_module
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 from tests.test_generic_leaderboard import _grant_all, _seed, _set_name, _sid
 
 # ---------------------------------------------------------------------------

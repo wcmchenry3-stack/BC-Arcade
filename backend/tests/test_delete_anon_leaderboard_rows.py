@@ -17,18 +17,19 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
+from pathlib import Path
 
 import pytest
 
-from tests._migration_helpers import MigrationDb
+from tests._migration_helpers import Alembic
 
 # The seven legacy sentinels (#2622 context), each written by its game's
 # `POST /<game>/score` route, which predates the generic board (#2618).
 _LEGACY_GAMES = ("solitaire", "mahjong", "hearts", "freecell", "sort", "starswarm", "yacht")
 _SENTINELS = tuple(f"{game}-anon" for game in _LEGACY_GAMES)
 
-# (revision before, the migration under test)
-_MIGRATIONS = pytest.mark.parametrize(
+# (revision before, the migration under test); every test runs against both.
+pytestmark = pytest.mark.parametrize(
     ("before", "revision"),
     [
         pytest.param("0025_merge_0024_heads", "0026_delete_anon_leaderboard", id="0026"),
@@ -71,13 +72,11 @@ def _event_game_ids(conn: sqlite3.Connection) -> set[str]:
     return {row[0] for row in conn.execute("SELECT DISTINCT game_id FROM game_events").fetchall()}
 
 
-@_MIGRATIONS
 def test_upgrade_deletes_only_sentinel_rows_and_their_events(
-    migration_db: MigrationDb, before: str, revision: str
+    migration_db_path: Path, alembic: Alembic, before: str, revision: str
 ) -> None:
-    db_path, alembic = migration_db
     alembic("upgrade", before)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         sentinel_ids = []
         for game, session_id in zip(_LEGACY_GAMES, _SENTINELS, strict=True):
             # Each under its own game type, as the legacy route wrote it.
@@ -102,7 +101,7 @@ def test_upgrade_deletes_only_sentinel_rows_and_their_events(
         real_ids = {cascade_id, sudoku_id, lookalike_id}
 
     alembic("upgrade", revision)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         remaining = _game_ids(conn)
         assert remaining.isdisjoint(sentinel_ids)
         assert real_ids <= remaining
@@ -112,43 +111,39 @@ def test_upgrade_deletes_only_sentinel_rows_and_their_events(
         assert {cascade_id, sudoku_id} <= remaining_event_games
 
 
-@_MIGRATIONS
 def test_upgrade_is_a_noop_when_no_sentinel_rows_exist(
-    migration_db: MigrationDb, before: str, revision: str
+    migration_db_path: Path, alembic: Alembic, before: str, revision: str
 ) -> None:
     """A fresh/clean DB (e.g. the one the rest of the suite runs against)
     upgrades cleanly with nothing to delete."""
-    db_path, alembic = migration_db
     alembic("upgrade", before)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         kept = _seed_game(conn, str(uuid.uuid4()), name="Real")
     alembic("upgrade", revision)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         assert kept in _game_ids(conn)
 
 
-@_MIGRATIONS
 def test_downgrade_is_a_documented_noop(
-    migration_db: MigrationDb, before: str, revision: str
+    migration_db_path: Path, alembic: Alembic, before: str, revision: str
 ) -> None:
     """Downgrade does not restore the deleted rows — there is nothing to
     revert, only a comment explaining why (Test coverage: downgrade)."""
-    db_path, alembic = migration_db
     alembic("upgrade", before)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         sentinel_id = _seed_game(conn, _SENTINELS[0], name="OldClient")
         _seed_event(conn, sentinel_id)
         kept_id = _seed_game(conn, str(uuid.uuid4()), name="Real")
 
     alembic("upgrade", revision)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         assert sentinel_id not in _game_ids(conn)
 
     # Downgrading (schema-wise, a no-op) and re-upgrading must not resurrect
     # the sentinel row or error on an already-clean table.
     alembic("downgrade", before)
     alembic("upgrade", revision)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         remaining = _game_ids(conn)
         assert sentinel_id not in remaining
         assert kept_id in remaining

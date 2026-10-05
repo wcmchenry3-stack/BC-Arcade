@@ -20,7 +20,7 @@ from db.models import (
     PurchaseEvent,
     PurchaseLink,
 )
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),

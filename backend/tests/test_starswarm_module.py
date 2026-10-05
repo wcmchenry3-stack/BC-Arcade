@@ -36,7 +36,7 @@ from starswarm.models import (
     StarSwarmResult,
 )
 from starswarm.module import module as starswarm_module
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 from vocab import GameType
 
 client = TestClient(app)

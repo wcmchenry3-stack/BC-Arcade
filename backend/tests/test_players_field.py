@@ -9,7 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from games.schemas import CreateGameRequest, PlayerRef
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 
 # ---------------------------------------------------------------------------
 # PlayerRef unit tests

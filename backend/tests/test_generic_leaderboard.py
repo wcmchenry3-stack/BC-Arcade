@@ -24,7 +24,7 @@ from games import leaderboard
 from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
 from games.registry import get_module
 from limiter import _real_ip, limiter, session_key
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 from vocab import GameType as GameTypeEnum
 
 pytestmark = pytest.mark.skipif(

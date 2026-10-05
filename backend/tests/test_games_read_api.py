@@ -15,7 +15,7 @@ from games.progression import (
     LEVEL_THRESHOLDS,
     VARIETY_BONUS_PER_GAME_TYPE,
 )
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),

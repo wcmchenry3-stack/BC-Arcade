@@ -12,8 +12,9 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from pathlib import Path
 
-from tests._migration_helpers import MigrationDb
+from tests._migration_helpers import Alembic
 
 _BEFORE = "0026_delete_anon_leaderboard"
 _REVISION = "0027_players_display_name"
@@ -43,11 +44,12 @@ def _players(conn: sqlite3.Connection) -> dict[str, str]:
     return dict(conn.execute("SELECT session_id, display_name FROM players").fetchall())
 
 
-def test_backfill_keeps_the_latest_named_row_per_real_session(migration_db: MigrationDb) -> None:
-    db_path, alembic = migration_db
+def test_backfill_keeps_the_latest_named_row_per_real_session(
+    migration_db_path: Path, alembic: Alembic
+) -> None:
     alembic("upgrade", _BEFORE)
     renamed, long_named, unnamed, blank_latest = (str(uuid.uuid4()) for _ in range(4))
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         # William six months ago, Bill today: the latest completion wins,
         # whatever order the rows were inserted in.
         _insert_game(conn, renamed, completed_minute=30, name="  Bill  ")
@@ -66,7 +68,7 @@ def test_backfill_keeps_the_latest_named_row_per_real_session(migration_db: Migr
         conn.commit()
 
     alembic("upgrade", _REVISION)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         assert _players(conn) == {
             renamed: "Bill",
             long_named: "x" * 32,
@@ -79,29 +81,29 @@ def test_backfill_keeps_the_latest_named_row_per_real_session(migration_db: Migr
 
 
 def test_upgrade_on_an_empty_games_table_creates_an_empty_players_table(
-    migration_db: MigrationDb,
+    migration_db_path: Path,
+    alembic: Alembic,
 ) -> None:
-    db_path, alembic = migration_db
     alembic("upgrade", _BEFORE)
     alembic("upgrade", _REVISION)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         assert _players(conn) == {}
 
 
 def test_downgrade_drops_the_table_and_re_upgrade_backfills_again(
-    migration_db: MigrationDb,
+    migration_db_path: Path,
+    alembic: Alembic,
 ) -> None:
-    db_path, alembic = migration_db
     alembic("upgrade", _BEFORE)
     sid = str(uuid.uuid4())
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         _insert_game(conn, sid, completed_minute=1, name="Ada")
         conn.commit()
     alembic("upgrade", _REVISION)
     alembic("downgrade", _BEFORE)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert "players" not in tables
     alembic("upgrade", _REVISION)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         assert _players(conn) == {sid: "Ada"}

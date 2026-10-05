@@ -23,7 +23,7 @@ from db.models import Game, GameEntitlement, GameType, Player
 from games import leaderboard
 from limiter import limiter, session_key
 from players.generated import is_generated_display_name
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 from tests.test_generic_leaderboard import (
     CREATE_METADATA,
     PARTITION_QUERY,

@@ -12,9 +12,10 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from pathlib import Path
 
 from players.generated import is_generated_display_name
-from tests._migration_helpers import MigrationDb
+from tests._migration_helpers import Alembic
 
 _BEFORE = "0029_delete_anon_rows_final"
 _REVISION = "0030_generated_player_names"
@@ -24,13 +25,14 @@ def _players(conn: sqlite3.Connection) -> dict[str, str]:
     return dict(conn.execute("SELECT session_id, display_name FROM players").fetchall())
 
 
-def test_named_players_stay_on_the_boards_under_generated_names(migration_db: MigrationDb) -> None:
-    db_path, alembic = migration_db
+def test_named_players_stay_on_the_boards_under_generated_names(
+    migration_db_path: Path, alembic: Alembic
+) -> None:
     alembic("upgrade", _BEFORE)
     named = [str(uuid.uuid4()) for _ in range(3)]
     unnamed = str(uuid.uuid4())
     typed = ["Ada", "x" * 32, "Brave Otter 4821"]
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         for sid, name in zip(named, typed, strict=True):
             conn.execute(
                 "INSERT INTO players (session_id, display_name) VALUES (?, ?)", (sid, name)
@@ -45,7 +47,7 @@ def test_named_players_stay_on_the_boards_under_generated_names(migration_db: Mi
         conn.commit()
 
     alembic("upgrade", _REVISION)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         players = _players(conn)
     assert set(players) == set(named)
     for sid, old in zip(named, typed, strict=True):
@@ -56,13 +58,14 @@ def test_named_players_stay_on_the_boards_under_generated_names(migration_db: Mi
     # draw could land on the same name, so only its shape is checked above.
 
 
-def test_players_with_a_default_name_are_taken_off_the_boards(migration_db: MigrationDb) -> None:
+def test_players_with_a_default_name_are_taken_off_the_boards(
+    migration_db_path: Path, alembic: Alembic
+) -> None:
     """A build's default (``You``, ``Player``...) was never a choice to go public."""
-    db_path, alembic = migration_db
     alembic("upgrade", _BEFORE)
     defaults = {str(uuid.uuid4()): name for name in ("You", " player ", "GUEST", "Player 1")}
     chosen = str(uuid.uuid4())
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         for sid, name in {**defaults, chosen: "Ada"}.items():
             conn.execute(
                 "INSERT INTO players (session_id, display_name) VALUES (?, ?)", (sid, name)
@@ -70,30 +73,28 @@ def test_players_with_a_default_name_are_taken_off_the_boards(migration_db: Migr
         conn.commit()
 
     alembic("upgrade", _REVISION)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         players = _players(conn)
     assert set(players) == {chosen}
     assert is_generated_display_name(players[chosen])
 
 
-def test_upgrade_with_no_players_is_a_no_op(migration_db: MigrationDb) -> None:
-    db_path, alembic = migration_db
+def test_upgrade_with_no_players_is_a_no_op(migration_db_path: Path, alembic: Alembic) -> None:
     alembic("upgrade", _BEFORE)
     alembic("upgrade", _REVISION)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         assert _players(conn) == {}
 
 
-def test_downgrade_keeps_the_generated_names(migration_db: MigrationDb) -> None:
-    db_path, alembic = migration_db
+def test_downgrade_keeps_the_generated_names(migration_db_path: Path, alembic: Alembic) -> None:
     alembic("upgrade", _BEFORE)
     sid = str(uuid.uuid4())
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         conn.execute("INSERT INTO players (session_id, display_name) VALUES (?, 'Ada')", (sid,))
         conn.commit()
     alembic("upgrade", _REVISION)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         after_upgrade = _players(conn)
     alembic("downgrade", _BEFORE)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(migration_db_path) as conn:
         assert _players(conn) == after_upgrade

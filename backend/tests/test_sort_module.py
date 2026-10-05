@@ -28,7 +28,7 @@ from main import app
 from sort.generate_levels import LEVEL_SPECS
 from sort.models import SortMetadata, SortResult
 from sort.module import module as sort_module
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 
 client = TestClient(app)
 

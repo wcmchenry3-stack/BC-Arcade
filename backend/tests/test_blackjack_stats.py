@@ -19,7 +19,7 @@ from blackjack.module import module as blackjack_module
 from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType
 from games.board import MAX_BOARD_VALUE
-from tests.conftest import session_headers as _headers
+from tests._helpers import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
