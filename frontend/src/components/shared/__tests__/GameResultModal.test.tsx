@@ -1,10 +1,16 @@
 import React, { useMemo } from "react";
 import { AccessibilityInfo, Pressable, StyleSheet, Text } from "react-native";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { NavigationContext } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import { ThemeProvider } from "../../../theme/ThemeContext";
+import {
+  dark as darkColors,
+  light as lightColors,
+  ThemeProvider,
+  type Colors,
+} from "../../../theme/ThemeContext";
 import GameResultModal, {
   CELEBRATION_MAX_MS,
   type GameOutcome,
@@ -23,6 +29,31 @@ jest.mock("expo-haptics", () => ({
 }));
 
 const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
+
+const THEME_COLORS = { dark: darkColors, light: lightColors } as const;
+
+type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
+
+/** The character a MaterialCommunityIcons icon renders as (it is a font glyph). */
+function glyph(name: IconName): string {
+  return String.fromCodePoint(MaterialCommunityIcons.glyphMap[name] as number);
+}
+
+/** The n-th host ancestor of a rendered element. */
+function ancestor<T extends { parent: T | null }>(el: T, n: number): T {
+  let node = el;
+  for (let i = 0; i < n; i++) node = node.parent!;
+  return node;
+}
+
+/** Expected outcome tokens and icon per outcome (#2501). */
+const OUTCOME_LOOK: Record<GameOutcome, { icon: IconName; fg: keyof Colors; tint: keyof Colors }> =
+  {
+    win: { icon: "trophy-outline", fg: "outcomeWin", tint: "outcomeWinTint" },
+    loss: { icon: "minus-circle-outline", fg: "outcomeLoss", tint: "outcomeLossTint" },
+    draw: { icon: "equal", fg: "outcomeDraw", tint: "outcomeDrawTint" },
+    ended: { icon: "flag-outline", fg: "outcomeEnded", tint: "outcomeEndedTint" },
+  };
 
 async function renderCard(
   props: Partial<GameResultModalProps> = {},
@@ -55,7 +86,7 @@ describe("GameResultModal — outcomes", () => {
 
   describe.each(["dark", "light"] as const)("%s theme", (theme) => {
     it.each(Object.keys(TITLES) as GameOutcome[])("renders %s", async (outcome) => {
-      const { toJSON } = await renderCard(
+      await renderCard(
         {
           outcome,
           eyebrow: "SUDOKU · HARD",
@@ -70,7 +101,52 @@ describe("GameResultModal — outcomes", () => {
         theme
       );
       expect(screen.getByRole("header")).toHaveTextContent(TITLES[outcome]);
-      expect(toJSON()).toMatchSnapshot();
+
+      const c = THEME_COLORS[theme];
+      const look = OUTCOME_LOOK[outcome];
+      const fg = c[look.fg];
+      // Scrim, card surface and the outcome stripe (light theme also draws a 1px border).
+      const card = screen.getByTestId("game-result");
+      expect(ancestor(card, 3)).toHaveStyle({ backgroundColor: c.overlay });
+      expect(card).toHaveStyle({
+        backgroundColor: c.surfaceHigh,
+        borderColor: c.border,
+        borderWidth: theme === "light" ? 1 : 0,
+        borderTopWidth: 5,
+        borderTopColor: fg,
+      });
+      // Outcome icon on its tinted disc, and the title, in the outcome colour.
+      const icon = screen.getByText(glyph(look.icon));
+      expect(icon).toHaveStyle({ color: fg, fontSize: 26 });
+      expect(icon.parent).toHaveStyle({ backgroundColor: c[look.tint] });
+      expect(screen.getByRole("header")).toHaveStyle({ color: fg, fontSize: 32 });
+      expect(screen.getByText("SUDOKU · HARD")).toHaveStyle({
+        color: c.textMuted,
+        textTransform: "uppercase",
+      });
+      expect(screen.getByText("Solved in 12:48")).toHaveStyle({ color: c.textMuted });
+      // Score hero (number formatted) and the stats strip.
+      expect(screen.getByText("Score")).toHaveStyle({ color: c.textMuted });
+      expect(screen.getByText("4,820")).toHaveStyle({ color: c.text, fontSize: 52 });
+      for (const [value, label] of [
+        ["12:48", "Time"],
+        ["2", "Errors"],
+      ]) {
+        expect(screen.getByText(value!)).toHaveStyle({ color: c.text });
+        expect(screen.getByText(label!)).toHaveStyle({ color: c.textMuted });
+      }
+      expect(ancestor(screen.getByText("Time"), 2)).toHaveStyle({ backgroundColor: c.surfaceAlt });
+      // Play Again (filled accent) and Home (outlined) buttons.
+      const primary = screen.getByTestId("game-result-primary");
+      expect(primary).toHaveTextContent("Play Again");
+      expect(primary).toHaveStyle({ backgroundColor: c.accentBright });
+      expect(screen.getByText("Play Again")).toHaveStyle({ color: c.textOnAccent });
+      expect(screen.getByTestId("game-result-home")).toHaveStyle({
+        borderColor: c.textMuted,
+        backgroundColor: "transparent",
+      });
+      expect(screen.getByText("Home")).toHaveStyle({ color: c.text });
+      expect(screen.getByText(glyph("home-outline"))).toHaveStyle({ color: c.text });
     });
   });
 
@@ -109,7 +185,7 @@ describe("GameResultModal — outcomes", () => {
 
 describe("GameResultModal — variations", () => {
   it("renders a versus hero", async () => {
-    const { toJSON } = await renderCard({
+    await renderCard({
       outcome: "loss",
       winnerName: "Computer",
       hero: { kind: "versus", you: 241, opponent: 264, opponentLabel: "CPU" },
@@ -117,7 +193,14 @@ describe("GameResultModal — variations", () => {
     expect(screen.getByText("241")).toBeTruthy();
     expect(screen.getByText("264")).toBeTruthy();
     expect(screen.getByText("CPU")).toBeTruthy();
-    expect(toJSON()).toMatchSnapshot();
+    const c = darkColors;
+    expect(screen.getByRole("header")).toHaveStyle({ color: c.outcomeLoss });
+    // On a loss the opponent leads: their score is full-strength, the player's is dimmed.
+    expect(screen.getByText("264")).toHaveStyle({ color: c.text, opacity: 1, fontSize: 44 });
+    expect(screen.getByText("241")).toHaveStyle({ color: c.textMuted, opacity: 0.85 });
+    expect(screen.getByText("You")).toHaveStyle({ color: c.textMuted });
+    expect(screen.getByText("CPU")).toHaveStyle({ color: c.textMuted });
+    expect(screen.getByText("vs")).toHaveStyle({ color: c.textMuted });
   });
 
   it("renders a detail slot and the New Best badge", async () => {
@@ -139,14 +222,23 @@ describe("GameResultModal — variations", () => {
 
   it("renders a disabled countdown primary", async () => {
     const onPress = jest.fn();
-    const { toJSON } = await renderCard({
+    await renderCard({
       primaryAction: { label: "Next word in 06:12:40", onPress, disabled: true },
     });
     const primary = screen.getByTestId("game-result-primary");
     expect(primary.props.accessibilityState.disabled).toBe(true);
     await fireEvent.press(primary);
     expect(onPress).not.toHaveBeenCalled();
-    expect(toJSON()).toMatchSnapshot();
+    // Dashed, muted chip with a clock icon instead of the filled accent button.
+    const c = darkColors;
+    expect(primary).toHaveStyle({
+      backgroundColor: c.surfaceAlt,
+      borderColor: c.border,
+      borderWidth: 1.5,
+      borderStyle: "dashed",
+    });
+    expect(screen.getByText("Next word in 06:12:40")).toHaveStyle({ color: c.textMuted });
+    expect(screen.getByText(glyph("clock-outline"))).toHaveStyle({ color: c.textMuted });
   });
 
   it("defaults the primary action to Play Again", async () => {
@@ -223,9 +315,16 @@ describe("GameResultModal — submission line", () => {
   });
 
   it("shows the offline state", async () => {
-    const { toJSON } = await renderCard({ submission: { status: "offline" } });
-    expect(screen.getByText("Saved offline · syncs when you're back online")).toBeTruthy();
-    expect(toJSON()).toMatchSnapshot();
+    await renderCard({ submission: { status: "offline" } });
+    const line = screen.getByText("Saved offline · syncs when you're back online");
+    expect(line).toHaveStyle({ color: darkColors.textMuted });
+    expect(screen.getByText(glyph("cloud-off-outline"))).toHaveStyle({
+      color: darkColors.textMuted,
+    });
+    expect(line.parent!.props).toEqual(
+      expect.objectContaining({ accessibilityRole: "text", accessibilityLiveRegion: "polite" })
+    );
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it("offers Retry on an error", async () => {
@@ -243,7 +342,14 @@ describe("GameResultModal — submission line", () => {
     expect(screen.getByText("Join the leaderboards?")).toBeTruthy();
     // Players never type a public name.
     expect(JSON.stringify(toJSON())).not.toContain("TextInput");
-    expect(toJSON()).toMatchSnapshot();
+    expect(screen.getByTestId("result-name-prompt").parent).toHaveStyle({
+      backgroundColor: darkColors.surfaceAlt,
+      padding: 14,
+    });
+    expect(screen.getByTestId("result-name-prompt-join")).toHaveStyle({
+      backgroundColor: darkColors.accentBright,
+    });
+    expect(screen.getByText("Join leaderboards")).toHaveStyle({ color: darkColors.textOnAccent });
 
     await fireEvent.press(screen.getByRole("button", { name: "Join leaderboards" }));
     await waitFor(() => expect(onJoinLeaderboards).toHaveBeenCalledTimes(1));
