@@ -59,8 +59,7 @@ describe("HeartsDebugPanel", () => {
 
   afterEach(() => {
     jest.useRealTimers();
-    jest.restoreAllMocks();
-    jest.replaceProperty(Platform, "OS", "ios");
+    jest.restoreAllMocks(); // also undoes setPlatform's replaceProperty
   });
 
   describe("header", () => {
@@ -164,20 +163,39 @@ describe("HeartsDebugPanel", () => {
 
     describe("on web", () => {
       const writeText = jest.fn();
-      let hadClipboard: boolean;
+      // The jest environment may or may not have a global `navigator` (it depends on
+      // the Node version): make one if it is missing, and put back what was there.
+      let createdNavigator = false;
+      let originalClipboard: PropertyDescriptor | undefined;
 
       beforeEach(() => {
         setPlatform("web");
         writeText.mockReset().mockResolvedValue(undefined);
-        hadClipboard = "clipboard" in navigator;
-        Object.defineProperty(navigator, "clipboard", {
+        if (typeof globalThis.navigator === "undefined") {
+          Object.defineProperty(globalThis, "navigator", {
+            value: {},
+            configurable: true,
+            writable: true,
+          });
+          createdNavigator = true;
+        }
+        originalClipboard = Object.getOwnPropertyDescriptor(globalThis.navigator, "clipboard");
+        Object.defineProperty(globalThis.navigator, "clipboard", {
           value: { writeText },
           configurable: true,
         });
       });
 
       afterEach(() => {
-        if (!hadClipboard) delete (navigator as { clipboard?: unknown }).clipboard;
+        if (originalClipboard) {
+          Object.defineProperty(globalThis.navigator, "clipboard", originalClipboard);
+        } else {
+          delete (globalThis.navigator as { clipboard?: unknown }).clipboard;
+        }
+        if (createdNavigator) {
+          delete (globalThis as { navigator?: unknown }).navigator;
+          createdNavigator = false;
+        }
       });
 
       it("copies the session as Markdown, confirms, then reverts", async () => {
@@ -235,12 +253,17 @@ describe("HeartsDebugPanel", () => {
 
       it("drops a pending confirmation timer on unmount", async () => {
         jest.useFakeTimers();
+        const set = jest.spyOn(globalThis, "setTimeout");
+        const clear = jest.spyOn(globalThis, "clearTimeout");
         await render(panel());
         await fireEvent.press(screen.getByRole("button", { name: "Copy session to clipboard" }));
-        const clear = jest.spyOn(globalThis, "clearTimeout");
-        const clearedBefore = clear.mock.calls.length;
+        // The confirmation's own timer: the 2 s one the press started.
+        const at = set.mock.calls.findIndex(([, ms]) => ms === 2000);
+        expect(at).toBeGreaterThanOrEqual(0);
+        const confirmationTimer = set.mock.results[at]!.value;
+
         await screen.unmount();
-        expect(clear.mock.calls.length).toBeGreaterThan(clearedBefore);
+        expect(clear).toHaveBeenCalledWith(confirmationTimer);
       });
     });
   });
@@ -336,9 +359,16 @@ describe("HeartsDebugPanel", () => {
       const options = mockRunPimcBenchmark.mock.calls[0]![0] as { cancelled: () => boolean };
       await screen.unmount();
       expect(options.cancelled()).toBe(true);
+
+      // The late failure lands on nothing: no error is raised or logged.
+      const error = jest.spyOn(console, "error").mockImplementation(() => undefined);
+      const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
       await act(async () => {
         run.reject(new Error("late"));
       });
+      expect(error).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+      expect(screen.queryByText(/Failed:/)).toBeNull();
     });
   });
 });
