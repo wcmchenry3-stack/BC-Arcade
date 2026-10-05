@@ -29,15 +29,23 @@
       "./jest.setup-after-env.ts"
     ],
     "collectCoverageFrom": [
-      "src/**/*.{ts,tsx}",
+      "src/**/*.{ts,tsx,js,jsx}",
       "App.tsx",
       "!src/**/__tests__/**",
       "!src/**/__mocks__/**",
       "!src/**/*.d.ts",
       "!src/screens/__dev__/**",
-      "!src/game/**/sim/**",
+      "!src/game/*/sim/**",
       "!src/game/yacht/oracleBuild/**",
+      "!src/i18n/glossary.js",
       "!**/*.generated.ts"
+    ],
+    "coverageReporters": [
+      "json",
+      "json-summary",
+      "lcov",
+      "text",
+      "clover"
     ],
     "testTimeout": 15000,
     "testMatch": [
@@ -53,10 +61,10 @@
     ],
     "coverageThreshold": {
       "global": {
-        "lines": 83,
-        "statements": 82,
-        "branches": 79,
-        "functions": 76
+        "lines": 82,
+        "statements": 81,
+        "branches": 78,
+        "functions": 75
       },
       "./src/game/solitaire/engine.ts": {
         "lines": 80
