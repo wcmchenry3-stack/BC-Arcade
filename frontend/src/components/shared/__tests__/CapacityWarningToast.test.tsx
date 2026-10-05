@@ -270,7 +270,7 @@ describe("CapacityWarningToast", () => {
       expect(check).toHaveBeenLastCalledWith(queueStats(90));
       expect(queryByTestId("capacity-warning-toast")).toBeTruthy();
 
-      unmount();
+      await unmount();
       expect(unsubscribe).toHaveBeenCalledTimes(1);
     } finally {
       jest.useRealTimers();
@@ -308,7 +308,7 @@ describe("CapacityWarningToast", () => {
         </ThemeProvider>
       );
       expect(onStats).toHaveBeenCalledTimes(1);
-      unmount();
+      await unmount();
     } finally {
       onStats.mockRestore();
     }
