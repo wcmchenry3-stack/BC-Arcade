@@ -854,7 +854,7 @@ export default function MahjongScreen() {
   const clearHint = useCallback(() => {
     if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
     hintTimerRef.current = null;
-    setHintIds(new Set());
+    setHintIds((prev) => (prev.size === 0 ? prev : new Set()));
   }, []);
 
   const handleTilePress = useCallback(
@@ -883,10 +883,10 @@ export default function MahjongScreen() {
       noHintTimerRef.current = setTimeout(() => setNoHintVisible(false), 2000);
       return;
     }
-    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    clearHint();
     setHintIds(new Set(pair));
     hintTimerRef.current = setTimeout(() => setHintIds(new Set()), 2000);
-  }, [state]);
+  }, [state, clearHint]);
 
   useEffect(
     () => () => {
