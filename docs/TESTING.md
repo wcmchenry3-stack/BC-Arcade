@@ -223,13 +223,20 @@ The iOS/Android Skia renderers (`components/starswarm/GameCanvas.tsx`,
 `@shopify/react-native-skia` with stubs that render a host `View` keeping the element's props
 (`testID="sk-rect"`, `color`, `x`, ...), so a test asserts what would be drawn rather than
 snapshotting it; the SVG card faces (`decks/__tests__/svgCardFaces.test.tsx`) stub
-`react-native-svg` the same way and pin element counts per card. Engine state is seeded
+`react-native-svg` the same way and pin primitive counts and colours per card, picking
+elements by their props, never by position. Engine state is seeded
 (`initStarSwarm(w, h, wave, seed)` / `createGame(layout, seed)`), and the Star Swarm test
 wraps the real engine and `buildFrame` in `jest.fn` so one test can force a single transition
 (`tick.mockImplementationOnce`) and count publishes. `requestAnimationFrame` is replaced by a
-hand-cranked queue, so each `frame(ts)` runs exactly one loop iteration inside `act`; frame
+hand-cranked queue (`createRafHarness` in `components/starswarm/__tests__/helpers/canvasFixtures.ts`,
+with `seededStarSwarm`), so each `frame(dt)` runs exactly one loop iteration inside `act`; frame
 publish gating is asserted as "no `buildFrame` call, no React commit (a `Profiler` counter)"
-across frames of a paused or game-over game. Use `await` on every RNTL v14 call (`render`,
+across frames of a paused or game-over game. The global Reanimated mock keeps a
+`useSharedValue` object for the component's lifetime, as the real hook does, so a write from a
+gesture or UI-thread callback survives the next render; `mockScreenDeps().mockGestureHandler()`
+records the `on*` callbacks a component gives its gestures so a test can fire them. Restore
+spies (`Date.now`, `performance.now`, `console.error`) in `afterEach(() =>
+jest.restoreAllMocks())`, not at the end of a test body. Use `await` on every RNTL v14 call (`render`,
 `rerender`, `unmount`, `fireEvent`), and don't wrap a plain ref call in a sync `act()`: an
 unawaited one leaks into the next test. `App.tsx` has a smoke test (`src/__tests__/App.test.tsx`)
 with navigator recorders and stub screens; jest cannot run `import()`, so it replays
