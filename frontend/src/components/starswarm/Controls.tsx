@@ -5,8 +5,8 @@ import * as Haptics from "expo-haptics";
 import * as Sentry from "@sentry/react-native";
 import { useTranslation } from "react-i18next";
 import type { GameCanvasHandle } from "./GameCanvas";
-import { CANVAS_W, CANVAS_H, PLAYER_W } from "../../game/starswarm/engine";
-import { applyDrag, clamp } from "../../game/starswarm/drag";
+import { CANVAS_W, CANVAS_H } from "../../game/starswarm/engine";
+import { applyDrag, clamp, DRAG_MAX_X, DRAG_MIN_X } from "../../game/starswarm/drag";
 
 const DRAG_ZONE_Y_RATIO = 0.6; // bottom 40% is the drag zone
 
@@ -90,9 +90,10 @@ export default function Controls({
         const shipX = handle?.getPlayerX?.() ?? state.player.x;
         shipXAtDragStartRef.current = shipX - e.translationX / scale;
       }
-      const { rawX, newX, ...drag } = applyDrag(shipXAtDragStartRef.current, e.translationX, scale);
+      const dragStart = shipXAtDragStartRef.current;
+      const { rawX, newX, nextDragStart } = applyDrag(dragStart, e.translationX, scale);
       // Re-anchor so any reversal immediately moves the ship instead of replaying the overshoot.
-      shipXAtDragStartRef.current = drag.nextDragStart;
+      shipXAtDragStartRef.current = nextDragStart;
       if (rawX !== newX) {
         // Breadcrumb so Sentry captures boundary-overshoot context for any surrounding errors.
         // Throttled to once per second — pan events fire at 60 fps and would flood the trail.
@@ -138,8 +139,7 @@ export default function Controls({
       if (held.size > 0) {
         const dx = (held.has("ArrowRight") ? STEP : 0) - (held.has("ArrowLeft") ? STEP : 0);
         if (dx !== 0) {
-          const hw = PLAYER_W / 2;
-          playerXRef.current = clamp(playerXRef.current + dx, hw, CANVAS_W - hw);
+          playerXRef.current = clamp(playerXRef.current + dx, DRAG_MIN_X, DRAG_MAX_X);
           canvasRef.current?.setPlayerX(playerXRef.current);
         }
       }
