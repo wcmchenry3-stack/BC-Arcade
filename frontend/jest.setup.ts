@@ -64,7 +64,13 @@ jest.mock("react-native-reanimated", () => {
   const { View, Text } = require("react-native");
 
   // Stable for the component's lifetime, like the real hook: a write from a gesture handler or a
-  // UI-thread callback captured in one render is still there on the next (#2956).
+  // UI-thread callback captured in one render is still there on the next (#2956). Two traps,
+  // because useAnimatedStyle / useDerivedValue below are evaluated inline at render rather than
+  // reacting to writes: (1) a write made in an effect or a handler only shows in an animated
+  // style on the NEXT render, so `rerender` (or act on something that re-renders) before reading
+  // it; (2) the init is read once at mount, so a prop-seeded value (PlayerHand's
+  // `useSharedValue(lifted ? -LIFT_AMOUNT : 0)`) stays frozen at its first value when the prop
+  // changes unless the component writes `.value` itself.
   const useStableSharedValue = (init: unknown) => React.useState(() => ({ value: init }))[0];
   const noopAnim = (v: unknown) => v;
 

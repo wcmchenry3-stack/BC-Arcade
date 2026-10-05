@@ -237,8 +237,16 @@ with `seededStarSwarm`), so each `frame(dt)` runs exactly one loop iteration ins
 publish gating is asserted as "no `buildFrame` call, no React commit (a `Profiler` counter)"
 across frames of a paused or game-over game. The global Reanimated mock keeps a
 `useSharedValue` object for the component's lifetime, as the real hook does, so a write from a
-gesture or UI-thread callback survives the next render; `mockScreenDeps().mockGestureHandler()`
-records the `on*` callbacks a component gives its gestures so a test can fire them. Restore
+gesture or UI-thread callback survives the next render. Two traps remain, because the mock
+evaluates `useAnimatedStyle` / `useDerivedValue` inline at render: a write made in an effect or
+handler shows in an animated style only on the next render, so `rerender` (or `act` on something
+that re-renders) before reading the style; and the init is read once at mount, so a prop-seeded
+value (`useSharedValue(lifted ? -LIFT_AMOUNT : 0)` in `PlayerHand.tsx`) stays at its first value
+when the prop changes unless the component writes `.value` itself.
+`mockScreenDeps().mockGestureHandler(() => sink)` records every `GestureDetector` render (the
+gesture it was given, composites with their children, each built gesture with its own `on*`
+callbacks, and the child's testID); `detectedGesture(sink, "pan", { testID })` returns the
+callbacks to fire. Restore
 spies (`Date.now`, `performance.now`, `console.error`) in `afterEach(() =>
 jest.restoreAllMocks())`, not at the end of a test body. Use `await` on every RNTL v14 call (`render`,
 `rerender`, `unmount`, `fireEvent`), and don't wrap a plain ref call in a sync `act()`: an
