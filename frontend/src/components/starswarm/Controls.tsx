@@ -6,6 +6,7 @@ import * as Sentry from "@sentry/react-native";
 import { useTranslation } from "react-i18next";
 import type { GameCanvasHandle } from "./GameCanvas";
 import { CANVAS_W, CANVAS_H, PLAYER_W } from "../../game/starswarm/engine";
+import { applyDrag, clamp } from "../../game/starswarm/drag";
 
 const DRAG_ZONE_Y_RATIO = 0.6; // bottom 40% is the drag zone
 
@@ -18,10 +19,6 @@ interface Props {
   onPause: () => void;
   onResume: () => void;
   onNewGame: () => void;
-}
-
-function clamp(v: number, lo: number, hi: number) {
-  return Math.max(lo, Math.min(hi, v));
 }
 
 export default function Controls({
@@ -93,12 +90,10 @@ export default function Controls({
         const shipX = handle?.getPlayerX?.() ?? state.player.x;
         shipXAtDragStartRef.current = shipX - e.translationX / scale;
       }
-      const hw = PLAYER_W / 2;
-      const rawX = shipXAtDragStartRef.current + e.translationX / scale;
-      const newX = clamp(rawX, hw, CANVAS_W - hw);
+      const { rawX, newX, ...drag } = applyDrag(shipXAtDragStartRef.current, e.translationX, scale);
       // Re-anchor so any reversal immediately moves the ship instead of replaying the overshoot.
+      shipXAtDragStartRef.current = drag.nextDragStart;
       if (rawX !== newX) {
-        shipXAtDragStartRef.current = newX - e.translationX / scale;
         // Breadcrumb so Sentry captures boundary-overshoot context for any surrounding errors.
         // Throttled to once per second — pan events fire at 60 fps and would flood the trail.
         const now = Date.now();
