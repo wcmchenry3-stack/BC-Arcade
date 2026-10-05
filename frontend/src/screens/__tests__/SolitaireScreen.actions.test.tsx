@@ -19,8 +19,6 @@ import {
   tableauOf,
 } from "./helpers/solitaireFixtures";
 
-jest.setTimeout(15000);
-
 const mockPopToTop = jest.fn();
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({

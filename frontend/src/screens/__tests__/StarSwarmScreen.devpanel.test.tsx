@@ -6,12 +6,9 @@
  * stand-ins (helpers/starSwarmHarness).
  */
 
-import React from "react";
-import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
+import { act, fireEvent, screen, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import StarSwarmScreen from "../StarSwarmScreen";
-import { ThemeProvider } from "../../theme/ThemeContext";
 import {
   CANVAS_H,
   CANVAS_W,
@@ -20,7 +17,7 @@ import {
   initStarSwarm,
 } from "../../game/starswarm/engine";
 import type { PowerUpType } from "../../game/starswarm/types";
-import { audioCalls, canvas, resetHarness } from "./helpers/starSwarmHarness";
+import { audioCalls, canvas, renderRun, resetHarness } from "./helpers/starSwarmHarness";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -50,7 +47,7 @@ jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlus
 jest.mock("../../game/_shared/displayNameSync", () => mockScreenDeps().mockDisplayNameSync());
 jest.mock("../../game/_shared/gameEventClient", () => mockScreenDeps().mockGameEventClient());
 
-/** The panel's switches, top to bottom. */
+/** The panel's switches, by accessibility label. */
 const SWITCHES = [
   "Infinite lives",
   "Straggler AI",
@@ -65,23 +62,6 @@ const SWITCHES = [
 ] as const;
 type SwitchLabel = (typeof SWITCHES)[number];
 
-async function renderRun() {
-  const view = await render(
-    <ThemeProvider>
-      <StarSwarmScreen />
-    </ThemeProvider>
-  );
-  await act(async () => {
-    await fireEvent(screen.getByTestId("starswarm-canvas-outer"), "layout", {
-      nativeEvent: { layout: { width: 400, height: 700 } },
-    });
-  });
-  await act(async () => {
-    await fireEvent.press(screen.getByTestId("starswarm-start-game"));
-  });
-  return view;
-}
-
 const press = (label: string) =>
   act(async () => {
     await fireEvent.press(screen.getByLabelText(label));
@@ -94,9 +74,8 @@ async function openPanel() {
 }
 
 async function flip(label: SwitchLabel, value: boolean) {
-  const target = screen.getAllByRole("switch")[SWITCHES.indexOf(label)]!;
   await act(async () => {
-    await fireEvent(target, "valueChange", value);
+    await fireEvent(screen.getByLabelText(label), "valueChange", value);
   });
 }
 
@@ -116,6 +95,7 @@ describe("opening and closing", () => {
     expect(screen.queryByLabelText("Developer panel")).toBeNull();
     await openPanel();
     expect(screen.getByLabelText("Developer panel")).toBeTruthy();
+    for (const label of SWITCHES) expect(screen.getByLabelText(label)).toBeTruthy();
     expect(screen.getAllByRole("switch")).toHaveLength(SWITCHES.length);
     await act(async () => {
       await fireEvent.press(screen.getByText("Collapse"));

@@ -6,17 +6,14 @@
  * the way the game loop does.
  */
 
-import React from "react";
 import { AccessibilityInfo } from "react-native";
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { act, screen } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import StarSwarmScreen from "../StarSwarmScreen";
-import { ThemeProvider } from "../../theme/ThemeContext";
 import { hapticPlayerHit, hapticWaveClear } from "../../components/starswarm/Controls";
 import { CANVAS_H, CANVAS_W, initStarSwarm } from "../../game/starswarm/engine";
 import type { CarrierEvent, UpgradeEvent } from "../../game/starswarm/types";
-import { audio, canvas, resetHarness } from "./helpers/starSwarmHarness";
+import { audio, canvas, renderRun, resetHarness } from "./helpers/starSwarmHarness";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -45,23 +42,6 @@ jest.mock("../../api/stats", () => mockScreenDeps().mockStatsApi({ getGameRank: 
 jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
 jest.mock("../../game/_shared/displayNameSync", () => mockScreenDeps().mockDisplayNameSync());
 jest.mock("../../game/_shared/gameEventClient", () => mockScreenDeps().mockGameEventClient());
-
-async function renderRun() {
-  const view = await render(
-    <ThemeProvider>
-      <StarSwarmScreen />
-    </ThemeProvider>
-  );
-  await act(async () => {
-    await fireEvent(screen.getByTestId("starswarm-canvas-outer"), "layout", {
-      nativeEvent: { layout: { width: 400, height: 700 } },
-    });
-  });
-  await act(async () => {
-    await fireEvent.press(screen.getByTestId("starswarm-start-game"));
-  });
-  return view;
-}
 
 /** Calls one of the canvas's callbacks, as the game loop does. */
 async function raise(callback: string, ...args: unknown[]) {

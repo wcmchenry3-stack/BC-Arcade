@@ -9,6 +9,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { act } from "@testing-library/react-native";
 
 import { createSeededRng, setRng } from "../../game/solitaire/engine";
+import { playedCount } from "../../test-utils/mockScreenDeps";
 import {
   boardState,
   faceDown,
@@ -17,8 +18,6 @@ import {
   pressLabel,
   tableauOf,
 } from "./helpers/solitaireFixtures";
-
-jest.setTimeout(15000);
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -33,24 +32,15 @@ jest.mock("../../api/stats", () => mockScreenDeps().mockStatsApi({ getGameRank: 
 jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
 
 // Sounds by name, so a test can tell the invalid-move buzz from a card placement.
-const mockSoundPlayed = jest.fn();
-jest.mock("../../game/_shared/useSound", () => {
-  const players = new Map<string, () => void>();
-  return {
-    useSound: (name: string) => {
-      if (!players.has(name)) players.set(name, () => mockSoundPlayed(name));
-      return { play: players.get(name), stop: jest.fn() };
-    },
-  };
-});
+const mockPlayed: string[] = [];
+jest.mock("../../game/_shared/useSound", () => mockScreenDeps().mockSoundByName(() => mockPlayed));
 
-const INVALID = "solitaire.invalidMove";
-const invalidBuzzes = () => mockSoundPlayed.mock.calls.filter(([name]) => name === INVALID).length;
+const invalidBuzzes = () => playedCount(mockPlayed, "solitaire.invalidMove");
 
 beforeEach(async () => {
   await AsyncStorage.clear();
   setRng(createSeededRng(42));
-  mockSoundPlayed.mockClear();
+  mockPlayed.length = 0;
 });
 
 describe("foundation taps", () => {

@@ -15,6 +15,7 @@ import { loadGame } from "../../game/blackjack/storage";
 import { newGame, placeBet } from "../../game/blackjack/engine";
 import type { Card, EngineState } from "../../game/blackjack/engine";
 import type { BlackjackGameEvent } from "../../game/blackjack/types";
+import { playedCount } from "../../test-utils/mockScreenDeps";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({ navigate: jest.fn() }), { actual: true })
@@ -29,18 +30,10 @@ jest.mock("../../game/blackjack/storage", () => ({
 jest.mock("../../game/_shared/gameEventClient", () => mockScreenDeps().mockGameEventClient());
 
 // Sounds by name, so a test can tell which one played.
-const mockSoundPlayed = jest.fn();
-jest.mock("../../game/_shared/useSound", () => {
-  const players = new Map<string, () => void>();
-  return {
-    useSound: (name: string) => {
-      if (!players.has(name)) players.set(name, () => mockSoundPlayed(name));
-      return { play: players.get(name), stop: jest.fn() };
-    },
-  };
-});
+const mockPlayed: string[] = [];
+jest.mock("../../game/_shared/useSound", () => mockScreenDeps().mockSoundByName(() => mockPlayed));
 
-const played = (name: string) => mockSoundPlayed.mock.calls.filter(([n]) => n === name).length;
+const played = (name: string) => playedCount(mockPlayed, name);
 
 const card = (rank: string, suit = "♠"): Card => ({ rank, suit });
 
@@ -105,7 +98,7 @@ const pressLabel = (label: string | RegExp) =>
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockSoundPlayed.mockClear();
+  mockPlayed.length = 0;
 });
 
 afterEach(() => {

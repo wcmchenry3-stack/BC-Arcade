@@ -8,15 +8,17 @@
  * gave each target, without laying out native views.
  */
 
-import React from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { act } from "@testing-library/react-native";
 
 import { createSeededRng, setRng } from "../../game/solitaire/engine";
-import type { DragCard, DragContextValue, DragSource } from "../../game/_shared/drag/DragContext";
+import type { DragCard, DragSource } from "../../game/_shared/drag/DragContext";
+import {
+  createDropSink,
+  dropOn,
+  legalTargets as legalTargetsOf,
+  resetDropSink,
+} from "../../test-utils/mockScreenDeps";
 import { boardState, faceUp, mountOn, tableauOf } from "./helpers/solitaireFixtures";
-
-jest.setTimeout(15000);
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -30,31 +32,10 @@ jest.mock("../../game/_shared/gameEventClient", () => mockScreenDeps().mockGameE
 jest.mock("../../api/stats", () => mockScreenDeps().mockStatsApi({ getGameRank: jest.fn() }));
 jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
 
-type Drop = (source: DragSource, cards: DragCard[]) => boolean;
-
-const mockZones = new Map<string, Drop>();
-const mockDrag: { current: DragContextValue | null } = { current: null };
-
-jest.mock("../../game/_shared/drag/DropTarget", () => {
-  const { View } = jest.requireActual("react-native");
-  const { createElement } = jest.requireActual("react");
-  const { useDragContext } = jest.requireActual("../../game/_shared/drag/DragContext");
-  return {
-    DropTarget: ({
-      id,
-      onDrop,
-      children,
-    }: {
-      id: string;
-      onDrop: Drop;
-      children: React.ReactNode;
-    }) => {
-      mockZones.set(id, onDrop);
-      mockDrag.current = useDragContext();
-      return createElement(View, { testID: `zone-${id}` }, children);
-    },
-  };
-});
+const mockDrops = createDropSink();
+jest.mock("../../game/_shared/drag/DropTarget", () =>
+  mockScreenDeps().mockDropTarget(() => mockDrops)
+);
 
 // 6♦ (col 0) fits 7♣ (col 1). The waste's 2♠ fits 3♥ (col 6) and the spades
 // foundation (A♠). The hearts foundation's A♥ fits 2♣ (col 4), and 2♥ (col 5)
@@ -96,27 +77,12 @@ const fromFoundation = (suit: string): DragSource => ({
 });
 const fromFreeCell: DragSource = { game: "freecell", type: "freecell", cell: 0 };
 
-async function drop(
-  zoneId: string,
-  source: DragSource,
-  cards: DragCard[] = [CARD]
-): Promise<boolean> {
-  const onDrop = mockZones.get(zoneId);
-  if (!onDrop) throw new Error(`no drop target ${zoneId}`);
-  let accepted = false;
-  await act(async () => {
-    accepted = onDrop(source, cards);
-  });
-  return accepted;
-}
+const drop = (zoneId: string, source: DragSource, cards: DragCard[] = [CARD]) =>
+  dropOn(mockDrops, zoneId, source, cards);
 
 /** Starts a drag and returns the ids of the targets the screen lights up for it. */
-async function legalTargets(source: DragSource, cards: DragCard[] = [CARD]): Promise<string[]> {
-  await act(async () => {
-    mockDrag.current!.startDrag(source, cards);
-  });
-  return [...mockDrag.current!.legalTargetIds];
-}
+const legalTargets = (source: DragSource, cards: DragCard[] = [CARD]) =>
+  legalTargetsOf(mockDrops, source, cards);
 
 const ALL_FOUNDATIONS = [
   "solitaire-foundation-spades",
@@ -128,8 +94,7 @@ const ALL_FOUNDATIONS = [
 beforeEach(async () => {
   await AsyncStorage.clear();
   setRng(createSeededRng(42));
-  mockZones.clear();
-  mockDrag.current = null;
+  resetDropSink(mockDrops);
 });
 
 describe("SolitaireScreen — drop on a tableau column", () => {

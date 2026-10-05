@@ -8,42 +8,23 @@
  * gave each target, without laying out native views.
  */
 import React from "react";
-import { act, render, screen } from "@testing-library/react-native";
+import { render, screen } from "@testing-library/react-native";
 
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import FreeCellBoard from "../FreeCellBoard";
-import type {
-  DragCard,
-  DragContextValue,
-  DragSource,
-} from "../../../game/_shared/drag/DragContext";
+import type { DragCard, DragSource } from "../../../game/_shared/drag/DragContext";
 import type { FreeCellState, Suit } from "../../../game/freecell/types";
+import {
+  createDropSink,
+  dropOn,
+  legalTargets as legalTargetsOf,
+  resetDropSink,
+} from "../../../test-utils/mockScreenDeps";
 
-type Drop = (source: DragSource, cards: DragCard[]) => boolean;
-
-const mockZones = new Map<string, Drop>();
-const mockDrag: { current: DragContextValue | null } = { current: null };
-
-jest.mock("../../../game/_shared/drag/DropTarget", () => {
-  const { View } = jest.requireActual("react-native");
-  const { createElement } = jest.requireActual("react");
-  const { useDragContext } = jest.requireActual("../../../game/_shared/drag/DragContext");
-  return {
-    DropTarget: ({
-      id,
-      onDrop,
-      children,
-    }: {
-      id: string;
-      onDrop: Drop;
-      children: React.ReactNode;
-    }) => {
-      mockZones.set(id, onDrop);
-      mockDrag.current = useDragContext();
-      return createElement(View, { testID: `zone-${id}` }, children);
-    },
-  };
-});
+const mockDrops = createDropSink();
+jest.mock("../../../game/_shared/drag/DropTarget", () =>
+  mockScreenDeps().mockDropTarget(() => mockDrops)
+);
 
 jest.mock("../../../game/_shared/useSound", () => ({
   useSound: () => ({ play: jest.fn(() => true), stop: jest.fn() }),
@@ -106,31 +87,15 @@ async function renderBoard(props: { inputLocked?: boolean } = {}, state = STATE)
   return { onMove, setLocked: (locked: boolean) => screen.rerender(ui(locked)) };
 }
 
-async function drop(
-  zoneId: string,
-  source: DragSource,
-  cards: DragCard[] = [CARD]
-): Promise<boolean> {
-  const onDrop = mockZones.get(zoneId);
-  if (!onDrop) throw new Error(`no drop target ${zoneId}`);
-  let accepted = false;
-  await act(async () => {
-    accepted = onDrop(source, cards);
-  });
-  return accepted;
-}
+const drop = (zoneId: string, source: DragSource, cards: DragCard[] = [CARD]) =>
+  dropOn(mockDrops, zoneId, source, cards);
 
 /** Starts a drag and returns the ids of the targets the board lights up for it. */
-async function legalTargets(source: DragSource, cards: DragCard[] = [CARD]): Promise<string[]> {
-  await act(async () => {
-    mockDrag.current!.startDrag(source, cards);
-  });
-  return [...mockDrag.current!.legalTargetIds];
-}
+const legalTargets = (source: DragSource, cards: DragCard[] = [CARD]) =>
+  legalTargetsOf(mockDrops, source, cards);
 
 beforeEach(() => {
-  mockZones.clear();
-  mockDrag.current = null;
+  resetDropSink(mockDrops);
 });
 
 describe("FreeCellBoard — drop on a tableau column", () => {

@@ -16,6 +16,7 @@ import { createSeededRng, dealGame, setRng } from "../../game/hearts/engine";
 import { loadGame, saveGame } from "../../game/hearts/storage";
 import { savePlayerNames } from "../../game/hearts/playerNames";
 import type { HeartsState } from "../../game/hearts/types";
+import { playedCount } from "../../test-utils/mockScreenDeps";
 import { heartsCard, heartsDealing, heartsPlay, moonHaul } from "./helpers/heartsFixtures";
 
 jest.mock("../../game/hearts/storage", () => ({
@@ -25,11 +26,11 @@ jest.mock("../../game/hearts/storage", () => ({
   loadFinishedGameId: jest.fn().mockResolvedValue(null),
   saveFinishedGameId: jest.fn().mockResolvedValue(undefined),
 }));
+// Only the storage ends are replaced: the real validateName runs on a save.
 jest.mock("../../game/hearts/playerNames", () => ({
-  DEFAULT_NAMES: ["You", "West", "North", "East"],
+  ...jest.requireActual("../../game/hearts/playerNames"),
   loadPlayerNames: jest.fn().mockResolvedValue(["You", "West", "North", "East"]),
   savePlayerNames: jest.fn().mockResolvedValue(undefined),
-  validateName: jest.fn((v: string, def: string) => v.trim() || def),
 }));
 jest.mock("../../api/stats", () => mockScreenDeps().mockStatsApi({ getGameRank: jest.fn() }));
 jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
@@ -56,18 +57,10 @@ jest.mock("@react-navigation/native", () =>
 );
 
 // Sounds by name, so a test can tell which one played.
-const mockSoundPlayed = jest.fn();
-jest.mock("../../game/_shared/useSound", () => {
-  const players = new Map<string, () => void>();
-  return {
-    useSound: (name: string) => {
-      if (!players.has(name)) players.set(name, () => mockSoundPlayed(name));
-      return { play: players.get(name), stop: jest.fn() };
-    },
-  };
-});
+const mockPlayed: string[] = [];
+jest.mock("../../game/_shared/useSound", () => mockScreenDeps().mockSoundByName(() => mockPlayed));
 
-const played = (name: string) => mockSoundPlayed.mock.calls.filter(([n]) => n === name).length;
+const played = (name: string) => playedCount(mockPlayed, name);
 
 jest.useFakeTimers();
 
@@ -80,7 +73,14 @@ async function mountOn(state: HeartsState | null) {
       </HeartsRoundsProvider>
     </ThemeProvider>
   );
+  // The load has landed once it was asked for and the screen shows its result: a
+  // game on the table (the picker is gone), or the picker for no saved game.
   await waitFor(() => expect(loadGame).toHaveBeenCalled());
+  await waitFor(() =>
+    state === null
+      ? expect(api.getByTestId("hearts-start-game")).toBeTruthy()
+      : expect(api.queryByTestId("hearts-start-game")).toBeNull()
+  );
   await act(async () => {
     await Promise.resolve();
   });
@@ -122,8 +122,9 @@ async function press(api: Api, label: string | RegExp, { hidden = false } = {}) 
 
 beforeEach(() => {
   setRng(createSeededRng(42));
-  mockSoundPlayed.mockClear();
+  mockPlayed.length = 0;
   mockGoBack.mockClear();
+  (loadGame as jest.Mock).mockClear();
   (saveGame as jest.Mock).mockClear();
   (savePlayerNames as jest.Mock).mockClear();
 });
