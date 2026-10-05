@@ -469,3 +469,29 @@ async def test_rank_session_limit_is_enforced(client: TestClient) -> None:
     assert statuses == [200] * allowed + [429]
     # Another session from the same IP is still served (its own game: 404 here).
     assert client.get(f"/games/{uuid.uuid4()}/rank", headers=_headers(_sid())).status_code == 404
+
+
+async def test_a_rank_query_db_error_is_a_clean_500_and_logged_safely(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A failing count query never leaks the SQL parameters to the client or the log."""
+    from datetime import UTC, datetime
+
+    from fastapi import HTTPException
+    from sqlalchemy.exc import OperationalError
+
+    from games.ranking import compute_rank
+
+    with caplog.at_level("ERROR"), pytest.raises(HTTPException) as info:
+        await compute_rank(
+            _FailingDB(fail_execute=True),  # type: ignore[arg-type]
+            metric=Game.final_score,
+            direction="desc",
+            value=100,
+            completed_at=datetime.now(UTC),
+            game_label="solitaire",
+        )
+    assert info.value.status_code == 500
+    assert info.value.detail == "Failed to calculate rank."
+    assert isinstance(info.value.__cause__, OperationalError)
+    _assert_logged_safely(caplog, "solitaire")

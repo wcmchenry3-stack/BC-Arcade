@@ -139,3 +139,29 @@ def test_free_board_not_gated(client: TestClient, session_id: str, game: str) ->
     query = "?difficulty=easy" if game == "sudoku" else ""
     r = client.get(f"/games/leaderboard/{game}{query}", headers=_headers(session_id))
     assert r.status_code == 200, r.text
+
+
+# ---------------------------------------------------------------------------
+# Dev override
+# ---------------------------------------------------------------------------
+
+
+def test_dev_override_lets_a_premium_game_through(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    r = client.post("/games", json={"game_type": "cascade"}, headers=_headers(session_id))
+    assert r.status_code == 200, r.text
+
+
+@pytest.mark.parametrize(
+    ("value", "active"),
+    [("", False), ("false", False), ("1", False), ("true", True), ("TRUE", True)],
+)
+def test_only_the_word_true_activates_the_dev_override(
+    monkeypatch: pytest.MonkeyPatch, value: str, active: bool
+) -> None:
+    from entitlements.service import is_dev_override_active
+
+    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", value)
+    assert is_dev_override_active() is active
