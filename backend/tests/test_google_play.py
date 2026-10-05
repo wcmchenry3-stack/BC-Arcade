@@ -25,9 +25,7 @@ from purchases.verifiers import GoogleEvidence, NotConfiguredGoogleVerifier, Pur
 from tests._google_iap_harness import (
     NOW,
     Harness,
-    count,
     grant,
-    jwt_games,
     make_harness,
     post_google,
     post_rtdn,
@@ -36,6 +34,7 @@ from tests._google_iap_harness import (
     tok,
     utc,
 )
+from tests._helpers import count, jwt_games
 from tests.google_play_fakes import (
     ACCESS_TOKEN,
     AUDIENCE,
@@ -48,7 +47,7 @@ from tests.google_play_fakes import (
     service_account_info,
 )
 
-# Shared fixtures (gp, install) come from the harness module.
+# Shared fixtures (google_gp, google_install) come from the harness module.
 pytest_plugins = ["tests._google_iap_harness"]
 
 
@@ -183,11 +182,11 @@ def test_dormant_keeps_both_google_routes_503(google_env, client: TestClient) ->
 
 
 async def test_valid_owned_purchase_grants_acknowledges_and_uses_store_time(
-    client: TestClient, gp: Harness
+    client: TestClient, google_gp: Harness
 ) -> None:
     session, token = sid(), tok()
     completed = NOW() - timedelta(minutes=3)
-    gp.play.purchases[token] = play_purchase(
+    google_gp.play.purchases[token] = play_purchase(
         account=google.expected_account_token(session), completed=completed
     )
     r = post_google(client, session, token, source="purchase")
@@ -196,7 +195,7 @@ async def test_valid_owned_purchase_grants_acknowledges_and_uses_store_time(
     assert (body["status"], body["game_slug"], body["finish"]) == ("owned", "hearts", True)
     assert jwt_games(client, session) == ["hearts"]
     # Acknowledged server-side after persistence, and recorded.
-    assert gp.play.ack_calls == [(HEARTS, token)]
+    assert google_gp.play.ack_calls == [(HEARTS, token)]
     purchase = await row(token)
     assert purchase.acknowledged_at is not None
     assert (purchase.environment, purchase.store_transaction_id) == (
@@ -208,60 +207,63 @@ async def test_valid_owned_purchase_grants_acknowledges_and_uses_store_time(
     assert abs(utc(purchase.state_changed_at) - completed) < timedelta(milliseconds=2)
     assert abs(utc(purchase.purchased_at) - completed) < timedelta(milliseconds=2)
     # google-auth minted one token (cached), for the androidpublisher scope only.
-    assert gp.tokens.calls == 1
-    assert gp.tokens.assertions[0]["scope"] == "https://www.googleapis.com/auth/androidpublisher"
-    assert gp.play.auth_headers == {f"Bearer {ACCESS_TOKEN}"}
+    assert google_gp.tokens.calls == 1
+    assert (
+        google_gp.tokens.assertions[0]["scope"]
+        == "https://www.googleapis.com/auth/androidpublisher"
+    )
+    assert google_gp.play.auth_headers == {f"Bearer {ACCESS_TOKEN}"}
     # Re-post: idempotent, no second acknowledgement.
     assert post_google(client, session, token).status_code == 200
-    assert gp.play.ack_calls == [(HEARTS, token)]
-    assert gp.tokens.calls == 1
+    assert google_gp.play.ack_calls == [(HEARTS, token)]
+    assert google_gp.tokens.calls == 1
 
 
 async def test_already_acknowledged_purchase_is_not_reacknowledged(
-    client: TestClient, gp: Harness
+    client: TestClient, google_gp: Harness
 ) -> None:
-    _, token = grant(client, gp, acknowledged=True)
-    assert gp.play.ack_calls == []
+    _, token = grant(client, google_gp, acknowledged=True)
+    assert google_gp.play.ack_calls == []
     assert (await row(token)).acknowledged_at is not None
 
 
 async def test_pending_records_without_grant_then_completes(
-    client: TestClient, gp: Harness
+    client: TestClient, google_gp: Harness
 ) -> None:
     session, token = sid(), tok()
-    gp.play.purchases[token] = play_purchase(state="PENDING")
+    google_gp.play.purchases[token] = play_purchase(state="PENDING")
     r = post_google(client, session, token)
     assert r.status_code == 200
     assert (r.json()["status"], r.json()["finish"]) == ("pending", False)
     assert jwt_games(client, session) == []
-    assert gp.play.ack_calls == []
+    assert google_gp.play.ack_calls == []
     purchase = await row(token)
     assert purchase.state == "pending"
     assert utc(purchase.state_changed_at) == PENDING_EVENT_AT
     assert await count(PurchaseLink, PurchaseLink.purchase_id == purchase.id) == 0
     # Completed a moment ago: applies whatever our clock said at the pending post.
-    gp.play.purchases[token] = play_purchase(completed=NOW() - timedelta(seconds=1))
+    google_gp.play.purchases[token] = play_purchase(completed=NOW() - timedelta(seconds=1))
     r = post_google(client, session, token)
     assert r.json()["status"] == "owned"
     assert jwt_games(client, session) == ["hearts"]
-    assert gp.play.ack_calls == [(HEARTS, token)]
+    assert google_gp.play.ack_calls == [(HEARTS, token)]
 
 
 async def test_cancelled_before_completion_is_422_and_recorded_cancelled(
-    client: TestClient, gp: Harness
+    client: TestClient, google_gp: Harness
 ) -> None:
     token = tok()
-    gp.play.purchases[token] = play_purchase(state="CANCELLED", never_completed=True)
+    google_gp.play.purchases[token] = play_purchase(state="CANCELLED", never_completed=True)
     r = post_google(client, sid(), token)
     assert r.status_code == 422 and r.json()["detail"] == "verification_failed"
     assert (await row(token)).state == "cancelled"
 
 
 async def test_completed_then_cancelled_is_revoked_and_removes_access(
-    client: TestClient, gp: Harness
+    client: TestClient, google_gp: Harness
 ) -> None:
-    session, token = grant(client, gp)
-    gp.play.purchases[token] = play_purchase(state="CANCELLED")
+    session, token = grant(client, google_gp)
+    google_gp.play.purchases[token] = play_purchase(state="CANCELLED")
     r = post_google(client, session, token)
     assert r.status_code == 200
     assert (r.json()["status"], r.json()["finish"]) == ("revoked", True)
@@ -270,12 +272,14 @@ async def test_completed_then_cancelled_is_revoked_and_removes_access(
     assert (purchase.state, purchase.revocation_reason) == ("revoked", "voided")
 
 
-def test_token_for_another_package_or_unknown_is_422(client: TestClient, gp: Harness) -> None:
+def test_token_for_another_package_or_unknown_is_422(
+    client: TestClient, google_gp: Harness
+) -> None:
     # The package is bound into the request path; Play answers 404 for a token
     # that is not this app's (the fake has no purchase under that token).
     r = post_google(client, sid(), tok())
     assert r.status_code == 422 and r.json()["detail"] == "verification_failed"
-    assert all(PACKAGE in p for p in [gp.play.PREFIX])
+    assert all(PACKAGE in p for p in [google_gp.play.PREFIX])
 
 
 @pytest.mark.parametrize(
@@ -290,83 +294,85 @@ def test_token_for_another_package_or_unknown_is_422(client: TestClient, gp: Har
         (play_purchase(state="PURCHASE_STATE_UNSPECIFIED"), "verification_failed"),
     ],
 )
-def test_bad_purchases_are_refused(client: TestClient, gp: Harness, play, detail) -> None:
+def test_bad_purchases_are_refused(client: TestClient, google_gp: Harness, play, detail) -> None:
     token = tok()
-    gp.play.purchases[token] = play
+    google_gp.play.purchases[token] = play
     r = post_google(client, sid(), token)
     assert r.status_code == 422 and r.json()["detail"] == detail
-    assert gp.play.ack_calls == []  # never acknowledged, never consumed
+    assert google_gp.play.ack_calls == []  # never acknowledged, never consumed
 
 
 def test_free_or_unknown_catalog_product_is_unknown_product(
-    client: TestClient, gp: Harness
+    client: TestClient, google_gp: Harness
 ) -> None:
     token = tok()
     free = "com.buffingchi.games.premium.sudoku"  # follows the convention, not is_premium
-    gp.play.purchases[token] = play_purchase(product=free)
+    google_gp.play.purchases[token] = play_purchase(product=free)
     r = post_google(client, sid(), token, product=free)
     assert r.status_code == 422 and r.json()["detail"] == "unknown_product"
     # A product off the convention never reaches Play.
-    calls = len(gp.play.get_calls)
+    calls = len(google_gp.play.get_calls)
     r = post_google(client, sid(), tok(), product="com.buffingchi.games.coins")
     assert r.status_code == 422 and r.json()["detail"] == "unknown_product"
-    assert len(gp.play.get_calls) == calls
+    assert len(google_gp.play.get_calls) == calls
 
 
-async def test_verifier_rejects_off_catalog_product_before_store_call(gp: Harness) -> None:
+async def test_verifier_rejects_off_catalog_product_before_store_call(google_gp: Harness) -> None:
     with pytest.raises(PurchaseError) as exc:
-        await gp.verifier.verify(GoogleEvidence("com.other.product", tok()))
-    assert exc.value.detail == "unknown_product" and gp.play.get_calls == []
+        await google_gp.verifier.verify(GoogleEvidence("com.other.product", tok()))
+    assert exc.value.detail == "unknown_product" and google_gp.play.get_calls == []
 
 
 async def test_ownership_is_enforced_only_for_source_purchase(
-    client: TestClient, gp: Harness
+    client: TestClient, google_gp: Harness
 ) -> None:
     session, token = sid(), tok()
-    gp.play.purchases[token] = play_purchase(account=google.expected_account_token(sid()))
+    google_gp.play.purchases[token] = play_purchase(account=google.expected_account_token(sid()))
     r = post_google(client, session, token, source="purchase")
     assert r.status_code == 403 and r.json()["detail"] == "ownership_mismatch"
     missing = tok()
-    gp.play.purchases[missing] = play_purchase(account=None)
+    google_gp.play.purchases[missing] = play_purchase(account=None)
     assert post_google(client, session, missing, source="purchase").status_code == 403
     # The same verified purchase restores to another install (the capped transfer rule).
     assert post_google(client, session, token, source="restore").status_code == 200
     assert jwt_games(client, session) == ["hearts"]
     # Upper-case hex from the store still matches.
     upper = tok()
-    gp.play.purchases[upper] = play_purchase(account=google.expected_account_token(session).upper())
+    google_gp.play.purchases[upper] = play_purchase(
+        account=google.expected_account_token(session).upper()
+    )
     assert post_google(client, session, upper, source="purchase").status_code == 200
 
 
-async def test_environment_allow_list(client: TestClient, install) -> None:
-    h = install(make_harness(frozenset({"production"})))
+async def test_environment_allow_list(client: TestClient, google_install) -> None:
+    h = google_install(make_harness(frozenset({"production"})))
     token = tok()
     h.play.purchases[token] = play_purchase(test=True)
     r = post_google(client, sid(), token)
     assert r.status_code == 422 and r.json()["detail"] == "environment_not_allowed"
     assert await row(token) is None
     # Licence-tester purchases are "test" when allowed.
-    h2 = install(make_harness())
+    h2 = google_install(make_harness())
     h2.play.purchases[token] = play_purchase(test=True)
     assert post_google(client, sid(), token).status_code == 200
     assert (await row(token)).environment == "test"
 
 
 async def test_service_rechecks_environment_allow_list(
-    client: TestClient, gp: Harness, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, google_gp: Harness, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     token = tok()
-    gp.play.purchases[token] = play_purchase(test=True)
+    google_gp.play.purchases[token] = play_purchase(test=True)
     monkeypatch.setenv("GOOGLE_PLAY_ENVIRONMENTS", "production")
     r = post_google(client, sid(), token)
     assert r.status_code == 422 and r.json()["detail"] == "environment_not_allowed"
 
 
 @pytest.mark.parametrize("error", [401, 403, 429, 500, 503, "network", "not-json", "not-object"])
-def test_play_api_errors_are_503(client: TestClient, gp: Harness, error, caplog) -> None:
+def test_play_api_errors_are_503(client: TestClient, google_gp: Harness, error, caplog) -> None:
     token = tok()
-    gp.play.purchases[token] = play_purchase()
-    gp.play.get_errors.append(error)
+    google_gp.play.purchases[token] = play_purchase()
+    google_gp.play.get_errors.append(error)
     with caplog.at_level(logging.WARNING, logger="audit"):
         r = post_google(client, sid(), token)
     assert r.status_code == 503 and r.json()["detail"] == "store_unavailable"
@@ -375,15 +381,15 @@ def test_play_api_errors_are_503(client: TestClient, gp: Harness, error, caplog)
     assert token not in caplog.text
 
 
-def test_token_endpoint_failure_is_503(client: TestClient, gp: Harness, caplog) -> None:
-    gp.tokens.fail = True
+def test_token_endpoint_failure_is_503(client: TestClient, google_gp: Harness, caplog) -> None:
+    google_gp.tokens.fail = True
     token = tok()
-    gp.play.purchases[token] = play_purchase()
+    google_gp.play.purchases[token] = play_purchase()
     with caplog.at_level(logging.WARNING, logger="audit"):
         r = post_google(client, sid(), token)
     assert r.status_code == 503
     assert "google_play_token_failed" in caplog.text
-    assert gp.play.get_calls == []
+    assert google_gp.play.get_calls == []
 
 
 def test_http_auth_request_maps_network_errors() -> None:
@@ -429,21 +435,25 @@ def test_to_verified_normalization_edges() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_ack_retries_transient_errors_then_succeeds(client: TestClient, gp: Harness) -> None:
-    gp.play.ack_errors += [500, "network"]
-    _, token = grant(client, gp)
-    assert len(gp.play.ack_calls) == 3
-    assert gp.sleeps == list(google_play.ACK_BACKOFF_S)
+async def test_ack_retries_transient_errors_then_succeeds(
+    client: TestClient, google_gp: Harness
+) -> None:
+    google_gp.play.ack_errors += [500, "network"]
+    _, token = grant(client, google_gp)
+    assert len(google_gp.play.ack_calls) == 3
+    assert google_gp.sleeps == list(google_play.ACK_BACKOFF_S)
     assert (await row(token)).acknowledged_at is not None
 
 
-async def test_ack_is_idempotent_when_play_says_already_acknowledged(gp: Harness) -> None:
+async def test_ack_is_idempotent_when_play_says_already_acknowledged(google_gp: Harness) -> None:
     token = tok()
-    gp.play.purchases[token] = play_purchase(acknowledged=True)
-    await gp.verifier.acknowledge(GoogleEvidence(HEARTS, token))  # 400 → re-read → acknowledged
-    gp.play.purchases[token] = play_purchase(state="CANCELLED")
+    google_gp.play.purchases[token] = play_purchase(acknowledged=True)
+    await google_gp.verifier.acknowledge(
+        GoogleEvidence(HEARTS, token)
+    )  # 400 → re-read → acknowledged
+    google_gp.play.purchases[token] = play_purchase(state="CANCELLED")
     with pytest.raises(PurchaseError) as exc:
-        await gp.verifier.acknowledge(GoogleEvidence(HEARTS, token))
+        await google_gp.verifier.acknowledge(GoogleEvidence(HEARTS, token))
     assert exc.value.detail == "verification_failed"
 
 
@@ -452,8 +462,8 @@ async def test_ack_is_idempotent_when_play_says_already_acknowledged(gp: Harness
 # ---------------------------------------------------------------------------
 
 
-async def test_delete_my_data_keeps_google_purchase_records(client, gp) -> None:
-    session, token = grant(client, gp)
+async def test_delete_my_data_keeps_google_purchase_records(client, google_gp) -> None:
+    session, token = grant(client, google_gp)
     purchase = await row(token)
     events = await count(PurchaseEvent, PurchaseEvent.purchase_id == purchase.id)
     assert client.delete("/me", headers={"X-Session-ID": session}).status_code == 204
@@ -470,11 +480,11 @@ async def test_delete_my_data_keeps_google_purchase_records(client, gp) -> None:
     assert jwt_games(client, fresh) == ["hearts"]
 
 
-async def test_delete_my_data_churn_cannot_reset_google_link_caps(client, gp) -> None:
+async def test_delete_my_data_churn_cannot_reset_google_link_caps(client, google_gp) -> None:
     from purchases.service import MAX_NEW_LINKS_PER_PURCHASE_PER_30D
 
     token = tok()
-    gp.play.purchases[token] = play_purchase()
+    google_gp.play.purchases[token] = play_purchase()
 
     def restore_then_erase(session: str) -> int:
         status = post_google(client, session, token, source="restore").status_code
@@ -590,10 +600,10 @@ def test_sentry_end_to_end_transaction_and_breadcrumbs_carry_no_token() -> None:
 
 
 @pytest.mark.parametrize("account", ["é" * 64, "ü" + "a" * 63, "g" * 64, "a" * 63, "a" * 65, "😀"])
-def test_malformed_account_token_is_403_never_500(client, gp, account) -> None:
+def test_malformed_account_token_is_403_never_500(client, google_gp, account) -> None:
     """Review S2 (Codex): non-hex / non-ASCII obfuscatedExternalAccountId."""
     token = tok()
-    gp.play.purchases[token] = play_purchase(account=account)
+    google_gp.play.purchases[token] = play_purchase(account=account)
     r = post_google(client, sid(), token, source="purchase")
     assert r.status_code == 403 and r.json()["detail"] == "ownership_mismatch"
 
@@ -614,7 +624,7 @@ def test_owned_without_completion_time_gets_the_weakest_time() -> None:
     assert (v.state, v.event_at) == ("owned", PENDING_EVENT_AT)
 
 
-async def test_client_ack_is_bounded_and_left_to_the_sweep(client, gp, monkeypatch) -> None:
+async def test_client_ack_is_bounded_and_left_to_the_sweep(client, google_gp, monkeypatch) -> None:
     """Review N3: a hanging acknowledgement cannot hold the client's request."""
     from purchases import router
 
@@ -622,7 +632,7 @@ async def test_client_ack_is_bounded_and_left_to_the_sweep(client, gp, monkeypat
         await asyncio.sleep(3600)
 
     monkeypatch.setattr(router, "GOOGLE_ACK_BUDGET_S", 0.05)
-    monkeypatch.setattr(gp.verifier, "acknowledge", hang)
-    session, token = grant(client, gp)
+    monkeypatch.setattr(google_gp.verifier, "acknowledge", hang)
+    session, token = grant(client, google_gp)
     assert jwt_games(client, session) == ["hearts"]
     assert (await row(token)).acknowledged_at is None

@@ -26,7 +26,6 @@ from tests._apple_iap_harness import (
     BOTH,
     CASCADE,
     FakeApiClient,
-    jwt_games,
     make_verifier,
     post_note,
     post_txn,
@@ -35,9 +34,10 @@ from tests._apple_iap_harness import (
     signed_txn,
     tamper,
 )
+from tests._helpers import jwt_games
 from tests.apple_jws import APP_APPLE_ID, BUNDLE_ID, default_ca, make_ca, now_ms, transaction
 
-# Shared fixtures (use_verifier, verifier) come from the harness module.
+# Shared fixtures (apple_use_verifier, apple_verifier) come from the harness module.
 pytest_plugins = ["tests._apple_iap_harness"]
 
 
@@ -158,7 +158,7 @@ def test_dormant_config_keeps_both_routes_503(apple_env, client: TestClient) -> 
 
 
 async def test_valid_transaction_grants_and_sets_event_time(
-    client: TestClient, verifier: AppStoreVerifier
+    client: TestClient, apple_verifier: AppStoreVerifier
 ) -> None:
     sid = str(uuid.uuid4())
     signed = now_ms(timedelta(minutes=-1))
@@ -177,20 +177,20 @@ async def test_valid_transaction_grants_and_sets_event_time(
     assert abs(changed.timestamp() * 1000 - signed) < 2
 
 
-async def test_bad_signature_is_422(client: TestClient, verifier: AppStoreVerifier) -> None:
+async def test_bad_signature_is_422(client: TestClient, apple_verifier: AppStoreVerifier) -> None:
     forged = tamper(signed_txn("4100"), productId=CASCADE)
     r = post_txn(client, str(uuid.uuid4()), forged)
     assert r.status_code == 422 and r.json()["detail"] == "verification_failed"
     assert (await purchase_row("4100")) is None
 
 
-def test_chain_from_an_untrusted_root_is_422(client: TestClient, verifier) -> None:
+def test_chain_from_an_untrusted_root_is_422(client: TestClient, apple_verifier) -> None:
     other = make_ca(name="Attacker")
     r = post_txn(client, str(uuid.uuid4()), other.sign(transaction("4200")))
     assert r.status_code == 422 and r.json()["detail"] == "verification_failed"
 
 
-def test_trusted_intermediate_with_foreign_leaf_is_422(client: TestClient, verifier) -> None:
+def test_trusted_intermediate_with_foreign_leaf_is_422(client: TestClient, apple_verifier) -> None:
     # Leaf from another CA, intermediate + root from the trusted one.
     other = make_ca(name="Attacker")
     ca = default_ca()
@@ -203,26 +203,26 @@ def test_trusted_intermediate_with_foreign_leaf_is_422(client: TestClient, verif
     [[], ["only-one"], None],
     ids=["empty", "short", "missing"],
 )
-def test_bad_x5c_header_is_422(client: TestClient, verifier, x5c) -> None:
+def test_bad_x5c_header_is_422(client: TestClient, apple_verifier, x5c) -> None:
     ca = default_ca()
     headers = {} if x5c is None else {"x5c": x5c}
     jws = jwt.encode(transaction("4220"), ca.leaf_key, algorithm="ES256", headers=headers)
     assert post_txn(client, str(uuid.uuid4()), jws).status_code == 422
 
 
-def test_leaf_without_apple_marker_oid_is_422(client: TestClient, use_verifier) -> None:
+def test_leaf_without_apple_marker_oid_is_422(client: TestClient, apple_use_verifier) -> None:
     ca = make_ca(leaf_marker=False, name="NoMarker")
-    use_verifier(make_verifier(roots=[ca.root_der]))
+    apple_use_verifier(make_verifier(roots=[ca.root_der]))
     assert post_txn(client, str(uuid.uuid4()), ca.sign(transaction("4230"))).status_code == 422
 
 
-def test_leaf_expired_at_signed_date_is_422(client: TestClient, use_verifier) -> None:
+def test_leaf_expired_at_signed_date_is_422(client: TestClient, apple_use_verifier) -> None:
     ca = make_ca(leaf_not_after=datetime.now(UTC) - timedelta(hours=1), name="Old")
-    use_verifier(make_verifier(roots=[ca.root_der]))
+    apple_use_verifier(make_verifier(roots=[ca.root_der]))
     assert post_txn(client, str(uuid.uuid4()), ca.sign(transaction("4240"))).status_code == 422
 
 
-def test_non_es256_algorithm_is_422(client: TestClient, verifier) -> None:
+def test_non_es256_algorithm_is_422(client: TestClient, apple_verifier) -> None:
     # alg confusion: an HMAC "signature" keyed with public data must not verify.
     ca = default_ca()
     jws = jwt.encode(transaction("4250"), "k" * 32, algorithm="HS256", headers={"x5c": ca.x5c})
@@ -231,7 +231,7 @@ def test_non_es256_algorithm_is_422(client: TestClient, verifier) -> None:
     assert post_txn(client, str(uuid.uuid4()), unsigned).status_code == 422
 
 
-def test_wrong_bundle_id_is_wrong_app(client: TestClient, verifier) -> None:
+def test_wrong_bundle_id_is_wrong_app(client: TestClient, apple_verifier) -> None:
     r = post_txn(client, str(uuid.uuid4()), signed_txn("4300", bundle_id="com.example.other"))
     assert r.status_code == 422 and r.json()["detail"] == "wrong_app"
 
@@ -245,15 +245,15 @@ def test_wrong_bundle_id_is_wrong_app(client: TestClient, verifier) -> None:
     ],
     ids=["foreign", "free-game", "consumable"],
 )
-def test_unknown_product_is_422(client: TestClient, verifier, claims) -> None:
+def test_unknown_product_is_422(client: TestClient, apple_verifier, claims) -> None:
     r = post_txn(client, str(uuid.uuid4()), signed_txn("4400", **claims))
     assert r.status_code == 422 and r.json()["detail"] == "unknown_product"
 
 
 async def test_sandbox_refused_when_only_production_allowed(
-    client: TestClient, use_verifier
+    client: TestClient, apple_use_verifier
 ) -> None:
-    use_verifier(make_verifier(envs=frozenset({"production"})))
+    apple_use_verifier(make_verifier(envs=frozenset({"production"})))
     r = post_txn(client, str(uuid.uuid4()), signed_txn("4500", environment="Sandbox"))
     assert r.status_code == 422 and r.json()["detail"] == "environment_not_allowed"
     r = post_txn(client, str(uuid.uuid4()), signed_txn("4501", environment="Production"))
@@ -262,7 +262,7 @@ async def test_sandbox_refused_when_only_production_allowed(
 
 
 @pytest.mark.parametrize("env", ["Xcode", "LocalTesting", None])
-def test_unsigned_test_environments_are_never_accepted(client, verifier, env) -> None:
+def test_unsigned_test_environments_are_never_accepted(client, apple_verifier, env) -> None:
     # The library skips signature checks for Xcode/LocalTesting; we never build those verifiers.
     claims = {} if env is None else {"environment": env}
     jws = tamper(signed_txn("4600"), **claims) if env else signed_txn("4600", environment=None)
@@ -270,14 +270,14 @@ def test_unsigned_test_environments_are_never_accepted(client, verifier, env) ->
     assert r.status_code == 422 and r.json()["detail"] == "environment_not_allowed"
 
 
-def test_payload_lying_about_environment_is_422(client: TestClient, verifier) -> None:
+def test_payload_lying_about_environment_is_422(client: TestClient, apple_verifier) -> None:
     # Signed as Sandbox, header of the payload edited to claim Production.
     jws = tamper(signed_txn("4700"), environment="Production")
     assert post_txn(client, str(uuid.uuid4()), jws).status_code == 422
 
 
 async def test_revoked_transaction_says_revoked_and_grants_nothing(
-    client: TestClient, verifier
+    client: TestClient, apple_verifier
 ) -> None:
     sid = str(uuid.uuid4())
     jws = signed_txn("4800", revocationDate=now_ms(), revocationReason=1)
@@ -289,8 +289,8 @@ async def test_revoked_transaction_says_revoked_and_grants_nothing(
     assert row.state == "revoked" and row.revocation_reason == "refund_app_issue"
 
 
-async def test_family_revoke_and_family_shared_mapping(verifier: AppStoreVerifier) -> None:
-    v = await verifier.verify(
+async def test_family_revoke_and_family_shared_mapping(apple_verifier: AppStoreVerifier) -> None:
+    v = await apple_verifier.verify(
         AppleEvidence(
             signed_txn(
                 "4900",
@@ -301,40 +301,40 @@ async def test_family_revoke_and_family_shared_mapping(verifier: AppStoreVerifie
         )
     )
     assert v.ownership_type == "family_shared" and v.revocation_reason == "family_revoke"
-    v = await verifier.verify(
+    v = await apple_verifier.verify(
         AppleEvidence(signed_txn("4901", revocationDate=now_ms(), revocationReason=0))
     )
     assert v.revocation_reason == "refund_other"
-    v = await verifier.verify(AppleEvidence(signed_txn("4902", revocationDate=now_ms())))
+    v = await apple_verifier.verify(AppleEvidence(signed_txn("4902", revocationDate=now_ms())))
     assert v.revocation_reason == "revoked"
 
 
-async def test_apple_never_reports_pending(verifier: AppStoreVerifier) -> None:
+async def test_apple_never_reports_pending(apple_verifier: AppStoreVerifier) -> None:
     """Ask to Buy produces no JWS until approval (IAP.md §5); an approved one is owned."""
-    v = await verifier.verify(AppleEvidence(signed_txn("4950", transactionReason="PURCHASE")))
+    v = await apple_verifier.verify(AppleEvidence(signed_txn("4950", transactionReason="PURCHASE")))
     assert v.state == "owned"
 
 
-async def test_missing_transaction_ids_fail_verification(verifier: AppStoreVerifier) -> None:
-    _, txn = await verifier.decode_transaction(signed_txn("4960"))
+async def test_missing_transaction_ids_fail_verification(apple_verifier: AppStoreVerifier) -> None:
+    _, txn = await apple_verifier.decode_transaction(signed_txn("4960"))
     txn.originalTransactionId = None
     with pytest.raises(PurchaseError) as exc:
-        verifier.to_verified("sandbox", txn)
+        apple_verifier.to_verified("sandbox", txn)
     assert exc.value.detail == "verification_failed"
 
 
-async def test_structurally_invalid_payload_fails(verifier: AppStoreVerifier) -> None:
+async def test_structurally_invalid_payload_fails(apple_verifier: AppStoreVerifier) -> None:
     with pytest.raises(PurchaseError) as exc:
-        await verifier.decode_transaction("a.b")
+        await apple_verifier.decode_transaction("a.b")
     assert exc.value.status_code == 400
     with pytest.raises(PurchaseError):
-        await verifier.decode_transaction("a.!!!.c")
+        await apple_verifier.decode_transaction("a.!!!.c")
     bad = base64.urlsafe_b64encode(b"[1]").decode().rstrip("=")
     with pytest.raises(PurchaseError):
-        await verifier.decode_transaction(f"a.{bad}.c")
+        await apple_verifier.decode_transaction(f"a.{bad}.c")
     # Well-signed, but a field the library cannot structure.
     with pytest.raises(PurchaseError) as exc:
-        await verifier.decode_transaction(signed_txn("4970", purchaseDate="soon"))
+        await apple_verifier.decode_transaction(signed_txn("4970", purchaseDate="soon"))
     assert exc.value.detail == "verification_failed"
 
 
@@ -343,9 +343,9 @@ async def test_structurally_invalid_payload_fails(verifier: AppStoreVerifier) ->
 # ---------------------------------------------------------------------------
 
 
-def test_api_answer_is_authoritative(client: TestClient, use_verifier) -> None:
+def test_api_answer_is_authoritative(client: TestClient, apple_use_verifier) -> None:
     api = FakeApiClient()
-    use_verifier(make_verifier(api={"sandbox": api}))
+    apple_use_verifier(make_verifier(api={"sandbox": api}))
     # The device's JWS says owned; Apple's server now says refunded.
     api.transactions["50009"] = signed_txn("5000", revocationDate=now_ms())
     sid = str(uuid.uuid4())
@@ -365,22 +365,24 @@ def test_api_answer_is_authoritative(client: TestClient, use_verifier) -> None:
         (ConnectionError("down"), 503),
     ],
 )
-def test_api_errors_map_to_contract_codes(client, use_verifier, error, status) -> None:
+def test_api_errors_map_to_contract_codes(client, apple_use_verifier, error, status) -> None:
     api = FakeApiClient(error=error)
-    use_verifier(make_verifier(api={"sandbox": api}))
+    apple_use_verifier(make_verifier(api={"sandbox": api}))
     assert post_txn(client, str(uuid.uuid4()), signed_txn("5100")).status_code == status
 
 
-def test_api_answer_for_another_transaction_or_missing_is_refused(client, use_verifier) -> None:
+def test_api_answer_for_another_transaction_or_missing_is_refused(
+    client, apple_use_verifier
+) -> None:
     api = FakeApiClient()
-    use_verifier(make_verifier(api={"sandbox": api}))
+    apple_use_verifier(make_verifier(api={"sandbox": api}))
     api.transactions["52009"] = signed_txn("9999")
     assert post_txn(client, str(uuid.uuid4()), signed_txn("5200")).status_code == 422
     # No signedTransactionInfo in the answer.
     assert post_txn(client, str(uuid.uuid4()), signed_txn("5201")).status_code == 503
 
 
-def test_retryable_verification_failure_is_503(client, verifier, monkeypatch) -> None:
+def test_retryable_verification_failure_is_503(client, apple_verifier, monkeypatch) -> None:
     from appstoreserverlibrary.signed_data_verifier import (
         SignedDataVerifier,
         VerificationException,
@@ -425,7 +427,7 @@ def ocsp_ca():
     ],
 )
 def test_online_checks_consult_ocsp(
-    client, use_verifier, monkeypatch, ocsp_ca, status, http, detail
+    client, apple_use_verifier, monkeypatch, ocsp_ca, status, http, detail
 ) -> None:
     from appstoreserverlibrary import signed_data_verifier
 
@@ -433,7 +435,7 @@ def test_online_checks_consult_ocsp(
 
     responder = ocsp_responder(ocsp_ca, status=status)
     monkeypatch.setattr(signed_data_verifier.requests, "post", responder)
-    use_verifier(_online_verifier(ocsp_ca))
+    apple_use_verifier(_online_verifier(ocsp_ca))
     r = post_txn(client, str(uuid.uuid4()), ocsp_ca.sign(transaction(f"ocsp-{status}")))
     assert r.status_code == http, r.text
     if detail:
@@ -445,7 +447,9 @@ def test_online_checks_consult_ocsp(
         assert responder.seen == [inter.serial_number, leaf.serial_number]
 
 
-def test_online_checks_ignore_a_backdated_signed_date(client, use_verifier, monkeypatch) -> None:
+def test_online_checks_ignore_a_backdated_signed_date(
+    client, apple_use_verifier, monkeypatch
+) -> None:
     """With online checks on, validity is checked now, not at the JWS's signedDate."""
     from appstoreserverlibrary import signed_data_verifier
 
@@ -457,7 +461,7 @@ def test_online_checks_ignore_a_backdated_signed_date(client, use_verifier, monk
         leaf_not_after=datetime.now(UTC) - timedelta(hours=1),
     )
     monkeypatch.setattr(signed_data_verifier.requests, "post", ocsp_responder(ca))
-    use_verifier(_online_verifier(ca))
+    apple_use_verifier(_online_verifier(ca))
     backdated = ca.sign(transaction("ocsp-old", signed_date=now_ms(timedelta(days=-1, hours=1))))
     assert post_txn(client, str(uuid.uuid4()), backdated).status_code == 422
 

@@ -14,7 +14,13 @@ import pytest
 from purchases import google_notifications
 from purchases.google_notifications import GoogleJwks
 from purchases.verifiers import PurchaseError
-from tests._google_iap_harness import _rtdn_raw, grant, jwt_games, post_rtdn, row
+from tests._google_iap_harness import (
+    grant,
+    post_rtdn,
+    row,
+    rtdn_raw,
+)
+from tests._helpers import jwt_games
 from tests.google_play_fakes import (
     AUDIENCE,
     PUSH_SA,
@@ -26,7 +32,7 @@ from tests.google_play_fakes import (
     oidc_token,
 )
 
-# Shared fixtures (gp) come from the harness module.
+# Shared fixtures (google_gp) come from the harness module.
 pytest_plugins = ["tests._google_iap_harness"]
 
 
@@ -46,10 +52,10 @@ pytest_plugins = ["tests._google_iap_harness"]
         "Bearer " + "a" * 5000,
     ],
 )
-def test_rtdn_without_valid_bearer_is_401(client, gp, authorization) -> None:
+def test_rtdn_without_valid_bearer_is_401(client, google_gp, authorization) -> None:
     headers = {} if authorization is None else {"Authorization": authorization}
     # The body is not even parsed: an invalid body still gets 401, not 400.
-    r = _rtdn_raw(client, headers, b"not json")
+    r = rtdn_raw(client, headers, b"not json")
     assert r.status_code == 401 and r.json()["detail"] == "unauthorized"
     assert r.headers["www-authenticate"] == "Bearer"
 
@@ -86,8 +92,8 @@ def test_rtdn_without_valid_bearer_is_401(client, gp, authorization) -> None:
         "hs256",
     ],
 )
-async def test_rtdn_forged_tokens_are_401_and_apply_nothing(client, gp, make) -> None:
-    session, token = grant(client, gp)
+async def test_rtdn_forged_tokens_are_401_and_apply_nothing(client, google_gp, make) -> None:
+    session, token = grant(client, google_gp)
     note = developer_notification(voided={"purchaseToken": token, "productType": 2})
     r = post_rtdn(client, note, bearer=make())
     assert r.status_code == 401
@@ -95,7 +101,7 @@ async def test_rtdn_forged_tokens_are_401_and_apply_nothing(client, gp, make) ->
     assert jwt_games(client, session) == ["hearts"]
 
 
-def test_rtdn_es256_header_is_401(client, gp) -> None:
+def test_rtdn_es256_header_is_401(client, google_gp) -> None:
     from cryptography.hazmat.primitives.asymmetric import ec
 
     key = ec.generate_private_key(ec.SECP256R1())
@@ -111,19 +117,19 @@ def test_rtdn_es256_header_is_401(client, gp) -> None:
 @pytest.mark.parametrize(
     "claims", [{"email": "someone@evil.example"}, {"email_verified": False}, {"email": None}]
 )
-def test_rtdn_token_from_other_service_account_is_403(client, gp, claims) -> None:
+def test_rtdn_token_from_other_service_account_is_403(client, google_gp, claims) -> None:
     r = post_rtdn(client, developer_notification(test=True), bearer=oidc_token(**claims))
     assert r.status_code == 403 and r.json()["detail"] == "forbidden"
 
 
-def test_rtdn_accepts_legacy_issuer_and_case_insensitive_email(client, gp) -> None:
+def test_rtdn_accepts_legacy_issuer_and_case_insensitive_email(client, google_gp) -> None:
     bearer = oidc_token(iss="accounts.google.com", email=PUSH_SA.upper())
     r = post_rtdn(client, developer_notification(test=True), bearer=bearer)
     assert r.status_code == 200 and r.json() == {"status": "test"}
 
 
-def test_rtdn_jwks_unreachable_is_503(client, gp) -> None:
-    gp.jwks.fail = True
+def test_rtdn_jwks_unreachable_is_503(client, google_gp) -> None:
+    google_gp.jwks.fail = True
     r = post_rtdn(client, developer_notification(test=True))
     assert r.status_code == 503
 
@@ -204,8 +210,8 @@ async def test_jwks_outage_backs_off_and_serves_stale_keys_for_a_grace_period() 
     assert await jwks.key("test-kid-1") is not None
 
 
-async def test_rtdn_key_rotation_is_picked_up(client, gp) -> None:
-    gp.jwks.keys = [jwk_for("google-oidc"), jwk_for("rotated", "kid-2")]
+async def test_rtdn_key_rotation_is_picked_up(client, google_gp) -> None:
+    google_gp.jwks.keys = [jwk_for("google-oidc"), jwk_for("rotated", "kid-2")]
     # First use loads the JWKS; a token signed by the new key verifies.
     bearer = oidc_token(key_name="rotated", kid="kid-2")
     assert post_rtdn(client, developer_notification(test=True), bearer=bearer).status_code == 200

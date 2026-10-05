@@ -31,8 +31,6 @@ from tests._apple_iap_harness import (
     CASCADE,
     FakeApiClient,
     config,
-    count,
-    jwt_games,
     make_verifier,
     post_note,
     post_txn,
@@ -41,6 +39,7 @@ from tests._apple_iap_harness import (
     signed_txn,
     tamper,
 )
+from tests._helpers import count, jwt_games
 from tests.apple_jws import (
     APP_APPLE_ID,
     BUNDLE_ID,
@@ -52,7 +51,7 @@ from tests.apple_jws import (
     transaction,
 )
 
-# Shared fixtures (use_verifier, verifier) come from the harness module.
+# Shared fixtures (apple_use_verifier, apple_verifier) come from the harness module.
 pytest_plugins = ["tests._apple_iap_harness"]
 
 
@@ -67,7 +66,7 @@ def _grant(client: TestClient, key: str) -> str:
     return sid
 
 
-async def test_refund_then_refund_reversed(client: TestClient, verifier) -> None:
+async def test_refund_then_refund_reversed(client: TestClient, apple_verifier) -> None:
     sid = _grant(client, "6000")
     refund = signed_note(
         "REFUND",
@@ -88,7 +87,7 @@ async def test_refund_then_refund_reversed(client: TestClient, verifier) -> None
 
 
 async def test_reversal_on_owned_purchase_then_older_refund_keeps_access(
-    client: TestClient, verifier
+    client: TestClient, apple_verifier
 ) -> None:
     """Codex P1 on #2871: a same-state notification still advances the watermark."""
     sid = _grant(client, "6100")
@@ -121,7 +120,7 @@ async def test_reversal_on_owned_purchase_then_older_refund_keeps_access(
 
 
 async def test_newer_refund_on_revoked_purchase_then_older_reversal_stays_revoked(
-    client: TestClient, verifier
+    client: TestClient, apple_verifier
 ) -> None:
     sid = _grant(client, "6150")
     refund_t1 = signed_note(
@@ -145,7 +144,7 @@ async def test_newer_refund_on_revoked_purchase_then_older_reversal_stays_revoke
 
 
 async def test_one_time_charge_for_known_purchase_advances_watermark(
-    client: TestClient, verifier
+    client: TestClient, apple_verifier
 ) -> None:
     """record_store_purchase (the unlinked path) follows the same watermark rule."""
     sid = _grant(client, "6170")
@@ -162,7 +161,7 @@ async def test_one_time_charge_for_known_purchase_advances_watermark(
     assert jwt_games(client, sid) == ["hearts"]
 
 
-async def test_duplicate_notification_is_a_noop(client: TestClient, verifier) -> None:
+async def test_duplicate_notification_is_a_noop(client: TestClient, apple_verifier) -> None:
     sid = _grant(client, "6200")
     note = signed_note(
         "REVOKE", signed_txn("6200", revocationDate=now_ms(), revocationType="FAMILY_REVOKE")
@@ -175,7 +174,7 @@ async def test_duplicate_notification_is_a_noop(client: TestClient, verifier) ->
 
 
 async def test_invalid_webhook_signature_is_4xx_and_logs_no_payload(
-    client: TestClient, verifier, caplog: pytest.LogCaptureFixture
+    client: TestClient, apple_verifier, caplog: pytest.LogCaptureFixture
 ) -> None:
     _grant(client, "6300")
     forged = tamper(signed_note("REFUND", signed_txn("6300", revocationDate=now_ms())), version="3")
@@ -192,13 +191,13 @@ async def test_invalid_webhook_signature_is_4xx_and_logs_no_payload(
     assert r.status_code == 422 and r.json()["detail"] == "wrong_app"
 
 
-def test_notification_with_forged_embedded_transaction_is_422(client, verifier) -> None:
+def test_notification_with_forged_embedded_transaction_is_422(client, apple_verifier) -> None:
     _grant(client, "6400")
     inner = tamper(signed_txn("6400"), revocationDate=now_ms())
     assert post_note(client, signed_note("REFUND", inner)).status_code == 422
 
 
-def test_production_notification_needs_matching_app_apple_id(client, verifier) -> None:
+def test_production_notification_needs_matching_app_apple_id(client, apple_verifier) -> None:
     note = signed_note("TEST", None, environment="Production", app_apple_id=APP_APPLE_ID + 1)
     assert post_note(client, note).status_code == 422
     ok = signed_note("TEST", None, environment="Production")
@@ -208,7 +207,7 @@ def test_production_notification_needs_matching_app_apple_id(client, verifier) -
 @pytest.mark.parametrize(
     "ntype", ["CONSUMPTION_REQUEST", "REFUND_DECLINED", "DID_RENEW", "EXPIRED", "PRICE_INCREASE"]
 )
-def test_irrelevant_notifications_are_acknowledged(client, verifier, ntype) -> None:
+def test_irrelevant_notifications_are_acknowledged(client, apple_verifier, ntype) -> None:
     sid = _grant(client, "6500")
     r = post_note(client, signed_note(ntype, signed_txn("6500", revocationDate=now_ms())))
     assert r.status_code == 200 and r.json() == {"status": "ignored"}
@@ -216,7 +215,7 @@ def test_irrelevant_notifications_are_acknowledged(client, verifier, ntype) -> N
 
 
 def test_notification_for_foreign_product_or_without_transaction_is_ignored(
-    client, verifier
+    client, apple_verifier
 ) -> None:
     r = post_note(client, signed_note("REFUND", signed_txn("6600", productId="com.example.x")))
     assert r.json() == {"status": "ignored"}
@@ -226,9 +225,11 @@ def test_notification_for_foreign_product_or_without_transaction_is_ignored(
     assert r.json() == {"status": "ignored"}
 
 
-def test_notification_from_disallowed_environment_is_acknowledged(client, use_verifier) -> None:
+def test_notification_from_disallowed_environment_is_acknowledged(
+    client, apple_use_verifier
+) -> None:
     """Review N1: verified but not accepted here → 200 ignored, so Apple stops retrying."""
-    use_verifier(make_verifier(envs=frozenset({"production"})))
+    apple_use_verifier(make_verifier(envs=frozenset({"production"})))
     r = post_note(client, signed_note("REFUND", signed_txn("6980", revocationDate=now_ms())))
     assert r.status_code == 200 and r.json() == {"status": "ignored"}
     # It must still verify: a forged Sandbox notification is refused.
@@ -236,16 +237,18 @@ def test_notification_from_disallowed_environment_is_acknowledged(client, use_ve
     assert post_note(client, forged).status_code == 422
 
 
-async def test_disallowed_environment_notification_records_nothing(client, use_verifier) -> None:
-    use_verifier(make_verifier(envs=frozenset({"production"})))
+async def test_disallowed_environment_notification_records_nothing(
+    client, apple_use_verifier
+) -> None:
+    apple_use_verifier(make_verifier(envs=frozenset({"production"})))
     note = signed_note("ONE_TIME_CHARGE", signed_txn("6981"))
     assert post_note(client, note).json() == {"status": "ignored"}
     assert await purchase_row("6981") is None
 
 
-def test_notification_environment_we_cannot_verify_is_422(client, use_verifier) -> None:
+def test_notification_environment_we_cannot_verify_is_422(client, apple_use_verifier) -> None:
     # Sandbox-only deployment without APPLE_APP_ID: a Production notification cannot be verified.
-    use_verifier(
+    apple_use_verifier(
         AppStoreVerifier(
             config(frozenset({"sandbox"}), app_id=None), root_certificates=[default_ca().root_der]
         )
@@ -305,7 +308,7 @@ def test_notification_environment_is_found_where_the_library_looks() -> None:
     ids=["appData", "external-sandbox", "external-production"],
 )
 def test_notifications_without_data_or_summary_verify_and_ack(
-    client, verifier, section, expected
+    client, apple_verifier, section, expected
 ) -> None:
     body = {
         "notificationType": "RESCIND_CONSENT",
@@ -319,7 +322,7 @@ def test_notifications_without_data_or_summary_verify_and_ack(
 
 
 async def test_notification_from_other_environment_never_touches_purchase(
-    client: TestClient, verifier
+    client: TestClient, apple_verifier
 ) -> None:
     """Review N4: a Production notification must not act on a Sandbox purchase row."""
     sid = _grant(client, "6990")  # Sandbox purchase
@@ -337,7 +340,9 @@ async def test_notification_from_other_environment_never_touches_purchase(
     assert await count(PurchaseEvent, PurchaseEvent.kind == "environment_mismatch") == 1
 
 
-async def test_environment_mismatch_dedupe_race_is_a_noop(client, verifier, monkeypatch) -> None:
+async def test_environment_mismatch_dedupe_race_is_a_noop(
+    client, apple_verifier, monkeypatch
+) -> None:
     from purchases import service
 
     _grant(client, "6991")
@@ -370,11 +375,11 @@ async def test_environment_mismatch_dedupe_race_is_a_noop(client, verifier, monk
 
 
 # ---------------------------------------------------------------------------
-# Online (OCSP) checks — the production default
+# Webhook body, limits and notification-only purchases
 # ---------------------------------------------------------------------------
 
 
-def test_well_signed_but_unstructurable_notification_is_422(client, verifier) -> None:
+def test_well_signed_but_unstructurable_notification_is_422(client, apple_verifier) -> None:
     for body in (
         {**notification("TEST", None), "signedDate": "yesterday"},  # fails in the verifier
         notification("TEST", None, app_apple_id="abc"),  # type: ignore[arg-type] — model error
@@ -383,14 +388,14 @@ def test_well_signed_but_unstructurable_notification_is_422(client, verifier) ->
         assert r.status_code == 422 and r.json()["detail"] == "verification_failed"
 
 
-def test_malformed_webhook_body_is_400(client, verifier) -> None:
+def test_malformed_webhook_body_is_400(client, apple_verifier) -> None:
     assert client.post("/purchases/apple/notifications", json={}).status_code == 400
     assert post_note(client, "not-a-jws").status_code == 400
     r = client.post("/purchases/apple/notifications", json={"signedPayload": "a" * 30_001})
     assert r.status_code == 400
 
 
-def test_oversized_webhook_body_is_413(client, verifier) -> None:
+def test_oversized_webhook_body_is_413(client, apple_verifier) -> None:
     body = json.dumps({"signedPayload": "a" * 40_000})
     r = client.post(
         "/purchases/apple/notifications",
@@ -400,7 +405,7 @@ def test_oversized_webhook_body_is_413(client, verifier) -> None:
     assert r.status_code == 413
 
 
-def test_webhook_is_rate_limited_per_ip(client, verifier) -> None:
+def test_webhook_is_rate_limited_per_ip(client, apple_verifier) -> None:
     limit = int(APPLE_NOTIFICATION_IP_RATE_LIMIT.split("/")[0])
     note = signed_note("TEST", None)
     for _ in range(limit):
@@ -408,7 +413,7 @@ def test_webhook_is_rate_limited_per_ip(client, verifier) -> None:
     assert post_note(client, note).status_code == 429
 
 
-async def test_one_time_charge_records_without_linking(client, verifier) -> None:
+async def test_one_time_charge_records_without_linking(client, apple_verifier) -> None:
     note = signed_note("ONE_TIME_CHARGE", signed_txn("6700"))
     assert post_note(client, note).json() == {"status": "applied"}
     row = await purchase_row("6700")
@@ -421,7 +426,7 @@ async def test_one_time_charge_records_without_linking(client, verifier) -> None
     assert post_txn(client, sid, signed_txn("6700")).json()["status"] == "owned"
 
 
-async def test_refund_before_any_client_post_blocks_an_older_jws(client, verifier) -> None:
+async def test_refund_before_any_client_post_blocks_an_older_jws(client, apple_verifier) -> None:
     old_jws = signed_txn("6800", signed_date=now_ms(timedelta(minutes=-10)))
     note = signed_note("REFUND", signed_txn("6800", revocationDate=now_ms()), signed_date=now_ms())
     assert post_note(client, note).json() == {"status": "applied"}
@@ -671,7 +676,7 @@ def _chunks(data: bytes, size: int = 1024):
 
 
 @pytest.mark.parametrize("value", ["abc", "-1", "1e3", " 12x"])
-def test_non_numeric_content_length_is_400(client, verifier, value) -> None:
+def test_non_numeric_content_length_is_400(client, apple_verifier, value) -> None:
     r = client.post(
         "/purchases/apple/notifications",
         content=b"{}",
@@ -680,7 +685,7 @@ def test_non_numeric_content_length_is_400(client, verifier, value) -> None:
     assert r.status_code == 400
 
 
-def test_chunked_body_over_cap_is_413(client, verifier) -> None:
+def test_chunked_body_over_cap_is_413(client, apple_verifier) -> None:
     body = json.dumps({"signedPayload": "a" * 40_000}).encode()
     r = client.post(
         "/purchases/apple/notifications",
@@ -690,7 +695,7 @@ def test_chunked_body_over_cap_is_413(client, verifier) -> None:
     assert r.status_code == 413
 
 
-def test_chunked_body_within_cap_is_processed(client, verifier) -> None:
+def test_chunked_body_within_cap_is_processed(client, apple_verifier) -> None:
     body = json.dumps({"signedPayload": signed_note("TEST", None)}).encode()
     r = client.post(
         "/purchases/apple/notifications",

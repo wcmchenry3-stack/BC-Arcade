@@ -6,9 +6,10 @@ pinned fingerprint. No network: online (OCSP) checks are off and the App Store
 Server API is a fake at the client boundary.
 
 Not a test module. Plain helpers are imported directly; the fixtures defined
-here reach a test module through its
+here (``apple_use_verifier``, ``apple_verifier``) reach a test module through its
 ``pytest_plugins = ["tests._apple_iap_harness"]`` line, which avoids the
-F811 shadowing an imported fixture would cause.
+F811 shadowing an imported fixture would cause. Plugin fixtures are visible to
+every backend test module, so their names carry an ``apple_`` prefix.
 """
 
 from __future__ import annotations
@@ -19,16 +20,15 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
-import jwt
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from db.base import get_session_factory
 from db.models import Purchase
-from entitlements import service as entitlements_service
 from purchases import apple
 from purchases.apple_store import AppleConfig, AppStoreVerifier
+from tests._helpers import session_headers
 from tests.apple_jws import APP_APPLE_ID, BUNDLE_ID, default_ca, notification, transaction
 
 CASCADE = "com.buffingchi.games.premium.cascade"
@@ -83,7 +83,7 @@ def make_verifier(
 
 
 @pytest.fixture()
-def use_verifier() -> Iterator:
+def apple_use_verifier() -> Iterator:
     """Install a verifier as the configured one (both the dependency and the webhook)."""
 
     def install(v: AppStoreVerifier) -> AppStoreVerifier:
@@ -95,17 +95,15 @@ def use_verifier() -> Iterator:
 
 
 @pytest.fixture()
-def verifier(use_verifier) -> AppStoreVerifier:
-    return use_verifier(make_verifier())
-
-
-def hdr(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
+def apple_verifier(apple_use_verifier) -> AppStoreVerifier:
+    return apple_use_verifier(make_verifier())
 
 
 def post_txn(client: TestClient, sid: str, jws: str, source: str = "sync"):
     return client.post(
-        "/purchases/apple", json={"signed_transaction": jws, "source": source}, headers=hdr(sid)
+        "/purchases/apple",
+        json={"signed_transaction": jws, "source": source},
+        headers=session_headers(sid),
     )
 
 
@@ -113,25 +111,11 @@ def post_note(client: TestClient, jws: str):
     return client.post("/purchases/apple/notifications", json={"signedPayload": jws})
 
 
-def jwt_games(client: TestClient, sid: str) -> list[str]:
-    r = client.get("/entitlements", headers=hdr(sid))
-    assert r.status_code == 200
-    pub = entitlements_service.get_public_key_pem()
-    return jwt.decode(r.json()["token"], pub, algorithms=["RS256"])["entitled_games"]
-
-
 async def purchase_row(store_key: str) -> Purchase | None:
     async with get_session_factory()() as db:
         return (
             await db.execute(select(Purchase).where(Purchase.store_key == store_key))
         ).scalar_one_or_none()
-
-
-async def count(model, *where) -> int:
-    async with get_session_factory()() as db:
-        return (
-            await db.execute(select(func.count()).select_from(model).where(*where))
-        ).scalar_one()
 
 
 def signed_txn(key: str, **kw) -> str:
