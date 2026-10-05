@@ -54,16 +54,18 @@ npx --yes jscpd@4.3.0 --threshold 2.5 --min-lines 20 --min-tokens 70 \
 
 The `jest.collectCoverageFrom` entries and `frontend/knip.json` `ignore` carry the same sim/oracleBuild list (same glob dialect) until #2969 deletes both; keep them identical, and remove both in the same PR that moves the code.
 
-**Baseline** (measured 2026-10-05 on `dev`, 267 suites / 5,500 tests, `jest --coverage`, 393 files collected):
+**Measured** (2026-10-05 on `dev` after the Phase 0 coverage stories #3010, #3014 and #3017, 324 suites / 6,063 tests, `jest --coverage`, all collected files):
 
-| Metric     | Reported before #2952 (imported files only) | True (all collected files) | Floor enforced now | Policy floor | Stretch target |
-| ---------- | ------------------------------------------: | -------------------------: | -----------------: | -----------: | -------------: |
-| Lines      |                                      90.0 % |                     83.9 % |               82 % |         80 % |           90 % |
-| Statements |                                      88.5 % |                     82.9 % |               81 % |         80 % |           90 % |
-| Branches   |                                      83.6 % |                     79.8 % |               78 % |         80 % |           90 % |
-| Functions  |                                      81.1 % |                     76.8 % |               75 % |         80 % |           90 % |
+| Metric     | Measured | Floor enforced now | Stretch target |
+| ---------- | -------: | -----------------: | -------------: |
+| Lines      |  95.97 % |               90 % |           90 % |
+| Statements |  94.29 % |               90 % |           90 % |
+| Branches   |  88.34 % |               85 % |           90 % |
+| Functions  |  91.92 % |               88 % |           90 % |
 
-**Floors.** `coverageThreshold.global` sits one point under the measured baseline (rounded down, then minus one) to absorb run-to-run drift: seven non-test modules use unseeded `Math.random`, and identical runs have been seen to move a screen's function coverage by about three points (BlackjackTableScreen, 48 % to 51 %). Floors therefore only catch real regressions and never fail on unchanged code. Never lower them to make a PR pass; raise them as coverage lands, in the same PR that adds the tests. Branches (78) and functions (75) are currently below the 80 policy floor, and the gap is closed by the coverage child issues of #2950. The per-file thresholds for the `solitaire`, `freecell` and `hearts` engines (80 % lines) stay as they are. The remaining 23 files with 0 % lines (about 1,150 lines, dominated by `starswarm/GameCanvas.web.tsx`, `starswarm/GameCanvas.tsx`, `mahjong/GameCanvas.tsx` and `App.tsx`) are where most of the gap sits.
+Original baseline, for history (2026-10-04, before the coverage stories): lines 83.9 %, statements 82.9 %, branches 79.8 %, functions 76.8 % (floors then 82 / 81 / 78 / 75).
+
+**Floors.** `coverageThreshold.global` sits 3 points under the measured value (rounded down), capped at 90. The margin absorbs run-to-run drift: seven non-test modules use unseeded `Math.random`, and identical runs have been seen to move a screen's function coverage by about three points (BlackjackTableScreen, 48 % to 51 %). Floors therefore only catch real regressions and never fail on unchanged code. Raise them in the same PR that adds the coverage; never lower them to make a PR pass. The next ratchet step is 90 on every metric, once the remaining under-90 files are covered. The per-file thresholds for the `solitaire`, `freecell` and `hearts` engines (80 % lines) stay as they are.
 
 **How CI applies it.** The org reusable workflow `called-test-frontend.yml` runs `npm run test:ci` when the package defines it, and otherwise falls back to `npx jest --coverage --coverageThreshold='{"global":{"lines":80}}'`. A `--coverageThreshold` on the command line replaces the whole `coverageThreshold` object from `package.json` (including the per-file engine entries and the statements/branches/functions floors). `frontend/package.json` therefore defines `"test:ci": "jest --coverage"` so CI uses the thresholds in `package.json`. Run `npm run test:ci` locally to get the same result.
 
