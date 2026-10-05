@@ -218,6 +218,42 @@ Each factory keeps the shape the screen tests had before #2954, and takes overri
 where tests differ; mock shapes decide what the screen sees, so change one only on purpose.
 Module mocks particular to one screen (its engine, canvas, storage) stay in that test file.
 
+### Testing a native renderer (#2956)
+
+The iOS/Android Skia renderers (`components/starswarm/GameCanvas.tsx`,
+`components/mahjong/GameCanvas.tsx`) have component tests next to them
+(`__tests__/GameCanvas.test.tsx`, `__tests__/GameCanvas.native.test.tsx`; run one with
+`npx jest src/components/starswarm`). There is no global Skia mock: each test mocks
+`@shopify/react-native-skia` with stubs that render a host `View` keeping the element's props
+(`testID="sk-rect"`, `color`, `x`, ...), so a test asserts what would be drawn rather than
+snapshotting it; the SVG card faces (`decks/__tests__/svgCardFaces.test.tsx`) stub
+`react-native-svg` the same way and pin primitive counts and colours per card, picking
+elements by their props, never by position. Engine state is seeded
+(`initStarSwarm(w, h, wave, seed)` / `createGame(layout, seed)`), and the Star Swarm test
+wraps the real engine and `buildFrame` in `jest.fn` so one test can force a single transition
+(`tick.mockImplementationOnce`) and count publishes. `requestAnimationFrame` is replaced by a
+hand-cranked queue (`createRafHarness` in `components/starswarm/__tests__/helpers/canvasFixtures.ts`,
+with `seededStarSwarm`), so each `frame(dt)` runs exactly one loop iteration inside `act`; frame
+publish gating is asserted as "no `buildFrame` call, no React commit (a `Profiler` counter)"
+across frames of a paused or game-over game. The global Reanimated mock keeps a
+`useSharedValue` object for the component's lifetime, as the real hook does, so a write from a
+gesture or UI-thread callback survives the next render. Two traps remain, because the mock
+evaluates `useAnimatedStyle` / `useDerivedValue` inline at render: a write made in an effect or
+handler shows in an animated style only on the next render, so `rerender` (or `act` on something
+that re-renders) before reading the style; and the init is read once at mount, so a prop-seeded
+value (`useSharedValue(lifted ? -LIFT_AMOUNT : 0)` in `PlayerHand.tsx`) stays at its first value
+when the prop changes unless the component writes `.value` itself.
+`mockScreenDeps().mockGestureHandler(() => sink)` records every `GestureDetector` render (the
+gesture it was given, composites with their children, each built gesture with its own `on*`
+callbacks, and the child's testID); `detectedGesture(sink, "pan", { testID })` returns the
+callbacks to fire. Restore
+spies (`Date.now`, `performance.now`, `console.error`) in `afterEach(() =>
+jest.restoreAllMocks())`, not at the end of a test body. Use `await` on every RNTL v14 call (`render`,
+`rerender`, `unmount`, `fireEvent`), and don't wrap a plain ref call in a sync `act()`: an
+unawaited one leaks into the next test. `App.tsx` has a smoke test (`src/__tests__/App.test.tsx`)
+with navigator recorders and stub screens; jest cannot run `import()`, so it replays
+`lazyScreens.ts`'s factory table through `require`.
+
 ### Structure
 
 ```
@@ -264,7 +300,7 @@ frontend/src/
 ### Notes
 
 - Physics engine (Matter.js) is not unit-tested — third-party, no jest DOM available.
-- Only pure logic modules are tested (no React components, no canvas).
+- Native renderers and components have component tests; see "Testing a native renderer" above.
 
 ### Yacht AI simulation — two-layer model (#2245)
 
