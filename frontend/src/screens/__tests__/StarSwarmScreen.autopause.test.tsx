@@ -20,10 +20,6 @@ import type { StarSwarmState } from "../../game/starswarm/types";
 // state, and getState() returns an engine state); Controls is real, so the
 // overlay itself is asserted.
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockPopToTop = jest.fn();
 // Live navigation listeners, so a test can blur the screen (#2633).
 const mockNavListeners = new Map<string, Set<() => void>>();
@@ -38,9 +34,7 @@ const mockNavigation = {
     return () => set.delete(cb);
   }),
 };
-jest.mock("@react-navigation/native", () => ({
-  useNavigation: () => mockNavigation,
-}));
+jest.mock("@react-navigation/native", () => mockScreenDeps().mockNavigation(() => mockNavigation));
 
 async function emitNav(event: "blur" | "focus") {
   await act(async () => {
@@ -96,39 +90,30 @@ jest.mock("../../hooks/useStarSwarmAudio", () => {
 jest.mock("../../game/starswarm/telemetry", () => ({ reportRunStats: jest.fn() }));
 
 // The result card's rank lookup (#2626) — hermetic, and never left retrying.
-jest.mock("../../api/stats", () => ({
-  statsApi: {
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({
     getGameRank: jest.fn(() =>
       Promise.resolve({ rank: null, is_best: null, ranked: false, reason: "not_rankable" })
     ),
-  },
-}));
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: jest.fn(() => Promise.resolve()),
-}));
-jest.mock("../../game/_shared/displayNameSync", () => ({
-  ...jest.requireActual("../../game/_shared/displayNameSync"),
-  flushDisplayNameSync: jest.fn(() => Promise.resolve(true)),
-}));
+  })
+);
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+jest.mock("../../game/_shared/displayNameSync", () => mockScreenDeps().mockDisplayNameSync());
 
 const mockStartGame = jest.fn(() => "starswarm-game-id");
 const mockCompleteGame = jest.fn();
 // The killed process's session a restore can continue (#2654); none by default.
 const mockResumeGame = jest.fn((): string | null => null);
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as jest.Mock)(...args),
-    resumeGame: (...args: unknown[]) => (mockResumeGame as jest.Mock)(...args),
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    resumeGame: lazy(() => mockResumeGame),
     markStarted: jest.fn(),
     discardGame: jest.fn(),
-    enqueueEvent: jest.fn(),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+    completeGame: lazy(() => mockCompleteGame),
+  });
+});
 
 // Live AppState listeners — the screen re-subscribes when its pause inputs change.
 let appStateListeners: ((state: AppStateStatus) => void)[] = [];

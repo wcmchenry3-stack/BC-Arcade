@@ -26,12 +26,6 @@ import type { TileData, Twenty48State } from "../../game/twenty48/types";
 // Twenty48's keyboard handler only listens on web.
 (Platform as { OS: string }).OS = "web";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => children,
-}));
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => children,
-}));
 jest.mock("@react-navigation/native", () => ({
   ...jest.requireActual("@react-navigation/native"),
   useNavigation: () => ({

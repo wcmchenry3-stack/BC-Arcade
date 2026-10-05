@@ -56,6 +56,10 @@
       "/node_modules/",
       "\\.worktrees/"
     ],
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "<rootDir>/src/test-utils/"
+    ],
     "transformIgnorePatterns": [
       "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|react-navigation|@react-navigation/.*|i18next|react-i18next|i18next-resources-to-backend|@formatjs/.*)"
     ],

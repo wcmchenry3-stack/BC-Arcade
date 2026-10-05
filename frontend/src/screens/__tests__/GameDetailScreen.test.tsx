@@ -5,22 +5,14 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import GameDetailScreen from "../GameDetailScreen";
 import type { GameDetailResponse } from "../../api/types";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockGetGameDetail = jest.fn() as jest.Mock<Promise<GameDetailResponse>, [string, boolean?]>;
-jest.mock("../../api/stats", () => ({
-  statsApi: {
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({
     getGameDetail: (gameId: string, include?: boolean) => mockGetGameDetail(gameId, include),
     getMyStats: jest.fn(),
     getMyGames: jest.fn(),
-  },
-}));
+  })
+);
 
 const SAMPLE_DETAIL: GameDetailResponse = {
   id: "abc-123",

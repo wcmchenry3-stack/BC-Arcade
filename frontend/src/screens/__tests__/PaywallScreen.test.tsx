@@ -17,11 +17,12 @@ import { PRIVACY_POLICY_URL, SUPPORT_URL, TERMS_OF_SERVICE_URL } from "../../con
 const mockNavigate = jest.fn();
 const mockGoBack = jest.fn();
 let mockParams: { gameSlug?: string } = { gameSlug: "cascade" };
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ navigate: mockNavigate, goBack: mockGoBack }),
-  useRoute: () => ({ params: mockParams }),
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ navigate: mockNavigate, goBack: mockGoBack }), {
+    actual: true,
+    useRoute: () => ({ params: mockParams }),
+  })
+);
 
 let mockEntitled = new Set<string>();
 let mockLoading = false;
@@ -37,10 +38,6 @@ jest.mock("../../entitlements/EntitlementContext", () => ({
     refresh: mockRefresh,
     applyToken: mockApplyToken,
   }),
-}));
-
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 jest.mock("../../components/shared/AppHeader", () => ({
   APP_HEADER_HEIGHT: 64,

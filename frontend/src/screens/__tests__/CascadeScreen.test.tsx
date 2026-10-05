@@ -19,17 +19,13 @@ import {
   storeAssignedDisplayName,
 } from "../../game/_shared/displayName";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
 // Captured so tests can fire "blur"/"focus" (a pushed Stats/Leaderboard/
 // Scoreboard screen, #2735).
 const mockNavListeners = new Map<string, Array<() => void>>();
-jest.mock("@react-navigation/native", () => ({
-  useNavigation: () => ({
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({
     popToTop: mockPopToTop,
     goBack: jest.fn(),
     navigate: mockNavigate,
@@ -42,20 +38,18 @@ jest.mock("@react-navigation/native", () => ({
         );
       };
     }),
-  }),
-}));
+  }))
+);
 
 // The result card reads the synced game's rank (#2632, sessionBoardAdapter).
 const mockGetGameRank = jest.fn();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetGameRank(gameId) })
+);
 jest.mock("../../api/players", () => ({
   playersApi: { putMe: jest.fn(() => Promise.resolve({ display_name: "Brave Otter 4821" })) },
 }));
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: jest.fn(() => Promise.resolve()),
-}));
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
 
 jest.mock("../../components/cascade/FruitGlyph", () => "FruitGlyph");
 jest.mock("../../components/cascade/NextFruitPreview", () => "NextFruitPreview");
@@ -97,17 +91,14 @@ type StartArgs = [string, Record<string, unknown>?, Record<string, unknown>?];
 const mockStartGame = jest.fn() as unknown as jest.Mock<string, StartArgs>;
 const mockEnqueueEvent = jest.fn() as unknown as jest.Mock<undefined, EnqueueArgs>;
 const mockCompleteGame = jest.fn() as unknown as jest.Mock<undefined, CompleteArgs>;
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as unknown as jest.Mock)(...args),
-    enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    enqueueEvent: lazy(() => mockEnqueueEvent),
+    completeGame: lazy(() => mockCompleteGame),
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Mock CascadeEngine — lets tests inject events and inspect drop calls

@@ -8,14 +8,9 @@ import { saveGame, clearGame, loadLastMode, saveLastMode } from "../../game/yach
 // GameShell's Stats item (#2635) navigates through useNavigation; these
 // screens take their navigation as a prop, so the hook gets its own mock.
 const mockShellNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ navigate: mockShellNavigate }),
-}));
-
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ navigate: mockShellNavigate }), { actual: true })
+);
 
 // ---------------------------------------------------------------------------
 // Mock yacht storage — no-op persistence
@@ -36,17 +31,14 @@ type CompleteArgs = [string, Record<string, unknown>, Record<string, unknown>];
 const mockStartGame = jest.fn(() => "game-uuid-test");
 const mockEnqueueEvent = jest.fn() as unknown as jest.Mock<undefined, EnqueueArgs>;
 const mockCompleteGame = jest.fn() as unknown as jest.Mock<undefined, CompleteArgs>;
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as jest.Mock)(...args),
-    enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    enqueueEvent: lazy(() => mockEnqueueEvent),
+    completeGame: lazy(() => mockCompleteGame),
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Helpers

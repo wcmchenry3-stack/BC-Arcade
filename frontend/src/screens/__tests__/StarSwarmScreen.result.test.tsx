@@ -15,20 +15,16 @@ const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregrou
 // The shared result card for Star Swarm (#2516). The Skia canvas is mocked: the
 // test drives its onGameOver callback the way the game loop does.
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  useNavigation: () => ({
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({
     popToTop: mockPopToTop,
     goBack: jest.fn(),
     navigate: mockNavigate,
     addListener: jest.fn(() => jest.fn()),
-  }),
-}));
+  }))
+);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockCanvasProps: any = null;
@@ -69,31 +65,23 @@ jest.mock("../../game/starswarm/telemetry", () => ({ reportRunStats: jest.fn() }
 // #2626: the card reads the run's rank from GET /games/{id}/rank (sessionBoardAdapter);
 // nothing is posted to the legacy POST /starswarm/score any more.
 const mockGetRank = jest.fn();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getGameRank: (gameId: string) => mockGetRank(gameId) },
-}));
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: jest.fn(() => Promise.resolve()),
-}));
-jest.mock("../../game/_shared/displayNameSync", () => ({
-  ...jest.requireActual("../../game/_shared/displayNameSync"),
-  flushDisplayNameSync: jest.fn(() => Promise.resolve(true)),
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetRank(gameId) })
+);
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+jest.mock("../../game/_shared/displayNameSync", () => mockScreenDeps().mockDisplayNameSync());
 
 const mockStartGame = jest.fn((): string | null => "starswarm-game-id");
 const mockCompleteGame = jest.fn();
 const mockReportBug = jest.fn();
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as jest.Mock)(...args),
-    enqueueEvent: jest.fn(),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: (...args: unknown[]) => (mockReportBug as jest.Mock)(...args),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    completeGame: lazy(() => mockCompleteGame),
+    reportBug: lazy(() => mockReportBug),
+  });
+});
 
 async function renderScreen() {
   const r = await render(

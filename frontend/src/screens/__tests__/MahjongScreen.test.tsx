@@ -74,20 +74,24 @@ const mockAddListener = jest.fn((event: string, handler: () => void) => {
 });
 
 const mockNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  useNavigation: () => ({
-    popToTop: jest.fn(),
-    goBack: jest.fn(),
-    navigate: mockNavigate,
-    setOptions: jest.fn(),
-    addListener: mockAddListener,
-  }),
-  useFocusEffect: (cb: () => () => void) => {
-    // Run the effect once synchronously in tests (simulates screen focus).
-    const cleanup = cb();
-    return cleanup;
-  },
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(
+    () => ({
+      popToTop: jest.fn(),
+      goBack: jest.fn(),
+      navigate: mockNavigate,
+      setOptions: jest.fn(),
+      addListener: mockAddListener,
+    }),
+    {
+      useFocusEffect: (cb: () => () => void) => {
+        // Run the effect once synchronously in tests (simulates screen focus).
+        const cleanup = cb();
+        return cleanup;
+      },
+    }
+  )
+);
 
 jest.mock("expo-screen-orientation", () => ({
   lockAsync: jest.fn().mockResolvedValue(undefined),
@@ -108,17 +112,14 @@ jest.mock("@sentry/react-native", () => ({
 const mockStartGame = jest.fn<string, [string, Record<string, unknown>, Record<string, unknown>]>();
 const mockEnqueueEvent = jest.fn();
 const mockCompleteGame = jest.fn();
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as unknown as jest.Mock)(...args),
-    enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    enqueueEvent: lazy(() => mockEnqueueEvent),
+    completeGame: lazy(() => mockCompleteGame),
+  });
+});
 
 // The app-wide foreground-time counter behind useGameSync's active-play window
 // (#2684) is held still by the shared mock jest.setup.ts pins (#2710):
@@ -147,16 +148,13 @@ jest.mock("../../game/_shared/useGameSync", () => {
 
 // The result card's rank lookup (sessionBoardAdapter, #2677).
 const mockGetGameRank = jest.fn();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
-}));
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: () => Promise.resolve(),
-}));
-jest.mock("../../game/_shared/displayNameSync", () => ({
-  ...jest.requireActual("../../game/_shared/displayNameSync"),
-  flushDisplayNameSync: () => Promise.resolve(true),
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetGameRank(gameId) })
+);
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+jest.mock("../../game/_shared/displayNameSync", () =>
+  mockScreenDeps().mockDisplayNameSync({ flushDisplayNameSync: () => Promise.resolve(true) })
+);
 
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 

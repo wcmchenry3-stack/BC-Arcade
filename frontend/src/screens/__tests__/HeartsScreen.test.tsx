@@ -36,23 +36,17 @@ jest.mock("../../game/hearts/playerNames", () => ({
 
 // The result card's rank lookup (#2677's sessionBoardAdapter, #2629).
 const mockGetGameRank = jest.fn<Promise<GameRankResponse>, [string]>();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
-}));
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: () => Promise.resolve(),
-}));
-jest.mock("../../game/_shared/displayNameSync", () => ({
-  ...jest.requireActual("../../game/_shared/displayNameSync"),
-  flushDisplayNameSync: () => Promise.resolve(true),
-  // Joining stores the server's generated name at once (#2778).
-  joinLeaderboards: async () => {
-    await jest
-      .requireActual("../../game/_shared/displayName")
-      .storeAssignedDisplayName("Brave Otter 4821");
-    return true;
-  },
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetGameRank(gameId) })
+);
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+// Joining stores the server's generated name at once (#2778).
+jest.mock("../../game/_shared/displayNameSync", () =>
+  mockScreenDeps().mockDisplayNameSync(
+    { flushDisplayNameSync: () => Promise.resolve(true) },
+    { joinAs: "Brave Otter 4821" }
+  )
+);
 
 // A stand-in for useGameSync that keeps the real hook's session rules:
 // start() and a successful resume() open a session, complete() closes it
@@ -121,24 +115,18 @@ function resetSyncMocks() {
 const mockNavigate = jest.fn();
 const mockPopToTop = jest.fn();
 const mockAddListener = jest.fn((_event: string, _cb: unknown) => jest.fn());
-jest.mock("@react-navigation/native", () => ({
-  useNavigation: () => ({
-    goBack: jest.fn(),
-    popToTop: mockPopToTop,
-    navigate: mockNavigate,
-    addListener: mockAddListener,
-  }),
-  // No-op stub: blur-time save behavior is verified via manual TESTING.md repro.
-  useFocusEffect: jest.fn(),
-}));
-
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(
+    () => ({
+      goBack: jest.fn(),
+      popToTop: mockPopToTop,
+      navigate: mockNavigate,
+      addListener: mockAddListener,
+    }),
+    // No-op stub: blur-time save behavior is verified via manual TESTING.md repro.
+    { useFocusEffect: jest.fn() }
+  )
+);
 
 jest.useFakeTimers();
 

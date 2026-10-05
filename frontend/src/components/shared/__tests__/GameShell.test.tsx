@@ -21,10 +21,6 @@ jest.mock("react-i18next", () => ({
   }),
 }));
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 44, bottom: 0, left: 0, right: 0 }),
 }));

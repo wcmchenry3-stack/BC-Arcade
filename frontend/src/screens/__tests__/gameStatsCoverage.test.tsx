@@ -22,20 +22,12 @@ import { BOARDS, GAME_TYPES, type GameType } from "../../api/vocab";
 import { isGameVisible } from "../../entitlements/gameVisibility";
 import { clearMyStatsCache } from "../../hooks/useMyStats";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockGetMyStats = jest.fn();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getMyStats: () => mockGetMyStats() },
-}));
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: () => Promise.resolve(),
-}));
-jest.mock("../../game/_shared/NetworkContext", () => ({
-  useNetwork: () => ({ isOnline: true, isInitialized: true }),
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getMyStats: () => mockGetMyStats() })
+);
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+jest.mock("../../game/_shared/NetworkContext", () => mockScreenDeps().mockNetwork());
 
 function gameStats(gameType: GameType): GameTypeStats {
   return {

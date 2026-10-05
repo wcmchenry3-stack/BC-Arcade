@@ -27,12 +27,6 @@ import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import { HAS_WINNER, LIFECYCLE_OUTCOMES } from "../../api/vocab";
 import type { FreeCellState } from "../../game/freecell/types";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => children,
-}));
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => children,
-}));
 jest.mock("@react-navigation/native", () => ({
   ...jest.requireActual("@react-navigation/native"),
   useNavigation: () => ({

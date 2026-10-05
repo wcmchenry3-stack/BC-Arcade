@@ -15,12 +15,6 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
 }));
 jest.mock("../../api/stats", () => ({ statsApi: { deleteMyData: jest.fn() } }));
 jest.mock("../../hooks/useMyStats", () => ({ clearMyStatsCache: jest.fn() }));
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
 jest.mock("../../components/LanguageSwitcher", () => ({
   __esModule: true,
   default: "MockLanguageSwitcher",

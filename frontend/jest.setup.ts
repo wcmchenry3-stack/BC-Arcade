@@ -157,6 +157,29 @@ jest.mock("react-native-safe-area-context", () => ({
   SafeAreaProvider: jest.fn(({ children }: { children: unknown }) => children),
 }));
 
+// expo-blur and expo-linear-gradient — pass-throughs that render only their
+// children (#2954), so no test sees native blur/gradient views. A test that
+// needs another shape mocks the package itself; its jest.mock wins.
+jest.mock("expo-blur", () => {
+  const { createElement, Fragment } = jest.requireActual<typeof import("react")>("react");
+  return {
+    BlurView: ({ children }: { children?: React.ReactNode }) =>
+      createElement(Fragment, null, children),
+  };
+});
+jest.mock("expo-linear-gradient", () => {
+  const { createElement, Fragment } = jest.requireActual<typeof import("react")>("react");
+  return {
+    LinearGradient: ({ children }: { children?: React.ReactNode }) =>
+      createElement(Fragment, null, children),
+  };
+});
+
+// Shared screen-test mock factories (#2954), as a global so hoisted jest.mock
+// factories can call it: babel-plugin-jest-hoist lets a factory reference a
+// name matching /^mock/i. Usage: src/test-utils/mockScreenDeps.ts.
+globalThis.mockScreenDeps = () => jest.requireActual("./src/test-utils/mockScreenDeps");
+
 // Sentry mock — @sentry/react-native ships ESM that Jest can't transform
 jest.mock("@sentry/react-native", () => ({
   captureException: jest.fn(),

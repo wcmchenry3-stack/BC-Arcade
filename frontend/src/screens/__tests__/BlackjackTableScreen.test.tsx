@@ -10,14 +10,9 @@ import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroun
 // GameShell's Stats item (#2635) navigates through useNavigation; these
 // screens take their navigation as a prop, so the hook gets its own mock.
 const mockShellNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ navigate: mockShellNavigate }),
-}));
-
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ navigate: mockShellNavigate }), { actual: true })
+);
 
 // ---------------------------------------------------------------------------
 // Mock blackjack storage — no saved game by default, no-op persistence.
@@ -43,20 +38,17 @@ const mockCompleteGame = jest.fn() as unknown as jest.Mock<undefined, CompleteAr
 const mockResumeGame = jest.fn((): string | null => null);
 const mockMarkStarted = jest.fn();
 const mockDiscardGame = jest.fn();
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as unknown as jest.Mock)(...args),
-    resumeGame: (...args: unknown[]) => (mockResumeGame as jest.Mock)(...args),
-    markStarted: (...args: unknown[]) => (mockMarkStarted as jest.Mock)(...args),
-    discardGame: (...args: unknown[]) => (mockDiscardGame as jest.Mock)(...args),
-    enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    resumeGame: lazy(() => mockResumeGame),
+    markStarted: lazy(() => mockMarkStarted),
+    discardGame: lazy(() => mockDiscardGame),
+    enqueueEvent: lazy(() => mockEnqueueEvent),
+    completeGame: lazy(() => mockCompleteGame),
+  });
+});
 
 // The app-wide foreground-time counter behind useGameSync's active-play window
 // (#2684) is pinned for every test by jest.setup.ts (#2710), held still unless

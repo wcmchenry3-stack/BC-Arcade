@@ -24,8 +24,8 @@ const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
 // Captured so tests can fire `beforeRemove` (back-navigation).
 const mockNavListeners = new Map<string, Array<() => void>>();
-jest.mock("@react-navigation/native", () => ({
-  useNavigation: () => ({
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({
     popToTop: mockPopToTop,
     goBack: jest.fn(),
     navigate: mockNavigate,
@@ -38,8 +38,8 @@ jest.mock("@react-navigation/native", () => ({
         );
       };
     }),
-  }),
-}));
+  }))
+);
 
 const mockStartGame = jest.fn<string, [string, Record<string, unknown>, Record<string, unknown>]>();
 const mockEnqueueEvent = jest.fn();
@@ -47,26 +47,23 @@ const mockCompleteGame = jest.fn();
 const mockMarkStarted = jest.fn();
 const mockDiscardGame = jest.fn();
 const mockResumeGame = jest.fn<string | null, [string, Record<string, unknown> | undefined]>();
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as unknown as jest.Mock)(...args),
-    enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
-    markStarted: (...args: unknown[]) => (mockMarkStarted as unknown as jest.Mock)(...args),
-    discardGame: (...args: unknown[]) => (mockDiscardGame as unknown as jest.Mock)(...args),
-    resumeGame: (...args: unknown[]) => (mockResumeGame as unknown as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    enqueueEvent: lazy(() => mockEnqueueEvent),
+    completeGame: lazy(() => mockCompleteGame),
+    markStarted: lazy(() => mockMarkStarted),
+    discardGame: lazy(() => mockDiscardGame),
+    resumeGame: lazy(() => mockResumeGame),
+  });
+});
 
 // The result card reads the synced game's rank (#2632, sessionBoardAdapter).
 const mockGetGameRank = jest.fn();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetGameRank(gameId) })
+);
 jest.mock("../../api/players", () => ({
   playersApi: { putMe: jest.fn(() => Promise.resolve({ display_name: "Brave Otter 4821" })) },
 }));
@@ -74,9 +71,7 @@ jest.mock("../../api/players", () => ({
 // The hook's foreground clock (#2684) is held still by the shared mock
 // jest.setup.ts pins (#2710), so the summaries below carry only what the
 // screen sends: its own play timer.
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: jest.fn(() => Promise.resolve()),
-}));
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
 
 // Import after mocks so the test file gets the jest.fn() flavour.
 

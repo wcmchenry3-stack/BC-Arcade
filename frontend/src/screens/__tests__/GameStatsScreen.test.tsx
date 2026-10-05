@@ -14,24 +14,20 @@ import {
   rememberMyStats,
 } from "../../hooks/useMyStats";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockGetMyStats = jest.fn();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getMyStats: () => mockGetMyStats() },
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getMyStats: () => mockGetMyStats() })
+);
 
 const mockFlushQueuedGames = jest.fn(() => Promise.resolve());
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: () => mockFlushQueuedGames(),
-}));
+jest.mock("../../game/_shared/flushQueuedGames", () =>
+  mockScreenDeps().mockFlushQueuedGames(() => mockFlushQueuedGames())
+);
 
 const mockNetwork = { isOnline: true, isInitialized: true };
-jest.mock("../../game/_shared/NetworkContext", () => ({
-  useNetwork: () => mockNetwork,
-}));
+jest.mock("../../game/_shared/NetworkContext", () =>
+  mockScreenDeps().mockNetwork({ state: () => mockNetwork })
+);
 
 const navigate = jest.fn();
 const goBack = jest.fn();
