@@ -13,6 +13,7 @@ from db.base import get_session_factory
 from db.models import GameEntitlement
 from hearts.models import HeartsResult
 from hearts.module import module
+from tests._helpers import session_headers as _headers
 
 # Hand 2 is a moon shot by seat 2 (0 for the shooter, 26 for each opponent).
 HANDS = [[10, 5, 8, 3], [26, 26, 0, 26], [9, 4, 6, 7]]
@@ -141,18 +142,6 @@ needs_db = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping live API tests",
 )
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
-
-
-@pytest.fixture()
-def client():
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 async def _entitled_sid() -> str:

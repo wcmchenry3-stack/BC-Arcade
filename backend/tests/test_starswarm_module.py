@@ -36,6 +36,7 @@ from starswarm.models import (
     StarSwarmResult,
 )
 from starswarm.module import module as starswarm_module
+from tests._helpers import session_headers as _headers
 from vocab import GameType
 
 client = TestClient(app)
@@ -61,10 +62,6 @@ def _type_tiers() -> list[str]:
 
 # Every tier the current client can send, read from the client itself.
 _TIERS = _engine_tiers()
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 # Star Swarm is premium: POST /games needs the entitlement. conftest cleans the

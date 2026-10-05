@@ -106,14 +106,6 @@ def make_harness(envs: frozenset[str] = frozenset({"production", "test"})) -> Ha
 
 
 @pytest.fixture()
-def client() -> Iterator[TestClient]:
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-@pytest.fixture()
 def install() -> Iterator:
     def _install(h: Harness) -> Harness:
         google._runtime = h.runtime

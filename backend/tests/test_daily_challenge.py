@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
@@ -34,9 +33,10 @@ from daily_challenge.definitions import (
     template_for,
 )
 from daily_challenge.service import evaluate_goal
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType
 from entitlements.service import ALL_PREMIUM_SLUGS
+from tests._helpers import session_headers as _headers
 
 # ---------------------------------------------------------------------------
 # definitions — no DB
@@ -445,24 +445,11 @@ _FIXED = Template("fixed_for_tests", (_SCORE_2500, _SORT_MEDIUM))
 
 
 @pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-@pytest.fixture()
 def fixed_template(monkeypatch: pytest.MonkeyPatch) -> Template:
     """Pin today's template so the tests do not depend on the calendar."""
     monkeypatch.setattr("daily_challenge.service.template_for", lambda _day, _slate="free": _FIXED)
     monkeypatch.setattr("daily_challenge.router.template_for", lambda _day, _slate="free": _FIXED)
     return _FIXED
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 def _play(
@@ -522,10 +509,7 @@ def test_today_is_public_and_describes_the_goals(client: TestClient) -> None:
     today = local_day(0)
     assert body["challenge_id"] == today.date.isoformat()
     assert body["template_id"] == template_for(today.date).id
-    assert (
-        datetime.fromisoformat(body["resets_at"].replace("Z", "+00:00"))  # noqa: FURB162
-        == today.end_utc
-    )
+    assert datetime.fromisoformat(body["resets_at"].replace("Z", "+00:00")) == today.end_utc
     assert len(body["goals"]) == GOALS_PER_DAY
     assert body["goals"][0]["game_type"] == ALWAYS_PRESENT
     for goal in body["goals"]:

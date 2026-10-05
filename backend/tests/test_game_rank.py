@@ -10,25 +10,24 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event, func, select
 
-from db.base import get_engine, get_session_factory, is_configured
+from db.base import get_engine, get_session_factory
 from db.models import Game, Player
 from games import leaderboard
 from limiter import _real_ip, limiter, session_key
 from starswarm.models import DEFAULT_DIFFICULTY_TIER
+from tests._helpers import session_headers as _headers
 from tests.test_generic_leaderboard import (
     SECRET_SID,
     _assert_logged_safely,
     _FailingDB,
     _finished_game,
     _grant_all,
-    _headers,
     _patched_board,
     _seed,
     _set_name,
@@ -42,15 +41,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 UNRANKED = {"ranked": False, "rank": None, "is_best": None}
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 def _rank(client: TestClient, game_id: Any, sid: str) -> dict:

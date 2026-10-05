@@ -117,14 +117,6 @@ class FakeGoogleVerifier:
 
 
 @pytest.fixture()
-def client() -> Iterator[TestClient]:
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-@pytest.fixture()
 def fake_apple() -> Iterator[FakeAppleVerifier]:
     from main import app
 

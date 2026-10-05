@@ -11,14 +11,14 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 from datetime import UTC
 
 import pytest
 from fastapi.testclient import TestClient
 
 from games.legacy_outcomes import might_be_legacy_win
-from tests.test_generic_leaderboard import _grant_all, _headers, _sid
+from tests._helpers import session_headers as _headers
+from tests.test_generic_leaderboard import _grant_all, _sid
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -27,14 +27,6 @@ pytestmark = pytest.mark.skipif(
 
 _FRESH_BOARD = [2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 _WON_BOARD = [2048, 512, 64, 8, 4, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2]
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 @pytest.fixture()

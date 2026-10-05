@@ -19,15 +19,12 @@ from games.board import SCORE_METRIC
 from games.protocol import GameModule
 from games.registry import get_module
 from main import app
+from tests._helpers import session_headers as _headers
 from twenty48.models import Twenty48Metadata, Twenty48Result
 from twenty48.module import module as twenty48_module
 from vocab import GameType
 
 client = TestClient(app)
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 def _ended(outcome: str, *, score: int = 2400, tile: int = 256) -> dict:
