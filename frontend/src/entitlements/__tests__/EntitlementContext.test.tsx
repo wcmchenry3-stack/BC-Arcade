@@ -42,6 +42,8 @@ jest.mock("../../game/sudoku/storage", () => ({ clearGame: () => mockClearSudoku
 import {
   EntitlementProvider,
   useEntitlements,
+  useEntitlementGate,
+  useEntitlementStatus,
   parseRawToken,
   PREMIUM_GAMES,
   OFFLINE_GRACE_MS,
@@ -640,5 +642,119 @@ describe("revocation flow", () => {
     await triggerForegroundWith([]);
     expect(mockClearHearts).toHaveBeenCalledTimes(1);
     expect(mockClearBlackjack).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Render stability (#2964)
+// ---------------------------------------------------------------------------
+
+describe("EntitlementProvider — render stability (#2964)", () => {
+  const onGateRender = jest.fn();
+  const onStatusRender = jest.fn();
+  const onFullRender = jest.fn();
+  const GateConsumer = React.memo(function GateConsumer() {
+    onGateRender(useEntitlementGate());
+    return null;
+  });
+  const StatusConsumer = React.memo(function StatusConsumer() {
+    onStatusRender(useEntitlementStatus());
+    return null;
+  });
+  const FullConsumer = React.memo(function FullConsumer() {
+    onFullRender(useEntitlements());
+    return null;
+  });
+  const consumers = (
+    <>
+      <GateConsumer />
+      <StatusConsumer />
+      <FullConsumer />
+    </>
+  );
+
+  const lastGate = () =>
+    onGateRender.mock.calls.at(-1)![0] as ReturnType<typeof useEntitlementGate>;
+  const lastFull = () => onFullRender.mock.calls.at(-1)![0] as ReturnType<typeof useEntitlements>;
+
+  async function renderConsumers() {
+    mockRequest.mockResolvedValue({
+      token: makeToken(makePayload(["cascade"])),
+      expires_at: "2099-01-01T00:00:00Z",
+    });
+    const api = await render(<EntitlementProvider>{consumers}</EntitlementProvider>);
+    await flushAsync();
+    await flushAsync();
+    return api;
+  }
+
+  beforeEach(() => {
+    onGateRender.mockClear();
+    onStatusRender.mockClear();
+    onFullRender.mockClear();
+  });
+
+  it("does not re-render a gated consumer when a foreground refresh changes nothing", async () => {
+    await renderConsumers();
+    expect(lastGate().canPlay("cascade")).toBe(true);
+    const gate = lastGate();
+    const gateRenders = onGateRender.mock.calls.length;
+    const statusRenders = onStatusRender.mock.calls.length;
+    const refreshedBefore = lastFull().lastRefreshed;
+
+    // Same games back from the server: only lastRefreshed moves.
+    mockRequest.mockResolvedValue({
+      token: makeToken(makePayload(["cascade"])),
+      expires_at: "2099-01-01T00:00:00Z",
+    });
+    await act(async () => {
+      getAppStateListener()("active");
+    });
+    await flushAsync();
+
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(onGateRender).toHaveBeenCalledTimes(gateRenders);
+    expect(lastGate()).toBe(gate);
+    expect(lastGate().canPlay).toBe(gate.canPlay);
+    // The volatile half did move, and so did the combined hook.
+    expect(onStatusRender.mock.calls.length).toBe(statusRenders + 1);
+    expect(lastFull().lastRefreshed).not.toBe(refreshedBefore);
+    expect(lastFull().canPlay).toBe(gate.canPlay);
+  });
+
+  it("re-renders a gated consumer once when a refresh changes what is entitled", async () => {
+    await renderConsumers();
+    const gate = lastGate();
+    const gateRenders = onGateRender.mock.calls.length;
+
+    mockRequest.mockResolvedValue({
+      token: makeToken(makePayload(["cascade", "hearts"])),
+      expires_at: "2099-01-01T00:00:00Z",
+    });
+    await act(async () => {
+      getAppStateListener()("active");
+    });
+    await flushAsync();
+
+    expect(onGateRender).toHaveBeenCalledTimes(gateRenders + 1);
+    expect(lastGate().canPlay).not.toBe(gate.canPlay);
+    expect(lastGate().canPlay("hearts")).toBe(true);
+    // The actions never change identity.
+    expect(lastGate().refresh).toBe(gate.refresh);
+    expect(lastGate().applyToken).toBe(gate.applyToken);
+  });
+
+  it("does not re-render consumers when the provider re-renders with the same state", async () => {
+    const api = await renderConsumers();
+    const gateRenders = onGateRender.mock.calls.length;
+    const statusRenders = onStatusRender.mock.calls.length;
+    const fullRenders = onFullRender.mock.calls.length;
+
+    await api.rerender(<EntitlementProvider>{consumers}</EntitlementProvider>);
+    await api.rerender(<EntitlementProvider>{consumers}</EntitlementProvider>);
+
+    expect(onGateRender).toHaveBeenCalledTimes(gateRenders);
+    expect(onStatusRender).toHaveBeenCalledTimes(statusRenders);
+    expect(onFullRender).toHaveBeenCalledTimes(fullRenders);
   });
 });
