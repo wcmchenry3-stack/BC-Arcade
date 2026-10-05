@@ -11,7 +11,8 @@
  *   other tile the same and in the same order. The two tiles and their
  *   indices are kept.
  * - anything else (a shuffle, which renumbers and re-faces every tile): the
- *   snapshot's whole board is kept, as a shuffle entry does.
+ *   snapshot's whole board is kept, as a shuffle entry does; null when it is
+ *   the next board exactly (a geometric-deadlock shuffle changed nothing).
  *
  * Either way the undo restores the snapshot exactly: its board, score, pairs,
  * shuffles, selection and end flags (the clock never came from the snapshot,
@@ -95,9 +96,12 @@ function toDelta(snapshot: LegacySnapshot, after: readonly SlotTile[]): MahjongU
     isDeadlockedBefore: snapshot.isDeadlocked,
   };
   const pair = removedPair(snapshot.tiles, after);
-  return pair
-    ? { ...base, kind: "match", removedTiles: pair }
-    : { ...base, kind: "shuffle", tilesBefore: snapshot.tiles };
+  if (pair) return { ...base, kind: "match", removedTiles: pair };
+  // A shuffle that left the board as it was (a geometric deadlock) keeps no board.
+  const unchanged =
+    snapshot.tiles.length === after.length &&
+    snapshot.tiles.every((tile, i) => sameTile(tile, after[i]!));
+  return { ...base, kind: "shuffle", tilesBefore: unchanged ? null : snapshot.tiles };
 }
 
 /**

@@ -5,7 +5,7 @@
  */
 
 import type { MahjongUndoEntry, SlotTile } from "./types";
-import { UNDO_CAP } from "./engine";
+import { tilesBeforeUndo, UNDO_CAP } from "./engine";
 
 function isRecord(raw: unknown): raw is Record<string, unknown> {
   return raw !== null && typeof raw === "object" && !Array.isArray(raw);
@@ -51,29 +51,47 @@ function isUndoEntry(raw: unknown): raw is MahjongUndoEntry {
   return false;
 }
 
-/**
- * The tile count before `entry`, given the count after it, or null when the
- * entry can't apply to a board that size (a match's indices out of range).
- */
-function countBefore(entry: MahjongUndoEntry, after: number): number | null {
-  if (entry.kind === "shuffle") return entry.tilesBefore?.length ?? after;
-  const [a, b] = entry.removedTiles;
-  return a.index >= 0 && a.index < b.index && b.index <= after + 1 ? after + 2 : null;
+function uniqueIds(tiles: readonly SlotTile[]): boolean {
+  return new Set(tiles.map((t) => t.id)).size === tiles.length;
 }
 
 /**
- * A saved undo history, oldest first, for a board of `tileCount` tiles: the
- * newest entries back to the first that isn't valid or doesn't fit the
- * board the entries above it restore, at most UNDO_CAP.
+ * The board before `entry`, given the board after it, or null when the entry
+ * can't have led to that board: a shuffle keeps the tile count (its
+ * `tilesBefore` null when it left the board as it was), a match's indices
+ * fit the board, and either way no tile id appears twice.
  */
-export function loadUndoEntries(raw: readonly unknown[], tileCount: number): MahjongUndoEntry[] {
+function boardBefore(
+  entry: MahjongUndoEntry,
+  after: readonly SlotTile[]
+): readonly SlotTile[] | null {
+  if (entry.kind === "shuffle") {
+    const before = entry.tilesBefore;
+    if (before === null) return after;
+    return before.length === after.length && uniqueIds(before) ? before : null;
+  }
+  const [a, b] = entry.removedTiles;
+  if (a.index < 0 || a.index >= b.index || b.index > after.length + 1) return null;
+  const before = tilesBeforeUndo(after, entry);
+  return uniqueIds(before) ? before : null;
+}
+
+/**
+ * A saved undo history, oldest first, for the board `tiles`: the newest
+ * entries back to the first that isn't valid or can't have led to the board
+ * the entries above it restore, at most UNDO_CAP.
+ */
+export function loadUndoEntries(
+  raw: readonly unknown[],
+  tiles: readonly SlotTile[]
+): MahjongUndoEntry[] {
   let start = raw.length;
-  let count: number | null = tileCount;
+  let board: readonly SlotTile[] | null = tiles;
   while (start > 0 && raw.length - start < UNDO_CAP) {
     const entry = raw[start - 1];
     if (!isUndoEntry(entry)) break;
-    count = countBefore(entry, count);
-    if (count === null) break;
+    board = boardBefore(entry, board);
+    if (board === null) break;
     start--;
   }
   return raw.slice(start) as MahjongUndoEntry[];

@@ -91,7 +91,7 @@ export async function loadGame(): Promise<MahjongState | null> {
     // Undo deltas since #2961; a version 1 save's snapshots are converted.
     parsed.undoStack = legacy
       ? migrateLegacyUndoStack(parsed.undoStack, parsed.tiles)
-      : loadUndoEntries(parsed.undoStack, parsed.tiles.length);
+      : loadUndoEntries(parsed.undoStack, parsed.tiles);
     parsed._v = 2;
     // Timer fields: a save without them loads with no play banked (#2750).
     parsed.startedAt = parsed.startedAt ?? null;
