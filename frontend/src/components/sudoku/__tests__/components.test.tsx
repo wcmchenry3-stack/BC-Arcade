@@ -1,4 +1,5 @@
 import React from "react";
+import { PixelRatio } from "react-native";
 import { render, fireEvent } from "@testing-library/react-native";
 import { dark as darkColors, ThemeProvider } from "../../../theme/ThemeContext";
 import SudokuCell from "../SudokuCell";
@@ -155,58 +156,65 @@ describe("SudokuCell", () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
-  it("matches snapshot — given value", async () => {
-    const tree = (
-      await wrap(
-        <SudokuCell
-          size={9}
-          cell={cell({ value: 7, given: true })}
-          row={0}
-          col={0}
-          selected={false}
-          highlighted={false}
-          peer={false}
-          onPress={() => {}}
-        />
-      )
-    ).toJSON();
-    expect(tree).toMatchSnapshot();
+  it("given value: bold text-colored digit on the plain surface", async () => {
+    const { getByRole, getByText } = await wrap(
+      <SudokuCell
+        size={9}
+        cell={cell({ value: 7, given: true })}
+        row={0}
+        col={0}
+        selected={false}
+        highlighted={false}
+        peer={false}
+        onPress={() => {}}
+      />
+    );
+    const btn = getByRole("button", { name: "Cell row 1, column 1, 7" });
+    expect(btn.props.accessibilityState).toEqual(expect.objectContaining({ selected: false }));
+    expect(btn).toHaveStyle({ backgroundColor: darkColors.surface, aspectRatio: 1 });
+    expect(getByText("7")).toHaveStyle({
+      color: darkColors.text,
+      fontWeight: "700",
+      fontSize: 18,
+      fontVariant: ["tabular-nums"],
+    });
   });
 
-  it("matches snapshot — selected error cell", async () => {
-    const tree = (
-      await wrap(
-        <SudokuCell
-          size={9}
-          cell={cell({ value: 2, isError: true })}
-          row={3}
-          col={3}
-          selected={true}
-          highlighted={false}
-          peer={false}
-          onPress={() => {}}
-        />
-      )
-    ).toJSON();
-    expect(tree).toMatchSnapshot();
+  it("selected error cell: errorOnAccent digit on the selected tint", async () => {
+    const { getByRole, getByText } = await wrap(
+      <SudokuCell
+        size={9}
+        cell={cell({ value: 2, isError: true })}
+        row={3}
+        col={3}
+        selected={true}
+        highlighted={false}
+        peer={false}
+        onPress={() => {}}
+      />
+    );
+    const btn = getByRole("button", { name: "Cell row 4, column 4, 2" });
+    expect(btn.props.accessibilityState).toEqual(expect.objectContaining({ selected: true }));
+    expect(btn).toHaveStyle({ backgroundColor: darkColors.accent + "AA" });
+    expect(getByText("2")).toHaveStyle({ color: darkColors.errorOnAccent, fontWeight: "600" });
   });
 
-  it("matches snapshot — peer cell", async () => {
-    const tree = (
-      await wrap(
-        <SudokuCell
-          size={9}
-          cell={cell({ value: 4 })}
-          row={0}
-          col={3}
-          selected={false}
-          highlighted={false}
-          peer={true}
-          onPress={() => {}}
-        />
-      )
-    ).toJSON();
-    expect(tree).toMatchSnapshot();
+  it("peer cell: accent user digit on the peer tint", async () => {
+    const { getByRole, getByText } = await wrap(
+      <SudokuCell
+        size={9}
+        cell={cell({ value: 4 })}
+        row={0}
+        col={3}
+        selected={false}
+        highlighted={false}
+        peer={true}
+        onPress={() => {}}
+      />
+    );
+    const btn = getByRole("button", { name: "Cell row 1, column 4, 4" });
+    expect(btn).toHaveStyle({ backgroundColor: darkColors.accent + "22" });
+    expect(getByText("4")).toHaveStyle({ color: darkColors.accent, fontWeight: "600" });
   });
 
   // Regression test for the notes-invisible-when-selected bug: the selected
@@ -405,23 +413,50 @@ describe("SudokuGrid", () => {
     expect(onCellPress).toHaveBeenCalledWith(1, 1);
   });
 
-  it("matches snapshot with a typical mid-game state", async () => {
+  it("typical mid-game state: tints, digit colors and box separators", async () => {
     const g = emptyGrid();
     g[0]![0] = cell({ value: 5, given: true });
     g[4]![4] = cell({ value: 3 });
     g[8]![8] = cell({ value: 7, isError: true });
-    const tree = (
-      await wrap(
-        <SudokuGrid
-          variant="classic"
-          grid={asGrid(g)}
-          selectedRow={4}
-          selectedCol={4}
-          onCellPress={() => {}}
-        />
-      )
-    ).toJSON();
-    expect(tree).toMatchSnapshot();
+    const { getAllByRole, getByLabelText, getByText } = await wrap(
+      <SudokuGrid
+        variant="classic"
+        grid={asGrid(g)}
+        selectedRow={4}
+        selectedCol={4}
+        onCellPress={() => {}}
+      />
+    );
+    expect(getByLabelText("Sudoku board")).toHaveStyle({
+      borderWidth: 2,
+      borderColor: darkColors.boxBorder,
+    });
+    const cells = getAllByRole("button");
+    expect(cells).toHaveLength(81);
+    const at = (r: number, c: number) => cells[r * 9 + c]!;
+    // Selected (4,4), its row/column peers, and a box-only neighbour that is not a peer.
+    expect(at(4, 4)).toHaveStyle({ backgroundColor: darkColors.accent + "AA" });
+    expect(at(4, 0)).toHaveStyle({ backgroundColor: darkColors.accent + "22" });
+    expect(at(0, 4)).toHaveStyle({ backgroundColor: darkColors.accent + "22" });
+    expect(at(3, 3)).toHaveStyle({ backgroundColor: darkColors.surface });
+    // Digits: given (text), selected user entry (textOnAccent), unselected error (error).
+    expect(getByText("5")).toHaveStyle({ color: darkColors.text, fontWeight: "700" });
+    expect(getByText("3")).toHaveStyle({ color: darkColors.textOnAccent });
+    expect(getByText("7")).toHaveStyle({ color: darkColors.error });
+    // Box separators are 2px boxBorder; inner separators are hairline border.
+    const wrapperOf = (r: number, c: number) => at(r, c).parent!;
+    expect(wrapperOf(0, 3)).toHaveStyle({
+      backgroundColor: darkColors.surface,
+      padding: 2,
+      borderLeftWidth: 2,
+      borderLeftColor: darkColors.boxBorder,
+      borderTopWidth: 0,
+    });
+    expect(wrapperOf(0, 1)).toHaveStyle({
+      borderLeftWidth: 1 / PixelRatio.get(),
+      borderLeftColor: darkColors.border,
+    });
+    expect(wrapperOf(8, 8)).toHaveStyle({ borderRightWidth: 0, borderBottomWidth: 0 });
   });
 
   describe("peer highlighting", () => {
@@ -607,21 +642,44 @@ describe("NumberPad", () => {
     expect(onDigit).not.toHaveBeenCalled();
   });
 
-  it("matches snapshot — notes mode active", async () => {
-    const tree = (
-      await wrap(
-        <NumberPad
-          variant="classic"
-          grid={asGrid(emptyGrid())}
-          notesMode={true}
-          onDigit={() => {}}
-          onErase={() => {}}
-          onToggleNotes={() => {}}
-          onHint={() => {}}
-        />
-      )
-    ).toJSON();
-    expect(tree).toMatchSnapshot();
+  it("notes mode active: filled Notes chip, outlined tools, full remaining counts", async () => {
+    const { getByLabelText, getByTestId, getByText, getAllByText } = await wrap(
+      <NumberPad
+        variant="classic"
+        grid={asGrid(emptyGrid())}
+        notesMode={true}
+        onDigit={() => {}}
+        onErase={() => {}}
+        onToggleNotes={() => {}}
+        onHint={() => {}}
+      />
+    );
+    const notes = getByLabelText("Toggle pencil marks");
+    expect(notes.props.accessibilityState).toEqual(expect.objectContaining({ selected: true }));
+    expect(notes).toHaveStyle({
+      backgroundColor: darkColors.accent,
+      borderColor: darkColors.accent,
+    });
+    expect(getByText("Notes")).toHaveStyle({
+      color: darkColors.textOnAccent,
+      textTransform: "uppercase",
+    });
+    expect(getByLabelText("Erase cell")).toHaveStyle({ borderColor: darkColors.accent });
+    expect(getByText("Erase")).toHaveStyle({ color: darkColors.accent });
+    expect(getByText("Hint")).toHaveStyle({ color: darkColors.accent });
+    for (let d = 1; d <= 9; d++) {
+      const btn = getByTestId(`sudoku-digit-${d}`);
+      expect(btn.props.accessibilityLabel).toBe(`Enter digit ${d}`);
+      expect(btn.props.accessibilityState).toEqual(expect.objectContaining({ disabled: false }));
+      expect(btn).toHaveStyle({
+        backgroundColor: darkColors.surfaceHigh,
+        borderColor: darkColors.border,
+        opacity: 1,
+      });
+    }
+    // Empty grid: every digit has 9 left. "9" is also the digit-9 label, hence 10.
+    expect(getAllByText("9")).toHaveLength(10);
+    expect(getAllByText("9")[0]).toHaveStyle({ color: darkColors.textMuted, fontSize: 9 });
   });
 });
 
@@ -652,8 +710,24 @@ describe("DifficultySelector", () => {
     expect(onChange).toHaveBeenCalledWith("hard");
   });
 
-  it("matches snapshot — medium selected", async () => {
-    const tree = (await wrap(<DifficultySelector value="medium" onChange={() => {}} />)).toJSON();
-    expect(tree).toMatchSnapshot();
+  it("medium selected: radiogroup with a filled Medium chip", async () => {
+    const { getByLabelText, getAllByRole, getByText } = await wrap(
+      <DifficultySelector value="medium" onChange={() => {}} />
+    );
+    expect(getByLabelText("Difficulty")).toHaveStyle({
+      borderColor: darkColors.border,
+    });
+    const radios = getAllByRole("radio");
+    expect(radios.map((r) => r.props.accessibilityLabel)).toEqual(["Easy", "Medium", "Hard"]);
+    expect(radios.map((r) => r.props.accessibilityState?.checked)).toEqual([false, true, false]);
+    expect(radios.map((r) => r.props.testID)).toEqual([
+      "sudoku-difficulty-easy",
+      "sudoku-difficulty-medium",
+      "sudoku-difficulty-hard",
+    ]);
+    expect(radios[1]).toHaveStyle({ backgroundColor: darkColors.accent });
+    expect(radios[0]).toHaveStyle({ backgroundColor: darkColors.surface });
+    expect(getByText("Medium")).toHaveStyle({ color: darkColors.textOnAccent });
+    expect(getByText("Easy")).toHaveStyle({ color: darkColors.text });
   });
 });
