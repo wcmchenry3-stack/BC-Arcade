@@ -12,6 +12,7 @@ import React from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import { Share } from "react-native";
 import { CodedError } from "expo-modules-core";
+import * as ThemeModule from "../../theme/ThemeContext";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import DailyWordScreen from "../DailyWordScreen";
 import { ApiError } from "../../game/_shared/httpClient";
@@ -839,6 +840,51 @@ describe("DailyWordScreen — result card (#2514)", () => {
     expect(share).toHaveBeenCalledWith({ message: expect.stringContaining("Daily Word #") });
     // Nothing was copied, so the button doesn't claim it was.
     expect(r.queryByText("Copied!")).toBeNull();
+  });
+});
+
+describe("DailyWordScreen — countdown ticks (#2964)", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it("ticks the card's countdown without re-rendering the board or keyboard", async () => {
+    jest.useFakeTimers();
+    storage.loadState.mockResolvedValue(WIN_STATE);
+    const r = await renderScreen();
+    await r.findByText("You Win!");
+    const primary = r.getByTestId("game-result-primary");
+    expect(primary).toHaveTextContent(/Next word in \d{2}:\d{2}:\d{2}/);
+    const before = String(r.getByText(/Next word in/).props.children);
+
+    // The screen, tiles, keyboard and card all read the theme when they render:
+    // none of them may render while the seconds tick.
+    const themeReads = jest.spyOn(ThemeModule, "useTheme");
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+    });
+    expect(themeReads).not.toHaveBeenCalled();
+
+    expect(String(r.getByText(/Next word in/).props.children)).not.toBe(before);
+    expect(r.getByTestId("game-result-primary")).toHaveTextContent(
+      /Next word in \d{2}:\d{2}:\d{2}/
+    );
+  });
+
+  it("shows Play Again once the countdown ends, from one onReady", async () => {
+    jest.useFakeTimers();
+    storage.loadState.mockResolvedValue(WIN_STATE);
+    const r = await renderScreen();
+    await r.findByText("You Win!");
+    expect(r.queryByRole("button", { name: "Play Again" })).toBeNull();
+
+    jest.setSystemTime(Date.now() + 25 * 60 * 60 * 1000);
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(r.getByRole("button", { name: "Play Again" })).toBeTruthy();
+    expect(r.queryByText(/Next word in/)).toBeNull();
   });
 });
 

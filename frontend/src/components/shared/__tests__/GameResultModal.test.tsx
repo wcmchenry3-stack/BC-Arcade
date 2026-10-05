@@ -241,6 +241,22 @@ describe("GameResultModal — variations", () => {
     expect(screen.getByText(glyph("clock-outline"))).toHaveStyle({ color: c.textMuted });
   });
 
+  it("renders a primary's own label node in the button's text style (#2964)", async () => {
+    await renderCard({
+      primaryAction: {
+        label: "Next word in",
+        labelNode: (textStyle) => <Text style={textStyle}>Next word in 00:00:09</Text>,
+        onPress: jest.fn(),
+        disabled: true,
+      },
+    });
+    const primary = screen.getByTestId("game-result-primary");
+    expect(screen.getByText("Next word in 00:00:09")).toHaveStyle({ color: darkColors.textMuted });
+    // The screen-reader label comes from the rendered text, so it stays current.
+    expect(primary.props.accessibilityLabel).toBeUndefined();
+    expect(primary).toHaveTextContent(/Next word in 00:00:09/);
+  });
+
   it("defaults the primary action to Play Again", async () => {
     const onPlayAgain = jest.fn();
     await renderCard({ onPlayAgain });

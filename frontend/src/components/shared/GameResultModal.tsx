@@ -7,6 +7,8 @@ import {
   StyleSheet,
   Text,
   View,
+  type StyleProp,
+  type TextStyle,
 } from "react-native";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import * as Haptics from "expo-haptics";
@@ -43,6 +45,13 @@ export interface ResultStat {
 
 export interface ResultAction {
   label: string;
+  /**
+   * Renders the button's text itself, given the button's text style, for a
+   * label that updates on its own (a self-ticking countdown, #2964). `label`
+   * is then not shown, and the screen-reader label comes from the rendered
+   * text unless `accessibilityLabel` is set.
+   */
+  labelNode?: (textStyle: StyleProp<TextStyle>) => React.ReactNode;
   onPress: () => void;
   disabled?: boolean;
   /** Shown before the label; a disabled primary defaults to a clock. */
@@ -556,7 +565,9 @@ function PrimaryButton({ action, colors }: { action: ResultAction; colors: Color
       onPress={action.onPress}
       disabled={disabled}
       accessibilityRole="button"
-      accessibilityLabel={action.accessibilityLabel ?? action.label}
+      accessibilityLabel={
+        action.accessibilityLabel ?? (action.labelNode ? undefined : action.label)
+      }
       accessibilityState={{ disabled }}
       style={({ pressed }) => [
         styles.button,
@@ -572,7 +583,11 @@ function PrimaryButton({ action, colors }: { action: ResultAction; colors: Color
       ]}
     >
       {icon ? <MaterialCommunityIcons name={icon} size={18} color={fgColor} /> : null}
-      <Text style={[styles.primaryText, { color: fgColor }]}>{action.label}</Text>
+      {action.labelNode ? (
+        action.labelNode([styles.primaryText, { color: fgColor }])
+      ) : (
+        <Text style={[styles.primaryText, { color: fgColor }]}>{action.label}</Text>
+      )}
     </Pressable>
   );
 }
