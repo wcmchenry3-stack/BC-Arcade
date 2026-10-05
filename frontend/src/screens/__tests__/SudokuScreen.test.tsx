@@ -73,6 +73,20 @@ jest.mock("../../api/players", () => ({
 // screen sends: its own play timer.
 jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
 
+// Counts the grid's renders (#2964): the real grid, behind a counting wrapper.
+let mockGridRenders = 0;
+jest.mock("../../components/sudoku/SudokuGrid", () => {
+  const actual = jest.requireActual("../../components/sudoku/SudokuGrid");
+  const ReactActual = jest.requireActual("react");
+  return {
+    __esModule: true,
+    default: (props: unknown) => {
+      mockGridRenders += 1;
+      return ReactActual.createElement(actual.default, props);
+    },
+  };
+});
+
 // Import after mocks so the test file gets the jest.fn() flavour.
 
 import { flushQueuedGames } from "../../game/_shared/flushQueuedGames";
@@ -861,5 +875,34 @@ describe("SudokuScreen — load while away (#2750)", () => {
     const abandon = mockCompleteGame.mock.calls.at(-1)!;
     expect(abandon[0]).toBe("orphan-easy");
     expect((abandon[1] as Record<string, unknown>)["durationMs"]).toBe(5_000);
+  });
+});
+
+describe("SudokuScreen — HUD clock (#2964)", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("advances the clock every second without re-rendering the grid", async () => {
+    jest.useFakeTimers();
+    const fresh = loadPuzzle("easy", "classic", () => 0);
+    const open = fresh.grid
+      .flatMap((cells, row) => cells.map((cell, col) => ({ cell, row, col })))
+      .find(({ cell }) => !cell.given)!;
+    await saveGame(fillAllExcept(fresh, open)); // under way: its clock runs on load
+
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    expect(r.getByLabelText("Elapsed time 00:00")).toBeTruthy();
+
+    const rendersBeforeTicks = mockGridRenders;
+    expect(rendersBeforeTicks).toBeGreaterThan(0);
+    for (let second = 1; second <= 5; second++) {
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(r.getByLabelText(`Elapsed time 00:0${second}`)).toBeTruthy();
+    }
+    expect(mockGridRenders).toBe(rendersBeforeTicks);
   });
 });

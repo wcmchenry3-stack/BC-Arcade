@@ -1,6 +1,6 @@
 import React from "react";
 import { render, screen } from "@testing-library/react-native";
-import { StyleSheet } from "react-native";
+import { StyleSheet, Text } from "react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import { HudStatRow } from "../HudStatRow";
 
@@ -49,5 +49,21 @@ describe("HudStatRow", () => {
       stats: [{ key: "time", text: "03:12", accessibilityLabel: "Elapsed 3 minutes 12 seconds" }],
     });
     expect(screen.getByLabelText("Elapsed 3 minutes 12 seconds")).toBeTruthy();
+  });
+
+  it("lets a stat render itself in the row's text style (#2964)", async () => {
+    await renderRow({
+      stats: [
+        { key: "a", text: "Easy" },
+        {
+          key: "clock",
+          text: "",
+          muted: true,
+          render: (textStyle) => <Text style={textStyle}>00:07</Text>,
+        },
+      ],
+    });
+    expect(style("00:07").fontSize).toBe(14);
+    expect(style("00:07").color).not.toBe(style("Easy").color);
   });
 });
