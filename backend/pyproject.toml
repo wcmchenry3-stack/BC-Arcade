@@ -3,7 +3,7 @@ markers = [
     "security: security-focused tests (CORS, headers, injection)",
 ]
 testpaths = ["tests"]
-addopts = "--cov=. --cov-report=term-missing --cov-fail-under=80"
+addopts = "--cov=. --cov-report=term-missing --cov-fail-under=93"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 # A test running past this dumps every thread's traceback into the log (it is
@@ -12,7 +12,7 @@ faulthandler_timeout = 120
 
 [tool.coverage.run]
 core = "sysmon"
-omit = ["tests/*", "scripts/*", "*/generate_levels.py", "*/verify_levels.py", "perf/*"]
+omit = ["tests/*", "scripts/*", "*/verify_levels.py", "perf/*"]
 
 [tool.black]
 line-length = 100
