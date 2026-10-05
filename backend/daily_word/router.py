@@ -106,7 +106,7 @@ def _guess_key(request: Request) -> str:
     try:
         data = json.loads(body_bytes)
         puzzle_id = str(data.get("puzzle_id", ""))
-    except Exception:  # noqa: BLE001 — best-effort; must never break the rate limiter
+    except Exception:  # best-effort; must never break the rate limiter
         puzzle_id = ""
     sid = request.headers.get("X-Session-ID", "").strip() or _real_ip(request)
     return f"{sid}:{puzzle_id}"
@@ -255,7 +255,7 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
             outcome = await record_guess(
                 db, session_id=sid, puzzle_id=body.puzzle_id, guess=guess, won=won
             )
-    except Exception as exc:  # noqa: BLE001 — degrade open on *any* failure to reach the record
+    except Exception as exc:  # degrade open on *any* failure to reach the record
         _report_degraded_guess(exc)
 
     if outcome is not None and not outcome.allowed:

@@ -340,7 +340,7 @@ class AppStoreVerifier:
             )
         except VerificationException as exc:
             raise _verification_error(exc) from None
-        except Exception:  # noqa: BLE001 — a model the library cannot structure
+        except Exception:  # a model the library cannot structure
             raise PurchaseError(422, "verification_failed") from None
         return env, txn
 
@@ -365,7 +365,7 @@ class AppStoreVerifier:
             )
         except VerificationException as exc:
             raise _verification_error(exc) from None
-        except Exception:  # noqa: BLE001
+        except Exception:
             raise PurchaseError(422, "verification_failed") from None
         return env, decoded
 
@@ -388,7 +388,7 @@ class AppStoreVerifier:
             ):
                 raise PurchaseError(422, "verification_failed") from None
             raise PurchaseError(503, "store_unavailable") from None
-        except Exception:  # noqa: BLE001 — network errors, timeouts
+        except Exception:  # network errors, timeouts
             raise PurchaseError(503, "store_unavailable") from None
         signed = getattr(resp, "signedTransactionInfo", None)
         if not signed:
@@ -451,11 +451,11 @@ def build_from_env(root_certificates: list[bytes] | None = None) -> AppStoreVeri
     if root_certificates is None:
         try:
             root_certificates = load_apple_root_certificates()
-        except Exception:  # noqa: BLE001 — missing or altered file: stay dormant, loudly
+        except Exception:  # missing or altered file: stay dormant, loudly
             _misconfigured("root_certificate")
             return None
     try:
         return AppStoreVerifier(config, root_certificates=root_certificates)
-    except Exception:  # noqa: BLE001 — e.g. an unreadable private key: stay dormant, loudly
+    except Exception:  # e.g. an unreadable private key: stay dormant, loudly
         _misconfigured("init")
         return None

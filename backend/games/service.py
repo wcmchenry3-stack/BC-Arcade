@@ -317,7 +317,7 @@ async def sweep_stale_games_safely(session: AsyncSession, *, session_id: str) ->
     """
     try:
         await sweep_stale_games(session, session_id=session_id)
-    except Exception as exc:  # noqa: BLE001 — a sweep failure must never fail the read
+    except Exception as exc:  # a sweep failure must never fail the read
         logger.error(
             "stale-session sweep failed (%s); serving the read unswept", type(exc).__name__
         )

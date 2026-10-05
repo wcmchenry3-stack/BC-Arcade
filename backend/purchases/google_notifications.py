@@ -255,7 +255,7 @@ def build_from_env() -> GoogleRuntime | None:
         return None
     try:
         return build_runtime(config)
-    except Exception:  # noqa: BLE001 — e.g. an unreadable private key: stay dormant, loudly
+    except Exception:  # e.g. an unreadable private key: stay dormant, loudly
         misconfigured("init")
         return None
 
@@ -804,7 +804,7 @@ async def run_google_jobs_loop(
                 run_google_jobs(get_verifier(), get_session_factory(), now=clock()),
                 timeout=timeout_s,
             )
-        except Exception as exc:  # noqa: BLE001 — any failure waits for the next cycle
+        except Exception as exc:  # any failure waits for the next cycle
             _log.warning(json.dumps({"event": "google_jobs_failed"}))
             with sentry_sdk.new_scope() as scope:
                 scope.set_tag("subsystem", "purchases.google_jobs")
