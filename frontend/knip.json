@@ -1,19 +1,14 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["../scripts/*.ts", "scripts/*.mjs", "scripts/*.js", "App.tsx", "index.ts"],
+  "entry": ["scripts/*.mjs", "scripts/*.js", "App.tsx"],
   "project": ["src/**/*.{ts,tsx}", "scripts/*.{js,mjs}"],
   "ignore": [
     "src/screens/__dev__/**",
     "**/*.web.tsx",
     "**/*.web.ts",
-    "babel.config.js",
-    "metro.config.js"
-  ],
-  "ignoreDependencies": [
-    "@sentry/react-native",
-    "expo-localization",
-    "expo-audio",
-    "react-native-audio-api"
+    // CI-only simulators; relocated by #2969
+    "src/game/*/sim/**",
+    "src/game/yacht/oracleBuild/**"
   ],
   "ignoreExportsUsedInFile": true
 }
