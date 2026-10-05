@@ -128,6 +128,100 @@ export function mockNetwork({
   return { useNetwork: state ?? (() => ({ isOnline: online, isInitialized: true })) };
 }
 
+/** A gesture's recorded `on*` callbacks (`onBegin`, `onStart`, `onUpdate`, `onEnd`, ...). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type GestureHandlers = Record<string, ((...args: any[]) => void) | undefined>;
+
+/**
+ * A gesture as the mocked builders record it: a leaf (`pan`, `pinch`, `tap`,
+ * `longPress`) carries its own handlers; a composite (`simultaneous`,
+ * `exclusive`, `race`) keeps its children in the order it was given them.
+ */
+export interface RecordedGesture {
+  readonly kind: string;
+  readonly handlers: GestureHandlers;
+  readonly gestures: readonly RecordedGesture[];
+}
+
+/** One render of a `GestureDetector`: the gesture it was given, and its child's testID. */
+export interface DetectorRender {
+  readonly gesture: RecordedGesture;
+  readonly childTestID?: string;
+}
+
+/**
+ * `react-native-gesture-handler` that records what a component wires up, so a
+ * test can fire a gesture by calling its callbacks. Each built gesture keeps
+ * its own handlers (two Pans in one component stay apart), composites keep
+ * their children, and every `GestureDetector` render pushes the gesture it
+ * received (plus its child's testID) onto `sink()` — pass a getter: the
+ * factory runs before the test file's consts exist. Builder methods other
+ * than `on*` (`minDistance`, `runOnJS`, ...) chain. `GestureDetector` and
+ * `GestureHandlerRootView` render their children unchanged. Read the result
+ * with `detectedGesture()`.
+ */
+export function mockGestureHandler(sink: () => DetectorRender[]) {
+  const builder = (kind: string) => () => {
+    const record = { kind, handlers: {} as GestureHandlers, gestures: [] as RecordedGesture[] };
+    const chain: object = new Proxy(record, {
+      get: (target, prop) => {
+        // Symbol keys come from pretty-format / React inspecting the object.
+        if (typeof prop !== "string") return undefined;
+        if (prop in target) return target[prop as keyof typeof target];
+        return (arg?: unknown) => {
+          if (prop.startsWith("on")) target.handlers[prop] = arg as GestureHandlers[string];
+          return chain;
+        };
+      },
+    });
+    return chain;
+  };
+  const composite =
+    (kind: string) =>
+    (...gestures: RecordedGesture[]): RecordedGesture => ({ kind, handlers: {}, gestures });
+  return {
+    GestureDetector: ({ gesture, children }: { gesture: RecordedGesture; children?: unknown }) => {
+      const childTestID = (children as { props?: { testID?: string } } | undefined)?.props?.testID;
+      sink().push({ gesture, childTestID });
+      return children;
+    },
+    GestureHandlerRootView: ({ children }: { children?: unknown }) => children,
+    Gesture: {
+      Pan: builder("pan"),
+      Pinch: builder("pinch"),
+      Tap: builder("tap"),
+      LongPress: builder("longPress"),
+      Simultaneous: composite("simultaneous"),
+      Exclusive: composite("exclusive"),
+      Race: composite("race"),
+    },
+  };
+}
+
+/** The leaf gestures of `kind` inside `gesture` (itself included), depth-first. */
+export function gesturesOfKind(gesture: RecordedGesture, kind: string): RecordedGesture[] {
+  if (gesture.kind === kind) return [gesture];
+  return gesture.gestures.flatMap((g) => gesturesOfKind(g, kind));
+}
+
+/**
+ * The handlers of a `kind` gesture from the latest `GestureDetector` render in
+ * `sink` (only renders whose child has `testID`, when given); `index` picks
+ * among several gestures of that kind in it. Undefined when there is none.
+ */
+export function detectedGesture(
+  sink: readonly DetectorRender[],
+  kind: string,
+  { testID, index = 0 }: { testID?: string; index?: number } = {}
+): GestureHandlers | undefined {
+  for (let i = sink.length - 1; i >= 0; i--) {
+    const render = sink[i]!;
+    if (testID !== undefined && render.childTestID !== testID) continue;
+    return gesturesOfKind(render.gesture, kind)[index]?.handlers;
+  }
+  return undefined;
+}
+
 declare global {
   /** This module, for jest.mock factories; set in jest.setup.ts. */
   // eslint-disable-next-line no-var
