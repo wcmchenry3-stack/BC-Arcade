@@ -64,7 +64,14 @@ const played = (name: string) => playedCount(mockPlayed, name);
 
 jest.useFakeTimers();
 
-async function mountOn(state: HeartsState | null) {
+/**
+ * Mounts the screen on a saved game. `expectPicker` says what the screen shows once
+ * the load lands: the difficulty picker (the default for no saved game) or the table.
+ */
+async function mountOn(
+  state: HeartsState | null,
+  { expectPicker = state === null }: { expectPicker?: boolean } = {}
+) {
   (loadGame as jest.Mock).mockResolvedValue(state);
   const api = await render(
     <ThemeProvider>
@@ -73,11 +80,11 @@ async function mountOn(state: HeartsState | null) {
       </HeartsRoundsProvider>
     </ThemeProvider>
   );
-  // The load has landed once it was asked for and the screen shows its result: a
-  // game on the table (the picker is gone), or the picker for no saved game.
+  // The load has landed once it was asked for and the screen shows its result: by
+  // default a game on the table (the picker is gone), or the picker for no saved game.
   await waitFor(() => expect(loadGame).toHaveBeenCalled());
   await waitFor(() =>
-    state === null
+    expectPicker
       ? expect(api.getByTestId("hearts-start-game")).toBeTruthy()
       : expect(api.queryByTestId("hearts-start-game")).toBeNull()
   );

@@ -4,13 +4,8 @@ import StarSwarmScreen from "../StarSwarmScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { AppState, AppStateStatus } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
-  audioCalls,
-  canvas,
-  renderScreen,
-  resetHarness,
-  startRun,
-} from "./helpers/starSwarmHarness";
+import { audioCalls, canvas, resetHarness } from "./helpers/starSwarmMocks";
+import { renderScreen, startRun } from "./helpers/starSwarmHarness";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import {
   PAUSED_RUN_STORAGE_KEY,
@@ -49,16 +44,16 @@ async function emitNav(event: "blur" | "focus") {
   });
 }
 
-// The canvas and the audio hook are the shared stand-ins (helpers/starSwarmHarness).
+// The canvas and the audio hook are the shared stand-ins (helpers/starSwarmMocks).
 // `canvas.state` is what the engine holds — the canvas stores game over before React
 // hears of it — and, like the real canvas, the same object until the engine changes it.
 jest.mock("../../components/starswarm/GameCanvas", () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require("./helpers/starSwarmHarness").canvasModule()
+  require("./helpers/starSwarmMocks").canvasModule()
 );
 jest.mock("../../hooks/useStarSwarmAudio", () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require("./helpers/starSwarmHarness").audioModule()
+  require("./helpers/starSwarmMocks").audioModule()
 );
 
 /** The engine moves to `phase`: a new state object, as the engine hands back. */

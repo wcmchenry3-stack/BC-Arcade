@@ -1,85 +1,13 @@
-/// <reference types="jest" />
 /**
- * Stand-ins for the Star Swarm canvas and audio hook, shared by the
- * StarSwarmScreen suites (#2957). Not a test file.
- *
- * The suite registers them from its jest.mock factories (the same module
- * instance is then the one the test imports):
- *
- *   jest.mock("../../components/starswarm/GameCanvas", () =>
- *     require("./helpers/starSwarmHarness").canvasModule());
- *   jest.mock("../../hooks/useStarSwarmAudio", () =>
- *     require("./helpers/starSwarmHarness").audioModule());
- *
- * `canvas.props` holds the props the screen last gave the canvas (a test calls
- * its callbacks the way the game loop does); `canvas.handle` is the ref the
- * screen drives, as jest.fns; `canvas.state` is what `getState()` returns.
+ * Rendering helpers for the StarSwarmScreen suites (#2957). Not a test file.
+ * The canvas and audio stand-ins the screen is rendered against are in
+ * starSwarmMocks; they are kept apart because mock factories require those, and
+ * this module imports the screen.
  */
 import React from "react";
-import { View } from "react-native";
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import StarSwarmScreen from "../../StarSwarmScreen";
 import { ThemeProvider } from "../../../theme/ThemeContext";
-import type { StarSwarmState } from "../../../game/starswarm/types";
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-export const canvas: {
-  props: any;
-  state: StarSwarmState | null;
-  handle: Record<string, jest.Mock>;
-} = {
-  props: null,
-  state: null,
-  handle: {},
-};
-
-function freshHandle() {
-  return {
-    getState: jest.fn(() => canvas.state),
-    getFrameStats: jest.fn(() => null),
-    triggerPowerUp: jest.fn(),
-    throwAsteroid: jest.fn(),
-    killEscorts: jest.fn(),
-  };
-}
-
-/** One jest.fn per audio function the screen asks for, created on first use. */
-export const audio: Record<string, jest.Mock> = new Proxy({} as Record<string, jest.Mock>, {
-  get: (target, name: string) => (target[name] ??= jest.fn()),
-});
-
-/** The arguments of every `useStarSwarmAudio` call, oldest first. */
-export const audioCalls: unknown[][] = [];
-
-/** Clears the harness between tests. */
-export function resetHarness() {
-  canvas.props = null;
-  canvas.state = null;
-  canvas.handle = freshHandle();
-  for (const name of Object.keys(audio)) delete audio[name];
-  audioCalls.length = 0;
-}
-resetHarness();
-
-export function canvasModule() {
-  const MockCanvas = React.forwardRef((props: any, ref: any) => {
-    canvas.props = props;
-    React.useImperativeHandle(ref, () => canvas.handle);
-    return React.createElement(View, { testID: "starswarm-canvas" });
-  });
-  MockCanvas.displayName = "MockCanvas";
-  return { __esModule: true, default: MockCanvas };
-}
-
-export function audioModule() {
-  return {
-    DEFAULT_SFX_VOLUMES: jest.requireActual("../../../hooks/useStarSwarmAudio").DEFAULT_SFX_VOLUMES,
-    useStarSwarmAudio: (...args: unknown[]) => {
-      audioCalls.push(args);
-      return audio;
-    },
-  };
-}
 
 /** Renders the screen and gives the canvas container a size, so the canvas mounts. */
 export async function renderScreen() {

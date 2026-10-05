@@ -3,7 +3,7 @@
  * pre-launch builds (#2567) that sets up a run (wave, lives, difficulty,
  * switches), pokes the live engine (power-ups, asteroid, escorts), reads its
  * run counters, and mixes the sound. The canvas and the audio hook are
- * stand-ins (helpers/starSwarmHarness).
+ * stand-ins (helpers/starSwarmMocks).
  */
 
 import { act, fireEvent, screen, within } from "@testing-library/react-native";
@@ -17,7 +17,8 @@ import {
   initStarSwarm,
 } from "../../game/starswarm/engine";
 import type { PowerUpType } from "../../game/starswarm/types";
-import { audioCalls, canvas, renderRun, resetHarness } from "./helpers/starSwarmHarness";
+import { audioCalls, canvas, resetHarness } from "./helpers/starSwarmMocks";
+import { renderRun } from "./helpers/starSwarmHarness";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -29,11 +30,11 @@ jest.mock("@react-navigation/native", () =>
 );
 jest.mock("../../components/starswarm/GameCanvas", () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require("./helpers/starSwarmHarness").canvasModule()
+  require("./helpers/starSwarmMocks").canvasModule()
 );
 jest.mock("../../hooks/useStarSwarmAudio", () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require("./helpers/starSwarmHarness").audioModule()
+  require("./helpers/starSwarmMocks").audioModule()
 );
 jest.mock("../../components/starswarm/Controls", () => ({
   __esModule: true,

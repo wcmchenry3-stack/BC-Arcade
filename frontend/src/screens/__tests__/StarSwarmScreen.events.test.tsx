@@ -2,7 +2,7 @@
  * StarSwarmScreen game events (#2957): what the screen does with each callback
  * the canvas raises (sound, haptic, and the spoken cue for events that have no
  * on-screen text), and the E2E test-hook seam. The canvas and the audio hook
- * are stand-ins (helpers/starSwarmHarness); a test calls the canvas's props
+ * are stand-ins (helpers/starSwarmMocks); a test calls the canvas's props
  * the way the game loop does.
  */
 
@@ -13,7 +13,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { hapticPlayerHit, hapticWaveClear } from "../../components/starswarm/Controls";
 import { CANVAS_H, CANVAS_W, initStarSwarm } from "../../game/starswarm/engine";
 import type { CarrierEvent, UpgradeEvent } from "../../game/starswarm/types";
-import { audio, canvas, renderRun, resetHarness } from "./helpers/starSwarmHarness";
+import { audio, canvas, resetHarness } from "./helpers/starSwarmMocks";
+import { renderRun } from "./helpers/starSwarmHarness";
 
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({
@@ -25,11 +26,11 @@ jest.mock("@react-navigation/native", () =>
 );
 jest.mock("../../components/starswarm/GameCanvas", () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require("./helpers/starSwarmHarness").canvasModule()
+  require("./helpers/starSwarmMocks").canvasModule()
 );
 jest.mock("../../hooks/useStarSwarmAudio", () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require("./helpers/starSwarmHarness").audioModule()
+  require("./helpers/starSwarmMocks").audioModule()
 );
 jest.mock("../../components/starswarm/Controls", () => ({
   __esModule: true,

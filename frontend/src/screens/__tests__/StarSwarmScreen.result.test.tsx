@@ -5,7 +5,8 @@ import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 import type { ScoreLedger } from "../../game/starswarm/scoreLedger";
 import type { StarSwarmState } from "../../game/starswarm/types";
-import { canvas, renderScreen, resetHarness, startRun } from "./helpers/starSwarmHarness";
+import { canvas, resetHarness } from "./helpers/starSwarmMocks";
+import { renderScreen, startRun } from "./helpers/starSwarmHarness";
 
 // useGameSync's play clock (#2684) is pinned for every test by jest.setup.ts
 // (#2710); the duration tests move it forward.
@@ -25,12 +26,12 @@ jest.mock("@react-navigation/native", () =>
   }))
 );
 
-// The canvas and the audio hook are the shared stand-ins (helpers/starSwarmHarness):
+// The canvas and the audio hook are the shared stand-ins (helpers/starSwarmMocks):
 // `canvas.props` are the props the screen gave the canvas, and `canvas.state` is what
 // its getState() returns — null by default (no engine state).
 jest.mock("../../components/starswarm/GameCanvas", () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require("./helpers/starSwarmHarness").canvasModule()
+  require("./helpers/starSwarmMocks").canvasModule()
 );
 
 jest.mock("../../components/starswarm/Controls", () => ({
@@ -42,7 +43,7 @@ jest.mock("../../components/starswarm/Controls", () => ({
 
 jest.mock("../../hooks/useStarSwarmAudio", () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require("./helpers/starSwarmHarness").audioModule()
+  require("./helpers/starSwarmMocks").audioModule()
 );
 
 jest.mock("../../game/starswarm/telemetry", () => ({ reportRunStats: jest.fn() }));

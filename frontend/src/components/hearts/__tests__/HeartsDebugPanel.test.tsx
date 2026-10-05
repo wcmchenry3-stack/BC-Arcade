@@ -58,8 +58,10 @@ describe("HeartsDebugPanel", () => {
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    // Restore the spies first: they may wrap the fake timer functions, and
+    // restoring them after useRealTimers() would put those back on globalThis.
     jest.restoreAllMocks(); // also undoes setPlatform's replaceProperty
+    jest.useRealTimers();
   });
 
   describe("header", () => {
@@ -256,9 +258,10 @@ describe("HeartsDebugPanel", () => {
         const set = jest.spyOn(globalThis, "setTimeout");
         const clear = jest.spyOn(globalThis, "clearTimeout");
         await render(panel());
+        const timersBefore = set.mock.calls.length;
         await fireEvent.press(screen.getByRole("button", { name: "Copy session to clipboard" }));
         // The confirmation's own timer: the 2 s one the press started.
-        const at = set.mock.calls.findIndex(([, ms]) => ms === 2000);
+        const at = set.mock.calls.findIndex(([, ms], i) => i >= timersBefore && ms === 2000);
         expect(at).toBeGreaterThanOrEqual(0);
         const confirmationTimer = set.mock.results[at]!.value;
 

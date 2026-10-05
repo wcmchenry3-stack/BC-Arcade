@@ -30,6 +30,7 @@
  */
 
 import type { DragCard, DragContextValue, DragSource } from "../game/_shared/drag/DragContext";
+import type { useSound } from "../game/_shared/useSound";
 
 type Members = Record<string, unknown>;
 
@@ -248,6 +249,9 @@ export function resetDropSink(sink: DropSink): void {
  * start a drag without laying out native views.
  */
 export function mockDropTarget(sink: () => DropSink) {
+  const { View } = jest.requireActual("react-native");
+  const { createElement } = jest.requireActual("react");
+  const { useDragContext } = jest.requireActual("../game/_shared/drag/DragContext");
   return {
     DropTarget: ({
       id,
@@ -258,9 +262,6 @@ export function mockDropTarget(sink: () => DropSink) {
       onDrop: (source: DragSource, cards: DragCard[]) => boolean;
       children?: unknown;
     }) => {
-      const { View } = jest.requireActual("react-native");
-      const { createElement } = jest.requireActual("react");
-      const { useDragContext } = jest.requireActual("../game/_shared/drag/DragContext");
       const s = sink();
       s.zones.set(id, onDrop);
       s.drag = useDragContext();
@@ -295,10 +296,13 @@ export async function legalTargets(
   cards: DragCard[] = [ONE_CARD]
 ): Promise<string[]> {
   const { act } = jest.requireActual("@testing-library/react-native");
+  const drag = sink.drag;
+  if (!drag) throw new Error("no DropTarget has rendered");
   await act(async () => {
-    sink.drag!.startDrag(source, cards);
+    drag.startDrag(source, cards);
   });
-  return [...sink.drag!.legalTargetIds];
+  // The provider's state changed: read the context the targets re-rendered with.
+  return [...(sink.drag ?? drag).legalTargetIds];
 }
 
 /**
@@ -307,11 +311,16 @@ export async function legalTargets(
  * is stable per name, as the real hook's is.
  */
 export function mockSoundByName(played: () => string[]) {
-  const players = new Map<string, () => void>();
+  const players = new Map<string, () => boolean>();
   return {
-    useSound: (name: string) => {
-      if (!players.has(name)) players.set(name, () => void played().push(name));
-      return { play: players.get(name), stop: jest.fn() };
+    useSound: (name: string): ReturnType<typeof useSound> => {
+      if (!players.has(name)) {
+        players.set(name, () => {
+          played().push(name);
+          return true;
+        });
+      }
+      return { play: players.get(name)!, stop: jest.fn() };
     },
   };
 }
