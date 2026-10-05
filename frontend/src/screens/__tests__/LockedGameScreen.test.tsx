@@ -15,13 +15,18 @@ jest.mock("@react-navigation/native", () =>
 
 beforeEach(() => mockGoBack.mockClear());
 
+/** As App.tsx mounts it: inside the app's ThemeProvider. */
+async function wrap() {
+  await render(
+    <ThemeProvider>
+      <LockedGameScreen />
+    </ThemeProvider>
+  );
+}
+
 describe("LockedGameScreen", () => {
   it("explains that the game needs a subscription", async () => {
-    await render(
-      <ThemeProvider>
-        <LockedGameScreen />
-      </ThemeProvider>
-    );
+    await wrap();
     expect(screen.getByText("Locked")).toBeTruthy();
     expect(screen.getByText("🔒")).toBeTruthy();
     expect(screen.getByText("Premium Game")).toBeTruthy();
@@ -29,7 +34,7 @@ describe("LockedGameScreen", () => {
   });
 
   it("'Back to Lobby' goes back", async () => {
-    await render(<LockedGameScreen />);
+    await wrap();
     const back = screen.getByRole("button", { name: "Go back to lobby" });
     expect(back).toHaveTextContent("Back to Lobby");
     await fireEvent.press(back);

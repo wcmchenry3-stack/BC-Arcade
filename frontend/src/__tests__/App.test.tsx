@@ -223,6 +223,8 @@ const PROFILE_ROUTES = paramListKeys("ProfileStackParamList");
 const PREMIUM_ROUTE_NAMES = PREMIUM_ROUTES.map((r) => r.route as string);
 
 const sorted = (s: Set<string>) => [...s].sort();
+/** Stacks App.tsx created when it loaded (the Sentry tests' fresh loads are trimmed off again). */
+const STACKS_AT_LOAD = mockStacks.length;
 const [rootStack, homeStack, profileStack] = mockStacks;
 
 async function renderApp() {
@@ -238,9 +240,13 @@ beforeEach(() => {
   mockEntitlements.isLoading = false;
   mockEntitlements.canPlay = jest.fn(() => true);
   mockNavigate.mockClear();
+  mockTabBar.mockClear();
   (Sentry.metrics.distribution as jest.Mock).mockReset();
 });
-afterEach(() => __forceStoreBuildForTests(false));
+afterEach(() => {
+  __forceStoreBuildForTests(false);
+  jest.restoreAllMocks(); // console.error spies, even when a test fails
+});
 
 describe("App — providers and fonts", () => {
   it("shows only a spinner until the fonts load", async () => {
@@ -258,7 +264,7 @@ describe("App — providers and fonts", () => {
   });
 
   it("creates three stacks (root, lobby, profile) and one tab per MAIN_TABS entry", async () => {
-    expect(mockStacks).toHaveLength(3);
+    expect(STACKS_AT_LOAD).toBe(3);
     await renderApp();
     expect(sorted(mockTabs)).toEqual(MAIN_TABS.map((t) => t.name).sort());
     // The tab bar is the app's own BottomTabBar, handed the navigator's props.
@@ -381,7 +387,6 @@ describe("App — crash fallback", () => {
     mockThrowIn.route = null;
     await fireEvent.press(screen.getByText("Try again"));
     expect(await screen.findByText("screen:Home")).toBeTruthy();
-    (console.error as jest.Mock).mockRestore();
   });
 });
 
@@ -419,6 +424,12 @@ describe("App — Sentry start-up", () => {
       return { init, install, error: error.mock.calls.map((c) => String(c[0])) };
     } finally {
       error.mockRestore();
+      init.mockImplementation(() => undefined); // drop a throwing one; keep the calls
+      // Leave the rest of the file as it was: the isolated App created its own navigators, and
+      // the doMocks above stay registered until undone.
+      mockStacks.splice(STACKS_AT_LOAD);
+      jest.dontMock("../utils/sentryConfig");
+      jest.dontMock("../utils/sentryConsoleError");
       if (saved === undefined) delete process.env.EXPO_PUBLIC_SENTRY_DSN;
       else process.env.EXPO_PUBLIC_SENTRY_DSN = saved;
     }

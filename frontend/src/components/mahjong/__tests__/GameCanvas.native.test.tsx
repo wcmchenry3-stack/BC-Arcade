@@ -135,15 +135,15 @@ function borderAndFace(tileId: number) {
   return { border: body.at(-2)!, face: body.at(-1)! };
 }
 
-/** The full-board tap layer (a Pressable over the canvas). */
-function tapLayer(): TestInstance {
-  const [layer] = screen.root!.queryAll(
-    (n) => n.props.accessibilityRole === "none" && typeof n.props.onClick === "function"
-  );
-  return layer!;
+/**
+ * The full-board tap layer: the one accessible element with role "none" (a Pressable over the
+ * canvas; the canvas itself is not an accessibility element). Undefined when taps are off.
+ */
+function tapLayer(): TestInstance | undefined {
+  return screen.queryAllByRole("none")[0];
 }
 async function tap(x: number, y: number) {
-  await fireEvent.press(tapLayer(), { nativeEvent: { locationX: x, locationY: y } });
+  await fireEvent.press(tapLayer()!, { nativeEvent: { locationX: x, locationY: y } });
 }
 
 beforeEach(() => {
