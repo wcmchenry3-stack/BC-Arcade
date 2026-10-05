@@ -67,6 +67,16 @@ The `jest.collectCoverageFrom` entries and `frontend/knip.json` `ignore` carry t
 
 **Reading the report.** `jest --coverage` writes `frontend/coverage/` (`lcov-report/index.html` for browsing, `coverage-summary.json` for totals; the `coverageReporters` list in package.json guarantees both exist). Files with 0 % are now listed in the text table instead of being absent; sort by uncovered lines to pick the next target. Quick totals only: `npx jest --coverage --coverageReporters=text-summary --silent`.
 
+## Test layout rules (#2955)
+
+These keep the suite split-safe: when a large source file is split into modules, its tests move one-to-one instead of being rewritten, and a moved test can never silently stop testing the shipped code.
+
+- **One test file per module.** Name it after the module it tests (`engine.ts` → `engine.test.ts`; a module of a planned split → `<file>.<module>.test.ts`, e.g. `starswarm/__tests__/engine.carrier.test.ts` for the planned `engine/carrier.ts` of #2988). When a test file passes ~1,000 lines, split it along the source's own seams (planned modules or exported-function clusters) by moving whole `describe` blocks: the test count and every test's full name stay the same. Helpers used by more than one of the new files go in `__tests__/helpers/<name>Fixtures.ts` (not a test file: `testMatch` only picks up `*.test.ts(x)`); single-file helpers stay local.
+- **No local re-implementations of shipped code.** A test imports the function it checks. If the logic is inline in a component, extract it into a pure module first (as `game/starswarm/drag.ts` was extracted from `Controls.tsx`) and test that; a copy in the test cannot fail when the shipped code regresses.
+- **Prefer targeted assertions to large snapshots.** Assert the roles, texts and theme tokens that matter (`getByRole`, `getByText`, `toHaveStyle({ color: colors.accent })`, `accessibilityState`) so a token change fails one line with a readable diff instead of regenerating a few thousand lines nobody reviews. A snapshot is fine for one small element or a pure value (`toMatchInlineSnapshot`); keep `.snap` files under a few hundred lines.
+- **Golden replay for seeded engines.** An engine with a seeded RNG gets a golden replay test before it is refactored: seed it, drive the public API with scripted input for N ticks, and compare a hash of `JSON.stringify(state)` at checkpoints with a committed fixture (`starswarm/__tests__/goldenReplay.test.ts` and `__fixtures__/golden-replay-seed42.json`; re-record with `UPDATE_GOLDEN=1`). A pure-move refactor must leave the fixture byte-identical; a re-record is a behaviour change and the PR says why (the one sanctioned Star Swarm re-record is the `rng()` range fix of #2985).
+- **Backend: same rules.** One `test_<module>.py` per module (`test_google_play.py`, `test_google_push_auth.py`, `test_google_rtdn.py`, `test_google_jobs.py`, `test_apple_store.py`, `test_apple_notifications.py` follow the `purchases/` seams of #2998). Shared plain helpers and fixtures for one area live in an underscore harness module (`tests/_google_iap_harness.py`, `tests/_apple_iap_harness.py`): import plain helpers from it, and pull its fixtures in with `pytest_plugins = ["tests._<area>_harness"]` (importing a fixture would trip ruff F811). Register a new harness for assertion rewriting in `tests/conftest.py` (`pytest.register_assert_rewrite`). Store fakes stay in `google_play_fakes.py` / `apple_jws.py`.
+
 ## Project-specific test cases
 
 ## Backend
@@ -135,6 +145,7 @@ backend/tests/
   - `session_headers(sid)` (`from tests._helpers import session_headers`): a plain function, not a fixture, returning the JSON request headers.
   - `migration_db_path`: a scratch SQLite path for a migration test.
   - `alembic`: a callable bound to `migration_db_path`; `alembic("upgrade", rev)` runs the CLI and raises `AlembicError` (with Alembic's output) on a non-zero exit.
+- IAP tests share an underscore harness per store (`tests/_google_iap_harness.py`: `gp`, `install`, `grant`, `post_google`, `post_rtdn`, …; `tests/_apple_iap_harness.py`: `verifier`, `use_verifier`, `post_txn`, `post_note`, …), loaded through `pytest_plugins`; see "Test layout rules".
 
 ---
 
@@ -915,7 +926,7 @@ pre-launch API (#2567, as Hearts does), so store builds never show it.
 
 The same numbers reach Sentry as one `starswarm.run_stats` breadcrumb per finished run (counts,
 wave, difficulty, score) — look at the breadcrumbs on any Star Swarm event to compare real play
-against the panel. Unit coverage: `engine.test.ts` ("Run stats (#2491)") and `telemetry.test.ts`.
+against the panel. Unit coverage: `engine.stats.test.ts` ("Run stats (#2491)") and `telemetry.test.ts`.
 
 ### Star Swarm: reading the "Frame" readout (#2567)
 
