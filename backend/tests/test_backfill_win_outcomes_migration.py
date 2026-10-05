@@ -17,7 +17,7 @@ import subprocess
 import sys
 import uuid
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -286,7 +286,7 @@ def test_offline_sql_is_one_update_per_game(db_path: Path) -> None:
 # /stats/me reads the backfilled wins
 # ---------------------------------------------------------------------------
 
-_T0 = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+_T0 = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 
 
 @pytest.fixture()

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import jwt
 import pytest
@@ -67,7 +67,7 @@ def test_entitled_games_empty_by_default(client: TestClient, session_id: str) ->
 
 
 def test_expires_at_is_24h_ahead(client: TestClient, session_id: str) -> None:
-    before = datetime.now(timezone.utc)
+    before = datetime.now(UTC)
     r = client.get("/entitlements", headers=_headers(session_id))
     body = r.json()
 

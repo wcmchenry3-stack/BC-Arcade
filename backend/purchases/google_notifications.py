@@ -39,7 +39,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 import httpx
@@ -549,7 +549,7 @@ async def handle_developer_notification(
     if isinstance(note.get("testNotification"), dict):
         _log_event("google_notification", kind="test", outcome="test", id=message_id)
         return "test"
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     event_at = clamp_event_time(parse_millis(note.get("eventTimeMillis")), now)
     otp = note.get("oneTimeProductNotification")
     voided = note.get("voidedPurchaseNotification")
@@ -651,7 +651,7 @@ async def poll_voided_purchases(
     """
     if verifier is None:
         return None
-    end = now or datetime.now(timezone.utc)
+    end = now or datetime.now(UTC)
     # The API refuses a startTime older than 30 days.
     start = max(end - window, end - timedelta(days=30) + timedelta(minutes=5))
     result = VoidedPollResult()
@@ -727,7 +727,7 @@ async def acknowledge_sweep(
     """
     if verifier is None:
         return None
-    cutoff = (now or datetime.now(timezone.utc)) - max_age
+    cutoff = (now or datetime.now(UTC)) - max_age
     # When the 3-day clock started: completion, else when we first recorded it.
     started = func.coalesce(Purchase.purchased_at, Purchase.created_at)
     async with session_factory() as db:
@@ -791,7 +791,7 @@ async def run_google_jobs_loop(
     interval_s: float = JOBS_INTERVAL_S,
     timeout_s: float = JOBS_TIMEOUT_S,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
-    clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> None:
     """Run the Google jobs now, then every ``interval_s``, until cancelled (``main.lifespan``).
 

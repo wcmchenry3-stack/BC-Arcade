@@ -23,7 +23,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from itertools import product
 from typing import Any
 from urllib.parse import urlencode
@@ -220,7 +220,7 @@ def _names(body: dict) -> list[str]:
     return [e["player_name"] for e in body["entries"]]
 
 
-_RECENT = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(days=1)
+_RECENT = datetime.now(UTC).replace(microsecond=0) - timedelta(days=1)
 
 
 def _recent(minutes: int) -> datetime:
@@ -230,7 +230,7 @@ def _recent(minutes: int) -> datetime:
 
 def _parse(stamp: str) -> datetime:
     at = datetime.fromisoformat(stamp)
-    return at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+    return at if at.tzinfo else at.replace(tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -466,7 +466,7 @@ async def test_abandoned_rows_excluded(
 # Win streaks (/stats/me)
 # ---------------------------------------------------------------------------
 
-_T0 = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+_T0 = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 
 
 async def _add_outcomes(sid: str, game: str, outcomes: list[str]) -> None:

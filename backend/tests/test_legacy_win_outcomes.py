@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterator
+from datetime import UTC
 
 import pytest
 from fastapi.testclient import TestClient
@@ -219,7 +220,7 @@ def test_only_legacy_outcomes_of_the_three_games_are_checked() -> None:
 async def test_only_the_completed_row_is_rewritten(client: TestClient, sid: str) -> None:
     """The statement is scoped to the game being completed: another stored row
     that matches the rule (the migration's job) is left alone."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from sqlalchemy import select
 
@@ -233,7 +234,7 @@ async def test_only_the_completed_row_is_rewritten(client: TestClient, sid: str)
         stored = Game(
             session_id=str(uuid.uuid4()),
             game_type_id=gt_id,
-            completed_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+            completed_at=datetime(2026, 9, 1, tzinfo=UTC),
             outcome="completed",
             game_metadata={"won": True, "pairs": 72},
         )

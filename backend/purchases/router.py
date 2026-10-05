@@ -32,7 +32,7 @@ import hashlib
 import json
 import logging
 from collections.abc import Callable, Coroutine
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -191,7 +191,7 @@ async def post_apple_purchase(
         store_key = apple.parse_store_key(body.signed_transaction)
         _hit_store_key_limit("apple", store_key)
         # Taken before the store call: a stale answer must lose to a newer event.
-        observed_at = datetime.now(timezone.utc)
+        observed_at = datetime.now(UTC)
         verified = await verifier.verify(AppleEvidence(signed_transaction=body.signed_transaction))
         return await _complete(
             session_id=sid,
@@ -220,7 +220,7 @@ async def post_google_purchase(
             raise PurchaseError(422, "unknown_product")
         _hit_store_key_limit("google", body.purchase_token)
         evidence = GoogleEvidence(product_id=body.product_id, purchase_token=body.purchase_token)
-        observed_at = datetime.now(timezone.utc)
+        observed_at = datetime.now(UTC)
         verified = await verifier.verify(evidence)
         if verified.product_id != body.product_id:
             raise PurchaseError(422, "verification_failed")

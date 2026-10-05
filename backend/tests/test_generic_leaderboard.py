@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -32,7 +32,7 @@ pytestmark = pytest.mark.skipif(
     reason="DATABASE_URL not set — skipping live API tests",
 )
 
-T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+T0 = datetime(2026, 1, 1, tzinfo=UTC)
 
 ENABLED_BOARDS = sorted(
     gt.value for gt in GameTypeEnum if leaderboard.enabled_board(gt.value) is not None

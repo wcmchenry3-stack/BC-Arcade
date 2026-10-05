@@ -21,7 +21,7 @@ from __future__ import annotations
 from enum import Enum
 
 
-class GameType(str, Enum):
+class GameType(str, Enum):  # noqa: UP042  # StrEnum would change str(); kept as str+Enum (#2951)
     """All active game types. Authority: this enum + the game_types DB table.
 
     The CI test tests/test_vocab.py asserts that every member here has a
@@ -43,7 +43,7 @@ class GameType(str, Enum):
     DAILY_WORD = "daily_word"
 
 
-class GameOutcome(str, Enum):
+class GameOutcome(str, Enum):  # noqa: UP042  # StrEnum would change str(); kept as str+Enum (#2951)
     """What ``games.outcome`` records for one game session — the one place its
     meaning is written down (#2519 decision 11, PR #2592). Every other docstring
     points here instead of restating it.

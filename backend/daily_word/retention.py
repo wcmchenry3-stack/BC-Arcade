@@ -27,7 +27,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import sentry_sdk
 from sqlalchemy import delete
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 async def prune_expired_progress(session: AsyncSession, *, now: datetime | None = None) -> int:
     """Delete rows not updated within ``RETENTION``. Returns how many went."""
-    cutoff = (now or datetime.now(timezone.utc)) - RETENTION
+    cutoff = (now or datetime.now(UTC)) - RETENTION
     result = await session.execute(
         delete(DailyWordProgress).where(DailyWordProgress.updated_at < cutoff)
     )

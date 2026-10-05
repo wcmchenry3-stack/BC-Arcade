@@ -7,7 +7,7 @@ import logging
 import pathlib
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,7 +18,7 @@ from daily_word.retention import RETENTION, prune_expired_progress, run_retentio
 from db.base import get_session_factory
 from db.models import DailyWordProgress
 
-NOW = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
 
 
 async def _add(session_id: str, updated_at: datetime) -> None:

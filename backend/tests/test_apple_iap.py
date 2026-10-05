@@ -14,7 +14,7 @@ import json
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import jwt
@@ -305,7 +305,7 @@ async def test_valid_transaction_grants_and_sets_event_time(
     assert row is not None
     assert row.environment == "sandbox" and row.account_token == token
     assert row.store_transaction_id == "40009"
-    changed = row.state_changed_at.replace(tzinfo=timezone.utc)
+    changed = row.state_changed_at.replace(tzinfo=UTC)
     assert abs(changed.timestamp() * 1000 - signed) < 2
 
 
@@ -349,7 +349,7 @@ def test_leaf_without_apple_marker_oid_is_422(client: TestClient, use_verifier) 
 
 
 def test_leaf_expired_at_signed_date_is_422(client: TestClient, use_verifier) -> None:
-    ca = make_ca(leaf_not_after=datetime.now(timezone.utc) - timedelta(hours=1), name="Old")
+    ca = make_ca(leaf_not_after=datetime.now(UTC) - timedelta(hours=1), name="Old")
     use_verifier(make_verifier(roots=[ca.root_der]))
     assert post_txn(client, str(uuid.uuid4()), ca.sign(transaction("4240"))).status_code == 422
 
@@ -574,7 +574,7 @@ async def test_reversal_on_owned_purchase_then_older_refund_keeps_access(
     # then the refund it reversed (T1 < T2) arrives.
     assert post_note(client, reversal_t2).json() == {"status": "unchanged"}
     row = await purchase_row("6100")
-    watermark = row.state_changed_at.replace(tzinfo=timezone.utc)
+    watermark = row.state_changed_at.replace(tzinfo=UTC)
     assert abs(watermark.timestamp() * 1000 - now_ms(timedelta(minutes=2))) < 5_000
     assert post_note(client, refund_t1).json() == {"status": "unchanged"}  # stale
     assert (await purchase_row("6100")).state == "owned"
@@ -899,7 +899,7 @@ def test_online_checks_ignore_a_backdated_signed_date(client, use_verifier, monk
     ca = make_ca(
         name="Expired",
         ocsp_url="http://ocsp.test.invalid/ocsp",
-        leaf_not_after=datetime.now(timezone.utc) - timedelta(hours=1),
+        leaf_not_after=datetime.now(UTC) - timedelta(hours=1),
     )
     monkeypatch.setattr(signed_data_verifier.requests, "post", ocsp_responder(ca))
     use_verifier(_online_verifier(ca))
@@ -1001,7 +1001,7 @@ async def test_record_store_purchase_guards() -> None:
         )
     async with factory() as db:  # a state change on a known row recomputes
         assert await service.record_store_purchase(
-            db, replace(base, state="revoked"), event_at=datetime.now(timezone.utc)
+            db, replace(base, state="revoked"), event_at=datetime.now(UTC)
         )
     assert (await purchase_row("6900")).state == "revoked"
 

@@ -19,7 +19,7 @@ import json
 import time
 import uuid
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -27,7 +27,7 @@ from fastapi.testclient import TestClient
 
 
 def _today_puzzle_id(tz_offset_minutes: int = 0, lang: str = "en") -> str:
-    local_ts = datetime.now(timezone.utc) + timedelta(minutes=tz_offset_minutes)
+    local_ts = datetime.now(UTC) + timedelta(minutes=tz_offset_minutes)
     return f"{local_ts.strftime('%Y-%m-%d')}:{lang}"
 
 
@@ -171,7 +171,7 @@ def test_grace_window_accepts_yesterday_puzzle_id(client: TestClient) -> None:
     Clock is pinned to 2024-01-02 00:00:30 UTC.  local_ts=2024-01-02 00:00:30,
     grace_ts=2024-01-01 23:59:30 — so date "2024-01-01" matches grace_ts and must be accepted.
     """
-    pinned = datetime(2024, 1, 2, 0, 0, 30, tzinfo=timezone.utc)
+    pinned = datetime(2024, 1, 2, 0, 0, 30, tzinfo=UTC)
     with patch("daily_word.router.datetime") as mock_dt:
         mock_dt.now.return_value = pinned
         headers = _sid_headers()
@@ -189,7 +189,7 @@ def test_grace_window_rejects_two_days_ago_puzzle_id(client: TestClient) -> None
     Clock is pinned to 2024-01-02 00:00:30 UTC.  Neither local_ts (2024-01-02)
     nor grace_ts (2024-01-01) matches "2023-12-31", so the request must be rejected.
     """
-    pinned = datetime(2024, 1, 2, 0, 0, 30, tzinfo=timezone.utc)
+    pinned = datetime(2024, 1, 2, 0, 0, 30, tzinfo=UTC)
     with patch("daily_word.router.datetime") as mock_dt:
         mock_dt.now.return_value = pinned
         headers = _sid_headers()

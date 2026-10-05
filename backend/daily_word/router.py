@@ -39,7 +39,7 @@ import json
 import logging
 import time
 import unicodedata
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import sentry_sdk
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -203,7 +203,7 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
 
     # 1-minute grace so guesses submitted just before midnight aren't rejected by
     # server/client clock drift when the server evaluates them just after midnight.
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.now(UTC)
     local_ts = now_utc + timedelta(minutes=body.tz_offset_minutes)
     grace_ts = local_ts - timedelta(minutes=1)
     if date_str not in {local_ts.strftime("%Y-%m-%d"), grace_ts.strftime("%Y-%m-%d")}:

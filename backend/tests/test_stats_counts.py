@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,7 +25,7 @@ pytestmark = pytest.mark.skipif(
     reason="DATABASE_URL not set — skipping stats tests",
 )
 
-_T0 = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+_T0 = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 _MINUTE_MS = 60_000
 
 

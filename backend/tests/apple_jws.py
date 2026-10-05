@@ -12,7 +12,7 @@ from __future__ import annotations
 import base64
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from types import SimpleNamespace
 
@@ -118,7 +118,7 @@ def make_ca(
     name: str = "BC Arcade Test",
     ocsp_url: str | None = None,
 ) -> TestCA:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     start = now - timedelta(days=1)
     end = now + timedelta(days=365)
     root_key = ec.generate_private_key(ec.SECP256R1())
@@ -172,7 +172,7 @@ def default_ca() -> TestCA:
 
 
 def now_ms(delta: timedelta = timedelta(0)) -> int:
-    return int((datetime.now(timezone.utc) + delta).timestamp() * 1000)
+    return int((datetime.now(UTC) + delta).timestamp() * 1000)
 
 
 def transaction(
@@ -257,7 +257,7 @@ def ocsp_responder(ca: TestCA, *, status: str = "good"):
         if status == "http_error":
             return SimpleNamespace(status_code=500, content=b"")
         cert, issuer, key = by_serial[req.serial_number]
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         good = status == "good"
         builder = (
             ocsp.OCSPResponseBuilder()

@@ -40,7 +40,7 @@ Accepted approximations (documented, not silent):
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,7 +69,7 @@ LOOKBACK_DAYS = 60
 def _local_date(completed_at: datetime, tz_offset_minutes: int) -> date:
     """The local calendar day a completion falls on. Naive timestamps (SQLite) are UTC."""
     if completed_at.tzinfo is None:
-        completed_at = completed_at.replace(tzinfo=timezone.utc)
+        completed_at = completed_at.replace(tzinfo=UTC)
     return (completed_at + timedelta(minutes=tz_offset_minutes)).date()
 
 

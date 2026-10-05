@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unicodedata
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from daily_word.puzzle import get_answer, get_today_meta, is_valid_guess
 
@@ -17,7 +17,7 @@ def test_tz_isolation_calgary_vs_london():
     # At 2026-05-02 03:00 UTC:
     #   Calgary offset = -420 min → local time = 2026-05-01 20:00
     #   London  offset =    0 min → local time = 2026-05-02 03:00
-    fixed_utc = datetime(2026, 5, 2, 3, 0, 0, tzinfo=timezone.utc)
+    fixed_utc = datetime(2026, 5, 2, 3, 0, 0, tzinfo=UTC)
 
     calgary = get_today_meta(-420, "en", _utc_now=fixed_utc)
     london = get_today_meta(0, "en", _utc_now=fixed_utc)
@@ -29,7 +29,7 @@ def test_tz_isolation_calgary_vs_london():
 
 def test_same_tz_same_puzzle_id():
     """Same timezone always yields the same puzzle_id for the same UTC time."""
-    fixed_utc = datetime(2026, 5, 2, 12, 0, 0, tzinfo=timezone.utc)
+    fixed_utc = datetime(2026, 5, 2, 12, 0, 0, tzinfo=UTC)
     a = get_today_meta(0, "en", _utc_now=fixed_utc)
     b = get_today_meta(0, "en", _utc_now=fixed_utc)
     assert a["puzzle_id"] == b["puzzle_id"]
@@ -42,7 +42,7 @@ def test_same_tz_same_puzzle_id():
 
 def test_get_today_meta_does_not_return_answer():
     """get_today_meta return value must have no 'word' or 'answer' key."""
-    fixed_utc = datetime(2026, 5, 2, 12, 0, 0, tzinfo=timezone.utc)
+    fixed_utc = datetime(2026, 5, 2, 12, 0, 0, tzinfo=UTC)
     meta = get_today_meta(0, "en", _utc_now=fixed_utc)
     assert "word" not in meta
     assert "answer" not in meta
@@ -51,7 +51,7 @@ def test_get_today_meta_does_not_return_answer():
 
 
 def test_get_today_meta_word_length_positive():
-    fixed_utc = datetime(2026, 5, 2, 12, 0, 0, tzinfo=timezone.utc)
+    fixed_utc = datetime(2026, 5, 2, 12, 0, 0, tzinfo=UTC)
     meta = get_today_meta(0, "en", _utc_now=fixed_utc)
     assert meta["word_length"] > 0
 
@@ -102,7 +102,7 @@ def test_get_answer_different_dates_may_differ():
 
 def test_get_answer_consistent_with_meta():
     """Word length from get_today_meta matches actual answer length."""
-    fixed_utc = datetime(2026, 5, 2, 12, 0, 0, tzinfo=timezone.utc)
+    fixed_utc = datetime(2026, 5, 2, 12, 0, 0, tzinfo=UTC)
     meta = get_today_meta(0, "en", _utc_now=fixed_utc)
     answer = get_answer(meta["puzzle_id"])
     assert len(answer) == meta["word_length"]

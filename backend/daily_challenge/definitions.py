@@ -64,7 +64,7 @@ import os
 import random
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from functools import cache
 from typing import Any, Literal
 
@@ -369,7 +369,7 @@ def local_day_of(day: date, tz_offset_minutes: int) -> LocalDay:
     Used for today (``local_day``) and for any past day (the streak replays the
     challenge over a range), so there is one definition of where a local day starts.
     """
-    start_utc = datetime(day.year, day.month, day.day, tzinfo=timezone.utc) - timedelta(
+    start_utc = datetime(day.year, day.month, day.day, tzinfo=UTC) - timedelta(
         minutes=tz_offset_minutes
     )
     return LocalDay(date=day, start_utc=start_utc, end_utc=start_utc + timedelta(days=1))
@@ -378,6 +378,6 @@ def local_day_of(day: date, tz_offset_minutes: int) -> LocalDay:
 def local_day(tz_offset_minutes: int, utc_now: datetime | None = None) -> LocalDay:
     """Resolve "today" for a client ``tz_offset_minutes`` east of UTC (as Daily Word does)."""
     if utc_now is None:
-        utc_now = datetime.now(timezone.utc)
+        utc_now = datetime.now(UTC)
     local_date = (utc_now + timedelta(minutes=tz_offset_minutes)).date()
     return local_day_of(local_date, tz_offset_minutes)

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,7 +25,7 @@ needs_db = pytest.mark.skipif(
     reason="DATABASE_URL not set — skipping streak tests",
 )
 
-_NOW = datetime(2026, 10, 9, 15, 0, tzinfo=timezone.utc)
+_NOW = datetime(2026, 10, 9, 15, 0, tzinfo=UTC)
 _TODAY = _NOW.date()
 
 _SCORE = FREE_GOAL_POOL["twenty48"][0]  # final_score >= 500
@@ -44,7 +44,7 @@ def pinned_template(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _at(day: date, hour: int = 12) -> datetime:
-    return datetime(day.year, day.month, day.day, hour, tzinfo=timezone.utc)
+    return datetime(day.year, day.month, day.day, hour, tzinfo=UTC)
 
 
 async def _add(sid: str, game_type: str, when: datetime, **fields) -> None:
@@ -206,7 +206,7 @@ async def test_the_streak_is_capped_at_the_lookback() -> None:
 async def test_days_are_the_players_local_days() -> None:
     sid = str(uuid.uuid4())
     # 03:00 UTC on Oct 9 is Oct 8 20:00 in UTC-7 but Oct 9 in UTC.
-    late = datetime(2026, 10, 9, 3, 0, tzinfo=timezone.utc)
+    late = datetime(2026, 10, 9, 3, 0, tzinfo=UTC)
     for when in (late, _at(_ago(1))):  # _ago(1) is Oct 8 12:00 UTC: Oct 8 in both zones
         await _add(sid, "twenty48", when, final_score=600)
         await _add(sid, "sort", when, final_score=12)
@@ -219,7 +219,7 @@ async def test_days_are_the_players_local_days() -> None:
 @needs_db
 async def test_a_game_at_local_midnight_belongs_to_the_new_day() -> None:
     sid = str(uuid.uuid4())
-    midnight = datetime(2026, 10, 8, 7, 0, tzinfo=timezone.utc)  # 00:00 Oct 8 in UTC-7
+    midnight = datetime(2026, 10, 8, 7, 0, tzinfo=UTC)  # 00:00 Oct 8 in UTC-7
     await _add(sid, "twenty48", midnight, final_score=600)
     await _add(sid, "sort", midnight, final_score=12)
     # Oct 8 local is yesterday for a player at UTC-7 whose now is Oct 9 08:00.
