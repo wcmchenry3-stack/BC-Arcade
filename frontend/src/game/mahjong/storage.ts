@@ -12,7 +12,8 @@
  * never counts.
  *
  * `loadGame` reads `_v: 2` saves, and `_v: 1` saves (snapshot undo history)
- * through the `legacyUndo` shim for one release; any other version is
+ * through the `legacyUndo` shim for one release, writing a save it had to
+ * normalise back at once as `_v: 2`; any other version is
  * rejected rather than crashing. Corrupt payloads are deleted and reported
  * as a warning — the caller recovers by starting a fresh game. An undo
  * history that doesn't check out only costs the entries from the bad one
@@ -65,15 +66,43 @@ export async function saveGame(state: MahjongState): Promise<void> {
   }
 }
 
+/** A save as parsed, before `loadGame` has checked and normalised it. */
+type ParsedSave = {
+  -readonly [K in keyof MahjongState]?: K extends "_v" | "undoStack" ? unknown : MahjongState[K];
+};
+
+/**
+ * Fill in the fields older builds didn't save; true when any was missing
+ * (or, for the layout, unknown), so the save needs writing back.
+ */
+function fillMissingFields(parsed: ParsedSave): boolean {
+  let filled = false;
+  // Timer fields: a save without them loads with no play banked (#2750).
+  if (parsed.startedAt === undefined) {
+    parsed.startedAt = null;
+    filled = true;
+  }
+  if (typeof parsed.accumulatedMs !== "number") {
+    parsed.accumulatedMs = 0;
+    filled = true;
+  }
+  // dealId added in #943 — fall back gracefully for saves from older builds
+  if (typeof parsed.dealId !== "string") {
+    parsed.dealId = "0000";
+    filled = true;
+  }
+  // currentLayoutId added in #1688 — resolveLayoutId() defaults to "turtle" for old saves
+  const layoutId = resolveLayoutId(parsed as { currentLayoutId?: string });
+  if (layoutId !== parsed.currentLayoutId) filled = true;
+  parsed.currentLayoutId = layoutId;
+  return filled;
+}
+
 export async function loadGame(): Promise<MahjongState | null> {
   try {
     const raw = await AsyncStorage.getItem(GAME_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as {
-      -readonly [K in keyof MahjongState]?: K extends "_v" | "undoStack"
-        ? unknown
-        : MahjongState[K];
-    };
+    const parsed = JSON.parse(raw) as ParsedSave;
     const legacy = parsed._v === 1;
     if (
       (parsed._v !== 2 && !legacy) ||
@@ -88,23 +117,27 @@ export async function loadGame(): Promise<MahjongState | null> {
       await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
       return null;
     }
-    // Undo deltas since #2961; a version 1 save's snapshots are converted.
-    parsed.undoStack = legacy
-      ? migrateLegacyUndoStack(parsed.undoStack, parsed.tiles)
-      : loadUndoEntries(parsed.undoStack, parsed.tiles);
+    // Undo deltas since #2961; a version 1 save's snapshots are converted,
+    // then checked like any history, so what is written back is what loads.
+    const rawUndo = parsed.undoStack;
+    const undoStack = loadUndoEntries(
+      legacy ? migrateLegacyUndoStack(rawUndo, parsed.tiles) : rawUndo,
+      parsed.tiles
+    );
+    parsed.undoStack = undoStack;
     parsed._v = 2;
-    // Timer fields: a save without them loads with no play banked (#2750).
-    parsed.startedAt = parsed.startedAt ?? null;
-    if (typeof parsed.accumulatedMs !== "number") parsed.accumulatedMs = 0;
-    // dealId added in #943 — fall back gracefully for saves from older builds
-    if (typeof parsed.dealId !== "string") parsed.dealId = "0000";
-    // currentLayoutId added in #1688 — resolveLayoutId() defaults to "turtle" for old saves
-    parsed.currentLayoutId = resolveLayoutId(parsed as { currentLayoutId?: string });
+    const filled = fillMissingFields(parsed);
+    const normalised = legacy || undoStack.length !== rawUndo.length || filled;
     // A cleared or deadlocked board has a frozen clock: saves from before the
     // engine banked time on completion can still carry a running startedAt,
     // which would make the win card's time grow, so clockOnLoad drops it.
     const loaded = parsed as MahjongState;
-    return clockOnLoad(loaded, loaded.isComplete || loaded.isDeadlocked);
+    const state = clockOnLoad(loaded, loaded.isComplete || loaded.isDeadlocked);
+    // A save that had to be normalised (a version 1 history, dropped entries,
+    // missing fields) is written back once, now: the screen treats a loaded
+    // game as saved, and the shim that read it goes away next release.
+    if (normalised) await saveGame(state);
+    return state;
   } catch (e) {
     Sentry.captureMessage("mahjong.storage: corrupt game payload, discarding", {
       level: "warning",

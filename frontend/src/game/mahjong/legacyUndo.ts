@@ -19,9 +19,11 @@
  * #2750). "The next board" is the one after the move: the following snapshot
  * for all but the newest, and the saved game's own board for the newest.
  *
- * A snapshot that isn't one (a bad payload) ends the history there: it and
- * everything older are dropped, since undoing past it could not reach the
- * boards it hid. The game itself still loads.
+ * A snapshot that isn't one (a bad payload), or one no single move leads
+ * from (a shuffle keeps the tile count, so a snapshot of another size that
+ * isn't a match is a gap), ends the history there: it and everything older
+ * are dropped, since undoing past it could not reach the boards it hid. The
+ * game itself still loads.
  */
 
 import type { MahjongUndoEntry, RemovedTile, SlotTile } from "./types";
@@ -86,7 +88,7 @@ function removedPair(
 }
 
 /** One snapshot as the delta from it to the board `after` the move. */
-function toDelta(snapshot: LegacySnapshot, after: readonly SlotTile[]): MahjongUndoEntry {
+function toDelta(snapshot: LegacySnapshot, after: readonly SlotTile[]): MahjongUndoEntry | null {
   const base = {
     scoreBefore: snapshot.score,
     pairsRemovedBefore: snapshot.pairsRemoved,
@@ -97,6 +99,9 @@ function toDelta(snapshot: LegacySnapshot, after: readonly SlotTile[]): MahjongU
   };
   const pair = removedPair(snapshot.tiles, after);
   if (pair) return { ...base, kind: "match", removedTiles: pair };
+  // Not a match, so a shuffle, which keeps the tile count: a snapshot of any
+  // other size is a gap in the history (as `loadUndoEntries` rules too).
+  if (snapshot.tiles.length !== after.length) return null;
   // A shuffle that left the board as it was (a geometric deadlock) keeps no board.
   const unchanged =
     snapshot.tiles.length === after.length &&
@@ -106,8 +111,10 @@ function toDelta(snapshot: LegacySnapshot, after: readonly SlotTile[]): MahjongU
 
 /**
  * A version 1 save's snapshot history as delta entries, oldest first. `tiles`
- * is the saved game's own board. Stops at the newest snapshot that isn't one,
- * and keeps at most UNDO_CAP.
+ * is the saved game's own board. Stops at the newest snapshot that isn't one
+ * or that no single move leads from (neither a match nor a shuffle of the
+ * same tile count), and keeps at most UNDO_CAP. `loadGame` also passes the
+ * result through `loadUndoEntries`, so what it writes is what a load accepts.
  */
 export function migrateLegacyUndoStack(
   snapshots: readonly unknown[],
@@ -118,7 +125,9 @@ export function migrateLegacyUndoStack(
   for (let i = snapshots.length - 1; i >= 0 && entries.length < UNDO_CAP; i--) {
     const snapshot = snapshots[i];
     if (!isLegacySnapshot(snapshot)) break;
-    entries.push(toDelta(snapshot, after));
+    const entry = toDelta(snapshot, after);
+    if (entry === null) break;
+    entries.push(entry);
     after = snapshot.tiles;
   }
   return entries.reverse();

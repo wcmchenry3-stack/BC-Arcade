@@ -5,7 +5,7 @@
  */
 
 import type { MahjongUndoEntry, SlotTile } from "./types";
-import { tilesBeforeUndo, UNDO_CAP } from "./engine";
+import { UNDO_CAP } from "./engine";
 
 function isRecord(raw: unknown): raw is Record<string, unknown> {
   return raw !== null && typeof raw === "object" && !Array.isArray(raw);
@@ -51,29 +51,28 @@ function isUndoEntry(raw: unknown): raw is MahjongUndoEntry {
   return false;
 }
 
-function uniqueIds(tiles: readonly SlotTile[]): boolean {
-  return new Set(tiles.map((t) => t.id)).size === tiles.length;
-}
+/** The tile ids on a board; its size is the tile count. */
+type BoardIds = Set<number>;
 
 /**
- * The board before `entry`, given the board after it, or null when the entry
- * can't have led to that board: a shuffle keeps the tile count (its
- * `tilesBefore` null when it left the board as it was), a match's indices
- * fit the board, and either way no tile id appears twice.
+ * The ids on the board before `entry`, given those on the board after it, or
+ * null when the entry can't have led to that board: a shuffle keeps the tile
+ * count (its `tilesBefore` null when it left the board as it was), a match's
+ * indices fit the board and its two tiles aren't on it, and no board holds
+ * an id twice. Only ids and a count are kept, never a board per entry.
  */
-function boardBefore(
-  entry: MahjongUndoEntry,
-  after: readonly SlotTile[]
-): readonly SlotTile[] | null {
+function idsBefore(entry: MahjongUndoEntry, after: BoardIds): BoardIds | null {
   if (entry.kind === "shuffle") {
     const before = entry.tilesBefore;
     if (before === null) return after;
-    return before.length === after.length && uniqueIds(before) ? before : null;
+    const ids = new Set(before.map((t) => t.id));
+    return before.length === after.size && ids.size === before.length ? ids : null;
   }
   const [a, b] = entry.removedTiles;
-  if (a.index < 0 || a.index >= b.index || b.index > after.length + 1) return null;
-  const before = tilesBeforeUndo(after, entry);
-  return uniqueIds(before) ? before : null;
+  if (a.index < 0 || a.index >= b.index || b.index > after.size + 1) return null;
+  if (a.tile.id === b.tile.id || after.has(a.tile.id) || after.has(b.tile.id)) return null;
+  after.add(a.tile.id).add(b.tile.id);
+  return after;
 }
 
 /**
@@ -86,12 +85,13 @@ export function loadUndoEntries(
   tiles: readonly SlotTile[]
 ): MahjongUndoEntry[] {
   let start = raw.length;
-  let board: readonly SlotTile[] | null = tiles;
+  let ids: BoardIds | null = new Set(tiles.map((t) => t.id));
+  if (ids.size !== tiles.length) return [];
   while (start > 0 && raw.length - start < UNDO_CAP) {
     const entry = raw[start - 1];
     if (!isUndoEntry(entry)) break;
-    board = boardBefore(entry, board);
-    if (board === null) break;
+    ids = idsBefore(entry, ids);
+    if (ids === null) break;
     start--;
   }
   return raw.slice(start) as MahjongUndoEntry[];

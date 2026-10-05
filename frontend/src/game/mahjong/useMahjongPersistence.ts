@@ -8,7 +8,8 @@
  * changed or cleared (`saveStands`), so a relaunch never restores a stale
  * selection. A running or a paused clock with the same banked time load the
  * same way (`clockOnLoad`: under way, restarted from the load). A game just
- * read from storage is already saved (`adoptSaved`): a load costs no write.
+ * read from storage is already saved (`adoptSaved`): `loadGame` itself writes
+ * back a save it had to normalise, so the hook writes nothing for a load.
  * A change made while the clock runs (a match, an undo, a shuffle) is written
  * `SAVE_DEBOUNCE_MS` after the last such change, so a run of quick matches
  * is one write. Any other change (a new deal, a pause, the clock stopping at
