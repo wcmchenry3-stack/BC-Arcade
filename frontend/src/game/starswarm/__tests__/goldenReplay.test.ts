@@ -140,24 +140,39 @@ function replay(sc: Scenario) {
   }
 }
 
+type Recorded = ReturnType<typeof replay>;
+
+const UPDATE = process.env.UPDATE_GOLDEN === "1";
+
 describe("Star Swarm golden seeded replay (seed 42)", () => {
-  const recorded = SCENARIOS.map(replay);
+  // Read in beforeAll and replay inside each case (not at collection time), so `-t` filtering
+  // skips the replays and an engine exception fails that case instead of the whole suite.
+  let golden: Recorded[] = [];
+  const recorded = new Map<string, Recorded>();
 
-  if (process.env.UPDATE_GOLDEN === "1") {
+  beforeAll(() => {
+    if (!UPDATE) golden = JSON.parse(fs.readFileSync(FIXTURE, "utf8")) as Recorded[];
+  });
+
+  afterAll(() => {
+    // Re-record only from a full run, so a filtered run can never write a partial fixture.
+    if (!UPDATE || recorded.size !== SCENARIOS.length) return;
     fs.mkdirSync(path.dirname(FIXTURE), { recursive: true });
-    fs.writeFileSync(FIXTURE, JSON.stringify(recorded, null, 2) + "\n");
-  }
-
-  const golden = JSON.parse(fs.readFileSync(FIXTURE, "utf8")) as typeof recorded;
+    const all = SCENARIOS.map((sc) => recorded.get(sc.name));
+    fs.writeFileSync(FIXTURE, JSON.stringify(all, null, 2) + "\n");
+  });
 
   it("covers the same scenarios as the fixture", () => {
-    expect(recorded.map((r) => r.name)).toEqual(golden.map((g) => g.name));
+    if (UPDATE) return;
+    expect(SCENARIOS.map((sc) => sc.name)).toEqual(golden.map((g) => g.name));
   });
 
   it.each(SCENARIOS.map((sc, i) => [sc.name, i] as const))(
     "%s replays byte-identically",
-    (_name, i) => {
-      expect(recorded[i]).toEqual(golden[i]);
+    (name, i) => {
+      const run = replay(SCENARIOS[i]!);
+      recorded.set(name, run);
+      if (!UPDATE) expect(run).toEqual(golden[i]);
     }
   );
 });
