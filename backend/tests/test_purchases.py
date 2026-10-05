@@ -1322,3 +1322,40 @@ async def test_delete_my_data_churn_cannot_reset_link_caps(
     r = post_apple(client, new_sid(), "churn", source="restore")
     assert r.status_code == 409 and r.json()["detail"] == "link_limit"
     assert await count(PurchaseEvent, PurchaseEvent.kind == "link_rejected") == 2
+
+
+async def test_losing_the_first_insert_race_refreshes_the_winners_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two requests record the same new store transaction at once: one row results,
+    and the loser reports the winner's state as the previous one."""
+    factory = get_session_factory()
+
+    async def rival_records_pending() -> None:
+        async with factory() as rival:
+            pending = verified("race", state="pending", event_at=datetime(2026, 9, 1, tzinfo=UTC))
+            await purchase_service.upsert_purchase(rival, pending, "hearts")
+            await rival.commit()
+
+    async with factory() as db:
+        real_flush = db.flush
+        raced = False
+
+        async def flush_after_rival_commits() -> None:
+            nonlocal raced
+            if not raced:
+                raced = True
+                await rival_records_pending()
+            await real_flush()
+
+        monkeypatch.setattr(db, "flush", flush_after_rival_commits)
+        # Newer than the rival's answer, so it is not dropped as stale.
+        owned = verified("race", state="owned", event_at=datetime(2026, 9, 2, tzinfo=UTC))
+        purchase, previous = await purchase_service.upsert_purchase(db, owned, "hearts")
+        await db.commit()
+
+    assert previous == "pending"
+    assert purchase.state == "owned"
+    async with factory() as db:
+        rows = (await db.execute(select(Purchase).where(Purchase.store_key == "race"))).scalars()
+        assert [r.state for r in rows] == ["owned"]

@@ -7,6 +7,9 @@ games' result tests.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import Any, cast
+
 import pytest
 from pydantic import ValidationError
 
@@ -90,3 +93,27 @@ def test_reported_result_drives_the_daily_challenge_goals() -> None:
     assert [_met(win_in_5, t) for t in ("easy", "medium", "hard")] == [True, True, False]
     assert [_met(loss, t) for t in ("easy", "medium", "hard")] == [True, False, False]
     assert [_met(abandoned, t) for t in ("easy", "medium", "hard")] == [False, False, False]
+
+
+# ---------------------------------------------------------------------------
+# reconcile_result (#2541): the early exits that need no guess record
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("result", "metadata"),
+    [
+        ({"is_complete": True, "won": True}, {"puzzle_id": "2026-09-20:en"}),  # no count
+        ({"guesses_used": "3"}, {"puzzle_id": "2026-09-20:en"}),  # count is not an int
+        ({"guesses_used": 3}, {}),  # creation metadata names no puzzle
+        ({"guesses_used": 3}, None),  # no creation metadata at all
+        ({"guesses_used": 3}, {"puzzle_id": 20260920}),  # puzzle id is not a string
+    ],
+)
+async def test_reconcile_leaves_a_result_it_cannot_check_untouched(
+    result: dict, metadata: dict | None
+) -> None:
+    game = SimpleNamespace(session_id="s", game_metadata=metadata)
+    # The session is never touched on these paths, so none is needed.
+    out = await module.reconcile_result(cast(Any, None), cast(Any, game), dict(result))
+    assert out == result
