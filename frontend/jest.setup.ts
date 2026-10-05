@@ -63,7 +63,9 @@ jest.mock("react-native-reanimated", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { View, Text } = require("react-native");
 
-  const sharedValue = (init: unknown) => ({ value: init });
+  // Stable for the component's lifetime, like the real hook: a write from a gesture handler or a
+  // UI-thread callback captured in one render is still there on the next (#2956).
+  const useStableSharedValue = (init: unknown) => React.useState(() => ({ value: init }))[0];
   const noopAnim = (v: unknown) => v;
 
   const createAnimatedComponent = (Component: React.ComponentType) => {
@@ -85,7 +87,7 @@ jest.mock("react-native-reanimated", () => {
       createAnimatedComponent,
     },
     // Named exports used directly in AnimatedTile.tsx
-    useSharedValue: sharedValue,
+    useSharedValue: useStableSharedValue,
     useAnimatedStyle: (fn: () => object) => fn(),
     useAnimatedProps: (fn: () => object) => fn(),
     withTiming: noopAnim,
