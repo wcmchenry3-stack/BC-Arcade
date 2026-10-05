@@ -21,13 +21,13 @@ from db.models import Game, Player
 from games import leaderboard
 from limiter import _real_ip, limiter, session_key
 from starswarm.models import DEFAULT_DIFFICULTY_TIER
+from tests.conftest import session_headers as _headers
 from tests.test_generic_leaderboard import (
     SECRET_SID,
     _assert_logged_safely,
     _FailingDB,
     _finished_game,
     _grant_all,
-    _headers,
     _patched_board,
     _seed,
     _set_name,

@@ -11,8 +11,6 @@ Acceptance criteria:
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -23,14 +21,6 @@ from tests.conftest import session_headers as _headers
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 async def _grant(session_id: str, game_slug: str) -> None:

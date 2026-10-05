@@ -144,14 +144,6 @@ needs_db = pytest.mark.skipif(
 )
 
 
-@pytest.fixture()
-def client():
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
 async def _entitled_sid() -> str:
     sid = str(uuid.uuid4())
     async with get_session_factory()() as db:

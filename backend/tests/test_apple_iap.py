@@ -97,14 +97,6 @@ def make_verifier(
 
 
 @pytest.fixture()
-def client() -> Iterator[TestClient]:
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-@pytest.fixture()
 def use_verifier() -> Iterator:
     """Install a verifier as the configured one (both the dependency and the webhook)."""
 

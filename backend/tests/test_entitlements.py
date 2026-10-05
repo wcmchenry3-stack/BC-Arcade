@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
 from datetime import datetime, timezone
 
 import jwt
@@ -11,14 +10,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from entitlements import service as entitlements_service
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 def _headers(sid: str) -> dict[str, str]:

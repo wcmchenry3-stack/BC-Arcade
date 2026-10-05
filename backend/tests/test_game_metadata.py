@@ -15,6 +15,7 @@ from games.schemas import CreateGameRequest
 from hearts.models import HeartsMetadata
 from solitaire.models import SolitaireMetadata
 from sudoku.models import SudokuMetadata
+from tests.conftest import session_headers as _headers
 
 # ---------------------------------------------------------------------------
 # BlackjackMetadata unit tests
@@ -343,7 +344,6 @@ async def test_post_games_valid_cascade_metadata_accepted(client) -> None:
 from datetime import timedelta, timezone
 
 from games.service import _validate_client_timestamp
-from tests.conftest import session_headers as _headers
 
 
 def _now():

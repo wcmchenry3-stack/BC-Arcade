@@ -13,10 +13,8 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 
-import pytest
 from fastapi.testclient import TestClient
 
 from games.legacy_outcomes import win_update
@@ -270,14 +268,6 @@ def test_offline_sql_is_one_update_per_game(migration_db: MigrationDb) -> None:
 # ---------------------------------------------------------------------------
 
 _T0 = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 async def _add(

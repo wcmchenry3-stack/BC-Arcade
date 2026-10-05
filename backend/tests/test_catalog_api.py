@@ -2,20 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-
 import pytest
 from fastapi.testclient import TestClient
 
 _ADMIN_TOKEN = "test-admin-token-1150"
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 @pytest.fixture(autouse=True)

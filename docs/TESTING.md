@@ -64,7 +64,11 @@ backend/tests/
 - API tests use FastAPI's `TestClient` (no running server needed).
 - Each test file has an `autouse` fixture that resets in-memory state before/after each test.
 - Game logic tests set `game.dice` and `game.rolls_used` directly to avoid randomness.
-- Shared fixtures live in `tests/conftest.py` (`client`, `session_id`, `session_headers`, `migration_db`); helpers for migration tests live in `tests/_migration_helpers.py`. Fixtures resolve by name, so a test file only defines its own when it needs a different shape (a local definition overrides the shared one). `session_headers` is a plain function, imported with `from tests.conftest import session_headers`. `migration_db` yields `(db_path, alembic)`; call `alembic("upgrade", rev)` to run the CLI against that scratch SQLite file.
+- Shared fixtures live in `tests/conftest.py`; helpers for migration tests live in `tests/_migration_helpers.py`. Fixtures resolve by name, so a test file defines its own only when it needs a different shape (a local definition overrides the shared one):
+  - `client`: the app under `TestClient` with its lifespan running.
+  - `session_id`: a fresh UUID string.
+  - `session_headers(sid)`: a plain function (not a fixture) returning the JSON request headers; import it with `from tests.conftest import session_headers`.
+  - `migration_db`: returns a `MigrationDb` named tuple `(db_path, alembic)`; `alembic("upgrade", rev)` runs the CLI against that scratch SQLite file.
 
 ---
 

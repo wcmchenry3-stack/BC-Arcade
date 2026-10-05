@@ -16,8 +16,6 @@ from __future__ import annotations
 
 import functools
 import os
-import subprocess
-import sys
 import tempfile
 import uuid
 from collections.abc import Iterator
@@ -26,6 +24,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from tests._alembic_heads import multiple_heads_message, script_heads
 from tests._migration_helpers import MigrationDb, run_alembic
 
 _TEST_DB_FILE: Path | None = None
@@ -62,18 +61,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
     # Run alembic upgrade head using the sync sqlite URL (env.py strips the
     # +aiosqlite driver). We invoke the CLI so the stock alembic.ini loads.
-    from tests._alembic_heads import BACKEND
-
-    env = os.environ.copy()
-    env["DATABASE_URL"] = f"sqlite:///{db_path}"
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=BACKEND,
-        env=env,
-        check=False,  # handled below, with Alembic's stderr in the message
-        capture_output=True,
-        text=True,
-    )
+    result = run_alembic(db_path, "upgrade", "head", check=False)
     if result.returncode != 0:
         # The output is captured, so without this a failing migration shows
         # only an exit status. Stop the run with Alembic's own error.
@@ -95,8 +83,6 @@ def _stop_unless_single_alembic_head() -> None:
     naming a missing revision) raises here, so that is caught and reported too
     rather than ending in an INTERNALERROR traceback.
     """
-    from tests._alembic_heads import multiple_heads_message, script_heads
-
     try:
         heads = script_heads()
     except Exception as exc:  # noqa: BLE001 — any failure to load the graph stops the run
@@ -175,10 +161,10 @@ async def _clean_db_tables():
 
 @pytest.fixture()
 def client() -> Iterator[TestClient]:
-    """The app under ``TestClient`` with its lifespan running, against the test DB."""
-    from db.base import is_configured
+    """The app under ``TestClient`` with its lifespan running, against the test DB.
 
-    assert is_configured()
+    ``pytest_configure`` guarantees ``DATABASE_URL``, so no configured-check here.
+    """
     from main import app
 
     with TestClient(app) as c:

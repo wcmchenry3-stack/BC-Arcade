@@ -18,7 +18,6 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -29,14 +28,6 @@ from fastapi.testclient import TestClient
 def _today_puzzle_id(tz_offset_minutes: int = 0, lang: str = "en") -> str:
     local_ts = datetime.now(timezone.utc) + timedelta(minutes=tz_offset_minutes)
     return f"{local_ts.strftime('%Y-%m-%d')}:{lang}"
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 def _sid_headers(sid: str | None = None) -> dict[str, str]:
