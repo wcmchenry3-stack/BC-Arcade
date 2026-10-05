@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -111,7 +111,7 @@ async def test_create_game_cross_session_raises(db):
 
 async def test_create_game_started_at_in_window_accepted(db):
     sid = _sid()
-    started = datetime(2026, 5, 1, 12, 0, 0, tzinfo=timezone.utc)
+    started = datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC)
     g = await create_game(
         db,
         session_id=sid,
@@ -127,7 +127,7 @@ async def test_create_game_started_at_in_window_accepted(db):
 
 async def test_create_game_started_at_out_of_window_ignored(db):
     sid = _sid()
-    started = datetime(2020, 1, 1, tzinfo=timezone.utc)  # over 1 year ago
+    started = datetime(2020, 1, 1, tzinfo=UTC)  # over 1 year ago
     g = await create_game(
         db,
         session_id=sid,
@@ -497,7 +497,7 @@ async def test_complete_game_cross_session_raises(db):
 async def test_complete_game_completed_at_in_window_accepted(db):
     sid = _sid()
     game = await _make_game(db, sid)
-    ts = datetime(2026, 5, 14, 10, 0, 0, tzinfo=timezone.utc)
+    ts = datetime(2026, 5, 14, 10, 0, 0, tzinfo=UTC)
     g = await complete_game(
         db,
         game_id=game.id,
@@ -589,7 +589,7 @@ async def test_list_games_cursor_filters_results(db):
     sid = _sid()
     # Pin explicit timestamps so ordering is deterministic regardless of
     # SQLite clock precision — each game is 1 hour older than the previous.
-    base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
     for i in range(4):
         await _make_game(db, sid, started_at=base - timedelta(hours=i))
     # Descending order: base, base-1h, base-2h, base-3h

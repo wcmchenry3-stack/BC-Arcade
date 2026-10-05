@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["scripts/*.mjs", "scripts/*.js", "App.tsx"],
+  "project": ["src/**/*.{ts,tsx}", "scripts/*.{js,mjs}"],
+  "ignore": [
+    "src/screens/__dev__/**",
+    "**/*.web.tsx",
+    "**/*.web.ts",
+    // CI-only simulators; relocated by #2969
+    "src/game/*/sim/**",
+    "src/game/yacht/oracleBuild/**"
+  ],
+  "ignoreExportsUsedInFile": true
+}

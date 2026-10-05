@@ -341,7 +341,7 @@ async def test_post_games_valid_cascade_metadata_accepted(client) -> None:
 # _validate_client_timestamp unit tests (#659)
 # ---------------------------------------------------------------------------
 
-from datetime import timedelta, timezone
+from datetime import UTC, timedelta
 
 from games.service import _validate_client_timestamp
 
@@ -349,7 +349,7 @@ from games.service import _validate_client_timestamp
 def _now():
     from datetime import datetime
 
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def test_validate_timestamp_within_window_returns_ts():

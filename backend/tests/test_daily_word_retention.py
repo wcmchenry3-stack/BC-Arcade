@@ -7,7 +7,7 @@ import logging
 import pathlib
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,7 +18,7 @@ from daily_word.retention import RETENTION, prune_expired_progress, run_retentio
 from db.base import get_session_factory
 from db.models import DailyWordProgress
 
-NOW = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
 
 
 async def _add(session_id: str, updated_at: datetime) -> None:
@@ -71,7 +71,7 @@ def test_retention_outlasts_the_offline_sync_window() -> None:
     twice as long."""
     ttl = _offline_queue_ttl()
     assert ttl >= timedelta(days=1), f"implausible TTL parsed: {ttl}"
-    assert RETENTION >= ttl * 2, f"retention {RETENTION} is under twice the queue TTL {ttl}"
+    assert ttl * 2 <= RETENTION, f"retention {RETENTION} is under twice the queue TTL {ttl}"
 
 
 async def test_prune_deletes_only_rows_past_retention() -> None:

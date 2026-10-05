@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
 
@@ -44,35 +44,35 @@ from tests._helpers import session_headers as _headers
 
 
 def test_local_day_at_utc() -> None:
-    now = datetime(2026, 10, 9, 15, 30, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 9, 15, 30, tzinfo=UTC)
     day = local_day(0, now)
     assert day.date == date(2026, 10, 9)
-    assert day.start_utc == datetime(2026, 10, 9, tzinfo=timezone.utc)
-    assert day.end_utc == datetime(2026, 10, 10, tzinfo=timezone.utc)
+    assert day.start_utc == datetime(2026, 10, 9, tzinfo=UTC)
+    assert day.end_utc == datetime(2026, 10, 10, tzinfo=UTC)
 
 
 def test_local_day_west_of_utc_is_still_yesterday() -> None:
     # 03:00 UTC is 20:00 the previous evening in UTC-7.
-    now = datetime(2026, 10, 9, 3, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 9, 3, 0, tzinfo=UTC)
     day = local_day(-420, now)
     assert day.date == date(2026, 10, 8)
-    assert day.start_utc == datetime(2026, 10, 8, 7, 0, tzinfo=timezone.utc)
-    assert day.end_utc == datetime(2026, 10, 9, 7, 0, tzinfo=timezone.utc)
+    assert day.start_utc == datetime(2026, 10, 8, 7, 0, tzinfo=UTC)
+    assert day.end_utc == datetime(2026, 10, 9, 7, 0, tzinfo=UTC)
     assert day.start_utc <= now < day.end_utc
 
 
 def test_local_day_east_of_utc_is_already_tomorrow() -> None:
     # 20:00 UTC is 01:30 the next morning in UTC+5:30.
-    now = datetime(2026, 10, 9, 20, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 9, 20, 0, tzinfo=UTC)
     day = local_day(330, now)
     assert day.date == date(2026, 10, 10)
-    assert day.start_utc == datetime(2026, 10, 9, 18, 30, tzinfo=timezone.utc)
+    assert day.start_utc == datetime(2026, 10, 9, 18, 30, tzinfo=UTC)
     assert day.start_utc <= now < day.end_utc
 
 
 @pytest.mark.parametrize("offset", [-840, -1, 0, 1, 840])
 def test_local_day_window_always_contains_now(offset: int) -> None:
-    now = datetime(2026, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+    now = datetime(2026, 12, 31, 23, 59, 59, tzinfo=UTC)
     day = local_day(offset, now)
     assert day.start_utc <= now < day.end_utc
     assert day.end_utc - day.start_utc == timedelta(days=1)
@@ -509,7 +509,7 @@ def test_today_is_public_and_describes_the_goals(client: TestClient) -> None:
     today = local_day(0)
     assert body["challenge_id"] == today.date.isoformat()
     assert body["template_id"] == template_for(today.date).id
-    assert datetime.fromisoformat(body["resets_at"].replace("Z", "+00:00")) == today.end_utc
+    assert datetime.fromisoformat(body["resets_at"]) == today.end_utc
     assert len(body["goals"]) == GOALS_PER_DAY
     assert body["goals"][0]["game_type"] == ALWAYS_PRESENT
     for goal in body["goals"]:
@@ -709,7 +709,7 @@ def test_other_sessions_and_other_games_do_not_count(
 
 @needs_db
 async def test_only_games_inside_the_local_day_count(fixed_template: Template) -> None:
-    now = datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
     day = local_day(-420, now)  # 07:00 UTC Oct 9 → 07:00 UTC Oct 10
     factory = get_session_factory()
 
@@ -919,7 +919,7 @@ async def test_slate_resolution_is_one_statement(two_slates: Template) -> None:
 
 @needs_db
 async def test_status_reports_and_uses_the_resolved_slate(two_slates: Template) -> None:
-    now = datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
     free, entitled = str(uuid.uuid4()), str(uuid.uuid4())
     await _grant(entitled, "yacht", "starswarm")
     factory = get_session_factory()

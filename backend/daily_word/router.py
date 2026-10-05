@@ -39,7 +39,7 @@ import json
 import logging
 import time
 import unicodedata
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import sentry_sdk
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -117,12 +117,12 @@ def _score_guess(answer: str, guess: str) -> list[dict]:
     tiles = [{"letter": c, "status": "absent"} for c in guess]
     answer_chars: list[str | None] = list(answer)
 
-    for i, (g, a) in enumerate(zip(guess, answer)):
+    for i, (g, a) in enumerate(zip(guess, answer, strict=False)):
         if g == a:
             tiles[i]["status"] = "correct"
             answer_chars[i] = None
 
-    for i, tile in enumerate(tiles):
+    for tile in tiles:
         if tile["status"] == "correct":
             continue
         c = tile["letter"]
@@ -195,15 +195,15 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
 
     try:
         date_str, lang = body.puzzle_id.rsplit(":", 1)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
 
     if lang not in _SUPPORTED_LANGS:
         raise HTTPException(status_code=422, detail="invalid_puzzle_id")
 
     # 1-minute grace so guesses submitted just before midnight aren't rejected by
     # server/client clock drift when the server evaluates them just after midnight.
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.now(UTC)
     local_ts = now_utc + timedelta(minutes=body.tz_offset_minutes)
     grace_ts = local_ts - timedelta(minutes=1)
     if date_str not in {local_ts.strftime("%Y-%m-%d"), grace_ts.strftime("%Y-%m-%d")}:
@@ -211,8 +211,8 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
 
     try:
         answer = get_answer(body.puzzle_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
 
     guess = body.guess.lower()  # no-op for Devanagari; NFC handles Hindi normalisation
     if lang == "hi":
@@ -300,8 +300,8 @@ async def get_answer_route(
     # 422 rather than 400, keeping the pre-#2197 contract for that case.
     try:
         answer = get_answer(puzzle_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
 
     sid = get_session_id(request)
     factory = get_session_factory()

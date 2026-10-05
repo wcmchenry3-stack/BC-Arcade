@@ -12,7 +12,7 @@ fail on the primary key.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,7 +35,7 @@ async def join_leaderboards(db: AsyncSession, session_id: str) -> str:
     A player who has already joined keeps the name they have, so replays of
     the app's offline sync change nothing.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     stmt = (
         dialect_insert(db, Player)
         .values(
@@ -66,7 +66,7 @@ async def reroll_display_name(db: AsyncSession, session_id: str) -> str | None:
     await db.execute(
         update(Player)
         .where(Player.session_id == session_id)
-        .values(display_name=name, updated_at=datetime.now(timezone.utc))
+        .values(display_name=name, updated_at=datetime.now(UTC))
     )
     return name
 

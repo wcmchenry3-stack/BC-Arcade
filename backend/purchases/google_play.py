@@ -31,7 +31,7 @@ import os
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -75,7 +75,7 @@ ACK_BACKOFF_S: tuple[float, ...] = (0.5, 2.0)
 # possible event time: it can never be ordered after a real store event, and
 # a completion read later always applies (no clock-skew race with our own
 # request time). See "Event ordering" in IAP.md §7.6.
-PENDING_EVENT_AT = datetime(1970, 1, 1, tzinfo=timezone.utc)
+PENDING_EVENT_AT = datetime(1970, 1, 1, tzinfo=UTC)
 
 # ProductPurchaseV2 enum values (Android Publisher v3 discovery document).
 PURCHASED = "PURCHASED"
@@ -358,12 +358,12 @@ def parse_rfc3339(value: object) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))  # noqa: FURB162
     except ValueError:
         return None
     if parsed.tzinfo is None:
         return None
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(UTC)
 
 
 def parse_millis(value: object) -> datetime | None:
@@ -377,7 +377,7 @@ def parse_millis(value: object) -> datetime | None:
     if ms <= 0:
         return None
     try:
-        return datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+        return datetime.fromtimestamp(ms / 1000, tz=UTC)
     except (OverflowError, OSError, ValueError):
         return None
 

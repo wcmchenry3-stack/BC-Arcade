@@ -18,7 +18,7 @@ import logging
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import sentry_sdk
@@ -59,7 +59,7 @@ def _validate_client_timestamp(ts: datetime, now: datetime) -> datetime | None:
     back to server-side stamping rather than poisoning the history table.
     """
     if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
+        ts = ts.replace(tzinfo=UTC)
     if ts < now - _TS_WINDOW_LOW or ts > now + _TS_WINDOW_HIGH:
         return None
     return ts
@@ -125,7 +125,7 @@ async def create_game(
                 raise GameServiceError(403, "Game belongs to a different session.")
             return existing
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     game = Game(
         id=client_id or uuid.uuid4(),
         session_id=session_id,
@@ -270,7 +270,7 @@ async def sweep_stale_games(
     no scheduler is needed. Sessions that never call those again keep their open
     rows; leaderboards never read open rows, so that gap only affects analytics.
     """
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     dialect = dialect_name(session)
     if dialect == "sqlite":
         # SQLite stores DateTime as text, and the ORM writes it as
@@ -855,7 +855,7 @@ async def complete_game(
             final_score = derive_final_score(final_score, outcome, validated_result)
         except ValueError as e:
             _report_rejected_result(name, "final_score mismatch", {"outcome": outcome})
-            raise GameServiceError(400, f"Invalid final_score for {name}: {e}")
+            raise GameServiceError(400, f"Invalid final_score for {name}: {e}") from e
     # The board's caps and value types (#2618, absorbs #2215).
     violation = check_completion_limits(name, mod, game, final_score, validated_result)
     if violation is not None:
@@ -864,7 +864,7 @@ async def complete_game(
         )
         raise GameServiceError(400, violation.detail)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     valid_completed_at = _validate_client_timestamp(completed_at, now) if completed_at else None
     game.completed_at = valid_completed_at if valid_completed_at is not None else now
     game.final_score = final_score
@@ -931,7 +931,7 @@ async def _validate_result(
             "invalid result",
             {"fields": fields, "error_types": sorted({err["type"] for err in errors})},
         )
-        raise GameServiceError(400, f"Invalid result for {name}: {fields}")
+        raise GameServiceError(400, f"Invalid result for {name}: {fields}") from e
     # Optional per-game hook: correct a validated result against server-side
     # state the client cannot be trusted on (Daily Word's guess record, #2541).
     reconcile = getattr(mod, "reconcile_result", None)

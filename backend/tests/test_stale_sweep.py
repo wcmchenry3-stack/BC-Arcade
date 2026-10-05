@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -28,14 +28,14 @@ pytestmark = pytest.mark.skipif(
     reason="DATABASE_URL not set — skipping stale-sweep tests",
 )
 
-_NOW = datetime.now(timezone.utc)
+_NOW = datetime.now(UTC)
 
 
 def _utc(ts: datetime | None) -> datetime | None:
     """SQLite hands timestamps back naive; they are UTC."""
     if ts is None or ts.tzinfo is not None:
         return ts
-    return ts.replace(tzinfo=timezone.utc)
+    return ts.replace(tzinfo=UTC)
 
 
 async def _add(

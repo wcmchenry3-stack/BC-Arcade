@@ -153,7 +153,7 @@ class BoardDefinition(BaseModel):
     enabled: bool = True
 
     @model_validator(mode="after")
-    def _check_consistency(self) -> BoardDefinition:
+    def _check_consistency(self) -> BoardDefinition:  # noqa: C901, PLR0912  # see #2951
         if len(set(self.partitions)) != len(self.partitions):
             raise ValueError(f"duplicate partition keys: {self.partitions}")
 

@@ -38,7 +38,7 @@ previous schema.
 
 import secrets
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 
@@ -122,7 +122,7 @@ def upgrade() -> None:
         bind.execute(
             _players.delete().where(_players.c.session_id.in_(defaults[start : start + _BATCH]))
         )
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     stmt = (
         _players.update()
         .where(_players.c.session_id == sa.bindparam("sid"))

@@ -29,6 +29,10 @@ jobs:
     uses: wcmchenry3-stack/.github/.github/workflows/called-lint-python.yml@main
     with:
       working-directory: backend
+      # Keep in lockstep with backend/requirements-dev.txt (the reusable workflow's
+      # default ruff is older and would disagree with the local pin). black's default
+      # (26.5.1) already matches requirements-dev.txt.
+      ruff-version: "0.16.8"
     secrets: inherit
 
   lint-frontend:
@@ -591,6 +595,59 @@ jobs:
       - name: Check all locale strings are translated
         run: node scripts/check-i18n-strings.js
         working-directory: frontend
+
+  # --- Refactor quality gates (#2951, epic #2950) ---------------------------
+  # Ratchets set at today's numbers so the epic's gains cannot silently regress.
+  # Thresholds and the quarterly lowering schedule: docs/TESTING.md.
+
+  backend-file-length:
+    name: Backend file length (per-file caps, default 800)
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # stdlib-only script: the runner's system python3 is enough
+      - name: Check backend .py files are within their line caps
+        run: python3 scripts/check_file_length.py
+        working-directory: backend
+
+  duplication:
+    name: Duplication (jscpd)
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: jscpd (fails above 2.5% duplicated lines)
+        run: >
+          npx --yes jscpd@4.3.0
+          --threshold 2.5 --min-lines 20 --min-tokens 70
+          --ignore "**/__tests__/**,**/mahjong/layouts/**,**/node_modules/**,**/.venv/**,**/*.generated.*,**/locales/**,**/tests/**,**/alembic/**"
+          --format "typescript,tsx,python"
+          frontend/src backend
+
+  knip:
+    name: Unused code (knip)
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      # warn-only until 2026-11-04, then --strict; see #2951
+      - name: knip
+        run: npx knip --no-progress
+        continue-on-error: true
 
   openai-policy:
     needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]

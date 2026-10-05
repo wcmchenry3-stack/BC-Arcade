@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import itertools
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -122,7 +122,7 @@ async def _player(name: str | None = None) -> str:
 # Ties on level rank by completed_at (#2746). Back-to-back requests can get
 # the same server now(), and a tie on that falls back to the random game id,
 # so every play here sends its own completed_at, one second after the last.
-_T0 = datetime.now(timezone.utc) - timedelta(hours=1)
+_T0 = datetime.now(UTC) - timedelta(hours=1)
 _tick = itertools.count()
 
 

@@ -8,7 +8,7 @@ is used so tests can always verify the signature.
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
@@ -79,7 +79,7 @@ def get_public_key_pem() -> str:
 def issue_token(session_id: str, entitled_games: list[str]) -> tuple[str, datetime]:
     """Sign and return (jwt_string, expires_at)."""
     private_pem, _ = _load_or_generate_keys()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     exp = now + timedelta(hours=TOKEN_TTL_HOURS)
 
     payload: dict[str, Any] = {

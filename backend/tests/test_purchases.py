@@ -17,7 +17,7 @@ import json
 import uuid
 from collections.abc import Iterator
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
@@ -80,7 +80,7 @@ def verified(
         environment=kw.pop("environment", "sandbox" if platform == "apple" else "test"),  # type: ignore[arg-type]
         ownership_type=ownership_type,  # type: ignore[arg-type]
         state=state,  # type: ignore[arg-type]
-        purchased_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        purchased_at=datetime(2026, 9, 1, tzinfo=UTC),
         account_token=account_token,
         **kw,  # type: ignore[arg-type]
     )
@@ -194,15 +194,13 @@ async def entitlement(sid: str, slug: str = "hearts") -> GameEntitlement | None:
 async def backdate_links(days: int) -> None:
     async with get_session_factory()() as db:
         await db.execute(
-            update(PurchaseLink).values(
-                created_at=datetime.now(timezone.utc) - timedelta(days=days)
-            )
+            update(PurchaseLink).values(created_at=datetime.now(UTC) - timedelta(days=days))
         )
         # The caps also count the retained "linked" audit events (S1, #2786).
         await db.execute(
             update(PurchaseEvent)
             .where(PurchaseEvent.kind == "linked")
-            .values(created_at=datetime.now(timezone.utc) - timedelta(days=days))
+            .values(created_at=datetime.now(UTC) - timedelta(days=days))
         )
         await db.commit()
 
@@ -842,8 +840,8 @@ async def test_patch_cannot_change_tier_of_game_with_purchases(
                 game_slug="twenty48",
                 state="owned",
                 environment="test",
-                verified_at=datetime.now(timezone.utc),
-                state_changed_at=datetime.now(timezone.utc),
+                verified_at=datetime.now(UTC),
+                state_changed_at=datetime.now(UTC),
             )
         )
         await db.commit()
@@ -1017,7 +1015,7 @@ async def test_refund_older_than_refund_reversed_is_ignored(
     sid = new_sid()
     fake_apple.answers["1000"] = verified("1000")
     assert post_apple(client, sid, "1000").status_code == 200
-    t0 = datetime.now(timezone.utc)
+    t0 = datetime.now(UTC)
     assert await apply_state(
         "1000", "revoked", reason="REFUND", dedupe_key="n1", event_at=t0 + timedelta(hours=1)
     )
@@ -1057,7 +1055,7 @@ async def test_same_state_notification_advances_watermark_reversal_then_older_re
     else:
         fake_google.answers[key] = verified(key, platform="google")
         assert post_google(client, sid, key).status_code == 200
-    t0 = datetime.now(timezone.utc) + timedelta(minutes=1)
+    t0 = datetime.now(UTC) + timedelta(minutes=1)
 
     async def apply(state: str, dedupe: str, at: datetime) -> bool:
         async with get_session_factory()() as db:
@@ -1107,7 +1105,7 @@ async def test_same_state_notification_advances_watermark_refund_then_older_reve
     else:
         fake_google.answers[key] = verified(key, platform="google")
         assert post_google(client, sid, key).status_code == 200
-    t0 = datetime.now(timezone.utc) + timedelta(minutes=1)
+    t0 = datetime.now(UTC) + timedelta(minutes=1)
 
     async def apply(state: str, dedupe: str, at: datetime) -> bool:
         async with get_session_factory()() as db:
@@ -1133,7 +1131,7 @@ async def test_same_state_client_post_does_not_advance_watermark(
     """A client answer's time may be only when verification started, so a
     same-state post must not hide a real store event signed just before it."""
     sid = new_sid()
-    t0 = datetime.now(timezone.utc)
+    t0 = datetime.now(UTC)
     fake_apple.answers["wm-c"] = verified("wm-c", event_at=t0)
     assert post_apple(client, sid, "wm-c").status_code == 200
     fake_apple.answers["wm-c"] = verified("wm-c", event_at=t0 + timedelta(hours=2))
@@ -1151,7 +1149,7 @@ async def test_stale_owned_answer_after_webhook_revoke_is_ignored(
     sid = new_sid()
     fake_apple.answers["1000"] = verified("1000")
     assert post_apple(client, sid, "1000").status_code == 200
-    revoked_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+    revoked_at = datetime.now(UTC) + timedelta(minutes=5)
     assert await apply_state("1000", "revoked", reason="REFUND", event_at=revoked_at)
 
     # The client's verifier read the store before the refund: its "owned"
@@ -1175,7 +1173,7 @@ async def test_verified_event_time_orders_client_answers(
     client: TestClient, fake_google: FakeGoogleVerifier
 ) -> None:
     sid = new_sid()
-    t0 = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    t0 = datetime(2026, 9, 1, tzinfo=UTC)
     fake_google.answers["gtok"] = verified("gtok", platform="google", event_at=t0)
     assert post_google(client, sid, "gtok").status_code == 200
     stored = (await purchase_row("gtok")).state_changed_at
@@ -1236,7 +1234,7 @@ async def test_owned_never_regresses_to_pending(
     fake_google.answers["gtok"] = verified("gtok", platform="google")
     assert post_google(client, sid, "gtok").json()["status"] == "owned"
     fake_google.answers["gtok"] = verified(
-        "gtok", platform="google", state="pending", event_at=datetime.now(timezone.utc)
+        "gtok", platform="google", state="pending", event_at=datetime.now(UTC)
     )
     with caplog.at_level("WARNING", logger="audit"):
         r = post_google(client, sid, "gtok")

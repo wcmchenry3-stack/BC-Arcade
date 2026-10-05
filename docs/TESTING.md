@@ -2,6 +2,41 @@
 
 See [~/.claude/standards/testing.md](~/.claude/standards/testing.md) for universal conventions (coverage thresholds, what not to test, accessible query priority).
 
+## Quality gates and ratchet schedule
+
+Cheap ratchets added for the refactor epic (#2950, issue #2951). They are set at today's numbers so the epic's gains cannot silently regress. Run the same commands locally before opening a PR.
+
+| Gate                      | Where                                                                      | Threshold (today)                                                                                                                         | Blocking?                                  |
+| ------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| ruff complexity / bugbear | `backend/pyproject.toml` (`extend-select`, `[tool.ruff.lint.mccabe]`)      | `B`, `C901`, `RUF`, `PLR0912`, `PLR0915`, `SIM`, `UP`; `max-complexity = 12`. Offenders carry `# noqa: C901  # see #2951`                  | Yes (`lint-python`)                        |
+| Backend file length       | `backend/scripts/check_file_length.py`, CI job `backend-file-length`       | 800 lines per `.py` (excl. `tests/`, `alembic/`, `.venv/`). Per-file `CAPS` for the two files already over 800 (today's counts, so they cannot grow): `games/service.py` 1005 (#2991), `purchases/google_notifications.py` 813 (#2998) | Yes                                        |
+| eslint `max-lines`        | `frontend/eslint.config.js`                                                | 800 lines (skip blanks/comments) for `src/**` excl. `__tests__`. The 11 files already over 800 effective lines are `warn` in a `files:` override          | Error for new offenders                    |
+| eslint function size      | `frontend/eslint.config.js`                                                | `max-lines-per-function` 150, `complexity` 20                                                                                             | Warn                                       |
+| eslint react-hooks v7     | `frontend/eslint.config.js`                                                | `refs`, `immutability`, `set-state-in-effect`, `purity`, `globals` at `warn`                                                               | Warn                                       |
+| Duplication (jscpd)       | CI job `duplication`                                                       | `--threshold 2.5 --min-lines 20 --min-tokens 70` over `frontend/src backend`                                                              | Yes                                        |
+| Unused code (knip)        | `frontend/knip.json`, CI job `knip`                                        | `npx knip --no-progress` (CI-only `src/game/*/sim/**` and `oracleBuild/**` ignored until #2969)                                                                                                                  | Warn-only until 2026-11-04, then `--strict` |
+
+```bash
+# backend
+cd backend && ruff check . && black --check . && python scripts/check_file_length.py
+# frontend
+cd frontend && npx eslint . && npx knip --no-progress
+# duplication (repo root)
+npx --yes jscpd@4.3.0 --threshold 2.5 --min-lines 20 --min-tokens 70 \
+  --ignore "**/__tests__/**,**/mahjong/layouts/**,**/node_modules/**,**/.venv/**,**/*.generated.*,**/locales/**,**/tests/**,**/alembic/**" \
+  --format "typescript,tsx,python" frontend/src backend
+```
+
+**Ratchet schedule.** Once a quarter, lower the thresholds to the current measured numbers and never raise them:
+
+- ruff `max-complexity` 12, then 10; re-enable the families left out of `extend-select` (`ARG`, `PLR0913`) once their findings are fixed.
+- eslint `max-lines` 800, then 600; `max-lines-per-function` 150, then 100; `complexity` 20, then 15. Remove a file from the `max-lines` warn override in the same PR that splits it.
+- Promote the `react-hooks` v7 rules and the function-size rules from `warn` to `error` once their counts reach zero.
+- jscpd `--threshold` 2.5, then 2.0, then 1.5 (measured at 0.35% when the gate landed with backend `tests/` and `alembic/` excluded, so there is headroom).
+- Flip `knip` to `--strict` (drop `continue-on-error`) after the warn-only window and fix or ignore the remaining findings.
+- Backend file-length `CAPS`: lower or delete each entry as its split lands; an entry fails with "remove <path> from CAPS" once the file is at or under 800.
+- ruff is pinned to 0.16.8 in both `backend/requirements-dev.txt` and the `lint-python` job in `ci.yml`; bump them together.
+
 ## Project-specific test cases
 
 ## Backend

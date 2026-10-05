@@ -1,11 +1,9 @@
 // @ts-check
 const path = require("path");
-const { fixupPluginRules } = require("@eslint/compat");
 const tsPlugin = require("@typescript-eslint/eslint-plugin");
 const tsParser = require("@typescript-eslint/parser");
 const pluginReact = require("eslint-plugin-react");
 const pluginReactHooks = require("eslint-plugin-react-hooks");
-const pluginImport = require("eslint-plugin-import");
 const js = require("@eslint/js");
 const globals = require("globals");
 
@@ -86,7 +84,6 @@ module.exports = [
   {
     files: ["**/*.ts", "**/*.tsx"],
     plugins: {
-      import: fixupPluginRules(pluginImport),
       "bc-arcade": { rules: { "no-game-ui-imports": noGameUiImports } },
     },
     languageOptions: {
@@ -108,17 +105,51 @@ module.exports = [
     rules: {
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
-      // These react-hooks v7 rules are new — disable to match old behaviour
-      "react-hooks/refs": "off",
-      "react-hooks/immutability": "off",
-      "react-hooks/set-state-in-effect": "off",
-      "react-hooks/purity": "off",
-      "react-hooks/globals": "off",
+      // react-hooks v7 rules: warn-only for now (they catch hot-path defects the
+      // refactor epic targets). Fix the warnings, then ratchet to "error" (#2951, #2950).
+      "react-hooks/refs": "warn",
+      "react-hooks/immutability": "warn",
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/purity": "warn",
+      "react-hooks/globals": "warn",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
       "bc-arcade/no-game-ui-imports": "error",
+    },
+  },
+
+  // Complexity quality gates (#2951, epic #2950). Ratchet the numbers down quarterly.
+  {
+    files: ["src/**/*.ts", "src/**/*.tsx"],
+    ignores: ["**/__tests__/**"],
+    rules: {
+      "max-lines": ["error", { max: 800, skipBlankLines: true, skipComments: true }],
+      "max-lines-per-function": ["warn", { max: 150, skipBlankLines: true, skipComments: true }],
+      complexity: ["warn", 20],
+    },
+  },
+
+  // The 11 files over 800 effective lines (blanks/comments skipped) when the gate landed:
+  // warn only, so current PRs still pass. Remove each entry as its split lands
+  // (#2951, epic #2950). Do NOT add new files here.
+  {
+    files: [
+      "src/components/starswarm/GameCanvas.tsx",
+      "src/components/starswarm/GameCanvas.web.tsx",
+      "src/game/starswarm/engine.ts",
+      "src/game/starswarm/sim/balance.ts",
+      "src/screens/CascadeScreen.tsx",
+      "src/screens/DailyWordScreen.tsx",
+      "src/screens/GameScreen.tsx",
+      "src/screens/HeartsScreen.tsx",
+      "src/screens/MahjongScreen.tsx",
+      "src/screens/SolitaireScreen.tsx",
+      "src/screens/StarSwarmScreen.tsx",
+    ],
+    rules: {
+      "max-lines": ["warn", { max: 800, skipBlankLines: true, skipComments: true }],
     },
   },
 ];

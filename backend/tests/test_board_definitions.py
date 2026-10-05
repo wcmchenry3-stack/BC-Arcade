@@ -8,7 +8,7 @@ scoring constants so a constant change fails here until the cap is updated.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -322,7 +322,7 @@ def test_partition_values_fill_every_board_and_nothing_else_ranks(game: str) -> 
                 final_score=1,
                 duration_ms=mod.board.min_value + 1,
                 outcome=qualifying[0] if qualifying else "completed",
-                completed_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                completed_at=datetime(2026, 1, 1, tzinfo=UTC),
                 game_metadata={mod.board.metric: 1, key: value},
             )
             return _unrankable_reason(mod.board, row)
@@ -398,7 +398,7 @@ def test_mahjong_layouts_match_the_app_registry() -> None:
     listed = registry[registry.index("export const LAYOUTS") :]
     app_ids = tuple(re.findall(r'^\s+id:\s*"([a-z0-9_]+)"', listed, re.MULTILINE))
     assert app_ids, "no layout id found in the Mahjong layout registry"
-    assert LAYOUTS == app_ids
+    assert app_ids == LAYOUTS
     assert _board("mahjong").partition_values == (("layout", LAYOUTS),)
     # No default: a row from before #2627 (no layout) ranks on no board.
     assert _board("mahjong").partition_default("layout") is None
@@ -438,7 +438,7 @@ def test_which_mahjong_rows_rank(
         final_score=1220,
         duration_ms=duration_ms,
         outcome=outcome,
-        completed_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        completed_at=datetime(2026, 1, 1, tzinfo=UTC),
         game_metadata={} if layout is None else {"layout": layout},
     )
     got = _unrankable_reason(_board("mahjong"), row)

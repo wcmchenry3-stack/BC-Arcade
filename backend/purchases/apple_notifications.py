@@ -26,7 +26,7 @@ import json
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 import sentry_sdk
@@ -57,7 +57,7 @@ REPLAY_TIMEOUT_S = 300.0
 
 
 def _ms(value: int | None) -> datetime | None:
-    return None if value is None else datetime.fromtimestamp(value / 1000, tz=timezone.utc)
+    return None if value is None else datetime.fromtimestamp(value / 1000, tz=UTC)
 
 
 def _log_event(event: str, **fields: object) -> None:
@@ -157,7 +157,7 @@ async def replay_notification_history(
     """
     if verifier is None or not verifier.has_api:
         return None
-    end = now or datetime.now(timezone.utc)
+    end = now or datetime.now(UTC)
     start = end - window
     result = ReplayResult()
     for env in verifier.api_environments():
