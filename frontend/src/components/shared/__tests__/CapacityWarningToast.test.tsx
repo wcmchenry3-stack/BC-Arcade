@@ -3,6 +3,7 @@ import { AppState, AppStateStatus } from "react-native";
 import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import { CapacityWarningToast } from "../CapacityWarningToast";
 import { ThemeProvider } from "../../../theme/ThemeContext";
+import { eventStore, QueueCounts, StatsListener } from "../../../game/_shared/eventStore";
 
 async function renderWith(
   shouldShowCheck: () => Promise<boolean>,
@@ -207,5 +208,108 @@ describe("CapacityWarningToast", () => {
     });
     // No crash, banner stays hidden.
     expect(queryByTestId("capacity-warning-toast")).toBeNull();
+  });
+
+  // -------------------------------------------------------------------------
+  // Stats subscription instead of polling (#2959)
+  // -------------------------------------------------------------------------
+
+  function queueStats(totalRows: number): QueueCounts {
+    return {
+      totalRows,
+      sizeBytes: totalRows * 100,
+      byLogType: { game_event: totalRows, bug_log: 0 },
+      byPriority: { 0: 0, 1: 0, 2: 0, 3: totalRows },
+    };
+  }
+
+  /** Render with no poll interval (the production default) and a scripted subscription. */
+  async function renderSubscribed(check: (stats?: QueueCounts) => Promise<boolean>) {
+    let emit: StatsListener = () => undefined;
+    const unsubscribe = jest.fn();
+    const subscribe = jest.fn((listener: StatsListener) => {
+      emit = listener;
+      return unsubscribe;
+    });
+    const view = await render(
+      <ThemeProvider>
+        <CapacityWarningToast shouldShowCheck={check} subscribe={subscribe} />
+      </ThemeProvider>
+    );
+    return { ...view, subscribe, unsubscribe, emit: (stats: QueueCounts) => emit(stats) };
+  }
+
+  it("subscribes to queue stats, re-checks on each change with them, and never polls", async () => {
+    jest.useFakeTimers();
+    try {
+      const check = jest
+        .fn<Promise<boolean>, [QueueCounts?]>()
+        .mockResolvedValueOnce(false) // mount
+        .mockResolvedValue(true); // after a change
+      const { queryByTestId, subscribe, unsubscribe, emit, unmount } =
+        await renderSubscribed(check);
+      await flush();
+      expect(subscribe).toHaveBeenCalledTimes(1);
+      expect(check).toHaveBeenCalledTimes(1);
+      expect(queryByTestId("capacity-warning-toast")).toBeNull();
+
+      // No timer: a minute passes without another check.
+      await act(async () => {
+        jest.advanceTimersByTime(60_000);
+      });
+      await flush();
+      expect(check).toHaveBeenCalledTimes(1);
+
+      // The queue changes: one check, handed the stats that changed.
+      await act(async () => {
+        emit(queueStats(90));
+      });
+      await flush();
+      expect(check).toHaveBeenCalledTimes(2);
+      expect(check).toHaveBeenLastCalledWith(queueStats(90));
+      expect(queryByTestId("capacity-warning-toast")).toBeTruthy();
+
+      await unmount();
+      expect(unsubscribe).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("without polling, a return to the foreground still checks once", async () => {
+    const check = jest.fn<Promise<boolean>, [QueueCounts?]>().mockResolvedValue(false);
+    await renderSubscribed(check);
+    await flush();
+    expect(check).toHaveBeenCalledTimes(1);
+    const listener = (AppState.addEventListener as jest.Mock).mock.calls[0][1] as (
+      s: AppStateStatus
+    ) => void;
+
+    await act(() => {
+      listener("background");
+    });
+    await flush();
+    expect(check).toHaveBeenCalledTimes(1);
+
+    await act(() => {
+      listener("active");
+    });
+    await flush();
+    expect(check).toHaveBeenCalledTimes(2);
+  });
+
+  it("subscribes to eventStore.onStats by default", async () => {
+    const onStats = jest.spyOn(eventStore, "onStats");
+    try {
+      const { unmount } = await render(
+        <ThemeProvider>
+          <CapacityWarningToast shouldShowCheck={() => Promise.resolve(false)} />
+        </ThemeProvider>
+      );
+      expect(onStats).toHaveBeenCalledTimes(1);
+      await unmount();
+    } finally {
+      onStats.mockRestore();
+    }
   });
 });

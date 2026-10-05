@@ -11,6 +11,7 @@
 import React, { createContext, useContext, useEffect, useRef } from "react";
 import { AppState, AppStateStatus } from "react-native";
 import * as Sentry from "@sentry/react-native";
+import { isAppInterrupted } from "./appInterrupted";
 import { NetworkStatus, useNetworkStatus } from "./useNetworkStatus";
 import { clearLegacyScoreQueue } from "./legacyScoreQueue";
 import { flushDisplayNameSync, syncDisplayNameOnLaunch } from "./displayNameSync";
@@ -53,16 +54,17 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
       Sentry.captureException(e, { tags: { subsystem: "displayNameSync", op: "launch" } });
     });
     const unregisterTestHooks = registerLogstoreTestHooks();
+    // SyncWorker pauses and resumes its own interval on AppState and flushes
+    // on return to active (#2959). The flush here stays beside the name sync;
+    // it is a no-op while the worker's own foreground flush is in progress.
     const appStateSub = AppState.addEventListener("change", (next: AppStateStatus) => {
-      if (next === "background" || next === "inactive") {
-        syncWorker.stop();
+      if (isAppInterrupted(next)) {
         Sentry.addBreadcrumb({
           category: "syncWorker",
           message: "paused (background)",
           level: "info",
         });
       } else if (next === "active") {
-        syncWorker.start();
         syncWorker.flush().catch((e) => {
           Sentry.captureException(e, {
             tags: { subsystem: "syncWorker", op: "flush-on-foreground" },
