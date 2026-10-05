@@ -6,10 +6,6 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { loadGame, loadRuns } from "../../game/blackjack/storage";
 import type { RunRecord } from "../../game/blackjack/storage";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 jest.mock("../../game/blackjack/storage", () => ({
   saveGame: jest.fn(),
   clearGame: jest.fn(),

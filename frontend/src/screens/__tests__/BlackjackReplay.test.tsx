@@ -29,10 +29,9 @@ import {
 import { TABLE_CONFIGS } from "../../game/blackjack/tables";
 
 const mockShellNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ navigate: mockShellNavigate }),
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ navigate: mockShellNavigate }), { actual: true })
+);
 
 jest.mock("../../game/blackjack/storage", () => ({
   saveGame: jest.fn(),
@@ -42,20 +41,14 @@ jest.mock("../../game/blackjack/storage", () => ({
   loadRuns: jest.fn().mockResolvedValue([]),
 }));
 
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
+jest.mock("../../game/_shared/gameEventClient", () =>
+  mockScreenDeps().mockGameEventClient({
     startGame: jest.fn(() => "game-uuid-test"),
     resumeGame: jest.fn(() => null),
     markStarted: jest.fn(),
     discardGame: jest.fn(),
-    enqueueEvent: jest.fn(),
-    completeGame: jest.fn(),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+  })
+);
 
 // A genuinely lost run: all-in on a seeded deck, then play until the hand loses.
 // Deterministic — the first seed that busts the player out is always the same.

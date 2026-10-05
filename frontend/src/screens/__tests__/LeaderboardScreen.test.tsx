@@ -8,10 +8,6 @@ import { ApiError } from "../../game/_shared/httpClient";
 import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
 import type { LeaderboardParams } from "../../types/navigation";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 const mockGetLeaderboard = jest.fn();
 jest.mock("../../api/stats", () => {
   const { lazy, mockStatsApi } = mockScreenDeps();

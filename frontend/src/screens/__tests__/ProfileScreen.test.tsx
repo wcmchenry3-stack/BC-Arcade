@@ -15,13 +15,9 @@ import {
 import { ApiError } from "../../game/_shared/httpClient";
 import type { StatsResponse, GameHistoryResponse, GameOutcome } from "../../api/types";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
-const mockNetwork = { isOnline: true };
+const mockNetwork = { isOnline: true, isInitialized: true };
 jest.mock("../../game/_shared/NetworkContext", () =>
-  mockScreenDeps().mockNetwork({ online: () => mockNetwork.isOnline })
+  mockScreenDeps().mockNetwork({ state: () => mockNetwork })
 );
 
 const mockNavigate = jest.fn();

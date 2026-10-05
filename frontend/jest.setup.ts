@@ -175,6 +175,11 @@ jest.mock("expo-linear-gradient", () => {
   };
 });
 
+// Shared screen-test mock factories (#2954), as a global so hoisted jest.mock
+// factories can call it: babel-plugin-jest-hoist lets a factory reference a
+// name matching /^mock/i. Usage: src/test-utils/mockScreenDeps.ts.
+globalThis.mockScreenDeps = () => jest.requireActual("./src/test-utils/mockScreenDeps");
+
 // Sentry mock — @sentry/react-native ships ESM that Jest can't transform
 jest.mock("@sentry/react-native", () => ({
   captureException: jest.fn(),

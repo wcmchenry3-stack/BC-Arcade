@@ -8,10 +8,6 @@ import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 import type { ScoreLedger } from "../../game/starswarm/scoreLedger";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 // useGameSync's play clock (#2684) is pinned for every test by jest.setup.ts
 // (#2710); the duration tests move it forward.
 const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregroundClock");

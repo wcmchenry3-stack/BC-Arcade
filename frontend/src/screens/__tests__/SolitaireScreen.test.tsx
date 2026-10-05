@@ -21,10 +21,6 @@ import { loadStats, saveStats } from "../../game/solitaire/storage";
 import { WIN_CASCADE_MS } from "../../game/solitaire/components/SolitaireWinCascade";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 // SolitaireScreen's first render pulls in the heaviest module graph in the
 // suite (skia cascade, reanimated, sound, gesture handling); on a
 // contended CI runner that first `render()` can exceed Jest's 5000ms

@@ -19,10 +19,6 @@ import type { ProgressSnapshot } from "../../game/_shared/useGameSync";
 import type { GameRankResponse } from "../../api/types";
 import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 jest.mock("../../game/hearts/storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
   saveGame: jest.fn().mockResolvedValue(undefined),
@@ -43,9 +39,7 @@ const mockGetGameRank = jest.fn<Promise<GameRankResponse>, [string]>();
 jest.mock("../../api/stats", () =>
   mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetGameRank(gameId) })
 );
-jest.mock("../../game/_shared/flushQueuedGames", () =>
-  mockScreenDeps().mockFlushQueuedGames(() => Promise.resolve())
-);
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
 // Joining stores the server's generated name at once (#2778).
 jest.mock("../../game/_shared/displayNameSync", () =>
   mockScreenDeps().mockDisplayNameSync(

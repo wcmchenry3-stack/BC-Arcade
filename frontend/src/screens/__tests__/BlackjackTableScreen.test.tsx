@@ -7,10 +7,6 @@ import { loadGame, saveRun } from "../../game/blackjack/storage";
 import { newGame, placeBet, stand, EngineState } from "../../game/blackjack/engine";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 // GameShell's Stats item (#2635) navigates through useNavigation; these
 // screens take their navigation as a prop, so the hook gets its own mock.
 const mockShellNavigate = jest.fn();

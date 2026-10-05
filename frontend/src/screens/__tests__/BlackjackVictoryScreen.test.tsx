@@ -6,10 +6,6 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { initialSessionStats } from "../../game/blackjack/sessionStats";
 import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 // Goal Reached (#2507): its own screen, built from the shared result card.
 
 // GameShell's Stats item (#2635) navigates through useNavigation; these

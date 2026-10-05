@@ -1,16 +1,14 @@
+// TypeScript 6 no longer auto-includes @types/* (`types` defaults to []), and the
+// typecheck program has no test files to pull in @types/jest: reference it here.
 /// <reference types="jest" />
 /**
  * Shared jest.mock() factories for screen tests (#2954).
  *
  * jest.mock() calls are hoisted above every import, so a factory can't use an
- * imported helper. Each test file declares an accessor instead. It must be a
- * function declaration (hoisted, so initialised before the jest.mock factories
- * run) whose name starts with "mock" (all babel-plugin-jest-hoist lets a
- * factory reference):
+ * imported helper. jest.setup.ts exposes this module as the global
+ * `mockScreenDeps()` instead (babel-plugin-jest-hoist lets a factory reference
+ * names matching /^mock/i), so a test calls it with no declaration of its own:
  *
- *   function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
- *     return jest.requireActual("../../test-utils/mockScreenDeps");
- *   }
  *   jest.mock("../../api/stats", () => mockScreenDeps().mockStatsApi({ getLeaderboard: jest.fn() }));
  *
  * The factory runs when the screen's import first loads the mocked module,
@@ -120,17 +118,18 @@ export function mockDisplayNameSync(
 
 /**
  * `game/_shared/NetworkContext`: `useNetwork` reports an initialised
- * connection, online unless `online` says otherwise (a function is read on
- * every call). `state` returns the hook's whole value instead, for a test
- * that mutates one shared object.
+ * connection, online unless `online` is false. `state` returns the hook's
+ * whole value instead, for a test that mutates one shared object.
  */
 export function mockNetwork({
   online = true,
   state,
-}: { online?: boolean | (() => boolean); state?: () => unknown } = {}) {
-  return {
-    useNetwork:
-      state ??
-      (() => ({ isOnline: typeof online === "function" ? online() : online, isInitialized: true })),
-  };
+}: { online?: boolean; state?: () => unknown } = {}) {
+  return { useNetwork: state ?? (() => ({ isOnline: online, isInitialized: true })) };
+}
+
+declare global {
+  /** This module, for jest.mock factories; set in jest.setup.ts. */
+  // eslint-disable-next-line no-var
+  var mockScreenDeps: () => typeof import("./mockScreenDeps");
 }

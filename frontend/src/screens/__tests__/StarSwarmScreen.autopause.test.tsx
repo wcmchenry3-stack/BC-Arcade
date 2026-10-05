@@ -15,10 +15,6 @@ import {
 import { CANVAS_H, CANVAS_W, initStarSwarm } from "../../game/starswarm/engine";
 import type { StarSwarmState } from "../../game/starswarm/types";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 // Leaving the app mid-run pauses Star Swarm, so the player returns to the pause
 // overlay. The Skia canvas is mocked (its isPaused prop is the game's paused
 // state, and getState() returns an engine state); Controls is real, so the

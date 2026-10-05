@@ -20,10 +20,6 @@ import type { FreeCellState } from "../../game/freecell/types";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 // ---------------------------------------------------------------------------
 // Global setup: navigation, storage
 // ---------------------------------------------------------------------------

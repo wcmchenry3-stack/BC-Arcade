@@ -14,10 +14,6 @@ import {
   rememberMyStats,
 } from "../../hooks/useMyStats";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 const mockGetMyStats = jest.fn();
 jest.mock("../../api/stats", () =>
   mockScreenDeps().mockStatsApi({ getMyStats: () => mockGetMyStats() })

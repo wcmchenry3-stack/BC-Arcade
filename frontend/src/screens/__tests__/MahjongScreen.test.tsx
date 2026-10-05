@@ -18,10 +18,6 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import * as mahjongEngine from "../../game/mahjong/engine";
 import { DEADLOCK_OVERLAY_DELAY_MS } from "../../game/mahjong/engine";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 // How long to wait for the deadlock card. Only an upper bound: generous so a
 // loaded parallel run (the card shows after DEADLOCK_OVERLAY_DELAY_MS) isn't flaky.
 const DEADLOCK_CARD_WAIT_MS = DEADLOCK_OVERLAY_DELAY_MS + 3000;
@@ -155,9 +151,7 @@ const mockGetGameRank = jest.fn();
 jest.mock("../../api/stats", () =>
   mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetGameRank(gameId) })
 );
-jest.mock("../../game/_shared/flushQueuedGames", () =>
-  mockScreenDeps().mockFlushQueuedGames(() => Promise.resolve())
-);
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
 jest.mock("../../game/_shared/displayNameSync", () =>
   mockScreenDeps().mockDisplayNameSync({ flushDisplayNameSync: () => Promise.resolve(true) })
 );

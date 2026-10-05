@@ -19,10 +19,6 @@ import {
   storeAssignedDisplayName,
 } from "../../game/_shared/displayName";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
 // Captured so tests can fire "blur"/"focus" (a pushed Stats/Leaderboard/

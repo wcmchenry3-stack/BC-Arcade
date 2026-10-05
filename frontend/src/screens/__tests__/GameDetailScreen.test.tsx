@@ -5,10 +5,6 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import GameDetailScreen from "../GameDetailScreen";
 import type { GameDetailResponse } from "../../api/types";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 const mockGetGameDetail = jest.fn() as jest.Mock<Promise<GameDetailResponse>, [string, boolean?]>;
 jest.mock("../../api/stats", () =>
   mockScreenDeps().mockStatsApi({

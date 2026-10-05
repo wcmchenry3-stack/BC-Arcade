@@ -23,15 +23,11 @@ import { isGameVisible } from "../../entitlements/gameVisibility";
 import { clearMyStatsCache } from "../../hooks/useMyStats";
 
 const mockGetMyStats = jest.fn();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getMyStats: () => mockGetMyStats() },
-}));
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: () => Promise.resolve(),
-}));
-jest.mock("../../game/_shared/NetworkContext", () => ({
-  useNetwork: () => ({ isOnline: true, isInitialized: true }),
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getMyStats: () => mockGetMyStats() })
+);
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+jest.mock("../../game/_shared/NetworkContext", () => mockScreenDeps().mockNetwork());
 
 function gameStats(gameType: GameType): GameTypeStats {
   return {

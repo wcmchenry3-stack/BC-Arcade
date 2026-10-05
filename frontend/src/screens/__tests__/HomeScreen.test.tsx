@@ -11,10 +11,6 @@ import type { StatsResponse } from "../../api/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearMyStatsCache, useMyStats } from "../../hooks/useMyStats";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 // ---------------------------------------------------------------------------
 // Mock entitlements — default: all games entitled (canPlay always true)
 // ---------------------------------------------------------------------------

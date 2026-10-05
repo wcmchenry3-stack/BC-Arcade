@@ -20,10 +20,6 @@ import { enterDigit, loadPuzzle, selectCell } from "../../game/sudoku/engine";
 import { saveGame, saveStats, EMPTY_SUDOKU_STATS } from "../../game/sudoku/storage";
 import type { CellValue, SudokuState } from "../../game/sudoku/types";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
 // Captured so tests can fire `beforeRemove` (back-navigation).

@@ -18,10 +18,6 @@ import { ApiError } from "../../game/_shared/httpClient";
 import type { DailyWordState } from "../../game/daily_word/types";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------

@@ -6,10 +6,6 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
 import type { GameState } from "../../game/yacht/types";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 // Replace only `roll`; keep every other engine export (score, newGame, …) real.
 const mockRoll = jest.fn();
 // GameShell's Stats item (#2635) navigates through useNavigation; these

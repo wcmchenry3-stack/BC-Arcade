@@ -156,15 +156,11 @@ that module; its own mock wins.
 The modules most screens need mocked per test (`@react-navigation/native`, `api/stats`,
 `game/_shared/gameEventClient`, `flushQueuedGames`, `displayNameSync`, `NetworkContext`) have
 factories in `frontend/src/test-utils/mockScreenDeps.ts`. `jest.mock` is hoisted above the
-imports, so a test reaches them through an accessor it declares itself — a `function`
-declaration (hoisted too) whose name starts with `mock` — and passes a `mock*` const the file
-declares later through `lazy()`:
+imports, so `jest.setup.ts` exposes that module as the global `mockScreenDeps()` (a factory may
+reference names starting with `mock`). Call it inside the test's own `jest.mock`, and pass a
+`mock*` const the file declares later through `lazy()`:
 
 ```ts
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 const mockStartGame = jest.fn();
 jest.mock("../../game/_shared/gameEventClient", () => {
   const { lazy, mockGameEventClient } = mockScreenDeps();

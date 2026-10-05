@@ -15,10 +15,6 @@ import { AppState, Platform } from "react-native";
 import type { AppStateStatus } from "react-native";
 (Platform as { OS: string }).OS = "web";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 // GameShell's Stats item (#2635) navigates through useNavigation; these
 // screens take their navigation as a prop, so the hook gets its own mock.
 const mockShellNavigate = jest.fn();

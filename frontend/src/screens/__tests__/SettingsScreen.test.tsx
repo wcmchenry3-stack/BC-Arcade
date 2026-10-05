@@ -5,10 +5,6 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react-nativ
 import { ThemeProvider } from "../../theme/ThemeContext";
 import SettingsScreen from "../SettingsScreen";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 const mockClearAll = jest.fn().mockResolvedValue(undefined);
 jest.mock("../../game/_shared/gameEventClient", () => ({
   gameEventClient: {

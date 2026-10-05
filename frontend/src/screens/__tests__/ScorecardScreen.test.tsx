@@ -7,10 +7,6 @@ import { HeartsRoundsProvider, useHeartsRounds } from "../../game/hearts/RoundsC
 import { YachtScorecardProvider, useYachtScorecard } from "../../game/yacht/ScorecardContext";
 import { initialSessionStats } from "../../game/blackjack/sessionStats";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(() => ({ goBack: jest.fn() }), { useRoute: jest.fn() })
 );

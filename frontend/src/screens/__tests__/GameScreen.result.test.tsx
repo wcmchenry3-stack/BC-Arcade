@@ -16,10 +16,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { GameRankResponse } from "../../api/types";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 // useGameSync's foreground clock (#2684) is the shared mock jest.setup.ts pins
 // for every test (#2710): held still unless a test moves it, and never
 // subscribed to AppState, so the backgrounding tests see only the screen's own

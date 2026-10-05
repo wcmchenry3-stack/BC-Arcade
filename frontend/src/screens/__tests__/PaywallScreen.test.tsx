@@ -14,10 +14,6 @@ import { createFakePurchaseAdapter, fakeProducts } from "../../purchases/fakeAda
 import type { FakePurchaseAdapter, FakePurchaseConfig } from "../../purchases/fakeAdapter";
 import { PRIVACY_POLICY_URL, SUPPORT_URL, TERMS_OF_SERVICE_URL } from "../../config/legal";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 const mockNavigate = jest.fn();
 const mockGoBack = jest.fn();
 let mockParams: { gameSlug?: string } = { gameSlug: "cascade" };

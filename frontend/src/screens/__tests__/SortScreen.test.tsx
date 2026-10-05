@@ -8,10 +8,6 @@ import { initState } from "../../game/sort/engine";
 import type { Color } from "../../game/sort/types";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
-function mockScreenDeps(): typeof import("../../test-utils/mockScreenDeps") {
-  return jest.requireActual("../../test-utils/mockScreenDeps");
-}
-
 // ---------------------------------------------------------------------------
 // Mocks — factories must be self-contained (jest.mock is hoisted)
 // ---------------------------------------------------------------------------
