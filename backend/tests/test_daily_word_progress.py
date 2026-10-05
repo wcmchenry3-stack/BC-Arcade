@@ -28,7 +28,7 @@ from db.models import DailyWordProgress
 
 PUZZLE = "2026-09-20:en"
 # Distinct five-letter words: the first MAX_GUESSES spend a board, one more is refused.
-WORDS = ["nymph", "crwth", "phlox", "xylem", "squib", "jumbo", "vexed", "fjord", "gawky"]
+WORDS = ["nymph", "crwth", "phlox", "xylem", "squib", "jumbo", "vexed"]
 assert len(WORDS) > MAX_GUESSES, "WORDS needs more than MAX_GUESSES distinct words"
 assert len(set(WORDS)) == len(WORDS)
 

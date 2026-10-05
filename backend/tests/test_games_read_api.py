@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -425,35 +426,59 @@ def test_my_games_rejects_an_unparseable_cursor(client: TestClient) -> None:
 async def test_my_games_cursor_excludes_games_started_at_or_after_it(client: TestClient) -> None:
     sid = str(uuid.uuid4())
     await _grant(sid, "yacht")
+    # Relative to now: the server only accepts a client start time within a year of it.
+    newer = datetime.now(UTC) - timedelta(days=1)
+    older = newer - timedelta(days=1)
     ids = {}
-    for label, started_at in (
-        ("older", "2026-01-01T00:00:00+00:00"),
-        ("newer", "2026-01-02T00:00:00+00:00"),
-    ):
+    for label, started_at in (("older", older), ("newer", newer)):
         r = client.post(
-            "/games", headers=_headers(sid), json={"game_type": "yacht", "started_at": started_at}
+            "/games",
+            headers=_headers(sid),
+            json={"game_type": "yacht", "started_at": started_at.isoformat()},
         )
         assert r.status_code == 200, r.text
         ids[label] = r.json()["id"]
 
     # An offset-bearing cursor: a timezone-aware value is what Postgres compares against.
-    r = client.get(
-        "/games/me", params={"cursor": "2026-01-02T00:00:00+00:00"}, headers=_headers(sid)
-    )
+    r = client.get("/games/me", params={"cursor": newer.isoformat()}, headers=_headers(sid))
     assert r.status_code == 200, r.text
     assert [g["id"] for g in r.json()["items"]] == [ids["older"]]
 
 
-async def test_an_inactive_game_has_no_leaderboard(
+def test_an_inactive_game_has_no_leaderboard(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A board whose game type is switched off is a 404, like an unknown game."""
+    """A board whose game type is unavailable is a 404, like an unknown game."""
     from games import leaderboard
 
-    async def inactive(_db, _name: str) -> None:
-        return None  # what load_game_type answers for a missing or inactive game type
+    async def unavailable(_db, _name: str) -> None:
+        return None
 
-    monkeypatch.setattr(leaderboard, "load_game_type", inactive)
+    monkeypatch.setattr(leaderboard, "load_game_type", unavailable)
     r = client.get("/games/leaderboard/solitaire", headers=_headers(str(uuid.uuid4())))
     assert r.status_code == 404
     assert r.json()["detail"] == "Leaderboard not found."
+
+
+async def test_load_game_type_hides_inactive_and_unknown_game_types() -> None:
+    """The lookup behind that 404, against a throwaway row so the seeded types stay untouched."""
+    from sqlalchemy import delete
+
+    from db.models import GameType
+    from games import leaderboard
+
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(GameType(id=9001, name="zz_off", display_name="Off", is_active=False))
+        db.add(GameType(id=9002, name="zz_on", display_name="On", is_active=True))
+        await db.commit()
+    try:
+        async with factory() as db:
+            assert await leaderboard.load_game_type(db, "zz_off") is None
+            assert await leaderboard.load_game_type(db, "zz_missing") is None
+            active = await leaderboard.load_game_type(db, "zz_on")
+            assert active is not None and active.name == "zz_on"
+    finally:
+        async with factory() as db:
+            await db.execute(delete(GameType).where(GameType.name.in_(["zz_off", "zz_on"])))
+            await db.commit()

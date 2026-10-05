@@ -40,15 +40,7 @@ async def test_first_request_freezes_the_day() -> None:
         result = await schedule.get_or_create_template(db, _DAY, "free", lambda: _V1)
     assert result == _V1
 
-    async with factory() as db:
-        row = (
-            await db.execute(
-                select(DailyChallengeDay).where(
-                    DailyChallengeDay.date == _DAY, DailyChallengeDay.slate == "free"
-                )
-            )
-        ).scalar_one()
-    assert row.template_id == "v1"
+    assert await _frozen("free") == {_DAY: "v1"}
 
 
 @needs_db
@@ -198,7 +190,9 @@ async def test_losing_the_race_on_one_day_still_answers_every_day(
 
 
 @needs_db
-@pytest.mark.xfail(strict=True, reason="#3013: lost freeze on the loser's path")
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError, reason="#3013: lost freeze on the loser's path"
+)
 async def test_losing_the_race_on_one_day_still_freezes_the_other_days(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
