@@ -146,8 +146,16 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
 - `PendingGamesStore` — pending games (creation metadata, completion summary)
   persisted across app restarts.
 - `eventStore` — queued gameplay events and bug logs, sharded by priority tier.
-- `SyncWorker` — uploads both: every 30 s (`SYNC_INTERVAL_MS`), on foreground
-  and on reconnect (`NetworkContext`), and on demand through
+  The tiers are mirrored in memory (#2959): the first operation loads them
+  from AsyncStorage, every change writes the changed tier back, and `peek`,
+  `stats`, row updates and dead-lettering read only the mirror — so a game
+  move costs one write of its own tier, not a re-read of the whole queue. The
+  on-disk format is unchanged. `onStats` tells subscribers (the
+  capacity-warning toast) the new stats after each change, so nothing polls
+  the queue.
+- `SyncWorker` — uploads both: every 30 s (`SYNC_INTERVAL_MS`) while the app
+  is active, on foreground and on reconnect (`NetworkContext`), and on demand
+  through
   `flushQueuedGames()` (`game/_shared/flushQueuedGames.ts`) from screens that
   read server results — the result card (`sessionBoardAdapter`), `useMyStats`,
   `LeaderboardScreen`, `HomeScreen` and `useDailyChallenge` — so a game just
@@ -158,7 +166,13 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
   409 "Game is already completed." (below); a 400 or 403 dead-letters it (kept on the
   device, never re-sent); and `eventStore` drops rows older than 7 days and
   evicts over its cap (see "Queue cap" below). So a row that never got a 2xx
-  can still leave the device.
+  can still leave the device. The interval is torn down while `AppState` is
+  `background` or `inactive` and re-armed, with one immediate flush, on the
+  return to `active` (#2959), so nothing wakes to read an empty queue. A
+  flush takes one snapshot of the queue (one `peek`) and derives the per-game
+  batches, the bug-log batches and the "all events delivered" check for
+  completions from it; a game completed after the snapshot waits for the next
+  pass, so its `game_ended` is always sent before its completion.
 - `displayNameSync` — one pending leaderboard join or leave (see below).
 - `PendingGamesStore`, `eventStore` and `displayNameSync`
   (`pendingGamesStore.ts`, `eventStore.ts`, `displayNameSync.ts`) are
@@ -416,6 +430,11 @@ This policy is intentional (#486) and is enforced by `eventStore.ts` plus the
 queue-cap tests. It replaced the older pure tier-walk policy because preserving
 fresh events sometimes requires evicting older nominally "higher-priority"
 rows.
+
+Eviction runs against the in-memory mirror (#2959): the row and byte totals
+are kept per row as rows enter and leave, so the check after an enqueue is
+O(1) while the queue is under its caps, and a pass over the pool only happens
+when it is over. The order above is unchanged.
 
 The current priority assignments still matter for batching/sync behavior:
 

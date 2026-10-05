@@ -42,6 +42,9 @@ describe("logstore testHooks", () => {
 
   beforeEach(async () => {
     await AsyncStorage.clear();
+    // The singleton store mirrors its tiers in memory (#2959): clearing
+    // AsyncStorage alone would leave the previous test's rows in the mirror.
+    await eventStore.clearAll();
     resetLogConfig();
     clearHooks();
   });
@@ -222,6 +225,7 @@ describe("logstore testHooks", () => {
 
     beforeEach(async () => {
       await AsyncStorage.clear();
+      await eventStore.clearAll(); // the mirror too (#2959)
       resetLogConfig();
       process.env.EXPO_PUBLIC_TEST_HOOKS = "1";
       cleanup = registerLogstoreTestHooks();

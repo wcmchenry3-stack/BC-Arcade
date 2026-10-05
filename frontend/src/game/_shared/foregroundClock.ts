@@ -16,9 +16,11 @@
 
 import { AppState, type AppStateStatus } from "react-native";
 
+import { isAppInterrupted } from "./appInterrupted";
+
 /** Only `background` and `inactive` stop the counter; anything else is foreground. */
 function isForeground(state: unknown): boolean {
-  return state !== "background" && state !== "inactive";
+  return !isAppInterrupted(state);
 }
 
 function monotonicNow(): number {
