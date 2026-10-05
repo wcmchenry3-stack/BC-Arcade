@@ -6,15 +6,15 @@ See [~/.claude/standards/testing.md](~/.claude/standards/testing.md) for univers
 
 Cheap ratchets added for the refactor epic (#2950, issue #2951). They are set at today's numbers so the epic's gains cannot silently regress. Run the same commands locally before opening a PR.
 
-| Gate                      | Where                                                                      | Threshold (today)                                                                                                                         | Blocking?                                  |
-| ------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| ruff complexity / bugbear | `backend/pyproject.toml` (`extend-select`, `[tool.ruff.lint.mccabe]`)      | `B`, `C901`, `RUF`, `PLR0912`, `PLR0915`, `SIM`, `UP`; `max-complexity = 12`. Offenders carry `# noqa: C901  # see #2951`                  | Yes (`lint-python`)                        |
-| Backend file length       | `backend/scripts/check_file_length.py`, CI job `backend-file-length`       | 800 lines per `.py` (excl. `tests/`, `alembic/`, `.venv/`). Per-file `CAPS` for the two files already over 800 (today's counts, so they cannot grow): `games/service.py` 1005 (#2991), `purchases/google_notifications.py` 813 (#2998) | Yes                                        |
-| eslint `max-lines`        | `frontend/eslint.config.js`                                                | 800 lines (skip blanks/comments) for `src/**` excl. `__tests__`. The 11 files already over 800 effective lines are `warn` in a `files:` override          | Error for new offenders                    |
-| eslint function size      | `frontend/eslint.config.js`                                                | `max-lines-per-function` 150, `complexity` 20                                                                                             | Warn                                       |
-| eslint react-hooks v7     | `frontend/eslint.config.js`                                                | `refs`, `immutability`, `set-state-in-effect`, `purity`, `globals` at `warn`                                                               | Warn                                       |
-| Duplication (jscpd)       | CI job `duplication`                                                       | `--threshold 2.5 --min-lines 20 --min-tokens 70` over `frontend/src backend`                                                              | Yes                                        |
-| Unused code (knip)        | `frontend/knip.json`, CI job `knip`                                        | `npx knip --no-progress` (CI-only `src/game/*/sim/**` and `oracleBuild/**` ignored until #2969)                                                                                                                  | Warn-only until 2026-11-04, then `--strict` |
+| Gate                      | Where                                                                 | Threshold (today)                                                                                                                                                                                                                      | Blocking?                                   |
+| ------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| ruff complexity / bugbear | `backend/pyproject.toml` (`extend-select`, `[tool.ruff.lint.mccabe]`) | `B`, `C901`, `RUF`, `PLR0912`, `PLR0915`, `SIM`, `UP`; `max-complexity = 12`. Offenders carry `# noqa: C901  # see #2951`                                                                                                              | Yes (`lint-python`)                         |
+| Backend file length       | `backend/scripts/check_file_length.py`, CI job `backend-file-length`  | 800 lines per `.py` (excl. `tests/`, `alembic/`, `.venv/`). Per-file `CAPS` for the two files already over 800 (today's counts, so they cannot grow): `games/service.py` 1005 (#2991), `purchases/google_notifications.py` 813 (#2998) | Yes                                         |
+| eslint `max-lines`        | `frontend/eslint.config.js`                                           | 800 lines (skip blanks/comments) for `src/**` excl. `__tests__`. The 11 files already over 800 effective lines are `warn` in a `files:` override                                                                                       | Error for new offenders                     |
+| eslint function size      | `frontend/eslint.config.js`                                           | `max-lines-per-function` 150, `complexity` 20                                                                                                                                                                                          | Warn                                        |
+| eslint react-hooks v7     | `frontend/eslint.config.js`                                           | `refs`, `immutability`, `set-state-in-effect`, `purity`, `globals` at `warn`                                                                                                                                                           | Warn                                        |
+| Duplication (jscpd)       | CI job `duplication`                                                  | `--threshold 2.5 --min-lines 20 --min-tokens 70` over `frontend/src backend`                                                                                                                                                           | Yes                                         |
+| Unused code (knip)        | `frontend/knip.json`, CI job `knip`                                   | `npx knip --no-progress` (CI-only `src/game/*/sim/**` and `oracleBuild/**` ignored until #2969)                                                                                                                                        | Warn-only until 2026-11-04, then `--strict` |
 
 ```bash
 # backend
@@ -36,6 +36,34 @@ npx --yes jscpd@4.3.0 --threshold 2.5 --min-lines 20 --min-tokens 70 \
 - Flip `knip` to `--strict` (drop `continue-on-error`) after the warn-only window and fix or ignore the remaining findings.
 - Backend file-length `CAPS`: lower or delete each entry as its split lands; an entry fails with "remove <path> from CAPS" once the file is at or under 800.
 - ruff is pinned to 0.16.8 in both `backend/requirements-dev.txt` and the `lint-python` job in `ci.yml`; bump them together.
+- jest `coverageThreshold.global`: raise all four numbers toward the 80 floor / 90 target as the coverage child issues of #2950 land (see "Coverage policy" below).
+
+### Coverage policy (frontend jest, #2952)
+
+**What is collected.** `frontend/package.json` sets `collectCoverageFrom` so every source file counts, whether or not a test imports it: `src/**/*.{ts,tsx}` and `App.tsx`, including the `.web.tsx` / `.web.ts` files that ship on Expo Web. Before #2952 jest only measured files that some test happened to import, so never-imported files (the Star Swarm canvases, `App.tsx`, the card faces, the Mahjong layout screens, parts of `components/cascade/*`) were invisible to the gate.
+
+**Temporary exclusions** (package.json cannot hold comments, so they are documented here): `src/**/__tests__/**`, `src/**/__mocks__/**`, `*.d.ts`, `**/*.generated.ts`, plus three that exist only until #2969 relocates the code out of `src/`:
+
+- `src/screens/__dev__/**` (dev-only screens)
+- `src/game/**/sim/**` (offline simulation harnesses)
+- `src/game/yacht/oracleBuild/**` (oracle table build tooling)
+
+When #2969 lands, delete the `sim` / `oracleBuild` patterns (and the matching knip ignores) in the same PR.
+
+**Baseline** (measured 2026-10-05 on `dev`, 267 suites / 5,500 tests, `jest --coverage`, 392 files collected):
+
+| Metric     | Reported before #2952 (imported files only) | True (all collected files) | Floor enforced now | Policy floor | Stretch target |
+| ---------- | ------------------------------------------: | -------------------------: | -----------------: | -----------: | -------------: |
+| Lines      |                                      90.0 % |                     83.9 % |               83 % |         80 % |           90 % |
+| Statements |                                      88.5 % |                     82.9 % |               82 % |         80 % |           90 % |
+| Branches   |                                      83.5 % |                     79.8 % |               79 % |         80 % |           90 % |
+| Functions  |                                      81.1 % |                     76.8 % |               76 % |         80 % |           90 % |
+
+**Floors.** `coverageThreshold.global` is set to the true value rounded down, so the gate can only catch regressions, never fail on today's code. Branches (79) and functions (76) are currently below the 80 policy floor; the gap is closed by the coverage child issues of #2950, and each of them raises the four numbers in `package.json` in the same PR that lands its tests. Never lower a number to make a PR pass. The per-file thresholds for the `solitaire`, `freecell` and `hearts` engines (80 % lines) stay as they are. The remaining 23 files with 0 % lines (about 1,150 lines, dominated by `starswarm/GameCanvas.web.tsx`, `starswarm/GameCanvas.tsx`, `mahjong/GameCanvas.tsx` and `App.tsx`) are where most of the gap sits.
+
+**How CI applies it.** The org reusable workflow `called-test-frontend.yml` runs `npm run test:ci` when the package defines it, and otherwise falls back to `npx jest --coverage --coverageThreshold='{"global":{"lines":80}}'`. A `--coverageThreshold` on the command line replaces the whole `coverageThreshold` object from `package.json` (including the per-file engine entries and the statements/branches/functions floors). `frontend/package.json` therefore defines `"test:ci": "jest --coverage"` so CI uses the thresholds in `package.json`. Run `npm run test:ci` locally to get the same result.
+
+**Reading the report.** `jest --coverage` writes `frontend/coverage/` (`lcov-report/index.html` for browsing, `coverage-summary.json` for totals). Files with 0 % are now listed in the text table instead of being absent; sort by uncovered lines to pick the next target. Quick totals only: `npx jest --coverage --coverageReporters=text-summary --silent`.
 
 ## Project-specific test cases
 
@@ -114,7 +142,6 @@ Localization architecture, locale/namespace contributor workflow, formatting
 rules, and the purpose of the i18n guards are canonicalized in
 [I18N.md](I18N.md). This testing guide should document how to run the checks,
 not duplicate the product localization contract.
-
 
 ### Setup
 
@@ -324,7 +351,7 @@ report replace both.
 
 ### Yacht AI regret metric — EV-loss vs the optimal oracle (#2244)
 
-Win rate says who won; it says nothing about *how well* either side played — a
+Win rate says who won; it says nothing about _how well_ either side played — a
 bot can win a dice game on luck while playing badly, or lose while playing
 perfectly. The regret metric grades individual decisions instead: for each
 hold or category choice the AI makes, "EV-loss" is `optimalEV - chosenEV`,
@@ -339,12 +366,12 @@ real committed table) `regretOracle.test.ts`.
 **Blunder bands** (`DEFAULT_EV_LOSS_BANDS`, adjustable — pass a custom
 `EvLossBands` to any of `regret.ts`'s functions):
 
-| Band       | EV-loss           |
-| ---------- | ------------------ |
-| `optimal`  | `<= 0` (exact — chosen and optimal EV come from the same computed array) |
-| `minor`    | `0 < loss < 1`      |
-| `mistake`  | `1 <= loss <= 5`    |
-| `blunder`  | `> 5`               |
+| Band      | EV-loss                                                                  |
+| --------- | ------------------------------------------------------------------------ |
+| `optimal` | `<= 0` (exact — chosen and optimal EV come from the same computed array) |
+| `minor`   | `0 < loss < 1`                                                           |
+| `mistake` | `1 <= loss <= 5`                                                         |
+| `blunder` | `> 5`                                                                    |
 
 **Run it** — lives in `ai.calibrate.test.ts`, gated behind `YACHT_SIM_FULL`,
 and runs nightly as the `regret` job of `yacht-sim-gate.yml`. Its games use
@@ -390,9 +417,9 @@ The gate asserts:
   are capped at 3 points below the oracle's best.
 - A noise-free diagnostic plays each tier at temperature 0 on the same dice:
   the order still holds (0.97 / 0.48 / 0.00), so the ladder comes from each
-  tier's foresight, not from how much noise it adds. Noise-free Hard *is*
+  tier's foresight, not from how much noise it adds. Noise-free Hard _is_
   the oracle, so its EV-loss is ~0. (Before #2246 the equivalent diagnostic
-  showed Easy and Medium making *identical* decisions with noise removed —
+  showed Easy and Medium making _identical_ decisions with noise removed —
   the problem #2246 fixed.)
 
 Console output (only shown with `--silent=false` or on failure) reports a
