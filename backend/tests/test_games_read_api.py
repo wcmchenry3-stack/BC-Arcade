@@ -414,3 +414,39 @@ def test_game_detail_not_found(client: TestClient) -> None:
     sid = str(uuid.uuid4())
     r = client.get(f"/games/{uuid.uuid4()}", headers=_headers(sid))
     assert r.status_code == 404
+
+
+def test_my_games_rejects_an_unparseable_cursor(client: TestClient) -> None:
+    r = client.get("/games/me?cursor=not-a-timestamp", headers=_headers(str(uuid.uuid4())))
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Invalid cursor."
+
+
+def test_my_games_accepts_an_iso_cursor(client: TestClient) -> None:
+    r = client.get("/games/me?cursor=2026-01-01T00:00:00", headers=_headers(str(uuid.uuid4())))
+    assert r.status_code == 200
+    assert r.json()["items"] == []
+
+
+async def test_an_inactive_game_has_no_leaderboard(client: TestClient) -> None:
+    """A board whose game type is switched off is a 404, like an unknown game."""
+    from sqlalchemy import update
+
+    from db.models import GameType
+
+    factory = get_session_factory()
+
+    async def set_active(active: bool) -> None:
+        async with factory() as db:
+            await db.execute(
+                update(GameType).where(GameType.name == "solitaire").values(is_active=active)
+            )
+            await db.commit()
+
+    await set_active(False)
+    try:
+        r = client.get("/games/leaderboard/solitaire", headers=_headers(str(uuid.uuid4())))
+    finally:
+        await set_active(True)
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Leaderboard not found."

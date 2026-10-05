@@ -456,3 +456,14 @@ def test_db_errors_are_500_and_logged_without_the_session_id(
     errors = [rec for rec in caplog.records if rec.levelname == "ERROR"]
     assert errors and "OperationalError" in errors[0].getMessage()
     assert all(SECRET_SID not in rec.getMessage() for rec in errors)
+
+
+@pytest.mark.parametrize("sid", [None, ""])
+async def test_a_legacy_name_without_a_player_id_joins_nobody(sid: str | None) -> None:
+    """Older builds sent a name with no player id: there is no one to opt in."""
+    from players import service
+
+    async with get_session_factory()() as db:
+        await service.remember_legacy_opt_in(db, sid, "Alice")
+        await db.commit()
+        assert (await db.execute(select(Player.session_id))).scalars().all() == []

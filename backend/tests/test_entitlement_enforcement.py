@@ -139,3 +139,25 @@ def test_free_board_not_gated(client: TestClient, session_id: str, game: str) ->
     query = "?difficulty=easy" if game == "sudoku" else ""
     r = client.get(f"/games/leaderboard/{game}{query}", headers=_headers(session_id))
     assert r.status_code == 200, r.text
+
+
+# ---------------------------------------------------------------------------
+# Dev override
+# ---------------------------------------------------------------------------
+
+
+def test_dev_override_lets_a_premium_game_through(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    r = client.post("/games", json={"game_type": "cascade"}, headers=_headers(session_id))
+    assert r.status_code == 200, r.text
+
+
+def test_a_dev_override_that_is_not_true_does_not_lift_the_gate(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "false")
+    r = client.post("/games", json={"game_type": "cascade"}, headers=_headers(session_id))
+    assert r.status_code == 403
+    assert r.json()["detail"] == "not_entitled"
