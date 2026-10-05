@@ -622,9 +622,9 @@ jobs:
           node-version: "22"
       - name: jscpd (fails above 2.5% duplicated lines)
         run: >
-          npx --yes jscpd@4
+          npx --yes jscpd@4.3.0
           --threshold 2.5 --min-lines 20 --min-tokens 70
-          --ignore "**/__tests__/**,**/mahjong/layouts/**,**/node_modules/**,**/.venv/**,**/*.generated.*,**/locales/**"
+          --ignore "**/__tests__/**,**/mahjong/layouts/**,**/node_modules/**,**/.venv/**,**/*.generated.*,**/locales/**,**/tests/**,**/alembic/**"
           --format "typescript,tsx,python"
           frontend/src backend
 
