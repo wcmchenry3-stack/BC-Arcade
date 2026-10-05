@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -23,11 +22,12 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import select
 
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import Game
 from mahjong.models import MahjongMetadata
 from mahjong.module import module as mahjong_module
-from tests.test_generic_leaderboard import _grant_all, _headers, _seed, _set_name, _sid
+from tests._helpers import session_headers as _headers
+from tests.test_generic_leaderboard import _grant_all, _seed, _set_name, _sid
 
 # ---------------------------------------------------------------------------
 # MahjongMetadata.layout
@@ -66,15 +66,6 @@ live = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping live API tests",
 )
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 def _start(client: TestClient, sid: str, layout: str = "pyramid") -> str:

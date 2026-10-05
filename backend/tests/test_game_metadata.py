@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 
 import pytest
 from pydantic import ValidationError
@@ -16,6 +15,7 @@ from games.schemas import CreateGameRequest
 from hearts.models import HeartsMetadata
 from solitaire.models import SolitaireMetadata
 from sudoku.models import SudokuMetadata
+from tests._helpers import session_headers as _headers
 
 # ---------------------------------------------------------------------------
 # BlackjackMetadata unit tests
@@ -300,23 +300,6 @@ pytestmark_db = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping live API tests",
 )
-
-
-@pytest.fixture()
-def client() -> Iterator:
-    from db.base import is_configured
-
-    assert is_configured()
-    from fastapi.testclient import TestClient
-
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 @pytest.mark.skipif(

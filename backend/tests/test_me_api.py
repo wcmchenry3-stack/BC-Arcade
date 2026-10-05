@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import (
     BugLog,
     DailyWordProgress,
@@ -21,25 +20,12 @@ from db.models import (
     PurchaseEvent,
     PurchaseLink,
 )
+from tests._helpers import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping live API tests",
 )
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-@pytest.fixture()
-def session_id() -> str:
-    return str(uuid.uuid4())
 
 
 @pytest.fixture()
@@ -78,10 +64,6 @@ async def _count_entitlements(session_id: str) -> int:
             .where(GameEntitlement.session_id == session_id)
         )
         return result.scalar_one()
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 @pytest.fixture(autouse=True)

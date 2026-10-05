@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -19,12 +18,13 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event, select
 
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType, Player
 from games import leaderboard
 from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
 from games.registry import get_module
 from limiter import _real_ip, limiter, session_key
+from tests._helpers import session_headers as _headers
 from vocab import GameType as GameTypeEnum
 
 pytestmark = pytest.mark.skipif(
@@ -85,19 +85,6 @@ def completion_body(board: BoardDefinition, value: int) -> dict[str, Any]:
     else:
         body["result"] = {board.metric: value}
     return body
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 async def _game_type_id(name: str) -> int:

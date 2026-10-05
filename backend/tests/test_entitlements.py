@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import logging
-import uuid
-from collections.abc import Iterator
 from datetime import datetime, timezone
 
 import jwt
@@ -12,24 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from entitlements import service as entitlements_service
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-@pytest.fixture()
-def session_id() -> str:
-    return str(uuid.uuid4())
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid}
-
+from tests._helpers import session_headers as _headers
 
 # ---------------------------------------------------------------------------
 # Happy path

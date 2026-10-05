@@ -14,13 +14,20 @@ Real Postgres is still used when DATABASE_URL is provided externally
 
 from __future__ import annotations
 
+import functools
 import os
-import subprocess
-import sys
 import tempfile
+import uuid
+from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
+
+    from tests._migration_helpers import Alembic
 
 _TEST_DB_FILE: Path | None = None
 
@@ -56,18 +63,9 @@ def pytest_configure(config: pytest.Config) -> None:
 
     # Run alembic upgrade head using the sync sqlite URL (env.py strips the
     # +aiosqlite driver). We invoke the CLI so the stock alembic.ini loads.
-    from tests._alembic_heads import BACKEND
+    from tests._migration_helpers import run_alembic
 
-    env = os.environ.copy()
-    env["DATABASE_URL"] = f"sqlite:///{db_path}"
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=BACKEND,
-        env=env,
-        check=False,  # handled below, with Alembic's stderr in the message
-        capture_output=True,
-        text=True,
-    )
+    result = run_alembic(db_path, "upgrade", "head", check=False)
     if result.returncode != 0:
         # The output is captured, so without this a failing migration shows
         # only an exit status. Stop the run with Alembic's own error.
@@ -158,3 +156,44 @@ async def _clean_db_tables():
         ):
             await conn.execute(text(f"DELETE FROM {table}"))
     yield
+
+
+# ---------------------------------------------------------------------------
+# Shared fixtures (#2953). Fixtures resolve by name, so a test file only has to
+# not define its own. A file that needs a *different* shape (no lifespan, no
+# Content-Type header, ...) keeps a local definition, which overrides these.
+# Plain helpers (``session_headers``) live in ``tests/_helpers.py``.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def client() -> Iterator[TestClient]:
+    """The app under ``TestClient`` with its lifespan running, against the test DB.
+
+    ``pytest_configure`` guarantees ``DATABASE_URL``, so no configured-check here.
+    """
+    from fastapi.testclient import TestClient
+
+    from main import app
+
+    with TestClient(app) as c:
+        yield c
+
+
+@pytest.fixture()
+def session_id() -> str:
+    return str(uuid.uuid4())
+
+
+@pytest.fixture()
+def migration_db_path(tmp_path: Path) -> Path:
+    """A scratch SQLite path for a migration test (created by the first alembic run)."""
+    return tmp_path / "migration.db"
+
+
+@pytest.fixture()
+def alembic(migration_db_path: Path) -> Alembic:
+    """``alembic(*args)`` bound to ``migration_db_path``: ``alembic("upgrade", rev)``."""
+    from tests._migration_helpers import run_alembic
+
+    return functools.partial(run_alembic, migration_db_path)
