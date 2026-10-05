@@ -601,13 +601,13 @@ jobs:
   # Thresholds and the quarterly lowering schedule: docs/TESTING.md.
 
   backend-file-length:
-    name: Backend file length (<= 800 lines)
+    name: Backend file length (per-file caps, default 800)
     needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       # stdlib-only script: the runner's system python3 is enough
-      - name: Check backend .py files are <= 800 lines
+      - name: Check backend .py files are within their line caps
         run: python3 scripts/check_file_length.py
         working-directory: backend
 
