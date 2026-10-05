@@ -135,15 +135,35 @@ function borderAndFace(tileId: number) {
   return { border: body.at(-2)!, face: body.at(-1)! };
 }
 
+/** The `onPress` of the component that rendered this host element (a Pressable's), if any. */
+function onPressOf(node: TestInstance): unknown {
+  // Walk up through the composite owners, stopping at the next host element.
+  for (let f = node.unstable_fiber?.return; f && typeof f.type !== "string"; f = f.return) {
+    const onPress = (f.memoizedProps as { onPress?: unknown } | null)?.onPress;
+    if (typeof onPress === "function") return onPress;
+  }
+  return undefined;
+}
+
 /**
- * The full-board tap layer: the one accessible element with role "none" (a Pressable over the
- * canvas; the canvas itself is not an accessibility element). Undefined when taps are off.
+ * The full-board tap layer: the role="none" element with an onPress (a Pressable over the
+ * canvas). The Skia Canvas also carries role "none" but has no onPress. Exactly one when taps
+ * are on, none when they are off; anything else fails here so drift is visible.
  */
+function tapLayers(): TestInstance[] {
+  return screen
+    .root!.queryAll((n) => n.props.accessibilityRole === "none")
+    .filter((n) => onPressOf(n) !== undefined);
+}
 function tapLayer(): TestInstance | undefined {
-  return screen.queryAllByRole("none")[0];
+  const layers = tapLayers();
+  expect(layers.length).toBeLessThanOrEqual(1);
+  return layers[0];
 }
 async function tap(x: number, y: number) {
-  await fireEvent.press(tapLayer()!, { nativeEvent: { locationX: x, locationY: y } });
+  const layers = tapLayers();
+  expect(layers).toHaveLength(1);
+  await fireEvent.press(layers[0]!, { nativeEvent: { locationX: x, locationY: y } });
 }
 
 beforeEach(() => {

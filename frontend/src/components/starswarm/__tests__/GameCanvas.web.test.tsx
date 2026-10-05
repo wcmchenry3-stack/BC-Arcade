@@ -123,12 +123,10 @@ describe("Star Swarm GameCanvas (web)", () => {
     const onScoreChange = jest.fn();
     const onExplosion = jest.fn();
     const { ref } = await mount({ initialState: seeded(), onScoreChange, onExplosion });
-    await frames(200);
-    const clearsAt200 = calls.clearRect!;
-    await frames(200);
-    // The web canvas has no publish gating: it clears and redraws on every frame.
-    expect(clearsAt200).toBeGreaterThanOrEqual(200);
-    expect(calls.clearRect! - clearsAt200).toBeGreaterThanOrEqual(200);
+    await frames(400);
+    // The web canvas has no publish gating: exactly one clear-and-redraw per frame (a second
+    // draw per frame would be a regression).
+    expect(calls.clearRect).toBe(400);
     expect(calls.drawImage).toBeGreaterThan(0);
     expect(fillTexts.some((t) => t.startsWith("SCORE"))).toBe(true);
     expect(fillTexts.some((t) => t.startsWith("WAVE"))).toBe(true);
@@ -150,7 +148,7 @@ describe("Star Swarm GameCanvas (web)", () => {
     ref.current!.triggerPowerUp("bomb");
     await frames(300);
     expect(ref.current!.getState().wave).toBeGreaterThanOrEqual(5);
-    expect(calls.clearRect).toBeGreaterThanOrEqual(304);
+    expect(calls.clearRect).toBe(304); // one per frame: 2 + 2 + 300
     expect(fillTexts.some((t) => t.includes("Captain"))).toBe(true);
   });
 
@@ -178,8 +176,8 @@ describe("Star Swarm GameCanvas (web)", () => {
     const start = ref.current!.getState();
     await frames(20);
     expect(ref.current!.getState()).toBe(start);
-    // Unlike the native canvas (#2563), the web loop draws every frame, paused or not.
-    expect(calls.clearRect).toBeGreaterThanOrEqual(20);
+    // Unlike the native canvas (#2563), the web loop redraws once per frame, paused or not.
+    expect(calls.clearRect).toBe(20);
   });
 
   it("dev-panel injections and the imperative handle reach the engine", async () => {
