@@ -131,16 +131,13 @@ module.exports = [
     },
   },
 
-  // Files already over 800 lines when the gate landed: warn only, so current PRs
-  // still pass. Remove each entry as its split lands (#2951, epic #2950). Do NOT add
-  // new files here.
+  // The 11 files over 800 effective lines (blanks/comments skipped) when the gate landed:
+  // warn only, so current PRs still pass. Remove each entry as its split lands
+  // (#2951, epic #2950). Do NOT add new files here.
   {
     files: [
       "src/components/starswarm/GameCanvas.tsx",
       "src/components/starswarm/GameCanvas.web.tsx",
-      "src/game/blackjack/engine.ts",
-      "src/game/solitaire/engine.ts",
-      "src/game/sort/components/SortBoard.tsx",
       "src/game/starswarm/engine.ts",
       "src/game/starswarm/sim/balance.ts",
       "src/screens/CascadeScreen.tsx",
@@ -150,7 +147,6 @@ module.exports = [
       "src/screens/MahjongScreen.tsx",
       "src/screens/SolitaireScreen.tsx",
       "src/screens/StarSwarmScreen.tsx",
-      "src/screens/SudokuScreen.tsx",
     ],
     rules: {
       "max-lines": ["warn", { max: 800, skipBlankLines: true, skipComments: true }],
