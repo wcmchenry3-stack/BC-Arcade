@@ -73,9 +73,26 @@ describe("migrateLegacyUndoStack (#2961)", () => {
         selectedBefore: selected,
       })
     );
-    // Two tiles fewer, but another tile changed too: not a plain match.
-    const moved = [{ ...before[0]!, col: 99 }, before[1]!];
-    expect(migrateLegacyUndoStack([snapshot(before)], moved)[0]!.kind).toBe("shuffle");
+    // The same size, one tile changed: a shuffle, kept whole.
+    const moved = [{ ...before[0]!, col: 99 }, ...before.slice(1)];
+    expect(migrateLegacyUndoStack([snapshot(before)], moved)[0]).toEqual(
+      expect.objectContaining({ kind: "shuffle", tilesBefore: before })
+    );
+  });
+
+  it("ends the history at a gap: a snapshot no single move leads from", () => {
+    const b0 = row(8);
+    const b1 = b0.slice(2);
+    const b2 = b1.slice(2);
+    // Two tiles fewer, but another tile changed too: not a match, and a
+    // shuffle keeps the tile count, so it can't be one either.
+    const moved = [{ ...b1[0]!, col: 99 }, ...b1.slice(3)];
+    expect(migrateLegacyUndoStack([snapshot(b1)], moved)).toEqual([]);
+    // A snapshot missing from the chain (the move from b1 to b2): the history
+    // ends at the gap, keeping only the newer entry.
+    const entries = migrateLegacyUndoStack([snapshot(b0), snapshot(b2)], b2.slice(2));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.kind).toBe("match");
   });
 
   it("keeps no board for a shuffle that left it as it was (a geometric deadlock)", () => {

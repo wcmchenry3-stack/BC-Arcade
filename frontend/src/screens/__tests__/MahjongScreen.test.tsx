@@ -1650,6 +1650,7 @@ describe("MahjongScreen — debounced saves (#2961)", () => {
       score: 670,
       accumulatedMs: 0,
       startedAt: null,
+      dealId: "TEST",
       currentLayoutId: "turtle",
       tiles: Array.from({ length: 10 }, (_, id) => {
         const rank = Math.floor(id / 2) + 1;
@@ -1695,7 +1696,7 @@ describe("MahjongScreen — debounced saves (#2961)", () => {
     });
   }
 
-  it("writes at most three times over ten taps of selections and matches", async () => {
+  it("writes twice over ten taps of selections and matches", async () => {
     const api = await mountOnFivePairs();
     // Select, switch, match, select, match, select, deselect, select, match, select.
     for (const id of [0, 2, 3, 0, 1, 4, 4, 4, 5, 6]) {
@@ -1705,7 +1706,6 @@ describe("MahjongScreen — debounced saves (#2961)", () => {
     await wait(SAVE_DEBOUNCE_MS);
     const saves = gameSaves();
     // One write for the first two matches (400 ms apart), one for the third.
-    expect(saves.length).toBeLessThanOrEqual(3);
     expect(saves.length).toBe(2);
     // The last write has all three matches and their undo history.
     const last = saves.at(-1)!;
@@ -1848,6 +1848,15 @@ describe("MahjongScreen — debounced saves (#2961)", () => {
     expect(hinted()).toBe(0);
   });
 
+  it("a tap that changes nothing, with no hint showing, doesn't re-render the board", async () => {
+    // Tile 0 is covered by tile 1, so tapping it is no move.
+    const tiles = fivePairs().tiles.map((t) => (t.id === 1 ? { ...t, col: 0, layer: 1 } : t));
+    const api = await mountOnFivePairs({ tiles } as Partial<MahjongState>);
+    const renders = mockCanvasRenders.count;
+    await tap(api, 0);
+    expect(mockCanvasRenders.count).toBe(renders);
+  });
+
   it("never brings a cleared board's save back", async () => {
     // A board under way: loading it runs the clock, so its write is pending.
     await AsyncStorage.setItem(
@@ -1914,6 +1923,15 @@ describe("MahjongScreen — a save from before delta undo (#2961)", () => {
     expect(api.getByLabelText("Undo last matched pair").props.accessibilityState?.disabled).toBe(
       true
     );
+  });
+
+  it("is saved as version 2 when opened and left without a move", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(legacySave()));
+    const api = await mount();
+    await api.unmount();
+    const saved = JSON.parse((await AsyncStorage.getItem("mahjong_game"))!);
+    expect(saved._v).toBe(2);
+    expect(saved.undoStack.map((e: { kind: string }) => e.kind)).toEqual(["match", "match"]);
   });
 
   it("plays on and saves in the delta format", async () => {

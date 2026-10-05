@@ -259,6 +259,60 @@ describe("mahjong storage — delta undo history (#2961)", () => {
     expect(board(undoMove(loaded))).toEqual(board(before[2]!));
   });
 
+  it("writes a version 1 save back as version 2 on the load itself", async () => {
+    const { legacy } = legacySave(3, [1]);
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(legacy));
+    const loaded = (await loadGame())!;
+    // No saveGame: opening and closing the game leaves a version 2 save.
+    const onDisk = JSON.parse(await saved());
+    expect(onDisk._v).toBe(2);
+    expect(onDisk.undoStack).toEqual(loaded.undoStack);
+    expect(onDisk.undoStack.map((e: { kind: string }) => e.kind)).toEqual([
+      "match",
+      "shuffle",
+      "match",
+    ]);
+  });
+
+  it("cuts a version 1 history at a gap, and writes what a load accepts", async () => {
+    const { legacy } = legacySave(3);
+    // The snapshot before the second move is lost: the oldest no longer leads
+    // to the next one by a single move.
+    const gapped = { ...legacy, undoStack: [legacy.undoStack[0], legacy.undoStack[2]] };
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(gapped));
+    const loaded = (await loadGame())!;
+    expect(loaded.undoStack).toHaveLength(1);
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const calls = setItem.mock.calls.length;
+    expect((await loadGame())!.undoStack).toEqual(loaded.undoStack);
+    expect(setItem.mock.calls.length).toBe(calls); // nothing left to normalise
+  });
+
+  it("writes nothing back when a version 2 save needed no change", async () => {
+    const { state } = play(3);
+    await saveGame({ ...state, dealId: "ABCD" });
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const calls = setItem.mock.calls.length;
+    const loaded = (await loadGame())!;
+    expect(loaded.undoStack).toEqual(state.undoStack);
+    expect(setItem.mock.calls.length).toBe(calls);
+  });
+
+  it("writes a version 2 save back when the load had to drop or fill in something", async () => {
+    const { state } = play(3);
+    const good = state.undoStack;
+    for (const save of [
+      { ...state, undoStack: [good[0], { kind: "teleport" }, good[2]] },
+      { ...state, dealId: undefined },
+    ]) {
+      await AsyncStorage.setItem(GAME_KEY, JSON.stringify(save));
+      const loaded = (await loadGame())!;
+      const onDisk = JSON.parse(await saved());
+      expect(onDisk.undoStack).toEqual(loaded.undoStack);
+      expect(onDisk.dealId).toBe(loaded.dealId);
+    }
+  });
+
   it("drops a saved history from a bad entry back, keeping the game", async () => {
     const { state } = play(3);
     const good = state.undoStack;
