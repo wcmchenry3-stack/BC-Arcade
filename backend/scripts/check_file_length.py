@@ -2,9 +2,7 @@
 
 Every file is capped at MAX_LINES unless it has an entry in CAPS (its line count when the
 gate landed), so even the known big files cannot grow. The check is self-expiring: a CAPS
-entry above MAX_LINES fails with "remove <path> from CAPS" once the file is at or under
-MAX_LINES (or gone). Entries at or below MAX_LINES are plain ratchets (the file may not
-grow past today's count) and are only reported if the file disappears.
+entry fails with "remove <path> from CAPS" once the file is at or under MAX_LINES (or gone).
 """
 
 from __future__ import annotations
@@ -17,8 +15,6 @@ EXCLUDED_DIRS = {"tests", "alembic", ".venv", "venv", "node_modules", "__pycache
 CAPS = {
     "games/service.py": 1005,  # TODO(#2991): split games/service.py
     "purchases/google_notifications.py": 813,  # TODO(#2998): split google_notifications.py
-    "games/leaderboard.py": 798,  # TODO(#2992): near the limit, split before it grows
-    "purchases/service.py": 793,  # TODO(#2998): near the limit, split before it grows
 }
 
 root = pathlib.Path(__file__).resolve().parent.parent
@@ -43,7 +39,7 @@ for rel in sorted(CAPS):
     n = line_count(rel)
     if n is None:
         bad.append(f"remove {rel} from CAPS (file no longer exists)")
-    elif CAPS[rel] > MAX_LINES and n <= MAX_LINES:
+    elif n <= MAX_LINES:
         bad.append(f"remove {rel} from CAPS (now {n} lines, at or under {MAX_LINES})")
 if bad:
     print("Backend file-length check failed (split files, or see #2951):", *bad, sep="\n  ")
