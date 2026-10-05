@@ -1670,11 +1670,12 @@ describe("MahjongScreen — debounced saves (#2961)", () => {
       .map(([, value]) => JSON.parse(value as string) as MahjongState);
   }
 
-  async function mountOnFivePairs() {
-    await AsyncStorage.setItem("mahjong_game", JSON.stringify(fivePairs()));
+  /** Loads the board; the load itself writes nothing, and is counted. */
+  async function mountOnFivePairs(overrides: Partial<MahjongState> = {}) {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify({ ...fivePairs(), ...overrides }));
+    callsBefore = setItem.mock.calls.length;
     const api = await mount();
     jest.useFakeTimers({ doNotFake: ["Date", "nextTick", "queueMicrotask", "setImmediate"] });
-    callsBefore = setItem.mock.calls.length;
     return api;
   }
 
@@ -1703,8 +1704,9 @@ describe("MahjongScreen — debounced saves (#2961)", () => {
     }
     await wait(SAVE_DEBOUNCE_MS);
     const saves = gameSaves();
-    expect(saves.length).toBeGreaterThan(0);
+    // One write for the first two matches (400 ms apart), one for the third.
     expect(saves.length).toBeLessThanOrEqual(3);
+    expect(saves.length).toBe(2);
     // The last write has all three matches and their undo history.
     const last = saves.at(-1)!;
     expect(last.tiles.map((t) => t.id)).toEqual([6, 7, 8, 9]);
@@ -1757,6 +1759,93 @@ describe("MahjongScreen — debounced saves (#2961)", () => {
     await AsyncStorage.setItem("mahjong_game", JSON.stringify(other));
     await wait(5 * SAVE_DEBOUNCE_MS);
     expect(JSON.parse((await AsyncStorage.getItem("mahjong_game"))!).dealId).toBe("NEXT");
+  });
+
+  it("costs no write to load a game, under way or not, or to CONTINUE one", async () => {
+    const api = await mountOnFivePairs({ accumulatedMs: 60_000 }); // its clock runs from the load
+    await wait(5 * SAVE_DEBOUNCE_MS);
+    expect(gameSaves()).toHaveLength(0);
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByText("New Game"));
+    });
+    const confirm = api.queryByLabelText("Start New");
+    if (confirm) {
+      await act(async () => {
+        await fireEvent.press(confirm);
+      });
+    }
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("Continue"));
+    });
+    expect(api.getByLabelText("mock-tile-0")).toBeTruthy();
+    await wait(5 * SAVE_DEBOUNCE_MS);
+    expect(gameSaves()).toHaveLength(0);
+  });
+
+  it("rewrites a saved selection the player cleared, so a relaunch restores none", async () => {
+    const api = await mountOnFivePairs();
+    await tap(api, 0);
+    await tap(api, 1); // a match
+    await wait(SAVE_DEBOUNCE_MS - 200);
+    await tap(api, 2); // selected while the match's write is pending
+    await wait(200);
+    expect(gameSaves().at(-1)!.selected).toEqual(expect.objectContaining({ id: 2 }));
+    await tap(api, 2); // deselected
+    await wait(SAVE_DEBOUNCE_MS);
+    expect(gameSaves().at(-1)!.selected).toBeNull();
+    await api.unmount();
+
+    const relaunched = await mount();
+    await tap(relaunched, 3); // with tile 2 still selected, this would match it
+    expect(relaunched.getByLabelText("mock-tile-2")).toBeTruthy();
+    expect(relaunched.getByLabelText("mock-tile-3")).toBeTruthy();
+  });
+
+  it("writes the pause on leaving, and nothing on the return", async () => {
+    const api = await mountOnFivePairs();
+    await tap(api, 0);
+    await tap(api, 1);
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    expect(gameSaves()).toHaveLength(1);
+    await act(async () => {
+      mockNavListeners.get("focus")?.forEach((h) => h());
+    });
+    await wait(5 * SAVE_DEBOUNCE_MS);
+    expect(gameSaves()).toHaveLength(1);
+  });
+
+  it("drops the hint on an undo or a shuffle, which can renumber its tiles", async () => {
+    const api = await mountOnFivePairs();
+    const hint = () =>
+      act(async () => {
+        await fireEvent.press(
+          api.getByLabelText("Show a hint — highlights one valid pair for 2 seconds")
+        );
+      });
+    const hinted = () => api.getByTestId("hint-ids-size").props.children;
+    await tap(api, 0);
+    await tap(api, 1);
+    await hint();
+    expect(hinted()).toBe(2);
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("Undo last matched pair"));
+    });
+    expect(hinted()).toBe(0);
+    await hint();
+    expect(hinted()).toBe(2);
+    await act(async () => {
+      await fireEvent.press(
+        api.getByLabelText("Shuffle remaining tiles into a new solvable arrangement")
+      );
+    });
+    expect(hinted()).toBe(0);
+    await wait(5 * SAVE_DEBOUNCE_MS); // no stale timer brings it back either
+    expect(hinted()).toBe(0);
   });
 
   it("never brings a cleared board's save back", async () => {

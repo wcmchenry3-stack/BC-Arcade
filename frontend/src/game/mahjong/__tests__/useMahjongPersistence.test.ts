@@ -121,6 +121,48 @@ describe("useMahjongPersistence (#2961)", () => {
     expect(mockSave).toHaveBeenCalledTimes(1);
   });
 
+  it("rewrites a save that holds a selection the player has since cleared", async () => {
+    const first = running();
+    const { show } = await setup(first);
+    const matched = match(first);
+    await show(matched);
+    await advance(SAVE_DEBOUNCE_MS - 100);
+    const [a] = getAnyFreePair(matched.tiles)!;
+    const selected = selectTile(matched, a);
+    await show(selected); // the debounced write captures the selection
+    await advance(100);
+    expect(mockSave).toHaveBeenLastCalledWith(selected);
+    mockSave.mockClear();
+    await show(selectTile(selected, a)); // deselect
+    expect(mockSave).not.toHaveBeenCalled();
+    await advance(SAVE_DEBOUNCE_MS);
+    expect(mockSave).toHaveBeenCalledTimes(1);
+    expect(mockSave.mock.calls[0]![0].selected).toBeNull();
+  });
+
+  it("a resume after a pause writes nothing: both load the same way", async () => {
+    const first = running();
+    const { show, result } = await setup(first);
+    const paused: MahjongState = { ...match(first), startedAt: null, paused: true };
+    mockSave.mockClear();
+    await act(async () => result.current.saveNow(paused));
+    await show(paused);
+    await show({ ...paused, startedAt: 9_000, paused: undefined });
+    await advance(5 * SAVE_DEBOUNCE_MS);
+    expect(mockSave).toHaveBeenCalledTimes(1);
+  });
+
+  it("a game read from storage costs no write, running or paused", async () => {
+    const { show, result } = await setup(null);
+    for (const loaded of [running(), { ...running(), startedAt: null, paused: true as const }]) {
+      await show(null);
+      mockSave.mockClear();
+      await show(result.current.adoptSaved(loaded));
+      await advance(5 * SAVE_DEBOUNCE_MS);
+      expect(mockSave).not.toHaveBeenCalled();
+    }
+  });
+
   it("writes the pending state on unmount and leaves no timer behind", async () => {
     const first = running();
     const { show, unmount } = await setup(first);

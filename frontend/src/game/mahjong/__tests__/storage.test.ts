@@ -47,22 +47,31 @@ describe("mahjong game storage", () => {
 
   it("strips nested undoStack snapshots at save time so storage cannot balloon", async () => {
     // #2961: entries are deltas, which hold no undo history of their own. A
-    // version 1 save whose snapshot nests another history loads flat, and the
-    // next save writes no snapshot at all.
-    const nested = {
-      ...seedState(),
-      _v: 1,
-      undoStack: [{ ...seedState(), undoStack: [{ ...seedState(), undoStack: [] }] }],
+    // version 1 save of two matches, its snapshots nesting histories of
+    // their own, loads as two match deltas, and the next save is the board
+    // plus a few hundred bytes per move instead of a board per move.
+    const matchOn = (s: MahjongState) => {
+      const [a, b] = getAnyFreePair(s.tiles)!;
+      return selectTile(selectTile(s, a), b);
     };
-    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(nested));
+    const s0 = seedState();
+    const s1 = matchOn(s0);
+    const s2 = matchOn(s1);
+    const nest = (s: MahjongState) => ({ ...s, _v: 1, undoStack: [{ ...s0, undoStack: [] }] });
+    const legacy = JSON.stringify({ ...s2, _v: 1, undoStack: [nest(s0), nest(s1)] });
+    await AsyncStorage.setItem(GAME_KEY, legacy);
     await saveGame((await loadGame())!);
-    const raw = await AsyncStorage.getItem(GAME_KEY);
-    const parsed = JSON.parse(raw!);
-    expect(parsed.undoStack).toHaveLength(1);
+    const raw = (await AsyncStorage.getItem(GAME_KEY))!;
+    const parsed = JSON.parse(raw);
+    expect(parsed.undoStack.map((e: { kind: string }) => e.kind)).toEqual(["match", "match"]);
     for (const entry of parsed.undoStack) {
       expect(entry).not.toHaveProperty("undoStack");
       expect(entry).not.toHaveProperty("tiles");
+      expect(entry).not.toHaveProperty("tilesBefore");
     }
+    const boardOnly = JSON.stringify({ ...s2, undoStack: [] }).length;
+    expect(raw.length).toBeLessThan(boardOnly + 2 * 1_000);
+    expect(raw.length).toBeLessThan(legacy.length / 3);
   });
 
   it("returns null and captures a warning on corrupt JSON", async () => {
@@ -157,17 +166,21 @@ describe("mahjong storage — delta undo history (#2961)", () => {
   it("round-trips shuffles: the board before one, and one that changed nothing", async () => {
     const { state: played } = play(2);
     const shuffled = shuffleBoard(played);
+    await saveGame(shuffled);
+    const reloaded = (await loadGame())!;
+    expect(reloaded.undoStack).toEqual(shuffled.undoStack);
+    expect(undoMove(reloaded).tiles).toEqual(played.tiles);
+
     // A board no shuffle can fix: the shuffle is spent and the board left as it was.
     const stack = [0, 1, 2, 3].map((layer) => ({ ...played.tiles[0]!, id: layer, layer }));
-    const stuck = shuffleBoard({ ...shuffled, tiles: stack, undoStack: shuffled.undoStack });
-    expect(stuck.undoStack.at(-1)).toEqual(expect.objectContaining({ tilesBefore: null }));
+    const stuck = shuffleBoard({ ...played, tiles: stack, undoStack: [] });
+    expect(stuck.undoStack).toEqual([expect.objectContaining({ tilesBefore: null })]);
     await saveGame(stuck);
     const loaded = (await loadGame())!;
     expect(loaded.undoStack).toEqual(stuck.undoStack);
     const once = undoMove(loaded);
     expect(once.tiles).toEqual(stack);
     expect(once.isDeadlocked).toBe(false);
-    expect(undoMove(once).tiles).toEqual(played.tiles);
   });
 
   it("keeps a save after 30 matches well under 50 KB", async () => {
@@ -249,6 +262,8 @@ describe("mahjong storage — delta undo history (#2961)", () => {
   it("drops a saved history from a bad entry back, keeping the game", async () => {
     const { state } = play(3);
     const good = state.undoStack;
+    // The board the second move left, which the third entry restores.
+    const afterMove1 = undoMove(state).tiles;
     for (const bad of [
       { ...good[1], kind: "teleport" },
       { ...good[1], kind: "shuffle", tilesBefore: [7] },
@@ -261,6 +276,22 @@ describe("mahjong storage — delta undo history (#2961)", () => {
           { index: 500, tile: state.tiles[0] },
           { index: 501, tile: state.tiles[1] },
         ],
+      },
+      // Tiles already on the board it would restore.
+      {
+        ...good[1],
+        removedTiles: [
+          { index: 0, tile: state.tiles[0] },
+          { index: 1, tile: state.tiles[1] },
+        ],
+      },
+      // A shuffle that would swap the board for one of another size.
+      { ...good[1], kind: "shuffle", tilesBefore: [state.tiles[0]] },
+      // A shuffle whose board has the right size but a tile twice.
+      {
+        ...good[1],
+        kind: "shuffle",
+        tilesBefore: [afterMove1[0], ...afterMove1.slice(0, -1)],
       },
     ]) {
       await AsyncStorage.setItem(

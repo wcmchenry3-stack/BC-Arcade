@@ -78,6 +78,27 @@ describe("migrateLegacyUndoStack (#2961)", () => {
     expect(migrateLegacyUndoStack([snapshot(before)], moved)[0]!.kind).toBe("shuffle");
   });
 
+  it("keeps no board for a shuffle that left it as it was (a geometric deadlock)", () => {
+    const board = row(4);
+    const [entry] = migrateLegacyUndoStack(
+      [
+        snapshot(
+          board.map((t) => ({ ...t })),
+          { shufflesLeft: 1 }
+        ),
+      ],
+      board
+    );
+    expect(entry).toEqual(
+      expect.objectContaining({ kind: "shuffle", tilesBefore: null, shufflesLeftBefore: 1 })
+    );
+    // Undone, it keeps the board as it is, which is the snapshot's.
+    const faced = [{ ...board[0]!, faceId: 27 }, ...board.slice(1)];
+    expect(migrateLegacyUndoStack([snapshot(faced)], board)[0]).toEqual(
+      expect.objectContaining({ tilesBefore: faced })
+    );
+  });
+
   it("chains each snapshot to the next one's board", () => {
     const b0 = row(6);
     const b1 = b0.slice(2);
