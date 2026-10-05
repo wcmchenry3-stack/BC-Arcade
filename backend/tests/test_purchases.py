@@ -22,7 +22,7 @@ from datetime import UTC, datetime, timedelta
 import jwt
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 
 from db.base import get_session_factory
 from db.models import GameEntitlement, Purchase, PurchaseEvent, PurchaseLink
@@ -43,6 +43,7 @@ from purchases.verifiers import (
     PurchaseError,
     VerifiedPurchase,
 )
+from tests._helpers import count, jwt_games, session_headers
 
 HEARTS = "com.buffingchi.games.premium.hearts"
 CASCADE = "com.buffingchi.games.premium.cascade"
@@ -140,15 +141,11 @@ def new_sid() -> str:
     return str(uuid.uuid4())
 
 
-def hdr(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
-
-
 def post_apple(client: TestClient, sid: str, store_key: str, source: str = "sync"):
     return client.post(
         "/purchases/apple",
         json={"signed_transaction": make_jws(store_key), "source": source},
-        headers=hdr(sid),
+        headers=session_headers(sid),
     )
 
 
@@ -158,26 +155,13 @@ def post_google(
     return client.post(
         "/purchases/google",
         json={"product_id": product_id, "purchase_token": token, "source": source},
-        headers=hdr(sid),
+        headers=session_headers(sid),
     )
 
 
 def token_games(body: dict) -> list[str]:
     pub = entitlements_service.get_public_key_pem()
     return jwt.decode(body["entitlements"]["token"], pub, algorithms=["RS256"])["entitled_games"]
-
-
-def jwt_games(client: TestClient, sid: str) -> list[str]:
-    r = client.get("/entitlements", headers=hdr(sid))
-    assert r.status_code == 200
-    return token_games({"entitlements": r.json()})
-
-
-async def count(model, *where) -> int:
-    async with get_session_factory()() as db:
-        return (
-            await db.execute(select(func.count()).select_from(model).where(*where))
-        ).scalar_one()
 
 
 async def entitlement(sid: str, slug: str = "hearts") -> GameEntitlement | None:
@@ -291,7 +275,12 @@ async def test_paid_access_denied_before_purchase_allowed_after(
     client: TestClient, fake_apple: FakeAppleVerifier
 ) -> None:
     sid = new_sid()
-    assert client.post("/games", json={"game_type": "hearts"}, headers=hdr(sid)).status_code == 403
+    assert (
+        client.post(
+            "/games", json={"game_type": "hearts"}, headers=session_headers(sid)
+        ).status_code
+        == 403
+    )
 
     fake_apple.answers["1000"] = verified("1000", account_token=apple.expected_account_token(sid))
     r = post_apple(client, sid, "1000", source="purchase")
@@ -303,7 +292,12 @@ async def test_paid_access_denied_before_purchase_allowed_after(
     assert body["finish"] is True
     assert token_games(body) == ["hearts"]
     assert jwt_games(client, sid) == ["hearts"]
-    assert client.post("/games", json={"game_type": "hearts"}, headers=hdr(sid)).status_code != 403
+    assert (
+        client.post(
+            "/games", json={"game_type": "hearts"}, headers=session_headers(sid)
+        ).status_code
+        != 403
+    )
 
     row = await entitlement(sid)
     assert row is not None and row.purchase_id is not None
@@ -461,7 +455,7 @@ async def test_revoke_removes_access_for_all_linked_sessions_and_reversal_restor
     assert changed is True
     for sid in (a, b):
         assert jwt_games(client, sid) == []
-        r = client.post("/games", json={"game_type": "hearts"}, headers=hdr(sid))
+        r = client.post("/games", json={"game_type": "hearts"}, headers=session_headers(sid))
         assert r.status_code == 403
     assert await count(PurchaseLink) == 2  # links are kept
 
@@ -708,7 +702,7 @@ def test_cancelled_purchase_grants_nothing(
 def test_malformed_apple_request_is_400_invalid_request(
     client: TestClient, fake_apple: FakeAppleVerifier, body: dict
 ) -> None:
-    r = client.post("/purchases/apple", json=body, headers=hdr(new_sid()))
+    r = client.post("/purchases/apple", json=body, headers=session_headers(new_sid()))
     assert r.status_code == 400
     assert r.json()["detail"] == "invalid_request"
     assert fake_apple.calls == 0
@@ -743,7 +737,7 @@ def test_realistic_jws_size_is_not_rejected_as_too_large(
     r = client.post(
         "/purchases/apple",
         json={"signed_transaction": jws, "source": "sync"},
-        headers=hdr(new_sid()),
+        headers=session_headers(new_sid()),
     )
     assert r.status_code == 200, r.text
 
@@ -796,7 +790,7 @@ def test_free_games_unaffected_by_purchase_code(
     sid = new_sid()
     fake_apple.answers["1000"] = verified("1000")
     assert post_apple(client, new_sid(), "1000").status_code == 200
-    r = client.post("/games", json={"game_type": game}, headers=hdr(sid))
+    r = client.post("/games", json={"game_type": game}, headers=session_headers(sid))
     assert r.status_code != 403
     assert jwt_games(client, sid) == []
 

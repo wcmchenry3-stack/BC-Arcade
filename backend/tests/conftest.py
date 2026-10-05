@@ -24,6 +24,14 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+# Shared helper modules (#2955) are imported by test modules for plain helpers; the IAP
+# harnesses are also registered through ``pytest_plugins`` for their fixtures. Mark them for
+# assertion rewriting before either happens, so their asserts get pytest's introspection and
+# pytest does not warn that they were imported before they could be rewritten.
+pytest.register_assert_rewrite(
+    "tests._helpers", "tests._google_iap_harness", "tests._apple_iap_harness"
+)
+
 if TYPE_CHECKING:
     from fastapi.testclient import TestClient
 

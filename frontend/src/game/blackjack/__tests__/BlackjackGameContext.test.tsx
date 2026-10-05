@@ -77,7 +77,7 @@ describe("BlackjackGameContext progress snapshot (#2682)", () => {
     });
 
     // Simulate a hand resolving into the run's goal (skips actual card-by-card
-    // play — covered by engine.test.ts — to isolate the snapshot wiring).
+    // play — covered by the engine.*.test.ts files — to isolate the snapshot wiring).
     await act(async () => {
       result.current.apply((s) => ({ ...s, outcome: "win", phase: "victory" }));
     });
