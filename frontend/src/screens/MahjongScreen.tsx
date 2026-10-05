@@ -613,7 +613,7 @@ export default function MahjongScreen() {
   }, []);
 
   // Saves only when the board, undo history or banked clock change, debounced (#2961).
-  const { saveNow, discardSave } = useMahjongPersistence(state, hasLoadedRef);
+  const { saveNow, discardSave, adoptSaved } = useMahjongPersistence(state, hasLoadedRef);
 
   // Another screen covering the game (⋯ → Leaderboard, #2633) or the app
   // going to the background (#2750) stops its clock, so the finish and best
@@ -641,7 +641,7 @@ export default function MahjongScreen() {
         progressRef.current = savedProgress;
         setProgress(savedProgress);
         if (saved !== null) {
-          setState(adoptLoaded(saved));
+          setState(adoptSaved(adoptLoaded(saved)));
           setHasSavedGame(!saved.isComplete);
           if (saved.isComplete) winRecordedRef.current = true;
           // A restored game continues the session a killed app left open (#2654).
@@ -657,7 +657,7 @@ export default function MahjongScreen() {
     return () => {
       alive = false;
     };
-  }, [syncResume, adoptLoaded]);
+  }, [syncResume, adoptLoaded, adoptSaved]);
 
   useEffect(() => {
     stateRef.current = state;
@@ -850,13 +850,16 @@ export default function MahjongScreen() {
     [syncGetGameId, syncStart, syncMarkStarted]
   );
 
+  // Any move drops the hint: an undo or a shuffle can renumber the tiles it names.
+  const clearHint = useCallback(() => {
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    hintTimerRef.current = null;
+    setHintIds(new Set());
+  }, []);
+
   const handleTilePress = useCallback(
     (tileId: number) => {
-      if (hintTimerRef.current) {
-        clearTimeout(hintTimerRef.current);
-        hintTimerRef.current = null;
-      }
-      setHintIds(new Set());
+      clearHint();
       setState((prev) => {
         if (!prev) return prev;
         const moved = selectTile(prev, tileId);
@@ -868,7 +871,7 @@ export default function MahjongScreen() {
         return next;
       });
     },
-    [ensureSyncStarted, matchPresence]
+    [ensureSyncStarted, matchPresence, clearHint]
   );
 
   const handleHint = useCallback(() => {
@@ -894,6 +897,7 @@ export default function MahjongScreen() {
   );
 
   const handleShuffle = useCallback(() => {
+    clearHint();
     setState((prev) => {
       if (!prev) return prev;
       const shuffled = shuffleBoard(prev);
@@ -902,14 +906,12 @@ export default function MahjongScreen() {
       ensureSyncStarted(next);
       return next;
     });
-  }, [ensureSyncStarted, matchPresence]);
+  }, [ensureSyncStarted, matchPresence, clearHint]);
 
   const handleUndo = useCallback(() => {
-    setState((prev) => {
-      if (!prev) return prev;
-      return matchPresence(undoMove(prev));
-    });
-  }, [matchPresence]);
+    clearHint();
+    setState((prev) => (prev ? matchPresence(undoMove(prev)) : prev));
+  }, [matchPresence, clearHint]);
 
   /**
    * Closes an open session: a loss for a deadlocked board, otherwise the
@@ -1003,7 +1005,7 @@ export default function MahjongScreen() {
           setHasSavedGame(false);
           return;
         }
-        setState(adoptLoaded(saved));
+        setState(adoptSaved(adoptLoaded(saved)));
         setHasSavedGame(false);
         // A restored game continues the session a killed app left open (#2654).
         if (!saved.isComplete) syncResume();
@@ -1012,7 +1014,7 @@ export default function MahjongScreen() {
       .catch(() => {
         setHasSavedGame(false);
       });
-  }, [syncResume, adoptLoaded]);
+  }, [syncResume, adoptLoaded, adoptSaved]);
 
   const undoDisabled = !state || state.undoStack.length === 0 || state.isComplete;
 
