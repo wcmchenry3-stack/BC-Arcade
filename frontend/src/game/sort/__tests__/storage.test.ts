@@ -1,11 +1,17 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   applyLevelSolve,
+  clearGame,
   highestSolvedLevel,
   loadBestMoves,
+  loadLevelsCache,
+  loadProgress,
   mergeBestMoves,
   saveBestMoves,
+  saveLevelsCache,
+  saveProgress,
   totalBestMoves,
+  type SortProgress,
 } from "../storage";
 
 beforeEach(async () => {
@@ -101,5 +107,78 @@ describe("totalBestMoves (#2625)", () => {
   it("is null when a stored best is not a move count", () => {
     expect(totalBestMoves({ "1": 5, "2": -1 }, 2)).toBeNull();
     expect(totalBestMoves({ "1": 5, "2": 2.5 }, 2)).toBeNull();
+  });
+});
+
+describe("saveProgress / loadProgress / clearGame (#2957)", () => {
+  const progress: SortProgress = {
+    unlockedLevel: 4,
+    currentLevelId: 3,
+    currentState: {
+      bottles: [["red", "blue"], []],
+      moveCount: 2,
+      undosUsed: 0,
+      isComplete: false,
+      selectedBottleIndex: null,
+    },
+  };
+  const fresh = { unlockedLevel: 1, currentLevelId: null, currentState: null };
+
+  it("reads back what was saved", async () => {
+    await saveProgress(progress);
+    await expect(loadProgress()).resolves.toEqual(progress);
+  });
+
+  it("starts at level 1 with no game when nothing is stored", async () => {
+    await expect(loadProgress()).resolves.toEqual(fresh);
+  });
+
+  it("starts at level 1 when the stored progress is corrupt", async () => {
+    await AsyncStorage.setItem("@sort/progress", "{not json");
+    await expect(loadProgress()).resolves.toEqual(fresh);
+  });
+
+  it("starts at level 1 when storage can't be read", async () => {
+    jest.spyOn(AsyncStorage, "getItem").mockRejectedValueOnce(new Error("disk"));
+    await expect(loadProgress()).resolves.toEqual(fresh);
+  });
+
+  it("clearGame removes the saved progress", async () => {
+    await saveProgress(progress);
+    await clearGame();
+    await expect(AsyncStorage.getItem("@sort/progress")).resolves.toBeNull();
+    await expect(loadProgress()).resolves.toEqual(fresh);
+  });
+
+  it("does not touch the best moves when clearing the game", async () => {
+    await saveBestMoves({ "1": 8 });
+    await saveProgress(progress);
+    await clearGame();
+    await expect(loadBestMoves()).resolves.toEqual({ "1": 8 });
+  });
+});
+
+describe("saveLevelsCache / loadLevelsCache (#2957)", () => {
+  const levels = { levels: [{ id: 1, bottles: [["red", "blue"], ["blue", "red"], []] }] };
+
+  it("reads back the cached levels", async () => {
+    await saveLevelsCache(levels);
+    await expect(loadLevelsCache()).resolves.toEqual(levels);
+  });
+
+  it("is null when nothing is cached", async () => {
+    await expect(loadLevelsCache()).resolves.toBeNull();
+  });
+
+  it("is null when the cache is corrupt", async () => {
+    await AsyncStorage.setItem("@sort/levels_cache", "oops");
+    await expect(loadLevelsCache()).resolves.toBeNull();
+  });
+
+  it("is null when storage can't be read", async () => {
+    await saveLevelsCache(levels);
+    jest.spyOn(AsyncStorage, "getItem").mockRejectedValueOnce(new Error("disk"));
+    await expect(loadLevelsCache()).resolves.toBeNull();
+    await expect(loadLevelsCache()).resolves.toEqual(levels);
   });
 });

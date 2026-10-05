@@ -869,32 +869,56 @@ function StarSwarmGame() {
 
               <View style={styles.devRow}>
                 <Text style={dynamicStyles.devLabel}>Infinite lives</Text>
-                <Switch value={devInfiniteLives} onValueChange={setDevInfiniteLives} />
+                <Switch
+                  value={devInfiniteLives}
+                  onValueChange={setDevInfiniteLives}
+                  accessibilityLabel="Infinite lives"
+                />
               </View>
 
               <View style={styles.devRow}>
                 <Text style={dynamicStyles.devLabel}>Straggler AI</Text>
-                <Switch value={devStragglerEnabled} onValueChange={setDevStragglerEnabled} />
+                <Switch
+                  value={devStragglerEnabled}
+                  onValueChange={setDevStragglerEnabled}
+                  accessibilityLabel="Straggler AI"
+                />
               </View>
 
               <View style={styles.devRow}>
                 <Text style={dynamicStyles.devLabel}>Pause straggler</Text>
-                <Switch value={devPauseStraggler} onValueChange={setDevPauseStraggler} />
+                <Switch
+                  value={devPauseStraggler}
+                  onValueChange={setDevPauseStraggler}
+                  accessibilityLabel="Pause straggler"
+                />
               </View>
 
               <View style={styles.devRow}>
                 <Text style={dynamicStyles.devLabel}>Player missiles off</Text>
-                <Switch value={devPlayerFireOff} onValueChange={setDevPlayerFireOff} />
+                <Switch
+                  value={devPlayerFireOff}
+                  onValueChange={setDevPlayerFireOff}
+                  accessibilityLabel="Player missiles off"
+                />
               </View>
 
               <View style={styles.devRow}>
                 <Text style={dynamicStyles.devLabel}>Enemy missiles off</Text>
-                <Switch value={devEnemyFireOff} onValueChange={setDevEnemyFireOff} />
+                <Switch
+                  value={devEnemyFireOff}
+                  onValueChange={setDevEnemyFireOff}
+                  accessibilityLabel="Enemy missiles off"
+                />
               </View>
 
               <View style={styles.devRow}>
                 <Text style={dynamicStyles.devLabel}>Asteroids off</Text>
-                <Switch value={devAsteroidsOff} onValueChange={setDevAsteroidsOff} />
+                <Switch
+                  value={devAsteroidsOff}
+                  onValueChange={setDevAsteroidsOff}
+                  accessibilityLabel="Asteroids off"
+                />
               </View>
 
               <Pressable
@@ -907,23 +931,39 @@ function StarSwarmGame() {
 
               <View style={styles.devRow}>
                 <Text style={dynamicStyles.devLabel}>Dodge off</Text>
-                <Switch value={devDodgeOff} onValueChange={setDevDodgeOff} />
+                <Switch
+                  value={devDodgeOff}
+                  onValueChange={setDevDodgeOff}
+                  accessibilityLabel="Dodge off"
+                />
               </View>
 
               <View style={styles.devRow}>
                 <Text style={dynamicStyles.devLabel}>Flak off</Text>
-                <Switch value={devFlakOff} onValueChange={setDevFlakOff} />
+                <Switch
+                  value={devFlakOff}
+                  onValueChange={setDevFlakOff}
+                  accessibilityLabel="Flak off"
+                />
               </View>
 
               <View style={styles.devRow}>
                 <Text style={dynamicStyles.devLabel}>Rout off</Text>
-                <Switch value={devRoutOff} onValueChange={setDevRoutOff} />
+                <Switch
+                  value={devRoutOff}
+                  onValueChange={setDevRoutOff}
+                  accessibilityLabel="Rout off"
+                />
               </View>
 
               {/* #2567: frame-time avg / p95 and canvas commits/s, shown over the game */}
               <View style={styles.devRow}>
                 <Text style={dynamicStyles.devLabel}>Frame readout</Text>
-                <Switch value={devFrameReadout} onValueChange={setDevFrameReadout} />
+                <Switch
+                  value={devFrameReadout}
+                  onValueChange={setDevFrameReadout}
+                  accessibilityLabel="Frame readout"
+                />
               </View>
 
               <Pressable
