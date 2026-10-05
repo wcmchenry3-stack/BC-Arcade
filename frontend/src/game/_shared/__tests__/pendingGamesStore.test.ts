@@ -411,32 +411,10 @@ describe("PendingGamesStore", () => {
       expect(fresh.get("g1")?.nextEventIndex).toBe(2);
     });
 
-    it("a failed counter write is not counted as landed: it is retried and the counter reaches disk", async () => {
-      await store.create("g1", "yacht", {});
-      const setItem = AsyncStorage.setItem as jest.Mock;
-      const original = setItem.getMockImplementation()!;
-      let failOnce = true;
-      setItem.mockImplementation(async (key: string, value: string) => {
-        if (key === "pending_games_v1" && failOnce) {
-          failOnce = false;
-          throw new Error("disk full");
-        }
-        return original(key, value);
-      });
-      try {
-        setItem.mockClear();
-        store.nextEventIndex("g1");
-        await new Promise((r) => setTimeout(r, 10));
-        expect(pendingWrites()).toHaveLength(2); // the failure, then the retry
-      } finally {
-        setItem.mockImplementation(original);
-      }
-      const fresh = new PendingGamesStore();
-      await fresh.init();
-      expect(fresh.get("g1")?.nextEventIndex).toBe(1);
-    });
-
-    it("gives up after repeated failures and lets the next bump carry the counter", async () => {
+    it("a failed counter write is reported once, not counted as landed, and carried by the next bump", async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const Sentry = require("@sentry/react-native");
+      Sentry.captureException.mockClear();
       await store.create("g1", "yacht", {});
       const setItem = AsyncStorage.setItem as jest.Mock;
       const original = setItem.getMockImplementation()!;
@@ -449,11 +427,17 @@ describe("PendingGamesStore", () => {
         setItem.mockClear();
         store.nextEventIndex("g1");
         await new Promise((r) => setTimeout(r, 10));
-        expect(pendingWrites()).toHaveLength(3); // bounded retries, no spin
+        expect(pendingWrites()).toHaveLength(1); // one attempt, no retry loop
+        expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+        expect(Sentry.captureException).toHaveBeenCalledWith(
+          expect.any(Error),
+          expect.objectContaining({ tags: { subsystem: "pendingGamesStore", op: "persist" } })
+        );
+
         failing = false;
         store.nextEventIndex("g1");
         await new Promise((r) => setTimeout(r, 10));
-        expect(pendingWrites()).toHaveLength(4);
+        expect(pendingWrites()).toHaveLength(2); // the next bump carries both increments
       } finally {
         setItem.mockImplementation(original);
       }

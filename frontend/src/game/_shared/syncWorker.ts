@@ -306,7 +306,9 @@ export class SyncWorker {
       Sentry.captureMessage(`syncWorker: POST /games ${gameId} → ${res.status}`, {
         level: res.status === 403 ? "error" : "warning",
       });
-      await this.deadLetterGameAndEvents(gameId);
+      // Parked rows included: the game is forgotten, so they must not come
+      // back as orphans once their retry time passes.
+      await this.store.markDeadLetteredByGameIds([gameId]);
       await this.games.forget(gameId);
       result.deadLettered += 1;
     }
@@ -637,22 +639,6 @@ export class SyncWorker {
     if (terminal.length > 0) {
       await this.store.markDeadLettered(terminal.map((r) => r.id));
     }
-  }
-
-  /**
-   * Step 1's terminal 4xx: every queued row of the game is dead-lettered,
-   * the rows a per-row backoff has parked included — the game is forgotten,
-   * so they would otherwise come back as orphans once their retry time passes.
-   */
-  private async deadLetterGameAndEvents(gameId: string): Promise<void> {
-    const all = await this.store.peek(Number.POSITIVE_INFINITY, {
-      includeDeadLettered: true,
-      includeFuture: true,
-    });
-    const ids = all
-      .filter((r) => r.log_type === "game_event" && r.game_id === gameId)
-      .map((r) => r.id);
-    await this.store.markDeadLettered(ids);
   }
 }
 

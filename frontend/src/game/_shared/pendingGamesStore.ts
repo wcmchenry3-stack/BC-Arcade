@@ -51,8 +51,6 @@ import * as Sentry from "@sentry/react-native";
 import type { GameOutcome } from "../../api/vocab";
 
 const STORAGE_KEY = "pending_games_v1";
-/** How many times in a row a coalesced counter write is retried when it fails. */
-const COUNTER_WRITE_ATTEMPTS = 3;
 
 export interface CompleteSummary {
   finalScore?: number | null;
@@ -326,23 +324,18 @@ export class PendingGamesStore {
   }
 
   private async drainCounter(): Promise<void> {
-    let failures = 0;
     while (this.counterWritten < this.counterVersion) {
       // The write serialises the map after the load, so every bump made by
       // then is in it; note the version it covers before it runs.
       await this.load();
       const target = this.counterVersion;
-      if (await this.write()) {
-        this.counterWritten = target;
-        failures = 0;
-        continue;
-      }
-      // A failed write never counts as landed: retry a few times, then leave
-      // the counter marked unwritten so the next bump (or any other write of
-      // the map) carries it. Treating it as landed would let a kill resume a
-      // session on a stale event_index.
-      failures += 1;
-      if (failures >= COUNTER_WRITE_ATTEMPTS) return;
+      // A failed write (reported once, by write()) never counts as landed:
+      // the counter stays marked unwritten and the next bump, or any other
+      // write of the map, carries it. Retrying here would only repeat the
+      // report; counting it as landed would let a kill resume a session on a
+      // stale event_index.
+      if (!(await this.write())) return;
+      this.counterWritten = target;
     }
   }
 

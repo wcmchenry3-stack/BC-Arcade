@@ -3,7 +3,7 @@ import { AppState, AppStateStatus } from "react-native";
 import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import { CapacityWarningToast } from "../CapacityWarningToast";
 import { ThemeProvider } from "../../../theme/ThemeContext";
-import { eventStore, QueueStats, StatsListener } from "../../../game/_shared/eventStore";
+import { eventStore, QueueCounts, StatsListener } from "../../../game/_shared/eventStore";
 
 async function renderWith(
   shouldShowCheck: () => Promise<boolean>,
@@ -214,18 +214,17 @@ describe("CapacityWarningToast", () => {
   // Stats subscription instead of polling (#2959)
   // -------------------------------------------------------------------------
 
-  function queueStats(totalRows: number): QueueStats {
+  function queueStats(totalRows: number): QueueCounts {
     return {
       totalRows,
       sizeBytes: totalRows * 100,
       byLogType: { game_event: totalRows, bug_log: 0 },
       byPriority: { 0: 0, 1: 0, 2: 0, 3: totalRows },
-      oldestAt: 1,
     };
   }
 
   /** Render with no poll interval (the production default) and a scripted subscription. */
-  async function renderSubscribed(check: (stats?: QueueStats) => Promise<boolean>) {
+  async function renderSubscribed(check: (stats?: QueueCounts) => Promise<boolean>) {
     let emit: StatsListener = () => undefined;
     const unsubscribe = jest.fn();
     const subscribe = jest.fn((listener: StatsListener) => {
@@ -237,14 +236,14 @@ describe("CapacityWarningToast", () => {
         <CapacityWarningToast shouldShowCheck={check} subscribe={subscribe} />
       </ThemeProvider>
     );
-    return { ...view, subscribe, unsubscribe, emit: (stats: QueueStats) => emit(stats) };
+    return { ...view, subscribe, unsubscribe, emit: (stats: QueueCounts) => emit(stats) };
   }
 
   it("subscribes to queue stats, re-checks on each change with them, and never polls", async () => {
     jest.useFakeTimers();
     try {
       const check = jest
-        .fn<Promise<boolean>, [QueueStats?]>()
+        .fn<Promise<boolean>, [QueueCounts?]>()
         .mockResolvedValueOnce(false) // mount
         .mockResolvedValue(true); // after a change
       const { queryByTestId, subscribe, unsubscribe, emit, unmount } =
@@ -278,7 +277,7 @@ describe("CapacityWarningToast", () => {
   });
 
   it("without polling, a return to the foreground still checks once", async () => {
-    const check = jest.fn<Promise<boolean>, [QueueStats?]>().mockResolvedValue(false);
+    const check = jest.fn<Promise<boolean>, [QueueCounts?]>().mockResolvedValue(false);
     await renderSubscribed(check);
     await flush();
     expect(check).toHaveBeenCalledTimes(1);

@@ -14,9 +14,12 @@
  * In-memory mirror (#2959): the four tiers are loaded from AsyncStorage once,
  * by the first operation, and kept in memory for the life of the process.
  * Every mutation changes the mirror and writes the changed tier(s) back
- * (write-through), so the on-disk format is exactly what it always was; a
- * write that fails puts the mirror back as it was (`transact`), so memory
- * never holds a row the disk rejected.
+ * (write-through), so the on-disk format is exactly what it always was. The
+ * invariant is per tier: the mirror holds what the disk holds. A tier whose
+ * write fails goes back to what the disk still has (`transact`); a mutation
+ * that touches several tiers can therefore land in part — exactly what a
+ * crash between two tier writes could do before the mirror — and the caller
+ * sees the rejection either way.
  * `peek`, `stats`, `updateRows`, `deleteByIds` and `markDeadLettered` read
  * only the mirror; `readTier` runs only for the initial load (and, inside it,
  * for corruption recovery). `totalRows` and `sizeBytes` are kept up to date
@@ -134,7 +137,14 @@ export interface QueueStats {
   oldestAt: number | null;
 }
 
-export type StatsListener = (stats: QueueStats) => void;
+/**
+ * What `onStats` reports after each change: the stats without `oldestAt`,
+ * which is only found again by a pass over the rows once the oldest row has
+ * left, and so is left to `stats()`.
+ */
+export type QueueCounts = Omit<QueueStats, "oldestAt">;
+
+export type StatsListener = (stats: QueueCounts) => void;
 
 /** The mirrored tiers, once loaded. */
 type Tiers = Record<Priority, Row[]>;
@@ -158,13 +168,6 @@ interface Overage {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function rowBytes(row: Row): number {
-  // Approximate — JSON.stringify length is UTF-16 char count, and we treat
-  // it as a size proxy. For ASCII payloads this matches byte count; for
-  // non-ASCII it slightly under-counts, which is fine for a soft cap.
-  return JSON.stringify(row).length;
-}
 
 function emptyTiers(): Tiers {
   return { 0: [], 1: [], 2: [], 3: [] };
@@ -248,11 +251,21 @@ export class EventStore {
     await AsyncStorage.setItem(TIER_KEYS[tier], JSON.stringify(rows));
   }
 
-  /** Write every tier in `dirty` back to disk (write-through). */
-  private async commit(tiers: Tiers, dirty: Set<Priority>): Promise<void> {
-    for (const tier of TIERS) {
-      if (dirty.has(tier)) await this.writeTier(tier, tiers[tier]);
-    }
+  /**
+   * Write every tier in `dirty` back to disk, all at once. Returns the tiers
+   * whose write failed, with the reason; empty when every write landed.
+   */
+  private async commit(tiers: Tiers, dirty: Set<Priority>): Promise<Map<Priority, unknown>> {
+    const pending = TIERS.filter((tier) => dirty.has(tier));
+    const outcomes = await Promise.allSettled(
+      pending.map((tier) => this.writeTier(tier, tiers[tier]))
+    );
+    const failed = new Map<Priority, unknown>();
+    outcomes.forEach((outcome, i) => {
+      const tier = pending[i];
+      if (tier !== undefined && outcome.status === "rejected") failed.set(tier, outcome.reason);
+    });
+    return failed;
   }
 
   private async readMeta(): Promise<MetaState> {
@@ -299,10 +312,14 @@ export class EventStore {
   /**
    * Run one memory mutation and write the tiers it dirtied (#2959). `fn` must
    * only replace tier arrays (copy-on-write), never change one in place, so
-   * that a failed write can put the saved arrays and counters back: a rejected
-   * mutation then leaves no trace in the mirror, as a rejected write left none
-   * before the mirror existed. Subscribers hear of the change only once it is
-   * on disk. Call under the lock.
+   * that a tier whose write failed can get its saved array back. The invariant
+   * is per tier: the mirror holds what the disk holds. A tier whose write
+   * landed keeps its new rows; a tier whose write failed goes back to what the
+   * disk still has; the counters are recounted from the arrays. So a mutation
+   * over several tiers can land in part — as it could before the mirror, when
+   * a crash between two tier writes left the first on disk and not the second
+   * — and the caller sees the rejection either way. Subscribers hear of what
+   * landed. Call under the lock.
    */
   private async transact<T>(fn: (tiers: Tiers, dirty: Set<Priority>) => T): Promise<T> {
     const tiers = await this.mirror();
@@ -311,10 +328,17 @@ export class EventStore {
     let result: T;
     try {
       result = fn(tiers, dirty);
-      await this.commit(tiers, dirty);
     } catch (e) {
       this.restore(tiers, saved);
       throw e;
+    }
+    const failed = await this.commit(tiers, dirty);
+    if (failed.size > 0) {
+      for (const tier of failed.keys()) tiers[tier] = saved.tiers[tier];
+      this.rebuildCounters(tiers);
+      if (failed.size < dirty.size) this.notify();
+      const [reason] = failed.values();
+      throw reason;
     }
     if (dirty.size > 0) this.notify();
     return result;
@@ -342,9 +366,17 @@ export class EventStore {
     // again on demand, and entries for rows that never landed are unreachable.
   }
 
-  /** Account for a row entering the mirror. */
+  /** The size proxy of one row. An instance method so tests can count the calls. */
+  private rowBytes(row: Row): number {
+    // Approximate — JSON.stringify length is UTF-16 char count, and we treat
+    // it as a size proxy. For ASCII payloads this matches byte count; for
+    // non-ASCII it slightly under-counts, which is fine for a soft cap.
+    return JSON.stringify(row).length;
+  }
+
+  /** Account for a row entering the mirror; a row measured before is not measured again. */
   private track(row: Row): void {
-    const n = rowBytes(row);
+    const n = this.bytes.get(row) ?? this.rowBytes(row);
     this.bytes.set(row, n);
     this.totalRows += 1;
     this.sizeBytes += n;
@@ -357,7 +389,7 @@ export class EventStore {
   /** Account for a row leaving the mirror. */
   private untrack(row: Row): void {
     this.totalRows -= 1;
-    this.sizeBytes -= this.bytes.get(row) ?? rowBytes(row);
+    this.sizeBytes -= this.bytes.get(row) ?? this.rowBytes(row);
     this.byLogType[row.log_type] -= 1;
     this.bytes.delete(row);
     if (this.totalRows === 0) {
@@ -368,13 +400,21 @@ export class EventStore {
     }
   }
 
+  /** Zero the counters. `bytes` is keyed by row object, so stale entries simply go unreachable. */
   private resetCounters(): void {
-    this.bytes = new WeakMap();
     this.totalRows = 0;
     this.sizeBytes = 0;
     this.byLogType = { game_event: 0, bug_log: 0 };
     this.oldestAt = null;
     this.oldestDirty = false;
+  }
+
+  /** Recount from the arrays, after a commit that landed in part. */
+  private rebuildCounters(tiers: Tiers): void {
+    this.resetCounters();
+    for (const tier of TIERS) {
+      for (const row of tiers[tier]) this.track(row);
+    }
   }
 
   private resetMirror(): void {
@@ -467,7 +507,7 @@ export class EventStore {
         next_retry_at: null,
       };
       await this.insert(row);
-      return { ...row, payload: payload.copy };
+      return { ...row, payload: payload.returned };
     });
   }
 
@@ -493,15 +533,16 @@ export class EventStore {
         next_retry_at: null,
       };
       await this.insert(row);
-      return { ...row, payload: payload.copy };
+      return { ...row, payload: payload.returned };
     });
   }
 
   /**
    * Append one row to its tier, evict to capacity, and write the tiers that
-   * changed once. The callers return a copy of the row: the mirror's own
-   * object is never handed out, so nothing outside can change it (or its
-   * cached size) behind the store's back.
+   * changed once. The callers return a copy of the row with the caller's own
+   * payload: the mirror's object and its parsed payload are never handed out,
+   * so nothing outside can change them (or the cached size) behind the
+   * store's back.
    */
   private insert(row: Row): Promise<void> {
     return this.transact((tiers, dirty) => {
@@ -604,6 +645,24 @@ export class EventStore {
     );
   }
 
+  /**
+   * `markDeadLettered` for every queued row of the given games (#2959) —
+   * parked (future-retry) rows included by construction, rows already flagged
+   * left alone. SyncWorker uses it when the server refuses a game for good.
+   * Returns how many rows were flagged.
+   */
+  async markDeadLetteredByGameIds(gameIds: string[]): Promise<number> {
+    if (gameIds.length === 0) return 0;
+    const ids = new Set(gameIds);
+    return this.withLock(() =>
+      this.replaceWhere((row) =>
+        row.log_type === "game_event" && ids.has(row.game_id) && !row.dead_lettered
+          ? { ...row, dead_lettered: true }
+          : null
+      )
+    );
+  }
+
   async sweepTTL(now: number = Date.now()): Promise<number> {
     const cutoff = now - logConfig.TTL_MS;
     return this.withLock(() => this.removeWhere((r) => r.created_at < cutoff));
@@ -647,8 +706,14 @@ export class EventStore {
     return this.withLock(() =>
       this.transact((tiers, dirty) => {
         const byTier = emptyTiers();
-        // Copies: the caller keeps its objects, the mirror keeps its own.
-        for (const row of rows) byTier[row.priority].push({ ...row });
+        // Copies, payload included: the caller keeps its objects, the mirror
+        // keeps its own (a test fixture, so the round-trip per row is fine).
+        for (const row of rows) {
+          byTier[row.priority].push({
+            ...row,
+            payload: JSON.parse(JSON.stringify(row.payload)) as Record<string, unknown>,
+          });
+        }
         for (const tier of TIERS) {
           if (byTier[tier].length === 0) continue;
           tiers[tier] = tiers[tier].concat(byTier[tier]);
@@ -661,7 +726,10 @@ export class EventStore {
   }
 
   /** Capacity warning state (read/updated by gameEventClient). */
-  async shouldShowCapacityWarning(stats?: QueueStats, now: number = Date.now()): Promise<boolean> {
+  async shouldShowCapacityWarning(
+    stats?: Pick<QueueStats, "totalRows" | "sizeBytes">,
+    now: number = Date.now()
+  ): Promise<boolean> {
     return this.withLock(async () => {
       const s = stats ?? this.statsUnlocked(await this.mirror());
       const ratio = Math.max(
@@ -781,7 +849,7 @@ export class EventStore {
 
   /** Take one row out of the stats and off the overage. */
   private drop(row: Row, overage: Overage): void {
-    overage.bytes -= this.bytes.get(row) ?? rowBytes(row);
+    overage.bytes -= this.bytes.get(row) ?? this.rowBytes(row);
     overage.rows -= 1;
     this.untrack(row);
   }
@@ -810,7 +878,7 @@ export class EventStore {
     return { ...this.countsUnlocked(tiers), oldestAt: this.resolveOldestAt(tiers) };
   }
 
-  private countsUnlocked(tiers: Tiers): Omit<QueueStats, "oldestAt"> {
+  private countsUnlocked(tiers: Tiers): QueueCounts {
     return {
       totalRows: this.totalRows,
       sizeBytes: this.sizeBytes,
@@ -825,19 +893,13 @@ export class EventStore {
   }
 
   /**
-   * Tell every `onStats` subscriber the stats after a change. Call under the
-   * lock. `oldestAt` is resolved only if a listener reads it (the toast does
-   * not), so a change costs no pass over the rows.
+   * Tell every `onStats` subscriber the counts after a change. Call under the
+   * lock. The counts are kept per row, so a change costs no pass over the rows;
+   * `oldestAt` would, and is left to `stats()`.
    */
   private notify(): void {
     if (this.listeners.size === 0 || this.tiers === null) return;
-    const tiers = this.tiers;
-    const stats = { ...this.countsUnlocked(tiers), oldestAt: null } as QueueStats;
-    Object.defineProperty(stats, "oldestAt", {
-      enumerable: true,
-      configurable: true,
-      get: () => this.resolveOldestAt(tiers),
-    });
+    const stats = this.countsUnlocked(this.tiers);
     for (const listener of this.listeners) {
       try {
         listener(stats);
@@ -848,29 +910,30 @@ export class EventStore {
   }
 
   /**
-   * The payload the mirror keeps (`stored`) and the one handed back to the
-   * caller (`copy`). Both are JSON round-trips of the caller's object — one
-   * stringify, which the size cap needs anyway, and two parses — so the mirror
-   * owns what it holds: however the caller's object or the returned row
-   * changes afterwards, the next write of the tier serialises what was
-   * enqueued, exactly as the disk held it before the mirror existed.
+   * The payload the mirror keeps (`stored`) and the one handed back on the
+   * returned row (`returned`). The mirror's is a JSON round-trip of the
+   * caller's object, so the mirror owns what it holds: however the caller's
+   * object changes afterwards, the next write of the tier serialises what was
+   * enqueued, as the disk held it before the mirror existed. The returned row
+   * carries the caller's own object — the caller owns it, and gameEventClient
+   * never reads the row — so nothing is parsed for it. An enqueue therefore
+   * serialises three things: the payload here (the size cap needs it), the
+   * row in `track` (its size) and its tier in `writeTier`; never the queue's
+   * other rows.
    */
   private ownPayload(
     payload: Record<string, unknown>,
     maxBytes: number
-  ): { stored: Record<string, unknown>; copy: Record<string, unknown> } {
+  ): { stored: Record<string, unknown>; returned: Record<string, unknown> } {
     const serialized = JSON.stringify(payload);
     if (serialized.length <= maxBytes) {
-      return {
-        stored: JSON.parse(serialized) as Record<string, unknown>,
-        copy: JSON.parse(serialized) as Record<string, unknown>,
-      };
+      return { stored: JSON.parse(serialized) as Record<string, unknown>, returned: payload };
     }
     // Oversized — replace with a stub. This preserves the enqueue contract
     // (payload is always an object) while preventing a single runaway row
     // from blowing the queue.
     const stub = { _truncated: true, _original_bytes: serialized.length };
-    return { stored: stub, copy: { ...stub } };
+    return { stored: stub, returned: { ...stub } };
   }
 }
 

@@ -26,7 +26,7 @@ import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import { useTheme } from "../../theme/ThemeContext";
 import { isAppInterrupted } from "../../game/_shared/appInterrupted";
-import { eventStore, QueueStats, StatsListener } from "../../game/_shared/eventStore";
+import { eventStore, QueueCounts, StatsListener } from "../../game/_shared/eventStore";
 
 /**
  * Poll interval for the check; 0 means no polling. Production builds never
@@ -43,7 +43,7 @@ interface Props {
    * Production code never passes this. Receives the stats that triggered
    * the check when a queue change did.
    */
-  shouldShowCheck?: (stats?: QueueStats) => Promise<boolean>;
+  shouldShowCheck?: (stats?: QueueCounts) => Promise<boolean>;
   /** Optional override for the "mark shown" side effect. */
   markShown?: () => Promise<void>;
   /** Poll interval in ms; 0 disables polling. Tests of the poll path pass one. */
@@ -65,7 +65,7 @@ export function CapacityWarningToast({
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const check =
-    shouldShowCheck ?? ((stats?: QueueStats) => eventStore.shouldShowCapacityWarning(stats));
+    shouldShowCheck ?? ((stats?: QueueCounts) => eventStore.shouldShowCapacityWarning(stats));
   const mark = markShown ?? (() => eventStore.markWarningShown());
   const subscribeToStats = subscribe ?? ((listener: StatsListener) => eventStore.onStats(listener));
 
@@ -76,7 +76,7 @@ export function CapacityWarningToast({
   // put the banner straight back.
   const dismissGenRef = useRef(0);
 
-  const runCheck = useCallback(async (stats?: QueueStats) => {
+  const runCheck = useCallback(async (stats?: QueueCounts) => {
     const startedAtGen = dismissGenRef.current;
     try {
       const should = await check(stats);

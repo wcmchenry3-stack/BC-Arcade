@@ -6,7 +6,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { EventStore, GameEventRow, QueueStats, Row } from "../eventStore";
+import { EventStore, GameEventRow, QueueCounts, QueueStats, Row } from "../eventStore";
 import { Priority, logConfig, resetLogConfig } from "../eventQueueConfig";
 
 const getItem = AsyncStorage.getItem as jest.Mock;
@@ -146,9 +146,12 @@ describe("EventStore — in-memory mirror (#2959)", () => {
       }))
     );
     clearSpies();
+    // And it measures one row — its own — not the thousand already there.
+    const measured = jest.spyOn(store as unknown as { rowBytes: (row: Row) => number }, "rowBytes");
     await move(store, 1_001);
     expect(getItem).not.toHaveBeenCalled();
     expect(tierWrites()).toEqual(["event_queue_v1/tier/3"]);
+    expect(measured).toHaveBeenCalledTimes(1);
     expect((await store.stats()).totalRows).toBe(1_001);
   });
 
@@ -157,16 +160,19 @@ describe("EventStore — in-memory mirror (#2959)", () => {
   // -------------------------------------------------------------------------
 
   describe("failures", () => {
-    /** Make the next tier write fail, restoring the mock whether or not it fired. */
-    async function withFailingWrite(run: () => Promise<void>): Promise<void> {
+    /**
+     * Make the next tier write (of `key`, or of any tier) fail, restoring the
+     * mock whether or not it fired.
+     */
+    async function withFailingWrite(run: () => Promise<void>, key?: string): Promise<void> {
       const original = setItem.getMockImplementation()!;
       let armed = true;
-      setItem.mockImplementation(async (key: string, value: string) => {
-        if (armed && key.startsWith("event_queue_v1/tier/")) {
+      setItem.mockImplementation(async (k: string, value: string) => {
+        if (armed && (key ? k === key : k.startsWith("event_queue_v1/tier/"))) {
           armed = false;
           throw new Error("disk full");
         }
-        return original(key, value);
+        return original(k, value);
       });
       try {
         await run();
@@ -261,11 +267,127 @@ describe("EventStore — in-memory mirror (#2959)", () => {
     expect((await new EventStore().peek(10))[0]?.payload).toEqual({ nested: { depth: 1 } });
   });
 
-  it("seedRows keeps copies, not the caller's objects", async () => {
-    const row: Row = { ...(await move(store, 0)), id: "seeded" };
+  it("seedRows keeps copies, payload included, not the caller's objects", async () => {
+    const row: Row = { ...(await move(store, 0)), id: "seeded", payload: { i: 1 } };
     await store.seedRows([row]);
-    row.created_at = 1;
-    expect((await store.stats()).oldestAt).not.toBe(1);
+    row.payload["later"] = "x".repeat(1_000);
+    (row as { dead_lettered?: boolean }).dead_lettered = true;
+    await bug(store, 0); // another write of the queue
+    const stored = (await store.peek(10, everything)).find((r) => r.id === "seeded");
+    expect(stored?.payload).toEqual({ i: 1 });
+    expect(stored?.dead_lettered).toBeUndefined();
+    expect(await store.stats()).toMatchObject(await recount(store));
+    expect(
+      (await new EventStore().peek(10, everything)).find((r) => r.id === "seeded")?.payload
+    ).toEqual({ i: 1 });
+  });
+
+  // -------------------------------------------------------------------------
+  // Per tier, mirror == disk, even when a multi-tier commit lands in part
+  // -------------------------------------------------------------------------
+
+  describe("partial commit", () => {
+    async function failWriteOf(key: string, run: () => Promise<void>): Promise<void> {
+      const original = setItem.getMockImplementation()!;
+      let armed = true;
+      setItem.mockImplementation(async (k: string, value: string) => {
+        if (armed && k === key) {
+          armed = false;
+          throw new Error("disk full");
+        }
+        return original(k, value);
+      });
+      try {
+        await run();
+        expect(armed).toBe(false);
+      } finally {
+        setItem.mockImplementation(original);
+      }
+    }
+
+    it("a delete over two tiers whose second write fails keeps, per tier, what the disk holds", async () => {
+      const started = await lifecycle(store, 0); // P1
+      await lifecycle(store, 1);
+      const granular = await move(store, 2); // P3
+      await move(store, 3);
+      const listener = jest.fn();
+      store.onStats(listener);
+
+      await failWriteOf("event_queue_v1/tier/3", () =>
+        expect(store.deleteByIds([started.id, granular.id])).rejects.toThrow("disk full")
+      );
+
+      const ids = (await store.peek(10, everything)).map((r) => r.id);
+      expect(ids).not.toContain(started.id); // tier 1 landed: gone here too
+      expect(ids).toContain(granular.id); // tier 3 failed: still here, as on disk
+      expect(await store.stats()).toMatchObject({ totalRows: 3, byPriority: { 1: 1, 3: 2 } });
+      expect(await store.stats()).toMatchObject(await recount(store));
+      const onDisk = (await new EventStore().peek(10, everything)).map((r) => r.id);
+      expect(onDisk.sort()).toEqual(ids.slice().sort());
+      expect(listener).toHaveBeenCalledTimes(1); // the tier that landed changed the queue
+    });
+
+    it("an enqueue whose eviction lands but whose own tier fails keeps the eviction and drops the row", async () => {
+      logConfig.MAX_ROWS = 2;
+      const mid: Row = {
+        id: "mid-a",
+        log_type: "game_event",
+        game_id: "g",
+        event_index: 0,
+        event_type: "score",
+        payload: {},
+        created_at: 1_000,
+        priority: Priority.MID,
+        retry_count: 0,
+        next_retry_at: null,
+      };
+      await store.seedRows([mid, { ...mid, id: "mid-b", created_at: 1_001 }]);
+
+      await failWriteOf("event_queue_v1/tier/3", () =>
+        expect(move(store, 2)).rejects.toThrow("disk full")
+      );
+
+      // mid-a was evicted (tier 2 landed); the new row was never stored (tier 3 failed).
+      expect((await store.peek(10, everything)).map((r) => r.id)).toEqual(["mid-b"]);
+      expect(await store.stats()).toMatchObject({ totalRows: 1, byPriority: { 2: 1, 3: 0 } });
+      expect(await store.stats()).toMatchObject(await recount(store));
+      expect((await new EventStore().peek(10, everything)).map((r) => r.id)).toEqual(["mid-b"]);
+      // And the store is still consistent afterwards.
+      await move(store, 3);
+      expect(await store.stats()).toMatchObject({ totalRows: 2, byPriority: { 2: 1, 3: 1 } });
+    });
+  });
+
+  describe("markDeadLetteredByGameIds", () => {
+    it("flags every row of the games — parked rows included, flagged rows left alone — and no other game's", async () => {
+      const a = await move(store, 0);
+      const parked = await store.enqueueEvent({
+        game_id: "g",
+        event_index: 1,
+        event_type: "score",
+        payload: {},
+      });
+      await store.updateRows([{ ...parked, retry_count: 1, next_retry_at: Date.now() + 1e9 }]);
+      const other = await store.enqueueEvent({
+        game_id: "other",
+        event_index: 0,
+        event_type: "move",
+        payload: {},
+      });
+      await store.markDeadLettered([a.id]);
+      clearSpies();
+
+      expect(await store.markDeadLetteredByGameIds(["g"])).toBe(1); // the parked row; a already was
+      expect(tierWrites()).toEqual(["event_queue_v1/tier/2"]);
+      const rows = await store.peek(10, everything);
+      const ofG = rows.filter((r) => r.log_type === "game_event" && r.game_id === "g");
+      expect(ofG).toHaveLength(2);
+      expect(ofG.every((r) => r.dead_lettered)).toBe(true);
+      expect(rows.find((r) => r.id === other.id)?.dead_lettered).toBeUndefined();
+      expect(await store.peek(10)).toHaveLength(1); // only the other game's row is live
+      expect(await store.markDeadLetteredByGameIds([])).toBe(0);
+      expect(await store.markDeadLetteredByGameIds(["nope"])).toBe(0);
+    });
   });
 
   it("updateRows, markDeadLettered and deleteByIds write only the tiers they change, and never read", async () => {
@@ -385,7 +507,7 @@ describe("EventStore — in-memory mirror (#2959)", () => {
 
   describe("onStats", () => {
     it("fires after each change with the new stats, not after a no-op, and not after unsubscribe", async () => {
-      const seen: QueueStats[] = [];
+      const seen: QueueCounts[] = [];
       const off = store.onStats((s) => seen.push(s));
 
       const a = await move(store, 0);
