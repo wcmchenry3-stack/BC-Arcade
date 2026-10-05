@@ -942,7 +942,7 @@ there for free; keep `production,test` on the dev / purchase-testing backend
 environment.
 
 **Delete My Data (§8.5).** Store-agnostic and verified for Google
-(`tests/test_google_iap.py`): `DELETE /me` removes the install's
+(`tests/test_google_play.py`): `DELETE /me` removes the install's
 `purchase_links` and `game_entitlements` and keeps the Google `purchases` row
 (token, order ID, `account_token`, dates, state) and its `purchase_events`.
 Restore on a fresh install re-links, and erase-and-restore churn still hits
@@ -1360,7 +1360,7 @@ credentials the verifier makes a store call (Get Transaction Info).
 
 Applies to **both** stores through the same store-agnostic `DELETE /me` code
 path. Apple since #2786; Google verified by #2787's tests
-(`tests/test_google_iap.py`: links removed, `purchases` and
+(`tests/test_google_play.py`: links removed, `purchases` and
 `purchase_events` kept, churn still capped).
 
 **What `DELETE /me` deletes** (`backend/me/router.py`), in addition to the
