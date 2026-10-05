@@ -68,3 +68,7 @@ celestial_images/
 
 # Playwright e2e output — transient CI artifact (see .github/workflows/ci.yml), not committed
 e2e/test-results/
+
+# Symlinks (e.g. worktree setup) are not matched by the trailing-slash patterns above
+backend/.venv
+frontend/node_modules
