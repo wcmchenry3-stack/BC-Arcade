@@ -509,7 +509,7 @@ def test_today_is_public_and_describes_the_goals(client: TestClient) -> None:
     today = local_day(0)
     assert body["challenge_id"] == today.date.isoformat()
     assert body["template_id"] == template_for(today.date).id
-    assert datetime.fromisoformat(body["resets_at"].replace("Z", "+00:00")) == today.end_utc
+    assert datetime.fromisoformat(body["resets_at"]) == today.end_utc
     assert len(body["goals"]) == GOALS_PER_DAY
     assert body["goals"][0]["game_type"] == ALWAYS_PRESENT
     for goal in body["goals"]:
