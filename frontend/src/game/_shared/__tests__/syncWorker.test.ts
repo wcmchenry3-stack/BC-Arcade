@@ -12,62 +12,11 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { EventStore, Row } from "../eventStore";
 import { GameEventClientImpl } from "../gameEventClient";
 import { PendingGamesStore } from "../pendingGamesStore";
-import { SyncApi, SyncResponse } from "../syncApi";
+import { SyncResponse } from "../syncApi";
 import { SyncWorker, FlushResult, resolveDurationMs } from "../syncWorker";
 import { BugReportLimiter } from "../bugReportLimiter";
 import { logConfig, resetLogConfig } from "../eventQueueConfig";
-
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
-
-class MockSyncApi {
-  calls: Array<{
-    method: string;
-    path: string;
-    body: unknown;
-  }> = [];
-  /** Response queue keyed by path substring → consecutive responses. */
-  private scripts: Array<{ match: (p: string) => boolean; res: SyncResponse }> = [];
-  /** Default fallback if no script matches. */
-  defaultResponse: SyncResponse = {
-    status: 200,
-    ok: true,
-    retryAfterMs: null,
-    body: {},
-  };
-
-  async request(method: "POST" | "PATCH", path: string, body: unknown): Promise<SyncResponse> {
-    this.calls.push({ method, path, body });
-    const idx = this.scripts.findIndex((s) => s.match(path));
-    if (idx !== -1) {
-      const hit = this.scripts.splice(idx, 1)[0];
-      if (hit === undefined) throw new Error("splice returned empty");
-      return hit.res;
-    }
-    return this.defaultResponse;
-  }
-
-  onNext(matcher: (p: string) => boolean, res: SyncResponse): void {
-    this.scripts.push({ match: matcher, res });
-  }
-}
-
-function asSyncApi(m: MockSyncApi): SyncApi {
-  return m as unknown as SyncApi;
-}
-
-async function flushMicro(): Promise<void> {
-  await new Promise((r) => setTimeout(r, 10));
-}
-
-function ok(body: unknown = {}): SyncResponse {
-  return { status: 200, ok: true, retryAfterMs: null, body };
-}
-
-function err(status: number, retryAfterMs: number | null = null): SyncResponse {
-  return { status, ok: false, retryAfterMs, body: { detail: "error" } };
-}
+import { MockSyncApi, asSyncApi, err, flushMicro, ok } from "./helpers/syncWorkerFixtures";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -187,7 +136,7 @@ describe("SyncWorker", () => {
 
     const result = await worker.flush(0);
     expect(result.backoffMs).toBeGreaterThan(0);
-    expect(worker._getBackoffUntil()).toBe(5000);
+    expect(worker.getBackoffUntil()).toBe(5000);
     // No further calls made.
     expect(api.calls.map((c) => c.path)).toEqual(["/games"]);
   });
@@ -203,7 +152,7 @@ describe("SyncWorker", () => {
     await flushMicro();
 
     await worker.flush(0);
-    expect(worker._getBackoffUntil()).toBeGreaterThanOrEqual(1000);
+    expect(worker.getBackoffUntil()).toBeGreaterThanOrEqual(1000);
   });
 
   it("network failure (status=0) sets backoff, preserves rows", async () => {

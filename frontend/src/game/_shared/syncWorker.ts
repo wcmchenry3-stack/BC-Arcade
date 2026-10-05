@@ -24,8 +24,12 @@
  *        - 4xx → dead-letter the pending game
  *        - 429/5xx/network → set global backoff and stop this flush
  *
+ *   Then one snapshot of the queue (#2959): a single `peek` of every live
+ *   row, bucketed by game, plus the bug logs. Steps 2–4 work from it — the
+ *   queue is not re-read per game or per step.
+ *
  *   2. For each pending game with startedSynced=true, batch its events
- *      from the queue and POST /games/:id/events:
+ *      from the snapshot and POST /games/:id/events:
  *        - 2xx → delete the sent rows
  *        - 404 → game got lost on the server; re-flip startedSynced=false
  *          and preserve events (they'll retry on the next flush)
@@ -46,6 +50,11 @@
  *        - 2xx → markCompleteSynced; forget() the game
  *        - 404 → re-flip startedSynced=false (like step 2)
  *        - other → same mapping as step 2
+ *      "No remaining events" is read off the snapshot: every row of the game
+ *      the snapshot held was resolved in step 2, and the game was already
+ *      completed when the snapshot was taken (so its `game_ended`, queued
+ *      ahead of the snapshot's peek on the store's lock, is in it). A game
+ *      completed after the snapshot waits for the next pass.
  *
  *   4. Batch pending bug logs and POST /logs/bug:
  *        Same mapping as step 2 (no 404 applies).
@@ -54,14 +63,22 @@
  *   - Global backoff after 5xx/network: exponential 1s→30min, reset on
  *     next 2xx. Set via `this.backoffUntil` and checked at entry.
  *   - Per-row next_retry_at after 429: honors Retry-After header.
+ *   Every 429/5xx/network response goes through `transientFailure`.
+ *
+ * Schedule (#2959): `start()` runs a flush every SYNC_INTERVAL_MS while the
+ * app is active. The interval is torn down when AppState becomes
+ * `background` or `inactive` — nothing wakes the device to read an empty
+ * queue — and on return to `active` one flush runs at once and the interval
+ * is re-armed. NetworkContext also flushes on reconnect.
  */
 
 import * as Sentry from "@sentry/react-native";
+import { AppState, type AppStateStatus } from "react-native";
 
 import { logConfig } from "./eventQueueConfig";
-import { BugLogRow, EventStore, GameEventRow, eventStore } from "./eventStore";
+import { BugLogRow, EventStore, GameEventRow, Row, eventStore } from "./eventStore";
 import { PendingGamesStore, pendingGamesStore } from "./pendingGamesStore";
-import { SyncApi, syncApi } from "./syncApi";
+import { SyncApi, SyncResponse, syncApi } from "./syncApi";
 
 export interface FlushResult {
   attempted: number;
@@ -96,13 +113,18 @@ export function resolveDurationMs(durationMs: number | null | undefined): number
  * The detail of the backend's 409 on POST /games/:id/events for a game whose
  * row is already completed (`backend/games/service.py`, `append_events`).
  */
-export const GAME_ALREADY_COMPLETED_DETAIL = "Game is already completed.";
+const GAME_ALREADY_COMPLETED_DETAIL = "Game is already completed.";
 
 function isAlreadyCompleted(res: { status: number; body: unknown }): boolean {
   return (
     res.status === 409 &&
     (res.body as { detail?: unknown } | null)?.detail === GAME_ALREADY_COMPLETED_DETAIL
   );
+}
+
+/** Only `background` and `inactive` pause the schedule; any other state runs it. */
+function isPaused(state: unknown): boolean {
+  return state === "background" || state === "inactive";
 }
 
 const EMPTY: FlushResult = {
@@ -114,9 +136,20 @@ const EMPTY: FlushResult = {
   backoffMs: 0,
 };
 
+/** One pass's view of the queue (#2959): a single `peek`, bucketed. */
+interface QueueSnapshot {
+  byGame: Map<string, GameEventRow[]>;
+  bugLogs: BugLogRow[];
+  /** Games whose snapshot rows step 2 has not (yet) resolved. */
+  outstanding: Set<string>;
+  /** Games already completed when the snapshot was taken (see step 3). */
+  completedAtSnapshot: Set<string>;
+}
+
 export class SyncWorker {
   private flushInProgress = false;
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
+  private appStateSub: { remove: () => void } | null = null;
   private backoffUntil = 0;
   private backoffExponent = 0;
 
@@ -130,7 +163,46 @@ export class SyncWorker {
   // Lifecycle
   // -------------------------------------------------------------------------
 
+  /**
+   * Run the periodic flush while the app is active. Idempotent. Started in the
+   * background, the interval waits for the next `active`.
+   */
   start(): void {
+    if (this.appStateSub === null) {
+      this.appStateSub = AppState.addEventListener("change", this.onAppStateChange);
+    }
+    if (!isPaused(AppState.currentState)) this.armInterval();
+  }
+
+  stop(): void {
+    this.disarmInterval();
+    if (this.appStateSub !== null) {
+      this.appStateSub.remove();
+      this.appStateSub = null;
+    }
+  }
+
+  /** Inspect the current global backoff deadline (epoch ms). 0 = no backoff. */
+  getBackoffUntil(): number {
+    return this.backoffUntil;
+  }
+
+  private readonly onAppStateChange = (next: AppStateStatus): void => {
+    if (this.appStateSub === null) return; // stopped: a late event changes nothing
+    if (isPaused(next)) {
+      this.disarmInterval();
+      return;
+    }
+    if (this.intervalHandle !== null) return; // never paused: nothing to resume
+    this.armInterval();
+    this.flush().catch((e) => {
+      Sentry.captureException(e, {
+        tags: { subsystem: "syncWorker", op: "appState.flush" },
+      });
+    });
+  };
+
+  private armInterval(): void {
     if (this.intervalHandle !== null) return;
     this.intervalHandle = setInterval(() => {
       this.flush().catch((e) => {
@@ -141,16 +213,11 @@ export class SyncWorker {
     }, logConfig.SYNC_INTERVAL_MS);
   }
 
-  stop(): void {
+  private disarmInterval(): void {
     if (this.intervalHandle !== null) {
       clearInterval(this.intervalHandle);
       this.intervalHandle = null;
     }
-  }
-
-  /** Inspect the current global backoff deadline (epoch ms). 0 = no backoff. */
-  getBackoffUntil(): number {
-    return this.backoffUntil;
   }
 
   // -------------------------------------------------------------------------
@@ -167,9 +234,10 @@ export class SyncWorker {
       await this.games.init();
 
       if (!(await this.flushGameCreations(result, now))) return result;
-      if (!(await this.flushEvents(result, now))) return result;
-      if (!(await this.flushCompletions(result, now))) return result;
-      if (!(await this.flushBugLogs(result, now))) return result;
+      const snapshot = await this.snapshot(now);
+      if (!(await this.flushEvents(snapshot, result, now))) return result;
+      if (!(await this.flushCompletions(snapshot, result, now))) return result;
+      if (!(await this.flushBugLogs(snapshot, result, now))) return result;
 
       // Successful flush — reset backoff exponent.
       this.backoffExponent = 0;
@@ -178,6 +246,31 @@ export class SyncWorker {
     } finally {
       this.flushInProgress = false;
     }
+  }
+
+  /** The one `peek` of a pass, bucketed for steps 2–4. */
+  private async snapshot(now: number): Promise<QueueSnapshot> {
+    // Captured before the peek is queued on the store's lock: a game marked
+    // completed by now had its `game_ended` enqueued ahead of this peek
+    // (gameEventClient.completeGame), so the snapshot holds it.
+    const completedAtSnapshot = new Set<string>();
+    for (const [gameId, game] of this.games.all()) {
+      if (game.completed) completedAtSnapshot.add(gameId);
+    }
+    // The store caps itself at MAX_ROWS, so this limit sees every live row.
+    const rows = await this.store.peek(logConfig.MAX_ROWS, { now });
+    const byGame = new Map<string, GameEventRow[]>();
+    const bugLogs: BugLogRow[] = [];
+    for (const row of rows) {
+      if (row.log_type === "bug_log") {
+        bugLogs.push(row);
+        continue;
+      }
+      const list = byGame.get(row.game_id) ?? [];
+      list.push(row);
+      byGame.set(row.game_id, list);
+    }
+    return { byGame, bugLogs, outstanding: new Set(byGame.keys()), completedAtSnapshot };
   }
 
   // -------------------------------------------------------------------------
@@ -209,20 +302,9 @@ export class SyncWorker {
         result.accepted += 1;
         continue;
       }
-      if (res.status === 429) {
-        this.scheduleBackoff(now, res.retryAfterMs);
-        result.backoffMs = this.backoffUntil - now;
-        return false;
-      }
-      if (res.status === 0 || res.status >= 500) {
-        this.scheduleBackoff(now, null);
-        result.backoffMs = this.backoffUntil - now;
-        return false;
-      }
-      // 4xx terminal — something's wrong with this game payload. Forget
-      // it so the queue makes progress. The event rows for it will be
-      // dead-lettered on the next pass (no matching game_id), but really
-      // they should be dead-lettered now to match behavior.
+      if (await this.transientFailure(res, [], result, now)) return false;
+      // 4xx terminal — the server rejects this game for good. Dead-letter its
+      // queued events and forget it so the queue makes progress.
       Sentry.captureMessage(`syncWorker: POST /games ${gameId} → ${res.status}`, {
         level: res.status === 403 ? "error" : "warning",
       });
@@ -237,26 +319,19 @@ export class SyncWorker {
   // Step 2 — POST /games/:id/events per game.
   // -------------------------------------------------------------------------
 
-  private async flushEvents(result: FlushResult, now: number): Promise<boolean> {
-    // Gather live event rows grouped by game_id. We peek() with a big
-    // limit and then bucket client-side because batches are capped per
-    // game by the backend.
+  private async flushEvents(
+    snapshot: QueueSnapshot,
+    result: FlushResult,
+    now: number
+  ): Promise<boolean> {
+    // Batches are capped per game by the backend, hence the per-game buckets.
     const batchSize = logConfig.GAME_EVENT_BATCH_SIZE;
-    const rows = (await this.store.peek(5000, { now })) as Array<GameEventRow | BugLogRow>;
-    const byGame = new Map<string, GameEventRow[]>();
-    for (const row of rows) {
-      if (row.log_type !== "game_event") continue;
-      const list = byGame.get(row.game_id) ?? [];
-      list.push(row);
-      byGame.set(row.game_id, list);
-    }
-
-    for (const [gameId, events] of byGame) {
+    for (const [gameId, events] of snapshot.byGame) {
       const game = this.games.get(gameId);
       if (!game) {
         // Game isn't tracked locally any more (forgotten or never started).
         // Dead-letter the orphan events so they don't loop forever.
-        await this.markDeadLettered(events.map((e) => e.id));
+        await this.store.markDeadLettered(events.map((e) => e.id));
         result.deadLettered += events.length;
         continue;
       }
@@ -268,6 +343,9 @@ export class SyncWorker {
         const ok = await this.postEventBatch(gameId, chunk, result, now);
         if (!ok) return false;
       }
+      // Every chunk was accepted, dropped, parked or dead-lettered — unless a
+      // 404 re-flipped startedSynced, in which case the rows are still live.
+      if (this.games.get(gameId)?.startedSynced) snapshot.outstanding.delete(gameId);
     }
     return true;
   }
@@ -296,23 +374,12 @@ export class SyncWorker {
       result.duplicates += duplicates;
       return true;
     }
-    if (res.status === 429) {
-      await this.applyPerRowBackoff(chunk, res.retryAfterMs, now);
-      this.scheduleBackoff(now, res.retryAfterMs);
-      result.backoffMs = this.backoffUntil - now;
-      return false;
-    }
-    if (res.status === 0 || res.status >= 500) {
-      await this.applyPerRowBackoff(chunk, null, now);
-      this.scheduleBackoff(now, null);
-      result.backoffMs = this.backoffUntil - now;
-      return false;
-    }
+    if (await this.transientFailure(res, chunk, result, now)) return false;
     if (res.status === 413) {
       if (chunk.length === 1) {
         const first = chunk[0];
         if (first === undefined) return false;
-        await this.markDeadLettered([first.id]);
+        await this.store.markDeadLettered([first.id]);
         result.deadLettered += 1;
         Sentry.captureMessage(
           `syncWorker: single-row 413 on ${gameId} event_index=${first.event_index}`,
@@ -333,8 +400,7 @@ export class SyncWorker {
       Sentry.captureMessage(`syncWorker: 404 on ${gameId}; re-flipping started_synced`, {
         level: "warning",
       });
-      const g = this.games.get(gameId);
-      if (g) g.startedSynced = false;
+      await this.games.update(gameId, { startedSynced: false });
       return true;
     }
     if (isAlreadyCompleted(res)) {
@@ -379,7 +445,7 @@ export class SyncWorker {
         eventTypes: chunk.map((r) => r.event_type),
       },
     });
-    await this.markDeadLettered(chunk.map((r) => r.id));
+    await this.store.markDeadLettered(chunk.map((r) => r.id));
     result.deadLettered += chunk.length;
     return true;
   }
@@ -388,14 +454,18 @@ export class SyncWorker {
   // Step 3 — PATCH /games/:id/complete.
   // -------------------------------------------------------------------------
 
-  private async flushCompletions(result: FlushResult, now: number): Promise<boolean> {
+  private async flushCompletions(
+    snapshot: QueueSnapshot,
+    result: FlushResult,
+    now: number
+  ): Promise<boolean> {
     for (const [gameId, game] of this.games.all()) {
       if (!game.completed || game.completeSynced || !game.startedSynced) continue;
 
-      // Only complete after all live events for this game have been delivered.
-      // If any remain in the queue (not dead-lettered, not future-retry), wait.
-      const outstanding = await this.hasOutstandingEvents(gameId, now);
-      if (outstanding) continue;
+      // Only complete after all live events for this game have been delivered
+      // (see the header): the snapshot must have seen the completion, and step
+      // 2 must have resolved every row it held for the game.
+      if (!snapshot.completedAtSnapshot.has(gameId) || snapshot.outstanding.has(gameId)) continue;
 
       // Serialize summary with snake_case field names to match the
       // backend Pydantic schema (`final_score`, `duration_ms`). The
@@ -420,19 +490,9 @@ export class SyncWorker {
         result.accepted += 1;
         continue;
       }
-      if (res.status === 429) {
-        this.scheduleBackoff(now, res.retryAfterMs);
-        result.backoffMs = this.backoffUntil - now;
-        return false;
-      }
-      if (res.status === 0 || res.status >= 500) {
-        this.scheduleBackoff(now, null);
-        result.backoffMs = this.backoffUntil - now;
-        return false;
-      }
+      if (await this.transientFailure(res, [], result, now)) return false;
       if (res.status === 404) {
-        const g = this.games.get(gameId);
-        if (g) g.startedSynced = false;
+        await this.games.update(gameId, { startedSynced: false });
         continue;
       }
       if (res.status === 403) {
@@ -470,11 +530,13 @@ export class SyncWorker {
   // Step 4 — POST /logs/bug batches.
   // -------------------------------------------------------------------------
 
-  private async flushBugLogs(result: FlushResult, now: number): Promise<boolean> {
+  private async flushBugLogs(
+    snapshot: QueueSnapshot,
+    result: FlushResult,
+    now: number
+  ): Promise<boolean> {
     const batchSize = logConfig.BUG_LOG_BATCH_SIZE;
-    const rows = (await this.store.peek(5000, { now })).filter(
-      (r): r is BugLogRow => r.log_type === "bug_log"
-    );
+    const rows = snapshot.bugLogs;
     if (rows.length === 0) return true;
 
     for (let i = 0; i < rows.length; i += batchSize) {
@@ -500,22 +562,11 @@ export class SyncWorker {
         result.duplicates += duplicates;
         continue;
       }
-      if (res.status === 429) {
-        await this.applyPerRowBackoff(chunk, res.retryAfterMs, now);
-        this.scheduleBackoff(now, res.retryAfterMs);
-        result.backoffMs = this.backoffUntil - now;
-        return false;
-      }
-      if (res.status === 0 || res.status >= 500) {
-        await this.applyPerRowBackoff(chunk, null, now);
-        this.scheduleBackoff(now, null);
-        result.backoffMs = this.backoffUntil - now;
-        return false;
-      }
+      if (await this.transientFailure(res, chunk, result, now)) return false;
       // 400/403/413 on bug logs — dead-letter the chunk. Bug logs don't
       // have a 404 story.
       Sentry.captureMessage(`syncWorker: ${res.status} on POST /logs/bug`, { level: "warning" });
-      await this.markDeadLettered(chunk.map((r) => r.id));
+      await this.store.markDeadLettered(chunk.map((r) => r.id));
       result.deadLettered += chunk.length;
     }
     return true;
@@ -525,9 +576,26 @@ export class SyncWorker {
   // Helpers
   // -------------------------------------------------------------------------
 
-  private async hasOutstandingEvents(gameId: string, now: number): Promise<boolean> {
-    const rows = await this.store.peek(5000, { now });
-    return rows.some((r) => r.log_type === "game_event" && r.game_id === gameId);
+  /**
+   * The one handler for a 429, a 5xx or a network failure (status 0): the
+   * refused `rows` (if any) get a per-row retry time, the global backoff is
+   * set — from Retry-After on a 429, exponentially otherwise — and the pass
+   * stops. Returns true when `res` was such a failure, so the caller returns
+   * false; any other response returns false and the caller carries on.
+   */
+  private async transientFailure(
+    res: SyncResponse,
+    rows: Row[],
+    result: FlushResult,
+    now: number
+  ): Promise<boolean> {
+    const rateLimited = res.status === 429;
+    if (!rateLimited && res.status !== 0 && res.status < 500) return false;
+    const retryAfterMs = rateLimited ? res.retryAfterMs : null;
+    if (rows.length > 0) await this.applyPerRowBackoff(rows, retryAfterMs, now);
+    this.scheduleBackoff(now, retryAfterMs);
+    result.backoffMs = this.backoffUntil - now;
+    return true;
   }
 
   private scheduleBackoff(now: number, retryAfterMs: number | null): void {
@@ -544,7 +612,7 @@ export class SyncWorker {
   }
 
   private async applyPerRowBackoff(
-    rows: Array<GameEventRow | BugLogRow>,
+    rows: Row[],
     retryAfterMs: number | null,
     now: number
   ): Promise<void> {
@@ -565,34 +633,17 @@ export class SyncWorker {
     const live = updated.filter((r) => r.retry_count <= logConfig.MAX_RETRY_COUNT);
     if (live.length > 0) await this.store.updateRows(live);
     if (terminal.length > 0) {
-      await this.markDeadLettered(terminal.map((r) => r.id));
+      await this.store.markDeadLettered(terminal.map((r) => r.id));
     }
   }
 
-  private async markDeadLettered(ids: string[]): Promise<void> {
-    if (ids.length === 0) return;
-    // Peek everything and flip the flag for matching rows. Cheap at our
-    // scale (<5k rows).
-    const all = await this.store.peek(10_000, { includeDeadLettered: true });
-    const set = new Set(ids);
-    const updated = all.filter((r) => set.has(r.id)).map((r) => ({ ...r, dead_lettered: true }));
-    if (updated.length > 0) await this.store.updateRows(updated);
-  }
-
+  /** Step 1's terminal 4xx: every queued row of the game is dead-lettered. */
   private async deadLetterGameAndEvents(gameId: string): Promise<void> {
-    const all = await this.store.peek(10_000, { includeDeadLettered: true });
-    const toMark = all
+    const all = await this.store.peek(logConfig.MAX_ROWS, { includeDeadLettered: true });
+    const ids = all
       .filter((r) => r.log_type === "game_event" && r.game_id === gameId)
-      .map((r) => ({ ...r, dead_lettered: true }));
-    if (toMark.length > 0) await this.store.updateRows(toMark);
-  }
-
-  // -------------------------------------------------------------------------
-  // Test introspection
-  // -------------------------------------------------------------------------
-
-  _getBackoffUntil(): number {
-    return this.backoffUntil;
+      .map((r) => r.id);
+    await this.store.markDeadLettered(ids);
   }
 }
 
