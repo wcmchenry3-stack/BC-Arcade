@@ -1,23 +1,10 @@
 import { CANVAS_W, PLAYER_W } from "../engine";
+import { applyDrag, clamp } from "../drag";
 
+// Independent oracle for the bounds: derived from the engine constants, not from drag.ts.
 const hw = PLAYER_W / 2; // 17
 const MIN_X = hw; // 17
 const MAX_X = CANVAS_W - hw; // 343
-
-function clamp(v: number, lo: number, hi: number) {
-  return Math.max(lo, Math.min(hi, v));
-}
-
-function applyDrag(
-  shipXAtDragStart: number,
-  translationX: number,
-  scale: number
-): { newX: number; nextDragStart: number } {
-  const rawX = shipXAtDragStart + translationX / scale;
-  const newX = clamp(rawX, MIN_X, MAX_X);
-  const nextDragStart = rawX !== newX ? newX - translationX / scale : shipXAtDragStart;
-  return { newX, nextDragStart };
-}
 
 // ---------------------------------------------------------------------------
 // Normal drag (no clamping)
