@@ -1,10 +1,17 @@
 /**
  * CapacityWarningToast — #483 (blocker for #373 scenario 6).
  *
- * Polls `eventStore.shouldShowCapacityWarning()` on a short interval
- * and renders a top-of-screen banner when the queue crosses the 80%
- * fill ratio. Dismiss marks the warning shown, which activates the
+ * Subscribes to `eventStore.onStats()` and, after each change to the queue,
+ * asks `eventStore.shouldShowCapacityWarning(stats)` whether the banner is
+ * due (#2959) — a check against the stats it was just handed, so no timer
+ * runs and nothing re-reads the queue. One check also runs on mount and on
+ * every return to the foreground. The banner shows once the queue crosses
+ * the 80% fill ratio; Dismiss marks the warning shown, which activates the
  * 24h suppression window inside eventStore.markWarningShown().
+ *
+ * Test builds (EXPO_PUBLIC_TEST_HOOKS=1 at build time) also poll the check
+ * every 500 ms, which the scenario 6 e2e spec drives its foreground/dismiss
+ * cycles against; production builds never poll.
  *
  * Mount this once at a provider level (NetworkContext) — it's a
  * cross-app concern, not per-screen. The component positions itself
@@ -18,35 +25,37 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import { useTheme } from "../../theme/ThemeContext";
-import { eventStore } from "../../game/_shared/eventStore";
+import { eventStore, QueueStats, StatsListener } from "../../game/_shared/eventStore";
 
 /**
- * How often to check whether the warning should be shown. In production
- * builds this is 30 s — generous since the underlying condition only
- * shifts over many thousands of enqueue calls. In test builds (set via
- * EXPO_PUBLIC_TEST_HOOKS=1 at build time) we drop it to 500 ms so the
- * scenario 6 e2e spec can drive foreground/dismiss cycles without
- * waiting real-time. Production users never see the faster interval.
+ * Poll interval for the check; 0 means no polling. Production builds never
+ * poll — the `onStats` subscription reacts to every change. Test builds (set
+ * via EXPO_PUBLIC_TEST_HOOKS=1 at build time) poll every 500 ms as well, so
+ * the scenario 6 e2e spec can wait for a cycle instead of a queue change.
  */
-const POLL_INTERVAL_MS = process.env.EXPO_PUBLIC_TEST_HOOKS === "1" ? 500 : 30_000;
+const POLL_INTERVAL_MS = process.env.EXPO_PUBLIC_TEST_HOOKS === "1" ? 500 : 0;
 
 interface Props {
   /**
    * Optional override for the check function — lets unit tests supply
    * a synchronous stub without mocking the whole eventStore singleton.
-   * Production code never passes this.
+   * Production code never passes this. Receives the stats that triggered
+   * the check when a queue change did.
    */
-  shouldShowCheck?: () => Promise<boolean>;
+  shouldShowCheck?: (stats?: QueueStats) => Promise<boolean>;
   /** Optional override for the "mark shown" side effect. */
   markShown?: () => Promise<void>;
-  /** Override for testing the poll interval. */
+  /** Poll interval in ms; 0 disables polling. Tests of the poll path pass one. */
   pollIntervalMs?: number;
+  /** Optional override for the stats subscription (defaults to `eventStore.onStats`). */
+  subscribe?: (listener: StatsListener) => () => void;
 }
 
 export function CapacityWarningToast({
   shouldShowCheck,
   markShown,
   pollIntervalMs = POLL_INTERVAL_MS,
+  subscribe,
 }: Props = {}) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -54,8 +63,10 @@ export function CapacityWarningToast({
   const [visible, setVisible] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const check = shouldShowCheck ?? (() => eventStore.shouldShowCapacityWarning());
+  const check =
+    shouldShowCheck ?? ((stats?: QueueStats) => eventStore.shouldShowCapacityWarning(stats));
   const mark = markShown ?? (() => eventStore.markWarningShown());
+  const subscribeToStats = subscribe ?? ((listener: StatsListener) => eventStore.onStats(listener));
 
   // Bumped on every dismiss. A check captures it when it starts and may only
   // show the banner if no dismiss happened while it ran (#2584 review): the
@@ -64,10 +75,10 @@ export function CapacityWarningToast({
   // put the banner straight back.
   const dismissGenRef = useRef(0);
 
-  const runCheck = useCallback(async () => {
+  const runCheck = useCallback(async (stats?: QueueStats) => {
     const startedAtGen = dismissGenRef.current;
     try {
-      const should = await check();
+      const should = await check(stats);
       if (should && startedAtGen === dismissGenRef.current) setVisible(true);
     } catch (e) {
       Sentry.captureException(e, {
@@ -78,32 +89,51 @@ export function CapacityWarningToast({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // First check fires immediately on mount, then on the interval.
-  // The interval is paused when the app goes to background to avoid
-  // keeping a timer running while the user isn't seeing the app.
+  const subscribeStats = useCallback(
+    (listener: StatsListener) => subscribeToStats(listener),
+    // subscribe is captured from props — caller supplies a stable ref in tests
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  // First check fires immediately on mount; after that every queue change
+  // triggers one (and, when polling is on, every interval tick). The interval
+  // is paused when the app goes to background to avoid keeping a timer
+  // running while the user isn't seeing the app; a return to the foreground
+  // checks once.
   useEffect(() => {
     void runCheck();
-    intervalRef.current = setInterval(runCheck, pollIntervalMs);
+    const unsubscribe = subscribeStats((stats) => {
+      void runCheck(stats);
+    });
+    const arm = () => {
+      if (pollIntervalMs > 0 && intervalRef.current === null) {
+        intervalRef.current = setInterval(() => void runCheck(), pollIntervalMs);
+      }
+    };
+    const disarm = () => {
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+    arm();
 
     const appStateSub = AppState.addEventListener("change", (next: AppStateStatus) => {
       if (next === "background" || next === "inactive") {
-        if (intervalRef.current !== null) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-      } else if (next === "active") {
-        if (intervalRef.current === null) {
-          void runCheck();
-          intervalRef.current = setInterval(runCheck, pollIntervalMs);
-        }
+        disarm();
+      } else if (next === "active" && intervalRef.current === null) {
+        void runCheck();
+        arm();
       }
     });
 
     return () => {
+      unsubscribe();
       appStateSub.remove();
-      if (intervalRef.current !== null) clearInterval(intervalRef.current);
+      disarm();
     };
-  }, [runCheck, pollIntervalMs]);
+  }, [runCheck, subscribeStats, pollIntervalMs]);
 
   const onDismiss = useCallback(() => {
     dismissGenRef.current += 1;
