@@ -122,7 +122,7 @@ def _score_guess(answer: str, guess: str) -> list[dict]:
             tiles[i]["status"] = "correct"
             answer_chars[i] = None
 
-    for i, tile in enumerate(tiles):  # noqa: B007
+    for tile in tiles:
         if tile["status"] == "correct":
             continue
         c = tile["letter"]
@@ -195,8 +195,8 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
 
     try:
         date_str, lang = body.puzzle_id.rsplit(":", 1)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id")  # noqa: B904
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
 
     if lang not in _SUPPORTED_LANGS:
         raise HTTPException(status_code=422, detail="invalid_puzzle_id")
@@ -211,8 +211,8 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
 
     try:
         answer = get_answer(body.puzzle_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id")  # noqa: B904
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
 
     guess = body.guess.lower()  # no-op for Devanagari; NFC handles Hindi normalisation
     if lang == "hi":
@@ -300,8 +300,8 @@ async def get_answer_route(
     # 422 rather than 400, keeping the pre-#2197 contract for that case.
     try:
         answer = get_answer(puzzle_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id")  # noqa: B904
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
 
     sid = get_session_id(request)
     factory = get_session_factory()

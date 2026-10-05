@@ -14,10 +14,8 @@ def get_session_id(request: Request) -> str:
         raise HTTPException(status_code=400, detail="X-Session-ID header required.")
     try:
         uuid.UUID(sid)
-    except ValueError:
-        raise HTTPException(  # noqa: B904
-            status_code=400, detail="X-Session-ID must be a valid UUID."
-        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="X-Session-ID must be a valid UUID.") from exc
     return sid
 
 

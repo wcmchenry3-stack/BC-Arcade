@@ -855,7 +855,7 @@ async def complete_game(
             final_score = derive_final_score(final_score, outcome, validated_result)
         except ValueError as e:
             _report_rejected_result(name, "final_score mismatch", {"outcome": outcome})
-            raise GameServiceError(400, f"Invalid final_score for {name}: {e}")  # noqa: B904
+            raise GameServiceError(400, f"Invalid final_score for {name}: {e}") from e
     # The board's caps and value types (#2618, absorbs #2215).
     violation = check_completion_limits(name, mod, game, final_score, validated_result)
     if violation is not None:
@@ -931,7 +931,7 @@ async def _validate_result(
             "invalid result",
             {"fields": fields, "error_types": sorted({err["type"] for err in errors})},
         )
-        raise GameServiceError(400, f"Invalid result for {name}: {fields}")  # noqa: B904
+        raise GameServiceError(400, f"Invalid result for {name}: {fields}") from e
     # Optional per-game hook: correct a validated result against server-side
     # state the client cannot be trusted on (Daily Word's guess record, #2541).
     reconcile = getattr(mod, "reconcile_result", None)
