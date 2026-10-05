@@ -29,6 +29,9 @@
  * every test, so screen tests no longer mock those themselves.
  */
 
+import type { DragCard, DragContextValue, DragSource } from "../game/_shared/drag/DragContext";
+import type { useSound } from "../game/_shared/useSound";
+
 type Members = Record<string, unknown>;
 
 /**
@@ -220,6 +223,111 @@ export function detectedGesture(
     return gesturesOfKind(render.gesture, kind)[index]?.handlers;
   }
   return undefined;
+}
+
+/** What `mockDropTarget` records: each target's drop handler, and the drag context it sits in. */
+export interface DropSink {
+  readonly zones: Map<string, (source: DragSource, cards: DragCard[]) => boolean>;
+  drag: DragContextValue | null;
+}
+
+/** A fresh, empty `DropSink`; clear it between tests with `resetDropSink`. */
+export function createDropSink(): DropSink {
+  return { zones: new Map(), drag: null };
+}
+
+export function resetDropSink(sink: DropSink): void {
+  sink.zones.clear();
+  sink.drag = null;
+}
+
+/**
+ * `game/_shared/drag/DropTarget` as a recorder, for a board test that runs the
+ * real DragProvider: each render stores the target's `onDrop` under its id and
+ * the surrounding drag context in `sink()`, and renders its children in a View
+ * (`testID="zone-<id>"`). `dropOn` and `legalTargets` then deliver a drop or
+ * start a drag without laying out native views.
+ */
+export function mockDropTarget(sink: () => DropSink) {
+  const { View } = jest.requireActual("react-native");
+  const { createElement } = jest.requireActual("react");
+  const { useDragContext } = jest.requireActual("../game/_shared/drag/DragContext");
+  return {
+    DropTarget: ({
+      id,
+      onDrop,
+      children,
+    }: {
+      id: string;
+      onDrop: (source: DragSource, cards: DragCard[]) => boolean;
+      children?: unknown;
+    }) => {
+      const s = sink();
+      s.zones.set(id, onDrop);
+      s.drag = useDragContext();
+      return createElement(View, { testID: `zone-${id}` }, children);
+    },
+  };
+}
+
+const ONE_CARD: DragCard = { suit: "spades", rank: 2, width: 52, height: 74 };
+
+/** Delivers a drop of `source` to the target `id`; resolves to whether it was accepted. */
+export async function dropOn(
+  sink: DropSink,
+  id: string,
+  source: DragSource,
+  cards: DragCard[] = [ONE_CARD]
+): Promise<boolean> {
+  const { act } = jest.requireActual("@testing-library/react-native");
+  const onDrop = sink.zones.get(id);
+  if (!onDrop) throw new Error(`no drop target ${id}`);
+  let accepted = false;
+  await act(async () => {
+    accepted = onDrop(source, cards);
+  });
+  return accepted;
+}
+
+/** Starts a drag of `source` and returns the ids of the targets the board lights up for it. */
+export async function legalTargets(
+  sink: DropSink,
+  source: DragSource,
+  cards: DragCard[] = [ONE_CARD]
+): Promise<string[]> {
+  const { act } = jest.requireActual("@testing-library/react-native");
+  const drag = sink.drag;
+  if (!drag) throw new Error("no DropTarget has rendered");
+  await act(async () => {
+    drag.startDrag(source, cards);
+  });
+  // The provider's state changed: read the context the targets re-rendered with.
+  return [...(sink.drag ?? drag).legalTargetIds];
+}
+
+/**
+ * `game/_shared/useSound` where each sound `play()` pushes its name onto
+ * `played()`, so a test can tell which one sounded (`playedCount`). `play`
+ * is stable per name, as the real hook's is.
+ */
+export function mockSoundByName(played: () => string[]) {
+  const players = new Map<string, () => boolean>();
+  return {
+    useSound: (name: string): ReturnType<typeof useSound> => {
+      if (!players.has(name)) {
+        players.set(name, () => {
+          played().push(name);
+          return true;
+        });
+      }
+      return { play: players.get(name)!, stop: jest.fn() };
+    },
+  };
+}
+
+/** How many times the sound `name` played, in a `mockSoundByName` log. */
+export function playedCount(played: readonly string[], name: string): number {
+  return played.filter((n) => n === name).length;
 }
 
 declare global {

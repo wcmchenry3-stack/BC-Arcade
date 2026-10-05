@@ -9,7 +9,7 @@ Cheap ratchets added for the refactor epic (#2950, issue #2951). They are set at
 | Gate                      | Where                                                                                                      | Threshold (today)                                                                                                                                                                                                                      | Blocking?                                   |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | ruff complexity / bugbear | `backend/pyproject.toml` (`extend-select`, `[tool.ruff.lint.mccabe]`)                                      | `B`, `C901`, `RUF`, `PLR0912`, `PLR0915`, `SIM`, `UP`; `max-complexity = 12`. Offenders carry `# noqa: C901  # see #2951`                                                                                                              | Yes (`lint-python`)                         |
-| Backend coverage floor    | `backend/pyproject.toml` (`addopts` `--cov-fail-under`, `[tool.coverage.run] omit`)                        | `--cov-fail-under=96` over the whole backend (measured 97.6 % on both Python 3.11 and 3.13; see "Backend coverage (#2958)" below). Only `tests/`, `scripts/`, `perf/` and `sort/verify_levels.py` are omitted | Yes (`test-python`)                         |
+| Backend coverage floor    | `backend/pyproject.toml` (`addopts` `--cov-fail-under`, `[tool.coverage.run] omit`)                        | `--cov-fail-under=96` over the whole backend (measured 97.6 % on both Python 3.11 and 3.13; see "Backend coverage (#2958)" below). Only `tests/`, `scripts/`, `perf/` and `sort/verify_levels.py` are omitted                          | Yes (`test-python`)                         |
 | Backend file length       | `backend/scripts/check_file_length.py`, CI job `backend-file-length`                                       | 800 lines per `.py` (excl. `tests/`, `alembic/`, `.venv/`). Per-file `CAPS` for the two files already over 800 (today's counts, so they cannot grow): `games/service.py` 1005 (#2991), `purchases/google_notifications.py` 813 (#2998) | Yes                                         |
 | eslint `max-lines`        | `frontend/eslint.config.js`                                                                                | 800 lines (skip blanks/comments) for `src/**` excl. `__tests__`. The 11 files already over 800 effective lines are `warn` in a `files:` override                                                                                       | Error for new offenders                     |
 | eslint function size      | `frontend/eslint.config.js`                                                                                | `max-lines-per-function` 150, `complexity` 20                                                                                                                                                                                          | Warn                                        |
@@ -45,7 +45,7 @@ npx --yes jscpd@4.3.0 --threshold 2.5 --min-lines 20 --min-tokens 70 \
 
 **What is collected.** `frontend/package.json` sets `collectCoverageFrom` so every source file counts, whether or not a test imports it: `src/**/*.{ts,tsx,js,jsx}` and `App.tsx` (the shipped `src/i18n/locales.js` is JavaScript), including the `.web.tsx` / `.web.ts` files that ship on Expo Web. Before #2952 jest only measured files that some test happened to import, so never-imported files (the Star Swarm canvases, `App.tsx`, the card faces, the Mahjong layout screens, parts of `components/cascade/*`) were invisible to the gate.
 
-**Permanent exclusions** (package.json cannot hold comments, so they are documented here): `src/**/__tests__/**`, `src/**/__mocks__/**`, `*.d.ts`, `**/*.generated.ts`, `src/screens/__dev__/**` (dev-only screens) and `src/i18n/glossary.js` (build-time input for `scripts/translate.js`, not shipped).
+**Permanent exclusions** (package.json cannot hold comments, so they are documented here): `src/**/__tests__/**`, `src/**/__mocks__/**`, `*.d.ts`, `**/*.generated.ts`, `src/screens/__dev__/**` (dev-only screens), `src/i18n/glossary.js` (build-time input for `scripts/translate.js`, not shipped) and `src/i18n/localeLoaders.ts` (#2957: 247 of its lines are `() => import("./locales/<lng>/<ns>.json")` loaders, which jest cannot run without `--experimental-vm-modules`; `i18n/__tests__/localeLoaders.test.ts` instead checks that every locale file on disk has a loader whose source names its own path, and covers `loadLocaleNamespace` itself).
 
 **Temporary exclusions (until #2969 relocates the code out of `src/`):**
 
@@ -211,7 +211,9 @@ jest.mock("../../game/_shared/gameEventClient", () => {
   const { lazy, mockGameEventClient } = mockScreenDeps();
   return mockGameEventClient({ startGame: lazy(() => mockStartGame) });
 });
-jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+jest.mock("../../game/_shared/flushQueuedGames", () =>
+  mockScreenDeps().mockFlushQueuedGames(),
+);
 ```
 
 Each factory keeps the shape the screen tests had before #2954, and takes overrides or options

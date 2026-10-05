@@ -38,6 +38,7 @@
       "!src/game/*/sim/**",
       "!src/game/yacht/oracleBuild/**",
       "!src/i18n/glossary.js",
+      "!src/i18n/localeLoaders.ts",
       "!**/*.generated.ts"
     ],
     "coverageReporters": [
