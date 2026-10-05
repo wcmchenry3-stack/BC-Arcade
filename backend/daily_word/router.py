@@ -117,7 +117,7 @@ def _score_guess(answer: str, guess: str) -> list[dict]:
     tiles = [{"letter": c, "status": "absent"} for c in guess]
     answer_chars: list[str | None] = list(answer)
 
-    for i, (g, a) in enumerate(zip(guess, answer)):  # noqa: B905
+    for i, (g, a) in enumerate(zip(guess, answer, strict=False)):
         if g == a:
             tiles[i]["status"] = "correct"
             answer_chars[i] = None
