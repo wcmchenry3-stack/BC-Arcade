@@ -51,6 +51,8 @@ import * as Sentry from "@sentry/react-native";
 import type { GameOutcome } from "../../api/vocab";
 
 const STORAGE_KEY = "pending_games_v1";
+/** How long a failed coalesced counter write waits before its one retry. */
+const COUNTER_RETRY_DELAY_MS = 250;
 
 export interface CompleteSummary {
   finalScore?: number | null;
@@ -161,6 +163,8 @@ export class PendingGamesStore {
   /** Bumped by every counter change; `counterWritten` is the last one on disk. */
   private counterVersion = 0;
   private counterWritten = 0;
+  /** The wait before a counter write's one retry, while one is pending. */
+  private retryPause: { cancel: () => void } | null = null;
 
   /**
    * Load persisted state, then run the startup sweep if one is registered.
@@ -249,8 +253,12 @@ export class PendingGamesStore {
     await this.write();
   }
 
-  /** The write behind `persist()`: false when it failed (reported, not thrown). */
-  private async write(): Promise<boolean> {
+  /**
+   * The write behind `persist()`: false when it failed (reported, not thrown).
+   * `report: false` keeps a retry's failure quiet — the first attempt's report
+   * stands.
+   */
+  private async write(report = true): Promise<boolean> {
     if (this.batchDepth > 0) {
       this.batchDirty = true;
       return true;
@@ -264,9 +272,11 @@ export class PendingGamesStore {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
       return true;
     } catch (e) {
-      Sentry.captureException(e, {
-        tags: { subsystem: "pendingGamesStore", op: "persist" },
-      });
+      if (report) {
+        Sentry.captureException(e, {
+          tags: { subsystem: "pendingGamesStore", op: "persist" },
+        });
+      }
       return false;
     }
   }
@@ -328,15 +338,39 @@ export class PendingGamesStore {
       // The write serialises the map after the load, so every bump made by
       // then is in it; note the version it covers before it runs.
       await this.load();
-      const target = this.counterVersion;
-      // A failed write (reported once, by write()) never counts as landed:
-      // the counter stays marked unwritten and the next bump, or any other
-      // write of the map, carries it. Retrying here would only repeat the
-      // report; counting it as landed would let a kill resume a session on a
-      // stale event_index.
-      if (!(await this.write())) return;
+      let target = this.counterVersion;
+      if (await this.write()) {
+        this.counterWritten = target;
+        continue;
+      }
+      // A failed write (reported once, above) never counts as landed —
+      // counting it as landed would let a kill resume a session on a stale
+      // event_index. One retry after a short pause closes the transient
+      // window; if that fails too (quietly: one report per bump), the counter
+      // stays marked unwritten and the next bump, or any other write of the
+      // map, carries it.
+      await this.pause(COUNTER_RETRY_DELAY_MS);
+      target = this.counterVersion;
+      if (!(await this.write(false))) return;
       this.counterWritten = target;
     }
+  }
+
+  /** Wait `ms`, or less if `clearAll()` cancels the wait meanwhile. */
+  private pause(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const handle = setTimeout(() => {
+        this.retryPause = null;
+        resolve();
+      }, ms);
+      this.retryPause = {
+        cancel: () => {
+          clearTimeout(handle);
+          this.retryPause = null;
+          resolve();
+        },
+      };
+    });
   }
 
   /**
@@ -492,6 +526,7 @@ export class PendingGamesStore {
   async clearAll(): Promise<void> {
     // Load first so the saved games can't be merged back in afterwards.
     await this.init();
+    this.retryPause?.cancel(); // no timer outlives a reset
     this.games.clear();
     this.fromPreviousProcess.clear();
     await AsyncStorage.removeItem(STORAGE_KEY);

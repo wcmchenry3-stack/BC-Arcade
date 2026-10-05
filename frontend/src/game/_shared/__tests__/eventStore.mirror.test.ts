@@ -159,29 +159,29 @@ describe("EventStore — in-memory mirror (#2959)", () => {
   // Failures leave the mirror consistent (PR #3016 review)
   // -------------------------------------------------------------------------
 
-  describe("failures", () => {
-    /**
-     * Make the next tier write (of `key`, or of any tier) fail, restoring the
-     * mock whether or not it fired.
-     */
-    async function withFailingWrite(run: () => Promise<void>, key?: string): Promise<void> {
-      const original = setItem.getMockImplementation()!;
-      let armed = true;
-      setItem.mockImplementation(async (k: string, value: string) => {
-        if (armed && (key ? k === key : k.startsWith("event_queue_v1/tier/"))) {
-          armed = false;
-          throw new Error("disk full");
-        }
-        return original(k, value);
-      });
-      try {
-        await run();
-        expect(armed).toBe(false); // the failure was exercised
-      } finally {
-        setItem.mockImplementation(original);
+  /**
+   * Make the next tier write (of `key`, or of any tier) fail, restoring the
+   * mock whether or not it fired.
+   */
+  async function withFailingWrite(run: () => Promise<void>, key?: string): Promise<void> {
+    const original = setItem.getMockImplementation()!;
+    let armed = true;
+    setItem.mockImplementation(async (k: string, value: string) => {
+      if (armed && (key ? k === key : k.startsWith("event_queue_v1/tier/"))) {
+        armed = false;
+        throw new Error("disk full");
       }
+      return original(k, value);
+    });
+    try {
+      await run();
+      expect(armed).toBe(false); // the failure was exercised
+    } finally {
+      setItem.mockImplementation(original);
     }
+  }
 
+  describe("failures", () => {
     it("a load that fails on one tier counts nothing twice when the next call loads again", async () => {
       // Five real rows across four tiers, written by a first store.
       await move(store, 0);
@@ -287,24 +287,6 @@ describe("EventStore — in-memory mirror (#2959)", () => {
   // -------------------------------------------------------------------------
 
   describe("partial commit", () => {
-    async function failWriteOf(key: string, run: () => Promise<void>): Promise<void> {
-      const original = setItem.getMockImplementation()!;
-      let armed = true;
-      setItem.mockImplementation(async (k: string, value: string) => {
-        if (armed && k === key) {
-          armed = false;
-          throw new Error("disk full");
-        }
-        return original(k, value);
-      });
-      try {
-        await run();
-        expect(armed).toBe(false);
-      } finally {
-        setItem.mockImplementation(original);
-      }
-    }
-
     it("a delete over two tiers whose second write fails keeps, per tier, what the disk holds", async () => {
       const started = await lifecycle(store, 0); // P1
       await lifecycle(store, 1);
@@ -312,10 +294,17 @@ describe("EventStore — in-memory mirror (#2959)", () => {
       await move(store, 3);
       const listener = jest.fn();
       store.onStats(listener);
-
-      await failWriteOf("event_queue_v1/tier/3", () =>
-        expect(store.deleteByIds([started.id, granular.id])).rejects.toThrow("disk full")
+      // The recount after the partial commit reuses the cached sizes: no row is serialised.
+      const measured = jest.spyOn(
+        store as unknown as { rowBytes: (row: Row) => number },
+        "rowBytes"
       );
+
+      await withFailingWrite(
+        () => expect(store.deleteByIds([started.id, granular.id])).rejects.toThrow("disk full"),
+        "event_queue_v1/tier/3"
+      );
+      expect(measured).not.toHaveBeenCalled();
 
       const ids = (await store.peek(10, everything)).map((r) => r.id);
       expect(ids).not.toContain(started.id); // tier 1 landed: gone here too
@@ -343,8 +332,9 @@ describe("EventStore — in-memory mirror (#2959)", () => {
       };
       await store.seedRows([mid, { ...mid, id: "mid-b", created_at: 1_001 }]);
 
-      await failWriteOf("event_queue_v1/tier/3", () =>
-        expect(move(store, 2)).rejects.toThrow("disk full")
+      await withFailingWrite(
+        () => expect(move(store, 2)).rejects.toThrow("disk full"),
+        "event_queue_v1/tier/3"
       );
 
       // mid-a was evicted (tier 2 landed); the new row was never stored (tier 3 failed).

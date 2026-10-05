@@ -337,8 +337,21 @@ export class EventStore {
       for (const tier of failed.keys()) tiers[tier] = saved.tiers[tier];
       this.rebuildCounters(tiers);
       if (failed.size < dirty.size) this.notify();
-      const [reason] = failed.values();
-      throw reason;
+      // The caller gets the first failure; any other tier's is reported here
+      // so it does not vanish.
+      let first: unknown;
+      let isFirst = true;
+      for (const [tier, reason] of failed) {
+        if (isFirst) {
+          first = reason;
+          isFirst = false;
+          continue;
+        }
+        Sentry.captureException(reason, {
+          tags: { subsystem: "eventStore", op: "commit", tier: TIER_KEYS[tier] },
+        });
+      }
+      throw first;
     }
     if (dirty.size > 0) this.notify();
     return result;
@@ -386,12 +399,15 @@ export class EventStore {
     }
   }
 
-  /** Account for a row leaving the mirror. */
+  /**
+   * Account for a row leaving the mirror. Its size-cache entry stays: a row
+   * put back by a failed commit is then not measured again, and the entry
+   * goes with the row when the row is collected (the map is weak).
+   */
   private untrack(row: Row): void {
     this.totalRows -= 1;
     this.sizeBytes -= this.bytes.get(row) ?? this.rowBytes(row);
     this.byLogType[row.log_type] -= 1;
-    this.bytes.delete(row);
     if (this.totalRows === 0) {
       this.oldestAt = null;
       this.oldestDirty = false;
@@ -409,7 +425,11 @@ export class EventStore {
     this.oldestDirty = false;
   }
 
-  /** Recount from the arrays, after a commit that landed in part. */
+  /**
+   * Recount from the arrays, after a commit that landed in part. Every row in
+   * the mirror has a size-cache entry (`untrack` keeps them), so this is a
+   * pure addition pass: nothing is serialised.
+   */
   private rebuildCounters(tiers: Tiers): void {
     this.resetCounters();
     for (const tier of TIERS) {
@@ -484,6 +504,13 @@ export class EventStore {
   // Public API
   // -------------------------------------------------------------------------
 
+  /**
+   * Queue a game event. The row returned is the caller-facing view: its
+   * `payload` is the object handed in (or the truncation stub when it was
+   * oversized), not the JSON-normalised form — `undefined` fields and `Date`
+   * instances survive in it. `peek()` and the disk hold the normalised form
+   * (what `JSON.stringify` makes of it), owned by the store. See `ownPayload`.
+   */
   async enqueueEvent(input: {
     game_id: string;
     event_index: number;
@@ -511,6 +538,7 @@ export class EventStore {
     });
   }
 
+  /** Queue a bug log. Same return contract as `enqueueEvent`. */
   async enqueueBugLog(input: {
     bug_uuid: string;
     bug_level: "warn" | "error" | "fatal";
@@ -931,7 +959,8 @@ export class EventStore {
     }
     // Oversized — replace with a stub. This preserves the enqueue contract
     // (payload is always an object) while preventing a single runaway row
-    // from blowing the queue.
+    // from blowing the queue. The mirror retains `stored` by reference, so
+    // the returned stub is a copy (two fields; off the normal path).
     const stub = { _truncated: true, _original_bytes: serialized.length };
     return { stored: stub, returned: { ...stub } };
   }

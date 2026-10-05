@@ -411,39 +411,92 @@ describe("PendingGamesStore", () => {
       expect(fresh.get("g1")?.nextEventIndex).toBe(2);
     });
 
-    it("a failed counter write is reported once, not counted as landed, and carried by the next bump", async () => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const Sentry = require("@sentry/react-native");
-      Sentry.captureException.mockClear();
-      await store.create("g1", "yacht", {});
+    /** Fail the pending-games write while `failing()` says so; restores the mock. */
+    async function withFailingWrites(
+      failing: () => boolean,
+      run: () => Promise<void>
+    ): Promise<void> {
       const setItem = AsyncStorage.setItem as jest.Mock;
       const original = setItem.getMockImplementation()!;
-      let failing = true;
       setItem.mockImplementation(async (key: string, value: string) => {
-        if (key === "pending_games_v1" && failing) throw new Error("disk full");
+        if (key === "pending_games_v1" && failing()) throw new Error("disk full");
         return original(key, value);
       });
       try {
         setItem.mockClear();
-        store.nextEventIndex("g1");
-        await new Promise((r) => setTimeout(r, 10));
-        expect(pendingWrites()).toHaveLength(1); // one attempt, no retry loop
-        expect(Sentry.captureException).toHaveBeenCalledTimes(1);
-        expect(Sentry.captureException).toHaveBeenCalledWith(
-          expect.any(Error),
-          expect.objectContaining({ tags: { subsystem: "pendingGamesStore", op: "persist" } })
-        );
-
-        failing = false;
-        store.nextEventIndex("g1");
-        await new Promise((r) => setTimeout(r, 10));
-        expect(pendingWrites()).toHaveLength(2); // the next bump carries both increments
+        await run();
       } finally {
         setItem.mockImplementation(original);
       }
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Sentry = require("@sentry/react-native");
+    const settle = () => new Promise((r) => setTimeout(r, 300)); // past the 250 ms retry
+
+    it("a failed counter write is retried once after a pause, with one report for the bump", async () => {
+      Sentry.captureException.mockClear();
+      await store.create("g1", "yacht", {});
+      let failures = 0;
+      await withFailingWrites(
+        () => failures++ < 1,
+        async () => {
+          store.nextEventIndex("g1");
+          await new Promise((r) => setTimeout(r, 10));
+          expect(pendingWrites()).toHaveLength(1); // failed; the retry is waiting
+          await settle();
+          expect(pendingWrites()).toHaveLength(2); // the retry landed it
+        }
+      );
+      expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+      expect(Sentry.captureException).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({ tags: { subsystem: "pendingGamesStore", op: "persist" } })
+      );
+      const fresh = new PendingGamesStore();
+      await fresh.init();
+      expect(fresh.get("g1")?.nextEventIndex).toBe(1);
+    });
+
+    it("two failures in a bump: two writes, one report, and the next bump carries the counter", async () => {
+      Sentry.captureException.mockClear();
+      await store.create("g1", "yacht", {});
+      let failing = true;
+      await withFailingWrites(
+        () => failing,
+        async () => {
+          store.nextEventIndex("g1");
+          await settle();
+          expect(pendingWrites()).toHaveLength(2); // the attempt and its one retry
+          expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+
+          failing = false;
+          store.nextEventIndex("g1");
+          await new Promise((r) => setTimeout(r, 10));
+          expect(pendingWrites()).toHaveLength(3); // carried by the next bump, at once
+        }
+      );
+      expect(Sentry.captureException).toHaveBeenCalledTimes(1);
       const fresh = new PendingGamesStore();
       await fresh.init();
       expect(fresh.get("g1")?.nextEventIndex).toBe(2);
+    });
+
+    it("clearAll cancels a pending retry's wait", async () => {
+      await store.create("g1", "yacht", {});
+      let failing = true;
+      await withFailingWrites(
+        () => failing,
+        async () => {
+          store.nextEventIndex("g1");
+          await new Promise((r) => setTimeout(r, 10));
+          failing = false;
+          await store.clearAll(); // the retry runs now, not 250 ms later
+          await new Promise((r) => setTimeout(r, 10));
+          expect(pendingWrites()).toHaveLength(2);
+        }
+      );
+      expect(store.all()).toEqual([]);
     });
   });
 });

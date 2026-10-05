@@ -191,7 +191,7 @@ describe("SyncWorker — one snapshot per pass (#2959)", () => {
   // Step 1's terminal 4xx dead-letters the parked rows too (PR #3016 review)
   // -------------------------------------------------------------------------
 
-  describe("deadLetterGameAndEvents", () => {
+  describe("a rejected game creation dead-letters its parked rows (markDeadLetteredByGameIds)", () => {
     it("rows parked by a per-row backoff do not come back as orphans once the game is forgotten", async () => {
       const gid = startPlayed("yacht");
       client.enqueueEvent(gid, { type: "roll" });
