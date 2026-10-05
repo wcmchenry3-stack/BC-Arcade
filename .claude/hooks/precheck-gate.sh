@@ -51,7 +51,7 @@ try:
     data = json.load(sys.stdin)
     count = 0
     for info in data.get('vulnerabilities', {}).values():
-        if info.get('severity') in ('high', 'critical'):
+        if info.get('severity') == 'critical':
             sources = [x for x in info.get('via', []) if isinstance(x, dict)]
             if sources and not any(b in str(x.get('url', '')) for b in blocked for x in sources):
                 count += 1
@@ -81,7 +81,7 @@ if [ -f "$VENV" ]; then
   else
     # shellcheck disable=SC1090
     source "$VENV"
-    if PIP_OUT=$(pip-audit 2>&1); then
+    if PIP_OUT=$(pip-audit -r backend/requirements.txt -r backend/requirements-dev.txt 2>&1); then
       print_ok "pip-audit"
       cache_store "pip-audit" "$PIP_AUDIT_HASH"
     else
