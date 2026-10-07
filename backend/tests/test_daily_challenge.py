@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import uuid
@@ -90,6 +91,18 @@ def _days(n: int, start: date = _START):
 def test_template_pick_is_deterministic() -> None:
     assert template_for(date(2026, 10, 9)) == template_for(date(2026, 10, 9))
     assert template_for(date(2026, 10, 9), "premium") == template_for(date(2026, 10, 9), "premium")
+
+
+def test_pick_template_is_memoised() -> None:
+    # #2966: the streak asks for ~120 templates per /stats/me. A cached result is
+    # shared, which is safe because Template and Goal are frozen.
+    day = date(2031, 1, 2)
+    first = pick_template(day, "free", 3)
+    hits = pick_template.cache_info().hits
+    assert pick_template(day, "free", 3) is first
+    assert pick_template.cache_info().hits == hits + 1
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        first.goals[0].target = 1  # type: ignore[misc]
 
 
 @pytest.mark.parametrize("slate", _SLATES)

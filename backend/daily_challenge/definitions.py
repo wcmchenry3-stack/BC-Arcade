@@ -356,7 +356,12 @@ def pick_games(day: date, slate: Slate, salt: int) -> tuple[str, str]:
     return order[base], order[(base + 1) % len(order)]
 
 
+@cache
 def pick_template(day: date, slate: Slate, salt: int) -> Template:
+    """The day's computed template. Memoised (#2966): a pure function of hashable
+    arguments over the static pools (as ``rotation`` is), returning a frozen
+    ``Template`` of frozen ``Goal``s, so a cached result can be shared. The streak
+    asks for ~120 of them per ``/stats/me``. One entry per (day, slate, salt)."""
     pool = GOAL_POOLS[slate]
     ordinal = day.toordinal()
     games = (ALWAYS_PRESENT, *pick_games(day, slate, salt))

@@ -30,9 +30,11 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from db.dialect import dialect_insert, dialect_name
-from db.models import EventType, Game, GameEvent, GameType
+from db.models import Game, GameEvent, GameType
 from entitlements.service import ALL_PREMIUM_SLUGS
+from games import catalog_cache
 from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
+from games.catalog_cache import GameTypeRow
 from games.filters import SWEPT_KEY, is_swept, not_abandoned, not_swept, without_swept
 from games.leaderboard import check_completion_limits, merge_result_metadata
 from games.legacy_outcomes import might_be_legacy_win, win_update
@@ -81,27 +83,11 @@ class AppendResult:
     rejected: list[str]
 
 
-async def _resolve_game_type(session: AsyncSession, name: str) -> GameType:
-    gt = (await session.execute(select(GameType).where(GameType.name == name))).scalar_one_or_none()
+async def _resolve_game_type(session: AsyncSession, name: str) -> GameTypeRow:
+    gt = await catalog_cache.get_game_type(session, name)
     if gt is None or not gt.is_active:
         raise GameServiceError(400, f"Unknown or inactive game_type: {name!r}")
     return gt
-
-
-async def _load_event_type_map(session: AsyncSession, game_type_id: int) -> dict[str, EventType]:
-    rows = (
-        (
-            await session.execute(
-                select(EventType).where(
-                    EventType.game_type_id == game_type_id,
-                    EventType.deprecated_at.is_(None),
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    return {et.name: et for et in rows}
 
 
 async def create_game(
@@ -141,8 +127,8 @@ async def create_game(
     # A name in the creation metadata (builds before #2624) was the player
     # joining the boards: keep that choice, under a generated name (#2778).
     await remember_legacy_opt_in(session, session_id, (metadata or {}).get("player_name"))
+    # No refresh: Game's eager_defaults loads started_at in the INSERT (#2966).
     await session.commit()
-    await session.refresh(game)
     return game
 
 
@@ -184,7 +170,7 @@ async def append_events(
     if game.completed_at is not None and not is_swept(game.game_metadata):
         raise GameServiceError(409, "Game is already completed.")
 
-    event_type_map = await _load_event_type_map(session, game.game_type_id)
+    event_type_map = await catalog_cache.event_type_ids(session, game.game_type_id)
 
     valid_rows: list[dict[str, Any]] = []
     valid_indices: list[int] = []
@@ -206,7 +192,7 @@ async def append_events(
             {
                 "game_id": game.id,
                 "event_index": idx,
-                "event_type_id": event_type_map[name].id,
+                "event_type_id": event_type_map[name],
                 "data": ev["data"],
             }
         )
@@ -266,9 +252,10 @@ async def sweep_stale_games(
     ``duration_ms`` NULL. Only open rows match, so it is idempotent and never
     touches a completed game. Returns the number of rows closed.
 
-    Run on read, per player — at the start of ``/stats/me`` and ``/games/me`` — so
-    no scheduler is needed. Sessions that never call those again keep their open
-    rows; leaderboards never read open rows, so that gap only affects analytics.
+    Run on read, per player — at the start of ``/stats/me`` (via games.sweep_gate)
+    and ``/games/me`` — so no scheduler is needed. Sessions that never call those
+    again keep their open rows; leaderboards never read open rows, so that gap
+    only affects analytics.
     """
     now = now or datetime.now(UTC)
     dialect = dialect_name(session)
@@ -307,13 +294,14 @@ async def sweep_stale_games(
     return result.rowcount or 0
 
 
-async def sweep_stale_games_safely(session: AsyncSession, *, session_id: str) -> None:
+async def sweep_stale_games_safely(session: AsyncSession, *, session_id: str) -> bool:
     """Run the sweep without ever failing the read it precedes.
 
     A failure is logged at ERROR (Sentry's logging integration captures it) and
-    rolled back so the read can go on. The log carries the exception class only:
-    a DBAPI error's text includes the statement's bound parameters, session id
-    among them, and the privacy policy keeps identifiers out of crash reports.
+    rolled back so the read can go on; returns False then, else True. The log
+    carries the exception class only: a DBAPI error's text includes the
+    statement's bound parameters, session id among them, and the privacy policy
+    keeps identifiers out of crash reports.
     """
     try:
         await sweep_stale_games(session, session_id=session_id)
@@ -323,6 +311,8 @@ async def sweep_stale_games_safely(session: AsyncSession, *, session_id: str) ->
         )
         with contextlib.suppress(Exception):
             await session.rollback()
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -633,41 +623,45 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
     #
     # Ties (SQLite's server-default started_at has one-second resolution) fall
     # back to completed_at, then id, so exactly one row per game type wins.
-    def _latest_row_query(order_by, *extra_filters):
-        ranked = (
-            select(
-                Game.id,
-                func.row_number()
-                .over(
-                    partition_by=Game.game_type_id,
-                    order_by=(*order_by, Game.id.desc()),
-                )
-                .label("rn"),
+    # Both rankings run in one query (#2966): the score one partitions the
+    # abandoned rows apart, and only its non-abandoned rank 1 supplies a score.
+    abandoned = case((not_abandoned(), 0), else_=1)
+    ranked = (
+        select(
+            Game.id,
+            abandoned.label("abandoned"),
+            func.row_number()
+            .over(
+                partition_by=(Game.game_type_id, abandoned),
+                order_by=(Game.completed_at.desc(), Game.id.desc()),
             )
-            .where(
-                Game.session_id == session_id,
-                Game.completed_at.is_not(None),
-                *extra_filters,
+            .label("score_rn"),
+            func.row_number()
+            .over(
+                partition_by=Game.game_type_id,
+                order_by=(Game.started_at.desc(), Game.completed_at.desc(), Game.id.desc()),
             )
-            .subquery()
+            .label("meta_rn"),
         )
-        return (
-            select(GameType.name, Game.final_score, Game.game_metadata)
+        .where(Game.session_id == session_id, Game.completed_at.is_not(None))
+        .subquery()
+    )
+    is_score_row = (ranked.c.score_rn == 1) & (ranked.c.abandoned == 0)
+    latest_rows = (
+        await session.execute(
+            select(GameType.name, Game.final_score, Game.game_metadata, ranked.c.meta_rn == 1)
             .join(GameType, Game.game_type_id == GameType.id)
-            .join(ranked, (Game.id == ranked.c.id) & (ranked.c.rn == 1))
+            .join(ranked, (Game.id == ranked.c.id) & (is_score_row | (ranked.c.meta_rn == 1)))
+            .add_columns(is_score_row)
         )
-
-    latest_score_rows = (
-        await session.execute(_latest_row_query((Game.completed_at.desc(),), not_abandoned()))
-    ).all()
-    latest_meta_rows = (
-        await session.execute(_latest_row_query((Game.started_at.desc(), Game.completed_at.desc())))
     ).all()
     latest_score_by_name: dict[str, int | None] = {
-        name: (int(score) if score is not None else None) for name, score, _ in latest_score_rows
+        name: (int(score) if score is not None else None)
+        for name, score, _, _, score_row in latest_rows
+        if score_row
     }
     latest_meta_by_name: dict[str, dict] = {
-        name: (meta or {}) for name, _, meta in latest_meta_rows
+        name: (meta or {}) for name, _, meta, meta_row, _ in latest_rows if meta_row
     }
 
     # --- build per-game stats via module dispatch -------------------------
@@ -1001,5 +995,7 @@ async def patch_game_type(
     if category is not None:
         gt.category = category
     await session.commit()
+    # This worker reads the new tier at once; other workers within the cache TTL.
+    catalog_cache.invalidate()
     await session.refresh(gt)
     return gt

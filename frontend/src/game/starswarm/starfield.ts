@@ -1,6 +1,7 @@
 export interface Star {
   id: number;
   x: number;
+  /** Starting y; where it is drawn now is `starY` (it scrolls with its layer). */
   y: number;
   /** Logical radius in canvas pixels. */
   r: number;
@@ -10,10 +11,20 @@ export interface Star {
   speed: number;
 }
 
+/**
+ * #2963: the stars never change after `initStarfield` — every star in a depth layer scrolls at
+ * that layer's speed and wraps at the bottom edge — so the state is the fixed layout plus one
+ * scroll clock. A layer's offset is `layerOffset(elapsedMs, speed, height)`; the native canvas
+ * records each layer once as a Picture and slides it by that offset on the UI thread, and
+ * `starY` gives one star's position for the web canvas. Ticking allocates one small object (the
+ * new identity is what tells the frame gate the starfield moved), not a copy of every star.
+ */
 export interface StarfieldState {
-  stars: readonly Star[];
-  width: number;
-  height: number;
+  readonly stars: readonly Star[];
+  readonly width: number;
+  readonly height: number;
+  /** How long the starfield has scrolled, ms. */
+  readonly elapsedMs: number;
 }
 
 // Three depth layers: far (slow/dim/tiny), mid, near (fast/bright/large).
@@ -48,14 +59,41 @@ export function initStarfield(width: number, height: number, seed = 42): Starfie
       });
     }
   }
-  return { stars, width, height };
+  return { stars, width, height, elapsedMs: 0 };
 }
 
 export function tickStarfield(state: StarfieldState, dtMs: number): StarfieldState {
-  const { width, height } = state;
-  const stars = state.stars.map((s) => {
-    const y = s.y + s.speed * dtMs;
-    return y > height ? { ...s, y: y - height } : { ...s, y };
-  });
-  return { stars, width, height };
+  return { ...state, elapsedMs: state.elapsedMs + dtMs };
+}
+
+/** How far a layer moving at `speed` px/ms has scrolled after `elapsedMs`, in [0, height). */
+export function layerOffset(elapsedMs: number, speed: number, height: number): number {
+  "worklet";
+  return height > 0 ? (elapsedMs * speed) % height : 0;
+}
+
+/** Where `star` is drawn now: its start plus its layer's offset, wrapped to the top. */
+export function starY(star: Star, sf: StarfieldState): number {
+  const y = star.y + layerOffset(sf.elapsedMs, star.speed, sf.height);
+  return y > sf.height ? y - sf.height : y;
+}
+
+export interface StarLayer {
+  readonly speed: number;
+  /** In draw order (back to front within the layer). */
+  readonly stars: readonly Star[];
+}
+
+/** The stars grouped by depth layer (scroll speed), far layer first — the draw order. */
+export function starLayers(sf: StarfieldState): StarLayer[] {
+  const layers: { speed: number; stars: Star[] }[] = [];
+  for (const star of sf.stars) {
+    let layer = layers.find((l) => l.speed === star.speed);
+    if (!layer) {
+      layer = { speed: star.speed, stars: [] };
+      layers.push(layer);
+    }
+    layer.stars.push(star);
+  }
+  return layers;
 }
