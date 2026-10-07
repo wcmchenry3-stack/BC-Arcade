@@ -28,9 +28,17 @@ planned a sequential scan of every game row on each read.
 Both are built ``CONCURRENTLY`` on Postgres, outside the migration
 transaction (``autocommit_block``): a plain ``CREATE INDEX`` holds a SHARE
 lock on ``games``, blocking every write, for the whole build while the
-previous instance still serves traffic during a deploy. If a concurrent build
-fails it leaves an INVALID index of that name; drop it and rerun the upgrade.
-SQLite ignores the flag. Downgrade drops both, also concurrently.
+previous instance still serves traffic during a deploy. SQLite ignores the
+flag and builds them inside its transaction.
+
+Re-runnable: the builds commit one by one and the version row is written
+after them (``alembic/env.py`` runs each migration in its own transaction),
+so a deploy that dies part-way (deadlock, cancel, restart) can leave either
+index behind, VALID or INVALID, while the database still reads 0031. Each
+build is therefore preceded, on Postgres, by ``DROP INDEX CONCURRENTLY IF
+EXISTS`` of the same name: the next ``alembic upgrade head`` rebuilds it
+instead of failing with "relation already exists". Downgrade drops both,
+also concurrently and ``IF EXISTS``.
 
 Additive only: no data changes.
 """
@@ -50,32 +58,31 @@ _COMPLETED = "completed_at IS NOT NULL"
 _DURATION = "duration_ms IS NOT NULL AND completed_at IS NOT NULL"
 
 
+_INDEXES = (
+    ("games_game_type_completed_idx", ["game_type_id", "completed_at"], _COMPLETED),
+    ("games_game_type_duration_idx", ["game_type_id", "duration_ms"], _DURATION),
+)
+
+
 def upgrade() -> None:
+    postgres = op.get_context().dialect.name == "postgresql"
     # CREATE INDEX CONCURRENTLY cannot run inside a transaction.
     with op.get_context().autocommit_block():
-        op.create_index(
-            "games_game_type_completed_idx",
-            "games",
-            ["game_type_id", "completed_at"],
-            postgresql_where=sa.text(_COMPLETED),
-            sqlite_where=sa.text(_COMPLETED),
-            postgresql_concurrently=True,
-        )
-        op.create_index(
-            "games_game_type_duration_idx",
-            "games",
-            ["game_type_id", "duration_ms"],
-            postgresql_where=sa.text(_DURATION),
-            sqlite_where=sa.text(_DURATION),
-            postgresql_concurrently=True,
-        )
+        for name, columns, where in _INDEXES:
+            if postgres:
+                # A leftover from an interrupted run (VALID or INVALID).
+                op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {name}")
+            op.create_index(
+                name,
+                "games",
+                columns,
+                postgresql_where=sa.text(where),
+                sqlite_where=sa.text(where),
+                postgresql_concurrently=True,
+            )
 
 
 def downgrade() -> None:
     with op.get_context().autocommit_block():
-        op.drop_index(
-            "games_game_type_duration_idx", table_name="games", postgresql_concurrently=True
-        )
-        op.drop_index(
-            "games_game_type_completed_idx", table_name="games", postgresql_concurrently=True
-        )
+        for name, _, _ in reversed(_INDEXES):
+            op.drop_index(name, table_name="games", postgresql_concurrently=True, if_exists=True)
