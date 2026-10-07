@@ -27,8 +27,12 @@
   ]
   # CocoaPods spec checksums (40-hex SHA-1s next to names like "RNAudioAPI")
   # read as generic-api-key hits; the lockfile never holds credentials.
+  # Mahjong layout fingerprints (64-hex SHA-256s next to layout ids like
+  # "the_key") read as generic-api-key hits; they pin layout geometry and are
+  # never credentials (#2968).
   paths = [
     '''frontend/ios/Podfile\.lock$''',
+    '''frontend/src/game/mahjong/__tests__/layoutEquivalence\.test\.ts$''',
   ]
   # AsyncStorage namespaces assigned to *_KEY constants ("yacht_pref_v1",
   # "blackjack_runs_v1"): lowercase snake_case ending in a _vN version suffix.
