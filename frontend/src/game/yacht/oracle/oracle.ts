@@ -61,11 +61,6 @@ export function getHoldOptions(): readonly (readonly HoldOption[])[] {
   return holdOptionsCache;
 }
 
-/** True once the oracle table has been decoded. */
-export function isOracleTableLoaded(): boolean {
-  return table !== null;
-}
-
 /**
  * Decode the table ahead of time (e.g. when a VS game starts) so the first
  * AI decision doesn't pay for it. Defers to a macrotask so the calling

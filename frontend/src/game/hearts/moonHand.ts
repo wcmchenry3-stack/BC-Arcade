@@ -24,7 +24,7 @@ import type { Card, Suit } from "./types";
 const aceHigh = (rank: number): number => (rank === 1 ? 14 : rank);
 
 /**
- * Thresholds, chosen by the duplicate-deal sweep on #2234 (sim/harness.ts).
+ * Thresholds, chosen by the duplicate-deal sweep on #2234 (tooling/hearts/harness.ts).
  * Findings that shaped them:
  * - Starting a moon from the opening hand costs Daring points in almost
  *   every kind of hand (−2.7 points per hand relative to the table on

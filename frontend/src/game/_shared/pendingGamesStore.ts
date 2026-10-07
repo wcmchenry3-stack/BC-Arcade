@@ -117,7 +117,7 @@ export function isPlainRecord(value: unknown): value is Record<string, unknown> 
  * started; older, it is abandoned. Matches the server's stale-session sweep
  * (#2621, `STALE_GAME_AFTER`), which also measures from the start.
  */
-export const ORPHAN_RESUMABLE_MS = 24 * 60 * 60 * 1000;
+const ORPHAN_RESUMABLE_MS = 24 * 60 * 60 * 1000;
 
 /** Still resumable at `now` — see ORPHAN_RESUMABLE_MS. */
 export function isOrphanResumable(game: PendingGame, now: number): boolean {
