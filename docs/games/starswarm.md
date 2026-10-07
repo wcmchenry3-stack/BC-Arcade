@@ -1009,7 +1009,7 @@ fade and the power-up bar, are shared values (`hudCues`) driving `useAnimatedSty
 thread. Gameplay is the Picture; the HUD is on-change React.
 
 The Picture is the only native renderer: phase 5 (#2567) removed the phase-2 declarative path
-and its dev switch after the side-by-side device measurement in `PERFORMANCE.md`. The web renderer (unmaintained) still
+and its dev switch after the side-by-side device measurement in `PERFORMANCE.md`. The web renderer (secondary platform) still
 derives the same rules itself.
 
 The dev panel's _Frame readout_ switch (#2567) shows frame-time average and p95 and the canvas's

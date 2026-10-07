@@ -1,6 +1,6 @@
 # BC Arcade
 
-A collection of 12 arcade, card, dice, puzzle, and word games — Yacht, Hearts, Blackjack, Solitaire, Sudoku, Cascade, 2048, FreeCell, Mahjong, Bottle Sort, Daily Word, and Star Swarm — with a FastAPI backend and an Expo/React Native frontend that runs on iOS, Android, and the web.
+A collection of 12 arcade, card, dice, puzzle, and word games — Yacht, Hearts, Blackjack, Solitaire, Sudoku, Cascade, 2048, FreeCell, Mahjong, Bottle Sort, Daily Word, and Star Swarm — with a FastAPI backend and an Expo/React Native frontend that runs on iOS, Android, and the web. Web (Expo Web) is a supported secondary platform used for testing and the free games; it is not a revenue platform. iOS and Android are primary. Platform-specific bugs should name the platform.
 
 - **Backend:** Python 3.11 (production runtime), FastAPI, uvicorn
 - **Frontend:** Expo (TypeScript), React Native, Expo Web
@@ -22,6 +22,7 @@ Two terminals from the repo root.
 First time (or when `requirements.txt` changes):
 
 **Mac/Linux:**
+
 ```bash
 cd backend
 python3.11 -m venv .venv
@@ -31,6 +32,7 @@ pip install -r requirements.txt
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
 cd backend
 python3.11 -m venv .venv
@@ -44,6 +46,7 @@ pip install -r requirements.txt
 Every time:
 
 **Mac/Linux:**
+
 ```bash
 cd backend
 source .venv/bin/activate
@@ -51,6 +54,7 @@ python -m uvicorn main:app --reload   # http://localhost:8000
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
 cd backend
 .venv\Scripts\Activate.ps1
@@ -114,6 +118,7 @@ Backend is hosted on Render — see [`docs/RENDER.md`](docs/RENDER.md).
 **`pip install -r requirements.txt` fails building `pydantic-core`** — your venv is using Python 3.14. Recreate it with 3.11:
 
 **Mac/Linux:**
+
 ```bash
 deactivate
 rm -rf backend/.venv
@@ -124,6 +129,7 @@ pip install -r backend/requirements.txt
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
 deactivate
 Remove-Item -Recurse -Force backend\.venv

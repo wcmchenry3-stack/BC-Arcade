@@ -251,6 +251,22 @@ describe("production build targets the production API (Android / JS side)", () =
     expect(env).not.toMatch(/^EXPO_PUBLIC_SENTRY_ENVIRONMENT=/m);
   });
 
+  it("no release input enables EXPO_PUBLIC_TEST_HOOKS (#2975)", () => {
+    // Inputs a store build reads: every tracked dotenv file, the Android
+    // gradle config, and the Xcode Cloud env file. Only the test-hook CI jobs
+    // (ci.yml e2e, mobile-smoke-*) may set it, never these.
+    const enabling = /^\s*(export\s+)?EXPO_PUBLIC_TEST_HOOKS\s*=\s*["']?1/m;
+    const inputs = [
+      ".env",
+      ".env.example",
+      ".env.production",
+      "ios/.xcode.env",
+      "android/gradle.properties",
+    ];
+    for (const rel of inputs)
+      expect({ rel, enabled: enabling.test(read(rel)) }).toEqual({ rel, enabled: false });
+  });
+
   it("gradle config does not hard-code a dev or local API", () => {
     expect(read("android/app/build.gradle")).not.toMatch(/dev-games-api|EXPO_PUBLIC_API_URL/);
     expect(read("android/gradle.properties")).not.toMatch(/dev-games-api|EXPO_PUBLIC_API_URL/);
