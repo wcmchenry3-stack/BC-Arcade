@@ -185,15 +185,16 @@ One folder convention (#2980, epic #2950):
 `screens/` (enforced by the `bc-arcade/no-game-ui-imports` ESLint rule, which
 has no `.tsx` exemption apart from the list below).
 
-Explicit exceptions (React code that stays under `game/`):
+Explicit exception to the lint rule, plus contexts that stay under `game/`:
 
 - `game/_shared/**` — the cross-game card/drag/deck UI kit and its contexts
   (`SelectableCard`, `drag/*`, `decks/*`, `CardSizeContext`, `SoundContext`,
   `NetworkContext`). These are the only `.tsx` files allowed to import
   `components/`.
-- Per-game React contexts that hold game state: `game/blackjack/BlackjackGameContext.tsx`,
-  `game/hearts/RoundsContext.tsx`, `game/yacht/ScorecardContext.tsx`. They do
-  not import UI and are left in place for now.
+- Per-game React contexts (`game/blackjack/BlackjackGameContext.tsx`,
+  `game/hearts/RoundsContext.tsx`, `game/yacht/ScorecardContext.tsx`) stay in
+  `game/<name>/` by design. They are **not** exempt from the lint rule; they pass
+  because they import no UI.
 
 ## 4. Persistence and offline contract
 

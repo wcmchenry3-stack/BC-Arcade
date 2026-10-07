@@ -574,7 +574,7 @@ These read the server; a game adds nothing for them beyond passing `gameType` to
 
 ### 2.7 ESLint boundary
 
-`frontend/eslint.config.js` has one custom boundary rule, `bc-arcade/no-game-ui-imports`: a non-`.tsx` file under `frontend/src/game/` (engines, reducers, helpers) must not import from `src/components/` or `src/screens/`. `.tsx` files in `src/game/` (a game's context or UI pieces) are exempt. There is **no** rule against one game importing another game's folder; keep game code in its own `src/game/<game>/` and share through `src/game/_shared/`.
+`frontend/eslint.config.js` has one custom boundary rule, `bc-arcade/no-game-ui-imports`: no file under `frontend/src/game/` (engines, reducers, helpers, per-game contexts) may import from `src/components/` or `src/screens/`. The only exemption is `.tsx` under `src/game/_shared/**` (the shared card/drag/deck UI kit); see [`ARCHITECTURE.md` §3.1](ARCHITECTURE.md#31-where-game-code-lives). A game's own UI lives in `src/components/<game>/`. There is **no** rule against one game importing another game's folder; keep game code in its own `src/game/<game>/` and share through `src/game/_shared/`.
 
 ### 2.8 Testing and QA
 
