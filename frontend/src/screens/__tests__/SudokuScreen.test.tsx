@@ -715,13 +715,27 @@ describe("SudokuScreen — result card (#2511)", () => {
     expect((completed![1] as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(65_000);
   });
 
-  it("never reports a negative time when the device clock steps back (#2964)", async () => {
+  it("records no time, no new best and keeps the real best when the device clock steps back (#2964)", async () => {
+    const stored = JSON.stringify({ classic: { easy: { bestTimeS: 30, gamesSolved: 4 } } });
+    await AsyncStorage.setItem("sudoku_stats_v1", stored);
     const r = await solvePuzzle({ elapsedMs: -5_000 });
+    const card = within(r.getByTestId("sudoku-result"));
+    // The card shows no time, no "New best", and the real best it already had.
+    expect(card.queryByText("Time")).toBeNull();
+    expect(card.queryByText("New best")).toBeNull();
+    expect(card.getByText("00:30")).toBeTruthy();
+    // The game reports no duration of its own (never a negative one), so sync
+    // falls back to its foreground window.
     const completed = mockCompleteGame.mock.calls.find(
       ([, summary]) => (summary as { outcome?: string }).outcome === "completed"
     );
-    expect((completed?.[1] as { durationMs?: number } | undefined)?.durationMs ?? 0).toBe(0);
-    expect(within(r.getByTestId("sudoku-result")).getAllByText("00:00").length).toBeGreaterThan(0);
+    expect(completed).toBeDefined();
+    expect((completed![1] as { durationMs?: number }).durationMs ?? null).toBeNull();
+    // The cached best is untouched: it is not replaced by 0, the "no best" mark.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(await AsyncStorage.getItem("sudoku_stats_v1")).toBe(stored);
   });
 
   // #2632: the card reads the synced game's rank (GET /games/{id}/rank)

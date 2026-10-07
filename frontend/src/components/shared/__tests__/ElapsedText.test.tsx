@@ -25,6 +25,14 @@ async function advance(ms: number) {
 /** A clock that started `startedAt` ms ago-or-later in wall time. */
 const clockFrom = (startedAt: number) => () => Date.now() - startedAt;
 
+/** A clock that is already advancing. */
+const advancing = () => {
+  const activity = createClockActivity();
+  activity.set(true);
+  return activity;
+};
+const LIVE = advancing();
+
 describe("ElapsedText (#2964)", () => {
   it("idles before the clock starts, then ticks on the clock's own seconds", async () => {
     let startedAt: number | null = null;
@@ -102,7 +110,13 @@ describe("ElapsedText (#2964)", () => {
   it("flips exactly at the clock's second boundary when it started mid-second", async () => {
     // 400 ms already on the clock: the first second ends 600 ms from now.
     const api = await render(
-      <ElapsedText getElapsedMs={clockFrom(T0 - 400)} running format={format} testID="t" />
+      <ElapsedText
+        getElapsedMs={clockFrom(T0 - 400)}
+        activity={LIVE}
+        running
+        format={format}
+        testID="t"
+      />
     );
     expect(api.getByTestId("t")).toHaveTextContent("0s");
     await advance(599);
@@ -117,12 +131,24 @@ describe("ElapsedText (#2964)", () => {
 
   it("stops ticking when it is not running", async () => {
     const api = await render(
-      <ElapsedText getElapsedMs={clockFrom(T0)} running format={format} testID="t" />
+      <ElapsedText
+        getElapsedMs={clockFrom(T0)}
+        activity={LIVE}
+        running
+        format={format}
+        testID="t"
+      />
     );
     await advance(2000);
     expect(api.getByTestId("t")).toHaveTextContent("2s");
     await api.rerender(
-      <ElapsedText getElapsedMs={clockFrom(T0)} running={false} format={format} testID="t" />
+      <ElapsedText
+        getElapsedMs={clockFrom(T0)}
+        activity={LIVE}
+        running={false}
+        format={format}
+        testID="t"
+      />
     );
     await advance(5000);
     expect(api.getByTestId("t")).toHaveTextContent("2s");
@@ -132,6 +158,7 @@ describe("ElapsedText (#2964)", () => {
     const api = await render(
       <ElapsedText
         getElapsedMs={() => 99_000}
+        activity={LIVE}
         running={false}
         frozenS={65}
         format={format}
@@ -145,20 +172,49 @@ describe("ElapsedText (#2964)", () => {
     let elapsed: number | null = 7000;
     const getElapsedMs = () => elapsed;
     const api = await render(
-      <ElapsedText getElapsedMs={getElapsedMs} running resetKey={0} format={format} testID="t" />
+      <ElapsedText
+        getElapsedMs={getElapsedMs}
+        activity={LIVE}
+        running
+        resetKey={0}
+        format={format}
+        testID="t"
+      />
     );
     expect(api.getByTestId("t")).toHaveTextContent("7s");
     elapsed = null; // a new puzzle: the clock has not started
     await api.rerender(
-      <ElapsedText getElapsedMs={getElapsedMs} running resetKey={1} format={format} testID="t" />
+      <ElapsedText
+        getElapsedMs={getElapsedMs}
+        activity={LIVE}
+        running
+        resetKey={1}
+        format={format}
+        testID="t"
+      />
     );
+    expect(api.getByTestId("t")).toHaveTextContent("0s");
+  });
+
+  it("never shows a negative time when the wall clock steps back", async () => {
+    const api = await render(
+      <ElapsedText getElapsedMs={() => -5000} activity={LIVE} running format={format} testID="t" />
+    );
+    expect(api.getByTestId("t")).toHaveTextContent("0s");
+    await advance(3000);
     expect(api.getByTestId("t")).toHaveTextContent("0s");
   });
 
   it("labels the time for a screen reader", async () => {
     const label = (time: string) => `Elapsed time ${time}`;
     const api = await render(
-      <ElapsedText getElapsedMs={() => 5000} running format={format} accessibilityLabel={label} />
+      <ElapsedText
+        getElapsedMs={() => 5000}
+        activity={LIVE}
+        running
+        format={format}
+        accessibilityLabel={label}
+      />
     );
     expect(api.getByLabelText("Elapsed time 5s")).toBeTruthy();
   });

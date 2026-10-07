@@ -115,7 +115,8 @@ export default function SudokuScreen() {
   const [newGameModalVisible, setNewGameModalVisible] = useState(false);
   // What the result card shows, captured when the puzzle is solved.
   const [result, setResult] = useState<{
-    elapsedS: number;
+    /** Null when the clock gave no usable time (the device clock stepped back). */
+    elapsedS: number | null;
     bestTimeS: number;
     isNewBest: boolean;
   } | null>(null);
@@ -174,8 +175,9 @@ export default function SudokuScreen() {
   // start moves forward on resume, and a pause in progress stops the count).
   const playedMs = useCallback((): number | null => {
     if (startMsRef.current === null) return null;
-    // Never negative: the device clock can step back after a resume shifted the start.
-    return Math.max(0, (pausedAtRef.current ?? Date.now()) - startMsRef.current);
+    // Raw, so a wall clock that stepped back after a resume shows as a negative
+    // time: a completion then records no duration (below). The HUD clamps it.
+    return (pausedAtRef.current ?? Date.now()) - startMsRef.current;
   }, []);
   const syncClockActivity = useCallback(() => {
     clockActivity.set(startMsRef.current !== null && pausedAtRef.current === null);
@@ -274,12 +276,16 @@ export default function SudokuScreen() {
     }
     if (state.isComplete && !prevCompleteRef.current) {
       const score = computeScore(state.difficulty, state.errorCount);
-      const finalElapsed = Math.floor((playedMs() ?? 0) / 1000);
+      // A time is usable only when positive: a device clock that stepped back
+      // after a resume cannot make a 00:00 solve, a "New best", or a best of 0
+      // (which is also the "no best yet" mark). Then the duration is unknown.
+      const playedS = Math.floor((playedMs() ?? 0) / 1000);
+      const finalElapsed = playedS > 0 ? playedS : null;
       const gid = syncComplete(
         {
           finalScore: score,
           outcome: "completed",
-          durationMs: finalElapsed * 1000,
+          durationMs: finalElapsed === null ? null : finalElapsed * 1000,
           result: { won: true, errors: state.errorCount },
         },
         {
@@ -300,7 +306,8 @@ export default function SudokuScreen() {
       const diff = state.difficulty;
       const variantKey = state.variant;
       const prev = statsRef.current[variantKey][diff];
-      const improved = prev.bestTimeS === 0 || finalElapsed < prev.bestTimeS;
+      const improved =
+        finalElapsed !== null && (prev.bestTimeS === 0 || finalElapsed < prev.bestTimeS);
       // The cache is written only when this puzzle kind's best improves.
       if (improved) {
         statsRef.current = {
@@ -311,9 +318,9 @@ export default function SudokuScreen() {
       }
       setResult({
         elapsedS: finalElapsed,
-        bestTimeS: improved ? finalElapsed : prev.bestTimeS,
+        bestTimeS: improved && finalElapsed !== null ? finalElapsed : prev.bestTimeS,
         // Only a beaten previous time is a "new best" — not a first solve.
-        isNewBest: prev.bestTimeS > 0 && finalElapsed < prev.bestTimeS,
+        isNewBest: finalElapsed !== null && prev.bestTimeS > 0 && finalElapsed < prev.bestTimeS,
       });
     }
     prevCompleteRef.current = state.isComplete;
@@ -599,11 +606,15 @@ export default function SudokuScreen() {
           outcome="win"
           eyebrow={`${t("game.title")} · ${t(`difficulty.${state.difficulty}`)}`}
           subtitle={t(`variant.${state.variant}`)}
-          hero={{
-            kind: "score",
-            label: tResult("stat.time"),
-            value: formatElapsed(result?.elapsedS ?? 0),
-          }}
+          hero={
+            result !== null && result.elapsedS === null
+              ? undefined
+              : {
+                  kind: "score",
+                  label: tResult("stat.time"),
+                  value: formatElapsed(result?.elapsedS ?? 0),
+                }
+          }
           isNewBest={result?.isNewBest ?? false}
           stats={[
             {

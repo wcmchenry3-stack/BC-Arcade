@@ -46,7 +46,7 @@ export interface ElapsedTextProps {
    */
   running: boolean;
   /** The game's clock activity (started and not paused); `running` still applies. */
-  activity?: ClockActivity;
+  activity: ClockActivity;
   /** A final time to show instead of the live one (a finished game), else null. */
   frozenS?: number | null;
   /** Change it to re-read the clock at once and re-align the tick (a new puzzle). */
@@ -59,11 +59,10 @@ export interface ElapsedTextProps {
   testID?: string;
 }
 
-const NEVER_ACTIVE: ClockActivity = {
-  subscribe: () => () => {},
-  getSnapshot: () => true,
-  set: () => {},
-};
+/** Whole seconds to show for a clock reading: never negative (a wall clock can step back). */
+function toSeconds(elapsedMs: number | null): number {
+  return Math.floor(Math.max(0, elapsedMs ?? 0) / 1000);
+}
 
 /**
  * A game clock on screen that owns its tick, so only this text re-renders as
@@ -81,7 +80,7 @@ const NEVER_ACTIVE: ClockActivity = {
 function ElapsedTextImpl({
   getElapsedMs,
   running,
-  activity = NEVER_ACTIVE,
+  activity,
   frozenS = null,
   resetKey,
   format,
@@ -89,7 +88,7 @@ function ElapsedTextImpl({
   style,
   testID,
 }: ElapsedTextProps) {
-  const [seconds, setSeconds] = useState(() => Math.floor((getElapsedMs() ?? 0) / 1000));
+  const [seconds, setSeconds] = useState(() => toSeconds(getElapsedMs()));
   const advancing = useSyncExternalStore(activity.subscribe, activity.getSnapshot);
   const live = running && advancing;
 
@@ -100,7 +99,7 @@ function ElapsedTextImpl({
     // next second.
     const tick = () => {
       const elapsedMs = getElapsedMs();
-      setSeconds(Math.floor((elapsedMs ?? 0) / 1000));
+      setSeconds(toSeconds(elapsedMs));
       if (live && elapsedMs !== null) timer = setTimeout(tick, msToNextSecond(elapsedMs));
     };
     tick();
