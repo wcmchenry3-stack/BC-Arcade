@@ -53,29 +53,11 @@
     "doNotTranslate": [],
     "notes": null
   },
-  "label_title": {
-    "component": "FeedbackWidget",
-    "description": "Label above the feedback title text field.",
-    "tone": "neutral",
-    "characterLimit": 16,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
   "label_description": {
     "component": "FeedbackWidget",
     "description": "Label above the feedback description text field.",
     "tone": "neutral",
     "characterLimit": 20,
-    "placeholders": [],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "placeholder_title": {
-    "component": "FeedbackWidget",
-    "description": "Placeholder text in the feedback title field.",
-    "tone": "casual",
-    "characterLimit": 65,
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
@@ -100,7 +82,7 @@
   },
   "submit_success": {
     "component": "FeedbackWidget",
-    "description": "Success message shown after feedback is submitted.",
+    "description": "Thank-you banner shown for a few seconds after feedback is submitted (announced by screen readers).",
     "tone": "celebratory",
     "characterLimit": 40,
     "placeholders": [],
@@ -122,15 +104,6 @@
     "tone": "sympathetic",
     "characterLimit": 85,
     "placeholders": ["{{seconds}}"],
-    "doNotTranslate": [],
-    "notes": null
-  },
-  "error_title_required": {
-    "component": "FeedbackWidget",
-    "description": "Validation error shown when the feedback title field is left empty.",
-    "tone": "functional",
-    "characterLimit": 34,
-    "placeholders": [],
     "doNotTranslate": [],
     "notes": null
   },

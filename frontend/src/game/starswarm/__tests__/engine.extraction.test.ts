@@ -25,6 +25,7 @@ import {
   EXTRACTION_HOLD_MIN_MS,
   EXTRACTION_HOLD_MAX_MS,
   EXTRACTION_MAX_MS,
+  EXTRACTION_PICKUP_HOLD_MAX_MS,
   clearTransientCombat,
   weaponsFree,
   hazardsLive,
@@ -32,7 +33,7 @@ import {
   waveJustCleared,
   liveHazards,
 } from "../engine";
-import type { Asteroid, Bullet, StarSwarmState } from "../types";
+import type { Asteroid, Bullet, PowerUp, StarSwarmState } from "../types";
 import { NO_INPUT, FIRE_INPUT, advanceMs, runExtraction, makeBeam } from "./helpers/engineFixtures";
 
 beforeEach(() => {
@@ -651,5 +652,101 @@ describe("#2842 hard reset before the next wave", () => {
     expect(s.playerBullets).toHaveLength(0);
     expect(s.enemyBullets).toHaveLength(0);
     expect(s.extraction).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2945 — the extraction autopilot collects the pickups the last kill left behind.
+// ---------------------------------------------------------------------------
+describe("#2945 extraction collects the last kill's pickups", () => {
+  function makeDrop(s: StarSwarmState, dx: number, dy: number): PowerUp {
+    return {
+      id: 93000,
+      type: "salvage",
+      x: s.player.x + dx,
+      y: s.player.y - dy,
+      vy: 0.08,
+      width: 24,
+      height: 24,
+      despawnTimer: 8000,
+    };
+  }
+
+  it("collects a drop that falls into reach while the ship holds the lane", () => {
+    let s = enterExtraction();
+    s = { ...s, powerUps: [makeDrop(s, 90, 120)] };
+    s = advanceMs(s, 1500);
+    expect(s.player.guns).toBe(2);
+    expect(s.powerUps).toHaveLength(0);
+    expect(s.phase).toBe("Extraction");
+  });
+
+  it("does not chase a timed buff the wave reset would wipe", () => {
+    let s = enterExtraction();
+    s = { ...s, powerUps: [{ ...makeDrop(s, 90, 120), type: "shield" }] };
+    s = advanceMs(s, EXTRACTION_HOLD_MIN_MS + 50);
+    expect(s.extraction!.climbMs).toBeGreaterThan(0);
+  });
+
+  it("keeps a collected upgrade into the next wave", () => {
+    let s = enterExtraction();
+    s = { ...s, powerUps: [{ ...makeDrop(s, 90, 120), type: "hull" }] };
+    s = runExtraction(s);
+    expect(s.wave).toBe(2);
+    expect(s.player.hull).toBe(1);
+  });
+
+  it("does not delay the climb when there is no pickup", () => {
+    let s = enterExtraction();
+    s = advanceMs(s, EXTRACTION_HOLD_MIN_MS + 50);
+    expect(s.extraction!.climbMs).toBeGreaterThan(0);
+  });
+
+  it("does not chase a drop that falls past before the ship can reach it", () => {
+    let s = enterExtraction();
+    s = { ...s, powerUps: [makeDrop(s, 400, 60)] };
+    s = advanceMs(s, EXTRACTION_HOLD_MIN_MS + 50);
+    expect(s.extraction!.climbMs).toBeGreaterThan(0);
+    expect(s.player.guns).toBe(1);
+  });
+
+  it("never steers into a hazard to chase a pickup", () => {
+    let s = enterExtraction();
+    const lives = s.player.lives;
+    const drop = makeDrop(s, 90, 120);
+    // a stationary rock sits in the pickup's lane, right where the ship would collect it
+    s = {
+      ...s,
+      powerUps: [drop],
+      asteroids: [makeRock({ x: drop.x, y: s.player.y - 20, vx: 0, vy: 0 })],
+    };
+    s = advanceMs(s, 2500);
+    expect(s.player.lives).toBe(lives);
+    expect(s.player.guns).toBe(1);
+  });
+
+  it("does not wait for a drop that would only arrive after the pickup hold cap", () => {
+    let s = enterExtraction();
+    s = { ...s, powerUps: [makeDrop(s, 0, 400)] };
+    s = advanceMs(s, EXTRACTION_HOLD_MIN_MS + 50);
+    expect(s.extraction!.climbMs).toBeGreaterThan(0);
+    s = runExtraction(s);
+    expect(s.wave).toBe(2);
+    expect(s.extraction).toBeNull();
+  });
+
+  it("extraction ends by EXTRACTION_MAX_MS even while a pickup is being chased", () => {
+    let s = enterExtraction();
+    s = {
+      ...s,
+      powerUps: [makeDrop(s, 0, 150)],
+      extraction: { elapsedMs: EXTRACTION_PICKUP_HOLD_MAX_MS - 100, climbMs: 0 },
+    };
+    let last = s;
+    while (s.wave === 1) {
+      last = s;
+      s = tick(s, 16, NO_INPUT);
+    }
+    expect(last.extraction!.elapsedMs).toBeLessThan(EXTRACTION_MAX_MS);
   });
 });

@@ -11,6 +11,8 @@
   "error.alreadyGuessed": "Já tentada",
   "error.tooShort": "Letras insuficientes",
   "error.couldNotLoad": "Não foi possível carregar o desafio",
+  "error.needsConnection": "A Palavra do Dia precisa de conexão",
+  "error.retry": "Tentar novamente",
   "error.couldNotSubmit": "Não foi possível enviar sua tentativa",
   "error.stalePuzzle": "Novo desafio disponível — carregando a palavra de hoje",
   "error.wrongLength": "O tamanho da tentativa não corresponde à palavra de hoje",
