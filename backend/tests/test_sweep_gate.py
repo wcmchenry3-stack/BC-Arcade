@@ -99,6 +99,29 @@ def test_note_open_game_ignores_a_session_it_does_not_track() -> None:
     assert "untracked" not in sweep_gate._next_due
 
 
+@pytest.mark.parametrize("tracked", [False, True])
+async def test_a_game_noted_during_the_oldest_open_lookup_is_not_lost(
+    monkeypatch: pytest.MonkeyPatch, tracked: bool
+) -> None:
+    """POST /games commits a backdated game while sweep_if_due awaits its lookup:
+    the deadline recorded afterwards keeps that game's earlier stale time."""
+    sid = str(uuid.uuid4())
+    if tracked:
+        await _gate(sid)  # an expired entry exists while the next sweep runs
+    real_lookup = sweep_gate._oldest_open_start
+    backdated_stale_at = _NOW + timedelta(minutes=5)
+
+    async def lookup_racing_a_create(db, session_id):
+        oldest = await real_lookup(db, session_id)  # sees no open game
+        sweep_gate.note_open_game(session_id, backdated_stale_at - timedelta(hours=24))
+        return oldest
+
+    monkeypatch.setattr(sweep_gate, "_oldest_open_start", lookup_racing_a_create)
+    await _gate(sid, _NOW + sweep_gate.MAX_SKIP if tracked else _NOW)
+    assert sweep_gate._next_due[sid] == backdated_stale_at
+    assert sweep_gate._in_flight == {}
+
+
 async def test_a_failed_sweep_is_retried_on_the_next_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

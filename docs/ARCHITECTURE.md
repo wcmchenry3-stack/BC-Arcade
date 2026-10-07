@@ -118,8 +118,12 @@ snapshot of both per process: `{name: GameTypeRow}` (frozen dataclasses, never
 ORM instances) and `{game_type_id: {event_name: event_type_id}}` for the
 non-deprecated event types. `check_entitlement` (it reads `is_premium` there
 and queries only the `game_entitlements` row of a premium game),
-`POST /games`, `POST /games/{id}/events`, the leaderboard's game-type lookup
-and purchase verification all read it instead of the tables.
+`POST /games`, `POST /games/{id}/events` and the leaderboard's game-type
+lookup read it instead of the tables. **Purchase verification bypasses the
+cache** (`purchases/service.py` `_premium_slug_for` reads `is_premium` from the
+DB): the store has already charged the user, so a worker whose snapshot
+predates a free → premium PATCH must not reject the purchase as
+`unknown_product`. That path is not hot.
 
 - **TTL 60 s.** `patch_game_type` invalidates the snapshot after its commit, so
   the worker that served the PATCH applies the change on its next request.

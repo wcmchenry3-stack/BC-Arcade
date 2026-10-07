@@ -49,6 +49,10 @@ MAX_SESSIONS = 10_000  # a few MB at most
 
 # session id -> the earliest time the sweep could next close one of its games.
 _next_due: OrderedDict[str, datetime] = OrderedDict()
+# session id -> one list per sweep_if_due call in flight for it, collecting the
+# stale-at times POST /games noted meanwhile, so the deadline that call records
+# cannot overwrite one lowered while it awaited the DB (a lost update).
+_in_flight: dict[str, list[list[datetime]]] = {}
 
 
 def _utc(ts: datetime) -> datetime:
@@ -58,6 +62,7 @@ def _utc(ts: datetime) -> datetime:
 
 def clear() -> None:
     _next_due.clear()
+    _in_flight.clear()
 
 
 def _remember(session_id: str, due: datetime) -> None:
@@ -70,10 +75,12 @@ def _remember(session_id: str, due: datetime) -> None:
 def note_open_game(session_id: str, started_at: datetime) -> None:
     """``POST /games`` returned a game (new, or an idempotent re-create): a backdated
     start may make the sweep due sooner. A completed game only makes it run early."""
+    stale_at = _utc(started_at) + service.STALE_GAME_AFTER
+    for noted in _in_flight.get(session_id, ()):
+        noted.append(stale_at)
     due = _next_due.get(session_id)
     if due is None:
         return  # not cached: the next read sweeps anyway
-    stale_at = _utc(started_at) + service.STALE_GAME_AFTER
     if stale_at < due:
         _next_due[session_id] = stale_at
 
@@ -96,18 +103,33 @@ async def sweep_if_due(db: AsyncSession, *, session_id: str, now: datetime | Non
     if due is not None and now < due:
         _next_due.move_to_end(session_id)
         return
-    if not await service.sweep_stale_games_safely(db, session_id=session_id):
+    noted: list[datetime] = []
+    _in_flight.setdefault(session_id, []).append(noted)
+    try:
+        due = await _sweep_and_find_due(db, session_id, now)
+    finally:
+        watchers = _in_flight[session_id]
+        watchers.remove(noted)
+        if not watchers:
+            del _in_flight[session_id]
+    if due is None:
         _next_due.pop(session_id, None)
         return
+    _remember(session_id, min([due, *noted]))
+
+
+async def _sweep_and_find_due(db: AsyncSession, session_id: str, now: datetime) -> datetime | None:
+    """Sweep, then when the sweep could next match anything; None if either step failed."""
+    if not await service.sweep_stale_games_safely(db, session_id=session_id):
+        return None
     try:
         oldest = await _oldest_open_start(db, session_id)
     except Exception as exc:  # noqa: BLE001 — like the sweep, never fail the read
         logger.error("stale-sweep gate lookup failed (%s)", type(exc).__name__)
         with contextlib.suppress(Exception):
             await db.rollback()
-        _next_due.pop(session_id, None)
-        return
+        return None
     due = now + MAX_SKIP
     if oldest is not None:
         due = min(due, oldest + service.STALE_GAME_AFTER)
-    _remember(session_id, due)
+    return due

@@ -2,9 +2,10 @@
 
 ``game_types`` and ``event_types`` change only through migrations and
 ``PATCH /games/catalog/{id}``, yet ``POST /games`` (entitlement check, game
-type), ``POST /games/{id}/events`` (event-type map), the leaderboard and
-purchase verification each read them on every request. This module keeps one
-snapshot of both tables per process:
+type), ``POST /games/{id}/events`` (event-type map) and the leaderboard each
+read them on every request. This module keeps one snapshot of both tables per
+process. Purchase verification deliberately does not use it: the store has
+already charged by then, so it reads ``is_premium`` from the DB. Snapshot:
 
 - ``{name: GameTypeRow}`` for every game type (active or not: callers decide
   what an inactive type means for them, as they did against the table), and
