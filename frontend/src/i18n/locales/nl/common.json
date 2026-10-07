@@ -96,5 +96,10 @@
   "restore.pending": "Wacht op goedkeuring. Je spel wordt ontgrendeld zodra het is goedgekeurd.",
   "restore.nothing": "Er zijn geen aankopen om te herstellen voor dit store-account.",
   "restore.error": "Aankopen konden niet worden hersteld. Probeer het opnieuw.",
-  "settings.restorePurchases.description": "Haal spellen terug die je al met dit store-account hebt gekocht."
+  "settings.restorePurchases.description": "Haal spellen terug die je al met dit store-account hebt gekocht.",
+  "locked.title": "Vergrendeld",
+  "locked.heading": "Premiumspel",
+  "locked.body": "Voor dit spel is een BC Arcade-abonnement nodig.",
+  "locked.back": "Terug naar de lobby",
+  "locked.back_label": "Terug naar de lobby"
 }

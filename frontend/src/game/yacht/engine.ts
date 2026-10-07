@@ -54,7 +54,7 @@ const YACHT_BONUS_VALUE = 100;
 
 /** Die face → its corresponding upper-section category. Used to enforce the
  * Joker rule's mandatory-upper priority (see `score()` and
- * `jokerPossibleScores()` below, and `maxImmediateScore` in aiHelpers.ts). */
+ * `jokerPossibleScores()` below). */
 export const FACE_TO_UPPER: Record<number, Category> = {
   1: "ones",
   2: "twos",
@@ -274,7 +274,7 @@ export function isYacht(dice: readonly number[]): boolean {
   return counts(dice).size === 1 && dice[0] !== 0;
 }
 
-export function jokerActive(state: GameState): boolean {
+function jokerActive(state: GameState): boolean {
   return isYacht(state.dice) && state.scores.yacht === 50;
 }
 

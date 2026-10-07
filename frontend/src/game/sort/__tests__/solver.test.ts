@@ -3,7 +3,7 @@
  */
 
 import { applyPour, isValidPour } from "../engine";
-import { getNextHint, getNextHintAsync, solve, solveAsync } from "../solver";
+import { getNextHintAsync, solve, solveAsync } from "../solver";
 import type { Color, SortState } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -82,43 +82,6 @@ describe("solve", () => {
 });
 
 // ---------------------------------------------------------------------------
-// getNextHint
-// ---------------------------------------------------------------------------
-
-describe("getNextHint", () => {
-  it("returns null for a complete state", () => {
-    const state = mkState([
-      ["red", "red", "red", "red"],
-      ["blue", "blue", "blue", "blue"],
-    ]);
-    expect(getNextHint({ ...state, isComplete: true })).toBeNull();
-  });
-
-  it("returns null for an unsolvable state", () => {
-    const state = mkState([
-      ["red", "blue", "red", "blue"],
-      ["blue", "red", "blue", "red"],
-    ]);
-    expect(getNextHint(state)).toBeNull();
-  });
-
-  it("returns the first move of the optimal path", () => {
-    const state = mkState([["blue", "blue", "blue", "blue"], ["red", "red", "red"], ["red"], []]);
-    const hint = getNextHint(state);
-    expect(hint).not.toBeNull();
-    expect(hint).toHaveProperty("from");
-    expect(hint).toHaveProperty("to");
-  });
-
-  it("hint move is valid for the current state", () => {
-    const state = mkState([["blue", "blue", "blue", "blue"], ["red", "red", "red"], ["red"], []]);
-    const hint = getNextHint(state);
-    expect(hint).not.toBeNull();
-    expect(isValidPour(state.bottles[hint!.from]!, state.bottles[hint!.to]!)).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // solveAsync / getNextHintAsync
 // ---------------------------------------------------------------------------
 
@@ -153,11 +116,10 @@ describe("getNextHintAsync", () => {
     expect(await getNextHintAsync({ ...state, isComplete: true })).toBeNull();
   });
 
-  it("returns the first move matching the sync version", async () => {
+  it("returns the first move of the sync solution", async () => {
     const state = mkState([["blue", "blue", "blue", "blue"], ["red", "red", "red"], ["red"], []]);
     const asyncHint = await getNextHintAsync(state);
-    const syncHint = getNextHint(state);
-    expect(asyncHint).toEqual(syncHint);
+    expect(asyncHint).toEqual(solve(state)?.[0]);
   });
 
   it("hint move is valid for the current state", async () => {

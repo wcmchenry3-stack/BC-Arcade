@@ -7,10 +7,8 @@
  * hold/reroll-transition structure the offline solver uses, just evaluated
  * for one specific dice roll instead of all 252 at once per scorecard state.
  *
- * Reuses `probTables.ts`'s multiset enumeration (`getMultisets`) — the exact
- * same dice-probability distributions the live AI's hold-EV already relies
- * on — rather than re-deriving them, so there's one probability model in the
- * codebase, not two that could quietly diverge.
+ * Owns the multiset enumeration (`buildMultisets`) — one dice-probability
+ * model for the whole codebase.
  *
  * The expensive part is "for every dice multiset and every way to hold some
  * of it, what's the probability distribution over the resulting multiset
@@ -20,7 +18,44 @@
  * every runtime hold-EV query.
  */
 
-import { getMultisets, multisetCount } from "../probTables";
+/** A dice multiset (sorted ascending) with its roll probability (count / 6^n). */
+interface MultisetEntry {
+  readonly values: readonly number[];
+  readonly prob: number;
+}
+
+const FACTORIALS = [1, 1, 2, 6, 24, 120];
+
+/** Distinct orderings of `arr`: n! / (c1! * c2! * ...). */
+function countPermutations(arr: readonly number[]): number {
+  const faceCounts = new Map<number, number>();
+  for (const v of arr) faceCounts.set(v, (faceCounts.get(v) ?? 0) + 1);
+  let denom = 1;
+  for (const cnt of faceCounts.values()) denom *= FACTORIALS[cnt] ?? 1;
+  return (FACTORIALS[arr.length] ?? 1) / denom;
+}
+
+/** All multisets of n dice (faces 1-6, each generated once in sorted form). */
+function buildMultisets(n: number): readonly MultisetEntry[] {
+  const total = Math.pow(6, n);
+  const entries: MultisetEntry[] = [];
+  function recurse(remaining: number, minFace: number, current: number[]): void {
+    if (remaining === 0) {
+      entries.push({
+        values: Object.freeze([...current]),
+        prob: countPermutations(current) / total,
+      });
+      return;
+    }
+    for (let face = minFace; face <= 6; face++) {
+      current.push(face);
+      recurse(remaining - 1, face, current);
+      current.pop();
+    }
+  }
+  recurse(n, 1, []);
+  return Object.freeze(entries);
+}
 
 // ---------------------------------------------------------------------------
 // Canonical multiset indexing
@@ -46,7 +81,7 @@ export function keyOf(values: readonly number[]): string {
 }
 
 function indexMultisets(size: number): IndexedMultisets {
-  const entries = getMultisets(size);
+  const entries = buildMultisets(size);
   const values = entries.map((e) => e.values);
   const prob = entries.map((e) => e.prob);
   const indexOf = new Map<string, number>();
@@ -157,6 +192,3 @@ export function buildHoldOptions(): readonly (readonly HoldOption[])[] {
 
   return result;
 }
-
-// Re-exported for callers that just want the raw counts (tests, docs).
-export { multisetCount };

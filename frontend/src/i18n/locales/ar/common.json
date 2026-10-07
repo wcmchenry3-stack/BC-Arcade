@@ -100,5 +100,10 @@
   "restore.pending": "في انتظار الموافقة. ستُفتح لعبتك بعد الموافقة عليها.",
   "restore.nothing": "لا توجد مشتريات لاستعادتها في حساب المتجر هذا.",
   "restore.error": "تعذّرت استعادة المشتريات. يُرجى المحاولة مرة أخرى.",
-  "settings.restorePurchases.description": "استعد الألعاب التي اشتريتها سابقًا بحساب المتجر هذا."
+  "settings.restorePurchases.description": "استعد الألعاب التي اشتريتها سابقًا بحساب المتجر هذا.",
+  "locked.title": "مقفل",
+  "locked.heading": "لعبة مميزة",
+  "locked.body": "تتطلب هذه اللعبة اشتراكًا في BC Arcade.",
+  "locked.back": "العودة إلى الردهة",
+  "locked.back_label": "العودة إلى الردهة"
 }

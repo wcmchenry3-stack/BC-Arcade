@@ -96,5 +96,10 @@
   "restore.pending": "승인 대기 중입니다. 승인되면 게임이 잠금 해제됩니다.",
   "restore.nothing": "이 스토어 계정에는 복원할 구매가 없습니다.",
   "restore.error": "구매를 복원하지 못했습니다. 다시 시도하세요.",
-  "settings.restorePurchases.description": "이 스토어 계정으로 이미 구매한 게임을 되찾으세요."
+  "settings.restorePurchases.description": "이 스토어 계정으로 이미 구매한 게임을 되찾으세요.",
+  "locked.title": "잠김",
+  "locked.heading": "프리미엄 게임",
+  "locked.body": "이 게임은 BC Arcade 구독이 필요합니다.",
+  "locked.back": "로비로 돌아가기",
+  "locked.back_label": "로비로 돌아가기"
 }

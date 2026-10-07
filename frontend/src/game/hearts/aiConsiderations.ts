@@ -326,7 +326,7 @@ export function currentTrickWinner(trick: readonly TrickCard[]): TrickCard {
  * The opponent who holds every point taken this hand, or null when nobody
  * has points, several players do, or it's this player (no threat to block).
  */
-export function moonShooter(infoSet: HeartsInfoSet): number | null {
+function moonShooter(infoSet: HeartsInfoSet): number | null {
   const { pointsPerPlayer, playerIndex } = infoSet;
   const total = pointsPerPlayer.reduce((s, v) => s + v, 0);
   if (total === 0) return null;
@@ -497,7 +497,7 @@ export const rateMoonThreat: Consideration<HeartsInfoSet, Card> = (infoSet, card
  * but cost 1.2-2.2pp of win share in every variant tried, since holding
  * low cards means shedding high ones later, into point tricks.
  */
-export const PLAY_TACTICS = Object.freeze({
+const PLAY_TACTICS = Object.freeze({
   /** (a) Can't win the trick → play the highest such card (#1500's rule). */
   duckHigh: true,
   /**

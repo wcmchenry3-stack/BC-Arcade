@@ -97,5 +97,10 @@
   "restore.pending": "Esperando aprobación. Tu juego se desbloqueará cuando se apruebe.",
   "restore.nothing": "No hay compras que restaurar en esta cuenta de la tienda.",
   "restore.error": "No se pudieron restaurar las compras. Inténtalo de nuevo.",
-  "settings.restorePurchases.description": "Recupera los juegos que ya compraste con esta cuenta de la tienda."
+  "settings.restorePurchases.description": "Recupera los juegos que ya compraste con esta cuenta de la tienda.",
+  "locked.title": "Bloqueado",
+  "locked.heading": "Juego premium",
+  "locked.body": "Este juego requiere una suscripción a BC Arcade.",
+  "locked.back": "Volver al lobby",
+  "locked.back_label": "Volver al lobby"
 }

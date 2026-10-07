@@ -5,8 +5,6 @@ import { APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { useSafeBottomTabBarHeight } from "./useSafeBottomTabBarHeight";
 import { calculateBlackjackLayout, type BlackjackLayout } from "../game/blackjack/layout";
 
-export type { BlackjackLayout };
-
 export function useBlackjackLayout(): BlackjackLayout {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();

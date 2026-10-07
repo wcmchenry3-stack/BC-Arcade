@@ -97,5 +97,10 @@
   "restore.pending": "ממתין לאישור. המשחק שלכם ייפתח לאחר האישור.",
   "restore.nothing": "אין רכישות לשחזור בחשבון החנות הזה.",
   "restore.error": "לא ניתן היה לשחזר את הרכישות. נסו שוב.",
-  "settings.restorePurchases.description": "החזירו משחקים שכבר קניתם עם חשבון החנות הזה."
+  "settings.restorePurchases.description": "החזירו משחקים שכבר קניתם עם חשבון החנות הזה.",
+  "locked.title": "נעול",
+  "locked.heading": "משחק פרימיום",
+  "locked.body": "משחק זה דורש מנוי ל-BC Arcade.",
+  "locked.back": "חזרה ללובי",
+  "locked.back_label": "חזרה ללובי"
 }
