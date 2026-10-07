@@ -587,10 +587,9 @@ function PrimaryButton({ action, colors }: { action: ResultAction; colors: Color
           name={icon}
           size={18}
           color={fgColor}
-          // With a self-updating label the button's name is built from its text,
-          // so the decorative icon must not be read as part of it (#2964).
-          accessibilityElementsHidden={!!action.labelNode}
-          importantForAccessibility={action.labelNode ? "no-hide-descendants" : "auto"}
+          // Decorative: the button's name is its label, never the icon glyph (#2964).
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
         />
       ) : null}
       {action.labelNode ? (
@@ -629,7 +628,13 @@ function OutlineButton({
       ]}
     >
       {action.icon ? (
-        <MaterialCommunityIcons name={action.icon} size={18} color={colors.text} />
+        <MaterialCommunityIcons
+          name={action.icon}
+          size={18}
+          color={colors.text}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        />
       ) : null}
       <Text numberOfLines={1} style={[styles.outlineText, { color: colors.text }]}>
         {action.label}

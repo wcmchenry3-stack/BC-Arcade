@@ -146,7 +146,11 @@ describe("GameResultModal — outcomes", () => {
         backgroundColor: "transparent",
       });
       expect(screen.getByText("Home")).toHaveStyle({ color: c.text });
-      expect(screen.getByText(glyph("home-outline"))).toHaveStyle({ color: c.text });
+      const homeIcon = screen.getByText(glyph("home-outline"), { includeHiddenElements: true });
+      expect(homeIcon).toHaveStyle({ color: c.text });
+      // Decorative on every button: hidden from assistive tech (#2964).
+      expect(homeIcon.props.accessibilityElementsHidden).toBe(true);
+      expect(homeIcon.props.importantForAccessibility).toBe("no-hide-descendants");
     });
   });
 
@@ -238,7 +242,9 @@ describe("GameResultModal — variations", () => {
       borderStyle: "dashed",
     });
     expect(screen.getByText("Next word in 06:12:40")).toHaveStyle({ color: c.textMuted });
-    expect(screen.getByText(glyph("clock-outline"))).toHaveStyle({ color: c.textMuted });
+    expect(screen.getByText(glyph("clock-outline"), { includeHiddenElements: true })).toHaveStyle({
+      color: c.textMuted,
+    });
   });
 
   it("renders a primary's own label node in the button's text style (#2964)", async () => {
@@ -255,8 +261,8 @@ describe("GameResultModal — variations", () => {
     // The screen-reader label comes from the rendered text, so it stays current.
     expect(primary.props.accessibilityLabel).toBeUndefined();
     expect(primary).toHaveTextContent(/Next word in 00:00:09/);
-    // ...and the clock icon is hidden from assistive tech, so the button's name
-    // is the countdown alone.
+    // The clock icon is hidden from assistive tech, so the button's name is the
+    // countdown alone.
     const icon = screen.getByText(glyph("clock-outline"), { includeHiddenElements: true });
     expect(icon.props.accessibilityElementsHidden).toBe(true);
     expect(icon.props.importantForAccessibility).toBe("no-hide-descendants");
