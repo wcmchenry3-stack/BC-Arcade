@@ -9,12 +9,13 @@
  * board space, under the camera's tileToScreen projection.
  *
  * Since #2962 the faces are decoded once (`loadData` + `Skia.SVG.MakeFromData`) and rasterised
- * once per face size into bitmaps (`Skia.Surface`, drawn with `<Image>`); the stub surface
- * returns an image naming the SVG drawn into it. Each stub host counts its renders
- * (`mockRenders`), so a test can count how many tile groups a tap re-renders.
+ * once per face size into bitmaps (`Skia.Surface.Make`, drawn with `<Image>`) after the commit,
+ * so a test lets that timer run (`afterCommit`) before reading faces; the stub surface returns
+ * an image naming the SVG drawn into it. Each stub host counts its renders (`mockRenders`), so
+ * a test can count how many tile groups a tap re-renders.
  */
 import React from "react";
-import { fireEvent, render, screen, within } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
 import type { TestInstance } from "test-renderer";
 import { loadData, Skia } from "@shopify/react-native-skia";
 
@@ -54,16 +55,14 @@ jest.mock("@shopify/react-native-skia", () => {
     Host.displayName = `Sk${name}`;
     return Host;
   };
-  // An offscreen surface whose snapshot names the SVG drawn into it and its pixel size.
+  // A raster surface whose snapshot names the SVG drawn into it and its pixel size.
   const surface = (width: number, height: number) => {
     let drawn: unknown = null;
     const canvas = { scale: jest.fn(), drawSvg: (svg: unknown) => (drawn = svg) };
     return {
       getCanvas: () => canvas,
       flush: jest.fn(),
-      makeImageSnapshot: () => ({
-        makeNonTextureImage: () => ({ face: drawn, width, height }),
-      }),
+      makeImageSnapshot: () => ({ face: drawn, width, height, dispose: jest.fn() }),
       dispose: jest.fn(),
     };
   };
@@ -80,14 +79,14 @@ jest.mock("@shopify/react-native-skia", () => {
     ),
     Skia: {
       SVG: { MakeFromData: jest.fn(() => null) },
-      Surface: { MakeOffscreen: jest.fn(surface), Make: jest.fn(surface) },
+      Surface: { Make: jest.fn(surface) },
     },
   };
 });
 
 const mockLoadData = loadData as unknown as jest.Mock;
 const mockMakeSvg = Skia.SVG.MakeFromData as unknown as jest.Mock;
-const mockOffscreen = Skia.Surface.MakeOffscreen as unknown as jest.Mock;
+const mockRaster = Skia.Surface.Make as unknown as jest.Mock;
 const renders = (
   jest.requireMock("@shopify/react-native-skia") as { mockRenders: Record<string, number> }
 ).mockRenders;
@@ -154,11 +153,21 @@ function makeState(overrides: Partial<MahjongState> = {}): MahjongState {
   return { ...createGame(TURTLE_LAYOUT, 1), tiles: TILES, selected: null, ...overrides };
 }
 
+/**
+ * Run the face rasterisation the canvas schedules after a commit. Timers are fake in this
+ * suite, so nothing is rasterised until a test asks: what a commit draws before it is visible.
+ */
+const afterCommit = () =>
+  act(() => {
+    jest.runOnlyPendingTimers();
+  });
+
 async function mount(props: Partial<React.ComponentProps<typeof GameCanvas>> = {}) {
   const onTilePress = jest.fn();
   await render(
     <GameCanvas state={makeState()} camera={camera} onTilePress={onTilePress} {...props} />
   );
+  await afterCommit();
   return { onTilePress: (props.onTilePress as jest.Mock | undefined) ?? onTilePress };
 }
 
@@ -219,9 +228,11 @@ beforeEach(() => {
   jest.clearAllMocks();
   resetRenders();
   mockMakeSvg.mockReturnValue(null);
+  jest.useFakeTimers();
 });
 
 afterEach(() => {
+  jest.useRealTimers();
   jest.restoreAllMocks();
 });
 
@@ -432,7 +443,11 @@ describe("Mahjong GameCanvas (native) — work per tap and per mount (#2962)", (
     const s0 = createGame(TURTLE_LAYOUT, 12345);
     const view = await render(<GameCanvas state={s0} camera={camera} onTilePress={onTilePress} />);
     // The first mount of the session draws every tile twice: suit fallbacks, then the faces
-    // once all 42 have loaded (one update, where 42 useSVG hooks could update one by one).
+    // once all 42 have loaded and been rasterised after the commit (one update, where 42
+    // useSVG hooks could update one by one).
+    expect(renders.group).toBe(144);
+    expect(screen.queryAllByTestId("sk-image")).toHaveLength(0);
+    await afterCommit();
     expect(renders.group).toBe(2 * 144);
 
     // Selecting a tile: it and its free matches.
@@ -482,8 +497,12 @@ describe("Mahjong GameCanvas (native) — work per tap and per mount (#2962)", (
     const first = await render(
       <GameCanvas state={state} camera={camera} onTilePress={jest.fn()} />
     );
+    // Loaded, but not rasterised during a render: the first commit has placeholders.
     expect(mockLoadData).toHaveBeenCalledTimes(42);
-    expect(mockOffscreen).toHaveBeenCalledTimes(42);
+    expect(mockRaster).not.toHaveBeenCalled();
+    expect(screen.queryAllByTestId("sk-image")).toHaveLength(0);
+    await afterCommit();
+    expect(mockRaster).toHaveBeenCalledTimes(42);
     expect(screen.getAllByTestId("sk-image")).toHaveLength(144);
     await first.unmount();
 
@@ -494,9 +513,11 @@ describe("Mahjong GameCanvas (native) — work per tap and per mount (#2962)", (
       <GameCanvas state={state} camera={camera} onTilePress={jest.fn()} />
     );
     expect(mockLoadData).toHaveBeenCalledTimes(42);
-    expect(mockOffscreen).toHaveBeenCalledTimes(42);
+    expect(mockRaster).toHaveBeenCalledTimes(42);
     expect(renders.group).toBe(144);
     expect(renders.image).toBe(144);
+    await afterCommit(); // and nothing follows: no second pass over the tiles
+    expect(renders.group).toBe(144);
     const paintOrder = [...state.tiles].sort((x, y) => x.layer - y.layer || x.row - y.row);
     const image = (id: number) =>
       within(
@@ -505,14 +526,21 @@ describe("Mahjong GameCanvas (native) — work per tap and per mount (#2962)", (
     const t0 = state.tiles[0]!;
     expect(image(t0.id)).toMatchObject({ face: { svg: TILE_REQUIRES[t0.faceId - 1] } });
 
-    // A new face size is rasterised once; the old size is still cached.
+    // A new face size is rasterised once, after the commit (the old faces, scaled, stand in
+    // until then); the old size is still cached.
     const narrow = realCamera(600);
     expect(narrow.faceWidth).not.toBe(camera.faceWidth);
+    const wideFace = image(t0.id);
     await second.rerender(<GameCanvas state={state} camera={narrow} onTilePress={jest.fn()} />);
-    expect(mockOffscreen).toHaveBeenCalledTimes(84);
+    expect(mockRaster).toHaveBeenCalledTimes(42);
+    expect(image(t0.id)).toBe(wideFace);
+    await afterCommit();
+    expect(mockRaster).toHaveBeenCalledTimes(84);
     const narrowFace = image(t0.id);
+    expect(narrowFace).not.toBe(wideFace);
     await second.rerender(<GameCanvas state={state} camera={camera} onTilePress={jest.fn()} />);
-    expect(mockOffscreen).toHaveBeenCalledTimes(84);
+    expect(image(t0.id)).toBe(wideFace); // cached: on the first render
+    expect(mockRaster).toHaveBeenCalledTimes(84);
     await second.rerender(<GameCanvas state={state} camera={narrow} onTilePress={jest.fn()} />);
     expect(image(t0.id)).toBe(narrowFace);
     expect(mockLoadData).toHaveBeenCalledTimes(42);
