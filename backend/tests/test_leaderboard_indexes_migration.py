@@ -15,7 +15,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, inspect
 
 from db.models import Game
-from tests._migration_helpers import Alembic
+from tests._migration_helpers import Alembic, run_alembic_url
 
 _BEFORE = "0031_add_purchases"
 _REVISION = "0032_leaderboard_indexes"
@@ -62,6 +62,24 @@ def test_upgrade_adds_the_partial_indexes_and_downgrade_drops_them(
     alembic("downgrade", "-1")
     assert _games_indexes(migration_db_path) == before
     assert "games_game_type_score_idx" in before
+
+
+def test_postgres_builds_and_drops_them_concurrently() -> None:
+    """Offline (``--sql``) rendering for Postgres, so no server is needed: both
+    builds and drops are CONCURRENTLY, outside the migration transaction."""
+    url = "postgresql+asyncpg://u@localhost/offline"  # as scratch_server_url yields it
+    up = run_alembic_url(url, "upgrade", f"{_BEFORE}:{_REVISION}", "--sql").stdout
+    down = run_alembic_url(url, "downgrade", f"{_REVISION}:{_BEFORE}", "--sql").stdout
+    for name in _NEW:
+        assert f"CREATE INDEX CONCURRENTLY {name} ON games" in up
+        assert f"DROP INDEX CONCURRENTLY {name};" in down
+    # COMMIT before the builds, a new transaction for the version bump.
+    assert up.index("COMMIT;") < up.index("CREATE INDEX CONCURRENTLY") < up.rindex("BEGIN;")
+    # A bare postgres:// names no SQLAlchemy dialect, hence the normalisation.
+    bare = run_alembic_url(
+        "postgres://u@localhost/offline", "upgrade", "head", "--sql", check=False
+    )
+    assert bare.returncode != 0 and "NoSuchModuleError" in bare.stdout + bare.stderr
 
 
 def test_model_declares_the_same_indexes() -> None:

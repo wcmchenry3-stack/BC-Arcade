@@ -117,7 +117,9 @@ class Game(Base):
         ),
         # Boards that don't rank final_score (#2965, alembic 0032): Mahjong's
         # duration_ms board, and the metadata boards (Sort), which have no
-        # metric column and read their game type's finished rows.
+        # metric column and read their game type's finished rows. The boards
+        # seek on game_type_id only; completed_at is for a future "recent
+        # finished games of this type" read (docs/LEADERBOARDS.md §7a).
         Index(
             "games_game_type_completed_idx",
             "game_type_id",
