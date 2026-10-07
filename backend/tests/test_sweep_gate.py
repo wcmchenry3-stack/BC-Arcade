@@ -17,6 +17,15 @@ from tests._helpers import session_headers
 _NOW = datetime.now(UTC)
 
 
+@pytest.fixture(autouse=True)
+def _fresh_now() -> None:
+    """Re-read the clock per test: the real sweep closes games by wall-clock time,
+    so an import-time _NOW drifts from it as the suite runs (a game 23 h 50 min
+    old at import is already stale ten minutes later)."""
+    global _NOW
+    _NOW = datetime.now(UTC)
+
+
 async def _add_open(sid: str, started_ago: timedelta) -> uuid.UUID:
     """An open game written straight to the DB, as another worker would."""
     factory = get_session_factory()
@@ -48,10 +57,10 @@ def sweeps(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return calls
 
 
-async def _gate(sid: str, now: datetime = _NOW) -> None:
+async def _gate(sid: str, now: datetime | None = None) -> None:
     factory = get_session_factory()
     async with factory() as db:
-        await sweep_gate.sweep_if_due(db, session_id=sid, now=now)
+        await sweep_gate.sweep_if_due(db, session_id=sid, now=now or _NOW)
 
 
 async def test_the_sweep_is_skipped_within_the_hour_then_runs_again(sweeps: list[str]) -> None:
