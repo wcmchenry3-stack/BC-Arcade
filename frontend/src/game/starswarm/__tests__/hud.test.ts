@@ -20,7 +20,6 @@ import {
   type HudExtras,
   type HudState,
 } from "../render/hud";
-import { initStarfield } from "../starfield";
 import type { StarSwarmState } from "../types";
 
 const NONE: HudExtras = { countdownDigit: null, waveBannerCountdown: false, bonusFlash: false };
@@ -194,8 +193,7 @@ describe("steady play — the property that removes per-frame React commits", ()
 
 /** The canvas's wiring, with fakes for React state and the two shared values. */
 function harness(game: StarSwarmState) {
-  const sf = initStarfield(CANVAS_W, CANVAS_H);
-  const frame = (g: StarSwarmState) => ({ game: g, sf, ...NONE });
+  const frame = (g: StarSwarmState) => ({ game: g, ...NONE });
   const hudRef = { current: deriveHud(game, NONE) };
   const cuesRef: { current: HudCues } = { current: hudCues(game) };
   const writes = { mission: 0, powerUp: 0 };

@@ -135,6 +135,9 @@ class Game(Base):
             sqlite_where="duration_ms IS NOT NULL AND completed_at IS NOT NULL",
         ),
     )
+    # The INSERT returns the server defaults (started_at) itself (RETURNING), so
+    # POST /games needs no refresh SELECT after it (#2966).
+    __mapper_args__ = {"eager_defaults": True}  # noqa: RUF012
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     session_id: Mapped[str] = mapped_column(Text, nullable=False)

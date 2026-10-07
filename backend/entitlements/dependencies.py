@@ -11,8 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import get_session_factory
-from db.models import GameEntitlement, GameType
+from db.models import GameEntitlement
 from entitlements.service import is_dev_override_active
+from games import catalog_cache
 from session import get_session_id
 
 
@@ -27,14 +28,14 @@ class EntitlementError(HTTPException):
 async def check_entitlement(db: AsyncSession, session_id: str, game_slug: str) -> None:
     """Raise EntitlementError if session_id is not entitled to game_slug.
 
-    No-op for free (non-premium) game types and unknown game slugs.
+    No-op for free (non-premium) game types and unknown game slugs. The tier
+    comes from the process-level catalog cache (#2966), so a free game costs no
+    query and a premium one only the indexed ``game_entitlements`` lookup.
     """
     if is_dev_override_active():
         return
-    is_premium = (
-        await db.execute(select(GameType.is_premium).where(GameType.name == game_slug))
-    ).scalar_one_or_none()
-    if not is_premium:
+    game_type = await catalog_cache.get_game_type(db, game_slug)
+    if game_type is None or not game_type.is_premium:
         return
     entitled = (
         await db.execute(

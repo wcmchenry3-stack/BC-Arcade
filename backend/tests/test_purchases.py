@@ -25,8 +25,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 
 from db.base import get_session_factory
-from db.models import GameEntitlement, Purchase, PurchaseEvent, PurchaseLink
+from db.models import GameEntitlement, GameType, Purchase, PurchaseEvent, PurchaseLink
 from entitlements import service as entitlements_service
+from games import catalog_cache
 from purchases import apple, google
 from purchases import service as purchase_service
 from purchases.router import (
@@ -635,6 +636,34 @@ def test_unknown_or_free_product_is_422(
     r = post_apple(client, new_sid(), "1000")
     assert r.status_code == 422
     assert r.json()["detail"] == "unknown_product"
+
+
+async def test_purchase_reads_is_premium_from_the_db_not_the_catalog_cache(
+    client: TestClient, fake_apple: FakeAppleVerifier
+) -> None:
+    """#2966: a worker whose catalog snapshot predates a free->premium PATCH must
+    still accept the purchase the store already charged for."""
+    async with get_session_factory()() as db:
+        cached = await catalog_cache.get_game_type(db, "yacht")
+        assert cached is not None and cached.is_premium is False
+        # Flipped by another worker: this process's snapshot is not invalidated.
+        yacht = update(GameType).where(GameType.name == "yacht")
+        await db.execute(yacht.values(is_premium=True))
+        await db.commit()
+    try:
+        async with get_session_factory()() as db:
+            stale = await catalog_cache.get_game_type(db, "yacht")
+        assert stale is not None and stale.is_premium is False, "the cache must still be warm"
+        fake_apple.answers["1000"] = verified(
+            "1000", product_id="com.buffingchi.games.premium.yacht"
+        )
+        r = post_apple(client, new_sid(), "1000")
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "owned"
+    finally:
+        async with get_session_factory()() as db:
+            await db.execute(yacht.values(is_premium=False))
+            await db.commit()
 
 
 def test_google_bad_product_prefix_rejected_before_verification(
