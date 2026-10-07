@@ -98,7 +98,7 @@ describe("dealGame", () => {
     }
   });
 
-  it("uses _rng when no seed is supplied", () => {
+  it("uses the rng slot when no seed is supplied", () => {
     setRng(createSeededRng(5));
     const state = dealGame();
     const all = state.tableau.flat();

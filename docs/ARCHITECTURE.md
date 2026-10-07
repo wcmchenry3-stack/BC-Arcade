@@ -173,7 +173,9 @@ compliance under epic #894.
 
 ### 3.1 Determinism and the seeded RNG (#2985)
 
-Engines draw randomness through a per-engine slot, never `Math.random` directly:
+Engines with seedable shuffles, deals or rolls route that randomness through a
+per-engine slot rather than calling `Math.random` directly (purely cosmetic
+randomness, such as Star Swarm visual effects, may still use `Math.random`):
 `frontend/src/game/_shared/seededRng.ts` exports `createSeededRng(seed)` (one
 32-bit LCG, `state / 2^32`, so a draw is always in `[0, 1)`), `createRngSlot()`
 (an engine's swappable source: `rng()`, `setRng(fn)`, `getRng()`) and
