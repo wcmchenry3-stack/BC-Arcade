@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, Image, StyleSheet, Platform, Pressable, Modal } from "react-native";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,6 +8,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 import FeedbackWidget from "../FeedbackWidget/FeedbackWidget";
+import FeedbackThanksBanner from "../FeedbackWidget/FeedbackThanksBanner";
 import { ConfirmModal } from "./ConfirmModal";
 import logoSource from "../../../assets/logo.png";
 
@@ -70,6 +71,8 @@ export function AppHeader({
   const insets = useSafeAreaInsets();
   const { t } = useTranslation(["feedback", "common"]);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [thanksVisible, setThanksVisible] = useState(false);
+  const dismissThanks = useCallback(() => setThanksVisible(false), []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [abandonVisible, setAbandonVisible] = useState(false);
 
@@ -265,7 +268,12 @@ export function AppHeader({
         )}
       </View>
 
-      <FeedbackWidget visible={helpOpen} onClose={() => setHelpOpen(false)} />
+      <FeedbackWidget
+        visible={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        onSubmitted={() => setThanksVisible(true)}
+      />
+      <FeedbackThanksBanner visible={thanksVisible} onDismiss={dismissThanks} />
 
       {/* ─── Overflow dropdown ─────────────────────────────────────────────── */}
       <Modal

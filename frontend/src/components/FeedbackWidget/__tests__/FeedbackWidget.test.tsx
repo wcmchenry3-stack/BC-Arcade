@@ -24,20 +24,18 @@ afterEach(() => {
   SessionLogger._reset();
 });
 
-async function renderWidget(opts: { visible?: boolean; onClose?: () => void } = {}) {
-  const { visible = true, onClose = jest.fn() } = opts;
+async function renderWidget(
+  opts: { visible?: boolean; onClose?: () => void; onSubmitted?: () => void } = {}
+) {
+  const { visible = true, onClose = jest.fn(), onSubmitted } = opts;
   return await render(
     <ThemeProvider>
-      <FeedbackWidget visible={visible} onClose={onClose} />
+      <FeedbackWidget visible={visible} onClose={onClose} onSubmitted={onSubmitted} />
     </ThemeProvider>
   );
 }
 
 async function fillAndSubmit(ui: Awaited<ReturnType<typeof renderWidget>>) {
-  await fireEvent.changeText(
-    ui.getByPlaceholderText("Brief summary of the issue or idea"),
-    "My title"
-  );
   await fireEvent.changeText(
     ui.getByPlaceholderText("Describe what happened, or what you'd like to see..."),
     "My description"
@@ -60,9 +58,10 @@ describe("FeedbackWidget", () => {
       expect(getByText("Feature request")).toBeTruthy();
     });
 
-    it("renders Title and Description fields", async () => {
-      const { getByPlaceholderText } = await renderWidget();
-      expect(getByPlaceholderText("Brief summary of the issue or idea")).toBeTruthy();
+    it("renders only the Description field, with no title field", async () => {
+      const { getByPlaceholderText, queryByPlaceholderText, queryByText } = await renderWidget();
+      expect(queryByPlaceholderText("Brief summary of the issue or idea")).toBeNull();
+      expect(queryByText("Title")).toBeNull();
       expect(
         getByPlaceholderText("Describe what happened, or what you'd like to see...")
       ).toBeTruthy();
@@ -84,21 +83,8 @@ describe("FeedbackWidget", () => {
   });
 
   describe("validation", () => {
-    it("shows title error when submitting without a title", async () => {
-      const { getByText } = await renderWidget();
-      await act(async () => {
-        await fireEvent.press(getByText("Submit"));
-      });
-      expect(getByText("Title is required.")).toBeTruthy();
-      expect(mockCaptureFeedback).not.toHaveBeenCalled();
-    });
-
     it("shows description error when submitting without a description", async () => {
-      const { getByText, getByPlaceholderText } = await renderWidget();
-      await fireEvent.changeText(
-        getByPlaceholderText("Brief summary of the issue or idea"),
-        "Some title"
-      );
+      const { getByText } = await renderWidget();
       await act(async () => {
         await fireEvent.press(getByText("Submit"));
       });
@@ -108,16 +94,20 @@ describe("FeedbackWidget", () => {
   });
 
   describe("successful submission", () => {
-    it("sends the feedback to Sentry and shows the success message", async () => {
-      const ui = await renderWidget();
+    it("sends the description alone and closes the sheet without a confirmation step", async () => {
+      const onClose = jest.fn();
+      const onSubmitted = jest.fn();
+      const ui = await renderWidget({ onClose, onSubmitted });
       await fillAndSubmit(ui);
 
       await waitFor(() => {
-        expect(ui.getByText("Thanks for your feedback!")).toBeTruthy();
+        expect(onClose).toHaveBeenCalledTimes(1);
       });
+      expect(onSubmitted).toHaveBeenCalledTimes(1);
+      expect(ui.queryByText("Thanks for your feedback!")).toBeNull();
       expect(mockCaptureFeedback).toHaveBeenCalledTimes(1);
       expect(mockCaptureFeedback.mock.calls[0][0]).toMatchObject({
-        message: "My title\n\nMy description",
+        message: "My description",
         tags: { "feedback.type": "bug" },
       });
     });
@@ -128,7 +118,7 @@ describe("FeedbackWidget", () => {
       const hook = await renderHook(() => useFeedbackSubmit());
       for (let i = 0; i < FEEDBACK_RATE_LIMIT_MAX; i++) {
         await act(async () => {
-          await hook.result.current.submit({ title: "t", description: "d", type: "bug" });
+          await hook.result.current.submit({ description: "d", type: "bug" });
         });
       }
       mockCaptureFeedback.mockClear();

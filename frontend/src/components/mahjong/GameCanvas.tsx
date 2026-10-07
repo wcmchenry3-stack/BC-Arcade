@@ -7,16 +7,23 @@
  * World→screen conversion is delegated to BoardCamera.tileToScreen().
  * Rendering order: layer ASC so higher layers appear on top.
  * Hit-testing: topmost tile (highest layer) at touch point wins.
+ *
+ * Per tap (#2962): the face art is a cached bitmap per face size (`tileFaces.ts`), each tile is
+ * a memoised `TileNode` that re-renders only when its own look changes, the free set comes
+ * from the screen (or is built once per board here), and the paint and hit-test orders are
+ * sorted once per board.
  */
 
-import React, { useMemo } from "react";
+import React, { memo, useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Canvas, Fill, Group, ImageSVG, Rect, useSVG } from "@shopify/react-native-skia";
+import { Canvas, Fill, Group, Image, Rect } from "@shopify/react-native-skia";
+import type { SkImage } from "@shopify/react-native-skia";
 import { useTranslation } from "react-i18next";
-import { getMatchingFreeTileIds, hasFreePairs, isFreeTile } from "../../game/mahjong/engine";
+import { freeTileIds, getMatchingFreeTileIds, hasFreePairs } from "../../game/mahjong/engine";
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
-import { TILE_REQUIRES } from "./tileAssets";
+import { ART_INSET, useTileFaces } from "./tileFaces";
 import {
+  MAHJONG_BOARD_BG,
   MAHJONG_GLOW_BG,
   MAHJONG_HINT_COLOR,
   MAHJONG_HINT_GLOW_BG,
@@ -28,7 +35,7 @@ import type { BoardCamera } from "../../game/mahjong/layout";
 // Colors
 // ---------------------------------------------------------------------------
 
-const BG = "#1a3a1a";
+const BG = MAHJONG_BOARD_BG;
 const TILE_FACE = "#f5f0e8";
 const TILE_FACE_SELECTED = MAHJONG_TILE_FACE_SELECTED;
 const TILE_FACE_LOCKED = "#d0c8b8";
@@ -50,109 +57,12 @@ const SUIT_COLOR: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// SVG preloader — must live OUTSIDE the Skia Canvas reconciler so React's
-// standard scheduler propagates async useSVG state updates correctly.
-// 42 explicit calls (hooks rules: fixed count, no conditionals).
-// ---------------------------------------------------------------------------
-
-type TileSVG = ReturnType<typeof useSVG>;
-
-function useAllTileSVGs(): ReadonlyArray<TileSVG> {
-  const s00 = useSVG(TILE_REQUIRES[0]);
-  const s01 = useSVG(TILE_REQUIRES[1]);
-  const s02 = useSVG(TILE_REQUIRES[2]);
-  const s03 = useSVG(TILE_REQUIRES[3]);
-  const s04 = useSVG(TILE_REQUIRES[4]);
-  const s05 = useSVG(TILE_REQUIRES[5]);
-  const s06 = useSVG(TILE_REQUIRES[6]);
-  const s07 = useSVG(TILE_REQUIRES[7]);
-  const s08 = useSVG(TILE_REQUIRES[8]);
-  const s09 = useSVG(TILE_REQUIRES[9]);
-  const s10 = useSVG(TILE_REQUIRES[10]);
-  const s11 = useSVG(TILE_REQUIRES[11]);
-  const s12 = useSVG(TILE_REQUIRES[12]);
-  const s13 = useSVG(TILE_REQUIRES[13]);
-  const s14 = useSVG(TILE_REQUIRES[14]);
-  const s15 = useSVG(TILE_REQUIRES[15]);
-  const s16 = useSVG(TILE_REQUIRES[16]);
-  const s17 = useSVG(TILE_REQUIRES[17]);
-  const s18 = useSVG(TILE_REQUIRES[18]);
-  const s19 = useSVG(TILE_REQUIRES[19]);
-  const s20 = useSVG(TILE_REQUIRES[20]);
-  const s21 = useSVG(TILE_REQUIRES[21]);
-  const s22 = useSVG(TILE_REQUIRES[22]);
-  const s23 = useSVG(TILE_REQUIRES[23]);
-  const s24 = useSVG(TILE_REQUIRES[24]);
-  const s25 = useSVG(TILE_REQUIRES[25]);
-  const s26 = useSVG(TILE_REQUIRES[26]);
-  const s27 = useSVG(TILE_REQUIRES[27]);
-  const s28 = useSVG(TILE_REQUIRES[28]);
-  const s29 = useSVG(TILE_REQUIRES[29]);
-  const s30 = useSVG(TILE_REQUIRES[30]);
-  const s31 = useSVG(TILE_REQUIRES[31]);
-  const s32 = useSVG(TILE_REQUIRES[32]);
-  const s33 = useSVG(TILE_REQUIRES[33]);
-  const s34 = useSVG(TILE_REQUIRES[34]);
-  const s35 = useSVG(TILE_REQUIRES[35]);
-  const s36 = useSVG(TILE_REQUIRES[36]);
-  const s37 = useSVG(TILE_REQUIRES[37]);
-  const s38 = useSVG(TILE_REQUIRES[38]);
-  const s39 = useSVG(TILE_REQUIRES[39]);
-  const s40 = useSVG(TILE_REQUIRES[40]);
-  const s41 = useSVG(TILE_REQUIRES[41]);
-  return [
-    s00,
-    s01,
-    s02,
-    s03,
-    s04,
-    s05,
-    s06,
-    s07,
-    s08,
-    s09,
-    s10,
-    s11,
-    s12,
-    s13,
-    s14,
-    s15,
-    s16,
-    s17,
-    s18,
-    s19,
-    s20,
-    s21,
-    s22,
-    s23,
-    s24,
-    s25,
-    s26,
-    s27,
-    s28,
-    s29,
-    s30,
-    s31,
-    s32,
-    s33,
-    s34,
-    s35,
-    s36,
-    s37,
-    s38,
-    s39,
-    s40,
-    s41,
-  ];
-}
-
-// ---------------------------------------------------------------------------
-// SVG face art — receives the pre-loaded SkSVG object as a prop so the
-// component can be rendered safely inside the Skia Canvas tree.
+// Face art — the face's cached bitmap, or a suit-colour placeholder until it
+// loads (or if it failed), so the tile face is never silently blank.
 // ---------------------------------------------------------------------------
 
 function TileFaceLayer({
-  svg,
+  face,
   suit,
   x,
   y,
@@ -160,7 +70,7 @@ function TileFaceLayer({
   h,
   opacity,
 }: {
-  svg: TileSVG;
+  face: SkImage | null;
   suit: string;
   x: number;
   y: number;
@@ -168,9 +78,7 @@ function TileFaceLayer({
   h: number;
   opacity: number;
 }) {
-  if (!svg) {
-    // SVG not yet loaded or failed to parse — render a suit-color placeholder
-    // so the tile face is never silently blank.
+  if (!face) {
     const fallbackColor = SUIT_COLOR[suit] ?? "#888888";
     return (
       <Rect
@@ -183,23 +91,142 @@ function TileFaceLayer({
       />
     );
   }
-  return <ImageSVG svg={svg} x={x} y={y} width={w} height={h} opacity={opacity} />;
+  // Full opacity even on locked tiles: the <ImageSVG> this replaced ignored its opacity
+  // (Skia draws an SVG without the paint), so native has always shown locked art undimmed.
+  // Web dims it to 35 %; unifying the two is a design decision (docs/games/mahjong.md).
+  return <Image image={face} x={x} y={y} width={w} height={h} fit="fill" opacity={1} />;
 }
+
+// ---------------------------------------------------------------------------
+// One tile — memoised, so a tap re-renders only the tiles whose look changed
+// (the selection, its matches, tiles a match freed), not the whole board.
+// ---------------------------------------------------------------------------
+
+interface TileNodeProps {
+  tile: SlotTile;
+  camera: BoardCamera;
+  face: SkImage | null;
+  isSelected: boolean;
+  isFree: boolean;
+  isHint: boolean;
+  debugShowFree: boolean;
+}
+
+const TileNode = memo(function TileNode({
+  tile,
+  camera,
+  face,
+  isSelected,
+  isFree,
+  isHint,
+  debugShowFree,
+}: TileNodeProps) {
+  const { tileWidth, tileHeight, faceWidth, faceHeight, sideWidth } = camera;
+  const { x, y } = camera.tileToScreen(tile.col, tile.row, tile.layer);
+
+  // Lift selected tile upward/outward — scale with tile size.
+  const liftX = isSelected ? Math.round(tileWidth * (4 / 44)) : 0;
+  const liftY = isSelected ? -Math.round(tileHeight * (5 / 56)) : 0;
+  // 2 px border on selected for visibility at small tile sizes.
+  const borderInset = isSelected ? 2 : 1;
+
+  const borderColor = isSelected ? BORDER_SELECTED : isHint ? BORDER_HINT : BORDER_NORMAL;
+  const faceColor = isSelected ? TILE_FACE_SELECTED : isFree ? TILE_FACE : TILE_FACE_LOCKED;
+
+  return (
+    <Group>
+      {/* Drop shadow */}
+      <Rect
+        x={x + sideWidth + 2 + liftX}
+        y={y + sideWidth + 2 + liftY}
+        width={faceWidth}
+        height={faceHeight}
+        color={SHADOW}
+      />
+      {/* Gold glow behind selected tile */}
+      {isSelected && (
+        <Rect
+          x={x + liftX - 3}
+          y={y + liftY - 3}
+          width={faceWidth + 6}
+          height={faceHeight + 6}
+          color={MAHJONG_GLOW_BG}
+        />
+      )}
+      {/* Blue glow behind matching free tiles */}
+      {isHint && (
+        <Rect
+          x={x - 4}
+          y={y - 4}
+          width={faceWidth + 8}
+          height={faceHeight + 8}
+          color={MAHJONG_HINT_GLOW_BG}
+        />
+      )}
+      {/* Right 3-D side */}
+      <Rect
+        x={x + faceWidth + liftX}
+        y={y + sideWidth + liftY}
+        width={sideWidth}
+        height={faceHeight}
+        color={SIDE_R}
+      />
+      {/* Bottom 3-D side */}
+      <Rect
+        x={x + sideWidth + liftX}
+        y={y + faceHeight + liftY}
+        width={faceWidth}
+        height={sideWidth}
+        color={SIDE_B}
+      />
+      {/* Border */}
+      <Rect x={x + liftX} y={y + liftY} width={faceWidth} height={faceHeight} color={borderColor} />
+      {/* Face */}
+      <Rect
+        x={x + borderInset + liftX}
+        y={y + borderInset + liftY}
+        width={faceWidth - 2 * borderInset}
+        height={faceHeight - 2 * borderInset}
+        color={faceColor}
+      />
+      {/* Face art */}
+      <TileFaceLayer
+        face={face}
+        suit={tile.suit}
+        x={x + ART_INSET + liftX}
+        y={y + ART_INSET + liftY}
+        w={faceWidth - 2 * ART_INSET}
+        h={faceHeight - 2 * ART_INSET}
+        opacity={isFree ? 1 : 0.35}
+      />
+      {/* Debug: green tint over free tiles when dev overlay is active */}
+      {debugShowFree && isFree && (
+        <Rect
+          x={x + ART_INSET + liftX}
+          y={y + ART_INSET + liftY}
+          width={faceWidth - 2 * ART_INSET}
+          height={faceHeight - 2 * ART_INSET}
+          color="#00cc44"
+          opacity={0.3}
+        />
+      )}
+    </Group>
+  );
+});
 
 // ---------------------------------------------------------------------------
 // Hit-testing
 // ---------------------------------------------------------------------------
 
+/** `byLayerDesc` is the board sorted highest layer first, so the topmost tile wins. */
 function hitTest(
-  tiles: readonly SlotTile[],
+  byLayerDesc: readonly SlotTile[],
   tapX: number,
   tapY: number,
   cam: BoardCamera
 ): number | null {
   const { faceWidth: fw, faceHeight: fh } = cam;
-  // Iterate from highest layer down so the topmost tile wins.
-  const sorted = [...tiles].sort((a, b) => b.layer - a.layer);
-  for (const tile of sorted) {
+  for (const tile of byLayerDesc) {
     const { x, y } = cam.tileToScreen(tile.col, tile.row, tile.layer);
     if (tapX >= x && tapX < x + fw && tapY >= y && tapY < y + fh) {
       return tile.id;
@@ -215,6 +242,8 @@ function hitTest(
 interface Props {
   state: MahjongState;
   camera: BoardCamera;
+  /** `freeTileIds(state.tiles)` from the screen, which computes it once per board; built here when absent. */
+  freeIds?: ReadonlySet<number>;
   hintIds?: ReadonlySet<number>;
   debugShowFree?: boolean;
   onTilePress: (tileId: number) => void;
@@ -225,34 +254,35 @@ const EMPTY_SET: ReadonlySet<number> = new Set();
 export default function GameCanvas({
   state,
   camera,
+  freeIds,
   hintIds = EMPTY_SET,
   debugShowFree = false,
   onTilePress,
 }: Props) {
   const { t } = useTranslation("mahjong");
-  const tileSvgs = useAllTileSVGs();
-  const { tileWidth, tileHeight, faceWidth, faceHeight, sideWidth, boardWidth, boardHeight } =
-    camera;
+  const { faceWidth, faceHeight, boardWidth, boardHeight } = camera;
+  const faces = useTileFaces(faceWidth, faceHeight);
 
-  const freeTiles = useMemo(() => {
-    const s = new Set<number>();
-    for (const tile of state.tiles) {
-      if (isFreeTile(tile, state.tiles)) s.add(tile.id);
-    }
-    return s;
-  }, [state.tiles]);
+  const freeTiles = useMemo(() => freeIds ?? freeTileIds(state.tiles), [freeIds, state.tiles]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const matchingIds = useMemo(() => getMatchingFreeTileIds(state), [state.tiles, state.selected]);
+  const matchingIds = useMemo(
+    () => getMatchingFreeTileIds(state, freeTiles),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.tiles, state.selected, freeTiles]
+  );
 
   const noFreePairs = useMemo(
-    () => !state.isComplete && !hasFreePairs(state.tiles),
-    [state.isComplete, state.tiles]
+    () => !state.isComplete && !hasFreePairs(state.tiles, freeTiles),
+    [state.isComplete, state.tiles, freeTiles]
   );
   const showShuffleCTA = noFreePairs && state.shufflesLeft > 0;
 
-  const sortedTiles = useMemo(
-    () => [...state.tiles].sort((a, b) => a.layer - b.layer || a.row - b.row),
+  // Both orders once per board: paint (layer, then row) and hit-test (highest layer first).
+  const { paintOrder, hitOrder } = useMemo(
+    () => ({
+      paintOrder: [...state.tiles].sort((a, b) => a.layer - b.layer || a.row - b.row),
+      hitOrder: [...state.tiles].sort((a, b) => b.layer - a.layer),
+    }),
     [state.tiles]
   );
 
@@ -262,7 +292,7 @@ export default function GameCanvas({
   function handleTap(e: { nativeEvent: { locationX: number; locationY: number } }) {
     if (!gameActive) return;
     const { locationX, locationY } = e.nativeEvent;
-    const tileId = hitTest(state.tiles, locationX, locationY, camera);
+    const tileId = hitTest(hitOrder, locationX, locationY, camera);
     if (tileId !== null) onTilePress(tileId);
   }
 
@@ -274,107 +304,18 @@ export default function GameCanvas({
         accessibilityRole="none"
       >
         <Fill color={BG} />
-        {sortedTiles.map((tile) => {
-          const { x, y } = camera.tileToScreen(tile.col, tile.row, tile.layer);
-          const isSelected = tile.id === selectedId;
-          const isFree = freeTiles.has(tile.id);
-
-          // Lift selected tile upward/outward — scale with tile size.
-          const liftX = isSelected ? Math.round(tileWidth * (4 / 44)) : 0;
-          const liftY = isSelected ? -Math.round(tileHeight * (5 / 56)) : 0;
-          // 2 px border on selected for visibility at small tile sizes.
-          const borderInset = isSelected ? 2 : 1;
-
-          const isHint = matchingIds.has(tile.id) || hintIds.has(tile.id);
-          const borderColor = isSelected ? BORDER_SELECTED : isHint ? BORDER_HINT : BORDER_NORMAL;
-          const faceColor = isSelected ? TILE_FACE_SELECTED : isFree ? TILE_FACE : TILE_FACE_LOCKED;
-
-          return (
-            <Group key={tile.id}>
-              {/* Drop shadow */}
-              <Rect
-                x={x + sideWidth + 2 + liftX}
-                y={y + sideWidth + 2 + liftY}
-                width={faceWidth}
-                height={faceHeight}
-                color={SHADOW}
-              />
-              {/* Gold glow behind selected tile */}
-              {isSelected && (
-                <Rect
-                  x={x + liftX - 3}
-                  y={y + liftY - 3}
-                  width={faceWidth + 6}
-                  height={faceHeight + 6}
-                  color={MAHJONG_GLOW_BG}
-                />
-              )}
-              {/* Blue glow behind matching free tiles */}
-              {isHint && (
-                <Rect
-                  x={x - 4}
-                  y={y - 4}
-                  width={faceWidth + 8}
-                  height={faceHeight + 8}
-                  color={MAHJONG_HINT_GLOW_BG}
-                />
-              )}
-              {/* Right 3-D side */}
-              <Rect
-                x={x + faceWidth + liftX}
-                y={y + sideWidth + liftY}
-                width={sideWidth}
-                height={faceHeight}
-                color={SIDE_R}
-              />
-              {/* Bottom 3-D side */}
-              <Rect
-                x={x + sideWidth + liftX}
-                y={y + faceHeight + liftY}
-                width={faceWidth}
-                height={sideWidth}
-                color={SIDE_B}
-              />
-              {/* Border */}
-              <Rect
-                x={x + liftX}
-                y={y + liftY}
-                width={faceWidth}
-                height={faceHeight}
-                color={borderColor}
-              />
-              {/* Face */}
-              <Rect
-                x={x + borderInset + liftX}
-                y={y + borderInset + liftY}
-                width={faceWidth - 2 * borderInset}
-                height={faceHeight - 2 * borderInset}
-                color={faceColor}
-              />
-              {/* SVG face art */}
-              <TileFaceLayer
-                svg={tileSvgs[tile.faceId - 1] ?? null}
-                suit={tile.suit}
-                x={x + 2 + liftX}
-                y={y + 2 + liftY}
-                w={faceWidth - 4}
-                h={faceHeight - 4}
-                opacity={isFree ? 1 : 0.35}
-              />
-              {/* Debug: green tint over free tiles when dev overlay is active */}
-              {debugShowFree && isFree && (
-                <Rect
-                  x={x + 2 + liftX}
-                  y={y + 2 + liftY}
-                  width={faceWidth - 4}
-                  height={faceHeight - 4}
-                  color="#00cc44"
-                  opacity={0.3}
-                />
-              )}
-            </Group>
-          );
-        })}
+        {paintOrder.map((tile) => (
+          <TileNode
+            key={tile.id}
+            tile={tile}
+            camera={camera}
+            face={faces?.[tile.faceId - 1] ?? null}
+            isSelected={tile.id === selectedId}
+            isFree={freeTiles.has(tile.id)}
+            isHint={matchingIds.has(tile.id) || hintIds.has(tile.id)}
+            debugShowFree={debugShowFree}
+          />
+        ))}
       </Canvas>
 
       {/* Touch capture layer — disabled during overlays */}

@@ -114,3 +114,50 @@ describe("ThemeContext", () => {
     expect(screen.getByTestId("mode").props.children).toBe("dark");
   });
 });
+
+describe("ThemeContext — render stability (#2964)", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    mockUseColorScheme.mockReturnValue("dark");
+  });
+
+  const onRender = jest.fn();
+  const Consumer = React.memo(function Consumer() {
+    onRender(useTheme());
+    return null;
+  });
+  const consumer = <Consumer />;
+
+  it("does not re-render consumers when the provider re-renders with the same state", async () => {
+    onRender.mockClear();
+    const api = await renderAndSettle(<ThemeProvider>{consumer}</ThemeProvider>);
+    const rendersAfterLoad = onRender.mock.calls.length;
+    const first = onRender.mock.calls.at(-1)![0];
+
+    // The provider renders again (its parent did); nothing it holds changed.
+    await api.rerender(<ThemeProvider>{consumer}</ThemeProvider>);
+    await api.rerender(<ThemeProvider>{consumer}</ThemeProvider>);
+
+    expect(onRender).toHaveBeenCalledTimes(rendersAfterLoad);
+    expect(onRender.mock.calls.at(-1)![0]).toBe(first);
+  });
+
+  it("keeps the setters' identity across renders and re-renders once when the mode changes", async () => {
+    onRender.mockClear();
+    const api = await renderAndSettle(<ThemeProvider>{consumer}</ThemeProvider>);
+    const before = onRender.mock.calls.at(-1)![0];
+    const rendersBefore = onRender.mock.calls.length;
+
+    await act(async () => {
+      before.setThemeMode("light");
+    });
+    expect(onRender).toHaveBeenCalledTimes(rendersBefore + 1);
+    const after = onRender.mock.calls.at(-1)![0];
+    expect(after.theme).toBe("light");
+    expect(after.setThemeMode).toBe(before.setThemeMode);
+
+    await api.rerender(<ThemeProvider>{consumer}</ThemeProvider>);
+    expect(onRender).toHaveBeenCalledTimes(rendersBefore + 1);
+    expect(onRender.mock.calls.at(-1)![0].toggle).toBe(after.toggle);
+  });
+});

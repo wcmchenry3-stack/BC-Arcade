@@ -75,6 +75,9 @@ On mount the screen fetches today's puzzle metadata and loads any saved board.
 - If the saved `puzzle_id` matches today, that board resumes.
 - If it belongs to another day/language, the stale save is cleared and a fresh board is created.
 - For network failures while loading, cached "today" metadata may be used when available. HTTP errors are not bypassed by cache fallback.
+- **Offline with a cold cache (#2925):** a network failure with no cached metadata shows "Daily Word needs a connection" with a Retry button. Retry runs the same single load path as mount. Any other failure (HTTP error, unexpected exception) keeps the generic "Could not load today's puzzle" banner and never falls back to cache.
+- **Cache warming (#2925):** Home calls `warmTodayMeta()` (`game/daily_word/todayMeta.ts`) once on mount, when connectivity returns, and when the app returns to the foreground, while online. It stores today's metadata under the same `localDateKey` the screen reads and skips the fetch when already cached, so the screen can open offline later the same day.
+- **Decision:** Daily Word stays online-only. Showing a clear message and warming the cache is the whole scope; offline play and local scoring are tracked separately in #3022.
 - An unfinished restored board resumes the corresponding shared game session.
 
 ### Midnight / stale-puzzle recovery
@@ -112,6 +115,12 @@ The answer is deterministic, but scored-guess state is also tracked server-side 
 - The server can reconcile the client's `guesses_used` upward from its recorded count.
 - `GET /answer` is gated: the session must have solved the puzzle or exhausted its guesses.
 - If the guess-state database is temporarily unavailable, guess scoring degrades open so the free puzzle remains playable; answer release remains closed because entitlement to the answer cannot be proven.
+
+## Sound
+
+- Registry: `frontend/src/game/daily_word/sounds.ts` (`DAILY_WORD_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting (muted means silent).
+- Win: `dailyWord.win` plays the shared fanfare `assets/sounds/hearts-moon-shot.mp3` (Pixabay Content License, no attribution required; the same file Sudoku, Hearts, Yacht, Solitaire, Mahjong, Blackjack and 2048 use for a win), once, when the solved row finishes flipping and the win card opens. A solve the server reports as `already_solved` (the response to an earlier guess was lost) plays it once as the win card opens, but only if this visit submitted a guess; a wiped board reopening a puzzle finished earlier is a restore and stays silent.
+- It does not play when a finished board is restored on mount, on re-render or on a countdown tick. A loss has no sound.
 
 ## Sharing
 

@@ -25,7 +25,7 @@ import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 import { PRIVACY_POLICY_URL, SUPPORT_URL, TERMS_OF_SERVICE_URL } from "../config/legal";
-import { useEntitlements } from "../entitlements/EntitlementContext";
+import { useEntitlementGate } from "../entitlements/EntitlementContext";
 import { entryRouteForSlug } from "../entitlements/premiumRoutes";
 import { isPremiumGameSlug, type PremiumGameSlug } from "../entitlements/premiumProducts";
 import { gameTitle } from "../i18n/gameTitle";
@@ -61,7 +61,7 @@ export default function PaywallScreen() {
     "starswarm",
     "mahjong",
   ]);
-  const { canPlay, isLoading: entitlementsLoading } = useEntitlements();
+  const { canPlay, isLoading: entitlementsLoading } = useEntitlementGate();
   const { adapter, isAvailable } = usePurchases();
   const restorer = useRestorePurchases();
 

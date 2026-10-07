@@ -61,7 +61,14 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        # One transaction per migration, so the commit boundary is the same on
+        # every run, whether or not the range includes a migration that commits
+        # mid-run for CREATE INDEX CONCURRENTLY (0032, #2965).
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            transaction_per_migration=True,
+        )
         with context.begin_transaction():
             context.run_migrations()
 

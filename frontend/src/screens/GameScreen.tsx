@@ -670,7 +670,7 @@ export default function GameScreen({ navigation, route }: Props) {
       style={[styles.roundPill, { backgroundColor: colors.surfaceAlt, borderColor: colors.accent }]}
     >
       <Text style={[styles.roundPillText, { color: colors.accent }]}>
-        {t("round.header", { round: gameState.round })}
+        {t("round.header", { round: Math.min(gameState.round, 13) })}
       </Text>
     </View>
   );
