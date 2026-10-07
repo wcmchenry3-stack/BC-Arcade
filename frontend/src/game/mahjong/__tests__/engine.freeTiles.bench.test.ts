@@ -11,12 +11,12 @@
  *
  * The timing is printed, never asserted — it depends on the machine and on V8's JIT (the
  * scan's tight loops suit a JIT; Hermes interprets its bytecode, where the scan's 2n² loop
- * iterations cost relatively more) — so the test is deterministic and quick enough to stay
- * enabled in CI. What is asserted is that both ways give the same free set, matches and
- * answer on every board measured.
+ * iterations cost relatively more) — so the test is deterministic. What is asserted is that
+ * both ways give the same free set, matches and answer on every board measured.
  *
- * Run it on its own with
- *   cd frontend && npx jest src/game/mahjong/__tests__/engine.freeTiles.bench.test.ts
+ * By default it runs 50 rounds (well under a second, so it stays enabled in CI; the timings
+ * are then rough). For numbers worth quoting, run 2,000 rounds on their own:
+ *   cd frontend && MAHJONG_BENCH=1 npx jest src/game/mahjong/__tests__/engine.freeTiles.bench.test.ts
  */
 import {
   createGame,
@@ -29,7 +29,7 @@ import {
 import { TURTLE_LAYOUT } from "../layouts/turtle";
 import type { MahjongState, SlotTile } from "../types";
 
-const ROUNDS = 2_000;
+const ROUNDS = process.env.MAHJONG_BENCH === "1" ? 2_000 : 50;
 
 /** The free set as every caller built it before #2962: `isFreeTile` for each tile. */
 function freeByScan(tiles: readonly SlotTile[]): Set<number> {

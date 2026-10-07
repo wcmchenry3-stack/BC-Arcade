@@ -7,7 +7,9 @@
  *
  * - Deals: every registered layout is dealt with seeds 0-4 (`createGame`, which runs the
  *   backwards-build over `accessibleInUnplaced`); the dealId and a SHA-256 of the dealt tiles,
- *   in order, are recorded.
+ *   in order, are recorded. Each layout is compared by its id, so a layout added to the
+ *   registry later is reported (not failed) until a re-record pins it, and the layouts
+ *   already recorded stay pinned whatever the registry's order.
  * - Play: a scripted player on several seeded boards picks a free pair by index from
  *   `getAllFreePairs`, sometimes taps a non-matching free tile first or taps a tile twice,
  *   shuffles and undoes at fixed steps, and asks for a hint (`getAnyFreePair`) every step. Each
@@ -134,23 +136,22 @@ function replay(sc: Scenario) {
   return { name: sc.name, checkpoints };
 }
 
-function deals() {
-  return LAYOUTS.map((meta) => ({
-    layout: meta.id,
-    deals: DEAL_SEEDS.map((seed) => {
-      const g = createGame(getLayout(meta.id), seed);
-      return { seed, dealId: g.dealId, tiles: sha(canonical(g.tiles)) };
-    }),
-  }));
+function dealsOf(layoutId: string) {
+  return DEAL_SEEDS.map((seed) => {
+    const g = createGame(getLayout(layoutId), seed);
+    return { seed, dealId: g.dealId, tiles: sha(canonical(g.tiles)) };
+  });
 }
 
-type Recorded = { deals: ReturnType<typeof deals>; replays: ReturnType<typeof replay>[] };
+type LayoutDeals = { layout: string; deals: ReturnType<typeof dealsOf> };
+type Recorded = { deals: LayoutDeals[]; replays: ReturnType<typeof replay>[] };
 
 const UPDATE = process.env.UPDATE_GOLDEN === "1";
 
 describe("Mahjong golden seeded replay", () => {
   let golden: Recorded | null = null;
-  const recorded: Partial<Recorded> & { replays: ReturnType<typeof replay>[] } = { replays: [] };
+  const recorded: Pick<Recorded, "replays"> = { replays: [] };
+  const recordedDeals = new Map<string, LayoutDeals>();
 
   beforeAll(() => {
     if (!UPDATE) golden = JSON.parse(fs.readFileSync(FIXTURE, "utf8")) as Recorded;
@@ -166,15 +167,37 @@ describe("Mahjong golden seeded replay", () => {
 
   afterAll(() => {
     // Re-record only from a full run, so a filtered run can never write a partial fixture.
-    if (!UPDATE || !recorded.deals || recorded.replays.length !== SCENARIOS.length) return;
+    if (!UPDATE || recordedDeals.size !== LAYOUTS.length) return;
+    if (recorded.replays.filter(Boolean).length !== SCENARIOS.length) return;
+    const deals = LAYOUTS.map((meta) => recordedDeals.get(meta.id)!);
     fs.mkdirSync(path.dirname(FIXTURE), { recursive: true });
-    fs.writeFileSync(FIXTURE, JSON.stringify(recorded, null, 2) + "\n");
+    const out: Recorded = { replays: recorded.replays, deals };
+    fs.writeFileSync(FIXTURE, JSON.stringify(out, null, 2) + "\n");
   });
 
-  it("deals every layout exactly as recorded (seeds 0-4)", () => {
-    const got = deals();
-    recorded.deals = got;
-    if (!UPDATE) expect(got).toEqual(golden!.deals);
+  it.each(LAYOUTS.map((meta) => [meta.id] as const))(
+    "deals %s exactly as recorded (seeds 0-4)",
+    (layoutId) => {
+      const got = dealsOf(layoutId);
+      recordedDeals.set(layoutId, { layout: layoutId, deals: got });
+      if (UPDATE) return;
+      const pinned = golden!.deals.find((d) => d.layout === layoutId);
+      if (!pinned) {
+        process.stdout.write(
+          `[golden] layout "${layoutId}" has no recorded deals yet; re-record to pin it ` +
+            `(UPDATE_GOLDEN=1 npx jest src/game/mahjong/__tests__/goldenReplay.test.ts)\n`
+        );
+        return;
+      }
+      expect(got).toEqual(pinned.deals);
+    }
+  );
+
+  it("still deals every layout the fixture pins", () => {
+    // A layout removed from the registry is a deliberate change: re-record and say so.
+    if (UPDATE) return;
+    const ids = new Set(LAYOUTS.map((meta) => meta.id));
+    expect(golden!.deals.map((d) => d.layout).filter((id) => !ids.has(id))).toEqual([]);
   });
 
   it.each(SCENARIOS.map((sc) => [sc.name, sc] as const))(
