@@ -12,6 +12,8 @@
   "goal.twenty48.final_score_at_least": "Счёт {{target}}+ в {{game}}",
   "goal.twenty48.highest_tile_at_least": "Собрать плитку {{target}} в {{game}}",
   "goal.yacht.final_score_at_least": "Счёт {{target}}+ в {{game}}",
+  "goal.sudoku.final_score_at_least": "Счёт {{target}}+ в {{game}}",
+  "goal.sudoku.solved": "Решите головоломку {{game}}",
   "goal.sort.final_score_at_least": "Достичь уровня {{target}} в {{game}}",
   "goal.solitaire.moves_at_least_one": "Сделать ход в {{game}}",
   "goal.solitaire.moves_at_least_few": "{{count}}+ хода в {{game}}",

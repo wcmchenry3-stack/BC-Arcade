@@ -7,3 +7,8 @@ export function formatMs(ms: number): string {
   if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   return `${m}:${String(s).padStart(2, "0")}`;
 }
+
+/** Milliseconds until `elapsedMs` next crosses a whole second (1000 on a boundary). */
+export function msToNextSecond(elapsedMs: number): number {
+  return 1000 - (((elapsedMs % 1000) + 1000) % 1000);
+}

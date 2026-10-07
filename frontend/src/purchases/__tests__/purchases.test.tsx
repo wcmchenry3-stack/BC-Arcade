@@ -16,7 +16,7 @@ let mockLoading = false;
 let mockEntitled = new Set<string>();
 jest.mock("../../entitlements/EntitlementContext", () => ({
   ...jest.requireActual("../../entitlements/EntitlementContext"),
-  useEntitlements: () => ({
+  useEntitlementGate: () => ({
     canPlay: (slug: string) => mockEntitled.has(slug),
     isLoading: mockLoading,
     lastRefreshed: null,

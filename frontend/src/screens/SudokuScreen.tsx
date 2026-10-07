@@ -29,6 +29,7 @@ import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { HudStatRow } from "../components/shared/HudStatRow";
+import { ElapsedText, createClockActivity } from "../components/shared/ElapsedText";
 import {
   ModalActions,
   ModalCard,
@@ -104,12 +105,18 @@ export default function SudokuScreen() {
   );
   const [variant, setVariant] = useState<Variant>("classic");
   const [state, setState] = useState<SudokuState | null>(null);
-  const [elapsed, setElapsed] = useState(0);
+  // Bumped when a puzzle starts over, so the HUD clock shows 00:00 at once.
+  const [clockEpoch, setClockEpoch] = useState(0);
+  // Whether the clock is advancing (started, not paused). It lives outside
+  // React state: the first move, a pause and a resume reach the HUD's
+  // `ElapsedText` without re-rendering the screen, grid and pad (#2964).
+  const [clockActivity] = useState(createClockActivity);
   const [loading, setLoading] = useState(true);
   const [newGameModalVisible, setNewGameModalVisible] = useState(false);
   // What the result card shows, captured when the puzzle is solved.
   const [result, setResult] = useState<{
-    elapsedS: number;
+    /** Null when the clock gave no usable time (the device clock stepped back). */
+    elapsedS: number | null;
     bestTimeS: number;
     isNewBest: boolean;
   } | null>(null);
@@ -127,7 +134,6 @@ export default function SudokuScreen() {
   // reads as "time actively spent playing." null = no input yet.
   const startMsRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Lifecycle refs.  `hasLoadedRef` gates saves so a fresh puzzle can't
   // clobber a resumable save still being read off disk.
@@ -169,8 +175,13 @@ export default function SudokuScreen() {
   // start moves forward on resume, and a pause in progress stops the count).
   const playedMs = useCallback((): number | null => {
     if (startMsRef.current === null) return null;
+    // Raw, so a wall clock that stepped back after a resume shows as a negative
+    // time: a completion then records no duration (below). The HUD clamps it.
     return (pausedAtRef.current ?? Date.now()) - startMsRef.current;
   }, []);
+  const syncClockActivity = useCallback(() => {
+    clockActivity.set(startMsRef.current !== null && pausedAtRef.current === null);
+  }, [clockActivity]);
   useEffect(() => {
     syncSetProgressSnapshot(() => ({ result: progressResult(), durationMs: playedMs() }));
   }, [syncSetProgressSnapshot, progressResult, playedMs]);
@@ -182,12 +193,14 @@ export default function SudokuScreen() {
   const pauseTimer = useCallback(() => {
     if (startMsRef.current === null || isComplete || pausedAtRef.current !== null) return;
     pausedAtRef.current = Date.now();
-  }, [isComplete]);
+    syncClockActivity();
+  }, [isComplete, syncClockActivity]);
   const resumeTimer = useCallback(() => {
     if (pausedAtRef.current === null || startMsRef.current === null) return;
     startMsRef.current += Date.now() - pausedAtRef.current;
     pausedAtRef.current = null;
-  }, []);
+    syncClockActivity();
+  }, [syncClockActivity]);
   const awayRef = usePauseWhileAway(navigation, pauseTimer, resumeTimer);
 
   // Mount load — restores a saved game silently; on a clean slot the
@@ -243,29 +256,16 @@ export default function SudokuScreen() {
     saveGame(state).catch(() => {});
   }, [state]);
 
-  const tickTimer = useCallback(() => {
-    if (startMsRef.current === null) return;
-    setElapsed(Math.floor((Date.now() - startMsRef.current) / 1000));
-  }, []);
-
-  // Once-per-second ticker — only runs when a game is in progress, not
-  // complete, and has actually started.
+  // A move, a load or a new puzzle can start or clear the clock (inside state
+  // updaters and handlers, which only touch the refs): tell the HUD.
   useEffect(() => {
-    if (!state || isComplete || startMsRef.current === null) {
-      if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      return;
-    }
-    intervalRef.current = setInterval(tickTimer, 1000);
-    return () => {
-      if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [state, isComplete, tickTimer]);
+    syncClockActivity();
+  }, [state, syncClockActivity]);
+
+  // The HUD's `ElapsedText` owns the clock's tick and reads `playedMs`, so the
+  // HUD always shows the time the game reports (pauses taken out), and the
+  // screen, grid and pad do not re-render as time passes (#2964).
+  const elapsedA11yLabel = useCallback((time: string) => t("hud.elapsed", { time }), [t]);
 
   // Complete the gameSync session exactly once on the completion
   // transition; clear the saved game so the next mount starts fresh.
@@ -276,13 +276,16 @@ export default function SudokuScreen() {
     }
     if (state.isComplete && !prevCompleteRef.current) {
       const score = computeScore(state.difficulty, state.errorCount);
-      const finalElapsed =
-        startMsRef.current !== null ? Math.floor((Date.now() - startMsRef.current) / 1000) : 0;
+      // A time is usable only when positive: a device clock that stepped back
+      // after a resume cannot make a 00:00 solve, a "New best", or a best of 0
+      // (which is also the "no best yet" mark). Then the duration is unknown.
+      const playedS = Math.floor((playedMs() ?? 0) / 1000);
+      const finalElapsed = playedS > 0 ? playedS : null;
       const gid = syncComplete(
         {
           finalScore: score,
           outcome: "completed",
-          durationMs: finalElapsed * 1000,
+          durationMs: finalElapsed === null ? null : finalElapsed * 1000,
           result: { won: true, errors: state.errorCount },
         },
         {
@@ -303,7 +306,8 @@ export default function SudokuScreen() {
       const diff = state.difficulty;
       const variantKey = state.variant;
       const prev = statsRef.current[variantKey][diff];
-      const improved = prev.bestTimeS === 0 || finalElapsed < prev.bestTimeS;
+      const improved =
+        finalElapsed !== null && (prev.bestTimeS === 0 || finalElapsed < prev.bestTimeS);
       // The cache is written only when this puzzle kind's best improves.
       if (improved) {
         statsRef.current = {
@@ -312,16 +316,15 @@ export default function SudokuScreen() {
         };
         saveStats(statsRef.current).catch(() => {});
       }
-      setElapsed(finalElapsed);
       setResult({
         elapsedS: finalElapsed,
-        bestTimeS: improved ? finalElapsed : prev.bestTimeS,
+        bestTimeS: improved && finalElapsed !== null ? finalElapsed : prev.bestTimeS,
         // Only a beaten previous time is a "new best" — not a first solve.
-        isNewBest: prev.bestTimeS > 0 && finalElapsed < prev.bestTimeS,
+        isNewBest: finalElapsed !== null && prev.bestTimeS > 0 && finalElapsed < prev.bestTimeS,
       });
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, submitScore]);
+  }, [state, syncComplete, submitScore, playedMs]);
 
   const ensureSyncStarted = useCallback(
     (next: SudokuState) => {
@@ -388,7 +391,7 @@ export default function SudokuScreen() {
     const fresh = loadPuzzle(rememberDifficulty(difficulty), variant);
     openPuzzleSession(fresh);
     setState(fresh);
-    setElapsed(0);
+    setClockEpoch((n) => n + 1);
     setResult(null);
     resetScore();
     startMsRef.current = null;
@@ -404,7 +407,7 @@ export default function SudokuScreen() {
       const fresh = loadPuzzle(rememberDifficulty(d), v);
       openPuzzleSession(fresh);
       setState(fresh);
-      setElapsed(0);
+      setClockEpoch((n) => n + 1);
       setResult(null);
       resetScore();
       startMsRef.current = null;
@@ -457,7 +460,7 @@ export default function SudokuScreen() {
     syncClose();
     clearGame().catch(() => {});
     setState(null);
-    setElapsed(0);
+    setClockEpoch((n) => n + 1);
     setResult(null);
     resetScore();
     startMsRef.current = null;
@@ -529,9 +532,19 @@ export default function SudokuScreen() {
               },
               {
                 key: "elapsed",
-                text: formatElapsed(elapsed),
                 muted: true,
-                accessibilityLabel: t("hud.elapsed", { time: formatElapsed(elapsed) }),
+                render: (textStyle) => (
+                  <ElapsedText
+                    getElapsedMs={playedMs}
+                    running={!isComplete}
+                    activity={clockActivity}
+                    frozenS={result?.elapsedS ?? null}
+                    resetKey={clockEpoch}
+                    format={formatElapsed}
+                    accessibilityLabel={elapsedA11yLabel}
+                    style={textStyle}
+                  />
+                ),
               },
             ]}
           />
@@ -593,11 +606,15 @@ export default function SudokuScreen() {
           outcome="win"
           eyebrow={`${t("game.title")} · ${t(`difficulty.${state.difficulty}`)}`}
           subtitle={t(`variant.${state.variant}`)}
-          hero={{
-            kind: "score",
-            label: tResult("stat.time"),
-            value: formatElapsed(result?.elapsedS ?? elapsed),
-          }}
+          hero={
+            result !== null && result.elapsedS === null
+              ? undefined
+              : {
+                  kind: "score",
+                  label: tResult("stat.time"),
+                  value: formatElapsed(result?.elapsedS ?? 0),
+                }
+          }
           isNewBest={result?.isNewBest ?? false}
           stats={[
             {
