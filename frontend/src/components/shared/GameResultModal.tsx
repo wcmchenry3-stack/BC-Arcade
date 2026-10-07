@@ -582,7 +582,17 @@ function PrimaryButton({ action, colors }: { action: ResultAction; colors: Color
         { transform: [{ scale: pressed && !disabled ? 0.97 : 1 }] },
       ]}
     >
-      {icon ? <MaterialCommunityIcons name={icon} size={18} color={fgColor} /> : null}
+      {icon ? (
+        <MaterialCommunityIcons
+          name={icon}
+          size={18}
+          color={fgColor}
+          // With a self-updating label the button's name is built from its text,
+          // so the decorative icon must not be read as part of it (#2964).
+          accessibilityElementsHidden={!!action.labelNode}
+          importantForAccessibility={action.labelNode ? "no-hide-descendants" : "auto"}
+        />
+      ) : null}
       {action.labelNode ? (
         action.labelNode([styles.primaryText, { color: fgColor }])
       ) : (

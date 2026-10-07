@@ -255,6 +255,12 @@ describe("GameResultModal — variations", () => {
     // The screen-reader label comes from the rendered text, so it stays current.
     expect(primary.props.accessibilityLabel).toBeUndefined();
     expect(primary).toHaveTextContent(/Next word in 00:00:09/);
+    // ...and the clock icon is hidden from assistive tech, so the button's name
+    // is the countdown alone.
+    const icon = screen.getByText(glyph("clock-outline"), { includeHiddenElements: true });
+    expect(icon.props.accessibilityElementsHidden).toBe(true);
+    expect(icon.props.importantForAccessibility).toBe("no-hide-descendants");
+    expect(screen.getByRole("button", { name: /Next word in 00:00:09/ })).toBe(primary);
   });
 
   it("defaults the primary action to Play Again", async () => {
