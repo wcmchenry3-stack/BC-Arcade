@@ -13,61 +13,77 @@
  * tightening ring around the Carrier and a downward chevron under it.
  */
 import { carrierBeamCharge, carrierRunBrace } from "../engine";
+import { withAlpha } from "./color";
 import type { DrawOp } from "./frame";
+import { debugOpKeys } from "./opKeys";
 import type { CarrierBeam, StarSwarmState } from "../types";
 
-export const BEAM_RGB = "176,108,255";
-export const BRACE_RGB = "255,170,40";
+/** 0xRRGGBB — the beam's violet and the brace's amber. */
+export const BEAM_RGB = 0xb06cff;
+export const BRACE_RGB = 0xffaa28;
+const BEAM_GLOW = withAlpha(BEAM_RGB, 0.35);
+const BEAM_CORE = withAlpha(0xe6cdff, 0.9);
 
-/** Draw ops for one released beam: glow, core, then its head. */
-export function carrierBeamOps(b: CarrierBeam): DrawOp[] {
+/** Draw ops for one released beam: glow, core, then its head — appended to `ops` (#2963). */
+export function carrierBeamOps(b: CarrierBeam, ops: DrawOp[] = []): DrawOp[] {
   const top = b.y - b.length;
-  const key = `cbeam-${b.id}`;
-  return [
+  const key = debugOpKeys() ? `cbeam-${b.id}` : undefined;
+  ops.push(
     {
       k: "rect",
-      key: `${key}-glow`,
+      key: key && `${key}-glow`,
       x: b.x - b.halfWidth - 4,
       y: top,
       w: b.halfWidth * 2 + 8,
       h: b.length,
-      color: `rgba(${BEAM_RGB},0.35)`,
+      color: BEAM_GLOW,
     },
     {
       k: "rect",
-      key: `${key}-core`,
+      key: key && `${key}-core`,
       x: b.x - b.halfWidth * 0.5,
       y: top,
       w: b.halfWidth,
       h: b.length,
-      color: "rgba(230,205,255,0.9)",
+      color: BEAM_CORE,
     },
-    { k: "circle", key: `${key}-head`, cx: b.x, cy: b.y, r: b.halfWidth * 0.9, color: "#ffffff" },
-  ];
+    {
+      k: "circle",
+      key: key && `${key}-head`,
+      cx: b.x,
+      cy: b.y,
+      r: b.halfWidth * 0.9,
+      color: 0xffffffff,
+    }
+  );
+  return ops;
 }
 
-/** Every Carrier telegraph and released beam in `state`, back to front. */
-export function carrierOps(state: StarSwarmState): DrawOp[] {
-  const ops: DrawOp[] = [];
+/**
+ * Every Carrier telegraph and released beam in `state`, back to front — appended to `ops` when
+ * given (#2963: `buildFrame` passes its own list), and returned.
+ */
+export function carrierOps(state: StarSwarmState, ops: DrawOp[] = []): DrawOp[] {
+  const dbg = debugOpKeys();
 
   const brace = carrierRunBrace(state);
   if (brace) {
     const p = brace.progress;
     ops.push({
       k: "circle",
-      key: "carrier-brace-ring",
+      key: dbg ? "carrier-brace-ring" : undefined,
       cx: brace.x,
       cy: brace.y,
       r: brace.r * (1.3 - 0.3 * p),
-      color: `rgba(${BRACE_RGB},${(0.35 + 0.55 * p).toFixed(3)})`,
+      color: withAlpha(BRACE_RGB, 0.35 + 0.55 * p),
       stroke: 3,
     });
     const cy = brace.y + brace.r + 6;
     ops.push({
       k: "poly",
-      key: "carrier-brace-chevron",
+      key: dbg ? "carrier-brace-chevron" : undefined,
       points: [brace.x - 10, cy, brace.x + 10, cy, brace.x, cy + 10],
-      color: `rgba(${BRACE_RGB},${(0.4 + 0.6 * p).toFixed(3)})`,
+      color: withAlpha(BRACE_RGB, 0.4 + 0.6 * p),
     });
   }
 
@@ -75,23 +91,23 @@ export function carrierOps(state: StarSwarmState): DrawOp[] {
   if (charge) {
     ops.push({
       k: "rect",
-      key: "beam-telegraph",
+      key: dbg ? "beam-telegraph" : undefined,
       x: charge.x - 2,
       y: charge.y,
       w: 4,
       h: state.canvasH,
-      color: `rgba(${BEAM_RGB},${(0.1 + charge.progress * 0.35).toFixed(3)})`,
+      color: withAlpha(BEAM_RGB, 0.1 + charge.progress * 0.35),
     });
     ops.push({
       k: "circle",
-      key: "beam-charge",
+      key: dbg ? "beam-charge" : undefined,
       cx: charge.x,
       cy: charge.y + 6,
       r: 4 + charge.progress * 8,
-      color: `rgba(${BEAM_RGB},${(0.4 + charge.progress * 0.5).toFixed(3)})`,
+      color: withAlpha(BEAM_RGB, 0.4 + charge.progress * 0.5),
     });
   }
 
-  for (const b of state.carrierBeams) ops.push(...carrierBeamOps(b));
+  for (const b of state.carrierBeams) carrierBeamOps(b, ops);
   return ops;
 }

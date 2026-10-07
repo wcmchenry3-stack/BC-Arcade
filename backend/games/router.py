@@ -18,7 +18,7 @@ from entitlements.dependencies import check_entitlement
 from limiter import limiter, session_key
 from session import get_session_id, optional_session_id
 
-from . import leaderboard, service
+from . import leaderboard, service, sweep_gate
 from .schemas import (
     AppendEventsRequest,
     AppendEventsResponse,
@@ -348,6 +348,8 @@ async def create_game(request: Request, body: CreateGameRequest) -> CreateGameRe
             )
         except service.GameServiceError as e:
             raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+        # A backdated start can make this game stale sooner than /stats/me expects.
+        sweep_gate.note_open_game(sid, game.started_at)
         return CreateGameResponse(id=game.id, started_at=game.started_at)
 
 

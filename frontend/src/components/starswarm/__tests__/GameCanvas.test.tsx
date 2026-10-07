@@ -16,7 +16,7 @@ import React, { Profiler } from "react";
 import { AccessibilityInfo } from "react-native";
 import { render, screen } from "@testing-library/react-native";
 import * as Sentry from "@sentry/react-native";
-import { useImage } from "@shopify/react-native-skia";
+import { createPicture, useImage } from "@shopify/react-native-skia";
 
 import GameCanvas from "../GameCanvas";
 import type { GameCanvasHandle } from "../GameCanvas";
@@ -34,20 +34,25 @@ import {
 
 jest.mock("@shopify/react-native-skia", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { createElement, Fragment } = require("react");
+  const { createElement } = require("react");
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { View } = require("react-native");
   return {
     Canvas: ({ children, ...props }: { children?: React.ReactNode }) =>
       createElement(View, { testID: "skia-canvas", ...props }, children),
-    Group: ({ children }: { children?: React.ReactNode }) =>
-      createElement(Fragment, null, children),
+    // #2963: a Group shows its transform (a plain array, or a derived value) for the starfield tests
+    Group: ({ children, transform }: { children?: React.ReactNode; transform?: unknown }) =>
+      createElement(View, { testID: "skia-group", transform }, children),
     Picture: () => null,
     // Run the recorder at once against a dummy canvas, as Skia would on the UI thread.
     createPicture: jest.fn((draw: (canvas: object) => void, size: object) => {
-      draw({});
-      return { size };
+      draw({ drawColor: () => {}, drawCircle: () => {} });
+      return { size, dispose: () => {} };
     }),
+    Skia: {
+      Paint: () => ({ setAntiAlias: () => {}, setColor: () => {} }),
+      Color: (c: number) => c,
+    },
     useImage: jest.fn(() => null),
   };
 });
@@ -201,14 +206,27 @@ describe("Star Swarm GameCanvas (native) — mount and HUD", () => {
 });
 
 describe("Star Swarm GameCanvas (native) — frame publish gating (#2563)", () => {
-  it("publishes every frame of live play (the starfield moves) without re-rendering React", async () => {
+  it("publishes every frame the engine state moves, without re-rendering React", async () => {
     const { commits } = await mount({ initialState: seeded() });
     await frame(); // first frame: dt 0
     mockBuildFrame.mockClear();
     const before = commits.count;
-    await frames(5);
+    for (let i = 0; i < 5; i++) {
+      nextTick((s) => ({ ...s, nextDiveTimer: s.nextDiveTimer - 1 }));
+      await frame();
+    }
     expect(mockBuildFrame).toHaveBeenCalledTimes(5);
-    // Only the starfield moved: the HUD is unchanged, so React never committed.
+    // Nothing on the HUD changed, so React never committed.
+    expect(commits.count).toBe(before);
+  });
+
+  it("#2963: a frame where only the starfield moved publishes nothing — it scrolls on its own", async () => {
+    const { commits } = await mount({ initialState: seeded() });
+    await frame();
+    mockBuildFrame.mockClear();
+    const before = commits.count;
+    await frames(5); // ticks are the identity here: only the stars move
+    expect(mockBuildFrame).not.toHaveBeenCalled();
     expect(commits.count).toBe(before);
   });
 
@@ -252,7 +270,7 @@ describe("Star Swarm GameCanvas (native) — frame publish gating (#2563)", () =
     mockUseImage.mockReturnValue({ width: 8, height: 8 });
     await rerender({ isPaused: true });
     expect(mockBuildFrame).toHaveBeenCalled();
-    const lastOpts = mockBuildFrame.mock.calls.at(-1)![2];
+    const lastOpts = mockBuildFrame.mock.calls.at(-1)![1];
     expect(lastOpts.loaded.playerShip).toBe(true);
     expect(lastOpts.loaded.explosion.every(Boolean)).toBe(true);
   });
@@ -275,6 +293,52 @@ describe("Star Swarm GameCanvas (native) — frame publish gating (#2563)", () =
       "starswarm.drawFrame: Error: boom",
       expect.objectContaining({ tags: { subsystem: "starswarm.render" } })
     );
+  });
+});
+
+describe("Star Swarm GameCanvas (native) — starfield (#2963)", () => {
+  const PICTURES_PER_STARFIELD = 4; // the background and the three depth layers
+  /** The layer offsets, read off the StarLayer groups' derived transforms. */
+  const layerOffsets = () =>
+    screen
+      .getAllByTestId("skia-group")
+      .map((g) => g.props.transform as { value?: { translateY: number }[] } | undefined)
+      .filter((t) => t && "value" in t)
+      .map((t) => t!.value![0]!.translateY);
+
+  it("records the starfield once, not per frame, and slides each layer by its own offset", async () => {
+    const mockCreatePicture = createPicture as unknown as jest.Mock;
+    mockCreatePicture.mockClear();
+    const { rerender } = await mount({ initialState: seeded() });
+    // the scene Picture, plus the background and the three depth layers
+    expect(mockCreatePicture).toHaveBeenCalledTimes(1 + PICTURES_PER_STARFIELD);
+    expect(layerOffsets()).toEqual([0, 0, 0]);
+    await frame(); // dt 0
+    await frames(10); // 160 ms of scrolling
+    mockCreatePicture.mockClear();
+    await rerender({ highScore: 1 }); // the test Reanimated derives values at render
+    // only the scene Picture is re-recorded (the mock derives it inline on every render)
+    expect(mockCreatePicture).toHaveBeenCalledTimes(1);
+    // far, mid and near layers at 0.02, 0.05 and 0.1 px/ms
+    const [far, mid, near] = layerOffsets();
+    expect(far).toBeCloseTo(160 * 0.02);
+    expect(mid).toBeCloseTo(160 * 0.05);
+    expect(near).toBeCloseTo(160 * 0.1);
+  });
+
+  it("holds still while paused, and a new game scrolls from the top again", async () => {
+    const { rerender } = await mount({ initialState: seeded(), resetTick: 0 });
+    await frame();
+    await frames(5);
+    await rerender({ isPaused: true });
+    const paused = layerOffsets();
+    expect(paused[2]).toBeGreaterThan(0);
+    await frames(5);
+    await rerender({ isPaused: true, highScore: 2 });
+    expect(layerOffsets()).toEqual(paused);
+    await rerender({ isPaused: false, resetTick: 1 });
+    await rerender({ isPaused: false, resetTick: 1, highScore: 3 });
+    expect(layerOffsets()).toEqual([0, 0, 0]);
   });
 });
 
