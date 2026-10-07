@@ -119,6 +119,39 @@ This table summarizes the generated board configuration on `dev`. Per-game docs 
 
 When a board's product design changes, update the backend module first and regenerate the frontend vocabulary; do not hand-edit this table independently of code.
 
+## 7a. Indexes (#2965)
+
+Every board read (`top_statement`, the caller's own entry and `GET /games/{id}/rank`) applies the same `board_filters`: `game_type_id = ?`, the metric `IS NOT NULL`, `completed_at IS NOT NULL`, then the value, outcome, name and partition checks. Each metric kind rides a partial index whose `WHERE` those filters imply, so the query seeks to its game type instead of scanning every game:
+
+| Metric kind | Boards | Index |
+| --- | --- | --- |
+| `final_score` | every score board | `games_game_type_score_idx (game_type_id, final_score) WHERE final_score IS NOT NULL` (alembic 0002); the value bounds are index conditions too |
+| `duration_ms` | Mahjong | `games_game_type_duration_idx (game_type_id, duration_ms) WHERE duration_ms IS NOT NULL AND completed_at IS NOT NULL` (alembic 0032); the clear-time floor and cap are index conditions |
+| metadata key | Bottle Sort (`level_reached`) | `games_game_type_completed_idx (game_type_id, completed_at) WHERE completed_at IS NOT NULL` (alembic 0032): seeks on `game_type_id` only, then checks the JSON value on each of the type's finished rows |
+
+No board uses `completed_at` in `games_game_type_completed_idx`, neither as an index condition nor as a sort key (the window sorts by session first). It is there for a future "recent finished games of this type" read. A one-column `(game_type_id) WHERE completed_at IS NOT NULL` index serves the boards identically: on Postgres 16 with 3,000,000 rows the Sort plan is the same bitmap scan with `Index Cond: (game_type_id = ...)` either way (median 58 ms vs 57 ms; 19 MB vs 25 MB).
+
+Migration 0032 builds both indexes `CONCURRENTLY`, outside the migration transaction, so a deploy (`alembic upgrade head` while the previous instance still serves) never blocks writes to `games` during the builds. It is re-runnable: a deploy that dies part-way can leave either index behind (VALID or INVALID) while the database still reads 0031, so on Postgres each build is preceded by `DROP INDEX CONCURRENTLY IF EXISTS` of the same name, and the next `alembic upgrade head` rebuilds it. `alembic/env.py` runs each migration in its own transaction (`transaction_per_migration=True`), so the commit boundary is the same whether or not a run includes 0032. A Postgres test (`test_postgres_upgrade_recovers_from_an_interrupted_run`) leaves a VALID index behind at 0031 and checks the upgrade recovers.
+
+The one-per-player window (`PARTITION BY session_id`) still reads every eligible row of the board's game type; the indexes bound that to one game type rather than the whole table. Measured on Postgres 16 with 3,000,000 rows (Sort and Mahjong 25,000 each), median of the bound-parameter query: Sort 244 ms to 65 ms, Mahjong 279 ms to 21 ms.
+
+**Sort: why not a Sort-specific index.** Two options were compared with `EXPLAIN` on Postgres before choosing (#2965):
+
+- *An expression index on the `metadata_count` guard.* Postgres matches an expression index only when the query's expression is identical, operand types included. The app binds the cap as a `bigint` parameter (`<= '23'::bigint`); an index built with the literal `23` (an `integer`) is not matched by the app's query, and one built with `23::bigint` is not matched by a literally inlined query. When unmatched, the planner still uses it, but only as a `(game_type_id) WHERE completed_at IS NOT NULL` index, which is exactly `games_game_type_completed_idx`. Even when matched it reads the same rows (every finished Sort row has a valid `level_reached`). It would also silently stop matching whenever the cap (23), the key or the guard's SQL changes.
+- *Mirroring `level_reached` into `final_score` and ranking `final_score`.* This rides `games_game_type_score_idx` and halves Sort's query time (about 21 ms at 3,000,000 rows, because it skips the JSON checks), but a board only implies `final_score IS NOT NULL` when it ranks `final_score`. Switching the metric changes which stored rows rank wherever `final_score` and `level_reached` disagree (older builds, abandons, invalid values), and needs a backfill. Ranking semantics are out of scope here, and #2761 (seeded levels) and #2765 (tie order) change the same board.
+
+So Sort rides `games_game_type_completed_idx`, with no Seq Scan and no change to what ranks. Revisit the mirror only together with a deliberate ranking change.
+
+**Gate.** `backend/tests/test_leaderboard_query_plans.py` EXPLAINs `top_statement` for every enabled board and partition, as the app binds it. On SQLite (the default suite, and CI) it requires `SEARCH games USING INDEX <the index above> (game_type_id=?...)` (older and covering-index wordings accepted) and no `SCAN games`. On Postgres it fails on any `Seq Scan` over `games`, or any access to `games` that does not seek by `game_type_id`. The Postgres half runs only when `LEADERBOARD_EXPLAIN_PG_URL` names a scratch server; the suite's `DATABASE_URL` is never used, since it may name a real database. The test (through `backend/tests/_pg_scratch.py`) uses that URL only as a maintenance connection: point it at an existing database such as `postgres`. It creates a dedicated database (`explain_gate_<random>`, `TEMPLATE template0`), migrates it to head, seeds 25,000 games per enabled board's game type, runs `ANALYZE`, EXPLAINs, and drops the database, so nothing (rows or `ANALYZE` statistics) is left behind. The role needs CREATEDB. Any Postgres version works: the drop uses `WITH (FORCE)` from Postgres 13, and `pg_terminate_backend` plus a plain drop before that. A failed drop never hides the gate's own failure: it is logged with the leftover database's name (and fails the test only if the gate passed). A URL whose database does not exist fails with a message naming the variable. Seeding refuses a `games` table that already holds rows. Without the variable it skips with that reason; CI's `test-python` job has no Postgres service, so in CI only the SQLite half runs. Run the Postgres half locally with:
+
+```bash
+cd backend && source .venv/bin/activate
+LEADERBOARD_EXPLAIN_PG_URL=postgresql://user@localhost/postgres \
+  python -m pytest tests/test_leaderboard_query_plans.py --no-cov
+```
+
+A new metric kind, or a filter that stops implying an index's `WHERE`, fails this gate: add the index (migration plus `Game.__table_args__`) in the same change.
+
 ## 8. Result card
 
 The result card answers one narrow question: **where did this completed game place?**
@@ -225,6 +258,7 @@ The underlying session/offline contract remains [ARCHITECTURE §4](ARCHITECTURE.
 ## 14. Testing
 
 - Backend ranking/partition/value rules are covered by generic game/leaderboard tests.
+- Every enabled board's query must seek its index, never scan `games` (EXPLAIN gate, [§7a](#7a-indexes-2965)).
 - Frontend result-card, leaderboard, Stats, Scorecard, and Profile behavior is covered by screen/unit tests.
 - Device verification is defined in [MANUAL-QA-LEADERBOARDS.md](MANUAL-QA-LEADERBOARDS.md).
 
@@ -236,6 +270,7 @@ When changing ranking/reporting:
 
 1. Change the game's backend `BoardDefinition` or shared reporting contract.
 2. Regenerate frontend vocab when board definitions change.
+   A board with a new metric kind needs an index its filters can use ([§7a](#7a-indexes-2965)).
 3. Update the affected per-game scoring doc.
 4. Update this document only when the shared ranking/Stats behavior changes.
 5. Keep [GAME-CONTRACT.md](GAME-CONTRACT.md) normative for integration details.
