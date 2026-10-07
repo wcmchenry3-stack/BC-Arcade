@@ -1,7 +1,6 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Sentry from "@sentry/react-native";
+import { createJsonSlot, createRecord } from "../_shared/storageSlot";
 
-const GAME_KEY = "cascade_game_v3";
+const SUBSYSTEM = "cascade.storage";
 
 export interface SavedState {
   version: 3;
@@ -45,62 +44,26 @@ export function looksValid(data: unknown): data is SavedState {
   );
 }
 
-export async function saveGame(snapshot: SavedState): Promise<void> {
-  try {
-    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(snapshot));
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "cascade.storage", op: "save" } });
-  }
-}
-
-export async function loadGame(): Promise<SavedState | null> {
-  let raw: string | null = null;
-  try {
-    raw = await AsyncStorage.getItem(GAME_KEY);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (!looksValid(parsed)) {
-      await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
-      return null;
-    }
-    return parsed;
-  } catch (e) {
-    Sentry.captureMessage("cascade.storage: corrupt game payload, discarding", {
-      level: "warning",
-      tags: { subsystem: "cascade.storage", op: "load" },
-      extra: { error: String(e), key: GAME_KEY, rawPayload: raw?.slice(0, 500) },
-    });
-    await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
-    return null;
-  }
-}
-
-export async function clearGame(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(GAME_KEY);
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "cascade.storage", op: "clear" } });
-  }
-}
-
-const BEST_SCORE_KEY = "cascade_best_score";
+export const {
+  save: saveGame,
+  load: loadGame,
+  clear: clearGame,
+} = createJsonSlot<SavedState>({
+  key: "cascade_game_v3",
+  subsystem: SUBSYSTEM,
+  isValid: looksValid,
+  corruptExtra: "keyAndRaw",
+});
 
 /** The player's best Cascade score on this device (#2515); 0 when none. */
-export async function loadBestScore(): Promise<number> {
-  try {
-    const raw = await AsyncStorage.getItem(BEST_SCORE_KEY);
-    const n = raw == null ? 0 : Number(raw);
+export const { load: loadBestScore, save: saveBestScore } = createRecord<number>({
+  key: "cascade_best_score",
+  subsystem: SUBSYSTEM,
+  ops: { load: "loadBest", save: "saveBest" },
+  fallback: () => 0,
+  read: (raw) => {
+    const n = Number(raw);
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "cascade.storage", op: "loadBest" } });
-    return 0;
-  }
-}
-
-export async function saveBestScore(score: number): Promise<void> {
-  try {
-    await AsyncStorage.setItem(BEST_SCORE_KEY, String(Math.floor(score)));
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "cascade.storage", op: "saveBest" } });
-  }
-}
+  },
+  write: (score) => String(Math.floor(score)),
+});

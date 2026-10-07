@@ -257,6 +257,31 @@ AsyncStorage key is cleared at launch and by "Delete my data"
 `POST /daily-word/guess` checks each guess against the server's answer during
 play; it is not a result write.
 
+**In-progress saves and device stats (#2987).** Each game keeps its resumable
+game (and any device-only stats, best score or progress) in AsyncStorage
+through `game/_shared/storageSlot.ts`, not its own copy of the plumbing. A
+game's `storage.ts` holds only its key, the check of a stored payload and any
+migration or normalising around it; the keys and the bytes written are the
+game's own and have not changed (`_shared/__tests__/storageCompat.test.ts`
+replays saves recorded from the pre-#2987 modules).
+
+- `createJsonSlot` — the saved game. `load` resolves null when nothing usable
+  is stored. A payload that can't be read or parsed, or whose loading throws,
+  is removed and reported as a Sentry *warning* (`captureMessage`): the
+  screen recovers by starting fresh. A payload that parses but fails the
+  game's check is removed silently (Blackjack, 2048, Yacht and Daily Word
+  leave it stored instead; Hearts and Sudoku report it). Save and clear
+  failures are reported with `captureException`. Nothing rejects.
+- `createRecord` — a value that always loads (stats, a best score, Mahjong's
+  layout progress): its fallback when nothing is stored or it can't be read,
+  the failure reported with `captureException`, and the stored value left
+  alone.
+- Every report is tagged `{ subsystem: "<game>.storage", op }`. Sort's
+  storage used to swallow every failure; it now reports like the others, and
+  a failed read keeps its progress and level cache stored (as Sudoku's does).
+- When a game saves is the screen's decision (most after every move;
+  Mahjong debounced, #2961), not the slot's.
+
 **Identity and leaderboard name (#2624, #2519 decisions 17–18, #2778).** A
 player is their player id: the app's `game_session_id`, sent as `X-Session-ID`
 (one per install; a reinstall or a new device is a new player until accounts,
