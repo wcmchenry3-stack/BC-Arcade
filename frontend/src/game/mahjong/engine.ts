@@ -138,44 +138,72 @@ export function isFreeTile(tile: SlotTile, tiles: readonly SlotTile[]): boolean 
 // Free-tile index (#2962) — one pass over the board instead of one per tile
 // ---------------------------------------------------------------------------
 
+/** Packing range of `posKey`: integer coordinates below this in magnitude. */
+const POS_HALF = 32768;
+const POS_SPAN = 2 * POS_HALF;
+const LAYER_LIMIT = 2 ** 20;
+
 /**
- * A board position (col, row, layer) as one integer map key: 16 bits each for
- * col and row (offset, so negatives work) above the layer. Exact for any
- * |col|, |row| < 32768, far beyond every layout. A "col,row,layer" string key
- * builds three strings per lookup and made the index slower than the O(n²)
- * scan it replaces (engine.freeTiles.bench.test.ts).
+ * A board position (col, row, layer) as a map key. Integer coordinates (every
+ * layout's) pack into one number: 16 bits each for col and row (offset, so
+ * negatives work) above the layer; a "col,row,layer" string key builds three
+ * strings per lookup and made the index slower than the O(n²) scan it replaces
+ * (engine.freeTiles.bench.test.ts). Anything else (a fractional or huge value
+ * from a bad save) falls back to that string, so the index stays exact for any
+ * finite coordinates. A number and a string key never collide.
  */
-function posKey(col: number, row: number, layer: number): number {
-  return (layer * 65536 + (row + 32768)) * 65536 + (col + 32768);
+function posKey(col: number, row: number, layer: number): number | string {
+  // `x | 0` is x only for an int32, so these are integer-and-range checks with no
+  // builtin calls (the index runs them several times per tile).
+  if (
+    (col | 0) === col &&
+    (row | 0) === row &&
+    (layer | 0) === layer &&
+    col > -POS_HALF &&
+    col < POS_HALF &&
+    row > -POS_HALF &&
+    row < POS_HALF &&
+    layer > -LAYER_LIMIT &&
+    layer < LAYER_LIMIT
+  ) {
+    return (layer * POS_SPAN + (row + POS_HALF)) * POS_SPAN + (col + POS_HALF);
+  }
+  return `${col},${row},${layer}`;
 }
 
-/** What sits at each "col,row,layer" position, and the highest layer used. */
+/** What sits at each (col, row, layer) position, and every layer used, ascending. */
 interface PositionIndex<T> {
-  readonly at: ReadonlyMap<number, T>;
-  readonly topLayer: number;
+  readonly at: ReadonlyMap<number | string, T>;
+  readonly layers: readonly number[];
 }
 
 /** Index `items` by position in one pass (O(n)). */
 function indexPositions<T>(items: Iterable<T>, slotOf: (item: T) => Slot): PositionIndex<T> {
-  const at = new Map<number, T>();
-  let topLayer = -Infinity;
+  const at = new Map<number | string, T>();
+  const layers = new Set<number>();
   for (const item of items) {
     const { col, row, layer } = slotOf(item);
     at.set(posKey(col, row, layer), item);
-    if (layer > topLayer) topLayer = layer;
+    layers.add(layer);
   }
-  return { at, topLayer };
+  return { at, layers: [...layers].sort((x, y) => x - y) };
 }
 
 /**
- * Whether `s` is open in `index`: nothing at its (col, row) on any layer above
- * it up to `upTo`, and at least one of (col−2, row, layer) and (col+2, row,
- * layer) empty. Neither lookup can find `s` itself, so it needs no exclusion.
+ * Whether `s` is open in `index`: nothing at its (col, row) on a layer above
+ * it — any layer used on the board above it (as `isFreeTile` reads "above",
+ * whatever the layer values), or only `s.layer + 1` with `nextLayerOnly` (as the
+ * deal always has) — and at least one of (col−2, row, layer) and (col+2, row,
+ * layer) empty. No lookup can find `s` itself, so it needs no exclusion.
  */
-function isOpenAt(s: Slot, index: PositionIndex<unknown>, upTo: number): boolean {
+function isOpenAt(s: Slot, index: PositionIndex<unknown>, nextLayerOnly: boolean): boolean {
   const { at } = index;
-  for (let layer = s.layer + 1; layer <= upTo; layer++) {
-    if (at.has(posKey(s.col, s.row, layer))) return false;
+  if (nextLayerOnly) {
+    if (at.has(posKey(s.col, s.row, s.layer + 1))) return false;
+  } else {
+    for (let i = index.layers.length - 1; i >= 0 && index.layers[i]! > s.layer; i--) {
+      if (at.has(posKey(s.col, s.row, index.layers[i]!))) return false;
+    }
   }
   return !at.has(posKey(s.col - 2, s.row, s.layer)) || !at.has(posKey(s.col + 2, s.row, s.layer));
 }
@@ -192,7 +220,7 @@ export function freeTileIds(tiles: readonly SlotTile[]): ReadonlySet<number> {
   const index = indexPositions(tiles, tileSlot);
   const free = new Set<number>();
   for (const t of tiles) {
-    if (isOpenAt(t, index, index.topLayer)) free.add(t.id);
+    if (isOpenAt(t, index, false)) free.add(t.id);
   }
   return free;
 }
@@ -376,7 +404,7 @@ export function accessibleInUnplaced(slots: readonly Slot[], unplaced: Set<numbe
   const accessible: number[] = [];
   for (const i of unplaced) {
     const s = slots[i]!;
-    if (isOpenAt(s, index, s.layer + 1)) accessible.push(i);
+    if (isOpenAt(s, index, true)) accessible.push(i);
   }
   return accessible;
 }

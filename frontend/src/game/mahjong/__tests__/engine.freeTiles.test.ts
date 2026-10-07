@@ -108,6 +108,44 @@ describe("freeTileIds", () => {
     expect([...free].sort()).toEqual([...bruteFree(tiles)].sort());
   });
 
+  it("agrees with isFreeTile on fractional layers, columns and rows", () => {
+    // No layout has these, but a bad save could: any tile above, whatever its layer, covers.
+    const tiles = [
+      tile(0, 4, 2, 0),
+      tile(1, 4, 2, 0.5), // covers 0 from a fractional layer
+      tile(2, 6, 2, 0),
+      tile(3, 2, 2, 0),
+      tile(4, 1.5, 3, 0),
+      tile(5, 3.5, 3, 0), // beside 4, two columns over
+      tile(6, -0.5, 3, 0), // and the other side: 4 is blocked
+      tile(7, 8, 2.25, 1.75),
+      tile(8, 8, 2.25, 0.25), // covered by 7
+      tile(9, 8, 2.25, 3), // covers 7 and 8
+    ];
+    expect([...freeTileIds(tiles)].sort((a, b) => a - b)).toEqual(
+      [...bruteFree(tiles)].sort((a, b) => a - b)
+    );
+    expect(freeTileIds(tiles).has(0)).toBe(false);
+    expect(freeTileIds(tiles).has(4)).toBe(false);
+    expect(freeTileIds(tiles).has(7)).toBe(false);
+  });
+
+  it("agrees with isFreeTile beyond the packed key's range", () => {
+    const far = 40_000;
+    const tiles = [
+      tile(0, far, 0),
+      tile(1, far - 2, 0),
+      tile(2, far + 2, 0),
+      tile(3, 0, -far, 0),
+      tile(4, 0, -far, 1),
+      tile(5, 0, 0, 2 ** 21),
+      tile(6, 0, 0, 0),
+    ];
+    expect([...freeTileIds(tiles)].sort((a, b) => a - b)).toEqual(
+      [...bruteFree(tiles)].sort((a, b) => a - b)
+    );
+  });
+
   it("negative columns and rows index like any other", () => {
     const tiles = [tile(0, -2, -1), tile(1, 0, -1), tile(2, 2, -1), tile(3, 0, -1, 1)];
     expect([...freeTileIds(tiles)].sort()).toEqual([...bruteFree(tiles)].sort());
@@ -253,6 +291,21 @@ describe("accessibleInUnplaced", () => {
       }
     }
   );
+
+  it("matches the definition on fractional coordinates", () => {
+    const slots: Slot[] = [
+      { col: 0, row: 0, layer: 0.5 },
+      { col: 0, row: 0, layer: 1.5 }, // one layer above the first
+      { col: 1.5, row: 0.5, layer: 0 },
+      { col: 3.5, row: 0.5, layer: 0 },
+      { col: -0.5, row: 0.5, layer: 0 },
+      { col: 4, row: 4, layer: 0.25 }, // 0.75 above: not "one layer up"
+      { col: 4, row: 4, layer: 1 },
+    ];
+    const all = new Set(slots.map((_, i) => i));
+    expect(accessibleInUnplaced(slots, all)).toEqual(bruteAccessible(slots, all));
+    expect(accessibleInUnplaced(slots, all)).toEqual([1, 3, 4, 5, 6]);
+  });
 
   it("looks one layer up only, as the deal always has", () => {
     const slots: Slot[] = [
