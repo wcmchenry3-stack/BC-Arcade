@@ -75,6 +75,9 @@ On mount the screen fetches today's puzzle metadata and loads any saved board.
 - If the saved `puzzle_id` matches today, that board resumes.
 - If it belongs to another day/language, the stale save is cleared and a fresh board is created.
 - For network failures while loading, cached "today" metadata may be used when available. HTTP errors are not bypassed by cache fallback.
+- **Offline with a cold cache (#2925):** a network failure with no cached metadata shows "Daily Word needs a connection" with a Retry button. Retry runs the same single load path as mount. Any other failure (HTTP error, unexpected exception) keeps the generic "Could not load today's puzzle" banner and never falls back to cache.
+- **Cache warming (#2925):** Home calls `warmTodayMeta()` (`game/daily_word/todayMeta.ts`) once on mount, when connectivity returns, and when the app returns to the foreground, while online. It stores today's metadata under the same `localDateKey` the screen reads and skips the fetch when already cached, so the screen can open offline later the same day.
+- **Decision:** Daily Word stays online-only. Showing a clear message and warming the cache is the whole scope; offline play and local scoring are tracked separately in #3022.
 - An unfinished restored board resumes the corresponding shared game session.
 
 ### Midnight / stale-puzzle recovery

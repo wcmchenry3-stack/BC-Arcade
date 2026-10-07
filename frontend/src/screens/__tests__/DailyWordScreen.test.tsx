@@ -290,7 +290,7 @@ describe("DailyWordScreen — TypeError auto-retry (#1861)", () => {
       await jest.runAllTimersAsync();
     });
 
-    await findByText("Could not load today's puzzle");
+    await findByText("Daily Word needs a connection");
     // 1 initial + 3 retries = 4 total calls
     expect(dailyWordApi.getToday).toHaveBeenCalledTimes(4);
   });
@@ -369,7 +369,29 @@ describe("DailyWordScreen — offline today-meta cache (#1886)", () => {
       await jest.runAllTimersAsync();
     });
 
-    await findByText("Could not load today's puzzle");
+    await findByText("Daily Word needs a connection");
+  });
+
+  it("Retry reloads the puzzle after an offline cold-cache failure (#2925)", async () => {
+    jest.useFakeTimers();
+    dailyWordApi.getToday.mockRejectedValue(new TypeError("Network request failed"));
+    storage.loadTodayMeta.mockResolvedValue(null);
+
+    const { findByText, findByTestId, queryByText } = await renderScreen();
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+    const retry = await findByText("Retry");
+
+    dailyWordApi.getToday.mockResolvedValue(TODAY_META);
+    await act(async () => {
+      await fireEvent.press(retry);
+      await jest.runAllTimersAsync();
+    });
+
+    await findByTestId("tile-0-0");
+    expect(queryByText("Daily Word needs a connection")).toBeNull();
+    expect(queryByText("Retry")).toBeNull();
   });
 
   it("writes the cache on a successful fetch", async () => {
@@ -397,10 +419,13 @@ describe("DailyWordScreen — offline today-meta cache (#1886)", () => {
     dailyWordApi.getToday.mockRejectedValue(new Error("ApiError: 401 Unauthorized"));
     storage.loadTodayMeta.mockResolvedValue(TODAY_META);
 
-    const { findByText } = await renderScreen();
+    const { findByText, queryByText } = await renderScreen();
 
     await findByText("Could not load today's puzzle");
     expect(storage.loadTodayMeta).not.toHaveBeenCalled();
+    // Not the offline message: there is nothing to retry into.
+    expect(queryByText("Daily Word needs a connection")).toBeNull();
+    expect(queryByText("Retry")).toBeNull();
   });
 });
 

@@ -33,7 +33,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import i18n from "i18next";
 
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
@@ -66,6 +65,7 @@ import {
 } from "../game/daily_word/storage";
 import { ApiError, isNetworkError } from "../game/_shared/httpClient";
 import { devLog } from "../game/daily_word/devLog";
+import { getLanguage, getTimezoneOffset, localDateKey } from "../game/daily_word/todayMeta";
 import type { DevLogEntry } from "../game/daily_word/devLog";
 
 // ---------------------------------------------------------------------------
@@ -95,30 +95,12 @@ const DEVANAGARI_ROWS = [
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getTimezoneOffset(): number {
-  return -new Date().getTimezoneOffset();
-}
-
-function getLanguage(): string {
-  return i18n.language?.startsWith("hi") ? "hi" : "en";
-}
-
 function msUntilMidnight(tzOffsetMinutes: number): number {
   const nowMs = Date.now();
   const tzOffsetMs = tzOffsetMinutes * 60 * 1000;
   const localMs = nowMs + tzOffsetMs;
   const startOfLocalDayMs = Math.floor(localMs / 86400000) * 86400000;
   return startOfLocalDayMs + 86400000 - localMs;
-}
-
-function localDateKey(tzOffsetMinutes: number, lang: string): string {
-  const localMs = Date.now() + tzOffsetMinutes * 60_000;
-  const dayMs = Math.floor(localMs / 86_400_000) * 86_400_000;
-  const d = new Date(dayMs);
-  const y = d.getUTCFullYear();
-  const mo = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const dy = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${mo}-${dy}_${lang}`;
 }
 
 function formatCountdown(ms: number): string {
@@ -455,7 +437,8 @@ export default function DailyWordScreen() {
   const stateRef = useRef<DailyWordState | null>(null);
   stateRef.current = state;
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // "offline" = network failure with no cached metadata (#2925); "failed" = anything else.
+  const [loadError, setLoadError] = useState<"offline" | "failed" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [winModalVisible, setWinModalVisible] = useState(false);
@@ -610,72 +593,83 @@ export default function DailyWordScreen() {
   // Mount: load today's puzzle and any saved state
   // ---------------------------------------------------------------------------
 
-  useEffect(() => {
-    let alive = true;
+  // Bumped by every load and by unmount so a superseded load never touches state.
+  const loadSeqRef = useRef(0);
 
-    async function load() {
-      const dateKey = localDateKey(tzOffset, language);
-      try {
-        const [todayMeta, saved] = await Promise.all([
-          withRetry(() => dailyWordApi.getToday(tzOffset, language))
-            .then((meta) => {
-              saveTodayMeta(dateKey, meta).catch(() => {});
-              return meta;
-            })
-            // Only serve cached meta on network failures (isNetworkError). HTTP errors
-            // such as 401 mean the server is actively denying access — falling
-            // back to cache would bypass that.
-            .catch((e) => (isNetworkError(e) ? loadTodayMeta(dateKey) : null)),
-          loadState(),
-        ]);
+  const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
+    const alive = () => loadSeqRef.current === seq;
+    const dateKey = localDateKey(tzOffset, language);
+    let failure: "offline" | "failed" = "failed";
+    try {
+      const [todayMeta, saved] = await Promise.all([
+        withRetry(() => dailyWordApi.getToday(tzOffset, language))
+          .then((meta) => {
+            saveTodayMeta(dateKey, meta).catch(() => {});
+            return meta;
+          })
+          // Only serve cached meta on network failures (isNetworkError). HTTP errors
+          // such as 401 mean the server is actively denying access — falling
+          // back to cache would bypass that.
+          .catch(async (e) => {
+            if (!isNetworkError(e)) return null;
+            const cached = await loadTodayMeta(dateKey);
+            if (!cached) failure = "offline";
+            return cached;
+          }),
+        loadState(),
+      ]);
 
-        if (!alive) return;
+      if (!alive()) return;
 
-        if (!todayMeta) {
-          setLoadError(t("error.couldNotLoad"));
-          return;
-        }
-
-        hasLoadedRef.current = true;
-
-        let gameState: DailyWordState;
-        if (saved && saved.puzzle_id === todayMeta.puzzle_id) {
-          gameState = saved;
-          // A restored board continues the session a killed app left open for
-          // this puzzle (#2654).
-          if (!saved.is_complete) syncResume({ puzzle_id: saved.puzzle_id });
-        } else {
-          if (saved) await clearState();
-          gameState = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
-        }
-
-        setState(gameState);
-
-        if (gameState.is_complete) {
-          if (gameState.won) {
-            setWinModalVisible(true);
-          } else {
-            // Fetch answer for loss modal
-            dailyWordApi
-              .getAnswer(gameState.puzzle_id)
-              .then((r) => {
-                if (alive) setAnswer(r.answer.toUpperCase());
-              })
-              .catch(() => {});
-            setLossModalVisible(true);
-          }
-          startCountdown();
-        }
-      } catch {
-        if (alive) setLoadError(t("error.couldNotLoad"));
-      } finally {
-        if (alive) setLoading(false);
+      if (!todayMeta) {
+        setLoadError(failure);
+        return;
       }
-    }
 
+      hasLoadedRef.current = true;
+      setLoadError(null);
+
+      let gameState: DailyWordState;
+      if (saved && saved.puzzle_id === todayMeta.puzzle_id) {
+        gameState = saved;
+        // A restored board continues the session a killed app left open for
+        // this puzzle (#2654).
+        if (!saved.is_complete) syncResume({ puzzle_id: saved.puzzle_id });
+      } else {
+        if (saved) await clearState();
+        gameState = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
+      }
+
+      setState(gameState);
+
+      if (gameState.is_complete) {
+        if (gameState.won) {
+          setWinModalVisible(true);
+        } else {
+          // Fetch answer for loss modal
+          dailyWordApi
+            .getAnswer(gameState.puzzle_id)
+            .then((r) => {
+              if (alive()) setAnswer(r.answer.toUpperCase());
+            })
+            .catch(() => {});
+          setLossModalVisible(true);
+        }
+        startCountdown();
+      }
+    } catch {
+      if (alive()) setLoadError("failed");
+    } finally {
+      if (alive()) setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     load();
     return () => {
-      alive = false;
+      loadSeqRef.current++;
     };
     // Run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -992,12 +986,35 @@ export default function DailyWordScreen() {
       title={t("game.title")}
       requireBack
       onBack={() => navigation.popToTop()}
-      error={loadError}
+      error={
+        loadError === "offline"
+          ? t("error.needsConnection")
+          : loadError
+            ? t("error.couldNotLoad")
+            : null
+      }
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >
       <View style={styles.body}>
         {/* Toast */}
         <Toast message={toast} />
+
+        {loadError === "offline" && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("error.retry")}
+            style={[styles.retryButton, { backgroundColor: colors.accent }]}
+            onPress={() => {
+              setLoadError(null);
+              setLoading(true);
+              load();
+            }}
+          >
+            <Text style={[styles.retryText, { color: colors.textOnAccent }]}>
+              {t("error.retry")}
+            </Text>
+          </Pressable>
+        )}
 
         {/* Tile grid */}
         {state !== null && (
@@ -1240,6 +1257,16 @@ export default function DailyWordScreen() {
 }
 
 const styles = StyleSheet.create({
+  retryButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  retryText: {
+    fontFamily: typography.heading,
+    fontSize: 16,
+    fontWeight: "700",
+  },
   body: {
     flex: 1,
     alignItems: "center",

@@ -71,6 +71,12 @@ jest.mock("../../game/_shared/syncWorker", () => ({
   syncWorker: { flush: () => mockFlush() },
 }));
 
+// Home warms today's Daily Word metadata (#2925); its own suite covers the cache.
+const mockWarmTodayMeta = jest.fn().mockResolvedValue(undefined);
+jest.mock("../../game/daily_word/todayMeta", () => ({
+  warmTodayMeta: () => mockWarmTodayMeta(),
+}));
+
 // Connectivity — online by default; tests flip `isOnline`.
 const mockNetwork = { isOnline: true, isInitialized: true };
 jest.mock("../../game/_shared/NetworkContext", () =>
@@ -408,6 +414,23 @@ describe("HomeScreen — Arcade level pill (#2391)", () => {
     mockGetMyStats.mockResolvedValue(statsAtLevel(5));
     const { findByText } = await renderScreen();
     expect(await findByText("Lv 5")).toBeTruthy();
+  });
+
+  it("warms Daily Word's cache once on mount while online, not on focus (#2925)", async () => {
+    await renderScreen();
+    expect(mockWarmTodayMeta).toHaveBeenCalledTimes(1);
+
+    const focusCalls = mockAddListener.mock.calls.filter(([event]) => event === "focus");
+    await act(async () => {
+      focusCalls[focusCalls.length - 1][1]();
+    });
+    expect(mockWarmTodayMeta).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not warm Daily Word's cache while offline (#2925)", async () => {
+    mockNetwork.isOnline = false;
+    await renderScreen();
+    expect(mockWarmTodayMeta).not.toHaveBeenCalled();
   });
 
   it("does not call /stats/me while the device is known to be offline", async () => {
