@@ -18,32 +18,14 @@
  * Interior void: rows 1–6, cols 4–18 (8 cols × 6 rows = 48 positions, all empty).
  */
 
-import type { Layout } from "../types";
+import type { Layout, Slot } from "../types";
+import { rect } from "./build";
 
-function range(start: number, stopInclusive: number, step: number): number[] {
-  const out: number[] = [];
-  for (let v = start; v <= stopInclusive; v += step) out.push(v);
-  return out;
-}
-
-function ringLayer(layer: number): { col: number; row: number; layer: number }[] {
-  const outerCols = range(0, 22, 2);
-  const outerRows = [0, 1, 2, 3, 4, 5, 6, 7];
-  const innerCols = new Set(range(4, 18, 2));
-  const innerRows = new Set([1, 2, 3, 4, 5, 6]);
-  const out: { col: number; row: number; layer: number }[] = [];
-  for (const row of outerRows) {
-    for (const col of outerCols) {
-      if (!(innerCols.has(col) && innerRows.has(row))) {
-        out.push({ col, row, layer });
-      }
-    }
-  }
-  return out;
+/** 12×8 rectangle minus the 8×6 interior (cols 4–18, rows 1–6), row-major. */
+function ringLayer(layer: number): Slot[] {
+  return rect(layer, 0, 22, 0, 7).filter(
+    (s) => !(s.col >= 4 && s.col <= 18 && s.row >= 1 && s.row <= 6)
+  );
 }
 
 export const ARENA_LAYOUT: Layout = [...ringLayer(0), ...ringLayer(1), ...ringLayer(2)];
-
-if (ARENA_LAYOUT.length !== 144) {
-  throw new Error(`ARENA_LAYOUT has ${ARENA_LAYOUT.length} slots, expected 144`);
-}

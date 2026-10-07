@@ -25,7 +25,7 @@ cd backend && ruff check . && black --check . && python scripts/check_file_lengt
 cd frontend && npx eslint . && npx knip --no-progress
 # duplication (repo root)
 npx --yes jscpd@4.3.0 --threshold 2.5 --min-lines 20 --min-tokens 70 \
-  --ignore "**/__tests__/**,**/mahjong/layouts/**,**/node_modules/**,**/.venv/**,**/*.generated.*,**/locales/**,**/tests/**,**/alembic/**" \
+  --ignore "**/__tests__/**,**/node_modules/**,**/.venv/**,**/*.generated.*,**/locales/**,**/tests/**,**/alembic/**" \
   --format "typescript,tsx,python" frontend/src backend
 ```
 

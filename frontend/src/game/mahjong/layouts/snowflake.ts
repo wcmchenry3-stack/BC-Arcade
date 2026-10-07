@@ -12,24 +12,15 @@
  */
 
 import type { Layout } from "../types";
-
-function slot(col: number, row: number, layer: number) {
-  return { col, row, layer };
-}
-
-function rng(start: number, stopInclusive: number, step = 2): number[] {
-  const out: number[] = [];
-  for (let v = start; v <= stopInclusive; v += step) out.push(v);
-  return out;
-}
+import { cols, grid, slot } from "./build";
 
 export const SNOWFLAKE_LAYOUT: Layout = [
   // Layer 0 — center
-  ...[4, 5, 6, 7].flatMap((r) => rng(8, 20).map((c) => slot(c, r, 0))),
+  ...grid(0, cols(8, 20), [4, 5, 6, 7]),
   // Up arm: cols 12,14,16 rows 0-3
-  ...[0, 1, 2, 3].flatMap((r) => [slot(12, r, 0), slot(14, r, 0), slot(16, r, 0)]),
+  ...grid(0, [12, 14, 16], [0, 1, 2, 3]),
   // Down arm: cols 12,14,16 rows 8-11
-  ...[8, 9, 10, 11].flatMap((r) => [slot(12, r, 0), slot(14, r, 0), slot(16, r, 0)]),
+  ...grid(0, [12, 14, 16], [8, 9, 10, 11]),
   // Upper-right diagonal
   ...(
     [
@@ -84,19 +75,15 @@ export const SNOWFLAKE_LAYOUT: Layout = [
   ).map(([c, r]) => slot(c, r, 0)),
   // Horizontal extensions
   ...[5, 6].flatMap((r) => [
-    ...rng(22, 28).map((c) => slot(c, r, 0)),
-    ...rng(0, 6).map((c) => slot(c, r, 0)),
+    ...cols(22, 28).map((c) => slot(c, r, 0)),
+    ...cols(0, 6).map((c) => slot(c, r, 0)),
   ]),
   // Layer 1 — center raised + arm tips
-  ...[4, 5, 6, 7].flatMap((r) => rng(10, 18).map((c) => slot(c, r, 1))),
-  ...[2, 3].flatMap((r) => [slot(12, r, 1), slot(14, r, 1), slot(16, r, 1)]),
-  ...[8, 9].flatMap((r) => [slot(12, r, 1), slot(14, r, 1), slot(16, r, 1)]),
+  ...grid(1, cols(10, 18), [4, 5, 6, 7]),
+  ...grid(1, [12, 14, 16], [2, 3]),
+  ...grid(1, [12, 14, 16], [8, 9]),
   // Symmetric: col 22 right mirrors col 6 left (28 − 22 = 6)
-  ...[5, 6].flatMap((r) => [slot(22, r, 1), slot(6, r, 1)]),
+  ...grid(1, [22, 6], [5, 6]),
   // Layer 2 — core peak
-  ...[5, 6].flatMap((r) => rng(12, 18).map((c) => slot(c, r, 2))),
+  ...grid(2, cols(12, 18), [5, 6]),
 ];
-
-if (SNOWFLAKE_LAYOUT.length !== 144) {
-  throw new Error(`SNOWFLAKE_LAYOUT has ${SNOWFLAKE_LAYOUT.length} slots, expected 144`);
-}
