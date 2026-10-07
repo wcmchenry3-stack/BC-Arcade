@@ -46,6 +46,10 @@ async function layoutRows(
 }
 
 describe("SortBoard", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it("renders the board region with the correct accessibility label", async () => {
     const state = mkState([["red", "red", "red", "red"], ["blue", "blue", "blue", "blue"], []]);
     const { getByLabelText } = await render(
@@ -170,7 +174,6 @@ describe("SortBoard", () => {
     await act(async () => emit(true));
     expect(queryByTestId("pour-ghost-overlay", { includeHiddenElements: true })).toBeNull();
     expect(onPourComplete).toHaveBeenCalledTimes(1);
-    jest.restoreAllMocks();
   });
 
   it(

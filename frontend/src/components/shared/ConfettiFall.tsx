@@ -49,7 +49,7 @@ export function ConfettiFall({ colors, pieceStyle, timing, testID }: ConfettiFal
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
-      {colors.map((color, i) => (
+      {colors.slice(0, LEFTS.length).map((color, i) => (
         <FallingPiece
           key={i}
           index={i}
