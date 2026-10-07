@@ -142,4 +142,29 @@ describe("useDailyChallenge across local midnight (#2924)", () => {
     expect(result.current.phase).toBe("ready");
     expect(result.current.challenge?.challengeId).toBe("2026-09-27");
   });
+
+  it("refetches on foreground after midnight when online", async () => {
+    jest.spyOn(Date, "now").mockReturnValue(DAY1_LATE);
+    const { result } = await renderHook(() => useDailyChallenge());
+    await waitFor(() => expect(result.current.challenge?.challengeId).toBe("2026-09-27"));
+
+    jest.spyOn(Date, "now").mockReturnValue(DAY2_EARLY);
+    await act(async () => {
+      appStateListener?.("active");
+    });
+    await waitFor(() => expect(result.current.challenge?.challengeId).toBe("2026-09-28"));
+    expect(result.current.phase).toBe("ready");
+  });
+
+  it("refetches rather than keeping a response that spanned midnight", async () => {
+    jest.spyOn(Date, "now").mockReturnValue(DAY1_LATE);
+    mockGetDailyChallenge.mockImplementationOnce(() => {
+      // Midnight passes while the first request is in flight.
+      jest.spyOn(Date, "now").mockReturnValue(DAY2_EARLY);
+      return Promise.resolve(challengeFor("2026-09-27"));
+    });
+    const { result } = await renderHook(() => useDailyChallenge());
+    await waitFor(() => expect(result.current.challenge?.challengeId).toBe("2026-09-28"));
+    expect(mockGetDailyChallenge).toHaveBeenCalledTimes(2);
+  });
 });

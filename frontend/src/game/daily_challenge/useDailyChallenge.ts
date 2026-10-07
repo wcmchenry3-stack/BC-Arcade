@@ -48,6 +48,8 @@ export function useDailyChallenge(): DailyChallengeResult {
   const [held, setHeld] = useState<HeldChallenge | null>(null);
   // Current local day, re-read on foreground / focus / midnight so a rollover re-renders.
   const [today, setToday] = useState(() => localDayKey());
+  const [retryTick, setRetryTick] = useState(0);
+  const [timerTick, setTimerTick] = useState(0);
   const [failure, setFailure] = useState<"network" | "server" | null>(null);
   const inFlight = useRef(false);
   const mounted = useRef(true);
@@ -70,6 +72,10 @@ export function useDailyChallenge(): DailyChallengeResult {
       .then(() => withRetry(() => dailyChallengeApi.getDailyChallenge(tzOffsetMinutes())))
       .then((next) => {
         if (!mounted.current) return;
+        // The request spanned local midnight, so which day the server answered for is
+        // unknown (the flush and retries can outlast it). Don't stamp a guess; the
+        // `finally` below goes again.
+        if (localDayKey() !== requestDay) return;
         setToday(localDayKey());
         // A degraded free-slate answer (no progress) must not overwrite a challenge we
         // already hold — a hiccup in /status would otherwise reset "2 of 3" to "0 of 3".
@@ -87,6 +93,10 @@ export function useDailyChallenge(): DailyChallengeResult {
       })
       .finally(() => {
         inFlight.current = false;
+        if (mounted.current && localDayKey() !== requestDay) {
+          setToday(localDayKey());
+          setRetryTick((n) => n + 1);
+        }
       });
   }, [isOnline]);
 
@@ -111,19 +121,19 @@ export function useDailyChallenge(): DailyChallengeResult {
 
   useEffect(() => navigation.addListener("focus", syncDay), [navigation, syncDay]);
 
+  // A request that spanned midnight was discarded: run it again now `inFlight` is clear.
+  useEffect(() => {
+    if (retryTick > 0) refresh();
+  }, [retryTick, refresh]);
+
   // Fires just after local midnight while the app stays open in the foreground.
   useEffect(() => {
-    const id = setTimeout(syncDay, msUntilLocalMidnight() + 1000);
+    const id = setTimeout(() => {
+      syncDay();
+      setTimerTick((n) => n + 1); // re-arm even if the day did not change (clock/offset drift)
+    }, msUntilLocalMidnight() + 1000);
     return () => clearTimeout(id);
-  }, [today, syncDay]);
-
-  // The day rolled over while a request was in flight (it returned yesterday's), or
-  // a held challenge went stale: fetch again. A no-op while offline or in flight;
-  // reruns only when `held` or the day changes, so a failing refetch does not loop.
-  const stale = held !== null && held.day !== today;
-  useEffect(() => {
-    if (stale) refresh();
-  }, [stale, held, refresh]);
+  }, [today, timerTick, syncDay]);
 
   const challenge = held && held.day === today ? held.challenge : null;
 
