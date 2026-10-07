@@ -5,9 +5,7 @@ from __future__ import annotations
 import importlib.util
 import pathlib
 
-SCRIPT = (
-    pathlib.Path(__file__).parent.parent.parent / "scripts" / "check_large_files.py"
-)
+SCRIPT = pathlib.Path(__file__).parent.parent.parent / "scripts" / "check_large_files.py"
 _spec = importlib.util.spec_from_file_location("check_large_files", SCRIPT)
 guard = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(guard)
