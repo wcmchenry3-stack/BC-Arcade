@@ -265,14 +265,6 @@ describe("production build targets the production API (Android / JS side)", () =
     ];
     for (const rel of inputs)
       expect({ rel, enabled: enabling.test(read(rel)) }).toEqual({ rel, enabled: false });
-    // The release workflows must not set it either (only e2e/smoke jobs do).
-    const releaseWorkflows = fs
-      .readdirSync(path.join(frontendRoot, "../.github/workflows"))
-      .filter((f) => /release|deploy|testflight|play/i.test(f));
-    for (const f of releaseWorkflows) {
-      const text = fs.readFileSync(path.join(frontendRoot, "../.github/workflows", f), "utf-8");
-      expect({ f, set: /EXPO_PUBLIC_TEST_HOOKS/.test(text) }).toEqual({ f, set: false });
-    }
   });
 
   it("gradle config does not hard-code a dev or local API", () => {

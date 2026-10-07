@@ -1,4 +1,4 @@
-import { registerTestHooks } from "../testHooks/registry";
+import { registerTestHooks } from "../testHooksRegistry";
 
 const g = globalThis as unknown as Record<string, unknown>;
 

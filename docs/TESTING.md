@@ -82,7 +82,7 @@ Web (Expo Web) is a supported secondary platform used for testing and the free g
 | Playwright (web)      | `e2e/tests`, CI job `e2e`           | **Yes, the PR gate.** Selective by changed paths; push and `main` PRs run the full suite              |
 | Maestro (iOS/Android) | `e2e/maestro`, `mobile-smoke-*.yml` | No. Manual (`workflow_dispatch`) until further notice; Maestro is not expected to ship before go-live |
 
-E2E hooks (`window.__*`, `EXPO_PUBLIC_TEST_HOOKS=1` builds only) are installed through `registerTestHooks(namespace, hooks)` in `frontend/src/game/_shared/testHooks/registry.ts`; per-game hooks live in `game/<game>/testHooks.ts`. Import `areTestHooksEnabled` from `game/_shared/envFlags`, never from the heavy `_shared/testHooks` module. `releaseBuildConfig.test.ts` asserts no release input enables the flag.
+E2E hooks (`window.__*`, `EXPO_PUBLIC_TEST_HOOKS=1` builds only) are installed through `registerTestHooks(namespace, hooks)` in `frontend/src/game/_shared/testHooksRegistry.ts`; per-game hooks live in `game/<game>/testHooks.ts`. Import `areTestHooksEnabled` from `game/_shared/envFlags`, never from the heavy `_shared/testHooks` module. `releaseBuildConfig.test.ts` asserts no release input enables the flag.
 
 ## CI workflow structure (#2973)
 

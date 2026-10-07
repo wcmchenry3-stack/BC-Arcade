@@ -10,7 +10,7 @@
  * Imports only the dependency-free `envFlags` leaf, so any screen or engine can
  * use it without pulling in the logstore (see `envFlags.ts`).
  */
-import { areTestHooksEnabled } from "../envFlags";
+import { areTestHooksEnabled } from "./envFlags";
 
 export function registerTestHooks(
   namespace: string,

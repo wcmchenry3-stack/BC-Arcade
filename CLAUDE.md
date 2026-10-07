@@ -6,7 +6,7 @@
 
 **Primary targets: iOS (App Store) and Android (Play Store).** These are the store-released, monetized platforms.
 
-**Web (Expo Web) is a supported secondary platform used for testing and the free games; it is not a revenue platform. iOS and Android are primary. Platform-specific bugs should name the platform.** Do NOT default to investigating or fixing issues on web. **If a bug or feature request does not specify a platform, ask which platform is affected before doing any investigation.**
+**Web (Expo Web) is a supported secondary platform used for testing and the free games; it is not a revenue platform. iOS and Android are primary.** Do NOT default to investigating or fixing issues on web. **If a bug or feature request does not specify a platform, ask which platform is affected before doing any investigation.**
 
 Release toolchain — Expo is used as the development framework only:
 - iOS releases → **Xcode Cloud** (never `eas build` / Expo Go)

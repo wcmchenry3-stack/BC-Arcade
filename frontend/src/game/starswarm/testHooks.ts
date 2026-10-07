@@ -8,7 +8,7 @@
  * (result card, leaderboard submit, game sync) with the canvas frozen behind the card —
  * reaching game over by real play isn't practical in an E2E run.
  */
-import { registerTestHooks } from "../_shared/testHooks/registry";
+import { registerTestHooks } from "../_shared/testHooksRegistry";
 import type { FrameStatsSummary } from "./render/frameStats";
 import type { DifficultyTier, RunStats, StarSwarmState } from "./types";
 
