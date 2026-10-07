@@ -15,9 +15,9 @@
  * see the write-up in the PR/issue for that caveat).
  *
  * Usage:
- *   npx tsx scripts/hearts-pimc-spike.ts latency --samples 20,50,100
- *   npx tsx scripts/hearts-pimc-spike.ts benchmark --count 300 --samples 50
- *   npx tsx scripts/hearts-pimc-spike.ts ablation --count 300 --samples 50
+ *   npx --prefix frontend tsx scripts/hearts-pimc-spike.ts latency --samples 20,50,100
+ *   npx --prefix frontend tsx scripts/hearts-pimc-spike.ts benchmark --count 300 --samples 50
+ *   npx --prefix frontend tsx scripts/hearts-pimc-spike.ts ablation --count 300 --samples 50
  */
 
 import {
@@ -625,7 +625,7 @@ if (mode === "latency") {
   );
 } else {
   console.error(
-    "Usage: npx tsx scripts/hearts-pimc-spike.ts <latency|benchmark|ablation> [--count N] [--samples N|N,N,N]",
+    "Usage: npx --prefix frontend tsx scripts/hearts-pimc-spike.ts <latency|benchmark|ablation> [--count N] [--samples N|N,N,N]",
   );
   process.exit(1);
 }

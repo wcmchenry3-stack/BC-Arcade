@@ -34,21 +34,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+      - uses: ./.github/actions/setup-frontend
 
-      - name: Install JS dependencies
-        run: npm ci
-        working-directory: frontend
-
-      - name: Install Maestro CLI
-        run: |
-          export MAESTRO_VERSION=1.39.13
-          curl -Ls "https://get.maestro.mobile.dev" | bash
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - uses: ./.github/actions/maestro-install
 
       - name: Cache CocoaPods
         uses: actions/cache@v6
@@ -143,29 +131,7 @@ jobs:
 
       - name: Write job summary
         if: always()
-        shell: python3 {0}
-        run: |
-          import xml.etree.ElementTree as ET, os, glob
-          out = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
-          rows = []
-          # One report.xml per flow directory now (see the run step's
-          # per-directory invocation note above / #2350).
-          reports = sorted(glob.glob('maestro-results/*/report.xml'))
-          if not reports:
-              rows.append('| _(no reports — test runner may have crashed before any directory ran)_ | — |\n')
-          for report in reports:
-              try:
-                  root = ET.parse(report).getroot()
-                  suites = root.findall('testsuite') if root.tag == 'testsuites' else [root]
-                  for s in suites:
-                      name = s.get('name', 'unknown').removeprefix('e2e/maestro/flows/').removesuffix('.yaml')
-                      failed = int(s.get('failures', 0)) + int(s.get('errors', 0))
-                      rows.append(f'| `{name}` | {"❌ FAIL" if failed else "✅ PASS"} |\n')
-              except ET.ParseError as exc:
-                  rows.append(f'| _(parse error in {report}: {exc})_ | — |\n')
-          with open(out, 'a') as f:
-              f.write('## Maestro iOS Smoke (${{ needs.detect-maestro-scope.outputs.label }})\n\n| Flow | Result |\n|---|---|\n')
-              f.writelines(rows)
+        run: python3 e2e/maestro/summarize.py "iOS" "${{ needs.detect-maestro-scope.outputs.label }}"
 
       - name: Upload Maestro results
         uses: actions/upload-artifact@v7

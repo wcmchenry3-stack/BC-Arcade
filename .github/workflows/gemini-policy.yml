@@ -1,5 +1,12 @@
 name: Gemini API Policy Check
 
+# Kept deliberately (#2973 review): nothing in the app calls the Gemini API
+# today, so this check passes trivially — but it is the guard that fails a PR
+# the day a Gemini reference is introduced without the policy in
+# .claude/policies/gemini.md being followed, and it is part of the
+# policy-compliance agent's workflow (.claude/agents/policy-compliance.md).
+# Removing it is a policy decision, not a CI cleanup; it costs one cheap job.
+
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]

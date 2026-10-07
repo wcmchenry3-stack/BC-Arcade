@@ -6,17 +6,17 @@
  * line around them. See docs/TESTING.md for the methodology.
  *
  * Modes:
- *   npx tsx scripts/simulate-hearts.ts                        # descriptive report, 3000 games per matchup
- *   npx tsx scripts/simulate-hearts.ts --count 900             # ... 900 games per matchup
- *   npx tsx scripts/simulate-hearts.ts --gate                  # full SPRT gate, every group
- *   npx tsx scripts/simulate-hearts.ts --gate --group field    # one group (as CI's matrix does)
- *   npx tsx scripts/simulate-hearts.ts --gate --json out.json  # also write machine-readable results
- *   npx tsx scripts/simulate-hearts.ts --update-baseline --reason "why"   # re-measure baseline.json
- *   npx tsx scripts/simulate-hearts.ts --regret                # per-decision regret vs the reference (#2239)
- *   npx tsx scripts/simulate-hearts.ts --regret --blocks 40 --sample-every 4 --oracle-player
- *   npx tsx scripts/simulate-hearts.ts --regret --pimc 16          # also grade the PIMC engine (16 deals/move)
- *   npx tsx scripts/simulate-hearts.ts --log-games 10          # 10 fully-logged games (NDJSON)
- *   npx tsx scripts/simulate-hearts.ts --log-games 10 --difficulties cautious,schemer,daring,schemer
+ *   npx --prefix frontend tsx scripts/simulate-hearts.ts                        # descriptive report, 3000 games per matchup
+ *   npx --prefix frontend tsx scripts/simulate-hearts.ts --count 900             # ... 900 games per matchup
+ *   npx --prefix frontend tsx scripts/simulate-hearts.ts --gate                  # full SPRT gate, every group
+ *   npx --prefix frontend tsx scripts/simulate-hearts.ts --gate --group field    # one group (as CI's matrix does)
+ *   npx --prefix frontend tsx scripts/simulate-hearts.ts --gate --json out.json  # also write machine-readable results
+ *   npx --prefix frontend tsx scripts/simulate-hearts.ts --update-baseline --reason "why"   # re-measure baseline.json
+ *   npx --prefix frontend tsx scripts/simulate-hearts.ts --regret                # per-decision regret vs the reference (#2239)
+ *   npx --prefix frontend tsx scripts/simulate-hearts.ts --regret --blocks 40 --sample-every 4 --oracle-player
+ *   npx --prefix frontend tsx scripts/simulate-hearts.ts --regret --pimc 16          # also grade the PIMC engine (16 deals/move)
+ *   npx --prefix frontend tsx scripts/simulate-hearts.ts --log-games 10          # 10 fully-logged games (NDJSON)
+ *   npx --prefix frontend tsx scripts/simulate-hearts.ts --log-games 10 --difficulties cautious,schemer,daring,schemer
  *
  * `--count` is games per matchup (rounded up to whole blocks), aligned with
  * scripts/simulate-yacht.ts (#2204). `--seed` overrides the deal seed for

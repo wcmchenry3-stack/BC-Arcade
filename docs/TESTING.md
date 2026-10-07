@@ -71,6 +71,18 @@ Original baseline, for history (2026-10-04, before the coverage stories): lines 
 
 **Reading the report.** `jest --coverage` writes `frontend/coverage/` (`lcov-report/index.html` for browsing, `coverage-summary.json` for totals; the `coverageReporters` list in package.json guarantees both exist). Files with 0 % are now listed in the text table instead of being absent; sort by uncovered lines to pick the next target. Quick totals only: `npx jest --coverage --coverageReporters=text-summary --silent`.
 
+## CI workflow structure (#2973)
+
+Shared pieces so a workflow change is made once:
+
+- **`.github/actions/setup-frontend`** (composite): Node 22 + npm cache + `npm ci` in `frontend/`. Input `metro-cache: "true"` also restores the Metro transform cache (used by the Android bundle/release/Maestro jobs). Every workflow that needs the frontend toolchain calls it right after `actions/checkout`; put `if:` on the calling step to make it conditional.
+- **`.github/actions/maestro-install`** (composite): installs the pinned Maestro CLI. **`e2e/maestro/summarize.py <platform> <label>`** writes the per-flow job summary for both `mobile-smoke-android.yml` and `mobile-smoke-ios.yml`.
+- **`.github/paths/game-paths.yml`**: the one path-to-game table. `detect-e2e-scope` (Playwright, in `ci.yml`) and `detect-maestro-scope.yml` both pass it to `dorny/paths-filter` as `filters:`. Per-game keys are shared; `shared` is common to both, `playwright_shared` / `maestro_shared` are suite-specific "run everything" triggers, and `logstore` is Playwright-only. Adding a game means adding a key there and one line in each scope step.
+- **`tsx`** is a pinned `frontend` devDependency. From the repo root run scripts as `npx --prefix frontend tsx scripts/<name>.ts` (CI and every doc use this form); the working directory stays the repo root.
+- `openai-policy` runs only from `openai-policy.yml` (it used to run a second time inside `ci.yml`). `gemini-policy.yml` is kept on purpose; see the comment in the file.
+
+Required check names are unchanged by this restructuring; do not rename a job's `name:` (or a job id that has no `name:`) without updating branch protection.
+
 ## Test layout rules (#2955)
 
 These keep the suite split-safe: when a large source file is split into modules, its tests move one-to-one instead of being rewritten, and a moved test can never silently stop testing the shipped code.
@@ -351,11 +363,11 @@ added by #2156); its `regret` job runs
 `ai.calibrate.test.ts` (#2244, below). Run it locally from the repo root:
 
 ```bash
-npx tsx scripts/simulate-yacht.ts --gate                       # everything (~40 min)
-npx tsx scripts/simulate-yacht.ts --gate --group self-play     # one CI group
-npx tsx scripts/simulate-yacht.ts --gate --group hard-vs-easy --games 400  # quick look
-npx tsx scripts/simulate-yacht.ts --a hard --b medium --blocks 250         # ad-hoc matchup
-npx tsx scripts/simulate-yacht.ts --a hard --b medium --mode independent   # unpaired dice
+npx --prefix frontend tsx scripts/simulate-yacht.ts --gate                       # everything (~40 min)
+npx --prefix frontend tsx scripts/simulate-yacht.ts --gate --group self-play     # one CI group
+npx --prefix frontend tsx scripts/simulate-yacht.ts --gate --group hard-vs-easy --games 400  # quick look
+npx --prefix frontend tsx scripts/simulate-yacht.ts --a hard --b medium --blocks 250         # ad-hoc matchup
+npx --prefix frontend tsx scripts/simulate-yacht.ts --a hard --b medium --mode independent   # unpaired dice
 ```
 
 A failing band prints the band, the observed value and its CI, e.g.
@@ -603,10 +615,10 @@ the midpoint between H0 and H1. The report marks it
 `(truncated at the block cap)`. `--max-blocks` must be at least 1.
 
 ```bash
-npx tsx scripts/simulate-hearts.ts --gate                     # both groups
-npx tsx scripts/simulate-hearts.ts --gate --group field       # one CI group
-npx tsx scripts/simulate-hearts.ts --gate --max-blocks 1000   # quick look (truncates)
-npx tsx scripts/simulate-hearts.ts --count 3000               # descriptive report, no verdicts
+npx --prefix frontend tsx scripts/simulate-hearts.ts --gate                     # both groups
+npx --prefix frontend tsx scripts/simulate-hearts.ts --gate --group field       # one CI group
+npx --prefix frontend tsx scripts/simulate-hearts.ts --gate --max-blocks 1000   # quick look (truncates)
+npx --prefix frontend tsx scripts/simulate-hearts.ts --count 3000               # descriptive report, no verdicts
 ```
 
 **Reading a failure.**
@@ -637,7 +649,7 @@ behaviour updates `baseline.json`, and it does so in the same PR as the
 change:
 
 ```bash
-npx tsx scripts/simulate-hearts.ts --update-baseline --reason "#1234: rank-aware moon attempts"
+npx --prefix frontend tsx scripts/simulate-hearts.ts --update-baseline --reason "#1234: rank-aware moon attempts"
 ```
 
 This re-measures every regression metric at a fixed sample size on a seed
@@ -811,10 +823,10 @@ anything it didn't have.
 **Run it.** It is a report, not a gate, and always exits 0:
 
 ```bash
-npx tsx scripts/simulate-hearts.ts --regret                                  # 100 blocks, every play graded
-npx tsx scripts/simulate-hearts.ts --regret --blocks 40 --sample-every 4     # quicker
-npx tsx scripts/simulate-hearts.ts --regret --oracle-player                  # also run the cheating reference player
-npx tsx scripts/simulate-hearts.ts --regret --pimc 16                        # also grade the PIMC engine (#2587), 16 deals a move
+npx --prefix frontend tsx scripts/simulate-hearts.ts --regret                                  # 100 blocks, every play graded
+npx --prefix frontend tsx scripts/simulate-hearts.ts --regret --blocks 40 --sample-every 4     # quicker
+npx --prefix frontend tsx scripts/simulate-hearts.ts --regret --oracle-player                  # also run the cheating reference player
+npx --prefix frontend tsx scripts/simulate-hearts.ts --regret --pimc 16                        # also grade the PIMC engine (#2587), 16 deals a move
 ```
 
 Each persona takes the test seat against a Schemer field on the same deals,
@@ -882,7 +894,7 @@ reports, per difficulty × wave type:
 
 It lives in `frontend/src/game/starswarm/sim/`, and its CLI is `scripts/simulate-starswarm.ts`. A
 fast smoke preset runs with the normal jest suite. The full runs use the CLI
-(`npx tsx scripts/simulate-starswarm.ts --preset baseline --jobs 4`). How to run it, shard it and
+(`npx --prefix frontend tsx scripts/simulate-starswarm.ts --preset baseline --jobs 4`). How to run it, shard it and
 override tuning in the sim only:
 [starswarm.md → Balance simulation](games/starswarm.md#balance-simulation-2880).
 

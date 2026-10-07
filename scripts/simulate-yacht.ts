@@ -6,11 +6,11 @@
  * old stale bands table was retired).
  *
  * Usage (from the repo root):
- *   npx tsx scripts/simulate-yacht.ts --a hard --b medium            # ad-hoc matchup
- *   npx tsx scripts/simulate-yacht.ts --a hard --b hard --blocks 500 --mode independent
- *   npx tsx scripts/simulate-yacht.ts --gate                         # every gate matchup + bands
- *   npx tsx scripts/simulate-yacht.ts --gate --matchup hard-vs-medium --games 800
- *   npx tsx scripts/simulate-yacht.ts --a easy --b easy --json out.json   # raw per-game records
+ *   npx --prefix frontend tsx scripts/simulate-yacht.ts --a hard --b medium            # ad-hoc matchup
+ *   npx --prefix frontend tsx scripts/simulate-yacht.ts --a hard --b hard --blocks 500 --mode independent
+ *   npx --prefix frontend tsx scripts/simulate-yacht.ts --gate                         # every gate matchup + bands
+ *   npx --prefix frontend tsx scripts/simulate-yacht.ts --gate --matchup hard-vs-medium --games 800
+ *   npx --prefix frontend tsx scripts/simulate-yacht.ts --a easy --b easy --json out.json   # raw per-game records
  *
  * Flags:
  *   --a, --b      easy | medium | hard (ad-hoc mode; default hard vs medium)

@@ -10,7 +10,7 @@
  * matches published implementations of the same problem (Verhoeff, Glenn
  * 2006, and others solving the same joker/bonus-score variant).
  *
- * Usage: npx tsx scripts/build-yacht-oracle.ts
+ * Usage: npx --prefix frontend tsx scripts/build-yacht-oracle.ts
  */
 
 import { writeFileSync } from "node:fs";

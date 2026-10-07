@@ -5,14 +5,14 @@
  * engineVariant.ts, presets.ts, report.ts); this script is the command line around them. See
  * docs/games/starswarm.md → "Balance simulation" for the method.
  *
- *   npx tsx scripts/simulate-starswarm.ts                                  # baseline, 200 seeds/cell
- *   npx tsx scripts/simulate-starswarm.ts --preset offense --jobs 4        # fan/pierce/damage sweeps
- *   npx tsx scripts/simulate-starswarm.ts --preset sensitivity --jobs 4    # one-at-a-time sweeps
- *   npx tsx scripts/simulate-starswarm.ts --preset proposal --jobs 4       # pre-#2880 tuning vs the shipped one
- *   npx tsx scripts/simulate-starswarm.ts --preset fast                    # the smoke cells (seconds)
+ *   npx --prefix frontend tsx scripts/simulate-starswarm.ts                                  # baseline, 200 seeds/cell
+ *   npx --prefix frontend tsx scripts/simulate-starswarm.ts --preset offense --jobs 4        # fan/pierce/damage sweeps
+ *   npx --prefix frontend tsx scripts/simulate-starswarm.ts --preset sensitivity --jobs 4    # one-at-a-time sweeps
+ *   npx --prefix frontend tsx scripts/simulate-starswarm.ts --preset proposal --jobs 4       # pre-#2880 tuning vs the shipped one
+ *   npx --prefix frontend tsx scripts/simulate-starswarm.ts --preset fast                    # the smoke cells (seconds)
  *   … --seeds 50 --diffs Captain,Ensign --scenarios boss-exposed --pilots duel --variants base,hp8
  *   … --json out.json --md out.md                                          # records + report files
- *   npx tsx scripts/simulate-starswarm.ts --merge a.json,b.json --md all.md # re-report saved runs
+ *   npx --prefix frontend tsx scripts/simulate-starswarm.ts --merge a.json,b.json --md all.md # re-report saved runs
  *
  * `--jobs N` forks N shard processes (seeds i % N) and merges their records.
  */
