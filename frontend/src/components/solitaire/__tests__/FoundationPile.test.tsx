@@ -1,10 +1,10 @@
 import React from "react";
 import { render, fireEvent } from "@testing-library/react-native";
 
-import { ThemeProvider } from "../../../../theme/ThemeContext";
-import type { Card } from "../../types";
+import { ThemeProvider } from "../../../theme/ThemeContext";
+import type { Card } from "../../../game/solitaire/types";
 import FoundationPile from "../FoundationPile";
-import { DragProvider } from "../../../_shared/drag/DragContext";
+import { DragProvider } from "../../../game/_shared/drag/DragContext";
 
 function withTheme(children: React.ReactNode) {
   return (

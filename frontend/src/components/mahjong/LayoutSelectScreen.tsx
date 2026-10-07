@@ -3,8 +3,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
-import type { LayoutMeta } from "./types";
-import type { MahjongProgress } from "./storage";
+import type { LayoutMeta } from "../../game/mahjong/types";
+import type { MahjongProgress } from "../../game/mahjong/storage";
 
 const COLS = 2;
 

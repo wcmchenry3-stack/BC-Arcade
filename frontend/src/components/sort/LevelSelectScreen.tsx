@@ -1,10 +1,10 @@
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
-import { useTheme } from "../../../theme/ThemeContext";
-import { typography } from "../../../theme/typography";
-import type { LevelData } from "../api";
-import type { SortProgress } from "../storage";
+import { useTheme } from "../../theme/ThemeContext";
+import { typography } from "../../theme/typography";
+import type { LevelData } from "../../game/sort/api";
+import type { SortProgress } from "../../game/sort/storage";
 
 const COLS = 4;
 

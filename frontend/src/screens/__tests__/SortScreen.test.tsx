@@ -33,8 +33,8 @@ jest.mock("../../game/sort/solver", () => {
   };
 });
 
-jest.mock("../../game/sort/components/SortBoard", () => {
-  const mod = jest.requireActual("../../game/sort/components/SortBoard");
+jest.mock("../../components/sort/SortBoard", () => {
+  const mod = jest.requireActual("../../components/sort/SortBoard");
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require("react");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

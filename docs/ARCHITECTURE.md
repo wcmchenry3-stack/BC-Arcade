@@ -171,7 +171,32 @@ be:
 This is a discipline, not new infrastructure. Existing games are audited for
 compliance under epic #894.
 
-### 3.1 Determinism and the seeded RNG (#2985)
+### 3.1 Where game code lives
+
+One folder convention (#2980, epic #2950):
+
+| Kind of code                                                | Location                          |
+| ----------------------------------------------------------- | --------------------------------- |
+| Engines, types, storage, sounds, layout, solvers, hooks     | `frontend/src/game/<name>/`       |
+| React components for a game (boards, piles, tiles, pickers) | `frontend/src/components/<name>/` |
+| Screens                                                     | `frontend/src/screens/`           |
+
+`game/<name>/` is headless: nothing in it may import from `components/` or
+`screens/` (enforced by the `bc-arcade/no-game-ui-imports` ESLint rule, which
+has no `.tsx` exemption apart from the list below).
+
+Explicit exception to the lint rule, plus contexts that stay under `game/`:
+
+- `game/_shared/**` — the cross-game card/drag/deck UI kit and its contexts
+  (`SelectableCard`, `drag/*`, `decks/*`, `CardSizeContext`, `SoundContext`,
+  `NetworkContext`). These are the only `.tsx` files allowed to import
+  `components/`.
+- Per-game React contexts (`game/blackjack/BlackjackGameContext.tsx`,
+  `game/hearts/RoundsContext.tsx`, `game/yacht/ScorecardContext.tsx`) stay in
+  `game/<name>/` by design. They are **not** exempt from the lint rule; they pass
+  because they import no UI.
+
+### 3.2 Determinism and the seeded RNG (#2985)
 
 Engines with seedable shuffles, deals or rolls route that randomness through a
 per-engine slot rather than calling `Math.random` directly (purely cosmetic
