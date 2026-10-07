@@ -2,12 +2,16 @@ import React from "react";
 import { StyleSheet } from "react-native";
 import { render, fireEvent } from "@testing-library/react-native";
 
-import { ThemeProvider } from "../../../../theme/ThemeContext";
-import type { Card, Rank, Suit } from "../../types";
+import { ThemeProvider } from "../../../theme/ThemeContext";
+import type { Card, Rank, Suit } from "../../../game/solitaire/types";
 import TableauPile, { computeTableauOffsets, MIN_FACE_UP_STRIPE } from "../TableauPile";
 import { CARD_WIDTH } from "../CardView";
-import { CardSizeContext, computeCardSize, MIN_CARD_W } from "../../../_shared/CardSizeContext";
-import { DragProvider } from "../../../_shared/drag/DragContext";
+import {
+  CardSizeContext,
+  computeCardSize,
+  MIN_CARD_W,
+} from "../../../game/_shared/CardSizeContext";
+import { DragProvider } from "../../../game/_shared/drag/DragContext";
 
 function withTheme(children: React.ReactNode) {
   return (

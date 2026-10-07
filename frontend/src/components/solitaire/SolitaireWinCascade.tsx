@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef } from "react";
-import { useTheme } from "../../../theme/ThemeContext";
-import { ConfettiFall, type ConfettiFallTiming } from "../../../components/shared/ConfettiFall";
-import { useReduceMotionStatus } from "../../../components/shared/useReduceMotion";
-import { playTimedPhases, type PhaseTimeline } from "../../../components/shared/timedPhases";
+import { useTheme } from "../../theme/ThemeContext";
+import { ConfettiFall, type ConfettiFallTiming } from "../shared/ConfettiFall";
+import { useReduceMotionStatus } from "../shared/useReduceMotion";
+import { playTimedPhases, type PhaseTimeline } from "../shared/timedPhases";
 
 /** How long the cascade plays before handing over to the result card. */
 export const WIN_CASCADE_MS = 2000;

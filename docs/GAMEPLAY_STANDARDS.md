@@ -43,7 +43,7 @@ The flow is **top-down**: Logic feeds Layout, Gesture triggers Logic or Animatio
 
 ### Rule
 
-The rule engine lives in `frontend/src/game/<name>/engine.ts` and is fully headless — no React, no AsyncStorage, no animation, no platform imports. See [`ARCHITECTURE.md §3`](ARCHITECTURE.md#3-the-rule-engine--written-once).
+The rule engine lives in `frontend/src/game/<name>/engine.ts` and is fully headless — no React, no AsyncStorage, no animation, no platform imports. See [`ARCHITECTURE.md §3`](ARCHITECTURE.md#3-the-rule-engine--written-once). All React UI for a game lives in `frontend/src/components/<name>/` and `screens/`, never in `game/<name>/` (see [§3.1](ARCHITECTURE.md#31-where-game-code-lives)).
 
 ### Conventions
 
@@ -98,12 +98,12 @@ function calculate<Name>Layout(input: <Name>LayoutInput): <Name>Layout { ... }
 
 ### Reference implementations
 
-| Game        | Layout Function                                                                       | Notes                                                            |
-| ----------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Solitaire   | `useResponsiveCardSize()` in `CardSizeContext`                                        | `scale = min(1, effectiveWidth / naturalBoardWidth)`             |
-| FreeCell    | Same `CardSizeContext`                                                                | Smaller default card (40×57) for 8-column fit                    |
-| Bottle Sort | Inline in `SortBoard.tsx`                                                             | `bottleH = min(defaultH, maxBottleH)` from `availableHeight`     |
-| Mahjong     | `calculateMahjongLayout()` in `frontend/src/game/mahjong/layout.ts`                         | Responsive layout with tested fit/clamp behavior                  |
+| Game        | Layout Function                                                     | Notes                                                        |
+| ----------- | ------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Solitaire   | `useResponsiveCardSize()` in `CardSizeContext`                      | `scale = min(1, effectiveWidth / naturalBoardWidth)`         |
+| FreeCell    | Same `CardSizeContext`                                              | Smaller default card (40×57) for 8-column fit                |
+| Bottle Sort | Inline in `SortBoard.tsx`                                           | `bottleH = min(defaultH, maxBottleH)` from `availableHeight` |
+| Mahjong     | `calculateMahjongLayout()` in `frontend/src/game/mahjong/layout.ts` | Responsive layout with tested fit/clamp behavior             |
 
 ---
 
@@ -135,6 +135,7 @@ For a simple tap-only board with no competing gesture recognizers, prefer an acc
 Use `Gesture.Tap()` inside `<GestureDetector>` when the game genuinely needs RNGH composition or coordination with another gesture. In that case, the gesture surface must provide an explicit accessibility activation path that reaches the same validated action as the touch gesture.
 
 Current examples:
+
 - Bottle Sort intentionally keeps `TouchableOpacity` in `BottleView`; its bottles are accessible buttons and there is no competing RNGH gesture on that surface.
 - Blackjack and Sudoku likewise may keep their existing accessible tap controls unless a real gesture-contention problem justifies migration.
 - Canvas-based games (Mahjong on native uses Skia, on web uses Canvas2D) implement hit-testing at the canvas/root surface because there are no individual React elements per tile; the game must provide separate accessible state/actions where required.
@@ -152,7 +153,7 @@ Current examples:
 | ----------- | ---------------------------------------------- | ---------------------------------------------------- |
 | Solitaire   | `DraggableCard` (Pan + Tap via shared system)  | `frontend/src/game/_shared/drag/DraggableCard.tsx`   |
 | FreeCell    | Same shared system + double-tap (300ms window) | `frontend/src/components/freecell/FreeCellBoard.tsx` |
-| Bottle Sort | Accessible `TouchableOpacity` per bottle       | `frontend/src/game/sort/components/BottleView.tsx`   |
+| Bottle Sort | Accessible `TouchableOpacity` per bottle       | `frontend/src/components/sort/BottleView.tsx`        |
 | Mahjong     | `onPress` → canvas hit-test                    | `frontend/src/components/mahjong/GameCanvas.tsx`     |
 
 ---
@@ -183,12 +184,12 @@ All per-frame animation uses `react-native-reanimated` shared values and worklet
 
 ### Reference implementations
 
-| Game        | Animation                                               | File                                                             |
-| ----------- | ------------------------------------------------------- | ---------------------------------------------------------------- |
-| Solitaire   | Win cascade, card lift/glow, shake                      | `frontend/src/game/solitaire/components/SolitaireWinCascade.tsx` |
-| FreeCell    | Foundation complete, game win, auto-complete            | `frontend/src/components/freecell/FreeCellGameWinAnimation.tsx`  |
-| Bottle Sort | Pour choreography (lift, travel, tilt, stream)          | `frontend/src/game/sort/components/SortBoard.tsx`                |
-| Mahjong     | Match burst (FlyingPair), shuffle pulse, deadlock shake | `frontend/src/screens/MahjongScreen.tsx`                         |
+| Game        | Animation                                               | File                                                            |
+| ----------- | ------------------------------------------------------- | --------------------------------------------------------------- |
+| Solitaire   | Win cascade, card lift/glow, shake                      | `frontend/src/components/solitaire/SolitaireWinCascade.tsx`     |
+| FreeCell    | Foundation complete, game win, auto-complete            | `frontend/src/components/freecell/FreeCellGameWinAnimation.tsx` |
+| Bottle Sort | Pour choreography (lift, travel, tilt, stream)          | `frontend/src/components/sort/SortBoard.tsx`                    |
+| Mahjong     | Match burst (FlyingPair), shuffle pulse, deadlock shake | `frontend/src/screens/MahjongScreen.tsx`                        |
 
 ---
 
@@ -299,12 +300,12 @@ Update `isCardInDragStack()` in the same file to handle the new variant.
 
 ### Known iOS pitfalls
 
-| Pitfall                                  | Symptom                           | Fix                                                                              |
-| ---------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------- |
-| `GestureHandlerRootView` not at app root | Pan gesture silently fails on iOS | Ensure it wraps `<App />` once, at the top                                       |
-| Parent `overflow: hidden`                | Ghost card invisible during drag  | Remove `overflow: hidden` from any ancestor of `DragContainer`                   |
-| Pan activation tuned too aggressively      | Drag fires on taps or feels sticky | Start from the shared card drag's tested `minDistance(5)`; change only with device regression coverage |
-| Testing only on simulator                | Works in sim, fails on device     | iOS UIGestureRecognizer priority differs from simulator; test on physical device |
+| Pitfall                                  | Symptom                            | Fix                                                                                                    |
+| ---------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `GestureHandlerRootView` not at app root | Pan gesture silently fails on iOS  | Ensure it wraps `<App />` once, at the top                                                             |
+| Parent `overflow: hidden`                | Ghost card invisible during drag   | Remove `overflow: hidden` from any ancestor of `DragContainer`                                         |
+| Pan activation tuned too aggressively    | Drag fires on taps or feels sticky | Start from the shared card drag's tested `minDistance(5)`; change only with device regression coverage |
+| Testing only on simulator                | Works in sim, fails on device      | iOS UIGestureRecognizer priority differs from simulator; test on physical device                       |
 
 ---
 

@@ -1,8 +1,8 @@
 import React from "react";
 import { fireEvent, render } from "@testing-library/react-native";
-import { ThemeProvider } from "../../../../theme/ThemeContext";
+import { ThemeProvider } from "../../../theme/ThemeContext";
 import BottleView from "../BottleView";
-import type { Color } from "../../types";
+import type { Color } from "../../../game/sort/types";
 
 function withTheme(children: React.ReactNode) {
   return <ThemeProvider>{children}</ThemeProvider>;

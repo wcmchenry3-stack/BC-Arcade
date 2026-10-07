@@ -80,7 +80,7 @@ import {
   type MahjongProgress,
   type MahjongStats,
 } from "../game/mahjong/storage";
-import LayoutSelectScreen from "../game/mahjong/LayoutSelectScreen";
+import LayoutSelectScreen from "../components/mahjong/LayoutSelectScreen";
 import { useMahjongAudio } from "../game/mahjong/useMahjongAudio";
 import { useMahjongPersistence } from "../game/mahjong/useMahjongPersistence";
 import { freeIdsFor, useFreeTiles } from "../game/mahjong/useFreeTiles";

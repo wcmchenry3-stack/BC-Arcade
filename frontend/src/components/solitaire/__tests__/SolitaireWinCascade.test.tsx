@@ -1,10 +1,10 @@
 import React from "react";
 import { AccessibilityInfo } from "react-native";
 import { act, render } from "@testing-library/react-native";
-import { ThemeProvider } from "../../../../theme/ThemeContext";
+import { ThemeProvider } from "../../../theme/ThemeContext";
 import { SolitaireWinCascade, WIN_CASCADE_MS } from "../SolitaireWinCascade";
-import { captureReduceMotionChange } from "../../../../test-utils/reduceMotion";
-import { useReduceMotion } from "../../../../components/shared/useReduceMotion";
+import { captureReduceMotionChange } from "../../../test-utils/reduceMotion";
+import { useReduceMotion } from "../../shared/useReduceMotion";
 
 /** Another element on screen that tracks the setting before the win. */
 function OtherConsumer() {

@@ -14,14 +14,14 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
-import { useTheme } from "../../../theme/ThemeContext";
-import type { Card, DrawMode } from "../types";
-import type { CanonicalSuit } from "../../_shared/decks/types";
+import { useTheme } from "../../theme/ThemeContext";
+import type { Card, DrawMode } from "../../game/solitaire/types";
+import type { CanonicalSuit } from "../../game/_shared/decks/types";
 import { CARD_WIDTH } from "./CardView";
-import { useCardSize } from "../../_shared/CardSizeContext";
-import { rankLabel } from "../../_shared/decks/cardId";
-import { DraggableCard } from "../../_shared/drag/DraggableCard";
-import SelectableCard from "../../_shared/SelectableCard";
+import { useCardSize } from "../../game/_shared/CardSizeContext";
+import { rankLabel } from "../../game/_shared/decks/cardId";
+import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
+import SelectableCard from "../../game/_shared/SelectableCard";
 import type { SharedValue } from "react-native-reanimated";
 
 export interface StockWastePileProps {

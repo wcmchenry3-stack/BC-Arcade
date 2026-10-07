@@ -1,10 +1,10 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import SharedPlayingCard from "../../../components/shared/PlayingCard";
-import { rankLabel } from "../../_shared/decks/cardId";
-import type { CanonicalSuit } from "../../_shared/decks/types";
-import { useCardSize } from "../../_shared/CardSizeContext";
-import type { Card } from "../types";
+import SharedPlayingCard from "../shared/PlayingCard";
+import { rankLabel } from "../../game/_shared/decks/cardId";
+import type { CanonicalSuit } from "../../game/_shared/decks/types";
+import { useCardSize } from "../../game/_shared/CardSizeContext";
+import type { Card } from "../../game/solitaire/types";
 
 export interface CardViewProps {
   readonly card: Card;

@@ -24,9 +24,9 @@ import {
 } from "../game/sort/engine";
 import { getNextHintAsync } from "../game/sort/solver";
 import type { Color, SortState } from "../game/sort/types";
-import SortBoard, { POUR_PER_UNIT_MS } from "../game/sort/components/SortBoard";
-import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../game/sort/components/BottleView";
-import LevelSelectScreen from "../game/sort/components/LevelSelectScreen";
+import SortBoard, { POUR_PER_UNIT_MS } from "../components/sort/SortBoard";
+import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../components/sort/BottleView";
+import LevelSelectScreen from "../components/sort/LevelSelectScreen";
 import { sortApi, type LevelData } from "../game/sort/api";
 import { isNetworkError } from "../game/_shared/httpClient";
 import { withRetry } from "../game/_shared/withRetry";

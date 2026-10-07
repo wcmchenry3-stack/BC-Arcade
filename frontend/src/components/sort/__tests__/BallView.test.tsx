@@ -1,6 +1,6 @@
 import React from "react";
 import { render } from "@testing-library/react-native";
-import { ThemeProvider } from "../../../../theme/ThemeContext";
+import { ThemeProvider } from "../../../theme/ThemeContext";
 import BallView from "../BallView";
 
 function withTheme(children: React.ReactNode) {
@@ -14,7 +14,7 @@ describe("BallView", () => {
   });
 
   it("renders each color with the correct label", async () => {
-    const cases: [import("../../types").Color, string][] = [
+    const cases: [import("../../../game/sort/types").Color, string][] = [
       ["blue", "Blue"],
       ["green", "Green"],
       ["yellow", "Yellow"],

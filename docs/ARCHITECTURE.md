@@ -55,21 +55,21 @@ game servers.
 shared product routers plus the few game-specific services that genuinely need
 server behavior.
 
-| Area | Location | Responsibility |
-| --- | --- | --- |
-| Shared game sessions | `backend/games/` | Create/complete games, append events, ranking, board definitions, progression helpers, shared schemas |
-| Game vocabulary | `backend/vocab.py` | Canonical `GameType` and `GameOutcome` vocabulary |
-| Database | `backend/db/` | SQLAlchemy engine/session setup and persisted models |
-| Schema migrations | `backend/alembic/` | The only production schema-evolution path |
-| Stats / Profile data | `backend/stats/` | Cross-game and per-game aggregates over shared session rows |
-| Player display name | `backend/players/` | Opt-in leaderboard membership and the server-generated public name for the pseudonymous player id (#2778) |
-| Entitlements | `backend/entitlements/` | Which premium games the current session may open |
-| Daily Challenge | `backend/daily_challenge/` | Frozen daily goal schedules, evaluation and streak derivation |
-| Daily Word | `backend/daily_word/` | Daily puzzle/guess service, one of the deliberate server-side gameplay exceptions |
-| Internal bug logs | `backend/logs/` | Session-linked diagnostic log ingestion |
-| Delete-my-data | `backend/me/` | Player/session data deletion |
-| Bottle Sort level service | `backend/sort/` | Generated/verified level sets |
-| Per-game descriptors | `backend/<game>/module.py` | `GameModule` metadata/result models, winner semantics, board definition and Stats shaping—not a second rule engine |
+| Area                      | Location                   | Responsibility                                                                                                     |
+| ------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Shared game sessions      | `backend/games/`           | Create/complete games, append events, ranking, board definitions, progression helpers, shared schemas              |
+| Game vocabulary           | `backend/vocab.py`         | Canonical `GameType` and `GameOutcome` vocabulary                                                                  |
+| Database                  | `backend/db/`              | SQLAlchemy engine/session setup and persisted models                                                               |
+| Schema migrations         | `backend/alembic/`         | The only production schema-evolution path                                                                          |
+| Stats / Profile data      | `backend/stats/`           | Cross-game and per-game aggregates over shared session rows                                                        |
+| Player display name       | `backend/players/`         | Opt-in leaderboard membership and the server-generated public name for the pseudonymous player id (#2778)          |
+| Entitlements              | `backend/entitlements/`    | Which premium games the current session may open                                                                   |
+| Daily Challenge           | `backend/daily_challenge/` | Frozen daily goal schedules, evaluation and streak derivation                                                      |
+| Daily Word                | `backend/daily_word/`      | Daily puzzle/guess service, one of the deliberate server-side gameplay exceptions                                  |
+| Internal bug logs         | `backend/logs/`            | Session-linked diagnostic log ingestion                                                                            |
+| Delete-my-data            | `backend/me/`              | Player/session data deletion                                                                                       |
+| Bottle Sort level service | `backend/sort/`            | Generated/verified level sets                                                                                      |
+| Per-game descriptors      | `backend/<game>/module.py` | `GameModule` metadata/result models, winner semantics, board definition and Stats shaping—not a second rule engine |
 
 Most per-game backend directories are **descriptors**, not gameplay services.
 A normal single-player game's rules stay in the TypeScript engine on the
@@ -170,6 +170,31 @@ be:
 
 This is a discipline, not new infrastructure. Existing games are audited for
 compliance under epic #894.
+
+### 3.1 Where game code lives
+
+One folder convention (#2980, epic #2950):
+
+| Kind of code                                                | Location                          |
+| ----------------------------------------------------------- | --------------------------------- |
+| Engines, types, storage, sounds, layout, solvers, hooks     | `frontend/src/game/<name>/`       |
+| React components for a game (boards, piles, tiles, pickers) | `frontend/src/components/<name>/` |
+| Screens                                                     | `frontend/src/screens/`           |
+
+`game/<name>/` is headless: nothing in it may import from `components/` or
+`screens/` (enforced by the `bc-arcade/no-game-ui-imports` ESLint rule, which
+has no `.tsx` exemption apart from the list below).
+
+Explicit exception to the lint rule, plus contexts that stay under `game/`:
+
+- `game/_shared/**` — the cross-game card/drag/deck UI kit and its contexts
+  (`SelectableCard`, `drag/*`, `decks/*`, `CardSizeContext`, `SoundContext`,
+  `NetworkContext`). These are the only `.tsx` files allowed to import
+  `components/`.
+- Per-game React contexts (`game/blackjack/BlackjackGameContext.tsx`,
+  `game/hearts/RoundsContext.tsx`, `game/yacht/ScorecardContext.tsx`) stay in
+  `game/<name>/` by design. They are **not** exempt from the lint rule; they pass
+  because they import no UI.
 
 ## 4. Persistence and offline contract
 
@@ -481,12 +506,12 @@ when it is over. The order above is unchanged.
 
 The current priority assignments still matter for batching/sync behavior:
 
-| Tier | Typical contents |
-| --- | --- |
-| **P0** | Bug logs |
-| **P1** | Lifecycle events |
+| Tier   | Typical contents                                      |
+| ------ | ----------------------------------------------------- |
+| **P0** | Bug logs                                              |
+| **P1** | Lifecycle events                                      |
 | **P2** | Mid-tier gameplay events such as score/bet/deal/merge |
-| **P3** | Granular gameplay events |
+| **P3** | Granular gameplay events                              |
 
 Bug/event priority is assigned automatically by the client; users do not choose
 a priority.
@@ -630,16 +655,16 @@ entitlement checks and grant access to every game. Never set this in production.
 
 ### 10.5 Key files
 
-| Layer                            | File                                                      |
-| -------------------------------- | --------------------------------------------------------- |
-| Backend — JWT issuance           | `backend/entitlements/service.py`                         |
-| Backend — Route guard            | `backend/entitlements/dependencies.py`                    |
-| Frontend — Token cache & context | `frontend/src/entitlements/EntitlementContext.tsx`        |
-| DB — premium flag                | `backend/alembic/versions/0014_game_types_premium_cat.py` |
-| DB — entitlement rows            | `backend/alembic/versions/0015_add_game_entitlements.py`  |
-| DB — purchases, links, events    | `backend/alembic/versions/0031_add_purchases.py`          |
+| Layer                            | File                                                                     |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| Backend — JWT issuance           | `backend/entitlements/service.py`                                        |
+| Backend — Route guard            | `backend/entitlements/dependencies.py`                                   |
+| Frontend — Token cache & context | `frontend/src/entitlements/EntitlementContext.tsx`                       |
+| DB — premium flag                | `backend/alembic/versions/0014_game_types_premium_cat.py`                |
+| DB — entitlement rows            | `backend/alembic/versions/0015_add_game_entitlements.py`                 |
+| DB — purchases, links, events    | `backend/alembic/versions/0031_add_purchases.py`                         |
 | Backend — purchase routes/logic  | `backend/purchases/` ([IAP.md §8.4](IAP.md#84-implementation-notes-840)) |
-| Store product catalog            | `frontend/src/entitlements/premiumProducts.json`          |
+| Store product catalog            | `frontend/src/entitlements/premiumProducts.json`                         |
 
 ### 10.6 Adding a premium game
 
@@ -647,7 +672,7 @@ entitlement checks and grant access to every game. Never set this in production.
 2. Add the game slug to `PREMIUM_GAMES` in `EntitlementContext.tsx`.
 3. Add `require_entitlement("<slug>")` to every route in `backend/<game>/router.py`.
 4. Document the tier in `docs/games/<game>.md`.
-4a. Add its store product to `frontend/src/entitlements/premiumProducts.json` and create the
+   4a. Add its store product to `frontend/src/entitlements/premiumProducts.json` and create the
    product in both store consoles ([IAP.md §2](IAP.md#2-catalog)); the premium-products drift
    tests fail until the catalog matches `is_premium`.
 5. While v1.0 hides premium games (§10.7), also add the slug to `HIDDEN_GAMES` in
@@ -829,15 +854,15 @@ BC Arcade intentionally keeps external-service responsibilities narrow. This is
 the system map; operational commands, environment variables and secrets belong
 in their runbooks.
 
-| Service | What BC Arcade uses it for | What happens if it is unavailable | Operational source |
-| --- | --- | --- | --- |
-| **GitHub** | Source, PR review, Actions/CI, dependency/security automation and repository history | Development/release automation stops; already-installed apps continue to run | Root workflows + testing/build docs |
-| **Render** | Dev/prod FastAPI services and secondary Expo Web sites; dev Postgres | Server reads/sync/entitlement/daily services are unavailable; offline-capable single-player continues locally and queues writes | [RENDER.md](RENDER.md) |
-| **Supabase** | Production PostgreSQL only, through the session pooler | Production server features that require DB access fail; local single-player can continue until sync/read services are needed | [RENDER.md](RENDER.md) |
-| **Sentry** | Native app + backend crashes/errors/performance and in-app User Feedback | Diagnostics/feedback visibility is reduced; gameplay should continue | `sentryConfig.ts`, backend `main.py`; canonical feedback/observability doc under #2805 |
-| **Cloudflare** | DNS/TLS/network routing for BC Arcade domains | Custom domains/routing may fail even when Render services are healthy | Render/domain configuration |
-| **Apple/Xcode Cloud/App Store Connect** | iOS build/sign/test/distribution toolchain | New iOS builds/releases stop; installed builds are unaffected | [IOS.md](IOS.md) |
-| **Google Play / Gradle signing toolchain** | Android build/sign/test/distribution | New Android releases stop; installed builds are unaffected | [ANDROID-CI.md](ANDROID-CI.md) |
+| Service                                    | What BC Arcade uses it for                                                           | What happens if it is unavailable                                                                                               | Operational source                                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **GitHub**                                 | Source, PR review, Actions/CI, dependency/security automation and repository history | Development/release automation stops; already-installed apps continue to run                                                    | Root workflows + testing/build docs                                                    |
+| **Render**                                 | Dev/prod FastAPI services and secondary Expo Web sites; dev Postgres                 | Server reads/sync/entitlement/daily services are unavailable; offline-capable single-player continues locally and queues writes | [RENDER.md](RENDER.md)                                                                 |
+| **Supabase**                               | Production PostgreSQL only, through the session pooler                               | Production server features that require DB access fail; local single-player can continue until sync/read services are needed    | [RENDER.md](RENDER.md)                                                                 |
+| **Sentry**                                 | Native app + backend crashes/errors/performance and in-app User Feedback             | Diagnostics/feedback visibility is reduced; gameplay should continue                                                            | `sentryConfig.ts`, backend `main.py`; canonical feedback/observability doc under #2805 |
+| **Cloudflare**                             | DNS/TLS/network routing for BC Arcade domains                                        | Custom domains/routing may fail even when Render services are healthy                                                           | Render/domain configuration                                                            |
+| **Apple/Xcode Cloud/App Store Connect**    | iOS build/sign/test/distribution toolchain                                           | New iOS builds/releases stop; installed builds are unaffected                                                                   | [IOS.md](IOS.md)                                                                       |
+| **Google Play / Gradle signing toolchain** | Android build/sign/test/distribution                                                 | New Android releases stop; installed builds are unaffected                                                                      | [ANDROID-CI.md](ANDROID-CI.md)                                                         |
 
 ### Secrets and configuration ownership
 

@@ -17,7 +17,16 @@ const noGameUiImports = {
   create(context) {
     const filename = context.filename ?? context.getFilename?.() ?? "";
     if (!filename.startsWith(gameDir + path.sep) && filename !== gameDir) return {};
-    if (filename.endsWith(".tsx")) return {}; // game-level UI components may use shared components
+    // #2980: the blanket game/**/*.tsx exemption is gone. The only remaining
+    // exception is the shared card/drag UI kit in game/_shared (see
+    // docs/ARCHITECTURE.md §3.1); every other game/<name>/ file is headless
+    // or a React context and must not import components/ or screens/.
+    if (
+      filename.endsWith(".tsx") &&
+      filename.startsWith(path.join(gameDir, "_shared") + path.sep)
+    ) {
+      return {};
+    }
     return {
       ImportDeclaration(node) {
         const resolved = path.resolve(path.dirname(filename), node.source.value);

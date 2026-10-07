@@ -12,9 +12,9 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Circle, ClipPath, Defs, Ellipse, G, Path, Rect } from "react-native-svg";
 import { useTranslation } from "react-i18next";
-import type { Bottle, Color, SortState } from "../types";
-import { BOTTLE_DEPTH } from "../types";
-import { useTheme } from "../../../theme/ThemeContext";
+import type { Bottle, Color, SortState } from "../../game/sort/types";
+import { BOTTLE_DEPTH } from "../../game/sort/types";
+import { useTheme } from "../../theme/ThemeContext";
 import BottleView, {
   DEFAULT_BOTTLE_HEIGHT,
   DEFAULT_BOTTLE_WIDTH,
@@ -22,8 +22,8 @@ import BottleView, {
   LIQUID_COLORS,
 } from "./BottleView";
 import { computeBoardLayout } from "./gridGeometry";
-import { ConfettiFall, type ConfettiFallTiming } from "../../../components/shared/ConfettiFall";
-import { useReduceMotion } from "../../../components/shared/useReduceMotion";
+import { ConfettiFall, type ConfettiFallTiming } from "../shared/ConfettiFall";
+import { useReduceMotion } from "../shared/useReduceMotion";
 
 const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
 
