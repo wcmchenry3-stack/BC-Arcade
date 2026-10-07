@@ -66,6 +66,8 @@ import {
 } from "../game/daily_word/storage";
 import { ApiError, isNetworkError } from "../game/_shared/httpClient";
 import { devLog } from "../game/daily_word/devLog";
+import { DAILY_WORD_SOUNDS } from "../game/daily_word/sounds";
+import { useSound } from "../game/_shared/useSound";
 import { getLanguage, getTimezoneOffset, localDateKey } from "../game/daily_word/todayMeta";
 import type { DevLogEntry } from "../game/daily_word/devLog";
 
@@ -475,6 +477,10 @@ export default function DailyWordScreen() {
     setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("daily_word");
 
+  // #2926 — the shared win fanfare, played when a solve is revealed (a guess
+  // or a recovered `already_solved`), never when a finished board is restored.
+  const { play: playWin } = useSound("dailyWord.win", DAILY_WORD_SOUNDS);
+
   useEffect(() => {
     syncSetProgressSnapshot(() => ({ result: sessionResult(stateRef.current) }));
   }, [syncSetProgressSnapshot]);
@@ -792,6 +798,7 @@ export default function DailyWordScreen() {
         if (finalState.is_complete) {
           if (finalState.won) {
             setWinModalVisible(true);
+            playWin();
           } else {
             try {
               const answerData = await dailyWordApi.getAnswer(s.puzzle_id);
@@ -886,6 +893,7 @@ export default function DailyWordScreen() {
 
           if (wonIt) {
             setWinModalVisible(true);
+            playWin();
           } else {
             try {
               const answerData = await dailyWordApi.getAnswer(finished.puzzle_id);
@@ -916,6 +924,7 @@ export default function DailyWordScreen() {
     syncStart,
     syncMarkStarted,
     syncComplete,
+    playWin,
   ]);
 
   const handleKey = useCallback(

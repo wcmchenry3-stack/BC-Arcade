@@ -116,6 +116,12 @@ The answer is deterministic, but scored-guess state is also tracked server-side 
 - `GET /answer` is gated: the session must have solved the puzzle or exhausted its guesses.
 - If the guess-state database is temporarily unavailable, guess scoring degrades open so the free puzzle remains playable; answer release remains closed because entitlement to the answer cannot be proven.
 
+## Sound
+
+- Registry: `frontend/src/game/daily_word/sounds.ts` (`DAILY_WORD_SOUNDS`), played through the shared `useSound` hook, which honours the player's sound setting (muted means silent).
+- Win: `dailyWord.win` plays the shared fanfare `assets/sounds/hearts-moon-shot.mp3` (Pixabay Content License, no attribution required; the same file Sudoku, Hearts, Yacht, Solitaire, Mahjong and 2048 use for a win), once, when the solved row finishes flipping and the win card opens. A solve the server reports as `already_solved` (the response to an earlier guess was lost) plays it once as the win card opens.
+- It does not play when a finished board is restored on mount, on re-render or on a countdown tick. A loss has no sound.
+
 ## Sharing
 
 After a win/loss:

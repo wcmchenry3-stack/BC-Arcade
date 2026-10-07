@@ -13,6 +13,7 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { ApiError } from "../../game/_shared/httpClient";
 import { devLog } from "../../game/daily_word/devLog";
 import type { DailyWordState } from "../../game/daily_word/types";
+import { playedCount } from "../../test-utils/mockScreenDeps";
 
 const mockPopToTop = jest.fn();
 jest.mock("@react-navigation/native", () =>
@@ -38,6 +39,8 @@ jest.mock("../../game/_shared/gameEventClient", () =>
     resumeGame: jest.fn(() => null),
   })
 );
+const mockPlayed: string[] = [];
+jest.mock("../../game/_shared/useSound", () => mockScreenDeps().mockSoundByName(() => mockPlayed));
 jest.mock("expo-haptics", () => ({
   impactAsync: jest.fn().mockResolvedValue(undefined),
   notificationAsync: jest.fn().mockResolvedValue(undefined),
@@ -129,6 +132,7 @@ let guessCalls = 0;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockPlayed.length = 0;
   guessCalls = 0;
   devLog.clear();
   dailyWordApi.getToday.mockResolvedValue(PUZZLE);
@@ -234,6 +238,54 @@ describe("finishing the game", () => {
       jest.advanceTimersByTime(4000);
     });
     expect(screen.getByText("You Win!")).toBeTruthy();
+  });
+
+  it("plays the win sound once for a solve, and not again as time passes (#2926)", async () => {
+    dailyWordApi.submitGuess.mockResolvedValue({ tiles: tilesFor("crane", "correct") });
+    await mount();
+    jest.useFakeTimers();
+    await guess("crane");
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+    });
+    expect(screen.getByText("You Win!")).toBeTruthy();
+    expect(playedCount(mockPlayed, "dailyWord.win")).toBe(1);
+    await act(async () => {
+      jest.advanceTimersByTime(120000);
+    });
+    expect(playedCount(mockPlayed, "dailyWord.win")).toBe(1);
+  });
+
+  it("does not play the win sound when a solved board is restored on mount (#2926)", async () => {
+    storage.loadState.mockResolvedValue(WON_BOARD);
+    await render(
+      <ThemeProvider>
+        <DailyWordScreen />
+      </ThemeProvider>
+    );
+    expect(await screen.findByText("You Win!")).toBeTruthy();
+    expect(mockPlayed).toEqual([]);
+  });
+
+  it("does not play the win sound on a loss (#2926)", async () => {
+    storage.loadState.mockResolvedValue(boardWith(["aaaaa", "bbbbb", "ccccc", "ddddd", "eeeee"]));
+    dailyWordApi.submitGuess.mockResolvedValue({ tiles: tilesFor("zzzzz", "absent") });
+    await mount();
+    jest.useFakeTimers();
+    await guess("zzzzz");
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+    });
+    await waitFor(() => expect(screen.getByText("You Lose")).toBeTruthy());
+    expect(mockPlayed).toEqual([]);
+  });
+
+  it("plays the win sound for a solve the server reports as already_solved (#2926)", async () => {
+    dailyWordApi.submitGuess.mockRejectedValue(new ApiError("already_solved", 403));
+    await mount();
+    await guess("zzzzz");
+    expect(await screen.findByText("You Win!")).toBeTruthy();
+    expect(playedCount(mockPlayed, "dailyWord.win")).toBe(1);
   });
 
   it("the last wrong guess shows the loss card with the answer", async () => {
