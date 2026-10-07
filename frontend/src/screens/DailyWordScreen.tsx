@@ -581,6 +581,9 @@ export default function DailyWordScreen() {
   const load = useCallback(async () => {
     const seq = ++loadSeqRef.current;
     const alive = () => loadSeqRef.current === seq;
+    // Recomputed per call: Retry can run hours after mount (new day, new language).
+    const tzOffset = getTimezoneOffset();
+    const language = getLanguage();
     const dateKey = localDateKey(tzOffset, language);
     let failure: "offline" | "failed" = "failed";
     try {

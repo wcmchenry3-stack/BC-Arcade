@@ -12,6 +12,12 @@ describe("warmTodayMeta (#2925)", () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     getToday.mockReset();
+    // Freeze the clock so the written and asserted keys can't straddle midnight.
+    jest.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 4, 3, 12));
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it("writes the key the screen reads", async () => {
