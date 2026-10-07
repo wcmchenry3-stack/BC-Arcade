@@ -153,7 +153,7 @@ backend/tests/
 - API tests use FastAPI's `TestClient` (no running server needed).
 - Each test file has an `autouse` fixture that resets in-memory state before/after each test.
 - Game logic tests set `game.dice` and `game.rolls_used` directly to avoid randomness.
-- Shared fixtures live in `tests/conftest.py`; plain helpers live in `tests/_helpers.py` (`session_headers`, `jwt_games`, `count`) and `tests/_migration_helpers.py` (`run_alembic`, `run_alembic_url`, `AlembicError`). Fixtures resolve by name, so a test file defines its own only when it needs a different shape (a local definition overrides the shared one). Never import from `conftest` itself (pytest does not support it); put shared plain functions in an underscore module instead:
+- Shared fixtures live in `tests/conftest.py`; plain helpers live in `tests/_helpers.py` (`session_headers`, `jwt_games`, `count`), `tests/_migration_helpers.py` (`run_alembic`, `run_alembic_url`, `AlembicError`) and `tests/_pg_scratch.py` (`scratch_database`, `require_pg_url`: a throwaway Postgres database for planner tests, only via `LEADERBOARD_EXPLAIN_PG_URL`). Fixtures resolve by name, so a test file defines its own only when it needs a different shape (a local definition overrides the shared one). Never import from `conftest` itself (pytest does not support it); put shared plain functions in an underscore module instead:
   - `client`: the app under `TestClient` with its lifespan running.
   - `session_id`: a fresh UUID string.
   - `session_headers(sid)` (`from tests._helpers import session_headers`): a plain function, not a fixture, returning the JSON request headers.
