@@ -151,6 +151,8 @@ The card:
 - shows a retryable offline message when the device/network is the actionable problem;
 - holds a loading footprint while fetching so the game grid does not jump.
 
+The card holds a challenge only for the local day it was fetched for. The hook re-checks the local day on foreground, screen focus and just after local midnight; once the day has changed, yesterday's challenge is never shown as today's. Online it refetches; offline it drops to the retryable offline message (#2924).
+
 Offline game completions can count later after the shared game-session queue uploads them.
 
 ## 10. Streak

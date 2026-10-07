@@ -1,4 +1,12 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AVAILABLE_DECK_IDS, DECK_REGISTRY, DEFAULT_DECK_ID } from "./registry";
 import type { DeckTheme } from "./types";
@@ -63,11 +71,12 @@ export function CardDeckProvider({ children }: { children: React.ReactNode }) {
       .catch(() => loadDeck(DEFAULT_DECK_ID));
   }, [loadDeck]);
 
-  return (
-    <CardDeckContext.Provider value={{ activeDeck, setDeck, availableDecks: AVAILABLE_DECK_IDS }}>
-      {children}
-    </CardDeckContext.Provider>
+  const value = useMemo(
+    () => ({ activeDeck, setDeck, availableDecks: AVAILABLE_DECK_IDS }),
+    [activeDeck, setDeck]
   );
+
+  return <CardDeckContext.Provider value={value}>{children}</CardDeckContext.Provider>;
 }
 
 export function useDeck(): CardDeckContextValue {

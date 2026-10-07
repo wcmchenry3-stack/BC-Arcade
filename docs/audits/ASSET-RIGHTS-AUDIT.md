@@ -48,7 +48,7 @@ Shipped in the free v1.0 line-up vs premium (a file used by both is counted unde
 | Bucket                                                                    | Files | Notes                                                                                                                                                                     |
 | ------------------------------------------------------------------------- | ----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Shell (icon, adaptive icon, splash, logo, native res, fonts, icon fonts)  |    40 | 4 app-art PNGs + 29 native rasters + 7 npm font files                                                                                                                     |
-| Free games (7), sound effects only, incl. files shared with premium games |    19 | Daily Word has no audio assets; no free game has images                                                                                                                   |
+| Free games (7), sound effects only, incl. files shared with premium games |    19 | Daily Word reuses one existing sound (no new asset); no free game has images                                                                                                                 |
 | Premium games (5), not used by any free game                              |   178 | Cascade 48 images (its sounds are shared with free games); Mahjong 42 SVG + 25 layouts + 6 sounds; Star Swarm 37 sprites + 15 sounds; Hearts 2 sounds; Blackjack 3 sounds |
 
 ## 3. Inventory
@@ -80,10 +80,10 @@ bundled; the other 17 families in the package are not.
 
 ### 3.2 Free games (v1.0: Yacht, Solitaire, FreeCell, Bottle Sort, Daily Word, 2048, Sudoku)
 
-None of the seven free games has images; Yacht, Solitaire, FreeCell, Bottle Sort, 2048 and Sudoku
-have sound effects. Daily Word has no audio assets. Bottle Sort reuses `cascade-fruit-merge.ogg` and
-`freecell-game-win.mp3`. The Pixabay fanfare `hearts-moon-shot.mp3` is reused by Yacht, Solitaire,
-Sudoku and 2048 (and by Blackjack, Hearts and Mahjong).
+None of the seven free games has images; Yacht, Solitaire, FreeCell, Bottle Sort, Daily Word, 2048
+and Sudoku have sound effects (Daily Word only the shared win fanfare, #2926). Bottle Sort reuses
+`cascade-fruit-merge.ogg` and `freecell-game-win.mp3`. The Pixabay fanfare `hearts-moon-shot.mp3` is
+reused by Yacht, Solitaire, Daily Word, Sudoku and 2048 (and by Blackjack, Hearts and Mahjong).
 
 | File (`assets/sounds/`)                               | Free games using it                                              | Source                                                      | License                                       | Commercial / modification                | Attribution                                                                                   | Rights status                                      |
 | ----------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------- |
@@ -100,7 +100,7 @@ Sudoku and 2048 (and by Blackjack, Hearts and Mahjong).
 | `twenty48-tile-spawn.ogg`                             | 2048                                                             | Kenney Digital Audio                                        | CC0 1.0                                       | Yes / yes                                | No                                                                                            | VERIFIED                                           |
 | `cascade-fruit-merge.ogg`                             | Bottle Sort (also Cascade)                                       | Kenney Digital Audio                                        | CC0 1.0                                       | Yes / yes                                | No                                                                                            | VERIFIED                                           |
 | `cascade-game-over.ogg`                               | 2048 (also Cascade, Hearts, Mahjong)                             | Kenney Digital Audio                                        | CC0 1.0                                       | Yes / yes                                | No                                                                                            | VERIFIED                                           |
-| `hearts-moon-shot.mp3`                                | Yacht, Solitaire, Sudoku, 2048 (also Blackjack, Hearts, Mahjong) | Pixabay, u_it78ck90s3, "orchestral-win-331233"              | Pixabay Content License (recorded 2026-04-25) | Yes / yes (no standalone redistribution) | No                                                                                            | VERIFIED                                           |
+| `hearts-moon-shot.mp3`                                | Yacht, Solitaire, Sudoku, 2048 (also Blackjack, Hearts, Mahjong, Daily Word) | Pixabay, u_it78ck90s3, "orchestral-win-331233"              | Pixabay Content License (recorded 2026-04-25) | Yes / yes (no standalone redistribution) | No                                                                                            | VERIFIED                                           |
 
 Credited in `SOUND_CREDITS.md` but not present in the tree (stale entries, nothing ships):
 `twenty48-win.mp3`, `twenty48-game-over.ogg`, `sudoku-error-entered.ogg`,
