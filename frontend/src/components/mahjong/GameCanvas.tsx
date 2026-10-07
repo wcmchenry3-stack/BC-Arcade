@@ -91,7 +91,10 @@ function TileFaceLayer({
       />
     );
   }
-  return <Image image={face} x={x} y={y} width={w} height={h} fit="fill" opacity={opacity} />;
+  // Full opacity even on locked tiles: the <ImageSVG> this replaced ignored its opacity
+  // (Skia draws an SVG without the paint), so native has always shown locked art undimmed.
+  // Web dims it to 35 %; unifying the two is a design decision (docs/games/mahjong.md).
+  return <Image image={face} x={x} y={y} width={w} height={h} fit="fill" opacity={1} />;
 }
 
 // ---------------------------------------------------------------------------

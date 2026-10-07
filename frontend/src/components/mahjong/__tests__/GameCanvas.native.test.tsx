@@ -299,7 +299,7 @@ describe("Mahjong GameCanvas (native) — tile styling", () => {
     expect(art(0).props.color).toBe("#006633"); // circles
   });
 
-  it("draws the loaded SVG for a face, dimmed on locked tiles", async () => {
+  it("draws the loaded SVG for a face, undimmed on locked tiles as native always has", async () => {
     const circleOne = { svg: "circles-1" };
     mockMakeSvg.mockImplementation((src: number) => (src === TILE_REQUIRES[16] ? circleOne : null));
     await mount();
@@ -307,7 +307,9 @@ describe("Mahjong GameCanvas (native) — tile styling", () => {
     const svgOf = (id: number) => within(group(id)).getByTestId("sk-image");
     expect(svgOf(0).props).toMatchObject({ opacity: 1, width: FACE_W - 4, height: FACE_H - 4 });
     expect(svgOf(0).props.image).toMatchObject({ face: circleOne });
-    expect(svgOf(2).props.opacity).toBe(0.35);
+    // Tile 2 is locked. The <ImageSVG> this replaced ignored its 0.35 opacity (Skia draws an
+    // SVG without the paint), so the bitmap keeps full opacity to look exactly as before (#2962).
+    expect(svgOf(2).props.opacity).toBe(1);
     expect(svgOf(2).props.image).toBe(svgOf(0).props.image);
     expect(within(group(3)).queryByTestId("sk-image")).toBeNull();
   });
