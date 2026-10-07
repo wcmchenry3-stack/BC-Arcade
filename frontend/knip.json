@@ -10,5 +10,11 @@
     "src/game/*/sim/**",
     "src/game/yacht/oracleBuild/**"
   ],
+  "ignoreDependencies": [
+    // jsdom: provided by jest-environment-jsdom, selected via @jest-environment docblocks in tests
+    "jsdom",
+    // @eslint/js: required by eslint.config.js, installed as an eslint dependency
+    "@eslint/js"
+  ],
   "ignoreExportsUsedInFile": true
 }

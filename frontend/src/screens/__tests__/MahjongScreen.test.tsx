@@ -94,14 +94,6 @@ jest.mock("@react-navigation/native", () =>
   )
 );
 
-jest.mock("expo-screen-orientation", () => ({
-  lockAsync: jest.fn().mockResolvedValue(undefined),
-  OrientationLock: {
-    LANDSCAPE: "LANDSCAPE",
-    PORTRAIT_UP: "PORTRAIT_UP",
-  },
-}));
-
 jest.mock("@sentry/react-native", () => ({
   addBreadcrumb: jest.fn(),
   captureMessage: jest.fn(),
