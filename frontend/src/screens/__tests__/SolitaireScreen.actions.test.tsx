@@ -33,7 +33,8 @@ jest.mock("../../api/stats", () => mockScreenDeps().mockStatsApi({ getGameRank: 
 jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
 
 const mockTestHooks = { enabled: false };
-jest.mock("../../game/_shared/testHooks", () => ({
+jest.mock("../../game/_shared/envFlags", () => ({
+  ...jest.requireActual("../../game/_shared/envFlags"),
   areTestHooksEnabled: () => mockTestHooks.enabled,
 }));
 

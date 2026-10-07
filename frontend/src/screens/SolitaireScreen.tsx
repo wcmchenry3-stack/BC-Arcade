@@ -66,7 +66,7 @@ import { DragProvider } from "../game/_shared/drag/DragContext";
 import { DragContainer } from "../game/_shared/drag/DragContainer";
 import type { DragSource, DragCard } from "../game/_shared/drag/DragContext";
 import { CardSizeContext, useResponsiveCardSize } from "../game/_shared/CardSizeContext";
-import { areTestHooksEnabled } from "../game/_shared/testHooks";
+import { areTestHooksEnabled } from "../game/_shared/envFlags";
 import {
   clearGame,
   loadGame,

@@ -11,7 +11,7 @@
  * own Pictures and scrolled on the UI thread (`starfieldPictures.ts`), drawn under this one.
  * Colours are packed numbers (`color.ts`), and op keys exist only while `setDebugOpKeys` is on.
  *
- * The web renderer (`GameCanvas.web.tsx`, unmaintained) still derives the same rules itself.
+ * The web renderer (`GameCanvas.web.tsx`, secondary platform) still derives the same rules itself.
  */
 import {
   BULLET_C_W,

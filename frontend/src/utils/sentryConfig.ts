@@ -30,7 +30,7 @@ export function resolveSentryEnvironment(isDev: boolean = __DEV__): string {
  * Test-hooks builds (CI smoke, Maestro) never report. `httpClient` gates its
  * `captureMessage` calls on the test build but not `captureException`, so the
  * only complete gate is not initialising at all.
- * Expo Web is an unmaintained secondary target; its Sentry noise is suppressed
+ * Expo Web is a supported secondary platform, but its Sentry noise is suppressed
  * by never initialising at all (#2716).
  */
 export function shouldInitSentry(platformOS: string = Platform.OS): boolean {

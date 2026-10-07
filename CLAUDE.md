@@ -4,9 +4,9 @@
 
 ## Platform Priority — Read This First
 
-**Primary targets: iOS (App Store) and Android (Play Store).** These are the only platforms that are actively maintained, tested, and monetized.
+**Primary targets: iOS (App Store) and Android (Play Store).** These are the store-released, monetized platforms.
 
-**Web (Expo Web) is a low-priority secondary target.** It is not actively maintained, not monetized, and may be taken down. Do NOT default to investigating or fixing issues on web. **If a bug or feature request does not specify a platform, ask which platform is affected before doing any investigation.**
+**Web (Expo Web) is a supported secondary platform used for testing and the free games; it is not a revenue platform. iOS and Android are primary.** Do NOT default to investigating or fixing issues on web. **If a bug or feature request does not specify a platform, ask which platform is affected before doing any investigation.**
 
 Release toolchain — Expo is used as the development framework only:
 - iOS releases → **Xcode Cloud** (never `eas build` / Expo Go)
@@ -15,7 +15,7 @@ Release toolchain — Expo is used as the development framework only:
 ## Stack
 
 - **Backend:** Python 3.11 (production runtime, `backend/.python-version`; 3.13 also works), FastAPI, uvicorn, PostgreSQL (Alembic migrations)
-- **Frontend:** Expo TypeScript — primary targets are **iOS and Android**; Expo Web exists but is unmaintained
+- **Frontend:** Expo TypeScript — primary targets are **iOS and Android**; Expo Web is a supported secondary platform (testing + free games, not revenue)
 - **Setup & runbook:** [`README.md`](README.md)
 - **Docs:** testing, iOS/Android CI, Render, branding — see [`docs/`](docs/)
 

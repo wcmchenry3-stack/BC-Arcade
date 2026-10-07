@@ -46,9 +46,9 @@ import type {
 } from "../game/starswarm/types";
 import { reportRunStats } from "../game/starswarm/telemetry";
 import { summarizeScoreLedger } from "../game/starswarm/scoreLedger";
-import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
+import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
+import { registerStarSwarmTestHooks } from "../game/starswarm/testHooks";
 import FrameStatsReadout from "../components/starswarm/FrameStatsReadout";
-import type { FrameStatsSummary } from "../game/starswarm/render/frameStats";
 import { loadBestScore, saveBestScore } from "../game/starswarm/bestScore";
 import GameResultModal from "../components/shared/GameResultModal";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
@@ -96,17 +96,6 @@ function snapshotStats(s: StarSwarmState): DevStatsSnapshot {
     rows: dodgeRateByTier(s),
     run: s.runStats,
   };
-}
-
-/** What the `__starswarm_getRunStats` test hook returns (#2491). */
-interface RunStatsHook {
-  readonly runStats: RunStats;
-  readonly tierStats: StarSwarmState["tierStats"];
-  readonly wave: number;
-  readonly difficulty: DifficultyTier;
-  readonly score: number;
-  /** #2567: the last second of frame times and canvas commits (null on web or before a frame). */
-  readonly frame: FrameStatsSummary | null;
 }
 
 const pct = (x: number) => `${Math.round(x * 100)}%`.padStart(4);
@@ -471,39 +460,16 @@ function StarSwarmGame() {
   const handleGameOverRef = useRef(handleGameOver);
   handleGameOverRef.current = handleGameOver;
 
-  // #2491: test-hook seam (EXPO_PUBLIC_TEST_HOOKS=1 builds only) so an E2E driver can read the
-  // counters without the panel: `__starswarm_getRunStats()` → counts + wave/difficulty/score.
-  // #2516: `__starswarm_endRun(score, wave)` ends the run through the real game-over path
-  // (result card, leaderboard submit, game sync) with the canvas frozen behind the card —
-  // reaching game over by real play isn't practical in an E2E run.
-  useEffect(() => {
-    if (!areTestHooksEnabled()) return;
-    const g = globalThis as typeof globalThis & {
-      __starswarm_getRunStats?: () => RunStatsHook | null;
-      __starswarm_endRun?: (score: number, wave: number) => void;
-    };
-    g.__starswarm_endRun = (score, wave) => {
-      setIsPaused(true);
-      handleGameOverRef.current(score, wave);
-    };
-    g.__starswarm_getRunStats = () => {
-      const s = canvasRef.current?.getState();
-      return s
-        ? {
-            runStats: s.runStats,
-            tierStats: s.tierStats,
-            wave: s.wave,
-            difficulty: s.difficulty,
-            score: s.score,
-            frame: canvasRef.current?.getFrameStats() ?? null,
-          }
-        : null;
-    };
-    return () => {
-      delete g.__starswarm_getRunStats;
-      delete g.__starswarm_endRun;
-    };
-  }, []);
+  // #2491 / #2516: E2E hooks (EXPO_PUBLIC_TEST_HOOKS=1 builds only), see game/starswarm/testHooks.ts.
+  useEffect(
+    () =>
+      registerStarSwarmTestHooks({
+        getCanvas: () => canvasRef.current,
+        pause: () => setIsPaused(true),
+        endRun: (score, wave) => handleGameOverRef.current(score, wave),
+      }),
+    []
+  );
 
   /** Opens the new run's sync session (abandoning any open one) and clears the last result. */
   const beginRun = useCallback(
