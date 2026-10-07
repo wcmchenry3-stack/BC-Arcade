@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { render } from "@testing-library/react-native";
 import { Particle, useParticleGroup, type ParticleGroup, type ParticleMotion } from "../Particle";
 
@@ -9,14 +9,17 @@ const POP: ParticleMotion = { kind: "pop", x: -90, y: 80 };
 let group: ParticleGroup;
 
 function Burst({ motions, glyph }: { motions: readonly ParticleMotion[]; glyph?: string }) {
-  group = useParticleGroup();
+  const own = useParticleGroup();
+  useEffect(() => {
+    group = own;
+  }, [own]);
   return (
     <>
       {motions.map((motion, i) => (
         <Particle
           key={i}
           index={i}
-          group={group}
+          group={own}
           motion={motion}
           style={{ position: "absolute" }}
           glyph={glyph}

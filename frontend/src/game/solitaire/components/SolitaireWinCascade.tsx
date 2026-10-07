@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import { useTheme } from "../../../theme/ThemeContext";
 import { ConfettiFall, type ConfettiFallTiming } from "../../../components/shared/ConfettiFall";
-import { useReduceMotion } from "../../../components/shared/useReduceMotion";
+import { useReduceMotionStatus } from "../../../components/shared/useReduceMotion";
 import { playTimedPhases, type PhaseTimeline } from "../../../components/shared/timedPhases";
 
 /** How long the cascade plays before handing over to the result card. */
@@ -29,7 +29,9 @@ interface Props {
  */
 export function SolitaireWinCascade({ onDone }: Props) {
   const { colors } = useTheme();
-  const reduceMotion = useReduceMotion();
+  // It mounts at the moment of the win, so the launch-time value may be
+  // stale (Reduce Motion turned on since): wait until the setting is known.
+  const { enabled: reduceMotion, known } = useReduceMotionStatus();
 
   // The setting is live, so it can flip after the cascade started (or after
   // it already skipped); hand over to the card only once.
@@ -45,14 +47,15 @@ export function SolitaireWinCascade({ onDone }: Props) {
   }, []);
 
   useEffect(() => {
+    if (!known) return;
     if (reduceMotion) {
       finish();
       return;
     }
     return playTimedPhases(CASCADE_TIMELINE, finish);
-  }, [reduceMotion, finish]);
+  }, [known, reduceMotion, finish]);
 
-  if (reduceMotion) return null;
+  if (!known || reduceMotion) return null;
 
   return (
     <ConfettiFall
