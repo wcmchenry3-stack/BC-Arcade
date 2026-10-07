@@ -6,7 +6,7 @@ import type { Color } from "../../game/sort/types";
 import { useTheme } from "../../theme/ThemeContext";
 import { BOTTLE_LIQUID_COLORS } from "../../theme/theme.bottle";
 
-export const BALL_SIZE = 36;
+const BALL_SIZE = 36;
 
 // White symbols on a 100×100 viewBox — one per color for colorblind mode.
 // Chosen to be distinct in shape even in greyscale.

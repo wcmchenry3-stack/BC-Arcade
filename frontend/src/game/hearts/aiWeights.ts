@@ -11,7 +11,7 @@
  * Noise is what sets the difficulty ladder (#2555). Cautious's point-avoidance
  * weights are strong Hearts play on their own: at 25% noise Cautious was the
  * strongest persona and the all-Cautious table the hardest for the human.
- * The sim gate (sim/gate.ts) showed the weights barely move its strength
+ * The sim gate (tooling/hearts/gate.ts) showed the weights barely move its strength
  * while noise does, so 35% put it back at the bottom, and #2235's moon
  * defense took it to 38%.
  *

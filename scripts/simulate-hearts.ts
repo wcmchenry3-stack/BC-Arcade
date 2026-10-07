@@ -1,7 +1,7 @@
 /**
  * Hearts AI simulation CLI (#1273, #2204; sim gate v2 #2238).
  *
- * The game runner, metrics and gate live in frontend/src/game/hearts/sim/
+ * The game runner, metrics and gate live in frontend/tooling/hearts/
  * (harness.ts, metrics.ts, sprt.ts, gate.ts); this script is the command
  * line around them. See docs/TESTING.md for the methodology.
  *
@@ -42,14 +42,14 @@ import type {
   Card,
   HeartsState,
 } from "../frontend/src/game/hearts/types";
-import { pimcPolicy, runBlocks } from "../frontend/src/game/hearts/sim/harness";
+import { pimcPolicy, runBlocks } from "../frontend/tooling/hearts/harness";
 import { DEFAULT_PIMC_CONFIG } from "../frontend/src/game/hearts/pimc/engine";
 import {
   REGRET_PERSONAS,
   formatRegretReport,
   regretMatchup,
   runRegretBlocks,
-} from "../frontend/src/game/hearts/sim/regret";
+} from "../frontend/tooling/hearts/regret";
 import {
   GATE_GROUPS,
   GATE_MATCHUPS,
@@ -60,7 +60,7 @@ import {
   measureBaseline,
   runGroup,
   type GroupRun,
-} from "../frontend/src/game/hearts/sim/gate";
+} from "../frontend/tooling/hearts/gate";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -268,7 +268,7 @@ const argv = process.argv;
 const seedArg = parseCount(argv, "--seed");
 const BASELINE_PATH = join(
   dirname(fileURLToPath(import.meta.url)),
-  "../frontend/src/game/hearts/sim/baseline.json",
+  "../frontend/tooling/hearts/baseline.json",
 );
 
 if (argv.includes("--update-baseline")) {

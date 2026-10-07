@@ -4,7 +4,7 @@
  *
  * This is the single source of truth for "what state does scoring category C
  * with dice D from state S transition to, and what does it score" — shared
- * by BOTH the offline solver (frontend/src/game/yacht/oracleBuild/solver.ts,
+ * by BOTH the offline solver (frontend/tooling/yacht/oracleBuild/solver.ts,
  * not shipped) and the runtime oracle (./oracle.ts, shipped). Building both
  * sides on the SAME module — which itself calls straight into engine.ts's
  * real `calculateScore`/`calculateJokerScore` rather than reimplementing

@@ -23,7 +23,7 @@
  *
  * Measured in the #2245 harness (mean final score, 2026-09-24 gate runs):
  * Easy 161.6–163.9, Medium 211.8–215.6, Hard 245.2–251.6 (pure optimal play
- * is ~254.5). See sim/gate.ts for the bands that guard these and
+ * is ~254.5). See tooling/yacht/gate.ts for the bands that guard these and
  * docs/ARCHITECTURE.md for the design.
  */
 

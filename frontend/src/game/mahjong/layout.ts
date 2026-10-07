@@ -277,7 +277,7 @@ export function layoutBounds(slots: readonly Slot[]): {
   };
 }
 
-export function useMahjongCanvasLayout(slots?: readonly Slot[]): MahjongLayout {
+function useMahjongCanvasLayout(slots?: readonly Slot[]): MahjongLayout {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { boardCols, boardRows, boardLayers, minRow, minCol } = slots

@@ -913,7 +913,7 @@ Each tier values a move as **points banked now + λ × the optimal expected poin
 - **The loss cap** stops outright blunders: nothing more than Δ points below the tier's best is ever picked. Holds whose best outcome can't beat banking the roll are excluded too, so no tier rerolls a made yacht or large straight.
 - The tiers ignore the opponent's score (the old Hard adversarial layer was retired), so turn order can't affect their strength.
 
-Head to head, Hard beats Easy ~92% and Medium ~72% of the time. The nightly calibration gate (`frontend/src/game/yacht/sim/gate.ts`, `.github/workflows/yacht-sim-gate.yml`) guards these numbers, and the regret gate checks each tier's per-decision quality against the oracle ([TESTING.md](TESTING.md)).
+Head to head, Hard beats Easy ~92% and Medium ~72% of the time. The nightly calibration gate (`frontend/tooling/yacht/gate.ts`, `.github/workflows/yacht-sim-gate.yml`) guards these numbers, and the regret gate checks each tier's per-decision quality against the oracle ([TESTING.md](TESTING.md)).
 
 **Runtime.** The table ships compressed (~0.6 MB of JS) and decodes on first use (~0.3 s on a dev machine; slower on-device). `GameScreen` calls `preloadOracleTable()` when a VS game's difficulty is set, so the first AI turn doesn't pay for it. After that a decision is a few milliseconds.
 

@@ -1,7 +1,7 @@
 /**
  * Yacht AI simulation CLI — a thin wrapper over the shared harness in
- * frontend/src/game/yacht/sim/ (#2245). It has no bands of its own: the
- * calibration bands live in sim/gate.ts, and this script and
+ * frontend/tooling/yacht/ (#2245). It has no bands of its own: the
+ * calibration bands live in gate.ts there, and this script and
  * ai.calibrate.test.ts both read them from there (#2213 disposition — the
  * old stale bands table was retired).
  *
@@ -33,12 +33,12 @@ import {
   runMatchup,
   type DiceMode,
   type MatchupRun,
-} from "../frontend/src/game/yacht/sim/harness";
+} from "../frontend/tooling/yacht/harness";
 import {
   formatReport,
   summarize,
   type MatchupReport,
-} from "../frontend/src/game/yacht/sim/stats";
+} from "../frontend/tooling/yacht/stats";
 import {
   GATE_BANDS,
   GATE_GROUPS,
@@ -46,7 +46,7 @@ import {
   checkBands,
   formatBandResults,
   gateBlocks,
-} from "../frontend/src/game/yacht/sim/gate";
+} from "../frontend/tooling/yacht/gate";
 import {
   AI_DIFFICULTIES,
   type AiDifficulty,

@@ -148,7 +148,6 @@ module.exports = [
       "src/components/starswarm/GameCanvas.tsx",
       "src/components/starswarm/GameCanvas.web.tsx",
       "src/game/starswarm/engine.ts",
-      "src/game/starswarm/sim/balance.ts",
       "src/screens/CascadeScreen.tsx",
       "src/screens/DailyWordScreen.tsx",
       "src/screens/GameScreen.tsx",
@@ -159,6 +158,35 @@ module.exports = [
     ],
     rules: {
       "max-lines": ["warn", { max: 800, skipBlankLines: true, skipComments: true }],
+    },
+  },
+
+  // Sound maps: Metro needs a literal require() per asset, so a generic loader is
+  // impossible. (Cascade keeps its per-line disables until epic #3033.)
+  {
+    files: ["src/game/*/sounds.ts"],
+    ignores: ["src/game/cascade/**"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+
+  // The app must not import the CI/script-only simulators in tooling/ (#2969):
+  // they would be bundled into the production app.
+  {
+    files: ["src/**/*.ts", "src/**/*.tsx", "App.tsx", "index.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/tooling", "**/tooling/**"],
+              message: "tooling/ is script/CI-only simulation code; the app must not import it.",
+            },
+          ],
+        },
+      ],
     },
   },
 ];

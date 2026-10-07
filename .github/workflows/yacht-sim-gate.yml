@@ -1,10 +1,10 @@
 name: Yacht AI Calibration Gate
 
 # The rigorous layer of Yacht AI testing (#2245). The fast layer is the
-# per-PR smoke test (frontend/src/game/yacht/__tests__/ai.simulate.test.ts,
+# per-PR smoke test (frontend/tooling/yacht/__tests__/ai.simulate.test.ts,
 # run by ci.yml). This workflow runs the full calibration gate: every
 # matchup in both turn orders on mirrored dice, checked against the bands
-# in frontend/src/game/yacht/sim/gate.ts, plus the per-decision regret
+# in frontend/tooling/yacht/gate.ts, plus the per-decision regret
 # gate (#2244). See docs/TESTING.md for sample sizes and the power
 # calculation.
 
@@ -23,9 +23,8 @@ on:
       - "frontend/src/game/yacht/ai*.ts"
       - "frontend/src/game/yacht/engine.ts"
       - "frontend/src/game/yacht/oracle/**"
-      - "frontend/src/game/yacht/sim/**"
+      - "frontend/tooling/yacht/**"
       - "frontend/src/game/_shared/simRandom.ts"
-      - "frontend/src/game/yacht/__tests__/ai.calibrate.test.ts"
       - "scripts/simulate-yacht.ts"
       - ".github/workflows/yacht-sim-gate.yml"
 
@@ -44,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Keep in sync with GATE_GROUPS in frontend/src/game/yacht/sim/gate.ts
+        # Keep in sync with GATE_GROUPS in frontend/tooling/yacht/gate.ts
         # (gate.test.ts fails if a group listed there is missing here).
         group: [hard-vs-easy, hard-vs-medium, medium-vs-easy, self-play]
     steps:
@@ -80,4 +79,4 @@ jobs:
       - name: Run regret gate
         env:
           YACHT_SIM_FULL: "3000"
-        run: npx jest src/game/yacht/__tests__/ai.calibrate.test.ts --silent=false --testTimeout=1800000
+        run: npx jest tooling/yacht/__tests__/ai.calibrate.test.ts --silent=false --testTimeout=1800000
