@@ -211,6 +211,14 @@ describe("GameScreen", () => {
     });
     expect(mockShellNavigate).toHaveBeenCalledWith("GameStats", { gameType: "yacht" });
   });
+
+  it("round header clamps to 13 when game_over is true (#3021)", async () => {
+    const { queryByText } = await renderScreen({ round: 14, game_over: true });
+    // The engine increments round to 14 after the 13th score, but the display
+    // should clamp it to 13 to avoid showing "Round 14 / 13"
+    // Verify it doesn't show round 14 in the header
+    expect(queryByText(/round.*14/i)).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
