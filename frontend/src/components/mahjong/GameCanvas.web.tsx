@@ -10,7 +10,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { useTranslation } from "react-i18next";
-import { getMatchingFreeTileIds, hasFreePairs, isFreeTile } from "../../game/mahjong/engine";
+import { freeTileIds, getMatchingFreeTileIds, hasFreePairs } from "../../game/mahjong/engine";
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { loadTileAssets } from "./tileAssetLoader";
 import {
@@ -221,6 +221,8 @@ function drawBoard(
 interface Props {
   state: MahjongState;
   camera: BoardCamera;
+  /** `freeTileIds(state.tiles)` from the screen (#2962); built here when absent. */
+  freeIds?: ReadonlySet<number>;
   hintIds?: ReadonlySet<number>;
   debugShowFree?: boolean;
   onTilePress: (tileId: number) => void;
@@ -231,6 +233,7 @@ const EMPTY_SET: ReadonlySet<number> = new Set();
 export default function GameCanvas({
   state,
   camera,
+  freeIds,
   hintIds = EMPTY_SET,
   debugShowFree = false,
   onTilePress,
@@ -246,16 +249,13 @@ export default function GameCanvas({
     typeof window !== "undefined" ? (window.devicePixelRatio ?? 1) : 1
   );
 
-  const freeTiles = useMemo(() => {
-    const s = new Set<number>();
-    for (const tile of state.tiles) {
-      if (isFreeTile(tile, state.tiles)) s.add(tile.id);
-    }
-    return s;
-  }, [state.tiles]);
+  const freeTiles = useMemo(() => freeIds ?? freeTileIds(state.tiles), [freeIds, state.tiles]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const matchingIds = useMemo(() => getMatchingFreeTileIds(state), [state.tiles, state.selected]);
+  const matchingIds = useMemo(
+    () => getMatchingFreeTileIds(state, freeTiles),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.tiles, state.selected, freeTiles]
+  );
 
   const allHintIds = useMemo(() => {
     if (hintIds.size === 0) return matchingIds;
@@ -265,8 +265,8 @@ export default function GameCanvas({
   }, [matchingIds, hintIds]);
 
   const noFreePairs = useMemo(
-    () => !state.isComplete && !hasFreePairs(state.tiles),
-    [state.isComplete, state.tiles]
+    () => !state.isComplete && !hasFreePairs(state.tiles, freeTiles),
+    [state.isComplete, state.tiles, freeTiles]
   );
   const showShuffleCTA = noFreePairs && state.shufflesLeft > 0;
   const gameActive = !state.isComplete && !state.isDeadlocked && !showShuffleCTA;

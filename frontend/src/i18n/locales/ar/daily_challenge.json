@@ -14,6 +14,8 @@
   "goal.twenty48.final_score_at_least": "سجّل {{target}}+ في {{game}}",
   "goal.twenty48.highest_tile_at_least": "بلغ البلاطة {{target}} في {{game}}",
   "goal.yacht.final_score_at_least": "سجّل {{target}}+ في {{game}}",
+  "goal.sudoku.final_score_at_least": "سجّل {{target}}+ في {{game}}",
+  "goal.sudoku.solved": "حلّ لغز {{game}}",
   "goal.sort.final_score_at_least": "بلغ المستوى {{target}} في {{game}}",
   "goal.solitaire.moves_at_least_zero": "قم بـ{{count}}+ حركة في {{game}}",
   "goal.solitaire.moves_at_least_one": "قم بحركة واحدة في {{game}}",

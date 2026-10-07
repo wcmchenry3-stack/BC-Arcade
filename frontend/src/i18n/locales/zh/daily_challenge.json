@@ -10,6 +10,8 @@
   "goal.twenty48.final_score_at_least": "在 {{game}} 中拿到 {{target}}+ 分",
   "goal.twenty48.highest_tile_at_least": "在 {{game}} 中达到 {{target}} 方块",
   "goal.yacht.final_score_at_least": "在 {{game}} 中拿到 {{target}}+ 分",
+  "goal.sudoku.final_score_at_least": "在 {{game}} 中拿到 {{target}}+ 分",
+  "goal.sudoku.solved": "完成一局{{game}}",
   "goal.sort.final_score_at_least": "在 {{game}} 中达到第 {{target}} 关",
   "goal.solitaire.moves_at_least_one": "在 {{game}} 中走一步",
   "goal.solitaire.moves_at_least_other": "在 {{game}} 中走 {{count}}+ 步",
