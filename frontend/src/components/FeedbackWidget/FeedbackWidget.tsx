@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -33,7 +33,12 @@ export default function FeedbackWidget({ visible, onClose, onSubmitted }: Props)
   const [type, setType] = useState<FeedbackType>("bug");
   const [descError, setDescError] = useState("");
 
+  // Bumped on every close so a submit that resolves after the player already
+  // dismissed the sheet does not close (and reset) it a second time.
+  const closeCountRef = useRef(0);
+
   function handleClose() {
+    closeCountRef.current += 1;
     reset();
     setDescription("");
     setType("bug");
@@ -53,8 +58,9 @@ export default function FeedbackWidget({ visible, onClose, onSubmitted }: Props)
   async function handleSubmit() {
     if (!validate()) return;
     // Success closes the sheet; the host shows the thank-you banner.
+    const closesBefore = closeCountRef.current;
     if (await submit({ description: description.trim(), type })) {
-      handleClose();
+      if (closeCountRef.current === closesBefore) handleClose();
       onSubmitted?.();
     }
   }
@@ -99,114 +105,112 @@ export default function FeedbackWidget({ visible, onClose, onSubmitted }: Props)
             contentContainerStyle={s.bodyContent}
             keyboardShouldPersistTaps="handled"
           >
-            <>
-              {/* Error banner */}
-              {status === "error" && error && (
-                <View
-                  style={[s.errorBanner, { borderColor: colors.error }]}
-                  accessibilityLiveRegion="assertive"
-                  accessibilityRole="alert"
-                >
-                  <Text style={[s.errorBannerText, { color: colors.error }]}>
-                    {error.kind === "rate_limit"
-                      ? t("submit_error_rate_limit", {
-                          seconds: error.retryAfterSeconds ?? 60,
-                        })
-                      : t("submit_error")}
-                  </Text>
-                </View>
-              )}
+            {/* Error banner */}
+            {status === "error" && error && (
+              <View
+                style={[s.errorBanner, { borderColor: colors.error }]}
+                accessibilityLiveRegion="assertive"
+                accessibilityRole="alert"
+              >
+                <Text style={[s.errorBannerText, { color: colors.error }]}>
+                  {error.kind === "rate_limit"
+                    ? t("submit_error_rate_limit", {
+                        seconds: error.retryAfterSeconds ?? 60,
+                      })
+                    : t("submit_error")}
+                </Text>
+              </View>
+            )}
 
-              {/* Type selector */}
-              <Text style={s.label}>{t("type_label")}</Text>
-              <View style={s.typeRow}>
-                {(["bug", "feature"] as FeedbackType[]).map((ft) => (
-                  <Pressable
-                    key={ft}
+            {/* Type selector */}
+            <Text style={s.label}>{t("type_label")}</Text>
+            <View style={s.typeRow}>
+              {(["bug", "feature"] as FeedbackType[]).map((ft) => (
+                <Pressable
+                  key={ft}
+                  style={[
+                    s.typeChip,
+                    {
+                      backgroundColor: type === ft ? colors.accent : colors.surface,
+                      borderColor: type === ft ? colors.accent : colors.border,
+                    },
+                  ]}
+                  onPress={() => setType(ft)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: type === ft }}
+                  accessibilityLabel={t(`type_${ft}`)}
+                >
+                  <Text
                     style={[
-                      s.typeChip,
+                      s.typeChipText,
                       {
-                        backgroundColor: type === ft ? colors.accent : colors.surface,
-                        borderColor: type === ft ? colors.accent : colors.border,
+                        color: type === ft ? colors.textOnAccent : colors.text,
                       },
                     ]}
-                    onPress={() => setType(ft)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: type === ft }}
-                    accessibilityLabel={t(`type_${ft}`)}
                   >
-                    <Text
-                      style={[
-                        s.typeChipText,
-                        {
-                          color: type === ft ? colors.textOnAccent : colors.text,
-                        },
-                      ]}
-                    >
-                      {t(`type_${ft}`)}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
+                    {t(`type_${ft}`)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
 
-              {/* Description field */}
-              <Text style={s.label} nativeID="feedback-desc-label">
-                {t("label_description")}
+            {/* Description field */}
+            <Text style={s.label} nativeID="feedback-desc-label">
+              {t("label_description")}
+            </Text>
+            <TextInput
+              style={[
+                s.textarea,
+                {
+                  color: colors.text,
+                  backgroundColor: colors.surfaceAlt,
+                  borderColor: descError ? colors.error : colors.border,
+                },
+              ]}
+              value={description}
+              onChangeText={(v) => {
+                setDescription(v.slice(0, DESCRIPTION_MAX));
+                if (descError) setDescError("");
+              }}
+              placeholder={t("placeholder_description")}
+              placeholderTextColor={colors.textMuted}
+              multiline
+              numberOfLines={5}
+              maxLength={DESCRIPTION_MAX}
+              textAlignVertical="top"
+              accessibilityLabelledBy="feedback-desc-label"
+              accessibilityRequired
+            />
+            {descError ? (
+              <Text style={[s.fieldError, { color: colors.error }]} accessibilityRole="alert">
+                {descError}
               </Text>
-              <TextInput
-                style={[
-                  s.textarea,
-                  {
-                    color: colors.text,
-                    backgroundColor: colors.surfaceAlt,
-                    borderColor: descError ? colors.error : colors.border,
-                  },
-                ]}
-                value={description}
-                onChangeText={(v) => {
-                  setDescription(v.slice(0, DESCRIPTION_MAX));
-                  if (descError) setDescError("");
-                }}
-                placeholder={t("placeholder_description")}
-                placeholderTextColor={colors.textMuted}
-                multiline
-                numberOfLines={5}
-                maxLength={DESCRIPTION_MAX}
-                textAlignVertical="top"
-                accessibilityLabelledBy="feedback-desc-label"
-                accessibilityRequired
-              />
-              {descError ? (
-                <Text style={[s.fieldError, { color: colors.error }]} accessibilityRole="alert">
-                  {descError}
-                </Text>
+            ) : (
+              <Text style={[s.charCount, { color: colors.textMuted }]}>
+                {description.length}/{DESCRIPTION_MAX}
+              </Text>
+            )}
+
+            {/* Submit */}
+            <Pressable
+              style={[
+                s.primaryBtn,
+                { backgroundColor: isSubmitting ? colors.border : colors.accent },
+              ]}
+              onPress={handleSubmit}
+              disabled={isSubmitting}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isSubmitting, busy: isSubmitting }}
+              accessibilityLabel={t("submit")}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color={colors.textOnAccent} />
               ) : (
-                <Text style={[s.charCount, { color: colors.textMuted }]}>
-                  {description.length}/{DESCRIPTION_MAX}
+                <Text style={[s.primaryBtnText, { color: colors.textOnAccent }]}>
+                  {t("submit")}
                 </Text>
               )}
-
-              {/* Submit */}
-              <Pressable
-                style={[
-                  s.primaryBtn,
-                  { backgroundColor: isSubmitting ? colors.border : colors.accent },
-                ]}
-                onPress={handleSubmit}
-                disabled={isSubmitting}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: isSubmitting, busy: isSubmitting }}
-                accessibilityLabel={t("submit")}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator color={colors.textOnAccent} />
-                ) : (
-                  <Text style={[s.primaryBtnText, { color: colors.textOnAccent }]}>
-                    {t("submit")}
-                  </Text>
-                )}
-              </Pressable>
-            </>
+            </Pressable>
           </ScrollView>
         </View>
       </KeyboardAvoidingView>

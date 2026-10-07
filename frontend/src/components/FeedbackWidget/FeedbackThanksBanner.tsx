@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { AccessibilityInfo, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, Platform, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 
@@ -27,7 +27,8 @@ export default function FeedbackThanksBanner({ visible, onDismiss }: Props) {
 
   useEffect(() => {
     if (!visible) return;
-    AccessibilityInfo.announceForAccessibility(message);
+    // Android's polite live region already announces; announcing here too would repeat it.
+    if (Platform.OS === "ios") AccessibilityInfo.announceForAccessibility(message);
     const timer = setTimeout(onDismiss, THANKS_BANNER_DURATION_MS);
     return () => clearTimeout(timer);
   }, [visible, message, onDismiss]);
@@ -55,6 +56,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
     zIndex: 100,
+    // Android orders by elevation over zIndex; keep above screen content.
+    elevation: 8,
     maxWidth: 320,
   },
   text: {
