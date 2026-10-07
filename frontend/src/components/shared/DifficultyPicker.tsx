@@ -8,6 +8,8 @@ export interface DifficultyOption<T extends string> {
   label: string;
   /** A second, smaller line under the label. */
   description?: string;
+  /** Screen-reader name when it should say more than `label`. Defaults to `label`. */
+  accessibilityLabel?: string;
   /** Gives the option a full-width row of its own. */
   fullWidth?: boolean;
 }
@@ -22,6 +24,8 @@ export interface DifficultyPickerProps<T extends string> {
   accessibilityLabel: string;
   /** Options get `${testID}-${value}`; the premium notice gets `${testID}-premium`. */
   testID?: string;
+  /** Overrides the premium notice's `${testID}-premium` testID. */
+  premiumTestID?: string;
 }
 
 /** Splits options into rows: runs of ordinary options, and each full-width one alone. */
@@ -43,7 +47,7 @@ function toRows<T extends string>(options: readonly DifficultyOption<T>[]) {
 
 /**
  * Segmented radio group for a game's difficulty (#1129), shared by the
- * Sudoku, Yacht and Hearts pickers. The game's premium levels show a lock;
+ * Sudoku, Yacht, Hearts and Star Swarm pickers and the Sudoku variant picker. The game's premium levels show a lock;
  * tapping one opens the "part of BC Arcade Premium" notice and leaves the
  * value as it was.
  */
@@ -54,9 +58,13 @@ export function DifficultyPicker<T extends string>({
   onChange,
   accessibilityLabel,
   testID,
+  premiumTestID,
 }: DifficultyPickerProps<T>) {
   const { colors } = useTheme();
-  const premium = usePremiumLevels(gameKey, testID ? `${testID}-premium` : undefined);
+  const premium = usePremiumLevels(
+    gameKey,
+    premiumTestID ?? (testID ? `${testID}-premium` : undefined)
+  );
 
   return (
     <>
@@ -77,12 +85,13 @@ export function DifficultyPicker<T extends string>({
               const selected = option.value === value;
               const locked = premium.isLocked(option.value);
               const textColor = selected ? colors.textOnAccent : colors.text;
+              const a11yName = option.accessibilityLabel ?? option.label;
               return (
                 <Pressable
                   key={option.value}
                   onPress={() => (locked ? premium.explain() : onChange(option.value))}
                   accessibilityRole="radio"
-                  accessibilityLabel={locked ? premium.lockedLabel(option.label) : option.label}
+                  accessibilityLabel={locked ? premium.lockedLabel(a11yName) : a11yName}
                   accessibilityState={{ checked: selected }}
                   aria-checked={selected}
                   testID={testID ? `${testID}-${option.value}` : undefined}

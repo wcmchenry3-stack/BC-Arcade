@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useTheme } from "../../theme/ThemeContext";
+import { useTheme, type Colors } from "../../theme/ThemeContext";
+import { LOGO_TILE_BG, MENU_SHADOW_COLOR } from "../../theme/theme.constants";
 import { typography } from "../../theme/typography";
 import FeedbackWidget from "../FeedbackWidget/FeedbackWidget";
 import FeedbackThanksBanner from "../FeedbackWidget/FeedbackThanksBanner";
@@ -52,6 +53,44 @@ export interface AppHeaderProps {
   onLevelSelect?: () => void;
   /** When provided, shows the ⋯ menu with an Edit Names item. */
   onEditPlayerNames?: () => void;
+}
+
+interface MenuItemSpec {
+  icon: React.ComponentProps<typeof MaterialIcons>["name"];
+  /** Defaults to `colors.accent`. */
+  iconColor?: string;
+  label: string;
+  testID?: string;
+  onPress: () => void;
+}
+
+function MenuItem({
+  icon,
+  iconColor,
+  label,
+  testID,
+  onPress,
+  colors,
+}: MenuItemSpec & { colors: Colors }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="menuitem"
+      testID={testID}
+      style={(state) => [
+        styles.dropdownItem,
+        state.pressed && { backgroundColor: colors.surfaceAlt },
+      ]}
+    >
+      <MaterialIcons
+        name={icon}
+        size={18}
+        color={iconColor ?? colors.accent}
+        style={styles.itemIcon}
+      />
+      <Text style={[styles.itemLabel, { color: colors.text }]}>{label}</Text>
+    </Pressable>
+  );
 }
 
 export function AppHeader({
@@ -121,45 +160,59 @@ export function AppHeader({
       }
     : undefined;
 
-  const handleMenuScorecard = () => {
+  const closeThen = (fn?: () => void) => () => {
     setMenuOpen(false);
-    onOpenScorecard?.();
+    fn?.();
   };
 
-  const handleMenuStats = () => {
-    setMenuOpen(false);
-    onOpenStats?.();
-  };
-
-  const handleMenuLeaderboard = () => {
-    setMenuOpen(false);
-    onOpenLeaderboard?.();
-  };
-
-  const handleMenuNewGame = () => {
-    setMenuOpen(false);
-    setAbandonVisible(true);
-  };
-
-  const handleMenuLevelSelect = () => {
-    setMenuOpen(false);
-    onLevelSelect?.();
-  };
-
-  const handleMenuEditNames = () => {
-    setMenuOpen(false);
-    onEditPlayerNames?.();
-  };
-
-  // #2481 — the ⋯ menu replaces the "?" button outright, so before this every
-  // gameplay screen had no way to send feedback: exactly where a player is
-  // most likely to hit something worth reporting. Reuses the widget the "?"
-  // opens, and `feedback:title` rather than a new key, so no locale needs a
-  // new string.
-  const handleMenuFeedback = () => {
-    setMenuOpen(false);
-    setHelpOpen(true);
-  };
+  // Rendered in this order; an item is shown only when its handler is set.
+  const menuItems: (MenuItemSpec | false)[] = [
+    !!onOpenScorecard && {
+      icon: "scoreboard",
+      label: t("common:overflow.menu.scorecard"),
+      testID: "nav-menu-scorecard",
+      onPress: closeThen(onOpenScorecard),
+    },
+    !!onOpenStats && {
+      icon: "insights",
+      label: t("common:overflow.menu.stats"),
+      testID: "nav-menu-stats",
+      onPress: closeThen(onOpenStats),
+    },
+    !!onOpenLeaderboard && {
+      icon: "emoji-events",
+      label: t("common:overflow.menu.leaderboard"),
+      testID: "nav-menu-leaderboard",
+      onPress: closeThen(onOpenLeaderboard),
+    },
+    !!onNewGame && {
+      icon: "refresh",
+      iconColor: colors.secondary,
+      label: t("common:overflow.menu.newGame"),
+      onPress: closeThen(() => setAbandonVisible(true)),
+    },
+    !!onLevelSelect && {
+      icon: "grid-view",
+      label: t("common:overflow.menu.levelSelect"),
+      onPress: closeThen(onLevelSelect),
+    },
+    !!onEditPlayerNames && {
+      icon: "edit",
+      label: t("common:overflow.menu.editNames"),
+      onPress: closeThen(onEditPlayerNames),
+    },
+    // #2481 — always last, and always present: the one menu item that does
+    // not depend on which handlers the screen passed in. The ⋯ menu replaces
+    // the "?" button outright, so without it gameplay screens had no way to
+    // send feedback. Reuses the widget the "?" opens, and `feedback:title`
+    // rather than a new key, so no locale needs a new string.
+    {
+      icon: "feedback",
+      label: t("title"),
+      testID: "nav-menu-feedback",
+      onPress: closeThen(() => setHelpOpen(true)),
+    },
+  ];
 
   const handleAbandonConfirm = () => {
     setAbandonVisible(false);
@@ -303,149 +356,7 @@ export function AppHeader({
             },
           ]}
         >
-          {!!onOpenScorecard && (
-            <Pressable
-              onPress={handleMenuScorecard}
-              accessibilityRole="menuitem"
-              testID="nav-menu-scorecard"
-              style={(state) => [
-                styles.dropdownItem,
-                state.pressed && { backgroundColor: colors.surfaceAlt },
-              ]}
-            >
-              <MaterialIcons
-                name="scoreboard"
-                size={18}
-                color={colors.accent}
-                style={styles.itemIcon}
-              />
-              <Text style={[styles.itemLabel, { color: colors.text }]}>
-                {t("common:overflow.menu.scorecard")}
-              </Text>
-            </Pressable>
-          )}
-
-          {!!onOpenStats && (
-            <Pressable
-              onPress={handleMenuStats}
-              accessibilityRole="menuitem"
-              testID="nav-menu-stats"
-              style={(state) => [
-                styles.dropdownItem,
-                state.pressed && { backgroundColor: colors.surfaceAlt },
-              ]}
-            >
-              <MaterialIcons
-                name="insights"
-                size={18}
-                color={colors.accent}
-                style={styles.itemIcon}
-              />
-              <Text style={[styles.itemLabel, { color: colors.text }]}>
-                {t("common:overflow.menu.stats")}
-              </Text>
-            </Pressable>
-          )}
-
-          {!!onOpenLeaderboard && (
-            <Pressable
-              onPress={handleMenuLeaderboard}
-              accessibilityRole="menuitem"
-              testID="nav-menu-leaderboard"
-              style={(state) => [
-                styles.dropdownItem,
-                state.pressed && { backgroundColor: colors.surfaceAlt },
-              ]}
-            >
-              <MaterialIcons
-                name="emoji-events"
-                size={18}
-                color={colors.accent}
-                style={styles.itemIcon}
-              />
-              <Text style={[styles.itemLabel, { color: colors.text }]}>
-                {t("common:overflow.menu.leaderboard")}
-              </Text>
-            </Pressable>
-          )}
-
-          {!!onNewGame && (
-            <Pressable
-              onPress={handleMenuNewGame}
-              accessibilityRole="menuitem"
-              style={(state) => [
-                styles.dropdownItem,
-                state.pressed && { backgroundColor: colors.surfaceAlt },
-              ]}
-            >
-              <MaterialIcons
-                name="refresh"
-                size={18}
-                color={colors.secondary}
-                style={styles.itemIcon}
-              />
-              <Text style={[styles.itemLabel, { color: colors.text }]}>
-                {t("common:overflow.menu.newGame")}
-              </Text>
-            </Pressable>
-          )}
-
-          {!!onLevelSelect && (
-            <Pressable
-              onPress={handleMenuLevelSelect}
-              accessibilityRole="menuitem"
-              style={(state) => [
-                styles.dropdownItem,
-                state.pressed && { backgroundColor: colors.surfaceAlt },
-              ]}
-            >
-              <MaterialIcons
-                name="grid-view"
-                size={18}
-                color={colors.accent}
-                style={styles.itemIcon}
-              />
-              <Text style={[styles.itemLabel, { color: colors.text }]}>
-                {t("common:overflow.menu.levelSelect")}
-              </Text>
-            </Pressable>
-          )}
-
-          {!!onEditPlayerNames && (
-            <Pressable
-              onPress={handleMenuEditNames}
-              accessibilityRole="menuitem"
-              style={(state) => [
-                styles.dropdownItem,
-                state.pressed && { backgroundColor: colors.surfaceAlt },
-              ]}
-            >
-              <MaterialIcons name="edit" size={18} color={colors.accent} style={styles.itemIcon} />
-              <Text style={[styles.itemLabel, { color: colors.text }]}>
-                {t("common:overflow.menu.editNames")}
-              </Text>
-            </Pressable>
-          )}
-
-          {/* #2481 — always last, and always present: the one menu item that
-              does not depend on which handlers the screen passed in. */}
-          <Pressable
-            onPress={handleMenuFeedback}
-            accessibilityRole="menuitem"
-            testID="nav-menu-feedback"
-            style={(state) => [
-              styles.dropdownItem,
-              state.pressed && { backgroundColor: colors.surfaceAlt },
-            ]}
-          >
-            <MaterialIcons
-              name="feedback"
-              size={18}
-              color={colors.accent}
-              style={styles.itemIcon}
-            />
-            <Text style={[styles.itemLabel, { color: colors.text }]}>{t("title")}</Text>
-          </Pressable>
+          {menuItems.map((item) => item && <MenuItem key={item.icon} {...item} colors={colors} />)}
         </View>
       </Modal>
 
@@ -490,7 +401,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 8,
-    backgroundColor: "#1a0a2e",
+    backgroundColor: LOGO_TILE_BG,
   },
   backButton: {
     width: 80,
@@ -553,7 +464,7 @@ const styles = StyleSheet.create({
     padding: 6,
     minWidth: 160,
     // Native shadow
-    shadowColor: "#000",
+    shadowColor: MENU_SHADOW_COLOR,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.5,
     shadowRadius: 24,

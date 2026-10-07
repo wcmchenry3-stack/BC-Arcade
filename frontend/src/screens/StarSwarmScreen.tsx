@@ -5,7 +5,6 @@ import {
   AppState,
   AppStateStatus,
   LayoutChangeEvent,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -55,7 +54,8 @@ import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
 import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
-import { PREMIUM_LEVEL_OPACITY, usePremiumLevels } from "../components/shared/usePremiumLevels";
+import { DifficultyPicker, type DifficultyOption } from "../components/shared/DifficultyPicker";
+import { ModalActions, ModalCard, ModalPrimaryButton } from "../components/shared/ModalCard";
 import { useGameSync } from "../game/_shared/useGameSync";
 import {
   getSavedPausedState,
@@ -100,6 +100,15 @@ function snapshotStats(s: StarSwarmState): DevStatsSnapshot {
 
 const pct = (x: number) => `${Math.round(x * 100)}%`.padStart(4);
 const col = (x: number | string, w: number) => String(x).padStart(w);
+// Each tier on its own row, its score multiplier underneath (#2982).
+const tierOptions: readonly DifficultyOption<DifficultyTier>[] = DIFFICULTY_TIERS.map((tier) => ({
+  value: tier,
+  label: difficultyLabel(tier),
+  description: `×${difficultyMultiplier(tier)}`,
+  accessibilityLabel: `${difficultyLabel(tier)} ×${difficultyMultiplier(tier)}`,
+  fullWidth: true,
+}));
+
 const TIER_TABLE_HEADER = `${"tier".padEnd(7)} base  eff rolls dodge  rate struck flak`;
 
 function tierTableLine(row: TierDodgeRow): string {
@@ -229,7 +238,6 @@ function StarSwarmGame() {
     { initial: savedPauseRef.current?.difficulty }
   );
   const [showDifficultyPicker, setShowDifficultyPicker] = useState(savedPauseRef.current === null);
-  const premium = usePremiumLevels("starswarm", "starswarm-premium");
   // The card's "View leaderboard" link and the ⋯ menu item (#2633) open the
   // finished run's tier board, else the current tier's.
   const openLeaderboard = useLeaderboardLink(navigation, "starswarm", {
@@ -703,68 +711,30 @@ function StarSwarmGame() {
           </View>
         )}
         {showDifficultyPicker && scale > 0 && (
-          <Modal
+          <ModalCard
             visible
-            transparent
-            animationType="fade"
             onRequestClose={handleConfirmDifficulty}
-            accessibilityViewIsModal
+            title={t("difficulty.selectTitle")}
           >
-            <View style={styles.pickerOverlay}>
-              <View style={dynamicStyles.pickerPanel}>
-                <Text style={dynamicStyles.pickerTitle}>{t("difficulty.selectTitle")}</Text>
-                <ScrollView
-                  showsVerticalScrollIndicator={false}
-                  style={styles.pickerScroll}
-                  contentContainerStyle={styles.pickerScrollContent}
-                >
-                  {DIFFICULTY_TIERS.map((tier) => {
-                    const tierLabel = `${difficultyLabel(tier)} ×${difficultyMultiplier(tier)}`;
-                    // A premium tier shows a lock; a tap explains it (#1129).
-                    const locked = premium.isLocked(tier);
-                    return (
-                      <Pressable
-                        key={tier}
-                        style={[
-                          dynamicStyles.pickerRow,
-                          difficulty === tier && dynamicStyles.pickerRowSelected,
-                          locked && styles.pickerRowLocked,
-                        ]}
-                        onPress={() => (locked ? premium.explain() : setDifficulty(tier))}
-                        accessibilityRole="radio"
-                        accessibilityState={{ checked: difficulty === tier }}
-                        aria-checked={difficulty === tier}
-                        accessibilityLabel={locked ? premium.lockedLabel(tierLabel) : tierLabel}
-                        testID={`starswarm-tier-${tier}`}
-                      >
-                        <Text
-                          style={[
-                            dynamicStyles.pickerTierName,
-                            difficulty === tier && dynamicStyles.pickerTierNameSelected,
-                          ]}
-                        >
-                          {locked
-                            ? premium.lockedText(difficultyLabel(tier))
-                            : difficultyLabel(tier)}
-                        </Text>
-                        <Text
-                          style={styles.pickerTierMult}
-                        >{`×${difficultyMultiplier(tier)}`}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-                <Pressable
-                  testID="starswarm-start-game"
-                  style={[styles.devActionBtn, dynamicStyles.devPrimary, styles.pickerStartBtn]}
-                  onPress={handleConfirmDifficulty}
-                >
-                  <Text style={styles.devPrimaryText}>{t("difficulty.start")}</Text>
-                </Pressable>
-              </View>
-            </View>
-            {premium.notice}
-          </Modal>
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.pickerScroll}>
+              <DifficultyPicker
+                gameKey="starswarm"
+                options={tierOptions}
+                value={difficulty}
+                onChange={setDifficulty}
+                accessibilityLabel={t("difficulty.selectTitle")}
+                testID="starswarm-tier"
+                premiumTestID="starswarm-premium"
+              />
+            </ScrollView>
+            <ModalActions style={styles.pickerActions}>
+              <ModalPrimaryButton
+                label={t("difficulty.start")}
+                onPress={handleConfirmDifficulty}
+                testID="starswarm-start-game"
+              />
+            </ModalActions>
+          </ModalCard>
         )}
 
         <GameResultModal
@@ -1198,30 +1168,12 @@ const baseStyles = StyleSheet.create({
   devTierTextActive: {
     color: "#ff8000",
   },
-  pickerOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,10,0.88)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
   pickerScroll: {
     maxHeight: 320,
+    alignSelf: "stretch",
   },
-  pickerScrollContent: {
-    gap: 6,
-    paddingVertical: 4,
-  },
-  pickerTierMult: {
-    color: "rgba(255,238,0,0.8)",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  pickerRowLocked: {
-    opacity: PREMIUM_LEVEL_OPACITY,
-  },
-  pickerStartBtn: {
+  pickerActions: {
     marginTop: 12,
-    backgroundColor: "#b05800", // #fff text on this gives ~5.1:1 contrast (WCAG AA)
   },
 });
 
@@ -1274,47 +1226,6 @@ const getStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
     },
     devPrimary: {
       backgroundColor: "rgba(255,128,0,1)",
-    },
-    pickerPanel: {
-      backgroundColor: colors.surfaceHigh,
-      borderRadius: 14,
-      padding: 24,
-      width: 300,
-      maxHeight: "80%",
-      borderWidth: 1,
-      borderColor: "rgba(0,255,200,0.3)",
-    },
-    pickerTitle: {
-      color: "#00ffcc",
-      fontSize: 15,
-      fontWeight: "700",
-      letterSpacing: 1.5,
-      textAlign: "center",
-      textTransform: "uppercase",
-      marginBottom: 14,
-    },
-    pickerRowSelected: {
-      backgroundColor: "rgba(0,255,200,0.12)",
-      borderColor: "rgba(0,255,200,0.55)",
-    },
-    pickerTierNameSelected: {
-      color: "#ffffff",
-    },
-    pickerRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.textMuted + "30",
-      backgroundColor: colors.textMuted + "0d",
-    },
-    pickerTierName: {
-      color: colors.text,
-      fontSize: 13,
-      fontWeight: "600",
     },
   });
 
