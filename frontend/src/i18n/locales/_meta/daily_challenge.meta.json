@@ -98,6 +98,24 @@
     "doNotTranslate": ["game"],
     "notes": "{{game}} is a localised game name such as \"Solitaire\". Chips wrap, but keep it compact. The \"+\" after {{target}} means \"or more\"; use the natural equivalent if \"+\" reads oddly."
   },
+  "goal.sudoku.final_score_at_least": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: reach at least the given score in one Sudoku puzzle, e.g. \"Score 180+ in Sudoku\".",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{target}}", "{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name. Chips wrap, but keep it compact. The \"+\" after {{target}} means \"or more\"; use the natural equivalent if \"+\" reads oddly."
+  },
+  "goal.sudoku.solved": {
+    "component": "DailyChallengeCard",
+    "description": "A goal chip: finish (solve) one Sudoku puzzle, at any difficulty.",
+    "tone": "functional",
+    "characterLimit": 34,
+    "placeholders": ["{{game}}"],
+    "doNotTranslate": ["game"],
+    "notes": "{{game}} is a localised game name. Chips wrap, but keep it compact."
+  },
   "goal.sort.final_score_at_least": {
     "component": "DailyChallengeCard",
     "description": "A goal chip: reach at least the given level in one game, e.g. \"Reach level 12 in Sort Puzzle\".",
