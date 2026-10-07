@@ -133,6 +133,8 @@ export interface Enemy {
   readonly beamPhase: BeamPhase;
   /** #2485: ms left in the current beam phase (idle = until the next charge). */
   readonly beamTimer: number;
+  /** Solo Carrier: px it has slid off its station to aim its beam; 0 for every other ship. */
+  readonly beamSlide: number;
   /** #2843: Carrier attack-run telegraph state; "idle" for every other tier. */
   readonly runPhase: AttackRunPhase;
   /** #2843: ms left in the current run phase (idle = until the next brace). */

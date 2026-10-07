@@ -75,6 +75,7 @@ const ENEMY: KeySpec<Enemy> = {
   burstShotsLeft: "required",
   beamPhase: "required",
   beamTimer: "required",
+  beamSlide: "required",
   runPhase: "required",
   runTimer: "required",
   dodge: "required",
