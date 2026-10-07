@@ -98,6 +98,24 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "error.needsConnection": {
+    "component": "DailyWordScreen",
+    "description": "Error banner shown when Daily Word opens offline and today's puzzle was never cached; the game cannot be played without a connection.",
+    "tone": "neutral, apologetic",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown together with a Retry button."
+  },
+  "error.retry": {
+    "component": "DailyWordScreen",
+    "description": "Button label that retries loading today's puzzle after the offline message.",
+    "tone": "functional",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "error.couldNotSubmit": {
     "component": "DailyWordScreen keyboard",
     "description": "Toast shown when the guess submission fails due to a network or server error.",
