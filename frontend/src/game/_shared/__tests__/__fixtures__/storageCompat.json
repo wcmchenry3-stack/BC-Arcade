@@ -28,7 +28,7 @@
   "blackjack: corrupt json": {
     "result": "null",
     "storage": {},
-    "sentry": "[[\"captureMessage\",\"blackjack.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"blackjack.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\",\"key\":\"blackjack_game_v2\",\"rawPayload\":\"{not json\"}}]]"
+    "sentry": "[[\"captureMessage\",\"blackjack.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"blackjack.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\",\"key\":\"blackjack_game_v2\",\"rawPayload\":\"{not json\"}}]]"
   },
   "blackjack: json null": {
     "result": "null",
@@ -100,7 +100,7 @@
   "cascade: corrupt json": {
     "result": "null",
     "storage": {},
-    "sentry": "[[\"captureMessage\",\"cascade.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"cascade.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\",\"key\":\"cascade_game_v3\",\"rawPayload\":\"{not json\"}}]]"
+    "sentry": "[[\"captureMessage\",\"cascade.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"cascade.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\",\"key\":\"cascade_game_v3\",\"rawPayload\":\"{not json\"}}]]"
   },
   "cascade: json null": {
     "result": "null",
@@ -168,7 +168,7 @@
   "daily_word: corrupt json": {
     "result": "null",
     "storage": {},
-    "sentry": "[[\"captureMessage\",\"daily_word.storage: corrupt payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"daily_word.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\",\"key\":\"daily_word_state_v1\"}}]]"
+    "sentry": "[[\"captureMessage\",\"daily_word.storage: corrupt payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"daily_word.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\",\"key\":\"daily_word_state_v1\"}}]]"
   },
   "daily_word: json null": {
     "result": "null",
@@ -242,7 +242,7 @@
   "freecell: corrupt json": {
     "result": "null",
     "storage": {},
-    "sentry": "[[\"captureMessage\",\"freecell.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"freecell.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\",\"key\":\"freecell_game\"}}]]"
+    "sentry": "[[\"captureMessage\",\"freecell.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"freecell.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\",\"key\":\"freecell_game\"}}]]"
   },
   "freecell: json null": {
     "result": "null",
@@ -310,7 +310,7 @@
   "hearts: corrupt json": {
     "result": "null",
     "storage": {},
-    "sentry": "[[\"captureMessage\",\"hearts.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"hearts.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\",\"key\":\"hearts_game\"}}]]"
+    "sentry": "[[\"captureMessage\",\"hearts.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"hearts.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\",\"key\":\"hearts_game\"}}]]"
   },
   "hearts: json null": {
     "result": "null",
@@ -378,7 +378,7 @@
   "mahjong: corrupt json": {
     "result": "null",
     "storage": {},
-    "sentry": "[[\"captureMessage\",\"mahjong.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"mahjong.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\",\"key\":\"mahjong_game\"}}]]"
+    "sentry": "[[\"captureMessage\",\"mahjong.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"mahjong.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\",\"key\":\"mahjong_game\"}}]]"
   },
   "mahjong: json null": {
     "result": "null",
@@ -446,7 +446,7 @@
   "solitaire: corrupt json": {
     "result": "null",
     "storage": {},
-    "sentry": "[[\"captureMessage\",\"solitaire.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"solitaire.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\",\"key\":\"solitaire_game\"}}]]"
+    "sentry": "[[\"captureMessage\",\"solitaire.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"solitaire.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\",\"key\":\"solitaire_game\"}}]]"
   },
   "solitaire: json null": {
     "result": "null",
@@ -582,7 +582,7 @@
   "twenty48: corrupt json": {
     "result": "null",
     "storage": {},
-    "sentry": "[[\"captureMessage\",\"twenty48.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"twenty48.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\",\"key\":\"twenty48_game_v2\",\"rawPayload\":\"{not json\"}}]]"
+    "sentry": "[[\"captureMessage\",\"twenty48.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"twenty48.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\",\"key\":\"twenty48_game_v2\",\"rawPayload\":\"{not json\"}}]]"
   },
   "twenty48: json null": {
     "result": "null",
@@ -654,7 +654,7 @@
   "yacht: corrupt json": {
     "result": "null",
     "storage": {},
-    "sentry": "[[\"captureMessage\",\"yacht.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"yacht.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\",\"key\":\"yacht_game_v2\"}}]]"
+    "sentry": "[[\"captureMessage\",\"yacht.storage: corrupt game payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"yacht.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\",\"key\":\"yacht_game_v2\"}}]]"
   },
   "yacht: json null": {
     "result": "null",
@@ -766,7 +766,7 @@
     "storage": {
       "freecell_stats_v1": "{x"
     },
-    "sentry": "[[\"captureException\",{\"__error\":\"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\"},{\"tags\":{\"subsystem\":\"freecell.storage\",\"op\":\"loadStats\"}}]]"
+    "sentry": "[[\"captureException\",{\"__error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\"},{\"tags\":{\"subsystem\":\"freecell.storage\",\"op\":\"loadStats\"}}]]"
   },
   "freecell: stats null": {
     "result": "{\"bestMoves\":0,\"gamesPlayed\":0,\"gamesWon\":0}",
@@ -856,7 +856,7 @@
     "storage": {
       "mahjong_stats_v1": "{x"
     },
-    "sentry": "[[\"captureException\",{\"__error\":\"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\"},{\"tags\":{\"subsystem\":\"mahjong.storage\",\"op\":\"loadStats\"}}]]"
+    "sentry": "[[\"captureException\",{\"__error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\"},{\"tags\":{\"subsystem\":\"mahjong.storage\",\"op\":\"loadStats\"}}]]"
   },
   "mahjong: stats write fails": {
     "result": "\"__undefined\"",
@@ -887,7 +887,7 @@
     "storage": {
       "@mahjong/progress": "{x"
     },
-    "sentry": "[[\"captureException\",{\"__error\":\"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\"},{\"tags\":{\"subsystem\":\"mahjong.storage\",\"op\":\"loadProgress\"}}]]"
+    "sentry": "[[\"captureException\",{\"__error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\"},{\"tags\":{\"subsystem\":\"mahjong.storage\",\"op\":\"loadProgress\"}}]]"
   },
   "mahjong: progress write fails": {
     "result": "\"__undefined\"",
@@ -927,7 +927,7 @@
     "storage": {
       "solitaire_stats_v1": "{x"
     },
-    "sentry": "[[\"captureException\",{\"__error\":\"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\"},{\"tags\":{\"subsystem\":\"solitaire.storage\",\"op\":\"loadStats\"}}]]"
+    "sentry": "[[\"captureException\",{\"__error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\"},{\"tags\":{\"subsystem\":\"solitaire.storage\",\"op\":\"loadStats\"}}]]"
   },
   "solitaire: stats write fails": {
     "result": "\"__undefined\"",
@@ -965,7 +965,7 @@
     "storage": {
       "sudoku_stats_v1": "{x"
     },
-    "sentry": "[[\"captureException\",{\"__error\":\"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\"},{\"tags\":{\"subsystem\":\"sudoku.storage\",\"op\":\"loadStats\"}}]]"
+    "sentry": "[[\"captureException\",{\"__error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\"},{\"tags\":{\"subsystem\":\"sudoku.storage\",\"op\":\"loadStats\"}}]]"
   },
   "sudoku: stats null": {
     "result": "{\"classic\":{\"easy\":{\"bestTimeS\":0},\"medium\":{\"bestTimeS\":0},\"hard\":{\"bestTimeS\":0}},\"mini\":{\"easy\":{\"bestTimeS\":0},\"medium\":{\"bestTimeS\":0},\"hard\":{\"bestTimeS\":0}}}",

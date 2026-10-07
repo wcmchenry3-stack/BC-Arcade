@@ -627,8 +627,15 @@ function json(value: unknown): string {
     if (v instanceof Set) return { __set: [...(v as Set<unknown>)] };
     if (v instanceof Error) return { __error: String(v) };
     return v;
-  });
+  }).replace(V8_JSON_ERROR_POSITION, "");
 }
+
+/**
+ * Newer V8 appends " (line L column C)" to JSON.parse error messages, whether
+ * they surface as an Error or as a string in Sentry extras; drop it so the
+ * recording compares equal across Node versions.
+ */
+const V8_JSON_ERROR_POSITION = / \(line \d+ column \d+\)/g;
 
 async function observe(s: Scenario): Promise<Observation> {
   await AsyncStorage.clear();
