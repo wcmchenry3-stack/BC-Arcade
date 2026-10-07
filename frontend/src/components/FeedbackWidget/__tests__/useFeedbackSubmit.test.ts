@@ -27,7 +27,6 @@ afterEach(() => {
 });
 
 const basePayload = {
-  title: "Test title",
   description: "Test description",
   type: "bug" as const,
 };
@@ -41,7 +40,7 @@ describe("useFeedbackSubmit", () => {
   });
 
   describe("successful submission", () => {
-    it("sends title, description and type to Sentry User Feedback", async () => {
+    it("sends the description alone as the message, plus type to Sentry User Feedback", async () => {
       const { result } = await renderHook(() => useFeedbackSubmit());
       await act(async () => {
         await result.current.submit({ ...basePayload, type: "feature" });
@@ -51,7 +50,7 @@ describe("useFeedbackSubmit", () => {
       expect(result.current.result).toEqual({ eventId: "event-id-1" });
       expect(mockCaptureFeedback).toHaveBeenCalledTimes(1);
       expect(mockCaptureFeedback.mock.calls[0][0]).toEqual({
-        message: "Test title\n\nTest description",
+        message: "Test description",
         source: "in_app_feedback",
         tags: { "feedback.type": "feature" },
       });
