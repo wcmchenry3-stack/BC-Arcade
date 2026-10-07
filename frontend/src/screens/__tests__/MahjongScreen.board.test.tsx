@@ -14,6 +14,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import MahjongScreen from "../MahjongScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import * as mahjongStorage from "../../game/mahjong/storage";
+import * as mahjongEngine from "../../game/mahjong/engine";
 import type { MahjongState } from "../../game/mahjong/types";
 import { detectedGesture } from "../../test-utils/mockScreenDeps";
 import type { DetectorRender } from "../../test-utils/mockScreenDeps";
@@ -23,6 +24,8 @@ jest.mock("react-native-gesture-handler", () =>
   mockScreenDeps().mockGestureHandler(() => mockDetected)
 );
 
+/** The free set the screen gave the canvas, per render (#2962). */
+const mockCanvasFreeIds: (ReadonlySet<number> | undefined)[] = [];
 jest.mock("../../components/mahjong/GameCanvas", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { View, Pressable, Text } = require("react-native");
@@ -30,11 +33,14 @@ jest.mock("../../components/mahjong/GameCanvas", () => {
     state,
     onTilePress,
     hintIds,
+    freeIds,
   }: {
     state: { tiles: readonly { id: number }[] };
     onTilePress: (id: number) => void;
     hintIds: ReadonlySet<number>;
+    freeIds?: ReadonlySet<number>;
   }) {
+    mockCanvasFreeIds.push(freeIds);
     return (
       <View testID="game-canvas">
         {state.tiles.map((tile) => (
@@ -136,6 +142,7 @@ const HINT = "Show a hint — highlights one valid pair for 2 seconds";
 beforeEach(async () => {
   jest.clearAllMocks();
   mockDetected.length = 0;
+  mockCanvasFreeIds.length = 0;
   await AsyncStorage.clear();
 });
 
@@ -257,6 +264,42 @@ describe("board gestures", () => {
     await pinchTo(0.001);
     expect(transform().x).toBeCloseTo(0, 5);
     expect(transform().y).toBeCloseTo(0, 5);
+  });
+});
+
+describe("free tiles (#2962)", () => {
+  it("are computed once per board and shared by the canvas, the hint and the tap", async () => {
+    const freeTileIds = jest.spyOn(mahjongEngine, "freeTileIds");
+    const selectTile = jest.spyOn(mahjongEngine, "selectTile");
+    const getAnyFreePair = jest.spyOn(mahjongEngine, "getAnyFreePair");
+    // Tiles 0 and 1 match and are free; 2 sits on 3, so 3 is covered.
+    const board = pairBoard({
+      tiles: [
+        ...pairBoard().tiles,
+        { id: 2, suit: "circles", rank: 2, faceId: 18, col: 8, row: 0, layer: 1 },
+        { id: 3, suit: "circles", rank: 3, faceId: 19, col: 8, row: 0, layer: 0 },
+      ] as unknown as MahjongState["tiles"],
+    });
+    await mountOn(board);
+    const free = mockCanvasFreeIds.at(-1)!;
+    expect([...free]).toEqual([0, 1, 2]);
+    const computed = freeTileIds.mock.calls.length;
+
+    // A hint and a selection keep the board: no new free set, and both use the shared one.
+    await press(HINT);
+    expect(getAnyFreePair).toHaveBeenLastCalledWith(expect.any(Array), free);
+    await press("mock-tile-0");
+    expect(selectTile).toHaveBeenLastCalledWith(expect.anything(), 0, free);
+    expect(mockCanvasFreeIds.at(-1)).toBe(free);
+    expect(freeTileIds).toHaveBeenCalledTimes(computed);
+
+    // The match changes the board: one new free set, for the canvas and the next tap.
+    await press("mock-tile-1");
+    expect(freeTileIds).toHaveBeenCalledTimes(computed + 1);
+    const next = mockCanvasFreeIds.at(-1)!;
+    expect([...next]).toEqual([2]);
+    await press("mock-tile-2");
+    expect(selectTile).toHaveBeenLastCalledWith(expect.anything(), 2, next);
   });
 });
 
