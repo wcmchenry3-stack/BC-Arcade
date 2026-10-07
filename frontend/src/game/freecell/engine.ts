@@ -11,6 +11,7 @@
  * unsolvable layout. Explicit seeds still work for tests and E2E.
  */
 
+import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
 import seedsJson from "./seeds.json";
 // True only in E2E test builds (Playwright web + Maestro native, both build
 // with EXPO_PUBLIC_TEST_HOOKS=1). Imported from the dependency-free
@@ -39,21 +40,10 @@ const FREE_CELL_COUNT = 4;
 // Tests can pin shuffles via `setRng(createSeededRng(seed))`.
 // ---------------------------------------------------------------------------
 
-export type RandomSource = () => number;
-
-let _rng: RandomSource = Math.random;
-
-export function setRng(fn: RandomSource): void {
-  _rng = fn;
-}
-
-export function createSeededRng(seed: number): RandomSource {
-  let state = seed >>> 0;
-  return () => {
-    state = (Math.imul(1664525, state) + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
-}
+const rngSlot = createRngSlot();
+export const setRng = rngSlot.setRng;
+export { createSeededRng };
+export type { RandomSource };
 
 // ---------------------------------------------------------------------------
 // Deck construction
@@ -113,7 +103,7 @@ function pickSeed(): number {
       "FreeCell seed bank is empty. Run: python backend/scripts/gen_freecell_seeds.py"
     );
   }
-  const idx = areTestHooksEnabled() ? E2E_SEED_INDEX : Math.floor(_rng() * seeds.length);
+  const idx = areTestHooksEnabled() ? E2E_SEED_INDEX : Math.floor(rngSlot.rng() * seeds.length);
   const seed = seeds[idx];
   if (seed === undefined) {
     throw new Error("Seed bank indexing failed");

@@ -80,7 +80,7 @@ export function loadEngineVariant(spec: EngineVariantSpec = {}): Engine {
   }).outputText;
   const mod: { exports: Record<string, unknown> } = { exports: {} };
   const localRequire = (id: string): unknown => {
-    if (id.startsWith("./")) return require(path.join(dir, id.slice(2)));
+    if (id.startsWith("./") || id.startsWith("../")) return require(path.join(dir, id));
     return require(id);
   };
   const g = globalThis as { __DEV__?: boolean };

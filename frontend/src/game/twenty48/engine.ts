@@ -10,6 +10,7 @@
  * without tracking state itself.
  */
 
+import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
 import { Twenty48State, TileData, GameEvent } from "./types";
 import {
   pauseClock,
@@ -159,28 +160,11 @@ function boardsEqual(a: readonly number[][], b: readonly number[][]): boolean {
 // Seedable RNG
 // ---------------------------------------------------------------------------
 
-export type RandomSource = () => number;
-
-let _rng: RandomSource = Math.random;
-
-export function setRng(fn: RandomSource): void {
-  _rng = fn;
-}
-
-export function getRng(): RandomSource {
-  return _rng;
-}
-
-/**
- * LCG deterministic RNG — for testing only.
- */
-export function createSeededRng(seed: number): RandomSource {
-  let state = seed >>> 0;
-  return () => {
-    state = (1664525 * state + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
-}
+const rngSlot = createRngSlot();
+export const setRng = rngSlot.setRng;
+export const getRng = rngSlot.getRng;
+export { createSeededRng };
+export type { RandomSource };
 
 function spawnTile(board: number[][], idBoard: number[][]): void {
   const empty: Array<[number, number]> = [];
@@ -190,13 +174,13 @@ function spawnTile(board: number[][], idBoard: number[][]): void {
     }
   }
   if (empty.length === 0) return;
-  const pos = empty[Math.floor(_rng() * empty.length)];
+  const pos = empty[Math.floor(rngSlot.rng() * empty.length)];
   if (pos === undefined) return;
   const [r, c] = pos;
   const boardRow = board[r];
   const idBoardRow = idBoard[r];
   if (boardRow !== undefined && idBoardRow !== undefined) {
-    boardRow[c] = _rng() < 0.9 ? 2 : 4;
+    boardRow[c] = rngSlot.rng() < 0.9 ? 2 : 4;
     idBoardRow[c] = nextId();
   }
 }

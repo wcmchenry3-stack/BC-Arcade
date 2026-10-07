@@ -34,6 +34,7 @@ import {
   scoreSource,
   type ScorePoints,
 } from "./scoreLedger";
+import { LCG_MODULUS, lcgNext } from "../_shared/seededRng";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -732,8 +733,8 @@ export function seedRng(seed: number): void {
 }
 
 function rng(): number {
-  _seed = (Math.imul(1664525, _seed) + 1013904223) >>> 0;
-  return _seed / 0xffffffff;
+  _seed = lcgNext(_seed);
+  return _seed / LCG_MODULUS;
 }
 
 // ---------------------------------------------------------------------------

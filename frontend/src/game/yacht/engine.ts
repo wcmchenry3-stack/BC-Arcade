@@ -9,6 +9,7 @@
  * in __tests__/engine.test.ts.
  */
 
+import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
 import { GameEvent, GameState } from "./types";
 
 export const CATEGORIES = [
@@ -67,35 +68,17 @@ export const FACE_TO_UPPER: Record<number, Category> = {
 // ---------------------------------------------------------------------------
 // Seedable RNG
 //
-// Die rolls go through `_rng` so tests and e2e flows can pin the dice
+// Die rolls go through `rngSlot.rng` so tests and e2e flows can pin the dice
 // sequence with `setRng(createSeededRng(seed))`. Default is Math.random for
 // normal gameplay. Tests that call setRng must restore Math.random in
 // afterEach to avoid leaking determinism into later tests.
 // ---------------------------------------------------------------------------
 
-export type RandomSource = () => number;
-
-let _rng: RandomSource = Math.random;
-
-export function setRng(fn: RandomSource): void {
-  _rng = fn;
-}
-
-export function getRng(): RandomSource {
-  return _rng;
-}
-
-/**
- * LCG (same parameters as Cascade's, Twenty48's, and Blackjack's seeded
- * RNGs). Deterministic for a given seed. Not cryptographic — testing only.
- */
-export function createSeededRng(seed: number): RandomSource {
-  let state = seed >>> 0;
-  return () => {
-    state = (1664525 * state + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
-}
+const rngSlot = createRngSlot();
+export const setRng = rngSlot.setRng;
+export const getRng = rngSlot.getRng;
+export { createSeededRng };
+export type { RandomSource };
 
 // ---------------------------------------------------------------------------
 // Pure scoring functions
@@ -321,7 +304,7 @@ export function roll(
   const rolledIndices: number[] = [];
   for (let i = 0; i < 5; i++) {
     if (!held[i]) {
-      nextDice[i] = opts?.dice != null ? opts.dice[i]! : 1 + Math.floor(_rng() * 6);
+      nextDice[i] = opts?.dice != null ? opts.dice[i]! : 1 + Math.floor(rngSlot.rng() * 6);
       rolledIndices.push(i);
     }
   }
