@@ -16,7 +16,6 @@ import { SessionLogger } from "./SessionLogger";
 export type FeedbackType = "bug" | "feature";
 
 export interface FeedbackPayload {
-  title: string;
   description: string;
   type: FeedbackType;
 }
@@ -37,7 +36,8 @@ export interface UseFeedbackSubmit {
   status: SubmitStatus;
   result: SubmitResult | null;
   error: SubmitError | null;
-  submit: (payload: FeedbackPayload) => Promise<void>;
+  /** Resolves true when the feedback was handed to Sentry. */
+  submit: (payload: FeedbackPayload) => Promise<boolean>;
   reset: () => void;
 }
 
@@ -64,14 +64,14 @@ export function useFeedbackSubmit(): UseFeedbackSubmit {
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [error, setError] = useState<SubmitError | null>(null);
 
-  async function submit(payload: FeedbackPayload): Promise<void> {
+  async function submit(payload: FeedbackPayload): Promise<boolean> {
     setError(null);
     setResult(null);
 
     if (!Sentry.getClient()) {
       setStatus("error");
       setError({ kind: "unavailable" });
-      return;
+      return false;
     }
 
     const now = Date.now();
@@ -79,7 +79,7 @@ export function useFeedbackSubmit(): UseFeedbackSubmit {
     if (retryAfter !== null) {
       setStatus("error");
       setError({ kind: "rate_limit", retryAfterSeconds: retryAfter });
-      return;
+      return false;
     }
 
     setStatus("submitting");
@@ -88,7 +88,7 @@ export function useFeedbackSubmit(): UseFeedbackSubmit {
     try {
       const eventId = Sentry.captureFeedback(
         {
-          message: `${payload.title}\n\n${payload.description}`,
+          message: payload.description,
           source: "in_app_feedback",
           tags: { "feedback.type": payload.type },
         },
@@ -103,9 +103,11 @@ export function useFeedbackSubmit(): UseFeedbackSubmit {
       recentSubmissions.push(now);
       setResult({ eventId });
       setStatus("success");
+      return true;
     } catch {
       setStatus("error");
       setError({ kind: "unavailable" });
+      return false;
     }
   }
 
