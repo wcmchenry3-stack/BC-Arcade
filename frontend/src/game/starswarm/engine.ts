@@ -116,7 +116,7 @@ export const MISSION_COMPLETE_BANNER_MS = 1200;
 // (dodging) while the surviving hazards resolve, then climbs off the top. The hard transient
 // reset happens once it is off-screen, or at EXTRACTION_MAX_MS whatever happens.
 export const EXTRACTION_HOLD_MIN_MS = 500; // the ship holds the lane at least this long…
-export const EXTRACTION_HOLD_MAX_MS = 2500; // …and climbs by here even if hazards remain
+export const EXTRACTION_HOLD_MAX_MS = 2500; // …and climbs by here even if hazards remain (#2945: unless chasing a pickup)
 export const EXTRACTION_MAX_MS = 6000; // hard cap on the whole extraction
 // #2945: a pickup the last kill left behind is worth holding the lane for — but only until here,
 // leaving the climb enough of the EXTRACTION_MAX_MS cap to clear the top.
@@ -4696,7 +4696,8 @@ function pickLane(
 }
 
 /**
- * #2945: the lane of the pickup the ship can still collect, or null. Pickups fall at a fixed
+ * #2945: the lane of the persistent pickup (salvage / hull) the ship can still collect, or null.
+ * Pickups fall at a fixed
  * speed, so the ship holds its row and meets one: it must arrive before the pickup falls past,
  * be reachable laterally by then, and land inside the pickup hold window. First in array order
  * wins a tie, so the choice is deterministic.
@@ -4706,6 +4707,8 @@ function pickupLane(state: StarSwarmState, elapsedMs: number): number | null {
   let best: PowerUp | null = null;
   let bestArrive = Infinity;
   for (const pu of state.powerUps) {
+    // only upgrades persist: the reset wipes timed buffs (shield, lightning), Buddy and bombs
+    if ((pu.type !== "salvage" && pu.type !== "hull") || pu.vy <= 0) continue;
     const gap = p.y - pu.y - (p.height + pu.height) / 2; // vertical distance until they touch
     const arrive = Math.max(0, gap) / pu.vy;
     const leave = Math.max(0, p.y - pu.y + (p.height + pu.height) / 2) / pu.vy; // fallen past

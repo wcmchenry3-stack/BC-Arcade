@@ -662,7 +662,7 @@ describe("#2945 extraction collects the last kill's pickups", () => {
   function makeDrop(s: StarSwarmState, dx: number, dy: number): PowerUp {
     return {
       id: 93000,
-      type: "shield",
+      type: "salvage",
       x: s.player.x + dx,
       y: s.player.y - dy,
       vy: 0.08,
@@ -676,9 +676,24 @@ describe("#2945 extraction collects the last kill's pickups", () => {
     let s = enterExtraction();
     s = { ...s, powerUps: [makeDrop(s, 90, 120)] };
     s = advanceMs(s, 1500);
-    expect(s.activePowerUp?.type).toBe("shield");
+    expect(s.player.guns).toBe(2);
     expect(s.powerUps).toHaveLength(0);
     expect(s.phase).toBe("Extraction");
+  });
+
+  it("does not chase a timed buff the wave reset would wipe", () => {
+    let s = enterExtraction();
+    s = { ...s, powerUps: [{ ...makeDrop(s, 90, 120), type: "shield" }] };
+    s = advanceMs(s, EXTRACTION_HOLD_MIN_MS + 50);
+    expect(s.extraction!.climbMs).toBeGreaterThan(0);
+  });
+
+  it("keeps a collected upgrade into the next wave", () => {
+    let s = enterExtraction();
+    s = { ...s, powerUps: [{ ...makeDrop(s, 90, 120), type: "hull" }] };
+    s = runExtraction(s);
+    expect(s.wave).toBe(2);
+    expect(s.player.hull).toBe(1);
   });
 
   it("does not delay the climb when there is no pickup", () => {
@@ -692,7 +707,7 @@ describe("#2945 extraction collects the last kill's pickups", () => {
     s = { ...s, powerUps: [makeDrop(s, 400, 60)] };
     s = advanceMs(s, EXTRACTION_HOLD_MIN_MS + 50);
     expect(s.extraction!.climbMs).toBeGreaterThan(0);
-    expect(s.activePowerUp).toBeNull();
+    expect(s.player.guns).toBe(1);
   });
 
   it("never steers into a hazard to chase a pickup", () => {
@@ -707,7 +722,7 @@ describe("#2945 extraction collects the last kill's pickups", () => {
     };
     s = advanceMs(s, 2500);
     expect(s.player.lives).toBe(lives);
-    expect(s.activePowerUp).toBeNull();
+    expect(s.player.guns).toBe(1);
   });
 
   it("does not wait for a drop that would only arrive after the pickup hold cap", () => {
