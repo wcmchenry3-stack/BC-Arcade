@@ -213,11 +213,55 @@ describe("GameScreen", () => {
   });
 
   it("round header clamps to 13 when game_over is true (#3021)", async () => {
-    const { queryByText } = await renderScreen({ round: 14, game_over: true });
-    // The engine increments round to 14 after the 13th score, but the display
-    // should clamp it to 13 to avoid showing "Round 14 / 13"
-    // Verify it doesn't show round 14 in the header
-    expect(queryByText(/round.*14/i)).toBeNull();
+    // Get the i18n instance and spy on its t method
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const i18n = require("../../i18n/i18n").default;
+    const originalT = i18n.t.bind(i18n);
+    const tCalls: unknown[] = [];
+    i18n.t = jest.fn((key: string, options: unknown) => {
+      tCalls.push({ key, options });
+      return originalT(key, options);
+    });
+
+    try {
+      await renderScreen({ round: 14, game_over: true });
+
+      // Verify that t("round.header", { round: 13 }) was called (not round: 14)
+      const roundHeaderCalls = tCalls.filter(
+        (call: unknown) => (call as Record<string, unknown>).key === "round.header"
+      );
+      expect(roundHeaderCalls.length).toBeGreaterThan(0);
+      const lastCall = roundHeaderCalls[roundHeaderCalls.length - 1] as Record<string, unknown>;
+      expect((lastCall.options as Record<string, unknown>).round).toBe(13);
+    } finally {
+      i18n.t = originalT;
+    }
+  });
+
+  it("round header shows unmodified value during mid-game (#3021)", async () => {
+    // Get the i18n instance and spy on its t method
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const i18n = require("../../i18n/i18n").default;
+    const originalT = i18n.t.bind(i18n);
+    const tCalls: unknown[] = [];
+    i18n.t = jest.fn((key: string, options: unknown) => {
+      tCalls.push({ key, options });
+      return originalT(key, options);
+    });
+
+    try {
+      await renderScreen({ round: 5 });
+
+      // Verify that t("round.header", { round: 5 }) was called (not clamped)
+      const roundHeaderCalls = tCalls.filter(
+        (call: unknown) => (call as Record<string, unknown>).key === "round.header"
+      );
+      expect(roundHeaderCalls.length).toBeGreaterThan(0);
+      const lastCall = roundHeaderCalls[roundHeaderCalls.length - 1] as Record<string, unknown>;
+      expect((lastCall.options as Record<string, unknown>).round).toBe(5);
+    } finally {
+      i18n.t = originalT;
+    }
   });
 });
 
