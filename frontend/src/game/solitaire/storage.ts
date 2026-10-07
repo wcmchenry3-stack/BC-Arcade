@@ -1,5 +1,6 @@
 /**
- * AsyncStorage persistence for in-progress Solitaire games (#597).
+ * AsyncStorage persistence for in-progress Solitaire games (#597), through
+ * the shared `storageSlot` (#2987).
  *
  * Saves after every state mutation so a crash or backgrounded app doesn't
  * lose progress. One slot per device; no account linkage in V1.
@@ -19,13 +20,11 @@
  * starting a fresh game.
  */
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Sentry from "@sentry/react-native";
 import type { SolitaireState } from "./types";
 import { clockForSave, clockOnLoad } from "../_shared/playClock";
+import { createJsonSlot, createRecord } from "../_shared/storageSlot";
 
-const GAME_KEY = "solitaire_game";
-const STATS_KEY = "solitaire_stats_v1";
+const SUBSYSTEM = "solitaire.storage";
 
 /**
  * The device's cached best, for the result card's best time and "New best"
@@ -37,6 +36,8 @@ export interface SolitaireStats {
   bestTimeMs: number;
 }
 
+type ParsedSave = { -readonly [K in keyof SolitaireState]?: SolitaireState[K] };
+
 function stripNestedUndo(state: SolitaireState): SolitaireState {
   return {
     ...state,
@@ -44,78 +45,50 @@ function stripNestedUndo(state: SolitaireState): SolitaireState {
   };
 }
 
-export async function saveGame(state: SolitaireState): Promise<void> {
-  try {
-    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(stripNestedUndo(clockForSave(state))));
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "solitaire.storage", op: "save" } });
-  }
+function isSavedGame(p: unknown): p is ParsedSave {
+  const parsed = p as ParsedSave;
+  return !(
+    parsed._v !== 1 ||
+    (parsed.drawMode !== 1 && parsed.drawMode !== 3) ||
+    !Array.isArray(parsed.tableau) ||
+    parsed.tableau.length !== 7 ||
+    parsed.foundations === null ||
+    typeof parsed.foundations !== "object" ||
+    !Array.isArray(parsed.stock) ||
+    !Array.isArray(parsed.waste) ||
+    typeof parsed.score !== "number" ||
+    typeof parsed.recycleCount !== "number" ||
+    !Array.isArray(parsed.undoStack) ||
+    typeof parsed.isComplete !== "boolean"
+  );
 }
 
-export async function loadGame(): Promise<SolitaireState | null> {
-  try {
-    const raw = await AsyncStorage.getItem(GAME_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { -readonly [K in keyof SolitaireState]?: SolitaireState[K] };
-    if (
-      parsed._v !== 1 ||
-      (parsed.drawMode !== 1 && parsed.drawMode !== 3) ||
-      !Array.isArray(parsed.tableau) ||
-      parsed.tableau.length !== 7 ||
-      parsed.foundations === null ||
-      typeof parsed.foundations !== "object" ||
-      !Array.isArray(parsed.stock) ||
-      !Array.isArray(parsed.waste) ||
-      typeof parsed.score !== "number" ||
-      typeof parsed.recycleCount !== "number" ||
-      !Array.isArray(parsed.undoStack) ||
-      typeof parsed.isComplete !== "boolean"
-    ) {
-      await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
-      return null;
-    }
+export const {
+  save: saveGame,
+  load: loadGame,
+  clear: clearGame,
+} = createJsonSlot<SolitaireState, ParsedSave>({
+  key: "solitaire_game",
+  subsystem: SUBSYSTEM,
+  isValid: isSavedGame,
+  onLoad: (parsed) => {
     // Normalize timer fields — absent in saves created before timer tracking was added.
     parsed.startedAt = parsed.startedAt ?? null;
     parsed.accumulatedMs = parsed.accumulatedMs ?? 0;
     const loaded = parsed as SolitaireState;
     return clockOnLoad(loaded, loaded.isComplete);
-  } catch (e) {
-    Sentry.captureMessage("solitaire.storage: corrupt game payload, discarding", {
-      level: "warning",
-      tags: { subsystem: "solitaire.storage", op: "load" },
-      extra: { error: String(e), key: GAME_KEY },
-    });
-    await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
-    return null;
-  }
-}
+  },
+  beforeSave: (state) => stripNestedUndo(clockForSave(state)),
+});
 
-export async function clearGame(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(GAME_KEY);
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "solitaire.storage", op: "clear" } });
-  }
-}
-
-const EMPTY_STATS: SolitaireStats = { bestTimeMs: 0 };
-
-export async function loadStats(): Promise<SolitaireStats> {
-  try {
-    const raw = await AsyncStorage.getItem(STATS_KEY);
-    if (!raw) return { ...EMPTY_STATS };
+export const { load: loadStats, save: saveStats } = createRecord<SolitaireStats>({
+  key: "solitaire_stats_v1",
+  subsystem: SUBSYSTEM,
+  ops: { load: "loadStats", save: "saveStats" },
+  fallback: () => ({ bestTimeMs: 0 }),
+  read: (raw) => {
     const parsed = JSON.parse(raw);
     return { bestTimeMs: typeof parsed?.bestTimeMs === "number" ? parsed.bestTimeMs : 0 };
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "solitaire.storage", op: "loadStats" } });
-    return { ...EMPTY_STATS };
-  }
-}
-
-export async function saveStats(stats: SolitaireStats): Promise<void> {
-  try {
-    await AsyncStorage.setItem(STATS_KEY, JSON.stringify({ bestTimeMs: stats.bestTimeMs }));
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "solitaire.storage", op: "saveStats" } });
-  }
-}
+  },
+  write: (stats) => JSON.stringify({ bestTimeMs: stats.bestTimeMs }),
+});

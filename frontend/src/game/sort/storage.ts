@@ -1,6 +1,15 @@
+/**
+ * Sort's saved progress, level cache and best moves, through the shared
+ * `storageSlot` (#2987). Until #2987 every failure here was swallowed
+ * unreported (or, for the writes, rejected to callers that ignored it); now
+ * each is reported to Sentry under `sort.storage`, and no call rejects.
+ * What is stored, and what each load returns, is unchanged.
+ */
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Sentry from "@sentry/react-native";
 import type { SortState } from "./types";
 import type { LevelsResponse } from "./api";
+import { createJsonSlot } from "../_shared/storageSlot";
 
 export interface SortProgress {
   readonly unlockedLevel: number;
@@ -8,41 +17,40 @@ export interface SortProgress {
   readonly currentState: SortState | null;
 }
 
-const STORAGE_KEY = "@sort/progress";
-const LEVELS_CACHE_KEY = "@sort/levels_cache";
+const SUBSYSTEM = "sort.storage";
 const DEFAULT: SortProgress = { unlockedLevel: 1, currentLevelId: null, currentState: null };
 
-export async function saveProgress(data: SortProgress): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+function isObject(p: unknown): boolean {
+  return p !== null && typeof p === "object";
 }
+
+/**
+ * A read that fails is reported and leaves the stored value alone (it holds
+ * the unlocked level); one that can't be parsed is removed with a warning.
+ */
+const progressSlot = createJsonSlot<SortProgress>({
+  key: "@sort/progress",
+  subsystem: SUBSYSTEM,
+  isValid: (p): p is SortProgress => isObject(p),
+  corruptMessage: "sort.storage: corrupt progress payload, discarding",
+  readFailureIsError: true,
+});
+
+export const { save: saveProgress, clear: clearGame } = progressSlot;
 
 export async function loadProgress(): Promise<SortProgress> {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT;
-    return JSON.parse(raw) as SortProgress;
-  } catch {
-    return DEFAULT;
-  }
+  return (await progressSlot.load()) ?? DEFAULT;
 }
 
-export async function clearGame(): Promise<void> {
-  await AsyncStorage.removeItem(STORAGE_KEY);
-}
+const levelsCacheSlot = createJsonSlot<LevelsResponse>({
+  key: "@sort/levels_cache",
+  subsystem: SUBSYSTEM,
+  isValid: (p): p is LevelsResponse => isObject(p),
+  corruptMessage: "sort.storage: corrupt levels cache, discarding",
+  readFailureIsError: true,
+});
 
-export async function saveLevelsCache(data: LevelsResponse): Promise<void> {
-  await AsyncStorage.setItem(LEVELS_CACHE_KEY, JSON.stringify(data));
-}
-
-export async function loadLevelsCache(): Promise<LevelsResponse | null> {
-  try {
-    const raw = await AsyncStorage.getItem(LEVELS_CACHE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as LevelsResponse;
-  } catch {
-    return null;
-  }
-}
+export const { save: saveLevelsCache, load: loadLevelsCache } = levelsCacheSlot;
 
 // ---------------------------------------------------------------------------
 // Best moves per level (#2512) — shown as "Best" on the result card, and
@@ -72,7 +80,8 @@ export async function loadBestMoves(): Promise<BestMoves | null> {
   let raw: string | null;
   try {
     raw = await AsyncStorage.getItem(BEST_MOVES_KEY);
-  } catch {
+  } catch (e) {
+    Sentry.captureException(e, { tags: { subsystem: SUBSYSTEM, op: "loadBestMoves" } });
     return null;
   }
   try {
@@ -83,17 +92,23 @@ export async function loadBestMoves(): Promise<BestMoves | null> {
       if (isMoveCount(moves)) bests[level] = moves;
     }
     return bests;
-  } catch {
+  } catch (e) {
+    Sentry.captureMessage("sort.storage: corrupt best moves, reading as none", {
+      level: "warning",
+      tags: { subsystem: SUBSYSTEM, op: "loadBestMoves" },
+      extra: { error: String(e), key: BEST_MOVES_KEY },
+    });
     return {};
   }
 }
 
-/** Replaces the stored bests with `bests`. Best-effort: resolves false on failure. */
+/** Replaces the stored bests with `bests`. Best-effort: resolves false on failure (reported). */
 export async function saveBestMoves(bests: BestMoves): Promise<boolean> {
   try {
     await AsyncStorage.setItem(BEST_MOVES_KEY, JSON.stringify(bests));
     return true;
-  } catch {
+  } catch (e) {
+    Sentry.captureException(e, { tags: { subsystem: SUBSYSTEM, op: "saveBestMoves" } });
     return false;
   }
 }
