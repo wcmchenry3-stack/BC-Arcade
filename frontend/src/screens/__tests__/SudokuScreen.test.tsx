@@ -905,4 +905,77 @@ describe("SudokuScreen — HUD clock (#2964)", () => {
     }
     expect(mockGridRenders).toBe(rendersBeforeTicks);
   });
+
+  it("holds the clock while paused and resumes on the clock's own second", async () => {
+    jest.useFakeTimers();
+    const fresh = loadPuzzle("easy", "classic", () => 0);
+    const open = fresh.grid
+      .flatMap((cells, row) => cells.map((cell, col) => ({ cell, row, col })))
+      .find(({ cell }) => !cell.given)!;
+    await saveGame(fillAllExcept(fresh, open));
+
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:02")).toBeTruthy();
+
+    // Another screen covers the puzzle for five seconds: the HUD does not move.
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:02")).toBeTruthy();
+
+    // Back again: the paused five seconds stay out, and the next second lands
+    // exactly one second after the resume.
+    await act(async () => {
+      mockNavListeners.get("focus")?.forEach((h) => h());
+    });
+    expect(r.getByLabelText("Elapsed time 00:02")).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(999);
+    });
+    expect(r.getByLabelText("Elapsed time 00:02")).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(r.getByLabelText("Elapsed time 00:03")).toBeTruthy();
+  });
+
+  it("starts the HUD's seconds at the first move, not at mount", async () => {
+    jest.useFakeTimers();
+    const r = await renderAndAwaitLoad();
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: /start/i }));
+    });
+    const emptyCells = r
+      .getAllByRole("button")
+      .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1700); // thinking: no move yet
+    });
+    expect(r.getByLabelText("Elapsed time 00:00")).toBeTruthy();
+
+    const digit = r
+      .getAllByLabelText(/enter digit \d/i)
+      .find((b) => !b.props.accessibilityState?.disabled)!;
+    await act(async () => {
+      await fireEvent.press(digit);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(999);
+    });
+    expect(r.getByLabelText("Elapsed time 00:00")).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(r.getByLabelText("Elapsed time 00:01")).toBeTruthy();
+  });
 });

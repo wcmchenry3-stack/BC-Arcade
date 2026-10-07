@@ -105,7 +105,8 @@ export default function SudokuScreen() {
   );
   const [variant, setVariant] = useState<Variant>("classic");
   const [state, setState] = useState<SudokuState | null>(null);
-  // Bumped when a puzzle starts over, so the HUD clock shows 00:00 at once.
+  // Bumped when a puzzle starts over or the clock resumes, so the HUD clock
+  // re-reads it (and re-aligns its tick) at once.
   const [clockEpoch, setClockEpoch] = useState(0);
   const [loading, setLoading] = useState(true);
   const [newGameModalVisible, setNewGameModalVisible] = useState(false);
@@ -188,6 +189,8 @@ export default function SudokuScreen() {
     if (pausedAtRef.current === null || startMsRef.current === null) return;
     startMsRef.current += Date.now() - pausedAtRef.current;
     pausedAtRef.current = null;
+    // The HUD re-reads the clock and re-aligns its tick to the shifted start.
+    setClockEpoch((n) => n + 1);
   }, []);
   const awayRef = usePauseWhileAway(navigation, pauseTimer, resumeTimer);
 
@@ -244,13 +247,9 @@ export default function SudokuScreen() {
     saveGame(state).catch(() => {});
   }, [state]);
 
-  // Whole seconds on the puzzle's clock, null before the first input. The HUD's
-  // `ElapsedText` owns the once-per-second tick and reads this, so the screen,
-  // grid and pad do not re-render as time passes (#2964).
-  const readElapsedS = useCallback((): number | null => {
-    if (startMsRef.current === null) return null;
-    return Math.floor((Date.now() - startMsRef.current) / 1000);
-  }, []);
+  // The HUD's `ElapsedText` owns the clock's tick and reads `playedMs`, so the
+  // HUD always shows the time the game reports (pauses taken out), and the
+  // screen, grid and pad do not re-render as time passes (#2964).
   const elapsedA11yLabel = useCallback((time: string) => t("hud.elapsed", { time }), [t]);
 
   // Complete the gameSync session exactly once on the completion
@@ -262,7 +261,7 @@ export default function SudokuScreen() {
     }
     if (state.isComplete && !prevCompleteRef.current) {
       const score = computeScore(state.difficulty, state.errorCount);
-      const finalElapsed = readElapsedS() ?? 0;
+      const finalElapsed = Math.floor((playedMs() ?? 0) / 1000);
       const gid = syncComplete(
         {
           finalScore: score,
@@ -305,7 +304,7 @@ export default function SudokuScreen() {
       });
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, submitScore, readElapsedS]);
+  }, [state, syncComplete, submitScore, playedMs]);
 
   const ensureSyncStarted = useCallback(
     (next: SudokuState) => {
@@ -513,11 +512,10 @@ export default function SudokuScreen() {
               },
               {
                 key: "elapsed",
-                text: "",
                 muted: true,
                 render: (textStyle) => (
                   <ElapsedText
-                    getElapsedS={readElapsedS}
+                    getElapsedMs={playedMs}
                     running={!isComplete}
                     frozenS={result?.elapsedS ?? null}
                     resetKey={clockEpoch}
