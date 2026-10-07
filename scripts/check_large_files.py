@@ -3,33 +3,58 @@
 
 Stdlib-only. Run from anywhere inside the repo:  python3 scripts/check_large_files.py
 
-Checks every file in `git ls-files`. Allow-listed paths are exempt; anything else
-over the limit (newly added or grown) fails the PR. To tolerate a large file
-deliberately, add its path/glob to ALLOWLIST with a reason.
+Checks every file in `git ls-files`. Grandfathered files (exact path, size cap) may not grow; any other file
+over the limit fails the PR.
 """
 
 from __future__ import annotations
 
-import fnmatch
 import os
 import subprocess
 import sys
 
 LIMIT_BYTES = 5 * 1024 * 1024  # 5 MiB (issue #2967)
 
-# (glob, reason). fnmatch globs: "*" also matches "/".
-ALLOWLIST: list[tuple[str, str]] = [
-    # Cascade source art, force-tracked past .gitignore. Not in the app bundle.
-    # Moves to Git LFS under epic #3033; delete these two entries then.
-    ("celestial_images/*", "Cascade source art -> LFS in #3033"),
-    ("fruit_images/*", "Cascade source art -> LFS in #3033"),
-    # Background music; right-sizing tracked in #1779.
-    ("frontend/assets/sounds/*.mp3", "BGM sizes, #1779"),
-]
+# Exact path -> size cap in bytes. A listed file may not grow past its cap; any
+# unlisted file over LIMIT_BYTES fails, even inside these directories.
+# Cascade source art is force-tracked past .gitignore and is not in the app bundle.
+# The celestial_images/ and fruit_images/ entries go away when #3033 moves the art
+# to Git LFS. If a sound file ever exceeds the limit, list it here explicitly (#1779).
+GRANDFATHERED: dict[str, int] = {
+    "celestial_images/earth.png": 6274815,
+    "celestial_images/jupiter.png": 8975886,
+    "celestial_images/mars.png": 8385593,
+    "celestial_images/mercury.png": 7789380,
+    "celestial_images/milkyway.png": 7768274,
+    "celestial_images/neptune.png": 7970062,
+    "celestial_images/pluto.png": 7398949,
+    "celestial_images/saturn.png": 8835928,
+    "celestial_images/sun.png": 8453418,
+    "celestial_images/uranus.png": 8195105,
+    "celestial_images/venus.png": 7587525,
+    "fruit_images/apple.png": 6615197,
+    "fruit_images/blueberry.png": 6811784,
+    "fruit_images/cherry.png": 7176170,
+    "fruit_images/coconut.png": 7155948,
+    "fruit_images/dragonfruit.png": 6905582,
+    "fruit_images/grapes.png": 6711208,
+    "fruit_images/lemon.png": 6136900,
+    "fruit_images/orange.png": 5513566,
+    "fruit_images/peach.png": 7180903,
+    "fruit_images/pineapple.png": 6347997,
+    "fruit_images/pumpkin.png": 6948929,
+    "fruit_images/watermelon.png": 7022094,
+}
 
 
-def allowed(path: str) -> bool:
-    return any(fnmatch.fnmatch(path, glob) for glob, _ in ALLOWLIST)
+def find_offenders(sizes: dict[str, int]) -> list[tuple[str, int]]:
+    """Return (path, size) for each file over its cap, largest first."""
+    bad = [
+        (path, size)
+        for path, size in sizes.items()
+        if size > GRANDFATHERED.get(path, LIMIT_BYTES)
+    ]
+    return sorted(bad, key=lambda o: -o[1])
 
 
 def main() -> int:
@@ -39,22 +64,21 @@ def main() -> int:
     files = subprocess.check_output(
         ["git", "-C", root, "ls-files", "-z"], text=True
     ).split("\0")
-    offenders = []
+    sizes: dict[str, int] = {}
     for rel in filter(None, files):
         full = os.path.join(root, rel)
         if os.path.islink(full) or not os.path.isfile(full):
             continue
-        size = os.path.getsize(full)
-        if size > LIMIT_BYTES and not allowed(rel):
-            offenders.append((rel, size))
-    for rel, size in sorted(offenders, key=lambda o: -o[1]):
+        sizes[rel] = os.path.getsize(full)
+    offenders = find_offenders(sizes)
+    for rel, size in offenders:
         print(
             f"::error file={rel}::{rel} is {size / 1048576:.1f} MiB (limit {LIMIT_BYTES // 1048576} MiB)"
         )
     if offenders:
         print(
             "\nTracked files over the limit. Shrink/optimize them, use Git LFS, or (with a "
-            "reason) add to ALLOWLIST in scripts/check_large_files.py."
+            "reason) see GRANDFATHERED in scripts/check_large_files.py."
         )
         return 1
     print(
