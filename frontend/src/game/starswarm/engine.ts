@@ -118,6 +118,9 @@ export const MISSION_COMPLETE_BANNER_MS = 1200;
 export const EXTRACTION_HOLD_MIN_MS = 500; // the ship holds the lane at least this long…
 export const EXTRACTION_HOLD_MAX_MS = 2500; // …and climbs by here even if hazards remain
 export const EXTRACTION_MAX_MS = 6000; // hard cap on the whole extraction
+// #2945: a pickup the last kill left behind is worth holding the lane for — but only until here,
+// leaving the climb enough of the EXTRACTION_MAX_MS cap to clear the top.
+export const EXTRACTION_PICKUP_HOLD_MAX_MS = 4000;
 export const PILOT_SPEED = 0.3; // px/ms lateral autopilot speed (a brisk drag)
 const PILOT_CLIMB_ACCEL = 0.0015; // px/ms² climb acceleration
 const PILOT_CLIMB_MAX = 0.9; // px/ms climb speed cap
@@ -4693,6 +4696,38 @@ function pickLane(
 }
 
 /**
+ * #2945: the lane of the pickup the ship can still collect, or null. Pickups fall at a fixed
+ * speed, so the ship holds its row and meets one: it must arrive before the pickup falls past,
+ * be reachable laterally by then, and land inside the pickup hold window. First in array order
+ * wins a tie, so the choice is deterministic.
+ */
+function pickupLane(state: StarSwarmState, elapsedMs: number): number | null {
+  const p = state.player;
+  let best: PowerUp | null = null;
+  let bestArrive = Infinity;
+  for (const pu of state.powerUps) {
+    const gap = p.y - pu.y - (p.height + pu.height) / 2; // vertical distance until they touch
+    const arrive = Math.max(0, gap) / pu.vy;
+    const leave = Math.max(0, p.y - pu.y + (p.height + pu.height) / 2) / pu.vy; // fallen past
+    const lateral = Math.max(0, Math.abs(pu.x - p.x) - (p.width + pu.width) / 2);
+    if (
+      leave <= 0 ||
+      pu.despawnTimer <= arrive ||
+      elapsedMs + arrive > EXTRACTION_PICKUP_HOLD_MAX_MS ||
+      lateral / PILOT_SPEED > leave
+    )
+      continue;
+    if (arrive < bestArrive) {
+      best = pu;
+      bestArrive = arrive;
+    }
+  }
+  if (!best) return null;
+  const hw = p.width / 2;
+  return Math.max(hw, Math.min(state.canvasW - hw, best.x));
+}
+
+/**
  * #2842: one tick of the extraction autopilot. The ship holds the lane, sidestepping whatever
  * is still live, for at least EXTRACTION_HOLD_MIN_MS; once nothing can still reach it (or at
  * EXTRACTION_HOLD_MAX_MS regardless) it accelerates off the top, still steering around hazards.
@@ -4706,12 +4741,17 @@ function tickExtractionPilot(
   const p = state.player;
   const elapsedMs = ex.elapsedMs + dtMs;
   const hazards = liveHazards(state);
+  // #2945: a collectable pickup holds the ship in the lane (up to the pickup hold cap) and draws
+  // it sideways — but only into a lane with no hazard coming, so hazards keep priority.
+  const chaseX = ex.climbMs > 0 ? null : pickupLane(state, elapsedMs);
+  const chase = chaseX !== null && laneDanger(p, hazards, chaseX, 0, false) === 0 ? chaseX : null;
   const climbing =
     ex.climbMs > 0 ||
     (elapsedMs >= EXTRACTION_HOLD_MIN_MS &&
+      chase === null &&
       (elapsedMs >= EXTRACTION_HOLD_MAX_MS || !hazards.some((h) => stillThreatens(h, p))));
   const climbMs = climbing ? ex.climbMs + dtMs : 0;
-  const targetX = pickLane(p, hazards, state.canvasW, climbMs, climbing);
+  const targetX = chase ?? pickLane(p, hazards, state.canvasW, climbMs, climbing);
   const dx = targetX - p.x;
   const x = p.x + Math.sign(dx) * Math.min(Math.abs(dx), PILOT_SPEED * dtMs);
   const y = climbing ? p.y - climbSpeed(climbMs) * dtMs : p.y;
