@@ -12,7 +12,7 @@ import {
   unlockNextLayout,
   DEFAULT_PROGRESS,
 } from "../storage";
-import { createGame } from "../engine";
+import { createGame, getAnyFreePair, selectTile, shuffleBoard, undoMove } from "../engine";
 import { TURTLE_LAYOUT } from "../layouts/turtle";
 import type { MahjongState } from "../types";
 
@@ -34,7 +34,7 @@ describe("mahjong game storage", () => {
     await saveGame(s);
     const loaded = await loadGame();
     expect(loaded).not.toBeNull();
-    expect(loaded!._v).toBe(1);
+    expect(loaded!._v).toBe(2);
     expect(loaded!.tiles.length).toBe(s.tiles.length);
     expect(loaded!.score).toBe(s.score);
     expect(loaded!.shufflesLeft).toBe(s.shufflesLeft);
@@ -46,16 +46,32 @@ describe("mahjong game storage", () => {
   });
 
   it("strips nested undoStack snapshots at save time so storage cannot balloon", async () => {
-    const nested: MahjongState = {
-      ...seedState(),
-      undoStack: [{ ...seedState(), undoStack: [{ ...seedState(), undoStack: [] }] }],
+    // #2961: entries are deltas, which hold no undo history of their own. A
+    // version 1 save of two matches, its snapshots nesting histories of
+    // their own, loads as two match deltas, and the next save is the board
+    // plus a few hundred bytes per move instead of a board per move.
+    const matchOn = (s: MahjongState) => {
+      const [a, b] = getAnyFreePair(s.tiles)!;
+      return selectTile(selectTile(s, a), b);
     };
-    await saveGame(nested);
-    const raw = await AsyncStorage.getItem(GAME_KEY);
-    const parsed = JSON.parse(raw!);
-    for (const snap of parsed.undoStack) {
-      expect(snap.undoStack).toEqual([]);
+    const s0 = seedState();
+    const s1 = matchOn(s0);
+    const s2 = matchOn(s1);
+    const nest = (s: MahjongState) => ({ ...s, _v: 1, undoStack: [{ ...s0, undoStack: [] }] });
+    const legacy = JSON.stringify({ ...s2, _v: 1, undoStack: [nest(s0), nest(s1)] });
+    await AsyncStorage.setItem(GAME_KEY, legacy);
+    await saveGame((await loadGame())!);
+    const raw = (await AsyncStorage.getItem(GAME_KEY))!;
+    const parsed = JSON.parse(raw);
+    expect(parsed.undoStack.map((e: { kind: string }) => e.kind)).toEqual(["match", "match"]);
+    for (const entry of parsed.undoStack) {
+      expect(entry).not.toHaveProperty("undoStack");
+      expect(entry).not.toHaveProperty("tiles");
+      expect(entry).not.toHaveProperty("tilesBefore");
     }
+    const boardOnly = JSON.stringify({ ...s2, undoStack: [] }).length;
+    expect(raw.length).toBeLessThan(boardOnly + 2 * 1_000);
+    expect(raw.length).toBeLessThan(legacy.length / 3);
   });
 
   it("returns null and captures a warning on corrupt JSON", async () => {
@@ -79,7 +95,8 @@ describe("mahjong game storage", () => {
   });
 
   it("returns null on schema version mismatch (_v !== 1)", async () => {
-    const future = { ...seedState(), _v: 2 };
+    // Versions 1 (snapshot undo, migrated) and 2 (delta undo, #2961) load.
+    const future = { ...seedState(), _v: 3 };
     await AsyncStorage.setItem(GAME_KEY, JSON.stringify(future));
     expect(await loadGame()).toBeNull();
   });
@@ -97,6 +114,248 @@ describe("mahjong game storage", () => {
     const loaded = await loadGame();
     expect(loaded).not.toBeNull();
     expect(loaded!.startedAt).toBeNull();
+  });
+});
+
+// #2961: the undo history is saved as deltas, and a version 1 save (full
+// board snapshots) still loads, for one release, through the legacyUndo shim.
+describe("mahjong storage — delta undo history (#2961)", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  /** The seeded deal with its layout, as the screen deals it (a load fills in a missing one). */
+  function layoutSeed(): MahjongState {
+    return { ...seedState(), currentLayoutId: "turtle" };
+  }
+
+  /** `moves` matches from a seeded deal, shuffling when stuck; each state before a move too. */
+  function play(moves: number) {
+    const before: MahjongState[] = [];
+    let state = layoutSeed();
+    for (let i = 0; i < moves; i++) {
+      before.push(state);
+      const pair = getAnyFreePair(state.tiles);
+      state = pair ? selectTile(selectTile(state, pair[0]), pair[1]) : shuffleBoard(state);
+    }
+    return { before, state };
+  }
+
+  /** What an undo restores: everything but the clock and the remaining history. */
+  function board(s: MahjongState) {
+    const { startedAt: _s, accumulatedMs: _a, paused: _p, undoStack: _u, ...rest } = s;
+    return rest;
+  }
+
+  async function saved(): Promise<string> {
+    return (await AsyncStorage.getItem(GAME_KEY))!;
+  }
+
+  it("round-trips the history: undo after a reload gives back the same boards", async () => {
+    const { before, state } = play(30);
+    await saveGame(state);
+    const loaded = (await loadGame())!;
+    expect(loaded.undoStack).toEqual(state.undoStack);
+    let undone = loaded;
+    for (let i = before.length - 1; i >= 0; i--) {
+      undone = undoMove(undone);
+      expect(board(undone)).toEqual(board(before[i]!));
+    }
+  });
+
+  it("round-trips shuffles: the board before one, and one that changed nothing", async () => {
+    const { state: played } = play(2);
+    const shuffled = shuffleBoard(played);
+    await saveGame(shuffled);
+    const reloaded = (await loadGame())!;
+    expect(reloaded.undoStack).toEqual(shuffled.undoStack);
+    expect(undoMove(reloaded).tiles).toEqual(played.tiles);
+
+    // A board no shuffle can fix: the shuffle is spent and the board left as it was.
+    const stack = [0, 1, 2, 3].map((layer) => ({ ...played.tiles[0]!, id: layer, layer }));
+    const stuck = shuffleBoard({ ...played, tiles: stack, undoStack: [] });
+    expect(stuck.undoStack).toEqual([expect.objectContaining({ tilesBefore: null })]);
+    await saveGame(stuck);
+    const loaded = (await loadGame())!;
+    expect(loaded.undoStack).toEqual(stuck.undoStack);
+    const once = undoMove(loaded);
+    expect(once.tiles).toEqual(stack);
+    expect(once.isDeadlocked).toBe(false);
+  });
+
+  it("keeps a save after 30 matches well under 50 KB", async () => {
+    const { state } = play(30);
+    expect(state.undoStack).toHaveLength(30);
+    await saveGame(state);
+    // Full snapshots made this about 270 KB (#2961).
+    expect((await saved()).length).toBeLessThan(50_000);
+  });
+
+  /**
+   * A version 1 save: the game after `moves` moves, its history the full
+   * states before each one, as that build stored them (a match's snapshot
+   * with no selection, a shuffle's as it was, nested histories emptied).
+   */
+  function legacySave(moves: number, shuffleAt: number[] = []) {
+    const before: MahjongState[] = [];
+    let state = layoutSeed();
+    const snapshots: unknown[] = [];
+    for (let i = 0; i < moves; i++) {
+      before.push(state);
+      if (shuffleAt.includes(i)) {
+        snapshots.push({ ...state, _v: 1, undoStack: [] });
+        state = shuffleBoard(state);
+      } else {
+        const [a, b] = getAnyFreePair(state.tiles)!;
+        snapshots.push({ ...state, _v: 1, selected: null, undoStack: [] });
+        state = selectTile(selectTile(state, a), b);
+      }
+    }
+    return { before, state, legacy: { ...state, _v: 1, undoStack: snapshots } };
+  }
+
+  it("loads a version 1 save and undoes it exactly, matches and a shuffle alike", async () => {
+    const { before, state, legacy } = legacySave(3, [1]);
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(legacy));
+    const loaded = (await loadGame())!;
+    expect(loaded._v).toBe(2);
+    expect(board(loaded)).toEqual(board(state));
+    expect(loaded.undoStack.map((e) => e.kind)).toEqual(["match", "shuffle", "match"]);
+    let undone = loaded;
+    for (let i = before.length - 1; i >= 0; i--) {
+      undone = undoMove(undone);
+      expect(board(undone)).toEqual(board(before[i]!));
+    }
+    expect(undone.undoStack).toEqual([]);
+  });
+
+  it("plays on from a version 1 save, and saves it in the delta format", async () => {
+    const { legacy } = legacySave(2);
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(legacy));
+    const loaded = (await loadGame())!;
+    const [a, b] = getAnyFreePair(loaded.tiles)!;
+    const next = selectTile(selectTile(loaded, a), b);
+    expect(next.pairsRemoved).toBe(3);
+    await saveGame(next);
+    const parsed = JSON.parse(await saved());
+    expect(parsed._v).toBe(2);
+    expect(parsed.undoStack.map((e: { kind: string }) => e.kind)).toEqual([
+      "match",
+      "match",
+      "match",
+    ]);
+  });
+
+  it("drops a version 1 history from a snapshot that isn't one back, keeping the game", async () => {
+    const { before, legacy } = legacySave(3);
+    const broken = {
+      ...legacy,
+      undoStack: [legacy.undoStack[0], { tiles: "x" }, legacy.undoStack[2]],
+    };
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(broken));
+    const loaded = (await loadGame())!;
+    expect(loaded.tiles).toEqual(legacy.tiles);
+    expect(loaded.undoStack).toHaveLength(1);
+    expect(board(undoMove(loaded))).toEqual(board(before[2]!));
+  });
+
+  it("writes a version 1 save back as version 2 on the load itself", async () => {
+    const { legacy } = legacySave(3, [1]);
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(legacy));
+    const loaded = (await loadGame())!;
+    // No saveGame: opening and closing the game leaves a version 2 save.
+    const onDisk = JSON.parse(await saved());
+    expect(onDisk._v).toBe(2);
+    expect(onDisk.undoStack).toEqual(loaded.undoStack);
+    expect(onDisk.undoStack.map((e: { kind: string }) => e.kind)).toEqual([
+      "match",
+      "shuffle",
+      "match",
+    ]);
+  });
+
+  it("cuts a version 1 history at a gap, and writes what a load accepts", async () => {
+    const { legacy } = legacySave(3);
+    // The snapshot before the second move is lost: the oldest no longer leads
+    // to the next one by a single move.
+    const gapped = { ...legacy, undoStack: [legacy.undoStack[0], legacy.undoStack[2]] };
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(gapped));
+    const loaded = (await loadGame())!;
+    expect(loaded.undoStack).toHaveLength(1);
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const calls = setItem.mock.calls.length;
+    expect((await loadGame())!.undoStack).toEqual(loaded.undoStack);
+    expect(setItem.mock.calls.length).toBe(calls); // nothing left to normalise
+  });
+
+  it("writes nothing back when a version 2 save needed no change", async () => {
+    const { state } = play(3);
+    await saveGame({ ...state, dealId: "ABCD" });
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const calls = setItem.mock.calls.length;
+    const loaded = (await loadGame())!;
+    expect(loaded.undoStack).toEqual(state.undoStack);
+    expect(setItem.mock.calls.length).toBe(calls);
+  });
+
+  it("writes a version 2 save back when the load had to drop or fill in something", async () => {
+    const { state } = play(3);
+    const good = state.undoStack;
+    for (const save of [
+      { ...state, undoStack: [good[0], { kind: "teleport" }, good[2]] },
+      { ...state, dealId: undefined },
+    ]) {
+      await AsyncStorage.setItem(GAME_KEY, JSON.stringify(save));
+      const loaded = (await loadGame())!;
+      const onDisk = JSON.parse(await saved());
+      expect(onDisk.undoStack).toEqual(loaded.undoStack);
+      expect(onDisk.dealId).toBe(loaded.dealId);
+    }
+  });
+
+  it("drops a saved history from a bad entry back, keeping the game", async () => {
+    const { state } = play(3);
+    const good = state.undoStack;
+    // The board the second move left, which the third entry restores.
+    const afterMove1 = undoMove(state).tiles;
+    for (const bad of [
+      { ...good[1], kind: "teleport" },
+      { ...good[1], kind: "shuffle", tilesBefore: [7] },
+      { ...good[1], scoreBefore: "10" },
+      { ...good[1], removedTiles: [good[1]!] },
+      // Indices that can't fit the board the entries above it restore.
+      {
+        ...good[1],
+        removedTiles: [
+          { index: 500, tile: state.tiles[0] },
+          { index: 501, tile: state.tiles[1] },
+        ],
+      },
+      // Tiles already on the board it would restore.
+      {
+        ...good[1],
+        removedTiles: [
+          { index: 0, tile: state.tiles[0] },
+          { index: 1, tile: state.tiles[1] },
+        ],
+      },
+      // A shuffle that would swap the board for one of another size.
+      { ...good[1], kind: "shuffle", tilesBefore: [state.tiles[0]] },
+      // A shuffle whose board has the right size but a tile twice.
+      {
+        ...good[1],
+        kind: "shuffle",
+        tilesBefore: [afterMove1[0], ...afterMove1.slice(0, -1)],
+      },
+    ]) {
+      await AsyncStorage.setItem(
+        GAME_KEY,
+        JSON.stringify({ ...state, undoStack: [good[0], bad, good[2]] })
+      );
+      const loaded = (await loadGame())!;
+      expect(loaded.tiles).toEqual(state.tiles);
+      expect(loaded.undoStack).toEqual([good[2]]);
+    }
   });
 });
 

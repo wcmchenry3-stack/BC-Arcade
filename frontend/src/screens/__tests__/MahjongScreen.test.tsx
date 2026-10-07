@@ -17,6 +17,7 @@ import MahjongScreen from "../MahjongScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import * as mahjongEngine from "../../game/mahjong/engine";
 import { DEADLOCK_OVERLAY_DELAY_MS } from "../../game/mahjong/engine";
+import { SAVE_DEBOUNCE_MS } from "../../game/mahjong/useMahjongPersistence";
 
 // How long to wait for the deadlock card. Only an upper bound: generous so a
 // loaded parallel run (the card shows after DEADLOCK_OVERLAY_DELAY_MS) isn't flaky.
@@ -192,7 +193,7 @@ async function mount() {
 /** A minimal valid win state that passes loadGame() validation. */
 function makeWinState(overrides: Partial<MahjongState> = {}): MahjongState {
   return {
-    _v: 1,
+    _v: 2,
     tiles: [],
     selected: null,
     pairsRemoved: 72,
@@ -205,6 +206,26 @@ function makeWinState(overrides: Partial<MahjongState> = {}): MahjongState {
     accumulatedMs: 180000,
     ...overrides,
   } as unknown as MahjongState;
+}
+
+/**
+ * An undo entry for a match (#2961): the two tiles it removed, at their
+ * indices in the board before it, and the counters before it.
+ */
+function matchUndo(
+  before: { shufflesLeft: number; pairsRemoved: number; score: number },
+  removedTiles: { index: number; tile: MahjongState["tiles"][number] }[]
+): MahjongState["undoStack"][number] {
+  return {
+    kind: "match",
+    removedTiles: removedTiles as unknown as [never, never],
+    scoreBefore: before.score,
+    pairsRemovedBefore: before.pairsRemoved,
+    shufflesLeftBefore: before.shufflesLeft,
+    selectedBefore: null,
+    isCompleteBefore: false,
+    isDeadlockedBefore: false,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -604,7 +625,7 @@ describe("MahjongScreen — hint button", () => {
   /** Minimal in-progress state with two free matching tiles so getAnyFreePair returns a pair. */
   function makeHintableState(): MahjongState {
     return {
-      _v: 1,
+      _v: 2,
       tiles: [
         { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 },
         { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 },
@@ -639,7 +660,7 @@ describe("MahjongScreen — hint button", () => {
     // id:0 (layer 0) is blocked by id:1 (layer 1); id:1 is free but has no second
     // free match, so getAnyFreePair returns null.
     const blockedState: MahjongState = {
-      _v: 1,
+      _v: 2,
       tiles: [
         { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 },
         { id: 1, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 1 },
@@ -677,7 +698,7 @@ describe("MahjongScreen — shuffle button", () => {
   /** Two free matching tiles so the board has a valid move (not a shuffle-CTA state). */
   function makeShufflableState(shufflesLeft = 3): MahjongState {
     return {
-      _v: 1,
+      _v: 2,
       tiles: [
         { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 },
         { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 },
@@ -790,17 +811,13 @@ describe("MahjongScreen — no-moves overlays", () => {
   // #2569 review: the full-screen card must not take away the undo the header
   // offered — a deadlock one undo away from a live board isn't final.
   it("offers Undo on the deadlock card and returns to the board", async () => {
-    const beforeLastMatch = makeWinState({
-      isComplete: false,
-      isDeadlocked: false,
-      shufflesLeft: 0,
-      pairsRemoved: 39,
-      score: 600,
-      tiles: [
-        { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
-        { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
-      ],
-    } as Partial<MahjongState>);
+    const beforeLastMatch = matchUndo({ shufflesLeft: 0, pairsRemoved: 39, score: 600 }, [
+      { index: 0, tile: { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 } },
+      {
+        index: 1,
+        tile: { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
+      },
+    ]);
     await AsyncStorage.setItem(
       "mahjong_game",
       JSON.stringify(
@@ -837,17 +854,17 @@ describe("MahjongScreen — no-moves overlays", () => {
 describe("MahjongScreen — deadlock recorded as a loss (#2517)", () => {
   /** Two free, non-matching tiles and no shuffles: deadlocked, one pair undone behind it. */
   function makeDeadlockState(): MahjongState {
-    const beforeLastMatch = makeWinState({
-      isComplete: false,
-      isDeadlocked: false,
-      shufflesLeft: 0,
-      pairsRemoved: 39,
-      score: 600,
-      tiles: [
-        { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 0, row: 0, layer: 0 },
-        { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 10, row: 0, layer: 0 },
-      ],
-    } as Partial<MahjongState>);
+    // The last match took a free pair from beside the two tiles left.
+    const beforeLastMatch = matchUndo({ shufflesLeft: 0, pairsRemoved: 39, score: 600 }, [
+      {
+        index: 2,
+        tile: { id: 0, suit: "bamboos", rank: 1, faceId: 26, col: 20, row: 0, layer: 0 },
+      },
+      {
+        index: 3,
+        tile: { id: 1, suit: "bamboos", rank: 1, faceId: 26, col: 30, row: 0, layer: 0 },
+      },
+    ]);
     return makeWinState({
       isComplete: false,
       isDeadlocked: true,
@@ -1616,5 +1633,324 @@ describe("MahjongScreen — app background and relaunch (#2750)", () => {
     await tap(api, 1);
     await api.findByTestId("mahjong-result");
     expect(lastSummary()).toEqual(expect.objectContaining({ outcome: "win", durationMs: 4_000 }));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2961 — saves only when the board, undo history or banked clock change,
+// debounced, and flushed when the player leaves
+// ---------------------------------------------------------------------------
+
+describe("MahjongScreen — debounced saves (#2961)", () => {
+  /** Five free pairs in a row: (0, 1), (2, 3), … (8, 9), each its own face. */
+  function fivePairs(): MahjongState {
+    return makeWinState({
+      isComplete: false,
+      pairsRemoved: 67,
+      score: 670,
+      accumulatedMs: 0,
+      startedAt: null,
+      dealId: "TEST",
+      currentLayoutId: "turtle",
+      tiles: Array.from({ length: 10 }, (_, id) => {
+        const rank = Math.floor(id / 2) + 1;
+        return { id, suit: "bamboos", rank, faceId: 25 + rank, col: id * 4, row: 0, layer: 0 };
+      }),
+    } as Partial<MahjongState>);
+  }
+
+  // AsyncStorage.setItem is the shared mock's jest.fn (jest.setup.ts): its
+  // calls from before the board was loaded are skipped, not cleared.
+  const setItem = AsyncStorage.setItem as jest.Mock;
+  let callsBefore = 0;
+  /** The game saves written since the board was loaded, each parsed. */
+  function gameSaves(): MahjongState[] {
+    return setItem.mock.calls
+      .slice(callsBefore)
+      .filter(([key]) => key === "mahjong_game")
+      .map(([, value]) => JSON.parse(value as string) as MahjongState);
+  }
+
+  /** Loads the board; the load itself writes nothing, and is counted. */
+  async function mountOnFivePairs(overrides: Partial<MahjongState> = {}) {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify({ ...fivePairs(), ...overrides }));
+    callsBefore = setItem.mock.calls.length;
+    const api = await mount();
+    jest.useFakeTimers({ doNotFake: ["Date", "nextTick", "queueMicrotask", "setImmediate"] });
+    return api;
+  }
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  async function tap(api: Awaited<ReturnType<typeof mount>>, id: number) {
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText(`mock-tile-${id}`));
+    });
+  }
+
+  async function wait(ms: number) {
+    await act(async () => {
+      jest.advanceTimersByTime(ms);
+    });
+  }
+
+  it("writes twice over ten taps of selections and matches", async () => {
+    const api = await mountOnFivePairs();
+    // Select, switch, match, select, match, select, deselect, select, match, select.
+    for (const id of [0, 2, 3, 0, 1, 4, 4, 4, 5, 6]) {
+      await tap(api, id);
+      await wait(200);
+    }
+    await wait(SAVE_DEBOUNCE_MS);
+    const saves = gameSaves();
+    // One write for the first two matches (400 ms apart), one for the third.
+    expect(saves.length).toBe(2);
+    // The last write has all three matches and their undo history.
+    const last = saves.at(-1)!;
+    expect(last.tiles.map((t) => t.id)).toEqual([6, 7, 8, 9]);
+    expect(last.pairsRemoved).toBe(70);
+    expect(last.undoStack).toHaveLength(3);
+  });
+
+  it("doesn't write for a tap that only selects or deselects a tile", async () => {
+    const api = await mountOnFivePairs();
+    await tap(api, 0); // also starts the clock
+    await tap(api, 0);
+    await tap(api, 2);
+    await wait(5 * SAVE_DEBOUNCE_MS);
+    expect(gameSaves()).toHaveLength(0);
+  });
+
+  it("writes a match once the taps settle, not on the tap", async () => {
+    const api = await mountOnFivePairs();
+    await tap(api, 0);
+    await tap(api, 1);
+    expect(gameSaves()).toHaveLength(0);
+    await wait(SAVE_DEBOUNCE_MS);
+    expect(gameSaves()).toHaveLength(1);
+    expect(gameSaves()[0]!.tiles).toHaveLength(8);
+  });
+
+  it("writes a pending match at once when another screen covers the game", async () => {
+    const api = await mountOnFivePairs();
+    await tap(api, 0);
+    await tap(api, 1);
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    expect(gameSaves()).toHaveLength(1);
+    expect(gameSaves()[0]!.tiles).toHaveLength(8);
+    expect(gameSaves()[0]!.paused).toBe(true);
+    await wait(5 * SAVE_DEBOUNCE_MS); // nothing left to write
+    expect(gameSaves()).toHaveLength(1);
+  });
+
+  it("writes a pending match on unmount, and nothing once the screen is gone", async () => {
+    const api = await mountOnFivePairs();
+    await tap(api, 0);
+    await tap(api, 1);
+    await api.unmount();
+    expect(gameSaves()).toHaveLength(1);
+    expect(gameSaves()[0]!.tiles).toHaveLength(8);
+    // Another game takes the slot; no timer of the gone screen may overwrite it.
+    const other = { ...fivePairs(), dealId: "NEXT" };
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(other));
+    await wait(5 * SAVE_DEBOUNCE_MS);
+    expect(JSON.parse((await AsyncStorage.getItem("mahjong_game"))!).dealId).toBe("NEXT");
+  });
+
+  it("costs no write to load a game, under way or not, or to CONTINUE one", async () => {
+    const api = await mountOnFivePairs({ accumulatedMs: 60_000 }); // its clock runs from the load
+    await wait(5 * SAVE_DEBOUNCE_MS);
+    expect(gameSaves()).toHaveLength(0);
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByText("New Game"));
+    });
+    const confirm = api.queryByLabelText("Start New");
+    if (confirm) {
+      await act(async () => {
+        await fireEvent.press(confirm);
+      });
+    }
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("Continue"));
+    });
+    expect(api.getByLabelText("mock-tile-0")).toBeTruthy();
+    await wait(5 * SAVE_DEBOUNCE_MS);
+    expect(gameSaves()).toHaveLength(0);
+  });
+
+  it("rewrites a saved selection the player cleared, so a relaunch restores none", async () => {
+    const api = await mountOnFivePairs();
+    await tap(api, 0);
+    await tap(api, 1); // a match
+    await wait(SAVE_DEBOUNCE_MS - 200);
+    await tap(api, 2); // selected while the match's write is pending
+    await wait(200);
+    expect(gameSaves().at(-1)!.selected).toEqual(expect.objectContaining({ id: 2 }));
+    await tap(api, 2); // deselected
+    await wait(SAVE_DEBOUNCE_MS);
+    expect(gameSaves().at(-1)!.selected).toBeNull();
+    await api.unmount();
+
+    const relaunched = await mount();
+    await tap(relaunched, 3); // with tile 2 still selected, this would match it
+    expect(relaunched.getByLabelText("mock-tile-2")).toBeTruthy();
+    expect(relaunched.getByLabelText("mock-tile-3")).toBeTruthy();
+  });
+
+  it("writes the pause on leaving, and nothing on the return", async () => {
+    const api = await mountOnFivePairs();
+    await tap(api, 0);
+    await tap(api, 1);
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    expect(gameSaves()).toHaveLength(1);
+    await act(async () => {
+      mockNavListeners.get("focus")?.forEach((h) => h());
+    });
+    await wait(5 * SAVE_DEBOUNCE_MS);
+    expect(gameSaves()).toHaveLength(1);
+  });
+
+  it("drops the hint on an undo or a shuffle, which can renumber its tiles", async () => {
+    const api = await mountOnFivePairs();
+    const hint = () =>
+      act(async () => {
+        await fireEvent.press(
+          api.getByLabelText("Show a hint — highlights one valid pair for 2 seconds")
+        );
+      });
+    const hinted = () => api.getByTestId("hint-ids-size").props.children;
+    await tap(api, 0);
+    await tap(api, 1);
+    await hint();
+    expect(hinted()).toBe(2);
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("Undo last matched pair"));
+    });
+    expect(hinted()).toBe(0);
+    await hint();
+    expect(hinted()).toBe(2);
+    await act(async () => {
+      await fireEvent.press(
+        api.getByLabelText("Shuffle remaining tiles into a new solvable arrangement")
+      );
+    });
+    expect(hinted()).toBe(0);
+    await wait(5 * SAVE_DEBOUNCE_MS); // no stale timer brings it back either
+    expect(hinted()).toBe(0);
+  });
+
+  it("a tap that changes nothing, with no hint showing, doesn't re-render the board", async () => {
+    // Tile 0 is covered by tile 1, so tapping it is no move.
+    const tiles = fivePairs().tiles.map((t) => (t.id === 1 ? { ...t, col: 0, layer: 1 } : t));
+    const api = await mountOnFivePairs({ tiles } as Partial<MahjongState>);
+    const renders = mockCanvasRenders.count;
+    await tap(api, 0);
+    expect(mockCanvasRenders.count).toBe(renders);
+  });
+
+  it("never brings a cleared board's save back", async () => {
+    // A board under way: loading it runs the clock, so its write is pending.
+    await AsyncStorage.setItem(
+      "mahjong_game",
+      JSON.stringify({
+        ...fivePairs(),
+        accumulatedMs: 60_000,
+        tiles: fivePairs().tiles.slice(0, 2),
+      })
+    );
+    const api = await mount();
+    jest.useFakeTimers({ doNotFake: ["Date", "nextTick", "queueMicrotask", "setImmediate"] });
+    await tap(api, 0);
+    await tap(api, 1);
+    await wait(5 * SAVE_DEBOUNCE_MS);
+    expect(api.getByTestId("mahjong-result")).toBeTruthy();
+    expect(await AsyncStorage.getItem("mahjong_game")).toBeNull();
+  });
+});
+
+// A save from a build before #2961 holds its undo history as full board
+// snapshots (`_v: 1`). It loads for one release through the legacyUndo shim.
+describe("MahjongScreen — a save from before delta undo (#2961)", () => {
+  /** Two of four pairs matched: the board before each match kept whole, as that build saved it. */
+  function legacySave() {
+    const tiles = Array.from({ length: 8 }, (_, id) => {
+      const rank = Math.floor(id / 2) + 1;
+      return { id, suit: "bamboos", rank, faceId: 25 + rank, col: id * 4, row: 0, layer: 0 };
+    });
+    const snapshot = (from: number, pairsRemoved: number) => ({
+      ...makeWinState({ isComplete: false, accumulatedMs: 0 }),
+      _v: 1,
+      tiles: tiles.slice(from),
+      pairsRemoved,
+      score: pairsRemoved * 10,
+      undoStack: [],
+    });
+    return {
+      ...snapshot(4, 2),
+      accumulatedMs: 30_000,
+      undoStack: [snapshot(0, 0), snapshot(2, 1)],
+    };
+  }
+
+  it("resumes the game and undoes both moves back to the first board", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(legacySave()));
+    const api = await mount();
+    expect(api.getAllByLabelText(/^mock-tile-/)).toHaveLength(4);
+    const undo = () =>
+      act(async () => {
+        await fireEvent.press(api.getByLabelText("Undo last matched pair"));
+      });
+    await undo();
+    expect(api.getAllByLabelText(/^mock-tile-/).map((t) => t.props.accessibilityLabel)).toEqual([
+      "mock-tile-2",
+      "mock-tile-3",
+      "mock-tile-4",
+      "mock-tile-5",
+      "mock-tile-6",
+      "mock-tile-7",
+    ]);
+    await undo();
+    expect(api.getAllByLabelText(/^mock-tile-/)).toHaveLength(8);
+    expect(api.getByLabelText("Undo last matched pair").props.accessibilityState?.disabled).toBe(
+      true
+    );
+  });
+
+  it("is saved as version 2 when opened and left without a move", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(legacySave()));
+    const api = await mount();
+    await api.unmount();
+    const saved = JSON.parse((await AsyncStorage.getItem("mahjong_game"))!);
+    expect(saved._v).toBe(2);
+    expect(saved.undoStack.map((e: { kind: string }) => e.kind)).toEqual(["match", "match"]);
+  });
+
+  it("plays on and saves in the delta format", async () => {
+    await AsyncStorage.setItem("mahjong_game", JSON.stringify(legacySave()));
+    const api = await mount();
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-4"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("mock-tile-5"));
+    });
+    await api.unmount();
+    const saved = JSON.parse((await AsyncStorage.getItem("mahjong_game"))!);
+    expect(saved._v).toBe(2);
+    expect(saved.tiles.map((t: { id: number }) => t.id)).toEqual([6, 7]);
+    expect(saved.undoStack.map((e: { kind: string }) => e.kind)).toEqual([
+      "match",
+      "match",
+      "match",
+    ]);
   });
 });
