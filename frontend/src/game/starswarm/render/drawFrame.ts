@@ -6,9 +6,13 @@
  * decisions: every choice (sprite vs fallback, colours, alphas, order) was made by `buildFrame`
  * on the JS thread and is tested there. It began as a straight port of the phase-2 declarative
  * renderer, which phase 5 (#2567) removed once the Picture path was measured on device.
+ *
+ * #2963: colours arrive packed (`0xAARRGGBB`), so `Skia.Color` never parses a string, and the
+ * converted colours and the two paints live in a small per-runtime cache (`drawCache`) instead
+ * of being rebuilt for every op of every frame.
  */
 import { Skia, PaintStyle, FilterMode, MipmapMode } from "@shopify/react-native-skia";
-import type { SkCanvas, SkImage, SkPaint } from "@shopify/react-native-skia";
+import type { SkCanvas, SkColor, SkImage, SkPaint } from "@shopify/react-native-skia";
 import type { DrawOp, SpriteKey } from "./frame";
 
 /** Loaded sprite images by key; null while an image is still loading. */
@@ -41,14 +45,63 @@ function spriteImage(images: DrawImages, sprite: SpriteKey, frame: number | unde
   return sprite === "explosion" ? (images.explosion[frame ?? 0] ?? null) : images[sprite];
 }
 
+interface DrawCache {
+  readonly paint: SkPaint;
+  readonly imagePaint: SkPaint;
+  /** Packed colour → Skia colour. */
+  readonly colors: Map<number, SkColor>;
+}
+
+/** Distinct colours kept before the cache starts over (fading alphas add a few per frame). */
+const COLOR_CACHE_MAX = 256;
+
+/**
+ * #2963: the paints and converted colours, made once per JS runtime and kept on that runtime's
+ * `globalThis`. A module-level variable would not do: module state is not shared across
+ * runtimes, and what a worklet closes over reaches the UI runtime as a (frozen, in dev) copy, so
+ * a cache written there is not reliably there next frame. `globalThis` is never captured — the
+ * worklets plugin treats it as a global, so inside a worklet it is the UI runtime's own global,
+ * which lives as long as the runtime. Each runtime that runs `drawFrame` (the UI thread in the
+ * app, the JS thread in tests) keeps its own cache. A cached paint is safe to reuse: a Picture
+ * records a copy of the paint with each draw call, and every op below sets the colour, alpha and
+ * style it draws with.
+ */
+function drawCache(): DrawCache {
+  "worklet";
+  const g = globalThis as unknown as { __starswarmDrawCache?: DrawCache };
+  let cache = g.__starswarmDrawCache;
+  if (!cache) {
+    const paint = Skia.Paint();
+    paint.setAntiAlias(true);
+    const imagePaint = Skia.Paint();
+    imagePaint.setAntiAlias(true);
+    cache = { paint, imagePaint, colors: new Map() };
+    g.__starswarmDrawCache = cache;
+  }
+  return cache;
+}
+
+/** A packed colour as a Skia colour, converted once per distinct value. */
+function skColor(cache: DrawCache, color: number): SkColor {
+  "worklet";
+  let c = cache.colors.get(color);
+  if (c === undefined) {
+    if (cache.colors.size >= COLOR_CACHE_MAX) cache.colors.clear();
+    c = Skia.Color(color);
+    cache.colors.set(color, c);
+  }
+  return c;
+}
+
 function shapePaint(
-  paint: SkPaint,
-  color: string,
+  cache: DrawCache,
+  color: number,
   opacity: number | undefined,
   stroke: number | undefined
 ): SkPaint {
   "worklet";
-  paint.setColor(Skia.Color(color));
+  const paint = cache.paint;
+  paint.setColor(skColor(cache, color));
   // An op's opacity multiplies the colour's own alpha, as the declarative `opacity` prop does
   if (opacity !== undefined) paint.setAlphaf(paint.getAlphaf() * opacity);
   if (stroke !== undefined) {
@@ -63,25 +116,23 @@ function shapePaint(
 /** Draw the whole display list, back to front. */
 export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: DrawImages): void {
   "worklet";
-  const paint = Skia.Paint();
-  paint.setAntiAlias(true);
-  const imagePaint = Skia.Paint();
-  imagePaint.setAntiAlias(true);
+  const cache = drawCache();
+  const imagePaint = cache.imagePaint;
 
   for (let i = 0; i < ops.length; i++) {
     const op = ops[i]!;
     switch (op.k) {
       case "fill":
-        canvas.drawColor(Skia.Color(op.color));
+        canvas.drawColor(skColor(cache, op.color));
         break;
       case "rect":
         canvas.drawRect(
           Skia.XYWHRect(op.x, op.y, op.w, op.h),
-          shapePaint(paint, op.color, op.opacity, undefined)
+          shapePaint(cache, op.color, op.opacity, undefined)
         );
         break;
       case "circle":
-        canvas.drawCircle(op.cx, op.cy, op.r, shapePaint(paint, op.color, op.opacity, op.stroke));
+        canvas.drawCircle(op.cx, op.cy, op.r, shapePaint(cache, op.color, op.opacity, op.stroke));
         break;
       case "image": {
         const img = spriteImage(images, op.sprite, op.frame);
@@ -125,7 +176,8 @@ export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: Draw
         path.moveTo(pts[0]!, pts[1]!);
         for (let j = 2; j + 1 < pts.length; j += 2) path.lineTo(pts[j]!, pts[j + 1]!);
         path.close();
-        canvas.drawPath(path, shapePaint(paint, op.color, undefined, op.stroke));
+        canvas.drawPath(path, shapePaint(cache, op.color, undefined, op.stroke));
+        path.dispose(); // #2963: the Picture holds its own copy; free the native path now
         break;
       }
     }

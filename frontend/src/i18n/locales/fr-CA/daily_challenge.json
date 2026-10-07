@@ -11,6 +11,8 @@
   "goal.twenty48.final_score_at_least": "Marquer {{target}}+ en {{game}}",
   "goal.twenty48.highest_tile_at_least": "Tuile {{target}} en {{game}}",
   "goal.yacht.final_score_at_least": "Marquer {{target}}+ en {{game}}",
+  "goal.sudoku.final_score_at_least": "Marquer {{target}}+ en {{game}}",
+  "goal.sudoku.solved": "Résous une grille de {{game}}",
   "goal.sort.final_score_at_least": "Niveau {{target}} en {{game}}",
   "goal.solitaire.moves_at_least_one": "Faire un coup en {{game}}",
   "goal.solitaire.moves_at_least_many": "Faire {{count}}+ coups en {{game}}",

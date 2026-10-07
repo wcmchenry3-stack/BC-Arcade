@@ -32,6 +32,9 @@ Fields the evaluators read, per game (the result each game must send):
     sort        final_score (highest level solved)     (every solve, #2625)
     freecell    won, moves                             (#2452)
     yacht       final_score                            (already sent)
+    sudoku      won, final_score, errors               (SudokuScreen; final_score =
+                difficulty base 100/200/300 minus 10 per error, sent only on a solve —
+                an abandoned row has won: false, no score, and is filtered by the service)
     blackjack   hands_played, hands_won, starting_chips, final_chips (BlackjackResult)
                 — premium since 2026-09-23, so not in the free pool (see below)
     mahjong     won, pairs, duration_ms (column)       (MahjongResult)
@@ -186,6 +189,13 @@ def _won_within(game_type: str, measure: str, limit: int, tier: Tier) -> Goal:
     return Goal(game_type, f"won_{measure}_at_most", limit, tier, True, check)
 
 
+def _solved(game_type: str, tier: Tier) -> Goal:
+    """Finish a puzzle (``won: true``). For puzzle games that only report solved
+    runs (Sudoku) a solve is a matter of time and care, not luck, so it is not
+    flagged ``is_win`` and can be an easy goal."""
+    return Goal(game_type, "solved", None, tier, False, lambda f: f.get("won") is True)
+
+
 def _chips_gained(game_type: str, tier: Tier) -> Goal:
     """End a blackjack run with more chips than it started with."""
 
@@ -220,6 +230,8 @@ def goal_from_spec(spec: Mapping[str, Any]) -> Goal:
         return _won(game_type, tier)
     if kind == "chips_gained":
         return _chips_gained(game_type, tier)
+    if kind == "solved":
+        return _solved(game_type, tier)
     if kind.startswith("won_") and kind.endswith("_at_most"):
         return _won_within(game_type, kind[len("won_") : -len("_at_most")], target, tier)
     if kind.endswith("_at_least"):
@@ -266,6 +278,16 @@ FREE_GOAL_POOL: dict[str, tuple[Goal, Goal, Goal]] = {
         _at_least("yacht", "final_score", 100, "easy"),
         _at_least("yacht", "final_score", 175, "medium"),
         _at_least("yacht", "final_score", 250, "hard"),
+    ),
+    # Sudoku went free in migration 0023 (#2949). Goals are difficulty-agnostic:
+    # final_score = difficulty base (100/200/300) minus 10 per error, so the score
+    # thresholds implicitly ask for harder puzzles — 180 is a medium puzzle with
+    # at most 2 errors (or a hard one with at most 12), 280 is a hard puzzle with
+    # at most 2 errors. Nothing here depends on luck. Tune post-launch.
+    "sudoku": (
+        _solved("sudoku", "easy"),
+        _at_least("sudoku", "final_score", 180, "medium"),
+        _at_least("sudoku", "final_score", 280, "hard"),
     ),
 }
 
@@ -321,15 +343,25 @@ def pick_games(day: date, slate: Slate, salt: int) -> tuple[str, str]:
     advances by one, unlike YYYYMMDD arithmetic across month ends).
 
     A pair is two neighbours in the rotation, so a slate has ``len(rotation)``
-    distinct pairs — but only if that length is odd. With an even length the step
-    of two never lands on odd positions and half the pairs never occur; a test
-    fails if a pool ever reaches that state so the schedule is reconsidered."""
+    distinct pairs. With an odd length the step of two reaches them all; with an
+    even length it would only reach half, so the start shifts by one place after
+    every lap of ``len/2`` days (a 3-place step that still shares no game with the
+    day before, for even lengths of 6 or more)."""
     order = rotation(slate, salt)
-    base = (2 * day.toordinal() + salt) % len(order)
+    ordinal = day.toordinal()
+    # An even rotation length would only ever reach every other position, so after
+    # each lap of len/2 days shift by one to bring the other pairs into play.
+    lap_shift = ordinal // (len(order) // 2) if len(order) % 2 == 0 and len(order) >= 6 else 0
+    base = (2 * ordinal + lap_shift + salt) % len(order)
     return order[base], order[(base + 1) % len(order)]
 
 
+@cache
 def pick_template(day: date, slate: Slate, salt: int) -> Template:
+    """The day's computed template. Memoised (#2966): a pure function of hashable
+    arguments over the static pools (as ``rotation`` is), returning a frozen
+    ``Template`` of frozen ``Goal``s, so a cached result can be shared. The streak
+    asks for ~120 of them per ``/stats/me``. One entry per (day, slate, salt)."""
     pool = GOAL_POOLS[slate]
     ordinal = day.toordinal()
     games = (ALWAYS_PRESENT, *pick_games(day, slate, salt))

@@ -40,6 +40,7 @@ import { DEV_OVERLAY_BG } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import GameResultModal from "../components/shared/GameResultModal";
+import { CountdownButtonLabel } from "../components/shared/CountdownButtonLabel";
 import {
   initialState,
   setCurrentRowLetter,
@@ -101,15 +102,6 @@ function msUntilMidnight(tzOffsetMinutes: number): number {
   const localMs = nowMs + tzOffsetMs;
   const startOfLocalDayMs = Math.floor(localMs / 86400000) * 86400000;
   return startOfLocalDayMs + 86400000 - localMs;
-}
-
-function formatCountdown(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
 /**
@@ -444,11 +436,11 @@ export default function DailyWordScreen() {
   const [winModalVisible, setWinModalVisible] = useState(false);
   const [lossModalVisible, setLossModalVisible] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
-  const [countdown, setCountdown] = useState("");
   // The next puzzle's release time, fixed when the result appears (#2514).
   // msUntilMidnight() jumps to the following midnight once one passes, so a
-  // countdown recomputed from it would never reach zero.
-  const nextWordAtRef = useRef<number | null>(null);
+  // countdown recomputed from it would never reach zero. The card's
+  // CountdownButtonLabel ticks toward it on its own (#2964).
+  const [nextWordAt, setNextWordAt] = useState<number | null>(null);
   const [nextWordReady, setNextWordReady] = useState(false);
   const [copied, setCopied] = useState(false);
   // Play Again couldn't load the next puzzle (offline, server error).
@@ -464,7 +456,6 @@ export default function DailyWordScreen() {
 
   const hasLoadedRef = useRef(false);
   const mountedRef = useRef(true);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const language = getLanguage();
@@ -494,22 +485,13 @@ export default function DailyWordScreen() {
 
   const startCountdown = useCallback(
     (untilMs?: number) => {
-      if (countdownRef.current) clearInterval(countdownRef.current);
-      nextWordAtRef.current = untilMs ?? Date.now() + msUntilMidnight(tzOffset);
+      setNextWordAt(untilMs ?? Date.now() + msUntilMidnight(tzOffset));
       setNextWordReady(false);
-      const tick = () => {
-        const remaining = Math.max(0, (nextWordAtRef.current ?? 0) - Date.now());
-        setCountdown(formatCountdown(remaining));
-        if (remaining === 0) {
-          setNextWordReady(true);
-          if (countdownRef.current) clearInterval(countdownRef.current);
-        }
-      };
-      tick();
-      countdownRef.current = setInterval(tick, 1000);
     },
     [tzOffset]
   );
+  const handleNextWordReady = useCallback(() => setNextWordReady(true), []);
+  const countdownLabel = useCallback((time: string) => t("result.countdown", { time }), [t]);
 
   /**
    * Loads today's puzzle in place of the current one. Fetches before clearing
@@ -538,6 +520,7 @@ export default function DailyWordScreen() {
         setLossModalVisible(false);
         setFlippingRowIndex(null);
         setNextWordReady(false);
+        setNextWordAt(null);
         setCopied(false);
         setPlayAgainFailed(false);
         return "ok";
@@ -567,7 +550,6 @@ export default function DailyWordScreen() {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (countdownRef.current) clearInterval(countdownRef.current);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       if (flipTimerRef.current) clearTimeout(flipTimerRef.current);
     };
@@ -1081,7 +1063,16 @@ export default function DailyWordScreen() {
             nextWordReady
               ? { label: tResult("action.playAgain"), onPress: () => void handlePlayAgain() }
               : {
-                  label: t("result.countdown", { time: countdown }),
+                  label: countdownLabel(""),
+                  labelNode: (textStyle) =>
+                    nextWordAt !== null ? (
+                      <CountdownButtonLabel
+                        untilMs={nextWordAt}
+                        renderLabel={countdownLabel}
+                        onReady={handleNextWordReady}
+                        style={textStyle}
+                      />
+                    ) : null,
                   onPress: () => {},
                   disabled: true,
                 }

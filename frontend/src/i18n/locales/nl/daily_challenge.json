@@ -10,6 +10,8 @@
   "goal.twenty48.final_score_at_least": "Scoor {{target}}+ in {{game}}",
   "goal.twenty48.highest_tile_at_least": "Bereik {{target}}-tegel in {{game}}",
   "goal.yacht.final_score_at_least": "Scoor {{target}}+ in {{game}}",
+  "goal.sudoku.final_score_at_least": "Scoor {{target}}+ in {{game}}",
+  "goal.sudoku.solved": "Los een {{game}}-puzzel op",
   "goal.sort.final_score_at_least": "Bereik niveau {{target}} in {{game}}",
   "goal.solitaire.moves_at_least_one": "Doe een zet in {{game}}",
   "goal.solitaire.moves_at_least_other": "Doe {{count}}+ zetten in {{game}}",

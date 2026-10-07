@@ -21,7 +21,7 @@ jest.mock("../../components/LanguageSwitcher", () => ({
 }));
 jest.mock("../../entitlements/EntitlementContext", () => ({
   ...jest.requireActual("../../entitlements/EntitlementContext"),
-  useEntitlements: () => ({
+  useEntitlementGate: () => ({
     canPlay: () => false,
     isLoading: false,
     lastRefreshed: null,

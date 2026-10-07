@@ -47,7 +47,7 @@ export default function BlackjackTable({
           cardHeight={layout.dealerCardHeight}
           gap={layout.handGap}
           labelFontSize={layout.handLabelFontSize}
-          maxPerRow={5}
+          rowWidth={layout.handRowWidth}
         />
       </View>
       <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -84,7 +84,7 @@ export default function BlackjackTable({
                   gap={layout.handGap}
                   labelFontSize={layout.handLabelFontSize}
                   scorePillFontSize={layout.scorePillFontSize}
-                  maxPerRow={3}
+                  rowWidth={layout.splitHandRowWidth}
                 />
                 {bet != null && phase !== "result" && (
                   <Text style={[styles.handBet, { color: colors.textMuted }]}>{bet}</Text>
@@ -109,7 +109,7 @@ export default function BlackjackTable({
             gap={layout.handGap}
             labelFontSize={layout.handLabelFontSize}
             scorePillFontSize={layout.scorePillFontSize}
-            maxPerRow={5}
+            rowWidth={layout.handRowWidth}
           />
         </View>
       )}

@@ -11,6 +11,8 @@
   "goal.twenty48.final_score_at_least": "צברו {{target}}+ נקודות ב-{{game}}",
   "goal.twenty48.highest_tile_at_least": "הגיעו לאריח {{target}} ב-{{game}}",
   "goal.yacht.final_score_at_least": "צברו {{target}}+ נקודות ב-{{game}}",
+  "goal.sudoku.final_score_at_least": "צברו {{target}}+ נקודות ב-{{game}}",
+  "goal.sudoku.solved": "פתרו חידת {{game}}",
   "goal.sort.final_score_at_least": "הגיעו לרמה {{target}} ב-{{game}}",
   "goal.solitaire.moves_at_least_one": "בצעו מהלך ב-{{game}}",
   "goal.solitaire.moves_at_least_two": "בצעו לפחות שני מהלכים ב-{{game}}",

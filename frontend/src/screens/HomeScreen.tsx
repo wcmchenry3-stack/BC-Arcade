@@ -25,7 +25,7 @@ import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import DailyChallengeCard from "../components/daily_challenge/DailyChallengeCard";
 import { APP_START_MS } from "../utils/appTiming";
 import { prefetchLobbyGameScreens } from "../utils/lazyScreens";
-import { useEntitlements } from "../entitlements/EntitlementContext";
+import { useEntitlementGate } from "../entitlements/EntitlementContext";
 import { isGameVisible } from "../entitlements/gameVisibility";
 import { statsApi } from "../api/stats";
 import { withRetry } from "../game/_shared/withRetry";
@@ -64,7 +64,7 @@ export default function HomeScreen() {
     "daily_word",
   ]);
   const { colors } = useTheme();
-  const { canPlay } = useEntitlements();
+  const { canPlay } = useEntitlementGate();
   const insets = useSafeAreaInsets();
   // A locked premium tile opens the paywall modal (#841). It is on the root
   // stack, so navigate() bubbles up from this nested stack. Only visible games
