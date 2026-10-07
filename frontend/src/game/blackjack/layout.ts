@@ -6,6 +6,30 @@ export const COMPACT_HEIGHT_BREAKPOINT = 660;
 // Standard playing-card aspect ratio (≈ √2). Used only for split card height.
 const CARD_ASPECT = 1.414;
 
+// Horizontal padding applied by the table screen on each side (see BlackjackTableScreen).
+const TABLE_PADDING_H = 16;
+// Fallback when the caller does not know the window width (small phone).
+const DEFAULT_AVAILABLE_WIDTH = 360;
+// Slack for the fan rotation of the first two player cards and split-hand borders.
+const HAND_WIDTH_SLACK = 8;
+
+/**
+ * Left margin to apply to every card after the first so a hand of `count`
+ * cards fits on ONE row inside `availableWidth`. Returns 0 while the cards
+ * fit side by side; otherwise a negative margin that overlaps the cards.
+ * The first card keeps its position and the last card is always fully
+ * visible (it sits on top and ends exactly at the right edge).
+ */
+export function calculateCardOverlap(
+  count: number,
+  cardWidth: number,
+  availableWidth: number
+): number {
+  if (count <= 1 || availableWidth <= cardWidth) return 0;
+  const step = (availableWidth - cardWidth) / (count - 1);
+  return Math.min(0, Math.floor(step - cardWidth));
+}
+
 export interface BlackjackLayoutInput {
   availableWidth?: number;
   availableHeight: number;
@@ -22,6 +46,9 @@ export interface BlackjackLayout {
   // Split hands appear side-by-side and always use smaller cards
   splitCardWidth: number;
   splitCardHeight: number;
+  // Width available to a single hand's row of cards (cards overlap to fit it)
+  handRowWidth: number;
+  splitHandRowWidth: number;
 
   // Action button cluster
   buttonSize: number;
@@ -50,7 +77,7 @@ export interface BlackjackLayout {
 }
 
 export function calculateBlackjackLayout(input: BlackjackLayoutInput): BlackjackLayout {
-  const { availableHeight } = input;
+  const { availableHeight, availableWidth = DEFAULT_AVAILABLE_WIDTH } = input;
   const compact = availableHeight < COMPACT_HEIGHT_BREAKPOINT;
 
   // Card dimensions — preserve exact existing pixel values for normal/compact,
@@ -65,6 +92,16 @@ export function calculateBlackjackLayout(input: BlackjackLayoutInput): Blackjack
   const splitCardHeight = Math.round(splitCardWidth * CARD_ASPECT);
 
   const buttonSize = compact ? 62 : 80;
+  const handsRowGap = compact ? 6 : 8;
+  const splitHandPadding = compact ? 4 : 6;
+  const handRowWidth = Math.max(0, availableWidth - 2 * TABLE_PADDING_H - HAND_WIDTH_SLACK);
+  // Two split hands share the row; each has padding plus a 2px active border.
+  const splitHandRowWidth = Math.max(
+    0,
+    Math.floor((availableWidth - 2 * TABLE_PADDING_H - handsRowGap) / 2) -
+      2 * (splitHandPadding + 2) -
+      HAND_WIDTH_SLACK
+  );
 
   return {
     compact,
@@ -74,6 +111,8 @@ export function calculateBlackjackLayout(input: BlackjackLayoutInput): Blackjack
     dealerCardHeight,
     splitCardWidth,
     splitCardHeight,
+    handRowWidth,
+    splitHandRowWidth,
     buttonSize,
     buttonRadius: buttonSize / 2,
     buttonIconSize: compact ? 22 : 28,
@@ -85,8 +124,8 @@ export function calculateBlackjackLayout(input: BlackjackLayoutInput): Blackjack
     handGap: compact ? 2 : 8,
     handLabelFontSize: compact ? 11 : 13,
     scorePillFontSize: compact ? 22 : 32,
-    handsRowGap: compact ? 6 : 8,
-    splitHandPadding: compact ? 4 : 6,
+    handsRowGap,
+    splitHandPadding,
     controlsPaddingBottom: compact ? 12 : 32,
     controlsGap: compact ? 8 : 16,
   };

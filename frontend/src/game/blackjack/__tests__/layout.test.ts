@@ -1,4 +1,8 @@
-import { calculateBlackjackLayout, COMPACT_HEIGHT_BREAKPOINT } from "../layout";
+import {
+  calculateBlackjackLayout,
+  calculateCardOverlap,
+  COMPACT_HEIGHT_BREAKPOINT,
+} from "../layout";
 
 const BREAKPOINT = COMPACT_HEIGHT_BREAKPOINT;
 
@@ -174,5 +178,37 @@ describe("calculateBlackjackLayout", () => {
     it("compact controlsPaddingBottom is 12", () => expect(compact.controlsPaddingBottom).toBe(12));
     it("normal controlsGap is 16", () => expect(normal.controlsGap).toBe(16));
     it("compact controlsGap is 8", () => expect(compact.controlsGap).toBe(8));
+  });
+});
+
+describe("calculateCardOverlap", () => {
+  it("does not overlap when the hand fits", () => {
+    expect(calculateCardOverlap(3, 68, 340)).toBe(0);
+    expect(calculateCardOverlap(1, 68, 10)).toBe(0);
+    expect(calculateCardOverlap(0, 68, 340)).toBe(0);
+  });
+
+  it.each([6, 7, 11])("fits %i cards in the row at normal and compact sizes", (n: number) => {
+    const sizes: [number, number][] = [
+      [68, 340],
+      [48, 340],
+      [52, 340],
+      [48, 140],
+      [36, 140],
+    ];
+    for (const [cw, w] of sizes) {
+      const m = calculateCardOverlap(n, cw, w);
+      expect(cw + (n - 1) * (cw + m)).toBeLessThanOrEqual(w);
+      expect(cw + m).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("hand row widths", () => {
+  it("scale with availableWidth and split rows are narrower", () => {
+    const wide = calculateBlackjackLayout({ availableWidth: 430, availableHeight: 800 });
+    const narrow = calculateBlackjackLayout({ availableWidth: 320, availableHeight: 800 });
+    expect(wide.handRowWidth).toBeGreaterThan(narrow.handRowWidth);
+    expect(wide.splitHandRowWidth).toBeLessThan(wide.handRowWidth / 2);
   });
 });
