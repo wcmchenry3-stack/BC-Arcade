@@ -667,17 +667,77 @@ This section records what that bought on real hardware.
 
 ### Results
 
-Numbers are `avg / p95 ms · commits/s`. Filled in from the owner's device runs.
+Numbers are `avg / p95 ms · commits/s`. Filled in from the owner's device runs. The last column
+is the Picture renderer after the #2963 allocation cuts (below); measure it with a build from the
+#2963 merge or later, the same way.
 
-| Device               | Scenario         | Legacy renderer | Picture renderer |
-| -------------------- | ---------------- | --------------- | ---------------- |
-| Budget Android (TBD) | Wave 1 idle      | —               | —                |
-| Budget Android (TBD) | Wave 5 boss      | —               | —                |
-| Budget Android (TBD) | Wave 9 lightning | —               | —                |
-| Budget Android (TBD) | Paused           | —               | —                |
-| Older iPhone (TBD)   | Wave 1 idle      | —               | —                |
-| Older iPhone (TBD)   | Wave 5 boss      | —               | —                |
-| Older iPhone (TBD)   | Wave 9 lightning | —               | —                |
-| Older iPhone (TBD)   | Paused           | —               | —                |
+| Device               | Scenario         | Legacy renderer | Picture renderer | After #2963 |
+| -------------------- | ---------------- | --------------- | ---------------- | ----------- |
+| Budget Android (TBD) | Wave 1 idle      | —               | —                | TODO        |
+| Budget Android (TBD) | Wave 5 boss      | —               | —                | TODO        |
+| Budget Android (TBD) | Wave 9 lightning | —               | —                | TODO        |
+| Budget Android (TBD) | Paused           | —               | —                | TODO        |
+| Older iPhone (TBD)   | Wave 1 idle      | —               | —                | TODO        |
+| Older iPhone (TBD)   | Wave 5 boss      | —               | —                | TODO        |
+| Older iPhone (TBD)   | Wave 9 lightning | —               | —                | TODO        |
+| Older iPhone (TBD)   | Paused           | —               | —                | TODO        |
 
-Memory over ten minutes with the Picture renderer: — (Android), — (iPhone).
+Memory over ten minutes with the Picture renderer: — (Android), — (iPhone). After #2963: TODO
+(Android), TODO (iPhone).
+
+### Per-frame allocation (#2963)
+
+After the Picture renderer landed, each frame still made a lot of short-lived garbage on the JS
+thread (and the copy of the display list sent to the UI thread). #2963 removed most of it without
+changing what is drawn or how the game plays:
+
+- **Starfield.** The 95 stars never change after they are placed: three depth layers, each
+  scrolling at its own speed, with a fixed opacity and no twinkle. `tickStarfield` used to copy
+  all 95 star objects every frame, and `buildFrame` turned them into 95 circle ops (plus a
+  background fill op), each with a template-literal key and an `rgba()` string. Now the stars and
+  background are recorded once per canvas size into their own Pictures (one per depth layer, so
+  the parallax is kept). The game loop advances one shared scroll clock, and each layer slides by
+  its own offset on the UI thread, drawn twice (a canvas-height apart) so stars wrap at the bottom
+  as before. `tickStarfield` now only advances the clock. A frame where only the stars move (the
+  pre-wave countdown) publishes nothing. A wave-1 display list is 96 ops shorter (135 → 39).
+- **Display list.** Colours are packed `0xAARRGGBB` numbers (`render/color.ts`). Alpha is stored
+  as a byte (1/255 steps, where the old strings used 0.001 steps), which looks the same. Op `key`s
+  are built only when `setDebugOpKeys(true)` is on (tests). Ops no longer copy a `rect` object
+  into themselves with a spread, and the shared helpers (`carrierOps`, `buddyOps`,
+  `upgradePickupOps`) append to the frame's list instead of returning their own.
+- **UI-thread replay.** `drawFrame` no longer parses a colour string for every op of every frame.
+  Its two paints and a colour cache are made once per runtime and kept on that runtime's
+  `globalThis` (module state is not shared with the UI runtime, and what a worklet captures is a
+  copy). Each polygon's `SkPath` is disposed after it is drawn. `sameHud` compares fields directly
+  instead of calling `Object.keys`.
+- **Engine tick.** A sub-tick with nothing to do hands back the same state and lists it was
+  given. Map-then-filter passes are fused into one loop that keeps the input array when nothing
+  changed (for example an empty bullet list). One pass in `tick()` works out the tick's alive
+  roster, difficulty scale, boss-wave flag and Carrier armor (`TickCtx`). It is shared only with
+  the sub-ticks that run before anything can change the roster, so every value is exactly what the
+  old code computed at the same point. Tier stats are copied on first write instead of spread for
+  every bullet. The reinforcement slot check compares coordinates directly instead of building a
+  `Set` of strings. Nothing is pooled or mutated: the engine stays immutable, and the frame gate
+  still compares by identity. The golden replay fixture is unchanged, and a raw (unrounded)
+  per-tick state hash over seven seeded scenarios matched byte for byte before and after.
+
+Jest micro-benchmarks (Node 22 under jest, this container, not a device — use them to compare
+before and after, not as absolute numbers):
+
+| Benchmark                                             | Before #2963               | After #2963                |
+| ----------------------------------------------------- | -------------------------- | -------------------------- |
+| `tick` × 10,000, seeded wave 9 (`tick.bench.test.ts`) | 6.97–7.26 s (≈700 µs/tick) | 6.25–6.96 s (≈630 µs/tick) |
+| GC passes during those 10,000 ticks                   | 204                        | 178                        |
+| `buildFrame` × 20,000, wave-9 state after 900 ticks   | 302 ms (15 µs/frame)       | 27 ms (1.4 µs/frame)       |
+| `buildFrame` ops, seeded wave 1, all sprites loaded   | 135                        | 39                         |
+
+The `buildFrame` "before" column leaves out the per-frame `tickStarfield` copy of 95 stars, which
+#2963 also removed. To run the tick benchmark:
+`cd frontend && STARSWARM_BENCH=1 node --expose-gc node_modules/.bin/jest src/game/starswarm/__tests__/tick.bench.test.ts`
+(without `STARSWARM_BENCH=1`, CI runs a 500-tick smoke of it). The heap delta it prints is noisy
+because the collector runs during the loop, so the GC pass count is the better signal.
+
+Profiling the tick benchmark after #2963 shows that most of the remaining time goes into copying
+whole `Enemy` objects (`{ ...enemy, … }`) in `tickFormation` and the `tickEnemies` per-ship map:
+about half of the self time under V8. That is the next thing to look at, once the engine split (#2988)
+has landed.

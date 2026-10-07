@@ -972,9 +972,10 @@ This replaces the old, incorrect statement that Star Swarm had no local resume s
 ### Native rendering pipeline (epic #2562)
 
 The engine (`engine.ts`) is pure and ticks on the JS thread in the canvas's RAF loop. Every
-drawing decision for the native canvas lives in `render/frame.ts`: `buildFrame(state, starfield,
-{ loaded, width, height })` returns a flat, back-to-front display list of primitive ops (`fill`,
-`rect`, `circle`, `image`, `poly`) — plain data, no Skia objects. Sprite-vs-fallback choices, the
+drawing decision for the native canvas lives in `render/frame.ts`: `buildFrame(state, { loaded,
+width, height })` returns a flat, back-to-front display list of primitive ops (`fill`, `rect`,
+`circle`, `image`, `poly`) — plain data, no Skia objects. Colours are packed `0xAARRGGBB`
+numbers, and op keys are built only for tests (#2963). Sprite-vs-fallback choices, the
 Carrier's armor ring, hit-flash bursts, the Carrier's beams and telegraphs (`render/carrier.ts`,
 shared with the web canvas), the invincibility
 blink and the #2334 hidden-ship-at-game-over rule are all decided there and unit-tested in
@@ -982,6 +983,13 @@ blink and the #2334 hidden-ship-at-game-over rule are all decided there and unit
 
 `render/publish.ts` gates when a frame is published at all (#2563): only when something drawn
 changed, so a paused or finished game does not re-render.
+
+The background and starfield are not in the display list (#2963). The star layout is fixed for a
+canvas size, so `render/starfieldPictures.ts` records it once — the background plus one Picture
+per depth layer — and `components/starswarm/StarfieldLayers.tsx` draws them under the scene,
+sliding each layer by its own offset (`layerOffset`) from a scroll clock the loop writes to a
+shared value. Each layer is drawn twice, a canvas-height apart, so stars wrap at the bottom. A
+frame where only the stars move is therefore never published.
 
 Since #2565 the display list is drawn on the UI thread. Each published frame, the RAF loop builds
 the list and writes it into one Reanimated shared value; a `useDerivedValue` worklet replays it

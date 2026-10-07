@@ -605,6 +605,8 @@ async def test_a_caller_in_the_list_costs_no_extra_query(client: TestClient) -> 
     await _seed("solitaire", inside, score=800, name="Inside")
     await _seed("solitaire", outside, score=10, name="Outside")
 
+    # Warm-up: the first request loads the catalog cache (#2966).
+    await _count_statements(client, "solitaire?limit=2", None)
     anonymous = await _count_statements(client, "solitaire?limit=2", None)
     assert await _count_statements(client, "solitaire?limit=2", inside) == anonymous
     # Only a caller outside the list is looked up (best row + rank).
