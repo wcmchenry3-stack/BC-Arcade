@@ -11,6 +11,8 @@
   "goal.twenty48.final_score_at_least": "Consigue {{target}}+ en {{game}}",
   "goal.twenty48.highest_tile_at_least": "Logra ficha {{target}} en {{game}}",
   "goal.yacht.final_score_at_least": "Consigue {{target}}+ en {{game}}",
+  "goal.sudoku.final_score_at_least": "Consigue {{target}}+ en {{game}}",
+  "goal.sudoku.solved": "Resuelve un puzzle de {{game}}",
   "goal.sort.final_score_at_least": "Llega al nivel {{target}} en {{game}}",
   "goal.solitaire.moves_at_least_one": "Haz un movimiento en {{game}}",
   "goal.solitaire.moves_at_least_many": "Haz {{count}}+ mov. en {{game}}",
