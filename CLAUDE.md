@@ -14,7 +14,7 @@ Release toolchain — Expo is used as the development framework only:
 
 ## Stack
 
-- **Backend:** Python 3.13, FastAPI, uvicorn, PostgreSQL (Alembic migrations)
+- **Backend:** Python 3.11 (production runtime, `backend/.python-version`; 3.13 also works), FastAPI, uvicorn, PostgreSQL (Alembic migrations)
 - **Frontend:** Expo TypeScript — primary targets are **iOS and Android**; Expo Web exists but is unmaintained
 - **Setup & runbook:** [`README.md`](README.md)
 - **Docs:** testing, iOS/Android CI, Render, branding — see [`docs/`](docs/)

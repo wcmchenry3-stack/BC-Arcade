@@ -7,7 +7,7 @@
  *
  * Pour mechanics match the backend's level solver (`successors` in
  * backend/sort/fast_solver.py) and its reference pour simulator (`_moves` /
- * `_apply` in backend/sort/verify_levels.py): a pour moves the maximal
+ * `_apply` in backend/scripts/sort_verify_levels.py): a pour moves the maximal
  * same-color run from the top of the source bottle, up to the available
  * space in the destination.
  */

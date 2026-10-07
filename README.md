@@ -2,14 +2,14 @@
 
 A collection of 12 arcade, card, dice, puzzle, and word games — Yacht, Hearts, Blackjack, Solitaire, Sudoku, Cascade, 2048, FreeCell, Mahjong, Bottle Sort, Daily Word, and Star Swarm — with a FastAPI backend and an Expo/React Native frontend that runs on iOS, Android, and the web.
 
-- **Backend:** Python 3.13, FastAPI, uvicorn
+- **Backend:** Python 3.11 (production runtime), FastAPI, uvicorn
 - **Frontend:** Expo (TypeScript), React Native, Expo Web
 - **Docs:** start with [`docs/README.md`](docs/README.md) for the canonical documentation map, game specs, operations, release material, research, and audits
 - **Claude Code guide:** [`CLAUDE.md`](CLAUDE.md)
 
 ## Requirements
 
-- **Python 3.13** (3.14 is not yet supported by `pydantic-core` / PyO3 — the install will fail)
+- **Python 3.11** (the Render runtime, pinned in `backend/.python-version`; 3.13 also works; 3.14 is not yet supported by `pydantic-core` / PyO3 — the install will fail)
 - **Node.js 20+** and **npm**
 - Xcode (for iOS local builds), Android Studio + JDK 17 (for Android local builds)
 
@@ -24,7 +24,7 @@ First time (or when `requirements.txt` changes):
 **Mac/Linux:**
 ```bash
 cd backend
-python3.13 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
@@ -33,7 +33,7 @@ pip install -r requirements.txt
 **Windows (PowerShell):**
 ```powershell
 cd backend
-python3.13 -m venv .venv
+python3.11 -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install --upgrade pip
 pip install -r requirements.txt
@@ -111,13 +111,13 @@ Backend is hosted on Render — see [`docs/RENDER.md`](docs/RENDER.md).
 
 ## Troubleshooting
 
-**`pip install -r requirements.txt` fails building `pydantic-core`** — your venv is using Python 3.14. Recreate it with 3.13:
+**`pip install -r requirements.txt` fails building `pydantic-core`** — your venv is using Python 3.14. Recreate it with 3.11:
 
 **Mac/Linux:**
 ```bash
 deactivate
 rm -rf backend/.venv
-python3.13 -m venv backend/.venv
+python3.11 -m venv backend/.venv
 source backend/.venv/bin/activate
 pip install --upgrade pip
 pip install -r backend/requirements.txt
@@ -127,7 +127,7 @@ pip install -r backend/requirements.txt
 ```powershell
 deactivate
 Remove-Item -Recurse -Force backend\.venv
-python3.13 -m venv backend\.venv
+python3.11 -m venv backend\.venv
 backend\.venv\Scripts\Activate.ps1
 pip install --upgrade pip
 pip install -r backend\requirements.txt

@@ -39,22 +39,25 @@ Usage
 
 from __future__ import annotations
 
-import argparse
-import json
 import sys
 import time
-from collections.abc import Iterator
 from dataclasses import dataclass
-from pathlib import Path
+
+from _cardlib import (
+    DECK_SIZE,
+    RANKS,
+    SUITS,
+    fisher_yates,
+    lcg,
+    seed_bank_argparser,
+    write_seed_bank,
+)
 
 # ---------------------------------------------------------------------------
 # Deck + deal (mirrors frontend/src/game/solitaire/engine.ts exactly)
 # ---------------------------------------------------------------------------
 
-SUITS = ("spades", "hearts", "diamonds", "clubs")
 RED_SUITS = frozenset({"hearts", "diamonds"})
-RANKS = tuple(range(1, 14))
-DECK_SIZE = 52
 TABLEAU_COLUMNS = 7
 
 # Card encoded as int: (suit_idx << 4) | rank. faceUp carried separately.
@@ -74,30 +77,9 @@ class Card:
         return "red" if self.suit in RED_SUITS else "black"
 
 
-def lcg(seed: int):
-    """LCG matching createSeededRng in engine.ts. Yields floats in [0, 1)."""
-    state = seed & 0xFFFFFFFF
-    while True:
-        state = (1664525 * state + 1013904223) & 0xFFFFFFFF
-        yield state / 4294967296
-
-
 def fresh_deck() -> list[Card]:
     """52 cards in canonical order (SUITS x RANKS), all face-down."""
     return [Card(suit=s, rank=r, face_up=False) for s in SUITS for r in RANKS]
-
-
-def fisher_yates(deck: list[Card], rng: Iterator[float]) -> list[Card]:
-    """In-place Fisher-Yates. Returns the same list for convenience.
-
-    The iteration order (i from len-1 down to 1) and j computation
-    (``floor(rng() * (i+1))``) must match the TS engine line-for-line or
-    seeds diverge across the language boundary.
-    """
-    for i in range(len(deck) - 1, 0, -1):
-        j = int(next(rng) * (i + 1))
-        deck[i], deck[j] = deck[j], deck[i]
-    return deck
 
 
 def deal(seed: int) -> State:
@@ -436,39 +418,16 @@ def generate(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = seed_bank_argparser(
+        "solitaire",
+        description=__doc__,
+        max_attempts=200_000,
+        max_attempts_help="Hard cap on seeds considered before giving up.",
+        state_budget=150_000,
+        state_budget_help="Max distinct states the DFS solver explores per seed.",
+    )
     parser.add_argument("--count-draw1", type=int, default=50)
     parser.add_argument("--count-draw3", type=int, default=50)
-    parser.add_argument(
-        "--start-seed",
-        type=int,
-        default=1,
-        help="First seed to test. Deterministic: re-running with the same value "
-        "produces the same bank.",
-    )
-    parser.add_argument(
-        "--max-attempts",
-        type=int,
-        default=200_000,
-        help="Hard cap on seeds considered before giving up.",
-    )
-    parser.add_argument(
-        "--state-budget",
-        type=int,
-        default=150_000,
-        help="Max distinct states the DFS solver explores per seed.",
-    )
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=Path(__file__).resolve().parents[2]
-        / "frontend"
-        / "src"
-        / "game"
-        / "solitaire"
-        / "seeds.json",
-    )
-    parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
     t0 = time.time()
@@ -489,15 +448,11 @@ def main() -> int:
             file=sys.stderr,
         )
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps({"draw1": draw1, "draw3": draw3}, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    print(
-        f"Wrote {len(draw1)} draw1 + {len(draw3)} draw3 seeds to {args.output} "
-        f"in {elapsed:.1f}s",
-        file=sys.stderr,
+    write_seed_bank(
+        args.output,
+        {"draw1": draw1, "draw3": draw3},
+        f"{len(draw1)} draw1 + {len(draw3)} draw3 seeds",
+        elapsed,
     )
     return 0
 

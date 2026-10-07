@@ -10,7 +10,9 @@ from datetime import datetime
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from db.base import get_session_factory
 from db.models import Game
@@ -105,7 +107,6 @@ async def patch_game_type(
     body: PatchGameTypeRequest,
     x_admin_token: str = Header(default=""),
 ) -> GameTypeOut:
-    # TODO: replace with admin role check once #971 ships.
     admin_token = os.environ.get("ADMIN_API_TOKEN", "")
     if not admin_token or not hmac.compare_digest(
         x_admin_token.encode("utf-8"), admin_token.encode("utf-8")
@@ -399,11 +400,6 @@ async def complete_game(
         except service.GameServiceError as e:
             raise HTTPException(status_code=e.status_code, detail=e.detail) from e
         # Refresh with relationship loaded for response
-        from sqlalchemy import select
-        from sqlalchemy.orm import selectinload
-
-        from db.models import Game
-
         loaded = (
             await db.execute(
                 select(Game).options(selectinload(Game.game_type)).where(Game.id == game.id)

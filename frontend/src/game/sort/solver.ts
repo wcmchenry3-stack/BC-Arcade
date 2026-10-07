@@ -4,7 +4,7 @@
  * Pure TypeScript. No side effects. Uses the same pour rules as the backend's
  * level solver (`successors` in backend/sort/fast_solver.py) and its
  * reference pour simulator (`_moves` / `_apply` in
- * backend/sort/verify_levels.py), and returns the move sequence.
+ * backend/scripts/sort_verify_levels.py), and returns the move sequence.
  *
  * Performance: capped at 200 000 visited states.
  * States beyond the cap return null — the puzzle is assumed solvable but the
