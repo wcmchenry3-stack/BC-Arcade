@@ -1,7 +1,7 @@
 /**
  * Star Swarm Buddy balance simulation CLI (#2880).
  *
- * The harness, variants and presets live in frontend/src/game/starswarm/sim/ (balance.ts,
+ * The harness, variants and presets live in frontend/tooling/starswarm/ (balance.ts,
  * engineVariant.ts, presets.ts, report.ts); this script is the command line around them. See
  * docs/games/starswarm.md → "Balance simulation" for the method.
  *
@@ -25,13 +25,13 @@ import {
   runCell,
   summarize,
   type RunRecord,
-} from "../frontend/src/game/starswarm/sim/balance";
-import { PRESETS, engineFor } from "../frontend/src/game/starswarm/sim/presets";
+} from "../frontend/tooling/starswarm/balance";
+import { PRESETS, engineFor } from "../frontend/tooling/starswarm/presets";
 import {
   formatOffense,
   formatReport,
   formatSweep,
-} from "../frontend/src/game/starswarm/sim/report";
+} from "../frontend/tooling/starswarm/report";
 
 (globalThis as { __DEV__?: boolean }).__DEV__ = false;
 

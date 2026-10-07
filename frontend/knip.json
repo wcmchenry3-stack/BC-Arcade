@@ -1,14 +1,14 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["scripts/*.mjs", "scripts/*.js", "App.tsx"],
-  "project": ["src/**/*.{ts,tsx}", "scripts/*.{js,mjs}"],
-  "ignore": [
-    "src/screens/__dev__/**",
-    "**/*.web.tsx",
-    "**/*.web.ts",
-    // CI-only simulators; relocated by #2969
-    "src/game/*/sim/**",
-    "src/game/yacht/oracleBuild/**"
-  ],
+  // tooling/** holds the CI/script-only simulators (#2969); the repo-root
+  // scripts/*.ts drive it. knip resolves those scripts' imports (so tooling
+  // files they reach count as used) but does not credit the exports they use,
+  // since the scripts sit outside this workspace: the few tooling exports only
+  // a script uses carry an `@public` JSDoc tag instead.
+  "entry": ["scripts/*.mjs", "scripts/*.js", "App.tsx", "../scripts/*.ts"],
+  "project": ["src/**/*.{ts,tsx}", "scripts/*.{js,mjs}", "tooling/**/*.ts", "../scripts/*.ts"],
+  "ignore": ["src/screens/__dev__/**", "**/*.web.tsx", "**/*.web.ts"],
+  // tsx runs the root scripts/*.ts (`npx --prefix frontend tsx scripts/...`).
+  "ignoreDependencies": ["tsx"],
   "ignoreExportsUsedInFile": true
 }

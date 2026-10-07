@@ -99,7 +99,7 @@ function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
 
 const _entitlementsClient = createGameClient({ apiTag: "entitlements" });
 
-export async function fetchRawToken(): Promise<string> {
+async function fetchRawToken(): Promise<string> {
   const res = await _entitlementsClient<{ token: string; expires_at: string }>("/entitlements");
   return res.token;
 }
@@ -114,7 +114,7 @@ export async function parseRawToken(rawToken: string): Promise<ParseResult> {
   }
 }
 
-export async function loadCachedEntitlements(): Promise<Set<string>> {
+async function loadCachedEntitlements(): Promise<Set<string>> {
   try {
     const entries = await AsyncStorage.getMany([TOKEN_STORAGE_KEY, CACHED_AT_STORAGE_KEY]);
     const token = entries[TOKEN_STORAGE_KEY] ?? null;

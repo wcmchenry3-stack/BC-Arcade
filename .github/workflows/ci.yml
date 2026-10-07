@@ -526,7 +526,7 @@ jobs:
           --threshold 2.5 --min-lines 20 --min-tokens 70
           --ignore "**/__tests__/**,**/node_modules/**,**/.venv/**,**/*.generated.*,**/locales/**,**/tests/**,**/alembic/**"
           --format "typescript,tsx,python"
-          frontend/src backend
+          frontend/src frontend/tooling backend
 
   knip:
     name: Unused code (knip)

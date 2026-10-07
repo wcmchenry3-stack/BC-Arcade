@@ -4,7 +4,6 @@ import { COSMOS_BAKED, COSMOS_ICONS, FRUIT_BAKED, FRUIT_ICONS } from "../game/ca
 import type { FruitDefinition as FruitDefinitionBase } from "./fruitSets.engine";
 
 export type { FruitTier } from "./fruitSets.engine";
-export { MAX_SPAWN_TIER } from "./fruitSets.engine";
 import type { FruitTier } from "./fruitSets.engine";
 
 export interface FruitDefinition extends FruitDefinitionBase {

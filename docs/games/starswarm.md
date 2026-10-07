@@ -490,7 +490,7 @@ fired, and `saveShape` persists Buddy's full state.
 
 ### Balance simulation (#2880)
 
-`frontend/src/game/starswarm/sim/` is a seeded, headless balance harness for Buddy. It drives the
+`frontend/tooling/starswarm/` is a seeded, headless balance harness for Buddy. It drives the
 real `tick()` with an autoplayed player and launches Buddy through `applyPowerUp(s, "buddy")`.
 Nothing in the engine is instrumented. Every metric comes from diffing consecutive states:
 which enemy shot vanished on Buddy's hull, which ship a Buddy shot newly pierced, and which of
@@ -513,10 +513,10 @@ Buddy's attack runs fired it. The attribution is checked against Buddy's real HP
   because the engine's LCG makes neighbouring seeds nearly identical. The same index gives the
   same seed in every cell and variant.
 - **House rules.** Pickups are removed as they spawn, so no stray Bomb or Shield skews a sortie.
-- **Overrides.** `sim/engineVariant.ts` builds a private copy of `engine.ts` with named constants
+- **Overrides.** `tooling/starswarm/engineVariant.ts` builds a private copy of `engine.ts` with named constants
   (or exact code snippets) rewritten, for sweeps and behaviour prototypes. The shipped engine is
   never modified. An anchor that no longer matches throws, and the smoke test re-applies every
-  preset. The variants and presets are in `sim/presets.ts`.
+  preset. The variants and presets are in `tooling/starswarm/presets.ts`.
 
 **Rebalance and results.** The sim found Buddy's problem was per-sortie _output_, not toughness: 3
 runs of 5–7 shots with unlimited pierce wiped 43–52% of a normal wave per sortie and solo-killed
@@ -573,13 +573,13 @@ The files follow the Hearts sim layout, and are ready for a regression gate (#28
 
 | File                            | Role                                                                                                                                                    |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sim/balance.ts`                | Pure and deterministic, with no output. `runCell` / `measureCell(engine, {scenario, difficulty, pilot, variant, seeds})` returns a plain `CellSummary`. |
-| `sim/presets.ts`                | The variants, `engineFor`, and the presets: `fast`, `baseline`, `offense`, `sensitivity`, `candidates`, `shipped`, `proposal`.                          |
-| `sim/report.ts`                 | Markdown tables built from `CellSummary`.                                                                                                               |
+| `tooling/starswarm/balance.ts`  | Pure and deterministic, with no output. `runCell` / `measureCell(engine, {scenario, difficulty, pilot, variant, seeds})` returns a plain `CellSummary`. |
+| `tooling/starswarm/presets.ts`  | The variants, `engineFor`, and the presets: `fast`, `baseline`, `offense`, `sensitivity`, `candidates`, `shipped`, `proposal`.                          |
+| `tooling/starswarm/report.ts`   | Markdown tables built from `CellSummary`.                                                                                                               |
 | `scripts/simulate-starswarm.ts` | The CLI.                                                                                                                                                |
 
 The `fast` preset (3 seeds, two cells) is the jest smoke test in
-`sim/__tests__/balance.test.ts`, which runs with `npx jest src/game/starswarm` in about 15 s. The
+`tooling/starswarm/__tests__/balance.test.ts`, which runs with `npx jest tooling/starswarm` in about 15 s. The
 full runs use the CLI:
 
 ```bash
@@ -790,12 +790,12 @@ the seeded `rng()`:
 - The armored Carrier and the exposed Carrier's AttackRun are unchanged (the latter never evades).
   A Fleeing ship never fires, so it gets flinch and the late nudge only. Diver flak uses the same envelope as formation flak (rock approaching and within `FLAK_RANGE`). The dev "Dodge off" toggle gates only the dodge roll and the nudges, and "Flak off" gates all flak (formation and diver); the flinch is gated by neither.
 
-`frontend/src/game/starswarm/sim/asteroidAwareness.ts` is a seeded headless sim over the real
+`frontend/tooling/starswarm/asteroidAwareness.ts` is a seeded headless sim over the real
 `tick()` that measures each phase (threat, flinch, flak, dodge and hit rates, and how often a
 "successful" dodge still collides) against a control run with dodge and flak disabled.
 `measureAwareness()` is pure and returns plain data, so a future gate can diff it against a
 baseline. Run the full sweep with
-`SIM=1 npx jest src/game/starswarm/__tests__/asteroidAwareness.sim.test.ts`; the fast smoke runs
+`SIM=1 npx jest tooling/starswarm/__tests__/asteroidAwareness.sim.test.ts`; the fast smoke runs
 with the normal suite. Unit tests are in `__tests__/diverAwareness.test.ts`.
 
 ### Carrier vs asteroids (#2844)

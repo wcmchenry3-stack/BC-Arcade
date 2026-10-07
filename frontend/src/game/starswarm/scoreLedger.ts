@@ -51,7 +51,7 @@ export const WAVE_CLEAR_SOURCE = "clear";
 export const LEDGER_DETAIL_WAVES = 20;
 /** Serialized size cap for the `score_breakdown` block (backend result limit is 8192). */
 export const BREAKDOWN_MAX_BYTES = 4096;
-export const BREAKDOWN_VERSION = 1;
+const BREAKDOWN_VERSION = 1;
 
 export function emptyScoreLedger(): ScoreLedger {
   return { waves: [], earlier: null };
