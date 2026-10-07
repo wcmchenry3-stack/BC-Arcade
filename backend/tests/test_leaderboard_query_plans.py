@@ -10,15 +10,16 @@ partial index's predicate covers scans every game row of every type on each
 Two gates, run per board and per partition value:
 
 - **Postgres** (production): the statement is EXPLAINed exactly as the app runs
-  it (bound parameters, asyncpg) over a seeded table (25,000 rows per game type,
-  half the players named, a quarter of the rows unfinished) and ``ANALYZE``d,
-  inside a transaction that is rolled back. It fails on a ``Seq Scan`` over
-  ``games``, and on any other access to ``games`` that does not seek by
-  ``game_type_id`` (a full scan of an unrelated index would hide behind "no
-  Seq Scan"). It runs when a Postgres URL is reachable: ``LEADERBOARD_EXPLAIN_PG_URL``
-  (a scratch database it migrates to head), or the suite's own ``DATABASE_URL``
-  when that is Postgres. Otherwise it skips, naming the variable. CI's
-  ``test-python`` job has no Postgres service, so there it skips.
+  it (bound parameters, asyncpg) over a seeded table (25,000 rows for each game
+  type with an enabled board, half the players named, a quarter of the rows
+  unfinished) and ``ANALYZE``d. It fails on a ``Seq Scan`` over ``games``, and
+  on any other access to ``games`` that does not seek by ``game_type_id`` (a
+  full scan of an unrelated index would hide behind "no Seq Scan"). It runs
+  only when ``LEADERBOARD_EXPLAIN_PG_URL`` names a scratch server: the test
+  creates its own database there, migrates it to head, and drops it at the
+  end. The suite's ``DATABASE_URL`` is never used, since it may name a real
+  database. Otherwise it skips, naming the variable. CI's ``test-python`` job
+  has no Postgres service, so there it skips.
 - **SQLite** (the default suite DB, so CI): ``EXPLAIN QUERY PLAN`` must search
   ``games`` through the index the board's metric kind is meant to ride, and
   never ``SCAN games``. SQLite honours the same partial-index predicates, so a
@@ -33,17 +34,19 @@ import itertools
 import json
 import os
 import re
+import uuid
 from collections.abc import Iterator, Mapping
 from typing import Any
 
 import pytest
-from sqlalchemy import ClauseElement, Executable, Select, text
+from sqlalchemy import URL, ClauseElement, Executable, Select, make_url, text
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 
 from db.base import _normalize_url, get_engine
 from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
 from games.leaderboard import enabled_board, metric_cap, top_statement
+from tests._migration_helpers import run_alembic_url
 from vocab import GameType
 
 PG_URL_ENV = "LEADERBOARD_EXPLAIN_PG_URL"
@@ -137,6 +140,13 @@ async def _game_type_ids(conn: AsyncConnection) -> dict[str, int]:
 _SQLITE_FULL_SCAN = re.compile(r"\bSCAN (TABLE )?games\b")
 
 
+def sqlite_searches_index(detail: str, index: str) -> bool:
+    """``detail`` (one EXPLAIN QUERY PLAN row) seeks ``games`` by game type
+    through ``index``, in either SQLite wording, covering or not."""
+    pattern = rf"SEARCH (TABLE )?games USING (COVERING )?INDEX {re.escape(index)} \(game_type_id=\?"
+    return re.match(pattern, detail) is not None
+
+
 def _suite_dialect() -> str:
     return get_engine().dialect.name
 
@@ -146,7 +156,7 @@ async def test_sqlite_board_query_searches_its_index(
     game: str, board: BoardDefinition, partition: Mapping[str, str | None]
 ) -> None:
     if _suite_dialect() != "sqlite":
-        pytest.skip("the suite DB is not SQLite; the Postgres gate below covers it")
+        pytest.skip(f"the suite DB is not SQLite; run the Postgres gate with {PG_URL_ENV}")
     async with get_engine().connect() as conn:
         gt_id = (await _game_type_ids(conn))[game]
         stmt = top_statement(board, gt_id, partition)
@@ -156,25 +166,48 @@ async def test_sqlite_board_query_searches_its_index(
     assert not any(_SQLITE_FULL_SCAN.search(d) for d in details), plan
     index = _expected_index(board)
     assert any(
-        d.startswith(f"SEARCH games USING INDEX {index} (game_type_id=?") for d in details
+        sqlite_searches_index(d, index) for d in details
     ), f"{game} should search games through {index}:\n{plan}"
 
 
 # ---------------------------------------------------------------------------
-# Postgres
+# Postgres (only against an explicitly named scratch server)
 # ---------------------------------------------------------------------------
 
 
-def _postgres_url() -> str | None:
-    explicit = os.environ.get(PG_URL_ENV, "").strip()
-    if explicit:
-        return explicit
-    suite = os.environ.get("DATABASE_URL", "")
-    return suite if suite.startswith(("postgres://", "postgresql")) else None
+def explicit_pg_url() -> str | None:
+    """``LEADERBOARD_EXPLAIN_PG_URL``, stripped; ``None`` when unset or blank.
+
+    The only source of a Postgres URL for this gate. The suite's own
+    ``DATABASE_URL`` is never used: conftest lets it name a real, shared
+    database (a Render smoke run), which this test must never seed.
+    """
+    return os.environ.get(PG_URL_ENV, "").strip() or None
+
+
+def scratch_server_url(raw: str) -> URL:
+    """``raw`` as the asyncpg URL the app would use (``db.base._normalize_url``).
+
+    ``postgres://``, ``postgresql://`` and ``postgresql+asyncpg://`` are
+    accepted. The result is also what Alembic loads: ``alembic/env.py`` maps
+    ``postgresql+asyncpg://`` to the sync ``postgresql://`` driver, whereas a
+    bare ``postgres://`` names no SQLAlchemy dialect at all. Anything else is
+    rejected with a message naming the variable.
+    """
+    url = make_url(_normalize_url(raw))
+    if url.drivername != "postgresql+asyncpg":
+        raise ValueError(
+            f"{PG_URL_ENV} must be a postgres:// or postgresql:// URL, not {url.drivername}://"
+        )
+    return url
+
+
+def _url_str(url: URL) -> str:
+    return url.render_as_string(hide_password=False)
 
 
 def _metadata_sql(board: BoardDefinition, params: dict[str, Any]) -> str:
-    """A ``jsonb_build_object`` for a seeded row of ``board``'s game.
+    """A ``jsonb`` expression for a seeded row of ``board``'s game.
 
     Partition keys cycle through their values; a metadata metric (Sort's
     ``level_reached``) and a tie-break key get integers in range.
@@ -197,6 +230,16 @@ def _metadata_sql(board: BoardDefinition, params: dict[str, Any]) -> str:
 
 
 async def _seed_postgres(conn: AsyncConnection, game_ids: Mapping[str, int]) -> None:
+    """25,000 rows for each game type with an enabled board, none for the rest.
+
+    Game types without a board (Blackjack, Daily Word) are never queried, and
+    the enabled types alone already make each board's type about a tenth of
+    the table, the selectivity that decides between an index and a scan.
+    Refuses, failing the test, if ``games`` already holds rows.
+    """
+    existing = (await conn.execute(text("SELECT count(*) FROM games"))).scalar_one()
+    if existing:
+        pytest.fail(f"refusing to seed: games already holds {existing} rows (not a scratch DB)")
     await conn.execute(
         text(
             "INSERT INTO players (session_id, display_name) "
@@ -204,14 +247,15 @@ async def _seed_postgres(conn: AsyncConnection, game_ids: Mapping[str, int]) -> 
         ),
         {"prefix": SESSION_PREFIX, "named": NAMED_SESSIONS},
     )
-    boards = dict(_enabled_boards())
-    for game, gt_id in game_ids.items():
-        board = boards.get(game)
-        params: dict[str, Any] = {"prefix": SESSION_PREFIX, "gt": gt_id, "rows": ROWS_PER_TYPE}
-        metadata = _metadata_sql(board, params) if board else "'{}'::jsonb"
-        cap = metric_cap(board, {}) if board else 1000
-        outcomes = board.qualifying_outcomes if board else None
-        params["outcome"] = (outcomes or ("completed",))[0]
+    for game, board in _enabled_boards():
+        params: dict[str, Any] = {
+            "prefix": SESSION_PREFIX,
+            "gt": game_ids[game],
+            "rows": ROWS_PER_TYPE,
+            "outcome": (board.qualifying_outcomes or ("completed",))[0],
+        }
+        metadata = _metadata_sql(board, params)
+        cap = metric_cap(board, {})
         # A quarter unfinished, a tenth abandoned, the rest finished with
         # every metric column set and in range.
         await conn.execute(
@@ -271,23 +315,14 @@ def postgres_plan_problems(plan: Mapping[str, Any]) -> list[str]:
     return problems
 
 
-async def test_postgres_no_board_plans_a_seq_scan_on_games() -> None:
-    url = _postgres_url()
-    if url is None:
-        pytest.skip(
-            f"no Postgres reachable: set {PG_URL_ENV}=postgresql://user@host/scratch_db "
-            "(migrated to head, seeded and rolled back by this test) to run the Postgres "
-            "EXPLAIN gate; the SQLite gate above runs instead"
-        )
-    if os.environ.get(PG_URL_ENV):
-        from tests._migration_helpers import run_alembic_url
-
-        run_alembic_url(url, "upgrade", "head")
-    engine = create_async_engine(_normalize_url(url))
+async def _board_plan_problems(gate_url: URL) -> tuple[dict[str, list[str]], Any]:
+    """Migrate, seed and EXPLAIN every board case on the gate database."""
+    run_alembic_url(_url_str(gate_url), "upgrade", "head")
+    engine = create_async_engine(gate_url)
     failures: dict[str, list[str]] = {}
     first_bad_plan: Any = None
     try:
-        async with engine.connect() as conn, conn.begin() as trans:
+        async with engine.begin() as conn:
             game_ids = await _game_type_ids(conn)
             await _seed_postgres(conn, game_ids)
             for case in BOARD_CASES:
@@ -298,11 +333,73 @@ async def test_postgres_no_board_plans_a_seq_scan_on_games() -> None:
                 if problems := postgres_plan_problems(plan["Plan"]):
                     failures[case.id] = problems
                     first_bad_plan = first_bad_plan or plan["Plan"]
-            await trans.rollback()
     finally:
         await engine.dispose()
+    return failures, first_bad_plan
+
+
+async def test_postgres_no_board_plans_a_seq_scan_on_games() -> None:
+    """Runs only when ``LEADERBOARD_EXPLAIN_PG_URL`` names a scratch server.
+
+    The URL's own database is used only to ``CREATE DATABASE`` a dedicated,
+    uniquely named gate database (``TEMPLATE template0``) and to drop it
+    afterwards, so nothing is left behind: not the seeded rows, and not the
+    statistics ``ANALYZE`` writes (its ``pg_class`` update is not
+    transactional, so a rollback would not undo it). The role needs CREATEDB.
+    """
+    raw = explicit_pg_url()
+    if raw is None:
+        pytest.skip(
+            f"no Postgres for the EXPLAIN gate: set {PG_URL_ENV}=postgresql://user@host/db "
+            "(a scratch server; the test creates and drops its own database there). The "
+            "suite's DATABASE_URL is never used. The SQLite gate above runs instead"
+        )
+    server = scratch_server_url(raw)
+    gate_db = f"explain_gate_{uuid.uuid4().hex[:12]}"
+    admin = create_async_engine(server, isolation_level="AUTOCOMMIT")
+    try:
+        async with admin.connect() as conn:
+            await conn.execute(
+                text(f"CREATE DATABASE {gate_db} TEMPLATE template0 ENCODING 'UTF8'")
+            )
+        try:
+            failures, first_bad_plan = await _board_plan_problems(server.set(database=gate_db))
+        finally:
+            async with admin.connect() as conn:
+                await conn.execute(text(f"DROP DATABASE IF EXISTS {gate_db} WITH (FORCE)"))
+    finally:
+        await admin.dispose()
     summary = "\n".join(f"{case}: {'; '.join(p)}" for case, p in failures.items())
     assert not failures, f"{summary}\n\nfirst failing plan:\n{json.dumps(first_bad_plan)[:8000]}"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "postgres://u:p@db.example:5432/scratch",
+        "postgresql://u:p@db.example:5432/scratch",
+        "postgresql+asyncpg://u:p@db.example:5432/scratch",
+    ],
+)
+def test_scratch_url_is_normalised_for_asyncpg_and_alembic(raw: str) -> None:
+    url = scratch_server_url(raw)
+    assert _url_str(url) == "postgresql+asyncpg://u:p@db.example:5432/scratch"
+
+
+@pytest.mark.parametrize("raw", ["sqlite:///x.db", "mysql://u@h/db", "postgresql+psycopg2://h/d"])
+def test_scratch_url_rejects_other_databases(raw: str) -> None:
+    with pytest.raises(ValueError, match=PG_URL_ENV):
+        scratch_server_url(raw)
+
+
+def test_only_the_explicit_variable_names_the_postgres_server(monkeypatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://real@prod-host/app")
+    monkeypatch.delenv(PG_URL_ENV, raising=False)
+    assert explicit_pg_url() is None
+    monkeypatch.setenv(PG_URL_ENV, "   ")
+    assert explicit_pg_url() is None
+    monkeypatch.setenv(PG_URL_ENV, " postgres://u@h/scratch ")
+    assert explicit_pg_url() == "postgres://u@h/scratch"
 
 
 # ---------------------------------------------------------------------------
@@ -358,3 +455,19 @@ def _bitmap(index: str, cond: str) -> dict[str, Any]:
 )
 def test_postgres_plan_reader(plan: dict[str, Any], expected: list[str]) -> None:
     assert postgres_plan_problems(plan) == expected
+
+
+@pytest.mark.parametrize(
+    ("detail", "expected"),
+    [
+        ("SEARCH games USING INDEX games_game_type_score_idx (game_type_id=? AND ...)", True),
+        ("SEARCH TABLE games USING INDEX games_game_type_score_idx (game_type_id=?)", True),
+        ("SEARCH games USING COVERING INDEX games_game_type_score_idx (game_type_id=?)", True),
+        ("SEARCH games USING INDEX games_game_type_completed_idx (game_type_id=?)", False),
+        ("SEARCH games USING INDEX games_game_type_score_idx (session_id=?)", False),
+        ("SCAN games", False),
+    ],
+    ids=["current", "pre-3.36", "covering", "other-index", "no-type-seek", "scan"],
+)
+def test_sqlite_index_reader(detail: str, expected: bool) -> None:
+    assert sqlite_searches_index(detail, "games_game_type_score_idx") is expected
