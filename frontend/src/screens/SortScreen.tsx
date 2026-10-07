@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  AccessibilityInfo,
   AppState,
   AppStateStatus,
   LayoutChangeEvent,
@@ -55,6 +54,7 @@ import GameResultModal from "../components/shared/GameResultModal";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
 import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
+import { useReduceMotion } from "../components/shared/useReduceMotion";
 
 type ScreenView = "loading" | "select" | "play";
 
@@ -94,7 +94,7 @@ export default function SortScreen() {
   const [boardHeight, setBoardHeight] = useState(0);
   const pourTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPourRef = useRef<{ snapshot: SortState; from: number; to: number } | null>(null);
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const reduceMotion = useReduceMotion();
 
   // Result card (#2512)
   const [showWinModal, setShowWinModal] = useState(false);
@@ -167,10 +167,6 @@ export default function SortScreen() {
     return () => {
       if (pourTimerRef.current !== null) clearTimeout(pourTimerRef.current);
     };
-  }, []);
-
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
   }, []);
 
   // ---------------------------------------------------------------------------

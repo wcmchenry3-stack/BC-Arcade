@@ -1,7 +1,8 @@
 import React from "react";
-import { render } from "@testing-library/react-native";
+import { act, render } from "@testing-library/react-native";
 import { HeartsBrokenAnimation } from "../HeartsBrokenAnimation";
 import { advanceBy, flushReduceMotion, mockReduceMotion } from "./helpers/animationFixtures";
+import { captureReduceMotionChange } from "../../../test-utils/reduceMotion";
 
 // Phases (ms): burst at 0, the icon lingers at 25 % from 800, everything fades
 // from 2900, and the overlay reports it is done at 3400. Reduced motion is a
@@ -121,6 +122,39 @@ describe("HeartsBrokenAnimation", () => {
       await view.unmount();
       await advanceBy(10_000);
       expect(onAnimationEnd).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("when reduce motion changes mid-session (#2984)", () => {
+    it("switches to the 300 ms flash from the moment it is turned on", async () => {
+      const emit = captureReduceMotionChange();
+      const { view, onAnimationEnd, rerender } = await show();
+      await advanceBy(1000);
+
+      await act(async () => emit(true));
+      await rerender(true);
+      // The full sequence is cancelled: no icon, and no report at 3400.
+      expect(view.getByLabelText(LABEL)).toHaveStyle({ opacity: 0 });
+      await advanceBy(299);
+      expect(onAnimationEnd).not.toHaveBeenCalled();
+      await advanceBy(1);
+      expect(onAnimationEnd).toHaveBeenCalledTimes(1);
+      await advanceBy(10_000);
+      expect(onAnimationEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it("plays the full sequence once it is turned off again", async () => {
+      mockReduceMotion(true);
+      const emit = captureReduceMotionChange();
+      const { view, onAnimationEnd, rerender } = await show();
+
+      await act(async () => emit(false));
+      await rerender(true);
+      expect(view.getByLabelText(LABEL)).toHaveStyle({ opacity: 1 });
+      await advanceBy(3399);
+      expect(onAnimationEnd).not.toHaveBeenCalled();
+      await advanceBy(1);
+      expect(onAnimationEnd).toHaveBeenCalledTimes(1);
     });
   });
 });

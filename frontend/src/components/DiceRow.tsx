@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Pressable,
@@ -8,10 +8,10 @@ import {
   ViewStyle,
   useWindowDimensions,
 } from "react-native";
-import { AccessibilityInfo } from "react-native";
 import { useTranslation } from "react-i18next";
 import Die from "./Die";
 import { useTheme } from "../theme/ThemeContext";
+import { useReduceMotion } from "./shared/useReduceMotion";
 
 // Below this viewport height, the dice row collapses its vertical padding,
 // hides the redundant rolls-left dot indicator (the ROLL button already
@@ -48,11 +48,7 @@ export default function DiceRow({
   const { height } = useWindowDimensions();
   const isCompact = height < COMPACT_HEIGHT_BREAKPOINT;
   const [rolling, setRolling] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
-
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-  }, []);
+  const reduceMotion = useReduceMotion();
 
   async function handleRoll() {
     setRolling(true);
