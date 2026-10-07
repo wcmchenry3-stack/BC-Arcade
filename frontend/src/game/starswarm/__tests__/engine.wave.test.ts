@@ -690,3 +690,53 @@ describe("Player bullet cap (#2334)", () => {
     expect(s.playerBullets.length).toBeLessThanOrEqual(MAX_PLAYER_BULLETS);
   });
 });
+
+describe("#2963 the tick keeps what did not change", () => {
+  it("a swoop-in tick with nothing in flight hands back the same lists and stats", () => {
+    const s0 = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42);
+    expect(s0.phase).toBe("SwoopIn");
+    const s1 = tick(s0, 16, FIRE_INPUT); // no fire during swoop-in (#2842)
+    expect(s1).not.toBe(s0);
+    expect(s1.enemies).not.toBe(s0.enemies); // the swoop moved them
+    for (const k of [
+      "playerBullets",
+      "enemyBullets",
+      "explosions",
+      "powerUps",
+      "asteroids",
+      "carrierBeams",
+      "buddyShips",
+      "tierStats",
+      "runStats",
+    ] as const) {
+      expect(s1[k]).toBe(s0[k]);
+    }
+  });
+
+  it("anything in flight is moved into a new list, and only that list", () => {
+    const s0 = initStarSwarm(CANVAS_W, CANVAS_H, 1, 42);
+    const shot: Bullet = {
+      id: 9_001,
+      x: 100,
+      y: 300,
+      vx: 0,
+      vy: -0.5,
+      owner: "player",
+      width: 4,
+      height: 10,
+      damage: 1,
+    };
+    const boom = { id: 9_002, x: 5, y: 5, frame: 0, frameTimer: 999 };
+    const s = { ...s0, playerBullets: [shot], explosions: [boom] };
+    const s1 = tick(s, 16, NO_INPUT);
+    expect(s1.playerBullets).not.toBe(s.playerBullets);
+    expect(s1.playerBullets[0]!.y).toBeCloseTo(300 - 0.5 * 16);
+    expect(s1.explosions).not.toBe(s.explosions);
+    expect(s1.explosions[0]!.frameTimer).toBe(999 - 16);
+    expect(s1.enemyBullets).toBe(s.enemyBullets);
+    expect(s1.powerUps).toBe(s.powerUps);
+    // and a shot that leaves the screen is dropped
+    const gone = tick({ ...s, playerBullets: [{ ...shot, y: -20 }] }, 16, NO_INPUT);
+    expect(gone.playerBullets).toEqual([]);
+  });
+});

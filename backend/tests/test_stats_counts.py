@@ -493,13 +493,13 @@ async def _statements_for_stats(sid: str) -> list[str]:
 
 
 async def test_streaks_add_one_query_however_many_games() -> None:
-    # Aggregate + latest score + latest metadata, plus one streak scan.
+    # Aggregate + latest score/metadata (one query since #2966), plus one streak scan.
     sid = _sid()
     for game_type in ("hearts", "mahjong", "yacht", "daily_word"):
         await _outcomes(sid, game_type, ["win", "loss", "win", "push", "win"])
     await _outcomes(sid, "cascade", ["completed"] * 5)
 
-    assert len(await _statements_for_stats(sid)) == 4
+    assert len(await _statements_for_stats(sid)) == 3
 
 
 async def test_no_streak_query_without_results() -> None:
@@ -507,7 +507,7 @@ async def test_no_streak_query_without_results() -> None:
     await _outcomes(sid, "cascade", ["completed", "abandoned"])
     await _outcomes(sid, "hearts", ["push"])
 
-    assert len(await _statements_for_stats(sid)) == 3
+    assert len(await _statements_for_stats(sid)) == 2
 
 
 # ---------------------------------------------------------------------------

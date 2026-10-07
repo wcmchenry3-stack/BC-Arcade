@@ -2,13 +2,11 @@
  * #2563: the native canvas publishes a frame to React only when something it draws changed.
  */
 import { initStarSwarm, tick, CANVAS_W, CANVAS_H } from "../engine";
-import { initStarfield, tickStarfield } from "../starfield";
 import { sameFrame, starfieldRuns, type FrameInputs } from "../render/publish";
 
 function frame(over: Partial<FrameInputs> = {}): FrameInputs {
   return {
     game: initStarSwarm(CANVAS_W, CANVAS_H),
-    sf: initStarfield(CANVAS_W, CANVAS_H),
     countdownDigit: null,
     waveBannerCountdown: false,
     bonusFlash: false,
@@ -21,7 +19,6 @@ describe("sameFrame", () => {
     const a = frame();
     expect(sameFrame(a, { ...a })).toBe(true);
     expect(sameFrame(a, { ...a, game: { ...a.game } })).toBe(false);
-    expect(sameFrame(a, { ...a, sf: tickStarfield(a.sf, 16) })).toBe(false);
     expect(sameFrame(a, { ...a, countdownDigit: 3 })).toBe(false);
     expect(sameFrame({ ...a, countdownDigit: 3 }, { ...a, countdownDigit: 2 })).toBe(false);
     expect(sameFrame(a, { ...a, waveBannerCountdown: true })).toBe(false);

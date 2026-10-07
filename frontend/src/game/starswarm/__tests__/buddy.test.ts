@@ -49,6 +49,7 @@ import {
 } from "../engine";
 import { fitsSaveShape } from "../saveShape";
 import { buddyOps } from "../render/buddy";
+import { setDebugOpKeys } from "../render/opKeys";
 import type {
   Asteroid,
   BuddyShip,
@@ -312,13 +313,24 @@ describe("Buddy durability (#2845)", () => {
   });
 
   it("the HP bar shows one pip per hit point, shared by both renderers", () => {
-    const pips = (hp: number) =>
-      buddyOps(buddyOf({ id: 3, hp }), 34).filter((o) => /^buddy-3-hp-\d+$/.test(o.key)).length;
-    expect(pips(BUDDY_HP)).toBe(BUDDY_HP);
-    expect(pips(3)).toBe(3);
-    expect(
-      buddyOps(buddyOf({ id: 3, hitFlashTimer: 100 }), 34).some((o) => o.key === "buddy-3-flash")
-    ).toBe(true);
+    setDebugOpKeys(true); // #2963: op keys are debug-only
+    try {
+      const pips = (hp: number) =>
+        buddyOps(buddyOf({ id: 3, hp }), 34).filter((o) => /^buddy-3-hp-\d+$/.test(o.key ?? ""))
+          .length;
+      expect(pips(BUDDY_HP)).toBe(BUDDY_HP);
+      expect(pips(3)).toBe(3);
+      expect(
+        buddyOps(buddyOf({ id: 3, hitFlashTimer: 100 }), 34).some((o) => o.key === "buddy-3-flash")
+      ).toBe(true);
+      // #2963: appends to a list it is handed, after what is already there
+      const into = buddyOps(buddyOf({ id: 3 }), 34);
+      const out = buddyOps(buddyOf({ id: 4 }), 34, [...into]);
+      expect(out.slice(0, into.length)).toEqual(into);
+      expect(out[into.length]!.key).toBe("buddy-4-hp-track");
+    } finally {
+      setDebugOpKeys(false);
+    }
   });
 });
 
