@@ -167,4 +167,26 @@ describe("useDailyChallenge across local midnight (#2924)", () => {
     await waitFor(() => expect(result.current.challenge?.challengeId).toBe("2026-09-28"));
     expect(mockGetDailyChallenge).toHaveBeenCalledTimes(2);
   });
+
+  it("shows offline, not unavailable, when an earlier server failure meets an expired challenge", async () => {
+    jest.spyOn(Date, "now").mockReturnValue(DAY1_LATE);
+    const { result, rerender } = await renderHook(() => useDailyChallenge());
+    await waitFor(() => expect(result.current.phase).toBe("ready"));
+
+    // A same-day refetch fails server-side; the held challenge keeps the card ready.
+    mockGetDailyChallenge.mockRejectedValueOnce(new Error("HTTP 500"));
+    await act(async () => {
+      focusListeners.forEach((cb) => cb());
+    });
+    await waitFor(() => expect(mockGetDailyChallenge).toHaveBeenCalledTimes(2));
+    expect(result.current.phase).toBe("ready");
+
+    mockNetwork.isOnline = false;
+    await rerender({});
+    jest.spyOn(Date, "now").mockReturnValue(DAY2_EARLY);
+    await act(async () => {
+      appStateListener?.("active");
+    });
+    expect(result.current.phase).toBe("offline");
+  });
 });

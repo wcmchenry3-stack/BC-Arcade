@@ -22,6 +22,8 @@ export interface DailyChallengeResult {
   readonly refresh: () => void;
 }
 
+const MAX_TICK_MS = 60_000;
+
 /** A challenge together with the local day (`YYYY-MM-DD`) it was fetched for. */
 interface HeldChallenge {
   readonly challenge: DailyChallenge;
@@ -126,12 +128,17 @@ export function useDailyChallenge(): DailyChallengeResult {
     if (retryTick > 0) refresh();
   }, [retryTick, refresh]);
 
-  // Fires just after local midnight while the app stays open in the foreground.
+  // Fires just after local midnight while the app stays open in the foreground. The
+  // delay is capped and re-armed after every firing, so a UTC-offset change (DST,
+  // travel) or clock adjustment can delay noticing midnight by at most a minute.
   useEffect(() => {
-    const id = setTimeout(() => {
-      syncDay();
-      setTimerTick((n) => n + 1); // re-arm even if the day did not change (clock/offset drift)
-    }, msUntilLocalMidnight() + 1000);
+    const id = setTimeout(
+      () => {
+        syncDay();
+        setTimerTick((n) => n + 1); // re-arm even if the day did not change (clock/offset drift)
+      },
+      Math.min(msUntilLocalMidnight() + 1000, MAX_TICK_MS)
+    );
     return () => clearTimeout(id);
   }, [today, timerTick, syncDay]);
 
@@ -139,8 +146,10 @@ export function useDailyChallenge(): DailyChallengeResult {
 
   let phase: DailyChallengePhase;
   if (challenge) phase = "ready";
-  else if (failure === "server") phase = "unavailable";
+  // Known-offline wins over an older server failure: once a held challenge expires
+  // the player needs the retryable offline card, not a card that vanishes.
   else if (!isOnline || failure === "network") phase = "offline";
+  else if (failure === "server") phase = "unavailable";
   else phase = "loading";
 
   return { phase, challenge, refresh };
