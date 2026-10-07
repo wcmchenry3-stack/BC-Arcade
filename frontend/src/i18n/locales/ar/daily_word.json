@@ -14,6 +14,8 @@
   "error.alreadyGuessed": "تمت تجربتها بالفعل",
   "error.tooShort": "عدد الأحرف غير كافٍ",
   "error.couldNotLoad": "تعذر تحميل لغز اليوم",
+  "error.needsConnection": "تحتاج الكلمة اليومية إلى اتصال بالإنترنت",
+  "error.retry": "إعادة المحاولة",
   "error.couldNotSubmit": "تعذر إرسال محاولتك",
   "error.stalePuzzle": "يتوفر لغز جديد — جارٍ تحميل كلمة اليوم",
   "error.wrongLength": "طول المحاولة لا يطابق كلمة اليوم",

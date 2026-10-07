@@ -11,6 +11,8 @@
   "error.alreadyGuessed": "Déjà essayé",
   "error.tooShort": "Pas assez de lettres",
   "error.couldNotLoad": "Impossible de charger le mot du jour",
+  "error.needsConnection": "Le mot du jour nécessite une connexion",
+  "error.retry": "Réessayer",
   "error.couldNotSubmit": "Impossible d'envoyer votre essai",
   "error.stalePuzzle": "Nouveau mot disponible — chargement en cours",
   "error.wrongLength": "La longueur ne correspond pas au mot du jour",

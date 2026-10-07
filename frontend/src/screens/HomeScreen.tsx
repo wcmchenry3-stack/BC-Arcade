@@ -25,10 +25,11 @@ import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import DailyChallengeCard from "../components/daily_challenge/DailyChallengeCard";
 import { APP_START_MS } from "../utils/appTiming";
 import { prefetchLobbyGameScreens } from "../utils/lazyScreens";
-import { useEntitlements } from "../entitlements/EntitlementContext";
+import { useEntitlementGate } from "../entitlements/EntitlementContext";
 import { isGameVisible } from "../entitlements/gameVisibility";
 import { statsApi } from "../api/stats";
 import { withRetry } from "../game/_shared/withRetry";
+import { warmTodayMeta } from "../game/daily_word/todayMeta";
 import { useNetwork } from "../game/_shared/NetworkContext";
 import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
 import { fetchAndRememberMyStats } from "../hooks/useMyStats";
@@ -63,7 +64,7 @@ export default function HomeScreen() {
     "daily_word",
   ]);
   const { colors } = useTheme();
-  const { canPlay } = useEntitlements();
+  const { canPlay } = useEntitlementGate();
   const insets = useSafeAreaInsets();
   // A locked premium tile opens the paywall modal (#841). It is on the root
   // stack, so navigate() bubbles up from this nested stack. Only visible games
@@ -147,6 +148,18 @@ export default function HomeScreen() {
   }, [refreshStats]);
 
   useEffect(() => navigation.addListener("focus", refreshStats), [navigation, refreshStats]);
+
+  // Cache today's Daily Word metadata so the screen can open offline later the
+  // same day (#2925). Once per mount / return to connectivity / foreground —
+  // not per focus. warmTodayMeta skips the fetch when already cached.
+  useEffect(() => {
+    if (!isOnline) return;
+    void warmTodayMeta();
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void warmTodayMeta();
+    });
+    return () => sub.remove();
+  }, [isOnline]);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {

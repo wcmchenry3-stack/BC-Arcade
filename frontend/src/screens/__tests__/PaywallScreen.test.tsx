@@ -31,7 +31,7 @@ const mockRefresh = jest.fn().mockResolvedValue(undefined);
 const mockApplyToken = jest.fn().mockResolvedValue(undefined);
 jest.mock("../../entitlements/EntitlementContext", () => ({
   ...jest.requireActual("../../entitlements/EntitlementContext"),
-  useEntitlements: () => ({
+  useEntitlementGate: () => ({
     canPlay: (slug: string) => mockEntitled.has(slug),
     isLoading: mockLoading,
     lastRefreshed: null,

@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const STORAGE_KEY = "settings.soundMuted";
@@ -27,7 +27,9 @@ export function SoundProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.setItem(STORAGE_KEY, String(value));
   }, []);
 
-  return <SoundContext.Provider value={{ muted, setMuted }}>{children}</SoundContext.Provider>;
+  const value = useMemo(() => ({ muted, setMuted }), [muted, setMuted]);
+
+  return <SoundContext.Provider value={value}>{children}</SoundContext.Provider>;
 }
 
 export function useSoundSettings(): SoundContextValue {
