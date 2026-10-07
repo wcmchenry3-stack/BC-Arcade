@@ -183,19 +183,24 @@ describe("Mahjong golden seeded replay", () => {
       if (UPDATE) return;
       const pinned = golden!.deals.find((d) => d.layout === layoutId);
       if (!pinned) {
-        process.stdout.write(
+        const note =
           `[golden] layout "${layoutId}" has no recorded deals yet; re-record to pin it ` +
-            `(UPDATE_GOLDEN=1 npx jest src/game/mahjong/__tests__/goldenReplay.test.ts)\n`
-        );
+          `(UPDATE_GOLDEN=1 npx jest src/game/mahjong/__tests__/goldenReplay.test.ts)`;
+        // Locally a new layout is only reported; in CI it must be pinned before it merges.
+        if (process.env.CI) throw new Error(note);
+        process.stdout.write(`${note}\n`);
         return;
       }
       expect(got).toEqual(pinned.deals);
     }
   );
 
-  it("still deals every layout the fixture pins", () => {
-    // A layout removed from the registry is a deliberate change: re-record and say so.
+  it("the fixture pins deals, and only for layouts the registry still has", () => {
+    // An emptied fixture would make every deal above pass vacuously. A layout removed from
+    // the registry is a deliberate change: re-record and say so.
     if (UPDATE) return;
+    expect(golden!.deals.length).toBeGreaterThan(0);
+    expect(golden!.deals.every((d) => d.deals.length === DEAL_SEEDS.length)).toBe(true);
     const ids = new Set(LAYOUTS.map((meta) => meta.id));
     expect(golden!.deals.map((d) => d.layout).filter((id) => !ids.has(id))).toEqual([]);
   });
