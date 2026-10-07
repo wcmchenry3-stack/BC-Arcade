@@ -6,7 +6,7 @@ every set solvable.
 
 * ``sort.fast_solver`` finds a solution to every level, whatever its size, and
   the solution is replayed pour by pour with the reference simulator in
-  ``sort/verify_levels.py`` (``is_solution``), which is independent of the
+  ``scripts/sort_verify_levels.py`` (``is_solution``), which is independent of the
   solver the generator uses. A replayed solution is a certificate: it can't be
   wrong because of a bug in the solver's pruning.
 * The small levels are also proven with the reference BFS in the same module.
@@ -14,11 +14,18 @@ every set solvable.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pytest
 
 from sort.fast_solver import solve
 from sort.generate_levels import LEVEL_SPECS, SOLVER_BUDGET, build_levels
-from sort.verify_levels import _from_json, bfs_solvable, is_solution
+
+# The reference pour simulator is a CLI under backend/scripts (#2972).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from sort_verify_levels import _from_json, bfs_solvable, is_solution
 
 # Fixed seeds, so a failure names a set that can be rebuilt exactly.
 _SEEDS = list(range(20))

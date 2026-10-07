@@ -1,3 +1,10 @@
+[project]
+name = "bc-arcade-backend"
+version = "0.0.0"
+# Production runtime is Python 3.11 (render.yaml PYTHON_VERSION; backend/.python-version).
+# 3.13 is also tested locally. Dependencies stay in requirements*.txt.
+requires-python = ">=3.11"
+
 [tool.pytest.ini_options]
 markers = [
     "security: security-focused tests (CORS, headers, injection)",
@@ -12,7 +19,7 @@ faulthandler_timeout = 120
 
 [tool.coverage.run]
 concurrency = ["greenlet", "thread"]
-omit = ["tests/*", "scripts/*", "*/verify_levels.py", "perf/*"]
+omit = ["tests/*", "scripts/*", "perf/*"]
 
 [tool.black]
 line-length = 100

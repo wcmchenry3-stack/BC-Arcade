@@ -20,19 +20,22 @@ The reference pour simulator below (``_moves``, ``_apply``, ``_solved``) and
   ``MAX_STATES``.
 
 Run from ``backend/``:
-    python -m sort.verify_levels                 # one random set
-    python -m sort.verify_levels --runs 5        # five random sets
-    python -m sort.verify_levels --seed 42       # a reproducible set
+    python scripts/sort_verify_levels.py                 # one random set
+    python scripts/sort_verify_levels.py --runs 5        # five random sets
+    python scripts/sort_verify_levels.py --seed 42       # a reproducible set
 
 Exits with code 1 if any level is proven unsolvable, can't be decided within
 the solver's budget, or its solution doesn't replay.
 """
 
 import argparse
+import os
 import random
 import sys
 from collections import deque
 from itertools import takewhile
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sort.fast_solver import DEPTH, solve
 from sort.generate_levels import SOLVER_BUDGET, build_levels

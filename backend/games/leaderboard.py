@@ -35,9 +35,8 @@ Rules every board follows
   can neither top a board nor break its query.
 - **Exact rank**: the number of players whose best beats yours, plus one.
 
-The per-player best uses ``ROW_NUMBER() OVER (PARTITION BY session_id ...)``
-so it runs on SQLite (CI, >= 3.25) and Postgres (prod); ``DISTINCT ON`` is
-Postgres-only.
+The per-player best uses ``ROW_NUMBER() OVER (PARTITION BY session_id ...)`` so it
+runs on SQLite (CI, >= 3.25) and Postgres (prod); ``DISTINCT ON`` is Postgres-only.
 """
 
 from __future__ import annotations
@@ -74,6 +73,7 @@ from games import catalog_cache
 from games.board import (
     COLUMN_METRICS,
     DURATION_METRIC,
+    FINAL_TIEBREAK,
     MAX_BOARD_VALUE,
     SCORE_METRIC,
     BoardDefinition,
@@ -376,7 +376,7 @@ def _best_rows(
     order = [_ordered(metric, board.direction)]
     if tiebreak is not None and board.tiebreak is not None:
         order.append(_ordered(tiebreak, board.tiebreak[1]))
-    order += [Game.completed_at.asc(), Game.id.asc()]
+    order += [_ordered(Game.completed_at, FINAL_TIEBREAK[1]), Game.id.asc()]
     tiebreak_col = tiebreak if tiebreak is not None else literal(None)
     return (
         select(
@@ -396,7 +396,7 @@ def _board_order(board: BoardDefinition, sub: Subquery) -> list[ColumnElement]:
     order = [_ordered(sub.c.value, board.direction)]
     if board.tiebreak is not None:
         order.append(_ordered(sub.c.tiebreak, board.tiebreak[1]))
-    order += [sub.c.completed_at.asc(), sub.c.game_id.asc()]
+    order += [_ordered(sub.c.completed_at, FINAL_TIEBREAK[1]), sub.c.game_id.asc()]
     return order
 
 

@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import logging
 import random
+import sys
 from collections import Counter
+from pathlib import Path
 
 import pytest
 
@@ -24,7 +26,11 @@ from sort.generate_levels import (
     _solved,
     deal_level,
 )
-from sort.verify_levels import is_solution
+
+# The reference pour simulator is a CLI under backend/scripts (#2972).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from sort_verify_levels import is_solution
 
 _CONFIGS = sorted({(len(colors), n_empty) for _, colors, n_empty in LEVEL_SPECS})
 _COLORS_BY_SIZE = {len(colors): colors for _, colors, _ in LEVEL_SPECS}

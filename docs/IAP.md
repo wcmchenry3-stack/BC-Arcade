@@ -73,10 +73,10 @@ wrapped by `premiumProducts.ts` (`PREMIUM_PRODUCTS`, `PremiumGameSlug`,
   the convention.
 - `backend/tests/test_premium_products.py` — the catalog equals the
   `game_types.is_premium` rows after migrations (read straight from the table,
-  so an inactive premium game still counts) and `_ALL_PREMIUM_SLUGS`.
+  so an inactive premium game still counts) and `ALL_PREMIUM_SLUGS`.
 
 So a tier change (a migration flipping `is_premium`) fails CI until the catalog
-changes with it. #2460 still owns folding `_ALL_PREMIUM_SLUGS` into a query.
+changes with it. #2460 still owns folding `ALL_PREMIUM_SLUGS` into a query.
 
 **The backend does not read the JSON at runtime** (the Render service is built
 from `backend/` only). #840 derives the product ID from the slug with the same
