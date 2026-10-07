@@ -17,58 +17,35 @@
  */
 
 import type { Layout } from "../types";
-
-function range(start: number, stopInclusive: number, step: number): number[] {
-  const out: number[] = [];
-  for (let v = start; v <= stopInclusive; v += step) out.push(v);
-  return out;
-}
-
-function slots(
-  layer: number,
-  cols: number[],
-  rows: number[]
-): { col: number; row: number; layer: number }[] {
-  const out: { col: number; row: number; layer: number }[] = [];
-  for (const row of rows) {
-    for (const col of cols) {
-      out.push({ col, row, layer });
-    }
-  }
-  return out;
-}
+import { cols, grid, rows } from "./build";
 
 export const TURTLE_LAYOUT: Layout = [
   // --- Layer 0 ---
   // Body
-  ...slots(0, range(4, 18, 2), range(1, 6, 1)),
+  ...grid(0, cols(4, 18), rows(1, 6)),
   // Head (right protrusion)
-  ...slots(0, [20, 22], [3, 4]),
+  ...grid(0, [20, 22], [3, 4]),
   // Tail (left protrusion)
-  ...slots(0, [0, 2], [3, 4]),
+  ...grid(0, [0, 2], [3, 4]),
   // Top feet
-  ...slots(0, [4, 6, 16, 18], [0]),
+  ...grid(0, [4, 6, 16, 18], [0]),
   // Bottom feet
-  ...slots(0, [4, 6, 16, 18], [7]),
+  ...grid(0, [4, 6, 16, 18], [7]),
 
   // --- Layer 1 ---
   // Body
-  ...slots(1, range(4, 18, 2), range(2, 5, 1)),
+  ...grid(1, cols(4, 18), rows(2, 5)),
   // Head
-  ...slots(1, [20], [3, 4]),
+  ...grid(1, [20], [3, 4]),
   // Tail
-  ...slots(1, [2], [3, 4]),
+  ...grid(1, [2], [3, 4]),
 
   // --- Layer 2 ---
-  ...slots(2, range(6, 16, 2), range(2, 5, 1)),
+  ...grid(2, cols(6, 16), rows(2, 5)),
 
   // --- Layer 3 ---
-  ...slots(3, range(6, 16, 2), [3, 4]),
+  ...grid(3, cols(6, 16), [3, 4]),
 
   // --- Layer 4 ---
-  ...slots(4, range(8, 14, 2), [3, 4]),
+  ...grid(4, cols(8, 14), [3, 4]),
 ];
-
-if (TURTLE_LAYOUT.length !== 144) {
-  throw new Error(`TURTLE_LAYOUT has ${TURTLE_LAYOUT.length} slots, expected 144`);
-}

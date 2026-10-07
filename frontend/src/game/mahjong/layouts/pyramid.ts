@@ -14,37 +14,14 @@
  */
 
 import type { Layout } from "../types";
-
-function range(start: number, stopInclusive: number, step: number): number[] {
-  const out: number[] = [];
-  for (let v = start; v <= stopInclusive; v += step) out.push(v);
-  return out;
-}
-
-function slots(
-  layer: number,
-  cols: number[],
-  rows: number[]
-): { col: number; row: number; layer: number }[] {
-  const out: { col: number; row: number; layer: number }[] = [];
-  for (const row of rows) {
-    for (const col of cols) {
-      out.push({ col, row, layer });
-    }
-  }
-  return out;
-}
+import { cols, grid } from "./build";
 
 const ROWS = [2, 3, 4, 5];
 
 export const PYRAMID_LAYOUT: Layout = [
-  ...slots(0, range(4, 24, 2), ROWS),
-  ...slots(1, range(6, 22, 2), ROWS),
-  ...slots(2, range(8, 20, 2), ROWS),
-  ...slots(3, range(10, 18, 2), ROWS),
-  ...slots(4, range(12, 18, 2), ROWS),
+  ...grid(0, cols(4, 24), ROWS),
+  ...grid(1, cols(6, 22), ROWS),
+  ...grid(2, cols(8, 20), ROWS),
+  ...grid(3, cols(10, 18), ROWS),
+  ...grid(4, cols(12, 18), ROWS),
 ];
-
-if (PYRAMID_LAYOUT.length !== 144) {
-  throw new Error(`PYRAMID_LAYOUT has ${PYRAMID_LAYOUT.length} slots, expected 144`);
-}

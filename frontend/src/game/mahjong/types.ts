@@ -57,8 +57,8 @@ export interface LayoutMeta {
   /** 1 = free, 2 = premium. */
   readonly tier: 1 | 2;
   readonly tileCount: number;
-  /** Raw JSON data: flat array of {col, row, layer} objects. */
-  readonly data: readonly { col: number; row: number; layer: number }[];
+  /** Slot list from `layouts/<id>.ts` — the single source of truth (#2968). */
+  readonly data: Layout;
 }
 
 /** A tile a match removed, and its index in `tiles` just before the match. */

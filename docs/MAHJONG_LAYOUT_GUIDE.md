@@ -48,39 +48,34 @@ Tiles shift right (`layerDx`) and up (`layerDy`) per layer, giving the isometric
 
 ## Hard Constraints
 
-Every layout **must** satisfy all three rules — enforced at runtime by `parseLayout()` and in the test suite:
+Every layout **must** satisfy all three rules:
 
-| Rule | Detail |
-|---|---|
-| **Exactly 144 tiles** | 72 matching pairs — no more, no fewer |
-| **No duplicate coordinates** | Every `(col, row, layer)` triple must be unique |
-| **Even count per layer** | Each layer must have an even number of tiles (solvability precondition for the backwards-build shuffler) |
+| Rule | Detail | Enforced by |
+|---|---|---|
+| **Exactly 144 tiles** | 72 matching pairs — no more, no fewer | `parseLayout()` at registry init + tests |
+| **No duplicate coordinates** | Every `(col, row, layer)` triple must be unique | `parseLayout()` at registry init + tests |
+| **Even count per layer** | Each layer must have an even number of tiles (solvability precondition for the backwards-build shuffler) | Tests (`layoutEquivalence.test.ts`, `layoutRegistry.test.ts`) |
 
-Breaking any rule throws at module init, which crashes the app.
+Breaking the first two throws when `registry.ts` is first imported, which crashes the app; the third fails CI.
 
 ---
 
 ## File Anatomy
 
-### 1 — JSON file
-
-**Location:** `frontend/assets/mahjong/layouts/{id}.json`
-
-A flat array of 144 slot objects, sorted by layer then row then col (convention, not enforced):
-
-```json
-[
-  { "col": 4, "row": 2, "layer": 0 },
-  { "col": 6, "row": 2, "layer": 0 },
-  ...
-]
-```
-
-### 2 — TypeScript source file
-
 **Location:** `frontend/src/game/mahjong/layouts/{id}.ts`
 
-The `.ts` file is the canonical source of truth. The JSON file is generated from it (or kept in sync manually). Every existing layout has one.
+Each layout lives in exactly one place: its `.ts` module. `registry.ts` imports the module directly (there are no JSON layout assets — they were removed in #2968) and runs `parseLayout()` on every layout at module init.
+
+Build layouts from the shared helpers in `layouts/build.ts` instead of listing 144 objects by hand:
+
+| Helper | Emits |
+|---|---|
+| `slot(col, row, layer)` | One slot |
+| `cols(start, stop, step = 2)` | Column positions `start..stop` inclusive (step 2 = one tile) |
+| `rows(start, stop)` | Row indices `start..stop` inclusive |
+| `grid(layer, colList, rowList)` | Every (col, row) pair, **row-major** |
+| `row(layer, r, colList)` | One row, in `colList` order |
+| `rect(layer, c0, c1, r0, r1)` | Filled rectangle, cols `c0..c1` (step 2) × rows `r0..r1`, row-major |
 
 Minimal template:
 
@@ -97,50 +92,32 @@ Minimal template:
  */
 
 import type { Layout } from "../types";
-
-function slot(col: number, row: number, layer: number) {
-  return { col, row, layer };
-}
-
-function rng(start: number, stopInclusive: number, step = 2): number[] {
-  const out: number[] = [];
-  for (let v = start; v <= stopInclusive; v += step) out.push(v);
-  return out;
-}
+import { cols, rect, row } from "./build";
 
 export const MY_LAYOUT: Layout = [
   // Layer 0
-  ...rng(4, 24).map((c) => slot(c, 2, 0)),
+  ...rect(0, 0, 22, 0, 3),
+  ...row(0, 4, [...cols(0, 6), ...cols(16, 22)]),
+  // Layer 1
+  ...rect(1, 2, 20, 1, 2),
   // ...
 ];
-
-if (MY_LAYOUT.length !== 144) {
-  throw new Error(`MY_LAYOUT has ${MY_LAYOUT.length} slots, expected 144`);
-}
 ```
 
-The compile-time length check (`if MY_LAYOUT.length !== 144`) catches arithmetic mistakes before tests run.
+**Slot order is part of the layout.** The deal assigns tile faces to slots by array index, so reordering builder calls (even ones that yield the same set of coordinates) changes every seeded deal and `dealId` for that layout. `layoutEquivalence.test.ts` pins each existing layout's coordinates *and* order with a SHA-256 fingerprint; changing an existing layout's geometry means updating its fingerprint deliberately, and it invalidates saved games for that layout.
 
 ---
 
 ## Validation
 
-Run the standalone Python validator before committing:
+Validation runs in Jest — there is no separate script (the old `scripts/validate-mahjong-layout.py` was removed in #2968):
+
+- `parseLayout()` throws at registry init on a wrong slot count or a duplicate coordinate.
+- `layoutEquivalence.test.ts` checks **every** `LAYOUTS` entry for slot count, duplicates and an even count per layer, so a newly registered layout is covered automatically.
 
 ```bash
-python3 scripts/validate-mahjong-layout.py frontend/assets/mahjong/layouts/{id}.json
+cd frontend && npx jest layoutEquivalence layoutRegistry
 ```
-
-Successful output:
-
-```
-  layer 0: 80 tiles ✓
-  layer 1: 48 tiles ✓
-  layer 2: 16 tiles ✓
-OK — frontend/assets/mahjong/layouts/my_layout.json (144 tiles, 3 layers)
-```
-
-The script checks all three hard constraints and exits non-zero on failure.
 
 ---
 
@@ -153,7 +130,7 @@ Open `frontend/src/game/mahjong/layouts/registry.ts`:
 1. Add an import at the top:
 
 ```typescript
-import myLayoutData from "../../../../assets/mahjong/layouts/my_layout.json";
+import { MY_LAYOUT } from "./my_layout";
 ```
 
 2. Add an entry to `LAYOUTS`:
@@ -164,27 +141,22 @@ import myLayoutData from "../../../../assets/mahjong/layouts/my_layout.json";
   name: "My Layout",
   tier: 2,          // 1 = free, 2 = premium
   tileCount: 144,
-  data: myLayoutData,
+  data: MY_LAYOUT,
 },
 ```
 
+3. Add the id to `LAYOUTS` in `backend/mahjong/models.py` — `backend/tests/test_board_definitions.py` keeps the two lists in step.
+
 ### Step 2 — Add to the test suite
 
-Open `frontend/src/game/mahjong/__tests__/layoutRegistry.test.ts`.
-
-- Import the `.ts` source at the top of the file alongside the existing imports.
-- Add the layout ID to the relevant tier constant (`TIER1_IDS` or `TIER2_IDS`).
-- Add the layout to the matching `TS_SOURCES` record.
-
-The `describe.each` block already tests every ID in the array — adding the ID is sufficient.
+- In `frontend/src/game/mahjong/__tests__/layoutEquivalence.test.ts`, add the layout's fingerprint to `LAYOUT_FINGERPRINTS` (the first test fails until the registry ids and the fingerprint keys match). Compute it from the new layout with the test's own `fingerprint()` function, and say in the PR that it is a new entry.
+- Optionally add the id to a tier group in `layoutRegistry.test.ts` for the per-layout `describe.each` checks.
 
 ### Step 3 — Run the tests
 
 ```bash
-cd frontend && npx jest layoutRegistry
+cd frontend && npx jest layoutEquivalence layoutRegistry
 ```
-
-All five checks must pass per layout: loads without throwing, 144 slots, no duplicates, even per-layer count, matches `.ts` source.
 
 ---
 
@@ -193,10 +165,8 @@ All five checks must pass per layout: loads without throwing, 144 slots, no dupl
 1. **Sketch on grid paper.** Draw the silhouette on a grid where each cell is one tile. Mark layer boundaries with shading.
 2. **Count tiles per layer.** Adjust the design until each layer has an even count and the total is exactly 144.
 3. **Translate to coordinates.** Convert each cell at grid position `(x, y)` to `col = x * 2`, `row = y`. Record which layer each tile belongs to.
-4. **Write the `.ts` file.** Use helper functions (`rng`, `slot`, `slots`) rather than listing 144 objects by hand — it keeps intent readable and bugs rare.
-5. **Generate / sync the JSON.** Either run the `.ts` through Node to emit JSON, or write the JSON matching the `.ts` output (the test suite enforces they match exactly).
-6. **Validate.** `python3 scripts/validate-mahjong-layout.py ...`
-7. **Wire up and test.** Follow the steps above; all tests green.
+4. **Write the `.ts` file** with the `build.ts` helpers (`rect`, `row`, `grid`, `cols`, `rows`, `slot`).
+5. **Wire up and test.** Follow the steps above; all tests green.
 
 ---
 
@@ -212,7 +182,7 @@ All five checks must pass per layout: loads without throwing, 144 slots, no dupl
 
 **Use `col = 14` as a rough centre** for a standard-width board (cols 0–28). The Turtle layout uses this as a reference point.
 
-**The `.ts` source must match the JSON exactly.** The test `"matches its .ts source exactly"` diffs every slot index. If you update one, update the other.
+**Never reorder an existing layout casually.** Coordinates and slot order are pinned by `layoutEquivalence.test.ts`; see "Slot order is part of the layout" above.
 
 ---
 

@@ -11,26 +11,17 @@
  */
 
 import type { Layout } from "../types";
-
-function slot(col: number, row: number, layer: number) {
-  return { col, row, layer };
-}
-
-function rng(start: number, stopInclusive: number, step = 2): number[] {
-  const out: number[] = [];
-  for (let v = start; v <= stopInclusive; v += step) out.push(v);
-  return out;
-}
+import { cols, slot } from "./build";
 
 const LEFT_WING: Record<number, number[]> = {
-  0: rng(6, 8),
-  1: rng(4, 10),
-  2: rng(2, 12),
-  3: rng(0, 12),
-  4: rng(0, 12),
-  5: rng(0, 12),
-  6: rng(2, 10),
-  7: rng(4, 8),
+  0: cols(6, 8),
+  1: cols(4, 10),
+  2: cols(2, 12),
+  3: cols(0, 12),
+  4: cols(0, 12),
+  5: cols(0, 12),
+  6: cols(2, 10),
+  7: cols(4, 8),
   8: [6],
 };
 
@@ -51,7 +42,7 @@ export const BUTTERFLY_LAYOUT: Layout = [
   ...[0, 1, 2, 3, 4, 5, 6, 7].map((r) => slot(14, r, 0)),
   // Layer 1 — inner wings + body mid
   ...[2, 3, 4, 5].flatMap((r) => [
-    ...rng(4, 10).map((c) => slot(c, r, 1)),
+    ...cols(4, 10).map((c) => slot(c, r, 1)),
     ...[18, 20, 22, 24].map((c) => slot(c, r, 1)),
     slot(14, r, 1),
   ]),
@@ -66,7 +57,3 @@ export const BUTTERFLY_LAYOUT: Layout = [
   ]),
   ...[2, 3, 4, 5].map((r) => slot(14, r, 2)),
 ];
-
-if (BUTTERFLY_LAYOUT.length !== 144) {
-  throw new Error(`BUTTERFLY_LAYOUT has ${BUTTERFLY_LAYOUT.length} slots, expected 144`);
-}
