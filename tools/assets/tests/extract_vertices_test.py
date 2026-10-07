@@ -56,8 +56,6 @@ def _circle_pixels(
 # _opaque_pixels
 # ---------------------------------------------------------------------------
 
-_STALE = pytest.mark.xfail(reason="stale: written before extract_hull returned a dict and the alpha threshold became 200; never ran under a runner until #2974", strict=False)
-
 
 class TestOpaquePixels:
     def test_fully_opaque_image_returns_all_pixels(self):
@@ -70,26 +68,24 @@ class TestOpaquePixels:
         result = _opaque_pixels(pixels, 4, 4)
         assert result == []
 
-    def test_alpha_128_boundary_excluded(self):
-        """Alpha == 128 is NOT > 128, so it should be excluded."""
-        pixels = _flat_image(2, 2, (100, 100, 100, 128))
+    def test_alpha_at_threshold_excluded(self):
+        """Alpha == 200 is NOT > 200 (the pipeline threshold), so it is excluded."""
+        pixels = _flat_image(2, 2, (100, 100, 100, 200))
         result = _opaque_pixels(pixels, 2, 2)
         assert result == []
 
-    @_STALE
-    def test_alpha_129_included(self):
-        """Alpha == 129 is > 128, so it should be included."""
-        pixels = _flat_image(2, 2, (100, 100, 100, 129))
+    def test_alpha_just_above_threshold_included(self):
+        """Alpha == 201 is > 200, so it should be included."""
+        pixels = _flat_image(2, 2, (100, 100, 100, 201))
         result = _opaque_pixels(pixels, 2, 2)
         assert len(result) == 4
 
-    @_STALE
     def test_mixed_alphas_only_opaque_returned(self):
         # 3×1 row: transparent, boundary, opaque
         pixels = [
             (0, 0, 0, 0),   # alpha=0   → excluded
-            (0, 0, 0, 128), # alpha=128 → excluded (not > 128)
-            (0, 0, 0, 200), # alpha=200 → included
+            (0, 0, 0, 200), # alpha=200 → excluded (not > 200)
+            (0, 0, 0, 201), # alpha=201 → included
         ]
         result = _opaque_pixels(pixels, 3, 1)
         assert result == [(2, 0)]
@@ -244,12 +240,11 @@ class TestNormalizeHull:
 # extract_hull (integration)
 # ---------------------------------------------------------------------------
 
-@_STALE
 class TestExtractHull:
     def test_all_transparent_returns_empty(self):
         pixels = _flat_image(10, 10, (255, 255, 255, 0))
         result = extract_hull(pixels, 10, 10)
-        assert result == []
+        assert result == {"verts": [], "spriteOffset": [0.0, 0.0]}
 
     def test_fewer_than_three_opaque_pixels_returns_empty(self):
         pixels = _flat_image(10, 10, (0, 0, 0, 0))
@@ -257,21 +252,23 @@ class TestExtractHull:
         pixels[0] = (255, 0, 0, 255)
         pixels[5] = (255, 0, 0, 255)
         result = extract_hull(pixels, 10, 10)
-        assert result == []
+        assert result == {"verts": [], "spriteOffset": [0.0, 0.0]}
 
     def test_circle_yields_hull_within_unit_radius(self):
         size = 50
         pixels = _circle_pixels(size, size, radius=20.0)
-        hull = extract_hull(pixels, size, size)
+        hull = extract_hull(pixels, size, size)["verts"]
         assert len(hull) >= 3
+        # Hull is normalised to the opaque bbox: every coordinate within [-1, 1]
         for pt in hull:
-            assert math.hypot(pt[0], pt[1]) <= 1.0 + 1e-9
+            assert abs(pt[0]) <= 1.0 + 1e-9
+            assert abs(pt[1]) <= 1.0 + 1e-9
 
     def test_circle_hull_centroid_near_origin(self):
         """Area centroid of a circle hull should be near origin after normalization."""
         size = 50
         pixels = _circle_pixels(size, size, radius=20.0)
-        hull = extract_hull(pixels, size, size)
+        hull = extract_hull(pixels, size, size)["verts"]
         assert hull
         cx, cy = _area_centroid(hull)
         assert abs(cx) < 0.1
@@ -285,12 +282,16 @@ class TestExtractHull:
         for row in range(10, 20):
             for col in range(10, 20):
                 pixels[row * size + col] = (200, 200, 200, 255)
-        hull = extract_hull(pixels, size, size)
+        result = extract_hull(pixels, size, size)
+        hull = result["verts"]
         assert len(hull) == 4
+        assert len(result["spriteOffset"]) == 2
+        assert len(result["spriteScale"]) == 2
 
     def test_output_points_are_float_tuples(self):
         pixels = _circle_pixels(20, 20, radius=8.0)
-        hull = extract_hull(pixels, 20, 20)
+        hull = extract_hull(pixels, 20, 20)["verts"]
+        assert hull
         for pt in hull:
             assert len(pt) == 2
             assert isinstance(pt[0], float)
