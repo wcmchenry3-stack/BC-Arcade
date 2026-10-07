@@ -238,7 +238,14 @@ async def test_stats_me_counts_a_swept_game_as_played_but_it_earns_no_xp(
     baseline = client.get("/stats/me", headers=_headers(sid)).json()
     assert baseline["by_game"]["yacht"]["sessions"] == 1
 
-    await _add(sid, started_ago=timedelta(hours=25))
+    # A long-offline queue flushes a game that is already a day old. Created
+    # through the API, so the sweep gate (#2966) knows to sweep on the next read.
+    r = client.post(
+        "/games",
+        headers=_headers(sid),
+        json={"game_type": "yacht", "started_at": (_NOW - timedelta(hours=25)).isoformat()},
+    )
+    assert r.status_code == 200, r.text
     body = client.get("/stats/me", headers=_headers(sid)).json()
     assert body["total_games"] == 2
     assert body["by_game"]["yacht"]["sessions"] == 2
@@ -371,23 +378,22 @@ def _count_statements(client: TestClient, sid: str) -> list[str]:
     return statements
 
 
-async def test_the_sweep_adds_one_query_to_stats_me(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_stats_me_sweeps_once_then_skips_the_sweep(client: TestClient) -> None:
+    """The sweep is an UPDATE plus the gate's oldest-open lookup, and a read
+    soon after skips both (#2966, games/sweep_gate.py)."""
+    from games import sweep_gate
+
     sid = str(uuid.uuid4())
     await _add(sid, started_ago=timedelta(hours=2), completed_ago=timedelta(hours=1))
     # Warm-up: the first streak read freezes the window's daily templates (an INSERT).
     _count_statements(client, sid)
+    sweep_gate.clear()
     with_sweep = _count_statements(client, sid)
-
-    async def no_sweep(*_args, **_kwargs) -> int:
-        return 0
-
-    monkeypatch.setattr(service, "sweep_stale_games", no_sweep)
     without_sweep = _count_statements(client, sid)
 
-    assert len(with_sweep) - len(without_sweep) == 1, with_sweep
+    assert len(with_sweep) - len(without_sweep) == 2, with_sweep
     assert [s for s in with_sweep if s.lstrip().upper().startswith("UPDATE GAMES")]
+    assert not [s for s in without_sweep if s.lstrip().upper().startswith("UPDATE")]
 
 
 @pytest.mark.parametrize("path", ["/stats/me", "/games/me"])

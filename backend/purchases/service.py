@@ -48,7 +48,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.dialect import dialect_insert
-from db.models import GameEntitlement, GameType, Purchase, PurchaseEvent, PurchaseLink
+from db.models import GameEntitlement, Purchase, PurchaseEvent, PurchaseLink
+from games import catalog_cache
 
 from . import apple, google
 from .verifiers import PurchaseError, VerifiedPurchase, allowed_environments
@@ -256,10 +257,8 @@ async def _premium_slug_for(db: AsyncSession, product_id: str) -> str:
     slug = slug_for_product(product_id)
     if slug is None:
         raise PurchaseError(422, "unknown_product")
-    is_premium = (
-        await db.execute(select(GameType.is_premium).where(GameType.name == slug))
-    ).scalar_one_or_none()
-    if not is_premium:
+    game_type = await catalog_cache.get_game_type(db, slug)
+    if game_type is None or not game_type.is_premium:
         raise PurchaseError(422, "unknown_product")
     return slug
 

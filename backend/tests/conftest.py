@@ -133,6 +133,24 @@ def reset_rate_limiter():
 
 
 @pytest.fixture(autouse=True)
+def _reset_process_caches():
+    """Drop the process-level caches (#2966) around each test.
+
+    The catalog cache holds ``game_types`` / ``event_types`` for 60 s and the
+    sweep gate remembers when each session last swept, so a test that changes
+    those tables directly, or backdates rows, must not see an earlier test's
+    snapshot.
+    """
+    from games import catalog_cache, sweep_gate
+
+    catalog_cache.invalidate()
+    sweep_gate.clear()
+    yield
+    catalog_cache.invalidate()
+    sweep_gate.clear()
+
+
+@pytest.fixture(autouse=True)
 async def _clean_db_tables():
     """Truncate DB state between tests so ordering doesn't matter.
 

@@ -110,6 +110,45 @@ uses Supabase as plain PostgreSQL; dev uses its separate Render Postgres
 database; local development/CI can use SQLite. Environment/deploy details belong
 in [RENDER.md](RENDER.md), not duplicated here.
 
+### Catalog cache and the stale-sweep gate (#2966)
+
+`game_types` and `event_types` change only through migrations and
+`PATCH /games/catalog/{id}`, so `backend/games/catalog_cache.py` keeps one
+snapshot of both per process: `{name: GameTypeRow}` (frozen dataclasses, never
+ORM instances) and `{game_type_id: {event_name: event_type_id}}` for the
+non-deprecated event types. `check_entitlement` (it reads `is_premium` there
+and queries only the `game_entitlements` row of a premium game),
+`POST /games`, `POST /games/{id}/events`, the leaderboard's game-type lookup
+and purchase verification all read it instead of the tables.
+
+- **TTL 60 s.** `patch_game_type` invalidates the snapshot after its commit, so
+  the worker that served the PATCH applies the change on its next request.
+  Other uvicorn workers and instances keep their snapshot until it expires:
+  **a PATCH reaches every process within 60 s**. Migrations ship with a
+  deploy, which restarts every process.
+- **Concurrency.** A refresh builds a new snapshot and swaps one module-level
+  reference, so readers never see a half-built one; a load that raced an
+  invalidation is discarded rather than stored. No lock, no Redis
+  (cross-process caching is out of scope).
+- **Tests.** The cache is process-global: `tests/conftest.py` clears it (and
+  the sweep gate) around every test, so a test that edits those tables
+  directly starts from the DB.
+
+`/stats/me` runs the stale-session sweep (#2621) through
+`backend/games/sweep_gate.py`: after a sweep it records, per session and in
+process, when the sweep could next match anything (the oldest open game's
+start + 24 h, capped at one hour), and skips the UPDATE until then.
+`POST /games` on the same process moves that time forward for a backdated
+game. A game created through another worker can therefore be counted up to an
+hour late, and only in `sessions` / `total_games` / `favorite_game`: abandoned
+rows never earn XP, streaks, best values or time played. `/games/me` still
+sweeps on every first page. `daily_challenge.definitions.pick_template` is
+memoised (pure, hashable arguments, frozen result).
+
+Steady-state statement counts (guarded by
+`tests/test_entitlement_lookup_perf.py`): `POST /games` 1-3 (was 4-6),
+`/stats/me` 5 (was 7).
+
 ## 3. The rule engine — written once
 
 For any game that may eventually support multi-player, the rule engine lives in

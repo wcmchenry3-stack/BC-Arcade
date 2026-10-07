@@ -69,7 +69,8 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.expression import FunctionElement
 
-from db.models import PLAYER_DISPLAY_NAME_MAX_LENGTH, Game, GameType
+from db.models import PLAYER_DISPLAY_NAME_MAX_LENGTH, Game
+from games import catalog_cache
 from games.board import (
     COLUMN_METRICS,
     DURATION_METRIC,
@@ -695,8 +696,9 @@ async def load_game(db: AsyncSession, game_id: uuid.UUID) -> Game | None:
     ).scalar_one_or_none()
 
 
-async def load_game_type(db: AsyncSession, name: str) -> GameType | None:
-    gt = (await db.execute(select(GameType).where(GameType.name == name))).scalar_one_or_none()
+async def load_game_type(db: AsyncSession, name: str) -> catalog_cache.GameTypeRow | None:
+    """The active game type called *name* (from the catalog cache, #2966), else None."""
+    gt = await catalog_cache.get_game_type(db, name)
     if gt is None or not gt.is_active:
         return None
     return gt
