@@ -185,6 +185,12 @@ keeps its LCG state in its engine (it is part of the replay counters) and steps
 it with the shared `lcgNext`. `_shared/simRandom.ts` (Mulberry32) is the
 simulators' separate generator; do not use it in engines.
 
+Known exception: Star Swarm's power-up type (`pickPowerUpType`) and power-up
+drop position still call `Math.random`, and they do affect play. Seeding the LCG
+alone therefore does not reproduce a Star Swarm run; the golden replay test
+stubs `Math.random` as well. Moving those draws onto the seeded source would
+change Star Swarm's gameplay sequence and needs its own golden re-record.
+
 ## 4. Persistence and offline contract
 
 **One write path.** Every game records its sessions the same way, and **no
