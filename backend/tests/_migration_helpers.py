@@ -32,8 +32,13 @@ def run_alembic(db_path: Path, *args: str, check: bool = True) -> subprocess.Com
     `FAILED: ...` reason is on stdout and would otherwise be hidden; with
     ``check=False`` the caller inspects ``returncode`` itself.
     """
+    return run_alembic_url(f"sqlite:///{db_path}", *args, check=check)
+
+
+def run_alembic_url(url: str, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    """``run_alembic`` against any database URL (the Postgres EXPLAIN gate, #2965)."""
     env = os.environ.copy()
-    env["DATABASE_URL"] = f"sqlite:///{db_path}"
+    env["DATABASE_URL"] = url
     result = subprocess.run(
         [sys.executable, "-m", "alembic", *args],
         cwd=BACKEND,
