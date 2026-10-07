@@ -22,11 +22,11 @@ import Svg, {
   Text as SvgText,
 } from "react-native-svg";
 import { useTranslation } from "react-i18next";
-import type { Bottle, Color } from "../types";
-import { BOTTLE_DEPTH } from "../types";
-import { isBottleSolved } from "../engine";
-import { useTheme } from "../../../theme/ThemeContext";
-import type { Theme } from "../../../theme/ThemeContext";
+import type { Bottle, Color } from "../../game/sort/types";
+import { BOTTLE_DEPTH } from "../../game/sort/types";
+import { isBottleSolved } from "../../game/sort/engine";
+import { useTheme } from "../../theme/ThemeContext";
+import type { Theme } from "../../theme/ThemeContext";
 import {
   BOTTLE_LIQUID_COLORS,
   BOTTLE_STROKE_SELECTED,
@@ -40,7 +40,7 @@ import {
   BOTTLE_CHECKMARK_BG,
   BOTTLE_CHECKMARK_STROKE,
   BOTTLE_COLORBLIND_TEXT,
-} from "../../../theme/theme.bottle";
+} from "../../theme/theme.bottle";
 
 // SVG design dimensions — the viewBox stays fixed; width/height props scale the render.
 const VB_W = 56;

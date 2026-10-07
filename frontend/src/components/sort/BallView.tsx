@@ -2,9 +2,9 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 import Svg, { Circle, Path, Polygon, Rect } from "react-native-svg";
 import { useTranslation } from "react-i18next";
-import type { Color } from "../types";
-import { useTheme } from "../../../theme/ThemeContext";
-import { BOTTLE_LIQUID_COLORS } from "../../../theme/theme.bottle";
+import type { Color } from "../../game/sort/types";
+import { useTheme } from "../../theme/ThemeContext";
+import { BOTTLE_LIQUID_COLORS } from "../../theme/theme.bottle";
 
 export const BALL_SIZE = 36;
 

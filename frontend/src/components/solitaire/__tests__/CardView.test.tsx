@@ -2,8 +2,8 @@ import React from "react";
 import { StyleSheet } from "react-native";
 import { render, fireEvent } from "@testing-library/react-native";
 
-import { ThemeProvider } from "../../../../theme/ThemeContext";
-import type { Card } from "../../types";
+import { ThemeProvider } from "../../../theme/ThemeContext";
+import type { Card } from "../../../game/solitaire/types";
 import CardView, { CARD_WIDTH, CARD_HEIGHT } from "../CardView";
 
 function withTheme(children: React.ReactNode) {

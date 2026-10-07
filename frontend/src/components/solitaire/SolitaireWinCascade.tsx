@@ -9,7 +9,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import { useTheme } from "../../../theme/ThemeContext";
+import { useTheme } from "../../theme/ThemeContext";
 
 /** How long the cascade plays before handing over to the result card. */
 export const WIN_CASCADE_MS = 2000;

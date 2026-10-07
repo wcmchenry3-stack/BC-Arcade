@@ -1,11 +1,11 @@
 import React from "react";
 import { fireEvent, render } from "@testing-library/react-native";
-import { ThemeProvider } from "../../../../theme/ThemeContext";
+import { ThemeProvider } from "../../../theme/ThemeContext";
 import { Dimensions } from "react-native";
 import SortBoard from "../SortBoard";
 import { DEFAULT_BOTTLE_HEIGHT, DEFAULT_BOTTLE_WIDTH } from "../BottleView";
 import { computeBoardLayout, MIN_TOUCH_TARGET } from "../gridGeometry";
-import type { Color, SortState } from "../../types";
+import type { Color, SortState } from "../../../game/sort/types";
 
 function withTheme(children: React.ReactNode) {
   return <ThemeProvider>{children}</ThemeProvider>;
