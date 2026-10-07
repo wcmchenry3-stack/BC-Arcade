@@ -22,6 +22,11 @@ class SortModule:
     # on every solve, replays included (#2625, ``SortResult``): the player's
     # standing after it. The board keeps each player's best row, which is
     # their first solve of their highest level; a replay never displaces it.
+    # The metric is metadata, not a column, so the board reads Sort's finished
+    # rows through games_game_type_completed_idx (#2965). It deliberately does
+    # not rank a final_score mirror of level_reached to ride the score index:
+    # that would change which stored rows rank (docs/LEADERBOARDS.md
+    # "Indexes" has the EXPLAIN comparison).
     board = BoardDefinition(
         metric="level_reached",
         direction="desc",

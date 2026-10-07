@@ -10,6 +10,8 @@
   "error.alreadyGuessed": "Already guessed",
   "error.tooShort": "Not enough letters",
   "error.couldNotLoad": "Could not load today's puzzle",
+  "error.needsConnection": "Daily Word needs a connection",
+  "error.retry": "Retry",
   "error.couldNotSubmit": "Could not submit your guess",
   "error.stalePuzzle": "New puzzle available — loading today's word",
   "error.wrongLength": "Guess length doesn't match today's word",
