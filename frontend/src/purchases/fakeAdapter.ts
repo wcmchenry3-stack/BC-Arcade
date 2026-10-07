@@ -43,7 +43,7 @@ export interface FakePurchaseAdapter extends PurchaseAdapter {
   configure(patch: FakePurchaseConfig): void;
 }
 
-export const FAKE_PRICE = "$4.99";
+const FAKE_PRICE = "$4.99";
 
 const nothing = (): RestoreResult => ({ restored: [], alreadyOwned: [], pending: [] });
 

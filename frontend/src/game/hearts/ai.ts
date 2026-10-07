@@ -223,7 +223,7 @@ export function selectCardsToPassUtility(
  * suit and at most one weak suit, #2234),
  * or the player must already be committed (`commitPoints`: it has captured
  * enough points that shooting is the way to recover them). Exported so the
- * sim gate harness (sim/harness.ts) instruments the real trigger instead of
+ * sim gate harness (tooling/hearts/harness.ts) instruments the real trigger instead of
  * re-implementing it (#2204).
  */
 export function detectMoonAttempt(

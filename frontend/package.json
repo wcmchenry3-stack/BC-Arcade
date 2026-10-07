@@ -10,7 +10,7 @@
     "test": "jest",
     "test:ci": "jest --coverage",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.tooling.json",
     "format:check": "prettier --check .",
     "translate": "node scripts/translate.js",
     "check-i18n": "node scripts/check-i18n-strings.js",
@@ -21,13 +21,6 @@
     "prebuild": "node scripts/optimize-assets.js"
   },
   "jest": {
-    "preset": "jest-expo",
-    "setupFiles": [
-      "./jest.setup.ts"
-    ],
-    "setupFilesAfterEnv": [
-      "./jest.setup-after-env.ts"
-    ],
     "collectCoverageFrom": [
       "src/**/*.{ts,tsx,js,jsx}",
       "App.tsx",
@@ -35,8 +28,6 @@
       "!src/**/__mocks__/**",
       "!src/**/*.d.ts",
       "!src/screens/__dev__/**",
-      "!src/game/*/sim/**",
-      "!src/game/yacht/oracleBuild/**",
       "!src/i18n/glossary.js",
       "!src/i18n/localeLoaders.ts",
       "!**/*.generated.ts"
@@ -49,21 +40,6 @@
       "clover"
     ],
     "testTimeout": 15000,
-    "testMatch": [
-      "**/__tests__/**/*.test.ts",
-      "**/__tests__/**/*.test.tsx"
-    ],
-    "testPathIgnorePatterns": [
-      "/node_modules/",
-      "\\.worktrees/"
-    ],
-    "coveragePathIgnorePatterns": [
-      "/node_modules/",
-      "<rootDir>/src/test-utils/"
-    ],
-    "transformIgnorePatterns": [
-      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|react-navigation|@react-navigation/.*|i18next|react-i18next|i18next-resources-to-backend|@formatjs/.*)"
-    ],
     "coverageThreshold": {
       "global": {
         "lines": 90,
@@ -81,9 +57,64 @@
         "lines": 80
       }
     },
-    "moduleNameMapper": {
-      "\\.(mp3|ogg)$": "<rootDir>/src/__mocks__/fileMock.js"
-    }
+    "projects": [
+      {
+        "displayName": "app",
+        "preset": "jest-expo",
+        "setupFiles": [
+          "./jest.setup.ts"
+        ],
+        "setupFilesAfterEnv": [
+          "./jest.setup-after-env.ts"
+        ],
+        "transformIgnorePatterns": [
+          "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|react-navigation|@react-navigation/.*|i18next|react-i18next|i18next-resources-to-backend|@formatjs/.*)"
+        ],
+        "moduleNameMapper": {
+          "\\.(mp3|ogg)$": "<rootDir>/src/__mocks__/fileMock.js"
+        },
+        "testMatch": [
+          "**/__tests__/**/*.test.ts",
+          "**/__tests__/**/*.test.tsx"
+        ],
+        "testPathIgnorePatterns": [
+          "/node_modules/",
+          "\\.worktrees/",
+          "<rootDir>/tooling/"
+        ],
+        "coveragePathIgnorePatterns": [
+          "/node_modules/",
+          "<rootDir>/src/test-utils/"
+        ]
+      },
+      {
+        "displayName": "tooling",
+        "preset": "jest-expo",
+        "setupFiles": [
+          "./jest.setup.ts"
+        ],
+        "setupFilesAfterEnv": [
+          "./jest.setup-after-env.ts"
+        ],
+        "transformIgnorePatterns": [
+          "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|react-navigation|@react-navigation/.*|i18next|react-i18next|i18next-resources-to-backend|@formatjs/.*)"
+        ],
+        "moduleNameMapper": {
+          "\\.(mp3|ogg)$": "<rootDir>/src/__mocks__/fileMock.js"
+        },
+        "testMatch": [
+          "<rootDir>/tooling/**/__tests__/**/*.test.ts"
+        ],
+        "testPathIgnorePatterns": [
+          "/node_modules/",
+          "\\.worktrees/"
+        ],
+        "coveragePathIgnorePatterns": [
+          "/node_modules/",
+          "<rootDir>/src/test-utils/"
+        ]
+      }
+    ]
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",

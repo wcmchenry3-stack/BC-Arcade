@@ -18,14 +18,14 @@ import { debugOpKeys } from "./opKeys";
 import type { BuddyShip } from "../types";
 
 /** Width of the whole HP bar, px. */
-export const BUDDY_HP_BAR_W = 30;
-export const BUDDY_HP_BAR_H = 4;
+const BUDDY_HP_BAR_W = 30;
+const BUDDY_HP_BAR_H = 4;
 /** Gap between the bar and the top of the ship sprite, px. */
 const BAR_GAP = 5;
 const PIP_GAP = 1;
 
 /** The bar colour for this much HP left (fraction of BUDDY_HP). */
-export function buddyHpColor(hp: number): PackedColor {
+function buddyHpColor(hp: number): PackedColor {
   const f = hp / BUDDY_HP;
   if (f > 0.5) return 0xff4dff88;
   if (f > 0.25) return 0xffffc233;

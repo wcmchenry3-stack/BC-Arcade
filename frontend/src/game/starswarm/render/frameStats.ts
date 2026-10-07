@@ -10,10 +10,10 @@
  */
 
 /** Ring size: more than a second of frames at 120 Hz, and of commits at any sane rate. */
-export const FRAME_STATS_CAPACITY = 256;
+const FRAME_STATS_CAPACITY = 256;
 
 /** The window the readout summarizes. */
-export const FRAME_STATS_WINDOW_MS = 1000;
+const FRAME_STATS_WINDOW_MS = 1000;
 
 /**
  * A loop gap longer than this is the app coming back from the background (or a debugger pause),

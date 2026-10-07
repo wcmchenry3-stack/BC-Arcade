@@ -2,9 +2,9 @@ name: Hearts AI Sim Gate
 
 # Sim gate v2 (#2238): sequential (SPRT) non-regression and persona-
 # separation checks on duplicate-deal replay, defined in
-# frontend/src/game/hearts/sim/gate.ts against the checked-in baseline
-# frontend/src/game/hearts/sim/baseline.json. The fast per-PR smoke layer is
-# frontend/src/game/hearts/__tests__/ai.calibrate.test.ts (run by ci.yml).
+# frontend/tooling/hearts/gate.ts against the checked-in baseline
+# frontend/tooling/hearts/baseline.json. The fast per-PR smoke layer is
+# frontend/tooling/hearts/__tests__/ai.calibrate.test.ts (run by ci.yml).
 # Runtime budget and how to read a failure: docs/TESTING.md.
 
 on:
@@ -22,7 +22,7 @@ on:
       - "frontend/src/game/hearts/ai*.ts"
       - "frontend/src/game/hearts/engine.ts"
       - "frontend/src/game/hearts/types.ts"
-      - "frontend/src/game/hearts/sim/**"
+      - "frontend/tooling/hearts/**"
       - "frontend/src/game/_shared/simRandom.ts"
       - "scripts/simulate-hearts.ts"
       - ".github/workflows/hearts-sim-gate.yml"
@@ -43,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Keep in sync with GATE_GROUPS in frontend/src/game/hearts/sim/gate.ts
+        # Keep in sync with GATE_GROUPS in frontend/tooling/hearts/gate.ts
         # (gate.test.ts fails if they differ).
         group: [presets, field]
     steps:

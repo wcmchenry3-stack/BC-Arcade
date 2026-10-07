@@ -184,7 +184,7 @@ The computer's score is recorded for the match result but never creates its own 
 - AI: `frontend/src/game/yacht/ai.ts`
 - Oracle runtime/table: `frontend/src/game/yacht/oracle/`
 - Oracle design reference: [YACHT_ORACLE.md](../research/YACHT_ORACLE.md)
-- AI simulation/calibration: `frontend/src/game/yacht/sim/`
+- AI simulation/calibration: `frontend/tooling/yacht/` (see docs/TESTING.md → Simulators)
 - Shared testing guidance: [TESTING.md](../TESTING.md)
 
 ## Documentation status

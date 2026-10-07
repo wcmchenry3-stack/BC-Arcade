@@ -146,9 +146,9 @@ function resolveBaseUrl(): string {
  * window is never tallied, and neither is one cut short by the app closing —
  * so the count is a floor on how bad it was, not a total.
  */
-export const NETWORK_FAILURE_REPORT_INTERVAL_MS = 10 * 60 * 1000;
+const NETWORK_FAILURE_REPORT_INTERVAL_MS = 10 * 60 * 1000;
 /** Bound the map: keys are normalised, but paths are still not a closed set. */
-export const NETWORK_FAILURE_MAX_TRACKED = 100;
+const NETWORK_FAILURE_MAX_TRACKED = 100;
 
 // A path segment that is a record id: all digits, or a UUID (game ids are UUIDs).
 const ID_SEGMENT = /^(?:\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;

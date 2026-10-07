@@ -19,8 +19,8 @@ import { debugOpKeys } from "./opKeys";
 import type { CarrierBeam, StarSwarmState } from "../types";
 
 /** 0xRRGGBB — the beam's violet and the brace's amber. */
-export const BEAM_RGB = 0xb06cff;
-export const BRACE_RGB = 0xffaa28;
+const BEAM_RGB = 0xb06cff;
+const BRACE_RGB = 0xffaa28;
 const BEAM_GLOW = withAlpha(BEAM_RGB, 0.35);
 const BEAM_CORE = withAlpha(0xe6cdff, 0.9);
 
