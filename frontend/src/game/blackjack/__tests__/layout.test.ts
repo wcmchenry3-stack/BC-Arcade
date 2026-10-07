@@ -209,6 +209,53 @@ describe("calculateCardOverlap", () => {
   });
 });
 
+describe("split row width by hand count", () => {
+  // Total horizontal space the split hands occupy: each hand's card row plus its
+  // padding and 2px border, plus the gaps between hands.
+  function occupied(width: number, height: number, handCount: number) {
+    const l = calculateBlackjackLayout({
+      availableWidth: width,
+      availableHeight: height,
+      handCount,
+    });
+    const perHand = l.splitHandRowWidth + 2 * (l.splitHandPadding + 2);
+    return { l, total: perHand * handCount + l.handsRowGap * (handCount - 1) };
+  }
+
+  it.each([
+    [390, 800],
+    [390, 600],
+    [320, 600],
+  ])("3 and 4 hands fit inside the window at %ipt wide / %ipt high", (w, h) => {
+    for (const n of [2, 3, 4]) {
+      expect(occupied(w, h, n).total).toBeLessThanOrEqual(w);
+    }
+  });
+
+  it("shrinks each hand row as the hand count grows", () => {
+    const w2 = occupied(390, 800, 2).l.splitHandRowWidth;
+    const w3 = occupied(390, 800, 3).l.splitHandRowWidth;
+    const w4 = occupied(390, 800, 4).l.splitHandRowWidth;
+    expect(w3).toBeLessThan(w2);
+    expect(w4).toBeLessThan(w3);
+  });
+
+  it("keeps 4 narrow hands wider than a split card so cards still render", () => {
+    const { l } = occupied(320, 600, 4);
+    expect(l.splitHandRowWidth).toBeGreaterThanOrEqual(l.splitCardWidth);
+  });
+
+  it("treats a missing or sub-2 hand count as 2", () => {
+    const base = calculateBlackjackLayout({ availableWidth: 390, availableHeight: 800 });
+    const one = calculateBlackjackLayout({
+      availableWidth: 390,
+      availableHeight: 800,
+      handCount: 1,
+    });
+    expect(one.splitHandRowWidth).toBe(base.splitHandRowWidth);
+  });
+});
+
 describe("hand row widths", () => {
   it("scale with availableWidth and split rows are narrower", () => {
     const wide = calculateBlackjackLayout({ availableWidth: 430, availableHeight: 800 });

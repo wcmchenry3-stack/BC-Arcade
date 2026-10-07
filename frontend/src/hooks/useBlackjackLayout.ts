@@ -7,7 +7,7 @@ import { calculateBlackjackLayout, type BlackjackLayout } from "../game/blackjac
 
 export type { BlackjackLayout };
 
-export function useBlackjackLayout(): BlackjackLayout {
+export function useBlackjackLayout(handCount = 2): BlackjackLayout {
   const { height, width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useSafeBottomTabBarHeight();
@@ -15,7 +15,7 @@ export function useBlackjackLayout(): BlackjackLayout {
   const availableHeight = height - insets.top - APP_HEADER_HEIGHT - tabBarHeight;
 
   return useMemo(
-    () => calculateBlackjackLayout({ availableWidth: width, availableHeight }),
-    [width, availableHeight]
+    () => calculateBlackjackLayout({ availableWidth: width, availableHeight, handCount }),
+    [width, availableHeight, handCount]
   );
 }

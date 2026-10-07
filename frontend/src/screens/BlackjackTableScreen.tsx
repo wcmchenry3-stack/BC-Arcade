@@ -46,7 +46,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const layout = useBlackjackLayout();
   const { engine, loading, error, apply, clearEvents, handlePlayAgain, sessionStats, runResult } =
     useBlackjackGame();
   const [confirmNewGameVisible, setConfirmNewGameVisible] = useState(false);
@@ -97,6 +96,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   }));
 
   const state = engine ? toViewState(engine) : null;
+  const layout = useBlackjackLayout(state?.player_hands?.length);
 
   useGameEvents(
     state?.events,

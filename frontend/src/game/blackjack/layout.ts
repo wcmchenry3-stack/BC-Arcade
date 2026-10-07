@@ -37,6 +37,8 @@ export function calculateCardOverlap(
 export interface BlackjackLayoutInput {
   availableWidth?: number;
   availableHeight: number;
+  /** Simultaneous player hands (split). The engine allows up to 4; minimum 2. */
+  handCount?: number;
 }
 
 export interface BlackjackLayout {
@@ -81,7 +83,8 @@ export interface BlackjackLayout {
 }
 
 export function calculateBlackjackLayout(input: BlackjackLayoutInput): BlackjackLayout {
-  const { availableHeight, availableWidth = DEFAULT_AVAILABLE_WIDTH } = input;
+  const { availableHeight, availableWidth = DEFAULT_AVAILABLE_WIDTH, handCount = 2 } = input;
+  const splitHands = Math.max(2, Math.floor(handCount) || 2);
   const compact = availableHeight < COMPACT_HEIGHT_BREAKPOINT;
 
   // Card dimensions — preserve exact existing pixel values for normal/compact,
@@ -99,10 +102,12 @@ export function calculateBlackjackLayout(input: BlackjackLayoutInput): Blackjack
   const handsRowGap = compact ? 6 : 8;
   const splitHandPadding = compact ? 4 : 6;
   const handRowWidth = Math.max(0, availableWidth - 2 * TABLE_PADDING_H - HAND_WIDTH_SLACK);
-  // Two split hands share the row; each has padding plus a 2px active border.
+  // Split hands share the row equally; each has padding plus a 2px active border.
   const splitHandRowWidth = Math.max(
     0,
-    Math.floor((availableWidth - 2 * TABLE_PADDING_H - handsRowGap) / 2) -
+    Math.floor(
+      (availableWidth - 2 * TABLE_PADDING_H - handsRowGap * (splitHands - 1)) / splitHands
+    ) -
       2 * (splitHandPadding + 2) -
       HAND_WIDTH_SLACK
   );
