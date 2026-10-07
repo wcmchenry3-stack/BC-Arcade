@@ -8,12 +8,16 @@
  * frame. Each layer is drawn twice, the second copy a canvas-height above the first, so stars
  * that scroll off the bottom come back in at the top.
  */
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { useDerivedValue } from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
 import { Group, Picture } from "@shopify/react-native-skia";
 import type { SkPicture } from "@shopify/react-native-skia";
-import { layerTransform, recordStarfield } from "../../game/starswarm/render/starfieldPictures";
+import {
+  disposeStarfield,
+  layerTransform,
+  recordStarfield,
+} from "../../game/starswarm/render/starfieldPictures";
 import type { StarfieldState } from "../../game/starswarm/starfield";
 
 interface Props {
@@ -47,6 +51,9 @@ function StarLayer({
 
 export default function StarfieldLayers({ layout, clock }: Props) {
   const pictures = useMemo(() => recordStarfield(layout), [layout]);
+  // Free each set once it is no longer drawn: this cleanup runs after the commit that swaps in a
+  // re-recorded set (layout change — rotation, resize), and on unmount.
+  useEffect(() => () => disposeStarfield(pictures), [pictures]);
   return (
     <>
       <Picture picture={pictures.backdrop} />

@@ -57,7 +57,11 @@ describe("Star Swarm tick micro-benchmark (#2963)", () => {
       if (FULL) run(wave9()); // warm-up: JIT the engine before timing it
       const s0 = wave9();
       gc?.();
-      obs.observe({ entryTypes: ["gc"] });
+      try {
+        obs.observe({ entryTypes: ["gc"] });
+      } catch {
+        // no "gc" performance entries in this runtime: the GC count just reads 0
+      }
       const heap0 = process.memoryUsage().heapUsed;
       const t0 = performance.now();
       const end = run(s0);

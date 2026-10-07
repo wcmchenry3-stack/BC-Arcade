@@ -47,7 +47,7 @@ jest.mock("@shopify/react-native-skia", () => {
     // Run the recorder at once against a dummy canvas, as Skia would on the UI thread.
     createPicture: jest.fn((draw: (canvas: object) => void, size: object) => {
       draw({ drawColor: () => {}, drawCircle: () => {} });
-      return { size };
+      return { size, dispose: () => {} };
     }),
     Skia: {
       Paint: () => ({ setAntiAlias: () => {}, setColor: () => {} }),

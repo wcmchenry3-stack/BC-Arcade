@@ -4,6 +4,7 @@
  */
 type Call = { fn: string; args: unknown[]; color?: number };
 const mockRecorded: { size: unknown; calls: Call[] }[] = [];
+const mockDispose = jest.fn();
 
 jest.mock("@shopify/react-native-skia", () => ({
   Skia: {
@@ -30,11 +31,16 @@ jest.mock("@shopify/react-native-skia", () => ({
         calls.push({ fn: "drawCircle", args: [cx, cy, r, p.antiAlias], color: p.color }),
     });
     mockRecorded.push({ size, calls });
-    return { id: mockRecorded.length - 1 };
+    return { id: mockRecorded.length - 1, dispose: mockDispose };
   },
 }));
 
-import { BACKGROUND, layerTransform, recordStarfield } from "../render/starfieldPictures";
+import {
+  BACKGROUND,
+  disposeStarfield,
+  layerTransform,
+  recordStarfield,
+} from "../render/starfieldPictures";
 import { withAlpha } from "../render/color";
 import { initStarfield, starLayers, tickStarfield } from "../starfield";
 
@@ -51,9 +57,9 @@ describe("recordStarfield", () => {
       true
     );
     expect(mockRecorded[0]!.calls).toEqual([{ fn: "drawColor", args: [BACKGROUND] }]);
-    expect(pics.backdrop).toEqual({ id: 0 });
+    expect(pics.backdrop).toMatchObject({ id: 0 });
     expect(pics.layers.map((l) => l.speed)).toEqual([0.02, 0.05, 0.1]);
-    expect(pics.layers.map((l) => l.picture)).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+    expect(pics.layers.map((l) => (l.picture as unknown as { id: number }).id)).toEqual([1, 2, 3]);
   });
 
   it("each layer draws its stars where they start, in draw order, as antialiased white dots", () => {
@@ -78,6 +84,14 @@ describe("recordStarfield", () => {
     const first = mockRecorded.splice(0);
     recordStarfield(tickStarfield(sf, 5000));
     expect(mockRecorded).toEqual(first);
+  });
+});
+
+describe("disposeStarfield", () => {
+  it("disposes the background and every layer picture", () => {
+    mockDispose.mockClear();
+    disposeStarfield(recordStarfield(initStarfield(400, 700)));
+    expect(mockDispose).toHaveBeenCalledTimes(4);
   });
 });
 

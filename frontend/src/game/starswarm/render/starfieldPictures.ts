@@ -44,6 +44,16 @@ export function recordStarfield(sf: StarfieldState): StarfieldPictures {
   return { backdrop, layers };
 }
 
+/**
+ * Free the native Pictures `recordStarfield` made. The owner calls this once nothing draws them any
+ * more (StarfieldLayers: in the effect cleanup after a re-record has been committed, and on
+ * unmount).
+ */
+export function disposeStarfield(pictures: StarfieldPictures): void {
+  pictures.backdrop.dispose();
+  for (const layer of pictures.layers) layer.picture.dispose();
+}
+
 /** The transform that slides a layer to where it has scrolled after `elapsedMs`. */
 export function layerTransform(
   elapsedMs: number,
