@@ -21,7 +21,7 @@
  * `--count` is games per matchup (rounded up to whole blocks), aligned with
  * tools/sim/simulate-yacht.ts (#2204). `--seed` overrides the deal seed for
  * the report and the gate. NDJSON game logs (`--log-games`, used by
- * hearts-analysis/main.py's /api/simulate) keep their format.
+ * tools/hearts-analysis/main.py's /api/simulate) keep their format.
  */
 
 import {
@@ -218,7 +218,7 @@ function parseDifficulties(args: string[]): Difficulties | null {
 
 // --log-games N: emit N NDJSON game logs and exit (optionally with --difficulties).
 // This is a distinct mode from aggregate-stats --count below (#2204) — it is used
-// by hearts-analysis/main.py's /api/simulate endpoint, so the flag name and the
+// by tools/hearts-analysis/main.py's /api/simulate endpoint, so the flag name and the
 // NDJSON-per-line output format must stay stable even though --count no longer
 // triggers it.
 const logCount = parseCount(process.argv, "--log-games");

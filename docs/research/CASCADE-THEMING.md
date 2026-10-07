@@ -57,7 +57,7 @@ Assets with stems, crowns, tails, rings, or multi-body geometry will need carefu
 
 ```bash
 cd frontend
-python scripts/remove_backgrounds.py \
+python ../tools/assets/remove_backgrounds.py \
   --mode color \          # or celestial
   --input assets/raw-{theme}/ \
   --output assets/{theme}-icons/
@@ -93,7 +93,7 @@ Semi-transparent pixels retain their original RGB values. At runtime, canvas res
 
 ```bash
 cd frontend
-python scripts/extract_vertices.py \
+python ../tools/assets/extract_vertices.py \
   --input assets/{theme}-icons/ \
   --output assets/{theme}-vertices.json
 ```

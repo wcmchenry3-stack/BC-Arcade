@@ -5,7 +5,7 @@
  * ----------------------------------------
  * Verifies that every sprite WebP in the fruit-icons and celestial-icons
  * directories has transparent corner pixels (alpha < 200), confirming that
- * `scripts/remove_backgrounds.py` has been run and the conversion preserved
+ * `tools/assets/remove_backgrounds.py` has been run and the conversion preserved
  * the alpha channel.
  *
  * This test will FAIL on CI if unprocessed opaque-background assets ship.
@@ -89,7 +89,7 @@ describe("No raw PNGs in icon asset directories", () => {
       if (pngFiles.length > 0) {
         throw new Error(
           `Found raw PNG(s) in assets/${dirName}: ${pngFiles.join(", ")} — ` +
-            `run \`python frontend/scripts/convert_icons_to_webp.py frontend/assets/${dirName}\` to convert`
+            `run \`python tools/assets/convert_icons_to_webp.py frontend/assets/${dirName}\` to convert`
         );
       }
     });

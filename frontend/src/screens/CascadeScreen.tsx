@@ -256,7 +256,7 @@ function PieceRenderer({
             // converts a radius into the full canvas half-size (see
             // FruitDefinition.bakedClipR) so the drawn fruit matches the circle.
             //
-            // bakedClipR was produced by scripts/bake_sprites.py against
+            // bakedClipR was produced by tools/assets/bake_sprites.py against
             // FruitDefinition.radius (fruitSets.ts's RADII table), NOT PIECE_DEFS'
             // physics radius (`r` above) — the two scales diverge up to ~31% by the
             // top tier. Use the radius bakedClipR was actually calibrated against.
