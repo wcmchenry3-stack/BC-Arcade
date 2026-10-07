@@ -171,22 +171,29 @@ function posKey(col: number, row: number, layer: number): number | string {
   return `${col},${row},${layer}`;
 }
 
-/** What sits at each (col, row, layer) position, and every layer used, ascending. */
+/**
+ * What sits at each (col, row, layer) position, and every layer used, ascending
+ * (only when built with `withLayers`; otherwise empty).
+ */
 interface PositionIndex<T> {
   readonly at: ReadonlyMap<number | string, T>;
   readonly layers: readonly number[];
 }
 
 /** Index `items` by position in one pass (O(n)). */
-function indexPositions<T>(items: Iterable<T>, slotOf: (item: T) => Slot): PositionIndex<T> {
+function indexPositions<T>(
+  items: Iterable<T>,
+  slotOf: (item: T) => Slot,
+  withLayers: boolean
+): PositionIndex<T> {
   const at = new Map<number | string, T>();
   const layers = new Set<number>();
   for (const item of items) {
     const { col, row, layer } = slotOf(item);
     at.set(posKey(col, row, layer), item);
-    layers.add(layer);
+    if (withLayers) layers.add(layer);
   }
-  return { at, layers: [...layers].sort((x, y) => x - y) };
+  return { at, layers: withLayers ? [...layers].sort((x, y) => x - y) : [] };
 }
 
 /**
@@ -217,7 +224,7 @@ const tileSlot = (t: SlotTile): Slot => t;
  * the canvas and `selectTile` (#2962).
  */
 export function freeTileIds(tiles: readonly SlotTile[]): ReadonlySet<number> {
-  const index = indexPositions(tiles, tileSlot);
+  const index = indexPositions(tiles, tileSlot, true);
   const free = new Set<number>();
   for (const t of tiles) {
     if (isOpenAt(t, index, false)) free.add(t.id);
@@ -400,7 +407,8 @@ function fisherYates<T>(arr: T[], rng: RandomSource): T[] {
  * was O(n²), so a deal attempt is O(n²) rather than O(n³).
  */
 export function accessibleInUnplaced(slots: readonly Slot[], unplaced: Set<number>): number[] {
-  const index = indexPositions(unplaced, (i) => slots[i]!);
+  // The deal looks one layer up only, so it needs no list of layers.
+  const index = indexPositions(unplaced, (i) => slots[i]!, false);
   const accessible: number[] = [];
   for (const i of unplaced) {
     const s = slots[i]!;
