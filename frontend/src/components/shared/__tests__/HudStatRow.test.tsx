@@ -57,7 +57,6 @@ describe("HudStatRow", () => {
         { key: "a", text: "Easy" },
         {
           key: "clock",
-          text: "",
           muted: true,
           render: (textStyle) => <Text style={textStyle}>00:07</Text>,
         },

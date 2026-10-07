@@ -25,6 +25,7 @@ export interface HudTextStat extends HudStatBase {
   /** Screen-reader label. Defaults to `text`. */
   accessibilityLabel?: string;
   testID?: string;
+  render?: never;
 }
 
 /**
@@ -35,6 +36,10 @@ export interface HudCustomStat extends HudStatBase {
   render: (textStyle: StyleProp<TextStyle>) => React.ReactNode;
   /** Render in `textMuted` instead of `text`. */
   muted?: boolean;
+  text?: never;
+  bold?: never;
+  accessibilityLabel?: never;
+  testID?: never;
 }
 
 export type HudStat = HudTextStat | HudCustomStat;
@@ -62,10 +67,11 @@ export function HudStatRow({ stats, size = "md", style, testID }: HudStatRowProp
         const textStyle = [
           styles.text,
           { fontSize, color: s.muted ? colors.textMuted : colors.text },
-          "bold" in s && s.bold && styles.bold,
+          s.bold && styles.bold,
         ];
-        if ("render" in s)
+        if (s.render !== undefined) {
           return <React.Fragment key={s.key}>{s.render(textStyle)}</React.Fragment>;
+        }
         return (
           <Text
             key={s.key}
