@@ -62,10 +62,22 @@ Mahjong's responsive layout is implemented in `frontend/src/game/mahjong/layout.
 
 Native rendering uses Skia; web uses Canvas2D. Both consume the same engine/layout concepts and must keep hit-testing behavior aligned.
 
+### Native canvas: per-tap cost (#2962)
+
+`frontend/src/components/mahjong/GameCanvas.tsx` keeps a tap's work proportional to what the tap changed, not to the 144 tiles:
+
+- **Face bitmaps, cached.** The 42 SVG faces are read and parsed once per app session (`loadTileSVGs` in `tileFaces.ts`), then rasterised once per face size into `SkImage`s (`tileFacesFor`: each face drawn into an offscreen surface at the art box's size times the device pixel ratio, copied to a raster image). Tiles draw their face with `<Image>`, not `<ImageSVG>`, so no SVG is rendered per frame. The cache is module-level and keyed by `faceWidth`x`faceHeight` (and pixel ratio); the last four sizes are kept. The canvas unmounts whenever the screen leaves play, and a later mount gets the faces on its first render with no decode. A face that fails to load or rasterise draws the suit-colour placeholder, as before.
+- **Memoised tiles.** Each tile is a `React.memo` `TileNode` whose props are the tile, its camera, its face bitmap and whether it is selected, free or glowing (a match of the selection or a hint). A tap re-renders only the tiles whose look changed: the selection, its free matches, the tiles a match freed, a glow that went away (2 of 144 per tap on the seeded board in `GameCanvas.native.test.tsx`, where every tile re-rendered before).
+- **Orders sorted once per board.** The paint order (layer, then row) and the hit-test order (highest layer first, so the topmost tile wins) are built in one memo per board; a tap walks the hit-test list without copying or sorting it. Hit-test and layout math are unchanged.
+- **One free set per board.** The screen computes the free tiles once per board (`useFreeTiles`, `frontend/src/game/mahjong/useFreeTiles.ts`, over the engine's `freeTileIds`) and passes them to the canvas (`freeIds`), the no-moves overlay, the hint, the dev panel and `selectTile`; the canvas builds its own only when not given one. The set lives beside the state rather than in it, so the save format above is unchanged.
+- **Board colour.** The native board uses `MAHJONG_BOARD_BG` (`theme/theme.constants.ts`), as the web canvas already did; it was a private `#1a3a1a` before.
+- **Locked tiles' art is dimmed.** The face art of a tile that isn't free is drawn at 35 % opacity (`opacity` on the face's `<Image>`), as the web canvas and the suit-colour placeholder always did. `<ImageSVG>` ignored that opacity (Skia draws an SVG without the paint), so before #2962 native showed locked art at full strength.
+
 ## Client-Side Engine
 
 - Location: `frontend/src/game/mahjong/engine.ts`
 - Key exports: tile matching, free-tile detection, deadlock detection, shuffle
+- **Free-tile index (#2962).** `freeTileIds(tiles)` builds one position index (each tile's `(col, row, layer)` packed into an integer map key) and returns the free tile ids in O(n), exactly the tiles `isFreeTile` (O(n) per tile, so O(n²) for a board) accepts. `freePairs(tiles, freeIds?)` is the only pair search: a generator of matching free pairs in board order, which `hasFreePairs` stops at the first pair of, `getAnyFreePair` takes the first of, and `getAllFreePairs` collects. These, `getMatchingFreeTileIds` and `selectTile` take the caller's free set when it has one. `selectTile` searches the board left by a match only when no shuffle is left (the only case that can deadlock). The deal's `accessibleInUnplaced` uses the same index (looking one layer up, as it always has), so a deal attempt is O(n²) rather than O(n³). Results are unchanged: `__tests__/goldenReplay.test.ts` replays every layout's deals and four scripted games against a fixture recorded before the change, and `engine.freeTiles.test.ts` checks the index against `isFreeTile` and a brute-force pair search. `engine.freeTiles.bench.test.ts` prints the old and new timings.
 - Rendering: `@shopify/react-native-skia` on native; Canvas2D on web
 
 ## Backend
