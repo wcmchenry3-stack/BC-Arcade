@@ -501,6 +501,16 @@ jobs:
         run: python3 scripts/check_file_length.py
         working-directory: backend
 
+  large-file-guard:
+    name: Large tracked file guard (over 5 MiB)
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # stdlib-only script; the allow-list (Cascade art -> #3033, BGM -> #1779) lives in the script
+      - name: Fail on tracked files over 5 MiB outside the allow-list
+        run: python3 scripts/check_large_files.py
+
   duplication:
     name: Duplication (jscpd)
     needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
