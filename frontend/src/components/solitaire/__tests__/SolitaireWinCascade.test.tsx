@@ -1,7 +1,7 @@
 import React from "react";
 import { AccessibilityInfo } from "react-native";
 import { act, render } from "@testing-library/react-native";
-import { ThemeProvider } from "../../../../theme/ThemeContext";
+import { ThemeProvider } from "../../../theme/ThemeContext";
 import { SolitaireWinCascade, WIN_CASCADE_MS } from "../SolitaireWinCascade";
 
 async function renderCascade(onDone: () => void) {

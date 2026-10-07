@@ -72,6 +72,7 @@ daily_word:
   - 'backend/daily_word/**'
 sort:
   - 'frontend/src/screens/SortScreen*'
+  - 'frontend/src/components/sort/**'
   - 'frontend/src/game/sort/**'
   - 'backend/sort/**'
 

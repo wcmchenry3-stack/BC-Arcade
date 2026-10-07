@@ -10,16 +10,16 @@ import React from "react";
 import { Pressable, StyleSheet, View, ViewStyle } from "react-native";
 import { useTranslation } from "react-i18next";
 
-import { useTheme } from "../../../theme/ThemeContext";
-import type { Card } from "../types";
-import type { CanonicalSuit } from "../../_shared/decks/types";
+import { useTheme } from "../../theme/ThemeContext";
+import type { Card } from "../../game/solitaire/types";
+import type { CanonicalSuit } from "../../game/_shared/decks/types";
 import CardView, { CARD_WIDTH } from "./CardView";
-import { useCardSize } from "../../_shared/CardSizeContext";
-import { rankLabel } from "../../_shared/decks/cardId";
-import SelectableCard from "../../_shared/SelectableCard";
-import { DraggableCard } from "../../_shared/drag/DraggableCard";
-import { DropTarget } from "../../_shared/drag/DropTarget";
-import type { DropHandler } from "../../_shared/drag/DragContext";
+import { useCardSize } from "../../game/_shared/CardSizeContext";
+import { rankLabel } from "../../game/_shared/decks/cardId";
+import SelectableCard from "../../game/_shared/SelectableCard";
+import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
+import { DropTarget } from "../../game/_shared/drag/DropTarget";
+import type { DropHandler } from "../../game/_shared/drag/DragContext";
 import type { SharedValue } from "react-native-reanimated";
 
 const FACE_UP_OFFSET = 28;

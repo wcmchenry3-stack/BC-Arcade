@@ -38,14 +38,14 @@ import {
   ModalSecondaryButton,
 } from "../components/shared/ModalCard";
 import { PillButton } from "../components/shared/PillButton";
-import TableauPile from "../game/solitaire/components/TableauPile";
-import FoundationPile from "../game/solitaire/components/FoundationPile";
-import StockWastePile from "../game/solitaire/components/StockWastePile";
-import { SolitaireWinCascade } from "../game/solitaire/components/SolitaireWinCascade";
+import TableauPile from "../components/solitaire/TableauPile";
+import FoundationPile from "../components/solitaire/FoundationPile";
+import StockWastePile from "../components/solitaire/StockWastePile";
+import { SolitaireWinCascade } from "../components/solitaire/SolitaireWinCascade";
 import GameResultModal from "../components/shared/GameResultModal";
 import { useSound } from "../game/_shared/useSound";
 import { SOLITAIRE_SOUNDS } from "../game/solitaire/sounds";
-import { CARD_HEIGHT, CARD_WIDTH } from "../game/solitaire/components/CardView";
+import { CARD_HEIGHT, CARD_WIDTH } from "../components/solitaire/CardView";
 import {
   applyMove,
   applyHint,

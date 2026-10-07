@@ -10,15 +10,15 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
-import { useTheme } from "../../../theme/ThemeContext";
-import type { Card, Suit } from "../types";
-import { useCardSize } from "../../_shared/CardSizeContext";
-import type { CanonicalSuit } from "../../_shared/decks/types";
-import { rankLabel } from "../../_shared/decks/cardId";
-import SelectableCard from "../../_shared/SelectableCard";
-import { DraggableCard } from "../../_shared/drag/DraggableCard";
-import { DropTarget } from "../../_shared/drag/DropTarget";
-import type { DropHandler } from "../../_shared/drag/DragContext";
+import { useTheme } from "../../theme/ThemeContext";
+import type { Card, Suit } from "../../game/solitaire/types";
+import { useCardSize } from "../../game/_shared/CardSizeContext";
+import type { CanonicalSuit } from "../../game/_shared/decks/types";
+import { rankLabel } from "../../game/_shared/decks/cardId";
+import SelectableCard from "../../game/_shared/SelectableCard";
+import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
+import { DropTarget } from "../../game/_shared/drag/DropTarget";
+import type { DropHandler } from "../../game/_shared/drag/DragContext";
 import type { SharedValue } from "react-native-reanimated";
 
 const SUIT_SYMBOL: Record<Suit, string> = {

@@ -18,7 +18,7 @@ import * as solitaireEngine from "../../game/solitaire/engine";
 import { createSeededRng, dealGame, setRng } from "../../game/solitaire/engine";
 import type { SolitaireState } from "../../game/solitaire/types";
 import { loadStats, saveStats } from "../../game/solitaire/storage";
-import { WIN_CASCADE_MS } from "../../game/solitaire/components/SolitaireWinCascade";
+import { WIN_CASCADE_MS } from "../../components/solitaire/SolitaireWinCascade";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 
 // SolitaireScreen's first render pulls in the heaviest module graph in the
