@@ -320,6 +320,9 @@ export default function MahjongScreen() {
   const [view, setView] = useState<"loading" | "select" | "play">("loading");
   const [state, setState] = useState<MahjongState | null>(null);
   const camera = useMahjongCamera(getLayout(state?.currentLayoutId ?? "turtle"));
+  // Pairs on the board = the layout's tile count / 2 (144 tiles -> 72 for every layout).
+  const totalPairs =
+    (LAYOUTS.find((l) => l.id === (state?.currentLayoutId ?? "turtle"))?.tileCount ?? 144) / 2;
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState<MahjongProgress>(DEFAULT_PROGRESS);
   const [hasSavedGame, setHasSavedGame] = useState(false);
@@ -528,15 +531,6 @@ export default function MahjongScreen() {
   const prevCompleteRef = useRef(false);
   // Tracks previous state for audio/animation event detection.
   const prevAudioStateRef = useRef<MahjongState | null>(null);
-  // Stable refs to audio callbacks — avoids re-running the detection effect when
-  // play functions change reference (they're recreated each render by useSound).
-  const audioCallbacksRef = useRef({
-    playTileSelect: () => {},
-    playTileMatch: () => {},
-    playShuffle: () => {},
-    playWin: () => {},
-    playDeadlock: () => {},
-  });
 
   const {
     start: syncStart,
@@ -567,17 +561,6 @@ export default function MahjongScreen() {
   const musicActive = state !== null && !state.isComplete && !state.isDeadlocked;
   const { playTileSelect, playTileMatch, playShuffle, playWin, playDeadlock } =
     useMahjongAudio(musicActive);
-
-  // Keep audio callback refs up-to-date each render.
-  useEffect(() => {
-    audioCallbacksRef.current = {
-      playTileSelect,
-      playTileMatch,
-      playShuffle,
-      playWin,
-      playDeadlock,
-    };
-  });
 
   // Reduce motion preference.
   useEffect(() => {
@@ -666,16 +649,8 @@ export default function MahjongScreen() {
     prevAudioStateRef.current = state;
     if (!prev || !state) return;
 
-    const {
-      playTileSelect: pSelect,
-      playTileMatch: pMatch,
-      playShuffle: pShuffle,
-      playWin: pWin,
-      playDeadlock: pDead,
-    } = audioCallbacksRef.current;
-
     if (state.tiles.length < prev.tiles.length) {
-      pMatch();
+      playTileMatch();
       if (!reduceMotion) {
         const removed = prev.tiles.filter((t) => !state.tiles.some((nt) => nt.id === t.id));
         if (removed.length >= 2) {
@@ -686,11 +661,11 @@ export default function MahjongScreen() {
         }
       }
     } else if (state.selected !== null) {
-      pSelect();
+      playTileSelect();
     }
 
     if (state.shufflesLeft < prev.shufflesLeft) {
-      pShuffle();
+      playShuffle();
       if (!reduceMotion) {
         boardOpacity.value = withSequence(
           withTiming(0.35, { duration: 180 }),
@@ -700,11 +675,11 @@ export default function MahjongScreen() {
     }
 
     if (state.isComplete && !prev.isComplete) {
-      pWin();
+      playWin();
     }
 
     if (state.isDeadlocked && !prev.isDeadlocked) {
-      pDead();
+      playDeadlock();
       if (!reduceMotion) {
         boardShakeX.value = withSequence(
           withTiming(8, { duration: 60 }),
@@ -842,7 +817,6 @@ export default function MahjongScreen() {
       // Event data for the game_started event; metadata for the row (#2627).
       syncStart({ layout }, { layout });
       syncMarkStarted();
-      if (s.pairsRemoved === 0 && !hasLoadedRef.current) return;
     },
     [syncGetGameId, syncStart, syncMarkStarted]
   );
@@ -1107,7 +1081,7 @@ export default function MahjongScreen() {
                 />
               )}
               <Text style={[styles.hudText, { color: colors.textMuted }]}>
-                {t("hud.pairs")} {state.pairsRemoved}/72
+                {t("hud.pairs")} {state.pairsRemoved}/{totalPairs}
               </Text>
             </View>
             <View style={styles.hudGroup}>
@@ -1370,20 +1344,6 @@ const styles = StyleSheet.create({
   },
   dealIdText: {
     fontSize: 10,
-  },
-  nameInput: {
-    width: "100%",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    fontSize: 15,
-    marginBottom: 12,
-  },
-  submittedText: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 12,
   },
   devPanel: {
     position: "absolute",
