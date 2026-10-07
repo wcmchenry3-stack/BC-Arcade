@@ -10,6 +10,8 @@
   "error.alreadyGuessed": "Al geraden",
   "error.tooShort": "Niet genoeg letters",
   "error.couldNotLoad": "Kon de puzzel van vandaag niet laden",
+  "error.needsConnection": "Dagwoord heeft een verbinding nodig",
+  "error.retry": "Opnieuw proberen",
   "error.couldNotSubmit": "Kon je poging niet versturen",
   "error.stalePuzzle": "Nieuwe puzzel beschikbaar — het woord van vandaag wordt geladen",
   "error.wrongLength": "Je poging heeft niet de juiste lengte",

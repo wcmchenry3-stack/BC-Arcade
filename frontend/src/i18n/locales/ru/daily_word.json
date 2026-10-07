@@ -12,6 +12,8 @@
   "error.alreadyGuessed": "Уже пробовали",
   "error.tooShort": "Недостаточно букв",
   "error.couldNotLoad": "Не удалось загрузить головоломку дня",
+  "error.needsConnection": "Для слова дня нужно подключение",
+  "error.retry": "Повторить",
   "error.couldNotSubmit": "Не удалось отправить вашу попытку",
   "error.stalePuzzle": "Доступна новая головоломка — загружаем сегодняшнее слово",
   "error.wrongLength": "Длина слова не совпадает с сегодняшним словом",
