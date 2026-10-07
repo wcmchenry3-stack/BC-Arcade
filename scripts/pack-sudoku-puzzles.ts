@@ -8,7 +8,7 @@
  * regenerating either JSON file; puzzleBanks.test.ts fails until you do.
  *
  * Usage (from the repo root):
- *   npx tsx scripts/pack-sudoku-puzzles.ts
+ *   npx --prefix frontend tsx scripts/pack-sudoku-puzzles.ts
  *   (cd frontend && npx prettier --write src/game/sudoku/puzzleBanks.generated.ts)
  */
 

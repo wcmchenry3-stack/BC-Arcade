@@ -21,14 +21,6 @@ on:
         required: true
         default: "60s"
 
-  # Callable from another workflow (no caller today; informational only)
-  workflow_call:
-    inputs:
-      target_url:
-        type: string
-        required: false
-        default: "https://dev-games-api.buffingchi.com"
-
 # No PR trigger — perf tests are never a merge gate.
 
 env:
@@ -52,7 +44,7 @@ jobs:
           URL="${{ steps.resolve-url.outputs.url }}"
           echo "Warming up $URL ..."
           for i in 1 2 3 4 5; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL/game/state" || echo "000")
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL/health" || echo "000")
             echo "Attempt $i: HTTP $STATUS"
             if [ "$STATUS" != "000" ] && [ "$STATUS" != "503" ]; then
               echo "Service is up."

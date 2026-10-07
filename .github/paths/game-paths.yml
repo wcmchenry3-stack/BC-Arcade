@@ -1,0 +1,116 @@
+# Single source of truth for "which paths belong to which game" (#2973).
+#
+# Consumed as a dorny/paths-filter `filters:` file by:
+#   - .github/workflows/ci.yml                    (detect-e2e-scope, Playwright)
+#   - .github/workflows/detect-maestro-scope.yml  (Maestro)
+#
+# One key per game, named after the Playwright project / Maestro flow directory
+# (daily_word uses an underscore: GitHub Actions expressions parse a bare `-`
+# in `steps.filter.outputs.daily-word` as subtraction; detect-maestro-scope.yml
+# maps it back to the hyphenated `daily-word` flow directory).
+#
+# When adding a game, add its key here and wire it into the scope step of the
+# two consumers above (and the Maestro full-suite guard in
+# detect-maestro-scope.yml).
+
+yacht:
+  - 'frontend/src/screens/GameScreen*'
+  - 'frontend/src/components/Die*'
+  - 'frontend/src/components/DiceRow*'
+  - 'frontend/src/components/Scorecard*'
+  - 'frontend/src/components/ScoreRow*'
+  - 'frontend/src/game/yacht/**'
+  - 'backend/yacht/**'
+blackjack:
+  - 'frontend/src/screens/Blackjack*Screen*'
+  - 'frontend/src/components/blackjack/**'
+  - 'frontend/src/game/blackjack/**'
+  - 'backend/blackjack/**'
+twenty48:
+  - 'frontend/src/screens/Twenty48Screen*'
+  - 'frontend/src/components/twenty48/**'
+  - 'frontend/src/game/twenty48/**'
+  - 'backend/twenty48/**'
+cascade:
+  - 'frontend/src/screens/CascadeScreen*'
+  - 'frontend/src/components/cascade/**'
+  - 'frontend/src/game/cascade/**'
+  - 'backend/cascade/**'
+mahjong:
+  - 'frontend/src/screens/Mahjong*Screen*'
+  - 'frontend/src/components/mahjong/**'
+  - 'frontend/src/game/mahjong/**'
+  - 'backend/mahjong/**'
+freecell:
+  - 'frontend/src/screens/FreeCellScreen*'
+  - 'frontend/src/components/freecell/**'
+  - 'frontend/src/game/freecell/**'
+  - 'backend/freecell/**'
+starswarm:
+  - 'frontend/src/screens/StarSwarmScreen*'
+  - 'frontend/src/components/starswarm/**'
+  - 'frontend/src/game/starswarm/**'
+  - 'backend/starswarm/**'
+hearts:
+  - 'frontend/src/screens/HeartsScreen*'
+  - 'frontend/src/components/hearts/**'
+  - 'frontend/src/game/hearts/**'
+  - 'backend/hearts/**'
+solitaire:
+  - 'frontend/src/screens/SolitaireScreen*'
+  - 'frontend/src/components/solitaire/**'
+  - 'frontend/src/game/solitaire/**'
+  - 'backend/solitaire/**'
+sudoku:
+  - 'frontend/src/screens/SudokuScreen*'
+  - 'frontend/src/components/sudoku/**'
+  - 'frontend/src/game/sudoku/**'
+  - 'backend/sudoku/**'
+daily_word:
+  - 'frontend/src/screens/DailyWordScreen*'
+  - 'frontend/src/game/daily_word/**'
+  - 'backend/daily_word/**'
+sort:
+  - 'frontend/src/screens/SortScreen*'
+  - 'frontend/src/game/sort/**'
+  - 'backend/sort/**'
+
+# --- Playwright-only: the log-store / event-sync budget project (logs-budget) ---
+logstore:
+  - 'frontend/src/game/_shared/eventStore*'
+  - 'frontend/src/game/_shared/eventQueueConfig*'
+  - 'frontend/src/game/_shared/gameEventClient*'
+  - 'frontend/src/game/_shared/syncWorker*'
+  - 'frontend/src/game/_shared/syncApi*'
+  - 'frontend/src/game/_shared/pendingGamesStore*'
+  - 'frontend/src/game/_shared/bugReportLimiter*'
+  - 'frontend/src/game/_shared/testHooks*'
+  - 'frontend/src/game/_shared/NetworkContext*'
+  - 'backend/games/**'
+  - 'backend/logs/**'
+  - 'e2e/tests/logs-*.spec.ts'
+  - 'e2e/tests/helpers/logstore*'
+
+# --- "Run everything" triggers. A match on `shared` OR the suite-specific key
+# --- below it (OR-ed by each consumer) selects the full suite.
+shared:
+  - 'frontend/App.tsx'
+  - 'frontend/app.json'
+  - 'frontend/src/theme/**'
+  - 'frontend/src/components/OfflineBanner*'
+  - 'frontend/src/components/LanguageSwitcher*'
+  - 'backend/main.py'
+  - '.github/workflows/**'
+  - '.github/actions/**'
+  - '.github/paths/**'
+playwright_shared:
+  - 'e2e/**'
+maestro_shared:
+  - 'frontend/src/game/_shared/**'
+  # Several flows assert exact translated accessibility strings
+  # (e.g. solitaire/freecell drag.yaml's "Tableau column N, M cards"). A
+  # locale-only PR matches no per-game filter above, so without this it'd run
+  # only `home` and any drag.yaml breakage from a copy change would surface
+  # later on `main`.
+  - 'frontend/src/i18n/**'
+  - 'e2e/maestro/**'

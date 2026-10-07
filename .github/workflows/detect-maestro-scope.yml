@@ -3,9 +3,10 @@ name: Detect Maestro scope
 # Reusable workflow: maps changed paths to the set of Maestro flow directories
 # (e2e/maestro/flows/<dir>/) that need to run. Mirrors the `detect-e2e-scope`
 # job in ci.yml (same full-suite-vs-selective decision), but keyed to Maestro's
-# directory-per-game layout instead of Playwright's project list — several
-# games have Maestro coverage but no Playwright project (daily-word, sort,
-# home, offline), so this can't just reuse detect-e2e-scope's output.
+# directory-per-game layout instead of Playwright's project list (Maestro also
+# has non-game flow directories — home, offline — and `daily_word` maps to the
+# hyphenated `daily-word`), so this can't just reuse detect-e2e-scope's output.
+# Both jobs read the same path table: .github/paths/game-paths.yml.
 #
 # Called by mobile-smoke-android.yml and mobile-smoke-ios.yml. Left as its own
 # job/file rather than folding into ci.yml so a mistake here can't destabilize
@@ -41,93 +42,16 @@ jobs:
         # rather than depend on how it resolves a base for that event.
         if: github.event_name != 'workflow_dispatch'
         with:
-          filters: |
-            yacht:
-              - 'frontend/src/screens/GameScreen*'
-              - 'frontend/src/components/Die*'
-              - 'frontend/src/components/DiceRow*'
-              - 'frontend/src/components/Scorecard*'
-              - 'frontend/src/components/ScoreRow*'
-              - 'frontend/src/game/yacht/**'
-              - 'backend/yacht/**'
-            blackjack:
-              - 'frontend/src/screens/Blackjack*Screen*'
-              - 'frontend/src/components/blackjack/**'
-              - 'frontend/src/game/blackjack/**'
-              - 'backend/blackjack/**'
-            twenty48:
-              - 'frontend/src/screens/Twenty48Screen*'
-              - 'frontend/src/components/twenty48/**'
-              - 'frontend/src/game/twenty48/**'
-            cascade:
-              - 'frontend/src/screens/CascadeScreen*'
-              - 'frontend/src/components/cascade/**'
-              - 'frontend/src/game/cascade/**'
-              - 'backend/cascade/**'
-            mahjong:
-              - 'frontend/src/screens/Mahjong*Screen*'
-              - 'frontend/src/components/mahjong/**'
-              - 'frontend/src/game/mahjong/**'
-              - 'backend/mahjong/**'
-            freecell:
-              - 'frontend/src/screens/FreeCellScreen*'
-              - 'frontend/src/components/freecell/**'
-              - 'frontend/src/game/freecell/**'
-              - 'backend/freecell/**'
-            starswarm:
-              - 'frontend/src/screens/StarSwarmScreen*'
-              - 'frontend/src/components/starswarm/**'
-              - 'frontend/src/game/starswarm/**'
-              - 'backend/starswarm/**'
-            hearts:
-              - 'frontend/src/screens/HeartsScreen*'
-              - 'frontend/src/components/hearts/**'
-              - 'frontend/src/game/hearts/**'
-              - 'backend/hearts/**'
-            solitaire:
-              - 'frontend/src/screens/SolitaireScreen*'
-              - 'frontend/src/game/solitaire/**'
-              - 'backend/solitaire/**'
-            sudoku:
-              - 'frontend/src/screens/SudokuScreen*'
-              - 'frontend/src/components/sudoku/**'
-              - 'frontend/src/game/sudoku/**'
-              - 'backend/sudoku/**'
-            # Key is daily_word (underscore), not daily-word, because GitHub
-            # Actions expressions treat a bare `-` in dot-notation property
-            # access as subtraction — `steps.filter.outputs.daily-word` would
-            # not parse as a single identifier. The flow directory itself is
-            # still `daily-word` (hyphen); mapped below.
-            daily_word:
-              - 'frontend/src/screens/DailyWordScreen*'
-              - 'frontend/src/game/daily_word/**'
-              - 'backend/daily_word/**'
-            sort:
-              - 'frontend/src/screens/SortScreen*'
-              - 'frontend/src/game/sort/**'
-              - 'backend/sort/**'
-            shared:
-              - 'frontend/App.tsx'
-              - 'frontend/app.json'
-              - 'frontend/src/theme/**'
-              - 'frontend/src/game/_shared/**'
-              - 'frontend/src/components/OfflineBanner*'
-              - 'frontend/src/components/LanguageSwitcher*'
-              # Several flows assert exact translated accessibility strings
-              # (e.g. solitaire/freecell drag.yaml's "Tableau column N, M
-              # cards"). A locale-only PR matches no per-game filter above,
-              # so without this it'd run only `home` and any drag.yaml
-              # breakage from a copy change would surface later on `main`.
-              - 'frontend/src/i18n/**'
-              - 'backend/main.py'
-              - 'e2e/maestro/**'
-              - '.github/workflows/**'
+          # One table for every scope job (game keys, `shared`, `maestro_shared`) —
+          # see .github/paths/game-paths.yml (#2973). `daily_word` keeps its
+          # underscore there (expression-safe) and is mapped to `daily-word` below.
+          filters: .github/paths/game-paths.yml
 
       # Fails loudly if e2e/maestro/flows/ has a directory (other than
       # _shared) that isn't in the full-suite list below, or vice versa —
       # otherwise a newly added game's flows would silently never run on
       # either platform until someone remembers to update both this list
-      # and its matching paths-filter category above. The validated list
+      # and its matching key in .github/paths/game-paths.yml. The validated list
       # is also exported as this step's `full_suite` output and is the
       # ONLY place the full-suite project set is spelled out — the `scope`
       # step below reads it back instead of hardcoding its own copy, so a
@@ -139,7 +63,7 @@ jobs:
           actual=$(ls e2e/maestro/flows | grep -v '^_shared$' | sort | tr '\n' ' ' | xargs)
           expected=$(echo "blackjack cascade daily-word freecell hearts home mahjong offline solitaire sort starswarm sudoku twenty48 yacht" | tr ' ' '\n' | sort | tr '\n' ' ' | xargs)
           if [[ "$actual" != "$expected" ]]; then
-            echo "::error::e2e/maestro/flows/ directories ($actual) don't match detect-maestro-scope.yml's hardcoded full-suite list ($expected). Update the full-suite list AND add/remove a matching paths-filter category when a game's Maestro flows are added or removed."
+            echo "::error::e2e/maestro/flows/ directories ($actual) don't match detect-maestro-scope.yml's hardcoded full-suite list ($expected). Update the full-suite list AND add/remove a matching key in .github/paths/game-paths.yml when a game's Maestro flows are added or removed."
             exit 1
           fi
           echo "full_suite=$expected" >> "$GITHUB_OUTPUT"
@@ -152,7 +76,8 @@ jobs:
           if [[ "${{ github.event_name }}" == "push" ]] || \
              [[ "${{ github.event_name }}" == "workflow_dispatch" ]] || \
              [[ "${{ github.base_ref }}" == "main" ]] || \
-             [[ "${{ steps.filter.outputs.shared }}" == "true" ]]; then
+             [[ "${{ steps.filter.outputs.shared }}" == "true" ]] || \
+             [[ "${{ steps.filter.outputs.maestro_shared }}" == "true" ]]; then
             echo "projects=${{ steps.guard.outputs.full_suite }}" >> "$GITHUB_OUTPUT"
             echo "label=full suite (push/main/shared change)" >> "$GITHUB_OUTPUT"
           else
