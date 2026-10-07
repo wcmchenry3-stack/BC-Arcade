@@ -33,6 +33,11 @@ The current free goal pool contains:
 - Bottle Sort
 - FreeCell
 - Yacht
+- Sudoku (added by #2949 after it went free in migration 0023)
+
+A guard test (`test_free_pool_matches_the_non_premium_game_types`) fails if `FREE_GOAL_POOL` and the non-premium `game_types` rows ever differ.
+
+Sudoku's goals are difficulty-agnostic: solve a puzzle (`solved`, not luck-dependent, since only completed puzzles are recorded), `final_score >= 180` and `final_score >= 280` (score = difficulty base 100/200/300 minus 10 per error, so the thresholds imply medium and hard puzzles). Targets are to be tuned post-launch.
 
 Blackjack and Mahjong have goal definitions prepared in `PENDING_PREMIUM_GOALS`, but they are not in either live pool today.
 
@@ -44,7 +49,7 @@ For a day that has never been frozen before:
 
 - `definitions.py` uses the calendar day's ordinal plus `DAILY_CHALLENGE_SALT`;
 - the salt deterministically shuffles the non-Daily-Word game rotation;
-- the day advances two positions through that rotation;
+- the day advances two positions through that rotation (with an even-length rotation, the start also shifts by one place after every lap of half the rotation, so every neighbouring pair still occurs);
 - goal tiers are selected deterministically from the same day/salt inputs.
 
 The salt is environment-specific. Its purpose is to make the future schedule stable for the environment without making the complete future rotation trivially derivable from public source alone.

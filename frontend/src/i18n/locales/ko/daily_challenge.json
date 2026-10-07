@@ -10,6 +10,8 @@
   "goal.twenty48.final_score_at_least": "{{game}}에서 {{target}}점 이상 획득",
   "goal.twenty48.highest_tile_at_least": "{{game}}에서 {{target}} 타일 도달",
   "goal.yacht.final_score_at_least": "{{game}}에서 {{target}}점 이상 획득",
+  "goal.sudoku.final_score_at_least": "{{game}}에서 {{target}}점 이상 획득",
+  "goal.sudoku.solved": "{{game}} 퍼즐 하나 풀기",
   "goal.sort.final_score_at_least": "{{game}}에서 레벨 {{target}} 도달",
   "goal.solitaire.moves_at_least_one": "{{game}}에서 한 번 이동하기",
   "goal.solitaire.moves_at_least_other": "{{game}}에서 {{count}}번 이상 이동하기",
