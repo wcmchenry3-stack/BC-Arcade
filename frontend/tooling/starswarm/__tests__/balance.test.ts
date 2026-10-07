@@ -4,7 +4,7 @@
  * The harness drives the real engine, its attribution adds up to Buddy's real HP loss, a seeded
  * cell replays to the same metrics, a no-override engine variant is the shipped engine, and every
  * preset variant still applies to the current engine source. The full run is the CLI
- * (`npx tsx scripts/simulate-starswarm.ts`), see docs/games/starswarm.md → "Balance simulation".
+ * (`npx tsx tools/sim/simulate-starswarm.ts`), see docs/games/starswarm.md → "Balance simulation".
  */
 import * as fs from "fs";
 import * as realEngine from "../../../src/game/starswarm/engine";

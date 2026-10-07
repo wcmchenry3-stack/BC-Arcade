@@ -619,7 +619,7 @@ Use this checklist when adding a new game. Each item links to the file to create
 - [ ] **Leaderboard link** — `useLeaderboardLink(navigation, "mygame", partition)` passed to both `GameResultModal.onViewLeaderboard` and `GameShell.onOpenLeaderboard`
 - [ ] **Stats entry** — nothing to build: `GameStats` and Profile read `/stats/me` (§2.6); check the game's tiles show sensible values (win figures "—" for a score-only game)
 - [ ] **`noUncheckedIndexedAccess`** clean — no suppression comments
-- [ ] **Icon assets are WebP** — any new icons added to `assets/fruit-icons/` or `assets/celestial-icons/` must be converted before committing: `python frontend/scripts/convert_icons_to_webp.py <dir>`. Raw PNGs in non-exempt asset directories will fail CI (`assetTransparency.test.ts`).
+- [ ] **Icon assets are WebP** — any new icons added to `assets/fruit-icons/` or `assets/celestial-icons/` must be converted before committing: `python tools/assets/convert_icons_to_webp.py <dir>`. Raw PNGs in non-exempt asset directories will fail CI (`assetTransparency.test.ts`).
 
 ### Size Budget
 

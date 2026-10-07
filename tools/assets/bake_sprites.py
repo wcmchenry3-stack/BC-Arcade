@@ -16,7 +16,7 @@ vertices JSON so the runtime renderer knows the draw half-size:
     ctx.drawImage(baked, -clipR, -clipR, clipR*2, clipR*2);
 
 Run from anywhere:
-    python frontend/scripts/bake_sprites.py
+    python tools/assets/bake_sprites.py
 
 Requires Pillow:
     pip install Pillow
@@ -34,7 +34,7 @@ except ImportError:
 # Paths
 # ---------------------------------------------------------------------------
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
-FRONTEND_DIR = SCRIPT_DIR.parent
+FRONTEND_DIR = SCRIPT_DIR.parent.parent / "frontend"
 ASSETS_DIR = FRONTEND_DIR / "assets"
 
 # Output canvas: 512×512.  The baked clipR circle fills the entire image.

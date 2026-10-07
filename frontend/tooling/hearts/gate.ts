@@ -1,6 +1,6 @@
 /**
  * Hearts sim gate v2 (#2238): which matchups run, what is checked, and how.
- * `scripts/simulate-hearts.ts --gate` runs it, locally and in
+ * `tools/sim/simulate-hearts.ts --gate` runs it, locally and in
  * .github/workflows/hearts-sim-gate.yml. See docs/TESTING.md.
  *
  * Two kinds of check, both sequential tests (sprt.ts) on per-block series
@@ -472,8 +472,8 @@ export function runGroup(groupId: string, options: RunOptions = {}): GroupRun {
 /**
  * Measure a fresh baseline at a fixed sample size on the baseline seed:
  * every regression check's metric, plus the separation estimates for the
- * record. Run by `scripts/simulate-hearts.ts --update-baseline`.
- * @public Used by scripts/simulate-hearts.ts (outside knip's workspace; #2969).
+ * record. Run by `tools/sim/simulate-hearts.ts --update-baseline`.
+ * @public Used by tools/sim/simulate-hearts.ts (outside knip's workspace; #2969).
  */
 export function measureBaseline(
   reason: string,
@@ -548,7 +548,7 @@ export function formatCheck(r: CheckResult): string {
   );
 }
 
-/** @public Used by scripts/simulate-hearts.ts (outside knip's workspace; #2969). */
+/** @public Used by tools/sim/simulate-hearts.ts (outside knip's workspace; #2969). */
 export function formatGroupRun(run: GroupRun): string {
   const failed = run.results.filter((r) => r.status === "fail").length;
   const lines = [
@@ -562,7 +562,7 @@ export function formatGroupRun(run: GroupRun): string {
 
 /**
  * Every role × metric of a matchup's blocks, with logged counts (descriptive).
- * @public Used by scripts/simulate-hearts.ts (outside knip's workspace; #2969).
+ * @public Used by tools/sim/simulate-hearts.ts (outside knip's workspace; #2969).
  */
 export function describeMatchup(id: string, blocks: readonly BlockRecord[]): string {
   const roles = Object.keys(blocks[0]?.roles ?? {});

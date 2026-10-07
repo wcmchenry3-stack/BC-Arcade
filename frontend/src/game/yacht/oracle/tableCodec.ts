@@ -20,7 +20,7 @@
  * change where two options were already within 0.01 points of each other.
  * The optimal game-start EV moves by < 0.005.
  *
- * Shared by the offline build (scripts/build-yacht-oracle.ts, encode) and
+ * Shared by the offline build (tools/generators/build-yacht-oracle.ts, encode) and
  * the runtime oracle (oracle.ts, decode) so the two can't drift.
  */
 

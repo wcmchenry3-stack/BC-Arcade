@@ -1,6 +1,6 @@
 /**
  * Hearts simulation harness (#2238) — the game runner behind the sim gate
- * (gate.ts), the per-PR smoke test and `scripts/simulate-hearts.ts`.
+ * (gate.ts), the per-PR smoke test and `tools/sim/simulate-hearts.ts`.
  *
  * Duplicate-deal replay. A *block* replays one sequence of deals once per
  * line-up of a matchup, so every line-up plays the same cards:

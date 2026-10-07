@@ -1,7 +1,7 @@
 /**
  * Yacht simulation harness (#2245) — the single game runner behind the
  * PR smoke test, the scheduled calibration gate, the baseline printer and
- * `scripts/simulate-yacht.ts`.
+ * `tools/sim/simulate-yacht.ts`.
  *
  * A matchup is played in blocks of four games. In `paired` mode each block
  * draws two dice streams X and Y and plays every combination of turn order

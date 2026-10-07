@@ -15,7 +15,7 @@ Cheap ratchets added for the refactor epic (#2950, issue #2951). They are set at
 | eslint function size      | `frontend/eslint.config.js`                                                                                | `max-lines-per-function` 150, `complexity` 20                                                                                                                                                                                                 | Warn                                        |
 | eslint react-hooks v7     | `frontend/eslint.config.js`                                                                                | `refs`, `immutability`, `set-state-in-effect`, `purity`, `globals` at `warn`                                                                                                                                                                  | Warn                                        |
 | Duplication (jscpd)       | CI job `duplication`                                                                                       | `--threshold 2.5 --min-lines 20 --min-tokens 70` over `frontend/src frontend/tooling backend`                                                                                                                                                                | Yes                                         |
-| Unused code (knip)        | `frontend/knip.json`, CI job `knip`                                                                        | `npx knip --no-progress`; repo-root `scripts/*.ts` are entries, and tooling exports only they use carry `@public` (see "Simulators")                                                                                                         | Warn-only until 2026-11-04, then `--strict` |
+| Unused code (knip)        | `frontend/knip.json`, CI job `knip`                                                                        | `npx knip --no-progress`; repo-root `tools/sim/*.ts` and `tools/generators/*.ts` are entries, and tooling exports only they use carry `@public` (see "Simulators")                                                                                                         | Warn-only until 2026-11-04, then `--strict` |
 | Jest coverage floors      | `frontend/package.json` (`jest.coverageThreshold.global`, `collectCoverageFrom`), run by `npm run test:ci` | Global floors: lines 90, statements 90, branches 85, functions 88 (measured 2026-10-05: lines 96.0, statements 94.3, branches 88.3, functions 91.9; see "Coverage policy") plus per-file 80 % lines for the solitaire/freecell/hearts engines | Yes (`test-frontend`)                       |
 
 ```bash
@@ -51,20 +51,20 @@ The CI/script-only simulators live outside `src/` in `frontend/tooling/` (#2969)
 
 ### Simulators (`frontend/tooling/`, #2969)
 
-The Hearts, Yacht and Star Swarm balance simulators and the Yacht oracle table builder are not part of the app. They live in `frontend/tooling/<game>/` and only the repo-root scripts (`scripts/simulate-*.ts`, `scripts/build-yacht-oracle.ts`), their own tests and the sim-gate workflows use them:
+The Hearts, Yacht and Star Swarm balance simulators and the Yacht oracle table builder are not part of the app. They live in `frontend/tooling/<game>/` and only the repo-root scripts (`scripts/simulate-*.ts`, `tools/generators/build-yacht-oracle.ts`), their own tests and the sim-gate workflows use them:
 
 | Path                                | What                                                                       | CLI                              |
 | ----------------------------------- | -------------------------------------------------------------------------- | -------------------------------- |
-| `frontend/tooling/hearts/`          | Duplicate-deal harness, SPRT gate, `baseline.json`, regret reference       | `scripts/simulate-hearts.ts`     |
-| `frontend/tooling/yacht/`           | Paired-dice harness, stats, calibration bands                               | `scripts/simulate-yacht.ts`      |
-| `frontend/tooling/yacht/oracleBuild/` | Offline retrograde solver for `src/game/yacht/oracle/oracleTable.generated.ts` | `scripts/build-yacht-oracle.ts`  |
-| `frontend/tooling/starswarm/`       | Buddy balance harness, engine variants, presets, asteroid-awareness sim    | `scripts/simulate-starswarm.ts`  |
+| `frontend/tooling/hearts/`          | Duplicate-deal harness, SPRT gate, `baseline.json`, regret reference       | `tools/sim/simulate-hearts.ts`     |
+| `frontend/tooling/yacht/`           | Paired-dice harness, stats, calibration bands                               | `tools/sim/simulate-yacht.ts`      |
+| `frontend/tooling/yacht/oracleBuild/` | Offline retrograde solver for `src/game/yacht/oracle/oracleTable.generated.ts` | `tools/generators/build-yacht-oracle.ts`  |
+| `frontend/tooling/starswarm/`       | Buddy balance harness, engine variants, presets, asteroid-awareness sim    | `tools/sim/simulate-starswarm.ts`  |
 
-- **Run a simulator** from the repo root: `npx --prefix frontend tsx scripts/simulate-hearts.ts --gate --group presets` (each script's header lists its flags).
+- **Run a simulator** from the repo root: `npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate --group presets` (each script's header lists its flags).
 - **Tests** sit in `frontend/tooling/<game>/__tests__/` and run under the jest project `tooling` (the app's tests are the `app` project). Plain `npx jest` runs both; `npx jest --selectProjects tooling` runs only the simulators'. Their smoke runs (`ai.simulate.test.ts`, `ai.calibrate.test.ts`, the `fast` Star Swarm preset) still run in every PR with the rest of Jest.
-- **Type-check:** `npm run typecheck` checks the app (`tsconfig.typecheck.json`, which excludes `tooling/`) and then `tsconfig.tooling.json` (`tooling/**` plus the repo-root `scripts/*.ts`, with Node and Jest types).
+- **Type-check:** `npm run typecheck` checks the app (`tsconfig.typecheck.json`, which excludes `tooling/`) and then `tsconfig.tooling.json` (`tooling/**` plus `tools/sim/*.ts` and `tools/generators/*.ts`, with Node and Jest types).
 - **Boundary:** app code must not import `tooling/` (an eslint `no-restricted-imports` rule fails the lint), so nothing in it can reach the Metro bundle. Tooling imports app modules (engines, AI) by relative path into `src/`.
-- **knip:** `frontend/knip.json` lists `../scripts/*.ts` as entries so the tooling files they import count as used. knip cannot credit exports used from outside its workspace, so the few tooling exports only a root script uses carry a `@public` JSDoc tag; delete the tag with the export when the script stops using it.
+- **knip:** `frontend/knip.json` lists `../tools/sim/*.ts` and `../tools/generators/*.ts` as entries so the tooling files they import count as used. knip cannot credit exports used from outside its workspace, so the few tooling exports only a root script uses carry a `@public` JSDoc tag; delete the tag with the export when the script stops using it.
 
 **Measured** (2026-10-05 on `dev` after the Phase 0 coverage stories #3010, #3014 and #3017, 324 suites / 6,063 tests, `jest --coverage`, all collected files):
 
@@ -388,11 +388,11 @@ added by #2156); its `regret` job runs
 `ai.calibrate.test.ts` (#2244, below). Run it locally from the repo root:
 
 ```bash
-npx --prefix frontend tsx scripts/simulate-yacht.ts --gate                       # everything (~40 min)
-npx --prefix frontend tsx scripts/simulate-yacht.ts --gate --group self-play     # one CI group
-npx --prefix frontend tsx scripts/simulate-yacht.ts --gate --group hard-vs-easy --games 400  # quick look
-npx --prefix frontend tsx scripts/simulate-yacht.ts --a hard --b medium --blocks 250         # ad-hoc matchup
-npx --prefix frontend tsx scripts/simulate-yacht.ts --a hard --b medium --mode independent   # unpaired dice
+npx --prefix frontend tsx tools/sim/simulate-yacht.ts --gate                       # everything (~40 min)
+npx --prefix frontend tsx tools/sim/simulate-yacht.ts --gate --group self-play     # one CI group
+npx --prefix frontend tsx tools/sim/simulate-yacht.ts --gate --group hard-vs-easy --games 400  # quick look
+npx --prefix frontend tsx tools/sim/simulate-yacht.ts --a hard --b medium --blocks 250         # ad-hoc matchup
+npx --prefix frontend tsx tools/sim/simulate-yacht.ts --a hard --b medium --mode independent   # unpaired dice
 ```
 
 A failing band prints the band, the observed value and its CI, e.g.
@@ -477,7 +477,7 @@ a first-mover win rate of 48.8% ± 1.1: no first-mover handicap remains after
 games. The 57.3/42.7 split reported on #2317 came from 150 games per side, where
 the CI is about ±8pp.
 
-`scripts/simulate-yacht.ts` (#2213) is now a thin CLI over this harness. Its
+`tools/sim/simulate-yacht.ts` (#2213) is now a thin CLI over this harness. Its
 old bands table (stale since the utility-AI rewrite) and the separate
 `ai.baseline.test.ts` metrics printer were retired; `--gate` and the ad-hoc
 report replace both.
@@ -568,7 +568,7 @@ aggregate win-rate can't surface.
 ### Hearts AI sim gate v2 — duplicate deals, SPRT, conditional metrics (#2238)
 
 All Hearts AI simulation runs on `frontend/tooling/hearts/`;
-`scripts/simulate-hearts.ts` is the CLI around it.
+`tools/sim/simulate-hearts.ts` is the CLI around it.
 
 - `harness.ts` — **duplicate-deal replay.** A _block_ replays one sequence
   of deals once per line-up of a matchup. Hand _h_ of block _b_ is always
@@ -640,10 +640,10 @@ the midpoint between H0 and H1. The report marks it
 `(truncated at the block cap)`. `--max-blocks` must be at least 1.
 
 ```bash
-npx --prefix frontend tsx scripts/simulate-hearts.ts --gate                     # both groups
-npx --prefix frontend tsx scripts/simulate-hearts.ts --gate --group field       # one CI group
-npx --prefix frontend tsx scripts/simulate-hearts.ts --gate --max-blocks 1000   # quick look (truncates)
-npx --prefix frontend tsx scripts/simulate-hearts.ts --count 3000               # descriptive report, no verdicts
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate                     # both groups
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate --group field       # one CI group
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate --max-blocks 1000   # quick look (truncates)
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --count 3000               # descriptive report, no verdicts
 ```
 
 **Reading a failure.**
@@ -674,7 +674,7 @@ behaviour updates `baseline.json`, and it does so in the same PR as the
 change:
 
 ```bash
-npx --prefix frontend tsx scripts/simulate-hearts.ts --update-baseline --reason "#1234: rank-aware moon attempts"
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --update-baseline --reason "#1234: rank-aware moon attempts"
 ```
 
 This re-measures every regression metric at a fixed sample size on a seed
@@ -797,7 +797,7 @@ the ladder, so the gate now pre-registers the opposite direction (the human
 does better against Cautious players), pinned by `gate.test.ts`. The old six
 fixed-N batches and their ✓/✗ threshold checks are retired; `--count` keeps
 #2204's meaning (games per matchup), and `--log-games` (used by
-`hearts-analysis`) is unchanged.
+`tools/hearts-analysis`) is unchanged.
 
 ### Hearts AI regret metric — points lost vs a perfect-information reference (#2239)
 
@@ -848,10 +848,10 @@ anything it didn't have.
 **Run it.** It is a report, not a gate, and always exits 0:
 
 ```bash
-npx --prefix frontend tsx scripts/simulate-hearts.ts --regret                                  # 100 blocks, every play graded
-npx --prefix frontend tsx scripts/simulate-hearts.ts --regret --blocks 40 --sample-every 4     # quicker
-npx --prefix frontend tsx scripts/simulate-hearts.ts --regret --oracle-player                  # also run the cheating reference player
-npx --prefix frontend tsx scripts/simulate-hearts.ts --regret --pimc 16                        # also grade the PIMC engine (#2587), 16 deals a move
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --regret                                  # 100 blocks, every play graded
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --regret --blocks 40 --sample-every 4     # quicker
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --regret --oracle-player                  # also run the cheating reference player
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --regret --pimc 16                        # also grade the PIMC engine (#2587), 16 deals a move
 ```
 
 Each persona takes the test seat against a Schemer field on the same deals,
@@ -917,9 +917,9 @@ reports, per difficulty × wave type:
 - its damage and kill share, and its per-sortie kills and share of the fleet;
 - the Carrier's time-to-kill, with and without Buddy, on the same seeds.
 
-It lives in `frontend/tooling/starswarm/`, and its CLI is `scripts/simulate-starswarm.ts`. A
+It lives in `frontend/tooling/starswarm/`, and its CLI is `tools/sim/simulate-starswarm.ts`. A
 fast smoke preset runs with the normal jest suite. The full runs use the CLI
-(`npx --prefix frontend tsx scripts/simulate-starswarm.ts --preset baseline --jobs 4`). How to run it, shard it and
+(`npx --prefix frontend tsx tools/sim/simulate-starswarm.ts --preset baseline --jobs 4`). How to run it, shard it and
 override tuning in the sim only:
 [starswarm.md → Balance simulation](games/starswarm.md#balance-simulation-2880).
 

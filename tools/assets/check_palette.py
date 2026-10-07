@@ -11,7 +11,7 @@ Both palettes must satisfy:
   • The same 14 color keys (sync check)
 
 Usage:
-  python3 tools/check_palette.py
+  python3 tools/assets/check_palette.py
 
 To add a new theme, add an entry to PALETTES below and add its
 background hex to BG_PER_THEME.  No other changes needed.

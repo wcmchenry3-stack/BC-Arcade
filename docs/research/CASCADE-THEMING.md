@@ -44,7 +44,7 @@ Assets with stems, crowns, tails, rings, or multi-body geometry will need carefu
 
 ### 1.3 Choose a background removal mode
 
-`frontend/scripts/remove_backgrounds.py` supports two modes:
+`tools/assets/remove_backgrounds.py` supports two modes:
 
 | Mode        | When to use                                                                                                                                                                          |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -282,8 +282,8 @@ npx jest --testPathPattern="fruitAssets|fruitVertices"
 
 | File                                                      | Purpose                                           |
 | --------------------------------------------------------- | ------------------------------------------------- |
-| `frontend/scripts/remove_backgrounds.py`                  | Background removal; may need a new mode per theme |
-| `frontend/scripts/extract_vertices.py`                    | Hull + sprite metadata extraction                 |
+| `tools/assets/remove_backgrounds.py`                  | Background removal; may need a new mode per theme |
+| `tools/assets/extract_vertices.py`                    | Hull + sprite metadata extraction                 |
 | `frontend/assets/{theme}-vertices.json`                   | Runtime vertex/sprite data                        |
 | `frontend/assets/{theme}-icons/*.png`                     | Processed PNG assets                              |
 | `frontend/src/theme/fruitSets.ts`                         | Tier definitions per theme                        |

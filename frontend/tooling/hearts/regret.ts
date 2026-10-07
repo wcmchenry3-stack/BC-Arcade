@@ -196,7 +196,7 @@ export function runRegretBlock(
   return { index: block, roles, regret };
 }
 
-/** @public Used by scripts/simulate-hearts.ts (outside knip's workspace; #2969). */
+/** @public Used by tools/sim/simulate-hearts.ts (outside knip's workspace; #2969). */
 export function runRegretBlocks(
   matchup: Matchup,
   seed: number,
@@ -329,7 +329,7 @@ export const REGRET_PERSONAS: readonly AiPersona[] = ["cautious", "schemer", "da
  * The regret report's matchup: each persona (and, with `withOracle`, the
  * cheating reference player) takes the test seat against a Schemer field,
  * on the same deals.
- * @public Used by scripts/simulate-hearts.ts (outside knip's workspace; #2969).
+ * @public Used by tools/sim/simulate-hearts.ts (outside knip's workspace; #2969).
  */
 export function regretMatchup(withOracle = false, pimc?: HeartsPolicy): Matchup {
   const tests: HeartsPolicy[] = REGRET_PERSONAS.map((p) => personaPolicy(p));

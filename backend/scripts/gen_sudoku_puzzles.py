@@ -39,7 +39,7 @@ The app doesn't bundle these JSON files directly. It ships a packed copy,
 regenerating either file, re-pack from the repo root, then run Prettier on
 the generated file:
 
-    npx tsx scripts/pack-sudoku-puzzles.ts
+    npx tsx tools/generators/pack-sudoku-puzzles.ts
 
 ``frontend/src/game/sudoku/__tests__/puzzleBanks.test.ts`` fails until the
 packed banks match the JSON.

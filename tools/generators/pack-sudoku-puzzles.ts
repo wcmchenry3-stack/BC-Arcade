@@ -8,7 +8,7 @@
  * regenerating either JSON file; puzzleBanks.test.ts fails until you do.
  *
  * Usage (from the repo root):
- *   npx --prefix frontend tsx scripts/pack-sudoku-puzzles.ts
+ *   npx --prefix frontend tsx tools/generators/pack-sudoku-puzzles.ts
  *   (cd frontend && npx prettier --write src/game/sudoku/puzzleBanks.generated.ts)
  */
 
@@ -17,7 +17,7 @@ import {
   encodePuzzleBank,
   type PackedPuzzleBank,
   type PuzzleBank,
-} from "../frontend/src/game/sudoku/puzzleCodec";
+} from "../../frontend/src/game/sudoku/puzzleCodec";
 
 const DIR = "frontend/src/game/sudoku";
 const OUTPUT_PATH = `${DIR}/puzzleBanks.generated.ts`;
@@ -36,7 +36,7 @@ function render(name: string, packed: PackedPuzzleBank): string {
 
 const content = `/**
  * GENERATED FILE — do not edit by hand.
- * Produced by scripts/pack-sudoku-puzzles.ts (#2869) from puzzles.json and
+ * Produced by tools/generators/pack-sudoku-puzzles.ts (#2869) from puzzles.json and
  * puzzles_mini.json. Format: see puzzleCodec.ts.
  */
 

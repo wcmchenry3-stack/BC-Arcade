@@ -3,7 +3,7 @@
  * log produced by `regret.ts`'s per-decision EV-loss functions.
  *
  * Pure module: no React, no IO, no Math.random. Consumers (the calibration
- * gate, `scripts/simulate-yacht.ts`-style tools) build a `RegretRecord[]`
+ * gate, `tools/sim/simulate-yacht.ts`-style tools) build a `RegretRecord[]`
  * while playing simulated games and pass it here for summarization.
  */
 

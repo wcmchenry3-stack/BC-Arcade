@@ -9,7 +9,7 @@
  * Medium against Easy or Hard (a 20-game win rate has an SE of ~0.11). That is the job
  * of the scheduled calibration gate (gate.ts, run nightly by
  * .github/workflows/yacht-sim-gate.yml and locally with
- * `npx tsx scripts/simulate-yacht.ts --gate`). See docs/TESTING.md.
+ * `npx tsx tools/sim/simulate-yacht.ts --gate`). See docs/TESTING.md.
  *
  * Both layers use the same harness (harness.ts): per-player dice
  * streams, mirrored dice, and every matchup played in both turn orders.

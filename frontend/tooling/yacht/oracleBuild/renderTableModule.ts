@@ -1,6 +1,6 @@
 /**
  * Renders oracleTable.generated.ts (build-only, #2243 / #2246). Used by
- * scripts/build-yacht-oracle.ts; the encoding itself lives in
+ * tools/generators/build-yacht-oracle.ts; the encoding itself lives in
  * oracle/tableCodec.ts so the runtime decoder can't drift from it.
  */
 
@@ -15,12 +15,12 @@ export interface TableBuildInfo {
   readonly note?: string;
 }
 
-/** @public Used by scripts/build-yacht-oracle.ts (outside knip's workspace; #2969). */
+/** @public Used by tools/generators/build-yacht-oracle.ts (outside knip's workspace; #2969). */
 export function renderTableModule(values: ArrayLike<number>, info: TableBuildInfo): string {
   const base64 = encodeOracleTable(values);
   return `/**
  * GENERATED FILE — do not edit by hand.
- * Produced by scripts/build-yacht-oracle.ts (#2243). Re-run that script to
+ * Produced by tools/generators/build-yacht-oracle.ts (#2243). Re-run that script to
  * regenerate after any change to stateKey.ts's scoring/transition rules —
  * a rule change here without a regenerate silently stales the oracle.
  *

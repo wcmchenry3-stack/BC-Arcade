@@ -14,8 +14,8 @@
     "format:check": "prettier --check .",
     "translate": "node scripts/translate.js",
     "check-i18n": "node scripts/check-i18n-strings.js",
-    "process-assets": "python scripts/remove_backgrounds.py",
-    "extract-vertices": "python scripts/extract_vertices.py",
+    "process-assets": "python ../tools/assets/remove_backgrounds.py",
+    "extract-vertices": "python ../tools/assets/extract_vertices.py",
     "bundlesize": "bundlesize",
     "check-build-env": "node scripts/check-build-env.js",
     "prebuild": "node scripts/optimize-assets.js"

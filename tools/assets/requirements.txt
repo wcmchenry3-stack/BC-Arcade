@@ -1,2 +1,5 @@
 numpy>=1.26
 colour-science>=0.4.4
+Pillow
+scipy
+pytest

@@ -376,7 +376,7 @@ export const FAST: Preset = {
   ],
 };
 
-/** @public Used by scripts/simulate-starswarm.ts (outside knip's workspace; #2969). */
+/** @public Used by tools/sim/simulate-starswarm.ts (outside knip's workspace; #2969). */
 export const PRESETS: Readonly<Record<string, Preset>> = {
   fast: FAST,
   /** The shipped tuning: every scenario × difficulty, autoplay and invincible; duels on exposure. */
