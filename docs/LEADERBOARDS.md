@@ -127,7 +127,11 @@ Every board read (`top_statement`, the caller's own entry and `GET /games/{id}/r
 | --- | --- | --- |
 | `final_score` | every score board | `games_game_type_score_idx (game_type_id, final_score) WHERE final_score IS NOT NULL` (alembic 0002); the value bounds are index conditions too |
 | `duration_ms` | Mahjong | `games_game_type_duration_idx (game_type_id, duration_ms) WHERE duration_ms IS NOT NULL AND completed_at IS NOT NULL` (alembic 0032); the clear-time floor and cap are index conditions |
-| metadata key | Bottle Sort (`level_reached`) | `games_game_type_completed_idx (game_type_id, completed_at) WHERE completed_at IS NOT NULL` (alembic 0032): the game type's finished rows, the JSON value checked on each |
+| metadata key | Bottle Sort (`level_reached`) | `games_game_type_completed_idx (game_type_id, completed_at) WHERE completed_at IS NOT NULL` (alembic 0032): seeks on `game_type_id` only, then checks the JSON value on each of the type's finished rows |
+
+No board uses `completed_at` in `games_game_type_completed_idx`, neither as an index condition nor as a sort key (the window sorts by session first). It is there for a future "recent finished games of this type" read. A one-column `(game_type_id) WHERE completed_at IS NOT NULL` index serves the boards identically: on Postgres 16 with 3,000,000 rows the Sort plan is the same bitmap scan with `Index Cond: (game_type_id = ...)` either way (median 58 ms vs 57 ms; 19 MB vs 25 MB).
+
+Migration 0032 builds both indexes `CONCURRENTLY`, outside the migration transaction, so a deploy (`alembic upgrade head` while the previous instance still serves) never blocks writes to `games` during the builds. If a concurrent build fails it leaves an INVALID index of that name: drop it and rerun the upgrade.
 
 The one-per-player window (`PARTITION BY session_id`) still reads every eligible row of the board's game type; the indexes bound that to one game type rather than the whole table. Measured on Postgres 16 with 3,000,000 rows (Sort and Mahjong 25,000 each), median of the bound-parameter query: Sort 244 ms to 65 ms, Mahjong 279 ms to 21 ms.
 
@@ -138,11 +142,11 @@ The one-per-player window (`PARTITION BY session_id`) still reads every eligible
 
 So Sort rides `games_game_type_completed_idx`, with no Seq Scan and no change to what ranks. Revisit the mirror only together with a deliberate ranking change.
 
-**Gate.** `backend/tests/test_leaderboard_query_plans.py` EXPLAINs `top_statement` for every enabled board and partition, as the app binds it. On SQLite (the default suite, and CI) it requires `SEARCH games USING INDEX <the index above> (game_type_id=?...)` and no `SCAN games`. On Postgres it seeds and `ANALYZE`s a table in a rolled-back transaction and fails on any `Seq Scan` over `games`, or any access to `games` that does not seek by `game_type_id`. The Postgres half runs when `LEADERBOARD_EXPLAIN_PG_URL` names a scratch database (it migrates it to head) or when the suite's `DATABASE_URL` is Postgres; otherwise it skips with that reason. CI's `test-python` job has no Postgres service, so in CI only the SQLite half runs. Run the Postgres half locally with:
+**Gate.** `backend/tests/test_leaderboard_query_plans.py` EXPLAINs `top_statement` for every enabled board and partition, as the app binds it. On SQLite (the default suite, and CI) it requires `SEARCH games USING INDEX <the index above> (game_type_id=?...)` (older and covering-index wordings accepted) and no `SCAN games`. On Postgres it fails on any `Seq Scan` over `games`, or any access to `games` that does not seek by `game_type_id`. The Postgres half runs only when `LEADERBOARD_EXPLAIN_PG_URL` names a scratch server; the suite's `DATABASE_URL` is never used, since it may name a real database. The test uses that URL only to create a dedicated database (`explain_gate_<random>`, `TEMPLATE template0`), migrates it to head, seeds 25,000 games per enabled board's game type, runs `ANALYZE`, EXPLAINs, and drops the database, so nothing (rows or `ANALYZE` statistics) is left behind; the role needs CREATEDB. It refuses to seed a `games` table that already holds rows. Without the variable it skips with that reason; CI's `test-python` job has no Postgres service, so in CI only the SQLite half runs. Run the Postgres half locally with:
 
 ```bash
 cd backend && source .venv/bin/activate
-LEADERBOARD_EXPLAIN_PG_URL=postgresql://user@localhost/scratch_db \
+LEADERBOARD_EXPLAIN_PG_URL=postgresql://user@localhost/postgres \
   python -m pytest tests/test_leaderboard_query_plans.py --no-cov
 ```
 

@@ -145,8 +145,8 @@ backend/tests/
 - EXPLAIN gate: every enabled board's `top_statement` must seek `games` through its
   index (SQLite: `SEARCH games USING INDEX ...`, never `SCAN games`). The Postgres
   half (fails on `Seq Scan` over `games`) runs only with `LEADERBOARD_EXPLAIN_PG_URL`
-  set to a scratch database, or a Postgres `DATABASE_URL`; it skips otherwise, and
-  CI has no Postgres. See [LEADERBOARDS.md §7a](LEADERBOARDS.md#7a-indexes-2965).
+  set to a scratch server (it creates and drops its own database there; the suite's
+  `DATABASE_URL` is never used); it skips otherwise, and CI has no Postgres. See [LEADERBOARDS.md §7a](LEADERBOARDS.md#7a-indexes-2965).
 
 ### Notes
 
