@@ -804,10 +804,6 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 12,
   },
-  headerRow: {
-    flexDirection: "row",
-    gap: 8,
-  },
   // Sudoku's grid fills the height, so its HUD keeps the tighter padding.
   hudTight: {
     paddingVertical: 4,

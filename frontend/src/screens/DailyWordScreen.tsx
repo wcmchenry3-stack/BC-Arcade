@@ -78,6 +78,8 @@ import type { DevLogEntry } from "../game/daily_word/devLog";
 const FLIP_HALF_MS = 150;
 const TILE_STAGGER_MS = 100;
 const TOAST_DURATION_MS = 2000;
+/** How long to wait before retrying when the server hasn't rolled over yet. */
+const NEXT_WORD_RETRY_MS = 60_000;
 const DEEP_LINK = "https://bcarcade.app/daily-word";
 
 const QWERTY_ROWS = [
@@ -537,9 +539,6 @@ export default function DailyWordScreen() {
     [tzOffset, language, syncGetGameId, syncComplete]
   );
 
-  /** How long to wait before retrying when the server hasn't rolled over yet. */
-  const NEXT_WORD_RETRY_MS = 60_000;
-
   const handlePlayAgain = useCallback(async () => {
     setPlayAgainFailed(false);
     const result = await resetToToday({ requireNewPuzzle: true });
@@ -956,7 +955,7 @@ export default function DailyWordScreen() {
       setCopied(true);
       setTimeout(() => {
         if (mountedRef.current) setCopied(false);
-      }, 2000);
+      }, TOAST_DURATION_MS);
     } catch {
       // Share dismissed or clipboard unavailable — nothing to report.
     }
