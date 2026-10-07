@@ -37,7 +37,7 @@ The current free goal pool contains:
 
 A guard test (`test_free_pool_matches_the_non_premium_game_types`) fails if `FREE_GOAL_POOL` and the non-premium `game_types` rows ever differ.
 
-Sudoku's goals are difficulty-agnostic: solve a puzzle (`solved`, not luck-dependent, since only completed puzzles are recorded), `final_score >= 180` and `final_score >= 280` (score = difficulty base 100/200/300 minus 10 per error, so the thresholds imply medium and hard puzzles). Targets are to be tuned post-launch.
+Sudoku's goals are difficulty-agnostic: solve a puzzle (`solved`, not luck-dependent, since an unsolved puzzle reports `won: false` and is filtered out as abandoned), `final_score >= 180` and `final_score >= 280` (score = difficulty base 100/200/300 minus 10 per error, so the thresholds imply medium and hard puzzles). Targets are to be tuned post-launch.
 
 Blackjack and Mahjong have goal definitions prepared in `PENDING_PREMIUM_GOALS`, but they are not in either live pool today.
 

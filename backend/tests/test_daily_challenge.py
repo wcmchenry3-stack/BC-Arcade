@@ -272,6 +272,24 @@ def test_every_neighbouring_pair_occurs_for_any_rotation_length(slate: str) -> N
     assert len(pairs) == len(order)
 
 
+@pytest.mark.parametrize("games", [4, 5, 6, 7, 8, 9])
+def test_rotation_never_repeats_a_game_whatever_the_pool_size(
+    games: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    goals = FREE_GOAL_POOL["yacht"]
+    pool = {ALWAYS_PRESENT: FREE_GOAL_POOL[ALWAYS_PRESENT]} | {f"g{i}": goals for i in range(games)}
+    monkeypatch.setitem(GOAL_POOLS, "free", pool)
+    rotation.cache_clear()
+    try:
+        days = _days(200)
+        for a, b in pairwise(days):
+            assert set(pick_games(a, "free", 0)).isdisjoint(pick_games(b, "free", 0))
+        if games >= 5:
+            assert len({frozenset(pick_games(d, "free", 0)) for d in days}) == games
+    finally:
+        rotation.cache_clear()
+
+
 def test_win_limits_are_above_the_physical_minimum() -> None:
     # A win is impossible below these, so a goal under them could never be met.
     minimum = {
@@ -861,7 +879,10 @@ async def test_free_pool_matches_the_non_premium_game_types() -> None:
         rows = (await db.execute(select(GameType.name, GameType.is_premium))).all()
     free = {name for name, is_premium in rows if not is_premium}
     assert free, "game_types has no free rows"
-    assert set(FREE_GOAL_POOL) == free
+    assert set(FREE_GOAL_POOL) == free, (
+        f"missing goals for free games: {sorted(free - set(FREE_GOAL_POOL))}; "
+        f"goals for non-free games: {sorted(set(FREE_GOAL_POOL) - free)}"
+    )
 
 
 @needs_db

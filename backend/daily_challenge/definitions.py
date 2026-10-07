@@ -32,9 +32,9 @@ Fields the evaluators read, per game (the result each game must send):
     sort        final_score (highest level solved)     (every solve, #2625)
     freecell    won, moves                             (#2452)
     yacht       final_score                            (already sent)
-    sudoku      won, final_score, errors               (SudokuScreen; only solved puzzles
-                — final_score = difficulty base 100/200/300 minus 10 per error)
-                are ever recorded, so a Sudoku row is always a finished solve
+    sudoku      won, final_score, errors               (SudokuScreen; final_score =
+                difficulty base 100/200/300 minus 10 per error, sent only on a solve —
+                an abandoned row has won: false, no score, and is filtered by the service)
     blackjack   hands_played, hands_won, starting_chips, final_chips (BlackjackResult)
                 — premium since 2026-09-23, so not in the free pool (see below)
     mahjong     won, pairs, duration_ms (column)       (MahjongResult)
@@ -351,7 +351,7 @@ def pick_games(day: date, slate: Slate, salt: int) -> tuple[str, str]:
     ordinal = day.toordinal()
     # An even rotation length would only ever reach every other position, so after
     # each lap of len/2 days shift by one to bring the other pairs into play.
-    lap_shift = ordinal // (len(order) // 2) if len(order) % 2 == 0 else 0
+    lap_shift = ordinal // (len(order) // 2) if len(order) % 2 == 0 and len(order) >= 6 else 0
     base = (2 * ordinal + lap_shift + salt) % len(order)
     return order[base], order[(base + 1) % len(order)]
 
