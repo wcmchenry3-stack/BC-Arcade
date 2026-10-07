@@ -73,9 +73,24 @@ export function deriveHud(state: StarSwarmState, extras: HudExtras): HudState {
 
 /** True when `b` would render exactly what `a` did — skip the React commit. */
 export function sameHud(a: HudState, b: HudState): boolean {
-  const keys = Object.keys(a) as (keyof HudState)[];
-  for (const k of keys) if (a[k] !== b[k]) return false;
-  return true;
+  // #2963: field by field — no `Object.keys` array every frame. A field added to HudState must be
+  // added here too (hud.test pins that every field is compared).
+  return (
+    a.score === b.score &&
+    a.wave === b.wave &&
+    a.difficulty === b.difficulty &&
+    a.guns === b.guns &&
+    a.hull === b.hull &&
+    a.lives === b.lives &&
+    a.countdownDigit === b.countdownDigit &&
+    a.waveBannerCountdown === b.waveBannerCountdown &&
+    a.bonusFlash === b.bonusFlash &&
+    a.missionComplete === b.missionComplete &&
+    a.rout === b.rout &&
+    a.bossWave === b.bossWave &&
+    a.gameOver === b.gameOver &&
+    a.powerUp === b.powerUp
+  );
 }
 
 export interface HudCues {
