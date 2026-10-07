@@ -6,8 +6,12 @@ export const COMPACT_HEIGHT_BREAKPOINT = 660;
 // Standard playing-card aspect ratio (≈ √2). Used only for split card height.
 const CARD_ASPECT = 1.414;
 
-// Horizontal padding applied by the table screen on each side (see BlackjackTableScreen).
+// Visual margin kept free on each side of the window. The table area itself has
+// no horizontal padding, so this only stops cards touching the screen edge.
 const TABLE_PADDING_H = 16;
+// Smallest strip of an overlapped card that stays visible, even when the row is
+// narrower than a single card (very narrow windows).
+const MIN_VISIBLE_STRIP = 4;
 // Fallback when the caller does not know the window width (small phone).
 const DEFAULT_AVAILABLE_WIDTH = 360;
 // Slack for the fan rotation of the first two player cards and split-hand borders.
@@ -25,8 +29,8 @@ export function calculateCardOverlap(
   cardWidth: number,
   availableWidth: number
 ): number {
-  if (count <= 1 || availableWidth <= cardWidth) return 0;
-  const step = (availableWidth - cardWidth) / (count - 1);
+  if (count <= 1 || !Number.isFinite(availableWidth)) return 0;
+  const step = Math.max(MIN_VISIBLE_STRIP, (availableWidth - cardWidth) / (count - 1));
   return Math.min(0, Math.floor(step - cardWidth));
 }
 

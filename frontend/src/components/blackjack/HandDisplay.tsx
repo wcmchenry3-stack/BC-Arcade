@@ -64,7 +64,7 @@ export default function HandDisplay({
         />
       )}
 
-      <View style={[styles.row, { width: rowWidth }]} testID="hand-row">
+      <View style={[styles.row, { maxWidth: rowWidth }]} testID="hand-row">
         {hand.cards.map((card, index) => (
           <View key={index} style={index > 0 ? { marginLeft: overlap } : undefined}>
             <PlayingCard

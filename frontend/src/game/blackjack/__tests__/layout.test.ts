@@ -188,6 +188,11 @@ describe("calculateCardOverlap", () => {
     expect(calculateCardOverlap(0, 68, 340)).toBe(0);
   });
 
+  it("keeps a visible strip when the row is narrower than a card", () => {
+    expect(calculateCardOverlap(5, 36, 20)).toBe(-32);
+    expect(calculateCardOverlap(5, 36, Number.NaN)).toBe(0);
+  });
+
   it.each([6, 7, 11])("fits %i cards in the row at normal and compact sizes", (n: number) => {
     const sizes: [number, number][] = [
       [68, 340],
