@@ -421,6 +421,9 @@ describe("App — premium guard (#1055) and store builds (#2390)", () => {
         await new Promise<void>((resolve) => setImmediate(resolve));
       });
 
+    // Only the listeners this render registers: earlier tests' providers are gone.
+    const addListener = AppState.addEventListener as jest.Mock;
+    const listenersBefore = addListener.mock.calls.length;
     await renderApp();
     expect(await screen.findByText("screen:Cascade")).toBeTruthy();
     await flush();
@@ -431,7 +434,7 @@ describe("App — premium guard (#1055) and store builds (#2390)", () => {
     const before = cascadeRenders();
 
     await act(async () => {
-      for (const [type, listener] of (AppState.addEventListener as jest.Mock).mock.calls) {
+      for (const [type, listener] of addListener.mock.calls.slice(listenersBefore)) {
         if (type === "change") (listener as (s: AppStateStatus) => void)("active");
       }
     });
