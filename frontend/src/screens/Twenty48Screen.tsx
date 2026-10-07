@@ -608,9 +608,4 @@ const styles = StyleSheet.create({
     borderRadius: 96,
     opacity: 0.1,
   },
-  error: {
-    fontSize: 13,
-    textAlign: "center",
-    marginTop: 12,
-  },
 });

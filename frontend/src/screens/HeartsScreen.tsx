@@ -67,10 +67,19 @@ import { HeartsQueenOfSpadesAnimation } from "../components/hearts/HeartsQueenOf
 import type { AiPreset, Card, HeartsState, TrickCard } from "../game/hearts/types";
 import { AI_PRESETS, resolvePersona } from "../game/hearts/types";
 import type { HandDebugLog, DebugTrick } from "../game/hearts/debugLog";
-import HeartsDebugPanel from "../components/hearts/HeartsDebugPanel";
+type HeartsDebugPanelType = typeof import("../components/hearts/HeartsDebugPanel").default;
 import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
 
 const HUMAN = 0;
+
+// Dev / pre-launch only: required lazily so the debug panel (and the PIMC
+// benchmark it pulls in) is not evaluated in release builds (#2970; pattern:
+// yacht/oracle/oracle.ts).
+function loadHeartsDebugPanel(): HeartsDebugPanelType {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy require is the point: defer eval of pimc/* until the debug panel is actually shown
+  return (require("../components/hearts/HeartsDebugPanel") as { default: HeartsDebugPanelType })
+    .default;
+}
 
 // The result card asks the session board where the finished game ranks (#2629).
 const HEARTS_BOARD = sessionBoardAdapter("hearts");
@@ -131,6 +140,7 @@ export default function HeartsScreen() {
   // for its on-device PIMC timing (#2587); card reveals and hand logs stay
   // __DEV__-only.
   const showDebugPanel = __DEV__ || isPreLaunchApiBuild();
+  const [DebugPanel] = useState(() => (showDebugPanel ? loadHeartsDebugPanel() : null));
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [handNotes, setHandNotes] = useState<string[]>([]);
   const [handLogs, setHandLogs] = useState<HandDebugLog[]>([]);
@@ -902,8 +912,8 @@ export default function HeartsScreen() {
       />
 
       {/* ── Hearts debug panel (dev + internal test builds) ──────── */}
-      {showDebugPanel && (
-        <HeartsDebugPanel
+      {DebugPanel && (
+        <DebugPanel
           visible={debugPanelOpen}
           onClose={() => setDebugPanelOpen(false)}
           logs={handLogs}

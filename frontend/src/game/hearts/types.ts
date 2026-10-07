@@ -7,7 +7,6 @@
 
 export type AiPersona = "cautious" | "schemer" | "daring";
 export type AiPreset = AiPersona | "mixed";
-export const AI_PERSONAS: readonly AiPersona[] = ["cautious", "schemer", "daring"];
 export const AI_PRESETS: readonly AiPreset[] = ["cautious", "schemer", "daring", "mixed"];
 
 // Mixed table canonical seat assignment (seats 1–3 are AI; seat 0 is human).

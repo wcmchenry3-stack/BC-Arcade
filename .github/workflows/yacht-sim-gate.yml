@@ -22,7 +22,6 @@ on:
     paths:
       - "frontend/src/game/yacht/ai*.ts"
       - "frontend/src/game/yacht/engine.ts"
-      - "frontend/src/game/yacht/probTables.ts"
       - "frontend/src/game/yacht/oracle/**"
       - "frontend/src/game/yacht/sim/**"
       - "frontend/src/game/_shared/simRandom.ts"

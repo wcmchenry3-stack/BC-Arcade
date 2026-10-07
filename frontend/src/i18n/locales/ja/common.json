@@ -96,5 +96,10 @@
   "restore.pending": "承認待ちです。承認されるとゲームがアンロックされます。",
   "restore.nothing": "このストアアカウントには復元できる購入がありません。",
   "restore.error": "購入を復元できませんでした。もう一度お試しください。",
-  "settings.restorePurchases.description": "このストアアカウントで購入済みのゲームを取り戻します。"
+  "settings.restorePurchases.description": "このストアアカウントで購入済みのゲームを取り戻します。",
+  "locked.title": "ロック中",
+  "locked.heading": "プレミアムゲーム",
+  "locked.body": "このゲームには BC Arcade のサブスクリプションが必要です。",
+  "locked.back": "ロビーに戻る",
+  "locked.back_label": "ロビーに戻る"
 }

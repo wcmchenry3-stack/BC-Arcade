@@ -27,26 +27,40 @@ function key(state: SortState): string {
 }
 
 // ---------------------------------------------------------------------------
-// Public API
+// BFS (single implementation, driven sync or async)
 // ---------------------------------------------------------------------------
 
+interface Node {
+  state: SortState;
+  parent: number; // index into the node list; -1 for the root
+  move: Move | null; // move that led here from the parent
+}
+
+function pathTo(nodes: readonly Node[], index: number, last: Move): Move[] {
+  const path: Move[] = [last];
+  for (let i = index; i > 0; i = nodes[i]!.parent) path.push(nodes[i]!.move!);
+  return path.reverse();
+}
+
 /**
- * BFS over the move graph. Returns the shortest sequence of moves to solve
- * `state`, or null if unsolvable (or if the BFS cap is hit).
+ * BFS over the move graph. Yields once per dequeued state (so an async driver
+ * can hand control back to the event loop) and returns the shortest move
+ * sequence, or null if unsolvable / the BFS cap is hit.
  */
-export function solve(state: SortState): Move[] | null {
+function* bfs(state: SortState): Generator<void, Move[] | null> {
   if (isComplete(state)) return [];
 
   const visited = new Set<string>([key(state)]);
-  // Each queue entry: [currentState, movesFromRoot]. head is an index cursor
-  // so dequeue is O(1) — Array.shift() would be O(n) on large state spaces.
-  const queue: Array<[SortState, Move[]]> = [[state, []]];
+  // head is an index cursor so dequeue is O(1) — Array.shift() would be O(n).
+  const nodes: Node[] = [{ state, parent: -1, move: null }];
   let head = 0;
 
-  while (head < queue.length) {
+  while (head < nodes.length) {
     if (visited.size >= BFS_CAP) return null;
+    yield;
 
-    const [cur, moves] = queue[head++]!;
+    const index = head++;
+    const cur = nodes[index]!.state;
 
     for (let from = 0; from < cur.bottles.length; from++) {
       for (let to = 0; to < cur.bottles.length; to++) {
@@ -57,11 +71,10 @@ export function solve(state: SortState): Move[] | null {
         const k = key(next);
         if (visited.has(k)) continue;
 
-        const path = [...moves, { from, to }];
-        if (next.isComplete) return path;
+        if (next.isComplete) return pathTo(nodes, index, { from, to });
 
         visited.add(k);
-        queue.push([next, path]);
+        nodes.push({ state: next, parent: index, move: { from, to } });
       }
     }
   }
@@ -69,13 +82,17 @@ export function solve(state: SortState): Move[] | null {
   return null;
 }
 
-/**
- * Returns the first move of the optimal solution path, or null if no
- * solution is found within the BFS cap.
- */
-export function getNextHint(state: SortState): Move | null {
-  const path = solve(state);
-  return path?.[0] ?? null;
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/** Shortest solution for `state`, or null if unsolvable (or the BFS cap is hit). */
+export function solve(state: SortState): Move[] | null {
+  const it = bfs(state);
+  for (;;) {
+    const r = it.next();
+    if (r.done) return r.value;
+  }
 }
 
 /**
@@ -83,47 +100,18 @@ export function getNextHint(state: SortState): Move | null {
  * states so the UI stays responsive during long solves (levels 16–20).
  */
 export async function solveAsync(state: SortState): Promise<Move[] | null> {
-  if (isComplete(state)) return [];
-
-  const visited = new Set<string>([key(state)]);
-  const queue: Array<[SortState, Move[]]> = [[state, []]];
-  let head = 0;
+  const it = bfs(state);
   let dequeued = 0;
-
-  while (head < queue.length) {
-    if (visited.size >= BFS_CAP) return null;
-
-    if (dequeued > 0 && dequeued % YIELD_EVERY === 0) {
-      await new Promise<void>((r) => setTimeout(r, 0));
-    }
-
-    const [cur, moves] = queue[head++]!;
-    dequeued++;
-
-    for (let from = 0; from < cur.bottles.length; from++) {
-      for (let to = 0; to < cur.bottles.length; to++) {
-        if (from === to) continue;
-        if (!isValidPour(cur.bottles[from]!, cur.bottles[to]!)) continue;
-
-        const next = applyPour(cur, from, to);
-        const k = key(next);
-        if (visited.has(k)) continue;
-
-        const path = [...moves, { from, to }];
-        if (next.isComplete) return path;
-
-        visited.add(k);
-        queue.push([next, path]);
-      }
-    }
+  for (;;) {
+    const r = it.next();
+    if (r.done) return r.value;
+    if (++dequeued % YIELD_EVERY === 0) await new Promise<void>((res) => setTimeout(res, 0));
   }
-
-  return null;
 }
 
 /**
- * Async variant of getNextHint — runs the BFS off the main thread tick so
- * the UI stays responsive. Use this in UI handlers instead of getNextHint.
+ * First move of the optimal solution, off the main thread tick so the UI
+ * stays responsive.
  */
 export async function getNextHintAsync(state: SortState): Promise<Move | null> {
   const path = await solveAsync(state);

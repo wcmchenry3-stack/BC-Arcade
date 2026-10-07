@@ -68,7 +68,7 @@ Code paths: `backend/players/{router,service,generated,names}.py`, `backend/game
 
 AsyncStorage keys (`grep KEY frontend/src`): `game_session_id`; per-game saves and stats (`*_game*`, `*_stats_v1`,
 `blackjack_runs_v1`, `twenty48_best_score_v1`, `cascade_best_score`, `starswarm.*`, `yacht_*`, `daily_word_*`); offline
-queues `pending_games_v1`, `pending_score_queue_v1` and the event store (sent to the API by `SyncWorker`);
+queues `pending_games_v1` and the event store (sent to the API by `SyncWorker`; the old `pending_score_queue_v1` queue was removed in #2644 — only cleared now, by `legacyScoreQueue.ts`);
 `player_display_name*` (generated name cache and pending join/leave intent); `entitlement_token` / `entitlement_cached_at`
 (RS256 entitlement JWT from `GET /entitlements`, 24 h TTL / 7 day grace); preferences (`settings.soundMuted`, theme, language,
 `card_deck_id`, `gaming_app_fruit_set`); Hearts seat labels (`hearts_player_names`, typed by the player for the AI seats;

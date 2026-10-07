@@ -1,14 +1,8 @@
-export const UPPER_CATEGORY_KEYS = ["ones", "twos", "threes", "fours", "fives", "sixes"] as const;
+import { CATEGORIES, UPPER_CATEGORIES } from "./engine";
 
-export const LOWER_CATEGORY_KEYS = [
-  "three_of_a_kind",
-  "four_of_a_kind",
-  "full_house",
-  "small_straight",
-  "large_straight",
-  "yacht",
-  "chance",
-] as const;
+export const UPPER_CATEGORY_KEYS = CATEGORIES.filter((c) => UPPER_CATEGORIES.has(c));
+
+export const LOWER_CATEGORY_KEYS = CATEGORIES.filter((c) => !UPPER_CATEGORIES.has(c));
 
 export const CATEGORY_I18N_KEY: Record<string, string> = {
   ones: "category.ones",
