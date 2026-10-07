@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useTheme } from "../../theme/ThemeContext";
 import { HandResponse } from "../../game/blackjack/types";
+import { calculateCardOverlap } from "../../game/blackjack/layout";
 import PlayingCard from "./PlayingCard";
 import ScorePill from "./ScorePill";
 
@@ -18,11 +19,11 @@ interface Props {
   labelFontSize?: number;
   scorePillFontSize?: number;
   /**
-   * Maximum cards per row. Additional cards wrap to a new row so the hand
-   * grows downward into reserved table space rather than overflowing into
-   * the action bar. Defaults to 5 (single-hand). Split hands pass 3.
+   * Width available to the row of cards. A hand always stays on one row;
+   * once the cards no longer fit side by side they overlap (negative margin)
+   * so every card, including the latest draw, stays visible.
    */
-  maxPerRow?: number;
+  rowWidth: number;
 }
 
 // First two player cards get a gentle fan tilt
@@ -38,15 +39,12 @@ export default function HandDisplay({
   gap = 8,
   labelFontSize = 13,
   scorePillFontSize,
-  maxPerRow = 5,
+  rowWidth,
 }: Props) {
   const { colors } = useTheme();
   const showScore = hand.cards.length > 0;
 
-  const rows: (typeof hand.cards)[] = [];
-  for (let i = 0; i < hand.cards.length; i += maxPerRow) {
-    rows.push(hand.cards.slice(i, i + maxPerRow));
-  }
+  const overlap = calculateCardOverlap(hand.cards.length, cardWidth, rowWidth);
 
   return (
     <View style={[styles.container, { gap }]}>
@@ -66,21 +64,15 @@ export default function HandDisplay({
         />
       )}
 
-      <View style={styles.rows}>
-        {rows.map((rowCards, rowIndex) => (
-          <View key={rowIndex} style={styles.row}>
-            {rowCards.map((card, cardIndex) => {
-              const absoluteIndex = rowIndex * maxPerRow + cardIndex;
-              return (
-                <PlayingCard
-                  key={absoluteIndex}
-                  card={card}
-                  width={cardWidth}
-                  height={cardHeight}
-                  rotation={variant === "player" ? (PLAYER_ROTATIONS[absoluteIndex] ?? 0) : 0}
-                />
-              );
-            })}
+      <View style={[styles.row, { maxWidth: rowWidth }]} testID="hand-row">
+        {hand.cards.map((card, index) => (
+          <View key={index} style={index > 0 ? { marginLeft: overlap } : undefined}>
+            <PlayingCard
+              card={card}
+              width={cardWidth}
+              height={cardHeight}
+              rotation={variant === "player" ? (PLAYER_ROTATIONS[index] ?? 0) : 0}
+            />
           </View>
         ))}
       </View>
@@ -100,10 +92,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 0.5,
-  },
-  rows: {
-    alignItems: "center",
-    gap: 4,
   },
   row: {
     flexDirection: "row",

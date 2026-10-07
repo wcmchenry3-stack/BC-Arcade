@@ -14,7 +14,8 @@
 import * as fs from "fs";
 import * as path from "path";
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { AppState, type AppStateStatus } from "react-native";
 import * as Sentry from "@sentry/react-native";
 
 import { __forceStoreBuildForTests } from "../entitlements/gameVisibility";
@@ -30,12 +31,14 @@ jest.mock("../game/_shared/envFlags", () => ({
 // --- every screen module: a stub that names its route ---------------------------------------
 
 const mockThrowIn: { route: string | null } = { route: null };
+const mockStubRender = jest.fn<void, [string]>();
 function mockStub(route: string) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { createElement } = require("react");
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Text } = require("react-native");
   function Stub() {
+    mockStubRender(route);
     if (mockThrowIn.route === route) throw new Error(`${route} crashed`);
     return createElement(Text, null, `screen:${route}`);
   }
@@ -142,11 +145,34 @@ const mockEntitlements: { canPlay: jest.Mock; isLoading: boolean } = {
   canPlay: jest.fn(() => true),
   isLoading: false,
 };
-jest.mock("../entitlements/EntitlementContext", () => ({
-  ...jest.requireActual("../entitlements/EntitlementContext"),
-  EntitlementProvider: mockPassThrough("Entitlement"),
-  useEntitlements: () => ({ ...mockEntitlements }),
+// By default the entitlement provider is a pass-through and the gate hook reads
+// `mockEntitlements`. The gate-split test below switches `mockRealEntitlements.on`
+// to run the real provider and hook instead.
+const mockRealEntitlements = { on: false };
+const mockRequest = jest.fn();
+jest.mock("../game/_shared/httpClient", () => ({
+  ...jest.requireActual("../game/_shared/httpClient"),
+  createGameClient: jest.fn(
+    () =>
+      (...args: unknown[]) =>
+        mockRequest(...args)
+  ),
 }));
+jest.mock("../entitlements/EntitlementContext", () => {
+  const actual = jest.requireActual("../entitlements/EntitlementContext");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { createElement } = require("react");
+  const passThrough = mockPassThrough("Entitlement");
+  return {
+    ...actual,
+    EntitlementProvider: ({ children }: { children: React.ReactNode }) =>
+      mockRealEntitlements.on
+        ? createElement(actual.EntitlementProvider, null, children)
+        : passThrough({ children }),
+    useEntitlementGate: () =>
+      mockRealEntitlements.on ? actual.useEntitlementGate() : { ...mockEntitlements },
+  };
+});
 jest.mock("../game/_shared/NetworkContext", () => ({
   ...mockScreenDeps().mockNetwork(),
   NetworkProvider: mockPassThrough("Network"),
@@ -239,6 +265,9 @@ beforeEach(() => {
   mockThrowIn.route = null;
   mockEntitlements.isLoading = false;
   mockEntitlements.canPlay = jest.fn(() => true);
+  mockRealEntitlements.on = false;
+  mockRequest.mockReset();
+  mockStubRender.mockClear();
   mockNavigate.mockClear();
   mockTabBar.mockClear();
   (Sentry.metrics.distribution as jest.Mock).mockReset();
@@ -366,6 +395,55 @@ describe("App — premium guard (#1055) and store builds (#2390)", () => {
     mockEntitlements.canPlay = jest.fn(() => false);
     await screen.rerender(<App />);
     expect(mockNavigate).toHaveBeenCalledWith("Home");
+  });
+
+  it("a foreground refresh that changes nothing does not re-render a premium screen (#2964)", async () => {
+    // The real provider and hook: only `lastRefreshed` moves on a refresh.
+    mockRealEntitlements.on = true;
+    const token = () => {
+      const b64 = (o: object) =>
+        btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+      const now = Math.floor(Date.now() / 1000);
+      const payload = {
+        sub: "s",
+        entitled_games: ["cascade", "hearts"],
+        iat: now,
+        exp: now + 3600,
+      };
+      return `${b64({ alg: "RS256", typ: "JWT" })}.${b64(payload)}.sig`;
+    };
+    mockRequest.mockImplementation(async () => ({
+      token: token(),
+      expires_at: "2099-01-01T00:00:00Z",
+    }));
+    const flush = async () =>
+      await act(async () => {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      });
+
+    // Only the listeners this render registers: earlier tests' providers are gone.
+    const addListener = AppState.addEventListener as jest.Mock;
+    const listenersBefore = addListener.mock.calls.length;
+    await renderApp();
+    expect(await screen.findByText("screen:Cascade")).toBeTruthy();
+    await flush();
+    await flush();
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+
+    const cascadeRenders = () => mockStubRender.mock.calls.filter(([r]) => r === "Cascade").length;
+    const before = cascadeRenders();
+
+    await act(async () => {
+      for (const [type, listener] of addListener.mock.calls.slice(listenersBefore)) {
+        if (type === "change") (listener as (s: AppStateStatus) => void)("active");
+      }
+    });
+    await flush();
+    await flush();
+
+    expect(mockRequest).toHaveBeenCalledTimes(2); // the refresh ran and returned the same games
+    expect(cascadeRenders()).toBe(before);
+    expect(screen.getByText("screen:Cascade")).toBeTruthy();
   });
 
   it("a store build registers no premium route and no Paywall", async () => {

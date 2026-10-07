@@ -18,7 +18,7 @@ const mockCanPlay = jest.fn().mockReturnValue(true);
 
 jest.mock("../../entitlements/EntitlementContext", () => ({
   ...jest.requireActual("../../entitlements/EntitlementContext"),
-  useEntitlements: () => ({
+  useEntitlementGate: () => ({
     canPlay: mockCanPlay,
     isLoading: false,
     lastRefreshed: null,
