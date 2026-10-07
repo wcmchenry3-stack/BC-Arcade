@@ -115,6 +115,23 @@ class Game(Base):
             postgresql_where="final_score IS NOT NULL",
             sqlite_where="final_score IS NOT NULL",
         ),
+        # Boards that don't rank final_score (#2965, alembic 0032): Mahjong's
+        # duration_ms board, and the metadata boards (Sort), which have no
+        # metric column and read their game type's finished rows.
+        Index(
+            "games_game_type_completed_idx",
+            "game_type_id",
+            "completed_at",
+            postgresql_where="completed_at IS NOT NULL",
+            sqlite_where="completed_at IS NOT NULL",
+        ),
+        Index(
+            "games_game_type_duration_idx",
+            "game_type_id",
+            "duration_ms",
+            postgresql_where="duration_ms IS NOT NULL AND completed_at IS NOT NULL",
+            sqlite_where="duration_ms IS NOT NULL AND completed_at IS NOT NULL",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
