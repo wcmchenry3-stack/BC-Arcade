@@ -7,6 +7,8 @@
  * hook rasterising after the commit rather than during a render.
  * GameCanvas.native.test.tsx covers the same cache through the canvas.
  */
+import React from "react";
+import TestRenderer from "react-test-renderer";
 import { act, renderHook } from "@testing-library/react-native";
 import { PixelRatio } from "react-native";
 import { loadData, Skia } from "@shopify/react-native-skia";
@@ -53,6 +55,10 @@ beforeEach(() => {
   resetTileFaces();
   jest.clearAllMocks();
   mockMake.mockImplementation(fakeSurface);
+  mockLoadData.mockImplementation((source: unknown, factory: (d: unknown) => unknown) =>
+    Promise.resolve(factory(source))
+  );
+  mockMakeSvg.mockImplementation((source: unknown) => ({ svg: source }));
   jest.useFakeTimers();
 });
 
@@ -93,6 +99,23 @@ describe("loadTileSVGs", () => {
     // Complete now: no more reads.
     expect(await loadTileSVGs()).toBe(second);
     expect(mockLoadData).toHaveBeenCalledTimes(43);
+  });
+
+  it("gives up on a face after three failed loads, and keeps the set's identity meanwhile", async () => {
+    const failFirst = (source: unknown, factory: (d: unknown) => unknown) =>
+      source === TILE_REQUIRES[0]
+        ? Promise.reject(new Error("broken asset"))
+        : Promise.resolve(factory(source));
+    mockLoadData.mockImplementation(failFirst);
+    const first = await loadTileSVGs();
+    expect(first[0]).toBeNull();
+    // Two retries that fail again change nothing: the same array comes back.
+    expect(await loadTileSVGs()).toBe(first);
+    expect(await loadTileSVGs()).toBe(first);
+    expect(mockLoadData).toHaveBeenCalledTimes(42 + 2);
+    // Third failure reached: no more reads for it, still the same array.
+    expect(await loadTileSVGs()).toBe(first);
+    expect(mockLoadData).toHaveBeenCalledTimes(42 + 2);
   });
 });
 
@@ -252,5 +275,123 @@ describe("useTileFaces", () => {
     await afterCommit();
     expect(next.result.current).toHaveLength(42);
     expect(mockLoadData).toHaveBeenCalledTimes(42);
+  });
+});
+
+describe("useTileFaces: shared cache, timing and identity", () => {
+  it("never disposes faces a mounted canvas still draws, whatever another canvas evicts", async () => {
+    mockMakeSvg.mockImplementation((source: unknown) => ({ svg: source }));
+    const a = await renderHook(() => useTileFaces(40, 52));
+    await afterCommit();
+    const aFaces = a.result.current!;
+    expect(aFaces).toHaveLength(42);
+
+    // Another canvas goes through five other sizes: the cache bound (4) is passed twice over.
+    const b = await renderHook(({ w }: { w: number }) => useTileFaces(w, 52), {
+      initialProps: { w: 30 },
+    });
+    await afterCommit();
+    const firstOfB = b.result.current!;
+    for (const w of [31, 32, 33, 34]) {
+      await b.rerender({ w });
+      await afterCommit();
+    }
+    expect(a.result.current).toBe(aFaces);
+    expect(aFaces.every((face) => (face!.dispose as jest.Mock).mock.calls.length === 0)).toBe(true);
+    // Sizes no canvas holds were evicted and disposed instead.
+    expect((firstOfB[0]!.dispose as jest.Mock).mock.calls).toHaveLength(1);
+    // A's size is still the cached one: asking for it rasterises nothing.
+    const made = mockMake.mock.calls.length;
+    expect(tileFacesFor(await loadTileSVGs(), 40, 52)).toBe(aFaces);
+    expect(mockMake).toHaveBeenCalledTimes(made);
+
+    // Once A unmounts its size can go like any other.
+    await a.unmount();
+    for (const w of [35, 36, 37, 38]) {
+      await b.rerender({ w });
+      await afterCommit();
+    }
+    expect((aFaces[0]!.dispose as jest.Mock).mock.calls).toHaveLength(1);
+    expect(b.result.current![0]!.dispose).not.toHaveBeenCalled();
+  });
+
+  it("a mount at a cached size renders once: no extra pass for faces it already has", async () => {
+    const first = await renderHook(() => useTileFaces(40, 52));
+    await afterCommit();
+    const faces = first.result.current;
+    await first.unmount();
+
+    let renders = 0;
+    const second = await renderHook(() => {
+      renders += 1;
+      return useTileFaces(40, 52);
+    });
+    await afterCommit();
+    expect(second.result.current).toBe(faces);
+    expect(renders).toBe(1);
+  });
+
+  it("a face that keeps failing costs a later mount no extra renders", async () => {
+    mockLoadData.mockImplementation((source: unknown, factory: (d: unknown) => unknown) =>
+      source === TILE_REQUIRES[0]
+        ? Promise.reject(new Error("broken asset"))
+        : Promise.resolve(factory(source))
+    );
+    const first = await renderHook(() => useTileFaces(40, 52));
+    await afterCommit();
+    const faces = first.result.current!;
+    expect(faces[0]).toBeNull();
+    await first.unmount();
+
+    let renders = 0;
+    const second = await renderHook(() => {
+      renders += 1;
+      return useTileFaces(40, 52);
+    });
+    await afterCommit();
+    expect(mockLoadData).toHaveBeenCalledTimes(43); // the retry happened
+    expect(second.result.current).toBe(faces); // and changed nothing
+    expect(renders).toBe(1);
+  });
+
+  it("faces appear when the load completes between a mount's render and its effects", async () => {
+    // Rendered outside act, React commits in one task and runs the passive effects in a later
+    // one, as on a device; the load (begun by another canvas) completes in between.
+    jest.useRealTimers();
+    const pending: (() => void)[] = [];
+    mockLoadData.mockImplementation((source: unknown, factory: (d: unknown) => unknown) =>
+      new Promise<void>((r) => pending.push(r)).then(() => factory(source))
+    );
+    const loading = loadTileSVGs();
+    const seen: (ReturnType<typeof useTileFaces> | "effect")[] = [];
+    function Probe() {
+      const faces = useTileFaces(40, 52);
+      seen.push(faces);
+      React.useEffect(() => {
+        seen.push("effect");
+      }, []);
+      return null;
+    }
+    const env = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    const actEnv = env.IS_REACT_ACT_ENVIRONMENT;
+    env.IS_REACT_ACT_ENVIRONMENT = false;
+    jest.spyOn(console, "error").mockImplementation(() => {}); // the renderer's deprecation note
+    const nextTask = () => new Promise((r) => setTimeout(r, 0));
+    try {
+      const root = TestRenderer.create(React.createElement(Probe));
+      await nextTask();
+      expect(seen).toEqual([null]); // rendered and committed with no SVGs; effects to come
+      pending.forEach((r) => r());
+      await loading;
+      expect(seen).toEqual([null]); // the load is done before the mount's effects
+      for (let i = 0; i < 20 && !Array.isArray(seen.at(-1)); i++) await nextTask();
+      expect(seen).toContain("effect");
+      expect(seen.at(-1)).toHaveLength(42);
+      root.unmount();
+      await nextTask();
+    } finally {
+      env.IS_REACT_ACT_ENVIRONMENT = actEnv;
+      jest.restoreAllMocks();
+    }
   });
 });
