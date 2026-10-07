@@ -1,6 +1,6 @@
 import React from "react";
 import { act, render } from "@testing-library/react-native";
-import { ElapsedText } from "../ElapsedText";
+import { ElapsedText, createClockActivity } from "../ElapsedText";
 
 const T0 = 1_800_000_000_000;
 
@@ -26,24 +26,76 @@ async function advance(ms: number) {
 const clockFrom = (startedAt: number) => () => Date.now() - startedAt;
 
 describe("ElapsedText (#2964)", () => {
-  it("shows 0 before the clock starts, then ticks on the clock's own seconds", async () => {
+  it("idles before the clock starts, then ticks on the clock's own seconds", async () => {
     let startedAt: number | null = null;
-    const getElapsedMs = () => (startedAt === null ? null : Date.now() - startedAt);
+    const getElapsedMs = jest.fn(() => (startedAt === null ? null : Date.now() - startedAt));
+    const activity = createClockActivity();
     const api = await render(
-      <ElapsedText getElapsedMs={getElapsedMs} running format={format} testID="t" />
+      <ElapsedText
+        getElapsedMs={getElapsedMs}
+        running
+        activity={activity}
+        format={format}
+        testID="t"
+      />
     );
     expect(api.getByTestId("t")).toHaveTextContent("0s");
+    // Not started: the label never wakes to look, however long the player thinks.
+    const readsAtMount = getElapsedMs.mock.calls.length;
     await advance(3100);
     expect(api.getByTestId("t")).toHaveTextContent("0s");
+    expect(getElapsedMs).toHaveBeenCalledTimes(readsAtMount);
 
-    // The first move lands mid-way through the ticker's polling interval; the
-    // label flips exactly one second after the move, not one second after mount.
+    // The first move: the label flips exactly one second after it.
     startedAt = Date.now();
+    await act(async () => {
+      activity.set(true);
+    });
     await advance(999);
     expect(api.getByTestId("t")).toHaveTextContent("0s");
     await advance(1);
     expect(api.getByTestId("t")).toHaveTextContent("1s");
     await advance(2000);
+    expect(api.getByTestId("t")).toHaveTextContent("3s");
+  });
+
+  it("clears its timer while paused and re-aligns on resume", async () => {
+    let startedAt: number = T0;
+    const getElapsedMs = jest.fn(() => Date.now() - startedAt);
+    const activity = createClockActivity();
+    activity.set(true);
+    const api = await render(
+      <ElapsedText
+        getElapsedMs={getElapsedMs}
+        running
+        activity={activity}
+        format={format}
+        testID="t"
+      />
+    );
+    await advance(2000);
+    expect(api.getByTestId("t")).toHaveTextContent("2s");
+
+    // Paused 2.4 s in: the label stops waking, and the display holds.
+    await advance(400);
+    await act(async () => {
+      activity.set(false);
+    });
+    const readsAtPause = getElapsedMs.mock.calls.length;
+    await advance(5000);
+    expect(api.getByTestId("t")).toHaveTextContent("2s");
+    expect(getElapsedMs).toHaveBeenCalledTimes(readsAtPause);
+
+    // Resumed: the pause is taken out of the clock (the start moves forward),
+    // and the next second lands 600 ms later.
+    startedAt += 5000;
+    await act(async () => {
+      activity.set(true);
+    });
+    expect(api.getByTestId("t")).toHaveTextContent("2s");
+    await advance(599);
+    expect(api.getByTestId("t")).toHaveTextContent("2s");
+    await advance(1);
     expect(api.getByTestId("t")).toHaveTextContent("3s");
   });
 

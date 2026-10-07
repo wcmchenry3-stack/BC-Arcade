@@ -715,6 +715,15 @@ describe("SudokuScreen — result card (#2511)", () => {
     expect((completed![1] as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(65_000);
   });
 
+  it("never reports a negative time when the device clock steps back (#2964)", async () => {
+    const r = await solvePuzzle({ elapsedMs: -5_000 });
+    const completed = mockCompleteGame.mock.calls.find(
+      ([, summary]) => (summary as { outcome?: string }).outcome === "completed"
+    );
+    expect((completed?.[1] as { durationMs?: number } | undefined)?.durationMs ?? 0).toBe(0);
+    expect(within(r.getByTestId("sudoku-result")).getAllByText("00:00").length).toBeGreaterThan(0);
+  });
+
   // #2632: the card reads the synced game's rank (GET /games/{id}/rank)
   // instead of PATCH /sudoku/score/{id}.
   it("shows the synced game's rank under the display name automatically", async () => {
@@ -921,6 +930,8 @@ describe("SudokuScreen — HUD clock (#2964)", () => {
     });
     expect(r.getByLabelText("Elapsed time 00:02")).toBeTruthy();
 
+    const rendersBeforePause = mockGridRenders;
+
     // Another screen covers the puzzle for five seconds: the HUD does not move.
     await act(async () => {
       mockNavListeners.get("blur")?.forEach((h) => h());
@@ -944,6 +955,8 @@ describe("SudokuScreen — HUD clock (#2964)", () => {
       jest.advanceTimersByTime(1);
     });
     expect(r.getByLabelText("Elapsed time 00:03")).toBeTruthy();
+    // Pausing and resuming never re-rendered the grid.
+    expect(mockGridRenders).toBe(rendersBeforePause);
   });
 
   it("starts the HUD's seconds at the first move, not at mount", async () => {

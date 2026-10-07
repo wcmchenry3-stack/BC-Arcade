@@ -29,7 +29,7 @@ import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { HudStatRow } from "../components/shared/HudStatRow";
-import { ElapsedText } from "../components/shared/ElapsedText";
+import { ElapsedText, createClockActivity } from "../components/shared/ElapsedText";
 import {
   ModalActions,
   ModalCard,
@@ -105,9 +105,12 @@ export default function SudokuScreen() {
   );
   const [variant, setVariant] = useState<Variant>("classic");
   const [state, setState] = useState<SudokuState | null>(null);
-  // Bumped when a puzzle starts over or the clock resumes, so the HUD clock
-  // re-reads it (and re-aligns its tick) at once.
+  // Bumped when a puzzle starts over, so the HUD clock shows 00:00 at once.
   const [clockEpoch, setClockEpoch] = useState(0);
+  // Whether the clock is advancing (started, not paused). It lives outside
+  // React state: the first move, a pause and a resume reach the HUD's
+  // `ElapsedText` without re-rendering the screen, grid and pad (#2964).
+  const [clockActivity] = useState(createClockActivity);
   const [loading, setLoading] = useState(true);
   const [newGameModalVisible, setNewGameModalVisible] = useState(false);
   // What the result card shows, captured when the puzzle is solved.
@@ -171,8 +174,12 @@ export default function SudokuScreen() {
   // start moves forward on resume, and a pause in progress stops the count).
   const playedMs = useCallback((): number | null => {
     if (startMsRef.current === null) return null;
-    return (pausedAtRef.current ?? Date.now()) - startMsRef.current;
+    // Never negative: the device clock can step back after a resume shifted the start.
+    return Math.max(0, (pausedAtRef.current ?? Date.now()) - startMsRef.current);
   }, []);
+  const syncClockActivity = useCallback(() => {
+    clockActivity.set(startMsRef.current !== null && pausedAtRef.current === null);
+  }, [clockActivity]);
   useEffect(() => {
     syncSetProgressSnapshot(() => ({ result: progressResult(), durationMs: playedMs() }));
   }, [syncSetProgressSnapshot, progressResult, playedMs]);
@@ -184,14 +191,14 @@ export default function SudokuScreen() {
   const pauseTimer = useCallback(() => {
     if (startMsRef.current === null || isComplete || pausedAtRef.current !== null) return;
     pausedAtRef.current = Date.now();
-  }, [isComplete]);
+    syncClockActivity();
+  }, [isComplete, syncClockActivity]);
   const resumeTimer = useCallback(() => {
     if (pausedAtRef.current === null || startMsRef.current === null) return;
     startMsRef.current += Date.now() - pausedAtRef.current;
     pausedAtRef.current = null;
-    // The HUD re-reads the clock and re-aligns its tick to the shifted start.
-    setClockEpoch((n) => n + 1);
-  }, []);
+    syncClockActivity();
+  }, [syncClockActivity]);
   const awayRef = usePauseWhileAway(navigation, pauseTimer, resumeTimer);
 
   // Mount load — restores a saved game silently; on a clean slot the
@@ -246,6 +253,12 @@ export default function SudokuScreen() {
     if (state === null) return;
     saveGame(state).catch(() => {});
   }, [state]);
+
+  // A move, a load or a new puzzle can start or clear the clock (inside state
+  // updaters and handlers, which only touch the refs): tell the HUD.
+  useEffect(() => {
+    syncClockActivity();
+  }, [state, syncClockActivity]);
 
   // The HUD's `ElapsedText` owns the clock's tick and reads `playedMs`, so the
   // HUD always shows the time the game reports (pauses taken out), and the
@@ -517,6 +530,7 @@ export default function SudokuScreen() {
                   <ElapsedText
                     getElapsedMs={playedMs}
                     running={!isComplete}
+                    activity={clockActivity}
                     frozenS={result?.elapsedS ?? null}
                     resetKey={clockEpoch}
                     format={formatElapsed}
