@@ -3,18 +3,19 @@
  * against a recording fake of the Skia API and pin, per op kind, the draw call and the paint
  * state it is made with, matching what the phase-2 declarative renderer drew (removed in #2567).
  */
+// Counts of the Skia objects drawFrame makes, so the #2963 cache can be pinned.
+const mockMade = { paints: 0, colors: 0, paths: 0, disposed: 0 };
+
 jest.mock("@shopify/react-native-skia", () => {
-  const alphaOf = (c: string) => {
-    const m = /rgba\([^)]*,\s*([\d.]+)\)/.exec(c);
-    return m ? Number(m[1]) : 1;
-  };
+  // #2963: colours arrive packed 0xAARRGGBB; the fake Skia colour keeps the number
   const Paint = () => {
-    const st = { color: "", alpha: 1, style: 0, strokeWidth: 0, antiAlias: false };
+    mockMade.paints++;
+    const st = { color: 0, alpha: 1, style: 0, strokeWidth: 0, antiAlias: false };
     return {
       st,
-      setColor: (c: { str: string }) => {
-        st.color = c.str;
-        st.alpha = alphaOf(c.str);
+      setColor: (c: { packed: number }) => {
+        st.color = c.packed;
+        st.alpha = ((c.packed >>> 24) & 255) / 255;
       },
       getAlphaf: () => st.alpha,
       setAlphaf: (a: number) => {
@@ -37,13 +38,20 @@ jest.mock("@shopify/react-native-skia", () => {
     MipmapMode: { None: 0, Nearest: 1, Linear: 2 },
     Skia: {
       Paint,
-      Color: (str: string) => ({ str }),
+      Color: (packed: number) => {
+        mockMade.colors++;
+        return { packed };
+      },
       XYWHRect: (x: number, y: number, width: number, height: number) => ({ x, y, width, height }),
       Path: {
         Make: () => {
+          mockMade.paths++;
           const cmds: (string | number)[][] = [];
           const p = {
             cmds,
+            dispose: () => {
+              mockMade.disposed++;
+            },
             moveTo: (x: number, y: number) => (cmds.push(["M", x, y]), p),
             lineTo: (x: number, y: number) => (cmds.push(["L", x, y]), p),
             close: () => (cmds.push(["Z"]), p),
@@ -57,10 +65,10 @@ jest.mock("@shopify/react-native-skia", () => {
 });
 
 import { drawFrame, fitRect, type DrawImages } from "../render/drawFrame";
+import { withAlpha } from "../render/color";
 import { buildFrame, type DrawOp, type LoadedSprites } from "../render/frame";
 import { drawImagesOf, sameDrawImages } from "../assets";
 import { initStarSwarm, CANVAS_W, CANVAS_H } from "../engine";
-import { initStarfield } from "../starfield";
 import type { SkCanvas } from "@shopify/react-native-skia";
 
 type Call = {
@@ -74,7 +82,7 @@ function recorder() {
   const calls: Call[] = [];
   const snap = (p: unknown) => ({ ...(p as { st: Record<string, unknown> }).st });
   const canvas = {
-    drawColor: (c: { str: string }) => calls.push({ fn: "drawColor", args: [c.str] }),
+    drawColor: (c: { packed: number }) => calls.push({ fn: "drawColor", args: [c.packed] }),
     drawRect: (r: unknown, p: unknown) => calls.push({ fn: "drawRect", args: [r], paint: snap(p) }),
     drawCircle: (cx: number, cy: number, r: number, p: unknown) =>
       calls.push({ fn: "drawCircle", args: [cx, cy, r], paint: snap(p) }),
@@ -141,21 +149,30 @@ describe("fitRect", () => {
 
 describe("drawFrame — one draw call per op, with the op's paint", () => {
   it("fill clears to the colour", () => {
-    expect(draw([{ k: "fill", key: "bg", color: "#000010" }])).toEqual([
-      { fn: "drawColor", args: ["#000010"] },
+    expect(draw([{ k: "fill", key: "bg", color: 0xff000010 }])).toEqual([
+      { fn: "drawColor", args: [0xff000010] },
     ]);
   });
 
   it("rects are filled; an op's opacity multiplies the colour's own alpha", () => {
     const calls = draw([
-      { k: "rect", key: "a", x: 1, y: 2, w: 3, h: 4, color: "#ff4422", opacity: 0.35 },
-      { k: "rect", key: "b", x: 0, y: 0, w: 1, h: 1, color: "rgba(0,0,0,0.5)", opacity: 0.5 },
-      { k: "rect", key: "c", x: 0, y: 0, w: 1, h: 1, color: "rgba(255,238,0,0.45)" },
+      { k: "rect", key: "a", x: 1, y: 2, w: 3, h: 4, color: 0xffff4422, opacity: 0.35 },
+      {
+        k: "rect",
+        key: "b",
+        x: 0,
+        y: 0,
+        w: 1,
+        h: 1,
+        color: withAlpha(0x000000, 0.5),
+        opacity: 0.5,
+      },
+      { k: "rect", key: "c", x: 0, y: 0, w: 1, h: 1, color: withAlpha(0xffee00, 0.45) },
     ]);
     expect(calls[0]).toMatchObject({
       fn: "drawRect",
       args: [{ x: 1, y: 2, width: 3, height: 4 }],
-      paint: { color: "#ff4422", alpha: 0.35, style: 0, antiAlias: true },
+      paint: { color: 0xffff4422, alpha: 0.35, style: 0, antiAlias: true },
     });
     expect(calls[1]!.paint!.alpha).toBeCloseTo(0.25);
     expect(calls[2]!.paint!.alpha).toBeCloseTo(0.45);
@@ -163,9 +180,9 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
 
   it("circles: stroke with its width, else filled — and a stroke never leaks into the next op", () => {
     const calls = draw([
-      { k: "circle", key: "ring", cx: 5, cy: 6, r: 7, color: "#fff", stroke: 3 },
-      { k: "circle", key: "dot", cx: 1, cy: 1, r: 2, color: "#000" },
-      { k: "rect", key: "r", x: 0, y: 0, w: 1, h: 1, color: "#000" },
+      { k: "circle", key: "ring", cx: 5, cy: 6, r: 7, color: 0xffffffff, stroke: 3 },
+      { k: "circle", key: "dot", cx: 1, cy: 1, r: 2, color: 0xff000000 },
+      { k: "rect", key: "r", x: 0, y: 0, w: 1, h: 1, color: 0xff000000 },
     ]);
     expect(calls[0]).toMatchObject({
       fn: "drawCircle",
@@ -178,8 +195,8 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
 
   it("an opacity never leaks into the next op either", () => {
     const calls = draw([
-      { k: "circle", key: "fade", cx: 0, cy: 0, r: 1, color: "#ffcc00", opacity: 0.2 },
-      { k: "circle", key: "solid", cx: 0, cy: 0, r: 1, color: "#ffcc00" },
+      { k: "circle", key: "fade", cx: 0, cy: 0, r: 1, color: 0xffffcc00, opacity: 0.2 },
+      { k: "circle", key: "solid", cx: 0, cy: 0, r: 1, color: 0xffffcc00 },
     ]);
     expect(calls[0]!.paint!.alpha).toBeCloseTo(0.2);
     expect(calls[1]!.paint!.alpha).toBe(1);
@@ -187,13 +204,13 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
 
   it("polygons: move, line to each other vertex, close; stroked or filled", () => {
     const calls = draw([
-      { k: "poly", key: "p", points: [1, 2, 3, 4, 5, 6], color: "#8b6a47" },
-      { k: "poly", key: "e", points: [1, 2, 3, 4, 5, 6], color: "#c9a27a", stroke: 1.5 },
+      { k: "poly", key: "p", points: [1, 2, 3, 4, 5, 6], color: 0xff8b6a47 },
+      { k: "poly", key: "e", points: [1, 2, 3, 4, 5, 6], color: 0xffc9a27a, stroke: 1.5 },
     ]);
     expect(calls[0]).toMatchObject({
       fn: "drawPath",
       args: [[["M", 1, 2], ["L", 3, 4], ["L", 5, 6], ["Z"]]],
-      paint: { color: "#8b6a47", style: 0 },
+      paint: { color: 0xff8b6a47, style: 0 },
     });
     expect(calls[1]).toMatchObject({ paint: { style: 1, strokeWidth: 1.5 } });
   });
@@ -297,11 +314,54 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
     const calls = draw(
       [
         { k: "image", key: "p", sprite: "playerShip", x: 0, y: 0, w: 1, h: 1, fit: "fill" },
-        { k: "rect", key: "r", x: 0, y: 0, w: 1, h: 1, color: "#000" },
+        { k: "rect", key: "r", x: 0, y: 0, w: 1, h: 1, color: 0xff000000 },
       ],
       images({ playerShip: null })
     );
     expect(calls.map((c) => c.fn)).toEqual(["drawRect"]);
+  });
+
+  it("#2963: each polygon's path is disposed once drawn", () => {
+    const before = { ...mockMade };
+    draw([
+      { k: "poly", points: [1, 2, 3, 4, 5, 6], color: 0xff8b6a47 },
+      { k: "poly", points: [1, 2, 3, 4, 5, 6], color: 0xffc9a27a, stroke: 1.5 },
+      { k: "poly", points: [1], color: 0xffc9a27a }, // too short: no path at all
+    ]);
+    expect(mockMade.paths - before.paths).toBe(2);
+    expect(mockMade.disposed - before.disposed).toBe(2);
+  });
+
+  it("#2963: paints are made once and each colour converted once, across frames", () => {
+    const ops: DrawOp[] = [
+      { k: "rect", x: 0, y: 0, w: 1, h: 1, color: 0xff123456 },
+      { k: "circle", cx: 0, cy: 0, r: 1, color: 0xff123456 },
+      { k: "rect", x: 0, y: 0, w: 1, h: 1, color: 0xff654321 },
+    ];
+    draw(ops); // warm: whatever earlier tests left, these two colours are now cached
+    const before = { ...mockMade };
+    for (let i = 0; i < 5; i++) draw(ops);
+    expect(mockMade.paints).toBe(before.paints);
+    expect(mockMade.colors).toBe(before.colors);
+    // a new colour is converted once, then served from the cache
+    draw([{ k: "rect", x: 0, y: 0, w: 1, h: 1, color: 0xff0badce }]);
+    draw([{ k: "rect", x: 0, y: 0, w: 1, h: 1, color: 0xff0badce }]);
+    expect(mockMade.colors).toBe(before.colors + 1);
+  });
+
+  it("#2963: the colour cache starts over once it holds 256 colours", () => {
+    const fading = (n: number): DrawOp[] =>
+      Array.from({ length: n }, (_, i) => ({
+        k: "rect" as const,
+        x: 0,
+        y: 0,
+        w: 1,
+        h: 1,
+        color: withAlpha(0xabcdef, i / 1000),
+      }));
+    draw(fading(300));
+    const calls = draw([{ k: "rect", x: 0, y: 0, w: 1, h: 1, color: withAlpha(0xabcdef, 0.2) }]);
+    expect(calls[0]!.paint!.alpha).toBeCloseTo(0.2, 2);
   });
 
   it("replays a busy real frame: exactly one draw call per op, in order", () => {
@@ -347,7 +407,7 @@ describe("drawFrame — one draw call per op, with the op's paint", () => {
       ],
       bombFlashTimer: 120,
     };
-    const ops = buildFrame(state, initStarfield(CANVAS_W, CANVAS_H), {
+    const ops = buildFrame(state, {
       loaded,
       width: CANVAS_W,
       height: CANVAS_H,

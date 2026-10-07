@@ -51,7 +51,7 @@ import {
   pickupCueColor,
 } from "../../game/starswarm/render/pickupCue";
 import type { PickupCue } from "../../game/starswarm/render/pickupCue";
-import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
+import { initStarfield, starY, tickStarfield } from "../../game/starswarm/starfield";
 import type { StarfieldState } from "../../game/starswarm/starfield";
 import type {
   StarSwarmState,
@@ -589,7 +589,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         ctx.globalAlpha = star.opacity;
         ctx.fillStyle = C.star;
         ctx.beginPath();
-        ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
+        ctx.arc(star.x, starY(star, sf), star.r, 0, Math.PI * 2); // #2963: scrolled by its layer
         ctx.fill();
       }
       ctx.globalAlpha = 1;
