@@ -1,4 +1,11 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import React, {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -46,6 +53,7 @@ import {
 import type { FrameStatsSummary } from "../../game/starswarm/render/frameStats";
 import { initStarfield, tickStarfield } from "../../game/starswarm/starfield";
 import { sameFrame, starfieldRuns } from "../../game/starswarm/render/publish";
+import StarfieldLayers from "./StarfieldLayers";
 import { deriveHud, hudCues, publishHud, POWERUP_BAR_WIDTH } from "../../game/starswarm/render/hud";
 import type { HudState, HudCues } from "../../game/starswarm/render/hud";
 import type { FrameInputs } from "../../game/starswarm/render/publish";
@@ -146,7 +154,7 @@ function publishPicture(
   width: number,
   height: number
 ): void {
-  frameSV.value = buildFrame(inputs.game, inputs.sf, { loaded, width, height });
+  frameSV.value = buildFrame(inputs.game, { loaded, width, height });
 }
 
 interface Props {
@@ -244,7 +252,13 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           difficultyProp
         )
     );
-    const sfRef = useRef<StarfieldState>(initStarfield(width, height));
+    // #2963: the star layout is fixed for a canvas size (seeded); only its scroll clock moves.
+    // StarfieldLayers records it once and slides each layer by `starClockSV` on the UI thread.
+    const starLayout = useMemo(() => initStarfield(width, height), [width, height]);
+    const sfRef = useRef<StarfieldState>(starLayout);
+    const starClockSV = useSharedValue(0);
+    const starClockSVRef = useRef(starClockSV);
+    starClockSVRef.current = starClockSV;
     const inputRef = useRef({ playerX: initialState?.player.x ?? width / 2, fire: true });
     const infiniteLivesRef = useRef(false);
     // Assign during render (not via effect) so the reset effect always reads the
@@ -345,7 +359,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // #2563: the first frame's inputs; after this the loop publishes, never React state
     const [initialFrame] = useState<FrameInputs>(() => ({
       game: gameRef.current,
-      sf: sfRef.current,
       countdownDigit: initialState ? null : Math.ceil(WAVE_COUNTDOWN_MS / 1000),
       waveBannerCountdown: false,
       bonusFlash: false,
@@ -397,7 +410,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
     // derived value re-records only when the list, the image set or the canvas size changes.
     // Seeded with the first frame so the Picture is never blank before the first publish.
     const [initialOps] = useState(() =>
-      buildFrame(initialFrame.game, initialFrame.sf, { loaded: loadedRef.current, width, height })
+      buildFrame(initialFrame.game, { loaded: loadedRef.current, width, height })
     );
     const frameSV = useSharedValue<readonly DrawOp[]>(initialOps);
     // Effects and the loop write through a ref: the shared value's identity is stable in the app,
@@ -477,7 +490,8 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         opts?.difficulty ?? difficultyRef.current,
         opts?.stragglerEnabled
       );
-      sfRef.current = initStarfield(width, height);
+      sfRef.current = starLayout;
+      starClockSVRef.current.value = 0;
       countdownMsRef.current = WAVE_COUNTDOWN_MS;
       lastFrameTimeRef.current = 0;
       inputRef.current.playerX = width / 2;
@@ -493,7 +507,6 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       if (isBossWave(gameRef.current.wave) && !isPausedRef.current) onBossWaveRef.current?.();
       const fresh: FrameInputs = {
         game: gameRef.current,
-        sf: sfRef.current,
         countdownDigit: Math.ceil(WAVE_COUNTDOWN_MS / 1000),
         waveBannerCountdown: false,
         bonusFlash: false,
@@ -501,7 +514,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       publishedRef.current = fresh;
       publishPicture(frameSVRef.current, fresh, loadedRef.current, width, height);
       publishHud(fresh, hudRef, setHud, cuesRef, cueSVRef.current);
-    }, [resetTick, width, height]);
+    }, [resetTick, width, height, starLayout]);
 
     // RAF game loop — drives the engine tick, and publishes a frame to the Skia render only when
     // something drawn changed (#2563)
@@ -671,9 +684,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             }
           }
         }
-        // Starfield scrolls while the game is live; paused or over, the frame holds still (#2563)
+        // Starfield scrolls while the game is live; paused or over, the frame holds still (#2563).
+        // #2963: it scrolls on the UI thread from this clock — no display-list rebuild for it.
         if (starfieldRuns(gameRef.current.phase, isPausedRef.current)) {
           sfRef.current = tickStarfield(sfRef.current, dtMs);
+          starClockSVRef.current.value = sfRef.current.elapsedMs;
         }
 
         const countdownDigit =
@@ -682,14 +697,14 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             : null;
         const next: FrameInputs = {
           game: gameRef.current,
-          sf: sfRef.current,
           countdownDigit,
           waveBannerCountdown: waveBannerCountdownRef.current,
           bonusFlash: Date.now() < bonusFlashEndRef.current,
         };
         // #2563: an unchanged frame is not handed to React — that is every frame while paused
         // (unless a dev-panel injection or the 1UP flash expiring changes something) and every
-        // frame after game over. Live play still publishes each frame: the starfield moves.
+        // frame after game over. #2963: the starfield scrolls without a publish (above), so live
+        // play publishes when the engine state moves — every tick of combat, not the countdown.
         if (!sameFrame(publishedRef.current, next)) {
           publishedRef.current = next;
           // #2565: the scene goes to the UI thread as data. #2566: React hears about a frame only
@@ -717,8 +732,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           accessibilityRole="none"
         >
           <Group transform={[{ scale }]}>
-            {/* #2565: the whole scene as one UI-thread Picture. Every drawing decision lives in
-                buildFrame (#2564), built in the loop and tested there. */}
+            {/* #2963: background and starfield, recorded once and scrolled on the UI thread */}
+            <StarfieldLayers layout={starLayout} clock={starClockSV} />
+            {/* #2565: the scene above them as one UI-thread Picture. Every drawing decision lives
+                in buildFrame (#2564), built in the loop and tested there. */}
             <Picture picture={picture} />
           </Group>
         </Canvas>

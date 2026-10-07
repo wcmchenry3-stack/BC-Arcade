@@ -5,18 +5,20 @@
  * checking the HUD for changes (#2566) — so the loop publishes only when something drawn has
  * actually changed. The engine returns the
  * same state object on a tick that changes nothing (paused is never ticked; GameOver short-
- * circuits), and the starfield only advances while the game is live — so identity comparison of
- * the inputs is exact, and a paused or finished game stops re-rendering entirely.
+ * circuits) — so identity comparison of the inputs is exact, and a paused or finished game stops
+ * re-rendering entirely.
+ *
+ * #2963: the starfield is no longer part of the published frame. It is recorded once and
+ * scrolled on the UI thread by a shared clock, so a frame where only the stars moved (the
+ * pre-wave countdown) publishes nothing.
  *
  * Pure and React-free so the gate is unit-tested.
  */
 import type { StarSwarmState } from "../types";
-import type { StarfieldState } from "../starfield";
 
-/** Everything the native canvas render reads that changes during play. */
+/** Everything the native canvas's scene Picture and HUD read that changes during play. */
 export interface FrameInputs {
   readonly game: StarSwarmState;
-  readonly sf: StarfieldState;
   /** Pre-wave countdown digit (3, 2, 1), or null when no countdown is showing. */
   readonly countdownDigit: number | null;
   /** True when the active countdown follows a wave clear (shows the "— WAVE N —" banner). */
@@ -29,7 +31,6 @@ export interface FrameInputs {
 export function sameFrame(prev: FrameInputs, next: FrameInputs): boolean {
   return (
     prev.game === next.game &&
-    prev.sf === next.sf &&
     prev.countdownDigit === next.countdownDigit &&
     prev.waveBannerCountdown === next.waveBannerCountdown &&
     prev.bonusFlash === next.bonusFlash
@@ -39,7 +40,7 @@ export function sameFrame(prev: FrameInputs, next: FrameInputs): boolean {
 /**
  * The starfield scrolls only while the game is live. Paused, the frame holds still under the
  * pause overlay; at game over it holds the #2334 freeze frame behind the game-over overlay.
- * Either way nothing on screen moves, so the loop can stop publishing.
+ * Either way nothing on screen moves.
  */
 export function starfieldRuns(phase: StarSwarmState["phase"], paused: boolean): boolean {
   return !paused && phase !== "GameOver";

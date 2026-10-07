@@ -256,6 +256,9 @@ async def _premium_slug_for(db: AsyncSession, product_id: str) -> str:
     slug = slug_for_product(product_id)
     if slug is None:
         raise PurchaseError(422, "unknown_product")
+    # Straight from the DB, never the catalog cache (#2966): the store has already
+    # charged the user, so a worker's stale snapshot must not reject a game that
+    # was just made premium. This path is not hot.
     is_premium = (
         await db.execute(select(GameType.is_premium).where(GameType.name == slug))
     ).scalar_one_or_none()
