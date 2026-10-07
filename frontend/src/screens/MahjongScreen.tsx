@@ -70,7 +70,6 @@ import {
   nextBestTime,
   getAllFreePairs,
   getAnyFreePair,
-  hasFreePairs,
   pauseGame,
   resumeGame,
   selectTile,
@@ -93,6 +92,7 @@ import {
 import LayoutSelectScreen from "../game/mahjong/LayoutSelectScreen";
 import { useMahjongAudio } from "../game/mahjong/useMahjongAudio";
 import { useMahjongPersistence } from "../game/mahjong/useMahjongPersistence";
+import { freeIdsFor, useFreeTiles } from "../game/mahjong/useFreeTiles";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
 import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
@@ -351,10 +351,11 @@ export default function MahjongScreen() {
   // Dev panel state — __DEV__ only; toggled via Shift+D (web) or long-press score (native).
   const [devPanelOpen, setDevPanelOpen] = useState(false);
   const [debugShowFree, setDebugShowFree] = useState(false);
+  // The board's free tiles, once per board (#2962): shared by the canvas, overlays and moves.
+  const free = useFreeTiles(state);
   const freePairs = useMemo<[SlotTile, SlotTile][]>(
-    () => (__DEV__ && devPanelOpen && state ? getAllFreePairs(state.tiles) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [devPanelOpen, state?.tiles]
+    () => (__DEV__ && devPanelOpen ? getAllFreePairs(free.tiles, free.ids) : []),
+    [devPanelOpen, free]
   );
 
   // Tile image URIs for the flying-pair overlay (web: loaded via expo-asset; native: stays null[]).
@@ -474,11 +475,7 @@ export default function MahjongScreen() {
 
   // Derived display state for no-moves overlays — computed here (not inside
   // GameCanvas) so the overlays render at viewport level and are always visible.
-  const noFreePairs = useMemo(
-    () => state !== null && !state.isComplete && !hasFreePairs(state.tiles),
-    [state]
-  );
-  const showShuffleCTA = noFreePairs && (state?.shufflesLeft ?? 0) > 0;
+  const showShuffleCTA = free.noFreePairs && (state?.shufflesLeft ?? 0) > 0;
 
   const [showDeadlockOverlay, setShowDeadlockOverlay] = useState(false);
   useEffect(() => {
@@ -862,7 +859,7 @@ export default function MahjongScreen() {
       clearHint();
       setState((prev) => {
         if (!prev) return prev;
-        const moved = selectTile(prev, tileId);
+        const moved = selectTile(prev, tileId, freeIdsFor(free, prev.tiles));
         if (moved === prev) return prev;
         // A first tap that lands while the player is away mustn't start the
         // clock running (#2750).
@@ -871,12 +868,12 @@ export default function MahjongScreen() {
         return next;
       });
     },
-    [ensureSyncStarted, matchPresence, clearHint]
+    [ensureSyncStarted, matchPresence, clearHint, free]
   );
 
   const handleHint = useCallback(() => {
     if (!state) return;
-    const pair = getAnyFreePair(state.tiles);
+    const pair = getAnyFreePair(state.tiles, free.ids);
     if (!pair) {
       if (noHintTimerRef.current) clearTimeout(noHintTimerRef.current);
       setNoHintVisible(true);
@@ -886,7 +883,7 @@ export default function MahjongScreen() {
     clearHint();
     setHintIds(new Set(pair));
     hintTimerRef.current = setTimeout(() => setHintIds(new Set()), 2000);
-  }, [state, clearHint]);
+  }, [state, free, clearHint]);
 
   useEffect(
     () => () => {
@@ -1167,6 +1164,7 @@ export default function MahjongScreen() {
                   <GameCanvas
                     state={state}
                     camera={camera}
+                    freeIds={free.ids}
                     hintIds={hintIds}
                     debugShowFree={__DEV__ && debugShowFree}
                     onTilePress={handleTilePress}

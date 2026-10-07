@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Text, type StyleProp, type TextStyle } from "react-native";
-import { formatMs } from "../../game/_shared/formatMs";
+import { formatMs, msToNextSecond } from "../../game/_shared/formatMs";
 import type { PlayClock } from "../../game/_shared/playClock";
 
 export interface PlayClockTextProps {
@@ -17,11 +17,6 @@ export interface PlayClockTextProps {
   accessibilityLabel?: (time: string) => string;
   style?: StyleProp<TextStyle>;
   testID?: string;
-}
-
-/** Milliseconds until `elapsedMs` next crosses a whole second. */
-function msToNextSecond(elapsedMs: number): number {
-  return 1000 - (((elapsedMs % 1000) + 1000) % 1000);
 }
 
 /**

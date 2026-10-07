@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useColorScheme } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -252,22 +252,24 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const theme: Theme =
     themeMode === "system" ? (systemScheme === "light" ? "light" : "dark") : themeMode;
 
-  function setThemeMode(mode: ThemeMode) {
+  // Stable setters and a memoised value (#2964): a re-render of the provider
+  // that changes neither the mode nor the OS scheme must not re-render the
+  // 70-odd useTheme() consumers.
+  const setThemeMode = useCallback((mode: ThemeMode) => {
     setThemeModeState(mode);
     AsyncStorage.setItem(STORAGE_KEY_MODE, mode);
-  }
+  }, []);
 
-  function toggle() {
+  const toggle = useCallback(() => {
     setThemeMode(theme === "dark" ? "light" : "dark");
-  }
+  }, [theme, setThemeMode]);
 
-  return (
-    <ThemeContext.Provider
-      value={{ theme, themeMode, colors: PALETTES[theme], toggle, setThemeMode }}
-    >
-      {children}
-    </ThemeContext.Provider>
+  const value = useMemo<ThemeContextValue>(
+    () => ({ theme, themeMode, colors: PALETTES[theme], toggle, setThemeMode }),
+    [theme, themeMode, toggle, setThemeMode]
   );
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme() {

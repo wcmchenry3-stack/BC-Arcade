@@ -26,7 +26,7 @@ import BottomTabBar from "./src/components/shared/BottomTabBar";
 import { ThemeProvider } from "./src/theme/ThemeContext";
 import { useHtmlAttributes } from "./src/i18n/useHtmlAttributes";
 import { NetworkProvider } from "./src/game/_shared/NetworkContext";
-import { EntitlementProvider, useEntitlements } from "./src/entitlements/EntitlementContext";
+import { EntitlementProvider, useEntitlementGate } from "./src/entitlements/EntitlementContext";
 import {
   PREMIUM_ROUTES,
   visiblePremiumRoutes,
@@ -146,7 +146,7 @@ function makePremiumScreen<P extends object>(
   Screen: React.ComponentType<P>
 ): React.FC<P> {
   const PremiumScreen = (props: P) => {
-    const { canPlay, isLoading } = useEntitlements();
+    const { canPlay, isLoading } = useEntitlementGate();
     const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
     const wasEntitledRef = useRef<boolean | null>(null);
 
