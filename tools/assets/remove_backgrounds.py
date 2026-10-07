@@ -6,8 +6,8 @@ Remove baked-in opaque backgrounds from PNG sprite assets.
 
 Usage
 -----
-  python scripts/remove-backgrounds.py            # process both default asset dirs
-  python scripts/remove-backgrounds.py <path>     # single file or directory
+  python tools/assets/remove_backgrounds.py            # process both default asset dirs
+  python tools/assets/remove_backgrounds.py <path>     # single file or directory
 
 Algorithm
 ---------
@@ -64,7 +64,7 @@ CELESTIAL_SOFT = 10
 # source_dir  — original PNGs with opaque backgrounds (committed, never modified)
 # output_dir  — processed PNGs written here (may be the same dir for in-place runs)
 _SCRIPT_DIR = Path(__file__).resolve().parent
-_FRONTEND_DIR = _SCRIPT_DIR.parent
+_FRONTEND_DIR = _SCRIPT_DIR.parent.parent / "frontend"
 DEFAULT_PIPELINE: list[tuple[Path, Path, str]] = [
     (
         _FRONTEND_DIR / "assets" / "source-icons" / "fruits",

@@ -549,7 +549,7 @@ The `android-bundle-check` CI job enforces an **8.0 MB hard limit** (`MAX_BYTES=
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ------ |
 | Baseline (`dev` at e5bb82b2)                                                                                                                                                 | 8,114,007 B (7.74 MB)     | –      |
 | Yacht oracle table: delta + zigzag + byte planes before zlib (`frontend/src/game/yacht/oracle/tableCodec.ts`). Values bit-identical, pinned by `pinnedEV.test.ts`.           | 7,828,231 B (7.47 MB)     | 279 KB |
-| Sudoku puzzle banks shipped packed (`puzzleBanks.generated.ts`, from `scripts/pack-sudoku-puzzles.ts`). JSON stays the source of truth; `puzzleBanks.test.ts` pins equality. | **7,618,974 B (7.27 MB)** | 204 KB |
+| Sudoku puzzle banks shipped packed (`puzzleBanks.generated.ts`, from `tools/generators/pack-sudoku-puzzles.ts`). JSON stays the source of truth; `puzzleBanks.test.ts` pins equality. | **7,618,974 B (7.27 MB)** | 204 KB |
 
 The final row is CI's exact command with `--reset-cache`. The earlier rows were built with `--sourcemap-output` as well, which adds about 100 bytes (see below).
 
@@ -630,8 +630,8 @@ For new game additions specifically, the reviewer checklist in [`docs/GAME-CONTR
 A separate CI gate in `test-frontend` (`assetTransparency.test.ts`) asserts that no raw PNGs exist in non-exempt icon subdirectories under `frontend/assets/`. To convert new PNGs before staging:
 
 ```bash
-python frontend/scripts/convert_icons_to_webp.py frontend/assets/fruit-icons
-python frontend/scripts/convert_icons_to_webp.py frontend/assets/celestial-icons
+python tools/assets/convert_icons_to_webp.py frontend/assets/fruit-icons
+python tools/assets/convert_icons_to_webp.py frontend/assets/celestial-icons
 ```
 
 **Exempt directories** (must stay PNG, never pass to the script):

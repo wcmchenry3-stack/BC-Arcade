@@ -69,7 +69,7 @@ export interface SolveResult {
  * Solve VTG for every reachable state. `onProgress`, if given, is called
  * once per "remaining categories" level (13 calls total, 1-13) — useful for
  * a long-running build script to report progress.
- * @public Used by scripts/build-yacht-oracle.ts (outside knip's workspace; #2969).
+ * @public Used by tools/generators/build-yacht-oracle.ts (outside knip's workspace; #2969).
  */
 export function solveOracle(
   onProgress?: (remaining: number, statesSoFar: number) => void

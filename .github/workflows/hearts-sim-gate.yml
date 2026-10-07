@@ -24,7 +24,7 @@ on:
       - "frontend/src/game/hearts/types.ts"
       - "frontend/tooling/hearts/**"
       - "frontend/src/game/_shared/simRandom.ts"
-      - "scripts/simulate-hearts.ts"
+      - "tools/sim/simulate-hearts.ts"
       - ".github/workflows/hearts-sim-gate.yml"
 
 concurrency:
@@ -57,7 +57,7 @@ jobs:
           ARGS=(--gate --group "${{ matrix.group }}" --json "hearts-gate-${{ matrix.group }}.json")
           if [ -n "$MAX_BLOCKS" ]; then ARGS+=(--max-blocks "$MAX_BLOCKS"); fi
           # tsx is a frontend devDependency (pinned in frontend/package.json).
-          npx --prefix frontend tsx scripts/simulate-hearts.ts "${ARGS[@]}" | tee "hearts-gate-${{ matrix.group }}.txt"
+          npx --prefix frontend tsx tools/sim/simulate-hearts.ts "${ARGS[@]}" | tee "hearts-gate-${{ matrix.group }}.txt"
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v7

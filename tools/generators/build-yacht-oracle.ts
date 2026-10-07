@@ -10,16 +10,16 @@
  * matches published implementations of the same problem (Verhoeff, Glenn
  * 2006, and others solving the same joker/bonus-score variant).
  *
- * Usage: npx --prefix frontend tsx scripts/build-yacht-oracle.ts
+ * Usage: npx --prefix frontend tsx tools/generators/build-yacht-oracle.ts
  */
 
 import { writeFileSync } from "node:fs";
-import { solveOracle } from "../frontend/tooling/yacht/oracleBuild/solver";
-import { renderTableModule } from "../frontend/tooling/yacht/oracleBuild/renderTableModule";
+import { solveOracle } from "../../frontend/tooling/yacht/oracleBuild/solver";
+import { renderTableModule } from "../../frontend/tooling/yacht/oracleBuild/renderTableModule";
 import {
   TABLE_SIZE,
   INITIAL_KEY,
-} from "../frontend/src/game/yacht/oracle/stateKey";
+} from "../../frontend/src/game/yacht/oracle/stateKey";
 
 const OUTPUT_PATH = "frontend/src/game/yacht/oracle/oracleTable.generated.ts";
 

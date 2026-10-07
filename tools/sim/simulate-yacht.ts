@@ -6,11 +6,11 @@
  * old stale bands table was retired).
  *
  * Usage (from the repo root):
- *   npx --prefix frontend tsx scripts/simulate-yacht.ts --a hard --b medium            # ad-hoc matchup
- *   npx --prefix frontend tsx scripts/simulate-yacht.ts --a hard --b hard --blocks 500 --mode independent
- *   npx --prefix frontend tsx scripts/simulate-yacht.ts --gate                         # every gate matchup + bands
- *   npx --prefix frontend tsx scripts/simulate-yacht.ts --gate --matchup hard-vs-medium --games 800
- *   npx --prefix frontend tsx scripts/simulate-yacht.ts --a easy --b easy --json out.json   # raw per-game records
+ *   npx --prefix frontend tsx tools/sim/simulate-yacht.ts --a hard --b medium            # ad-hoc matchup
+ *   npx --prefix frontend tsx tools/sim/simulate-yacht.ts --a hard --b hard --blocks 500 --mode independent
+ *   npx --prefix frontend tsx tools/sim/simulate-yacht.ts --gate                         # every gate matchup + bands
+ *   npx --prefix frontend tsx tools/sim/simulate-yacht.ts --gate --matchup hard-vs-medium --games 800
+ *   npx --prefix frontend tsx tools/sim/simulate-yacht.ts --a easy --b easy --json out.json   # raw per-game records
  *
  * Flags:
  *   --a, --b      easy | medium | hard (ad-hoc mode; default hard vs medium)
@@ -33,12 +33,12 @@ import {
   runMatchup,
   type DiceMode,
   type MatchupRun,
-} from "../frontend/tooling/yacht/harness";
+} from "../../frontend/tooling/yacht/harness";
 import {
   formatReport,
   summarize,
   type MatchupReport,
-} from "../frontend/tooling/yacht/stats";
+} from "../../frontend/tooling/yacht/stats";
 import {
   GATE_BANDS,
   GATE_GROUPS,
@@ -46,11 +46,11 @@ import {
   checkBands,
   formatBandResults,
   gateBlocks,
-} from "../frontend/tooling/yacht/gate";
+} from "../../frontend/tooling/yacht/gate";
 import {
   AI_DIFFICULTIES,
   type AiDifficulty,
-} from "../frontend/src/game/yacht/types";
+} from "../../frontend/src/game/yacht/types";
 
 function flag(name: string): string | undefined {
   const i = process.argv.indexOf(name);

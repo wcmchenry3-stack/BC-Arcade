@@ -27,7 +27,7 @@ Sudoku is **not served from the backend**. Both puzzle banks ship inside the fro
 - `frontend/src/game/sudoku/puzzles.json` — Classic;
 - `frontend/src/game/sudoku/puzzles_mini.json` — Mini.
 
-The JSON files are the source of truth, but the app ships them packed: `frontend/src/game/sudoku/puzzleBanks.generated.ts` holds each difficulty's puzzles joined, zlib-compressed and base64-encoded (see `puzzleCodec.ts`), which keeps about 205 KB out of the JS bundle (#2869). The engine unpacks one difficulty the first time a game needs it, so Sudoku still works offline. After regenerating either JSON file, re-pack from the repo root with `npx --prefix frontend tsx scripts/pack-sudoku-puzzles.ts`, then run Prettier on the generated file. `puzzleBanks.test.ts` fails until the packed banks match the JSON exactly.
+The JSON files are the source of truth, but the app ships them packed: `frontend/src/game/sudoku/puzzleBanks.generated.ts` holds each difficulty's puzzles joined, zlib-compressed and base64-encoded (see `puzzleCodec.ts`), which keeps about 205 KB out of the JS bundle (#2869). The engine unpacks one difficulty the first time a game needs it, so Sudoku still works offline. After regenerating either JSON file, re-pack from the repo root with `npx --prefix frontend tsx tools/generators/pack-sudoku-puzzles.ts`, then run Prettier on the generated file. `puzzleBanks.test.ts` fails until the packed banks match the JSON exactly.
 
 Each bank contains **1,000 puzzles per difficulty**, for 3,000 Classic + 3,000 Mini puzzles.
 
@@ -162,7 +162,7 @@ For generic syncing, ranking, display-name, Stats, and result-card behavior, see
 - Storage: `frontend/src/game/sudoku/storage.ts`
 - Classic bank: `frontend/src/game/sudoku/puzzles.json`
 - Mini bank: `frontend/src/game/sudoku/puzzles_mini.json`
-- Packed banks (shipped): `frontend/src/game/sudoku/puzzleBanks.generated.ts`, written by `scripts/pack-sudoku-puzzles.ts`
+- Packed banks (shipped): `frontend/src/game/sudoku/puzzleBanks.generated.ts`, written by `tools/generators/pack-sudoku-puzzles.ts`
 - Generator: `backend/scripts/gen_sudoku_puzzles.py`
 - Bank verification: `backend/tests/test_sudoku_puzzles.py`
 - Backend descriptor: `backend/sudoku/module.py`

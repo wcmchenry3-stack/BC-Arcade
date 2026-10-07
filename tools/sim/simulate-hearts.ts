@@ -6,22 +6,22 @@
  * line around them. See docs/TESTING.md for the methodology.
  *
  * Modes:
- *   npx --prefix frontend tsx scripts/simulate-hearts.ts                        # descriptive report, 3000 games per matchup
- *   npx --prefix frontend tsx scripts/simulate-hearts.ts --count 900             # ... 900 games per matchup
- *   npx --prefix frontend tsx scripts/simulate-hearts.ts --gate                  # full SPRT gate, every group
- *   npx --prefix frontend tsx scripts/simulate-hearts.ts --gate --group field    # one group (as CI's matrix does)
- *   npx --prefix frontend tsx scripts/simulate-hearts.ts --gate --json out.json  # also write machine-readable results
- *   npx --prefix frontend tsx scripts/simulate-hearts.ts --update-baseline --reason "why"   # re-measure baseline.json
- *   npx --prefix frontend tsx scripts/simulate-hearts.ts --regret                # per-decision regret vs the reference (#2239)
- *   npx --prefix frontend tsx scripts/simulate-hearts.ts --regret --blocks 40 --sample-every 4 --oracle-player
- *   npx --prefix frontend tsx scripts/simulate-hearts.ts --regret --pimc 16          # also grade the PIMC engine (16 deals/move)
- *   npx --prefix frontend tsx scripts/simulate-hearts.ts --log-games 10          # 10 fully-logged games (NDJSON)
- *   npx --prefix frontend tsx scripts/simulate-hearts.ts --log-games 10 --difficulties cautious,schemer,daring,schemer
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts                        # descriptive report, 3000 games per matchup
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --count 900             # ... 900 games per matchup
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate                  # full SPRT gate, every group
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate --group field    # one group (as CI's matrix does)
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate --json out.json  # also write machine-readable results
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --update-baseline --reason "why"   # re-measure baseline.json
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --regret                # per-decision regret vs the reference (#2239)
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --regret --blocks 40 --sample-every 4 --oracle-player
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --regret --pimc 16          # also grade the PIMC engine (16 deals/move)
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --log-games 10          # 10 fully-logged games (NDJSON)
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --log-games 10 --difficulties cautious,schemer,daring,schemer
  *
  * `--count` is games per matchup (rounded up to whole blocks), aligned with
- * scripts/simulate-yacht.ts (#2204). `--seed` overrides the deal seed for
+ * tools/sim/simulate-yacht.ts (#2204). `--seed` overrides the deal seed for
  * the report and the gate. NDJSON game logs (`--log-games`, used by
- * hearts-analysis/main.py's /api/simulate) keep their format.
+ * tools/hearts-analysis/main.py's /api/simulate) keep their format.
  */
 
 import {
@@ -32,24 +32,24 @@ import {
   playCard,
   selectPassCard,
   setRng,
-} from "../frontend/src/game/hearts/engine";
+} from "../../frontend/src/game/hearts/engine";
 import {
   selectCardToPlay,
   selectCardsToPass,
-} from "../frontend/src/game/hearts/ai";
+} from "../../frontend/src/game/hearts/ai";
 import type {
   AiPersona,
   Card,
   HeartsState,
-} from "../frontend/src/game/hearts/types";
-import { pimcPolicy, runBlocks } from "../frontend/tooling/hearts/harness";
-import { DEFAULT_PIMC_CONFIG } from "../frontend/src/game/hearts/pimc/engine";
+} from "../../frontend/src/game/hearts/types";
+import { pimcPolicy, runBlocks } from "../../frontend/tooling/hearts/harness";
+import { DEFAULT_PIMC_CONFIG } from "../../frontend/src/game/hearts/pimc/engine";
 import {
   REGRET_PERSONAS,
   formatRegretReport,
   regretMatchup,
   runRegretBlocks,
-} from "../frontend/tooling/hearts/regret";
+} from "../../frontend/tooling/hearts/regret";
 import {
   GATE_GROUPS,
   GATE_MATCHUPS,
@@ -60,7 +60,7 @@ import {
   measureBaseline,
   runGroup,
   type GroupRun,
-} from "../frontend/tooling/hearts/gate";
+} from "../../frontend/tooling/hearts/gate";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -218,7 +218,7 @@ function parseDifficulties(args: string[]): Difficulties | null {
 
 // --log-games N: emit N NDJSON game logs and exit (optionally with --difficulties).
 // This is a distinct mode from aggregate-stats --count below (#2204) — it is used
-// by hearts-analysis/main.py's /api/simulate endpoint, so the flag name and the
+// by tools/hearts-analysis/main.py's /api/simulate endpoint, so the flag name and the
 // NDJSON-per-line output format must stay stable even though --count no longer
 // triggers it.
 const logCount = parseCount(process.argv, "--log-games");
@@ -268,7 +268,7 @@ const argv = process.argv;
 const seedArg = parseCount(argv, "--seed");
 const BASELINE_PATH = join(
   dirname(fileURLToPath(import.meta.url)),
-  "../frontend/tooling/hearts/baseline.json",
+  "../../frontend/tooling/hearts/baseline.json",
 );
 
 if (argv.includes("--update-baseline")) {

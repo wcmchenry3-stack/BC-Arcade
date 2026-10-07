@@ -7,7 +7,7 @@
  * instrumented rates are still defined. It does not judge calibration:
  * at this size the checks are truncated and meaningless as verdicts. The
  * statistical gate is .github/workflows/hearts-sim-gate.yml, run on PRs
- * that touch the AI and nightly (`npx tsx scripts/simulate-hearts.ts
+ * that touch the AI and nightly (`npx tsx tools/sim/simulate-hearts.ts
  * --gate`); see docs/TESTING.md.
  *
  * Moon success is gated as the paired rate (#2204 HRT-1,

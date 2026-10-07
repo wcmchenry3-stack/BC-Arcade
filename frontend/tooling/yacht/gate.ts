@@ -1,7 +1,7 @@
 /**
  * Yacht calibration gate definition (#2245): which matchups run, how many
  * games each, and the bands their reports must satisfy. The single source
- * of truth for bands — `scripts/simulate-yacht.ts --gate` runs it, locally
+ * of truth for bands — `tools/sim/simulate-yacht.ts --gate` runs it, locally
  * and in .github/workflows/yacht-sim-gate.yml.
  *
  * The bands encode the tier design from #2246 (ai.ts): mean scores around
@@ -53,7 +53,7 @@ export const GATE_GROUPS: Readonly<Record<string, readonly string[]>> = {
   "self-play": ["easy-self", "medium-self", "hard-self"],
 };
 
-/** @public Used by scripts/simulate-yacht.ts (outside knip's workspace; #2969). */
+/** @public Used by tools/sim/simulate-yacht.ts (outside knip's workspace; #2969). */
 export function gateBlocks(matchup: GateMatchup): number {
   return Math.ceil(matchup.games / 4);
 }

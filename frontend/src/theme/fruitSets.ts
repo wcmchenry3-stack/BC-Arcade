@@ -13,7 +13,7 @@ export interface FruitDefinition extends FruitDefinitionBase {
   /**
    * Normalised clip radius of the baked PNG (= clipR / physics radius).
    * At render time: half-size = bakedClipR * def.radius
-   * Originally produced by scripts/bake_sprites.py. When physics radii change
+   * Originally produced by tools/assets/bake_sprites.py. When physics radii change
    * without a sprite rebake, rescale as: new = old * (old_radius / new_radius).
    * Re-running bake_sprites.py will overwrite these with authoritative values.
    */

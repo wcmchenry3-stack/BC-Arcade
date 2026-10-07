@@ -1,5 +1,5 @@
 /**
- * #2880 balance sim: markdown tables for the CLI (scripts/simulate-starswarm.ts). Pure string
+ * #2880 balance sim: markdown tables for the CLI (tools/sim/simulate-starswarm.ts). Pure string
  * builders over `CellSummary`; nothing here prints or runs the engine.
  */
 import type { DifficultyTier } from "../../src/game/starswarm/types";
@@ -117,7 +117,7 @@ export function formatOffense(cells: readonly CellSummary[]): string {
 
 /**
  * A compact one-line-per-cell table for sweeps (variant rows, fixed scenario/difficulty).
- * @public Used by scripts/simulate-starswarm.ts (outside knip's workspace; #2969).
+ * @public Used by tools/sim/simulate-starswarm.ts (outside knip's workspace; #2969).
  */
 export function formatSweep(cells: readonly CellSummary[]): string {
   const lines = [

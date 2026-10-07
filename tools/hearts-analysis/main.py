@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 import analyzer
 
 DATA_DIR = Path(__file__).parent / "data"
-REPO_ROOT = Path(__file__).parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 GAMES: list[dict] = []
 
@@ -114,7 +114,7 @@ async def simulate(req: SimulateRequest) -> dict:
     safe_count = max(1, min(500, int(req.count)))
     safe_diffs = [d for d in req.difficulties if d in {"easy", "medium", "hard"}]
     cmd = [
-        "npx", "tsx", "scripts/simulate-hearts.ts",
+        "npx", "--prefix", "frontend", "tsx", "tools/sim/simulate-hearts.ts",
         "--log-games", str(safe_count),
         "--difficulties", ",".join(safe_diffs),
     ]

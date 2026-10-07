@@ -38,7 +38,7 @@ The Joker rule's three-tier legal-category priority (mandatory matching-upper, t
 | `oracle/tableCodec.ts`            | Yes             | Compact table encoding (§5), shared by the build and the runtime decoder so they can't drift.                                                                                                                                                                                                                    |
 | `oracle/oracleTable.generated.ts` | Yes             | Generated data asset — committed, not hand-edited. See §5.                                                                                                                                                                                                                                                       |
 | `tooling/yacht/oracleBuild/solver.ts` | No (build-only) | The outer retrograde loop over all ~786K states. Takes tens of minutes; must never run on-device. Not imported by any app screen/component, so Metro never bundles it.                                                                                                                                           |
-| `scripts/build-yacht-oracle.ts`   | No (build-only) | CLI entry point: `npx --prefix frontend tsx scripts/build-yacht-oracle.ts`. Regenerate after any change to `stateKey.ts`'s scoring/transition rules.                                                                                                                                                                               |
+| `tools/generators/build-yacht-oracle.ts`   | No (build-only) | CLI entry point: `npx --prefix frontend tsx tools/generators/build-yacht-oracle.ts`. Regenerate after any change to `stateKey.ts`'s scoring/transition rules.                                                                                                                                                                               |
 
 **Where `oracleBuild/` lives:** in `frontend/tooling/yacht/oracleBuild/` (moved out of `src/` by #2969). Its tests run under the jest `tooling` project with the same conventions as the app's (describe/it, `setRng`/`createSeededRng`, etc.). It's kept out of the shipped bundle by construction — app code may not import `tooling/` (eslint `no-restricted-imports`); only the standalone script does.
 
@@ -83,7 +83,7 @@ Measured on dev hardware (Node/tsx, not on-device — same dev-vs-mobile caveat 
 ## 8. Regenerating the table
 
 ```
-npx --prefix frontend tsx scripts/build-yacht-oracle.ts
+npx --prefix frontend tsx tools/generators/build-yacht-oracle.ts
 ```
 
 Takes tens of minutes on typical dev hardware — this matches published implementations of the same problem (Verhoeff, Glenn 2006, and others solving the same joker/bonus-score variant), not a performance bug in this implementation. Necessary whenever `stateKey.ts`'s scoring/transition logic changes; the generated file's header records when it was last built and from what state, so a stale table is at least detectable by inspection.

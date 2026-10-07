@@ -25,7 +25,7 @@ on:
       - "frontend/src/game/yacht/oracle/**"
       - "frontend/tooling/yacht/**"
       - "frontend/src/game/_shared/simRandom.ts"
-      - "scripts/simulate-yacht.ts"
+      - "tools/sim/simulate-yacht.ts"
       - ".github/workflows/yacht-sim-gate.yml"
 
 concurrency:
@@ -57,7 +57,7 @@ jobs:
           ARGS=(--gate --group "${{ matrix.group }}" --json "yacht-gate-${{ matrix.group }}.json")
           if [ -n "$GAMES" ]; then ARGS+=(--games "$GAMES"); fi
           # tsx is a frontend devDependency (pinned in frontend/package.json).
-          npx --prefix frontend tsx scripts/simulate-yacht.ts "${ARGS[@]}" | tee "yacht-gate-${{ matrix.group }}.txt"
+          npx --prefix frontend tsx tools/sim/simulate-yacht.ts "${ARGS[@]}" | tee "yacht-gate-${{ matrix.group }}.txt"
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v7

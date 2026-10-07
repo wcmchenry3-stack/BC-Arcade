@@ -195,7 +195,7 @@ No attribution is required, now or in the future. Assets can be modified, redist
 **Registry** (`frontend/src/game/cascade/images.ts`)  
 26 icon imports + 26 baked imports = 52 static import statements. All must be replaced with new asset files. The export objects (`FRUIT_ICONS`, `FRUIT_BAKED`, `COSMOS_ICONS`, `COSMOS_BAKED`) retain their shape — consumers do not change.
 
-**Bake pipeline** (`frontend/scripts/bake_sprites.py`)  
+**Bake pipeline** (`tools/assets/bake_sprites.py`)  
 The script IS committed to the repo (contrary to the issue description which listed it as absent). It reads source images from `fruit_images/` and `celestial_images/` (gitignored), bakes 512×512 PNGs with circular clip, and writes `bakedClipR` values to `fruit-vertices.json` / `cosmos-vertices.json`. A swap requires:
 
 1. Placing new source images in `fruit_images/` and `celestial_images/`

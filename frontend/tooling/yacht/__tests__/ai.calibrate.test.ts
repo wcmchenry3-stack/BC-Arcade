@@ -7,7 +7,7 @@
  * The win-rate and score calibration bands that used to live here moved to
  * gate.ts (#2245), where they run on the shared harness (per-player
  * dice streams, mirrored dice, both turn orders) via
- * `npx tsx scripts/simulate-yacht.ts --gate`. See docs/TESTING.md.
+ * `npx tsx tools/sim/simulate-yacht.ts --gate`. See docs/TESTING.md.
  *
  * Dice and AI noise here come from the same per-player streams as the
  * harness (streams.ts), so no game shares a random sequence with its

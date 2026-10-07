@@ -576,7 +576,7 @@ The files follow the Hearts sim layout, and are ready for a regression gate (#28
 | `tooling/starswarm/balance.ts`  | Pure and deterministic, with no output. `runCell` / `measureCell(engine, {scenario, difficulty, pilot, variant, seeds})` returns a plain `CellSummary`. |
 | `tooling/starswarm/presets.ts`  | The variants, `engineFor`, and the presets: `fast`, `baseline`, `offense`, `sensitivity`, `candidates`, `shipped`, `proposal`.                          |
 | `tooling/starswarm/report.ts`   | Markdown tables built from `CellSummary`.                                                                                                               |
-| `scripts/simulate-starswarm.ts` | The CLI.                                                                                                                                                |
+| `tools/sim/simulate-starswarm.ts` | The CLI.                                                                                                                                                |
 
 The `fast` preset (3 seeds, two cells) is the jest smoke test in
 `tooling/starswarm/__tests__/balance.test.ts`, which runs with `npx jest tooling/starswarm` in about 15 s. The
@@ -584,14 +584,14 @@ full runs use the CLI:
 
 ```bash
 # from the repo root
-npx --prefix frontend tsx scripts/simulate-starswarm.ts --preset baseline --jobs 4 --md /tmp/base.md --json /tmp/base.json
-npx --prefix frontend tsx scripts/simulate-starswarm.ts --preset offense --jobs 4       # fan / pierce / damage, 3 runs fixed
-npx --prefix frontend tsx scripts/simulate-starswarm.ts --preset sensitivity --jobs 4   # one-at-a-time sweeps
-npx --prefix frontend tsx scripts/simulate-starswarm.ts --preset candidates --jobs 4    # survivability combos on the offense core
-npx --prefix frontend tsx scripts/simulate-starswarm.ts --preset proposal --jobs 4      # pre-#2880 tuning vs the shipped one, same seeds
+npx --prefix frontend tsx tools/sim/simulate-starswarm.ts --preset baseline --jobs 4 --md /tmp/base.md --json /tmp/base.json
+npx --prefix frontend tsx tools/sim/simulate-starswarm.ts --preset offense --jobs 4       # fan / pierce / damage, 3 runs fixed
+npx --prefix frontend tsx tools/sim/simulate-starswarm.ts --preset sensitivity --jobs 4   # one-at-a-time sweeps
+npx --prefix frontend tsx tools/sim/simulate-starswarm.ts --preset candidates --jobs 4    # survivability combos on the offense core
+npx --prefix frontend tsx tools/sim/simulate-starswarm.ts --preset proposal --jobs 4      # pre-#2880 tuning vs the shipped one, same seeds
 # filters: --seeds 200 --seed-base 0 --diffs Captain,Ensign --scenarios boss-exposed
 #          --pilots autoplay,duel --variants base,hp8
-npx --prefix frontend tsx scripts/simulate-starswarm.ts --merge /tmp/a.json,/tmp/b.json --md /tmp/all.md
+npx --prefix frontend tsx tools/sim/simulate-starswarm.ts --merge /tmp/a.json,/tmp/b.json --md /tmp/all.md
 ```
 
 A boss-wave seed takes about 0.2 s. An ordinary-wave seed takes 0.3–1.5 s, because the pilot has

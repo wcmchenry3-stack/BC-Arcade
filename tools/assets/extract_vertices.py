@@ -10,8 +10,8 @@ replacing the previous circle-only approach.
 
 Usage
 -----
-  python scripts/extract_vertices.py            # process both default asset dirs
-  python scripts/extract_vertices.py <path>     # single PNG (prints to stdout)
+  python tools/assets/extract_vertices.py            # process both default asset dirs
+  python tools/assets/extract_vertices.py <path>     # single PNG (prints to stdout)
                                                  # or directory (writes adjacent JSON)
 
 Output
@@ -45,7 +45,7 @@ import sys
 from pathlib import Path
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
-_FRONTEND_DIR = _SCRIPT_DIR.parent
+_FRONTEND_DIR = _SCRIPT_DIR.parent.parent / "frontend"
 _ASSETS_DIR = _FRONTEND_DIR / "assets"
 
 DEFAULT_TARGETS = [

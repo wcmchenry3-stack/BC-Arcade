@@ -10,14 +10,14 @@
  * Implements one-step lookahead over N determinized opponent-hand samples
  * (the html5-hearts McBrain.js approach), constrained by voidLedger and
  * pass-memory (#2237), and benchmarks it against the current utility AI
- * using the existing scripts/simulate-hearts.ts-style harness (sim gate v2,
+ * using the existing tools/sim/simulate-hearts.ts-style harness (sim gate v2,
  * #2238, hasn't landed yet — this is the best available comparison tool;
  * see the write-up in the PR/issue for that caveat).
  *
  * Usage:
- *   npx --prefix frontend tsx scripts/hearts-pimc-spike.ts latency --samples 20,50,100
- *   npx --prefix frontend tsx scripts/hearts-pimc-spike.ts benchmark --count 300 --samples 50
- *   npx --prefix frontend tsx scripts/hearts-pimc-spike.ts ablation --count 300 --samples 50
+ *   npx --prefix frontend tsx tools/sim/hearts-pimc-spike.ts latency --samples 20,50,100
+ *   npx --prefix frontend tsx tools/sim/hearts-pimc-spike.ts benchmark --count 300 --samples 50
+ *   npx --prefix frontend tsx tools/sim/hearts-pimc-spike.ts ablation --count 300 --samples 50
  */
 
 import {
@@ -30,21 +30,21 @@ import {
   selectPassCard,
   setRng,
   type RandomSource,
-} from "../frontend/src/game/hearts/engine";
+} from "../../frontend/src/game/hearts/engine";
 import {
   selectCardToPlay,
   selectCardsToPass,
-} from "../frontend/src/game/hearts/ai";
-import { buildHeartsInfoSet } from "../frontend/src/game/hearts/aiInfoSet";
-import type { HeartsInfoSet } from "../frontend/src/game/hearts/aiInfoSet";
+} from "../../frontend/src/game/hearts/ai";
+import { buildHeartsInfoSet } from "../../frontend/src/game/hearts/aiInfoSet";
+import type { HeartsInfoSet } from "../../frontend/src/game/hearts/aiInfoSet";
 import type {
   AiPersona,
   Card,
   HeartsState,
   PassDirection,
   TrickCard,
-} from "../frontend/src/game/hearts/types";
-import { RANKS, SUITS } from "../frontend/src/game/hearts/types";
+} from "../../frontend/src/game/hearts/types";
+import { RANKS, SUITS } from "../../frontend/src/game/hearts/types";
 
 // ---------------------------------------------------------------------------
 // Deck / card helpers
@@ -326,7 +326,7 @@ export function pimcSelectCardToPlay(
 }
 
 // ---------------------------------------------------------------------------
-// Benchmark harness (mirrors scripts/simulate-hearts.ts's simulateGame, with
+// Benchmark harness (mirrors tools/sim/simulate-hearts.ts's simulateGame, with
 // seat 0 optionally driven by PIMC instead of the utility AI).
 // ---------------------------------------------------------------------------
 
@@ -390,7 +390,7 @@ function simulateGame(
 }
 
 // ---------------------------------------------------------------------------
-// Stats helpers (same formulas as scripts/simulate-hearts.ts, for a directly
+// Stats helpers (same formulas as tools/sim/simulate-hearts.ts, for a directly
 // comparable report — sim gate v2 (#2238) hasn't landed yet, so this reuses
 // the interim tooling rather than inventing a third statistics approach).
 // ---------------------------------------------------------------------------
@@ -625,7 +625,7 @@ if (mode === "latency") {
   );
 } else {
   console.error(
-    "Usage: npx --prefix frontend tsx scripts/hearts-pimc-spike.ts <latency|benchmark|ablation> [--count N] [--samples N|N,N,N]",
+    "Usage: npx --prefix frontend tsx tools/sim/hearts-pimc-spike.ts <latency|benchmark|ablation> [--count N] [--samples N|N,N,N]",
   );
   process.exit(1);
 }
