@@ -10,9 +10,13 @@ import {
 import { useTheme } from "../../theme/ThemeContext";
 import { typography } from "../../theme/typography";
 
-export interface HudStat {
+interface HudStatBase {
   /** Stable React key. */
   key: string;
+}
+
+/** A text stat the row renders itself. */
+export interface HudTextStat extends HudStatBase {
   text: string;
   /** Render in `textMuted` instead of `text`. */
   muted?: boolean;
@@ -21,12 +25,19 @@ export interface HudStat {
   /** Screen-reader label. Defaults to `text`. */
   accessibilityLabel?: string;
   testID?: string;
-  /**
-   * Renders the stat itself, given the row's text style, for one that updates
-   * on its own (a self-ticking clock, #2964). `text` is then ignored.
-   */
-  render?: (textStyle: StyleProp<TextStyle>) => React.ReactNode;
 }
+
+/**
+ * A stat that renders itself, given the row's text style, for one that updates
+ * on its own (a self-ticking clock, #2964).
+ */
+export interface HudCustomStat extends HudStatBase {
+  render: (textStyle: StyleProp<TextStyle>) => React.ReactNode;
+  /** Render in `textMuted` instead of `text`. */
+  muted?: boolean;
+}
+
+export type HudStat = HudTextStat | HudCustomStat;
 
 export interface HudStatRowProps {
   stats: readonly HudStat[];
@@ -51,9 +62,10 @@ export function HudStatRow({ stats, size = "md", style, testID }: HudStatRowProp
         const textStyle = [
           styles.text,
           { fontSize, color: s.muted ? colors.textMuted : colors.text },
-          s.bold && styles.bold,
+          "bold" in s && s.bold && styles.bold,
         ];
-        if (s.render) return <React.Fragment key={s.key}>{s.render(textStyle)}</React.Fragment>;
+        if ("render" in s)
+          return <React.Fragment key={s.key}>{s.render(textStyle)}</React.Fragment>;
         return (
           <Text
             key={s.key}
