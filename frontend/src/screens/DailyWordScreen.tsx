@@ -893,7 +893,9 @@ export default function DailyWordScreen() {
 
           if (wonIt) {
             setWinModalVisible(true);
-            playWin();
+            // A wiped board reopening a puzzle finished earlier is a restore,
+            // not a solve this visit revealed: no fanfare.
+            if (playedThisVisit) playWin();
           } else {
             try {
               const answerData = await dailyWordApi.getAnswer(finished.puzzle_id);

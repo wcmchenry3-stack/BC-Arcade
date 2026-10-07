@@ -281,11 +281,20 @@ describe("finishing the game", () => {
   });
 
   it("plays the win sound for a solve the server reports as already_solved (#2926)", async () => {
+    storage.loadState.mockResolvedValue(boardWith(["zzzzz"]));
+    dailyWordApi.submitGuess.mockRejectedValue(new ApiError("already_solved", 403));
+    await mount();
+    await guess("yyyyy");
+    expect(await screen.findByText("You Win!")).toBeTruthy();
+    expect(playedCount(mockPlayed, "dailyWord.win")).toBe(1);
+  });
+
+  it("stays silent when a wiped board reopens an already-solved puzzle (#2926)", async () => {
     dailyWordApi.submitGuess.mockRejectedValue(new ApiError("already_solved", 403));
     await mount();
     await guess("zzzzz");
     expect(await screen.findByText("You Win!")).toBeTruthy();
-    expect(playedCount(mockPlayed, "dailyWord.win")).toBe(1);
+    expect(mockPlayed).toEqual([]);
   });
 
   it("the last wrong guess shows the loss card with the answer", async () => {

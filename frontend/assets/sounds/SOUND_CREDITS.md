@@ -392,6 +392,18 @@ Four of the five also ship a second time, byte for byte, as a power-up sound (en
 - **Commercial use:** Yes
 - **Notes:** Same orchestral win fanfare reused by Yacht, Twenty48, Blackjack, and Solitaire.
 
+### daily-word-win (reuses hearts-moon-shot.mp3)
+
+- **Event:** Daily Word puzzle solved (#2926)
+- **Original filename:** (reuses `hearts-moon-shot.mp3` — see Hearts section above)
+- **Source URL:** https://pixabay.com/sound-effects/orchestral-win-331233/
+- **Creator:** u_it78ck90s3 on Pixabay
+- **License:** Pixabay Content License
+- **License URL:** https://pixabay.com/service/license-summary/
+- **Attribution required:** No
+- **Commercial use:** Yes
+- **Notes:** Same orchestral win fanfare as the other games' win stings.
+
 ---
 
 ## Solitaire (#831)
