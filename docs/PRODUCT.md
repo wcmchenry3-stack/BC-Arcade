@@ -22,24 +22,28 @@ A calm, no-BS arcade of simple games designed for short moments — not long ses
 - Cross-game social leaderboards
 - Advanced analytics beyond error reporting
 
+## Platforms
+
+Web (Expo Web) is a supported secondary platform used for testing and the free games; it is not a revenue platform. iOS and Android are primary. Platform-specific bugs should name the platform.
+
 ## Game Roster
 
 All games are in active development. Nothing is released yet.
 
-| Game        | Category | Notes                                   |
-| ----------- | -------- | --------------------------------------- |
+| Game        | Category | Notes                                     |
+| ----------- | -------- | ----------------------------------------- |
 | Yacht       | Dice     | Dice scoring game, 3 AI difficulty levels |
-| Hearts      | Card     | Trick-taking, avoid hearts + queen      |
-| Blackjack   | Card     | 3 table tiers, chip progression         |
-| Solitaire   | Card     | Klondike, draw-3 mode, undo             |
-| Sudoku      | Puzzle   | 3000 puzzles, 3 difficulty tiers        |
-| Cascade     | Arcade   | Physics fruit-drop, Matter.js + Skia    |
-| 2048        | Puzzle   | Tile-merge puzzle, frontend-only engine |
-| FreeCell    | Card     | Leaderboard by move count               |
-| Mahjong     | Puzzle   | Tile-matching, deadlock detection       |
-| Bottle Sort | Puzzle   | Level-based pour puzzle                 |
-| Daily Word  | Word     | Daily puzzle, en/hi language support    |
-| Starswarm   | Arcade   | In early development                    |
+| Hearts      | Card     | Trick-taking, avoid hearts + queen        |
+| Blackjack   | Card     | 3 table tiers, chip progression           |
+| Solitaire   | Card     | Klondike, draw-3 mode, undo               |
+| Sudoku      | Puzzle   | 3000 puzzles, 3 difficulty tiers          |
+| Cascade     | Arcade   | Physics fruit-drop, Matter.js + Skia      |
+| 2048        | Puzzle   | Tile-merge puzzle, frontend-only engine   |
+| FreeCell    | Card     | Leaderboard by move count                 |
+| Mahjong     | Puzzle   | Tile-matching, deadlock detection         |
+| Bottle Sort | Puzzle   | Level-based pour puzzle                   |
+| Daily Word  | Word     | Daily puzzle, en/hi language support      |
+| Starswarm   | Arcade   | In early development                      |
 
 For individual game rules, scoring, and engine details see [`docs/games/`](games/).
 
@@ -67,11 +71,11 @@ Current no-ads statements in store and privacy materials describe the initial re
 
 ## Identity Tiers
 
-| Tier | Description                                                  | Status             |
-| ---- | ------------------------------------------------------------ | ------------------ |
-| 0    | Anonymous (UUID session)                                     | Implemented        |
-| 1    | Opt-in leaderboard membership under a server-generated name  | Implemented, #2778 |
-| 2    | Google/Apple SSO (optional)                                  | Planned — see #144 |
+| Tier | Description                                                 | Status             |
+| ---- | ----------------------------------------------------------- | ------------------ |
+| 0    | Anonymous (UUID session)                                    | Implemented        |
+| 1    | Opt-in leaderboard membership under a server-generated name | Implemented, #2778 |
+| 2    | Google/Apple SSO (optional)                                 | Planned — see #144 |
 
 Players never type a public name: joining the leaderboards gives them a generated name (for example "Brave Otter 4821") that they can swap for another generated name or withdraw. See [LEADERBOARD-IDENTITIES.md](LEADERBOARD-IDENTITIES.md).
 
