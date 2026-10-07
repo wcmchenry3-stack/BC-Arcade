@@ -1,5 +1,5 @@
 // The three Hearts event overlays (broken, moon shot, Queen of Spades) share one
-// shape: they read the OS reduce-motion setting once through AccessibilityInfo,
+// shape: they follow the OS reduce-motion setting through useReduceMotion,
 // then run a timed sequence and call `onAnimationEnd` when it is over. These
 // helpers drive that under fake timers.
 /// <reference types="jest" />

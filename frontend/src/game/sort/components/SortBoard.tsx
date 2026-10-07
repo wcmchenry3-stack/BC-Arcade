@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { AccessibilityInfo, StyleSheet, useWindowDimensions, View } from "react-native";
+import { StyleSheet, useWindowDimensions, View } from "react-native";
 import Animated, {
   cancelAnimation,
   runOnJS,
@@ -8,7 +8,6 @@ import Animated, {
   useSharedValue,
   withDelay,
   withSequence,
-  withSpring,
   withTiming,
 } from "react-native-reanimated";
 import Svg, { Circle, ClipPath, Defs, Ellipse, G, Path, Rect } from "react-native-svg";
@@ -23,6 +22,8 @@ import BottleView, {
   LIQUID_COLORS,
 } from "./BottleView";
 import { computeBoardLayout } from "./gridGeometry";
+import { ConfettiFall, type ConfettiFallTiming } from "../../../components/shared/ConfettiFall";
+import { useReduceMotion } from "../../../components/shared/useReduceMotion";
 
 const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
 
@@ -146,10 +147,7 @@ export default function SortBoard({
   }, [rowCounts]);
 
   // Reduce-motion: fall back to tilt-only (no ghost overlay)
-  const [reduceMotion, setReduceMotion] = useState(false);
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-  }, []);
+  const reduceMotion = useReduceMotion();
 
   // Position tracking — updated by onLayout, never triggers re-render.
   // RN reports each layout x/y relative to its immediate parent, so a bottle's
@@ -265,6 +263,10 @@ export default function SortBoard({
       setGhost(null);
       setUnitsEmitted(0);
       setUnitsLanded(0);
+      // Reduce Motion is live: turned on mid-pour, it drops the ghost that
+      // would have finished this pour, so finish it here (a no-op on
+      // SortScreen's reduce-motion timer path, which queues no pending pour).
+      if (pouringFrom !== null && pouringTo !== null) notifyPourComplete();
       return;
     }
 
@@ -669,111 +671,28 @@ interface OverlayProps {
 }
 
 const CONFETTI_KEYS: Color[] = ["red", "orange", "green", "blue", "purple", "pink"];
+const CONFETTI_PIECE = { width: 20, height: 20, borderRadius: 10 } as const;
+const CONFETTI_FALL: ConfettiFallTiming = {
+  fromY: -60,
+  toY: 500,
+  staggerMs: 100,
+  holdMs: 600,
+  fadeOutMs: 400,
+};
 
 function SortWinOverlay({ visible }: OverlayProps) {
   const { theme } = useTheme();
   const liquidColors = LIQUID_COLORS[theme];
-  const particleColors = CONFETTI_KEYS.map((k) => liquidColors[k]);
-  const [reduceMotion, setReduceMotion] = useState(false);
-
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-  }, []);
-
-  const y0 = useSharedValue(-60);
-  const y1 = useSharedValue(-60);
-  const y2 = useSharedValue(-60);
-  const y3 = useSharedValue(-60);
-  const y4 = useSharedValue(-60);
-  const y5 = useSharedValue(-60);
-  const op0 = useSharedValue(0);
-  const op1 = useSharedValue(0);
-  const op2 = useSharedValue(0);
-  const op3 = useSharedValue(0);
-  const op4 = useSharedValue(0);
-  const op5 = useSharedValue(0);
-
-  useEffect(() => {
-    if (!visible || reduceMotion) return;
-
-    const ys = [y0, y1, y2, y3, y4, y5];
-    const ops = [op0, op1, op2, op3, op4, op5];
-
-    ys.forEach((y, i) => {
-      y.value = -60;
-      y.value = withDelay(i * 100, withSpring(500, { damping: 14, stiffness: 55 }));
-    });
-    ops.forEach((op, i) => {
-      op.value = 0;
-      op.value = withDelay(
-        i * 100,
-        withSequence(
-          withTiming(1, { duration: 80 }),
-          withDelay(600, withTiming(0, { duration: 400 }))
-        )
-      );
-    });
-
-    return () => {
-      [y0, y1, y2, y3, y4, y5].forEach((v) => cancelAnimation(v));
-      [op0, op1, op2, op3, op4, op5].forEach((v) => cancelAnimation(v));
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
-
-  const a0 = useAnimatedStyle(() => ({
-    transform: [{ translateY: y0.value }],
-    opacity: op0.value,
-  }));
-  const a1 = useAnimatedStyle(() => ({
-    transform: [{ translateY: y1.value }],
-    opacity: op1.value,
-  }));
-  const a2 = useAnimatedStyle(() => ({
-    transform: [{ translateY: y2.value }],
-    opacity: op2.value,
-  }));
-  const a3 = useAnimatedStyle(() => ({
-    transform: [{ translateY: y3.value }],
-    opacity: op3.value,
-  }));
-  const a4 = useAnimatedStyle(() => ({
-    transform: [{ translateY: y4.value }],
-    opacity: op4.value,
-  }));
-  const a5 = useAnimatedStyle(() => ({
-    transform: [{ translateY: y5.value }],
-    opacity: op5.value,
-  }));
+  const reduceMotion = useReduceMotion();
 
   if (!visible || reduceMotion) return null;
 
   return (
-    <View
-      style={StyleSheet.absoluteFill}
-      pointerEvents="none"
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-    >
-      <Animated.View
-        style={[styles.particle, styles.p0, { backgroundColor: particleColors[0] }, a0]}
-      />
-      <Animated.View
-        style={[styles.particle, styles.p1, { backgroundColor: particleColors[1] }, a1]}
-      />
-      <Animated.View
-        style={[styles.particle, styles.p2, { backgroundColor: particleColors[2] }, a2]}
-      />
-      <Animated.View
-        style={[styles.particle, styles.p3, { backgroundColor: particleColors[3] }, a3]}
-      />
-      <Animated.View
-        style={[styles.particle, styles.p4, { backgroundColor: particleColors[4] }, a4]}
-      />
-      <Animated.View
-        style={[styles.particle, styles.p5, { backgroundColor: particleColors[5] }, a5]}
-      />
-    </View>
+    <ConfettiFall
+      colors={CONFETTI_KEYS.map((k) => liquidColors[k])}
+      pieceStyle={CONFETTI_PIECE}
+      timing={CONFETTI_FALL}
+    />
   );
 }
 
@@ -812,11 +731,4 @@ const styles = StyleSheet.create({
     position: "absolute",
     pointerEvents: "none",
   },
-  particle: { position: "absolute", width: 20, height: 20, borderRadius: 10, top: 0 },
-  p0: { left: "8%" },
-  p1: { left: "22%" },
-  p2: { left: "36%" },
-  p3: { left: "52%" },
-  p4: { left: "66%" },
-  p5: { left: "80%" },
 });

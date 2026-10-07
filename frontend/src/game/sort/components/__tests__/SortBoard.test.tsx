@@ -1,11 +1,12 @@
 import React from "react";
-import { fireEvent, render } from "@testing-library/react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 import { ThemeProvider } from "../../../../theme/ThemeContext";
 import { Dimensions } from "react-native";
 import SortBoard from "../SortBoard";
 import { DEFAULT_BOTTLE_HEIGHT, DEFAULT_BOTTLE_WIDTH } from "../BottleView";
 import { computeBoardLayout, MIN_TOUCH_TARGET } from "../gridGeometry";
 import type { Color, SortState } from "../../types";
+import { captureReduceMotionChange } from "../../../../test-utils/reduceMotion";
 
 function withTheme(children: React.ReactNode) {
   return <ThemeProvider>{children}</ThemeProvider>;
@@ -139,6 +140,37 @@ describe("SortBoard", () => {
     );
     expect(getByTestId("pour-ghost-overlay", { includeHiddenElements: true })).toBeTruthy();
     expect(onPourComplete).not.toHaveBeenCalled();
+  });
+
+  it("finishes an animated pour if reduce motion is turned on mid-pour (#2984)", async () => {
+    // Reduce Motion is live: turning it on drops the ghost overlay whose
+    // completion SortScreen is waiting on, so SortBoard must finish the pour.
+    const emit = captureReduceMotionChange();
+    const onPourComplete = jest.fn();
+    const state = mkState([["red", "red", "blue", "blue"], []]);
+    const ui = () =>
+      withTheme(
+        <SortBoard
+          state={state}
+          onBottleTap={jest.fn()}
+          pouringFrom={0}
+          pouringTo={1}
+          pourHoldMs={380}
+          onPourComplete={onPourComplete}
+        />
+      );
+    const { getByTestId, queryByTestId, rerender } = await render(
+      withTheme(<SortBoard state={state} onBottleTap={jest.fn()} />)
+    );
+    await layoutRows(getByTestId, { x: 8, y: 40 }, [{ x: 0, y: 0, cellXs: [0, 100] }]);
+    await rerender(ui());
+    expect(getByTestId("pour-ghost-overlay", { includeHiddenElements: true })).toBeTruthy();
+    expect(onPourComplete).not.toHaveBeenCalled();
+
+    await act(async () => emit(true));
+    expect(queryByTestId("pour-ghost-overlay", { includeHiddenElements: true })).toBeNull();
+    expect(onPourComplete).toHaveBeenCalledTimes(1);
+    jest.restoreAllMocks();
   });
 
   it(

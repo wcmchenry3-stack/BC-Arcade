@@ -1,7 +1,8 @@
 import React from "react";
-import { render } from "@testing-library/react-native";
+import { act, render } from "@testing-library/react-native";
 import { HeartsMoonShotAnimation } from "../HeartsMoonShotAnimation";
 import { advanceBy, flushReduceMotion, mockReduceMotion } from "./helpers/animationFixtures";
+import { captureReduceMotionChange } from "../../../test-utils/reduceMotion";
 
 // Phases (ms): the moon, stars and label burst in from 0, everything fades from
 // 1700, and the overlay reports it is done at 2200. Reduced motion shows the
@@ -128,5 +129,18 @@ describe("HeartsMoonShotAnimation", () => {
       await advanceBy(10_000);
       expect(onAnimationEnd).not.toHaveBeenCalled();
     });
+  });
+
+  it("shows the static frame once reduce motion is turned on mid-session (#2984)", async () => {
+    const emit = captureReduceMotionChange();
+    const { onAnimationEnd } = await show();
+    await advanceBy(1000);
+
+    await act(async () => emit(true));
+    // Re-armed from the change: reported 2200 ms later, not at the original 2200.
+    await advanceBy(2199);
+    expect(onAnimationEnd).not.toHaveBeenCalled();
+    await advanceBy(1);
+    expect(onAnimationEnd).toHaveBeenCalledTimes(1);
   });
 });

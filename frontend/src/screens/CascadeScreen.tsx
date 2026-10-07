@@ -96,6 +96,7 @@ function makeQueue(rng?: () => number): { queue: PieceQueue; history: number[] }
 import { useSound } from "../game/_shared/useSound";
 import { useSoundSettings } from "../game/_shared/SoundContext";
 import { CASCADE_SOUNDS } from "../game/cascade/sounds";
+import { useReduceMotion } from "../components/shared/useReduceMotion";
 
 const SAVE_THROTTLE_MS = 2000;
 
@@ -322,10 +323,7 @@ function CascadeGame() {
 
   // Animation state
   const [mergeBursts, setMergeBursts] = useState<MergeBurstData[]>([]);
-  const [reduceMotion, setReduceMotion] = useState(false);
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-  }, []);
+  const reduceMotion = useReduceMotion();
   const nextBurstId = useId();
 
   // Sounds

@@ -18,16 +18,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  AccessibilityInfo,
-  Image,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -99,6 +90,7 @@ import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { formatMs } from "../game/_shared/formatMs";
 import { clamp, computeZoomBounds, computePanBounds } from "../game/mahjong/zoom";
+import { useReduceMotion } from "../components/shared/useReduceMotion";
 
 // ---------------------------------------------------------------------------
 // FlyingPair — two matched tiles slide toward each other then burst and fade
@@ -366,7 +358,7 @@ export default function MahjongScreen() {
 
   // Animation state
   const [flyingPairs, setFlyingPairs] = useState<FlyingPairData[]>([]);
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const reduceMotion = useReduceMotion();
   const boardShakeX = useSharedValue(0);
   const boardOpacity = useSharedValue(1);
   const boardAnimStyle = useAnimatedStyle(() => ({
@@ -520,8 +512,8 @@ export default function MahjongScreen() {
     }
     // Shared values (zoomScale, baseScale, etc.) are stable Reanimated refs whose
     // object identity never changes — adding them to deps is a no-op that only
-    // suppresses future lint warnings. reduceMotion is excluded because accessibility
-    // settings don't change mid-game.
+    // suppresses future lint warnings. reduceMotion is excluded on purpose: it is
+    // read when the CTA appears, so a mid-session toggle applies to the next one.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showShuffleCTA]);
 
@@ -561,11 +553,6 @@ export default function MahjongScreen() {
   const musicActive = state !== null && !state.isComplete && !state.isDeadlocked;
   const { playTileSelect, playTileMatch, playShuffle, playWin, playDeadlock } =
     useMahjongAudio(musicActive);
-
-  // Reduce motion preference.
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-  }, []);
 
   // Load SVG asset URIs for the flying-pair tile overlay (web only — native SVG
   // display requires Skia and can't run inside Animated.View).
