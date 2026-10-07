@@ -14,8 +14,8 @@ Cheap ratchets added for the refactor epic (#2950, issue #2951). They are set at
 | eslint `max-lines`        | `frontend/eslint.config.js`                                                                                | 800 lines (skip blanks/comments) for `src/**` excl. `__tests__`. The 11 files already over 800 effective lines are `warn` in a `files:` override                                                                                              | Error for new offenders                     |
 | eslint function size      | `frontend/eslint.config.js`                                                                                | `max-lines-per-function` 150, `complexity` 20                                                                                                                                                                                                 | Warn                                        |
 | eslint react-hooks v7     | `frontend/eslint.config.js`                                                                                | `refs`, `immutability`, `set-state-in-effect`, `purity`, `globals` at `warn`                                                                                                                                                                  | Warn                                        |
-| Duplication (jscpd)       | CI job `duplication`                                                                                       | `--threshold 2.5 --min-lines 20 --min-tokens 70` over `frontend/src backend`                                                                                                                                                                  | Yes                                         |
-| Unused code (knip)        | `frontend/knip.json`, CI job `knip`                                                                        | `npx knip --no-progress` (CI-only `src/game/*/sim/**` and `oracleBuild/**` ignored until #2969)                                                                                                                                               | Warn-only until 2026-11-04, then `--strict` |
+| Duplication (jscpd)       | CI job `duplication`                                                                                       | `--threshold 2.5 --min-lines 20 --min-tokens 70` over `frontend/src frontend/tooling backend`                                                                                                                                                                | Yes                                         |
+| Unused code (knip)        | `frontend/knip.json`, CI job `knip`                                                                        | `npx knip --no-progress`; repo-root `scripts/*.ts` are entries, and tooling exports only they use carry `@public` (see "Simulators")                                                                                                         | Warn-only until 2026-11-04, then `--strict` |
 | Jest coverage floors      | `frontend/package.json` (`jest.coverageThreshold.global`, `collectCoverageFrom`), run by `npm run test:ci` | Global floors: lines 90, statements 90, branches 85, functions 88 (measured 2026-10-05: lines 96.0, statements 94.3, branches 88.3, functions 91.9; see "Coverage policy") plus per-file 80 % lines for the solitaire/freecell/hearts engines | Yes (`test-frontend`)                       |
 
 ```bash
@@ -26,7 +26,7 @@ cd frontend && npx eslint . && npx knip --no-progress
 # duplication (repo root)
 npx --yes jscpd@4.3.0 --threshold 2.5 --min-lines 20 --min-tokens 70 \
   --ignore "**/__tests__/**,**/node_modules/**,**/.venv/**,**/*.generated.*,**/locales/**,**/tests/**,**/alembic/**" \
-  --format "typescript,tsx,python" frontend/src backend
+  --format "typescript,tsx,python" frontend/src frontend/tooling backend
 ```
 
 **Ratchet schedule.** Once a quarter, lower the thresholds to the current measured numbers and never raise them:
@@ -47,12 +47,24 @@ npx --yes jscpd@4.3.0 --threshold 2.5 --min-lines 20 --min-tokens 70 \
 
 **Permanent exclusions** (package.json cannot hold comments, so they are documented here): `src/**/__tests__/**`, `src/**/__mocks__/**`, `*.d.ts`, `**/*.generated.ts`, `src/screens/__dev__/**` (dev-only screens), `src/i18n/glossary.js` (build-time input for `scripts/translate.js`, not shipped) and `src/i18n/localeLoaders.ts` (#2957: 247 of its lines are `() => import("./locales/<lng>/<ns>.json")` loaders, which jest cannot run without `--experimental-vm-modules`; `i18n/__tests__/localeLoaders.test.ts` instead checks that every locale file on disk has a loader whose source names its own path, and covers `loadLocaleNamespace` itself).
 
-**Temporary exclusions (until #2969 relocates the code out of `src/`):**
+The CI/script-only simulators live outside `src/` in `frontend/tooling/` (#2969), so they are not collected at all; see "Simulators" below.
 
-- `src/game/*/sim/**` (offline simulation harnesses)
-- `src/game/yacht/oracleBuild/**` (oracle table build tooling)
+### Simulators (`frontend/tooling/`, #2969)
 
-The `jest.collectCoverageFrom` entries and `frontend/knip.json` `ignore` carry the same sim/oracleBuild list (same glob dialect) until #2969 deletes both; keep them identical, and remove both in the same PR that moves the code.
+The Hearts, Yacht and Star Swarm balance simulators and the Yacht oracle table builder are not part of the app. They live in `frontend/tooling/<game>/` and only the repo-root scripts (`scripts/simulate-*.ts`, `scripts/build-yacht-oracle.ts`), their own tests and the sim-gate workflows use them:
+
+| Path                                | What                                                                       | CLI                              |
+| ----------------------------------- | -------------------------------------------------------------------------- | -------------------------------- |
+| `frontend/tooling/hearts/`          | Duplicate-deal harness, SPRT gate, `baseline.json`, regret reference       | `scripts/simulate-hearts.ts`     |
+| `frontend/tooling/yacht/`           | Paired-dice harness, stats, calibration bands                               | `scripts/simulate-yacht.ts`      |
+| `frontend/tooling/yacht/oracleBuild/` | Offline retrograde solver for `src/game/yacht/oracle/oracleTable.generated.ts` | `scripts/build-yacht-oracle.ts`  |
+| `frontend/tooling/starswarm/`       | Buddy balance harness, engine variants, presets, asteroid-awareness sim    | `scripts/simulate-starswarm.ts`  |
+
+- **Run a simulator** from the repo root: `npx --prefix frontend tsx scripts/simulate-hearts.ts --gate --group presets` (each script's header lists its flags).
+- **Tests** sit in `frontend/tooling/<game>/__tests__/` and run under the jest project `tooling` (the app's tests are the `app` project). Plain `npx jest` runs both; `npx jest --selectProjects tooling` runs only the simulators'. Their smoke runs (`ai.simulate.test.ts`, `ai.calibrate.test.ts`, the `fast` Star Swarm preset) still run in every PR with the rest of Jest.
+- **Type-check:** `npm run typecheck` checks the app (`tsconfig.typecheck.json`, which excludes `tooling/`) and then `tsconfig.tooling.json` (`tooling/**` plus the repo-root `scripts/*.ts`, with Node and Jest types).
+- **Boundary:** app code must not import `tooling/` (an eslint `no-restricted-imports` rule fails the lint), so nothing in it can reach the Metro bundle. Tooling imports app modules (engines, AI) by relative path into `src/`.
+- **knip:** `frontend/knip.json` lists `../scripts/*.ts` as entries so the tooling files they import count as used. knip cannot credit exports used from outside its workspace, so the few tooling exports only a root script uses carry a `@public` JSDoc tag; delete the tag with the export when the script stops using it.
 
 **Measured** (2026-10-05 on `dev` after the Phase 0 coverage stories #3010, #3014 and #3017, 324 suites / 6,063 tests, `jest --coverage`, all collected files):
 
@@ -341,7 +353,7 @@ frontend/src/
 
 ### Yacht AI simulation — two-layer model (#2245)
 
-All Yacht AI simulation runs on one harness, `frontend/src/game/yacht/sim/`:
+All Yacht AI simulation runs on one harness, `frontend/tooling/yacht/`:
 
 - `streams.ts` gives each player their own seeded dice and AI-noise streams.
   Dice for roll _k_ of round _r_ come from a per-(stream, round) table, so one
@@ -362,7 +374,7 @@ All Yacht AI simulation runs on one harness, `frontend/src/game/yacht/sim/`:
 - `gate.ts` holds the calibration gate: matchups, game counts and bands. It is
   the only place bands are defined.
 
-**Layer 1: PR smoke test.** `__tests__/ai.simulate.test.ts` runs in every PR
+**Layer 1: PR smoke test.** `frontend/tooling/yacht/__tests__/ai.simulate.test.ts` runs in every PR
 (about 140 games, ~15s under Jest with the #2246 tiers). It catches total breakage:
 the AI throwing, invalid scores, a harder tier no longer beating Easy, or
 mirroring broken (paired self-play must come out at exactly 50%). It is far too
@@ -496,7 +508,7 @@ real committed table) `regretOracle.test.ts`.
 
 **Run it** — lives in `ai.calibrate.test.ts`, gated behind `YACHT_SIM_FULL`,
 and runs nightly as the `regret` job of `yacht-sim-gate.yml`. Its games use
-the harness's per-player streams (`sim/streams.ts`):
+the harness's per-player streams (`tooling/yacht/streams.ts`):
 
 ```bash
 YACHT_SIM_FULL=3000 npx jest --testPathPattern="ai.calibrate" -t "regret" --silent=false
@@ -555,7 +567,7 @@ aggregate win-rate can't surface.
 
 ### Hearts AI sim gate v2 — duplicate deals, SPRT, conditional metrics (#2238)
 
-All Hearts AI simulation runs on `frontend/src/game/hearts/sim/`;
+All Hearts AI simulation runs on `frontend/tooling/hearts/`;
 `scripts/simulate-hearts.ts` is the CLI around it.
 
 - `harness.ts` — **duplicate-deal replay.** A _block_ replays one sequence
@@ -692,13 +704,13 @@ Worst case, with every check running to its cap (presets 12,000 blocks ×
 45 min. That is cheap enough to gate per PR, so there is no reduced-N PR
 variant — the smoke layer below only proves the pipeline runs.
 
-**Per-PR smoke layer.** `frontend/src/game/hearts/__tests__/ai.calibrate.test.ts`
+**Per-PR smoke layer.** `frontend/tooling/hearts/__tests__/ai.calibrate.test.ts`
 (run by `ci.yml` with the rest of Jest, ~5 s) runs every group at a 12-block
 cap: each check must evaluate, find its denominator and produce finite
 estimates. Its verdicts at that size mean nothing. Unit tests for the SPRT
 on synthetic sequences (including its error rates over 300 runs), the
 duplicate-deal invariants and the gate config are in
-`frontend/src/game/hearts/sim/__tests__/`.
+`frontend/tooling/hearts/__tests__/`.
 
 **What duplicate deals buy.** Measured on 1,500 blocks:
 
@@ -778,7 +790,7 @@ counts are in `baseline.json`):
 
 **Relation to #2204.** The v2 gate keeps #2204's HRT-1 fix: `moon_success`
 is the paired rate (completions in attempted hands ÷ attempted hands, never
-÷ a narrower trigger count), pinned by `sim/__tests__/metrics.test.ts`.
+÷ a narrower trigger count), pinned by `tooling/hearts/__tests__/metrics.test.ts`.
 HRT-3 corrected the old Cautious-vs-Schemer check to "the human does better
 against Schemers" — true only because the ladder was inverted. #2555 fixed
 the ladder, so the gate now pre-registers the opposite direction (the human
@@ -796,7 +808,7 @@ sees all four hands. The AI only ever sees its own hand; the harness deals
 every hand, so it can grade a decision afterwards without giving the AI
 anything it didn't have.
 
-- **Reference (`sim/oracle.ts`).** For each graded play, every legal card is
+- **Reference (`tooling/hearts/oracle.ts`).** For each graded play, every legal card is
   tried on the true state and the hand is finished by a perfect-information
   rollout for all four seats. The rollout is greedy and moon-aware: a lone
   point-holder with 10+ points plays the moon out and the others try to take
@@ -829,7 +841,7 @@ anything it didn't have.
   | `blunder` | `r >= 10`       | Q♠-sized, or a moon       |
 
 - **Noise split.** ai.ts's noise is one `rng() < NOISE_RATE` draw per play.
-  `sim/regret.ts` tags each graded play as noise or deliberate from that
+  `tooling/hearts/regret.ts` tags each graded play as noise or deliberate from that
   draw, passing the RNG through unchanged; a test pins that grading and
   tagging leave every game identical.
 
@@ -852,7 +864,7 @@ so per-block differences are paired as in the gate.
   pseudo-randomly per play so a K that divides 13 can't lock onto one trick
   of every hand, and scales points lost back up by K.
 
-Unit tests: `sim/__tests__/oracle.test.ts` covers a known four-hand endgame
+Unit tests: `tooling/hearts/__tests__/oracle.test.ts` covers a known four-hand endgame
 where the reference must find the 13-point difference, rollout rules, hand
 cost and bands. `regret.test.ts` covers the tallies, the noise split, win
 share reported independently of regret, and the ladder check.
@@ -905,7 +917,7 @@ reports, per difficulty × wave type:
 - its damage and kill share, and its per-sortie kills and share of the fleet;
 - the Carrier's time-to-kill, with and without Buddy, on the same seeds.
 
-It lives in `frontend/src/game/starswarm/sim/`, and its CLI is `scripts/simulate-starswarm.ts`. A
+It lives in `frontend/tooling/starswarm/`, and its CLI is `scripts/simulate-starswarm.ts`. A
 fast smoke preset runs with the normal jest suite. The full runs use the CLI
 (`npx --prefix frontend tsx scripts/simulate-starswarm.ts --preset baseline --jobs 4`). How to run it, shard it and
 override tuning in the sim only:

@@ -14,8 +14,8 @@
  */
 
 import { writeFileSync } from "node:fs";
-import { solveOracle } from "../frontend/src/game/yacht/oracleBuild/solver";
-import { renderTableModule } from "../frontend/src/game/yacht/oracleBuild/renderTableModule";
+import { solveOracle } from "../frontend/tooling/yacht/oracleBuild/solver";
+import { renderTableModule } from "../frontend/tooling/yacht/oracleBuild/renderTableModule";
 import {
   TABLE_SIZE,
   INITIAL_KEY,
@@ -38,6 +38,9 @@ console.log(
 );
 
 const optimalStartEV = vtg[INITIAL_KEY];
+if (optimalStartEV === undefined) {
+  throw new Error("solver produced no value for the initial state");
+}
 console.log(
   `Optimal EV at game start (nothing scored yet): ${optimalStartEV.toFixed(4)}`,
 );

@@ -52,7 +52,7 @@ export interface SessionBoardAdapterOptions {
 }
 
 /** What the card makes of a rank response. */
-export function toRankLookup(result: GameRankResponse, nameSynced: boolean): RankLookup {
+function toRankLookup(result: GameRankResponse, nameSynced: boolean): RankLookup {
   // `rank` is the player's best entry's; the card says "Your best: #N" when
   // this game isn't that entry (#2633).
   if (result.ranked) return { kind: "ranked", rank: result.rank, isBest: result.is_best !== false };

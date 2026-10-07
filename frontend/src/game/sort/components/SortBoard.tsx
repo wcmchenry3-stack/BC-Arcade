@@ -83,10 +83,10 @@ interface GhostInfo {
 }
 
 // Pour animation timing (ms) — exported so SortScreen can compute total timeout
-export const POUR_LIFT_MS = 240; // diagonal lift+travel phase
-export const POUR_TILT_MS = 220; // tilt from 0° to TILT_START_DEG
+const POUR_LIFT_MS = 240; // diagonal lift+travel phase
+const POUR_TILT_MS = 220; // tilt from 0° to TILT_START_DEG
 export const POUR_PER_UNIT_MS = 380; // per-unit progressive tilt + stream
-export const POUR_RETURN_MS = 320; // simultaneous untilt + return
+const POUR_RETURN_MS = 320; // simultaneous untilt + return
 
 // Tilt progresses from start angle to peak as the bottle empties
 const TILT_START_DEG = 50;

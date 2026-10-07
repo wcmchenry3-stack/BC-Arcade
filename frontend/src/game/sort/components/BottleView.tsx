@@ -83,7 +83,7 @@ export const DEFAULT_BOTTLE_HEIGHT = 156;
 export const TILT_IN_MS = 250;
 export const TILT_HOLD_MS = 150;
 export const TILT_OUT_MS = 200;
-export const TILT_DEG = 62;
+const TILT_DEG = 62;
 
 export interface BottleViewProps {
   readonly bottle: Bottle;

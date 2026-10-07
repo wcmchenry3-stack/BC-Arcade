@@ -16,7 +16,7 @@ import {
   BULLET_C_W,
   BUDDY_HP,
 } from "../engine";
-import { carrierOps, carrierBeamOps, BRACE_RGB } from "../render/carrier";
+import { carrierOps, carrierBeamOps } from "../render/carrier";
 import { withAlpha } from "../render/color";
 import { initStarfield } from "../starfield";
 import { setDebugOpKeys } from "../render/opKeys";
@@ -32,6 +32,9 @@ import {
   type LoadedSprites,
 } from "../render/frame";
 import type { BuddyShip, Bullet, CarrierBeam, Enemy, PowerUpType, StarSwarmState } from "../types";
+
+/** carrier.ts's brace amber (0xRRGGBB). */
+const BRACE_RGB = 0xffaa28;
 
 const ALL: LoadedSprites = {
   playerShip: true,
