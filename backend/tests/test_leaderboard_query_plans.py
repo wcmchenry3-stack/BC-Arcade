@@ -32,24 +32,31 @@ from __future__ import annotations
 
 import itertools
 import json
-import os
 import re
-import uuid
 from collections.abc import Iterator, Mapping
 from typing import Any
 
 import pytest
-from sqlalchemy import URL, ClauseElement, Executable, Select, make_url, text
+from sqlalchemy import URL, ClauseElement, Executable, Select, insert, text
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 
-from db.base import _normalize_url, get_engine
+from db.base import get_engine
+from db.models import Game
 from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
 from games.leaderboard import enabled_board, metric_cap, top_statement
 from tests._migration_helpers import run_alembic_url
+from tests._pg_scratch import (
+    PG_URL_ENV,
+    drop_statements,
+    explicit_pg_url,
+    require_pg_url,
+    scratch_database,
+    scratch_server_url,
+    url_str,
+)
 from vocab import GameType
 
-PG_URL_ENV = "LEADERBOARD_EXPLAIN_PG_URL"
 ROWS_PER_TYPE = 25_000
 SESSIONS = 30_000
 NAMED_SESSIONS = 15_000
@@ -175,37 +182,6 @@ async def test_sqlite_board_query_searches_its_index(
 # ---------------------------------------------------------------------------
 
 
-def explicit_pg_url() -> str | None:
-    """``LEADERBOARD_EXPLAIN_PG_URL``, stripped; ``None`` when unset or blank.
-
-    The only source of a Postgres URL for this gate. The suite's own
-    ``DATABASE_URL`` is never used: conftest lets it name a real, shared
-    database (a Render smoke run), which this test must never seed.
-    """
-    return os.environ.get(PG_URL_ENV, "").strip() or None
-
-
-def scratch_server_url(raw: str) -> URL:
-    """``raw`` as the asyncpg URL the app would use (``db.base._normalize_url``).
-
-    ``postgres://``, ``postgresql://`` and ``postgresql+asyncpg://`` are
-    accepted. The result is also what Alembic loads: ``alembic/env.py`` maps
-    ``postgresql+asyncpg://`` to the sync ``postgresql://`` driver, whereas a
-    bare ``postgres://`` names no SQLAlchemy dialect at all. Anything else is
-    rejected with a message naming the variable.
-    """
-    url = make_url(_normalize_url(raw))
-    if url.drivername != "postgresql+asyncpg":
-        raise ValueError(
-            f"{PG_URL_ENV} must be a postgres:// or postgresql:// URL, not {url.drivername}://"
-        )
-    return url
-
-
-def _url_str(url: URL) -> str:
-    return url.render_as_string(hide_password=False)
-
-
 def _metadata_sql(board: BoardDefinition, params: dict[str, Any]) -> str:
     """A ``jsonb`` expression for a seeded row of ``board``'s game.
 
@@ -229,6 +205,17 @@ def _metadata_sql(board: BoardDefinition, params: dict[str, Any]) -> str:
     return f"({partition_sql} || {extra})"
 
 
+async def refuse_unless_games_empty(conn: AsyncConnection) -> None:
+    """Fail the test unless ``games`` is empty: only a scratch database is seeded.
+
+    The gate always seeds a database it just created, so this never fires
+    there; it stops a future caller from seeding a real one.
+    """
+    existing = (await conn.execute(text("SELECT count(*) FROM games"))).scalar_one()
+    if existing:
+        pytest.fail(f"refusing to seed: games already holds {existing} rows (not a scratch DB)")
+
+
 async def _seed_postgres(conn: AsyncConnection, game_ids: Mapping[str, int]) -> None:
     """25,000 rows for each game type with an enabled board, none for the rest.
 
@@ -237,9 +224,7 @@ async def _seed_postgres(conn: AsyncConnection, game_ids: Mapping[str, int]) -> 
     the table, the selectivity that decides between an index and a scan.
     Refuses, failing the test, if ``games`` already holds rows.
     """
-    existing = (await conn.execute(text("SELECT count(*) FROM games"))).scalar_one()
-    if existing:
-        pytest.fail(f"refusing to seed: games already holds {existing} rows (not a scratch DB)")
+    await refuse_unless_games_empty(conn)
     await conn.execute(
         text(
             "INSERT INTO players (session_id, display_name) "
@@ -262,7 +247,7 @@ async def _seed_postgres(conn: AsyncConnection, game_ids: Mapping[str, int]) -> 
             text(
                 "INSERT INTO games (id, session_id, game_type_id, started_at, completed_at, "
                 "final_score, outcome, duration_ms, metadata) "
-                "SELECT gen_random_uuid(), "
+                "SELECT CAST(md5(random()::text || i) AS uuid), "
                 f":prefix || (1 + (i * 7919) % {SESSIONS}), :gt, "
                 "now() - make_interval(secs => i), "
                 "CASE WHEN i % 4 = 0 THEN NULL "
@@ -317,7 +302,7 @@ def postgres_plan_problems(plan: Mapping[str, Any]) -> list[str]:
 
 async def _board_plan_problems(gate_url: URL) -> tuple[dict[str, list[str]], Any]:
     """Migrate, seed and EXPLAIN every board case on the gate database."""
-    run_alembic_url(_url_str(gate_url), "upgrade", "head")
+    run_alembic_url(url_str(gate_url), "upgrade", "head")
     engine = create_async_engine(gate_url)
     failures: dict[str, list[str]] = {}
     first_bad_plan: Any = None
@@ -339,38 +324,25 @@ async def _board_plan_problems(gate_url: URL) -> tuple[dict[str, list[str]], Any
 
 
 async def test_postgres_no_board_plans_a_seq_scan_on_games() -> None:
-    """Runs only when ``LEADERBOARD_EXPLAIN_PG_URL`` names a scratch server.
-
-    The URL's own database is used only to ``CREATE DATABASE`` a dedicated,
-    uniquely named gate database (``TEMPLATE template0``) and to drop it
-    afterwards, so nothing is left behind: not the seeded rows, and not the
-    statistics ``ANALYZE`` writes (its ``pg_class`` update is not
-    transactional, so a rollback would not undo it). The role needs CREATEDB.
-    """
-    raw = explicit_pg_url()
-    if raw is None:
-        pytest.skip(
-            f"no Postgres for the EXPLAIN gate: set {PG_URL_ENV}=postgresql://user@host/db "
-            "(a scratch server; the test creates and drops its own database there). The "
-            "suite's DATABASE_URL is never used. The SQLite gate above runs instead"
-        )
-    server = scratch_server_url(raw)
-    gate_db = f"explain_gate_{uuid.uuid4().hex[:12]}"
-    admin = create_async_engine(server, isolation_level="AUTOCOMMIT")
-    try:
-        async with admin.connect() as conn:
-            await conn.execute(
-                text(f"CREATE DATABASE {gate_db} TEMPLATE template0 ENCODING 'UTF8'")
-            )
-        try:
-            failures, first_bad_plan = await _board_plan_problems(server.set(database=gate_db))
-        finally:
-            async with admin.connect() as conn:
-                await conn.execute(text(f"DROP DATABASE IF EXISTS {gate_db} WITH (FORCE)"))
-    finally:
-        await admin.dispose()
+    """Runs only when ``LEADERBOARD_EXPLAIN_PG_URL`` names a scratch server, in a
+    database of its own that it drops afterwards (``tests/_pg_scratch.py``)."""
+    raw = require_pg_url()
+    async with scratch_database(raw) as gate_url:
+        failures, first_bad_plan = await _board_plan_problems(gate_url)
     summary = "\n".join(f"{case}: {'; '.join(p)}" for case, p in failures.items())
     assert not failures, f"{summary}\n\nfirst failing plan:\n{json.dumps(first_bad_plan)[:8000]}"
+
+
+async def test_seeding_refuses_a_games_table_that_holds_rows() -> None:
+    """The non-empty guard, exercised on the suite DB (rolled back)."""
+    engine = get_engine()
+    async with engine.connect() as conn, conn.begin() as trans:
+        await refuse_unless_games_empty(conn)  # the suite DB starts each test empty
+        gt_id = (await _game_type_ids(conn))["sort"]
+        await conn.execute(insert(Game).values(session_id="guard-test", game_type_id=gt_id))
+        with pytest.raises(pytest.fail.Exception, match="refusing to seed: games already holds 1"):
+            await refuse_unless_games_empty(conn)
+        await trans.rollback()
 
 
 @pytest.mark.parametrize(
@@ -383,13 +355,34 @@ async def test_postgres_no_board_plans_a_seq_scan_on_games() -> None:
 )
 def test_scratch_url_is_normalised_for_asyncpg_and_alembic(raw: str) -> None:
     url = scratch_server_url(raw)
-    assert _url_str(url) == "postgresql+asyncpg://u:p@db.example:5432/scratch"
+    assert url_str(url) == "postgresql+asyncpg://u:p@db.example:5432/scratch"
 
 
 @pytest.mark.parametrize("raw", ["sqlite:///x.db", "mysql://u@h/db", "postgresql+psycopg2://h/d"])
 def test_scratch_url_rejects_other_databases(raw: str) -> None:
     with pytest.raises(ValueError, match=PG_URL_ENV):
         scratch_server_url(raw)
+
+
+@pytest.mark.parametrize(
+    ("version", "expected"),
+    [
+        (160004, ["DROP DATABASE IF EXISTS explain_gate_x WITH (FORCE)"]),
+        (130000, ["DROP DATABASE IF EXISTS explain_gate_x WITH (FORCE)"]),
+        (
+            120018,
+            [
+                (
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = 'explain_gate_x' AND pid <> pg_backend_pid()"
+                ),
+                "DROP DATABASE IF EXISTS explain_gate_x",
+            ],
+        ),
+    ],
+)
+def test_scratch_drop_uses_force_only_from_postgres_13(version: int, expected: list[str]) -> None:
+    assert drop_statements(version, "explain_gate_x") == expected
 
 
 def test_only_the_explicit_variable_names_the_postgres_server(monkeypatch) -> None:
