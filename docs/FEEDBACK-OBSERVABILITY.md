@@ -18,10 +18,11 @@ The in-app Feedback widget lets a player submit one of two types:
 - **Feature**
 
 The player supplies:
-- a required title, maximum 120 characters;
+
 - a required description, maximum 2,000 characters.
 
 The form does **not** ask for:
+
 - name;
 - email address;
 - screenshot;
@@ -34,7 +35,8 @@ The feedback category is attached as the Sentry tag `feedback.type`.
 Feedback is sent with `Sentry.captureFeedback()` to **Sentry User Feedback**.
 
 The payload contains:
-- `message`: title + blank line + description;
+
+- `message`: the description alone (there is no title field; Sentry derives the issue title from the message);
 - `source = "in_app_feedback"`;
 - `feedback.type` tag;
 - a `session-logs.txt` attachment when the local session-log buffer is non-empty.
@@ -48,6 +50,7 @@ The old shared Cloudflare-worker/GitHub path is historical and must not be descr
 `SessionLogger` wraps `console.warn` and `console.error` at app startup and keeps an in-memory circular buffer of the latest **200** warning/error entries.
 
 Each entry records:
+
 - ISO timestamp;
 - warn/error level;
 - formatted console message.
@@ -70,6 +73,7 @@ There is no separate server-side BC Arcade feedback rate limit because the submi
 The Sentry SDK owns delivery/retry of the feedback envelope.
 
 The form reports feedback as unavailable when:
+
 - Sentry is not initialized in the current build; or
 - the capture call throws.
 
@@ -78,6 +82,7 @@ Test-hooks builds and Expo Web do not initialize Sentry, so feedback delivery is
 ## 2. Automatic frontend Sentry diagnostics
 
 Sentry is initialized on supported native builds when:
+
 - the build is not a test-hooks build;
 - the platform is not Expo Web;
 - `EXPO_PUBLIC_SENTRY_DSN` is present.
@@ -113,6 +118,7 @@ After Sentry initialization, BC Arcade wraps `console.error`:
 - the original console call still executes.
 
 This wrapper composes with `SessionLogger`, so a console error can both:
+
 - enter the local feedback attachment buffer; and
 - be reported automatically to Sentry.
 
@@ -131,6 +137,7 @@ Current options include:
 - `send_default_pii = False`.
 
 The backend explicitly scrubs:
+
 - `X-Session-ID`;
 - `X-Admin-Token`;
 
@@ -155,6 +162,7 @@ Game/shared code can call:
 `gameEventClient.reportBug(level, source, message, context?)`
 
 with level:
+
 - `warn`;
 - `error`;
 - `fatal`.
@@ -162,6 +170,7 @@ with level:
 ### Local queue
 
 A bug report is converted into a `bug_log` row containing:
+
 - generated bug UUID;
 - level;
 - source;
@@ -190,6 +199,7 @@ The SyncWorker sends bug-log batches to:
 `POST /logs/bug`
 
 The route:
+
 - is keyed to the current `X-Session-ID`;
 - accepts up to 50 logs per batch;
 - is rate-limited to **30 requests/minute per session**;
@@ -197,6 +207,7 @@ The route:
 - stores accepted rows in Postgres `bug_logs`.
 
 Stored fields include:
+
 - bug id;
 - session id;
 - logged timestamp;
@@ -243,6 +254,7 @@ This separation matters for launch-health metrics: development/test noise must n
 Changes to any channel in this document require a privacy/disclosure review.
 
 At minimum cross-check:
+
 - `docs/privacy-policy.html`;
 - `docs/STORE-PRIVACY-ANSWERS.md`;
 - `docs/LEGAL-REVIEW-NOTES.md`;
@@ -250,6 +262,7 @@ At minimum cross-check:
 - `ATT-AUDIT.md` where tracking implications change.
 
 Examples that require re-review:
+
 - adding screenshots to feedback;
 - asking for email/name in feedback;
 - attaching the session id to Sentry;
@@ -273,6 +286,7 @@ The broader privacy declarations are owned by their dedicated legal/privacy work
 - Backend Sentry initialization/scrubbing → `backend/main.py`.
 
 When changing one of these flows:
+
 1. update code/tests;
 2. update this document;
 3. re-check privacy/store/legal declarations;
