@@ -14,6 +14,7 @@ import { Pressable, View } from "react-native";
 import { useDeck } from "../../game/_shared/decks/CardDeckContext";
 import { useTheme } from "../../theme/ThemeContext";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
+import { CARD_NATURAL_H, CARD_NATURAL_W } from "../../game/_shared/CardSizeContext";
 
 export interface PlayingCardProps {
   suit: CanonicalSuit;
@@ -35,8 +36,8 @@ export default function PlayingCard({
   suit,
   rank,
   faceDown = false,
-  width = 52,
-  height = 74,
+  width = CARD_NATURAL_W,
+  height = CARD_NATURAL_H,
   rotation = 0,
   highlighted = false,
   hintHighlighted = false,
@@ -56,12 +57,12 @@ export default function PlayingCard({
       width={width}
       height={height}
       faceDown={faceDown}
-      cardBg="#fff"
+      cardBg={colors.cardFace}
       cardBgBack={colors.surfaceAlt}
       border={hintHighlighted ? colors.bonus : highlighted ? colors.accent : colors.border}
       borderHighlight={colors.accent}
-      textColor="#0e0e13"
-      redSuitColor="#ff716c"
+      textColor={colors.cardInk}
+      redSuitColor={colors.cardRedSuit}
     />
   );
 

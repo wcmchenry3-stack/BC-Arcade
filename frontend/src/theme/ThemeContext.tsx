@@ -61,6 +61,14 @@ export interface Colors {
   outcomeEndedTint: string;
   /** Gold used by win celebrations (badges, confetti accents). */
   celebration: string;
+  /**
+   * Playing-card face colours (#2983): the face fill, the ink for ranks and
+   * black suits, and the red-suit colour. A card face is a physical object, so
+   * these are the same in both themes today; #2989 may give light mode its own.
+   */
+  cardFace: string;
+  cardInk: string;
+  cardRedSuit: string;
   fruitContainer: string;
   fruitBackground: string;
 }
@@ -103,6 +111,10 @@ const TOKENS = {
   celebrationDark: "#ffd700",
   celebrationLight: "#8a6100",
   white: "#ffffff",
+  // Playing cards (#2983) — one physical deck, identical in both themes
+  cardFace: "#fff",
+  cardInk: "#0e0e13",
+  cardRedSuit: "#ff716c",
 } as const;
 
 export const dark: Colors = {
@@ -151,6 +163,9 @@ export const dark: Colors = {
   outcomeEnded: TOKENS.accentDark,
   outcomeEndedTint: "rgba(143,245,255,0.12)",
   celebration: TOKENS.celebrationDark,
+  cardFace: TOKENS.cardFace,
+  cardInk: TOKENS.cardInk,
+  cardRedSuit: TOKENS.cardRedSuit,
   fruitContainer: TOKENS.darkSurface,
   fruitBackground: TOKENS.darkBg,
 };
@@ -201,6 +216,9 @@ export const light: Colors = {
   outcomeEnded: TOKENS.outcomeEndedLight,
   outcomeEndedTint: "rgba(0,115,126,0.10)",
   celebration: TOKENS.celebrationLight,
+  cardFace: TOKENS.cardFace,
+  cardInk: TOKENS.cardInk,
+  cardRedSuit: TOKENS.cardRedSuit,
   fruitContainer: TOKENS.lightSurfaceAlt,
   fruitBackground: TOKENS.lightSurfaceHigh,
 };
