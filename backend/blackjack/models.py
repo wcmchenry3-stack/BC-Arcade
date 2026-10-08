@@ -1,3 +1,6 @@
+"""Blackjack metadata and result models: the run aggregates written at a
+session's start and the closing balance sent on completion (#539, #2745)."""
+
 from __future__ import annotations
 
 from typing import Literal

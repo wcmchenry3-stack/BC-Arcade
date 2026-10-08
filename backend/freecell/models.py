@@ -1,3 +1,5 @@
+"""FreeCell metadata and result models (#2452)."""
+
 from pydantic import BaseModel, ConfigDict, Field
 
 

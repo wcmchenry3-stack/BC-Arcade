@@ -1,13 +1,12 @@
 """Star Swarm GameModule descriptor (#2623).
 
-Satisfies the ``GameModule`` Protocol from ``games/protocol.py`` via
-structural subtyping — no inheritance required.
+A ``GameModuleBase`` subclass (``games/module_base.py``).
 """
 
 from __future__ import annotations
 
 from games.board import SCORE_METRIC, BoardDefinition
-from games.protocol import default_stats_shape
+from games.module_base import GameModuleBase
 from starswarm.models import (
     DEFAULT_DIFFICULTY_TIER,
     DIFFICULTY_TIERS,
@@ -17,12 +16,8 @@ from starswarm.models import (
 from vocab import GameType
 
 
-class StarSwarmModule:
-    """GameModule implementation for Star Swarm.
-
-    Uses the default pass-through stats shape: raw aggregate fields are
-    forwarded as-is; ``latest_score`` is stripped (not exposed in API).
-    """
+class StarSwarmModule(GameModuleBase):
+    """GameModule implementation for Star Swarm."""
 
     game_type = GameType.STARSWARM
     metadata_model = StarSwarmMetadata
@@ -40,9 +35,6 @@ class StarSwarmModule:
     )
     # A run ends when the ship is lost: there is no win.
     has_winner = False
-
-    def stats_shape(self, raw_stats: dict) -> dict:
-        return default_stats_shape(raw_stats)
 
 
 module = StarSwarmModule()

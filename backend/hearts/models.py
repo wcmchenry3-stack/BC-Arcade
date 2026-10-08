@@ -1,7 +1,12 @@
+"""Hearts metadata and result models, including the optional per-hand score
+breakdown of a finished game (#2838)."""
+
 import logging
 
 import sentry_sdk
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validator
+
+from games.metadata import LegacyPlayerName
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +24,7 @@ class HeartsMetadata(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid")
-    player_name: str = Field(default="", max_length=64)
+    player_name: LegacyPlayerName = ""
     ai_difficulty: str | None = Field(default=None, max_length=32)
 
 

@@ -168,14 +168,11 @@ class LimitViolation:
 
 def enabled_board(game_type: str) -> BoardDefinition | None:
     """The game's board, or ``None`` if the game is unknown or has no leaderboard."""
-    board = _module_board(get_module(game_type))
+    mod = get_module(game_type)
+    board = mod.board if mod is not None else None
     if board is None or not board.enabled:
         return None
     return board
-
-
-def _module_board(mod: GameModule | None) -> BoardDefinition | None:
-    return getattr(mod, "board", None) if mod is not None else None
 
 
 def resolve_partition(
@@ -664,7 +661,8 @@ async def game_rank(db: AsyncSession, *, game: Game, session_id: str) -> GameRan
       asks for a name the game couldn't use.
     """
     game_type = game.game_type.name
-    board = _module_board(get_module(game_type))
+    mod = get_module(game_type)
+    board = mod.board if mod is not None else None
     if board is None:
         raise LeaderboardError(404, f"{game_type} has no leaderboard.")
     if not board.enabled:
@@ -797,4 +795,4 @@ def check_completion_limits(
     ``game_type`` and ``mod`` are the ones ``complete_game`` already resolved.
     """
     merged = merge_result_metadata(game.game_metadata, result)
-    return board_limit_violation(game_type, _module_board(mod), final_score, merged)
+    return board_limit_violation(game_type, mod.board if mod else None, final_score, merged)

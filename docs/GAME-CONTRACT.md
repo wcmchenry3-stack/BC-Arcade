@@ -137,21 +137,35 @@ The `CHECK` constraint on `games.outcome` is **generated** from this enum in `db
 
 ### 1.3 GameModule Protocol
 
-**Authority: `backend/games/protocol.py`**
+**Authority: `backend/games/module_base.py` (`GameModuleBase`) and `backend/games/protocol.py` (`GameModule`)**
 
-Every game module must expose an object that satisfies the `GameModule` `typing.Protocol` (structural subtyping — no inheritance required):
+Every game module is a subclass of `GameModuleBase` (#2995): a class of declarations plus three optional hooks, each with a default that changes nothing. The shared code (`games/sessions.py`, `games/stats.py`, `games/leaderboard.py`) is typed against the `GameModule` `typing.Protocol`, which the base satisfies, and calls every hook on every module directly (there are no `getattr` lookups):
 
 ```python
-@runtime_checkable
-class GameModule(Protocol):
-    game_type: GameType          # identifies this module in the registry
-    metadata_model: type[BaseModel]  # Pydantic model for games.metadata validation
-    result_model: type[BaseModel] | None  # result block on PATCH /games/{id}/complete, or None
-    has_winner: bool             # True → this game can record win/loss/push (see §1.2)
-    board: BoardDefinition            # how the game is ranked (#2617); required
+class GameModuleBase:
+    # Declarations
+    game_type: ClassVar[GameType]                  # required: identifies this module in the registry
+    metadata_model: ClassVar[type[BaseModel]]      # required: Pydantic model for games.metadata validation
+    board: ClassVar[BoardDefinition]               # required: how the game is ranked (#2617)
+    result_model: ClassVar[type[BaseModel] | None] = None  # result block on PATCH /games/{id}/complete
+    has_winner: ClassVar[bool] = False             # True → this game can record win/loss/push (see §1.2)
 
-    def stats_shape(self, raw_stats: dict) -> dict: ...
+    # Optional hooks (defaults shown)
+    def stats_shape(self, raw_stats: dict) -> dict:
+        return default_stats_shape(raw_stats)      # §1.5; Blackjack overrides
+    def derive_final_score(self, final_score, outcome, result) -> int | None:
+        return final_score                         # Blackjack overrides (#2745)
+    async def reconcile_result(self, session, game, result) -> dict:
+        return result                              # Daily Word overrides (#2541)
 ```
+
+A subclass that leaves out `game_type`, `metadata_model` or `board` fails at import with a `TypeError`. Every registered module still declares `has_winner` itself (`tests/test_game_module_protocol.py` checks the class body), so the default only matters for a game in progress.
+
+| Hook                 | Called by                                            | Contract                                                                                                                                                                                       |
+| -------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stats_shape`        | `get_stats_for_session` (`/stats/me`)                | The game-specific part of the stats entry (§1.5).                                                                                                                                              |
+| `derive_final_score` | `complete_game`, after the result block is validated | Returns the `final_score` to store, given the one sent, the outcome and the validated result. Raising `ValueError` rejects the completion (400, reported to Sentry as `final_score mismatch`). |
+| `reconcile_result`   | `_validate_result`, after `result_model` validation  | Awaited with the DB session and the game row; returns the result block corrected against server-side state. Runs only for a game that declares a `result_model`.                               |
 
 **`board`** (`backend/games/board.py`, #2617) declares the game's leaderboard rule once. It is required: a game with no leaderboard declares a board with `enabled=False`, never `None`. Boards are shared class-level singletons, so the model is frozen and every container field is a tuple. The generic leaderboard routes below read them (#2618); stats read them too (#2620, §1.5).
 
@@ -229,33 +243,29 @@ The per-game leaderboard routes (`/solitaire/scores`, `/cascade/score/{id}`, …
 
 The `@runtime_checkable` decorator means CI can assert `isinstance(module, GameModule)` for each registered game (see `tests/test_game_module_protocol.py`).
 
-**Registry:** `backend/games/registry.py` maps `GameType` string values to module singletons. `games/stats.py` and `games/sessions.py` use `get_module(name)` for generic dispatch — there are no `if name == "<game>"` branches anywhere in the service layer.
+**Registry:** `backend/games/registry.py` builds `_REGISTRY` (keyed by `GameType` string value) from the `_MODULES` tuple of module singletons. `games/stats.py`, `games/sessions.py` and `games/leaderboard.py` use `get_module(name)` for generic dispatch — there are no `if name == "<game>"` branches anywhere in the service layer. `tests/test_game_module_base.py` fails if a `<game>/module.py` is left out of `_MODULES`.
 
 **Adding a module:**
 
-1. Create `backend/<game>/module.py` with a class that has `game_type`, `metadata_model`, `result_model`, `has_winner`, `board` and `stats_shape`.
+1. Create `backend/<game>/module.py` with a `GameModuleBase` subclass declaring `game_type`, `metadata_model`, `has_winner`, `board` and, if the game sends a result block, `result_model`. Override a hook only if the game needs it.
 2. Expose a module-level singleton: `module = MyGameModule()`.
-3. Add an entry to `_REGISTRY` in `backend/games/registry.py`, to `_HAS_WINNER` in `tests/test_game_module_protocol.py` and to `_GAMES` in `tests/test_board_definitions.py`.
+3. Add the singleton to `_MODULES` in `backend/games/registry.py`, the game to `_HAS_WINNER` in `tests/test_game_module_protocol.py` and to `_GAMES` in `tests/test_board_definitions.py`. A hook override also goes in `_OVERRIDES` in `tests/test_game_module_base.py`.
 4. Regenerate `frontend/src/api/vocab.ts` (§1.1): `BOARDS` and `HAS_WINNER` come from the module.
 
-Example (pass-through stats, no metadata):
+Example (pass-through stats, no result block):
 
 ```python
 # backend/mygame/module.py
 from games.board import SCORE_METRIC, BoardDefinition
-from games.protocol import default_stats_shape
+from games.module_base import GameModuleBase
 from mygame.models import MyGameMetadata
 from vocab import GameType
 
-class MyGameModule:
+class MyGameModule(GameModuleBase):
     game_type = GameType.MYGAME
     metadata_model = MyGameMetadata
-    result_model = None
     has_winner = False  # score-only: outcome is completed / kept_playing
     board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score")
-
-    def stats_shape(self, raw_stats: dict) -> dict:
-        return default_stats_shape(raw_stats)
 
 module = MyGameModule()
 ```
@@ -279,11 +289,13 @@ All metadata models use `extra="forbid"` to prevent arbitrary data from being si
 | Hearts      | `HeartsMetadata`    | `player_name: str = ""` (max 64 chars), `ai_difficulty: str \| None` (≤ 32 chars): the opponent style, recorded and not ranked on (`cautious`, `schemer`, `daring`, `mixed`)              |
 | Mahjong     | `MahjongMetadata`   | `player_name: str = ""` (max 64 chars), `layout: str \| None` (layout id, `^[a-z0-9_]+$`, ≤ 32 chars; sent since #2627)                                                                   |
 | Solitaire   | `SolitaireMetadata` | `player_name: str = ""` (max 64 chars), `draw_mode: Literal[1, 3] \| None` (#2632; recorded, not a partition: both modes share one board)                                                 |
-| Bottle Sort | `SortMetadata`      | `player_name: str = ""` (max 32 chars)                                                                                                                                                    |
+| Bottle Sort | `SortMetadata`      | `player_name: str = ""` (max 64 chars; 32 before #2995)                                                                                                                                   |
 | Starswarm   | `StarSwarmMetadata` | `difficulty_tier: str \| None` (≤ 32 chars); only the app's ten tiers (`DIFFICULTY_TIERS`) rank                                                                                           |
 | Sudoku      | `SudokuMetadata`    | `player_name: str = ""` (max 64 chars), `difficulty: Literal["easy","medium","hard"]` (required), `variant: Literal["classic","mini"] = "classic"`                                        |
 | Twenty48    | `Twenty48Metadata`  | None (empty model). The opening board is `game_started` event data                                                                                                                        |
 | Yacht       | `YachtMetadata`     | `mode: Literal["solo","vs"] \| None`, `difficulty: Literal["easy","medium","hard"] \| None` (the computer's: required for `vs`, forbidden for `solo`; builds before #2630 send no `mode`) |
+
+**Legacy `player_name`:** the six models that accept it declare it as `player_name: LegacyPlayerName = ""` (`backend/games/metadata.py`), one limit for every game: `LEGACY_PLAYER_NAME_MAX_LENGTH = 64` (#2995; Sort allowed 32 before). It is validation-only JSON metadata that plays no part in ranking (§1.3 "Leaderboard routes"), so changing the limit needs no migration. `tests/test_game_module_base.py` checks that 64 characters pass and 65 fail for every game with the field.
 
 **Completion merge:** `PATCH /games/{id}/complete` merges the validated result block into `games.metadata` (`merge_result_metadata` in `games/leaderboard.py`; the board's limit check merges the same way). Creation-time keys win, so a result can't rewrite `player_name` or a partition. A creation key holding `null` has no value to protect and doesn't win: the result's value fills it (a Star Swarm run created with `difficulty_tier: null` keeps the tier its completion reports). A `null` in the result never clears a creation value.
 
@@ -347,11 +359,10 @@ The deprecated aliases `played` (= `sessions`), `best`, `avg` and Blackjack's to
 
 `/stats/me` runs the stale-session sweep (§1.7) for the caller before it aggregates. The app surfaces that read it are in §2.6.
 
-**Default implementation** — pass `last_played_at` through; `best`, `latest_score` and `metadata` are inputs only. Every game but Blackjack uses the shared helper in `games/protocol.py`:
+**Default implementation** — pass `last_played_at` through; `best`, `latest_score` and `metadata` are inputs only. Every game but Blackjack inherits it from `GameModuleBase`, which calls the shared helper `default_stats_shape` in `games/protocol.py`:
 
 ```python
-from games.protocol import default_stats_shape
-
+# games/module_base.py
 def stats_shape(self, raw_stats: dict) -> dict:
     return default_stats_shape(raw_stats)
 ```
@@ -607,11 +618,12 @@ Use this checklist when adding a new game. Each item links to the file to create
 - [ ] **`backend/mygame/`** — create the game package with at minimum `__init__.py`, `models.py`, `module.py`. No `router.py` is needed: the generic `/games` routes create, complete, rank and list every game (§1.3). Add one only for game-specific server logic (e.g. Daily Word's puzzle routes)
 - [ ] **`backend/mygame/models.py`** — define `MyGameMetadata(BaseModel)` with `extra="forbid"`, and a `MyGameResult` model for the completion's `result` block (or `result_model = None` to accept any dict). Accept any value a shipped app could send: a 4xx on create or completion dead-letters the game on the device
   - CI: `tests/test_game_metadata.py` pattern (add a valid/invalid unit test)
-- [ ] **`backend/mygame/module.py`** — implement the `GameModule` Protocol (§1.3): `game_type`, `metadata_model`, `result_model`, `has_winner`, `board`, `stats_shape()`
+- [ ] **`backend/mygame/module.py`** — subclass `GameModuleBase` (§1.3): declare `game_type`, `metadata_model`, `has_winner`, `board` and `result_model` (if the game sends a result block); override `stats_shape` / `derive_final_score` / `reconcile_result` only if the game needs it
   - `has_winner`: `True` only if the client records `win` / `loss` / `push` (§1.2); a score-only game is `False` and records `completed`
   - `board`: a `BoardDefinition` — metric, direction, tie-break, partitions, `max_value` cap, `qualifying_outcomes`; `enabled=False` if the game has no leaderboard (it still defines the "best" in stats)
   - CI: `tests/test_game_module_protocol.py` (registry-wide conformance; add the game to `_HAS_WINNER`) and `tests/test_board_definitions.py` (add it to `_GAMES`)
-- [ ] **`backend/games/registry.py`** — add the module singleton to `_REGISTRY`
+- [ ] **`backend/games/registry.py`** — add the module singleton to `_MODULES`
+  - CI: `tests/test_game_module_base.py` (every `<game>/module.py` registered)
 - [ ] **`backend/scripts/gen_vocab_ts.py`** — regenerate `frontend/src/api/vocab.ts` (`GAME_TYPES`, `HAS_WINNER`, `BOARDS`)
   - CI: `tests/test_vocab.py` (TS contract drift check)
 - [ ] **Premium tier** _(if applicable)_ — set `is_premium=true` in the Alembic migration; `POST /games` and the generic leaderboard and rank routes then check the entitlement themselves (`check_entitlement`, defined in `backend/entitlements/dependencies.py` and called from `games/router.py`); add `require_entitlement("<slug>")` to the game's own router, if it has one; add the slug to `PREMIUM_GAMES` in `frontend/src/entitlements/EntitlementContext.tsx` and to `HIDDEN_GAMES` for v1.0 store builds (frontend routing: see Route and Home tile below). See [`docs/ARCHITECTURE.md §10`](ARCHITECTURE.md#10-premium-entitlements).

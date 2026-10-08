@@ -4,7 +4,7 @@ Maps each ``GameType`` string value to its ``GameModule`` instance.
 The ``games`` service modules (``sessions.py``, ``stats.py``, ...) use this for
 generic dispatch instead of ``if name ==`` branches.
 
-To register a new game: import its module singleton and add an entry below.
+To register a new game: import its module singleton and add it to ``_MODULES``.
 """
 
 from __future__ import annotations
@@ -23,22 +23,26 @@ from sudoku.module import module as sudoku_module
 from twenty48.module import module as twenty48_module
 from yacht.module import module as yacht_module
 
+# Every game module, one per ``GameType`` (``tests/test_game_module_base.py``
+# checks that each ``<game>/module.py`` is here).
+_MODULES: tuple[GameModule, ...] = (
+    blackjack_module,
+    cascade_module,
+    daily_word_module,
+    freecell_module,
+    hearts_module,
+    mahjong_module,
+    solitaire_module,
+    sort_module,
+    starswarm_module,
+    sudoku_module,
+    twenty48_module,
+    yacht_module,
+)
+
 # Keyed by GameType.value (str) so lookups work directly against the name
 # column returned by DB queries.
-_REGISTRY: dict[str, GameModule] = {
-    blackjack_module.game_type.value: blackjack_module,
-    cascade_module.game_type.value: cascade_module,
-    daily_word_module.game_type.value: daily_word_module,
-    freecell_module.game_type.value: freecell_module,
-    hearts_module.game_type.value: hearts_module,
-    mahjong_module.game_type.value: mahjong_module,
-    solitaire_module.game_type.value: solitaire_module,
-    sort_module.game_type.value: sort_module,
-    starswarm_module.game_type.value: starswarm_module,
-    sudoku_module.game_type.value: sudoku_module,
-    twenty48_module.game_type.value: twenty48_module,
-    yacht_module.game_type.value: yacht_module,
-}
+_REGISTRY: dict[str, GameModule] = {m.game_type.value: m for m in _MODULES}
 
 
 def get_module(game_type_name: str) -> GameModule | None:

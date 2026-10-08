@@ -1,6 +1,10 @@
+"""Solitaire metadata and result models (#592)."""
+
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from games.metadata import LegacyPlayerName
 
 DrawMode = Literal[1, 3]
 
@@ -17,7 +21,7 @@ class SolitaireMetadata(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid")
-    player_name: str = Field(default="", max_length=64)
+    player_name: LegacyPlayerName = ""
     draw_mode: DrawMode | None = None
 
     @field_validator("draw_mode", mode="before")

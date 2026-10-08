@@ -1,7 +1,6 @@
 """Yacht GameModule descriptor.
 
-Satisfies the ``GameModule`` Protocol from ``games/protocol.py`` via
-structural subtyping — no inheritance required.
+A ``GameModuleBase`` subclass (``games/module_base.py``).
 
 ``has_winner`` is true because vs-the-computer games record ``win`` /
 ``loss`` / ``push``. Solo games have no opponent and record ``completed``,
@@ -12,12 +11,12 @@ row is not a win. See ``vocab.GameOutcome``.
 from __future__ import annotations
 
 from games.board import SCORE_METRIC, BoardDefinition
-from games.protocol import default_stats_shape
+from games.module_base import GameModuleBase
 from vocab import GameType
 from yacht.models import YachtMetadata, YachtResult
 
 
-class YachtModule:
+class YachtModule(GameModuleBase):
     """GameModule implementation for Yacht."""
 
     game_type = GameType.YACHT
@@ -34,9 +33,6 @@ class YachtModule:
     board = BoardDefinition(
         metric=SCORE_METRIC, direction="desc", label_key="score", max_value=1575
     )
-
-    def stats_shape(self, raw_stats: dict) -> dict:
-        return default_stats_shape(raw_stats)
 
 
 module = YachtModule()

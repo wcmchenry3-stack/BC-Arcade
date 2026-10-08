@@ -1,4 +1,8 @@
-from pydantic import BaseModel, ConfigDict, Field
+"""Cascade metadata model (#539). Cascade sends no result block."""
+
+from pydantic import BaseModel, ConfigDict
+
+from games.metadata import LegacyPlayerName
 
 
 class CascadeMetadata(BaseModel):
@@ -10,4 +14,4 @@ class CascadeMetadata(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid")
-    player_name: str = Field(default="", max_length=64)
+    player_name: LegacyPlayerName = ""
