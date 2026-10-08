@@ -802,6 +802,11 @@ describe("MahjongScreen — no-moves overlays", () => {
       const api = await mount();
       expect(api.queryByText(/Shuffle \(\d+\)/)).toBeNull();
       expect(api.queryByText("NO MOVES")).toBeNull();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(DEADLOCK_OVERLAY_DELAY_MS + 50);
+      });
+      expect(api.getByTestId("mahjong-result")).toBeTruthy();
+      expect(api.queryByText(/Shuffle \(\d+\)/)).toBeNull();
     } finally {
       jest.useRealTimers();
     }
