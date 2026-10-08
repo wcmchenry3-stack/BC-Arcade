@@ -69,6 +69,10 @@ Every level played is its own session row (#2625): progress is not carried in on
 - Result model: `SortResult` — `level`, `moves`, `undos`, `level_reached`, `total_moves`, `won`, `outcome`, all optional
 - Scoring: see [Scoring](#scoring-persistence)
 
+## Colour palette
+
+The 14 liquid colours live in `BOTTLE_LIQUID_COLORS` (`frontend/src/theme/theme.bottle.ts`), one set per theme. Each set must keep every colour at 3:1 contrast or better against its theme background and every pair at CIEDE2000 delta-E 20 or better. Whenever you change them, update the copy in `tools/assets/check_palette.py` and run `python tools/assets/check_palette.py` (needs `tools/assets/requirements.txt`). Nothing runs it automatically. What it checks, the exact output to expect and its limits are in [`tools/README.md`](../../tools/README.md#sort-palette-check-check_palettepy).
+
 ## Entitlement
 
 Free: no entitlement check.

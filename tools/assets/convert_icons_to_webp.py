@@ -63,7 +63,7 @@ def convert_directory(directory: Path) -> None:
         try:
             with Image.open(png_path) as img:
                 img.save(webp_path, "WEBP", quality=90, method=6)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - any conversion failure aborts the run
             print(f"error: failed to convert {png_path.name}: {exc}", file=sys.stderr)
             sys.exit(1)
 

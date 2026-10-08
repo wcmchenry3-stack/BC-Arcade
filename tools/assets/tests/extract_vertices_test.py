@@ -8,11 +8,9 @@ import math
 import sys
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from extract_vertices import (  # noqa: E402
+from extract_vertices import (
     _area_centroid,
     _graham_scan,
     _normalize_hull,
@@ -20,10 +18,10 @@ from extract_vertices import (  # noqa: E402
     extract_hull,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _flat_image(
     width: int,
@@ -83,9 +81,9 @@ class TestOpaquePixels:
     def test_mixed_alphas_only_opaque_returned(self):
         # 3×1 row: transparent, boundary, opaque
         pixels = [
-            (0, 0, 0, 0),   # alpha=0   → excluded
-            (0, 0, 0, 200), # alpha=200 → excluded (not > 200)
-            (0, 0, 0, 201), # alpha=201 → included
+            (0, 0, 0, 0),  # alpha=0   → excluded
+            (0, 0, 0, 200),  # alpha=200 → excluded (not > 200)
+            (0, 0, 0, 201),  # alpha=201 → included
         ]
         result = _opaque_pixels(pixels, 3, 1)
         assert result == [(2, 0)]
@@ -105,6 +103,7 @@ class TestOpaquePixels:
 # ---------------------------------------------------------------------------
 # _graham_scan
 # ---------------------------------------------------------------------------
+
 
 class TestGrahamScan:
     def test_triangle_returns_three_vertices(self):
@@ -154,6 +153,7 @@ class TestGrahamScan:
 # _area_centroid
 # ---------------------------------------------------------------------------
 
+
 class TestAreaCentroid:
     def test_square_matches_arithmetic_mean(self):
         """For a symmetric square the area centroid equals the arithmetic mean."""
@@ -190,6 +190,7 @@ class TestAreaCentroid:
 # ---------------------------------------------------------------------------
 # _normalize_hull
 # ---------------------------------------------------------------------------
+
 
 class TestNormalizeHull:
     def test_empty_input_returns_empty(self):
@@ -239,6 +240,7 @@ class TestNormalizeHull:
 # ---------------------------------------------------------------------------
 # extract_hull (integration)
 # ---------------------------------------------------------------------------
+
 
 class TestExtractHull:
     def test_all_transparent_returns_empty(self):

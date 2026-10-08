@@ -4,7 +4,6 @@ pytest suite for remove-backgrounds.py
 Tests the core algorithm on synthetic images without touching real assets.
 """
 
-import math
 import sys
 from pathlib import Path
 
@@ -13,7 +12,7 @@ import pytest
 # Make the scripts directory importable regardless of where pytest is invoked
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from remove_backgrounds import (  # noqa: E402
+from remove_backgrounds import (
     HARD_THRESHOLD,
     SOFT_THRESHOLD,
     _is_already_transparent,
@@ -22,10 +21,10 @@ from remove_backgrounds import (  # noqa: E402
     remove_background,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _flat_image(
     width: int,
@@ -53,6 +52,7 @@ def _set_pixel(
 # Corner detection / background sampling
 # ---------------------------------------------------------------------------
 
+
 class TestSampleBackground:
     def test_uniform_image_returns_four_identical_colours(self):
         pixels = _flat_image(10, 10, (210, 210, 207, 255))
@@ -72,7 +72,7 @@ class TestSampleBackground:
         assert len(refs) == 4
         red_refs = [r for r in refs if r[0] > 150]
         green_refs = [r for r in refs if r[1] > 150]
-        assert len(red_refs) == 1    # only TL corner is red
+        assert len(red_refs) == 1  # only TL corner is red
         assert len(green_refs) == 3  # other three corners are green
 
     def test_non_uniform_background_each_corner_independent(self):
@@ -80,7 +80,7 @@ class TestSampleBackground:
         pixels = _flat_image(10, 10, (210, 210, 207, 255))
         # Paint BL corner pure white
         for row in range(7, 10):
-            for col in range(0, 3):
+            for col in range(3):
                 pixels[row * 10 + col] = (255, 255, 255, 255)
         refs = _sample_background(pixels, 10, 10)
         # One ref should be near-white, three near-gray
@@ -100,6 +100,7 @@ class TestSampleBackground:
 # ---------------------------------------------------------------------------
 # Idempotency check
 # ---------------------------------------------------------------------------
+
 
 class TestIsAlreadyTransparent:
     def test_fully_opaque_returns_false(self):
@@ -125,6 +126,7 @@ class TestIsAlreadyTransparent:
 # Background removal algorithm
 # ---------------------------------------------------------------------------
 
+
 class TestRemoveBackground:
     BACKGROUND = (210, 210, 207, 255)
     FRUIT_RED = (204, 52, 64, 255)  # bright red — high dist from gray background
@@ -142,10 +144,10 @@ class TestRemoveBackground:
         pixels, w, h = self._make_image_with_fruit_center()
         result = remove_background(pixels, w, h)
         # All four true corners should be transparent
-        assert result[0][3] == 0            # top-left
-        assert result[w - 1][3] == 0        # top-right
+        assert result[0][3] == 0  # top-left
+        assert result[w - 1][3] == 0  # top-right
         assert result[(h - 1) * w][3] == 0  # bottom-left
-        assert result[h * w - 1][3] == 0    # bottom-right
+        assert result[h * w - 1][3] == 0  # bottom-right
 
     # --- Fruit pixel retained ---
 
@@ -216,8 +218,8 @@ class TestRemoveBackground:
         result_default = remove_background(pixels, 10, 10, hard_threshold=25, soft_threshold=80)
         result_tiny = remove_background(pixels, 10, 10, hard_threshold=5, soft_threshold=15)
 
-        assert result_default[5 * 10 + 5][3] == 0     # within default hard zone
-        assert result_tiny[5 * 10 + 5][3] > 0         # outside tiny hard zone
+        assert result_default[5 * 10 + 5][3] == 0  # within default hard zone
+        assert result_tiny[5 * 10 + 5][3] > 0  # outside tiny hard zone
 
     def test_non_uniform_background_all_corners_cleared(self):
         """
@@ -232,7 +234,7 @@ class TestRemoveBackground:
         pixels = _flat_image(10, 10, gray)
         # Paint BL corner pure white (rows 7-9, cols 0-2)
         for row in range(7, 10):
-            for col in range(0, 3):
+            for col in range(3):
                 pixels[row * 10 + col] = white
         # Place a bright-red fruit pixel in the center
         pixels = _set_pixel(pixels, 10, 5, 5, (204, 52, 64, 255))
@@ -240,10 +242,10 @@ class TestRemoveBackground:
         result = remove_background(pixels, 10, 10)
 
         # All four true corners must be transparent
-        assert result[0][3] == 0             # TL
-        assert result[9][3] == 0             # TR
-        assert result[7 * 10][3] == 0        # BL (was pure white — regression check)
-        assert result[9 * 10 + 9][3] == 0    # BR
+        assert result[0][3] == 0  # TL
+        assert result[9][3] == 0  # TR
+        assert result[7 * 10][3] == 0  # BL (was pure white — regression check)
+        assert result[9 * 10 + 9][3] == 0  # BR
         # Fruit pixel must remain opaque
         assert result[5 * 10 + 5][3] == 255
 
@@ -251,6 +253,7 @@ class TestRemoveBackground:
 # ---------------------------------------------------------------------------
 # Circular mask
 # ---------------------------------------------------------------------------
+
 
 class TestApplyCircleMask:
     SIZE = 100  # square image; planet fills the frame
@@ -290,7 +293,6 @@ class TestApplyCircleMask:
         """Pixels near the circle boundary should have 0 < alpha < 255."""
         pixels = self._planet_image()
         r = self.SIZE * 0.48
-        feather = self.SIZE * 0.01
         result = apply_circle_mask(pixels, self.SIZE, self.SIZE)
         # Sample a pixel just inside the feather band
         cx, cy = self.SIZE / 2.0, self.SIZE / 2.0

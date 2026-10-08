@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 """Generate kawaii SVG sprites for Cascade — all 21 remaining assets."""
+
 import os
+
 try:
     import cairosvg
 except ImportError:
-    import subprocess, sys
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "cairosvg", "--break-system-packages"])
+    import subprocess
+    import sys
+
+    subprocess.check_call(
+        [sys.executable, "-m", "pip", "install", "cairosvg", "--break-system-packages"]
+    )
     import cairosvg
 
 OUT = "/tmp/svg_sprites"
 os.makedirs(OUT, exist_ok=True)
 
 # ─── shared building blocks ───────────────────────────────────────────────────
+
 
 def defs(c0, c1, c2, c3, extra=""):
     return f"""  <defs>
@@ -37,11 +44,13 @@ def defs(c0, c1, c2, c3, extra=""):
     <clipPath id="clip"><circle cx="256" cy="256" r="210"/></clipPath>{extra}
   </defs>"""
 
+
 BODY = """  <circle cx="256" cy="256" r="210" fill="url(#body)"/>
   <circle cx="256" cy="256" r="210" fill="url(#rim)"/>"""
 
 SPEC = """  <ellipse cx="183" cy="168" rx="66" ry="46" transform="rotate(-28 183 168)" fill="url(#s1)"/>
   <ellipse cx="160" cy="192" rx="22" ry="14" transform="rotate(-28 160 192)" fill="url(#s2)" opacity="0.65"/>"""
+
 
 def open_face(c="#2a0e00"):
     return f"""  <circle cx="210" cy="286" r="22" fill="{c}"/>
@@ -50,12 +59,14 @@ def open_face(c="#2a0e00"):
   <circle cx="309" cy="278" r="8" fill="white"/>
   <path d="M 220 322 Q 256 352 292 322" stroke="{c}" stroke-width="9" fill="none" stroke-linecap="round"/>"""
 
+
 def closed_face(c="#1a0a00"):
     return f"""  <path d="M 194 282 Q 210 268 226 282" stroke="{c}" stroke-width="8" fill="none" stroke-linecap="round"/>
   <path d="M 286 282 Q 302 268 318 282" stroke="{c}" stroke-width="8" fill="none" stroke-linecap="round"/>
   <path d="M 220 318 Q 256 346 292 318" stroke="{c}" stroke-width="8" fill="none" stroke-linecap="round"/>
   <ellipse cx="185" cy="308" rx="24" ry="15" fill="rgba(255,130,130,0.38)"/>
   <ellipse cx="327" cy="308" rx="24" ry="15" fill="rgba(255,130,130,0.38)"/>"""
+
 
 def write(name, c0, c1, c2, c3, details="", face="", extra_defs="", post_face=""):
     content = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
@@ -72,7 +83,9 @@ def write(name, c0, c1, c2, c3, details="", face="", extra_defs="", post_face=""
     svg_path = f"{OUT}/{name}.svg"
     with open(svg_path, "w") as f:
         f.write(content)
-    cairosvg.svg2png(url=svg_path, write_to=f"{OUT}/{name}.png", output_width=512, output_height=512)
+    cairosvg.svg2png(
+        url=svg_path, write_to=f"{OUT}/{name}.png", output_width=512, output_height=512
+    )
     print(f"  ✓ {name}")
 
 
@@ -80,8 +93,12 @@ def write(name, c0, c1, c2, c3, details="", face="", extra_defs="", post_face=""
 
 print("Fruits:")
 
-write("blueberry",
-    "#c4b5fd", "#7c3aed", "#4c1d95", "#2e1065",
+write(
+    "blueberry",
+    "#c4b5fd",
+    "#7c3aed",
+    "#4c1d95",
+    "#2e1065",
     details="""  <!-- 5-petal calyx crown (characteristic blueberry top) -->
   <g transform="translate(256,47)">
     <ellipse cx="0" cy="-15" rx="10" ry="15" fill="#2e1065" transform="rotate(0)"/>
@@ -91,49 +108,69 @@ write("blueberry",
     <ellipse cx="0" cy="-15" rx="10" ry="15" fill="#2e1065" transform="rotate(288)"/>
     <circle r="11" fill="#4c1d95"/>
   </g>""",
-    face=open_face()
+    face=open_face(),
 )
 
-write("lemon",
-    "#fef9c3", "#facc15", "#ca8a04", "#78350f",
+write(
+    "lemon",
+    "#fef9c3",
+    "#facc15",
+    "#ca8a04",
+    "#78350f",
     details="""  <!-- nubs at poles — characteristic lemon tips -->
   <ellipse cx="256" cy="48" rx="20" ry="14" fill="rgba(120,83,0,0.45)"/>
   <ellipse cx="256" cy="464" rx="20" ry="14" fill="rgba(120,83,0,0.45)"/>""",
-    face=open_face()
+    face=open_face(),
 )
 
-write("grape",
-    "#e9d5ff", "#9333ea", "#6b21a8", "#3b0764",
+write(
+    "grape",
+    "#e9d5ff",
+    "#9333ea",
+    "#6b21a8",
+    "#3b0764",
     details="""  <!-- stem -->
   <rect x="250" y="30" width="12" height="28" rx="5" fill="#5c3317"/>
   <!-- small leaf -->
   <ellipse cx="270" cy="40" rx="19" ry="9" transform="rotate(-32 270 40)" fill="#4d7c0f"/>
   <path d="M 264 46 Q 272 37 280 43" stroke="#15803d" stroke-width="2.5" fill="none"/>""",
-    face=open_face()
+    face=open_face(),
 )
 
-write("orange",
-    "#fed7aa", "#f97316", "#c2410c", "#7c2d12",
+write(
+    "orange",
+    "#fed7aa",
+    "#f97316",
+    "#c2410c",
+    "#7c2d12",
     details="""  <!-- navel at bottom -->
   <circle cx="256" cy="450" r="22" fill="rgba(124,45,18,0.40)"/>
   <circle cx="256" cy="450" r="12" fill="rgba(124,45,18,0.28)"/>""",
     face=open_face(),
     post_face="""  <!-- stem nub -->
-  <rect x="251" y="33" width="10" height="20" rx="4" fill="#5c3317"/>"""
+  <rect x="251" y="33" width="10" height="20" rx="4" fill="#5c3317"/>""",
 )
 
-write("apple",
-    "#fca5a5", "#ef4444", "#b91c1c", "#7f1d1d",
+write(
+    "apple",
+    "#fca5a5",
+    "#ef4444",
+    "#b91c1c",
+    "#7f1d1d",
     details="",
     face=open_face(),
     post_face="""  <!-- stem + leaf -->
   <rect x="251" y="30" width="11" height="28" rx="5" fill="#5c3317"/>
   <ellipse cx="271" cy="42" rx="22" ry="10" transform="rotate(-35 271 42)" fill="#15803d"/>
-  <path d="M 266 48 Q 274 38 282 44" stroke="#16a34a" stroke-width="2.5" fill="none"/>"""
+  <path d="M 266 48 Q 274 38 282 44" stroke="#16a34a" stroke-width="2.5" fill="none"/>""",
 )
 
-write("peach",
-    "#fed7aa", "#fb923c", "#ea580c", "#9a3412",
+write(
+    "peach",
+    "#fed7aa",
+    "#fb923c",
+    "#ea580c",
+    "#9a3412",
     details="""  <!-- vertical crease groove -->
   <path d="M 256 50 Q 245 256 256 462" stroke="rgba(154,52,18,0.22)" stroke-width="6" fill="none"/>
   <!-- warm blush circles -->
@@ -142,11 +179,15 @@ write("peach",
     face=open_face(),
     post_face="""  <!-- stem + leaf -->
   <rect x="251" y="32" width="10" height="22" rx="4" fill="#5c3317"/>
-  <ellipse cx="269" cy="42" rx="20" ry="9" transform="rotate(-28 269 42)" fill="#15803d"/>"""
+  <ellipse cx="269" cy="42" rx="20" ry="9" transform="rotate(-28 269 42)" fill="#15803d"/>""",
 )
 
-write("coconut",
-    "#d6b896", "#a47551", "#6b3f1e", "#3d1f0a",
+write(
+    "coconut",
+    "#d6b896",
+    "#a47551",
+    "#6b3f1e",
+    "#3d1f0a",
     details="""  <!-- fibrous grain lines -->
   <g clip-path="url(#clip)">
     <line x1="200" y1="46" x2="176" y2="466" stroke="rgba(61,31,10,0.13)" stroke-width="3.5"/>
@@ -162,7 +203,7 @@ write("coconut",
   <circle cx="235" cy="116" r="7" fill="rgba(255,255,255,0.30)"/>
   <circle cx="289" cy="116" r="7" fill="rgba(255,255,255,0.30)"/>
   <circle cx="262" cy="82"  r="7" fill="rgba(255,255,255,0.30)"/>""",
-    face=open_face()
+    face=open_face(),
 )
 
 # Dragonfruit: kawaii pitaya — pink oval body, green bracts, does not fit the
@@ -250,11 +291,20 @@ dragonfruit_svg = """<svg xmlns="http://www.w3.org/2000/svg" width="512" height=
 
 with open(f"{OUT}/dragonfruit.svg", "w") as f:
     f.write(dragonfruit_svg + "\n")
-cairosvg.svg2png(url=f"{OUT}/dragonfruit.svg", write_to=f"{OUT}/dragonfruit.png", output_width=512, output_height=512)
+cairosvg.svg2png(
+    url=f"{OUT}/dragonfruit.svg",
+    write_to=f"{OUT}/dragonfruit.png",
+    output_width=512,
+    output_height=512,
+)
 print("  ✓ dragonfruit (pitaya: pink body + green bracts)")
 
-write("pineapple",
-    "#fde68a", "#d97706", "#92400e", "#78350f",
+write(
+    "pineapple",
+    "#fde68a",
+    "#d97706",
+    "#92400e",
+    "#78350f",
     details="""  <!-- diamond crosshatch pattern (clipped to sphere) -->
   <g clip-path="url(#clip)" opacity="0.30">
     <line x1="46"  y1="46"  x2="466" y2="466" stroke="#78350f" stroke-width="10"/>
@@ -275,11 +325,15 @@ write("pineapple",
     <polygon points="290,18 292,68 276,64"/>
     <polygon points="192,36 196,84 210,76"/>
     <polygon points="320,36 316,84 302,76"/>
-  </g>"""
+  </g>""",
 )
 
-write("watermelon",
-    "#86efac", "#22c55e", "#15803d", "#14532d",
+write(
+    "watermelon",
+    "#86efac",
+    "#22c55e",
+    "#15803d",
+    "#14532d",
     details="""  <!-- dark green curved stripes (clipped) -->
   <g clip-path="url(#clip)">
     <path d="M 256 46 Q 340 120 370 256 Q 340 392 256 466" fill="none" stroke="#14532d" stroke-width="28"/>
@@ -295,7 +349,7 @@ write("watermelon",
     <ellipse cx="256" cy="452" rx="6" ry="9" fill="#14532d"/>
     <ellipse cx="284" cy="446" rx="6" ry="9" transform="rotate(10 284 446)" fill="#14532d"/>
   </g>""",
-    face=open_face("#14532d")
+    face=open_face("#14532d"),
 )
 
 
@@ -303,8 +357,12 @@ write("watermelon",
 
 print("Cosmos:")
 
-write("moon",
-    "#f3f4f6", "#d1d5db", "#9ca3af", "#4b5563",
+write(
+    "moon",
+    "#f3f4f6",
+    "#d1d5db",
+    "#9ca3af",
+    "#4b5563",
     details="""  <!-- craters -->
   <g clip-path="url(#clip)">
     <circle cx="320" cy="160" r="40" fill="rgba(75,85,99,0.18)"/>
@@ -316,22 +374,30 @@ write("moon",
     <circle cx="200" cy="180" r="14" fill="rgba(75,85,99,0.18)"/>
     <circle cx="200" cy="180" r="10" fill="rgba(75,85,99,0.10)"/>
   </g>""",
-    face=closed_face("#374151")
+    face=closed_face("#374151"),
 )
 
-write("pluto",
-    "#e2d5c3", "#b8a08a", "#8b6b52", "#5c4033",
+write(
+    "pluto",
+    "#e2d5c3",
+    "#b8a08a",
+    "#8b6b52",
+    "#5c4033",
     details="""  <!-- Tombaugh Regio — heart-shaped lighter plain -->
   <g clip-path="url(#clip)">
     <path d="M 256 200 C 210 180 168 210 180 260 C 192 310 256 360 256 360
              C 256 360 320 310 332 260 C 344 210 302 180 256 200 Z"
           fill="rgba(242,226,204,0.60)"/>
   </g>""",
-    face=closed_face("#4a2c1a")
+    face=closed_face("#4a2c1a"),
 )
 
-write("mercury",
-    "#d1d5db", "#9ca3af", "#6b7280", "#374151",
+write(
+    "mercury",
+    "#d1d5db",
+    "#9ca3af",
+    "#6b7280",
+    "#374151",
     details="""  <!-- heavy cratering -->
   <g clip-path="url(#clip)">
     <circle cx="300" cy="150" r="38" fill="rgba(55,65,81,0.20)"/>
@@ -346,11 +412,15 @@ write("mercury",
     <circle cx="220" cy="380" r="14" fill="rgba(55,65,81,0.18)"/>
     <circle cx="150" cy="370" r="10" fill="rgba(55,65,81,0.18)"/>
   </g>""",
-    face=closed_face("#374151")
+    face=closed_face("#374151"),
 )
 
-write("mars",
-    "#fecaca", "#f87171", "#dc2626", "#7f1d1d",
+write(
+    "mars",
+    "#fecaca",
+    "#f87171",
+    "#dc2626",
+    "#7f1d1d",
     details="""  <!-- polar ice cap -->
   <g clip-path="url(#clip)">
     <ellipse cx="256" cy="72" rx="66" ry="38" fill="rgba(255,255,255,0.75)"/>
@@ -358,11 +428,15 @@ write("mars",
     <!-- dust storm band -->
     <path d="M 46 310 Q 256 295 466 310" stroke="rgba(253,186,116,0.30)" stroke-width="22" fill="none"/>
   </g>""",
-    face=closed_face("#7f1d1d")
+    face=closed_face("#7f1d1d"),
 )
 
-write("venus",
-    "#fef9c3", "#fde047", "#ca8a04", "#78350f",
+write(
+    "venus",
+    "#fef9c3",
+    "#fde047",
+    "#ca8a04",
+    "#78350f",
     details="""  <!-- thick cloud swirl bands -->
   <g clip-path="url(#clip)" opacity="0.38">
     <path d="M 46 180 Q 180 156 256 180 Q 332 204 466 180"
@@ -374,11 +448,15 @@ write("venus",
     <path d="M 46 370 Q 180 355 256 372 Q 332 389 466 370"
           stroke="#78350f" stroke-width="12" fill="none"/>
   </g>""",
-    face=closed_face("#78350f")
+    face=closed_face("#78350f"),
 )
 
-write("earth",
-    "#bfdbfe", "#60a5fa", "#2563eb", "#1e3a8a",
+write(
+    "earth",
+    "#bfdbfe",
+    "#60a5fa",
+    "#2563eb",
+    "#1e3a8a",
     details="""  <!-- continent blobs (clipped) -->
   <g clip-path="url(#clip)">
     <!-- Americas -->
@@ -399,11 +477,15 @@ write("earth",
     <path d="M 200 350 Q 300 330 380 354"
           stroke="rgba(255,255,255,0.45)" stroke-width="16" fill="none"/>
   </g>""",
-    face=closed_face("#1e3a8a")
+    face=closed_face("#1e3a8a"),
 )
 
-write("neptune",
-    "#a5b4fc", "#4f46e5", "#3730a3", "#1e1b4b",
+write(
+    "neptune",
+    "#a5b4fc",
+    "#4f46e5",
+    "#3730a3",
+    "#1e1b4b",
     details="""  <!-- storm bands -->
   <g clip-path="url(#clip)">
     <path d="M 46 220 Q 256 205 466 220" stroke="rgba(165,180,252,0.40)" stroke-width="28" fill="none"/>
@@ -412,11 +494,15 @@ write("neptune",
     <ellipse cx="330" cy="250" rx="44" ry="28" transform="rotate(-15 330 250)" fill="rgba(30,27,75,0.55)"/>
     <ellipse cx="330" cy="250" rx="28" ry="18" transform="rotate(-15 330 250)" fill="rgba(30,27,75,0.35)"/>
   </g>""",
-    face=closed_face("#1e1b4b")
+    face=closed_face("#1e1b4b"),
 )
 
-write("uranus",
-    "#cffafe", "#22d3ee", "#0891b2", "#164e63",
+write(
+    "uranus",
+    "#cffafe",
+    "#22d3ee",
+    "#0891b2",
+    "#164e63",
     details="""  <!-- subtle band -->
   <g clip-path="url(#clip)">
     <path d="M 46 256 Q 256 244 466 256" stroke="rgba(255,255,255,0.18)" stroke-width="30" fill="none"/>
@@ -426,7 +512,7 @@ write("uranus",
   <ellipse cx="256" cy="256" rx="52" ry="270" fill="none"
            stroke="rgba(180,240,255,0.58)" stroke-width="14"/>
   <ellipse cx="256" cy="256" rx="52" ry="270" fill="none"
-           stroke="rgba(255,255,255,0.22)" stroke-width="28"/>"""
+           stroke="rgba(255,255,255,0.22)" stroke-width="28"/>""",
 )
 
 # Saturn: rings must be drawn BEFORE body so face is never masked.
@@ -453,11 +539,17 @@ saturn_svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" w
 </svg>"""
 with open(f"{OUT}/saturn.svg", "w") as f:
     f.write(saturn_svg)
-cairosvg.svg2png(url=f"{OUT}/saturn.svg", write_to=f"{OUT}/saturn.png", output_width=512, output_height=512)
+cairosvg.svg2png(
+    url=f"{OUT}/saturn.svg", write_to=f"{OUT}/saturn.png", output_width=512, output_height=512
+)
 print("  ✓ saturn")
 
-write("jupiter",
-    "#fde8c8", "#f97316", "#c2410c", "#7c2d12",
+write(
+    "jupiter",
+    "#fde8c8",
+    "#f97316",
+    "#c2410c",
+    "#7c2d12",
     details="""  <!-- horizontal band stripes (clipped) -->
   <g clip-path="url(#clip)">
     <rect x="0" y="190" width="512" height="38" fill="rgba(124,45,18,0.28)"/>
@@ -468,14 +560,18 @@ write("jupiter",
     <ellipse cx="340" cy="300" rx="50" ry="32" transform="rotate(-8 340 300)" fill="rgba(185,28,28,0.65)"/>
     <ellipse cx="340" cy="300" rx="34" ry="22" transform="rotate(-8 340 300)" fill="rgba(220,38,38,0.45)"/>
   </g>""",
-    face=closed_face("#7c2d12")
+    face=closed_face("#7c2d12"),
 )
 
-write("sun",
-    "#fef9c3", "#fbbf24", "#d97706", "#78350f",
+write(
+    "sun",
+    "#fef9c3",
+    "#fbbf24",
+    "#d97706",
+    "#78350f",
     details="""  <!-- corona flame spikes (behind body) drawn before body — use post_face instead -->""",
     face=open_face("#78350f"),
-    post_face="""  <!-- corona spikes radiating outward (drawn after face so they appear behind) -->"""
+    post_face="""  <!-- corona spikes radiating outward (drawn after face so they appear behind) -->""",
 )
 
 # Sun needs special treatment: corona behind body, so rebuild it
@@ -509,7 +605,9 @@ sun_svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" widt
 
 with open(f"{OUT}/sun.svg", "w") as f:
     f.write(sun_svg)
-cairosvg.svg2png(url=f"{OUT}/sun.svg", write_to=f"{OUT}/sun.png", output_width=512, output_height=512)
+cairosvg.svg2png(
+    url=f"{OUT}/sun.svg", write_to=f"{OUT}/sun.png", output_width=512, output_height=512
+)
 print("  ✓ sun (rebuilt with corona-behind-body)")
 
 print("\nDone! All sprites in", OUT)
