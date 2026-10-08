@@ -16,7 +16,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -39,6 +39,7 @@ import {
 import { PillButton } from "../components/shared/PillButton";
 import SudokuGrid from "../components/sudoku/SudokuGrid";
 import NumberPad from "../components/sudoku/NumberPad";
+import { DifficultyPicker } from "../components/shared/DifficultyPicker";
 import DifficultySelector from "../components/sudoku/DifficultySelector";
 import {
   enterDigit,
@@ -714,42 +715,22 @@ function VariantSelector({
   readonly onChange: (v: Variant) => void;
 }) {
   const { t } = useTranslation("sudoku");
-  const { colors } = useTheme();
 
   return (
-    <View
-      accessibilityRole="radiogroup"
+    <DifficultyPicker
+      // No variant is a premium level: this key has none listed.
+      gameKey="sudoku-variant"
+      options={VARIANTS.map((v) => ({
+        value: v,
+        label: t(`variant.${v}`, {
+          defaultValue: v === "classic" ? "Classic 9×9" : "Mini 6×6",
+        }),
+      }))}
+      value={value}
+      onChange={onChange}
       accessibilityLabel={t("variant.groupLabel", { defaultValue: "Variant" })}
-      style={[styles.variantRow, { borderColor: colors.border }]}
-    >
-      {VARIANTS.map((v) => {
-        const selected = v === value;
-        return (
-          <Pressable
-            key={v}
-            onPress={() => onChange(v)}
-            accessibilityRole="radio"
-            accessibilityLabel={t(`variant.${v}`, {
-              defaultValue: v === "classic" ? "Classic 9×9" : "Mini 6×6",
-            })}
-            accessibilityState={{ selected }}
-            aria-checked={selected}
-            style={[
-              styles.variantBtn,
-              { backgroundColor: selected ? colors.accent : colors.surface },
-            ]}
-          >
-            <Text
-              style={[styles.variantLabel, { color: selected ? colors.textOnAccent : colors.text }]}
-            >
-              {t(`variant.${v}`, {
-                defaultValue: v === "classic" ? "Classic 9×9" : "Mini 6×6",
-              })}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+      testID="sudoku-variant"
+    />
   );
 }
 
@@ -852,24 +833,6 @@ const styles = StyleSheet.create({
   preGameSelector: {
     alignSelf: "stretch",
     marginBottom: 20,
-  },
-  variantRow: {
-    flexDirection: "row",
-    borderWidth: 1,
-    borderRadius: 8,
-    overflow: "hidden",
-    alignSelf: "stretch",
-    marginBottom: 0,
-  },
-  variantBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  variantLabel: {
-    fontSize: 15,
-    fontWeight: "600",
   },
   newGameSelector: {
     alignSelf: "stretch",

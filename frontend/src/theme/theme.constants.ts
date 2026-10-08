@@ -13,6 +13,13 @@ export const BADGE_YACHT_BG = "rgba(255,215,0,0.95)";
 /** Joker celebration badge — purple, for the joker variant. */
 export const BADGE_JOKER_BG = "rgba(138,43,226,0.95)";
 
+/** AppHeader logo tile backdrop — deep purple behind the transparent logo PNG
+ *  in both themes. */
+export const LOGO_TILE_BG = "#1a0a2e";
+
+/** Native shadow colour for floating menus (AppHeader ⋯ dropdown). */
+export const MENU_SHADOW_COLOR = "#000000";
+
 /** Dev-panel accent colour (orange). */
 export const DEV_ACCENT = "rgba(255,128,0,1)";
 
