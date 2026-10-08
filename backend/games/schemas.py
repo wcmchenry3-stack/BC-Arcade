@@ -8,8 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from games.leaderboard import RankReason
-from games.registry import get_module
+from games.board import RankReason
 
 # ---------------------------------------------------------------------------
 # Shared sub-models
@@ -46,7 +45,14 @@ class CreateGameRequest(BaseModel):
         Unregistered game types (e.g. future games not yet in the registry)
         skip validation so new game types can be seeded in the DB before their
         module is implemented.
+
+        The registry is imported here, not at module level, so importing the
+        schemas doesn't import every ``<game>/module.py`` (#2992). A
+        ``ValidationError`` from the per-game model still surfaces as the same
+        422 (``tests/test_import_graph.py``).
         """
+        from games.registry import get_module
+
         mod = get_module(self.game_type)
         if mod is not None:
             mod.metadata_model.model_validate(self.metadata)

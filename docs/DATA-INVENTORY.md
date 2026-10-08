@@ -47,7 +47,7 @@ Stale open games are swept closed after 24 h (`games/sweep.py`), not deleted.
 
 ### Leaderboard detail (opt-in, public)
 
-Code paths: `backend/players/{router,service,generated,names}.py`, `backend/games/leaderboard.py`,
+Code paths: `backend/players/{router,service,generated,names}.py`, `backend/games/boards/`,
 `frontend/src/api/players.ts`, `frontend/src/game/_shared/displayNameSync.ts`, `docs/LEADERBOARD-IDENTITIES.md`.
 
 - **Opt-in.** Nobody is on a board until they press **Join leaderboards** (`PUT /players/me`, no body; any `display_name` a
@@ -55,7 +55,7 @@ Code paths: `backend/players/{router,service,generated,names}.py`, `backend/game
 - **What other players see** (`GET /games/leaderboard/{game}`, `LeaderboardEntryOut`): rank, generated name, score/metric value,
   completion date. **Not** the install ID (`is_me` is computed for the caller only). Names are not unique.
 - **Association.** Server-side the name belongs to the install ID (`players.session_id`); every finished game of that install
-  is ranked under it (`has_display_name(Game.session_id)` filter in every board query: `leaderboard.py:336`, `ranking.py`). A
+  is ranked under it (`has_display_name(Game.session_id)` filter in every board query: `games/boards/sql.py:163`, `ranking.py`). A
   rename/reroll changes the name on all historical scores because boards read the name live from `players`.
 - **Removal from every board.** All board, best-row and rank queries gate on the existence of the `players` row
   (`players/names.py` is the single lookup). Deleting the row (Leave, or Delete My Data) therefore removes the player from
@@ -151,7 +151,7 @@ players before launch, this becomes a P0 follow-up.
 Builds before #2624 sent a typed `player_name` in `POST /games` metadata; the server still accepts and stores that key for
 solitaire, sudoku, mahjong, cascade, hearts and sort (`backend/*/models.py`, optional `player_name` fields). Assessment:
 
-- It sits in `games.metadata` of the player's own rows. It is **never** used for a board (`games/leaderboard.py`, name comes from
+- It sits in `games.metadata` of the player's own rows. It is **never** used for a board (`games/boards/`, name comes from
   `players`), never returned to anyone except that install via `GET /games/me` and `GET /games/{id}`, and is erased by Delete My Data.
 - Builds from before #2624 can keep writing it until they update (minimum-version gate #857). A one-off scrub would not stop new
   writes, and a write-path scrub would change validation behavior for old clients.

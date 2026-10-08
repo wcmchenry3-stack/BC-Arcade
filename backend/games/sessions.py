@@ -31,9 +31,9 @@ from sqlalchemy.orm.attributes import flag_modified
 from db.dialect import dialect_insert, dialect_name
 from db.models import Game, GameEvent
 from games import catalog_cache
+from games.boards.limits import check_completion_limits, merge_result_metadata
 from games.catalog_cache import GameTypeRow
 from games.filters import is_swept, without_swept
-from games.leaderboard import check_completion_limits, merge_result_metadata
 from games.legacy_outcomes import might_be_legacy_win, win_update
 from games.protocol import GameModule
 from games.registry import get_module

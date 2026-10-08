@@ -18,7 +18,8 @@ from sqlalchemy import event, func, select
 
 from db.base import get_engine, get_session_factory
 from db.models import Game, Player
-from games import leaderboard
+from games.boards import queries
+from games.boards import types as board_types
 from limiter import _real_ip, limiter, session_key
 from starswarm.models import DEFAULT_DIFFICULTY_TIER
 from tests._helpers import session_headers as _headers
@@ -294,13 +295,13 @@ async def test_a_named_row_the_board_still_excludes_is_not_rankable(
     async def off_the_board(*_args: Any, **_kwargs: Any) -> None:
         return None
 
-    monkeypatch.setattr(leaderboard, "player_standing", off_the_board)
+    monkeypatch.setattr(queries, "player_standing", off_the_board)
     factory = get_session_factory()
     async with factory() as db:
-        game = await leaderboard.load_game(db, game_id)
+        game = await queries.load_game(db, game_id)
         assert game is not None
-        result = await leaderboard.game_rank(db, game=game, session_id=sid)
-    assert result == leaderboard.GameRank(ranked=False, reason="not_rankable")
+        result = await queries.game_rank(db, game=game, session_id=sid)
+    assert result == board_types.GameRank(ranked=False, reason="not_rankable")
 
 
 @pytest.mark.parametrize("game_type", ["blackjack", "daily_word"])
@@ -332,7 +333,7 @@ async def test_a_game_without_a_board_definition_is_404(
 ) -> None:
     sid = _sid()
     game_id = await _seed("solitaire", sid, score=100, name="Me")
-    monkeypatch.setattr(leaderboard, "get_module", lambda _name: None)
+    monkeypatch.setattr(queries, "get_module", lambda _name: None)
     r = client.get(f"/games/{game_id}/rank", headers=_headers(sid))
     assert r.status_code == 404
 
@@ -361,8 +362,8 @@ async def test_the_name_lookup_db_error_is_logged_and_chained(
 ) -> None:
     from sqlalchemy.exc import OperationalError
 
-    with caplog.at_level("ERROR"), pytest.raises(leaderboard.LeaderboardError) as info:
-        await leaderboard.game_rank(
+    with caplog.at_level("ERROR"), pytest.raises(board_types.LeaderboardError) as info:
+        await queries.game_rank(
             _FailingDB(fail_execute=True),  # type: ignore[arg-type]
             game=_finished_game("solitaire"),
             session_id=SECRET_SID,

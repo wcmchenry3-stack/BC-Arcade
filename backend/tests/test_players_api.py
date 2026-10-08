@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType, Player
-from games import leaderboard
+from games.boards import partitions
 from limiter import limiter, session_key
 from players.generated import is_generated_display_name
 from tests._helpers import session_headers as _headers
@@ -38,7 +38,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 ENABLED_BOARDS = sorted(
-    gt.value for gt in GameTypeEnum if leaderboard.enabled_board(gt.value) is not None
+    gt.value for gt in GameTypeEnum if partitions.enabled_board(gt.value) is not None
 )
 
 
@@ -95,7 +95,7 @@ def _play(client: TestClient, sid: str, game_type: str, value: int, **create_met
     )
     assert r.status_code == 200, r.text
     game_id = r.json()["id"]
-    board = leaderboard.enabled_board(game_type)
+    board = partitions.enabled_board(game_type)
     assert board is not None, game_type
     body = completion_body(board, value)
     r = client.patch(f"/games/{game_id}/complete", headers=_headers(sid), json=body)
@@ -261,7 +261,7 @@ async def test_a_player_is_absent_until_they_join(client: TestClient, game_type:
     sid = _sid()
     await _grant_all(sid)
     path = f"{game_type}{PARTITION_QUERY.get(game_type, '')}"
-    board = leaderboard.enabled_board(game_type)
+    board = partitions.enabled_board(game_type)
     assert board is not None, game_type
     value = metric_value(board, 5)
     _play(client, sid, game_type, value)
