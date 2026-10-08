@@ -44,7 +44,7 @@ from purchases.verifiers import (
     PurchaseError,
     VerifiedPurchase,
 )
-from tests._helpers import count, jwt_games, session_headers
+from tests._helpers import count, jwt_games, session_headers, set_admin_token
 
 HEARTS = "com.buffingchi.games.premium.hearts"
 CASCADE = "com.buffingchi.games.premium.cascade"
@@ -839,7 +839,7 @@ def _catalog_id(client: TestClient, name: str) -> int:
 def test_patch_cannot_flip_catalog_game_to_free(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ADMIN_API_TOKEN", _ADMIN)
+    set_admin_token(client, monkeypatch, _ADMIN)
     gid = _catalog_id(client, "hearts")
     headers = {"X-Admin-Token": _ADMIN}
     r = client.patch(f"/games/catalog/{gid}", json={"is_premium": False}, headers=headers)
@@ -853,7 +853,7 @@ def test_patch_cannot_flip_catalog_game_to_free(
 async def test_patch_cannot_change_tier_of_game_with_purchases(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ADMIN_API_TOKEN", _ADMIN)
+    set_admin_token(client, monkeypatch, _ADMIN)
     async with get_session_factory()() as db:
         db.add(
             Purchase(

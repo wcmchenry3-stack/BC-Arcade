@@ -1112,6 +1112,9 @@ Operational tunables (TTLs, windows, caps) are named constants, never env vars.
 | `DATABASE_URL`         | unset or blank (no database; the API still boots) | `db/base.py` (on first use), `alembic/env.py`           |
 | `DAILY_WORD_SALT`      | `0` (empty or non-integer fails the import)       | `daily_word/puzzle.py` (at import)                      |
 | `DAILY_CHALLENGE_SALT` | `0` (blank → `0`; non-integer is hashed)          | `daily_challenge/definitions.py` (at import)            |
+| `ADMIN_API_TOKEN`      | empty (admin `PATCH /games/catalog/{id}` always 403s) | `games/router.py` (at startup, via `app.state.settings`) |
+| `ENTITLEMENT_DEV_OVERRIDE` | unset (override off; only `true` turns it on) | `entitlements/service.py` (lazy, on first use)          |
+| `ENTITLEMENT_PRIVATE_KEY` / `ENTITLEMENT_PUBLIC_KEY` | unset or blank (an ephemeral pair is generated) | `entitlements/service.py` (lazy, on first use) |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is
@@ -1121,9 +1124,18 @@ The two salts are still read when their modules are imported (the Daily Word
 shuffle needs its salt), so `load_dotenv()` in `main` must still run before the
 imports.
 
-Not yet migrated (each package moves in its own PR): `ADMIN_API_TOKEN`
-(`games/router.py`), `ENTITLEMENT_*` (`entitlements/service.py`) and the
-`APPLE_*` / `GOOGLE_*` store config (`purchases/`). Their meanings and where
+`ADMIN_API_TOKEN` is read once at startup: `games/router.py` takes it from
+`request.app.state.settings`, so a test sets it with
+`monkeypatch.setattr(app.state, "settings", Settings.isolated(ADMIN_API_TOKEN=...))`
+(`tests/_helpers.set_admin_token`) rather than an env var after the app exists.
+`ENTITLEMENT_DEV_OVERRIDE` and `ENTITLEMENT_PRIVATE_KEY` / `_PUBLIC_KEY`
+(`entitlements/service.py`) follow the `db/base.py` pattern: built on first use,
+kept for the process, overridden in tests with
+`monkeypatch.setattr(service, "_settings", ...)` (`tests/_helpers.set_dev_override`).
+The admin token and the keys are `SecretStr`, so `repr(settings)` does not show them.
+
+Not yet migrated (each package moves in its own PR): the `APPLE_*` / `GOOGLE_*`
+store config (`purchases/`). Their meanings and where
 each is set are in [RENDER.md](RENDER.md#environment-variables).
 
 ## 12. Daily cross-game challenge
