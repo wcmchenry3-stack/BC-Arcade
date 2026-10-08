@@ -641,7 +641,8 @@ export function selectTile(
     { type: "tileMatch", tiles: [removedTiles[0].tile, removedTiles[1].tile] },
   ];
   if (isComplete) events.push({ type: "boardCleared" });
-  if (isDeadlocked) events.push({ type: "deadlock" });
+  // Only the step into a deadlock is one (the screen shakes the board once).
+  if (isDeadlocked && !state.isDeadlocked) events.push({ type: "deadlock" });
 
   // The tiles come back from the board itself, so the selection undoes to none.
   const undoStack = pushUndo(state, {
@@ -835,7 +836,11 @@ export function shuffleBoard(state: MahjongState): MahjongState {
         shufflesLeft,
         isDeadlocked: true,
         undoStack,
-        events: [{ type: "shuffle" }, { type: "deadlock" }],
+        // A board already deadlocked (a second tap before the overlay shows)
+        // spends the shuffle but is no new deadlock.
+        events: state.isDeadlocked
+          ? [{ type: "shuffle" }]
+          : [{ type: "shuffle" }, { type: "deadlock" }],
       },
       Date.now()
     );

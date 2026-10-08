@@ -79,7 +79,12 @@ jest.mock("react-native-reanimated", () => {
         return this.value;
       },
       set(next: unknown) {
-        this.value = typeof next === "function" ? next(this.value) : next;
+        // As Reanimated's mutables.ts: a function is an updater unless it is an
+        // animation definition (withTiming & co. on the real library).
+        const isUpdater =
+          typeof next === "function" &&
+          !(next as unknown as Record<string, unknown>).__isAnimationDefinition;
+        this.value = isUpdater ? Reflect.apply(next as never, undefined, [this.value]) : next;
       },
     }))[0];
   const noopAnim = (v: unknown) => v;

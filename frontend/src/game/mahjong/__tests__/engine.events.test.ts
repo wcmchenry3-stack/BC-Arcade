@@ -88,6 +88,9 @@ describe("mahjong engine events", () => {
       shufflesLeft: 0,
     };
     expect(types(selectTile(selectTile(state, a.id), b.id))).toEqual(["tileMatch", "deadlock"]);
+    // A board already flagged deadlocked stays so: a match there is no new deadlock.
+    const already: MahjongState = { ...state, isDeadlocked: true };
+    expect(types(selectTile(selectTile(already, a.id), b.id))).toEqual(["tileMatch"]);
   });
 
   it("a shuffle, and one that leaves a geometric deadlock", () => {
@@ -102,6 +105,11 @@ describe("mahjong engine events", () => {
     ];
     const stuck: MahjongState = { ...game, tiles: stack };
     expect(types(shuffleBoard(stuck))).toEqual(["shuffle", "deadlock"]);
+    // Already deadlocked (a second tap before the overlay shows): the shuffle
+    // is spent, but it is no new deadlock.
+    const dead = shuffleBoard(stuck);
+    expect(dead.isDeadlocked).toBe(true);
+    expect(types(shuffleBoard(dead))).toEqual(["shuffle"]);
     // No shuffle left: nothing happens.
     const none = { ...game, shufflesLeft: 0 };
     expect(shuffleBoard(none)).toBe(none);
