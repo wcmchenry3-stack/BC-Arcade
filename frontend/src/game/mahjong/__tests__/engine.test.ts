@@ -1336,8 +1336,8 @@ describe("device best time (#2747)", () => {
     expect(plausibleBestMs(36_000)).toBe(36_000);
   });
 
-  it("keeps the fastest plausible clear", () => {
-    expect(nextBestTime(0, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: true });
+  it("keeps the fastest plausible clear; a first clear is a best but not a new best (#2977)", () => {
+    expect(nextBestTime(0, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
     expect(nextBestTime(90_000, 60_000)).toEqual({ bestTimeMs: 60_000, isNewBest: true });
     expect(nextBestTime(60_000, 90_000)).toEqual({ bestTimeMs: 60_000, isNewBest: false });
     expect(nextBestTime(60_000, 60_000)).toEqual({ bestTimeMs: 60_000, isNewBest: false });
@@ -1348,7 +1348,7 @@ describe("device best time (#2747)", () => {
     expect(nextBestTime(90_000, 5_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
   });
 
-  it("ignores a stored best under the floor, so a real clear beats it", () => {
-    expect(nextBestTime(4_000, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: true });
+  it("ignores a stored best under the floor: a real clear replaces it but is a first best", () => {
+    expect(nextBestTime(4_000, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
   });
 });

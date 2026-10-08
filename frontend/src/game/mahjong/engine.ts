@@ -9,6 +9,7 @@
  * valid. Tests can pin the shuffle via `setRng(createSeededRng(seed))`.
  */
 
+import { bestOf } from "../_shared/bestOf";
 import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
 import { pushCapped } from "../_shared/undoStack";
 import type {
@@ -62,8 +63,8 @@ export function nextBestTime(
 ): { bestTimeMs: number; isNewBest: boolean } {
   const prior = plausibleBestMs(priorBestMs);
   if (plausibleBestMs(finalMs) === 0) return { bestTimeMs: prior, isNewBest: false };
-  const isNewBest = prior === 0 || finalMs < prior;
-  return { bestTimeMs: isNewBest ? finalMs : prior, isNewBest };
+  const { best, isNewBest } = bestOf(prior, finalMs, true);
+  return { bestTimeMs: best, isNewBest };
 }
 /** The most moves `undoMove` can take back; the oldest entry goes first. */
 export const UNDO_CAP = 50;

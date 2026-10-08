@@ -699,8 +699,8 @@ describe("SortScreen — result card (#2512)", () => {
     expect(card.getByText("Sort Puzzle · Level 1")).toBeTruthy();
     expect(card.getByText("Moves")).toBeTruthy();
     expect(card.getByText("Undos")).toBeTruthy();
-    // Straight from memory: no wait on storage.
-    expect(card.getByText("New best")).toBeTruthy();
+    // Straight from memory: no wait on storage. A first solve is no new best (#2977).
+    expect(card.queryByText("New best")).toBeNull();
     expect(card.getByText("Best")).toBeTruthy();
     expect(card.getByRole("button", { name: "Next Level" })).toBeTruthy();
     expect(card.getByRole("button", { name: "Change Level" })).toBeTruthy();
@@ -996,7 +996,7 @@ describe("SortScreen — result card (#2512)", () => {
     storage.loadBestMoves.mockResolvedValue(null);
     const r = await renderScreen();
     const card = await solveLevel(r, 1);
-    expect(card.getByText("New best")).toBeTruthy();
+    expect(card.queryByText("New best")).toBeNull();
     expect(completion().summary.result.total_moves).toBe(1);
     await act(async () => {});
     expect(storage.saveBestMoves).not.toHaveBeenCalled();
@@ -1042,7 +1042,7 @@ describe("SortScreen — result card (#2512)", () => {
     storage.loadBestMoves.mockResolvedValue({ "2": 1 });
     const r = await renderScreen();
     let card = await solveLevel(r, 1);
-    expect(card.getByText("New best")).toBeTruthy();
+    expect(card.queryByText("New best")).toBeNull();
     await act(async () => {
       await fireEvent.press(card.getByRole("button", { name: "Next Level" }));
     });
@@ -1060,6 +1060,21 @@ describe("SortScreen — result card (#2512)", () => {
     expect(card.getByText("Sort Puzzle · Level 2")).toBeTruthy();
     // Level 2's best (1) was already on record: not a new best.
     expect(card.queryByText("New best")).toBeNull();
+  });
+
+  it("flags a solve that beats an earlier best as a new best, and saves it (#2977)", async () => {
+    storage.loadBestMoves.mockResolvedValue({ "1": 5 });
+    const r = await renderScreen();
+    const card = await solveLevel(r, 1); // 1 move, was 5
+    expect(card.getByText("New best")).toBeTruthy();
+    expect(storage.saveBestMoves).toHaveBeenCalledWith({ "1": 1 });
+  });
+
+  it("saves a first solve as the level's best without calling it a new best (#2977)", async () => {
+    const r = await renderScreen();
+    const card = await solveLevel(r, 1);
+    expect(card.queryByText("New best")).toBeNull();
+    expect(storage.saveBestMoves).toHaveBeenCalledWith({ "1": 1 });
   });
 
   it("replays the last level with Play Again", async () => {

@@ -10,6 +10,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
+import { bestOf } from "../game/_shared/bestOf";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { PillButton } from "../components/shared/PillButton";
@@ -270,13 +271,12 @@ export default function FreeCellScreen() {
         // Only a win that happened this session has a session to rank (a
         // resumed won game's was completed back then).
         if (gameId) void submitScore({ gameId });
-        const isNewBest = curr.bestMoves === 0 || finalMoves < curr.bestMoves;
-        setWinSummary({ best: isNewBest ? finalMoves : curr.bestMoves, isNewBest });
+        const { best, isNewBest } = bestOf(curr.bestMoves, finalMoves, true);
+        setWinSummary({ best, isNewBest });
         const updated: FreeCellStats = {
           ...curr,
           gamesWon: curr.gamesWon + 1,
-          bestMoves:
-            curr.bestMoves === 0 || finalMoves < curr.bestMoves ? finalMoves : curr.bestMoves,
+          bestMoves: best,
         };
         statsRef.current = updated;
         saveStats(updated).catch(() => {});

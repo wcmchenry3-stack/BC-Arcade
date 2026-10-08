@@ -42,6 +42,7 @@ import {
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
+import { bestOf } from "../game/_shared/bestOf";
 import { clockElapsedMs, pauseClock, resumeClock, type PlayClock } from "../game/_shared/playClock";
 import GameResultModal from "../components/shared/GameResultModal";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
@@ -584,15 +585,15 @@ function CascadeGame() {
     (gameId: string | null) => {
       const finalScore = scoreRef.current;
       const previousBest = bestScoreRef.current;
-      if (finalScore > previousBest) {
+      const { improved, isNewBest } = bestOf(previousBest, finalScore, false);
+      if (improved && finalScore > 0) {
         bestScoreRef.current = finalScore;
         saveBestScore(finalScore).catch(() => {});
       }
       setResult({
         score: finalScore,
         bestScore: bestScoreRef.current,
-        // Only a beaten previous best counts — not the first game.
-        isNewBest: previousBest > 0 && finalScore > previousBest,
+        isNewBest,
         merges: mergeCountRef.current,
         submittable: gameId !== null,
       });

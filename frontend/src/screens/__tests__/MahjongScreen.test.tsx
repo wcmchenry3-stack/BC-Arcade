@@ -372,7 +372,7 @@ describe("MahjongScreen — win result card (#2510)", () => {
       );
       expect(mockGetGameRank).toHaveBeenCalledTimes(1);
       expect(mockGetGameRank).toHaveBeenCalledWith("game-uuid-test");
-      expect(card.getByText("New best")).toBeTruthy();
+      expect(card.queryByText("New best")).toBeNull(); // a first clear is no new best (#2977)
       const urls = fetchSpy.mock.calls.map(([url]) => String(url));
       expect(urls.filter((u) => u.includes("/mahjong/score"))).toEqual([]);
     } finally {
@@ -429,7 +429,7 @@ describe("MahjongScreen — win result card (#2510)", () => {
     expect(card.getAllByText("1:30")).toHaveLength(2); // the hero (Time) and Best
     expect(card.getByText("Time")).toBeTruthy();
     expect(card.getByText("Score")).toBeTruthy();
-    expect(card.getByText("New best")).toBeTruthy();
+    expect(card.queryByText("New best")).toBeNull(); // a first clear is no new best (#2977)
   });
 
   // Codex review on #2917: an old save resumed with no time banked finishes
@@ -468,7 +468,7 @@ describe("MahjongScreen — win result card (#2510)", () => {
     );
     const api = await winInOneSitting(); // 1:30
     const card = within(await api.findByTestId("mahjong-result"));
-    expect(card.getByText("New best")).toBeTruthy();
+    expect(card.queryByText("New best")).toBeNull(); // a first clear is no new best (#2977)
     expect(card.getAllByText("1:30")).toHaveLength(2); // the hero and Best
     await waitFor(async () => {
       const stats = JSON.parse((await AsyncStorage.getItem("mahjong_stats_v1")) ?? "{}");
@@ -493,6 +493,26 @@ describe("MahjongScreen — win result card (#2510)", () => {
     expect(card.queryByText("New best")).toBeNull();
   });
 
+  it("flags a clear faster than an earlier best on this layout as a new best (#2977)", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_stats_v1",
+      JSON.stringify({
+        bestScore: 1220,
+        bestTimeMsByLayout: { pyramid: 120_000 },
+        gamesPlayed: 3,
+        gamesWon: 1,
+      })
+    );
+    const api = await winInOneSitting(); // 1:30 on Pyramid, faster than 2:00
+    const card = within(await api.findByTestId("mahjong-result"));
+    expect(card.getByText("New best")).toBeTruthy();
+    await waitFor(async () => {
+      const stats = JSON.parse((await AsyncStorage.getItem("mahjong_stats_v1")) ?? "{}");
+      expect(stats.bestTimeMsByLayout.pyramid).toBeGreaterThanOrEqual(90_000);
+      expect(stats.bestTimeMsByLayout.pyramid).toBeLessThan(120_000);
+    });
+  });
+
   // Owner decision on #2747: the device best is per layout, like the boards.
   it("a fast clear on another layout doesn't block a new best on this one", async () => {
     await AsyncStorage.setItem(
@@ -506,7 +526,7 @@ describe("MahjongScreen — win result card (#2510)", () => {
     );
     const api = await winInOneSitting(); // 1:30 on Pyramid
     const card = within(await api.findByTestId("mahjong-result"));
-    expect(card.getByText("New best")).toBeTruthy();
+    expect(card.queryByText("New best")).toBeNull(); // a first clear is no new best (#2977)
     expect(card.getAllByText("1:30")).toHaveLength(2); // the hero and Best
     expect(card.queryByText("0:40")).toBeNull();
     await waitFor(async () => {
@@ -523,7 +543,7 @@ describe("MahjongScreen — win result card (#2510)", () => {
     );
     const api = await winInOneSitting();
     const card = within(await api.findByTestId("mahjong-result"));
-    expect(card.getByText("New best")).toBeTruthy();
+    expect(card.queryByText("New best")).toBeNull(); // a first clear is no new best (#2977)
     expect(card.queryByText("0:40")).toBeNull();
   });
 

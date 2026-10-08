@@ -81,16 +81,22 @@ describe("applyLevelSolve (#2625)", () => {
   it("returns the solve and the updated bests without mutating its input", () => {
     const bests = { "1": 10 };
     expect(applyLevelSolve(bests, 2, 7)).toEqual({
-      solve: { best: 7, isNewBest: true, firstSolve: true },
+      solve: { best: 7, isNewBest: false, improved: true, firstSolve: true },
       bests: { "1": 10, "2": 7 },
     });
     expect(bests).toEqual({ "1": 10 });
   });
 
+  it("flags a later, better solve as a new best", () => {
+    const out = applyLevelSolve({ "1": 10 }, 1, 8);
+    expect(out.solve).toEqual({ best: 8, isNewBest: true, improved: true, firstSolve: false });
+    expect(out.bests).toEqual({ "1": 8 });
+  });
+
   it("keeps the same bests for a replay that doesn't beat them", () => {
     const bests = { "1": 10 };
     const out = applyLevelSolve(bests, 1, 12);
-    expect(out.solve).toEqual({ best: 10, isNewBest: false, firstSolve: false });
+    expect(out.solve).toEqual({ best: 10, isNewBest: false, improved: false, firstSolve: false });
     expect(out.bests).toBe(bests);
   });
 });
