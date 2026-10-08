@@ -133,6 +133,15 @@ def reset_rate_limiter():
 
 
 @pytest.fixture(autouse=True)
+def _reset_entitlement_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Rebuild entitlements.service's lazy ``Settings`` per test, so an env var a test
+    sets before the first build cannot leak into later tests. (The key cache stays.)"""
+    from entitlements import service
+
+    monkeypatch.setattr(service, "_settings", None)
+
+
+@pytest.fixture(autouse=True)
 def _reset_process_caches():
     """Drop the process-level caches (#2966) around each test.
 

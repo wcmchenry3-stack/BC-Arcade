@@ -3,7 +3,11 @@
 ``main.create_app()`` builds a ``Settings`` once (or takes one a test passes in),
 keeps it on ``app.state.settings`` and hands the relevant fields to the code that
 needs them. Tests override configuration by passing ``create_app(Settings(...))``
-or by setting env vars before ``create_app()``. Two values are still read when
+or by setting env vars before ``create_app()``, except for the values a module reads
+from its own lazy ``Settings``: ``DATABASE_URL`` (``db.base._settings``) and the
+``ENTITLEMENT_*`` fields (``entitlements.service._settings``). Passing those through
+``create_app(settings)`` has no effect; tests set the module's ``_settings`` instead
+(``tests/_helpers.set_dev_override``). Two values are still read when
 their module is imported: ``DAILY_WORD_SALT`` (``daily_word/puzzle.py``) and
 ``DAILY_CHALLENGE_SALT`` (``daily_challenge/definitions.py``), so ``load_dotenv()``
 in ``main.py`` must stay above the project imports.
@@ -89,6 +93,8 @@ class Settings(BaseSettings):
 
     # Admin token for PATCH /games/catalog/{id}; empty → the route always answers 403.
     admin_api_token: SecretStr = Field(default=SecretStr(""), alias="ADMIN_API_TOKEN")
+    # The ENTITLEMENT_* fields are read from entitlements.service's own lazy Settings,
+    # not app.state.settings; create_app(settings) does not affect them.
     # Raw; ``entitlement_dev_override`` is true only for the word "true", any case.
     entitlement_dev_override_raw: str = Field(default="", alias="ENTITLEMENT_DEV_OVERRIDE")
     # RS256 PEM pair; ``entitlement_keys`` treats a blank value as absent.

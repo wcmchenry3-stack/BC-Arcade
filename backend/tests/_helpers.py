@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import jwt
+from pydantic import SecretStr
 from sqlalchemy import func, select
 
 from db.base import get_session_factory
@@ -26,8 +27,11 @@ def set_dev_override(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
     The entitlements service builds its ``Settings`` once per process, so setting the
     env var mid-test no longer takes effect; this swaps that ``Settings`` instead.
     """
+    base = entitlements_service._settings or Settings()
     monkeypatch.setattr(
-        entitlements_service, "_settings", Settings.isolated(ENTITLEMENT_DEV_OVERRIDE=value)
+        entitlements_service,
+        "_settings",
+        base.model_copy(update={"entitlement_dev_override_raw": value}),
     )
 
 
@@ -36,7 +40,12 @@ def set_admin_token(client: TestClient, monkeypatch: pytest.MonkeyPatch, token: 
 
     The admin token is read from ``app.state.settings`` (set once in ``create_app``).
     """
-    monkeypatch.setattr(client.app.state, "settings", Settings.isolated(ADMIN_API_TOKEN=token))
+    current = client.app.state.settings
+    monkeypatch.setattr(
+        client.app.state,
+        "settings",
+        current.model_copy(update={"admin_api_token": SecretStr(token)}),
+    )
 
 
 def session_headers(sid: str) -> dict[str, str]:
