@@ -147,7 +147,6 @@ module.exports = [
     files: [
       "src/components/starswarm/GameCanvas.tsx",
       "src/components/starswarm/GameCanvas.web.tsx",
-      "src/game/starswarm/engine.ts",
       "src/screens/CascadeScreen.tsx",
       "src/screens/HeartsScreen.tsx",
       "src/screens/MahjongScreen.tsx",
