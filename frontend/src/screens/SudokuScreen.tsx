@@ -16,7 +16,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, StyleSheet, Text, View } from "react-native";
+import { Animated, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -24,23 +24,16 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
-import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { ElapsedText, createClockActivity } from "../components/shared/ElapsedText";
-import {
-  ModalActions,
-  ModalCard,
-  ModalPrimaryButton,
-  ModalSecondaryButton,
-} from "../components/shared/ModalCard";
 import { PillButton } from "../components/shared/PillButton";
 import SudokuGrid from "../components/sudoku/SudokuGrid";
 import NumberPad from "../components/sudoku/NumberPad";
-import { DifficultyPicker } from "../components/shared/DifficultyPicker";
-import DifficultySelector from "../components/sudoku/DifficultySelector";
+import PreGame from "../components/sudoku/PreGame";
+import NewGameModal from "../components/sudoku/NewGameModal";
 import {
   enterDigit,
   eraseCell,
@@ -50,7 +43,7 @@ import {
   undo,
 } from "../game/sudoku/engine";
 import type { CellValue, Difficulty, SudokuState, Variant } from "../game/sudoku/types";
-import { DIFFICULTIES, VARIANTS, variantConfig } from "../game/sudoku/types";
+import { DIFFICULTIES, variantConfig } from "../game/sudoku/types";
 import { useSound } from "../game/_shared/useSound";
 import { SUDOKU_SOUNDS } from "../game/sudoku/sounds";
 import {
@@ -656,127 +649,6 @@ export default function SudokuScreen() {
 }
 
 // ---------------------------------------------------------------------------
-// Pre-game — difficulty picker + start button
-// ---------------------------------------------------------------------------
-
-function PreGame({
-  difficulty,
-  onChange,
-  variant,
-  onVariantChange,
-  onStart,
-}: {
-  readonly difficulty: Difficulty;
-  readonly onChange: (d: Difficulty) => void;
-  readonly variant: Variant;
-  readonly onVariantChange: (v: Variant) => void;
-  readonly onStart: () => void;
-}) {
-  const { t } = useTranslation("sudoku");
-  const { colors } = useTheme();
-
-  return (
-    <View style={styles.preGameWrap}>
-      <View
-        style={[
-          styles.preGameCard,
-          { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
-        ]}
-      >
-        <Text style={[styles.preGameTitle, { color: colors.text }]} accessibilityRole="header">
-          {t("preGame.title")}
-        </Text>
-        <Text style={[styles.preGameBody, { color: colors.textMuted }]}>{t("preGame.body")}</Text>
-        <View style={styles.preGameSelector}>
-          <VariantSelector value={variant} onChange={onVariantChange} />
-        </View>
-        <View style={[styles.preGameSelector, { marginTop: 8 }]}>
-          <DifficultySelector value={difficulty} onChange={onChange} />
-        </View>
-        <ModalPrimaryButton
-          testID="sudoku-pregame-start"
-          label={t("action.start")}
-          onPress={onStart}
-        />
-      </View>
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Variant selector — Classic (9×9) vs Mini (6×6)
-// ---------------------------------------------------------------------------
-
-function VariantSelector({
-  value,
-  onChange,
-}: {
-  readonly value: Variant;
-  readonly onChange: (v: Variant) => void;
-}) {
-  const { t } = useTranslation("sudoku");
-
-  return (
-    <DifficultyPicker
-      // No variant is a premium level: this key has none listed.
-      gameKey="sudoku-variant"
-      options={VARIANTS.map((v) => ({
-        value: v,
-        label: t(`variant.${v}`, {
-          defaultValue: v === "classic" ? "Classic 9×9" : "Mini 6×6",
-        }),
-      }))}
-      value={value}
-      onChange={onChange}
-      accessibilityLabel={t("variant.groupLabel", { defaultValue: "Variant" })}
-      testID="sudoku-variant"
-    />
-  );
-}
-
-// ---------------------------------------------------------------------------
-// New Game modal — settings selection after abandon confirmation
-// ---------------------------------------------------------------------------
-
-function NewGameModal({
-  currentDifficulty,
-  currentVariant,
-  onQuickRestart,
-  onStart,
-}: {
-  readonly currentDifficulty: Difficulty;
-  readonly currentVariant: Variant;
-  readonly onQuickRestart: () => void;
-  readonly onStart: (d: Difficulty, v: Variant) => void;
-}) {
-  const { t } = useTranslation("sudoku");
-  const [pendingDifficulty, setPendingDifficulty] = useState(currentDifficulty);
-  const [pendingVariant, setPendingVariant] = useState(currentVariant);
-
-  return (
-    <ModalCard visible title={t("newGame.title")}>
-      <View style={styles.newGameSelector}>
-        <VariantSelector value={pendingVariant} onChange={setPendingVariant} />
-      </View>
-      <View style={[styles.newGameSelector, { marginTop: 8 }]}>
-        <DifficultySelector value={pendingDifficulty} onChange={setPendingDifficulty} />
-      </View>
-      <ModalActions style={styles.newGameActions}>
-        <ModalPrimaryButton
-          label={t("action.start")}
-          onPress={() => onStart(pendingDifficulty, pendingVariant)}
-        />
-        <ModalSecondaryButton
-          tone="accent"
-          label={t("action.quickRestart")}
-          onPress={onQuickRestart}
-        />
-      </ModalActions>
-    </ModalCard>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
 
@@ -802,43 +674,5 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     alignItems: "center",
     justifyContent: "center",
-  },
-  preGameWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  preGameCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 24,
-    width: "90%",
-    maxWidth: 360,
-    alignItems: "center",
-  },
-  preGameTitle: {
-    fontFamily: typography.heading,
-    fontSize: 20,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  preGameBody: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 20,
-    textAlign: "center",
-  },
-  preGameSelector: {
-    alignSelf: "stretch",
-    marginBottom: 20,
-  },
-  newGameSelector: {
-    alignSelf: "stretch",
-    marginBottom: 4,
-  },
-  newGameActions: {
-    marginTop: 14,
   },
 });

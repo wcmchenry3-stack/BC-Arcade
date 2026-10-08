@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { AppState, View, Text, StyleSheet, Pressable } from "react-native";
+import { AppState, View, Text, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -37,6 +37,7 @@ import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { buildEndedPayload } from "../game/yacht/resultPayload";
 import YachtFinalScorecard from "../components/yacht/YachtFinalScorecard";
 import AiDifficultySelector from "../components/yacht/AiDifficultySelector";
+import ModeButton from "../components/yacht/ModeButton";
 import YachtDevPanel from "../components/yacht/YachtDevPanel";
 import { YachtCelebrationAnimation } from "../components/yacht/YachtCelebrationAnimation";
 import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
@@ -880,43 +881,6 @@ export default function GameScreen({ navigation, route }: Props) {
   );
 }
 
-/** Solo / vs Computer choice in the pre-game mode picker; filled when selected. */
-function ModeButton({
-  label,
-  selected,
-  onPress,
-  testID,
-}: {
-  readonly label: string;
-  readonly selected: boolean;
-  readonly onPress: () => void;
-  readonly testID?: string;
-}) {
-  const { colors } = useTheme();
-  return (
-    <Pressable
-      testID={testID}
-      style={
-        selected
-          ? [
-              styles.modeBtn,
-              styles.modeBtnPrimary,
-              { borderColor: colors.accent, backgroundColor: colors.accent },
-            ]
-          : [styles.modeBtn, { borderColor: colors.border }]
-      }
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected }}
-    >
-      <Text style={[styles.modeBtnText, { color: selected ? colors.textOnAccent : colors.text }]}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
@@ -976,23 +940,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: "uppercase",
     textAlign: "center",
-  },
-  modeBtn: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 48,
-  },
-  modeBtnPrimary: {
-    marginTop: 4,
-  },
-  modeBtnText: {
-    fontSize: 15,
-    fontWeight: "800",
-    letterSpacing: 1,
-    textTransform: "uppercase",
   },
   modeDivider: {
     height: 1,

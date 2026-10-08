@@ -31,17 +31,12 @@ import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { usePausableClock } from "../hooks/usePausableClock";
 import { HudStatRow } from "../components/shared/HudStatRow";
-import {
-  ModalActions,
-  ModalCard,
-  ModalPrimaryButton,
-  ModalSecondaryButton,
-} from "../components/shared/ModalCard";
 import { PillButton } from "../components/shared/PillButton";
 import TableauPile from "../components/solitaire/TableauPile";
 import FoundationPile from "../components/solitaire/FoundationPile";
 import StockWastePile from "../components/solitaire/StockWastePile";
 import { SolitaireWinCascade } from "../components/solitaire/SolitaireWinCascade";
+import PreGameModal from "../components/solitaire/PreGameModal";
 import GameResultModal from "../components/shared/GameResultModal";
 import { useSound } from "../game/_shared/useSound";
 import { SOLITAIRE_SOUNDS } from "../game/solitaire/sounds";
@@ -982,27 +977,6 @@ export default function SolitaireScreen() {
         ) : null}
       </GameShell>
     </DragProvider>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Pre-game draw-mode modal
-// ---------------------------------------------------------------------------
-
-function PreGameModal({ onChoose }: { readonly onChoose: (mode: DrawMode) => void }) {
-  const { t } = useTranslation("solitaire");
-
-  return (
-    <ModalCard visible title={t("drawMode.title")} body={t("drawMode.body")}>
-      <ModalActions>
-        <ModalPrimaryButton label={t("drawMode.one")} onPress={() => onChoose(1)} />
-        <ModalSecondaryButton
-          tone="accent"
-          label={t("drawMode.three")}
-          onPress={() => onChoose(3)}
-        />
-      </ModalActions>
-    </ModalCard>
   );
 }
 

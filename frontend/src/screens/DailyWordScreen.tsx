@@ -19,13 +19,6 @@ import {
   View,
   Share,
 } from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSequence,
-  withTiming,
-  withDelay,
-} from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -49,7 +42,7 @@ import {
   withServerGuessCount,
   sessionResult,
 } from "../game/daily_word/engine";
-import type { DailyWordState, TileStatus } from "../game/daily_word/types";
+import type { DailyWordState } from "../game/daily_word/types";
 import { dailyWordApi } from "../game/daily_word/api";
 import { withRetry } from "../game/_shared/withRetry";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
@@ -64,6 +57,9 @@ import {
 import { ApiError, isNetworkError } from "../game/_shared/httpClient";
 import { devLog } from "../game/daily_word/devLog";
 import DailyWordDevPanel from "../components/daily_word/DailyWordDevPanel";
+import { FLIP_HALF_MS, TILE_STAGGER_MS, TileRow } from "../components/daily_word/WordTile";
+import { WordKeyboard } from "../components/daily_word/WordKeyboard";
+import { Toast } from "../components/daily_word/Toast";
 import { DAILY_WORD_SOUNDS } from "../game/daily_word/sounds";
 import { useSound } from "../game/_shared/useSound";
 import { getLanguage, getTimezoneOffset, localDateKey } from "../game/daily_word/todayMeta";
@@ -72,26 +68,10 @@ import { getLanguage, getTimezoneOffset, localDateKey } from "../game/daily_word
 // Constants
 // ---------------------------------------------------------------------------
 
-const FLIP_HALF_MS = 150;
-const TILE_STAGGER_MS = 100;
 const TOAST_DURATION_MS = 2000;
 /** How long to wait before retrying when the server hasn't rolled over yet. */
 const NEXT_WORD_RETRY_MS = 60_000;
 const DEEP_LINK = "https://bcarcade.app/daily-word";
-
-const QWERTY_ROWS = [
-  ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
-  ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
-  ["Enter", "Z", "X", "C", "V", "B", "N", "M", "Delete"],
-] as const;
-
-// Devanagari consonants + matras in Varnamala order
-const DEVANAGARI_ROWS = [
-  ["क", "ख", "ग", "घ", "च", "छ", "ज", "झ", "ट", "ठ"],
-  ["ड", "ढ", "त", "थ", "द", "ध", "न", "प", "फ", "ब"],
-  ["Enter", "भ", "म", "य", "र", "ल", "व", "श", "स", "Delete"],
-  ["ह", "ा", "ि", "ी", "ु", "ू", "े", "ै", "ो", "ौ"],
-] as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -121,292 +101,6 @@ async function shareResult(text: string): Promise<"copied" | "shared" | "none"> 
   await Share.share({ message: text });
   return "shared";
 }
-
-// ---------------------------------------------------------------------------
-// Tile component
-// ---------------------------------------------------------------------------
-
-const TILE_STATUS_COLORS: Record<TileStatus, string> = {
-  correct: "#538d4e",
-  present: "#b59f3b",
-  absent: "#3a3a3c",
-  tbd: "transparent",
-  empty: "transparent",
-};
-
-function WordTile({
-  letter,
-  status,
-  isFlipping,
-  flipDelay,
-  testID,
-}: {
-  readonly letter: string;
-  readonly status: TileStatus;
-  readonly isFlipping: boolean;
-  readonly flipDelay: number;
-  readonly testID?: string;
-}) {
-  const { colors } = useTheme();
-  // scaleX 1→0→1 gives the same visual flip as rotateY without 3D compositing
-  // artifacts that cause black-screen flicker on web and some iOS renderers.
-  const scale = useSharedValue(1);
-  const [visibleStatus, setVisibleStatus] = useState<TileStatus>(isFlipping ? "tbd" : status);
-
-  useEffect(() => {
-    if (!isFlipping) {
-      setVisibleStatus(status);
-      return;
-    }
-    scale.value = 1;
-    scale.value = withDelay(
-      flipDelay,
-      withSequence(
-        withTiming(0, { duration: FLIP_HALF_MS }),
-        withTiming(1, { duration: FLIP_HALF_MS })
-      )
-    );
-    const timer = setTimeout(() => setVisibleStatus(status), flipDelay + FLIP_HALF_MS);
-    return () => clearTimeout(timer);
-    // isFlipping and status are the only meaningful triggers
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFlipping, status]);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scaleX: scale.value }],
-  }));
-
-  const bg =
-    visibleStatus === "tbd" || visibleStatus === "empty"
-      ? (colors.surface ?? "#1a1a1b")
-      : TILE_STATUS_COLORS[visibleStatus];
-  const hasBorder = visibleStatus === "empty" || visibleStatus === "tbd";
-  const borderColor = letter ? colors.textMuted : colors.border;
-
-  return (
-    <Animated.View
-      testID={testID}
-      style={[
-        tileStyles.tile,
-        animStyle,
-        {
-          backgroundColor: bg,
-          borderColor: hasBorder ? borderColor : "transparent",
-          borderWidth: hasBorder ? StyleSheet.hairlineWidth * 2 : 0,
-        },
-      ]}
-      accessibilityLabel={
-        letter
-          ? `${letter}${visibleStatus !== "tbd" && visibleStatus !== "empty" ? ` ${visibleStatus}` : ""}`
-          : undefined
-      }
-    >
-      <Text
-        style={[
-          tileStyles.letter,
-          {
-            color:
-              visibleStatus === "correct" ||
-              visibleStatus === "present" ||
-              visibleStatus === "absent"
-                ? "#ffffff"
-                : colors.text,
-          },
-        ]}
-      >
-        {letter.toUpperCase()}
-      </Text>
-    </Animated.View>
-  );
-}
-
-const tileStyles = StyleSheet.create({
-  tile: {
-    width: 52,
-    height: 52,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 4,
-  },
-  letter: {
-    fontFamily: typography.heading,
-    fontSize: 22,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Tile row
-// ---------------------------------------------------------------------------
-
-function TileRow({
-  state,
-  rowIndex,
-  wordLength,
-  isFlipping,
-}: {
-  readonly state: DailyWordState;
-  readonly rowIndex: number;
-  readonly wordLength: number;
-  readonly isFlipping: boolean;
-}) {
-  const row = state.rows[rowIndex];
-  if (!row) return null;
-
-  return (
-    <View testID={`daily-word-row-${rowIndex}`} style={rowStyles.row}>
-      {row.tiles.map((tile, tileIndex) => (
-        <WordTile
-          key={tileIndex}
-          letter={tile.letter}
-          status={tile.status}
-          isFlipping={isFlipping}
-          flipDelay={tileIndex * TILE_STAGGER_MS}
-          testID={`tile-${rowIndex}-${tileIndex}`}
-        />
-      ))}
-      {/* Pad empty tiles if row is shorter than word_length (shouldn't happen) */}
-      {Array.from({ length: Math.max(0, wordLength - row.tiles.length) }, (_, i) => (
-        <WordTile key={`pad-${i}`} letter="" status="empty" isFlipping={false} flipDelay={0} />
-      ))}
-    </View>
-  );
-}
-
-const rowStyles = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    gap: 6,
-    justifyContent: "center",
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Keyboard
-// ---------------------------------------------------------------------------
-
-function WordKeyboard({
-  keyboardState,
-  language,
-  onKey,
-}: {
-  readonly keyboardState: DailyWordState["keyboard_state"];
-  readonly language: string;
-  readonly onKey: (key: string) => void;
-}) {
-  const { t } = useTranslation("daily_word");
-  const { colors } = useTheme();
-
-  const rows = language === "hi" ? DEVANAGARI_ROWS : QWERTY_ROWS;
-
-  const KEY_BG: Record<string, string> = {
-    correct: "#538d4e",
-    present: "#b59f3b",
-    absent: "#3a3a3c",
-    unused: colors.surfaceAlt ?? "#818384",
-  };
-
-  function renderKey(key: string, idx: number) {
-    const isAction = key === "Enter" || key === "Delete";
-    const letterStatus = keyboardState[key.toLowerCase()] ?? keyboardState[key] ?? "unused";
-    const bg = isAction
-      ? (colors.surfaceHigh ?? "#818384")
-      : (KEY_BG[letterStatus] ?? KEY_BG.unused);
-    const label =
-      key === "Enter" ? t("keyboard.enter") : key === "Delete" ? t("keyboard.delete") : key;
-
-    return (
-      <Pressable
-        key={`${key}-${idx}`}
-        testID={`daily-word-key-${key.toLowerCase()}`}
-        onPress={() => onKey(key)}
-        style={[keyStyles.key, isAction && keyStyles.actionKey, { backgroundColor: bg }]}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-      >
-        <Text style={[keyStyles.keyText, { color: "#ffffff" }]}>{label}</Text>
-      </Pressable>
-    );
-  }
-
-  return (
-    <View style={keyStyles.keyboard}>
-      {(rows as ReadonlyArray<ReadonlyArray<string>>).map((row, rowIdx) => (
-        <View key={rowIdx} style={keyStyles.keyRow}>
-          {row.map((key, keyIdx) => renderKey(key, keyIdx))}
-        </View>
-      ))}
-    </View>
-  );
-}
-
-const keyStyles = StyleSheet.create({
-  keyboard: {
-    gap: 6,
-    paddingHorizontal: 4,
-  },
-  keyRow: {
-    flexDirection: "row",
-    gap: 5,
-    justifyContent: "center",
-  },
-  key: {
-    minWidth: 30,
-    height: 56,
-    paddingHorizontal: 6,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionKey: {
-    minWidth: 52,
-  },
-  keyText: {
-    fontFamily: typography.label,
-    fontSize: 13,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Toast
-// ---------------------------------------------------------------------------
-
-function Toast({ message }: { readonly message: string | null }) {
-  const { colors } = useTheme();
-  if (!message) return null;
-  return (
-    <View
-      style={[toastStyles.container, { backgroundColor: colors.text }]}
-      accessibilityRole="alert"
-      accessibilityLiveRegion="assertive"
-    >
-      <Text style={[toastStyles.text, { color: colors.background }]}>{message}</Text>
-    </View>
-  );
-}
-
-const toastStyles = StyleSheet.create({
-  container: {
-    position: "absolute",
-    top: 12,
-    alignSelf: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-    zIndex: 100,
-    maxWidth: 280,
-  },
-  text: {
-    fontFamily: typography.body,
-    fontSize: 13,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-});
 
 // ---------------------------------------------------------------------------
 // Main screen
