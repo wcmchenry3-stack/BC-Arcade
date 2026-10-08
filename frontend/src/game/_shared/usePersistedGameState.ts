@@ -63,8 +63,8 @@ export interface PersistedGameState<T> {
  *   the screen saves nothing.
  *
  * The save effect runs where the hook is called, so the screen calls it
- * before its completion effect: a winning move is saved first, and the
- * completion's `clearGame()` then removes it.
+ * before its completion effect (`useCompletionTransition`): a winning move is
+ * saved first, and the completion's `clear()` then removes it.
  *
  * Throttling and debouncing stay with the screen: Mahjong's debounced saves
  * keep their own hook (`components/mahjong/useMahjongPersistence.ts`).

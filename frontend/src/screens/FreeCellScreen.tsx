@@ -9,8 +9,9 @@
  *      fresh) and saves after every change once it has loaded.
  *   4. Instrumentation (#2452) — `useGameSync("freecell")`, opened on the first move; a win
  *      records its move count (#2632); a restored game resumes its session (#2654).
- *   5. Result + leaderboard (#2633) — the shared GameResultModal; best moves via `bestOf`;
- *      ranked via `useGameLeaderboard`.
+ *   5. Result + leaderboard (#2633) — the win is `useCompletionTransition` (#3087): once
+ *      per game, a resumed won game records nothing; the shared GameResultModal; best
+ *      moves via `bestOf`; ranked via `useGameLeaderboard`.
  *   6. Events and layout — `useGameEvents` plays sounds and the foundation animation; tall
  *      columns compress to fit the screen (#1108).
  */

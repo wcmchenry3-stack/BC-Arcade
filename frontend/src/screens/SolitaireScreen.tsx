@@ -10,7 +10,8 @@
  *      app resumes at the exact board.
  *   3. Instrumentation + result — `useGameSync` session (started on the
  *      first real move with the deal's `draw_mode` in its metadata, completed
- *      on win, abandoned by the hook on unmount for anything else, #2632), and
+ *      on win through `useCompletionTransition` (#3087), abandoned by the hook
+ *      on unmount for anything else, #2632), and
  *      the shared GameResultModal (#2509) on win, which shows where the synced
  *      game ranks on the session board (`lookupGameRank`, #2677).
  *

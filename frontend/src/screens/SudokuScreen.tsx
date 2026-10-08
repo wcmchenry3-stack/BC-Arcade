@@ -8,7 +8,8 @@
  *      force-killed app resumes at the exact puzzle state; cleared on New
  *      Puzzle / Change Difficulty.
  *   3. Instrumentation (#619) — `useGameSync("sudoku")` session started
- *      on the first `enterDigit`, completed on win, and otherwise
+ *      on the first `enterDigit`, completed on win (`useCompletionTransition`,
+ *      #3087), and otherwise
  *      abandoned by the hook on unmount (back-navigation included) with
  *      its progress snapshot and no score (#2632).
  *   4. Result + leaderboard (#2511) — the shared GameResultModal shows

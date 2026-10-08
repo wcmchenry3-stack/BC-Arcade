@@ -8,8 +8,8 @@
  *   2. Persistence — AsyncStorage save/resume, debounced (useMahjongPersistence).
  *   3. Instrumentation — useGameSync session started on first tile tap (the
  *      layout played is its metadata), completed as a `win` on a cleared
- *      board, a `loss` when the player leaves a deadlock, abandoned otherwise
- *      (#2627).
+ *      board (`useCompletionTransition`, #3087), a `loss` when the player
+ *      leaves a deadlock, abandoned otherwise (#2627).
  *   4. Result (#2510) — the shared GameResultModal on a win (the finished
  *      game is the leaderboard entry; the card shows its rank through
  *      `lookupGameRank`, #2677) and on a deadlock (a loss, no rank).
