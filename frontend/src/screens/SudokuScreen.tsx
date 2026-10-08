@@ -27,6 +27,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { bestOf } from "../game/_shared/bestOf";
+import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
@@ -146,9 +147,6 @@ export default function SudokuScreen() {
   const startMsRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
 
-  // Lifecycle refs.
-  const prevCompleteRef = useRef(false);
-
   const flashOpacity = useRef(new Animated.Value(0)).current;
   const unitFlashOpacity = useRef(new Animated.Value(0)).current;
   const isComplete = state?.isComplete ?? false;
@@ -245,63 +243,60 @@ export default function SudokuScreen() {
   // screen, grid and pad do not re-render as time passes (#2964).
   const elapsedA11yLabel = useCallback((time: string) => t("hud.elapsed", { time }), [t]);
 
-  // Complete the gameSync session exactly once on the completion
-  // transition; clear the saved game so the next mount starts fresh.
-  useEffect(() => {
-    if (state === null) {
-      prevCompleteRef.current = false;
-      return;
-    }
-    if (state.isComplete && !prevCompleteRef.current) {
-      const score = computeScore(state.difficulty, state.errorCount);
-      // A time is usable only when positive: a device clock that stepped back
-      // after a resume cannot make a 00:00 solve, a "New best", or a best of 0
-      // (which is also the "no best yet" mark). Then the duration is unknown.
-      const playedS = Math.floor((playedMs() ?? 0) / 1000);
-      const finalElapsed = playedS > 0 ? playedS : null;
-      const gid = syncComplete(
-        {
-          finalScore: score,
-          outcome: "completed",
-          durationMs: finalElapsed === null ? null : finalElapsed * 1000,
-          result: { won: true, errors: state.errorCount },
-        },
-        {
-          final_score: score,
-          outcome: "completed",
-          won: true,
-          difficulty: state.difficulty,
-          variant: state.variant,
-          errors: state.errorCount,
-        }
-      );
-      if (gid) {
-        // The card shows where this game ranks on its board.
-        void lookupRank(gid);
+  // The completion transition (useCompletionTransition, #3087): complete the
+  // gameSync session and clear the saved game so the next mount starts fresh.
+  // Every step to complete runs it, a restored solved puzzle included: there
+  // is no once-per-game guard, as a restored one has no session to complete
+  // and no usable time (its clock restarts on load), so it records no time
+  // and no best: only its result card is filled in.
+  useCompletionTransition(state, isComplete, (s) => {
+    const score = computeScore(s.difficulty, s.errorCount);
+    // A time is usable only when positive: a device clock that stepped back
+    // after a resume cannot make a 00:00 solve, a "New best", or a best of 0
+    // (which is also the "no best yet" mark). Then the duration is unknown.
+    const playedS = Math.floor((playedMs() ?? 0) / 1000);
+    const finalElapsed = playedS > 0 ? playedS : null;
+    const gid = syncComplete(
+      {
+        finalScore: score,
+        outcome: "completed",
+        durationMs: finalElapsed === null ? null : finalElapsed * 1000,
+        result: { won: true, errors: s.errorCount },
+      },
+      {
+        final_score: score,
+        outcome: "completed",
+        won: true,
+        difficulty: s.difficulty,
+        variant: s.variant,
+        errors: s.errorCount,
       }
-      clearGame().catch(() => {});
+    );
+    if (gid) {
+      // The card shows where this game ranks on its board.
+      void lookupRank(gid);
+    }
+    clearSavedGame();
 
-      const diff = state.difficulty;
-      const variantKey = state.variant;
-      const prev = statsRef.current[variantKey][diff];
-      const outcome = finalElapsed !== null ? bestOf(prev.bestTimeS, finalElapsed, true) : null;
-      const improved = outcome?.improved ?? false;
-      // The cache is written only when this puzzle kind's best improves.
-      if (improved) {
-        statsRef.current = {
-          ...statsRef.current,
-          [variantKey]: { ...statsRef.current[variantKey], [diff]: { bestTimeS: finalElapsed } },
-        };
-        saveStats(statsRef.current).catch(() => {});
-      }
-      setResult({
-        elapsedS: finalElapsed,
-        bestTimeS: outcome?.best ?? prev.bestTimeS,
-        isNewBest: outcome?.isNewBest ?? false,
-      });
+    const diff = s.difficulty;
+    const variantKey = s.variant;
+    const prev = statsRef.current[variantKey][diff];
+    const outcome = finalElapsed !== null ? bestOf(prev.bestTimeS, finalElapsed, true) : null;
+    const improved = outcome?.improved ?? false;
+    // The cache is written only when this puzzle kind's best improves.
+    if (improved) {
+      statsRef.current = {
+        ...statsRef.current,
+        [variantKey]: { ...statsRef.current[variantKey], [diff]: { bestTimeS: finalElapsed } },
+      };
+      saveStats(statsRef.current).catch(() => {});
     }
-    prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, lookupRank, playedMs]);
+    setResult({
+      elapsedS: finalElapsed,
+      bestTimeS: outcome?.best ?? prev.bestTimeS,
+      isNewBest: outcome?.isNewBest ?? false,
+    });
+  });
 
   const ensureSyncStarted = useCallback(
     (next: SudokuState) => {

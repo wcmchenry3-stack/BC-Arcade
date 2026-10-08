@@ -84,6 +84,7 @@ import { useBoardZoomPan } from "../game/mahjong/useBoardZoomPan";
 import { useMahjongPersistence } from "../game/mahjong/useMahjongPersistence";
 import { freeIdsFor, useFreeTiles } from "../game/mahjong/useFreeTiles";
 import { useGameSync } from "../game/_shared/useGameSync";
+import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { formatMs } from "../game/_shared/formatMs";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
@@ -186,8 +187,6 @@ export default function MahjongScreen() {
 
   const hasLoadedRef = useRef(false);
   const stateRef = useRef<MahjongState | null>(null);
-  const winRecordedRef = useRef(false);
-  const prevCompleteRef = useRef(false);
 
   const {
     start: syncStart,
@@ -248,34 +247,6 @@ export default function MahjongScreen() {
     saveOnLeave: saveNow,
   });
 
-  // Mount: restore saved game or show layout select.
-  useEffect(() => {
-    let alive = true;
-    Promise.all([loadGame(), loadStats(), loadProgress()]).then(
-      ([saved, savedStats, savedProgress]) => {
-        if (!alive) return;
-        hasLoadedRef.current = true;
-        progressRef.current = savedProgress;
-        setProgress(savedProgress);
-        if (saved !== null) {
-          setState(adoptSaved(adoptLoaded(saved)));
-          setHasSavedGame(!saved.isComplete);
-          if (saved.isComplete) winRecordedRef.current = true;
-          // A restored game continues the session a killed app left open (#2654).
-          if (!saved.isComplete) syncResume();
-          setView("play");
-        } else {
-          setView("select");
-        }
-        setStats(savedStats);
-        setLoading(false);
-      }
-    );
-    return () => {
-      alive = false;
-    };
-  }, [syncResume, adoptLoaded, adoptSaved]);
-
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
@@ -286,40 +257,61 @@ export default function MahjongScreen() {
     statsRef.current = stats;
   }, [stats]);
 
-  // Win lifecycle: complete sync session, record stats, unlock next layout.
-  useEffect(() => {
-    if (state === null) {
-      prevCompleteRef.current = false;
-      return;
-    }
-    if (state.isComplete && !prevCompleteRef.current) {
-      const outcome = recordedOutcome("win");
-      // Null for a won game restored from storage: its session already ended.
-      const gameId = syncComplete(
-        {
-          finalScore: state.score,
-          outcome,
-          // elapsedMs, not accumulatedMs: the running segment is only banked
-          // on pause, so accumulatedMs alone misses the current play time.
-          durationMs: elapsedMs(state),
-          result: { won: true, pairs: state.pairsRemoved },
-        },
-        { final_score: state.score, outcome, won: true, pairs: state.pairsRemoved }
-      );
-      discardSave();
-      if (!winRecordedRef.current) {
-        winRecordedRef.current = true;
+  // Win lifecycle (useCompletionTransition, #3087): complete the sync session
+  // and discard the save on the step to a cleared board, record the win once
+  // per game, and unlock the next layout. A won game restored from storage
+  // (marked by the mount load below) records nothing: its session ended and
+  // its win was counted when it happened. It still unlocks: that is idempotent.
+  const finishGame = (s: MahjongState): string | null => {
+    const outcome = recordedOutcome("win");
+    // Null for a won game restored from storage: its session already ended.
+    const gameId = syncComplete(
+      {
+        finalScore: s.score,
+        outcome,
+        // elapsedMs, not accumulatedMs: the running segment is only banked
+        // on pause, so accumulatedMs alone misses the current play time.
+        durationMs: elapsedMs(s),
+        result: { won: true, pairs: s.pairsRemoved },
+      },
+      { final_score: s.score, outcome, won: true, pairs: s.pairsRemoved }
+    );
+    discardSave();
+    return gameId;
+  };
+  const unlockAfterWin = (s: MahjongState) => {
+    // Unlock the next layout in registry order, then clear the active layout
+    // from progress regardless of whether a new layout was unlocked.
+    const completedId = s.currentLayoutId ?? "turtle";
+    const newUnlocked = unlockNextLayout(completedId, LAYOUTS, progressRef.current.unlockedLayouts);
+    const newProgress: MahjongProgress = {
+      ...progressRef.current,
+      unlockedLayouts: newUnlocked,
+      currentLayoutId: null,
+      currentState: null,
+    };
+    progressRef.current = newProgress;
+    setProgress(newProgress);
+    saveProgress(newProgress).catch(() => {});
+    setHasSavedGame(false);
+  };
+  const { markRestoredComplete, reset: resetCompletion } = useCompletionTransition(
+    state,
+    state?.isComplete ?? false,
+    {
+      onComplete: (s) => {
+        const gameId = finishGame(s);
         // The play timer, not accumulatedMs: the engine banks the running
         // segment only on pause, so a board cleared in one sitting has 0 there.
-        const finalMs = elapsedMs(state);
-        const finalScore = state.score;
+        const finalMs = elapsedMs(s);
+        const finalScore = s.score;
         // The finished game is the leaderboard entry (#2624): the card only
         // asks where it ranks. Only a win completed in this session has one.
         if (gameId) void lookupRank(gameId);
         // Fastest clear wins, per layout like the boards (#2747), and only a
         // plausible one counts: an old save resumed with no time banked can
         // finish under the ranking floor.
-        const layoutId = state.currentLayoutId ?? "turtle";
+        const layoutId = s.currentLayoutId ?? "turtle";
         setWinSummary(nextBestTime(statsRef.current.bestTimeMsByLayout[layoutId] ?? 0, finalMs));
         setStats((prev) => {
           const best = nextBestTime(prev.bestTimeMsByLayout[layoutId] ?? 0, finalMs).bestTimeMs;
@@ -333,28 +325,43 @@ export default function MahjongScreen() {
           saveStats(updated).catch(() => {});
           return updated;
         });
-      }
-      // Unlock the next layout in registry order, then clear the active layout
-      // from progress regardless of whether a new layout was unlocked.
-      const completedId = state.currentLayoutId ?? "turtle";
-      const newUnlocked = unlockNextLayout(
-        completedId,
-        LAYOUTS,
-        progressRef.current.unlockedLayouts
-      );
-      const newProgress: MahjongProgress = {
-        ...progressRef.current,
-        unlockedLayouts: newUnlocked,
-        currentLayoutId: null,
-        currentState: null,
-      };
-      progressRef.current = newProgress;
-      setProgress(newProgress);
-      saveProgress(newProgress).catch(() => {});
-      setHasSavedGame(false);
+        unlockAfterWin(s);
+      },
+      onAlreadyComplete: (s) => {
+        finishGame(s);
+        unlockAfterWin(s);
+      },
     }
-    prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, lookupRank, discardSave]);
+  );
+
+  // Mount: restore saved game or show layout select. After the win hook, whose
+  // guard it sets for a won game restored from storage.
+  useEffect(() => {
+    let alive = true;
+    Promise.all([loadGame(), loadStats(), loadProgress()]).then(
+      ([saved, savedStats, savedProgress]) => {
+        if (!alive) return;
+        hasLoadedRef.current = true;
+        progressRef.current = savedProgress;
+        setProgress(savedProgress);
+        if (saved !== null) {
+          setState(adoptSaved(adoptLoaded(saved)));
+          setHasSavedGame(!saved.isComplete);
+          if (saved.isComplete) markRestoredComplete();
+          // A restored game continues the session a killed app left open (#2654).
+          if (!saved.isComplete) syncResume();
+          setView("play");
+        } else {
+          setView("select");
+        }
+        setStats(savedStats);
+        setLoading(false);
+      }
+    );
+    return () => {
+      alive = false;
+    };
+  }, [syncResume, adoptLoaded, adoptSaved, markRestoredComplete]);
 
   // Disable native swipe-back (iOS edge gesture) while the game is open so that
   // a left-pan on the board doesn't accidentally exit to the lobby.
@@ -480,14 +487,13 @@ export default function MahjongScreen() {
     abandonOpenSession();
     setWinSummary(null);
     resetSubmission();
-    winRecordedRef.current = false;
-    prevCompleteRef.current = false;
+    resetCompletion();
     const s = stateRef.current;
     // A deadlocked board left this way is lost (#2517) — nothing to continue.
     setHasSavedGame(s !== null && !s.isComplete && !s.isDeadlocked);
     setState(null);
     setView("select");
-  }, [abandonOpenSession, resetSubmission]);
+  }, [abandonOpenSession, resetSubmission, resetCompletion]);
 
   // Navigates directly to level select without an abandon confirmation or server
   // abandon event — the in-progress game is preserved locally so CONTINUE works.
@@ -510,8 +516,7 @@ export default function MahjongScreen() {
       abandonOpenSession();
       setWinSummary(null);
       resetSubmission();
-      winRecordedRef.current = false;
-      prevCompleteRef.current = false;
+      resetCompletion();
       const fresh = { ...createGame(getLayout(layoutId)), currentLayoutId: layoutId };
       setState(fresh);
       setView("play");
@@ -531,7 +536,7 @@ export default function MahjongScreen() {
       saveProgress(newProgress).catch(() => {});
       // Sync session starts on first tile tap via ensureSyncStarted, not here.
     },
-    [abandonOpenSession, resetSubmission]
+    [abandonOpenSession, resetSubmission, resetCompletion]
   );
 
   // Play Again from a result card: a fresh deal of the same layout.

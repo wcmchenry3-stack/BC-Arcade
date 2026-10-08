@@ -27,6 +27,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { bestOf } from "../game/_shared/bestOf";
+import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { PillButton } from "../components/shared/PillButton";
@@ -95,9 +96,6 @@ export default function FreeCellScreen() {
   const autoCompletingRef = useRef(false);
   const autoStepTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [autoCompleting, setAutoCompleting] = useState(false);
-  /** Guards against double-counting a win within a single game session. */
-  const winRecordedRef = useRef(false);
-  const prevCompleteRef = useRef(false);
   /** Best moves after this win, and whether the win beat the old best — for the result card. */
   const [winSummary, setWinSummary] = useState<{ best: number; isNewBest: boolean } | null>(null);
   /**
@@ -192,28 +190,6 @@ export default function FreeCellScreen() {
     };
   }, []);
 
-  // Mount: resume the saved game, or deal fresh in its place.
-  useGameRestored(game, (saved) => {
-    const initial = saved ?? dealGame();
-    if (!saved) setState(initial);
-    // A restored game continues the session a killed app left open (#2654).
-    if (saved && !saved.isComplete) syncResume();
-    // Suppress re-counting a win when resuming an already-won game.
-    if (saved?.isComplete) {
-      winRecordedRef.current = true;
-      setResumedWin(true);
-      setWinSummary({ best: statsRef.current.bestMoves, isNewBest: false });
-    }
-    if (!saved) {
-      // First deal (not a resume) — count as a game started.
-      const loadedStats = statsRef.current;
-      const withPlay = { ...loadedStats, gamesPlayed: loadedStats.gamesPlayed + 1 };
-      statsRef.current = withPlay;
-      saveStats(withPlay).catch(() => {});
-    }
-    startAutoComplete(initial);
-  });
-
   useGameEvents(
     state?.events,
     {
@@ -255,33 +231,36 @@ export default function FreeCellScreen() {
     }
   }, [state, syncGetGameId, syncStart, syncMarkStarted, hasLoadedRef]);
 
-  // Handle win: update stats and clear saved game
-  useEffect(() => {
-    if (state === null) {
-      prevCompleteRef.current = false;
-      return;
-    }
-    if (state.isComplete && !prevCompleteRef.current) {
-      const gameId = syncComplete(
-        {
-          finalScore: state.moveCount,
-          outcome: "completed",
-          result: { won: true, moves: state.moveCount },
-        },
-        {
-          final_score: state.moveCount,
-          outcome: "completed",
-          won: true,
-          moves: state.moveCount,
-        }
-      );
-      clearGame().catch(() => {});
-      if (!winRecordedRef.current) {
-        winRecordedRef.current = true;
-        const finalMoves = state.moveCount;
+  // The win (useCompletionTransition, #3087): end the session and clear the save on
+  // the step to complete, then record the win once per game. A resumed, already-won
+  // game (marked by the restore below) only has its save cleared: its session ended
+  // and its win was counted when it happened.
+  const finishGame = (s: FreeCellState): string | null => {
+    const gameId = syncComplete(
+      {
+        finalScore: s.moveCount,
+        outcome: "completed",
+        result: { won: true, moves: s.moveCount },
+      },
+      {
+        final_score: s.moveCount,
+        outcome: "completed",
+        won: true,
+        moves: s.moveCount,
+      }
+    );
+    clearSavedGame();
+    return gameId;
+  };
+  const { markRestoredComplete, reset: resetCompletion } = useCompletionTransition(
+    state,
+    state?.isComplete ?? false,
+    {
+      onComplete: (s) => {
+        const gameId = finishGame(s);
+        const finalMoves = s.moveCount;
         const curr = statsRef.current;
-        // Only a win that happened this session has a session to rank (a
-        // resumed won game's was completed back then).
+        // Only a win that happened this session has a session to rank.
         if (gameId) void lookupRank(gameId);
         const { best, isNewBest } = bestOf(curr.bestMoves, finalMoves, true);
         setWinSummary({ best, isNewBest });
@@ -292,10 +271,34 @@ export default function FreeCellScreen() {
         };
         statsRef.current = updated;
         saveStats(updated).catch(() => {});
-      }
+      },
+      onAlreadyComplete: finishGame,
     }
-    prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, lookupRank]);
+  );
+
+  // Mount: resume the saved game, or deal fresh in its place. After the win hook, whose
+  // guard it sets for a resumed won game (a layout-time registration: its place among
+  // the effects above changes nothing).
+  useGameRestored(game, (saved) => {
+    const initial = saved ?? dealGame();
+    if (!saved) setState(initial);
+    // A restored game continues the session a killed app left open (#2654).
+    if (saved && !saved.isComplete) syncResume();
+    // Suppress re-counting a win when resuming an already-won game.
+    if (saved?.isComplete) {
+      markRestoredComplete();
+      setResumedWin(true);
+      setWinSummary({ best: statsRef.current.bestMoves, isNewBest: false });
+    }
+    if (!saved) {
+      // First deal (not a resume) — count as a game started.
+      const loadedStats = statsRef.current;
+      const withPlay = { ...loadedStats, gamesPlayed: loadedStats.gamesPlayed + 1 };
+      statsRef.current = withPlay;
+      saveStats(withPlay).catch(() => {});
+    }
+    startAutoComplete(initial);
+  });
 
   const handleMove = useCallback(
     (move: Move) => {
@@ -348,7 +351,7 @@ export default function FreeCellScreen() {
     const updated = { ...statsRef.current, gamesPlayed: statsRef.current.gamesPlayed + 1 };
     statsRef.current = updated;
     saveStats(updated).catch(() => {});
-    winRecordedRef.current = false;
+    resetCompletion();
     setResumedWin(false);
     setWinSummary(null);
     resetSubmission();
@@ -357,6 +360,7 @@ export default function FreeCellScreen() {
     syncComplete,
     syncResetPlayWindow,
     resetSubmission,
+    resetCompletion,
     progressResult,
     clearSavedGame,
     setState,

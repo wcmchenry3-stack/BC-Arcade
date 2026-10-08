@@ -30,6 +30,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { bestOf } from "../game/_shared/bestOf";
+import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
@@ -140,9 +141,6 @@ export default function SolitaireScreen() {
 
   // Lifecycle refs.
   const movesRef = useRef(0);
-  const prevCompleteRef = useRef(false);
-  /** Guards against double-counting a win within a single game session. */
-  const winRecordedRef = useRef(false);
 
   const [winSummary, setWinSummary] = useState<WinSummary | null>(null);
   /**
@@ -225,7 +223,69 @@ export default function SolitaireScreen() {
     },
   });
 
-  // #597 — the mount load's restore. Restores a saved game silently; on a
+  // #597 — mirror moves into a ref so the abandon snapshot (which runs on
+  // unmount) and the completion effect read the latest value.
+  useEffect(() => {
+    movesRef.current = moves;
+  }, [moves]);
+
+  // #597 — the completion transition (useCompletionTransition, #3087): end the
+  // sync session and clear the saved game so the next mount starts fresh, then
+  // record the win once per game. A resumed, already-won game (marked by the
+  // restore below) only has its save cleared and its card filled in: its score
+  // was submitted and its win counted when it happened.
+  const finishGame = (s: SolitaireState): string | null => {
+    const gameId = syncComplete(
+      {
+        finalScore: s.score,
+        outcome: "completed",
+        durationMs: s.accumulatedMs,
+        result: { won: true, moves: movesRef.current },
+      },
+      { final_score: s.score, outcome: "completed", won: true, moves: movesRef.current }
+    );
+    clearSavedGame();
+    return gameId;
+  };
+  const { markRestoredComplete, reset: resetCompletion } = useCompletionTransition(
+    state,
+    state?.isComplete ?? false,
+    {
+      onComplete: (s) => {
+        const gameId = finishGame(s);
+        const finalMs = s.accumulatedMs;
+        const finalMoves = movesRef.current;
+        // Only a win that happened this session has a session to rank.
+        if (gameId) void lookupRank(gameId);
+        const priorBest = statsRef.current.bestTimeMs;
+        const { best, improved, isNewBest } = bestOf(priorBest, finalMs, true);
+        setWinSummary({
+          timeMs: finalMs,
+          moves: finalMoves,
+          bestTimeMs: best,
+          isNewBest,
+        });
+        // The cache is written only when the best improves.
+        if (improved) {
+          statsRef.current = { bestTimeMs: finalMs };
+          saveStats(statsRef.current);
+        }
+      },
+      onAlreadyComplete: (s) => {
+        finishGame(s);
+        setWinSummary({
+          timeMs: s.accumulatedMs,
+          moves: movesRef.current,
+          bestTimeMs: statsRef.current.bestTimeMs,
+          isNewBest: false,
+        });
+      },
+    }
+  );
+
+  // #597 — the mount load's restore, after the completion hook whose guard it
+  // sets for a resumed won game (a layout-time registration, so its place among
+  // the effects changes nothing). Restores a saved game silently; on a
   // clean slot the pre-game draw-mode modal is shown so the player picks
   // their mode.
   //
@@ -245,7 +305,7 @@ export default function SolitaireScreen() {
       setState(adoptLoaded(saved));
       // Suppress re-counting a win when resuming an already-won game.
       if (saved.isComplete) {
-        winRecordedRef.current = true;
+        markRestoredComplete();
         setResumedWin(true);
       } else {
         // A restored game continues the session a killed app left open
@@ -257,63 +317,6 @@ export default function SolitaireScreen() {
       deal(1);
     }
   });
-
-  // #597 — mirror moves into a ref so the abandon snapshot (which runs on
-  // unmount) and the completion effect read the latest value.
-  useEffect(() => {
-    movesRef.current = moves;
-  }, [moves]);
-
-  // #597 — end sync sessions exactly once on the completion transition and
-  // clear the saved game so the next mount starts fresh.
-  useEffect(() => {
-    if (state === null) {
-      prevCompleteRef.current = false;
-      return;
-    }
-    if (state.isComplete && !prevCompleteRef.current) {
-      const gameId = syncComplete(
-        {
-          finalScore: state.score,
-          outcome: "completed",
-          durationMs: state.accumulatedMs,
-          result: { won: true, moves: movesRef.current },
-        },
-        { final_score: state.score, outcome: "completed", won: true, moves: movesRef.current }
-      );
-      clearGame().catch(() => {});
-      const finalMs = state.accumulatedMs;
-      const finalMoves = movesRef.current;
-      if (!winRecordedRef.current) {
-        winRecordedRef.current = true;
-        // Only a win that happened this session has a session to rank (a
-        // resumed won game's was completed back then).
-        if (gameId) void lookupRank(gameId);
-        const priorBest = statsRef.current.bestTimeMs;
-        const { best, improved, isNewBest } = bestOf(priorBest, finalMs, true);
-        setWinSummary({
-          timeMs: finalMs,
-          moves: finalMoves,
-          bestTimeMs: best,
-          isNewBest,
-        });
-        // The cache is written only when the best improves.
-        if (improved) {
-          statsRef.current = { bestTimeMs: finalMs };
-          saveStats(statsRef.current);
-        }
-      } else {
-        // A resumed, already-won game: its win was counted when it happened.
-        setWinSummary({
-          timeMs: finalMs,
-          moves: finalMoves,
-          bestTimeMs: statsRef.current.bestTimeMs,
-          isNewBest: false,
-        });
-      }
-    }
-    prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, lookupRank]);
 
   // The engine emits a new array per move, in the order cardPlace, cardFlip,
   // foundationComplete, gameWin, each at most once (one card reaches a
@@ -662,9 +665,9 @@ export default function SolitaireScreen() {
     setMoves(0);
     setWinSummary(null);
     resetSubmission();
-    winRecordedRef.current = false;
+    resetCompletion();
     setResumedWin(false);
-  }, [resetSubmission, syncClose, clearSavedGame, setState]);
+  }, [resetSubmission, resetCompletion, syncClose, clearSavedGame, setState]);
 
   // Play Again deals straight into the same draw mode, skipping the picker.
   const handlePlayAgain = useCallback(() => {
