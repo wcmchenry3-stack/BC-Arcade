@@ -1,3 +1,18 @@
+/**
+ * BlackjackTableScreen — the in-hand table (player, dealer, actions) of a Blackjack run.
+ *
+ * Concerns:
+ *   1. Game logic — hit, stand, double and split go through `apply` from `useBlackjackGame`
+ *      (game/blackjack/BlackjackGameContext), which owns the engine state, saving and the
+ *      run's `useGameSync` session (#370, #549, #2628). The screen holds no session itself.
+ *   2. Navigation — redirects to BlackjackBetting or BlackjackVictory when the phase leaves
+ *      the hand; the three screens share the one context.
+ *   3. Events and feedback — `useGameEvents` plays the sounds and drives the bust/win flashes,
+ *      milestone, comeback and all-in banners (Reanimated) and the blackjack celebration.
+ *   4. Result (#2628) — the shared GameResultModal when the chips run out, with the outcome
+ *      the run recorded; no leaderboard (Blackjack has no board).
+ *   5. Layout — `useBlackjackLayout` sizes the hands and controls.
+ */
 import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import Animated, {

@@ -1,3 +1,19 @@
+/**
+ * Twenty48Screen — 2048 on a 4×4 board.
+ *
+ * Concerns:
+ *   1. Game logic — swipes (RNGH Pan) and, on web, arrow keys go to the pure engine's
+ *      `move`; its tile-id counter is restored by `loadGame` (`seedNextTileId`, #698).
+ *   2. Persistence — `saveGame` after every move with one-shot `events` stripped;
+ *      cleared on game over.
+ *   3. Play clock (#2735, #2750) — `usePausableClock` pauses it on blur and background.
+ *   4. Instrumentation (#369, #549) — `useGameSync("twenty48")`, one session per game; the
+ *      2048 win completes it and Keep Playing is untracked (#2631); a restored game resumes
+ *      its session (#2654).
+ *   5. Result + leaderboard (#2513, #2633) — the shared GameResultModal; "new best" from
+ *      `bestOf`; ranked via `useGameLeaderboard`.
+ *   6. Audio — engine events play the 2048 and game-over sounds.
+ */
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";

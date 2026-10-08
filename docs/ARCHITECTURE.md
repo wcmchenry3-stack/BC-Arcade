@@ -244,7 +244,10 @@ be:
 - **Headless** — no React, no UI, no platform imports inside `engine.ts`.
 - **Pure(ish)** — no AsyncStorage, network, audio, haptics, or other side
   effects inside the engine itself. Side effects live one layer up (in screen /
-  hook / service code that consumes the engine).
+  hook / service code that consumes the engine). The "ish" is module-level
+  state: eight engines keep a mutable singleton outside their game state (an
+  RNG slot, an id counter, Star Swarm's LCG seed). A move function is pure
+  given that state; the rules for it are in §3.2.
 - **Runnable in Node** — covered by tests that import the engine and exercise it
   outside React Native, to confirm portability.
 
@@ -276,25 +279,91 @@ Explicit exception to the lint rule, plus contexts that stay under `game/`:
   `game/<name>/` by design. They are **not** exempt from the lint rule; they pass
   because they import no UI.
 
-### 3.2 Determinism and the seeded RNG (#2985)
+### 3.2 Determinism, RNG and counters (#2985, #2999)
 
-Engines with seedable shuffles, deals or rolls route that randomness through a
-per-engine slot rather than calling `Math.random` directly (purely cosmetic
-randomness, such as Star Swarm visual effects, may still use `Math.random`):
-`frontend/src/game/_shared/seededRng.ts` exports `createSeededRng(seed)` (one
-32-bit LCG, `state / 2^32`, so a draw is always in `[0, 1)`), `createRngSlot()`
-(an engine's swappable source: `rng()`, `setRng(fn)`, `getRng()`) and
-`RandomSource`. Each engine owns its own slot, so tests pin shuffles or rolls
-with `setRng(createSeededRng(seed))` without affecting other engines. Star Swarm
-keeps its LCG state in its engine (it is part of the replay counters) and steps
-it with the shared `lcgNext`. `_shared/simRandom.ts` (Mulberry32) is the
-simulators' separate generator; do not use it in engines.
+The rule: **an engine is replayable from `(seed, inputs)`.** Given the same
+seed (or the same pinned random source) and the same sequence of moves or
+ticks, it produces the same states, ids included. Saved games store the whole
+state, so the app never replays a game to restore it; replayability is what
+lets tests, golden fixtures, seed banks and the balance simulator pin a game
+exactly. Everything below follows from it.
 
-Known exception: Star Swarm's power-up type (`pickPowerUpType`) and power-up
-drop position still call `Math.random`, and they do affect play. Seeding the LCG
-alone therefore does not reproduce a Star Swarm run; the golden replay test
-stubs `Math.random` as well. Moving those draws onto the seeded source would
-change Star Swarm's gameplay sequence and needs its own golden re-record.
+**One LCG.** `frontend/src/game/_shared/seededRng.ts` exports
+`createSeededRng(seed)` (one 32-bit LCG, `state / 2^32`, so a draw is always in
+`[0, 1)`), `lcgNext(state)` (one step, for an engine that keeps its own LCG
+state), `createRngSlot()` and `RandomSource`. Seeded deals use it directly:
+Solitaire and FreeCell shuffle with `createSeededRng(seed)` for a seed from
+their `seeds.json` bank (the same generator `backend/scripts/gen_*_seeds.py`
+mirrors), and Mahjong's `createGame(layout, seed)` does the same when it is
+given a seed. `_shared/simRandom.ts` (Mulberry32) is the simulators' separate
+generator; do not use it in engines.
+
+**The `setRng` test seam.** Randomness that is not dealt from a seed goes
+through a per-engine slot, `const rngSlot = createRngSlot()` with
+`export const setRng = rngSlot.setRng`: Solitaire and FreeCell (which bank seed
+to deal), Mahjong (an unseeded deal and the in-game shuffle), Twenty48 (tile
+spawns), Blackjack (the shoe), Hearts (the deal) and Yacht (the dice).
+The slot defaults to `Math.random`, so live play is not replayable for these
+draws; tests pin them with `setRng(createSeededRng(seed))` and restore
+`Math.random` afterwards. Each engine owns its slot, so pinning one engine
+never moves another. Sudoku's `loadPuzzle(…, rng = Math.random)` and Cascade's
+spawn selector take the source as a parameter instead.
+
+**Module-level counters.** Ids that must be unique across a game live outside
+the game state, in module `let`s:
+
+| Engine     | Counter                                                        | Set or restored by                                                                   | Test reset            |
+| ---------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------- |
+| Twenty48   | `_nextTileId` (`game/twenty48/engine.ts`)                      | `seedNextTileId(maxId + 1)` in `twenty48/storage.ts` `loadGame` (#698)               | `_resetTileIds()`     |
+| Star Swarm | `_seed`, `_nextId`, `_nextBuddyId` (`starswarm/engine/rng.ts`) | `seedRng` in `initStarSwarm`; `engineCounters()` / `restoreEngineCounters()` (#2645) | `_resetIds()`         |
+| 7 engines  | the RNG slot above                                             | `setRng`                                                                             | `setRng(Math.random)` |
+
+The rules that follow:
+
+- **A restored game restores its counters before its first move or tick.**
+  A new process starts every counter over (ids from 1, Star Swarm's seed from
+  42), so without this a resumed game reissues ids its pieces already hold
+  (duplicate React keys in 2048, #698) and Star Swarm's random stream restarts.
+  Twenty48 derives the counter from the saved tiles; Star Swarm saves
+  `engineCounters()` with a paused run (`StarSwarmScreen`'s `savePausedRun`)
+  and `pauseStore` calls `restoreEngineCounters(save.counters)` when it loads
+  the run. Restoring only moves ids forward (never onto one this process has
+  issued) and sets the seed. A new engine with a counter adds it to its save
+  and restores it in the storage module's load.
+- **Tests reseed.** A test that depends on ids or draws resets the counters
+  (`_resetIds`, `_resetTileIds`) and pins the slot or seed in `beforeEach`;
+  the Mahjong and Star Swarm golden replays (`__tests__/goldenReplay.test.ts`)
+  compare a seeded run against a recorded fixture, Star Swarm's including the
+  final `engineCounters()`.
+- **`Math.random` is for cosmetics only.** A draw that cannot change a game's
+  outcome (the background-music track, Mahjong's web noise texture) may use
+  `Math.random`, or its own `createSeededRng` (Star Swarm's starfield).
+  Anything that feeds the rules goes through the slot or the seed. Picking a
+  seed is not a draw: Star Swarm's canvas seeds each live run from
+  `Date.now() ^ Math.random()` and passes it to `initStarSwarm`.
+
+**Known exception.** Star Swarm's power-up type (`pickPowerUpType`,
+`engine/entities.ts`) and power-up drop X (`engine/collisions.ts`) still call
+`Math.random`, and they do affect play. Seeding the LCG alone therefore does not reproduce a
+Star Swarm run: the golden replay test stubs `Math.random` as well. Moving
+those draws onto the seeded source would change Star Swarm's gameplay
+sequence and needs its own golden re-record.
+
+**The Star Swarm simulator.** The balance simulator
+(`frontend/tooling/starswarm/`) runs the real engine, not a copy. It couples
+to it in two ways only:
+
+- **Tuning** (#2988): `tick`, `initStarSwarm` and `applyPowerUp` take a
+  `Tuning` object defaulting to `DEFAULT_TUNING`; `engineVariant.ts` binds
+  them to `DEFAULT_TUNING` plus a variant's overrides (§3.4). An override key
+  that is not a `Tuning` field throws.
+- **Counters**: the variant shares the real module's LCG and id counters. The
+  harness seeds them per run (`_resetIds()`, then `initStarSwarm(…, seed)`),
+  and to fork a run (`balance.ts`, the with- and without-Buddy branches) it
+  takes `engineCounters()` at the fork and calls `_resetIds()` plus
+  `restoreEngineCounters()` before the second branch, so both branches see the
+  same ids and draws. Buddy draws ids from its own range (`BUDDY_ID_BASE`,
+  #2880) so launching it does not shift the main stream.
 
 ### 3.3 Shared engine modules (#2986)
 

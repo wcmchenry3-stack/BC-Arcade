@@ -1,3 +1,12 @@
+/**
+ * BlackjackVictoryScreen — Goal Reached for a Blackjack run (#2507).
+ *
+ * Concerns:
+ *   1. Result — the shared ResultCard rendered inline with `useResultFeedback`, not the modal.
+ *   2. Unlocks — evaluates cosmetic unlocks for the finished run once, on mount.
+ *   3. Next step — the next table (a premium one explains its lock, #1129), keep playing,
+ *      or cash out Home; the run itself lives in `useBlackjackGame`.
+ */
 import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

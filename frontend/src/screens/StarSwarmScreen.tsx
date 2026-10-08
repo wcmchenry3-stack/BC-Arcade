@@ -1,3 +1,19 @@
+/**
+ * StarSwarmScreen — the Star Swarm arcade shooter's run lifecycle (#2516).
+ *
+ * Concerns:
+ *   1. Run lifecycle (#2981) — one reducer (`game/starswarm/runPhase`): picker | running |
+ *      paused | over; every new run goes through `startRun`. The engine ticks in the canvas
+ *      (components/starswarm/GameCanvas), never through React state (#2562).
+ *   2. Pause and resume (#2645) — leaving the app or the screen pauses and saves the run with
+ *      its engine counters (`pauseStore`); a saved run restores before the game mounts.
+ *   3. Instrumentation — `useGameSync("starswarm")`, one session per run; a restored run
+ *      resumes the killed process's session (#2654); the run is the leaderboard entry (#2626).
+ *   4. Result + leaderboard (#2516, #2633) — the shared GameResultModal, ranked on the tier
+ *      board via `useGameLeaderboard`.
+ *   5. Audio and screen-reader cues (#2484–#2490) — `useStarSwarmAudio` and spoken events.
+ *   6. Dev panel (#2567) — StarSwarmDevPanel, dev and internal pre-launch builds only.
+ */
 import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import {
   AccessibilityInfo,
