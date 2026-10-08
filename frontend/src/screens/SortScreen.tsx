@@ -1,3 +1,28 @@
+/**
+ * SortScreen — the ball-sort puzzle: a level grid, then one level at a time.
+ *
+ * Concerns:
+ *   1. Data — `useSortLevels` (#2981) owns the view (`loading | select |
+ *      play`), the level definitions (API, cached for offline play), the
+ *      player's progress and the load error with its Retry. The stored best
+ *      moves load with it and merge into `bestMovesRef`.
+ *   2. Game logic — taps go to the pure engine (`isValidPour`, `applyPour`,
+ *      `undo`); hints come from the solver and are dropped once the board
+ *      has changed (`levelGenRef`).
+ *   3. Pour animation — `usePourAnimation` (#2981) holds the one pour in
+ *      flight (`pour: { from, to, holdMs } | null`); its move lands when
+ *      SortBoard's animation ends, or on a timer under Reduce Motion. A
+ *      reset, level change or back-navigation cancels it (#2297).
+ *   4. Persistence — the in-play board is saved on every change and on app
+ *      background; a solve unlocks the next level.
+ *   5. Instrumentation — one `useGameSync("sort")` session per level played,
+ *      opened at the first pour, completed on a solve with the player's
+ *      standing (#2625, #2746) and abandoned otherwise (#2619).
+ *   6. Result (#2512) — the shared GameResultModal with the level's best
+ *      moves (a new best only once a prior best exists) and the synced
+ *      game's rank (#2633).
+ */
+
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppState,
@@ -27,23 +52,18 @@ import type { Color, SortState } from "../game/sort/types";
 import SortBoard, { POUR_PER_UNIT_MS } from "../components/sort/SortBoard";
 import { TILT_IN_MS, TILT_HOLD_MS, TILT_OUT_MS } from "../components/sort/BottleView";
 import LevelSelectScreen from "../components/sort/LevelSelectScreen";
-import { sortApi, type LevelData } from "../game/sort/api";
-import { isNetworkError } from "../game/_shared/httpClient";
-import { withRetry } from "../game/_shared/withRetry";
 import {
   applyLevelSolve,
   highestSolvedLevel,
-  loadBestMoves,
-  loadProgress,
   mergeBestMoves,
   saveBestMoves,
   saveProgress,
-  loadLevelsCache,
-  saveLevelsCache,
   totalBestMoves,
   type BestMoves,
   type SortProgress,
 } from "../game/sort/storage";
+import { usePourAnimation, type Pour } from "../game/sort/usePourAnimation";
+import { useSortLevels } from "../game/sort/useSortLevels";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import { GameShell } from "../components/shared/GameShell";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
@@ -55,10 +75,17 @@ import { toSubmission } from "../components/shared/toSubmission";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
 
-type ScreenView = "loading" | "select" | "play";
-
 /** Padding inside the board container; SortBoard sizes bottles to what's left. */
 const BOARD_PADDING = 16;
+
+/** SortBoard's pour props for the pour in flight, or none. */
+function boardPourProps(pour: Pour | null) {
+  return {
+    pouringFrom: pour?.from ?? null,
+    pouringTo: pour?.to ?? null,
+    pourHoldMs: pour?.holdMs ?? POUR_PER_UNIT_MS,
+  };
+}
 
 export default function SortScreen() {
   const { t } = useTranslation("sort");
@@ -66,15 +93,28 @@ export default function SortScreen() {
   const { colors } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
-  // Top-level view
-  const [view, setView] = useState<ScreenView>("loading");
-  const [levels, setLevels] = useState<LevelData[]>([]);
-  const [loadError, setLoadError] = useState(false);
-  const [progress, setProgress] = useState<SortProgress>({
-    unlockedLevel: 1,
-    currentLevelId: null,
-    currentState: null,
-  });
+  /**
+   * The best moves per level: the one source of truth for every solve's card
+   * and score, so the session completes before the player can move on.
+   * Loaded (merged) from `@sort/best_moves` with the screen; storage mirrors it.
+   */
+  const bestMovesRef = useRef<BestMoves>({});
+  /** Storage was read, so writing `bestMovesRef` can't lose a stored best. */
+  const bestsStoredRef = useRef(false);
+  const adoptStoredBests = useCallback((stored: BestMoves) => {
+    // Merge, never replace: a Retry must keep a best still only in memory
+    // (its write failed, or storage couldn't be read before).
+    const merged = mergeBestMoves(bestMovesRef.current, stored);
+    bestMovesRef.current = merged;
+    bestsStoredRef.current = true;
+    if (Object.entries(merged).some(([level, moves]) => stored[level] !== moves)) {
+      void saveBestMoves(merged);
+    }
+  }, []);
+
+  // Top-level view, levels and progress (loaded on mount; Retry re-runs loadScreen)
+  const { view, setView, levels, loadError, progress, setProgress, loadScreen, refreshLevels } =
+    useSortLevels({ onStoredBests: adoptStoredBests });
 
   // Active game
   const [currentLevelId, setCurrentLevelId] = useState<number | null>(null);
@@ -82,15 +122,35 @@ export default function SortScreen() {
   const [history, setHistory] = useState<readonly SortState[]>([]);
   const [colorblindMode, setColorblindMode] = useState(false);
 
-  // Pour animation state
-  const [pouringFrom, setPouringFrom] = useState<number | null>(null);
-  const [pouringTo, setPouringTo] = useState<number | null>(null);
-  const [pourHoldMs, setPourHoldMs] = useState(POUR_PER_UNIT_MS);
-  const [isPouring, setIsPouring] = useState(false);
   const [boardHeight, setBoardHeight] = useState(0);
-  const pourTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingPourRef = useRef<{ snapshot: SortState; from: number; to: number } | null>(null);
   const reduceMotion = useReduceMotion();
+  const audio = useSortAudio();
+
+  // The pour in flight (#2981). Its move lands when the animation ends, on
+  // the board it was made on.
+  const landPour = useCallback(
+    (snapshot: SortState, from: number, to: number) => {
+      const nextState = applyPour(snapshot, from, to);
+      setGameState(nextState);
+      if (nextState.isComplete) {
+        audio.playWin();
+      }
+    },
+    [audio]
+  );
+  const {
+    pour,
+    start: startPour,
+    complete: completePour,
+    cancel: cancelPour,
+  } = usePourAnimation<SortState>({
+    reduceMotion,
+    // Reduce Motion: BottleView only tilts, with no ghost overlay, so SortBoard
+    // never calls onPourComplete; the hook lands the pour on this timer.
+    reduceMotionMs: TILT_IN_MS + TILT_HOLD_MS + TILT_OUT_MS + 50,
+    onLand: landPour,
+  });
+  const isPouring = pour !== null;
 
   // Result card (#2512)
   const [showWinModal, setShowWinModal] = useState(false);
@@ -126,16 +186,6 @@ export default function SortScreen() {
 
   const progressRef = useRef(progress);
   progressRef.current = progress;
-  /**
-   * The best moves per level: the one source of truth for every solve's card
-   * and score, so the session completes before the player can move on.
-   * Loaded (merged) from `@sort/best_moves` with the screen; storage mirrors it.
-   */
-  const bestMovesRef = useRef<BestMoves>({});
-  /** Storage was read, so writing `bestMovesRef` can't lose a stored best. */
-  const bestsStoredRef = useRef(false);
-
-  const audio = useSortAudio();
 
   // #2619 — the abandon result block. Both the hook's own abandon (unmount) and
   // abandonSession build it here.
@@ -157,57 +207,6 @@ export default function SortScreen() {
     const result = progressResult();
     syncComplete({ outcome: "abandoned", result }, { outcome: "abandoned", ...result });
   }, [syncGetGameId, syncComplete, progressResult]);
-
-  useEffect(() => {
-    return () => {
-      if (pourTimerRef.current !== null) clearTimeout(pourTimerRef.current);
-    };
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Init — extracted so the retry button can re-invoke it
-  // ---------------------------------------------------------------------------
-
-  const loadScreen = useCallback(async () => {
-    setLoadError(false);
-    setView("loading");
-    const [levelsResult, prog, stored] = await Promise.all([
-      withRetry(() => sortApi.getLevels())
-        .then((result) => {
-          // Cache the level definitions for offline use. Fire-and-forget —
-          // don't block the render on the AsyncStorage write.
-          saveLevelsCache(result).catch(() => {});
-          return result;
-        })
-        // Only serve cached levels on network failures (isNetworkError). HTTP errors
-        // such as 401 Unauthorized mean the server is actively denying access
-        // (e.g. entitlement expired) — falling back to cache would bypass that.
-        .catch((e) => (isNetworkError(e) ? loadLevelsCache() : null)),
-      loadProgress(),
-      loadBestMoves(),
-    ]);
-    if (stored !== null) {
-      // Merge, never replace: a Retry must keep a best still only in memory
-      // (its write failed, or storage couldn't be read before).
-      const merged = mergeBestMoves(bestMovesRef.current, stored);
-      bestMovesRef.current = merged;
-      bestsStoredRef.current = true;
-      if (Object.entries(merged).some(([level, moves]) => stored[level] !== moves)) {
-        void saveBestMoves(merged);
-      }
-    }
-    if (!levelsResult) {
-      setLoadError(true);
-    } else {
-      setLevels(levelsResult.levels as LevelData[]);
-    }
-    setProgress(prog);
-    setView("select");
-  }, []);
-
-  useEffect(() => {
-    void loadScreen();
-  }, [loadScreen]);
 
   // ---------------------------------------------------------------------------
   // Persistence effects
@@ -314,6 +313,7 @@ export default function SortScreen() {
     showWinModal,
     currentLevelId,
     levels,
+    setProgress,
     syncComplete,
     lookupRank,
   ]);
@@ -321,20 +321,6 @@ export default function SortScreen() {
   // ---------------------------------------------------------------------------
   // Game handlers
   // ---------------------------------------------------------------------------
-
-  const handlePourComplete = useCallback(() => {
-    const pending = pendingPourRef.current;
-    if (!pending) return;
-    pendingPourRef.current = null;
-    const nextState = applyPour(pending.snapshot, pending.from, pending.to);
-    setGameState(nextState);
-    setIsPouring(false);
-    setPouringFrom(null);
-    setPouringTo(null);
-    if (nextState.isComplete) {
-      audio.playWin();
-    }
-  }, [audio]);
 
   function handleBottleTap(index: number) {
     if (!gameState || gameState.isComplete || isPouring) return;
@@ -355,38 +341,15 @@ export default function SortScreen() {
     if (isValidPour(gameState.bottles[selectedBottleIndex]!, gameState.bottles[index]!)) {
       const snapshot = gameState;
       const units = pourUnits(gameState.bottles[selectedBottleIndex]!, gameState.bottles[index]!);
-      const holdMs = POUR_PER_UNIT_MS * units;
+      // The move lands when the animation ends (usePourAnimation).
+      if (!startPour(snapshot, selectedBottleIndex, index, POUR_PER_UNIT_MS * units)) return;
       if (!syncGetGameId()) {
         syncStart({ level: currentLevelId });
         syncMarkStarted();
       }
       setHistory((h) => [...h, snapshot]);
-      setIsPouring(true);
-      setPouringFrom(selectedBottleIndex);
-      setPouringTo(index);
-      setPourHoldMs(holdMs);
       setGameState({ ...gameState, selectedBottleIndex: null });
       audio.playPour();
-      if (reduceMotion) {
-        // Reduce-motion: BottleView does a tilt-only animation with no ghost overlay,
-        // so there is no onPourComplete callback from SortBoard — drive state update
-        // with a timer instead.
-        const totalMs = TILT_IN_MS + TILT_HOLD_MS + TILT_OUT_MS + 50;
-        pourTimerRef.current = setTimeout(() => {
-          const nextState = applyPour(snapshot, selectedBottleIndex, index);
-          setGameState(nextState);
-          setIsPouring(false);
-          setPouringFrom(null);
-          setPouringTo(null);
-          if (nextState.isComplete) {
-            audio.playWin();
-          }
-        }, totalMs);
-      } else {
-        // Full animation: state update is driven by onPourComplete fired from SortBoard
-        // the moment the ghost overlay is removed, so both happen in the same render.
-        pendingPourRef.current = { snapshot, from: selectedBottleIndex, to: index };
-      }
     } else {
       setGameState({ ...gameState, selectedBottleIndex: null });
     }
@@ -421,14 +384,7 @@ export default function SortScreen() {
     if (!level) return;
     // Like handleResetLevel: no pour from the previous board may carry over
     // to the new one (#2297) — neither its animation nor its pending move.
-    if (pourTimerRef.current !== null) {
-      clearTimeout(pourTimerRef.current);
-      pourTimerRef.current = null;
-    }
-    pendingPourRef.current = null;
-    setIsPouring(false);
-    setPouringFrom(null);
-    setPouringTo(null);
+    cancelPour();
     abandonSession();
     // The level's play time starts now, though its session opens at the first
     // pour: the thinking time before that pour counts, and time on the level
@@ -462,38 +418,21 @@ export default function SortScreen() {
   }
 
   function handleBackToSelect() {
-    if (pourTimerRef.current !== null) {
-      clearTimeout(pourTimerRef.current);
-      pourTimerRef.current = null;
-    }
-    pendingPourRef.current = null;
-    setIsPouring(false);
-    setPouringFrom(null);
-    setPouringTo(null);
+    cancelPour();
     abandonSession();
     levelGenRef.current += 1;
     setView("select");
     setShowWinModal(false);
     // Silently refresh levels in the background so the next session gets new mixtures
-    void sortApi
-      .getLevels()
-      .then((res) => setLevels(res.levels as LevelData[]))
-      .catch(() => {});
+    refreshLevels();
   }
 
   function handleResetLevel() {
     if (!currentLevelId) return;
     const level = levels.find((l) => l.id === currentLevelId);
     if (!level) return;
-    if (pourTimerRef.current !== null) {
-      clearTimeout(pourTimerRef.current);
-      pourTimerRef.current = null;
-    }
     // A pour whose animation is still finishing must not land on the fresh board.
-    pendingPourRef.current = null;
-    setIsPouring(false);
-    setPouringFrom(null);
-    setPouringTo(null);
+    cancelPour();
     abandonSession();
     // The fresh board's play time starts now, not with the board it replaces
     // (#2710).
@@ -632,13 +571,11 @@ export default function SortScreen() {
             state={gameState}
             colorblindMode={colorblindMode}
             onBottleTap={handleBottleTap}
-            pouringFrom={pouringFrom}
-            pouringTo={pouringTo}
+            {...boardPourProps(pour)}
             // onLayout reports the container's full height, padding included;
             // the board itself only gets the space inside the padding (#2207).
             availableHeight={Math.max(0, boardHeight - 2 * BOARD_PADDING)}
-            pourHoldMs={pourHoldMs}
-            onPourComplete={handlePourComplete}
+            onPourComplete={completePour}
           />
         )}
       </View>
