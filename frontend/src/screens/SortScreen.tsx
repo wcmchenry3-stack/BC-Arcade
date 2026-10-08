@@ -374,13 +374,29 @@ export default function SortScreen() {
     }
   }
 
+  /**
+   * Leaves the board on screen: no pour from it may carry over to the next
+   * board (#2297), neither its animation nor its pending move, and its open,
+   * unfinished session is abandoned.
+   */
+  function leaveBoard() {
+    cancelPour();
+    abandonSession();
+  }
+
+  /** Shows a level's board (set just before) with no history and no result. */
+  function enterPlay() {
+    setHistory([]);
+    setShowWinModal(false);
+    setWinSummary(null);
+    resetSubmission();
+    setView("play");
+  }
+
   function handleSelectLevel(levelId: number) {
     const level = levels.find((l) => l.id === levelId);
     if (!level) return;
-    // Like handleResetLevel: no pour from the previous board may carry over
-    // to the new one (#2297) — neither its animation nor its pending move.
-    cancelPour();
-    abandonSession();
+    leaveBoard();
     // The level's play time starts now, though its session opens at the first
     // pour: the thinking time before that pour counts, and time on the level
     // grid or the previous level's result card does not (#2710).
@@ -388,11 +404,7 @@ export default function SortScreen() {
     levelGenRef.current += 1;
     setCurrentLevelId(levelId);
     setGameState(initState(level.bottles as (Color | "")[][]));
-    setHistory([]);
-    setShowWinModal(false);
-    setWinSummary(null);
-    resetSubmission();
-    setView("play");
+    enterPlay();
   }
 
   function handleContinue() {
@@ -405,16 +417,11 @@ export default function SortScreen() {
     // resume() counts its play time from here. With no session to resume the
     // level's play time still starts now, not on the level grid (#2710).
     if (!syncResume()) syncResetPlayWindow();
-    setHistory([]);
-    setShowWinModal(false);
-    setWinSummary(null);
-    resetSubmission();
-    setView("play");
+    enterPlay();
   }
 
   function handleBackToSelect() {
-    cancelPour();
-    abandonSession();
+    leaveBoard();
     levelGenRef.current += 1;
     setView("select");
     setShowWinModal(false);
@@ -427,8 +434,7 @@ export default function SortScreen() {
     const level = levels.find((l) => l.id === currentLevelId);
     if (!level) return;
     // A pour whose animation is still finishing must not land on the fresh board.
-    cancelPour();
-    abandonSession();
+    leaveBoard();
     // The fresh board's play time starts now, not with the board it replaces
     // (#2710).
     syncResetPlayWindow();

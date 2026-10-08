@@ -483,17 +483,25 @@ export default function MahjongScreen() {
     syncClose();
   }, [recordDeadlockLoss, syncClose]);
 
-  const startNewGame = useCallback(() => {
+  /**
+   * Leaves the board for a new one: closes its session (abandonOpenSession) and
+   * clears its result, so the next game's completion is recorded afresh.
+   */
+  const leaveCurrentGame = useCallback(() => {
     abandonOpenSession();
     setWinSummary(null);
     resetSubmission();
     resetCompletion();
+  }, [abandonOpenSession, resetSubmission, resetCompletion]);
+
+  const startNewGame = useCallback(() => {
+    leaveCurrentGame();
     const s = stateRef.current;
     // A deadlocked board left this way is lost (#2517) — nothing to continue.
     setHasSavedGame(s !== null && !s.isComplete && !s.isDeadlocked);
     setState(null);
     setView("select");
-  }, [abandonOpenSession, resetSubmission, resetCompletion]);
+  }, [leaveCurrentGame]);
 
   // Navigates directly to level select without an abandon confirmation or server
   // abandon event — the in-progress game is preserved locally so CONTINUE works.
@@ -513,10 +521,7 @@ export default function MahjongScreen() {
       // Level Select keeps the board's session open (so CONTINUE resumes it);
       // a new deal closes it here, so the next tap opens a session with this
       // layout (#2627).
-      abandonOpenSession();
-      setWinSummary(null);
-      resetSubmission();
-      resetCompletion();
+      leaveCurrentGame();
       const fresh = { ...createGame(getLayout(layoutId)), currentLayoutId: layoutId };
       setState(fresh);
       setView("play");
@@ -536,7 +541,7 @@ export default function MahjongScreen() {
       saveProgress(newProgress).catch(() => {});
       // Sync session starts on first tile tap via ensureSyncStarted, not here.
     },
-    [abandonOpenSession, resetSubmission, resetCompletion]
+    [leaveCurrentGame]
   );
 
   // Play Again from a result card: a fresh deal of the same layout.
