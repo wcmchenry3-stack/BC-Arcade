@@ -17,7 +17,6 @@ import sentry_sdk
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.dialect import dialect_name
 from db.models import Game, GameType
 from games.filters import not_abandoned, not_swept
 from games.registry import get_module
@@ -136,7 +135,7 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
                 # Swept rows (#2621) carry a synthetic completed_at
                 # (started_at + 24 h), not a time the player played.
                 func.max(case((not_swept(), Game.completed_at))).label("last_played_at"),
-                *_comparable_columns(dialect_name(session)),
+                *_comparable_columns(),
             )
             .select_from(Game)
             .join(GameType, Game.game_type_id == GameType.id)
