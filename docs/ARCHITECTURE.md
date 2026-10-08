@@ -106,6 +106,23 @@ The `backend/games/` service layer is split by job (#2991; the former
 | `games/history.py`       | Read side of `GET /games/me` and `GET /games/{id}`: `list_games_for_session`, `get_game_detail`           |
 | `games/catalog.py`       | `GET /games/catalog` and the admin tier edit `patch_game_type` (invalidates the catalog cache)            |
 
+Leaderboards live in the `backend/games/boards/` package (#2992; the former
+`games/leaderboard.py` is gone, nothing re-exports it). Its package docstring
+holds the rules every board follows.
+
+| Module                       | Responsibility                                                                                            |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `games/boards/types.py`      | Result types: `BoardEntry`, `Standing`, `GameRank`, `LimitViolation`, and `LeaderboardError`              |
+| `games/boards/partitions.py` | Board lookup (`enabled_board`), partition resolution (`resolve_partition`, `row_partition`), `metric_cap` |
+| `games/boards/sql.py`        | SQL building blocks: `metadata_count`, `metric_expr`, `board_filters`, `best_rows`, `board_order`         |
+| `games/boards/queries.py`    | Board and rank queries: `top_entries`, `viewer_entry`, `player_standing`, `game_rank`, `load_game(_type)` |
+| `games/boards/limits.py`     | Submission limits for `PATCH /games/{id}/complete`: `check_completion_limits`, `merge_result_metadata`    |
+
+`RankReason` (why `GET /games/{id}/rank` has no rank) is declared in the
+declarative `games/board.py`, and `games/schemas.py` imports the registry only
+inside its metadata validator, so importing the request schemas loads no
+`<game>/module.py` and no query code (`tests/test_import_graph.py`).
+
 Most per-game backend directories are **descriptors**, not gameplay services.
 A normal single-player game's rules stay in the TypeScript engine on the
 client. Adding a Python module for a game does not mean the server replays or
@@ -476,7 +493,7 @@ section owns only the shared offline event/session pipeline.
 module may declare a `result_model` (a Pydantic model, separate from the
 creation-time `metadata_model`, which forbids extra keys); the validated result
 is merged into `games.metadata` — a creation-time key wins on a collision
-unless it holds `null` (`merge_result_metadata`, `backend/games/leaderboard.py`),
+unless it holds `null` (`merge_result_metadata`, `backend/games/boards/limits.py`),
 because leaderboards read partition keys such as `difficulty` (and the legacy
 per-game leaderboard routes read `player_name`) from there — and an
 invalid or oversized (> 8 KB) result returns 400 without completing the game
@@ -741,7 +758,7 @@ Both issues note that "first step is further research" — the snapshots in thos
 issues are not authoritative.
 
 **Leaderboards.** Every game's board is served by the generic routes
-(`GET /games/leaderboard/{game_type}`, `backend/games/leaderboard.py`), from a
+(`GET /games/leaderboard/{game_type}`, `backend/games/boards/`), from a
 `board` each `GameModule` declares; no game has its own leaderboard store. The
 rules are the same for every game — most importantly **one entry per player**
 (#2519 decision 12): rows are grouped by player (`session_id`, the install,
@@ -1010,7 +1027,7 @@ Three tiers, and no tier ever points at another's data:
   dialect-compiled element in `backend/db/jsonx.py` (`json_number`,
   `json_is_true`, `json_set_true`, `plus_hours`): one statement, compiled per
   dialect through SQLAlchemy's `@compiles`, with the SQLite body as the default.
-  `games/leaderboard.py`'s `metadata_count` follows the same pattern. The only
+  `games/boards/sql.py`'s `metadata_count` follows the same pattern. The only
   remaining dialect-aware code is the `insert()` constructor picked in
   `db/dialect.py` (SQLite's `ON CONFLICT` needs its own), engine/pool setup in
   `db/base.py`, `games/legacy_outcomes.py`, whose SQL is frozen against

@@ -1,6 +1,6 @@
 """``compute_rank`` takes its last tie-break direction from ``FINAL_TIEBREAK`` (#2972).
 
-The board order (``games.leaderboard``) and ``/games/{id}/rank`` must use the same
+The board order (``games.boards``) and ``/games/{id}/rank`` must use the same
 direction for ``completed_at``, so both read the constant instead of hard-coding it.
 """
 
