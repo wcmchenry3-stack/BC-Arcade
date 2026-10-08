@@ -193,7 +193,7 @@ def test_out_of_shape_scorecard_is_dropped_flagged_and_reported(
     scorecard: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     reports: list[tuple[Any, ...]] = []
-    monkeypatch.setattr("games.service._report_rejected_result", lambda *a: reports.append(a))
+    monkeypatch.setattr("games.sessions._report_rejected_result", lambda *a: reports.append(a))
     out = _dump(_result(final_score=10, scorecard=scorecard))
     assert "scorecard" not in out
     assert out["scorecard_reconciled"] is False
@@ -204,7 +204,7 @@ def test_out_of_shape_scorecard_is_dropped_flagged_and_reported(
 def test_a_bad_opponent_card_is_dropped_but_the_players_kept(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("games.service._report_rejected_result", lambda *a: None)
+    monkeypatch.setattr("games.sessions._report_rejected_result", lambda *a: None)
     out = _dump(
         _result(
             final_score=3,
@@ -277,7 +277,7 @@ def test_client_cannot_set_the_reconciled_flag() -> None:
 
 
 async def test_service_validates_and_returns_the_stored_block() -> None:
-    from games import service
+    from games import sessions as service
 
     card = {"categories": {"yacht": 50}}
     result = _result(final_score=345, scorecard=card)
@@ -287,7 +287,7 @@ async def test_service_validates_and_returns_the_stored_block() -> None:
 
 
 async def test_service_reconciles_the_card_against_the_body_final_score() -> None:
-    from games import service
+    from games import sessions as service
 
     result = _result(final_score=_FULL_TOTAL, scorecard=_card(_FULL, upper_bonus=35))
     ok = await service._validate_result(
@@ -310,10 +310,10 @@ async def test_service_reconciles_the_card_against_the_body_final_score() -> Non
 async def test_service_completes_with_a_bad_card_dropped_and_rejects_only_oversize(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from games import service
+    from games import sessions as service
 
     reports: list[Any] = []
-    monkeypatch.setattr("games.service._report_rejected_result", lambda *a: reports.append(a))
+    monkeypatch.setattr("games.sessions._report_rejected_result", lambda *a: reports.append(a))
     bad = _result(final_score=10, scorecard={"categories": {"bogus": 1}})
     stored = await service._validate_result(None, None, bad, "yacht", module)  # type: ignore[arg-type]
     assert "scorecard" not in stored

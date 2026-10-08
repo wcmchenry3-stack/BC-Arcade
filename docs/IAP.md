@@ -524,7 +524,8 @@ the webhook handler, so dedupe and ordering are the same. A notification from
 a disallowed environment counts as ignored, not failed. A payload that fails
 verification is counted and skipped; an API error ends that environment's run
 and the next run retries. It runs **in-process** at startup and then every
-24 h (`main.py` lifespan, like the Daily Word retention task), only when the
+24 h (`jobs/lifespan.py` via `main.py`'s lifespan, a `PeriodicJob` like the
+Daily Word retention task), only when the
 database, Apple verification **and** the API key are configured. Several
 instances running it at once are harmless (dedupe). Manual run, from
 `backend/` in a Render shell: `python scripts/apple_replay_notifications.py
@@ -856,8 +857,8 @@ and recorded revoked; a token Play does not know is skipped. An API error
 ends the run; the next run retries.
 
 **Jobs.** The voided poll and the acknowledgement sweep run **in-process** at
-startup and then every 24 h (`main.py` lifespan, `run_google_jobs_loop`,
-with injectable `sleep` and `clock`), only when the database and Google are
+startup and then every 24 h (`jobs/lifespan.py` via `main.py`'s lifespan,
+`google_jobs_job`, with an injectable `clock`; `PeriodicJob.loop` takes the `sleep`), only when the database and Google are
 configured. Several instances running them at once are harmless (dedupe;
 acknowledgement is idempotent). Manual run, from `backend/` in a Render
 shell: `python scripts/google_play_jobs.py` (voided last 48 h, then the
@@ -1163,7 +1164,7 @@ signed JWS fixture made with a test CA for the verifier.
 | `POST /purchases/apple`, `/google`      | `purchases/router.py`, `purchases/schemas.py`                   |
 | Account tokens, Apple store-key parse   | `purchases/apple.py`, `purchases/google.py`                     |
 | Verifier interface and defaults         | `purchases/verifiers.py`                                        |
-| Admin `PATCH is_premium` guard (§13)    | `games/service.py` `patch_game_type`                            |
+| Admin `PATCH is_premium` guard (§13)    | `games/catalog.py` `patch_game_type`                          |
 | Tests                                   | `tests/test_purchases.py`, `tests/test_purchases_migration.py`, `tests/test_entitlement_lookup_perf.py` |
 
 **Verifier interface.** The service never calls a store. The routes get a
