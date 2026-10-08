@@ -827,8 +827,8 @@ against Schemers" — true only because the ladder was inverted. #2555 fixed
 the ladder, so the gate now pre-registers the opposite direction (the human
 does better against Cautious players), pinned by `gate.test.ts`. The old six
 fixed-N batches and their ✓/✗ threshold checks are retired; `--count` keeps
-#2204's meaning (games per matchup), and `--log-games` (used by
-`tools/hearts-analysis`) is unchanged.
+#2204's meaning (games per matchup), and `--log-games` is
+unchanged.
 
 ### Hearts AI regret metric — points lost vs a perfect-information reference (#2239)
 
