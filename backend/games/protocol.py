@@ -3,7 +3,7 @@
 Every game module subclasses ``games.module_base.GameModuleBase`` (#2995),
 which supplies the defaults of the optional hooks; this Protocol is the
 structural type the shared code (``games/sessions.py``, ``games/stats.py``,
-``games/leaderboard.py``) is written against, and CI asserts
+``games/boards/``) is written against, and CI asserts
 ``isinstance(module, GameModule)`` for every registered module.
 
 Adding a new game
