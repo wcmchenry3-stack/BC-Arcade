@@ -21,6 +21,7 @@ Run from anywhere:
 Requires Pillow:
     pip install Pillow
 """
+
 import json
 import math
 import pathlib
@@ -28,7 +29,7 @@ import pathlib
 try:
     from PIL import Image, ImageChops, ImageDraw
 except ImportError:
-    raise SystemExit("Pillow is required: pip install Pillow")
+    raise SystemExit("Pillow is required: pip install Pillow") from None
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -66,6 +67,7 @@ THEMES = [
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def clean_image(img: Image.Image, threshold: int = 200) -> Image.Image:
     """Zero RGBA for pixels with alpha < threshold — mirrors runtime cleanImage().
 
@@ -81,7 +83,7 @@ def clean_image(img: Image.Image, threshold: int = 200) -> Image.Image:
     w, h = img.size
     for y in range(h):
         for x in range(w):
-            r, g, b, a = pixels[x, y]
+            _r, _g, _b, a = pixels[x, y]
             if a < threshold:
                 pixels[x, y] = (0, 0, 0, 0)
     return img
@@ -175,6 +177,7 @@ def bake_asset(src_png: pathlib.Path, sprite: dict, out_png: pathlib.Path, name:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     for theme in THEMES:
         print(f"\n=== {theme['id']} ===")
@@ -183,8 +186,11 @@ def main() -> None:
 
         for name, sprite in vertices.items():
             src_png: pathlib.Path | None = next(
-                (theme["icon_dir"] / f"{name}{ext}" for ext in (".png", ".webp")
-                 if (theme["icon_dir"] / f"{name}{ext}").exists()),
+                (
+                    theme["icon_dir"] / f"{name}{ext}"
+                    for ext in (".png", ".webp")
+                    if (theme["icon_dir"] / f"{name}{ext}").exists()
+                ),
                 None,
             )
             if src_png is None:
@@ -222,6 +228,7 @@ def _prettier(path: pathlib.Path) -> None:
         cwd=FRONTEND_DIR,
         capture_output=True,
         text=True,
+        check=False,  # returncode is inspected below
     )
     if result.returncode != 0:
         print(f"  (prettier failed: {result.stderr.strip()!r})")

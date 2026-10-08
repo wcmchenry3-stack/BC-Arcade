@@ -283,7 +283,7 @@ The broader privacy declarations are owned by their dedicated legal/privacy work
 - Console-error forwarding → `utils/sentryConsoleError.ts`.
 - Internal bug logging → `gameEventClient.ts`, `eventStore.ts`, SyncWorker.
 - Backend bug-log API/storage → `backend/logs/`.
-- Backend Sentry initialization/scrubbing → `backend/main.py`.
+- Backend Sentry initialization/scrubbing → `backend/observability/sentry.py` (called from `create_app()` in `backend/main.py`).
 
 When changing one of these flows:
 

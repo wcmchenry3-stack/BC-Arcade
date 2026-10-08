@@ -7,7 +7,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { ModalCard } from "../components/shared/ModalCard";
 import { OpponentCapturedPile, SelfCapturedPile } from "../components/hearts/CapturedPile";
 import OpponentHand from "../components/hearts/OpponentHand";
@@ -52,8 +52,7 @@ import {
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import HeartsFinalStandings from "../components/hearts/HeartsFinalStandings";
 import GameResultModal from "../components/shared/GameResultModal";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
+import { toSubmission } from "../components/shared/toSubmission";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import { useHeartsRounds } from "../game/hearts/RoundsContext";
 import { createIntegrityReporter } from "../game/hearts/integrity";
@@ -81,9 +80,6 @@ function loadHeartsDebugPanel(): HeartsDebugPanelType {
     .default;
 }
 
-// The result card asks the session board where the finished game ranks (#2629).
-const HEARTS_BOARD = sessionBoardAdapter("hearts");
-
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -109,10 +105,9 @@ export default function HeartsScreen() {
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
-  const leaderboard = useLeaderboardSubmit(HEARTS_BOARD);
+  // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("hearts", navigation);
   const { submit: submitRank, reset: resetSubmission } = leaderboard;
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openLeaderboard = useLeaderboardLink(navigation, "hearts");
 
   const [gameState, setGameState] = useState<HeartsState | null>(null);
   // Opens on the opponent style of the last game started (#1129).
@@ -706,6 +701,7 @@ export default function HeartsScreen() {
         gameType="hearts"
         title={t("game.title")}
         onBack={() => navigation.goBack()}
+        gutter={null}
         onNewGame={() => handleStartGame(selectedDifficulty)}
         onOpenLeaderboard={openLeaderboard}
         onEditPlayerNames={handleOpenRename}
@@ -736,6 +732,7 @@ export default function HeartsScreen() {
       gameType="hearts"
       title={t("game.title")}
       onBack={() => navigation.goBack()}
+      gutter={null}
       onNewGame={handleChangeDifficulty}
       onOpenLeaderboard={openLeaderboard}
       onEditPlayerNames={handleOpenRename}
@@ -893,14 +890,7 @@ export default function HeartsScreen() {
             humanIndex={HUMAN}
           />
         }
-        submission={{
-          status: leaderboard.status,
-          rank: leaderboard.rank,
-          isBest: leaderboard.isBest,
-          playerName: leaderboard.playerName,
-          onJoinLeaderboards: leaderboard.joinLeaderboards,
-          onRetry: leaderboard.retry,
-        }}
+        submission={toSubmission(leaderboard)}
         onViewLeaderboard={openLeaderboard}
         onPlayAgain={() => handleStartGame(gameState.aiDifficulty)}
         secondaryAction={{

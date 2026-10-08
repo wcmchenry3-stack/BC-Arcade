@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -9,7 +8,8 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { EmptyState } from "../components/shared/EmptyState";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
-import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
+import { AppHeader } from "../components/shared/AppHeader";
+import { ScreenFrame } from "../components/shared/ScreenFrame";
 import { statsApi } from "../api/stats";
 import { fetchAndRememberMyStats } from "../hooks/useMyStats";
 import type { StatsResponse, GameRow, GameTypeStats } from "../api/types";
@@ -124,7 +124,6 @@ function deriveBentoTiles(
 
 export default function ProfileScreen() {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const { t } = useTranslation(["profile", ...GAME_TITLE_NAMESPACES]);
   const navigation = useNavigation<ProfileNav>();
 
@@ -391,16 +390,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.background,
-          paddingTop: APP_HEADER_HEIGHT + insets.top,
-          paddingBottom: Math.max(insets.bottom, 16),
-        },
-      ]}
-    >
+    <ScreenFrame>
       <AppHeader title={t("title")} />
       <ConnectedOfflineBanner style={styles.offlineBannerWrap} />
       <View
@@ -412,12 +402,11 @@ export default function ProfileScreen() {
         <LeaderboardMembership />
       </View>
       {body}
-    </View>
+    </ScreenFrame>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   offlineBannerWrap: { marginHorizontal: 16, marginTop: 12 },
   displayNameCard: {
     marginHorizontal: 16,

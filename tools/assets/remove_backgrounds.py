@@ -49,7 +49,7 @@ HARD_THRESHOLD = 25  # pixels closer than this to background → fully transpare
 SOFT_THRESHOLD = 80  # pixels beyond this from background → fully opaque
 
 # Circular-mask parameters (used for celestial-icons)
-CIRCLE_RADIUS_FACTOR = 0.48   # planet radius as fraction of min(w,h)
+CIRCLE_RADIUS_FACTOR = 0.48  # planet radius as fraction of min(w,h)
 CIRCLE_FEATHER_FACTOR = 0.01  # soft-edge width as fraction of min(w,h)
 
 # Tighter colour-distance thresholds for celestial icons (two-pass mode).
@@ -83,7 +83,10 @@ DEFAULT_PIPELINE: list[tuple[Path, Path, str]] = [
 # Core algorithm (operates on raw RGBA pixel lists for testability)
 # ---------------------------------------------------------------------------
 
-def _sample_background(pixels: list[tuple[int, int, int, int]], width: int, height: int) -> list[tuple[float, float, float]]:
+
+def _sample_background(
+    pixels: list[tuple[int, int, int, int]], width: int, height: int
+) -> list[tuple[float, float, float]]:
     """
     Return one average RGB colour per corner (top-left, top-right, bottom-left,
     bottom-right), each averaged over a 3×3 pixel sample region.
@@ -108,7 +111,9 @@ def _sample_background(pixels: list[tuple[int, int, int, int]], width: int, heig
     return result
 
 
-def _is_already_transparent(pixels: list[tuple[int, int, int, int]], width: int, height: int) -> bool:
+def _is_already_transparent(
+    pixels: list[tuple[int, int, int, int]], width: int, height: int
+) -> bool:
     """Return True if any corner pixel already has alpha < 200 (already processed)."""
     sample_size = min(3, width, height)
     for row_start in (0, height - sample_size):
@@ -201,7 +206,7 @@ def remove_background(
             result.append((0, 0, 0, 0))
         elif dist < soft_threshold:
             t = (dist - hard_threshold) / soft_range
-            new_a = int(round(a * t))
+            new_a = round(a * t)
             if new_a == 0:
                 result.append((0, 0, 0, 0))
             else:
@@ -214,6 +219,7 @@ def remove_background(
 # ---------------------------------------------------------------------------
 # File I/O helpers
 # ---------------------------------------------------------------------------
+
 
 def _load_rgba(path: Path) -> tuple[list[tuple[int, int, int, int]], int, int]:
     """Load a PNG as RGBA pixel list using Pillow."""
@@ -228,7 +234,9 @@ def _load_rgba(path: Path) -> tuple[list[tuple[int, int, int, int]], int, int]:
     return raw, width, height
 
 
-def _save_rgba(path: Path, pixels: list[tuple[int, int, int, int]], width: int, height: int) -> None:
+def _save_rgba(
+    path: Path, pixels: list[tuple[int, int, int, int]], width: int, height: int
+) -> None:
     """Save pixel list back to PNG via Pillow."""
     from PIL import Image  # type: ignore
 
@@ -241,7 +249,10 @@ def _save_rgba(path: Path, pixels: list[tuple[int, int, int, int]], width: int, 
 # File-level processing
 # ---------------------------------------------------------------------------
 
-def process_file(path: Path, mode: str = "color", out_path: Path | None = None) -> str:
+
+def process_file(  # noqa: PLR0912 - one linear per-mode pipeline; splitting adds no clarity
+    path: Path, mode: str = "color", out_path: Path | None = None
+) -> str:
     """
     Process a single PNG file and write the result to out_path (default: in-place).
 
@@ -283,15 +294,14 @@ def process_file(path: Path, mode: str = "color", out_path: Path | None = None) 
                 hard, soft = HARD_THRESHOLD, SOFT_THRESHOLD
 
             colour_dist = min(
-                math.sqrt((r - br) ** 2 + (g - bg) ** 2 + (b - bb) ** 2)
-                for br, bg, bb in bg_refs
+                math.sqrt((r - br) ** 2 + (g - bg) ** 2 + (b - bb) ** 2) for br, bg, bb in bg_refs
             )
             soft_range = soft - hard
             if colour_dist < hard:
                 processed.append((0, 0, 0, 0))
             elif colour_dist < soft:
                 t = (colour_dist - hard) / soft_range
-                new_a = int(round(a * t))
+                new_a = round(a * t)
                 if new_a == 0:
                     processed.append((0, 0, 0, 0))
                 else:
@@ -308,7 +318,9 @@ def process_file(path: Path, mode: str = "color", out_path: Path | None = None) 
             return f"{path.name} — skipped (already transparent)"
         processed = remove_background(pixels, width, height)
 
-    cleared = sum(1 for orig, new in zip(pixels, processed) if orig[3] > 0 and new[3] == 0)
+    cleared = sum(
+        1 for orig, new in zip(pixels, processed, strict=False) if orig[3] > 0 and new[3] == 0
+    )
     pct = cleared / (width * height) * 100
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -340,6 +352,7 @@ def process_path(target: Path, mode: str = "color", out_dir: Path | None = None)
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     """
     Usage
@@ -368,7 +381,10 @@ def main() -> None:
             out_dir = Path(args[idx + 1])
             args = [a for i, a in enumerate(args) if i not in (idx, idx + 1)]
         if not args:
-            print("Usage: remove_backgrounds.py <path> [--mode color|circle] [--out <dir>]", file=sys.stderr)
+            print(
+                "Usage: remove_backgrounds.py <path> [--mode color|circle] [--out <dir>]",
+                file=sys.stderr,
+            )
             sys.exit(1)
         targets = [(Path(a), mode, out_dir) for a in args]
     else:

@@ -8,13 +8,13 @@ import {
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { GameLeaderboardEntry } from "../api/stats";
 import { formatBoardValue } from "../api/outcomeDisplay";
 import type { BoardDefinition, GameType } from "../api/vocab";
-import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
+import { AppHeader } from "../components/shared/AppHeader";
+import { ScreenFrame } from "../components/shared/ScreenFrame";
 import { EmptyState } from "../components/shared/EmptyState";
 import {
   initialPartition,
@@ -67,26 +67,15 @@ export default function LeaderboardScreen({ route, navigation }: LeaderboardScre
 
 function NoBoard({ navigation }: Pick<LeaderboardScreenProps, "navigation">) {
   const { t } = useTranslation(["leaderboard", "common"]);
-  const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.background,
-          paddingTop: APP_HEADER_HEIGHT + insets.top,
-          paddingBottom: Math.max(insets.bottom, 16),
-        },
-      ]}
-    >
+    <ScreenFrame>
       <AppHeader
         title={t("common:overflow.menu.leaderboard")}
         onBack={() => navigation.goBack()}
         requireBack
       />
       <EmptyState kind="empty" message={t("leaderboard:unavailable")} />
-    </View>
+    </ScreenFrame>
   );
 }
 
@@ -102,22 +91,12 @@ function GameLeaderboard({
   // labels are in it), not every game's bundle.
   const { t } = useTranslation(["leaderboard", gameType]);
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
 
   const game = gameTitle(t, gameType);
   const title = t("leaderboard:title", { game });
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.background,
-          paddingTop: APP_HEADER_HEIGHT + insets.top,
-          paddingBottom: Math.max(insets.bottom, 16),
-        },
-      ]}
-    >
+    <ScreenFrame>
       <AppHeader
         title={title}
         onBack={() => navigation.goBack()}
@@ -139,7 +118,7 @@ function GameLeaderboard({
       ) : (
         <EmptyState kind="empty" message={t("leaderboard:unavailable")} />
       )}
-    </View>
+    </ScreenFrame>
   );
 }
 
@@ -470,7 +449,6 @@ function EntryRow({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   pickers: { paddingTop: 8, gap: 6 },
   pickerRow: { gap: 4 },
   pickerLabel: {

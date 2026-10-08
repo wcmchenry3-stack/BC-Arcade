@@ -88,6 +88,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
       title={t("stats.title")}
       requireBack
       onBack={() => navigation.goBack()}
+      gutter={null}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>

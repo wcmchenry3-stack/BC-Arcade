@@ -58,6 +58,7 @@ DEFAULT_TARGETS = [
 # Core algorithm (pure functions — no file I/O — tested independently)
 # ---------------------------------------------------------------------------
 
+
 def _opaque_pixels(
     pixels: list[tuple[int, int, int, int]],
     width: int,
@@ -278,6 +279,7 @@ def extract_hull(
 # File I/O helpers
 # ---------------------------------------------------------------------------
 
+
 def _load_rgba(path: Path) -> tuple[list[tuple[int, int, int, int]], int, int]:
     """Load a PNG as an RGBA flat pixel list via Pillow."""
     try:
@@ -304,6 +306,7 @@ def _load_rgba(path: Path) -> tuple[list[tuple[int, int, int, int]], int, int]:
 # ---------------------------------------------------------------------------
 # Directory and file processing
 # ---------------------------------------------------------------------------
+
 
 def process_directory(
     png_dir: Path,
@@ -345,17 +348,20 @@ def process_single_file(path: Path) -> None:
     """Process a single PNG and print the vertex JSON to stdout."""
     pixels, width, height = _load_rgba(path)
     data = extract_hull(pixels, width, height)
-    result = {path.stem: {
-        "verts": [[round(x, 6), round(y, 6)] for x, y in data["verts"]],
-        "spriteOffset": data["spriteOffset"],
-        "spriteScale": data["spriteScale"],
-    }}
+    result = {
+        path.stem: {
+            "verts": [[round(x, 6), round(y, 6)] for x, y in data["verts"]],
+            "spriteOffset": data["spriteOffset"],
+            "spriteScale": data["spriteScale"],
+        }
+    }
     print(json.dumps(result, indent=2))
 
 
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     if len(sys.argv) > 1:

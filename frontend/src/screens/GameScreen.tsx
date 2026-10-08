@@ -24,8 +24,6 @@ import { isPremiumLevel } from "../entitlements/premiumLevels";
 import { useYachtScorecard } from "../game/yacht/ScorecardContext";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useGameEvents } from "../game/_shared/useGameEvents";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { useSound } from "../game/_shared/useSound";
 import { YACHT_SOUNDS } from "../game/yacht/sounds";
 import * as Sentry from "@sentry/react-native";
@@ -33,6 +31,7 @@ import DiceRow from "../components/DiceRow";
 import Scorecard from "../components/Scorecard";
 import VsScorecard from "../components/yacht/VsScorecard";
 import GameResultModal, { type GameOutcome } from "../components/shared/GameResultModal";
+import { toSubmission } from "../components/shared/toSubmission";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { buildEndedPayload } from "../game/yacht/resultPayload";
 import YachtFinalScorecard from "../components/yacht/YachtFinalScorecard";
@@ -44,7 +43,7 @@ import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
 import { ModalCard } from "../components/shared/ModalCard";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { PillButton } from "../components/shared/PillButton";
 
 function delay(ms: number): Promise<void> {
@@ -55,9 +54,6 @@ type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "Game">;
   route: RouteProp<HomeStackParamList, "Game">;
 };
-
-/** Solo and vs games rank on Yacht's one session board (#2630). */
-const yachtBoard = sessionBoardAdapter("yacht");
 
 /**
  * The session's creation metadata (#2630): the mode, and in vs mode the
@@ -183,10 +179,9 @@ export default function GameScreen({ navigation, route }: Props) {
 
   // Result card leaderboard line (#2630): the finished session row ranks on
   // its own; the card only asks where it landed.
-  const leaderboard = useLeaderboardSubmit(yachtBoard);
+  // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("yacht", navigation);
   const { submit: submitRank, reset: resetRank } = leaderboard;
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openLeaderboard = useLeaderboardLink(navigation, "yacht");
   // The finished game's session id, captured when the player's game ends —
   // complete() clears the hook's id, and in vs mode (or on a background during
   // the CPU's last turn) it runs before the card shows. Saved with the game,
@@ -674,14 +669,12 @@ export default function GameScreen({ navigation, route }: Props) {
       title={t("game.title")}
       rightSlot={roundPill}
       requireBack
-      onBack={() => navigation.popToTop()}
       onNewGame={startNewGame}
       onOpenLeaderboard={openLeaderboard}
       error={error}
+      gutter={16}
       style={{
         paddingBottom: Math.max(insets.bottom, 16),
-        paddingLeft: Math.max(insets.left, 16),
-        paddingRight: Math.max(insets.right, 16),
       }}
     >
       {/* New Game */}
@@ -815,14 +808,7 @@ export default function GameScreen({ navigation, route }: Props) {
               }
             : undefined
         }
-        submission={{
-          status: leaderboard.status,
-          rank: leaderboard.rank,
-          isBest: leaderboard.isBest,
-          playerName: leaderboard.playerName,
-          onJoinLeaderboards: leaderboard.joinLeaderboards,
-          onRetry: leaderboard.retry,
-        }}
+        submission={toSubmission(leaderboard)}
         onViewLeaderboard={openLeaderboard}
         onHome={() => navigation.popToTop()}
         testID="yacht-result"

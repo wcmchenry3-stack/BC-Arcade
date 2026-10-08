@@ -6,15 +6,13 @@ real assets. Follows the same pattern as remove_backgrounds_test.py.
 """
 
 import sys
-from io import BytesIO
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from convert_icons_to_webp import convert_directory  # noqa: E402
-
+from convert_icons_to_webp import convert_directory
 
 # ---------------------------------------------------------------------------
 # Helpers

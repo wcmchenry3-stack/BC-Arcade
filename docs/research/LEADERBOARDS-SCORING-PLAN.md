@@ -88,7 +88,7 @@ No `_top_scores` query filters on `session_id`, so A and B rows mix on the same 
 
 ### 3.4 Stats
 
-- `/stats/me` per game returns `played` (includes abandons), `best`/`avg` (max/mean of `final_score`, wrong for ↓ games, null for Blackjack/FreeCell/Daily Word), `last_played_at`, plus hard-coded Blackjack columns. `completed_played` is computed in `games/service.py:279` but **dropped** from the response, so no client can compute an abandon rate.
+- `/stats/me` per game returns `played` (includes abandons), `best`/`avg` (max/mean of `final_score`, wrong for ↓ games, null for Blackjack/FreeCell/Daily Word), `last_played_at`, plus hard-coded Blackjack columns. `completed_played` is computed in `games/stats.py` but **dropped** from the response, so no client can compute an abandon rate.
 - Sort and Star Swarm have no session rows, so they never appear in `/stats/me` or `/games/me` (#2216 filed for Star Swarm; Sort has the same defect).
 - "Games played" has at least four definitions on device: server rows; FreeCell increments on start; Twenty48 increments on load; Cascade uses an in-memory ref that resets each mount. The Scoreboard overflow shows the local number, Profile shows the server number.
 

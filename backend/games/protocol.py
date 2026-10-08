@@ -2,7 +2,7 @@
 
 Every game module subclasses ``games.module_base.GameModuleBase`` (#2995),
 which supplies the defaults of the optional hooks; this Protocol is the
-structural type the shared code (``games/service.py``,
+structural type the shared code (``games/sessions.py``, ``games/stats.py``,
 ``games/leaderboard.py``) is written against, and CI asserts
 ``isinstance(module, GameModule)`` for every registered module.
 
@@ -85,7 +85,7 @@ class GameModule(Protocol):
     -------
     stats_shape(raw_stats):
         Transform a raw aggregate stats dict (produced by
-        ``games/service.py``) into the final shape for the ``/stats/me``
+        ``games/stats.py``) into the final shape for the ``/stats/me``
         API response.
 
         ``raw_stats`` keys

@@ -38,6 +38,7 @@ export default function MahjongLayoutInspectorScreen() {
       title="Layout Inspector"
       requireBack
       onBack={() => navigation.goBack()}
+      gutter={null}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >
       <FlatList

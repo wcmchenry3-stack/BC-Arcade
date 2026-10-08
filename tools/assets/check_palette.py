@@ -10,17 +10,22 @@ Both palettes must satisfy:
   • ΔE₂₀₀₀ ≥ 20 for all 91 pairwise combinations
   • The same 14 color keys (sync check)
 
-Usage:
+Usage (from the repo root; deps in tools/assets/requirements.txt):
   python3 tools/assets/check_palette.py
+
+Manual tool - no CI job runs it. Run it whenever the Sort colours change
+(frontend/src/theme/theme.bottle.ts), after mirroring them into PROPOSED below.
+Exit code 0 only when every PROPOSED theme passes; CURRENT is a frozen
+pre-fix snapshot and is expected to show failures. See tools/README.md.
 
 To add a new theme, add an entry to PALETTES below and add its
 background hex to BG_PER_THEME.  No other changes needed.
 """
 
 import sys
-import warnings
-import numpy as np
+
 import colour
+import numpy as np
 
 DELTA_E_MIN = 20.0
 CONTRAST_MIN = 3.0
@@ -29,8 +34,8 @@ CONTRAST_MIN = 3.0
 # Background per theme — extend here when adding new themes
 # ---------------------------------------------------------------------------
 BG_PER_THEME: dict[str, str] = {
-    "dark":  "#0e0e13",   # ThemeContext.tsx TOKENS.darkBg
-    "light": "#f5ecd7",   # ThemeContext.tsx TOKENS.lightBg
+    "dark": "#0e0e13",  # ThemeContext.tsx TOKENS.darkBg
+    "light": "#f5ecd7",  # ThemeContext.tsx TOKENS.lightBg
 }
 
 # ---------------------------------------------------------------------------
@@ -40,37 +45,37 @@ BG_PER_THEME: dict[str, str] = {
 CURRENT: dict[str, dict[str, str]] = {
     "dark": {
         # Mirrors frontend/src/theme/theme.bottle.ts BOTTLE_LIQUID_COLORS
-        "red":    "#ff716c",
-        "blue":   "#5b8cff",
-        "green":  "#4ade80",
+        "red": "#ff716c",
+        "blue": "#5b8cff",
+        "green": "#4ade80",
         "yellow": "#ffae3b",
         "orange": "#ff9f3b",
         "purple": "#d674ff",
-        "pink":   "#ff5fa8",
-        "teal":   "#8ff5ff",
-        "brown":  "#b45309",
-        "lime":   "#a3e635",
-        "navy":   "#3b5bdb",
+        "pink": "#ff5fa8",
+        "teal": "#8ff5ff",
+        "brown": "#b45309",
+        "lime": "#a3e635",
+        "navy": "#3b5bdb",
         "maroon": "#c2255c",
-        "gold":   "#f59e0b",
+        "gold": "#f59e0b",
         "indigo": "#818cf8",
     },
     "light": {
         # Pre-PR state: light palette did not exist; dark palette was used as a placeholder.
         # This section documents what was failing — not a valid light-mode palette.
-        "red":    "#ff716c",
-        "blue":   "#5b8cff",
-        "green":  "#4ade80",
+        "red": "#ff716c",
+        "blue": "#5b8cff",
+        "green": "#4ade80",
         "yellow": "#ffae3b",
         "orange": "#ff9f3b",
         "purple": "#d674ff",
-        "pink":   "#ff5fa8",
-        "teal":   "#8ff5ff",
-        "brown":  "#b45309",
-        "lime":   "#a3e635",
-        "navy":   "#3b5bdb",
+        "pink": "#ff5fa8",
+        "teal": "#8ff5ff",
+        "brown": "#b45309",
+        "lime": "#a3e635",
+        "navy": "#3b5bdb",
         "maroon": "#c2255c",
-        "gold":   "#f59e0b",
+        "gold": "#f59e0b",
         "indigo": "#818cf8",
     },
 }
@@ -83,19 +88,19 @@ PROPOSED: dict[str, dict[str, str]] = {
     # Alternating BRIGHT/DARK tiers along each hue chain so every adjacent
     # pair has ΔL*≥25.  ΔE₂₀₀₀ ≥ 20 for all 91 pairs, contrast ≥ 3:1 on #0e0e13.
     "dark": {
-        "red":    "#ff7777",  # BRIGHT H= 26°  L*=66
+        "red": "#ff7777",  # BRIGHT H= 26°  L*=66
         "orange": "#ff8800",  # BRIGHT H= 63°  L*=69
-        "brown":  "#aa5533",  # DARK   H= 48°  L*=46
-        "gold":   "#886600",  # DARK   H= 84°  L*=45
+        "brown": "#aa5533",  # DARK   H= 48°  L*=46
+        "gold": "#886600",  # DARK   H= 84°  L*=45
         "yellow": "#ffee00",  # BRIGHT H= 98°  L*=93
-        "lime":   "#66ff00",  # BRIGHT H=131°  L*=89
-        "green":  "#008844",  # DARK   H=150°  L*=50
-        "teal":   "#00ddcc",  # BRIGHT H=185°  L*=80
-        "navy":   "#22aadd",  # BRIGHT H=244°  L*=65
-        "blue":   "#3366dd",  # DARK   H=291°  L*=46
+        "lime": "#66ff00",  # BRIGHT H=131°  L*=89
+        "green": "#008844",  # DARK   H=150°  L*=50
+        "teal": "#00ddcc",  # BRIGHT H=185°  L*=80
+        "navy": "#22aadd",  # BRIGHT H=244°  L*=65
+        "blue": "#3366dd",  # DARK   H=291°  L*=46
         "indigo": "#cc99ff",  # BRIGHT H=311°  L*=71
         "purple": "#aa00dd",  # DARK   H=320°  L*=44
-        "pink":   "#ff33bb",  # BRIGHT H=344°  L*=59
+        "pink": "#ff33bb",  # BRIGHT H=344°  L*=59
         "maroon": "#cc0055",  # DARK   H= 10°  L*=44
     },
     # ── LIGHT theme ────────────────────────────────────────────────────
@@ -105,21 +110,21 @@ PROPOSED: dict[str, dict[str, str]] = {
     "light": {
         # Warm chain: maroon·red·brown·orange·gold·yellow
         "maroon": "#770033",  # H=  7°  L*=24  C*=48
-        "red":    "#dd0033",  # H= 28°  L*=46  C*=82
-        "brown":  "#662200",  # H= 50°  L*=24  C*=45
+        "red": "#dd0033",  # H= 28°  L*=46  C*=82
+        "brown": "#662200",  # H= 50°  L*=24  C*=45
         "orange": "#bb5500",  # H= 57°  L*=48  C*=69
-        "gold":   "#554400",  # H= 89°  L*=30  C*=39
+        "gold": "#554400",  # H= 89°  L*=30  C*=39
         "yellow": "#998800",  # H= 95°  L*=56  C*=61
         # Green chain: lime·green·teal
-        "lime":   "#336600",  # H=127°  L*=38  C*=55
-        "green":  "#009977",  # H=169°  L*=56  C*=44
-        "teal":   "#004444",  # H=196°  L*=25  C*=19
+        "lime": "#336600",  # H=127°  L*=38  C*=55
+        "green": "#009977",  # H=169°  L*=56  C*=44
+        "teal": "#004444",  # H=196°  L*=25  C*=19
         # Blue chain: navy·blue·indigo·purple·pink
-        "navy":   "#228899",  # H=218°  L*=52  C*=28
-        "blue":   "#1166aa",  # H=273°  L*=42  C*=43
+        "navy": "#228899",  # H=218°  L*=52  C*=28
+        "blue": "#1166aa",  # H=273°  L*=42  C*=43
         "indigo": "#8866ee",  # H=305°  L*=53  C*=78
         "purple": "#6611aa",  # H=314°  L*=30  C*=87
-        "pink":   "#cc0088",  # H=348°  L*=45  C*=76
+        "pink": "#cc0088",  # H=348°  L*=45  C*=76
     },
 }
 
@@ -127,9 +132,10 @@ PROPOSED: dict[str, dict[str, str]] = {
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def hex_to_srgb(h: str) -> np.ndarray:
     h = h.lstrip("#")
-    return np.array([int(h[i:i+2], 16) / 255.0 for i in (0, 2, 4)])
+    return np.array([int(h[i : i + 2], 16) / 255.0 for i in (0, 2, 4)])
 
 
 def srgb_to_linear(c: float) -> float:
@@ -150,7 +156,7 @@ def wcag_contrast(hex_fg: str, hex_bg: str) -> float:
 
 def hex_to_lab(h: str) -> np.ndarray:
     srgb = hex_to_srgb(h)
-    xyz  = colour.sRGB_to_XYZ(srgb)
+    xyz = colour.sRGB_to_XYZ(srgb)
     return colour.XYZ_to_Lab(xyz)
 
 
@@ -162,8 +168,9 @@ def delta_e(h1: str, h2: str) -> float:
 # Check
 # ---------------------------------------------------------------------------
 
+
 def check_theme_palette(palette: dict[str, str], bg: str, label: str) -> bool:
-    names  = list(palette.keys())
+    names = list(palette.keys())
     colors = list(palette.values())
     n = len(names)
 
@@ -180,7 +187,9 @@ def check_theme_palette(palette: dict[str, str], bg: str, label: str) -> bool:
                 de_failures.append((names[i], names[j], de))
     de_failures.sort(key=lambda x: x[2])
 
-    print(f"\n[ΔE₂₀₀₀] {'PASS ✓' if not de_failures else 'FAIL ✗'} — {len(de_failures)} pair(s) below {DELTA_E_MIN}")
+    print(
+        f"\n[ΔE₂₀₀₀] {'PASS ✓' if not de_failures else 'FAIL ✗'} — {len(de_failures)} pair(s) below {DELTA_E_MIN}"
+    )
     if de_failures:
         print(f"  {'Pair':<24} {'ΔE':>6}")
         print(f"  {'-'*32}")
@@ -195,7 +204,9 @@ def check_theme_palette(palette: dict[str, str], bg: str, label: str) -> bool:
             contrast_failures.append((name, hex_c, cr))
     contrast_failures.sort(key=lambda x: x[2])
 
-    print(f"\n[Contrast vs {bg}] {'PASS ✓' if not contrast_failures else 'FAIL ✗'} — {len(contrast_failures)} color(s) below {CONTRAST_MIN}:1")
+    print(
+        f"\n[Contrast vs {bg}] {'PASS ✓' if not contrast_failures else 'FAIL ✗'} — {len(contrast_failures)} color(s) below {CONTRAST_MIN}:1"
+    )
     if contrast_failures:
         print(f"  {'Color':<10} {'Hex':<10} {'Contrast':>8}")
         print(f"  {'-'*30}")
@@ -213,10 +224,12 @@ def check_sync(palettes: dict[str, dict[str, str]]) -> bool:
     ok = True
     for t in themes[1:]:
         missing = ref_keys - set(palettes[t].keys())
-        extra   = set(palettes[t].keys()) - ref_keys
+        extra = set(palettes[t].keys()) - ref_keys
         if missing or extra:
-            print(f"\n[SYNC] FAIL ✗ — theme '{t}' vs '{themes[0]}': "
-                  f"missing={missing}, extra={extra}")
+            print(
+                f"\n[SYNC] FAIL ✗ — theme '{t}' vs '{themes[0]}': "
+                f"missing={missing}, extra={extra}"
+            )
             ok = False
     if ok:
         print(f"\n[SYNC] PASS ✓ — all themes have the same {len(ref_keys)} color keys")

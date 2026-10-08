@@ -51,13 +51,20 @@ different trust model and is treated separately.
 The backend is a **shared reporting/persistence service**, not twelve separate
 game servers.
 
-`backend/main.py` creates the FastAPI application and mounts a small set of
-shared product routers plus the few game-specific services that genuinely need
-server behavior.
+`backend/main.py` holds `create_app()`, which builds the FastAPI application and
+mounts a small set of shared product routers plus the few game-specific services
+that genuinely need server behavior; `app = create_app()` is the `main:app`
+entrypoint Render runs. It also owns the lifespan (background jobs), the
+app-level exception handlers, CORS and the middleware order. Process-wide setup
+lives beside it (#2993): `backend/observability/` (Sentry options, scrub lists,
+`init_sentry()`; logging setup), `backend/middleware/` (`headers_and_log.py`,
+one pure-ASGI layer for the security headers and the JSON request log, outermost;
+`body_size.py`, the per-path body caps, innermost) and `backend/routes/`
+(`/health`, `/health/db`, the test-only `/debug/error`).
 
 | Area                      | Location                   | Responsibility                                                                                                     |
 | ------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Shared game sessions      | `backend/games/`           | Create/complete games, append events, ranking, board definitions, progression helpers, shared schemas              |
+| Shared game sessions      | `backend/games/`           | Create/complete games, append events, ranking, board definitions, progression helpers, shared schemas (modules below) |
 | Game vocabulary           | `backend/vocab.py`         | Canonical `GameType` and `GameOutcome` vocabulary                                                                  |
 | Database                  | `backend/db/`              | SQLAlchemy engine/session setup and persisted models                                                               |
 | Schema migrations         | `backend/alembic/`         | The only production schema-evolution path                                                                          |
@@ -70,6 +77,18 @@ server behavior.
 | Delete-my-data            | `backend/me/`              | Player/session data deletion                                                                                       |
 | Bottle Sort level service | `backend/sort/`            | Generated/verified level sets                                                                                      |
 | Per-game descriptors      | `backend/<game>/module.py` | `GameModule` metadata/result models, winner semantics, board definition and Stats shaping—not a second rule engine |
+
+The `backend/games/` service layer is split by job (#2991; the former
+`games/service.py` is gone, nothing re-exports it):
+
+| Module                   | Responsibility                                                                                            |
+| ------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `games/sessions.py`      | Session writes: `create_game`, `append_events`, `complete_game` and result validation; `GameServiceError` |
+| `games/sweep.py`         | Stale-session sweep (`sweep_stale_games`, `sweep_stale_games_safely`, `STALE_GAME_AFTER`)                 |
+| `games/stats.py`         | `/stats/me` aggregation: `get_stats_for_session`, `GameTypeStats`, `StatsSummary`, `win_streaks`          |
+| `games/stats_columns.py` | SQL column helpers for the comparable per-game stats (best-value candidate, time played, W/L/T)           |
+| `games/history.py`       | Read side of `GET /games/me` and `GET /games/{id}`: `list_games_for_session`, `get_game_detail`           |
+| `games/catalog.py`       | `GET /games/catalog` and the admin tier edit `patch_game_type` (invalidates the catalog cache)            |
 
 Most per-game backend directories are **descriptors**, not gameplay services.
 A normal single-player game's rules stay in the TypeScript engine on the
@@ -225,6 +244,38 @@ alone therefore does not reproduce a Star Swarm run; the golden replay test
 stubs `Math.random` as well. Moving those draws onto the seeded source would
 change Star Swarm's gameplay sequence and needs its own golden re-record.
 
+### 3.3 Shared engine modules (#2986)
+
+Rule-agnostic engine pieces live once under `frontend/src/game/_shared/` and
+are headless and pure like the engines that import them:
+
+| Module                         | Exports                                                                                              | Used by                                                  |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `_shared/seededRng.ts`         | `createSeededRng`, `createRngSlot`, `RandomSource` (§3.2)                                            | every seeded engine                                      |
+| `_shared/cards/types.ts`       | `Suit`, `Rank`, `SUITS`, `RANKS`, `PlayingCard {suit, rank}`, `cardColor`                            | Solitaire, FreeCell, Hearts                              |
+| `_shared/cards/deck.ts`        | `createDeck()` (ordered 52), `fisherYates(deck, rng)`                                                | Solitaire, FreeCell, Hearts                              |
+| `_shared/cards/foundations.ts` | `Foundations<C>`, `emptyFoundations`, `withFoundation`, `isWin(f, deckSize)`, `canStackOnFoundation` | Solitaire, FreeCell                                      |
+| `_shared/undoStack.ts`         | `UNDO_CAP` (50), `pushCapped(stack, entry, cap)`, `withUndo(prev, next, cap)`                        | Solitaire, FreeCell (`withUndo`), Mahjong (`pushCapped`) |
+
+- Each game's `types.ts` re-exports the shared card names, so `Card`, `Suit`,
+  `Foundations` and `cardColor` still import from `game/<name>/types`. A game
+  extends `PlayingCard` for its own state: Solitaire's `Card` is
+  `PlayingCard & { faceUp: boolean }`; FreeCell's and Hearts' are
+  `PlayingCard`. The saved card shape (`{suit, rank[, faceUp]}`, in that key
+  order) is unchanged.
+- `fisherYates` always takes the RNG as an argument; engines pass a
+  `createSeededRng(seed)` or their own slot's `rng`. There is no shared RNG
+  slot. The deck order and draw order are part of every seeded deal (and are
+  mirrored by `backend/scripts/gen_*_seeds.py`), so changing either is a
+  behaviour change that breaks the `seeds.json` parity tests.
+- `withUndo` stores whole-state snapshots (the snapshot's own `undoStack`
+  emptied so they never nest) and appends `undoStack` after `next`'s fields.
+  Solitaire wraps it to drop one-shot `events` and carry the live clock.
+  Mahjong keeps its delta entries (#2961) and only shares the capped push.
+- Game rules stay in the game: `validateMove`, `applyMove`, tableau stacking,
+  hints and auto-complete are not shared. Blackjack's cards (`rank: string`,
+  suit glyphs) are a different domain and do not use `_shared/cards`.
+
 ## 4. Persistence and offline contract
 
 **One write path.** Every game records its sessions the same way, and **no
@@ -296,7 +347,7 @@ replays saves recorded from the pre-#2987 modules).
 
 - `createJsonSlot` — the saved game. `load` resolves null when nothing usable
   is stored. A payload that can't be read or parsed, or whose loading throws,
-  is removed and reported as a Sentry *warning* (`captureMessage`): the
+  is removed and reported as a Sentry _warning_ (`captureMessage`): the
   screen recovers by starting fresh. A payload that parses but fails the
   game's check is removed silently (Blackjack, 2048, Yacht and Daily Word
   leave it stored instead; Hearts and Sudoku report it). Save and clear
@@ -337,7 +388,7 @@ typed on the device before #2624 that the server was never sent becomes a
 join, once. "Get a new name" is online only.
 
 **Safe replays (idempotency).** Retries are the normal case, so every write
-the app makes is safe to repeat (`backend/games/service.py` module docstring):
+the app makes is safe to repeat (`backend/games/sessions.py` module docstring):
 `POST /games` dedupes on the client game id (`create_game`); events dedupe on
 `(game_id, event_index)` (`INSERT … ON CONFLICT DO NOTHING`); a completed game
 can't be completed again — the first completion wins and a replayed
@@ -500,7 +551,7 @@ fallback for devices that never report back.
 
 **Stale-session sweep (#2621, #2519 decisions 9 and 15).** A row still open
 24 h after `started_at` was left by a killed app that never reported back.
-`sweep_stale_games` (`backend/games/service.py`) closes the caller's own such
+`sweep_stale_games` (`backend/games/sweep.py`) closes the caller's own such
 rows as `abandoned` — `completed_at = started_at + 24 h`, `duration_ms` left
 NULL, `metadata.swept = true` — in one UPDATE. It runs **on read, per player**,
 at the start of `GET /stats/me` and on the first page of `GET /games/me` (no
@@ -913,7 +964,7 @@ in their runbooks.
 | **GitHub**                                 | Source, PR review, Actions/CI, dependency/security automation and repository history | Development/release automation stops; already-installed apps continue to run                                                    | Root workflows + testing/build docs                                                    |
 | **Render**                                 | Dev/prod FastAPI services and secondary Expo Web sites; dev Postgres                 | Server reads/sync/entitlement/daily services are unavailable; offline-capable single-player continues locally and queues writes | [RENDER.md](RENDER.md)                                                                 |
 | **Supabase**                               | Production PostgreSQL only, through the session pooler                               | Production server features that require DB access fail; local single-player can continue until sync/read services are needed    | [RENDER.md](RENDER.md)                                                                 |
-| **Sentry**                                 | Native app + backend crashes/errors/performance and in-app User Feedback             | Diagnostics/feedback visibility is reduced; gameplay should continue                                                            | `sentryConfig.ts`, backend `main.py`; canonical feedback/observability doc under #2805 |
+| **Sentry**                                 | Native app + backend crashes/errors/performance and in-app User Feedback             | Diagnostics/feedback visibility is reduced; gameplay should continue                                                            | `sentryConfig.ts`, backend `observability/sentry.py`; canonical feedback/observability doc under #2805 |
 | **Cloudflare**                             | DNS/TLS/network routing for BC Arcade domains                                        | Custom domains/routing may fail even when Render services are healthy                                                           | Render/domain configuration                                                            |
 | **Apple/Xcode Cloud/App Store Connect**    | iOS build/sign/test/distribution toolchain                                           | New iOS builds/releases stop; installed builds are unaffected                                                                   | [IOS.md](IOS.md)                                                                       |
 | **Google Play / Gradle signing toolchain** | Android build/sign/test/distribution                                                 | New Android releases stop; installed builds are unaffected                                                                      | [ANDROID-CI.md](ANDROID-CI.md)                                                         |

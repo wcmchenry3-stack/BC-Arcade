@@ -1,6 +1,5 @@
 import React from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -16,7 +15,8 @@ import {
 } from "../api/statsDisplay";
 import type { GameTypeStats } from "../api/types";
 import type { GameType } from "../api/vocab";
-import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
+import { AppHeader } from "../components/shared/AppHeader";
+import { ScreenFrame } from "../components/shared/ScreenFrame";
 import { EmptyState } from "../components/shared/EmptyState";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import { isGameVisible } from "../entitlements/gameVisibility";
@@ -113,7 +113,6 @@ export default function GameStatsScreen({ route, navigation }: GameStatsScreenPr
   // game's title.
   const { t } = useTranslation(["stats", "profile", gameType]);
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const { status, stats, stale, refreshing, retry, refresh } = useMyStats();
   const openLeaderboard = useLeaderboardLink(navigation, gameType);
   const openRunHistory = hasRunHistory(gameType)
@@ -214,16 +213,7 @@ export default function GameStatsScreen({ route, navigation }: GameStatsScreenPr
   }
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.background,
-          paddingTop: APP_HEADER_HEIGHT + insets.top,
-          paddingBottom: Math.max(insets.bottom, 16),
-        },
-      ]}
-    >
+    <ScreenFrame>
       <AppHeader
         title={t("stats:title", { game })}
         requireBack
@@ -232,7 +222,7 @@ export default function GameStatsScreen({ route, navigation }: GameStatsScreenPr
       />
       <ConnectedOfflineBanner style={styles.offlineBanner} />
       {body}
-    </View>
+    </ScreenFrame>
   );
 }
 
@@ -276,7 +266,6 @@ function StatsLink({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   offlineBanner: { marginHorizontal: 16, marginTop: 12 },
   scroll: { padding: 12, paddingBottom: 32, gap: 12 },
   note: {

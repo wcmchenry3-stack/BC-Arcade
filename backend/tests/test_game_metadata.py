@@ -343,7 +343,7 @@ async def test_post_games_valid_cascade_metadata_accepted(client) -> None:
 
 from datetime import UTC, timedelta
 
-from games.service import _validate_client_timestamp
+from games.sessions import _validate_client_timestamp
 
 
 def _now():

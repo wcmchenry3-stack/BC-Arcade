@@ -38,7 +38,7 @@ The purpose of this index is to make one thing clear: **which document is the so
 | What is the current release plan? | [RELEASE-PLAN-2026-10.md](RELEASE-PLAN-2026-10.md) |
 | What should I use for old leaderboard design rationale? | [animation-lab.html](research/animation-lab.html) | Dev-only animation/sound preview page (serve from the repo root; see its header) |
 | [asset-preview.html](research/asset-preview.html) | Dev-only Cascade asset inspector and physics sandbox (serve from the repo root; see its header) |
-| [../tools/README.md](../tools/README.md) | Dev tooling index: simulators, generators, asset pipeline, and the Hearts analysis app (`tools/hearts-analysis/`) |
+| [../tools/README.md](../tools/README.md) | Dev tooling index: simulators, generators, asset pipeline, and the Sort palette check |
 | [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) — historical/design record, not the current contract |
 
 The shared-system canonical documents created under #2799 are now part of the source-of-truth set below.

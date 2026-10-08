@@ -168,3 +168,10 @@ on that measurement.
 Derive the easier levels from it with plausible mistakes read off the
 engine's own card values. Bring moon attempts and defence inside the engine.
 Re-tune the ladder to 40 / 26 / 16 on the sim gate.
+
+**Retired: `tools/hearts-analysis/`.** This was a local-only FastAPI app (plus a
+static page) that ran batches of Hearts simulations and showed the analysis.
+It was removed on the owner's decision because nothing in CI or deploy used it.
+It is recoverable from git history (check out the commit before the one that
+removed it, e.g. `git log --diff-filter=D -- tools/hearts-analysis`). The
+simulator it drove, `tools/sim/simulate-hearts.ts`, is unchanged.
