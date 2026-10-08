@@ -1176,7 +1176,7 @@ async def test_complete_game_looks_up_the_game_type_once() -> None:
     from sqlalchemy import event
 
     from db.base import get_engine
-    from games import service
+    from games import sessions as service
 
     sid = _sid()
     factory = get_session_factory()

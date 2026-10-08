@@ -1163,7 +1163,7 @@ signed JWS fixture made with a test CA for the verifier.
 | `POST /purchases/apple`, `/google`      | `purchases/router.py`, `purchases/schemas.py`                   |
 | Account tokens, Apple store-key parse   | `purchases/apple.py`, `purchases/google.py`                     |
 | Verifier interface and defaults         | `purchases/verifiers.py`                                        |
-| Admin `PATCH is_premium` guard (§13)    | `games/service.py` `patch_game_type`                            |
+| Admin `PATCH is_premium` guard (§13)    | `games/catalog.py` `patch_game_type`                          |
 | Tests                                   | `tests/test_purchases.py`, `tests/test_purchases_migration.py`, `tests/test_entitlement_lookup_perf.py` |
 
 **Verifier interface.** The service never calls a store. The routes get a

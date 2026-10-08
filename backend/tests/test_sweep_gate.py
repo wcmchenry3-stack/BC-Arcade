@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from db.base import get_session_factory
 from db.models import Game, GameType
-from games import service, sweep_gate
+from games import sweep, sweep_gate
 from tests._helpers import session_headers
 
 _NOW = datetime.now(UTC)
@@ -47,13 +47,13 @@ async def _outcome(game_id: uuid.UUID) -> str | None:
 def sweeps(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """Session ids the real sweep ran for."""
     calls: list[str] = []
-    real = service.sweep_stale_games_safely
+    real = sweep.sweep_stale_games_safely
 
     async def counting(session, *, session_id: str) -> bool:
         calls.append(session_id)
         return await real(session, session_id=session_id)
 
-    monkeypatch.setattr(service, "sweep_stale_games_safely", counting)
+    monkeypatch.setattr(sweep, "sweep_stale_games_safely", counting)
     return calls
 
 
@@ -140,7 +140,7 @@ async def test_a_failed_sweep_is_retried_on_the_next_read(
         calls.append(session_id)
         return False
 
-    monkeypatch.setattr(service, "sweep_stale_games_safely", failing)
+    monkeypatch.setattr(sweep, "sweep_stale_games_safely", failing)
     sid = str(uuid.uuid4())
     await _gate(sid)
     await _gate(sid)

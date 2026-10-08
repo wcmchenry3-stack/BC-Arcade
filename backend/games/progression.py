@@ -1,7 +1,7 @@
 """Arcade XP + player level — pure derivation from stats (#2391).
 
 No DB access, no FastAPI imports, no I/O, no environment reads: this module
-only transforms a ``StatsSummary`` (see ``games.service.get_stats_for_session``)
+only transforms a ``StatsSummary`` (see ``games.stats.get_stats_for_session``)
 into an XP/level result. ``stats.router.get_my_stats`` calls it and returns the
 four fields on ``StatsResponse`` (``GET /stats/me``).
 
@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from games.service import StatsSummary
+    from games.stats import StatsSummary
 
 # Flat XP awarded per completed game, regardless of game type.
 BASE_XP_PER_GAME = 10
