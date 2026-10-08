@@ -535,6 +535,20 @@ instances running it at once are harmless (dedupe). Manual run, from
 §6.4) decides which verifiers and API clients exist; the service checks the
 verified environment again before writing. Production needs `APPLE_APP_ID`.
 
+**Files (as built).** Under `backend/purchases/`:
+
+| File                     | What it holds                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `apple.py`               | `appAccountToken`, the unverified store-key parse for rate limits, the cached verifier and its FastAPI dependency |
+| `apple_store.py`         | `load_config`, `AppStoreVerifier` (JWS chain checks, Get Transaction Info), `build_from_env`           |
+| `apple_notifications.py` | the ASSN v2 webhook handler, the notification-history replay and its `apple_replay_job` (`PeriodicJob`) |
+| `_common.py`             | helpers shared with Google (#2998): `env_str`, `misconfigured(platform, reason)`, `ms_to_datetime`, `log_event` |
+| `certs/`                 | the bundled Apple Root CA - G3                                                                         |
+
+Tests: `tests/test_apple_store.py`, `tests/test_apple_notifications.py`
+(shared helpers in `tests/_apple_iap_harness.py` and `tests/apple_jws.py`).
+Manual replay: `scripts/apple_replay_notifications.py`.
+
 **Owner steps before this does anything.** Create the five Non-Consumables
 (§2, §17 store setup); create an In-App Purchase key (App Store Connect →
 Users and Access → Integrations → In-App Purchase) and set the `APPLE_*`
@@ -948,6 +962,24 @@ environment.
 (token, order ID, `account_token`, dates, state) and its `purchase_events`.
 Restore on a fresh install re-links, and erase-and-restore churn still hits
 `409 link_limit`, because the caps count retained `linked` events.
+
+**Files (as built).** Under `backend/purchases/` (the old 813-line
+`google_notifications.py` was split three ways in #2998):
+
+| File                  | What it holds                                                                                              |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `google.py`           | `obfuscatedAccountId`, the cached runtime (`configured_runtime`) and the verifier's FastAPI dependency      |
+| `google_play.py`      | `load_config`, service-account tokens, `PlayApi`, `to_verified` (`_line_item`, `_state_and_event_time`, `_environment`), `PlayVerifier` |
+| `google_push_auth.py` | `GoogleJwks`, `PushAuthenticator` (Pub/Sub OIDC) and `GoogleRuntime` / `build_runtime` / `build_from_env`   |
+| `google_rtdn.py`      | `parse_push`, `handle_developer_notification` and the one-time / voided notification handling              |
+| `google_jobs.py`      | `poll_voided_purchases`, `acknowledge_sweep`, `run_google_jobs` and `google_jobs_job` (`PeriodicJob`)       |
+| `_common.py`          | helpers shared with Apple: `env_str`, `misconfigured(platform, reason)`, `ms_to_datetime`, `log_event`      |
+
+Tests, one file per module: `tests/test_google_play.py`,
+`tests/test_google_push_auth.py`, `tests/test_google_rtdn.py`,
+`tests/test_google_jobs.py` (shared harness in `tests/_google_iap_harness.py`,
+fakes in `tests/google_play_fakes.py`). Manual run:
+`scripts/google_play_jobs.py`.
 
 **Owner steps before this does anything.** Create the five one-time products
 (§2); link the service account with the two permissions above; set the four

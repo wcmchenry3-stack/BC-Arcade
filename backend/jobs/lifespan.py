@@ -54,7 +54,7 @@ def google_jobs_job() -> PeriodicJob | None:
     if google.configured_verifier() is None:
         return None
     from db.base import get_session_factory
-    from purchases.google_notifications import google_jobs_job as build
+    from purchases.google_jobs import google_jobs_job as build
 
     return build(google.configured_verifier, get_session_factory)
 

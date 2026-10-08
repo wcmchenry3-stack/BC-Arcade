@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from jobs.periodic import PeriodicJob
 
 from . import service
+from ._common import log_event, ms_to_datetime
 from .apple_store import AppStoreVerifier, revocation_reason
 from .verifiers import PurchaseError
 
@@ -56,14 +57,6 @@ REPLAY_MAX_PAGES = 100  # 20 notifications a page; a bound, not an expectation
 REPLAY_TIMEOUT_S = 300.0
 
 
-def _ms(value: int | None) -> datetime | None:
-    return None if value is None else datetime.fromtimestamp(value / 1000, tz=UTC)
-
-
-def _log_event(event: str, **fields: object) -> None:
-    _log.info(json.dumps({"event": event, **fields}))
-
-
 async def handle_signed_notification(
     verifier: AppStoreVerifier,
     signed_payload: str,
@@ -78,15 +71,15 @@ async def handle_signed_notification(
     if not verifier.allows(env):
         # Genuine, but from an environment this deployment does not accept
         # (e.g. Sandbox on a Production-only API): acknowledge so Apple stops.
-        _log_event("apple_notification", type=ntype, outcome="ignored", via=via, id=uuid_, env=env)
+        log_event("apple_notification", type=ntype, outcome="ignored", via=via, id=uuid_, env=env)
         return "ignored"
     if ntype == "TEST":
-        _log_event("apple_notification", type=ntype, outcome="test", via=via, id=uuid_)
+        log_event("apple_notification", type=ntype, outcome="test", via=via, id=uuid_)
         return "test"
     target = _STATE_FOR_TYPE.get(ntype)
     signed_txn = note.data.signedTransactionInfo if note.data else None
     if target is None or not signed_txn or not uuid_:
-        _log_event("apple_notification", type=ntype, outcome="ignored", via=via, id=uuid_)
+        log_event("apple_notification", type=ntype, outcome="ignored", via=via, id=uuid_)
         return "ignored"
 
     # The embedded transaction is verified too, pinned to the notification's environment.
@@ -95,13 +88,13 @@ async def handle_signed_notification(
         verified = verifier.to_verified(env, txn)
     except PurchaseError:
         # Not a non-consumable of ours (e.g. a future product type): acknowledge.
-        _log_event("apple_notification", type=ntype, outcome="ignored", via=via, id=uuid_)
+        log_event("apple_notification", type=ntype, outcome="ignored", via=via, id=uuid_)
         return "ignored"
     if service.slug_for_product(verified.product_id) is None:
-        _log_event("apple_notification", type=ntype, outcome="ignored", via=via, id=uuid_)
+        log_event("apple_notification", type=ntype, outcome="ignored", via=via, id=uuid_)
         return "ignored"
 
-    event_at = _ms(note.signedDate)
+    event_at = ms_to_datetime(note.signedDate)
     reason = revocation_reason(txn) if target == "revoked" else None
     async with session_factory() as db:
         if ntype != "ONE_TIME_CHARGE" and await service.purchase_exists(
@@ -125,7 +118,7 @@ async def handle_signed_notification(
                 db, verified, dedupe_key=uuid_, event_at=event_at
             )
     outcome: Outcome = "applied" if changed else "unchanged"
-    _log_event("apple_notification", type=ntype, outcome=outcome, via=via, id=uuid_)
+    log_event("apple_notification", type=ntype, outcome=outcome, via=via, id=uuid_)
     return outcome
 
 
@@ -196,7 +189,7 @@ async def replay_notification_history(
                 _log.warning(
                     json.dumps({"event": "apple_replay_page_limit", "env": env, "pages": max_pages})
                 )
-    _log_event(
+    log_event(
         "apple_replay_done",
         fetched=result.fetched,
         applied=result.applied,

@@ -275,6 +275,22 @@ def _advance_watermark(purchase: Purchase, event_at: datetime) -> bool:
     return False
 
 
+def _set_state(
+    purchase: Purchase, state: str, at: datetime | None, now: datetime, reason: str | None
+) -> None:
+    """Set ``state``, verified ``now``: ``revoked`` stores ``at``/``reason``, ``owned`` clears them.
+
+    Any other state keeps them. The caller owns ``state_changed_at`` (the watermark)."""
+    purchase.state = state
+    purchase.verified_at = now
+    if state == "revoked":
+        purchase.revoked_at = at
+        purchase.revocation_reason = reason
+    elif state == "owned":
+        purchase.revoked_at = None
+        purchase.revocation_reason = None
+
+
 def _apply_verified(
     purchase: Purchase,
     v: VerifiedPurchase,
@@ -289,8 +305,9 @@ def _apply_verified(
         # A store-pushed event confirming the current state still advances the
         # ordering watermark, so an older opposite event cannot flip it later.
         _advance_watermark(purchase, event_at)
-    purchase.state = v.state
-    purchase.verified_at = now
+    # No revocation time or reason in the answer keeps the recorded ones (else: now).
+    reason = v.revocation_reason or purchase.revocation_reason
+    _set_state(purchase, v.state, v.revoked_at or purchase.revoked_at or now, now, reason)
     purchase.environment = v.environment
     purchase.ownership_type = v.ownership_type
     if v.transaction_id is not None:
@@ -299,12 +316,6 @@ def _apply_verified(
         purchase.account_token = v.account_token
     if v.purchased_at is not None:
         purchase.purchased_at = v.purchased_at
-    if v.state == "revoked":
-        purchase.revoked_at = v.revoked_at or purchase.revoked_at or now
-        purchase.revocation_reason = v.revocation_reason or purchase.revocation_reason
-    elif v.state == "owned":
-        purchase.revoked_at = None
-        purchase.revocation_reason = None
     if v.acknowledged and purchase.acknowledged_at is None:
         purchase.acknowledged_at = now
 
@@ -663,15 +674,8 @@ async def apply_store_state(
                 reason=reason,
             )
         else:
-            purchase.state = state
             purchase.state_changed_at = at
-            purchase.verified_at = now
-            if state == "revoked":
-                purchase.revoked_at = at
-                purchase.revocation_reason = reason
-            elif state == "owned":
-                purchase.revoked_at = None
-                purchase.revocation_reason = None
+            _set_state(purchase, state, at, now, reason)
             _event(
                 db,
                 purchase,
