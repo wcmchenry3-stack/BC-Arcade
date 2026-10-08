@@ -956,7 +956,7 @@ Three tiers, and no tier ever points at another's data:
   dev data or to the entitlement override.
 - **Dialect policy (#2996).** Postgres is the only runtime dialect; SQLite
   exists for the test suite and CI's schema check. Service code never branches
-  on `dialect_name(session)`. SQL that differs between the two — reading a
+  on `dialect_name(session)` (bar the exceptions listed below). SQL that differs between the two — reading a
   JSON key as a number or a flag, setting a flag, moving a timestamp — is a
   dialect-compiled element in `backend/db/jsonx.py` (`json_number`,
   `json_is_true`, `json_set_true`, `plus_hours`): one statement, compiled per
@@ -964,8 +964,9 @@ Three tiers, and no tier ever points at another's data:
   `games/leaderboard.py`'s `metadata_count` follows the same pattern. The only
   remaining dialect-aware code is the `insert()` constructor picked in
   `db/dialect.py` (SQLite's `ON CONFLICT` needs its own), engine/pool setup in
-  `db/base.py`, and `games/legacy_outcomes.py`, whose SQL is frozen against
-  migration 0028. `JSONB_VARIANT` (`db/models.py`) is the one JSON column type:
+  `db/base.py`, `games/legacy_outcomes.py`, whose SQL is frozen against
+  migration 0028, and its one caller, `games/sessions.py`, which passes
+  `dialect_name(session)` to `win_update`. `JSONB_VARIANT` (`db/models.py`) is the one JSON column type:
   JSONB on Postgres, JSON on SQLite. `tests/test_jsonx.py` compiles each element
   for both dialects and executes it on the suite's database, so running the
   suite with `DATABASE_URL` pointed at a Postgres checks parity.

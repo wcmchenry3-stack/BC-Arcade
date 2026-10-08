@@ -14,8 +14,9 @@ so two statements that differ only in the key never share a compiled form.
 Keys are restricted to identifiers, as the sweep flag and the board metrics
 are, so the rendered JSON paths need no escaping.
 
-The SQLite body is the default compilation: a dialect without its own hook
-(the one Alembic's offline mode uses, for instance) gets it.
+The PostgreSQL body is the default compilation: a dialect without its own
+hook (the one Alembic's offline mode uses, for instance, or a bare ``str(stmt)``
+while debugging) renders the production SQL. SQLite has its own explicit hook.
 """
 
 from __future__ import annotations
@@ -72,6 +73,7 @@ class json_number(_JsonKeyElement):
     inherit_cache = True
 
 
+@compiles(json_number)
 @compiles(json_number, "postgresql")
 def _json_number_postgresql(element: json_number, compiler: Any, **kw: Any) -> str:
     column = compiler.process(element.column, **kw)
@@ -82,7 +84,7 @@ def _json_number_postgresql(element: json_number, compiler: Any, **kw: Any) -> s
     )
 
 
-@compiles(json_number)
+@compiles(json_number, "sqlite")
 def _json_number_sqlite(element: json_number, compiler: Any, **kw: Any) -> str:
     column = compiler.process(element.column, **kw)
     path = _quoted(compiler, f"$.{element.key}")
@@ -120,6 +122,7 @@ class json_is_true(_JsonKeyElement):
         return json_is_true(self.column, self.key, negated=not self.negated)
 
 
+@compiles(json_is_true)
 @compiles(json_is_true, "postgresql")
 def _json_is_true_postgresql(element: json_is_true, compiler: Any, **kw: Any) -> str:
     flag = f"({compiler.process(element.column, **kw)} -> {_quoted(compiler, element.key)})"
@@ -127,7 +130,7 @@ def _json_is_true_postgresql(element: json_is_true, compiler: Any, **kw: Any) ->
     return f"({flag} {operator} 'true'::jsonb)"
 
 
-@compiles(json_is_true)
+@compiles(json_is_true, "sqlite")
 def _json_is_true_sqlite(element: json_is_true, compiler: Any, **kw: Any) -> str:
     # json_type() reports 'true' only for JSON true (never for 1 or "true");
     # IS / IS NOT are SQLite's NULL-safe (in)equality.
@@ -152,6 +155,7 @@ class json_set_true(_JsonKeyElement):
         self.type = column.type
 
 
+@compiles(json_set_true)
 @compiles(json_set_true, "postgresql")
 def _json_set_true_postgresql(element: json_set_true, compiler: Any, **kw: Any) -> str:
     column = compiler.process(element.column, **kw)
@@ -159,7 +163,7 @@ def _json_set_true_postgresql(element: json_set_true, compiler: Any, **kw: Any) 
     return f"({column} || CAST({patch} AS JSONB))"
 
 
-@compiles(json_set_true)
+@compiles(json_set_true, "sqlite")
 def _json_set_true_sqlite(element: json_set_true, compiler: Any, **kw: Any) -> str:
     column = compiler.process(element.column, **kw)
     return f"json_set({column}, {_quoted(compiler, f'$.{element.key}')}, json('true'))"
@@ -195,13 +199,14 @@ class plus_hours(FunctionElement):
         return column
 
 
+@compiles(plus_hours)
 @compiles(plus_hours, "postgresql")
 def _plus_hours_postgresql(element: plus_hours, compiler: Any, **kw: Any) -> str:
     column = compiler.process(element.column, **kw)
     return f"({column} + INTERVAL '{element.hours} hours')"
 
 
-@compiles(plus_hours)
+@compiles(plus_hours, "sqlite")
 def _plus_hours_sqlite(element: plus_hours, compiler: Any, **kw: Any) -> str:
     column = compiler.process(element.column, **kw)
     modifier = _quoted(compiler, f"+{element.hours} hours")

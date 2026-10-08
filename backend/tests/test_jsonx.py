@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import Select, select, update
+from sqlalchemy import DateTime, Select, literal, select, text, update
 from sqlalchemy.dialects import postgresql, sqlite
 
 from db.base import get_session_factory
@@ -54,6 +54,16 @@ def test_json_number_compiles_per_dialect() -> None:
     lite = _sql(stmt, _SQLITE)
     assert "json_type(games.metadata, '$.level') IN ('integer', 'real')" in lite
     assert "json_extract(games.metadata, '$.level')" in lite
+
+
+def test_the_default_compilation_is_the_postgresql_form() -> None:
+    # A bare ``str(expr)`` (debugging, offline Alembic) renders the production SQL.
+    assert "jsonb_typeof(games.metadata -> 'level')" in str(
+        json_number(Game.game_metadata, "level")
+    )
+    assert "IS NOT DISTINCT FROM 'true'::jsonb" in str(json_is_true(Game.game_metadata, "swept"))
+    assert "|| CAST(" in str(json_set_true(Game.game_metadata, "swept"))
+    assert "INTERVAL '24 hours'" in str(plus_hours(Game.started_at, 24))
 
 
 def test_json_is_true_compiles_per_dialect_and_negates_null_safely() -> None:
@@ -221,7 +231,8 @@ async def test_json_set_true_adds_or_replaces_the_key_and_keeps_the_rest() -> No
 
 async def test_plus_hours_moves_a_timestamp_with_its_microseconds() -> None:
     sid = str(uuid.uuid4())
-    # Crosses a month end and a DST change in most zones: hours are absolute.
+    # Crosses a month end (2026-03-28 22:30 + 50 h). The suite runs in UTC; the
+    # time-zone case is pinned by the Postgres-only test below.
     gid = await _add(sid, {}, started_at=_STARTED)
     whole = await _add(sid, {}, started_at=_STARTED.replace(microsecond=0))
     factory = get_session_factory()
@@ -257,3 +268,21 @@ async def test_the_sweep_cut_off_is_started_at_plus_24_hours_on_this_dialect() -
     assert outcome == "abandoned"
     # Swept rows read as swept through the same element the sweep wrote with.
     assert await _values(sid, json_is_true(Game.game_metadata, SWEPT_KEY)) == {gid: (True,)}
+
+
+async def test_the_24_hour_cut_off_is_absolute_in_a_session_time_zone_with_a_dst_change() -> None:
+    # Postgres only. ``INTERVAL '24 hours'`` is an exact 24 h on a timestamptz, whatever the
+    # session TimeZone; a '1 day' interval would be 23 h across Europe/London's 2026-03-29
+    # change (01:00 UTC), and drift from the Python STALE_GAME_AFTER cut-off (#2996).
+    factory = get_session_factory()
+    async with factory() as db:
+        if db.get_bind().dialect.name != "postgresql":
+            pytest.skip("needs Postgres: SQLite has no session time zone")
+        await db.execute(text("SET TIME ZONE 'Europe/London'"))
+        started = datetime(2026, 3, 28, 12, 0, tzinfo=UTC)  # before the change
+        cut_off = (
+            await db.execute(select(plus_hours(literal(started, DateTime(timezone=True)), 24)))
+        ).scalar_one()
+        await db.execute(text("RESET TIME ZONE"))
+    assert cut_off.astimezone(UTC) == started + timedelta(hours=24)
+    assert cut_off.astimezone(UTC) == datetime(2026, 3, 29, 12, 0, tzinfo=UTC)

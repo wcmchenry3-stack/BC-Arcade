@@ -154,6 +154,11 @@ class BoardDefinition(BaseModel):
 
     @model_validator(mode="after")
     def _check_consistency(self) -> BoardDefinition:  # noqa: C901, PLR0912  # see #2951
+        if self.metric not in COLUMN_METRICS and not self.metric.isidentifier():
+            # A metadata metric is read with ``db.jsonx.json_number``, which embeds the
+            # key in a JSON path and accepts identifiers only. Fail here, at definition
+            # time, not at request time inside the cached stats expression (#2996).
+            raise ValueError(f"metadata metric must be an identifier, not {self.metric!r}")
         if len(set(self.partitions)) != len(self.partitions):
             raise ValueError(f"duplicate partition keys: {self.partitions}")
 
