@@ -14,7 +14,7 @@ from games.progression import (
     _level_fields,
     compute_progression,
 )
-from games.service import GameTypeStats, StatsSummary
+from games.stats import GameTypeStats, StatsSummary
 
 
 def _game_stats(played: int, completed_played: int | None = None) -> GameTypeStats:

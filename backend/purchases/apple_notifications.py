@@ -21,17 +21,17 @@ notification type, the outcome and Apple's ``notificationUUID``.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-import sentry_sdk
 from appstoreserverlibrary.models.NotificationHistoryRequest import NotificationHistoryRequest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from jobs.periodic import PeriodicJob
 
 from . import service
 from .apple_store import AppStoreVerifier, revocation_reason
@@ -207,30 +207,29 @@ async def replay_notification_history(
     return result
 
 
-async def run_replay_loop(
+def apple_replay_job(
     get_verifier: Callable[[], AppStoreVerifier | None],
     get_session_factory: Callable[[], async_sessionmaker[AsyncSession]],
     *,
     interval_s: float = REPLAY_INTERVAL_S,
     timeout_s: float = REPLAY_TIMEOUT_S,
-    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
-) -> None:
-    """Replay now, then every ``interval_s``, until cancelled (started by ``main.lifespan``).
+) -> PeriodicJob:
+    """Replay now, then every ``interval_s`` (started by ``jobs.lifespan``).
 
-    Same shape as the Daily Word retention loop: a failure is reported and
-    retried next cycle, never raised. ``sleep`` is injectable so tests can
-    drive cycles without real time.
+    A failure is reported and retried next cycle, never raised; a crashed task
+    is swallowed at shutdown (``reraise_on_crash=False``).
     """
-    while True:
-        try:
-            await asyncio.wait_for(
-                replay_notification_history(get_verifier(), get_session_factory()),
-                timeout=timeout_s,
-            )
-        except Exception as exc:  # noqa: BLE001 — any failure waits for the next cycle
-            _log.warning(json.dumps({"event": "apple_replay_failed"}))
-            with sentry_sdk.new_scope() as scope:
-                scope.set_tag("subsystem", "purchases.apple_replay")
-                scope.fingerprint = ["apple-notification-replay-failed"]
-                sentry_sdk.capture_exception(exc)
-        await sleep(interval_s)
+
+    def on_stop_timeout(_waited: float) -> None:
+        _log.warning(json.dumps({"event": "apple_replay_stop_timeout"}))
+
+    return PeriodicJob(
+        name="apple_replay",
+        run=lambda: replay_notification_history(get_verifier(), get_session_factory()),
+        interval_s=interval_s,
+        timeout_s=timeout_s,
+        subsystem_tag="purchases.apple_replay",
+        fingerprint="apple-notification-replay-failed",
+        on_failure=lambda _exc: _log.warning(json.dumps({"event": "apple_replay_failed"})),
+        on_stop_timeout=on_stop_timeout,
+    )

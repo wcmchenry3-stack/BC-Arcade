@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from blackjack.module import module as blackjack_module
 from cascade.module import module as cascade_module
 from daily_word.module import module as daily_word_module
-from games import service
+from games import stats, stats_columns
 from games.board import COLUMN_METRICS, BoardDefinition
 from games.protocol import GameModule, default_stats_shape
 from games.registry import _REGISTRY, get_module
@@ -337,8 +337,9 @@ def test_pass_through_modules_use_the_shared_stats_shape(
 
 
 def _without_module(monkeypatch: pytest.MonkeyPatch, missing: str) -> None:
-    real = service.get_module
-    monkeypatch.setattr(service, "get_module", lambda n: None if n == missing else real(n))
+    real = stats.get_module
+    for module in (stats, stats_columns):
+        monkeypatch.setattr(module, "get_module", lambda n: None if n == missing else real(n))
 
 
 def test_stats_leave_out_a_game_without_a_module(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -364,7 +365,7 @@ def test_stats_leave_out_a_game_without_a_module(monkeypatch: pytest.MonkeyPatch
 
     captured: list[tuple[str, dict]] = []
     monkeypatch.setattr(
-        service.sentry_sdk, "capture_message", lambda msg, **kw: captured.append((msg, kw))
+        stats.sentry_sdk, "capture_message", lambda msg, **kw: captured.append((msg, kw))
     )
     _without_module(monkeypatch, "twenty48")
     r = client.get("/stats/me", headers=headers)
@@ -380,11 +381,11 @@ def test_stats_leave_out_a_game_without_a_module(monkeypatch: pytest.MonkeyPatch
 def test_the_best_value_expression_fails_loudly_without_a_module(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    service._best_candidate.cache_clear()
+    stats_columns._best_candidate.cache_clear()
     _without_module(monkeypatch, "starswarm")
     try:
         with pytest.raises(LookupError, match="starswarm"):
-            service._best_candidate("sqlite")
+            stats_columns._best_candidate("sqlite")
     finally:
         monkeypatch.undo()
-        service._best_candidate.cache_clear()
+        stats_columns._best_candidate.cache_clear()

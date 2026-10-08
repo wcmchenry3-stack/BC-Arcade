@@ -86,7 +86,7 @@ def _report_dropped_breakdown(reason: str) -> None:
 
     The completion still succeeds; this makes the lost detail visible. Reason
     only: no session id or score values (same privacy rule as
-    ``games.service._report_rejected_result``).
+    ``games.sessions._report_rejected_result``).
     """
     logger.warning("hearts result: breakdown dropped (%s)", reason)
     with sentry_sdk.new_scope() as scope:

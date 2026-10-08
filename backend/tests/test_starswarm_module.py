@@ -26,7 +26,7 @@ from db.models import GameType as GameTypeRow
 from games.board import SCORE_METRIC
 from games.protocol import GameModule
 from games.registry import get_module
-from games.service import _MAX_RESULT_BYTES
+from games.sessions import _MAX_RESULT_BYTES
 from main import app
 from starswarm import models as starswarm_models
 from starswarm.models import (

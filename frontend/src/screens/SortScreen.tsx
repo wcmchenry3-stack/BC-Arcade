@@ -46,20 +46,16 @@ import {
 } from "../game/sort/storage";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { PillButton } from "../components/shared/PillButton";
 import { useSortAudio } from "../game/sort/useSortAudio";
 import GameResultModal from "../components/shared/GameResultModal";
+import { toSubmission } from "../components/shared/toSubmission";
 import { useGameSync } from "../game/_shared/useGameSync";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
 
 type ScreenView = "loading" | "select" | "play";
-
-/** The result card's rank lookup on Sort's session board (#2625, #2677). */
-const sortBoard = sessionBoardAdapter("sort");
 
 /** Padding inside the board container; SortBoard sizes bottles to what's left. */
 const BOARD_PADDING = 16;
@@ -100,10 +96,9 @@ export default function SortScreen() {
   const [showWinModal, setShowWinModal] = useState(false);
   /** The solved level's best (fewest) moves, including this solve. */
   const [winSummary, setWinSummary] = useState<{ best: number; isNewBest: boolean } | null>(null);
-  const leaderboardSubmit = useLeaderboardSubmit(sortBoard);
-  const { submit: submitRank, reset: resetSubmission } = leaderboardSubmit;
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openLeaderboard = useLeaderboardLink(navigation, "sort");
+  // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("sort", navigation);
+  const { submit: submitRank, reset: resetSubmission } = leaderboard;
 
   // One `games` row per level played (#2512): XP, Profile history, stats and
   // the leaderboard (#2625). Every solve, replays included, is scored with the
@@ -524,7 +519,16 @@ export default function SortScreen() {
   // ---------------------------------------------------------------------------
 
   if (view === "loading") {
-    return <GameShell gameType="sort" key="loading" title={t("game.title")} loading />;
+    return (
+      <GameShell
+        gameType="sort"
+        key="loading"
+        title={t("game.title")}
+        onBack={null}
+        gutter={null}
+        loading
+      />
+    );
   }
 
   if (view === "select") {
@@ -535,6 +539,7 @@ export default function SortScreen() {
         title={t("game.title")}
         requireBack
         onBack={() => navigation.goBack()}
+        gutter={null}
         onOpenLeaderboard={openLeaderboard}
       >
         {/* Error banner with retry */}
@@ -575,6 +580,7 @@ export default function SortScreen() {
       title={t("game.title")}
       requireBack
       onBack={handleBackToSelect}
+      gutter={null}
       backAccessibilityLabel={t("action.backToLevels")}
       onNewGame={handleResetLevel}
       onLevelSelect={handleBackToSelect}
@@ -663,14 +669,7 @@ export default function SortScreen() {
             { label: tResult("stat.undos"), value: gameState.undosUsed },
             ...(winSummary ? [{ label: tResult("stat.best"), value: winSummary.best }] : []),
           ]}
-          submission={{
-            status: leaderboardSubmit.status,
-            rank: leaderboardSubmit.rank,
-            isBest: leaderboardSubmit.isBest,
-            playerName: leaderboardSubmit.playerName,
-            onJoinLeaderboards: leaderboardSubmit.joinLeaderboards,
-            onRetry: leaderboardSubmit.retry,
-          }}
+          submission={toSubmission(leaderboard)}
           onViewLeaderboard={openLeaderboard}
           // The next level when there is one; the last level replays.
           primaryAction={

@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet, Switch, Linking, ScrollView } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import { usePurchases } from "../purchases/PurchaseProvider";
 import { useRestorePurchases } from "../purchases/useRestorePurchases";
 import { useTheme, type ThemeMode } from "../theme/ThemeContext";
 import LanguageSwitcher from "../components/LanguageSwitcher";
-import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
+import { AppHeader } from "../components/shared/AppHeader";
+import { ScreenFrame } from "../components/shared/ScreenFrame";
 import { ConfirmModal } from "../components/shared/ConfirmModal";
 import { gameEventClient } from "../game/_shared/gameEventClient";
 import { useDeck } from "../game/_shared/decks/CardDeckContext";
@@ -28,7 +28,6 @@ export default function SettingsScreen() {
   const { colors, themeMode, setThemeMode } = useTheme();
   const { activeDeck, setDeck, availableDecks } = useDeck();
   const { muted, setMuted } = useSoundSettings();
-  const insets = useSafeAreaInsets();
   const { t } = useTranslation("common");
   // Restore Purchases (Apple 3.1.1) exists only where purchases do: hidden with
   // the unavailable adapter, i.e. web and v1.0 store builds.
@@ -102,12 +101,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View
-      style={[
-        styles.container,
-        { backgroundColor: colors.background, paddingTop: APP_HEADER_HEIGHT + insets.top },
-      ]}
-    >
+    <ScreenFrame padBottom={false}>
       <AppHeader title={t("nav.settings")} />
 
       <ScrollView
@@ -353,12 +347,11 @@ export default function SettingsScreen() {
           <Text style={{ color: colors.textOnAccent }}>{t("deleteData.error")}</Text>
         </View>
       )}
-    </View>
+    </ScreenFrame>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   scroll: { flex: 1 },
   scrollContent: { padding: 24 },
   row: {
