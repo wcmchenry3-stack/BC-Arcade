@@ -23,8 +23,10 @@ from fastapi.testclient import TestClient
 
 from db.base import get_session_factory
 from db.models import GameEntitlement, PurchaseEvent, PurchaseLink
+from jobs import periodic
+from observability import report
 from purchases import apple, apple_notifications, apple_store
-from purchases.apple_notifications import replay_notification_history, run_replay_loop
+from purchases.apple_notifications import apple_replay_job, replay_notification_history
 from purchases.apple_store import AppStoreVerifier
 from purchases.router import APPLE_NOTIFICATION_IP_RATE_LIMIT
 from tests._apple_iap_harness import (
@@ -586,46 +588,40 @@ async def test_replay_loop_reports_failures_and_keeps_going(monkeypatch) -> None
 
     monkeypatch.setattr(apple_notifications, "replay_notification_history", failing)
     captured: list[BaseException] = []
-    monkeypatch.setattr(
-        apple_notifications.sentry_sdk, "capture_exception", lambda exc: captured.append(exc)
-    )
+    monkeypatch.setattr(report.sentry_sdk, "capture_exception", lambda exc: captured.append(exc))
     with pytest.raises(asyncio.CancelledError):
-        await run_replay_loop(lambda: None, get_session_factory, interval_s=123.0, sleep=fake_sleep)
+        await apple_replay_job(lambda: None, get_session_factory, interval_s=123.0).loop(
+            sleep=fake_sleep
+        )
     assert calls["n"] == 3  # every failure was retried on the next cycle
     assert sleeps == [123.0, 123.0, 123.0]
     assert len(captured) == 3 and all(isinstance(e, RuntimeError) for e in captured)
 
 
 async def test_lifespan_starts_replay_only_when_api_configured(monkeypatch) -> None:
-    import main
+    from jobs.lifespan import apple_replay_job as configured_job
 
     apple.reset_apple_verifier()
-    assert main._start_apple_notification_replay() is None  # dormant
-    started = asyncio.Event()
-
-    async def fake_loop(get_verifier, get_factory):
-        started.set()
-        await asyncio.sleep(3600)
-
-    monkeypatch.setattr(apple_notifications, "run_replay_loop", fake_loop)
+    assert configured_job() is None  # dormant
     apple._verifier = make_verifier(api={"sandbox": FakeApiClient()})
     try:
-        task = main._start_apple_notification_replay()
-        assert task is not None
-        await asyncio.wait_for(started.wait(), 30)
-        await main._stop_apple_notification_replay(task)
+        job = configured_job()
+        assert job is not None and job.name == "apple_replay" and not job.reraise_on_crash
+        # A stand-in task: running the real loop would start a replay/sweep
+        # against the fakes depending on scheduling; only the stop is checked.
+        task = asyncio.create_task(asyncio.sleep(3600))
+        await asyncio.sleep(0)
+        await job.stop(task)
         assert task.cancelled()
-        await main._stop_apple_notification_replay(None)
-        apple._verifier = make_verifier()  # no API → no task
-        assert main._start_apple_notification_replay() is None
+        await job.stop(None)
+        apple._verifier = make_verifier()  # no API → no job
+        assert configured_job() is None
     finally:
         apple.reset_apple_verifier()
 
 
 async def test_stop_replay_is_bounded(monkeypatch) -> None:
-    import main
-
-    monkeypatch.setattr(main, "RETENTION_STOP_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(periodic, "STOP_TIMEOUT_S", 0.01)
 
     release = asyncio.Event()
 
@@ -637,7 +633,7 @@ async def test_stop_replay_is_bounded(monkeypatch) -> None:
 
     task = asyncio.create_task(stubborn())
     await asyncio.sleep(0)
-    await main._stop_apple_notification_replay(task)
+    await apple_replay_job(lambda: None, get_session_factory).stop(task)
     assert not task.done()
     release.set()
     await task

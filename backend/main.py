@@ -23,12 +23,11 @@ Where things live:
   handlers, CORS, and the middleware order.
 """
 
-import asyncio
 import json
 import logging
 import os
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from dotenv import load_dotenv
 
@@ -47,6 +46,7 @@ from entitlements.dependencies import EntitlementError
 from entitlements.router import router as entitlements_router
 from entitlements.service import is_dev_override_active
 from games.router import router as games_router
+from jobs.lifespan import configured_jobs, start_jobs
 from limiter import client_ip, configure_proxy_trust, limiter, log_proxy_trust
 from logs.router import router as logs_router
 from me.router import router as me_router
@@ -94,33 +94,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     it stops running once a lifespan is set, so they moved together. Startup
     steps run in their previous registration order.
 
-    The Daily Word retention task is held in one place, ``app.state`` (which
-    tests read). The ``try`` opens as soon as it exists, so it is stopped on
-    every exit — including a startup that is cancelled or fails during the
-    DB health check, which can take up to ``DB_PING_TIMEOUT_SECONDS`` (#2672
-    review). Stopping is bounded (#2667), and the state is reset even when a
-    crashed task is re-raised.
+    The background jobs (``jobs.lifespan.configured_jobs()``: Daily Word
+    retention, App Store replay, Google Play jobs) start in that order, as
+    tasks in ``app.state.job_tasks`` (which tests read), and stop in reverse
+    (#2994). They start before the DB health check, which can take up to
+    ``DB_PING_TIMEOUT_SECONDS``, and the stack unwinds on every exit —
+    including a startup that is cancelled or fails there (#2672 review).
+    Stopping is bounded (#2667), a job's ``reraise_on_crash`` decides whether
+    a crashed task surfaces, and ``job_tasks`` is emptied either way.
     """
     _warn_if_dev_override_active()
-    app.state.retention_task = _start_daily_word_retention()
-    app.state.apple_replay_task = _start_apple_notification_replay()
-    app.state.google_jobs_task = _start_google_play_jobs()
-    try:
+    app.state.job_tasks = {}
+    async with AsyncExitStack() as stack:
+        start_jobs(stack, configured_jobs(), app.state.job_tasks)
         await _db_health_check()
         yield
-    finally:
-        try:
-            await _stop_purchase_task(app.state.google_jobs_task, "google_jobs_stop_timeout")
-        finally:
-            app.state.google_jobs_task = None
-            try:
-                await _stop_apple_notification_replay(app.state.apple_replay_task)
-            finally:
-                app.state.apple_replay_task = None
-                try:
-                    await _stop_daily_word_retention(app.state.retention_task)
-                finally:
-                    app.state.retention_task = None
 
 
 def _warn_if_dev_override_active() -> None:
@@ -128,101 +116,6 @@ def _warn_if_dev_override_active() -> None:
         logging.getLogger("audit").warning(
             "DEV ENTITLEMENT OVERRIDE ACTIVE — all premium games unlocked for all sessions"
         )
-
-
-# Daily Word retention (#2544): prune guess records older than 14 days, at
-# startup and then daily. Started and cancelled by `lifespan` above.
-def _start_daily_word_retention() -> asyncio.Task | None:
-    if not is_configured():
-        return None
-    from daily_word.retention import run_retention_loop
-    from db.base import get_session_factory
-
-    return asyncio.create_task(run_retention_loop(get_session_factory))
-
-
-RETENTION_STOP_TIMEOUT_SECONDS = 5.0
-
-
-async def _stop_daily_word_retention(task: asyncio.Task | None) -> None:
-    """Cancel the retention task and wait for it — but only so long.
-
-    Bounded (#2667): a prune stuck in the driver can absorb the cancel, and an
-    unbounded wait held shutdown, and a TestClient exit, for good; CI hung
-    ~28 min on it. After the bound it warns and moves on.
-
-    asyncio.wait never raises the task's own outcome, so a CancelledError aimed
-    at *this* coroutine — shutdown itself being cancelled — still propagates
-    (#2672 review). A task that crashed is re-raised, as ``await task`` did;
-    the lifespan resets its state regardless.
-    """
-    if task is None:
-        return
-    from daily_word.retention import logger as retention_logger
-
-    task.cancel()
-    done, _ = await asyncio.wait({task}, timeout=RETENTION_STOP_TIMEOUT_SECONDS)
-    if not done:
-        retention_logger.warning(
-            "daily_word retention: task still running %.0fs after cancel; not waiting",
-            RETENTION_STOP_TIMEOUT_SECONDS,
-        )
-    elif not task.cancelled():
-        task.result()  # re-raises a crash, as `await task` did
-
-
-# App Store notification-history replay (#2786, docs/IAP.md §6.5): replays the
-# last 48 h of App Store Server Notifications at startup and then daily, so a
-# webhook Apple gave up on is still applied. Runs only when Apple verification
-# and the App Store Server API are configured; idempotent across instances
-# (notificationUUID dedupe). Manual run: `python scripts/apple_replay_notifications.py`.
-def _start_apple_notification_replay() -> asyncio.Task | None:
-    if not is_configured():
-        return None
-    from purchases import apple
-
-    verifier = apple.configured_verifier()
-    if verifier is None or not verifier.has_api:
-        return None
-    from db.base import get_session_factory
-    from purchases.apple_notifications import run_replay_loop
-
-    return asyncio.create_task(run_replay_loop(apple.configured_verifier, get_session_factory))
-
-
-async def _stop_apple_notification_replay(task: asyncio.Task | None) -> None:
-    """Cancel the replay task, bounded like the retention task (#2667)."""
-    await _stop_purchase_task(task, "apple_replay_stop_timeout")
-
-
-async def _stop_purchase_task(task: asyncio.Task | None, timeout_event: str) -> None:
-    """Cancel a background purchase job, waiting at most RETENTION_STOP_TIMEOUT_SECONDS."""
-    if task is None:
-        return
-    task.cancel()
-    done, _ = await asyncio.wait({task}, timeout=RETENTION_STOP_TIMEOUT_SECONDS)
-    if not done:
-        _audit_log.warning(json.dumps({"event": timeout_event}))
-
-
-# Google Play jobs (#2787, docs/IAP.md §7.6): the voided-purchases poll (last
-# 48 h) and the unacknowledged-purchase sweep, at startup and then daily. Runs
-# only when Google verification is configured; idempotent across instances
-# (per-void dedupe keys; acknowledgement is safe to repeat). Manual run:
-# `python scripts/google_play_jobs.py`.
-def _start_google_play_jobs() -> asyncio.Task | None:
-    if not is_configured():
-        return None
-    from purchases import google
-
-    if google.configured_verifier() is None:
-        return None
-    from db.base import get_session_factory
-    from purchases.google_notifications import run_google_jobs_loop
-
-    return asyncio.create_task(
-        run_google_jobs_loop(google.configured_verifier, get_session_factory)
-    )
 
 
 async def _db_health_check() -> None:
