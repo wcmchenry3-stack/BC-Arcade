@@ -12,10 +12,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -36,7 +34,6 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
-import { DEV_OVERLAY_BG } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import GameResultModal from "../components/shared/GameResultModal";
@@ -66,10 +63,10 @@ import {
 } from "../game/daily_word/storage";
 import { ApiError, isNetworkError } from "../game/_shared/httpClient";
 import { devLog } from "../game/daily_word/devLog";
+import DailyWordDevPanel from "../components/daily_word/DailyWordDevPanel";
 import { DAILY_WORD_SOUNDS } from "../game/daily_word/sounds";
 import { useSound } from "../game/_shared/useSound";
 import { getLanguage, getTimezoneOffset, localDateKey } from "../game/daily_word/todayMeta";
-import type { DevLogEntry } from "../game/daily_word/devLog";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -451,12 +448,8 @@ export default function DailyWordScreen() {
   const [playAgainFailed, setPlayAgainFailed] = useState(false);
   const [flippingRowIndex, setFlippingRowIndex] = useState<number | null>(null);
 
-  // Dev panel (#1293) — all gated by __DEV__; Metro eliminates in production
-  const [devPanelOpen, setDevPanelOpen] = useState(false);
-  const [devAnswer, setDevAnswer] = useState<string | null>(null);
-  const [devAnswerVisible, setDevAnswerVisible] = useState(false);
-  const [devLogEntries, setDevLogEntries] = useState<DevLogEntry[]>([]);
-  const [devExpandedIndex, setDevExpandedIndex] = useState<number | null>(null);
+  // Dev panel (#1293) — gated by __DEV__
+  const [devOpen, setDevOpen] = useState(false);
 
   const hasLoadedRef = useRef(false);
   const mountedRef = useRef(true);
@@ -558,12 +551,6 @@ export default function DailyWordScreen() {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       if (flipTimerRef.current) clearTimeout(flipTimerRef.current);
     };
-  }, []);
-
-  useEffect(() => {
-    if (!__DEV__) return;
-    setDevLogEntries(devLog.list().slice());
-    return devLog.subscribe(() => setDevLogEntries(devLog.list().slice()));
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -1044,12 +1031,15 @@ export default function DailyWordScreen() {
         {/* Loading indicator during submit */}
         {submitting && <ActivityIndicator style={styles.submitIndicator} color={colors.accent} />}
 
-        {/* Dev panel trigger */}
-        {__DEV__ && (
-          <Pressable style={styles.devButton} onPress={() => setDevPanelOpen(true)}>
-            <Text style={styles.devButtonText}>DEV</Text>
-          </Pressable>
-        )}
+        {/* Dev panel (#1293): its DEV button sits in the board's top-left corner */}
+        <DailyWordDevPanel
+          enabled={__DEV__}
+          open={devOpen}
+          onOpen={() => setDevOpen(true)}
+          onClose={() => setDevOpen(false)}
+          state={state}
+          onReset={resetToToday}
+        />
       </View>
 
       {/* End-of-game result card (#2514) */}
@@ -1099,163 +1089,6 @@ export default function DailyWordScreen() {
           testID="daily-word-result"
         />
       )}
-
-      {/* Dev panel (#1293) */}
-      {__DEV__ && (
-        <Modal
-          visible={devPanelOpen}
-          transparent
-          animationType="fade"
-          accessibilityViewIsModal
-          onRequestClose={() => setDevPanelOpen(false)}
-        >
-          <View style={styles.devOverlay}>
-            <View style={[styles.devPanel, { backgroundColor: colors.surfaceHigh }]}>
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.devScrollContent}
-              >
-                <Text style={styles.devPanelTitle}>Dev Panel</Text>
-
-                <Text style={styles.devSectionHeader}>{"── Today's Puzzle ──"}</Text>
-
-                {state !== null && (
-                  <>
-                    <Text style={[styles.devInfoText, { color: colors.textMuted }]}>
-                      {`puzzle_id: ${state.puzzle_id}\nword_length: ${state.word_length}\nlang: ${state.language}`}
-                    </Text>
-
-                    <Pressable
-                      style={styles.devActionBtn}
-                      onPress={async () => {
-                        if (devAnswerVisible) {
-                          setDevAnswerVisible(false);
-                          setDevAnswer(null);
-                        } else {
-                          try {
-                            const r = await dailyWordApi.getAnswer(state.puzzle_id);
-                            setDevAnswer(r.answer.toUpperCase());
-                            setDevAnswerVisible(true);
-                          } catch {
-                            setDevAnswer("(failed to fetch)");
-                            setDevAnswerVisible(true);
-                          }
-                        }
-                      }}
-                    >
-                      <Text style={[styles.devBtnText, { color: colors.textMuted }]}>
-                        {devAnswerVisible ? "Hide Answer" : "Show Answer"}
-                      </Text>
-                    </Pressable>
-
-                    {devAnswerVisible && devAnswer !== null && (
-                      <Text style={styles.devAnswerText}>{devAnswer}</Text>
-                    )}
-
-                    <Pressable
-                      style={styles.devPrimaryBtn}
-                      onPress={async () => {
-                        await resetToToday();
-                        setDevAnswer(null);
-                        setDevAnswerVisible(false);
-                        setDevPanelOpen(false);
-                      }}
-                    >
-                      <Text style={[styles.devBtnText, { color: "#fff" }]}>Reset Game</Text>
-                    </Pressable>
-                    <Text style={styles.devWarningText}>
-                      {
-                        "Resets local board only — backend rate limit (20/hr per session+puzzle) still applies"
-                      }
-                    </Text>
-                  </>
-                )}
-
-                <Text style={styles.devSectionHeader}>── Game State ──</Text>
-
-                {state !== null && (
-                  <Text style={[styles.devInfoText, { color: colors.textMuted }]}>
-                    {`row: ${state.current_row}  won: ${state.won}  done: ${state.is_complete}`}
-                    {state.rows
-                      .filter((r) => r.submitted)
-                      .map(
-                        (r, i) =>
-                          `\n${i + 1}: ${r.tiles.map((tile) => tile.letter).join("")}  [${r.tiles.map((tile) => tile.status[0]).join("")}]`
-                      )
-                      .join("")}
-                  </Text>
-                )}
-
-                <Text style={styles.devSectionHeader}>── API Log ──</Text>
-
-                <Pressable
-                  style={styles.devActionBtn}
-                  onPress={() => {
-                    devLog.clear();
-                    setDevExpandedIndex(null);
-                  }}
-                >
-                  <Text style={[styles.devBtnText, { color: colors.textMuted }]}>Clear log</Text>
-                </Pressable>
-
-                {devLogEntries.length === 0 && (
-                  <Text style={[styles.devInfoText, { color: colors.textMuted }]}>
-                    No API calls yet
-                  </Text>
-                )}
-
-                {devLogEntries.map((entry, idx) => (
-                  <Pressable
-                    key={`${entry.ts}-${entry.method}-${entry.path}`}
-                    style={styles.devLogEntry}
-                    onPress={() => setDevExpandedIndex(devExpandedIndex === idx ? null : idx)}
-                  >
-                    <View style={styles.devLogHeader}>
-                      <Text
-                        style={[
-                          styles.devLogStatus,
-                          {
-                            backgroundColor: entry.error
-                              ? "rgba(255,60,60,0.2)"
-                              : "rgba(60,200,60,0.2)",
-                            color: entry.error ? "#ff6060" : "#60e060",
-                          },
-                        ]}
-                      >
-                        {entry.status ?? "err"}
-                      </Text>
-                      <Text style={styles.devLogPath} numberOfLines={1}>
-                        {entry.method} {entry.path.split("?")[0]}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.devInfoText,
-                          { color: colors.textMuted, flex: 0, fontSize: 10 },
-                        ]}
-                      >
-                        {new Date(entry.ts).toLocaleTimeString()}
-                      </Text>
-                    </View>
-                    {devExpandedIndex === idx && (
-                      <Text style={styles.devLogBody}>
-                        {JSON.stringify(
-                          { body: entry.body, response: entry.response, error: entry.error },
-                          null,
-                          2
-                        )}
-                      </Text>
-                    )}
-                  </Pressable>
-                ))}
-
-                <Pressable style={styles.devActionBtn} onPress={() => setDevPanelOpen(false)}>
-                  <Text style={[styles.devBtnText, { color: colors.textMuted }]}>Close</Text>
-                </Pressable>
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
-      )}
     </GameShell>
   );
 }
@@ -1289,115 +1122,5 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     alignSelf: "center",
-  },
-  // Dev panel styles
-  devButton: {
-    position: "absolute",
-    top: 6,
-    left: 6,
-    backgroundColor: "rgba(255,128,0,0.85)",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    zIndex: 100,
-  },
-  devButtonText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1,
-  },
-  devOverlay: {
-    flex: 1,
-    backgroundColor: DEV_OVERLAY_BG,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  devPanel: {
-    borderRadius: 12,
-    padding: 20,
-    width: 300,
-    maxHeight: "85%",
-    borderWidth: 1,
-    borderColor: "rgba(255,128,0,0.5)",
-  },
-  devScrollContent: {
-    gap: 12,
-    paddingBottom: 4,
-  },
-  devPanelTitle: {
-    color: "rgba(255,128,0,1)",
-    fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 2,
-    textAlign: "center",
-    textTransform: "uppercase",
-  },
-  devSectionHeader: {
-    color: "rgba(255,128,0,0.7)",
-    fontSize: 10,
-    letterSpacing: 1,
-    textAlign: "center",
-    marginTop: 4,
-  },
-  devActionBtn: {
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-  devPrimaryBtn: {
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: "center",
-    backgroundColor: "rgba(255,128,0,0.9)",
-  },
-  devBtnText: {
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  devInfoText: {
-    fontSize: 11,
-    lineHeight: 17,
-  },
-  devAnswerText: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: "#ffd700",
-    textAlign: "center",
-    letterSpacing: 6,
-  },
-  devWarningText: {
-    fontSize: 10,
-    color: "rgba(255,200,0,0.7)",
-    textAlign: "center",
-    fontStyle: "italic",
-  },
-  devLogEntry: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: 6,
-    padding: 8,
-    gap: 4,
-  },
-  devLogHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  devLogStatus: {
-    fontSize: 10,
-    fontWeight: "700",
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  devLogPath: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.7)",
-    flex: 1,
-  },
-  devLogBody: {
-    fontSize: 10,
-    color: "rgba(255,255,255,0.5)",
   },
 });

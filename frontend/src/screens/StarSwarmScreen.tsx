@@ -5,12 +5,9 @@ import {
   AppState,
   AppStateStatus,
   LayoutChangeEvent,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
-  Text,
   View,
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -31,16 +28,12 @@ import {
   DIFFICULTY_TIERS,
   difficultyLabel,
   difficultyMultiplier,
-  dodgeRateByTier,
   engineCounters,
 } from "../game/starswarm/engine";
-import type { TierDodgeRow } from "../game/starswarm/engine";
 import type {
-  PowerUpType,
   DifficultyTier,
   CarrierEvent,
   UpgradeEvent,
-  RunStats,
   StarSwarmState,
 } from "../game/starswarm/types";
 import { reportRunStats } from "../game/starswarm/telemetry";
@@ -48,6 +41,12 @@ import { summarizeScoreLedger } from "../game/starswarm/scoreLedger";
 import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
 import { registerStarSwarmTestHooks } from "../game/starswarm/testHooks";
 import FrameStatsReadout from "../components/starswarm/FrameStatsReadout";
+import StarSwarmDevPanel, {
+  DEFAULT_STARSWARM_DEV_OPTIONS,
+  canvasDevOptions,
+  type StarSwarmDevOptions,
+} from "../components/starswarm/StarSwarmDevPanel";
+import { DevButton } from "../components/dev/DevPanelShell";
 import { loadBestScore, saveBestScore } from "../game/starswarm/bestScore";
 import GameResultModal from "../components/shared/GameResultModal";
 import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
@@ -64,8 +63,7 @@ import {
   hydratePausedState,
   isPausedStateHydrated,
 } from "../game/starswarm/pauseStore";
-import { useStarSwarmAudio, DEFAULT_SFX_VOLUMES } from "../hooks/useStarSwarmAudio";
-import type { SfxVolumes } from "../hooks/useStarSwarmAudio";
+import { useStarSwarmAudio } from "../hooks/useStarSwarmAudio";
 
 /**
  * #2567: the dev panel exists in dev builds and in internal pre-launch builds (TestFlight / Play
@@ -77,29 +75,6 @@ const DEV_TOOLS = __DEV__ || isPreLaunchApiBuild();
 // #2626: the result card reads the run's rank on its tier's board (`GET /games/{id}/rank`).
 const STARSWARM_BOARD = sessionBoardAdapter("starswarm");
 
-// #2491: dev-panel run-stats view — a 4 Hz snapshot of the engine's counters.
-const DEV_STATS_POLL_MS = 250;
-
-interface DevStatsSnapshot {
-  readonly wave: number;
-  readonly difficulty: DifficultyTier;
-  readonly score: number;
-  readonly rows: readonly TierDodgeRow[];
-  readonly run: RunStats;
-}
-
-function snapshotStats(s: StarSwarmState): DevStatsSnapshot {
-  return {
-    wave: s.wave,
-    difficulty: s.difficulty,
-    score: s.score,
-    rows: dodgeRateByTier(s),
-    run: s.runStats,
-  };
-}
-
-const pct = (x: number) => `${Math.round(x * 100)}%`.padStart(4);
-const col = (x: number | string, w: number) => String(x).padStart(w);
 // Each tier on its own row, its score multiplier underneath (#2982).
 const tierOptions: readonly DifficultyOption<DifficultyTier>[] = DIFFICULTY_TIERS.map((tier) => ({
   value: tier,
@@ -108,30 +83,6 @@ const tierOptions: readonly DifficultyOption<DifficultyTier>[] = DIFFICULTY_TIER
   accessibilityLabel: `${difficultyLabel(tier)} ×${difficultyMultiplier(tier)}`,
   fullWidth: true,
 }));
-
-const TIER_TABLE_HEADER = `${"tier".padEnd(7)} base  eff rolls dodge  rate struck flak`;
-
-function tierTableLine(row: TierDodgeRow): string {
-  const rate = row.rolls > 0 ? pct(row.dodged / row.rolls) : col("-", 4);
-  return (
-    `${row.tier.padEnd(7)} ${pct(row.base)} ${pct(row.effective)} ` +
-    `${col(row.rolls, 5)} ${col(row.dodged, 5)} ${col(rate, 5)} ${col(row.struck, 6)} ${col(row.flak, 4)}`
-  );
-}
-
-const RUN_STAT_LINES: readonly (readonly [string, keyof RunStats])[] = [
-  ["Reinforcements launched", "reinforced"],
-  ["Armor deflections", "armorDeflects"],
-  ["Beam hits on player", "beamHits"],
-  ["Rout caught", "routCaught"],
-  ["Rout escaped", "routEscaped"],
-  ["Rocks spawned", "rocksSpawned"],
-  ["Rocks broken by player", "rocksBrokenByPlayer"],
-  ["Rocks broken by enemies", "rocksBrokenByEnemy"],
-  ["Buddy launched", "buddyLaunched"], // #2845
-  ["Buddy lost", "buddyLost"],
-  ["Shots drawn by Buddy", "buddyShotsDrawn"],
-];
 
 /**
  * A run paused by a previous process is on disk (#2645); the game reads the saved pause
@@ -210,23 +161,9 @@ function StarSwarmGame() {
   const [containerW, setContainerW] = useState(0);
   const [containerH, setContainerH] = useState(0);
 
-  // Dev panel state — used only when DEV_TOOLS (dev and internal pre-launch builds, #2567)
-  const [devPanelOpen, setDevPanelOpen] = useState(false);
-  const [devWave, setDevWave] = useState(1);
-  const [devInfiniteLives, setDevInfiniteLives] = useState(false);
-  const [devStragglerEnabled, setDevStragglerEnabled] = useState(true);
-  const [devPauseStraggler, setDevPauseStraggler] = useState(false);
-  const [devDifficulty, setDevDifficulty] = useState<DifficultyTier>("LieutenantJG");
-  const [devVolumes, setDevVolumes] = useState<SfxVolumes>(DEFAULT_SFX_VOLUMES);
-  const [devPlayerFireOff, setDevPlayerFireOff] = useState(false);
-  const [devEnemyFireOff, setDevEnemyFireOff] = useState(false);
-  const [devAsteroidsOff, setDevAsteroidsOff] = useState(false); // #2486
-  const [devDodgeOff, setDevDodgeOff] = useState(false); // #2491
-  const [devFlakOff, setDevFlakOff] = useState(false); // #2491
-  const [devRoutOff, setDevRoutOff] = useState(false); // #2489
-  const [devFrameReadout, setDevFrameReadout] = useState(false); // #2567
-  // #2491: a snapshot of the engine's counters, polled at ≤4 Hz while the panel is open
-  const [devStats, setDevStats] = useState<DevStatsSnapshot | null>(null);
+  // Dev panel — used only when DEV_TOOLS (dev and internal pre-launch builds, #2567)
+  const [devOpen, setDevOpen] = useState(false);
+  const [devOptions, setDevOptions] = useState<StarSwarmDevOptions>(DEFAULT_STARSWARM_DEV_OPTIONS);
 
   // Pre-game difficulty selector — shown before each new game (skipped when restoring a saved session).
   // Defaults to Ensign for new users, then opens on the last tier played (#1129). A saved
@@ -243,13 +180,6 @@ function StarSwarmGame() {
   const openLeaderboard = useLeaderboardLink(navigation, "starswarm", {
     difficulty_tier: result?.tier ?? difficulty,
   });
-
-  const adjustVolume = useCallback((key: keyof SfxVolumes, delta: number) => {
-    setDevVolumes((v) => ({
-      ...v,
-      [key]: Math.round(Math.min(1, Math.max(0, v[key] + delta)) * 10) / 10,
-    }));
-  }, []);
 
   const scoreRef = useRef(0);
   const highScoreRef = useRef(0);
@@ -281,7 +211,7 @@ function StarSwarmGame() {
     playBonusLife,
     playCarrierEvent,
     playUpgrade,
-  } = useStarSwarmAudio(!isGameOver, devVolumes, resetTick, isPaused);
+  } = useStarSwarmAudio(!isGameOver, devOptions.volumes, resetTick, isPaused);
   // In dev builds, track the last opts from the panel so every subsequent "New Game"
   // (header, game-over overlay) re-applies them without reopening the dev panel.
   const lastDevOptsRef = useRef<DevOptions | undefined>(undefined);
@@ -437,33 +367,8 @@ function StarSwarmGame() {
     playBonusLife();
   }, [playBonusLife]);
 
-  const handleTriggerPowerUp = useCallback((type: PowerUpType) => {
-    canvasRef.current?.triggerPowerUp(type);
-  }, []);
-
-  const handleThrowAsteroid = useCallback(() => {
-    canvasRef.current?.throwAsteroid(); // #2486
-  }, []);
-
   // #2567: stable, so the readout's poll timer is not restarted by screen re-renders
   const readFrameStats = useCallback(() => canvasRef.current?.getFrameStats() ?? null, []);
-
-  const handleKillEscorts = useCallback(() => {
-    canvasRef.current?.killEscorts(); // #2491
-  }, []);
-
-  // #2491: refresh the dev panel's counters at 4 Hz while it is open — a timer, never a
-  // per-frame React update; the loop itself keeps running in the canvas untouched.
-  useEffect(() => {
-    if (!DEV_TOOLS || !devPanelOpen) return;
-    const read = () => {
-      const s = canvasRef.current?.getState();
-      setDevStats(s ? snapshotStats(s) : null);
-    };
-    read();
-    const id = setInterval(read, DEV_STATS_POLL_MS);
-    return () => clearInterval(id);
-  }, [devPanelOpen]);
 
   const handleGameOverRef = useRef(handleGameOver);
   handleGameOverRef.current = handleGameOver;
@@ -596,7 +501,8 @@ function StarSwarmGame() {
   // the screen stays mounted under the pushed one, so the run would go on unseen.
   useEffect(() => navigation.addListener("blur", pauseLiveRun), [navigation, pauseLiveRun]);
 
-  const dynamicStyles = getStyles(colors);
+  // The canvas reads its dev options through a ref, so a fresh object per render costs nothing.
+  const canvasDev = DEV_TOOLS ? canvasDevOptions(lastDevOptsRef.current, devOptions) : undefined;
 
   const scale =
     containerW > 0 && containerH > 0 ? Math.min(containerW / CANVAS_W, containerH / CANVAS_H) : 0;
@@ -674,24 +580,7 @@ function StarSwarmGame() {
               difficulty={difficulty}
               resetTick={resetTick}
               initialState={savedPauseRef.current?.gameState}
-              // #1311/#1312: spread lastDevOptsRef for new-game options (wave, lives, etc.),
-              // then override live-toggleable fields so they propagate mid-game without New Game.
-              // pauseStraggler is also overridden here (fixes a pre-existing gap where the toggle
-              // only took effect after New Game).
-              devOptions={
-                DEV_TOOLS
-                  ? {
-                      ...lastDevOptsRef.current,
-                      pauseStraggler: devPauseStraggler,
-                      playerFireDisabled: devPlayerFireOff,
-                      enemyFireDisabled: devEnemyFireOff,
-                      asteroidsDisabled: devAsteroidsOff,
-                      dodgeDisabled: devDodgeOff,
-                      flakDisabled: devFlakOff,
-                      routDisabled: devRoutOff,
-                    }
-                  : undefined
-              }
+              devOptions={canvasDev}
             />
             <Controls
               canvasRef={canvasRef}
@@ -702,12 +591,8 @@ function StarSwarmGame() {
               onResume={handleResume}
               onNewGame={handleRequestNewGame}
             />
-            {DEV_TOOLS && (
-              <Pressable style={dynamicStyles.devButton} onPress={() => setDevPanelOpen(true)}>
-                <Text style={styles.devButtonText}>DEV</Text>
-              </Pressable>
-            )}
-            {DEV_TOOLS && devFrameReadout && <FrameStatsReadout read={readFrameStats} />}
+            <DevButton enabled={DEV_TOOLS} onPress={() => setDevOpen(true)} />
+            {DEV_TOOLS && devOptions.frameReadout && <FrameStatsReadout read={readFrameStats} />}
           </View>
         )}
         {showDifficultyPicker && scale > 0 && (
@@ -772,284 +657,21 @@ function StarSwarmGame() {
           testID="starswarm-result"
         />
 
-        {DEV_TOOLS && devPanelOpen && (
-          <View
-            style={dynamicStyles.devPanelOverlay}
-            accessible
-            accessibilityLabel="Developer panel"
-            accessibilityRole="menu"
-          >
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.devScrollContent}
-            >
-              <Text style={dynamicStyles.devTitle}>DEV</Text>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Wave</Text>
-                <Pressable
-                  style={styles.devStepBtn}
-                  onPress={() => setDevWave((w) => Math.max(1, w - 1))}
-                  accessibilityLabel="Decrease wave"
-                >
-                  <Text style={styles.devStepText}>−</Text>
-                </Pressable>
-                <Text style={styles.devValue}>{devWave}</Text>
-                <Pressable
-                  style={styles.devStepBtn}
-                  onPress={() => setDevWave((w) => Math.min(15, w + 1))}
-                  accessibilityLabel="Increase wave"
-                >
-                  <Text style={styles.devStepText}>+</Text>
-                </Pressable>
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Infinite lives</Text>
-                <Switch
-                  value={devInfiniteLives}
-                  onValueChange={setDevInfiniteLives}
-                  accessibilityLabel="Infinite lives"
-                />
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Straggler AI</Text>
-                <Switch
-                  value={devStragglerEnabled}
-                  onValueChange={setDevStragglerEnabled}
-                  accessibilityLabel="Straggler AI"
-                />
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Pause straggler</Text>
-                <Switch
-                  value={devPauseStraggler}
-                  onValueChange={setDevPauseStraggler}
-                  accessibilityLabel="Pause straggler"
-                />
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Player missiles off</Text>
-                <Switch
-                  value={devPlayerFireOff}
-                  onValueChange={setDevPlayerFireOff}
-                  accessibilityLabel="Player missiles off"
-                />
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Enemy missiles off</Text>
-                <Switch
-                  value={devEnemyFireOff}
-                  onValueChange={setDevEnemyFireOff}
-                  accessibilityLabel="Enemy missiles off"
-                />
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Asteroids off</Text>
-                <Switch
-                  value={devAsteroidsOff}
-                  onValueChange={setDevAsteroidsOff}
-                  accessibilityLabel="Asteroids off"
-                />
-              </View>
-
-              <Pressable
-                style={styles.devActionBtn}
-                onPress={handleThrowAsteroid}
-                accessibilityLabel="Throw asteroid"
-              >
-                <Text style={dynamicStyles.devLabel}>Throw asteroid</Text>
-              </Pressable>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Dodge off</Text>
-                <Switch
-                  value={devDodgeOff}
-                  onValueChange={setDevDodgeOff}
-                  accessibilityLabel="Dodge off"
-                />
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Flak off</Text>
-                <Switch
-                  value={devFlakOff}
-                  onValueChange={setDevFlakOff}
-                  accessibilityLabel="Flak off"
-                />
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Rout off</Text>
-                <Switch
-                  value={devRoutOff}
-                  onValueChange={setDevRoutOff}
-                  accessibilityLabel="Rout off"
-                />
-              </View>
-
-              {/* #2567: frame-time avg / p95 and canvas commits/s, shown over the game */}
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Frame readout</Text>
-                <Switch
-                  value={devFrameReadout}
-                  onValueChange={setDevFrameReadout}
-                  accessibilityLabel="Frame readout"
-                />
-              </View>
-
-              <Pressable
-                style={styles.devActionBtn}
-                onPress={handleKillEscorts}
-                accessibilityLabel="Kill escorts"
-              >
-                <Text style={dynamicStyles.devLabel}>Kill escorts</Text>
-              </Pressable>
-
-              <Text style={dynamicStyles.devSectionHeader}>── Run stats ──</Text>
-
-              {devStats ? (
-                <View accessibilityLabel="Run stats">
-                  <Text style={styles.devMono}>
-                    {`wave ${devStats.wave} · ${devStats.difficulty} · score ${devStats.score}`}
-                  </Text>
-                  <Text style={styles.devMono}>{TIER_TABLE_HEADER}</Text>
-                  {devStats.rows.map((row) => (
-                    <Text key={row.tier} style={styles.devMono}>
-                      {tierTableLine(row)}
-                    </Text>
-                  ))}
-                  {RUN_STAT_LINES.map(([label, key]) => (
-                    <View key={key} style={styles.devRow}>
-                      <Text style={dynamicStyles.devLabel}>{label}</Text>
-                      <Text style={styles.devValue}>{devStats.run[key]}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <Text style={dynamicStyles.devLabel}>Start a game to see counters</Text>
-              )}
-
-              <Text style={dynamicStyles.devSectionHeader}>── Difficulty ──</Text>
-
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.devTierScroll}
-                contentContainerStyle={styles.devTierScrollContent}
-              >
-                {DIFFICULTY_TIERS.map((tier) => (
-                  <Pressable
-                    key={tier}
-                    style={[styles.devTierBtn, devDifficulty === tier && styles.devTierBtnActive]}
-                    onPress={() => setDevDifficulty(tier)}
-                    accessibilityLabel={`Dev difficulty ${difficultyLabel(tier)}`}
-                  >
-                    <Text
-                      style={[
-                        styles.devTierText,
-                        devDifficulty === tier && styles.devTierTextActive,
-                      ]}
-                    >
-                      {difficultyLabel(tier)}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-
-              <Text style={dynamicStyles.devSectionHeader}>── Power-ups ──</Text>
-
-              <View style={styles.devPowerUpRow}>
-                {(["lightning", "shield", "buddy", "bomb", "salvage", "hull"] as PowerUpType[]).map(
-                  (type) => (
-                    <Pressable
-                      key={type}
-                      style={styles.devPowerUpBtn}
-                      onPress={() => handleTriggerPowerUp(type)}
-                      accessibilityLabel={`Trigger ${type} power-up`}
-                    >
-                      <Text style={styles.devPowerUpText}>{type}</Text>
-                    </Pressable>
-                  )
-                )}
-              </View>
-
-              <Text style={dynamicStyles.devSectionHeader}>── Sound ──</Text>
-
-              {(
-                [
-                  ["Laser", "laser"],
-                  ["PU: Lightning", "poweruplightning"],
-                  ["PU: Shield", "powerupshield"],
-                  ["PU: Buddy", "powerupbuddy"],
-                  ["PU: Bomb", "powerupbomb"],
-                  ["Explosion", "explosion"],
-                  ["Player hit", "playerhit"],
-                  ["Wave clear", "waveclear"],
-                  ["Game over", "gameover"],
-                  ["Boss wave", "bosswave"],
-                  ["Beam charge", "beamcharge"],
-                  ["Beam fire", "beamfire"],
-                  ["Reinforce", "reinforce"],
-                  ["Salvage", "salvage"],
-                  ["Hull up", "hullup"],
-                  ["Hull hit", "hullhit"],
-                  ["Rout", "rout"],
-                ] as [string, keyof SfxVolumes][]
-              ).map(([label, key]) => (
-                <View key={key} style={styles.devRow}>
-                  <Text style={[dynamicStyles.devLabel, styles.devMixerLabel]}>{label}</Text>
-                  <Pressable
-                    style={styles.devStepBtn}
-                    onPress={() => adjustVolume(key, -0.1)}
-                    accessibilityLabel={`Decrease ${label} volume`}
-                  >
-                    <Text style={styles.devStepText}>−</Text>
-                  </Pressable>
-                  <Text style={styles.devValue}>{devVolumes[key].toFixed(1)}</Text>
-                  <Pressable
-                    style={styles.devStepBtn}
-                    onPress={() => adjustVolume(key, 0.1)}
-                    accessibilityLabel={`Increase ${label} volume`}
-                  >
-                    <Text style={styles.devStepText}>+</Text>
-                  </Pressable>
-                </View>
-              ))}
-
-              <Pressable
-                style={[styles.devActionBtn, dynamicStyles.devPrimary]}
-                onPress={() => {
-                  setDevPanelOpen(false);
-                  handleNewGame({
-                    wave: devWave,
-                    infiniteLives: devInfiniteLives,
-                    stragglerEnabled: devStragglerEnabled,
-                    pauseStraggler: devPauseStraggler,
-                    difficulty: devDifficulty,
-                  });
-                }}
-              >
-                <Text style={styles.devPrimaryText}>New Game</Text>
-              </Pressable>
-
-              <Pressable style={styles.devActionBtn} onPress={() => setDevPanelOpen(false)}>
-                <Text style={dynamicStyles.devLabel}>Collapse</Text>
-              </Pressable>
-            </ScrollView>
-          </View>
-        )}
+        <StarSwarmDevPanel
+          enabled={DEV_TOOLS}
+          open={devOpen}
+          onClose={() => setDevOpen(false)}
+          canvasRef={canvasRef}
+          options={devOptions}
+          onOptionsChange={setDevOptions}
+          onNewGame={handleNewGame}
+        />
       </View>
     </GameShell>
   );
 }
 
-const baseStyles = StyleSheet.create({
+const styles = StyleSheet.create({
   canvasOuter: {
     flex: 1,
     alignItems: "center",
@@ -1066,109 +688,6 @@ const baseStyles = StyleSheet.create({
   pauseHeaderBtnPressed: {
     opacity: 0.7,
   },
-  devButtonText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1,
-  },
-  devRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  devStepBtn: {
-    backgroundColor: "rgba(255,255,255,0.1)",
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  devStepText: {
-    color: "#fff",
-    fontSize: 18,
-    lineHeight: 22,
-  },
-  devValue: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-    minWidth: 28,
-    textAlign: "center",
-  },
-  devMono: {
-    color: "#fff",
-    fontSize: 11,
-    lineHeight: 16,
-    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
-  },
-  devScrollContent: {
-    gap: 16,
-  },
-  devMixerLabel: {
-    fontSize: 11,
-    minWidth: 80,
-  },
-  devPowerUpRow: {
-    flexDirection: "row",
-    gap: 6,
-    flexWrap: "wrap",
-  },
-  devPowerUpBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 6,
-    alignItems: "center",
-    backgroundColor: "rgba(255,200,0,0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(255,200,0,0.4)",
-  },
-  devPowerUpText: {
-    color: "#ffc800",
-    fontSize: 10,
-    fontWeight: "700",
-    textTransform: "capitalize",
-  },
-  devActionBtn: {
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-  devPrimaryText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  devTierScroll: {
-    marginVertical: 2,
-  },
-  devTierScrollContent: {
-    gap: 6,
-    paddingVertical: 2,
-  },
-  devTierBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 6,
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-  },
-  devTierBtnActive: {
-    backgroundColor: "rgba(255,128,0,0.3)",
-    borderColor: "rgba(255,128,0,0.8)",
-  },
-  devTierText: {
-    color: "rgba(255,255,255,0.55)",
-    fontSize: 9,
-    fontWeight: "700",
-  },
-  devTierTextActive: {
-    color: "#ff8000",
-  },
   // The md card caps its height; the tier list shrinks inside it so the
   // Start button stays on screen in short landscape windows.
   pickerScroll: {
@@ -1180,57 +699,3 @@ const baseStyles = StyleSheet.create({
     marginTop: 12,
   },
 });
-
-// Create dynamic styles based on theme tokens to comply with design-tokens policy
-const getStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
-  StyleSheet.create({
-    ...baseStyles,
-    devButton: {
-      position: "absolute",
-      top: 6,
-      left: 6,
-      backgroundColor: "rgba(255,128,0,0.85)",
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 4,
-      zIndex: 100,
-    },
-    devPanelOverlay: {
-      position: "absolute",
-      right: 0,
-      top: 0,
-      bottom: 0,
-      width: 180,
-      backgroundColor: "rgba(0,0,0,0.88)",
-      borderLeftWidth: 1,
-      borderLeftColor: "rgba(255,128,0,0.4)",
-      zIndex: 100,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-    },
-    devTitle: {
-      color: "rgba(255,128,0,1)",
-      fontSize: 14,
-      fontWeight: "700",
-      letterSpacing: 2,
-      textAlign: "center",
-      textTransform: "uppercase",
-    },
-    devLabel: {
-      color: colors.textMuted,
-      fontSize: 13,
-      flex: 1,
-    },
-    devSectionHeader: {
-      color: "rgba(255,128,0,0.7)",
-      fontSize: 10,
-      letterSpacing: 1,
-      textAlign: "center",
-      marginTop: 4,
-    },
-    devPrimary: {
-      backgroundColor: "rgba(255,128,0,1)",
-    },
-  });
-
-const styles = baseStyles;

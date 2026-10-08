@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { AppState, Modal, ScrollView, View, Text, StyleSheet, Pressable } from "react-native";
+import { AppState, View, Text, StyleSheet, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -37,18 +37,11 @@ import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { buildEndedPayload } from "../game/yacht/resultPayload";
 import YachtFinalScorecard from "../components/yacht/YachtFinalScorecard";
 import AiDifficultySelector from "../components/yacht/AiDifficultySelector";
+import YachtDevPanel from "../components/yacht/YachtDevPanel";
 import { YachtCelebrationAnimation } from "../components/yacht/YachtCelebrationAnimation";
 import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
 import { ModalCard } from "../components/shared/ModalCard";
 import { useTheme } from "../theme/ThemeContext";
-import {
-  DEV_ACCENT,
-  DEV_ACCENT_DIM,
-  DEV_ACCENT_BORDER,
-  DEV_OVERLAY_BG,
-  DEV_SURFACE_SUBTLE,
-  DEV_SURFACE_DIM,
-} from "../theme/theme.constants";
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { PillButton } from "../components/shared/PillButton";
@@ -94,8 +87,7 @@ export default function GameScreen({ navigation, route }: Props) {
   const [showYachtCelebration, setShowYachtCelebration] = useState(false);
   const [showJokerCelebration, setShowJokerCelebration] = useState(false);
   const [rollingIndices, setRollingIndices] = useState<readonly number[]>([]);
-  const [devPanelOpen, setDevPanelOpen] = useState(false);
-  const [devDice, setDevDice] = useState<[number, number, number, number, number]>([3, 3, 3, 3, 3]);
+  const [devOpen, setDevOpen] = useState(false);
   // Dev panel: dice to force on the next human roll; consumed (cleared) by handleRoll.
   const devDiceOverrideRef = useRef<number[] | null>(null);
 
@@ -875,115 +867,15 @@ export default function GameScreen({ navigation, route }: Props) {
         </ModalCard>
       )}
 
-      {__DEV__ && (
-        <Pressable style={styles.devButton} onPress={() => setDevPanelOpen(true)}>
-          <Text style={styles.devButtonText}>DEV</Text>
-        </Pressable>
-      )}
-
-      {__DEV__ && (
-        <Modal
-          visible={devPanelOpen}
-          transparent
-          animationType="fade"
-          accessibilityViewIsModal
-          onRequestClose={() => setDevPanelOpen(false)}
-        >
-          <View style={styles.devOverlay}>
-            <View style={[styles.devPanel, { backgroundColor: colors.surfaceHigh }]}>
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.devScrollContent}
-              >
-                <Text style={styles.devTitle}>Yacht Dev Panel</Text>
-
-                <Text style={[styles.devSectionHeader, { color: colors.textMuted }]}>
-                  ── Dice Override ──
-                </Text>
-                <Text style={[styles.devHint, { color: colors.textMuted }]}>
-                  Applied on next roll. Held dice are respected.
-                </Text>
-
-                <View style={styles.devDiceRow}>
-                  {devDice.map((val, i) => (
-                    <View key={i} style={styles.devDieCell}>
-                      <Pressable
-                        style={styles.devStepBtn}
-                        onPress={() =>
-                          setDevDice((d) => {
-                            const next = [...d] as typeof d;
-                            next[i] = Math.min(6, d[i]! + 1);
-                            return next;
-                          })
-                        }
-                        accessibilityLabel={`Increase die ${i + 1}`}
-                      >
-                        <Text style={styles.devStepText}>+</Text>
-                      </Pressable>
-                      <Text style={styles.devDieValue}>{val}</Text>
-                      <Pressable
-                        style={styles.devStepBtn}
-                        onPress={() =>
-                          setDevDice((d) => {
-                            const next = [...d] as typeof d;
-                            next[i] = Math.max(1, d[i]! - 1);
-                            return next;
-                          })
-                        }
-                        accessibilityLabel={`Decrease die ${i + 1}`}
-                      >
-                        <Text style={styles.devStepText}>−</Text>
-                      </Pressable>
-                    </View>
-                  ))}
-                </View>
-
-                <Text style={[styles.devSectionHeader, { color: colors.textMuted }]}>
-                  ── Presets ──
-                </Text>
-
-                {(
-                  [
-                    ["Yacht", [3, 3, 3, 3, 3]],
-                    ["Full House", [2, 2, 2, 5, 5]],
-                    ["Sm. Straight", [1, 2, 3, 4, 6]],
-                    ["Lg. Straight", [1, 2, 3, 4, 5]],
-                    ["All 1s", [1, 1, 1, 1, 1]],
-                    ["All 6s", [6, 6, 6, 6, 6]],
-                  ] as [string, [number, number, number, number, number]][]
-                ).map(([label, preset]) => (
-                  <Pressable
-                    key={label}
-                    style={styles.devPresetBtn}
-                    onPress={() => setDevDice(preset)}
-                  >
-                    <Text style={styles.devPresetText}>
-                      {label} [{preset.join(",")}]
-                    </Text>
-                  </Pressable>
-                ))}
-
-                <Pressable
-                  style={[styles.devActionBtn, { backgroundColor: DEV_ACCENT }]}
-                  onPress={() => {
-                    devDiceOverrideRef.current = [...devDice];
-                    setDevPanelOpen(false);
-                  }}
-                >
-                  <Text style={styles.devActionPrimaryText}>Apply on next roll</Text>
-                </Pressable>
-
-                <Pressable
-                  style={[styles.devActionBtn, { backgroundColor: DEV_SURFACE_SUBTLE }]}
-                  onPress={() => setDevPanelOpen(false)}
-                >
-                  <Text style={[styles.devActionText, { color: colors.textMuted }]}>Close</Text>
-                </Pressable>
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
-      )}
+      <YachtDevPanel
+        enabled={__DEV__}
+        open={devOpen}
+        onOpen={() => setDevOpen(true)}
+        onClose={() => setDevOpen(false)}
+        onApply={(dice) => {
+          devDiceOverrideRef.current = dice;
+        }}
+      />
     </GameShell>
   );
 }
@@ -1105,112 +997,5 @@ const styles = StyleSheet.create({
   modeDivider: {
     height: 1,
     marginVertical: 4,
-  },
-  // DEV panel styles
-  devButton: {
-    position: "absolute",
-    bottom: 8,
-    right: 8,
-    backgroundColor: DEV_ACCENT_DIM,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    zIndex: 100,
-  },
-  devButtonText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1,
-  },
-  devOverlay: {
-    flex: 1,
-    backgroundColor: DEV_OVERLAY_BG,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  devPanel: {
-    borderRadius: 12,
-    padding: 24,
-    width: 320,
-    maxHeight: "85%",
-    borderWidth: 1,
-    borderColor: DEV_ACCENT_BORDER,
-  },
-  devScrollContent: {
-    gap: 12,
-  },
-  devTitle: {
-    color: DEV_ACCENT,
-    fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 2,
-    textAlign: "center",
-    textTransform: "uppercase",
-  },
-  devSectionHeader: {
-    fontSize: 10,
-    letterSpacing: 1,
-    textAlign: "center",
-    marginTop: 4,
-  },
-  devHint: {
-    fontSize: 11,
-    textAlign: "center",
-  },
-  devDiceRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 4,
-  },
-  devDieCell: {
-    flex: 1,
-    alignItems: "center",
-    gap: 4,
-  },
-  devStepBtn: {
-    backgroundColor: DEV_SURFACE_DIM,
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  devStepText: {
-    color: "#fff",
-    fontSize: 18,
-    lineHeight: 22,
-  },
-  devDieValue: {
-    color: "#fff",
-    fontSize: 20,
-    fontWeight: "700",
-    minWidth: 24,
-    textAlign: "center",
-  },
-  devPresetBtn: {
-    backgroundColor: DEV_SURFACE_SUBTLE,
-    borderRadius: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    alignItems: "center",
-  },
-  devPresetText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  devActionBtn: {
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  devActionPrimaryText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  devActionText: {
-    fontSize: 13,
   },
 });

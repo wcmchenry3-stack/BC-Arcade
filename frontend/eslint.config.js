@@ -154,7 +154,6 @@ module.exports = [
       "src/screens/HeartsScreen.tsx",
       "src/screens/MahjongScreen.tsx",
       "src/screens/SolitaireScreen.tsx",
-      "src/screens/StarSwarmScreen.tsx",
     ],
     rules: {
       "max-lines": ["warn", { max: 800, skipBlankLines: true, skipComments: true }],

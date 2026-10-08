@@ -17,8 +17,8 @@
  *      MatchBurst / DeadlockShake / ShufflePulse.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -52,6 +52,7 @@ import { PillButton } from "../components/shared/PillButton";
 import { PlayClockText } from "../components/shared/PlayClockText";
 import GameResultModal from "../components/shared/GameResultModal";
 import GameCanvas from "../components/mahjong/GameCanvas";
+import MahjongDevPanel from "../components/mahjong/MahjongDevPanel";
 import { useMahjongCamera } from "../game/mahjong/layout";
 import type { BoardCamera } from "../game/mahjong/layout";
 import {
@@ -59,7 +60,6 @@ import {
   DEADLOCK_OVERLAY_DELAY_MS,
   elapsedMs,
   nextBestTime,
-  getAllFreePairs,
   getAnyFreePair,
   pauseGame,
   resumeGame,
@@ -343,15 +343,13 @@ export default function MahjongScreen() {
   const [noHintVisible, setNoHintVisible] = useState(false);
   const noHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Dev panel state — __DEV__ only; toggled via Shift+D (web) or long-press score (native).
-  const [devPanelOpen, setDevPanelOpen] = useState(false);
+  // Dev panel — __DEV__ only; toggled from the HUD's DEV pill, a long press on the clock, or
+  // Shift+D (web).
+  const [devOpen, setDevOpen] = useState(false);
+  const toggleDev = useCallback(() => setDevOpen((o) => !o), []);
   const [debugShowFree, setDebugShowFree] = useState(false);
   // The board's free tiles, once per board (#2962): shared by the canvas, overlays and moves.
   const free = useFreeTiles(state);
-  const freePairs = useMemo<[SlotTile, SlotTile][]>(
-    () => (__DEV__ && devPanelOpen ? getAllFreePairs(free.tiles, free.ids) : []),
-    [devPanelOpen, free]
-  );
 
   // Tile image URIs for the flying-pair overlay (web: loaded via expo-asset; native: stays null[]).
   const [tileUris, setTileUris] = useState<(string | null)[]>(Array(42).fill(null));
@@ -567,16 +565,6 @@ export default function MahjongScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  // Dev panel: Shift+D keyboard shortcut on web.
-  useEffect(() => {
-    if (!__DEV__ || Platform.OS !== "web") return;
-    function onKey(e: KeyboardEvent) {
-      if (e.shiftKey && e.key === "D") setDevPanelOpen((o) => !o);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   // Saves only when the board, undo history or banked clock change, debounced (#2961).
@@ -1047,7 +1035,7 @@ export default function MahjongScreen() {
                   playing, the score is 10 per pair, which PAIRS already shows.
                   The score stays on the result card. */}
               {__DEV__ ? (
-                <Pressable onLongPress={() => setDevPanelOpen((o) => !o)} accessibilityRole="none">
+                <Pressable onLongPress={toggleDev} accessibilityRole="none">
                   <PlayClockText
                     startedAt={state.startedAt}
                     accumulatedMs={state.accumulatedMs}
@@ -1087,7 +1075,7 @@ export default function MahjongScreen() {
                 <PillButton
                   label="DEV"
                   accessibilityLabel="Toggle dev panel"
-                  onPress={() => setDevPanelOpen((o) => !o)}
+                  onPress={toggleDev}
                   color={DEV_ACCENT}
                 />
               )}
@@ -1168,58 +1156,16 @@ export default function MahjongScreen() {
         </View>
       )}
 
-      {__DEV__ && devPanelOpen && state && (
-        <View style={styles.devPanel} pointerEvents="box-none">
-          <Text style={styles.devPanelTitle}>DEV — Mahjong</Text>
-          <Text style={styles.devPanelText}>
-            tiles: {state.tiles.length} / pairs removed: {state.pairsRemoved}
-          </Text>
-          <Text style={styles.devPanelText}>
-            free tiles:{" "}
-            {new Set(freePairs.flatMap(([a, b]: [SlotTile, SlotTile]) => [a.id, b.id])).size} / free
-            pairs: {freePairs.length}
-          </Text>
-          <Text style={styles.devPanelText}>
-            shuffles left: {state.shufflesLeft} / score: {state.score}
-          </Text>
-          <Text style={styles.devPanelText}>
-            deal #{state.dealId} / undo depth: {state.undoStack.length}
-          </Text>
-          <Pressable
-            onPress={() => setDebugShowFree((v) => !v)}
-            style={[styles.devToggleBtn, debugShowFree && styles.devToggleBtnActive]}
-          >
-            <Text style={styles.devToggleText}>
-              {debugShowFree ? "overlay: ON" : "overlay: off"}
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => navigation.navigate("MahjongLayoutInspector")}
-            style={styles.devToggleBtn}
-          >
-            <Text style={styles.devToggleText}>Layout Inspector →</Text>
-          </Pressable>
-          {freePairs.length > 0 && (
-            <>
-              <Text style={[styles.devPanelTitle, { marginTop: 8 }]}>free pairs</Text>
-              <ScrollView style={{ maxHeight: 140 }} showsVerticalScrollIndicator={false}>
-                {freePairs.map(([a, b]: [SlotTile, SlotTile], i: number) => (
-                  <Text key={i} style={styles.devPairText}>
-                    {a.suit[0]}
-                    {a.rank} ↔ {b.suit[0]}
-                    {b.rank} (ids {a.id},{b.id})
-                  </Text>
-                ))}
-              </ScrollView>
-            </>
-          )}
-          {freePairs.length === 0 && (
-            <Text style={[styles.devPanelText, { color: "#ff6644", marginTop: 4 }]}>
-              no free pairs
-            </Text>
-          )}
-        </View>
-      )}
+      <MahjongDevPanel
+        enabled={__DEV__}
+        open={devOpen}
+        onToggle={toggleDev}
+        state={state}
+        free={free}
+        showFree={debugShowFree}
+        onToggleShowFree={() => setDebugShowFree((v) => !v)}
+        onOpenLayoutInspector={() => navigation.navigate("MahjongLayoutInspector")}
+      />
 
       {state !== null ? (
         <GameResultModal
@@ -1331,54 +1277,6 @@ const styles = StyleSheet.create({
   },
   dealIdText: {
     fontSize: 10,
-  },
-  devPanel: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    width: 220,
-    backgroundColor: "rgba(0,0,0,0.82)",
-    borderLeftWidth: 1,
-    borderLeftColor: "rgba(255,128,0,0.5)",
-    padding: 10,
-  },
-  devPanelTitle: {
-    color: "rgba(255,128,0,1)",
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    marginBottom: 4,
-  },
-  devPanelText: {
-    color: "#cccccc",
-    fontSize: 10,
-    lineHeight: 16,
-    fontVariant: ["tabular-nums"],
-  },
-  devPairText: {
-    color: "#aaccaa",
-    fontSize: 10,
-    lineHeight: 15,
-    fontVariant: ["tabular-nums"],
-  },
-  devToggleBtn: {
-    marginTop: 6,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: "rgba(255,128,0,0.5)",
-    alignSelf: "flex-start",
-  },
-  devToggleBtnActive: {
-    backgroundColor: "rgba(255,128,0,0.2)",
-    borderColor: "rgba(255,128,0,1)",
-  },
-  devToggleText: {
-    color: "rgba(255,128,0,1)",
-    fontSize: 10,
-    fontWeight: "700",
   },
   noMovesOverlay: {
     backgroundColor: MAHJONG_NO_MOVES_OVERLAY_BG,

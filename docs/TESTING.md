@@ -267,6 +267,37 @@ Each factory keeps the shape the screen tests had before #2954, and takes overri
 where tests differ; mock shapes decide what the screen sees, so change one only on purpose.
 Module mocks particular to one screen (its engine, canvas, storage) stay in that test file.
 
+### Adding a dev control (#2978)
+
+In-screen developer panels live next to the game's components, one per game:
+`components/starswarm/StarSwarmDevPanel.tsx`, `components/daily_word/DailyWordDevPanel.tsx`,
+`components/yacht/YachtDevPanel.tsx`, `components/mahjong/MahjongDevPanel.tsx` (Hearts has its
+own `HeartsDebugPanel`). Each is built on `components/dev/DevPanelShell.tsx`, which draws the
+DEV button, the panel (`variant="modal"`, or `"sidebar"` over a live game) and its title, and
+exports the controls: `DevSection` (a `── Title ──` header), `DevRow` (label + value),
+`DevStepper` (`− value +`, or a `column` cell), `DevToggle` (labelled `Switch`) and
+`DevActionButton` (`variant="primary"` for the solid accent button). Colours come from the
+`DEV_*` tokens in `theme/theme.constants.ts`; add a token there rather than an `rgba(...)`
+literal in a component (the design-token check flags those).
+
+To add a control:
+
+1. Add it to the game's `<Game>DevPanel.tsx` using the shell's controls. Give it a label a test
+   can find: `DevToggle` and `DevStepper` use their labels as accessibility labels, and a
+   `DevActionButton` takes `accessibilityLabel` / `testID`.
+2. Keep the panel's own state inside the panel. State the screen needs (Star Swarm's
+   `StarSwarmDevOptions`, Mahjong's free-tile overlay) stays in the screen and is passed in with
+   a setter; the screen keeps only `devOpen` and renders one `<XDevPanel enabled={...} />`.
+3. Pass the screen's existing gate as `enabled` (`__DEV__`, or Star Swarm's
+   `DEV_TOOLS = __DEV__ || isPreLaunchApiBuild()`). The panel component returns `null` before
+   any hook runs when it is false, so store builds neither show it nor run its timers or
+   listeners. Never widen the gate in a panel.
+4. Test it through the screen's dev-panel cases (`StarSwarmScreen.devpanel.test.tsx`, the
+   "developer panel" blocks of `DailyWordScreen.flow.test.tsx` and `MahjongScreen.board.test.tsx`)
+   or the panel's own test (`components/yacht/__tests__/YachtDevPanel.test.tsx`), driving it by
+   label or testID. Shell behaviour itself is covered by
+   `components/dev/__tests__/DevPanelShell.test.tsx`.
+
 ### Testing a native renderer (#2956)
 
 The iOS/Android Skia renderers (`components/starswarm/GameCanvas.tsx`,
@@ -1024,8 +1055,9 @@ test (see "What's Tested" note above — no React/canvas coverage).
 The question the panel answers is "does the collision rate match the enemy's skill?" — the
 per-tier dodge odds are configuration; the panel shows what actually happened next to them. Dev
 builds and internal pre-launch builds only (the `DEV` button in the corner of the canvas). The
-panel is behind `DEV_TOOLS` in `StarSwarmScreen.tsx`, which is `__DEV__` or a build against the
-pre-launch API (#2567, as Hearts does), so store builds never show it.
+panel (`components/starswarm/StarSwarmDevPanel.tsx`) is behind `DEV_TOOLS` in
+`StarSwarmScreen.tsx`, which is `__DEV__` or a build against the pre-launch API (#2567, as Hearts
+does), so store builds never show it.
 
 1. Start a run at the difficulty you are tuning (the _Difficulty_ section applies on New Game).
 2. Open the panel. Under _Run stats_ the tier table has one row per tier:
