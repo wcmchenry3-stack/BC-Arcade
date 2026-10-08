@@ -21,7 +21,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import sentry_sdk
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +36,7 @@ from games.filters import is_swept, without_swept
 from games.legacy_outcomes import might_be_legacy_win, win_update
 from games.protocol import GameModule
 from games.registry import get_module
+from observability.report import report_rejected_result
 from players.service import remember_legacy_opt_in
 from vocab import GameOutcome
 
@@ -367,10 +367,4 @@ def _report_rejected_result(game_type: str, reason: str, extra: dict[str, Any]) 
     client's own report. Field paths and error types only: no session id (the
     privacy policy says crash reports carry no identifier) and no result values.
     """
-    with sentry_sdk.new_scope() as scope:
-        scope.set_tag("game_type", game_type)
-        scope.set_context("result_rejection", extra)
-        scope.fingerprint = ["games-complete-result-rejected", game_type, reason]
-        sentry_sdk.capture_message(
-            f"PATCH /games/{{id}}/complete rejected: {reason} ({game_type})", level="error"
-        )
+    report_rejected_result(game_type, reason, extra)

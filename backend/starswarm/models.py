@@ -13,7 +13,6 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Any, Literal, get_args
 
-import sentry_sdk
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -27,6 +26,8 @@ from pydantic import (
     model_validator,
 )
 from pydantic_core import PydanticCustomError
+
+from observability.report import report_event
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +228,7 @@ def _report_dropped_breakdown(
 
     Field paths and error types only, never values. One issue per ``reason``.
     """
-    sentry_sdk.capture_message(
+    report_event(
         f"starswarm result: score_breakdown {reason}",
         level="warning",
         fingerprint=["starswarm-result-breakdown-dropped", reason],

@@ -37,11 +37,9 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 import unicodedata
 from datetime import UTC, datetime, timedelta
 
-import sentry_sdk
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
@@ -49,6 +47,7 @@ from daily_word.progress import MAX_GUESSES, GuessOutcome, may_see_answer, recor
 from daily_word.puzzle import get_answer, get_today_meta, is_valid_guess
 from db.base import DbSession, get_session_factory
 from limiter import _real_ip, limiter
+from observability.report import Throttle, report_event
 from session import get_session_id
 
 _SUPPORTED_LANGS = frozenset(("en", "hi"))
@@ -60,33 +59,25 @@ _SUPPORTED_LANGS = frozenset(("en", "hi"))
 # 476-event issue, #2430's network-warning window). One Sentry event per window
 # is enough to tell us the cap has stopped applying; every failure is still
 # logged, just without a stack after the first.
-_DEGRADE_REPORT_WINDOW_S = 600.0
-_last_degrade_report: float | None = None
+_degrade_throttle = Throttle(600.0)
 
 
 def _report_degraded_guess(exc: BaseException) -> None:
     """Report that the guess cap is not being enforced — at most once per window."""
-    global _last_degrade_report
-
-    now = time.monotonic()
-    first_in_window = (
-        _last_degrade_report is None or now - _last_degrade_report >= _DEGRADE_REPORT_WINDOW_S
-    )
-    if not first_in_window:
+    if not _degrade_throttle.allow():
         logger.warning("daily_word: guess state still unavailable (%s)", type(exc).__name__)
         return
 
-    _last_degrade_report = now
     # WARNING with the stack, not logger.exception: sentry-sdk's default
     # logging integration turns ERROR records into events, so the capture below
     # was the second event for every window (#2661 review).
     logger.warning("daily_word: guess state unavailable, scoring without the cap", exc_info=exc)
-    with sentry_sdk.new_scope() as scope:
-        scope.set_tag("subsystem", "daily_word.progress")
-        scope.fingerprint = ["daily-word-guess-state-unavailable"]
-        sentry_sdk.capture_message(
-            "daily_word guess state unavailable — cap not enforced", level="warning"
-        )
+    report_event(
+        "daily_word guess state unavailable — cap not enforced",
+        level="warning",
+        fingerprint=["daily-word-guess-state-unavailable"],
+        tags={"subsystem": "daily_word.progress"},
+    )
 
 
 router = APIRouter()

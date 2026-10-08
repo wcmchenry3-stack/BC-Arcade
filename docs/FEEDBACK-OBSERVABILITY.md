@@ -159,8 +159,32 @@ integration would turn an ERROR record into a second, untagged event.
 | App Store replay       | `purchases.apple_replay`  | `apple-notification-replay-failed`  |
 | Google Play jobs       | `purchases.google_jobs`   | `google-play-jobs-failed`           |
 
-The "dropped/rejected result" message reporters (games, hearts, starswarm,
-yacht, daily word) are still separate; unifying them is a follow-up under #2950.
+### One reporter
+
+Background-job failures and the dropped/rejected-result reports go through
+`backend/observability/report.py`. Two plain one-line messages still call
+`sentry_sdk.capture_message` directly: the missing-`GameModule` report in
+`games/stats.py` and the store-misconfiguration report in
+`purchases/_common.misconfigured`.
+
+- `report_exception(exc, subsystem=..., fingerprint=...)` for a caught exception
+  (the background jobs above);
+- `report_event(message, *, level, fingerprint, tags, context=None, extras=None)`
+  for a message, with an explicit fingerprint, tags and Sentry contexts on a
+  throwaway scope that never leaks onto other events;
+- `Throttle(window_s)` for a reporter that could flood during one outage:
+  `allow()` is True for the first call in a window and False for the rest.
+
+The "dropped/rejected result" reporters are all `report_event` calls. They send
+field paths and error types only, never values or a session id.
+
+| Reporter                                       | Level   | Fingerprint                                                       | Tags                            |
+| ---------------------------------------------- | ------- | ----------------------------------------------------------------- | ------------------------------- |
+| `games.sessions._report_rejected_result` (400) | error   | `games-complete-result-rejected`, game type, reason               | `game_type`                     |
+| `yacht.models._report_dropped_card`            | error   | same as above, game type `yacht`, reason `<field> dropped`        | `game_type`                     |
+| `hearts.models._report_dropped_breakdown`      | warning | `hearts-result-breakdown-dropped`, reason                         | `game_type`                     |
+| `starswarm.models._report_dropped_breakdown`   | warning | `starswarm-result-breakdown-dropped`, reason                      | `game_type`, `reason`           |
+| `daily_word.router._report_degraded_guess`     | warning | `daily-word-guess-state-unavailable` (one event per 600 s window) | `subsystem=daily_word.progress` |
 
 ## 4. Session replay
 
