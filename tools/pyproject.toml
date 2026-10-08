@@ -1,0 +1,9 @@
+# Lint/format config for tools/**/*.py. Mirrors backend/pyproject.toml (same ruff rules,
+# line length 100, pinned black/ruff from backend/requirements-dev.txt) so one rule set
+# covers every Python file in the repo.
+
+[tool.black]
+line-length = 100
+
+[tool.ruff]
+extend = "../backend/pyproject.toml"

@@ -46,6 +46,17 @@ if [ -f "backend/requirements.txt" ]; then
           "cd backend && source .venv/bin/activate && ruff check --fix ."
       fi
     fi
+    # tools/**/*.py share the backend's ruff/black rules (tools/pyproject.toml)
+    if [ -d "tools" ] && command -v black &>/dev/null && command -v ruff &>/dev/null; then
+      if (cd tools && black --check --quiet . && ruff check --no-fix --quiet .) &>/dev/null; then
+        print_ok "tools python"
+      else
+        FAIL=1
+        print_fail "tools python" \
+          "ruff/black issues in tools/" \
+          "cd tools && source ../backend/.venv/bin/activate && ruff check --fix . && black ."
+      fi
+    fi
     deactivate 2>/dev/null || true
   fi
 fi
