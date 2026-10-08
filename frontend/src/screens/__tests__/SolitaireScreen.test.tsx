@@ -1364,6 +1364,34 @@ describe("SolitaireScreen — app background and relaunch (#2750)", () => {
     });
   }
 
+  // The win stops the clock, so pausing a won board (backgrounding, another
+  // screen on top) leaves it as it is: nothing writes the won board back after
+  // the win cleared the save (#3087).
+  it("backgrounding after a win doesn't save the won board: the next mount starts fresh", async () => {
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(twoFromWin()));
+    const api = await mount();
+    await playToFoundation(api, "Q of Clubs");
+    now += 5_000;
+    await playToFoundation(api, "K of Clubs"); // the win
+    await api.findByTestId("solitaire-result");
+    now += 1_000;
+    await setAppState("background");
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    await act(async () => {
+      await new Promise((resolve) => setImmediate(resolve));
+    });
+    expect(await AsyncStorage.getItem("solitaire_game")).toBeNull();
+    await act(async () => {
+      api.unmount();
+    });
+
+    const next = await mount();
+    expect(next.queryByTestId("solitaire-result")).toBeNull();
+    expect(next.getByLabelText("Draw 1")).toBeTruthy(); // the pre-game picker
+  });
+
   it("doesn't count the time the app spends in the background", async () => {
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(twoFromWin()));
     const api = await mount();

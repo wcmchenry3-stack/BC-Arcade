@@ -290,6 +290,10 @@ export default function FreeCellScreen() {
     if (saved && !saved.isComplete) syncResume();
     // Suppress re-counting a win when resuming an already-won game.
     if (saved?.isComplete) {
+      // The winning move was saved with its events, and a save the win never got to
+      // clear still holds them: drop them in the same batch as the load, so the win's
+      // sound and animation don't play again (#3087).
+      setState({ ...saved, events: [] });
       markRestoredComplete();
       setResumedWin(true);
       setWinSummary({ best: statsRef.current.bestMoves, isNewBest: false });

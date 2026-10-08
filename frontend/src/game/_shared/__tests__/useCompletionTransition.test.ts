@@ -70,6 +70,18 @@ describe("useCompletionTransition", () => {
     expect(onAlreadyComplete).toHaveBeenCalledTimes(1);
   });
 
+  it("an undo after a win and a second win in the same game runs onAlreadyComplete once", async () => {
+    const { rerender, onComplete, onAlreadyComplete } = await setup(playing());
+    await rerender({ state: won() });
+    // Undo out of the win (true → false, no null between), then win again.
+    await rerender({ state: playing() });
+    const again = won();
+    await rerender({ state: again });
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onAlreadyComplete).toHaveBeenCalledTimes(1);
+    expect(onAlreadyComplete).toHaveBeenCalledWith(again);
+  });
+
   it("a game restored already complete does not fire onComplete", async () => {
     const onComplete = jest.fn<void, [Game]>();
     const onAlreadyComplete = jest.fn<void, [Game]>();

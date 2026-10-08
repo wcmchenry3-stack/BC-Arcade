@@ -11,10 +11,12 @@ export interface CompletionHandlers<T> {
   /**
    * The rising edge of a game whose completion is already recorded: one the
    * restore loaded already complete (`markRestoredComplete()`), or one that
-   * completes again without a `reset()`. It records nothing (its session
-   * ended and its result was counted when it happened), but it still runs
-   * after the persisted-state save, so it is where such a game's save is
-   * cleared and its result card filled in.
+   * completes again without a `reset()`. It records nothing new (no rank, no
+   * best, no stats: its result was counted when it happened), but it still
+   * runs after the persisted-state save. The screens use it to clear the
+   * save, and they also repeat what is safe to repeat: `syncComplete`
+   * (a no-op once the session has ended), Solitaire's result card, and
+   * Mahjong's idempotent layout unlock.
    */
   onAlreadyComplete?: (state: T) => void;
 }
