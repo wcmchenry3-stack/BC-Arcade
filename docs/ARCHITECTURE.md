@@ -1027,7 +1027,7 @@ Three tiers, and no tier ever points at another's data:
   dialect-compiled element in `backend/db/jsonx.py` (`json_number`,
   `json_is_true`, `json_set_true`, `plus_hours`): one statement, compiled per
   dialect through SQLAlchemy's `@compiles`, with the SQLite body as the default.
-  `games/leaderboard.py`'s `metadata_count` follows the same pattern. The only
+  `games/boards/sql.py`'s `metadata_count` follows the same pattern. The only
   remaining dialect-aware code is the `insert()` constructor picked in
   `db/dialect.py` (SQLite's `ON CONFLICT` needs its own), engine/pool setup in
   `db/base.py`, `games/legacy_outcomes.py`, whose SQL is frozen against
