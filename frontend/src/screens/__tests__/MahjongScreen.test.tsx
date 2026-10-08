@@ -792,6 +792,21 @@ describe("MahjongScreen — no-moves overlays", () => {
     expect(api.queryByText(/Shuffle \(\d+\)/)).toBeTruthy();
   });
 
+  it("hides the shuffle CTA while deadlocked, even with shuffles left (#3090)", async () => {
+    jest.useFakeTimers();
+    try {
+      await AsyncStorage.setItem(
+        "mahjong_game",
+        JSON.stringify(makeNoMovesState({ shufflesLeft: 2, isDeadlocked: true }))
+      );
+      const api = await mount();
+      expect(api.queryByText(/Shuffle \(\d+\)/)).toBeNull();
+      expect(api.queryByText("NO MOVES")).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("does not show the deadlock card immediately on mount", async () => {
     jest.useFakeTimers();
     try {

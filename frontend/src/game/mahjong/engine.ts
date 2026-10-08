@@ -770,7 +770,9 @@ function buildValidSlotPairing(slots: readonly Slot[], rng: RandomSource): Slot[
  * arrangement — so we consume the token and surface the deadlock overlay.
  */
 export function shuffleBoard(state: MahjongState): MahjongState {
-  if (state.shufflesLeft === 0) return state;
+  // No token left, or the board is already deadlocked (e.g. a second tap while
+  // the deadlock overlay is still delayed): nothing to shuffle, spend nothing.
+  if (state.shufflesLeft === 0 || state.isDeadlocked) return state;
 
   const slots: Slot[] = state.tiles.map(({ col, row, layer }) => ({ col, row, layer }));
   const specs: TileSpec[] = state.tiles.map(({ suit, rank, faceId }) => ({ suit, rank, faceId }));
@@ -836,11 +838,7 @@ export function shuffleBoard(state: MahjongState): MahjongState {
         shufflesLeft,
         isDeadlocked: true,
         undoStack,
-        // A board already deadlocked (a second tap before the overlay shows)
-        // spends the shuffle but is no new deadlock.
-        events: state.isDeadlocked
-          ? [{ type: "shuffle" }]
-          : [{ type: "shuffle" }, { type: "deadlock" }],
+        events: [{ type: "shuffle" }, { type: "deadlock" }],
       },
       Date.now()
     );

@@ -165,7 +165,8 @@ export default function MahjongScreen() {
 
   // Derived display state for no-moves overlays — computed here (not inside
   // GameCanvas) so the overlays render at viewport level and are always visible.
-  const showShuffleCTA = free.noFreePairs && (state?.shufflesLeft ?? 0) > 0;
+  // Not once deadlocked: the overlay is delayed, and the engine ignores shuffles then (#3090).
+  const showShuffleCTA = free.noFreePairs && !state?.isDeadlocked && (state?.shufflesLeft ?? 0) > 0;
 
   const [showDeadlockOverlay, setShowDeadlockOverlay] = useState(false);
   useEffect(() => {

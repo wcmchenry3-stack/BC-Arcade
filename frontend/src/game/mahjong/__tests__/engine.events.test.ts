@@ -105,11 +105,10 @@ describe("mahjong engine events", () => {
     ];
     const stuck: MahjongState = { ...game, tiles: stack };
     expect(types(shuffleBoard(stuck))).toEqual(["shuffle", "deadlock"]);
-    // Already deadlocked (a second tap before the overlay shows): the shuffle
-    // is spent, but it is no new deadlock.
+    // Already deadlocked (a second tap before the overlay shows): nothing happens (#3090).
     const dead = shuffleBoard(stuck);
     expect(dead.isDeadlocked).toBe(true);
-    expect(types(shuffleBoard(dead))).toEqual(["shuffle"]);
+    expect(shuffleBoard(dead)).toBe(dead);
     // No shuffle left: nothing happens.
     const none = { ...game, shufflesLeft: 0 };
     expect(shuffleBoard(none)).toBe(none);
