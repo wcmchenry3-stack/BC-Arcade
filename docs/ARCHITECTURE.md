@@ -86,6 +86,15 @@ Every registered game exposes a `GameModule` that tells the shared backend:
 - how its public board / Stats "Best" value are defined;
 - any game-specific Stats shaping.
 
+Each module is a declarative subclass of `GameModuleBase`
+(`backend/games/module_base.py`, #2995). The base supplies the optional hooks
+with defaults that change nothing (`stats_shape`, `derive_final_score`,
+`reconcile_result`), so a game overrides only what it needs and the shared
+code calls every hook on every module, with no `getattr` lookups. The modules
+are listed once, in the `_MODULES` tuple in `backend/games/registry.py`.
+Field types shared by the metadata models (the legacy `player_name`, 64
+characters in every game) live in `backend/games/metadata.py`.
+
 The normative protocol, route behavior, outcome vocabulary, and new-game
 checklist live in [GAME-CONTRACT.md](GAME-CONTRACT.md). This architecture file
 does not duplicate them.
