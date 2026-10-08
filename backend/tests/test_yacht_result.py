@@ -193,18 +193,18 @@ def test_out_of_shape_scorecard_is_dropped_flagged_and_reported(
     scorecard: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     reports: list[tuple[Any, ...]] = []
-    monkeypatch.setattr("yacht.models.report_event", lambda *a, **kw: reports.append(kw))
+    monkeypatch.setattr("yacht.models.report_rejected_result", lambda *a: reports.append(a))
     out = _dump(_result(final_score=10, scorecard=scorecard))
     assert "scorecard" not in out
     assert out["scorecard_reconciled"] is False
     assert out["final_score"] == 10
-    assert len(reports) == 1 and reports[0]["tags"] == {"game_type": "yacht"}
+    assert len(reports) == 1 and reports[0][0] == "yacht"
 
 
 def test_a_bad_opponent_card_is_dropped_but_the_players_kept(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("yacht.models.report_event", lambda *a, **kw: None)
+    monkeypatch.setattr("yacht.models.report_rejected_result", lambda *a: None)
     out = _dump(
         _result(
             final_score=3,
@@ -313,7 +313,7 @@ async def test_service_completes_with_a_bad_card_dropped_and_rejects_only_oversi
     from games import sessions as service
 
     reports: list[Any] = []
-    monkeypatch.setattr("yacht.models.report_event", lambda *a, **kw: reports.append(kw))
+    monkeypatch.setattr("yacht.models.report_rejected_result", lambda *a: reports.append(a))
     bad = _result(final_score=10, scorecard={"categories": {"bogus": 1}})
     stored = await service._validate_result(None, None, bad, "yacht", module)  # type: ignore[arg-type]
     assert "scorecard" not in stored

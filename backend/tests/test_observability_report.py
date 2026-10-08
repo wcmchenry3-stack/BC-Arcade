@@ -93,3 +93,20 @@ def test_throttles_are_independent() -> None:
     a, b = Throttle(60.0), Throttle(60.0)
     assert a.allow() is True
     assert b.allow() is True
+
+
+def test_report_rejected_result_builds_the_shared_event(monkeypatch) -> None:
+    sent: list[tuple[tuple, dict]] = []
+    monkeypatch.setattr(report, "report_event", lambda *a, **kw: sent.append((a, kw)))
+    report.report_rejected_result("yacht", "scorecard dropped", {"fields": "x"})
+    assert sent == [
+        (
+            ("PATCH /games/{id}/complete rejected: scorecard dropped (yacht)",),
+            {
+                "level": "error",
+                "fingerprint": ["games-complete-result-rejected", "yacht", "scorecard dropped"],
+                "tags": {"game_type": "yacht"},
+                "context": {"result_rejection": {"fields": "x"}},
+            },
+        )
+    ]

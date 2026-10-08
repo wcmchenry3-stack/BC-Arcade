@@ -7,6 +7,7 @@ to one event per window.
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Mapping
 from typing import Any
@@ -62,10 +63,29 @@ class Throttle:
     def __init__(self, window_s: float) -> None:
         self.window_s = window_s
         self._last: float | None = None
+        self._lock = threading.Lock()
 
     def allow(self) -> bool:
-        now = time.monotonic()
-        if self._last is not None and now - self._last < self.window_s:
-            return False
-        self._last = now
-        return True
+        with self._lock:
+            now = time.monotonic()
+            if self._last is not None and now - self._last < self.window_s:
+                return False
+            self._last = now
+            return True
+
+
+def report_rejected_result(game_type: str, reason: str, context: Mapping[str, Any]) -> None:
+    """A completion result rejected, or partly dropped, server-side (#2449).
+
+    One Sentry issue per game and reason. Shared by ``games.sessions`` (a 400
+    on ``/complete``) and the game modules that drop part of an otherwise valid
+    result (Yacht's cards), so both always group the same way. Field paths and
+    error types only: no session id and no result values.
+    """
+    report_event(
+        f"PATCH /games/{{id}}/complete rejected: {reason} ({game_type})",
+        level="error",
+        fingerprint=["games-complete-result-rejected", game_type, reason],
+        tags={"game_type": game_type},
+        context={"result_rejection": dict(context)},
+    )
