@@ -1100,18 +1100,28 @@ no prefix) and defaults are exactly the ones the old `os.environ.get` calls
 used, and a bad `TRUSTED_PROXY_*` value still raises `ValueError` at startup.
 Operational tunables (TTLs, windows, caps) are named constants, never env vars.
 
-| Setting              | Default when unset                                | Read by                                                 |
-| -------------------- | ------------------------------------------------- | ------------------------------------------------------- |
-| `ENVIRONMENT`        | unset (Sentry reports `development`)              | `main` (docs routes, `/debug/error`), Sentry, `limiter` |
-| `ALLOWED_ORIGINS`    | `http://localhost:8081`, `http://localhost:19006` | `main` (CORS)                                           |
-| `SENTRY_DSN`         | unset (Sentry off)                                | `observability/sentry.py`                               |
-| `RENDER_GIT_COMMIT`  | unset (no Sentry release)                         | `observability/sentry.py`                               |
-| `TRUSTED_PROXY_MODE` | `cloudflare`                                      | `limiter.py`                                            |
-| `TRUSTED_PROXY_HOPS` | `1` (1–10)                                        | `limiter.py`                                            |
-| `LOG_PROXY_HEADERS`  | unset (off; ignored in production)                | `limiter.py`                                            |
+| Setting                | Default when unset                                | Read by                                                 |
+| ---------------------- | ------------------------------------------------- | ------------------------------------------------------- |
+| `ENVIRONMENT`          | unset (Sentry reports `development`)              | `main` (docs routes, `/debug/error`), Sentry, `limiter` |
+| `ALLOWED_ORIGINS`      | `http://localhost:8081`, `http://localhost:19006` | `main` (CORS)                                           |
+| `SENTRY_DSN`           | unset (Sentry off)                                | `observability/sentry.py`                               |
+| `RENDER_GIT_COMMIT`    | unset (no Sentry release)                         | `observability/sentry.py`                               |
+| `TRUSTED_PROXY_MODE`   | `cloudflare`                                      | `limiter.py`                                            |
+| `TRUSTED_PROXY_HOPS`   | `1` (1–10)                                        | `limiter.py`                                            |
+| `LOG_PROXY_HEADERS`    | unset (off; ignored in production)                | `limiter.py`                                            |
+| `DATABASE_URL`         | unset or blank (no database; the API still boots) | `db/base.py` (on first use), `alembic/env.py`           |
+| `DAILY_WORD_SALT`      | `0` (empty or non-integer fails the import)       | `daily_word/puzzle.py` (at import)                      |
+| `DAILY_CHALLENGE_SALT` | `0` (blank → `0`; non-integer is hashed)          | `daily_challenge/definitions.py` (at import)            |
 
-Not yet migrated (each package moves in its own PR): `DATABASE_URL`
-(`db/base.py`), `DAILY_WORD_SALT`, `DAILY_CHALLENGE_SALT`, `ADMIN_API_TOKEN`
+`db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
+`get_engine()` call and keeps it for the process, because the engine is
+process-wide; `create_app()` does not pass its `Settings` there, and tests
+override it with `monkeypatch.setattr(base, "_settings", Settings.isolated(...))`.
+The two salts are still read when their modules are imported (the Daily Word
+shuffle needs its salt), so `load_dotenv()` in `main` must still run before the
+imports.
+
+Not yet migrated (each package moves in its own PR): `ADMIN_API_TOKEN`
 (`games/router.py`), `ENTITLEMENT_*` (`entitlements/service.py`) and the
 `APPLE_*` / `GOOGLE_*` store config (`purchases/`). Their meanings and where
 each is set are in [RENDER.md](RENDER.md#environment-variables).
