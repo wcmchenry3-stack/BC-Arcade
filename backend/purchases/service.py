@@ -276,15 +276,15 @@ def _advance_watermark(purchase: Purchase, event_at: datetime) -> bool:
 
 
 def _set_state(
-    purchase: Purchase, state: str, at: datetime | None, now: datetime, reason: str | None
+    purchase: Purchase, state: str, revoked_at: datetime | None, now: datetime, reason: str | None
 ) -> None:
-    """Set ``state``, verified ``now``: ``revoked`` stores ``at``/``reason``, ``owned`` clears them.
+    """Set ``state`` verified ``now``; the caller owns ``state_changed_at`` (the watermark).
 
-    Any other state keeps them. The caller owns ``state_changed_at`` (the watermark)."""
+    ``revoked`` stores ``revoked_at``/``reason``, ``owned`` clears them, others keep them."""
     purchase.state = state
     purchase.verified_at = now
     if state == "revoked":
-        purchase.revoked_at = at
+        purchase.revoked_at = revoked_at
         purchase.revocation_reason = reason
     elif state == "owned":
         purchase.revoked_at = None
