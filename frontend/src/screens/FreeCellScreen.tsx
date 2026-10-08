@@ -1,3 +1,18 @@
+/**
+ * FreeCellScreen — playable FreeCell with full lifecycle wiring.
+ *
+ * Concerns:
+ *   1. Game logic — FreeCellBoard (components/freecell) sends drags and taps to the pure
+ *      engine (`applyMove`, `undoMove`, `applyHint`); deals come from the solvable seed bank.
+ *   2. Auto-complete — `startAutoComplete` steps the finish with the board input-locked (#2225).
+ *   3. Persistence — `saveGame` after every change once the saved game has loaded.
+ *   4. Instrumentation (#2452) — `useGameSync("freecell")`, opened on the first move; a win
+ *      records its move count (#2632); a restored game resumes its session (#2654).
+ *   5. Result + leaderboard (#2633) — the shared GameResultModal; best moves via `bestOf`;
+ *      ranked via `useGameLeaderboard`.
+ *   6. Events and layout — `useGameEvents` plays sounds and the foundation animation; tall
+ *      columns compress to fit the screen (#1108).
+ */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";

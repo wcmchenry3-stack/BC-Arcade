@@ -413,7 +413,7 @@ export function resolvePickupCollection(
     w.killsSinceLastDrop >= w.dropJitterTarget &&
     !w.powerUps.some(isPowerUpDrop)
   ) {
-    // #1032: X uses Math.random() — cosmetic, non-deterministic
+    // #1032: X uses Math.random(), not the seeded rng (the known exception, ARCHITECTURE.md §3.2)
     const spawnX = POWERUP_W / 2 + Math.random() * (state.canvasW - POWERUP_W);
     w.powerUps = [
       ...w.powerUps, // #2488: keep any upgrade pickups already falling

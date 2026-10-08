@@ -21,6 +21,18 @@
  *   powerups    the player's volley, upgrade ladders, pickups and `applyPowerUp`
  *   wave        `initStarSwarm`, `buildWaveState`, `tick`, the phase machine (module header there)
  *
+ * Tick pipeline (`tick(state, dtMs, input, tuning = DEFAULT_TUNING)`, full list in `wave.ts`):
+ * timers and the tick context → player → enemies react to rocks → enemies → bullets → asteroids
+ * → power-ups → Buddy → collisions (only while `hazardsLive`) → bonus lives → explosions →
+ * `checkPhaseTransitions`, always last. Each step sees the state the one before it returned.
+ *
+ * Phase machine: SwoopIn → Playing → Extraction → (next wave) SwoopIn; GameOver is terminal and
+ * `tick` returns it untouched. Each enemy also runs its own phase machine (`enemyPhases.ts`).
+ *
+ * Immutability: a tick never mutates its input; a sub-tick that changes nothing returns the same
+ * object (`mapKeep`, #2963), so the renderer compares frames by identity. The only mutable state
+ * is outside `StarSwarmState`: the LCG seed and id counters in `rng.ts`, which a restored run
+ * must put back with `restoreEngineCounters` before its first tick (docs/ARCHITECTURE.md §3.2).
  *
  * The barrel re-exports exactly the pre-split public surface by name (plus `WAVE_COUNTDOWN_MS`, formerly
  * `constants.ts`). Internals (`rng`, id counters, `tickCollisions`, `tickEnemies`, ...) stay private to

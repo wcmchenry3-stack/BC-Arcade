@@ -131,6 +131,11 @@ After a win/loss:
 
 The UI only says "Copied" when a clipboard copy actually happened.
 
+## Client
+
+- Engine: `frontend/src/game/daily_word/engine.ts`
+- Screen: [`frontend/src/screens/DailyWordScreen.tsx`](../../frontend/src/screens/DailyWordScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
+
 ## Backend
 
 - Module: `backend/daily_word/module.py`

@@ -1,3 +1,13 @@
+/**
+ * SettingsScreen — app-wide preferences and data controls.
+ *
+ * Concerns:
+ *   1. Preferences — theme, card deck, language and sound effects.
+ *   2. Data — clear bug logs; Delete my data clears the device and the server (#2624),
+ *      including the leaderboard name (#2778) and the remembered stats (#2635).
+ *   3. Purchases and legal — Restore purchases (when purchases are available), privacy, terms.
+ *   Not a game screen: no GameShell.
+ */
 import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet, Switch, Linking, ScrollView } from "react-native";
 import { useTranslation } from "react-i18next";

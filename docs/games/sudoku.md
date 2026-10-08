@@ -158,7 +158,7 @@ For generic syncing, ranking, display-name, Stats, and result-card behavior, see
 
 - Engine: `frontend/src/game/sudoku/engine.ts`
 - Types/config: `frontend/src/game/sudoku/types.ts`
-- Screen: `frontend/src/screens/SudokuScreen.tsx`
+- Screen: [`frontend/src/screens/SudokuScreen.tsx`](../../frontend/src/screens/SudokuScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Storage: `frontend/src/game/sudoku/storage.ts`
 - Classic bank: `frontend/src/game/sudoku/puzzles.json`
 - Mini bank: `frontend/src/game/sudoku/puzzles_mini.json`

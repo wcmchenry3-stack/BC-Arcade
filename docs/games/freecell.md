@@ -158,7 +158,7 @@ A single tap remains selection; double-tap is an explicit convenience action, se
 ## Implementation
 
 - Engine: `frontend/src/game/freecell/engine.ts`
-- Screen: `frontend/src/screens/FreeCellScreen.tsx`
+- Screen: [`frontend/src/screens/FreeCellScreen.tsx`](../../frontend/src/screens/FreeCellScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Seed bank: `frontend/src/game/freecell/seeds.json`
 - Seed generator/solver: `backend/scripts/gen_freecell_seeds.py`
 - Storage: `frontend/src/game/freecell/storage.ts`

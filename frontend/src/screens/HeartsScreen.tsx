@@ -1,3 +1,20 @@
+/**
+ * HeartsScreen — four-player Hearts against three computer players.
+ *
+ * Concerns:
+ *   1. Game logic — the pure engine plus the AI (`game/hearts/ai`); `runAiTurns` paces the
+ *      computer seats; the opponent style opens on the last one played (#1129).
+ *   2. Persistence — `saveGame` on trick and hand transitions, on blur and on background.
+ *   3. Play clock (#2629) — its own clock, paused on blur and background (not yet on
+ *      usePauseWhileAway — #3087), sent as the game's durationMs.
+ *   4. Instrumentation — `useGameSync("hearts")`; the result records who won (#2517) and the
+ *      per-hand scores (#2838); a restored game resumes its session (#2654).
+ *   5. Result + leaderboard (#2506, #2633) — the shared GameResultModal with the final
+ *      standings, ranked via `useGameLeaderboard`.
+ *   6. Events and scorecard — `useGameEvents` drives the hearts-broken, moon-shot and queen
+ *      animations; the rounds context feeds the live ScorecardScreen.
+ *   7. Debug panel — HeartsDebugPanel, required lazily in dev and pre-launch builds (#2970).
+ */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import type { AppStateStatus } from "react-native";
