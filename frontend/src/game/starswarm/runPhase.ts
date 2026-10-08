@@ -6,7 +6,9 @@
  *   picker --START--> running --PAUSE--> paused --RESUME--> running
  *                        |                  |
  *                        +----GAME_OVER-----+--> over
+ *   over --PAUSE/RESUME--> over, with the board held (`frozen`) or released
  *   any --OPEN_PICKER--> picker
+ *   PAUSE/RESUME/GAME_OVER under an open picker move the covered run and leave the picker up
  *
  * The picker is a card over the board, not a reset: it remembers the run it covers
  * (`covers`), so the music keeps playing over a live run, holds over a paused one and stays

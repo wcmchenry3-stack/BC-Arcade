@@ -78,7 +78,7 @@ describe("runReducer", () => {
     expect(runReducer(paused, RESUME)).toEqual(running);
   });
 
-  it("PAUSE and RESUME are no-ops where they mean nothing", () => {
+  it("PAUSE and RESUME are no-ops where they mean nothing (PAUSE on over only holds the board)", () => {
     const paused = play(initialRunState(false), START, PAUSE);
     expect(runReducer(paused, PAUSE)).toBe(paused);
     const running = runReducer(paused, RESUME);

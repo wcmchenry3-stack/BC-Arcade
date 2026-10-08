@@ -212,8 +212,8 @@ function StarSwarmGame() {
     playCarrierEvent,
     playUpgrade,
   } = useStarSwarmAudio(!isGameOver, devOptions.volumes, resetTick, isPaused);
-  // In dev builds, track the last opts from the panel so every subsequent "New Game"
-  // (header, game-over overlay) re-applies them without reopening the dev panel.
+  // In dev builds, the dev panel's opts for the current run (applied to the canvas). Any
+  // start other than the panel's own New Game clears them (#2567).
   const lastDevOptsRef = useRef<DevOptions | undefined>(undefined);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
@@ -413,8 +413,8 @@ function StarSwarmGame() {
   const startRun = useCallback(
     (tier: DifficultyTier, devOpts?: DevOptions) => {
       // #2567: a picker New Game is a clean run — the dev panel's wave, lives and difficulty stay
-      // with the panel's own New Game, now that internal testers can reach it. The panel's opts
-      // are kept so every later New Game re-applies them without reopening it.
+      // with the panel's own New Game, now that internal testers can reach it. A picker or Play
+      // Again start (no devOpts) clears the last panel opts.
       lastDevOptsRef.current = DEV_TOOLS ? devOpts : undefined;
       clearSavedPausedState();
       savedPauseRef.current = null;
