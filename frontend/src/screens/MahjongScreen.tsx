@@ -165,7 +165,8 @@ export default function MahjongScreen() {
 
   // Derived display state for no-moves overlays — computed here (not inside
   // GameCanvas) so the overlays render at viewport level and are always visible.
-  const showShuffleCTA = free.noFreePairs && (state?.shufflesLeft ?? 0) > 0;
+  // Not once deadlocked: the overlay is delayed, and the engine ignores shuffles then (#3090).
+  const showShuffleCTA = free.noFreePairs && !state?.isDeadlocked && (state?.shufflesLeft ?? 0) > 0;
 
   const [showDeadlockOverlay, setShowDeadlockOverlay] = useState(false);
   useEffect(() => {
@@ -177,13 +178,16 @@ export default function MahjongScreen() {
     return () => clearTimeout(timer);
   }, [state?.isDeadlocked]);
 
-  // Zoom to fit when no moves remain so the whole board is visible behind the overlay.
+  // Zoom to fit when no moves remain so the whole board is visible behind the overlay —
+  // the shuffle CTA, or the deadlock overlay (a geometric deadlock never shows the CTA).
+  // A boolean, so it fires once per transition into either state.
+  const showNoMoves = showShuffleCTA || !!state?.isDeadlocked;
   useEffect(() => {
-    if (showShuffleCTA) fitToScreen(reduceMotion);
+    if (showNoMoves) fitToScreen(reduceMotion);
     // reduceMotion is excluded on purpose: it is read when the CTA appears, so
     // a mid-session toggle applies to the next one. fitToScreen is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showShuffleCTA]);
+  }, [showNoMoves]);
 
   const hasLoadedRef = useRef(false);
   const stateRef = useRef<MahjongState | null>(null);

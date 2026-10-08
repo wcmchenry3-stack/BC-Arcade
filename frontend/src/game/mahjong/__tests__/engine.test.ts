@@ -934,6 +934,25 @@ describe("shuffleBoard", () => {
     }
   });
 
+  it("shuffling an already-deadlocked board spends no token and returns the same state (#3090)", () => {
+    const tiles: SlotTile[] = [
+      { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 },
+      { id: 1, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 1 },
+      { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 2 },
+      { id: 3, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 3 },
+    ];
+    const state: MahjongState = { ...createGame(TURTLE_LAYOUT), tiles, shufflesLeft: 3 };
+    const dead = shuffleBoard(state);
+    expect(dead.isDeadlocked).toBe(true);
+    expect(dead.shufflesLeft).toBe(2);
+    const again = shuffleBoard(dead);
+    expect(again).toBe(dead);
+    expect(again.shufflesLeft).toBe(2);
+    expect(again.events).toBe(dead.events);
+    const flagged: MahjongState = { ...createGame(TURTLE_LAYOUT, 1), isDeadlocked: true };
+    expect(shuffleBoard(flagged)).toBe(flagged);
+  });
+
   it("geometric deadlock freezes the clock, and undo resumes it", () => {
     const tiles: SlotTile[] = [
       { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 },
