@@ -3,8 +3,10 @@
 ``main.create_app()`` builds a ``Settings`` once (or takes one a test passes in),
 keeps it on ``app.state.settings`` and hands the relevant fields to the code that
 needs them. Tests override configuration by passing ``create_app(Settings(...))``
-or by setting env vars before ``create_app()``; nothing here is read when a module
-is imported.
+or by setting env vars before ``create_app()``. Two values are still read when
+their module is imported: ``DAILY_WORD_SALT`` (``daily_word/puzzle.py``) and
+``DAILY_CHALLENGE_SALT`` (``daily_challenge/definitions.py``), so ``load_dotenv()``
+in ``main.py`` must stay above the project imports.
 
 Parity rules (the owner decisions on #2997):
 
@@ -19,9 +21,11 @@ Parity rules (the owner decisions on #2997):
 - Operational tunables are named constants, not env vars.
 
 Migrated so far: the app-level settings ``main``, ``limiter`` and
-``observability.sentry`` read. The package-level variables (``DATABASE_URL``,
-``ADMIN_API_TOKEN``, ``ENTITLEMENT_*``, ``DAILY_*_SALT``, the ``APPLE_*`` /
-``GOOGLE_*`` store config) move here one package per PR.
+``observability.sentry`` read; ``DATABASE_URL`` (``db.base``, read lazily, and
+``alembic/env.py``); and the two daily salts (``daily_word.puzzle`` and
+``daily_challenge.definitions``, still read when imported). The rest
+(``ADMIN_API_TOKEN``, ``ENTITLEMENT_*``, the ``APPLE_*`` / ``GOOGLE_*`` store
+config) move here one package per PR.
 """
 
 from __future__ import annotations
@@ -66,6 +70,15 @@ class Settings(BaseSettings):
     # pass a string: Settings(TRUSTED_PROXY_HOPS="3"), not 3.
     trusted_proxy_hops: str | None = Field(default=None, alias="TRUSTED_PROXY_HOPS")
     log_proxy_headers: str = Field(default="", alias="LOG_PROXY_HEADERS")
+    # Raw value; ``database_url`` strips it and treats empty as unset. db.base adds
+    # the async driver, alembic/env.py strips it.
+    database_url_raw: str = Field(default="", alias="DATABASE_URL")
+    # Raw strings, parsed where they are used, so a bad value fails exactly as it
+    # did: daily_word.puzzle int()s DAILY_WORD_SALT when imported (an empty or
+    # non-integer value raises ValueError), and daily_challenge.definitions.parse_salt
+    # never raises (unset or blank → 0, a non-integer is hashed).
+    daily_word_salt: str = Field(default="0", alias="DAILY_WORD_SALT")
+    daily_challenge_salt: str | None = Field(default=None, alias="DAILY_CHALLENGE_SALT")
 
     @classmethod
     def isolated(cls, **values: Any) -> Settings:
@@ -90,6 +103,11 @@ class Settings(BaseSettings):
                 return (init_settings,)
 
         return _Isolated(**values)
+
+    @property
+    def database_url(self) -> str | None:
+        """DATABASE_URL stripped, or ``None`` when it is unset, empty or blank."""
+        return self.database_url_raw.strip() or None
 
     @property
     def is_production(self) -> bool:

@@ -7,6 +7,9 @@ errors for a bad value.
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -15,8 +18,11 @@ from pydantic import ValidationError
 
 import limiter as limiter_module
 import main
+from daily_challenge.definitions import parse_salt
 from observability import sentry as sentry_setup
 from settings import DEFAULT_ALLOWED_ORIGINS, Settings
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 ENV_VARS = (
     "ENVIRONMENT",
@@ -164,6 +170,91 @@ def test_field_names_are_not_accepted_as_keywords() -> None:
 def test_settings_are_frozen() -> None:
     with pytest.raises(ValidationError):
         Settings().environment = "production"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# DATABASE_URL and the daily salts (#2997 PR 2)
+# ---------------------------------------------------------------------------
+
+DB_AND_SALT_VARS = ("DATABASE_URL", "DAILY_WORD_SALT", "DAILY_CHALLENGE_SALT")
+
+
+def test_db_and_salt_defaults_match_the_old_reads(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in DB_AND_SALT_VARS:
+        monkeypatch.delenv(name, raising=False)
+    s = Settings()
+    # os.environ.get("DATABASE_URL", "").strip() → falsy → no database.
+    assert s.database_url_raw == "" and s.database_url is None
+    # int(os.environ.get("DAILY_WORD_SALT", "0"))
+    assert s.daily_word_salt == "0" and int(s.daily_word_salt) == 0
+    # parse_salt(os.environ.get("DAILY_CHALLENGE_SALT"))
+    assert s.daily_challenge_salt is None and parse_salt(s.daily_challenge_salt) == 0
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("", None), ("   ", None), (" postgres://u@h/db \n", "postgres://u@h/db")],
+)
+def test_database_url_is_stripped_and_blank_means_unset(
+    monkeypatch: pytest.MonkeyPatch, raw: str, expected: str | None
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", raw)
+    assert Settings().database_url == expected
+
+
+def test_salts_stay_raw_strings_so_their_parse_is_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DAILY_WORD_SALT", "")
+    monkeypatch.setenv("DAILY_CHALLENGE_SALT", "")
+    s = Settings()
+    assert (s.daily_word_salt, s.daily_challenge_salt) == ("", "")
+    with pytest.raises(ValueError, match="invalid literal for int"):
+        int(s.daily_word_salt)
+    assert parse_salt(s.daily_challenge_salt) == 0
+
+    monkeypatch.setenv("DAILY_WORD_SALT", " 7 ")
+    monkeypatch.setenv("DAILY_CHALLENGE_SALT", "not-a-number")
+    s = Settings()
+    assert int(s.daily_word_salt) == 7
+    assert parse_salt(s.daily_challenge_salt) == parse_salt("not-a-number")
+
+
+def _import_in_fresh_process(code: str, **env: str) -> subprocess.CompletedProcess[str]:
+    full_env = {k: v for k, v in os.environ.items() if k not in DB_AND_SALT_VARS}
+    full_env.update(env)
+    return subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=BACKEND_DIR,
+        env=full_env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize(
+    ("env", "word_salt", "challenge_salt"),
+    [
+        ({}, "0", "0"),
+        ({"DAILY_WORD_SALT": "41", "DAILY_CHALLENGE_SALT": " 9 "}, "41", "9"),
+    ],
+)
+def test_salts_are_read_when_their_modules_are_imported(
+    env: dict[str, str], word_salt: str, challenge_salt: str
+) -> None:
+    result = _import_in_fresh_process(
+        "import daily_word.puzzle as p, daily_challenge.definitions as d; print(p.SALT, d.SALT)",
+        **env,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.split() == [word_salt, challenge_salt]
+
+
+def test_an_empty_daily_word_salt_still_fails_the_import() -> None:
+    result = _import_in_fresh_process("import daily_word.puzzle", DAILY_WORD_SALT="")
+    assert result.returncode != 0
+    assert "ValueError: invalid literal for int() with base 10: ''" in result.stderr
 
 
 # ---------------------------------------------------------------------------

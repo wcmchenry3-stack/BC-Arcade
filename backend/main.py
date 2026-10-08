@@ -8,10 +8,10 @@ tests can build a fresh app (for example with other ``ALLOWED_ORIGINS``) by
 calling the factory instead of ``importlib.reload(main)``, which registered
 every rate limit a second time (#2673).
 
-The one exception is ``load_dotenv()`` just below: ``db.base``,
-``daily_word.puzzle`` and ``daily_challenge.definitions`` read their env vars
-when imported, so the local ``backend/.env`` has to be loaded before the
-imports that follow, not inside the factory. It is a no-op in production
+The one exception is ``load_dotenv()`` just below: ``daily_word.puzzle`` and
+``daily_challenge.definitions`` read their salts when imported (``db.base``
+reads ``DATABASE_URL`` on first use), so the local ``backend/.env`` has to be
+loaded before the imports that follow, not inside the factory. It is a no-op in production
 (Render injects the variables) and never overrides a variable already set.
 
 Configuration is a ``settings.Settings`` built once per ``create_app()`` (#2997).
@@ -44,7 +44,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from daily_challenge.router import router as daily_challenge_router
 from daily_word.router import router as daily_word_router
-from db.base import DATABASE_URL, is_configured
+from db.base import database_url, is_configured
 from entitlements.dependencies import EntitlementError
 from entitlements.router import router as entitlements_router
 from entitlements.service import is_dev_override_active
@@ -130,7 +130,8 @@ async def _db_health_check() -> None:
         return
     try:
         await _ping_db()
-        host = DATABASE_URL.split("@")[-1] if DATABASE_URL else ""
+        url = database_url()
+        host = url.split("@")[-1] if url else ""
         _audit_log.info(json.dumps({"event": "db_connected", "url": host}))
     except Exception as exc:  # noqa: BLE001
         _audit_log.error(json.dumps({"event": "db_connect_failed", "error": str(exc)}))

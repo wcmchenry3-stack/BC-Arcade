@@ -1,16 +1,22 @@
 """Async SQLAlchemy engine + session factory for Postgres.
 
-DATABASE_URL is read from the environment. Render provides a `postgresql://`
-URL; SQLAlchemy 2.x needs the `+asyncpg` driver qualifier to use the async API,
-so we rewrite the scheme here.
+DATABASE_URL comes from ``settings.Settings`` (#2997), read on first use — the
+first ``database_url()``, ``is_configured()`` or ``get_engine()`` call — and kept
+for the life of the process, as the engine is. Importing this module reads
+nothing. Render provides a `postgresql://` URL; SQLAlchemy 2.x needs the
+`+asyncpg` driver qualifier to use the async API, so we rewrite the scheme here.
 
 If DATABASE_URL is unset (local dev without a DB), engine/session remain None
 and callers can skip DB work. No module-level crash — the app still boots.
+
+``create_app(settings)`` does not hand its ``Settings`` to this module: the
+engine is process-wide, and tests build many apps with ``Settings.isolated()``,
+which must not unconfigure the suite's database. A test that needs another URL
+sets ``_settings``: ``monkeypatch.setattr(base, "_settings", Settings.isolated(...))``.
 """
 
 from __future__ import annotations
 
-import os
 from collections.abc import AsyncIterator
 from typing import Annotated
 
@@ -24,6 +30,8 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
+
+from settings import Settings
 
 
 class Base(DeclarativeBase):
@@ -50,8 +58,18 @@ def _is_sqlite_file_db(url: str) -> bool:
     )
 
 
-_raw_url = os.environ.get("DATABASE_URL", "").strip()
-DATABASE_URL: str | None = _normalize_url(_raw_url) if _raw_url else None
+# Built from the environment on first use; see the module docstring.
+_settings: Settings | None = None
+
+
+def database_url() -> str | None:
+    """The async DATABASE_URL, or ``None`` when it is unset or blank."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    raw = _settings.database_url
+    return _normalize_url(raw) if raw else None
+
 
 # Engine/session are created lazily so importing this module never fails
 # against a non-async DATABASE_URL (e.g. the sqlite URL used by CI's
@@ -65,7 +83,8 @@ _session_factory: async_sessionmaker[AsyncSession] | None = None
 def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
-        if not DATABASE_URL:
+        url = database_url()
+        if not url:
             raise RuntimeError("DATABASE_URL is not configured")
         # A file SQLite DB (tests, local dev) gets NullPool explicitly: since SQLAlchemy
         # 2.0.38 a file DB defaults to AsyncAdaptedQueuePool, which shares
@@ -78,15 +97,15 @@ def get_engine() -> AsyncEngine:
         # An in-memory DB keeps SQLAlchemy's StaticPool: its one connection
         # *is* the database. Only Postgres gets connection-pool tuning.
         kwargs: dict
-        if DATABASE_URL.startswith("sqlite"):
-            kwargs = {"poolclass": NullPool} if _is_sqlite_file_db(DATABASE_URL) else {}
+        if url.startswith("sqlite"):
+            kwargs = {"poolclass": NullPool} if _is_sqlite_file_db(url) else {}
         else:
             kwargs = {"pool_pre_ping": True, "pool_size": 5, "max_overflow": 5}
-        _engine = create_async_engine(DATABASE_URL, **kwargs)
+        _engine = create_async_engine(url, **kwargs)
 
         # SQLite doesn't enforce foreign keys unless explicitly enabled per
         # connection. Only affects the test DB; Postgres always enforces.
-        if DATABASE_URL.startswith("sqlite"):
+        if url.startswith("sqlite"):
 
             @event.listens_for(_engine.sync_engine, "connect")
             def _enable_sqlite_fk(dbapi_conn, _record):  # type: ignore[no-untyped-def]
@@ -107,7 +126,7 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 
 
 def is_configured() -> bool:
-    return DATABASE_URL is not None
+    return database_url() is not None
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:
