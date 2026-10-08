@@ -244,7 +244,7 @@ def test_salts_are_read_when_their_modules_are_imported(
     env: dict[str, str], word_salt: str, challenge_salt: str
 ) -> None:
     result = _import_in_fresh_process(
-        "import daily_word.puzzle as p, daily_challenge.definitions as d; " "print(p.SALT, d.SALT)",
+        "import daily_word.puzzle as p, daily_challenge.definitions as d; print(p.SALT, d.SALT)",
         **env,
     )
     assert result.returncode == 0, result.stderr

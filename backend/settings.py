@@ -3,8 +3,10 @@
 ``main.create_app()`` builds a ``Settings`` once (or takes one a test passes in),
 keeps it on ``app.state.settings`` and hands the relevant fields to the code that
 needs them. Tests override configuration by passing ``create_app(Settings(...))``
-or by setting env vars before ``create_app()``; nothing here is read when a module
-is imported.
+or by setting env vars before ``create_app()``. Two values are still read when
+their module is imported: ``DAILY_WORD_SALT`` (``daily_word/puzzle.py``) and
+``DAILY_CHALLENGE_SALT`` (``daily_challenge/definitions.py``), so ``load_dotenv()``
+in ``main.py`` must stay above the project imports.
 
 Parity rules (the owner decisions on #2997):
 
