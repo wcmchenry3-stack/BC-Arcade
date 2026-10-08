@@ -28,6 +28,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
+import { bestOf } from "../game/_shared/bestOf";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { usePausableClock } from "../hooks/usePausableClock";
 import { HudStatRow } from "../components/shared/HudStatRow";
@@ -294,14 +295,12 @@ export default function SolitaireScreen() {
         // resumed won game's was completed back then).
         if (gameId) void lookupRank(gameId);
         const priorBest = statsRef.current.bestTimeMs;
-        const improved = priorBest === 0 || finalMs < priorBest;
+        const { best, improved, isNewBest } = bestOf(priorBest, finalMs, true);
         setWinSummary({
           timeMs: finalMs,
           moves: finalMoves,
-          bestTimeMs: improved ? finalMs : priorBest,
-          // Only a beaten previous best is a "new best" — not a first win
-          // (as in Sudoku, Cascade and 2048).
-          isNewBest: priorBest > 0 && finalMs < priorBest,
+          bestTimeMs: best,
+          isNewBest,
         });
         // The cache is written only when the best improves.
         if (improved) {

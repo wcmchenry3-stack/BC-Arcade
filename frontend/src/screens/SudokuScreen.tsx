@@ -25,6 +25,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
+import { bestOf } from "../game/_shared/bestOf";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { HudStatRow } from "../components/shared/HudStatRow";
@@ -295,8 +296,8 @@ export default function SudokuScreen() {
       const diff = state.difficulty;
       const variantKey = state.variant;
       const prev = statsRef.current[variantKey][diff];
-      const improved =
-        finalElapsed !== null && (prev.bestTimeS === 0 || finalElapsed < prev.bestTimeS);
+      const outcome = finalElapsed !== null ? bestOf(prev.bestTimeS, finalElapsed, true) : null;
+      const improved = outcome?.improved ?? false;
       // The cache is written only when this puzzle kind's best improves.
       if (improved) {
         statsRef.current = {
@@ -307,9 +308,8 @@ export default function SudokuScreen() {
       }
       setResult({
         elapsedS: finalElapsed,
-        bestTimeS: improved && finalElapsed !== null ? finalElapsed : prev.bestTimeS,
-        // Only a beaten previous time is a "new best" — not a first solve.
-        isNewBest: finalElapsed !== null && prev.bestTimeS > 0 && finalElapsed < prev.bestTimeS,
+        bestTimeS: outcome?.best ?? prev.bestTimeS,
+        isNewBest: outcome?.isNewBest ?? false,
       });
     }
     prevCompleteRef.current = state.isComplete;

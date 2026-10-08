@@ -18,6 +18,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { GameShell } from "../components/shared/GameShell";
+import { bestOf } from "../game/_shared/bestOf";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import GameCanvas from "../components/starswarm/GameCanvas";
 import type { GameCanvasHandle, DevOptions } from "../components/starswarm/GameCanvas";
@@ -229,8 +230,9 @@ function StarSwarmGame() {
       playGameOver();
       // The result card's haptic marks the end of the run (#2516).
       const priorBest = highScoreRef.current;
-      const isNewBest = finalScore > priorBest;
-      if (isNewBest) {
+      const { improved, isNewBest } = bestOf(priorBest, finalScore, false);
+      // bestOf counts any result as improving on no best; a 0 score never set one.
+      if (improved && finalScore > 0) {
         highScoreRef.current = finalScore;
         setHighScore(finalScore);
         void saveBestScore(finalScore);
