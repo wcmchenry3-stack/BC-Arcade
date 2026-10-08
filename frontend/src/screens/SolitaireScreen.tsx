@@ -321,8 +321,9 @@ export default function SolitaireScreen() {
 
   // The engine emits a new array per move, in the order cardPlace, cardFlip,
   // foundationComplete, gameWin, each at most once (one card reaches a
-  // foundation per move). The events stay in state: the result card reads
-  // `gameWin` to decide on the win cascade.
+  // foundation per move). The events stay in the live state: the result card
+  // reads `gameWin` to decide on the win cascade. A restored game has none
+  // (storage drops them, #3093), so a restore plays no sound.
   useGameEvents(state?.events, {
     cardPlace: () => playCardPlace(),
     cardFlip: () => playCardFlip(),
