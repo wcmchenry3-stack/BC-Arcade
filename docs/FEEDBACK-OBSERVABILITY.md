@@ -161,8 +161,11 @@ integration would turn an ERROR record into a second, untagged event.
 
 ### One reporter
 
-Everything the backend sends to Sentry on purpose goes through
-`backend/observability/report.py`:
+Background-job failures and the dropped/rejected-result reports go through
+`backend/observability/report.py`. Two plain one-line messages still call
+`sentry_sdk.capture_message` directly: the missing-`GameModule` report in
+`games/stats.py` and the store-misconfiguration report in
+`purchases/_common.misconfigured`.
 
 - `report_exception(exc, subsystem=..., fingerprint=...)` for a caught exception
   (the background jobs above);
