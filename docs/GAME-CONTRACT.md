@@ -25,6 +25,7 @@ This document is the single reference for adding a new game to BC Arcade. It cov
    - [Stats, Scorecard and Profile](#26-stats-scorecard-and-profile)
    - [ESLint boundary](#27-eslint-boundary)
    - [Testing and QA](#28-testing-and-qa)
+   - [Engine](#29-engine)
 3. [New-game checklist](#3-new-game-checklist)
 
 ---
@@ -603,6 +604,15 @@ These read the server; a game adds nothing for them beyond passing `gameType` to
 - Screen tests normally run against the real `useGameSync` with the shared `foregroundClock` mock (§2.3); `HeartsScreen.test.tsx`, `MahjongScreen.test.tsx` and `BlackjackGameContext.test.tsx` mock the hook, so the guard does not run in those suites. The outcome guard throws in tests, so drive every finish path your game has.
 - **Maestro is paused past v1.0** (owner decision; [`docs/MAESTRO.md`](MAESTRO.md)), including the result-submission flow (#2643). The result card, leaderboards, stats and Profile are checked by hand on iOS and Android builds with [`docs/MANUAL-QA-LEADERBOARDS.md`](MANUAL-QA-LEADERBOARDS.md).
 
+### 2.9 Engine
+
+The rules live in `frontend/src/game/<game>/engine.ts`: headless (no React, no storage, no platform imports, §2.7) and pure apart from module-level singletons. Two rules apply to every engine; the detail is [`ARCHITECTURE.md` §3.2](ARCHITECTURE.md#32-determinism-rng-and-counters-2985-2999):
+
+- **Replayable from `(seed, inputs)`.** Randomness that affects play goes through a seed (`createSeededRng` from `game/_shared/seededRng.ts`) or the engine's `setRng` slot, never `Math.random` directly; tests pin the slot with `setRng(createSeededRng(seed))`.
+- **Counters are restored on load.** An id counter or RNG state kept at module level (Twenty48's `seedNextTileId`, Star Swarm's `engineCounters` / `restoreEngineCounters`) is saved with the game, or derived from it, and put back when the storage module loads it, before the first move.
+
+How a screen wraps the engine (shell, session, saving, pausing, result card) is the screen layer in [`GAMEPLAY_STANDARDS.md` §8](GAMEPLAY_STANDARDS.md#8-screen-layer).
+
 ---
 
 ## 3. New-game checklist
@@ -632,7 +642,7 @@ Use this checklist when adding a new game. Each item links to the file to create
 ### Frontend
 
 - [ ] **`frontend/src/api/vocab.ts`** — the committed generated file includes the new `GameType`, its `HAS_WINNER` flag and its `BOARDS` entry
-- [ ] **Engine** — game logic in `frontend/src/game/mygame/engine.ts` (no imports from `components/` or `screens/`, §2.7). A `GameSession<TState>` alias in `types.ts` is optional (§2.1)
+- [ ] **Engine** — game logic in `frontend/src/game/mygame/engine.ts` (no imports from `components/` or `screens/`, §2.7), seeded or behind `setRng`, with any module-level counter restored on load (§2.9). A `GameSession<TState>` alias in `types.ts` is optional (§2.1)
 - [ ] **Route and Home tile** — a screen in `frontend/src/screens/`, typed in `frontend/src/types/navigation.ts`. A free game is registered as a plain `HomeStack.Screen` in `frontend/App.tsx`. A premium game is **not**: add its route to `PREMIUM_ROUTES` (`frontend/src/entitlements/premiumRoutes.ts`) and its unguarded screen to `PREMIUM_SCREEN_BASES` in `App.tsx`; `LobbyStack` registers it wrapped in `makePremiumScreen` (the entitlement gate, `LockedGameScreen` when not entitled) and only when it is visible in the build (`visiblePremiumRoutes()`). Add the slug to `PREMIUM_GAMES` (`EntitlementContext.tsx`) and, while v1.0 hides premium games, to `HIDDEN_GAMES` (`frontend/src/entitlements/gameVisibility.ts`); the `gameVisibility` / `premiumRoutes` tests fail if these sets drift. This mirrors [`docs/ARCHITECTURE.md` §10.6](ARCHITECTURE.md#106-adding-a-premium-game), step 5. Add a tile in `HomeScreen.tsx` and an i18n namespace (`frontend/src/i18n/localeLoaders.ts`) with `game.title`
 - [ ] **`GameShell`** with `gameType="mygame"` (required, §2.2): the ⋯ menu then gets Stats (and Scorecard, if the game is in `SCORECARD_GAMES`) with no further wiring. `gameType={null}` is only for screens that are not one game's play screen (a live scorecard, a run history, a dev tool)
 - [ ] **`useGameSync`** (§2.3) — `start()` with the metadata, `markStarted()` on the first real action, `complete()` with an explicit `result` block, `setProgressSnapshot()` so the hook's abandons carry it; `resume()` if the screen restores saved progress; no `beforeRemove` abandon handler

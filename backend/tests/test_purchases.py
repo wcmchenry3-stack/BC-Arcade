@@ -30,11 +30,6 @@ from entitlements import service as entitlements_service
 from games import catalog_cache
 from purchases import apple, google
 from purchases import service as purchase_service
-from purchases.router import (
-    PURCHASE_IP_RATE_LIMIT,
-    PURCHASE_SESSION_RATE_LIMIT,
-    PURCHASE_STORE_KEY_RATE_LIMIT,
-)
 from purchases.verifiers import (
     AppleEvidence,
     AppleVerifier,
@@ -43,6 +38,11 @@ from purchases.verifiers import (
     NotConfiguredGoogleVerifier,
     PurchaseError,
     VerifiedPurchase,
+)
+from rate_limits import (
+    PURCHASE_IP_RATE_LIMIT,
+    PURCHASE_SESSION_RATE_LIMIT,
+    PURCHASE_STORE_KEY_RATE_LIMIT,
 )
 from tests._helpers import count, jwt_games, session_headers, set_admin_token
 

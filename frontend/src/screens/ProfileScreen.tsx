@@ -1,3 +1,13 @@
+/**
+ * ProfileScreen — the player's cross-game stats and leaderboard membership (#2637).
+ *
+ * Concerns:
+ *   1. Top tiles — only figures that mean the same for every game, summed over the games
+ *      visible in this build (#2390); no cross-game score.
+ *   2. Per-game rows from `/stats/me` (remembered for offline, #2635) and recent games.
+ *   3. Leaderboard membership — join, reroll or leave the generated name (#2778).
+ *   Not a game screen: it uses ScreenFrame, not GameShell.
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl } from "react-native";
 import { useTranslation } from "react-i18next";

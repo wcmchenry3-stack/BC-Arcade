@@ -48,6 +48,12 @@ from daily_word.puzzle import get_answer, get_today_meta, is_valid_guess
 from db.base import DbSession, get_session_factory
 from limiter import _real_ip, limiter
 from observability.report import Throttle, report_event
+from rate_limits import (
+    DAILY_WORD_ANSWER_IP_RATE_LIMIT,
+    DAILY_WORD_GUESS_IP_RATE_LIMIT,
+    DAILY_WORD_GUESS_SESSION_RATE_LIMIT,
+    DAILY_WORD_TODAY_IP_RATE_LIMIT,
+)
 from session import get_session_id
 
 _SUPPORTED_LANGS = frozenset(("en", "hi"))
@@ -160,7 +166,7 @@ class GuessRequest(BaseModel):
 
 
 @router.get("/today")
-@limiter.limit("60/minute")
+@limiter.limit(DAILY_WORD_TODAY_IP_RATE_LIMIT)
 async def get_today(
     request: Request,
     tz_offset_minutes: int = Query(0, ge=-840, le=840),
@@ -172,7 +178,7 @@ async def get_today(
 
 
 @router.post("/guess")
-@limiter.limit("20/hour", key_func=_guess_key)
+@limiter.limit(DAILY_WORD_GUESS_SESSION_RATE_LIMIT, key_func=_guess_key)
 # An IP-keyed backstop *in addition to* the session key, because the session id
 # is self-asserted: without one, minting a fresh UUID bought another six
 # guesses and unbounded row insertion. Deliberately generous — `_real_ip`
@@ -180,7 +186,7 @@ async def get_today(
 # real players out of a shipping free game is a worse outcome than the abuse it
 # prevents. This is a volume backstop, not a security boundary; it does not
 # stop a determined caller, which needs server-issued sessions (#1047).
-@limiter.limit("1200/hour")
+@limiter.limit(DAILY_WORD_GUESS_IP_RATE_LIMIT)
 async def post_guess(request: Request, response: Response, body: GuessRequest) -> dict:
     sid = get_session_id(request)
 
@@ -276,7 +282,7 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
 
 
 @router.get("/answer")
-@limiter.limit("20/minute")
+@limiter.limit(DAILY_WORD_ANSWER_IP_RATE_LIMIT)
 async def get_answer_route(
     request: Request,
     db: DbSession,

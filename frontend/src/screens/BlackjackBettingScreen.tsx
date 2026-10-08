@@ -1,3 +1,14 @@
+/**
+ * BlackjackBettingScreen — the between-hands screen of a Blackjack run.
+ *
+ * Concerns:
+ *   1. Table select — a fresh run picks its table (TableSelectPanel; premium tables explain
+ *      their lock, #1129).
+ *   2. Betting — chips and the deal go through `apply` from `useBlackjackGame`
+ *      (game/blackjack/BlackjackGameContext), which owns the engine, saving and the session.
+ *   3. Navigation — a run loaded mid-hand or at its goal redirects to BlackjackTable or
+ *      BlackjackVictory; the run history opens BlackjackStats.
+ */
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { useTranslation } from "react-i18next";

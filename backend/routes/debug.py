@@ -10,11 +10,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 
 from limiter import limiter
+from rate_limits import (
+    DEBUG_ERROR_IP_RATE_LIMIT,
+)
 
 router = APIRouter()
 
 
 @router.get("/debug/error")
-@limiter.limit("5/minute")
+@limiter.limit(DEBUG_ERROR_IP_RATE_LIMIT)
 def trigger_error(request: Request) -> None:
     raise RuntimeError("Intentional test error for Sentry verification")

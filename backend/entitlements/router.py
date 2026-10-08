@@ -6,6 +6,9 @@ from fastapi import APIRouter, Request
 
 from db.base import get_session_factory
 from limiter import limiter, session_key
+from rate_limits import (
+    ENTITLEMENTS_SESSION_RATE_LIMIT,
+)
 from session import get_session_id
 
 from . import service
@@ -15,7 +18,7 @@ router = APIRouter()
 
 
 @router.get("", response_model=EntitlementsResponse)
-@limiter.limit("30/minute", key_func=session_key)
+@limiter.limit(ENTITLEMENTS_SESSION_RATE_LIMIT, key_func=session_key)
 async def get_entitlements(request: Request) -> EntitlementsResponse:
     """Return a signed RS256 JWT listing games this session may access."""
     sid = get_session_id(request)

@@ -971,7 +971,8 @@ This replaces the old, incorrect statement that Star Swarm had no local resume s
 
 ## Client-Side Engine
 
-- Location: `frontend/src/game/starswarm/` — check this directory for current engine structure
+- Location: `frontend/src/game/starswarm/engine.ts`, a barrel over the `engine/` package ([ARCHITECTURE.md §3.4](../ARCHITECTURE.md#34-star-swarm-engine-layout-2988)); determinism and the engine counters are in [§3.2](../ARCHITECTURE.md#32-determinism-rng-and-counters-2985-2999)
+- Screen: [`frontend/src/screens/StarSwarmScreen.tsx`](../../frontend/src/screens/StarSwarmScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Rendering: `@shopify/react-native-skia` on native, Canvas 2D on web (`GameCanvas.web.tsx`)
 
 ### Native rendering pipeline (epic #2562)

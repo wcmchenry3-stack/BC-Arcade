@@ -3,7 +3,8 @@
  *
  * Pickups, explosions and the power-up type roll, used by more than one subsystem (rocks drop
  * salvage, the Carrier drops plating, every kill pops an explosion). `pickPowerUpType` and the
- * drop position are the engine's two cosmetic `Math.random` calls (docs/ARCHITECTURE.md §3.2).
+ * drop position are the engine's two `Math.random` calls. They do affect play, so a seeded run
+ * replays only with `Math.random` stubbed too (the known exception, docs/ARCHITECTURE.md §3.2).
  */
 import type { Explosion, PowerUp, PowerUpType, StarSwarmState } from "../types";
 import { nextId } from "./rng";
@@ -18,7 +19,8 @@ import {
 } from "./tuning";
 
 // #1032: weighted power-up type selection based on player lives
-// Uses Math.random() intentionally — cosmetic choice, should not affect determinism.
+// Uses Math.random(), not the seeded rng: it affects play, so it is the known exception to
+// replayability (docs/ARCHITECTURE.md §3.2).
 export function pickPowerUpType(lives: number): PowerUpType {
   const r = Math.random();
   if (lives <= 1) {

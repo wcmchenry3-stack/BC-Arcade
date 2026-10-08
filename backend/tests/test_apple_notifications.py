@@ -28,7 +28,7 @@ from observability import report
 from purchases import apple, apple_notifications, apple_store
 from purchases.apple_notifications import apple_replay_job, replay_notification_history
 from purchases.apple_store import AppStoreVerifier
-from purchases.router import APPLE_NOTIFICATION_IP_RATE_LIMIT
+from rate_limits import APPLE_NOTIFICATION_IP_RATE_LIMIT
 from tests._apple_iap_harness import (
     CASCADE,
     FakeApiClient,
