@@ -12,7 +12,7 @@
  *      its progress snapshot and no score (#2632).
  *   4. Result + leaderboard (#2511) — the shared GameResultModal shows
  *      where the synced game ranks on its (difficulty, variant) board
- *      (`sessionBoardAdapter`, #2677).
+ *      (`lookupGameRank`, #2677).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -117,7 +117,7 @@ export default function SudokuScreen() {
     difficulty: state?.difficulty ?? difficulty,
     variant: state?.variant ?? variant,
   });
-  const { submit: submitScore, reset: resetScore } = leaderboard;
+  const { lookup: lookupRank, reset: resetScore } = leaderboard;
 
   // Timer bookkeeping.  `startMs` is the wall-clock at which play began,
   // shifted forward while the app sits in the background so elapsed
@@ -289,7 +289,7 @@ export default function SudokuScreen() {
       );
       if (gid) {
         // The card shows where this game ranks on its board.
-        void submitScore({ gameId: gid });
+        void lookupRank(gid);
       }
       clearGame().catch(() => {});
 
@@ -313,7 +313,7 @@ export default function SudokuScreen() {
       });
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, submitScore, playedMs]);
+  }, [state, syncComplete, lookupRank, playedMs]);
 
   const ensureSyncStarted = useCallback(
     (next: SudokuState) => {

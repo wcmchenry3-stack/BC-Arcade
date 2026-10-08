@@ -82,7 +82,7 @@ export default function FreeCellScreen() {
   const [resumedWin, setResumedWin] = useState(false);
   // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
   const { leaderboard, openLeaderboard } = useGameLeaderboard("freecell", navigation);
-  const { submit: submitScore, reset: resetSubmission } = leaderboard;
+  const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
   // #2452 — record each game as a per-session `games` row so FreeCell earns Arcade
   // XP, shows in Profile history and can be measured by the daily challenge. Since
@@ -270,7 +270,7 @@ export default function FreeCellScreen() {
         const curr = statsRef.current;
         // Only a win that happened this session has a session to rank (a
         // resumed won game's was completed back then).
-        if (gameId) void submitScore({ gameId });
+        if (gameId) void lookupRank(gameId);
         const { best, isNewBest } = bestOf(curr.bestMoves, finalMoves, true);
         setWinSummary({ best, isNewBest });
         const updated: FreeCellStats = {
@@ -283,7 +283,7 @@ export default function FreeCellScreen() {
       }
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, submitScore]);
+  }, [state, syncComplete, lookupRank]);
 
   const handleMove = useCallback(
     (move: Move) => {

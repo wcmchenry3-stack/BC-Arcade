@@ -1,14 +1,14 @@
-import type { LeaderboardSubmitState } from "../../game/_shared/useLeaderboardSubmit";
-import type { ResultSubmission } from "./GameResultModal";
+import type { GameRankState } from "../../game/_shared/useGameRank";
+import type { ResultSubmission } from "../result/resultTypes";
 
 /**
  * What `toSubmission` reads from the rank-lookup hook (`useGameLeaderboard`'s
- * `leaderboard`, i.e. `useLeaderboardSubmit`'s state): its status fields and
- * its two actions. The hook's `submit` / `reset` are the screen's, not the
+ * `leaderboard`, i.e. `useGameRank`'s state): its status fields and
+ * its two actions. The hook's `lookup` / `reset` are the screen's, not the
  * card's, so they are not needed.
  */
 export type SubmissionSource = Pick<
-  LeaderboardSubmitState<unknown>,
+  GameRankState,
   "status" | "rank" | "isBest" | "playerName" | "joinLeaderboards" | "retry"
 >;
 

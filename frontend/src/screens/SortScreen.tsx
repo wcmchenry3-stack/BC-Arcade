@@ -98,7 +98,7 @@ export default function SortScreen() {
   const [winSummary, setWinSummary] = useState<{ best: number; isNewBest: boolean } | null>(null);
   // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
   const { leaderboard, openLeaderboard } = useGameLeaderboard("sort", navigation);
-  const { submit: submitRank, reset: resetSubmission } = leaderboard;
+  const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
   // One `games` row per level played (#2512): XP, Profile history, stats and
   // the leaderboard (#2625). Every solve, replays included, is scored with the
@@ -293,7 +293,7 @@ export default function SortScreen() {
       );
       // The row ranks by itself under the player's name (#2624): the card
       // only asks where it landed, or for a name if there is none.
-      if (gameId) void submitRank({ gameId });
+      if (gameId) void lookupRank(gameId);
       const newUnlocked = Math.min(
         Math.max(progressRef.current.unlockedLevel, currentLevelId + 1),
         levels.length || currentLevelId + 1
@@ -315,7 +315,7 @@ export default function SortScreen() {
     currentLevelId,
     levels,
     syncComplete,
-    submitRank,
+    lookupRank,
   ]);
 
   // ---------------------------------------------------------------------------

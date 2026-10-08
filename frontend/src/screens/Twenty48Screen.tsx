@@ -101,7 +101,7 @@ export default function Twenty48Screen({ navigation }: Props) {
   // the win or the game over; never on an abandon.
   // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
   const { leaderboard, openLeaderboard } = useGameLeaderboard("twenty48", navigation);
-  const { submit: submitLeaderboard, reset: resetLeaderboard } = leaderboard;
+  const { lookup: lookupRank, reset: resetLeaderboard } = leaderboard;
   const moveCountRef = useRef(0);
   const stateRef = useRef<Twenty48State | null>(null);
   useEffect(() => {
@@ -165,9 +165,9 @@ export default function Twenty48Screen({ navigation }: Props) {
         payload
       );
       if (!gameId) return;
-      void submitLeaderboard({ gameId });
+      void lookupRank(gameId);
     },
-    [progressResult, syncComplete, submitLeaderboard]
+    [progressResult, syncComplete, lookupRank]
   );
 
   // Disable back swipe gesture on this screen.

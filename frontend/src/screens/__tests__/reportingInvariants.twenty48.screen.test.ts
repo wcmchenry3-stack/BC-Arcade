@@ -57,7 +57,7 @@ jest.mock("../../game/twenty48/engine", () => {
 import { loadGame as loadTwenty48 } from "../../game/twenty48/storage";
 import { move as twenty48Move } from "../../game/twenty48/engine";
 
-// The result card's rank lookup (sessionBoardAdapter, #2677).
+// The result card's rank lookup (lookupGameRank, #2677).
 const mockGetGameRank = jest.fn();
 jest.mock("../../api/stats", () => ({
   statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
