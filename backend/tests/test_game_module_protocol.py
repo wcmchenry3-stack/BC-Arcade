@@ -385,7 +385,7 @@ def test_the_best_value_expression_fails_loudly_without_a_module(
     _without_module(monkeypatch, "starswarm")
     try:
         with pytest.raises(LookupError, match="starswarm"):
-            stats_columns._best_candidate("sqlite")
+            stats_columns._best_candidate()
     finally:
         monkeypatch.undo()
         stats_columns._best_candidate.cache_clear()

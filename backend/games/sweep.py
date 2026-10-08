@@ -11,11 +11,10 @@ import contextlib
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Text, func, literal, update
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.dialect import dialect_name
+from db.jsonx import json_set_true, plus_hours
 from db.models import Game
 from games.filters import SWEPT_KEY
 from vocab import GameOutcome
@@ -25,7 +24,8 @@ logger = logging.getLogger(__name__)
 # A game still open this long after it started was left by killing the app.
 # The sweep marks what it closes with metadata[SWEPT_KEY] = true (games.filters),
 # which lets a real completion that arrives later replace it (complete_game).
-STALE_GAME_AFTER = timedelta(hours=24)
+STALE_GAME_HOURS = 24
+STALE_GAME_AFTER = timedelta(hours=STALE_GAME_HOURS)
 
 
 async def sweep_stale_games(
@@ -44,23 +44,8 @@ async def sweep_stale_games(
     only affects analytics.
     """
     now = now or datetime.now(UTC)
-    dialect = dialect_name(session)
-    if dialect == "sqlite":
-        # SQLite stores DateTime as text, and the ORM writes it as
-        # 'YYYY-MM-DD HH:MM:SS.ffffff'. Build exactly that, so text comparisons
-        # against ORM-written timestamps order correctly: date math on the whole
-        # seconds (SQLite's own %f has only milliseconds), then the original
-        # microseconds, padded for a started_at stored without a fraction.
-        fraction = func.substr(Game.started_at, 21, type_=Text) + "000000"
-        completed_at = (
-            func.strftime("%Y-%m-%d %H:%M:%S", Game.started_at, "+24 hours", type_=Text)
-            + "."
-            + func.substr(fraction, 1, 6, type_=Text)
-        )
-        metadata = func.json_set(Game.game_metadata, f"$.{SWEPT_KEY}", func.json("true"))
-    else:
-        completed_at = Game.started_at + STALE_GAME_AFTER
-        metadata = Game.game_metadata.op("||")(literal({SWEPT_KEY: True}, JSONB))
+    # Both values compile per dialect (db.jsonx): on SQLite the timestamp is
+    # built in the ORM's text format so it orders against ORM-written rows.
     stmt = (
         update(Game)
         .where(
@@ -70,8 +55,8 @@ async def sweep_stale_games(
         )
         .values(
             outcome=GameOutcome.ABANDONED.value,
-            completed_at=completed_at,
-            game_metadata=metadata,
+            completed_at=plus_hours(Game.started_at, STALE_GAME_HOURS),
+            game_metadata=json_set_true(Game.game_metadata, SWEPT_KEY),
         )
         .execution_options(synchronize_session=False)
     )
