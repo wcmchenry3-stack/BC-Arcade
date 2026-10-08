@@ -17,7 +17,7 @@ describe("cardColor", () => {
     ["spades", "black"],
     ["clubs", "black"],
   ] as const)("%s is %s", (suit, color) => {
-    expect(cardColor({ suit, rank: 5 })).toBe(color);
+    expect(cardColor({ suit })).toBe(color);
   });
 
   it("accepts game cards that extend PlayingCard", () => {
