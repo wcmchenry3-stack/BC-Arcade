@@ -323,7 +323,7 @@ def test_the_real_jobs_carry_the_documented_crash_policy() -> None:
     """Owner decision on #2994: retention re-raises a crash, the purchase jobs do not."""
     from daily_word.retention import retention_job
     from purchases.apple_notifications import apple_replay_job
-    from purchases.google_notifications import google_jobs_job
+    from purchases.google_jobs import google_jobs_job
 
     def factory():
         raise AssertionError("not called")

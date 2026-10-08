@@ -1,9 +1,8 @@
 """Google background jobs: acknowledgement sweep, voided-purchases poll, jobs loop (#2787).
 
-Follows the planned ``purchases/google_jobs.py`` (#2998): ``acknowledge_sweep``,
-``poll_voided_purchases`` and ``run_google_jobs[_loop]`` in
-``purchases/google_notifications.py`` today, plus the lifespan wiring and the
-manual script. Split out of ``test_google_iap.py`` (#2955); the harness lives
+Covers ``purchases/google_jobs.py`` (#2998): ``acknowledge_sweep``,
+``poll_voided_purchases``, ``run_google_jobs`` and the ``google_jobs_job``
+``PeriodicJob``, plus the lifespan wiring and the manual script. Split out of ``test_google_iap.py`` (#2955); the harness lives
 in ``tests/_google_iap_harness.py``.
 """
 
@@ -20,9 +19,9 @@ from sqlalchemy import update
 from db.base import get_session_factory
 from db.models import Purchase
 from observability import report
-from purchases import google, google_notifications
+from purchases import google, google_jobs
 from purchases import service as purchase_service
-from purchases.google_notifications import (
+from purchases.google_jobs import (
     acknowledge_sweep,
     google_jobs_job,
     poll_voided_purchases,
@@ -206,7 +205,7 @@ async def test_jobs_loop_is_deterministic_and_survives_failures(monkeypatch) -> 
         fixed[0] += timedelta(days=1)
         return fixed[0]
 
-    monkeypatch.setattr(google_notifications, "run_google_jobs", failing)
+    monkeypatch.setattr(google_jobs, "run_google_jobs", failing)
     captured: list[BaseException] = []
     monkeypatch.setattr(report.sentry_sdk, "capture_exception", lambda exc: captured.append(exc))
     with pytest.raises(asyncio.CancelledError):
