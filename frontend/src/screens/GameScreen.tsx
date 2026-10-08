@@ -181,7 +181,7 @@ export default function GameScreen({ navigation, route }: Props) {
   // its own; the card only asks where it landed.
   // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
   const { leaderboard, openLeaderboard } = useGameLeaderboard("yacht", navigation);
-  const { submit: submitRank, reset: resetRank } = leaderboard;
+  const { lookup: lookupRank, reset: resetRank } = leaderboard;
   // The finished game's session id, captured when the player's game ends —
   // complete() clears the hook's id, and in vs mode (or on a background during
   // the CPU's last turn) it runs before the card shows. Saved with the game,
@@ -592,8 +592,8 @@ export default function GameScreen({ navigation, route }: Props) {
   // (after the vs completion above). Never on an abandon: an abandoned game
   // never reaches game over, so it never sets finishedGameId.
   useEffect(() => {
-    if (gameReallyOver && finishedGameId) void submitRank({ gameId: finishedGameId });
-  }, [gameReallyOver, finishedGameId, submitRank]);
+    if (gameReallyOver && finishedGameId) void lookupRank(finishedGameId);
+  }, [gameReallyOver, finishedGameId, lookupRank]);
 
   completeIfCpuStillPlayingRef.current = () => {
     // Player done, CPU still playing its last turn: record the finished game.

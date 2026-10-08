@@ -3,7 +3,7 @@ import { loadBestScore, saveBestScore } from "../bestScore";
 
 // Star Swarm's leaderboard adapter and queue handler are gone (#2626): the
 // finished run's session row is the leaderboard entry, and the result card
-// reads its rank through the shared sessionBoardAdapter. What stays on the
+// reads its rank through the shared lookupGameRank. What stays on the
 // device is the best score behind the card's "Best" and "New best".
 
 beforeEach(async () => {

@@ -65,7 +65,7 @@ jest.mock("../../game/freecell/engine", () => {
 // (#2710); the duration tests move it forward.
 const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregroundClock");
 
-// The result card reads the synced game's rank (#2632, sessionBoardAdapter).
+// The result card reads the synced game's rank (#2632, lookupGameRank).
 const mockGetGameRank = jest.fn();
 jest.mock("../../api/stats", () =>
   mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetGameRank(gameId) })

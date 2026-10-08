@@ -12,7 +12,7 @@
  *      (#2627).
  *   4. Result (#2510) — the shared GameResultModal on a win (the finished
  *      game is the leaderboard entry; the card shows its rank through
- *      `sessionBoardAdapter`, #2677) and on a deadlock (a loss, no rank).
+ *      `lookupGameRank`, #2677) and on a deadlock (a loss, no rank).
  *   5. Audio + animations (#914) — SFX on every game event, lo-fi bg music,
  *      MatchBurst / DeadlockShake / ShufflePulse.
  */
@@ -124,7 +124,7 @@ export default function MahjongScreen() {
   const { leaderboard, openLeaderboard } = useGameLeaderboard("mahjong", navigation, {
     layout: state?.currentLayoutId ?? "turtle",
   });
-  const { submit: submitRank, reset: resetSubmission } = leaderboard;
+  const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
   // The HUD clock's screen-reader label; stable, so the clock's own
   // one-second tick is the only thing that re-renders it.
   const clockA11yLabel = useCallback((time: string) => t("hud.elapsed", { time }), [t]);
@@ -503,7 +503,7 @@ export default function MahjongScreen() {
         const finalScore = state.score;
         // The finished game is the leaderboard entry (#2624): the card only
         // asks where it ranks. Only a win completed in this session has one.
-        if (gameId) void submitRank({ gameId });
+        if (gameId) void lookupRank(gameId);
         // Fastest clear wins, per layout like the boards (#2747), and only a
         // plausible one counts: an old save resumed with no time banked can
         // finish under the ranking floor.
@@ -542,7 +542,7 @@ export default function MahjongScreen() {
       setHasSavedGame(false);
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, submitRank, discardSave]);
+  }, [state, syncComplete, lookupRank, discardSave]);
 
   // Disable native swipe-back (iOS edge gesture) while the game is open so that
   // a left-pan on the board doesn't accidentally exit to the lobby.

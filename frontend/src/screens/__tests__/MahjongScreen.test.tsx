@@ -147,7 +147,7 @@ jest.mock("../../game/_shared/useGameSync", () => {
   };
 });
 
-// The result card's rank lookup (sessionBoardAdapter, #2677).
+// The result card's rank lookup (lookupGameRank, #2677).
 const mockGetGameRank = jest.fn();
 jest.mock("../../api/stats", () =>
   mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetGameRank(gameId) })

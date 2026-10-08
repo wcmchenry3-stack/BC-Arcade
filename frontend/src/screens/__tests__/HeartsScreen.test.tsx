@@ -34,7 +34,7 @@ jest.mock("../../game/hearts/playerNames", () => ({
   validateName: jest.fn((v: string, def: string) => v.trim() || def),
 }));
 
-// The result card's rank lookup (#2677's sessionBoardAdapter, #2629).
+// The result card's rank lookup (#2677's lookupGameRank, #2629).
 const mockGetGameRank = jest.fn<Promise<GameRankResponse>, [string]>();
 jest.mock("../../api/stats", () =>
   mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetGameRank(gameId) })

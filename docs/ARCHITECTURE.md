@@ -284,7 +284,7 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
   is active, on foreground and on reconnect (`NetworkContext`), and on demand
   through
   `flushQueuedGames()` (`game/_shared/flushQueuedGames.ts`) from screens that
-  read server results — the result card (`sessionBoardAdapter`), `useMyStats`,
+  read server results — the result card (`lookupGameRank`), `useMyStats`,
   `LeaderboardScreen`, `HomeScreen` and `useDailyChallenge` — so a game just
   finished is uploaded before they ask. After a 5xx or network failure it backs
   off globally, exponentially (1 s → 30 min); after a 429 it backs off globally
@@ -1022,6 +1022,14 @@ At the architecture level, the important boundary is:
   session contract;
 - Profile aggregates only metrics that are comparable across games and never
   invents a cross-game score.
+
+The result card lives in `frontend/src/components/result/` (`GameResultModal`,
+`ResultCard`, `SubmissionLine`, `resultButtons`, `resultTypes`; #2990). Its
+leaderboard line is fed by `useGameRank(gameType)`
+(`game/_shared/useGameRank.ts`), which runs `lookupGameRank` and exposes
+`{ status, rank, isBest, playerName, lookup(gameId), joinLeaderboards, retry,
+reset }`; `toSubmission(leaderboard)` maps that state to the card's
+`submission` prop.
 
 Manual device verification lives in
 [MANUAL-QA-LEADERBOARDS.md](MANUAL-QA-LEADERBOARDS.md).
