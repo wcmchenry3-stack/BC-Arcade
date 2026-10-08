@@ -339,7 +339,7 @@ async def test_complete_game_rejected_result_reported_to_sentry(db, monkeypatch)
     )
     captured = []
     monkeypatch.setattr(
-        "games.sessions.sentry_sdk.capture_message",
+        "observability.report.sentry_sdk.capture_message",
         lambda msg, **kw: captured.append((msg, kw)),
     )
     with pytest.raises(GameServiceError):
@@ -401,7 +401,7 @@ async def test_complete_game_rejects_oversized_result(db, monkeypatch):
     sid = _sid()
     captured = []
     monkeypatch.setattr(
-        "games.sessions.sentry_sdk.capture_message",
+        "observability.report.sentry_sdk.capture_message",
         lambda msg, **kw: captured.append((msg, kw)),
     )
     game = await _make_game(db, sid, "yacht")

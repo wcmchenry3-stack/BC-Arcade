@@ -6,6 +6,7 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { EmptyState } from "../components/shared/EmptyState";
+import { StatTileGrid, type StatTile } from "../components/shared/StatTileGrid";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { AppHeader } from "../components/shared/AppHeader";
@@ -32,12 +33,6 @@ import { isGameVisible } from "../entitlements/gameVisibility";
 import { GAME_TITLE_NAMESPACES, gameTitle } from "../i18n/gameTitle";
 
 type ProfileNav = NativeStackNavigationProp<ProfileStackParamList, "ProfileHome">;
-
-interface StatsCardData {
-  key: string;
-  label: string;
-  value: string;
-}
 
 interface GameSummaryRow {
   game: string;
@@ -91,7 +86,7 @@ function deriveBentoTiles(
   stats: StatsResponse,
   summaries: GameSummaryRow[],
   t: TFunction
-): StatsCardData[] {
+): StatTile[] {
   const visible = visibleStats(stats);
   const sessions = visible.reduce((sum, [, s]) => sum + sessionsOf(s), 0);
   const hasCompleted = visible.every(([, s]) => completedOf(s) != null);
@@ -247,26 +242,7 @@ export default function ProfileScreen() {
         />
       )}
       {bentoTiles && (
-        <View style={styles.bento}>
-          {bentoTiles.map((tile) => (
-            <View
-              key={tile.key}
-              testID={`profile-tile-${tile.key}`}
-              accessible
-              accessibilityLabel={`${tile.label}: ${tile.value}`}
-              style={[styles.bentoCard, { backgroundColor: colors.surfaceAlt }]}
-            >
-              <Text style={[styles.bentoLabel, { color: colors.textMuted }]}>{tile.label}</Text>
-              <Text
-                style={[styles.bentoValue, { color: colors.text }]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-              >
-                {tile.value}
-              </Text>
-            </View>
-          ))}
-        </View>
+        <StatTileGrid tiles={bentoTiles} testIDPrefix="profile-tile" style={styles.bento} />
       )}
       {gameSummaries && gameSummaries.length > 0 && (
         <View>
@@ -416,27 +392,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  bento: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    padding: 12,
-    gap: 12,
-  },
-  bentoCard: {
-    flexGrow: 1,
-    flexBasis: "45%",
-    minHeight: 84,
-    padding: 14,
-    borderRadius: 16,
-  },
-  bentoLabel: {
-    fontFamily: typography.label,
-    fontSize: 10,
-    textTransform: "uppercase",
-    letterSpacing: 1.2,
-    marginBottom: 6,
-  },
-  bentoValue: { fontFamily: typography.heading, fontSize: 22 },
+  bento: { padding: 12 },
   sectionTitle: {
     fontFamily: typography.label,
     fontSize: 13,
