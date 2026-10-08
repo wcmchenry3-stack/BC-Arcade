@@ -302,7 +302,7 @@ generator; do not use it in engines.
 through a per-engine slot, `const rngSlot = createRngSlot()` with
 `export const setRng = rngSlot.setRng`: Solitaire and FreeCell (which bank seed
 to deal), Mahjong (an unseeded deal and the in-game shuffle), Twenty48 (tile
-spawns), Blackjack (the shoe), Hearts (the deal) and Yacht (the dice).
+spawns), Blackjack (the shoe), Hearts (the deal and the AI's noise) and Yacht (the dice).
 The slot defaults to `Math.random`, so live play is not replayable for these
 draws; tests pin them with `setRng(createSeededRng(seed))` and restore
 `Math.random` afterwards. Each engine owns its slot, so pinning one engine
@@ -340,7 +340,10 @@ The rules that follow:
   `Math.random`, or its own `createSeededRng` (Star Swarm's starfield).
   Anything that feeds the rules goes through the slot or the seed. Picking a
   seed is not a draw: Star Swarm's canvas seeds each live run from
-  `Date.now() ^ Math.random()` and passes it to `initStarSwarm`.
+  `Date.now() ^ Math.random()` and passes it to `initStarSwarm`. The Hearts
+  PIMC search (`game/hearts/pimc/engine.ts`) takes its source as a parameter
+  (default `Math.random`); only the dev-only debug-panel benchmark reaches it,
+  so no play path draws from `Math.random` there.
 
 **Known exception.** Star Swarm's power-up type (`pickPowerUpType`,
 `engine/entities.ts`) and power-up drop X (`engine/collisions.ts`) still call

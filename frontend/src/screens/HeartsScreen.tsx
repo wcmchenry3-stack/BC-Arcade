@@ -6,7 +6,7 @@
  *      computer seats; the opponent style opens on the last one played (#1129).
  *   2. Persistence — `saveGame` on trick and hand transitions, on blur and on background.
  *   3. Play clock (#2629) — its own clock, paused on blur and background (not yet on
- *      usePauseWhileAway), sent as the game's durationMs.
+ *      usePauseWhileAway — #3087), sent as the game's durationMs.
  *   4. Instrumentation — `useGameSync("hearts")`; the result records who won (#2517) and the
  *      per-hand scores (#2838); a restored game resumes its session (#2654).
  *   5. Result + leaderboard (#2506, #2633) — the shared GameResultModal with the final

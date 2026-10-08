@@ -322,13 +322,13 @@ A game screen (`frontend/src/screens/<Game>Screen.tsx`) sits above the five laye
 - **Session.** `useGameSync("<game>")` (`game/_shared/useGameSync.ts`) is the only path to `/games`: `markStarted()`, `complete()`, `setProgressSnapshot()`, and `resume()` for restored progress. See [GAME-CONTRACT §2.3](GAME-CONTRACT.md#23-usegamesync).
 - **Rank and board.** `useGameLeaderboard("<game>", navigation, partition?)` returns `{ leaderboard, openLeaderboard }`. It wraps `useGameRank` (the rank lookup, called `useLeaderboardSubmit` before #2990) and `useLeaderboardLink` (the opener). Call `leaderboard.lookup(gameId)` once at game over and `leaderboard.reset()` on a new game, and pass `openLeaderboard` to both `GameShell` and the result card. A game with no board (Blackjack, Daily Word) uses none of them.
 - **Saving.** The game's storage module (`game/<name>/storage.ts`, built on `_shared/storageSlot`, #2987). The screen loads on mount, calls `resume()` for a saved mid-game (#2654) and saves after each change. Mahjong wraps this in `useMahjongPersistence`.
-- **Pausing while away.** `usePauseWhileAway` (`hooks/usePauseWhileAway.ts`, #2735 / #2750), directly or through `usePausableClock`: Mahjong, Solitaire, Sudoku and Twenty48. Hearts, Star Swarm, Sort and Yacht still use their own `AppState` and focus listeners.
+- **Pausing while away.** `usePauseWhileAway` (`hooks/usePauseWhileAway.ts`, #2735 / #2750), directly or through `usePausableClock`: Mahjong, Solitaire, Sudoku, Twenty48 (and the disabled Cascade). Hearts, Star Swarm, Sort and Yacht still use their own `AppState` and focus listeners.
 - **End of game.** Each screen detects the end of the game itself, once per game (a ref or a reducer phase), then calls `complete()` and `lookup()`. The "new best" rule is shared: `bestOf(prior, value, lowerIsBetter)` (`game/_shared/bestOf.ts`, #2977). A first result is never a new best.
 - **Engine events.** `useGameEvents(state.events, handlers)` for one-shot sounds and effects (Yacht, FreeCell, Hearts, Blackjack). Events are one-shot and must not replay on reload: Twenty48 and Blackjack strip them before `saveGame`.
 - **Result.** `GameResultModal` (`components/result/`, #2504, split in #2990), and nothing else: no screen builds its own result screen. Blackjack's Goal Reached screen renders the same `ResultCard` inline. See [GAME-CONTRACT §2.5](GAME-CONTRACT.md#25-result-card-and-leaderboard).
 - **Components.** Boards, piles, overlays, pickers and the dev panel live in `components/<game>/` (#2979). Dev panels build on `components/dev/DevPanelShell` (#2978) and only render in dev and internal builds. The screen file defines no board, overlay or panel component of its own (Star Swarm's `StarSwarmGame` is the screen body behind its hydration gate; Cascade's inline renderers wait for #3033).
 
-No shared `usePersistedGameState` or `useCompletionTransition` hook exists. #2977 proposed both, but only `bestOf` landed, so each screen still writes its own restore-on-mount effect and game-over effect.
+No shared `usePersistedGameState` or `useCompletionTransition` hook exists. #2977 proposed both, but only `bestOf` landed, so each screen still writes its own restore-on-mount effect and game-over effect. The remaining shared hooks are tracked in #3087.
 
 ### No per-frame React state
 
@@ -336,7 +336,7 @@ A screen never calls `setState` once per frame. Per-frame values live in Reanima
 
 ### The screen header
 
-Every game screen starts with a block comment of about 10–15 lines. It names the screen, then lists the screen's concerns in order, each with the issues behind it, so a reader knows what the file wires before reading 500+ lines. Mahjong's header (`screens/MahjongScreen.tsx`) is the template (its full text runs longer; the shape is what to copy):
+Every game screen starts with a block comment of roughly 10–18 lines. It names the screen, then lists the screen's concerns in order, each with the issues behind it, so a reader knows what the file wires before reading 500+ lines. Mahjong's header (`screens/MahjongScreen.tsx`) is the template (its full text runs longer; the shape is what to copy):
 
 ```ts
 /**
@@ -352,7 +352,7 @@ Every game screen starts with a block comment of about 10–15 lines. It names t
  */
 ```
 
-Keep it a list of what the screen wires, not a description of the game (that is [`docs/games/<game>.md`](games/), which links back to the screen). Update the header when a concern moves into or out of the file.
+Keep it a list of what the screen wires, not a description of the game (that is [`docs/games/<game>.md`](games/), which links back to the screen). Update the header when a concern moves into or out of the file. Cascade's screen has none: it is pending its rework in epic #3033.
 
 ---
 
@@ -397,7 +397,7 @@ This supplements the backend checklist in [`GAME-CONTRACT.md §3`](GAME-CONTRACT
 
 ### Screen layer
 
-- [ ] The screen file opens with a 10–15-line header listing its concerns with issue refs (§8)
+- [ ] The screen file opens with a roughly 10–18-line header listing its concerns with issue refs (§8)
 - [ ] Everything renders inside `GameShell` with `gameType="<game>"`
 - [ ] Boards, piles, overlays and the dev panel live in `components/<game>/`; the screen defines none of its own
 - [ ] A game with its own clock pauses it through `usePauseWhileAway` / `usePausableClock`; saved progress restores on mount and calls `resume()`
