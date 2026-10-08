@@ -130,4 +130,10 @@ Run this before shipping any new game or screen.
 
 ---
 
+## Colour-blind support (Bottle Sort)
+
+Bottle Sort relies on colour, so its 14 liquid colours are checked by `tools/assets/check_palette.py`: at least 3:1 contrast against the theme background and a CIEDE2000 delta-E of at least 20 between every pair. This is a manual check; run it whenever the palette in `frontend/src/theme/theme.bottle.ts` changes. It measures perceptual distance for typical vision and does not simulate colour-blindness, so a pass does not prove the colours stay apart under every deficiency. See [`tools/README.md`](../tools/README.md#sort-palette-check-check_palettepy) for the command and how to read the output, and [`docs/games/sort.md`](games/sort.md#colour-palette).
+
+---
+
 _See [`docs/BRANDING.md`](BRANDING.md) for color token values and contrast baselines. See [`docs/GAMEPLAY_STANDARDS.md §5`](GAMEPLAY_STANDARDS.md) for the animation layer contract._
