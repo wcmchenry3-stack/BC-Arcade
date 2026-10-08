@@ -20,6 +20,8 @@ constants, so tuning one never silently moves the other. Values are strings in
 the ``limits`` syntax; ``a;b`` means both windows apply.
 """
 
+from typing import NamedTuple
+
 # --- Games: catalog, boards, rank -------------------------------------------------
 # GET /games/catalog. Public, IP-keyed. A constant so the rate-limit test derives its
 # request count from the configured limit instead of duplicating it.
@@ -107,51 +109,72 @@ HEALTH_DB_IP_RATE_LIMIT = "30/minute"
 # GET /debug/error: registered only when ENVIRONMENT=test (the sentry-check job).
 DEBUG_ERROR_IP_RATE_LIMIT = "5/minute"
 
+# Key kinds a limit can use. ``tests/test_rate_limit_coverage.py`` maps each to the
+# real key function (``limiter.session_key``, ``limiter._real_ip``,
+# ``daily_word.router._guess_key``) and checks the decorator uses it.
+SESSION = "session"
+IP = "ip"
+GUESS = "guess"
+
+
+class Rule(NamedTuple):
+    limit: str
+    key: str
+
+
 # Handler key ("<module>.<function>", slowapi's registry key) -> the limits that
 # handler must carry, one entry per stacked ``@limiter.limit``. Order is irrelevant.
-ROUTE_LIMITS: dict[str, tuple[str, ...]] = {
-    "games.router.get_catalog": (CATALOG_RATE_LIMIT,),
-    "games.router.patch_game_type": (CATALOG_ADMIN_SESSION_RATE_LIMIT,),
+ROUTE_LIMITS: dict[str, tuple[Rule, ...]] = {
+    "games.router.get_catalog": (Rule(CATALOG_RATE_LIMIT, IP),),
+    "games.router.patch_game_type": (Rule(CATALOG_ADMIN_SESSION_RATE_LIMIT, SESSION),),
     "games.router.get_leaderboard": (
-        LEADERBOARD_IP_RATE_LIMIT,
-        LEADERBOARD_SESSION_RATE_LIMIT,
+        Rule(LEADERBOARD_IP_RATE_LIMIT, IP),
+        Rule(LEADERBOARD_SESSION_RATE_LIMIT, SESSION),
     ),
-    "games.router.get_game_rank": (RANK_IP_RATE_LIMIT, RANK_SESSION_RATE_LIMIT),
-    "games.router.list_my_games": (GAMES_LIST_SESSION_RATE_LIMIT,),
-    "games.router.get_game_detail": (GAMES_DETAIL_SESSION_RATE_LIMIT,),
-    "games.router.create_game": (GAMES_CREATE_SESSION_RATE_LIMIT,),
-    "games.router.append_events": (GAMES_EVENTS_SESSION_RATE_LIMIT,),
-    "games.router.complete_game": (GAMES_COMPLETE_SESSION_RATE_LIMIT,),
-    "players.router.get_my_player": (PLAYER_READ_RATE_LIMIT,),
-    "players.router.put_my_player": (PLAYER_WRITE_RATE_LIMIT,),
-    "players.router.reroll_my_player": (PLAYER_WRITE_RATE_LIMIT, PLAYER_REROLL_RATE_LIMIT),
-    "players.router.delete_my_player": (PLAYER_WRITE_RATE_LIMIT,),
-    "me.router.delete_me": (ME_DELETE_SESSION_RATE_LIMIT,),
-    "stats.router.get_my_stats": (STATS_SESSION_RATE_LIMIT,),
-    "entitlements.router.get_entitlements": (ENTITLEMENTS_SESSION_RATE_LIMIT,),
-    "logs.router.append_bug_logs": (LOGS_SESSION_RATE_LIMIT,),
+    "games.router.get_game_rank": (
+        Rule(RANK_IP_RATE_LIMIT, IP),
+        Rule(RANK_SESSION_RATE_LIMIT, SESSION),
+    ),
+    "games.router.list_my_games": (Rule(GAMES_LIST_SESSION_RATE_LIMIT, SESSION),),
+    "games.router.get_game_detail": (Rule(GAMES_DETAIL_SESSION_RATE_LIMIT, SESSION),),
+    "games.router.create_game": (Rule(GAMES_CREATE_SESSION_RATE_LIMIT, SESSION),),
+    "games.router.append_events": (Rule(GAMES_EVENTS_SESSION_RATE_LIMIT, SESSION),),
+    "games.router.complete_game": (Rule(GAMES_COMPLETE_SESSION_RATE_LIMIT, SESSION),),
+    "players.router.get_my_player": (Rule(PLAYER_READ_RATE_LIMIT, SESSION),),
+    "players.router.put_my_player": (Rule(PLAYER_WRITE_RATE_LIMIT, SESSION),),
+    "players.router.reroll_my_player": (
+        Rule(PLAYER_WRITE_RATE_LIMIT, SESSION),
+        Rule(PLAYER_REROLL_RATE_LIMIT, SESSION),
+    ),
+    "players.router.delete_my_player": (Rule(PLAYER_WRITE_RATE_LIMIT, SESSION),),
+    "me.router.delete_me": (Rule(ME_DELETE_SESSION_RATE_LIMIT, SESSION),),
+    "stats.router.get_my_stats": (Rule(STATS_SESSION_RATE_LIMIT, SESSION),),
+    "entitlements.router.get_entitlements": (Rule(ENTITLEMENTS_SESSION_RATE_LIMIT, SESSION),),
+    "logs.router.append_bug_logs": (Rule(LOGS_SESSION_RATE_LIMIT, SESSION),),
     "purchases.router.post_apple_purchase": (
-        PURCHASE_IP_RATE_LIMIT,
-        PURCHASE_SESSION_RATE_LIMIT,
+        Rule(PURCHASE_IP_RATE_LIMIT, IP),
+        Rule(PURCHASE_SESSION_RATE_LIMIT, SESSION),
     ),
     "purchases.router.post_google_purchase": (
-        PURCHASE_IP_RATE_LIMIT,
-        PURCHASE_SESSION_RATE_LIMIT,
+        Rule(PURCHASE_IP_RATE_LIMIT, IP),
+        Rule(PURCHASE_SESSION_RATE_LIMIT, SESSION),
     ),
-    "purchases.router.post_apple_notification": (APPLE_NOTIFICATION_IP_RATE_LIMIT,),
-    "purchases.router.post_google_notification": (GOOGLE_NOTIFICATION_IP_RATE_LIMIT,),
-    "daily_word.router.get_today": (DAILY_WORD_TODAY_IP_RATE_LIMIT,),
+    "purchases.router.post_apple_notification": (Rule(APPLE_NOTIFICATION_IP_RATE_LIMIT, IP),),
+    "purchases.router.post_google_notification": (Rule(GOOGLE_NOTIFICATION_IP_RATE_LIMIT, IP),),
+    "daily_word.router.get_today": (Rule(DAILY_WORD_TODAY_IP_RATE_LIMIT, IP),),
     "daily_word.router.post_guess": (
-        DAILY_WORD_GUESS_SESSION_RATE_LIMIT,
-        DAILY_WORD_GUESS_IP_RATE_LIMIT,
+        Rule(DAILY_WORD_GUESS_SESSION_RATE_LIMIT, GUESS),
+        Rule(DAILY_WORD_GUESS_IP_RATE_LIMIT, IP),
     ),
-    "daily_word.router.get_answer_route": (DAILY_WORD_ANSWER_IP_RATE_LIMIT,),
-    "daily_challenge.router.get_today": (DAILY_CHALLENGE_TODAY_IP_RATE_LIMIT,),
-    "daily_challenge.router.get_status": (DAILY_CHALLENGE_STATUS_SESSION_RATE_LIMIT,),
-    "sort.router.get_levels": (SORT_LEVELS_IP_RATE_LIMIT,),
-    "routes.health.health": (HEALTH_IP_RATE_LIMIT,),
-    "routes.health.health_db": (HEALTH_DB_IP_RATE_LIMIT,),
-    "routes.debug.trigger_error": (DEBUG_ERROR_IP_RATE_LIMIT,),
+    "daily_word.router.get_answer_route": (Rule(DAILY_WORD_ANSWER_IP_RATE_LIMIT, IP),),
+    "daily_challenge.router.get_today": (Rule(DAILY_CHALLENGE_TODAY_IP_RATE_LIMIT, IP),),
+    "daily_challenge.router.get_status": (
+        Rule(DAILY_CHALLENGE_STATUS_SESSION_RATE_LIMIT, SESSION),
+    ),
+    "sort.router.get_levels": (Rule(SORT_LEVELS_IP_RATE_LIMIT, IP),),
+    "routes.health.health": (Rule(HEALTH_IP_RATE_LIMIT, IP),),
+    "routes.health.health_db": (Rule(HEALTH_DB_IP_RATE_LIMIT, IP),),
+    "routes.debug.trigger_error": (Rule(DEBUG_ERROR_IP_RATE_LIMIT, IP),),
 }
 
 # Registered only under ENVIRONMENT=test, so absent from the app in other runs.
