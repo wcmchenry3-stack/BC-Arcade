@@ -20,7 +20,9 @@ from entitlements.dependencies import check_entitlement
 from limiter import limiter, session_key
 from session import get_session_id, optional_session_id
 
-from . import catalog, history, leaderboard, sessions, sweep, sweep_gate
+from . import catalog, history, sessions, sweep, sweep_gate
+from .boards import partitions, queries
+from .boards.types import BoardEntry
 from .schemas import (
     AppendEventsRequest,
     AppendEventsResponse,
@@ -177,7 +179,7 @@ async def list_my_games(
 async def get_leaderboard(
     request: Request,
     game_type: str,
-    limit: int = Query(leaderboard.DEFAULT_LIMIT, ge=1, le=leaderboard.MAX_LIMIT),
+    limit: int = Query(queries.DEFAULT_LIMIT, ge=1, le=queries.MAX_LIMIT),
 ) -> LeaderboardResponse:
     """Top players on one board: one entry each (their best row).
 
@@ -192,14 +194,14 @@ async def get_leaderboard(
     and returned as ``me`` with its exact rank, even outside the top
     ``limit`` (#2633). Read-only.
     """
-    board = leaderboard.enabled_board(game_type)
+    board = partitions.enabled_board(game_type)
     if board is None:
         raise HTTPException(status_code=404, detail="Leaderboard not found.")
     params = [(k, v) for k, v in request.query_params.multi_items() if k != "limit"]
-    partition = leaderboard.resolve_partition(game_type, board, params)
+    partition = partitions.resolve_partition(game_type, board, params)
     factory = get_session_factory()
     async with factory() as db:
-        gt = await leaderboard.load_game_type(db, game_type)
+        gt = await queries.load_game_type(db, game_type)
         if gt is None:
             raise HTTPException(status_code=404, detail="Leaderboard not found.")
         # Not redundant with check_entitlement's own premium check: a free
@@ -209,7 +211,7 @@ async def get_leaderboard(
         # The caller, when known, to flag their own entry (#2633). Optional:
         # a free board stays public without X-Session-ID.
         viewer = optional_session_id(request)
-        entries = await leaderboard.top_entries(
+        entries = await queries.top_entries(
             db,
             game_type=game_type,
             board=board,
@@ -222,7 +224,7 @@ async def get_leaderboard(
         # only a caller outside the top ``limit`` costs the extra queries.
         me = next((e for e in entries if e.is_me), None)
         if viewer is not None and me is None:
-            me = await leaderboard.viewer_entry(
+            me = await queries.viewer_entry(
                 db,
                 game_type=game_type,
                 board=board,
@@ -239,7 +241,7 @@ async def get_leaderboard(
     )
 
 
-def _entry_out(e: leaderboard.BoardEntry) -> LeaderboardEntryOut:
+def _entry_out(e: BoardEntry) -> LeaderboardEntryOut:
     return LeaderboardEntryOut(
         rank=e.rank,
         player_name=e.player_name,
@@ -267,7 +269,7 @@ async def get_game_rank(request: Request, game_id: uuid.UUID) -> GameRankRespons
     factory = get_session_factory()
     async with factory() as db:
         game = await _load_owned_game(db, game_id, sid)
-        result = await leaderboard.game_rank(db, game=game, session_id=sid)
+        result = await queries.game_rank(db, game=game, session_id=sid)
     return GameRankResponse.model_validate(asdict(result))
 
 
@@ -277,7 +279,7 @@ async def _load_owned_game(db: AsyncSession, game_id: uuid.UUID, sid: str) -> Ga
     404 if it doesn't exist, 403 if another session owns it or it is a premium
     game the caller isn't entitled to (a no-op for free games).
     """
-    game = await leaderboard.load_game(db, game_id)
+    game = await queries.load_game(db, game_id)
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found.")
     if game.session_id != sid:

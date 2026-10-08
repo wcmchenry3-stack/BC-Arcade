@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from db.models import Game
 from games.board import DURATION_METRIC, FINAL_TIEBREAK, SCORE_METRIC, BoardDefinition
-from games.leaderboard import _unrankable_reason
+from games.boards.queries import _unrankable_reason
 from games.registry import get_module
 
 _FRONTEND_SRC = Path(__file__).parents[2] / "frontend" / "src"
