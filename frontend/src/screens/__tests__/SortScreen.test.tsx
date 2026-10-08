@@ -85,11 +85,14 @@ jest.mock("../../api/stats", () => mockScreenDeps().mockStatsApi({ getLeaderboar
 // The card's rank lookup (#2677): the real adapter's HTTP is covered by its own
 // tests; here we check Sort hands it the finished game.
 const mockRankSubmit = jest.fn();
+// Every adapter built, in order. `useGameLeaderboard` builds Sort's on first
+// render and keeps it (#2976); a plain array survives beforeEach's clearAllMocks.
+const mockAdapterGameTypes: string[] = [];
 jest.mock("../../game/_shared/sessionBoardAdapter", () => ({
-  sessionBoardAdapter: jest.fn((gameType: string) => ({
-    gameType,
-    submit: (...args: unknown[]) => mockRankSubmit(...args),
-  })),
+  sessionBoardAdapter: jest.fn((gameType: string) => {
+    mockAdapterGameTypes.push(gameType);
+    return { gameType, submit: (...args: unknown[]) => mockRankSubmit(...args) };
+  }),
 }));
 
 jest.mock("../../game/sort/storage", () => {
@@ -123,12 +126,6 @@ const { sortApi } = jest.requireMock("../../game/sort/api") as {
 const { statsApi } = jest.requireMock("../../api/stats") as {
   statsApi: { getLeaderboard: jest.Mock };
 };
-
-const { sessionBoardAdapter } = jest.requireMock("../../game/_shared/sessionBoardAdapter") as {
-  sessionBoardAdapter: jest.Mock;
-};
-// SortScreen builds its adapter once, at import (before any clearAllMocks).
-const adapterGameTypes = sessionBoardAdapter.mock.calls.map((call) => call[0]);
 
 const storage = jest.requireMock("../../game/sort/storage") as {
   loadProgress: jest.Mock;
@@ -922,7 +919,7 @@ describe("SortScreen — result card (#2512)", () => {
     await waitFor(() =>
       expect(card.getByText("Saved as Riley · #2 on the leaderboard")).toBeTruthy()
     );
-    expect(adapterGameTypes).toEqual(["sort"]);
+    expect(mockAdapterGameTypes).toEqual(["sort"]);
     expect(mockRankSubmit).toHaveBeenCalledTimes(1);
     expect(mockRankSubmit).toHaveBeenCalledWith("Riley", { gameId: "sort-game-id" });
   });

@@ -7,7 +7,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { usePausableClock } from "../hooks/usePausableClock";
 import { Twenty48State } from "../game/twenty48/types";
 import {
@@ -27,11 +27,10 @@ import {
 import Grid from "../components/twenty48/Grid";
 import ScoreBoard from "../components/twenty48/ScoreBoard";
 import GameResultModal from "../components/shared/GameResultModal";
+import { toSubmission } from "../components/shared/toSubmission";
 import StatsBento from "../components/twenty48/StatsBento";
 import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
 import { useGameSync } from "../game/_shared/useGameSync";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useSound } from "../game/_shared/useSound";
 import { TWENTY48_SOUNDS } from "../game/twenty48/sounds";
@@ -47,9 +46,6 @@ function highestTile(board: number[][]): number {
 function computeDurationMs(s: Twenty48State): number {
   return s.accumulatedMs + (s.startedAt !== null ? Date.now() - s.startedAt : 0);
 }
-
-/** The result card's leaderboard line: one global board by score (#2631). */
-const twenty48Board = sessionBoardAdapter("twenty48");
 
 const SWIPE_THRESHOLD = 30;
 /** How long (ms) to hold the move lock — matches slide animation duration. */
@@ -102,10 +98,9 @@ export default function Twenty48Screen({ navigation }: Props) {
   } = useGameSync("twenty48");
   // The card's leaderboard line (#2631, #2677): looked up once per session, at
   // the win or the game over; never on an abandon.
-  const leaderboard = useLeaderboardSubmit(twenty48Board);
+  // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("twenty48", navigation);
   const { submit: submitLeaderboard, reset: resetLeaderboard } = leaderboard;
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openLeaderboard = useLeaderboardLink(navigation, "twenty48");
   const moveCountRef = useRef(0);
   const stateRef = useRef<Twenty48State | null>(null);
   useEffect(() => {
@@ -434,14 +429,12 @@ export default function Twenty48Screen({ navigation }: Props) {
       gameType="twenty48"
       title={t("game.title")}
       requireBack
-      onBack={() => navigation.popToTop()}
       onNewGame={resetGame}
       onOpenLeaderboard={openLeaderboard}
       loading={!state && loading}
+      gutter={16}
       style={{
         paddingBottom: Math.max(insets.bottom, 16),
-        paddingLeft: Math.max(insets.left, 16),
-        paddingRight: Math.max(insets.right, 16),
         alignItems: "center",
       }}
     >
@@ -530,18 +523,7 @@ export default function Twenty48Screen({ navigation }: Props) {
         }
         // The session's leaderboard line. A game over after Keep Playing is
         // untracked, so its card has none.
-        submission={
-          winDismissed
-            ? undefined
-            : {
-                status: leaderboard.status,
-                rank: leaderboard.rank,
-                isBest: leaderboard.isBest,
-                playerName: leaderboard.playerName,
-                onJoinLeaderboards: leaderboard.joinLeaderboards,
-                onRetry: leaderboard.retry,
-              }
-        }
+        submission={winDismissed ? undefined : toSubmission(leaderboard)}
         onViewLeaderboard={openLeaderboard}
         onHome={() => navigation.popToTop()}
         testID="twenty48-result"

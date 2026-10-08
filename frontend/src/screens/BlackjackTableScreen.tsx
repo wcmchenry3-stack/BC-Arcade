@@ -207,6 +207,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       title={t("game.title")}
       requireBack
       onBack={() => navigation.popToTop()}
+      gutter={null}
       onNewGame={handleNewGame}
       loading={!engine && loading}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}

@@ -43,11 +43,12 @@ import {
 } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { usePausableClock } from "../hooks/usePausableClock";
 import { PillButton } from "../components/shared/PillButton";
 import { PlayClockText } from "../components/shared/PlayClockText";
 import GameResultModal from "../components/shared/GameResultModal";
+import { toSubmission } from "../components/shared/toSubmission";
 import GameCanvas from "../components/mahjong/GameCanvas";
 import MahjongDevPanel from "../components/mahjong/MahjongDevPanel";
 import FlyingPair from "../components/mahjong/FlyingPair";
@@ -83,8 +84,6 @@ import { useMahjongAudio } from "../game/mahjong/useMahjongAudio";
 import { useMahjongPersistence } from "../game/mahjong/useMahjongPersistence";
 import { freeIdsFor, useFreeTiles } from "../game/mahjong/useFreeTiles";
 import { useGameSync } from "../game/_shared/useGameSync";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { formatMs } from "../game/_shared/formatMs";
 import { clamp, computeZoomBounds, computePanBounds } from "../game/mahjong/zoom";
@@ -101,9 +100,6 @@ interface WinSummary {
   /** This clear is faster than every earlier one on this layout (#2747). */
   readonly isNewBest: boolean;
 }
-
-/** The result card's rank lookup on Mahjong's session board (#2677). */
-const mahjongBoard = sessionBoardAdapter("mahjong");
 
 export default function MahjongScreen() {
   const { t } = useTranslation("mahjong");
@@ -122,13 +118,13 @@ export default function MahjongScreen() {
   const [hasSavedGame, setHasSavedGame] = useState(false);
   const progressRef = useRef<MahjongProgress>(DEFAULT_PROGRESS);
   const [winSummary, setWinSummary] = useState<WinSummary | null>(null);
-  const leaderboard = useLeaderboardSubmit(mahjongBoard);
-  const { submit: submitRank, reset: resetSubmission } = leaderboard;
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633) open the
-  // board of the layout on screen: each layout has its own (#2747).
-  const openLeaderboard = useLeaderboardLink(navigation, "mahjong", {
+  // The card's rank line, and its "View leaderboard" link and the ⋯ menu item
+  // (#2633), which open the board of the layout on screen: each layout has its
+  // own (#2747).
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("mahjong", navigation, {
     layout: state?.currentLayoutId ?? "turtle",
   });
+  const { submit: submitRank, reset: resetSubmission } = leaderboard;
   // The HUD clock's screen-reader label; stable, so the clock's own
   // one-second tick is the only thing that re-renders it.
   const clockA11yLabel = useCallback((time: string) => t("hud.elapsed", { time }), [t]);
@@ -773,13 +769,8 @@ export default function MahjongScreen() {
         title={t("game.title")}
         requireBack
         loading={false}
-        onBack={() => navigation.popToTop()}
         onOpenLeaderboard={openLeaderboard}
-        style={{
-          paddingBottom: Math.max(insets.bottom, 16),
-          paddingLeft: Math.max(insets.left, 12),
-          paddingRight: Math.max(insets.right, 12),
-        }}
+        style={{ paddingBottom: Math.max(insets.bottom, 16) }}
       >
         <LayoutSelectScreen
           layouts={LAYOUTS}
@@ -798,12 +789,7 @@ export default function MahjongScreen() {
       title={t("game.title")}
       requireBack
       loading={loading}
-      onBack={() => navigation.popToTop()}
-      style={{
-        paddingBottom: Math.max(insets.bottom, 16),
-        paddingLeft: Math.max(insets.left, 12),
-        paddingRight: Math.max(insets.right, 12),
-      }}
+      style={{ paddingBottom: Math.max(insets.bottom, 16) }}
       onNewGame={startNewGame}
       onLevelSelect={goToLevelSelect}
       // No Scoreboard item (#2627): it led to an untranslated fallback. The
@@ -1013,18 +999,7 @@ export default function MahjongScreen() {
                 ]
               : [{ label: tResult("stat.time"), value: formatMs(elapsedMs(state)) }]
           }
-          submission={
-            state.isComplete
-              ? {
-                  status: leaderboard.status,
-                  rank: leaderboard.rank,
-                  isBest: leaderboard.isBest,
-                  playerName: leaderboard.playerName,
-                  onJoinLeaderboards: leaderboard.joinLeaderboards,
-                  onRetry: leaderboard.retry,
-                }
-              : undefined
-          }
+          submission={state.isComplete ? toSubmission(leaderboard) : undefined}
           onViewLeaderboard={openLeaderboard}
           onPlayAgain={handlePlayAgain}
           secondaryAction={{ label: tResult("action.changeLayout"), onPress: startNewGame }}

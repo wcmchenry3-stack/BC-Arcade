@@ -64,6 +64,7 @@ export default function BlackjackBettingScreen({ navigation }: Props) {
       title={t("game.title")}
       requireBack
       onBack={() => navigation.popToTop()}
+      gutter={null}
       onNewGame={handlePlayAgain}
       loading={!engine && loading}
     >

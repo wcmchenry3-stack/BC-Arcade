@@ -18,7 +18,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import GameCanvas from "../components/starswarm/GameCanvas";
 import type { GameCanvasHandle, DevOptions } from "../components/starswarm/GameCanvas";
 import Controls, { hapticPlayerHit, hapticWaveClear } from "../components/starswarm/Controls";
@@ -49,8 +49,7 @@ import StarSwarmDevPanel, {
 import { DevButton } from "../components/dev/DevPanelShell";
 import { loadBestScore, saveBestScore } from "../game/starswarm/bestScore";
 import GameResultModal from "../components/shared/GameResultModal";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
+import { toSubmission } from "../components/shared/toSubmission";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import { DifficultyPicker, type DifficultyOption } from "../components/shared/DifficultyPicker";
@@ -72,9 +71,6 @@ import { useStarSwarmAudio } from "../hooks/useStarSwarmAudio";
  */
 const DEV_TOOLS = __DEV__ || isPreLaunchApiBuild();
 
-// #2626: the result card reads the run's rank on its tier's board (`GET /games/{id}/rank`).
-const STARSWARM_BOARD = sessionBoardAdapter("starswarm");
-
 // Each tier on its own row, its score multiplier underneath (#2982).
 const tierOptions: readonly DifficultyOption<DifficultyTier>[] = DIFFICULTY_TIERS.map((tier) => ({
   value: tier,
@@ -92,7 +88,6 @@ const tierOptions: readonly DifficultyOption<DifficultyTier>[] = DIFFICULTY_TIER
 export default function StarSwarmScreen() {
   const { t } = useTranslation("starswarm");
   const { colors } = useTheme();
-  const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "StarSwarm">>();
   const [hydrated, setHydrated] = useState(isPausedStateHydrated);
   useEffect(() => {
     if (hydrated) return;
@@ -106,12 +101,7 @@ export default function StarSwarmScreen() {
   }, [hydrated]);
   if (hydrated) return <StarSwarmGame />;
   return (
-    <GameShell
-      gameType="starswarm"
-      title={t("game.title")}
-      requireBack
-      onBack={() => navigation.popToTop()}
-    >
+    <GameShell gameType="starswarm" title={t("game.title")} requireBack gutter={null}>
       <View style={styles.canvasOuter}>
         <ActivityIndicator color={colors.accent} size="large" />
       </View>
@@ -141,9 +131,6 @@ function StarSwarmGame() {
     best: number;
     isNewBest: boolean;
   } | null>(null);
-  const leaderboard = useLeaderboardSubmit(STARSWARM_BOARD);
-  const { submit: submitRank, reset: resetSubmission } = leaderboard;
-
   // Per-session `games` row (#2516), like every other game: XP, Profile history
   // and SyncWorker. Since #2626 the finished run carries its score and is the
   // leaderboard entry itself, on its difficulty tier's board.
@@ -175,11 +162,12 @@ function StarSwarmGame() {
     { initial: savedPauseRef.current?.difficulty }
   );
   const [showDifficultyPicker, setShowDifficultyPicker] = useState(savedPauseRef.current === null);
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633) open the
-  // finished run's tier board, else the current tier's.
-  const openLeaderboard = useLeaderboardLink(navigation, "starswarm", {
+  // The card's rank line, and its "View leaderboard" link and the ⋯ menu item
+  // (#2633), which open the finished run's tier board, else the current tier's.
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("starswarm", navigation, {
     difficulty_tier: result?.tier ?? difficulty,
   });
+  const { submit: submitRank, reset: resetSubmission } = leaderboard;
 
   const scoreRef = useRef(0);
   const highScoreRef = useRef(0);
@@ -546,10 +534,9 @@ function StarSwarmGame() {
           </Pressable>
         ) : undefined
       }
+      gutter={0}
       style={{
         paddingBottom: Math.max(insets.bottom, 8),
-        paddingLeft: Math.max(insets.left, 0),
-        paddingRight: Math.max(insets.right, 0),
       }}
     >
       <View testID="starswarm-canvas-outer" style={styles.canvasOuter} onLayout={onLayout}>
@@ -638,14 +625,7 @@ function StarSwarmGame() {
                 ]
               : []
           }
-          submission={{
-            status: leaderboard.status,
-            rank: leaderboard.rank,
-            isBest: leaderboard.isBest,
-            playerName: leaderboard.playerName,
-            onJoinLeaderboards: leaderboard.joinLeaderboards,
-            onRetry: leaderboard.retry,
-          }}
+          submission={toSubmission(leaderboard)}
           onViewLeaderboard={openLeaderboard}
           // Same difficulty, straight into a new run.
           onPlayAgain={handleConfirmDifficulty}

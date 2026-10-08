@@ -134,6 +134,7 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
       title={t("blackjack:game.title")}
       requireBack
       onBack={() => navigation.popToTop()}
+      gutter={null}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >
       <ScrollView

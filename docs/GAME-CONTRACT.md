@@ -418,10 +418,11 @@ The app side of a game: how it opens and closes its `games` row, what outcome an
 | Result card outcome → `games.outcome`                                                                                 | `frontend/src/game/_shared/recordedOutcome.ts`                                                                        |
 | Outcome guard                                                                                                         | `frontend/src/game/_shared/outcomeGuard.ts`                                                                           |
 | Result card                                                                                                           | `frontend/src/components/shared/GameResultModal.tsx`                                                                  |
-| Rank lookup for the card                                                                                              | `useLeaderboardSubmit.ts`, `sessionBoardAdapter.ts` in `frontend/src/game/_shared/`                                   |
+| Rank lookup for the card                                                                                              | `useGameLeaderboard.ts` (wraps `useLeaderboardSubmit.ts`, `sessionBoardAdapter.ts`) in `frontend/src/game/_shared/`   |
+| Hook state → card's `submission`                                                                                      | `frontend/src/components/shared/toSubmission.ts`                                                                      |
 | Display name                                                                                                          | `displayName.ts`, `displayNameSync.ts` in `frontend/src/game/_shared/`                                                |
 | Leaderboard link / availability                                                                                       | `frontend/src/hooks/useLeaderboardLink.ts`, `frontend/src/game/_shared/leaderboardAvailability.ts`                    |
-| Screen wrapper                                                                                                        | `frontend/src/components/shared/GameShell.tsx`                                                                        |
+| Screen wrapper                                                                                                        | `frontend/src/components/shared/GameShell.tsx` (game screens), `ScreenFrame.tsx` (other screens)                      |
 | Shared screens                                                                                                        | `LeaderboardScreen.tsx`, `GameStatsScreen.tsx`, `ScorecardScreen.tsx`, `ProfileScreen.tsx` in `frontend/src/screens/` |
 
 `frontend/src/game/_shared/types.ts` also declares `GameSession<TState, TAction>` and `Player`. Only Yacht, Twenty48, Blackjack and Cascade alias `GameSession` in their `types.ts`, and nothing else reads those aliases: they are optional, not part of the contract.
@@ -433,6 +434,9 @@ Every game screen renders inside `GameShell` (`frontend/src/components/shared/Ga
 - **`gameType` is required** (#2635). With a game type, `GameShell` adds a **Stats** item to the ⋯ menu (the shared `GameStats` screen for that game) and, for a game in `SCORECARD_GAMES` (`frontend/src/navigation/scorecards.ts`: Hearts, Yacht, Blackjack), a **Scorecard** item (#2636). The game does not wire either. Pass `gameType={null}` only for a screen that is not one game's play screen (a scorecard, a run history, a dev tool).
 - The game passes the other menu entries it has: `onOpenLeaderboard` (from `useLeaderboardLink`, §2.5), `onNewGame`, `onLevelSelect`, `onEditPlayerNames`.
 - While `loading` is true the header keeps its title and back button and hides the ⋯ menu.
+- **Back defaults to the lobby** (#2976): without `onBack`, the back button calls `navigation.popToTop()` (`GameShell` already has the navigation). Pass `onBack` only for another back (Hearts and Sort go back one screen; Star Swarm saves a paused run first), or `onBack={null}` for no back button.
+- **Side gutter** (#2976): `GameShell` pads the container's sides by `Math.max(inset, gutter)`, so content clears a landscape notch and keeps a margin. `gutter` defaults to 12 (`GAME_SHELL_GUTTER`); pass `gutter={16}` (Yacht, Twenty48) or `gutter={0}` (insets only, Star Swarm) for outliers, and `gutter={null}` for a screen that lays out its own edges (no side padding). A `paddingBottom` in `style` is still a minimum over the tab bar.
+- **Screens that are not a game** (Profile, Leaderboard, Game Stats, Game Detail, Settings) wrap their `AppHeader` and content in `ScreenFrame` (`frontend/src/components/shared/ScreenFrame.tsx`): the themed full-height container that clears the header and the bottom safe area (`padBottom={false}` leaves the bottom to the screen). A run history or dev tool that wants the ⋯ menu shell uses `GameShell gameType={null}` instead.
 
 ### 2.3 useGameSync
 
@@ -537,17 +541,24 @@ at 10 minutes; a game's own measured duration wins.
 
 **The card.** Every game ends on `GameResultModal` (`frontend/src/components/shared/GameResultModal.tsx`, #2504): the game passes data (`outcome`, `hero`, `stats`, `detail`, actions) and never builds its own result screen. (Blackjack's Goal Reached screen renders the same `ResultCard` inline, with `useResultFeedback`.) Two props connect it to the leaderboard:
 
-- `submission` — the rank line: `{ status, rank, isBest, playerName, onProvideName, onRetry }` from `useLeaderboardSubmit`. Omit it for a game without a leaderboard (Blackjack, Daily Word).
-- `onViewLeaderboard` — the "View leaderboard" link, from `useLeaderboardLink`.
+- `submission` — the rank line: `{ status, rank, isBest, playerName, onJoinLeaderboards, onRetry }`. The card keeps this shape of its own (owner decision on #2976 / #2990); build it from the hook with `toSubmission(leaderboard)` (`frontend/src/components/shared/toSubmission.ts`), which passes the status fields through and renames the hook's `joinLeaderboards` / `retry` to `onJoinLeaderboards` / `onRetry`. Omit it for a game without a leaderboard (Blackjack, Daily Word).
+- `onViewLeaderboard` — the "View leaderboard" link, `openLeaderboard` from `useGameLeaderboard` (or `useLeaderboardLink`).
 
 **The rank line.** There is no score submission and no per-game name (#2624, #2677): a finished game of a named player is already on its board once `SyncWorker` uploads it. The card only asks where it landed:
 
-```ts
-const board = sessionBoardAdapter("sudoku"); // module scope
-const leaderboard = useLeaderboardSubmit(board);
+```tsx
+const { leaderboard, openLeaderboard } = useGameLeaderboard("sudoku", navigation, {
+  difficulty, // the partition played, if the board has one
+});
 // on game over, with the id complete() returned:
 void leaderboard.submit({ gameId });
+// the card:
+<GameResultModal submission={toSubmission(leaderboard)} onViewLeaderboard={openLeaderboard} … />
+// the shell:
+<GameShell gameType="sudoku" onOpenLeaderboard={openLeaderboard} … />
 ```
+
+`useGameLeaderboard(gameType, navigation, partition?)` (`frontend/src/game/_shared/useGameLeaderboard.ts`, #2976) is the whole preamble: it owns the game's `sessionBoardAdapter` (one per game type, built on first use), runs `useLeaderboardSubmit` on it and `useLeaderboardLink` for the opener, and returns `{ leaderboard, openLeaderboard }`. Cascade still wires the three pieces by hand (its screen is out of scope while epic #3033 reworks it).
 
 `sessionBoardAdapter` (`frontend/src/game/_shared/sessionBoardAdapter.ts`) flushes the local game queue and any pending display-name sync, then calls `GET /games/{id}/rank`, retrying briefly while the completion lands. `useLeaderboardSubmit` turns the answer into a status — `saved` (with the top-10 rank of the player's best entry and `isBest`), `needsName` (the one-time Join leaderboards prompt; `joinLeaderboards()` joins through `PUT /players/me`, which assigns a generated name), `submitting`, `offline`, `unranked` (no line) or `error` (Retry) — and keeps asking while the card is mounted until it settles. Nothing is ever queued. The server side, statuses and retry timings are in [Leaderboard routes (#2618)](#leaderboard-routes-2618). Call `leaderboard.reset()` when a new game starts, so the next card starts clean.
 
@@ -560,7 +571,7 @@ void leaderboard.submit({ gameId });
 
 Stats use the server's copy instead: `/stats/me` sends `best_value` with `best_label_key` (§1.5).
 
-**Opening the board.** `useLeaderboardLink(navigation, gameType, partition?)` (`frontend/src/hooks/useLeaderboardLink.ts`) returns an opener, or `undefined` when the game has no openable board. Pass it to both `GameResultModal.onViewLeaderboard` and `GameShell.onOpenLeaderboard`, so the card link and the ⋯ menu item appear together. Pass the partition the player just played. Both open `LeaderboardScreen` (#2633, `Leaderboard` route in the Home stack): one entry per player, the player's own row flagged by `is_me` and, when outside the list, pinned below it from `me`; pull to refresh; opened from a card whose rank is pending (`refreshAfterSync`), it refetches once local games and the name have synced.
+**Opening the board.** `useLeaderboardLink(navigation, gameType, partition?)` (called for you by `useGameLeaderboard`) (`frontend/src/hooks/useLeaderboardLink.ts`) returns an opener, or `undefined` when the game has no openable board. Pass it to both `GameResultModal.onViewLeaderboard` and `GameShell.onOpenLeaderboard`, so the card link and the ⋯ menu item appear together. Pass the partition the player just played. Both open `LeaderboardScreen` (#2633, `Leaderboard` route in the Home stack): one entry per player, the player's own row flagged by `is_me` and, when outside the list, pinned below it from `me`; pull to refresh; opened from a card whose rank is pending (`refreshAfterSync`), it refetches once local games and the name have synced.
 
 **Covered screens.** A game with its own clock pauses it on the navigation `blur` event, since a pushed Leaderboard, Stats or Scorecard screen leaves it mounted, and while the app is in the background: `usePauseWhileAway` handles both (§2.3 for the play window).
 
@@ -615,8 +626,8 @@ Use this checklist when adding a new game. Each item links to the file to create
 - [ ] **`useGameSync`** (§2.3) — `start()` with the metadata, `markStarted()` on the first real action, `complete()` with an explicit `result` block, `setProgressSnapshot()` so the hook's abandons carry it; `resume()` if the screen restores saved progress; no `beforeRemove` abandon handler
 - [ ] **Outcome** (§2.4) — `recordedOutcome(cardOutcome)` if `has_winner`, else `"completed"`; drive every finish path in a screen test (the outcome guard throws there)
 - [ ] **Duration** — send the game's own active clock as `durationMs` if it has one (paused while backgrounded and on `blur`); otherwise send nothing and let the play window count; call `resetPlayWindow()` where a new board or picker appears before the session opens (§2.3)
-- [ ] **Result card** (§2.5) — end on `GameResultModal`; with an enabled board, `useLeaderboardSubmit(sessionBoardAdapter("mygame"))`, `submit({ gameId })` with the id `complete()` returned, `reset()` on a new game, and the hook's state as `submission`
-- [ ] **Leaderboard link** — `useLeaderboardLink(navigation, "mygame", partition)` passed to both `GameResultModal.onViewLeaderboard` and `GameShell.onOpenLeaderboard`
+- [ ] **Result card** (§2.5) — end on `GameResultModal`; with an enabled board, `useGameLeaderboard("mygame", navigation, partition)`, `leaderboard.submit({ gameId })` with the id `complete()` returned, `leaderboard.reset()` on a new game, and `toSubmission(leaderboard)` as `submission`
+- [ ] **Leaderboard link** — `useGameLeaderboard`'s `openLeaderboard` passed to both `GameResultModal.onViewLeaderboard` and `GameShell.onOpenLeaderboard`
 - [ ] **Stats entry** — nothing to build: `GameStats` and Profile read `/stats/me` (§2.6); check the game's tiles show sensible values (win figures "—" for a score-only game)
 - [ ] **`noUncheckedIndexedAccess`** clean — no suppression comments
 - [ ] **Icon assets are WebP** — any new icons added to `assets/fruit-icons/` or `assets/celestial-icons/` must be converted before committing: `python tools/assets/convert_icons_to_webp.py <dir>`. Raw PNGs in non-exempt asset directories will fail CI (`assetTransparency.test.ts`).
