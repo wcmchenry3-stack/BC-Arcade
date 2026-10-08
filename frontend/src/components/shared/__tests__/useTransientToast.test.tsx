@@ -78,11 +78,13 @@ describe("useTransientToast", () => {
     await act(async () => result.current.show());
     const id = toastTimerId(setSpy, 2000);
 
+    // Spy before unmount so a late state update would be caught.
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
     await act(async () => unmount());
     expect(clearSpy).toHaveBeenCalledWith(id);
     // Nothing fires after unmount (no state update on an unmounted component).
-    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
     await act(async () => jest.advanceTimersByTime(5000));
     expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

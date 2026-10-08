@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react-native";
 import { StyleSheet, View } from "react-native";
 import type { ReactTestInstance } from "react-test-renderer";
-import { ThemeProvider } from "../../../theme/ThemeContext";
+import { ThemeProvider, useTheme, type Colors } from "../../../theme/ThemeContext";
 import { StatList, StatRow } from "../StatRow";
 
 async function renderInTheme(ui: React.ReactElement) {
@@ -20,8 +20,20 @@ describe("StatRow", () => {
   });
 
   it("mutes the label and bolds the value", async () => {
-    await renderInTheme(<StatRow label="Chips" value="1,000 chips" />);
-    expect(style("Chips").color).not.toBe(style("1,000 chips").color);
+    let colors: Colors | undefined;
+    function Probe() {
+      colors = useTheme().colors;
+      return null;
+    }
+    await renderInTheme(
+      <>
+        <Probe />
+        <StatRow label="Chips" value="1,000 chips" />
+      </>
+    );
+    expect(style("Chips").color).toBe(colors?.textMuted);
+    expect(style("Chips").fontWeight).toBe("500");
+    expect(style("1,000 chips").color).toBe(colors?.text);
     expect(style("1,000 chips").fontWeight).toBe("700");
   });
 
