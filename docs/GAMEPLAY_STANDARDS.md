@@ -284,6 +284,17 @@ The shared drag system lives in `frontend/src/game/_shared/drag/`. Use it for **
 
 `onDrop` must return `true` if the drop was accepted (DragContext clears state) or `false` to trigger snap-back.
 
+### Shared pile components (#2983)
+
+FreeCell and Solitaire draw their foundations and tableau columns with one pair of components in `frontend/src/components/cards/`, so a drag fix lands once:
+
+| File                 | What it owns                                                                                                                                                                                        |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `FoundationPile.tsx` | Top card as a `DraggableCard` (`type: "foundation"`), the empty suit placeholder, the `DropTarget` wrap (`dropId` doubles as the testID, #2346)                                                     |
+| `TableauColumn.tsx`  | Stacking offsets (face-down cards use `faceDownOffset`), the dashed empty placeholder, one `DraggableCard` per card with the run from it up, buried-card `hitSlop` (#1248), the column `DropTarget` |
+
+The game wrappers (`components/freecell/FoundationPile.tsx` and `TableauColumn.tsx`, `components/solitaire/FoundationPile.tsx` and `TableauPile.tsx`) only fix the per-game props: `game` / `ns`, testIDs, label keys, corner radius (6 vs 8), hint border width (2 vs 3), the placeholder glyph's style, and — for the tableau — the offsets and `renderCard` (FreeCell: `SelectableCard` with hint borders; Solitaire: `CardView`, or `SelectableCard` when selected, plus a hint frame on the hint source). A change to drag, drop or hit areas belongs in `components/cards/`; check it on a physical iPhone and Android device (pitfalls below).
+
 ### DragSource type
 
 `DragSource` is a discriminated union defined in `DragContext.tsx`. When adding a new game, extend the union:
