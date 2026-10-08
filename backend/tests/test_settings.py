@@ -7,6 +7,8 @@ errors for a bad value.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
@@ -97,6 +99,48 @@ def test_env_names_are_case_sensitive_and_unprefixed(clean_env: pytest.MonkeyPat
     assert Settings().environment is None
 
 
+def test_lower_and_mixed_case_env_names_are_ignored_for_every_field(
+    clean_env: pytest.MonkeyPatch,
+) -> None:
+    for name in ("allowed_origins", "Allowed_Origins", "sentry_dsn", "Sentry_Dsn"):
+        clean_env.setenv(name, "https://x.example.com")
+    clean_env.setenv("trusted_proxy_mode", "none")
+    clean_env.setenv("Trusted_Proxy_Hops", "3")
+    clean_env.setenv("log_proxy_headers", "1")
+    clean_env.setenv("render_git_commit", "abc")
+    s = Settings()
+    assert s.allowed_origins == list(DEFAULT_ALLOWED_ORIGINS)
+    assert s.sentry_dsn is None
+    assert s.trusted_proxy_mode is None and s.trusted_proxy_hops is None
+    assert s.log_proxy_headers == "" and s.render_git_commit is None
+
+
+def test_allowed_origins_stays_a_raw_comma_split_not_json(clean_env: pytest.MonkeyPatch) -> None:
+    clean_env.setenv("ALLOWED_ORIGINS", '["a"]')
+    assert Settings().allowed_origins == ['["a"]']
+
+
+def test_settings_does_not_read_a_dotenv_file(
+    clean_env: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / ".env").write_text(
+        "ENVIRONMENT=production\nSENTRY_DSN=https://k@o0.ingest.sentry.io/0\n"
+    )
+    clean_env.chdir(tmp_path)
+    s = Settings()
+    assert s.environment is None and s.sentry_dsn is None
+
+
+def test_isolated_ignores_the_environment(clean_env: pytest.MonkeyPatch) -> None:
+    clean_env.setenv("SENTRY_DSN", DSN)
+    clean_env.setenv("ALLOWED_ORIGINS", "https://x.example.com")
+    s = Settings.isolated(ENVIRONMENT="production")
+    assert s.environment == "production"
+    assert s.sentry_dsn is None
+    assert s.allowed_origins == list(DEFAULT_ALLOWED_ORIGINS)
+    assert isinstance(s, Settings)
+
+
 def test_empty_values_are_kept_as_the_old_reads_kept_them(clean_env: pytest.MonkeyPatch) -> None:
     # os.environ.get("ENVIRONMENT", "development") returned "" for ENVIRONMENT="".
     clean_env.setenv("ENVIRONMENT", "")
@@ -107,8 +151,8 @@ def test_empty_values_are_kept_as_the_old_reads_kept_them(clean_env: pytest.Monk
 
 
 def test_test_environment_flag(clean_env: pytest.MonkeyPatch) -> None:
-    assert Settings(ENVIRONMENT="test").is_test
-    assert not Settings(ENVIRONMENT="production").is_test
+    assert Settings.isolated(ENVIRONMENT="test").is_test
+    assert not Settings.isolated(ENVIRONMENT="production").is_test
 
 
 def test_field_names_are_not_accepted_as_keywords() -> None:
@@ -130,7 +174,7 @@ def test_settings_are_frozen() -> None:
 def test_create_app_takes_settings_without_touching_env(
     clean_env: pytest.MonkeyPatch, keep_proxy_trust: None
 ) -> None:
-    settings = Settings(ENVIRONMENT="production", ALLOWED_ORIGINS="https://x.example.com")
+    settings = Settings.isolated(ENVIRONMENT="production", ALLOWED_ORIGINS="https://x.example.com")
     app = main.create_app(settings)
     assert app.state.settings is settings
     assert _cors_origins(app) == ["https://x.example.com"]
@@ -150,7 +194,7 @@ def test_create_app_reads_env_when_no_settings_given(
 def test_create_app_passes_proxy_trust_from_settings(
     clean_env: pytest.MonkeyPatch, keep_proxy_trust: None
 ) -> None:
-    main.create_app(Settings(TRUSTED_PROXY_MODE="none", TRUSTED_PROXY_HOPS="3"))
+    main.create_app(Settings.isolated(TRUSTED_PROXY_MODE="none", TRUSTED_PROXY_HOPS="3"))
     assert (limiter_module._TRUST.mode, limiter_module._TRUST.hops) == ("none", 3)
 
 
@@ -166,7 +210,7 @@ def test_bad_proxy_settings_still_raise_value_error_at_startup(
     overrides: dict[str, str], message: str, keep_proxy_trust: None
 ) -> None:
     with pytest.raises(ValueError, match=message):
-        main.create_app(Settings(**overrides))
+        main.create_app(Settings.isolated(**overrides))
 
 
 def test_init_sentry_uses_the_settings_it_is_given(
@@ -175,7 +219,9 @@ def test_init_sentry_uses_the_settings_it_is_given(
     calls: list[dict] = []
     monkeypatch.setattr(sentry_setup.sentry_sdk, "init", lambda **kw: calls.append(kw))
     monkeypatch.setattr(sentry_setup, "_initialised", False)
-    settings = Settings(SENTRY_DSN=DSN, ENVIRONMENT="production", RENDER_GIT_COMMIT="c0ffee")
+    settings = Settings.isolated(
+        SENTRY_DSN=DSN, ENVIRONMENT="production", RENDER_GIT_COMMIT="c0ffee"
+    )
     assert sentry_setup.init_sentry(settings) is True
     (opts,) = calls
     assert (opts["dsn"], opts["environment"], opts["release"]) == (DSN, "production", "c0ffee")

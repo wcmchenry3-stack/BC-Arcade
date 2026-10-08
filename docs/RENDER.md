@@ -87,8 +87,8 @@ Never put values in `render.yaml` or the repo.
 The backend is moving these reads into one `Settings` object in
 `backend/settings.py` (#2997), one package per PR. Names (case-sensitive, no
 prefix) and defaults stay exactly as listed here. A migrated variable is read
-once, when the app starts, so changing it takes a redeploy, which Render does
-on every env change. Which variables are migrated, their defaults and the code
+once, when the app starts, so changing it takes a redeploy (use Save and deploy
+when you edit the variable on Render). Which variables are migrated, their defaults and the code
 that reads them are in [ARCHITECTURE.md §11.1](ARCHITECTURE.md#111-infrastructure-and-external-services).
 
 `ENVIRONMENT` unset means `development` — an API never reports to Sentry's

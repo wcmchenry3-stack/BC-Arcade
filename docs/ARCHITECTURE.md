@@ -1091,8 +1091,11 @@ use [RENDER.md](RENDER.md). Build-time API-target rules live in
 **Backend settings (#2997).** The API reads its env vars through one
 pydantic-settings object, `Settings` in `backend/settings.py`. `create_app()`
 builds it once, keeps it on `app.state.settings` and passes it to the code that
-needs it, so a test either calls `create_app(Settings(ENVIRONMENT="test", ...))`
-or sets env vars before calling `create_app()`. Env var names (case-sensitive,
+needs it, so a test either passes a `Settings` to `create_app()` or sets env
+vars before calling it. `Settings(...)` still fills any field it is not given
+from the environment (including a developer's `backend/.env` once `main` has
+loaded it), so tests should build it with `Settings.isolated(ENVIRONMENT="test",
+...)`, which ignores the environment and uses defaults for the rest. Env var names (case-sensitive,
 no prefix) and defaults are exactly the ones the old `os.environ.get` calls
 used, and a bad `TRUSTED_PROXY_*` value still raises `ValueError` at startup.
 Operational tunables (TTLs, windows, caps) are named constants, never env vars.

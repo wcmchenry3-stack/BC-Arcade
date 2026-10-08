@@ -26,8 +26,10 @@ Migrated so far: the app-level settings ``main``, ``limiter`` and
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 # CORS origins when ALLOWED_ORIGINS is unset or empty: the local Expo dev servers.
 DEFAULT_ALLOWED_ORIGINS: tuple[str, ...] = ("http://localhost:8081", "http://localhost:19006")
@@ -60,8 +62,34 @@ class Settings(BaseSettings):
     render_git_commit: str | None = Field(default=None, alias="RENDER_GIT_COMMIT")
     # Raw values; limiter.load_proxy_trust validates them (and raises) at startup.
     trusted_proxy_mode: str | None = Field(default=None, alias="TRUSTED_PROXY_MODE")
+    # A raw string on purpose (limiter.load_proxy_trust parses it), so tests must
+    # pass a string: Settings(TRUSTED_PROXY_HOPS="3"), not 3.
     trusted_proxy_hops: str | None = Field(default=None, alias="TRUSTED_PROXY_HOPS")
     log_proxy_headers: str = Field(default="", alias="LOG_PROXY_HEADERS")
+
+    @classmethod
+    def isolated(cls, **values: Any) -> Settings:
+        """Build ``Settings`` from the keywords alone, ignoring ``os.environ``.
+
+        For tests: ``Settings(...)`` still fills every field it is not given from
+        the environment (which may hold a developer's ``backend/.env`` once
+        ``main`` has called ``load_dotenv()``), so a test could pick up a real
+        ``SENTRY_DSN``. Unspecified fields here take their defaults.
+        """
+
+        class _Isolated(cls):  # type: ignore[valid-type, misc]
+            @classmethod
+            def settings_customise_sources(
+                cls_,
+                settings_cls: type[BaseSettings],
+                init_settings: PydanticBaseSettingsSource,
+                env_settings: PydanticBaseSettingsSource,
+                dotenv_settings: PydanticBaseSettingsSource,
+                file_secret_settings: PydanticBaseSettingsSource,
+            ) -> tuple[PydanticBaseSettingsSource, ...]:
+                return (init_settings,)
+
+        return _Isolated(**values)
 
     @property
     def is_production(self) -> bool:

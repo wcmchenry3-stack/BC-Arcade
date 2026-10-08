@@ -247,6 +247,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     more than once is safe: route handlers are decorated once, when their
     modules are imported, so no rate limit is registered twice, and Sentry
     initialises once per process.
+
+    Proxy trust (``limiter``) and Sentry init are process-wide, so the first or
+    latest call wins for those; CORS, docs and debug routes are per app.
     """
     settings = Settings() if settings is None else settings
     configure_logging()
