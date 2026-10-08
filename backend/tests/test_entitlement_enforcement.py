@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from db.base import get_session_factory
 from db.models import GameEntitlement
 from tests._helpers import session_headers as _headers
+from tests._helpers import set_dev_override
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -149,7 +150,7 @@ def test_free_board_not_gated(client: TestClient, session_id: str, game: str) ->
 def test_dev_override_lets_a_premium_game_through(
     client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    set_dev_override(monkeypatch, "true")
     r = client.post("/games", json={"game_type": "cascade"}, headers=_headers(session_id))
     assert r.status_code == 200, r.text
 
@@ -163,5 +164,5 @@ def test_only_the_word_true_activates_the_dev_override(
 ) -> None:
     from entitlements.service import is_dev_override_active
 
-    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", value)
+    set_dev_override(monkeypatch, value)
     assert is_dev_override_active() is active

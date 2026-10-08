@@ -13,9 +13,30 @@ from sqlalchemy import func, select
 
 from db.base import get_session_factory
 from entitlements import service as entitlements_service
+from settings import Settings
 
 if TYPE_CHECKING:
+    import pytest
     from fastapi.testclient import TestClient
+
+
+def set_dev_override(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    """Make ``ENTITLEMENT_DEV_OVERRIDE`` read as ``value`` ("" = unset) for this test.
+
+    The entitlements service builds its ``Settings`` once per process, so setting the
+    env var mid-test no longer takes effect; this swaps that ``Settings`` instead.
+    """
+    monkeypatch.setattr(
+        entitlements_service, "_settings", Settings.isolated(ENTITLEMENT_DEV_OVERRIDE=value)
+    )
+
+
+def set_admin_token(client: TestClient, monkeypatch: pytest.MonkeyPatch, token: str) -> None:
+    """Give the running app ``ADMIN_API_TOKEN=token`` for this test.
+
+    The admin token is read from ``app.state.settings`` (set once in ``create_app``).
+    """
+    monkeypatch.setattr(client.app.state, "settings", Settings.isolated(ADMIN_API_TOKEN=token))
 
 
 def session_headers(sid: str) -> dict[str, str]:

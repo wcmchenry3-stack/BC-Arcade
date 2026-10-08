@@ -1,13 +1,16 @@
 """JWT signing for the entitlements endpoint (#1050).
 
-Private key is loaded from ENTITLEMENT_PRIVATE_KEY (PEM string env var).
+Private key is loaded from ENTITLEMENT_PRIVATE_KEY (PEM string env var), via
+``settings.Settings``. Like ``db.base``, this module builds its ``Settings`` on first
+use and keeps it for the process (``create_app()`` does not pass its own here); a
+test overrides it with
+``monkeypatch.setattr(service, "_settings", Settings.isolated(...))``.
 In CI / local dev without the env var, a freshly-generated ephemeral key pair
 is used so tests can always verify the signature.
 """
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -18,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import GameEntitlement
+from settings import Settings
 
 # Keep in sync with is_premium=True rows (migrations 0014, 0016, 0020, 0022, 0023) —
 # update when adding a premium game.
@@ -31,11 +35,19 @@ ALGORITHM = "RS256"
 _private_key_pem: str | None = None
 _public_key_pem: str | None = None
 
-_DEV_OVERRIDE_VAR = "ENTITLEMENT_DEV_OVERRIDE"
+# Built from the environment on first use; see the module docstring.
+_settings: Settings | None = None
+
+
+def _get_settings() -> Settings:
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
 
 
 def is_dev_override_active() -> bool:
-    return os.environ.get(_DEV_OVERRIDE_VAR, "").lower() == "true"
+    return _get_settings().entitlement_dev_override
 
 
 def _load_or_generate_keys() -> tuple[str, str]:
@@ -45,12 +57,9 @@ def _load_or_generate_keys() -> tuple[str, str]:
     if _private_key_pem and _public_key_pem:
         return _private_key_pem, _public_key_pem
 
-    env_private = os.environ.get("ENTITLEMENT_PRIVATE_KEY", "").strip()
-    env_public = os.environ.get("ENTITLEMENT_PUBLIC_KEY", "").strip()
-
-    if env_private and env_public:
-        _private_key_pem = env_private
-        _public_key_pem = env_public
+    env_keys = _get_settings().entitlement_keys
+    if env_keys:
+        _private_key_pem, _public_key_pem = env_keys
         return _private_key_pem, _public_key_pem
 
     # Ephemeral pair for local dev / CI — never used in production because

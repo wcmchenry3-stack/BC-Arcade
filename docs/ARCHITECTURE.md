@@ -1121,9 +1121,18 @@ The two salts are still read when their modules are imported (the Daily Word
 shuffle needs its salt), so `load_dotenv()` in `main` must still run before the
 imports.
 
-Not yet migrated (each package moves in its own PR): `ADMIN_API_TOKEN`
-(`games/router.py`), `ENTITLEMENT_*` (`entitlements/service.py`) and the
-`APPLE_*` / `GOOGLE_*` store config (`purchases/`). Their meanings and where
+`ADMIN_API_TOKEN` is read once at startup: `games/router.py` takes it from
+`request.app.state.settings`, so a test sets it with
+`monkeypatch.setattr(app.state, "settings", Settings.isolated(ADMIN_API_TOKEN=...))`
+(`tests/_helpers.set_admin_token`) rather than an env var after the app exists.
+`ENTITLEMENT_DEV_OVERRIDE` and `ENTITLEMENT_PRIVATE_KEY` / `_PUBLIC_KEY`
+(`entitlements/service.py`) follow the `db/base.py` pattern: built on first use,
+kept for the process, overridden in tests with
+`monkeypatch.setattr(service, "_settings", ...)` (`tests/_helpers.set_dev_override`).
+The admin token and the keys are `SecretStr`, so `repr(settings)` does not show them.
+
+Not yet migrated (each package moves in its own PR): the `APPLE_*` / `GOOGLE_*`
+store config (`purchases/`). Their meanings and where
 each is set are in [RENDER.md](RENDER.md#environment-variables).
 
 ## 12. Daily cross-game challenge

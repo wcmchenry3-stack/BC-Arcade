@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from entitlements import service as entitlements_service
 from tests._helpers import session_headers as _headers
+from tests._helpers import set_dev_override
 
 # ---------------------------------------------------------------------------
 # Happy path
@@ -107,7 +108,7 @@ _PREMIUM_GAMES = {"blackjack", "cascade", "hearts", "starswarm", "mahjong"}
 def test_dev_override_returns_all_premium_games(
     client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    set_dev_override(monkeypatch, "true")
     r = client.get("/entitlements", headers=_headers(session_id))
     assert r.status_code == 200
     pub_pem = entitlements_service.get_public_key_pem()
@@ -119,7 +120,7 @@ def test_dev_override_does_not_require_database(
     client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Override must work even when DATABASE_URL is not configured (no DB available)."""
-    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    set_dev_override(monkeypatch, "true")
     monkeypatch.setattr(
         "entitlements.router.get_session_factory",
         lambda: (_ for _ in ()).throw(RuntimeError("DATABASE_URL is not configured")),
@@ -134,7 +135,7 @@ def test_dev_override_does_not_require_database(
 def test_dev_override_false_gives_normal_path(
     client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "false")
+    set_dev_override(monkeypatch, "false")
     r = client.get("/entitlements", headers=_headers(session_id))
     assert r.status_code == 200
     pub_pem = entitlements_service.get_public_key_pem()
@@ -145,7 +146,7 @@ def test_dev_override_false_gives_normal_path(
 def test_startup_warning_logged_when_override_active(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    set_dev_override(monkeypatch, "true")
     from main import app
 
     with caplog.at_level(logging.WARNING, logger="audit"), TestClient(app):
@@ -156,7 +157,7 @@ def test_startup_warning_logged_when_override_active(
 def test_no_startup_warning_when_override_inactive(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    monkeypatch.delenv("ENTITLEMENT_DEV_OVERRIDE", raising=False)
+    set_dev_override(monkeypatch, "")
     from main import app
 
     with caplog.at_level(logging.WARNING, logger="audit"), TestClient(app):

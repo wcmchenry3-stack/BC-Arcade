@@ -20,6 +20,7 @@ from daily_challenge.streak import GOALS_TO_QUALIFY, LOOKBACK_DAYS, compute_stre
 from db.base import get_session_factory, is_configured
 from db.models import Game, GameEntitlement, GameType
 from tests._helpers import session_headers as _headers
+from tests._helpers import set_dev_override
 
 needs_db = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -38,7 +39,7 @@ _TEMPLATE = Template("streak_for_tests", (_SCORE, _LEVEL, _MOVES))
 @pytest.fixture(autouse=True)
 def pinned_template(monkeypatch: pytest.MonkeyPatch) -> None:
     # A shell that exports the dev override must not change what these assert.
-    monkeypatch.delenv("ENTITLEMENT_DEV_OVERRIDE", raising=False)
+    set_dev_override(monkeypatch, "")
     monkeypatch.setattr(
         "daily_challenge.streak.template_for", lambda _day, _slate="free": _TEMPLATE
     )
@@ -279,7 +280,7 @@ async def test_each_past_day_uses_the_slate_the_session_is_entitled_to(two_slate
 async def test_dev_override_replays_with_the_premium_slate(
     two_slates: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    set_dev_override(monkeypatch, "true")
     sid = str(uuid.uuid4())
     await _qualifying_day(sid, _ago(1))
     assert await _streak(sid) == 0

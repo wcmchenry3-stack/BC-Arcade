@@ -22,17 +22,24 @@ Parity rules (the owner decisions on #2997):
 
 Migrated so far: the app-level settings ``main``, ``limiter`` and
 ``observability.sentry`` read; ``DATABASE_URL`` (``db.base``, read lazily, and
-``alembic/env.py``); and the two daily salts (``daily_word.puzzle`` and
-``daily_challenge.definitions``, still read when imported). The rest
-(``ADMIN_API_TOKEN``, ``ENTITLEMENT_*``, the ``APPLE_*`` / ``GOOGLE_*`` store
-config) move here one package per PR.
+``alembic/env.py``); the two daily salts (``daily_word.puzzle`` and
+``daily_challenge.definitions``, still read when imported); ``ADMIN_API_TOKEN``
+(``games.router``, from ``app.state.settings``, so read once at startup rather
+than per request); and ``ENTITLEMENT_DEV_OVERRIDE`` / ``ENTITLEMENT_PRIVATE_KEY``
+/ ``ENTITLEMENT_PUBLIC_KEY`` (``entitlements.service``, read lazily on first use
+and kept for the process). The ``APPLE_*`` / ``GOOGLE_*`` store config moves
+here in a later PR.
+
+Secrets (``ADMIN_API_TOKEN`` and the entitlement keys) are ``SecretStr``, so a
+``repr()`` or log of ``Settings`` shows ``**********``; call ``.get_secret_value()``
+where the value is used.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 # CORS origins when ALLOWED_ORIGINS is unset or empty: the local Expo dev servers.
@@ -80,6 +87,16 @@ class Settings(BaseSettings):
     daily_word_salt: str = Field(default="0", alias="DAILY_WORD_SALT")
     daily_challenge_salt: str | None = Field(default=None, alias="DAILY_CHALLENGE_SALT")
 
+    # Admin token for PATCH /games/catalog/{id}; empty → the route always answers 403.
+    admin_api_token: SecretStr = Field(default=SecretStr(""), alias="ADMIN_API_TOKEN")
+    # Raw; ``entitlement_dev_override`` is true only for the word "true", any case.
+    entitlement_dev_override_raw: str = Field(default="", alias="ENTITLEMENT_DEV_OVERRIDE")
+    # RS256 PEM pair; ``entitlement_keys`` treats a blank value as absent.
+    entitlement_private_key: SecretStr = Field(
+        default=SecretStr(""), alias="ENTITLEMENT_PRIVATE_KEY"
+    )
+    entitlement_public_key: SecretStr = Field(default=SecretStr(""), alias="ENTITLEMENT_PUBLIC_KEY")
+
     @classmethod
     def isolated(cls, **values: Any) -> Settings:
         """Build ``Settings`` from the keywords alone, ignoring ``os.environ``.
@@ -108,6 +125,18 @@ class Settings(BaseSettings):
     def database_url(self) -> str | None:
         """DATABASE_URL stripped, or ``None`` when it is unset, empty or blank."""
         return self.database_url_raw.strip() or None
+
+    @property
+    def entitlement_dev_override(self) -> bool:
+        """``ENTITLEMENT_DEV_OVERRIDE`` is the word ``true`` (any case)."""
+        return self.entitlement_dev_override_raw.lower() == "true"
+
+    @property
+    def entitlement_keys(self) -> tuple[str, str] | None:
+        """The (private, public) PEM pair, stripped, or ``None`` unless both are non-blank."""
+        private = self.entitlement_private_key.get_secret_value().strip()
+        public = self.entitlement_public_key.get_secret_value().strip()
+        return (private, public) if private and public else None
 
     @property
     def is_production(self) -> bool:

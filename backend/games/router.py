@@ -9,7 +9,6 @@ handler in ``main.py`` with the same ``{"detail": ...}`` body and status an
 from __future__ import annotations
 
 import hmac
-import os
 import uuid
 from dataclasses import asdict
 from datetime import datetime
@@ -112,7 +111,8 @@ async def patch_game_type(
     db: DbSession,
     x_admin_token: str = Header(default=""),
 ) -> GameTypeOut:
-    admin_token = os.environ.get("ADMIN_API_TOKEN", "")
+    # Read once at startup: create_app() puts the Settings on app.state.
+    admin_token = request.app.state.settings.admin_api_token.get_secret_value()
     if not admin_token or not hmac.compare_digest(
         x_admin_token.encode("utf-8"), admin_token.encode("utf-8")
     ):

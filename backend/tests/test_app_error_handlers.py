@@ -33,7 +33,7 @@ from entitlements import dependencies as ent_deps
 from games import sessions
 from games.sessions import GameServiceError
 from purchases.verifiers import PurchaseError
-from tests._helpers import session_headers
+from tests._helpers import session_headers, set_admin_token
 
 # ---------------------------------------------------------------------------
 # The handler answers exactly as HTTPException(status_code, detail) did
@@ -118,7 +118,7 @@ def _new_game(client: TestClient, sid: str) -> str:
 
 
 def test_patch_catalog_errors(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_API_TOKEN", _ADMIN)
+    set_admin_token(client, monkeypatch, _ADMIN)
     headers = {"X-Admin-Token": _ADMIN, "Content-Type": _JSON}
     r = client.patch("/games/catalog/999999", headers=headers, json={"category": "x"})
     _assert_body(r, 404, b'{"detail":"Game type not found."}')
