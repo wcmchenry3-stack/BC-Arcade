@@ -14,6 +14,8 @@ when imported, so the local ``backend/.env`` has to be loaded before the
 imports that follow, not inside the factory. It is a no-op in production
 (Render injects the variables) and never overrides a variable already set.
 
+Configuration is a ``settings.Settings`` built once per ``create_app()`` (#2997).
+
 Where things live:
 
 - ``observability/`` — Sentry options, scrub lists and init; logging setup.
@@ -26,7 +28,6 @@ Where things live:
 
 import json
 import logging
-import os
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
 
@@ -63,6 +64,7 @@ from purchases.router import router as purchases_router
 from purchases.verifiers import PurchaseError
 from routes.health import _ping_db
 from routes.health import router as health_router
+from settings import Settings
 from sort.router import router as sort_router
 from stats.router import router as stats_router
 
@@ -79,7 +81,6 @@ __all__ = [
 
 _audit_log = logging.getLogger("audit")
 
-DEFAULT_ALLOWED_ORIGINS = ["http://localhost:8081", "http://localhost:19006"]
 # PUT is for PUT /players/me; without it a browser preflight fails on Expo Web (#2758).
 CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
 CORS_ALLOW_HEADERS = ["Content-Type", "X-Session-ID", "X-Admin-Token"]
@@ -185,19 +186,7 @@ async def _domain_error_handler(
 # ---------------------------------------------------------------------------
 
 
-def _allowed_origins() -> list[str]:
-    """CORS origins, read when the app is built.
-
-    Deployed services set ALLOWED_ORIGINS (comma-separated full URLs, e.g.
-    "https://dev-games.buffingchi.com"); unset means the local Expo dev servers.
-    """
-    raw = os.environ.get("ALLOWED_ORIGINS", "")
-    if not raw:
-        return list(DEFAULT_ALLOWED_ORIGINS)
-    return [o.strip() for o in raw.split(",") if o.strip()]
-
-
-def _include_routers(app: FastAPI) -> None:
+def _include_routers(app: FastAPI, settings: Settings) -> None:
     app.include_router(entitlements_router, prefix="/entitlements")
     app.include_router(daily_challenge_router, prefix="/daily-challenge")
     app.include_router(daily_word_router, prefix="/daily-word")
@@ -209,7 +198,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(purchases_router, prefix="/purchases")
     app.include_router(stats_router, prefix="/stats")
     app.include_router(health_router)
-    if os.getenv("ENVIRONMENT") == "test":
+    if settings.is_test:
         # Test-only /debug/error (Sentry verification). Imported here so its
         # rate limit is registered only where the route exists.
         from routes.debug import router as debug_router
@@ -217,7 +206,7 @@ def _include_routers(app: FastAPI) -> None:
         app.include_router(debug_router)
 
 
-def _add_middleware(app: FastAPI) -> None:
+def _add_middleware(app: FastAPI, settings: Settings) -> None:
     """Register the middleware stack. The last one registered is the outermost.
 
     Order outermost → innermost:
@@ -228,12 +217,15 @@ def _add_middleware(app: FastAPI) -> None:
          without it browsers block them and raise TypeError: Failed to fetch (#1739)
       3. SlowAPIMiddleware — rate limiting
       4. MaxBodySizeMiddleware — reject oversized bodies early
+
+    CORS origins come from ALLOWED_ORIGINS (comma-separated full URLs, e.g.
+    "https://dev-games.buffingchi.com"); unset means the local Expo dev servers.
     """
     app.add_middleware(MaxBodySizeMiddleware)
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=_allowed_origins(),
+        allow_origins=settings.allowed_origins,
         allow_methods=CORS_ALLOW_METHODS,
         expose_headers=CORS_EXPOSE_HEADERS,
         allow_headers=CORS_ALLOW_HEADERS,
@@ -241,8 +233,12 @@ def _add_middleware(app: FastAPI) -> None:
     app.add_middleware(SecurityHeadersAndLogMiddleware)
 
 
-def create_app() -> FastAPI:
+def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the API: process-wide setup first, then the app, routes, handlers, middleware.
+
+    ``settings`` defaults to a ``Settings()`` read from the environment now, so
+    a test can either pass ``create_app(Settings(...))`` or set env vars before
+    calling this. The app keeps it on ``app.state.settings``.
 
     Logging, the client-IP trust settings (a bad TRUSTED_PROXY_* value raises
     here, so the deploy stops) and Sentry are set up before the FastAPI object
@@ -252,16 +248,17 @@ def create_app() -> FastAPI:
     modules are imported, so no rate limit is registered twice, and Sentry
     initialises once per process.
     """
+    settings = Settings() if settings is None else settings
     configure_logging()
-    configure_proxy_trust()
-    log_proxy_trust()
-    init_sentry()
+    configure_proxy_trust(settings.proxy_environ())
+    log_proxy_trust(settings.log_proxy_headers_requested)
+    init_sentry(settings)
 
     # The interactive docs (/docs, /redoc) and raw spec (/openapi.json) expose the
     # whole API surface publicly; a consumer game backend doesn't need them live in
     # prod, and they were unthrottled (#2464's route audit exempts FastAPI's own
     # doc routes, so this doesn't need a rate limit added).
-    _is_production = os.environ.get("ENVIRONMENT") == "production"
+    _is_production = settings.is_production
     app = FastAPI(
         lifespan=lifespan,
         title="BC Arcade API",
@@ -269,13 +266,14 @@ def create_app() -> FastAPI:
         redoc_url=None if _is_production else "/redoc",
         openapi_url=None if _is_production else "/openapi.json",
     )
-    _include_routers(app)
+    app.state.settings = settings
+    _include_routers(app, settings)
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
     app.add_exception_handler(EntitlementError, _entitlement_error_handler)
     app.add_exception_handler(GameServiceError, _domain_error_handler)
     app.add_exception_handler(PurchaseError, _domain_error_handler)
-    _add_middleware(app)
+    _add_middleware(app, settings)
     return app
 
 

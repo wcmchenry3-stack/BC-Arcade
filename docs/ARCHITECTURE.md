@@ -1088,6 +1088,31 @@ For the concrete Render/Supabase environment topology and variable inventory,
 use [RENDER.md](RENDER.md). Build-time API-target rules live in
 [IOS.md](IOS.md) and [ANDROID-CI.md](ANDROID-CI.md).
 
+**Backend settings (#2997).** The API reads its env vars through one
+pydantic-settings object, `Settings` in `backend/settings.py`. `create_app()`
+builds it once, keeps it on `app.state.settings` and passes it to the code that
+needs it, so a test either calls `create_app(Settings(ENVIRONMENT="test", ...))`
+or sets env vars before calling `create_app()`. Env var names (case-sensitive,
+no prefix) and defaults are exactly the ones the old `os.environ.get` calls
+used, and a bad `TRUSTED_PROXY_*` value still raises `ValueError` at startup.
+Operational tunables (TTLs, windows, caps) are named constants, never env vars.
+
+| Setting              | Default when unset                                | Read by                                                 |
+| -------------------- | ------------------------------------------------- | ------------------------------------------------------- |
+| `ENVIRONMENT`        | unset (Sentry reports `development`)              | `main` (docs routes, `/debug/error`), Sentry, `limiter` |
+| `ALLOWED_ORIGINS`    | `http://localhost:8081`, `http://localhost:19006` | `main` (CORS)                                           |
+| `SENTRY_DSN`         | unset (Sentry off)                                | `observability/sentry.py`                               |
+| `RENDER_GIT_COMMIT`  | unset (no Sentry release)                         | `observability/sentry.py`                               |
+| `TRUSTED_PROXY_MODE` | `cloudflare`                                      | `limiter.py`                                            |
+| `TRUSTED_PROXY_HOPS` | `1` (1–10)                                        | `limiter.py`                                            |
+| `LOG_PROXY_HEADERS`  | unset (off; ignored in production)                | `limiter.py`                                            |
+
+Not yet migrated (each package moves in its own PR): `DATABASE_URL`
+(`db/base.py`), `DAILY_WORD_SALT`, `DAILY_CHALLENGE_SALT`, `ADMIN_API_TOKEN`
+(`games/router.py`), `ENTITLEMENT_*` (`entitlements/service.py`) and the
+`APPLE_*` / `GOOGLE_*` store config (`purchases/`). Their meanings and where
+each is set are in [RENDER.md](RENDER.md#environment-variables).
+
 ## 12. Daily cross-game challenge
 
 Daily Challenge is a shared read-side product system built on completed

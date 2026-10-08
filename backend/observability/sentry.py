@@ -7,13 +7,14 @@ the ``sentry_sdk.init`` kwargs and is what the tests exercise.
 
 from __future__ import annotations
 
-import os
 import re
 
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, EventScrubber
+
+from settings import Settings
 
 # Keys the SDK would otherwise forward verbatim. Its default denylist knows none
 # of ours (the SDK lowercases both sides, so matching is case-insensitive):
@@ -123,8 +124,8 @@ def _sentry_before_breadcrumb(crumb: dict, hint: dict) -> dict:
     return _redact_store_ids(crumb)
 
 
-def sentry_options(dsn: str) -> dict:
-    """Build the sentry_sdk.init kwargs.
+def sentry_options(dsn: str, settings: Settings | None = None) -> dict:
+    """Build the sentry_sdk.init kwargs (``settings`` read from the environment when omitted).
 
     `environment` comes from ENVIRONMENT (set per service in render.yaml) and
     defaults to "development" — sentry-sdk's own default is "production", which
@@ -136,12 +137,13 @@ def sentry_options(dsn: str) -> dict:
     (#840). Frame locals are off for the same reason — the repr of a local (a
     request model, a verifier's evidence) is not caught by a key denylist.
     """
+    settings = Settings() if settings is None else settings
     return {
         "dsn": dsn,
         "integrations": [StarletteIntegration(), FastApiIntegration()],
         "traces_sample_rate": 0.1,
-        "environment": os.environ.get("ENVIRONMENT", "development"),
-        "release": os.environ.get("RENDER_GIT_COMMIT"),
+        "environment": settings.sentry_environment,
+        "release": settings.render_git_commit,
         "send_default_pii": False,
         "max_request_body_size": "never",
         "include_local_variables": False,
@@ -161,8 +163,11 @@ def sentry_options(dsn: str) -> dict:
 _initialised = False
 
 
-def init_sentry() -> bool:
+def init_sentry(settings: Settings | None = None) -> bool:
     """Initialise the SDK from SENTRY_DSN, once per process. Returns whether it ran.
+
+    ``main.create_app()`` passes its ``Settings``; omitted, they are read from
+    the environment now.
 
     Runs before the FastAPI app is constructed (as the old import-time call
     did) so the Starlette/FastAPI integrations are patched in first. A second
@@ -172,9 +177,10 @@ def init_sentry() -> bool:
     global _initialised
     if _initialised:
         return False
-    _sentry_dsn = os.environ.get("SENTRY_DSN")
+    settings = Settings() if settings is None else settings
+    _sentry_dsn = settings.sentry_dsn
     if _sentry_dsn:
-        sentry_sdk.init(**sentry_options(_sentry_dsn))
+        sentry_sdk.init(**sentry_options(_sentry_dsn, settings))
         _initialised = True
         return True
     return False
