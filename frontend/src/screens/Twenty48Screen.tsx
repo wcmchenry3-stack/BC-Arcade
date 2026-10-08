@@ -24,6 +24,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { bestOf } from "../game/_shared/bestOf";
+import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { usePausableClock } from "../hooks/usePausableClock";
 import { Twenty48State } from "../game/twenty48/types";
@@ -254,13 +255,13 @@ export default function Twenty48Screen({ navigation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.tiles]);
 
-  // Fire one-shot event sounds from engine events.
-  useEffect(() => {
-    if (!state?.events) return;
-    if (state.events.includes("win2048")) playWin2048();
-    if (state.events.includes("gameOver")) playGameOverSound();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.events]);
+  // Fire one-shot event sounds from engine events. The engine emits a new
+  // array (win2048 before gameOver) on the move that caused them, and every
+  // save and load strips them, so they are left in state rather than cleared.
+  useGameEvents(state?.events, {
+    win2048: () => playWin2048(),
+    gameOver: () => playGameOverSound(),
+  });
 
   const executeMove = useCallback(
     (direction: Direction, currentState: Twenty48State) => {

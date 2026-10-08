@@ -29,6 +29,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { bestOf } from "../game/_shared/bestOf";
+import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { usePausableClock } from "../hooks/usePausableClock";
 import { HudStatRow } from "../components/shared/HudStatRow";
@@ -320,20 +321,22 @@ export default function SolitaireScreen() {
     prevCompleteRef.current = state.isComplete;
   }, [state, syncComplete, lookupRank]);
 
-  useEffect(() => {
-    if (!state?.events) return;
-    if (state.events.includes("cardPlace")) playCardPlace();
-    if (state.events.includes("cardFlip")) playCardFlip();
-    if (state.events.includes("foundationComplete")) {
+  // The engine emits a new array per move, in the order cardPlace, cardFlip,
+  // foundationComplete, gameWin, each at most once (one card reaches a
+  // foundation per move). The events stay in state: the result card reads
+  // `gameWin` to decide on the win cascade.
+  useGameEvents(state?.events, {
+    cardPlace: () => playCardPlace(),
+    cardFlip: () => playCardFlip(),
+    foundationComplete: () => {
       playFoundationComplete();
       Animated.sequence([
         Animated.timing(sparkleOpacity, { toValue: 1, duration: 100, useNativeDriver: true }),
         Animated.timing(sparkleOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
       ]).start();
-    }
-    if (state.events.includes("gameWin")) playGameWin();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.events]);
+    },
+    gameWin: () => playGameWin(),
+  });
 
   const ensureSyncStarted = useCallback(
     (s: SolitaireState) => {

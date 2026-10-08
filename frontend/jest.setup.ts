@@ -71,7 +71,22 @@ jest.mock("react-native-reanimated", () => {
   // it; (2) the init is read once at mount, so a prop-seeded value (PlayerHand's
   // `useSharedValue(lifted ? -LIFT_AMOUNT : 0)`) stays frozen at its first value when the prop
   // changes unless the component writes `.value` itself.
-  const useStableSharedValue = (init: unknown) => React.useState(() => ({ value: init }))[0];
+  // `get()` / `set()` are Reanimated 4's React Compiler-safe accessors for `.value`.
+  const useStableSharedValue = (init: unknown) =>
+    React.useState(() => ({
+      value: init,
+      get() {
+        return this.value;
+      },
+      set(next: unknown) {
+        // As Reanimated's mutables.ts: a function is an updater unless it is an
+        // animation definition (withTiming & co. on the real library).
+        const isUpdater =
+          typeof next === "function" &&
+          !(next as unknown as Record<string, unknown>).__isAnimationDefinition;
+        this.value = isUpdater ? Reflect.apply(next as never, undefined, [this.value]) : next;
+      },
+    }))[0];
   const noopAnim = (v: unknown) => v;
 
   const createAnimatedComponent = (Component: React.ComponentType) => {

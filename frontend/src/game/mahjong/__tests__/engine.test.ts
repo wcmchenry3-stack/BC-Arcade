@@ -555,9 +555,9 @@ describe("undoMove", () => {
 
   // #2961: undo entries are deltas; an undo must still give back exactly the
   // state before the move, bar the live clock.
-  /** The fields an undo restores (everything but the clock and the history). */
+  /** The fields an undo restores (everything but the clock, the history and the one-shot events). */
   function board(s: MahjongState) {
-    const { startedAt: _s, accumulatedMs: _a, paused: _p, undoStack: _u, ...rest } = s;
+    const { startedAt: _s, accumulatedMs: _a, paused: _p, undoStack: _u, events: _e, ...rest } = s;
     return rest;
   }
 

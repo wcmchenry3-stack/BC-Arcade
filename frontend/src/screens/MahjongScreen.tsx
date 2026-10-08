@@ -15,7 +15,7 @@
  *      `lookupGameRank`, #2677) and on a deadlock (a loss, no rank).
  *   5. Audio + animations (#914) — SFX on every game event, lo-fi bg music,
  *      flying pairs, deadlock shake and shuffle pulse: useMahjongFeedback
- *      diffs each state against the last (#2981).
+ *      (#2981), driven by the engine's events (#3087).
  *   6. Board zoom/pan — pinch and drag on the board, zoomed back to fit when
  *      no moves remain: useBoardZoomPan owns the shared values and gestures
  *      (#2981).

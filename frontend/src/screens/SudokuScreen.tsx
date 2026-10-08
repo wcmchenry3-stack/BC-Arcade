@@ -26,6 +26,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { bestOf } from "../game/_shared/bestOf";
+import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { HudStatRow } from "../components/shared/HudStatRow";
@@ -357,23 +358,18 @@ export default function SudokuScreen() {
     ]).start();
   }, [flashOpacity]);
 
-  useEffect(() => {
-    const evts = state?.events;
-    if (!evts?.length) return;
-    for (const evt of evts) {
-      if (evt.type === "errorEntered") {
-        flashError();
-      } else if (evt.type === "unitComplete") {
-        Animated.sequence([
-          Animated.timing(unitFlashOpacity, { toValue: 0.35, duration: 80, useNativeDriver: true }),
-          Animated.timing(unitFlashOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
-        ]).start();
-      } else if (evt.type === "puzzleComplete") {
-        playPuzzleComplete();
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.events]);
+  // The engine emits a new array on each digit entry; the events stay in
+  // state (a save drops them), so no clear is needed.
+  useGameEvents(state?.events, {
+    errorEntered: () => flashError(),
+    unitComplete: () => {
+      Animated.sequence([
+        Animated.timing(unitFlashOpacity, { toValue: 0.35, duration: 80, useNativeDriver: true }),
+        Animated.timing(unitFlashOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
+      ]).start();
+    },
+    puzzleComplete: () => playPuzzleComplete(),
+  });
 
   const handleStart = useCallback(() => {
     clearGame().catch(() => {});

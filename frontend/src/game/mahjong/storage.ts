@@ -19,6 +19,10 @@
  * as a warning — the caller recovers by starting a fresh game. An undo
  * history that doesn't check out only costs the entries from the bad one
  * back (`loadUndoEntries`); the game itself loads.
+ *
+ * The engine's one-shot `events` (#3087) are never saved and never loaded: a
+ * restored game must not replay the feedback of the move before the save.
+ * Saves from before them have none, and load as they always did.
  */
 
 import type { LayoutMeta, MahjongState } from "./types";
@@ -103,6 +107,13 @@ function isSavedGame(p: unknown): p is ParsedSave {
   );
 }
 
+/** `state` without its one-shot `events`, so the save holds the game only. */
+function withoutEvents(state: MahjongState): MahjongState {
+  if (!("events" in state)) return state;
+  const { events: _events, ...game } = state;
+  return game;
+}
+
 async function restore(parsed: ParsedSave): Promise<MahjongState> {
   const legacy = parsed._v === 1;
   // Undo deltas since #2961; a version 1 save's snapshots are converted,
@@ -115,6 +126,8 @@ async function restore(parsed: ParsedSave): Promise<MahjongState> {
   );
   parsed.undoStack = undoStack;
   parsed._v = 2;
+  // Transient: a save written with events (none should be) mustn't replay them.
+  delete parsed.events;
   const filled = fillMissingFields(parsed);
   const normalised = legacy || undoStack.length !== rawUndo.length || filled;
   // A cleared or deadlocked board has a frozen clock: saves from before the
@@ -138,7 +151,7 @@ export const {
   subsystem: SUBSYSTEM,
   isValid: isSavedGame,
   onLoad: restore,
-  beforeSave: clockForSave,
+  beforeSave: (state) => clockForSave(withoutEvents(state)),
 });
 
 export const { load: loadStats, save: saveStats } = createRecord<MahjongStats>({
