@@ -33,6 +33,7 @@ jest.mock("expo-haptics", () => ({
 const { dailyWordApi } = jest.requireMock("../../../game/daily_word/api") as {
   dailyWordApi: { submitGuess: jest.Mock; getAnswer: jest.Mock };
 };
+const Haptics = jest.requireMock("expo-haptics") as { impactAsync: jest.Mock };
 const storage = jest.requireMock("../../../game/daily_word/storage") as {
   saveState: jest.Mock;
 };
@@ -167,6 +168,126 @@ describe("useDailyWordSubmit — success", () => {
     expect(handlers.playWin).toHaveBeenCalledTimes(1);
     expect(handlers.startCountdown).toHaveBeenCalledTimes(1);
     expect(dailyWordApi.getAnswer).not.toHaveBeenCalled();
+  });
+});
+
+describe("useDailyWordSubmit — final row loss", () => {
+  it("holds the card until getAnswer resolves, then releases it", async () => {
+    let resolveAnswer: (v: { answer: string }) => void = () => {};
+    dailyWordApi.getAnswer.mockReturnValue(
+      new Promise((resolve) => {
+        resolveAnswer = resolve;
+      })
+    );
+    dailyWordApi.submitGuess.mockResolvedValue({ tiles: tiles("crane", "absent") });
+    // Five wrong rows already submitted; the sixth is typed.
+    let board = initialState(PUZZLE, 5, "en");
+    for (const w of ["slate", "pious", "mound", "fight", "badge"]) {
+      board = applyServerResult(typed(board, w), tiles(w, "absent"));
+    }
+    board = typed(board, "crane");
+    const { handlers, submit } = await setup(board);
+    await submit();
+
+    expect(handlers.setRevealPending.mock.calls).toEqual([[true]]);
+    expect(handlers.setState.mock.calls[0][0]).toMatchObject({ is_complete: true, won: false });
+
+    // Flip over: the answer fetch is in flight, the card is still held.
+    await act(async () => jest.advanceTimersByTime(FLIP_MS));
+    expect(dailyWordApi.getAnswer).toHaveBeenCalledWith(PUZZLE);
+    expect(handlers.setRevealPending).not.toHaveBeenCalledWith(false);
+    expect(handlers.startCountdown).not.toHaveBeenCalled();
+
+    await act(async () => resolveAnswer({ answer: "pious" }));
+    expect(handlers.setAnswer).toHaveBeenCalledWith("PIOUS");
+    expect(handlers.setRevealPending.mock.calls).toEqual([[true], [false]]);
+    expect(handlers.startCountdown).toHaveBeenCalledTimes(1);
+    expect(handlers.playWin).not.toHaveBeenCalled();
+  });
+});
+
+describe("useDailyWordSubmit — leaving mid-guess", () => {
+  function deferred<T>() {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it("a 200 after unmount changes nothing", async () => {
+    const d = deferred<unknown>();
+    dailyWordApi.submitGuess.mockReturnValue(d.promise);
+    const { sync, handlers, hook } = await setup(freshBoard());
+    const pending = hook.result.current.submit();
+    await hook.unmount();
+    Haptics.impactAsync.mockClear();
+    await act(async () => d.resolve({ tiles: tiles("crane", "correct") }));
+    await pending;
+
+    expect(handlers.setState).not.toHaveBeenCalled();
+    expect(handlers.setFlippingRowIndex).not.toHaveBeenCalled();
+    expect(handlers.setRevealPending).not.toHaveBeenCalled();
+    expect(sync.start).not.toHaveBeenCalled();
+    expect(sync.markStarted).not.toHaveBeenCalled();
+    expect(sync.complete).not.toHaveBeenCalled();
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+    await act(async () => jest.advanceTimersByTime(FLIP_MS));
+    expect(handlers.startCountdown).not.toHaveBeenCalled();
+  });
+
+  it("a 403 loss after unmount changes nothing", async () => {
+    const d = deferred<unknown>();
+    dailyWordApi.submitGuess.mockReturnValue(d.promise);
+    const { sync, handlers, hook } = await setup(playedBoard());
+    const pending = hook.result.current.submit();
+    await hook.unmount();
+    Haptics.impactAsync.mockClear();
+    await act(async () => d.reject(new ApiError("no_guesses_remaining", 403)));
+    await pending;
+
+    expect(handlers.setState).not.toHaveBeenCalled();
+    expect(handlers.setRevealPending).not.toHaveBeenCalled();
+    expect(handlers.setAnswer).not.toHaveBeenCalled();
+    expect(handlers.startCountdown).not.toHaveBeenCalled();
+    expect(sync.complete).not.toHaveBeenCalled();
+    expect(storage.saveState).not.toHaveBeenCalled();
+    expect(dailyWordApi.getAnswer).not.toHaveBeenCalled();
+    expect(Haptics.impactAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("useDailyWordSubmit — other failures", () => {
+  it("a plain network error shows the couldNotSubmit toast", async () => {
+    dailyWordApi.submitGuess.mockRejectedValue(new Error("Network request failed"));
+    const { handlers, hook, submit } = await setup(freshBoard());
+    await submit();
+    expect(handlers.showToast).toHaveBeenCalledWith("Could not submit your guess");
+    expect(handlers.setState).not.toHaveBeenCalled();
+    expect(hook.result.current.submitting).toBe(false);
+  });
+
+  it("rejects a word already on the board without a request", async () => {
+    const { handlers, submit } = await setup(playedBoard("crane"));
+    await submit();
+    expect(handlers.showToast).toHaveBeenCalledWith("Already guessed");
+    expect(Haptics.impactAsync).toHaveBeenCalledWith("Heavy");
+    expect(dailyWordApi.submitGuess).not.toHaveBeenCalled();
+    expect(handlers.setState).not.toHaveBeenCalled();
+  });
+
+  it("resets submitting when the success handler throws", async () => {
+    dailyWordApi.submitGuess.mockResolvedValue({ tiles: tiles("crane", "absent") });
+    const { handlers, hook, submit } = await setup(freshBoard());
+    handlers.setState.mockImplementation(() => {
+      throw new Error("render failed");
+    });
+    await submit();
+    // The throw is routed through recovery as a failed submit.
+    expect(handlers.showToast).toHaveBeenCalledWith("Could not submit your guess");
+    expect(hook.result.current.submitting).toBe(false);
   });
 });
 

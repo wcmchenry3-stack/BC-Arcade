@@ -262,7 +262,8 @@ async function closeOutFromServer(
   // Same guard as the success path: the player may have left while the
   // guess was in flight, in which case useGameSync's unmount cleanup has
   // already run and there is nothing left to close out.
-  if (!ctx.isMounted() || !current) return true;
+  if (!ctx.isMounted()) return false;
+  if (!current) return true;
   // `already_solved` means the server recorded a winning guess — the
   // player won, and only the response was lost. Marking that a loss
   // would persist won:false and show them the word they had already
