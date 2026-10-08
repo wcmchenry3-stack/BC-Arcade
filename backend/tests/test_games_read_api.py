@@ -449,12 +449,12 @@ def test_an_inactive_game_has_no_leaderboard(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A board whose game type is unavailable is a 404, like an unknown game."""
-    from games import leaderboard
+    from games.boards import queries
 
     async def unavailable(_db, _name: str) -> None:
         return None
 
-    monkeypatch.setattr(leaderboard, "load_game_type", unavailable)
+    monkeypatch.setattr(queries, "load_game_type", unavailable)
     r = client.get("/games/leaderboard/solitaire", headers=_headers(str(uuid.uuid4())))
     assert r.status_code == 404
     assert r.json()["detail"] == "Leaderboard not found."
@@ -465,7 +465,7 @@ async def test_load_game_type_hides_inactive_and_unknown_game_types() -> None:
     from sqlalchemy import delete
 
     from db.models import GameType
-    from games import leaderboard
+    from games.boards import queries
 
     factory = get_session_factory()
     async with factory() as db:
@@ -474,9 +474,9 @@ async def test_load_game_type_hides_inactive_and_unknown_game_types() -> None:
         await db.commit()
     try:
         async with factory() as db:
-            assert await leaderboard.load_game_type(db, "zz_off") is None
-            assert await leaderboard.load_game_type(db, "zz_missing") is None
-            active = await leaderboard.load_game_type(db, "zz_on")
+            assert await queries.load_game_type(db, "zz_off") is None
+            assert await queries.load_game_type(db, "zz_missing") is None
+            active = await queries.load_game_type(db, "zz_on")
             assert active is not None and active.name == "zz_on"
     finally:
         async with factory() as db:
