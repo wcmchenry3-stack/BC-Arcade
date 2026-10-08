@@ -17,19 +17,24 @@ the registry stops being meaningful and the audit would pass or fail
 regardless of the code.
 """
 
+import ast
 import os
+import pathlib
 import subprocess
 import sys
 
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
+from limits import parse_many
 from starlette.routing import Route
 
 import main
+import rate_limits
+from daily_word.router import _guess_key
 from games import catalog as games_catalog
-from games.router import CATALOG_RATE_LIMIT
-from limiter import limiter
+from limiter import _real_ip, limiter, session_key
+from rate_limits import CATALOG_RATE_LIMIT, CONDITIONAL_ROUTES, ROUTE_LIMITS
 
 # FastAPI's built-in docs routes are plain Starlette routes with no handler of
 # ours to decorate. They are exempt *by name*, so a new kind of route (a
@@ -108,6 +113,99 @@ def test_every_api_route_has_a_rate_limit() -> None:
         "handlers without @limiter.limit (hard rule #12 — unauthenticated routes key by IP, "
         f"authenticated routes by user/session): {unthrottled}"
     )
+
+
+def _key_funcs() -> dict[str, object]:
+    """Table key kind -> the function a decorator must pass (or default to)."""
+    return {
+        rate_limits.SESSION: session_key,
+        rate_limits.IP: _real_ip,
+        rate_limits.GUESS: _guess_key,
+    }
+
+
+def _expected(rules) -> list[tuple[str, object]]:
+    """Normalise `rate_limits.Rule`s the way slowapi registers them ("a;b" is two
+    entries), as sorted (str(Limit.limit), key_func) pairs."""
+    funcs = _key_funcs()
+    return sorted(
+        ((str(item), funcs[rule.key]) for rule in rules for item in parse_many(rule.limit)),
+        key=lambda pair: (pair[0], pair[1].__name__),
+    )
+
+
+def _actual(key: str) -> list[tuple[str, object]]:
+    return sorted(
+        ((str(lim.limit), lim.key_func) for lim in limiter._route_limits[key]),
+        key=lambda pair: (pair[0], pair[1].__name__),
+    )
+
+
+def test_route_limits_table_matches_every_route() -> None:
+    """`rate_limits.ROUTE_LIMITS` is the one table of expected limits: every route
+    must have an entry (a new route without one fails), no entry may be stale, and
+    each handler's registered limits AND key functions must equal its entry (a
+    decorator that drifts from the table, or drops `key_func=session_key`, fails)."""
+    routes, _ = _walk_routes(main.app.routes)
+    keys = {_route_key(r) for r in routes}
+    missing = sorted(keys - set(ROUTE_LIMITS))
+    assert missing == [], f"routes with no entry in rate_limits.ROUTE_LIMITS: {missing}"
+    # Conditional routes (only registered when ENVIRONMENT=test) are exempt from the
+    # stale check only while they are legitimately absent; in the test environment
+    # their entry must match a real route.
+    exempt = set() if main.app.state.settings.is_test else CONDITIONAL_ROUTES
+    stale = sorted(set(ROUTE_LIMITS) - keys - exempt)
+    assert stale == [], f"rate_limits.ROUTE_LIMITS entries for routes that do not exist: {stale}"
+
+    drifted = {
+        key: (
+            [(s, f.__name__) for s, f in _expected(ROUTE_LIMITS[key])],
+            [(s, f.__name__) for s, f in _actual(key)],
+        )
+        for key in sorted(keys)
+        if key in limiter._route_limits and _expected(ROUTE_LIMITS[key]) != _actual(key)
+    }
+    assert (
+        drifted == {}
+    ), f"decorators differ from rate_limits.ROUTE_LIMITS (table, actual): {drifted}"
+
+
+def test_conditional_routes_are_table_entries() -> None:
+    assert (
+        set(ROUTE_LIMITS) >= CONDITIONAL_ROUTES
+    ), "CONDITIONAL_ROUTES names a route not in the table"
+
+
+def test_route_limits_entries_are_not_empty_or_unparseable() -> None:
+    for key, rules in ROUTE_LIMITS.items():
+        assert rules, f"{key} has no limits listed"
+        assert _expected(rules), f"{key}: limits did not parse"
+
+
+def test_no_limiter_limit_call_uses_a_string_literal() -> None:
+    """Every `limiter.limit(...)` in backend/ (tests excluded) must take a constant
+    from `rate_limits`, never a literal, so the table stays the only place a limit
+    is spelled."""
+    backend = pathlib.Path(__file__).resolve().parent.parent
+    offenders: list[str] = []
+    for path in sorted(backend.rglob("*.py")):
+        rel = path.relative_to(backend)
+        if rel.parts[0] == "tests" or any(part in {".venv", "venv"} for part in rel.parts):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "limit"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "limiter"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                offenders.append(f"{rel}:{node.lineno}")
+    assert offenders == [], f"limiter.limit() with a string literal (use rate_limits): {offenders}"
 
 
 def test_no_two_handlers_share_a_limiter_key() -> None:

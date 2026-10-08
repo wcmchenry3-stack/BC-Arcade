@@ -16,6 +16,9 @@ from games import sweep_gate
 from games.progression import compute_progression
 from games.schemas import GameTypeStatsResponse, StatsResponse
 from limiter import limiter, session_key
+from rate_limits import (
+    STATS_SESSION_RATE_LIMIT,
+)
 from session import get_session_id
 
 router = APIRouter()
@@ -23,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/me", response_model=StatsResponse)
-@limiter.limit("60/minute", key_func=session_key)
+@limiter.limit(STATS_SESSION_RATE_LIMIT, key_func=session_key)
 async def get_my_stats(
     request: Request,
     db: DbSession,

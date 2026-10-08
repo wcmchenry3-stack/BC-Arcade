@@ -22,6 +22,10 @@ from daily_challenge.schemas import (
 )
 from db.base import DbSession
 from limiter import limiter, session_key
+from rate_limits import (
+    DAILY_CHALLENGE_STATUS_SESSION_RATE_LIMIT,
+    DAILY_CHALLENGE_TODAY_IP_RATE_LIMIT,
+)
 from session import get_session_id
 
 router = APIRouter()
@@ -32,7 +36,7 @@ def _goal_fields(goal: Goal) -> dict:
 
 
 @router.get("/today", response_model=ChallengeResponse)
-@limiter.limit("60/minute")
+@limiter.limit(DAILY_CHALLENGE_TODAY_IP_RATE_LIMIT)
 async def get_today(
     request: Request,
     db: DbSession,
@@ -53,7 +57,7 @@ async def get_today(
 
 
 @router.get("/status", response_model=ChallengeStatusResponse)
-@limiter.limit("60/minute", key_func=session_key)
+@limiter.limit(DAILY_CHALLENGE_STATUS_SESSION_RATE_LIMIT, key_func=session_key)
 async def get_status(
     request: Request,
     db: DbSession,

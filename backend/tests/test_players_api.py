@@ -394,7 +394,7 @@ def test_player_routes_are_rate_limited_by_session(handler: str) -> None:
 
 
 def test_put_rate_limit_is_enforced(client: TestClient) -> None:
-    from players.router import PLAYER_WRITE_RATE_LIMIT
+    from rate_limits import PLAYER_WRITE_RATE_LIMIT
 
     allowed = int(PLAYER_WRITE_RATE_LIMIT.split("/")[0])
     sid = _sid()
@@ -404,7 +404,7 @@ def test_put_rate_limit_is_enforced(client: TestClient) -> None:
 
 
 def test_reroll_has_its_own_tighter_rate_limit(client: TestClient) -> None:
-    from players.router import PLAYER_REROLL_RATE_LIMIT, PLAYER_WRITE_RATE_LIMIT
+    from rate_limits import PLAYER_REROLL_RATE_LIMIT, PLAYER_WRITE_RATE_LIMIT
 
     allowed = int(PLAYER_REROLL_RATE_LIMIT.split("/")[0])
     assert PLAYER_REROLL_RATE_LIMIT.endswith("/hour")

@@ -458,7 +458,7 @@ def test_rank_rate_limit_keyed_by_session_with_ip_backstop() -> None:
 
 
 async def test_rank_session_limit_is_enforced(client: TestClient) -> None:
-    from games.router import RANK_SESSION_RATE_LIMIT
+    from rate_limits import RANK_SESSION_RATE_LIMIT
 
     allowed = int(RANK_SESSION_RATE_LIMIT.split("/")[0])
     sid = _sid()

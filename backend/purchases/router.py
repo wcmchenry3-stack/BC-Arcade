@@ -49,6 +49,13 @@ from db.base import DbSession, get_session_factory
 from entitlements import service as entitlements_service
 from entitlements.schemas import EntitlementsResponse
 from limiter import limiter, session_key
+from rate_limits import (
+    APPLE_NOTIFICATION_IP_RATE_LIMIT,
+    GOOGLE_NOTIFICATION_IP_RATE_LIMIT,
+    PURCHASE_IP_RATE_LIMIT,
+    PURCHASE_SESSION_RATE_LIMIT,
+    PURCHASE_STORE_KEY_RATE_LIMIT,
+)
 from session import get_session_id
 
 from . import apple, apple_notifications, google, google_rtdn, service
@@ -70,16 +77,6 @@ from .verifiers import (
 
 _log = logging.getLogger("audit")
 
-# Owner-tunable (IAP.md §8.2).
-PURCHASE_SESSION_RATE_LIMIT = "20/minute"
-PURCHASE_IP_RATE_LIMIT = "30/minute;200/day"
-PURCHASE_STORE_KEY_RATE_LIMIT = "10/hour;30/day"
-# Apple sends from its own address ranges; a 429 loses nothing (Apple retries,
-# and the notification-history replay backfills).
-APPLE_NOTIFICATION_IP_RATE_LIMIT = "300/minute"
-# Pub/Sub pushes from Google's ranges; a 429 loses nothing (Pub/Sub retries,
-# and the daily voided-purchases poll backfills revocations).
-GOOGLE_NOTIFICATION_IP_RATE_LIMIT = "300/minute"
 # Most time POST /purchases/google spends acknowledging after the grant is
 # committed (#2787 review N3); past it the acknowledgement sweep takes over.
 GOOGLE_ACK_BUDGET_S = 8.0
