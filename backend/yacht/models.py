@@ -14,6 +14,8 @@ from pydantic import (
     model_validator,
 )
 
+from observability.report import report_event
+
 AiDifficulty = Literal["easy", "medium", "hard"]
 YachtMode = Literal["solo", "vs"]
 
@@ -255,12 +257,14 @@ class YachtResult(BaseModel):
 def _report_dropped_card(field: str, fields: str, error_types: list[str]) -> None:
     """Log and send to Sentry a card dropped from an otherwise valid result.
 
-    Same channel as a rejected result (``games.sessions``), but the game still
+    Same Sentry event as a rejected result (``games.sessions``), but the game still
     completes. Field paths and error types only, no values or identifiers.
     """
-    from games.sessions import _report_rejected_result
-
     logger.warning("Yacht %s dropped from the result: %s", field, fields)
-    _report_rejected_result(
-        "yacht", f"{field} dropped", {"fields": fields, "error_types": error_types}
+    report_event(
+        f"PATCH /games/{{id}}/complete rejected: {field} dropped (yacht)",
+        level="error",
+        fingerprint=["games-complete-result-rejected", "yacht", f"{field} dropped"],
+        tags={"game_type": "yacht"},
+        context={"result_rejection": {"fields": fields, "error_types": error_types}},
     )

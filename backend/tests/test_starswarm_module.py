@@ -28,7 +28,7 @@ from games.protocol import GameModule
 from games.registry import get_module
 from games.sessions import _MAX_RESULT_BYTES
 from main import app
-from starswarm import models as starswarm_models
+from observability import report
 from starswarm.models import (
     DEFAULT_DIFFICULTY_TIER,
     DIFFICULTY_TIERS,
@@ -702,7 +702,7 @@ def test_only_the_owner_can_read_a_runs_breakdown() -> None:
 def sentry_messages(monkeypatch) -> list[tuple[str, dict]]:
     calls: list[tuple[str, dict]] = []
     monkeypatch.setattr(
-        starswarm_models.sentry_sdk,
+        report.sentry_sdk,
         "capture_message",
         lambda message, **kw: calls.append((message, kw)),
     )
