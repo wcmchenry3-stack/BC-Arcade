@@ -191,6 +191,25 @@ describe("StarSwarmScreen — auto-pause when the app leaves the foreground", ()
     expect(canvas.props.isPaused).toBe(false);
   });
 
+  it("pauses and saves again on the next leave event, even with no return to active between (#3087)", async () => {
+    // Why the screen acts on every leave event (`onLeave`), not once per absence (`onPause`):
+    // the app never reported "active", so the player still counts as away, but the run they
+    // resumed must be paused and saved again when the app moves on to the background.
+    await renderScreen();
+    await startRun();
+    await setAppState("inactive");
+    expectPaused();
+    await act(async () => {
+      await fireEvent.press(screen.getByText("RESUME"));
+    });
+    expectRunning();
+    expect(getSavedPausedState()).toBeNull();
+
+    await setAppState("background");
+    expectPaused();
+    expect(getSavedPausedState()?.gameState).toBe(canvas.state);
+  });
+
   it("pauses mid-wave too — after a wave clear", async () => {
     await renderScreen();
     await startRun();

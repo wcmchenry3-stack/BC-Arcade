@@ -202,6 +202,23 @@ describe("usePauseWhileAway (#2750)", () => {
       expect(onLeave).not.toHaveBeenCalled();
     });
 
+    it("calls the latest onLeave without re-subscribing", async () => {
+      const nav = fakeNavigation();
+      const first = jest.fn();
+      const second = jest.fn();
+      const { rerender } = await renderHook(
+        ({ onLeave }: { onLeave: (e: LeaveEvent) => void }) =>
+          usePauseWhileAway(nav.navigation, jest.fn(), jest.fn(), { onLeave }),
+        { initialProps: { onLeave: first } }
+      );
+      await rerender({ onLeave: second });
+      expect(appStateListeners.size).toBe(1);
+      await act(async () => setAppState("background"));
+      await act(async () => nav.emit("blur"));
+      expect(first).not.toHaveBeenCalled();
+      expect(second).toHaveBeenCalledTimes(2);
+    });
+
     it("reports the previous change's status, a return included", async () => {
       const { onLeave } = await setupWithLeave();
       await act(async () => setAppState("background"));

@@ -6,7 +6,7 @@ import type { AppStateStatus } from "react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import SortScreen from "../SortScreen";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
-import { initState } from "../../game/sort/engine";
+import { applyPour, initState } from "../../game/sort/engine";
 import type { Color } from "../../game/sort/types";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
@@ -397,6 +397,32 @@ describe("SortScreen — save on leaving the app", () => {
     await setAppState("active");
     await blur();
     expect(storage.saveProgress).toHaveBeenCalledTimes(2);
+  });
+
+  it("saves the latest board: the one after the last pour", async () => {
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 1, 2 of/));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Bottle 3, empty"));
+    });
+    await act(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global as any).__sortBoardLastProps?.onPourComplete?.();
+    });
+    expect(await r.findByLabelText(/^Bottle 3, 1 of/)).toBeTruthy();
+    storage.saveProgress.mockClear();
+
+    await setAppState("background");
+    const afterPour = applyPour(initState(MOCK_LEVELS[0]!.bottles as (Color | "")[][]), 0, 2);
+    expect(storage.saveProgress).toHaveBeenCalledTimes(1);
+    expect(storage.saveProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ currentLevelId: 1, currentState: afterPour })
+    );
   });
 
   it("saves nothing at the level select", async () => {

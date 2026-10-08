@@ -5,8 +5,9 @@
  *   1. Game logic — the pure engine plus the AI (`game/hearts/ai`); `runAiTurns` paces the
  *      computer seats; the opponent style opens on the last one played (#1129).
  *   2. Persistence — `saveGame` on trick and hand transitions, on blur and on background.
- *   3. Play clock (#2629) — its own clock, paused on blur and background (not yet on
- *      usePauseWhileAway — #3087), sent as the game's durationMs.
+ *   3. Play clock (#2629) — its own clock, sent as the game's durationMs: `usePauseWhileAway`
+ *      pauses it on blur and background and resumes it once both end; its `onLeave` saves the
+ *      game on the move to background (#3087).
  *   4. Instrumentation — `useGameSync("hearts")`; the result records who won (#2517) and the
  *      per-hand scores (#2838); a restored game resumes its session (#2654).
  *   5. Result + leaderboard (#2506, #2633) — the shared GameResultModal with the final
