@@ -229,7 +229,7 @@ The per-game leaderboard routes (`/solitaire/scores`, `/cascade/score/{id}`, …
 
 The `@runtime_checkable` decorator means CI can assert `isinstance(module, GameModule)` for each registered game (see `tests/test_game_module_protocol.py`).
 
-**Registry:** `backend/games/registry.py` maps `GameType` string values to module singletons. `games/service.py` uses `get_module(name)` for generic dispatch — there are no `if name == "<game>"` branches anywhere in the service layer.
+**Registry:** `backend/games/registry.py` maps `GameType` string values to module singletons. `games/stats.py` and `games/sessions.py` use `get_module(name)` for generic dispatch — there are no `if name == "<game>"` branches anywhere in the service layer.
 
 **Adding a module:**
 
@@ -301,14 +301,14 @@ Unregistered game types (e.g. seeded in the DB before their module is implemente
 
 ### 1.5 stats_shape()
 
-**Authority: `backend/<game>/module.py` (`stats_shape` method); `games/service.py` (`get_stats_for_session`) for the comparable fields**
+**Authority: `backend/<game>/module.py` (`stats_shape` method); `games/stats.py` (`get_stats_for_session`) for the comparable fields**
 
-`games/service.py` runs one aggregate query per session, pre-fetches the latest score and metadata per game, and (only when some game has a `win` or `loss`) one ordered scan for win streaks. It then:
+`games/stats.py` runs one aggregate query per session, pre-fetches the latest score and metadata per game, and (only when some game has a `win` or `loss`) one ordered scan for win streaks. It then:
 
 1. calls `module.stats_shape(raw_stats)` for the game-specific part of the `/stats/me` entry, and
 2. sets the **comparable fields** itself, from the queries and the game's `BoardDefinition` (§1.3). `stats_shape` cannot change them, nor `completed` (the Arcade XP input; see [PROGRESSION.md](PROGRESSION.md) and `games/progression.py`).
 
-There is no game-specific logic in `service.py`.
+There is no game-specific logic in `games/stats.py`.
 
 **`raw_stats` keys passed to every `stats_shape` call:**
 
@@ -395,7 +395,7 @@ When a client omits `players` from `POST /games`, the router auto-fills `[{"play
 
 ### 1.7 Completion, idempotency and the stale-session sweep
 
-**Authority: `backend/games/service.py`** (`create_game`, `append_events`, `complete_game`, `sweep_stale_games`).
+**Authority: `backend/games/sessions.py`** (`create_game`, `append_events`, `complete_game`) and `backend/games/sweep.py` (`sweep_stale_games`).
 
 - **Idempotent writes (#364).** `POST /games` with a client `id` that already exists returns that row (403 if another session owns it). Events are keyed `(game_id, event_index)` and inserted with `ON CONFLICT DO NOTHING`, so a resent batch is harmless — but only while the row is open (or swept, below): `POST /games/{id}/events` on a row with a real completion returns **409** `Game is already completed.`, and `SyncWorker` deletes those events from the device without retrying (`frontend/src/game/_shared/syncWorker.ts`, `isAlreadyCompleted`). **Events that arrive after a real completion are dropped.** `PATCH /games/{id}/complete` on a finished row returns it unchanged: **the first completion wins**, so a replayed or late completion from the device's sync queue never overwrites a result. This has been the rule since the write API (#364); it is not new in #2519.
 - **Stale-session sweep (#2621).** `GET /stats/me` and the first page of `GET /games/me` (no `cursor`; later pages continue the listing just swept) first close the caller's own games still open 24 h after `started_at`: `outcome = 'abandoned'`, `completed_at = started_at + 24 h`, `duration_ms` left null, and `metadata.swept = true` (`SWEPT_KEY` in `games/filters.py`, server-written only: `create_game` and `complete_game` strip it from client input). A sweep failure is logged and never fails the read. A swept row is the only finished row that still accepts events (`append_events` checks `is_swept`), and a real completion that arrives later **replaces** the sweep and clears the flag; after that, first completion wins again. Swept rows are abandoned, so they never rank, score or earn XP, and `last_played_at` ignores them.

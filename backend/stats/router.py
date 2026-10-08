@@ -1,6 +1,6 @@
 """FastAPI router for /stats/* (#365).
 
-Thin wrapper — actual aggregation lives in games.service.get_stats_for_session.
+Thin wrapper — actual aggregation lives in games.stats.get_stats_for_session.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from fastapi import APIRouter, Query, Request
 
 from daily_challenge.streak import compute_streak
 from db.base import get_session_factory
-from games import service as games_service
+from games import stats as games_stats
 from games import sweep_gate
 from games.progression import compute_progression
 from games.schemas import GameTypeStatsResponse, StatsResponse
@@ -36,7 +36,7 @@ async def get_my_stats(
         # Close this player's games left open > 24 h before counting them (#2621),
         # skipped while no open game can have gone stale (#2966, games/sweep_gate.py).
         await sweep_gate.sweep_if_due(db, session_id=sid)
-        summary = await games_service.get_stats_for_session(db, session_id=sid)
+        summary = await games_stats.get_stats_for_session(db, session_id=sid)
         try:
             streak_days = await compute_streak(db, sid, tz_offset_minutes)
         except Exception:

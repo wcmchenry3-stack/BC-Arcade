@@ -64,7 +64,7 @@ one pure-ASGI layer for the security headers and the JSON request log, outermost
 
 | Area                      | Location                   | Responsibility                                                                                                     |
 | ------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Shared game sessions      | `backend/games/`           | Create/complete games, append events, ranking, board definitions, progression helpers, shared schemas              |
+| Shared game sessions      | `backend/games/`           | Create/complete games, append events, ranking, board definitions, progression helpers, shared schemas (modules below) |
 | Game vocabulary           | `backend/vocab.py`         | Canonical `GameType` and `GameOutcome` vocabulary                                                                  |
 | Database                  | `backend/db/`              | SQLAlchemy engine/session setup and persisted models                                                               |
 | Schema migrations         | `backend/alembic/`         | The only production schema-evolution path                                                                          |
@@ -77,6 +77,18 @@ one pure-ASGI layer for the security headers and the JSON request log, outermost
 | Delete-my-data            | `backend/me/`              | Player/session data deletion                                                                                       |
 | Bottle Sort level service | `backend/sort/`            | Generated/verified level sets                                                                                      |
 | Per-game descriptors      | `backend/<game>/module.py` | `GameModule` metadata/result models, winner semantics, board definition and Stats shaping—not a second rule engine |
+
+The `backend/games/` service layer is split by job (#2991; the former
+`games/service.py` is gone, nothing re-exports it):
+
+| Module                   | Responsibility                                                                                            |
+| ------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `games/sessions.py`      | Session writes: `create_game`, `append_events`, `complete_game` and result validation; `GameServiceError` |
+| `games/sweep.py`         | Stale-session sweep (`sweep_stale_games`, `sweep_stale_games_safely`, `STALE_GAME_AFTER`)                 |
+| `games/stats.py`         | `/stats/me` aggregation: `get_stats_for_session`, `GameTypeStats`, `StatsSummary`, `win_streaks`          |
+| `games/stats_columns.py` | SQL column helpers for the comparable per-game stats (best-value candidate, time played, W/L/T)           |
+| `games/history.py`       | Read side of `GET /games/me` and `GET /games/{id}`: `list_games_for_session`, `get_game_detail`           |
+| `games/catalog.py`       | `GET /games/catalog` and the admin tier edit `patch_game_type` (invalidates the catalog cache)            |
 
 Most per-game backend directories are **descriptors**, not gameplay services.
 A normal single-player game's rules stay in the TypeScript engine on the
@@ -367,7 +379,7 @@ typed on the device before #2624 that the server was never sent becomes a
 join, once. "Get a new name" is online only.
 
 **Safe replays (idempotency).** Retries are the normal case, so every write
-the app makes is safe to repeat (`backend/games/service.py` module docstring):
+the app makes is safe to repeat (`backend/games/sessions.py` module docstring):
 `POST /games` dedupes on the client game id (`create_game`); events dedupe on
 `(game_id, event_index)` (`INSERT … ON CONFLICT DO NOTHING`); a completed game
 can't be completed again — the first completion wins and a replayed
@@ -530,7 +542,7 @@ fallback for devices that never report back.
 
 **Stale-session sweep (#2621, #2519 decisions 9 and 15).** A row still open
 24 h after `started_at` was left by a killed app that never reported back.
-`sweep_stale_games` (`backend/games/service.py`) closes the caller's own such
+`sweep_stale_games` (`backend/games/sweep.py`) closes the caller's own such
 rows as `abandoned` — `completed_at = started_at + 24 h`, `duration_ms` left
 NULL, `metadata.swept = true` — in one UPDATE. It runs **on read, per player**,
 at the start of `GET /stats/me` and on the first page of `GET /games/me` (no

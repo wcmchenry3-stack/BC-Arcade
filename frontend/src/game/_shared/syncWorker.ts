@@ -112,7 +112,7 @@ export function resolveDurationMs(durationMs: number | null | undefined): number
 
 /**
  * The detail of the backend's 409 on POST /games/:id/events for a game whose
- * row is already completed (`backend/games/service.py`, `append_events`).
+ * row is already completed (`backend/games/sessions.py`, `append_events`).
  */
 const GAME_ALREADY_COMPLETED_DETAIL = "Game is already completed.";
 

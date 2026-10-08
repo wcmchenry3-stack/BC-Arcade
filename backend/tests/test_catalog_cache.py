@@ -95,7 +95,7 @@ async def test_a_load_racing_an_invalidation_is_not_stored(
 
 
 async def test_patch_game_type_service_invalidates() -> None:
-    from games.service import patch_game_type
+    from games.catalog import patch_game_type
 
     factory = get_session_factory()
     async with factory() as db:

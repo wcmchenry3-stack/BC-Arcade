@@ -20,7 +20,7 @@ from entitlements.dependencies import check_entitlement
 from limiter import limiter, session_key
 from session import get_session_id, optional_session_id
 
-from . import leaderboard, service, sweep_gate
+from . import catalog, history, leaderboard, sessions, sweep, sweep_gate
 from .schemas import (
     AppendEventsRequest,
     AppendEventsResponse,
@@ -91,7 +91,7 @@ def _gt_to_out(gt) -> GameTypeOut:
 async def get_catalog(request: Request) -> JSONResponse:
     factory = get_session_factory()
     async with factory() as db:
-        game_types = await service.get_catalog(db)
+        game_types = await catalog.get_catalog(db)
     body = CatalogResponse(items=[_gt_to_out(gt) for gt in game_types])
     return JSONResponse(
         content=body.model_dump(),
@@ -115,13 +115,13 @@ async def patch_game_type(
     factory = get_session_factory()
     async with factory() as db:
         try:
-            gt = await service.patch_game_type(
+            gt = await catalog.patch_game_type(
                 db,
                 game_type_id=game_type_id,
                 is_premium=body.is_premium,
                 category=body.category,
             )
-        except service.GameServiceError as e:
+        except sessions.GameServiceError as e:
             raise HTTPException(status_code=e.status_code, detail=e.detail) from e
     return _gt_to_out(gt)
 
@@ -164,8 +164,8 @@ async def list_my_games(
         # Close this player's games left open > 24 h before listing them (#2621).
         # First page only: later pages continue a listing that was just swept.
         if parsed_cursor is None:
-            await service.sweep_stale_games_safely(db, session_id=sid)
-        page = await service.list_games_for_session(
+            await sweep.sweep_stale_games_safely(db, session_id=sid)
+        page = await history.list_games_for_session(
             db, session_id=sid, limit=limit, cursor=parsed_cursor
         )
     return GameHistoryResponse(items=[_to_row(r) for r in page.items], next_cursor=page.next_cursor)
@@ -297,13 +297,13 @@ async def get_game_detail(
     factory = get_session_factory()
     async with factory() as db:
         try:
-            detail = await service.get_game_detail(
+            detail = await history.get_game_detail(
                 db,
                 game_id=game_id,
                 session_id=sid,
                 include_events=bool(include_events),
             )
-        except service.GameServiceError as e:
+        except sessions.GameServiceError as e:
             raise HTTPException(status_code=e.status_code, detail=e.detail) from e
     row = detail.row
     events = None
@@ -338,7 +338,7 @@ async def create_game(request: Request, body: CreateGameRequest) -> CreateGameRe
     async with factory() as db:
         await check_entitlement(db, sid, body.game_type)
         try:
-            game = await service.create_game(
+            game = await sessions.create_game(
                 db,
                 session_id=sid,
                 client_id=body.id,
@@ -347,7 +347,7 @@ async def create_game(request: Request, body: CreateGameRequest) -> CreateGameRe
                 players=players,
                 started_at=body.started_at,
             )
-        except service.GameServiceError as e:
+        except sessions.GameServiceError as e:
             raise HTTPException(status_code=e.status_code, detail=e.detail) from e
         # A backdated start can make this game stale sooner than /stats/me expects.
         sweep_gate.note_open_game(sid, game.started_at)
@@ -363,13 +363,13 @@ async def append_events(
     factory = get_session_factory()
     async with factory() as db:
         try:
-            result = await service.append_events(
+            result = await sessions.append_events(
                 db,
                 game_id=game_id,
                 session_id=sid,
                 events=[e.model_dump() for e in body.events],
             )
-        except service.GameServiceError as e:
+        except sessions.GameServiceError as e:
             raise HTTPException(status_code=e.status_code, detail=e.detail) from e
         return AppendEventsResponse(
             accepted=result.accepted,
@@ -387,7 +387,7 @@ async def complete_game(
     factory = get_session_factory()
     async with factory() as db:
         try:
-            game = await service.complete_game(
+            game = await sessions.complete_game(
                 db,
                 game_id=game_id,
                 session_id=sid,
@@ -397,7 +397,7 @@ async def complete_game(
                 completed_at=body.completed_at,
                 result=body.result,
             )
-        except service.GameServiceError as e:
+        except sessions.GameServiceError as e:
             raise HTTPException(status_code=e.status_code, detail=e.detail) from e
         # Refresh with relationship loaded for response
         loaded = (

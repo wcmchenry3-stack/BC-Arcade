@@ -1,4 +1,4 @@
-"""Unit tests for games/service.py covering core write-API paths (#1559).
+"""Unit tests for games/sessions.py and siblings covering core write-API paths (#1559).
 
 Calls service functions directly via the DB session (no FastAPI router layer)
 to cover code paths that the API-level tests miss.
@@ -15,16 +15,10 @@ from sqlalchemy import select
 
 from db.base import get_session_factory
 from db.models import GameType
-from games.service import (
-    GameServiceError,
-    append_events,
-    complete_game,
-    create_game,
-    get_game_detail,
-    get_stats_for_session,
-    list_games_for_session,
-    patch_game_type,
-)
+from games.catalog import patch_game_type
+from games.history import get_game_detail, list_games_for_session
+from games.sessions import GameServiceError, append_events, complete_game, create_game
+from games.stats import get_stats_for_session
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -345,7 +339,7 @@ async def test_complete_game_rejected_result_reported_to_sentry(db, monkeypatch)
     )
     captured = []
     monkeypatch.setattr(
-        "games.service.sentry_sdk.capture_message",
+        "games.sessions.sentry_sdk.capture_message",
         lambda msg, **kw: captured.append((msg, kw)),
     )
     with pytest.raises(GameServiceError):
@@ -407,7 +401,7 @@ async def test_complete_game_rejects_oversized_result(db, monkeypatch):
     sid = _sid()
     captured = []
     monkeypatch.setattr(
-        "games.service.sentry_sdk.capture_message",
+        "games.sessions.sentry_sdk.capture_message",
         lambda msg, **kw: captured.append((msg, kw)),
     )
     game = await _make_game(db, sid, "yacht")

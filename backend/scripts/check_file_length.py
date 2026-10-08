@@ -13,7 +13,6 @@ import sys
 MAX_LINES = 800
 EXCLUDED_DIRS = {"tests", "alembic", ".venv", "venv", "node_modules", "__pycache__"}
 CAPS = {
-    "games/service.py": 1005,  # TODO(#2991): split games/service.py
     "purchases/google_notifications.py": 813,  # TODO(#2998): split google_notifications.py
 }
 

@@ -168,7 +168,7 @@ class YachtResult(BaseModel):
     undeclared, so ``final_score``, ``upper_bonus``, ``yacht_bonus_total``,
     ``outcome``, ``opponent_score``, ``vs_result`` and any unknown key are
     stored exactly as sent, as they were before this model existed (the 8 KiB
-    cap in ``games.service`` bounds them).
+    cap in ``games.sessions`` bounds them).
 
     ``scorecard`` is the player's card and ``opponent_scorecard`` the
     computer's, sent only when the computer finished (the same condition as
@@ -252,10 +252,10 @@ class YachtResult(BaseModel):
 def _report_dropped_card(field: str, fields: str, error_types: list[str]) -> None:
     """Log and send to Sentry a card dropped from an otherwise valid result.
 
-    Same channel as a rejected result (``games.service``), but the game still
+    Same channel as a rejected result (``games.sessions``), but the game still
     completes. Field paths and error types only, no values or identifiers.
     """
-    from games.service import _report_rejected_result
+    from games.sessions import _report_rejected_result
 
     logger.warning("Yacht %s dropped from the result: %s", field, fields)
     _report_rejected_result(

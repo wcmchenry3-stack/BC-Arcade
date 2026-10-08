@@ -1,7 +1,8 @@
 """Game module registry (#540).
 
 Maps each ``GameType`` string value to its ``GameModule`` instance.
-``service.py`` uses this for generic dispatch instead of ``if name ==`` branches.
+The ``games`` service modules (``sessions.py``, ``stats.py``, ...) use this for
+generic dispatch instead of ``if name ==`` branches.
 
 To register a new game: import its module singleton and add an entry below.
 """

@@ -43,7 +43,7 @@ removes the install ID" holds only when no backup is restored (`docs/support.htm
 `game_entitlements`: they are kept until the player uses Delete My Data. `daily_word_progress` is also pruned after 14 days.
 Production Postgres (Supabase) keeps provider backups; rows deleted by the player persist in backups until the backup
 window rolls over (owner to confirm the plan's window; `RENDER.md` requires daily backups before submission).
-Stale open games are swept closed after 24 h (`games/service.py`), not deleted.
+Stale open games are swept closed after 24 h (`games/sweep.py`), not deleted.
 
 ### Leaderboard detail (opt-in, public)
 
