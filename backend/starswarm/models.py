@@ -44,7 +44,7 @@ DifficultyTier = Literal[
 ]
 """Every tier the app can send, easiest to hardest.
 
-Mirrors ``DIFFICULTY_TIERS`` in ``frontend/src/game/starswarm/engine.ts`` (the
+Mirrors ``DIFFICULTY_TIERS`` in ``frontend/src/game/starswarm/engine/tuning.ts`` (the
 ``DifficultyTier`` union in ``types.ts``); ``tests/test_starswarm_module.py``
 parses both and fails on drift. Each tier is its own public board
 (``partition_values``), so a run on a tier outside this list is stored but

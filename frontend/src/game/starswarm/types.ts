@@ -9,7 +9,7 @@ export type EnemyTier = "Grunt" | "Elite" | "Guardian" | "Carrier";
 
 /**
  * #2843: the Carrier's aggression stage, each more aggressive than the last. Derived from the
- * live roster (`carrierStage` in engine.ts):
+ * live roster (`carrierStage` in `engine/roster.ts`):
  * - protected: a Guardian escort lives, so the Carrier is armored;
  * - exposed: the last Guardian is dead, so armor is down, but other enemies still fight;
  * - finalStand: the Carrier is the only meaningful (non-fleeing) enemy left.
@@ -59,7 +59,7 @@ export type EnemyPhase =
  * #2842: the wave lifecycle. SwoopIn is safe setup time (nothing fires, nothing takes damage);
  * Playing is combat; Extraction is the live wind-down after the last kill (already-fired shots
  * and rocks stay real while the AI flies the ship out), ended by the hard transient reset
- * (`clearTransientCombat` in engine.ts) just before the next wave is built.
+ * (`clearTransientCombat` in `engine/extraction.ts`) just before the next wave is built.
  */
 export type GamePhase =
   | "SwoopIn" // wave intro — enemies filling the grid; every actor invulnerable, nobody fires
