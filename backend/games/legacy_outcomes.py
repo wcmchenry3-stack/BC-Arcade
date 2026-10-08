@@ -55,7 +55,7 @@ import uuid
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
-_JSONB = sa.JSON().with_variant(JSONB(), "postgresql")
+from db.models import JSONB_VARIANT as _JSONB
 
 WIN = "win"
 # The first tile that is a Twenty48 win.

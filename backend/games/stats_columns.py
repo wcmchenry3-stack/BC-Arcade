@@ -3,8 +3,8 @@
 Split out of ``games.stats`` to keep it under the file-length cap. Builds the
 conditional aggregates (won/lost/tied, time played, best-value candidate) added
 to the one stats query, and turns an aggregate row into the comparable
-``GameTypeStats`` fields. The dialect-specific JSON branch lives in
-``_metadata_number``.
+``GameTypeStats`` fields. The metadata metric is read through
+``db.jsonx.json_number``, which compiles per dialect.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from typing import Any
 
 from sqlalchemy import ColumnElement, and_, case, func, or_
 
+from db.jsonx import json_number
 from db.models import Game, GameType
 from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
 from games.filters import not_abandoned
@@ -50,25 +51,6 @@ def _registered_module(name: str) -> GameModule:
     return module
 
 
-def _metadata_number(key: str, dialect: str) -> ColumnElement:
-    """``games.metadata[key]`` as a number, or NULL when it is not a JSON number.
-
-    Guarded by the JSON type so a malformed value (a game with no
-    ``result_model`` accepts any result block) yields NULL instead of a cast
-    error that would fail the whole ``/stats/me`` response.
-    """
-    if dialect == "sqlite":
-        path = f'$."{key}"'
-        return case(
-            (
-                func.json_type(Game.game_metadata, path).in_(("integer", "real")),
-                func.json_extract(Game.game_metadata, path),
-            )
-        )
-    value = Game.game_metadata[key]
-    return case((func.jsonb_typeof(value) == "number", value.as_float()))
-
-
 def _rankable_duration(board: BoardDefinition) -> ColumnElement[bool]:
     """A ``duration_ms`` row that could be on one of the board's boards (#2747).
 
@@ -91,7 +73,7 @@ def _rankable_duration(board: BoardDefinition) -> ColumnElement[bool]:
 
 
 @functools.cache
-def _best_candidate(dialect: str) -> ColumnElement:
+def _best_candidate() -> ColumnElement:
     """Each row's board metric when the row can be its game's best, else NULL.
 
     A row qualifies when it is not abandoned and, if its board sets
@@ -100,8 +82,8 @@ def _best_candidate(dialect: str) -> ColumnElement:
     time, #2747; only from the board's ``min_value`` up, as on the board) or
     the metadata key the board names.
 
-    Boards are static, so the expression is built once per dialect and
-    reused by every request.
+    Boards are static, so the expression is built once and reused by every
+    request; its JSON reads compile per dialect (``db.jsonx``).
     """
     whens = []
     for game_type in VocabGameType:
@@ -114,7 +96,7 @@ def _best_candidate(dialect: str) -> ColumnElement:
         elif board.metric == DURATION_METRIC:
             value = case((_rankable_duration(board), Game.duration_ms))
         else:
-            value = _metadata_number(board.metric, dialect)
+            value = json_number(Game.game_metadata, board.metric)
         if board.qualifying_outcomes is not None:
             value = case((Game.outcome.in_(board.qualifying_outcomes), value))
         whens.append((GameType.name == game_type.value, value))
@@ -133,9 +115,9 @@ _REPORTED_TIME_MS = case(
 )
 
 
-def _comparable_columns(dialect: str) -> list[ColumnElement]:
+def _comparable_columns() -> list[ColumnElement]:
     """Conditional aggregates for the comparable fields, added to the stats query."""
-    candidate = _best_candidate(dialect)
+    candidate = _best_candidate()
     return [
         func.count(case((Game.outcome == _WIN, Game.id))).label("won"),
         func.count(case((Game.outcome == _LOSS, Game.id))).label("lost"),

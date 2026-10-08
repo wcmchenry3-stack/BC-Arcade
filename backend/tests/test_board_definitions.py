@@ -133,6 +133,7 @@ _PARTITIONED = {"partitions": ("difficulty", "variant"), "max_value": 300}
         {"qualifying_outcomes": ("abandoned",)},
         {"qualifying_outcomes": ("victory",)},
         {"qualifying_outcomes": ("win", "win")},
+        {"metric": "best-time"},
     ],
     ids=[
         "direction",
@@ -161,12 +162,26 @@ _PARTITIONED = {"partitions": ("difficulty", "variant"), "max_value": 300}
         "abandoned-qualifies",
         "unknown-outcome",
         "duplicate-outcome",
+        "metric-not-an-identifier",
     ],
 )
 def test_rejects_invalid_values(overrides: dict) -> None:
     fields = {"metric": SCORE_METRIC, "direction": "desc", "label_key": "score", **overrides}
     with pytest.raises(ValidationError):
         BoardDefinition(**fields)
+
+
+def test_every_registered_board_builds_the_stats_expressions() -> None:
+    # The stats expressions are built once, lazily, on the first /stats/me request.
+    # A board that cannot build them would fail every user then, so build them here (#2996).
+    from games import stats_columns
+
+    stats_columns._best_candidate.cache_clear()
+    try:
+        assert stats_columns._best_candidate() is not None
+        assert stats_columns._comparable_columns()
+    finally:
+        stats_columns._best_candidate.cache_clear()
 
 
 def test_is_immutable() -> None:
