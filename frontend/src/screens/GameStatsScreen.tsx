@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text } from "react-native";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -18,6 +18,7 @@ import type { GameType } from "../api/vocab";
 import { AppHeader } from "../components/shared/AppHeader";
 import { ScreenFrame } from "../components/shared/ScreenFrame";
 import { EmptyState } from "../components/shared/EmptyState";
+import { StatTileGrid, type StatTile } from "../components/shared/StatTileGrid";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import { isGameVisible } from "../entitlements/gameVisibility";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
@@ -33,12 +34,6 @@ export interface GameStatsScreenProps {
   navigation: Pick<NativeStackNavigationProp<HomeStackParamList>, "navigate" | "goBack">;
 }
 
-interface Tile {
-  key: string;
-  label: string;
-  value: string;
-}
-
 const count = (t: TFunction, n: number | null | undefined): string =>
   n == null ? "—" : formatNumber(t, n);
 
@@ -47,9 +42,9 @@ const count = (t: TFunction, n: number | null | undefined): string =>
  * a game with no win concept (the server sends them null); the streaks are
  * left out for such a game. Fields a server older than #2620 omits show "—".
  */
-export function statsTiles(t: TFunction, s: GameTypeStats): Tile[] {
+export function statsTiles(t: TFunction, s: GameTypeStats): StatTile[] {
   const rate = winRateOf(s);
-  const tiles: Tile[] = [
+  const tiles: StatTile[] = [
     { key: "sessions", label: t("stats:tile.sessions"), value: count(t, sessionsOf(s)) },
     { key: "completed", label: t("stats:tile.completed"), value: count(t, completedOf(s)) },
     { key: "wins", label: t("stats:tile.wins"), value: count(t, s.won) },
@@ -164,26 +159,7 @@ export default function GameStatsScreen({ route, navigation }: GameStatsScreenPr
           )
         )}
         {tiles ? (
-          <View style={styles.grid}>
-            {tiles.map((tile) => (
-              <View
-                key={tile.key}
-                testID={`game-stats-tile-${tile.key}`}
-                accessible
-                accessibilityLabel={`${tile.label}: ${tile.value}`}
-                style={[styles.tile, { backgroundColor: colors.surfaceAlt }]}
-              >
-                <Text style={[styles.tileLabel, { color: colors.textMuted }]}>{tile.label}</Text>
-                <Text
-                  style={[styles.tileValue, { color: colors.text }]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                >
-                  {tile.value}
-                </Text>
-              </View>
-            ))}
-          </View>
+          <StatTileGrid tiles={tiles} testIDPrefix="game-stats-tile" />
         ) : (
           <EmptyState
             kind="empty"
@@ -274,22 +250,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: 4,
   },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  tile: {
-    flexGrow: 1,
-    flexBasis: "45%",
-    minHeight: 84,
-    padding: 14,
-    borderRadius: 16,
-  },
-  tileLabel: {
-    fontFamily: typography.label,
-    fontSize: 10,
-    textTransform: "uppercase",
-    letterSpacing: 1.2,
-    marginBottom: 6,
-  },
-  tileValue: { fontFamily: typography.heading, fontSize: 22 },
   link: {
     flexDirection: "row",
     alignItems: "center",
