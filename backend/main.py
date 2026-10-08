@@ -20,7 +20,8 @@ Where things live:
 - ``middleware/`` — security headers + request log (outermost), body caps (innermost).
 - ``routes/health.py`` — ``/health`` and ``/health/db``; ``routes/debug.py`` — test-only.
 - this module — the lifespan and its background jobs, app-level exception
-  handlers, CORS, and the middleware order.
+  handlers (``EntitlementError``, and ``GameServiceError`` / ``PurchaseError``
+  so routers raise them untranslated), CORS, and the middleware order.
 """
 
 import json
@@ -33,9 +34,10 @@ from dotenv import load_dotenv
 
 load_dotenv()  # loads backend/.env when running locally; no-op in production (Render injects vars)
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
@@ -46,6 +48,7 @@ from entitlements.dependencies import EntitlementError
 from entitlements.router import router as entitlements_router
 from entitlements.service import is_dev_override_active
 from games.router import router as games_router
+from games.sessions import GameServiceError
 from jobs.lifespan import configured_jobs, start_jobs
 from limiter import client_ip, configure_proxy_trust, limiter, log_proxy_trust
 from logs.router import router as logs_router
@@ -57,6 +60,7 @@ from observability.sentry import SENTRY_SCRUBBED_KEYS, SQL_REDACTED, init_sentry
 from observability.sentry import sentry_options as _sentry_options
 from players.router import router as players_router
 from purchases.router import router as purchases_router
+from purchases.verifiers import PurchaseError
 from routes.health import _ping_db
 from routes.health import router as health_router
 from sort.router import router as sort_router
@@ -161,6 +165,21 @@ async def _entitlement_error_handler(request: Request, exc: EntitlementError) ->
     )
 
 
+async def _domain_error_handler(
+    request: Request, exc: GameServiceError | PurchaseError
+) -> Response:
+    """``GameServiceError`` / ``PurchaseError`` → the response ``HTTPException`` gives.
+
+    Both carry ``status_code`` and ``detail``. The routers used to re-raise them
+    as ``HTTPException(status_code, detail)`` in a try/except per call (#2993);
+    handing that same exception to FastAPI's own handler keeps the body,
+    status and headers byte-identical to what those blocks produced.
+    """
+    return await http_exception_handler(
+        request, HTTPException(status_code=exc.status_code, detail=exc.detail)
+    )
+
+
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
@@ -254,6 +273,8 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
     app.add_exception_handler(EntitlementError, _entitlement_error_handler)
+    app.add_exception_handler(GameServiceError, _domain_error_handler)
+    app.add_exception_handler(PurchaseError, _domain_error_handler)
     _add_middleware(app)
     return app
 

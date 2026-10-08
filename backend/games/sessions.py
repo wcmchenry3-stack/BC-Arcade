@@ -8,8 +8,8 @@ Idempotency strategy:
   overwriting — except a row closed by the stale-session sweep (#2621), which a
   real completion replaces.
 
-Also home to ``GameServiceError``, the error every games module raises and the
-router translates to HTTP.
+Also home to ``GameServiceError``, the error every games module raises; an
+app-level handler in ``main.py`` turns it into the HTTP response (#2993).
 """
 
 from __future__ import annotations
@@ -25,10 +25,11 @@ import sentry_sdk
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from db.dialect import dialect_insert, dialect_name
-from db.models import Game, GameEvent, GameType
+from db.models import Game, GameEvent
 from games import catalog_cache
 from games.catalog_cache import GameTypeRow
 from games.filters import is_swept, without_swept
@@ -62,7 +63,7 @@ def _validate_client_timestamp(ts: datetime, now: datetime) -> datetime | None:
 
 
 class GameServiceError(Exception):
-    """Base error raised by the games service — translated to HTTP by the router."""
+    """Base error raised by the games service — answered as HTTP by ``main.py``'s handler."""
 
     def __init__(self, status_code: int, detail: str | dict):
         self.status_code = status_code
@@ -127,9 +128,17 @@ async def create_game(
 
 
 async def _get_owned_game(
-    session: AsyncSession, game_id: uuid.UUID, session_id: str, *, for_update: bool = False
+    session: AsyncSession,
+    game_id: uuid.UUID,
+    session_id: str,
+    *,
+    for_update: bool = False,
+    with_game_type: bool = False,
 ) -> Game:
     stmt = select(Game).where(Game.id == game_id)
+    if with_game_type:
+        # A separate SELECT on game_types: FOR UPDATE below locks only the game row.
+        stmt = stmt.options(selectinload(Game.game_type))
     if for_update:
         # Postgres: hold the row until commit. SQLite renders no FOR UPDATE.
         stmt = stmt.with_for_update()
@@ -237,18 +246,22 @@ async def complete_game(
     completed_at: datetime | None = None,
     result: dict[str, Any] | None = None,
 ) -> Game:
+    """Finish the caller's game; returns it with ``game.game_type`` loaded.
+
+    The router builds its response from ``game.game_type.name``, so the type
+    is loaded with the game (and reloaded by the final refresh) rather than
+    re-selected afterwards (#2993).
+    """
     # FOR UPDATE: on Postgres a concurrent sweep waits for this completion, then
     # finds the row no longer open (#2621).
-    game = await _get_owned_game(session, game_id, session_id, for_update=True)
+    game = await _get_owned_game(session, game_id, session_id, for_update=True, with_game_type=True)
     if game.completed_at is not None and not is_swept(game.game_metadata):
         return game  # idempotent — do not overwrite
 
     if outcome is not None and outcome not in _VALID_OUTCOMES:
         raise GameServiceError(400, f"Invalid outcome: {outcome!r}")
 
-    name = (
-        await session.execute(select(GameType.name).where(GameType.id == game.game_type_id))
-    ).scalar_one()
+    name = game.game_type.name
     mod = get_module(name)
     # The sweep flag is server-written only: a result must not set it (#2621).
     validated_result = without_swept(

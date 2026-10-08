@@ -10,7 +10,7 @@ from fastapi import HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.base import get_session_factory
+from db.base import DbSession
 from db.models import GameEntitlement
 from entitlements.service import is_dev_override_active
 from games import catalog_cache
@@ -50,12 +50,14 @@ async def check_entitlement(db: AsyncSession, session_id: str, game_slug: str) -
 
 
 def require_entitlement(game_slug: str):
-    """Dependency factory — inject as router-level dependency to gate all routes."""
+    """Dependency factory — inject as router-level dependency to gate all routes.
 
-    async def _dep(request: Request) -> None:
+    Depends on ``get_db``, so it checks on the request's own session (the one
+    a route taking ``db: DbSession`` also gets) rather than opening a second.
+    """
+
+    async def _dep(request: Request, db: DbSession) -> None:
         sid = get_session_id(request)
-        factory = get_session_factory()
-        async with factory() as db:
-            await check_entitlement(db, sid, game_slug)
+        await check_entitlement(db, sid, game_slug)
 
     return _dep

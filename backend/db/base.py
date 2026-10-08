@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
+from typing import Annotated
 
+from fastapi import Depends
 from sqlalchemy import event, make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -54,7 +56,7 @@ DATABASE_URL: str | None = _normalize_url(_raw_url) if _raw_url else None
 # Engine/session are created lazily so importing this module never fails
 # against a non-async DATABASE_URL (e.g. the sqlite URL used by CI's
 # schema-migration check). Runtime callers go through `get_engine()` /
-# `get_session()`, which raise clearly if DATABASE_URL is missing or not
+# `get_db()`, which raise clearly if DATABASE_URL is missing or not
 # async-compatible.
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -108,7 +110,21 @@ def is_configured() -> bool:
     return DATABASE_URL is not None
 
 
-async def get_session() -> AsyncIterator[AsyncSession]:
+async def get_db() -> AsyncIterator[AsyncSession]:
+    """FastAPI dependency: one session per request, closed when the route is done (#2993).
+
+    Routes take it as ``db: DbSession``. FastAPI caches it per request, so a
+    route and its ``require_entitlement`` dependency share the one session.
+    Opening it costs no I/O: a connection is checked out at the first query,
+    so a route that answers 4xx before touching the database never uses one.
+    """
     factory = get_session_factory()
     async with factory() as session:
         yield session
+
+
+# ``scope="function"`` closes the session as soon as the route (and its response
+# serialisation) finishes, before the response is sent, as the per-route
+# ``async with factory() as db:`` blocks it replaced did. The default
+# ``"request"`` scope would hold the connection until the client had the body.
+DbSession = Annotated[AsyncSession, Depends(get_db, scope="function")]

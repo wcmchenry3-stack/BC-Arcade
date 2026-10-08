@@ -107,12 +107,12 @@ async def test_session_factory_is_built_once_and_does_not_expire_on_commit(
         await base.get_engine().dispose()
 
 
-async def test_get_session_yields_a_session_and_closes_it(
+async def test_get_db_yields_a_session_and_closes_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The FastAPI dependency: a usable session with no transaction open, closed once the
     request ends."""
-    dependency = base.get_session()
+    dependency = base.get_db()
     session = await anext(dependency)
     assert isinstance(session, AsyncSession)
     assert session.in_transaction() is False
