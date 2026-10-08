@@ -5,8 +5,9 @@
  *   1. Selection state machine + tap-to-select / tap-target dispatching
  *      (layered on top of the pure engine from #593 and the card views
  *      from #595; introduced in #596).
- *   2. Persistence — AsyncStorage save/resume on every mutation so a
- *      backgrounded or force-killed app resumes at the exact board.
+ *   2. Persistence — `usePersistedGameState` (#3087) resumes the save on
+ *      mount and saves every mutation, so a backgrounded or force-killed
+ *      app resumes at the exact board.
  *   3. Instrumentation + result — `useGameSync` session (started on the
  *      first real move with the deal's `draw_mode` in its metadata, completed
  *      on win, abandoned by the hook on unmount for anything else, #2632), and
@@ -31,6 +32,7 @@ import { GameShell } from "../components/shared/GameShell";
 import { bestOf } from "../game/_shared/bestOf";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
+import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
 import { usePausableClock } from "../hooks/usePausableClock";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { PillButton } from "../components/shared/PillButton";
@@ -109,23 +111,34 @@ export default function SolitaireScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
-  const [state, setState] = useState<SolitaireState | null>(null);
-  const [selection, setSelection] = useState<Selection | null>(null);
-  const [moves, setMoves] = useState(0);
-  const [autoCompleting, setAutoCompleting] = useState(false);
-  const [loading, setLoading] = useState(true);
   // The device's cached best time (`solitaire_stats_v1`), for the result
   // card's best time and "New best" badge only (#2636): the player's history
   // is the Stats screen, fed by the server.
   const statsRef = useRef<SolitaireStats>({ bestTimeMs: 0 });
+  // #597 — the saved game (usePersistedGameState, #3087): loaded with the
+  // stats on mount, then saved on every state change once that load has
+  // landed, so a fresh deal can't clobber a resumable save still being read
+  // from disk. Called before the completion effect, so a winning move is
+  // saved before the completion clears it. The restore is below.
+  const game = usePersistedGameState<SolitaireState>({
+    load: async () => {
+      const [saved, savedStats] = await Promise.all([loadGame(), loadStats()]);
+      statsRef.current = savedStats;
+      return saved;
+    },
+    save: saveGame,
+    clear: clearGame,
+  });
+  const { state, setState, stateRef, loading, hasLoadedRef, clear: clearSavedGame } = game;
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const [moves, setMoves] = useState(0);
+  const [autoCompleting, setAutoCompleting] = useState(false);
 
   const sparkleOpacity = useRef(new Animated.Value(0)).current;
   const lastTapRef = useRef<{ key: string; time: number } | null>(null);
   const autoStepTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Lifecycle refs.
-  const hasLoadedRef = useRef(false);
-  const stateRef = useRef<SolitaireState | null>(null);
   const movesRef = useRef(0);
   const prevCompleteRef = useRef(false);
   /** Guards against double-counting a win within a single game session. */
@@ -172,7 +185,7 @@ export default function SolitaireScreen() {
       const s = stateRef.current;
       return { result: progressResult(), durationMs: s ? activeMs(s) : null };
     });
-  }, [syncSetProgressSnapshot, progressResult]);
+  }, [syncSetProgressSnapshot, progressResult, stateRef]);
 
   useEffect(() => {
     return () => {
@@ -190,7 +203,7 @@ export default function SolitaireScreen() {
       setSelection(null);
       setMoves(0);
     },
-    [syncRestart]
+    [syncRestart, setState]
   );
 
   // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
@@ -212,8 +225,9 @@ export default function SolitaireScreen() {
     },
   });
 
-  // #597 — mount load. Restores a saved game silently; on a clean slot the
-  // pre-game draw-mode modal is shown so the player picks their mode.
+  // #597 — the mount load's restore. Restores a saved game silently; on a
+  // clean slot the pre-game draw-mode modal is shown so the player picks
+  // their mode.
   //
   // Native E2E test builds (EXPO_PUBLIC_TEST_HOOKS=1) skip the modal on a
   // clean slot and deal draw-1 immediately — Maestro drives native gestures
@@ -224,45 +238,25 @@ export default function SolitaireScreen() {
   // click through "Draw 1"/"Draw 3" themselves (solitaire-smoke.spec.ts and
   // friends), so skipping the modal there would break them. Production
   // behavior (real users, modal shown) is unchanged either way.
-  useEffect(() => {
-    let alive = true;
-    Promise.all([loadGame(), loadStats()]).then(([saved, savedStats]) => {
-      if (!alive) return;
-      hasLoadedRef.current = true;
-      statsRef.current = savedStats;
-      if (saved !== null) {
-        setState(adoptLoaded(saved));
-        // Suppress re-counting a win when resuming an already-won game.
-        if (saved.isComplete) {
-          winRecordedRef.current = true;
-          setResumedWin(true);
-        } else {
-          // A restored game continues the session a killed app left open
-          // (#2654) — only one for the same draw mode, so a restore never
-          // adopts another deal's session.
-          syncResume({ draw_mode: saved.drawMode });
-        }
-      } else if (areTestHooksEnabled() && Platform.OS !== "web") {
-        deal(1);
+  useGameRestored(game, (saved) => {
+    if (saved !== null) {
+      // A save loaded while the player is away starts paused (#2750): this
+      // replaces the loaded state in the same batch.
+      setState(adoptLoaded(saved));
+      // Suppress re-counting a win when resuming an already-won game.
+      if (saved.isComplete) {
+        winRecordedRef.current = true;
+        setResumedWin(true);
+      } else {
+        // A restored game continues the session a killed app left open
+        // (#2654) — only one for the same draw mode, so a restore never
+        // adopts another deal's session.
+        syncResume({ draw_mode: saved.drawMode });
       }
-      setLoading(false);
-    });
-    return () => {
-      alive = false;
-    };
-    // Mount-only by design; `deal` is a stable useCallback ([] deps).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // #597 — persist on every state change once the mount load has resolved.
-  // Saves before the load are suppressed so a fresh deal cannot clobber a
-  // resumable save still being read from disk.
-  useEffect(() => {
-    stateRef.current = state;
-    if (!hasLoadedRef.current) return;
-    if (state === null) return;
-    saveGame(state).catch(() => {});
-  }, [state]);
+    } else if (areTestHooksEnabled() && Platform.OS !== "web") {
+      deal(1);
+    }
+  });
 
   // #597 — mirror moves into a ref so the abandon snapshot (which runs on
   // unmount) and the completion effect read the latest value.
@@ -360,7 +354,7 @@ export default function SolitaireScreen() {
       setSelection(null);
       return true;
     },
-    [state, ensureSyncStarted, matchPresence]
+    [state, ensureSyncStarted, matchPresence, setState]
   );
 
   const handleWastePress = useCallback(() => {
@@ -391,7 +385,7 @@ export default function SolitaireScreen() {
     setState(matchPresence(next));
     setMoves((m) => m + 1);
     setSelection(null);
-  }, [state, autoCompleting, ensureSyncStarted, matchPresence]);
+  }, [state, autoCompleting, ensureSyncStarted, matchPresence, setState]);
 
   const handleFoundationPress = useCallback(
     (suit: Suit) => {
@@ -599,12 +593,12 @@ export default function SolitaireScreen() {
     setState(matchPresence(undo(state)));
     setSelection(null);
     setMoves((m) => Math.max(0, m - 1));
-  }, [state, autoCompleting, matchPresence]);
+  }, [state, autoCompleting, matchPresence, setState]);
 
   const handleHint = useCallback(() => {
     if (state === null || state.isComplete || autoCompleting) return;
     setState(matchPresence(applyHint(state)));
-  }, [state, autoCompleting, matchPresence]);
+  }, [state, autoCompleting, matchPresence, setState]);
 
   const handleAutoComplete = useCallback(() => {
     if (state === null || autoCompleting) return;
@@ -649,7 +643,7 @@ export default function SolitaireScreen() {
       autoStepTimeoutRef.current = setTimeout(step, AUTO_STEP_MS);
     };
     step();
-  }, [state, autoCompleting, ensureSyncStarted, awayRef, matchPresence]);
+  }, [state, autoCompleting, ensureSyncStarted, awayRef, matchPresence, setState, stateRef]);
 
   /** Tears down the current game (board, timers, result) and shows the draw-mode picker. */
   const resetToPreGame = useCallback(() => {
@@ -661,7 +655,7 @@ export default function SolitaireScreen() {
       clearTimeout(autoStepTimeoutRef.current);
       autoStepTimeoutRef.current = null;
     }
-    clearGame().catch(() => {});
+    clearSavedGame();
     setAutoCompleting(false);
     setState(null);
     setSelection(null);
@@ -670,14 +664,14 @@ export default function SolitaireScreen() {
     resetSubmission();
     winRecordedRef.current = false;
     setResumedWin(false);
-  }, [resetSubmission, syncClose]);
+  }, [resetSubmission, syncClose, clearSavedGame, setState]);
 
   // Play Again deals straight into the same draw mode, skipping the picker.
   const handlePlayAgain = useCallback(() => {
     const drawMode = stateRef.current?.drawMode ?? 1;
     resetToPreGame();
     deal(drawMode);
-  }, [resetToPreGame, deal]);
+  }, [resetToPreGame, deal, stateRef]);
 
   const undoDisabled = state === null || state.undoStack.length === 0 || autoCompleting;
   const hintMoves = useMemo(() => (state ? getHintMoves(state) : []), [state]);

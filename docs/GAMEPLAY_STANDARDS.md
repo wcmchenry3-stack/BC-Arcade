@@ -327,13 +327,23 @@ A game screen (`frontend/src/screens/<Game>Screen.tsx`) sits above the five laye
   - **Blackjack** saves from `BlackjackGameContext` (every `apply`), not from its screens.
   - **Mahjong** debounces its saves by `SAVE_DEBOUNCE_MS` in `useMahjongPersistence`, writing at once on leave, New Game and unmount.
   - **Cascade** (disabled, #3033) throttles its saves (`SAVE_THROTTLE_MS`).
+- **Restore and save hook.** `usePersistedGameState({ load, save, clear })` (`game/_shared/usePersistedGameState.ts`, #3087) owns the game state and returns `{ state, setState, stateRef, loading, hasLoadedRef, clear }`, plus `restoredRef`, which is internal: it carries the handler `useGameRestored` registers, and screens never touch it. It loads once on mount, and a load that lands after unmount sets nothing. It saves nothing until the load has landed, so a state set early can't overwrite the save, and after that it saves every non-null state (a null state is pre-game and saves nothing). `stateRef` follows each committed state (written at layout time, so a handler running before the passive effects flush still reads it), and `clear()` deletes the save and ignores a failure. A load that rejects ends `loading` and saves nothing for the rest of the session, which protects a save that could not be read; FreeCell would then show an empty board. The storage slots never reject today. The screen's restore work (`resume()`, the guards for a resumed won game, a fresh deal on a clean slot, `usePausableClock`'s `adoptLoaded`) goes in a `useGameRestored(game, handler)` call after it. The handler runs once, when the load lands, with the loaded game or null, and a `setState` there replaces the loaded state in the same batch. That call is a separate hook because the handler uses things the screen builds on the hook's state (the play clock, the deal), and those exist only after the hook. Call the hook before the completion effect so that a winning move is saved before the completion clears it. Throttling and debouncing stay outside the hook.
+  - **Uses it:** Solitaire, Sudoku and FreeCell. Each one loads its stats inside `load`.
+  - **Does not use it:**
+    - **Daily Word** loads the server's puzzle with the save. Its load can fail (offline, an error), it is retried from a button, a superseded load is dropped by sequence, a stale save is cleared before the fresh board is set, and a restored loss fetches its answer under the same guard.
+    - **Twenty48** saves on each move and pause, with events stripped, not on every state change. It writes a fresh game as soon as it loads, and opens its session from the load.
+    - **Yacht** (`GameScreen`) gets its game through the route, so it has no mount load. It saves four values together (board, difficulty, the computer's scorecard, the finished game's id).
+    - **Sort** restores a board only when the player taps Continue on the level grid. It saves the board inside its progress record, and only in play.
+    - **Mahjong** debounces its saves in `useMahjongPersistence`.
+    - **Hearts**, **Star Swarm** and **Blackjack** save at their own moments, as listed above.
+    - **Cascade** is disabled (#3033).
 - **Pausing while away.** `usePauseWhileAway` (`hooks/usePauseWhileAway.ts`, #2735 / #2750), directly or through `usePausableClock`: Mahjong, Solitaire, Sudoku, Twenty48 (and the disabled Cascade). Hearts pauses its play clock through it too (#3087). Its optional `onLeave` callback runs on every leave event (each blur, and each `AppState` change to `background` or `inactive`, with the previous status), even while the player is already away, after `onPause` and never at mount: Hearts saves there on the move to the background, Sort saves its board on each move to `background` or `inactive`, and Star Swarm pauses and saves a live run (a run resumed while the app stayed inactive is paused again by the next event). Yacht keeps its own background listener but shares the hook's `isAwayStatus` check.
 - **End of game.** Each screen detects the end of the game itself, once per game (a ref or a reducer phase), then calls `complete()` and `lookup()`. The "new best" rule is shared: `bestOf(prior, value, lowerIsBetter)` (`game/_shared/bestOf.ts`, #2977). A first result is never a new best.
 - **Engine events.** `useGameEvents(state.events, handlers)` for one-shot sounds and effects (Yacht, FreeCell, Hearts, Blackjack). Events are one-shot and must not replay on reload: Twenty48 and Blackjack strip them before `saveGame`.
 - **Result.** `GameResultModal` (`components/result/`, #2504, split in #2990), and nothing else: no screen builds its own result screen. Blackjack's Goal Reached screen renders the same `ResultCard` inline. See [GAME-CONTRACT §2.5](GAME-CONTRACT.md#25-result-card-and-leaderboard).
 - **Components.** Boards, piles, overlays, pickers and the dev panel live in `components/<game>/` (#2979). Dev panels build on `components/dev/DevPanelShell` (#2978) and only render in dev and internal builds. The screen file defines no board, overlay or panel component of its own (Star Swarm's `StarSwarmGame` is the screen body behind its hydration gate; Cascade's inline renderers wait for #3033).
 
-No shared `usePersistedGameState` or `useCompletionTransition` hook exists. #2977 proposed both, but only `bestOf` landed, so each screen still writes its own restore-on-mount effect and game-over effect. The remaining shared hooks are tracked in #3087.
+No shared `useCompletionTransition` hook exists yet. Each screen still writes its own game-over effect, and that hook is tracked in #3087. Restoring and saving moved to `usePersistedGameState`, described above, for the screens it fits.
 
 ### No per-frame React state
 
@@ -405,7 +415,7 @@ This supplements the backend checklist in [`GAME-CONTRACT.md §3`](GAME-CONTRACT
 - [ ] The screen file opens with a roughly 10–18-line header listing its concerns with issue refs (§8)
 - [ ] Everything renders inside `GameShell` with `gameType="<game>"`
 - [ ] Boards, piles, overlays and the dev panel live in `components/<game>/`; the screen defines none of its own
-- [ ] A game with its own clock pauses it through `usePauseWhileAway` / `usePausableClock`; saved progress restores on mount and calls `resume()`
+- [ ] A game with its own clock pauses it through `usePauseWhileAway` / `usePausableClock`; saved progress restores on mount and calls `resume()` (through `usePersistedGameState` where it fits, §8)
 - [ ] Game over fires once per game; "new best" comes from `bestOf`
 - [ ] No React state is set once per frame
 
