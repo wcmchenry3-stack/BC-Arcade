@@ -73,6 +73,7 @@ class SecurityHeadersAndLogMiddleware:
 
         async def send_wrapper(message: Message) -> None:
             if message["type"] == "http.response.start":
+                message.setdefault("headers", [])
                 headers = MutableHeaders(scope=message)
                 for name, value in SECURITY_HEADERS:
                     headers[name] = value
