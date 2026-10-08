@@ -24,20 +24,13 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  AppState,
-  AppStateStatus,
-  LayoutChangeEvent,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../types/navigation";
+import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import {
@@ -77,6 +70,9 @@ import { useReduceMotion } from "../components/shared/useReduceMotion";
 
 /** Padding inside the board container; SortBoard sizes bottles to what's left. */
 const BOARD_PADDING = 16;
+
+/** Sort has no clock to pause: it only saves on the way out (`onLeave`). */
+const noop = () => {};
 
 /** SortBoard's pour props for the pour in flight, or none. */
 function boardPourProps(pour: Pour | null) {
@@ -223,27 +219,26 @@ export default function SortScreen() {
     });
   }, [gameState, view, currentLevelId]);
 
-  // Save on app background
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
-      if (next === "background" || next === "inactive") {
-        if (
-          view === "play" &&
-          currentLevelId !== null &&
-          gameState !== null &&
-          !gameState.isComplete
-        ) {
-          void saveProgress({
-            ...progressRef.current,
-            currentLevelId,
-            currentState: gameState,
-          });
-        }
+  // Save on app background: each move of the app to "background" or
+  // "inactive" (not a blur — the board is saved on every change anyway, and
+  // nothing here pauses). The handler reads this render's board.
+  usePauseWhileAway(navigation, noop, noop, {
+    onLeave: (event) => {
+      if (event.reason !== "appState") return;
+      if (
+        view === "play" &&
+        currentLevelId !== null &&
+        gameState !== null &&
+        !gameState.isComplete
+      ) {
+        void saveProgress({
+          ...progressRef.current,
+          currentLevelId,
+          currentState: gameState,
+        });
       }
-    });
-    return () => sub.remove();
-    // progressRef is a stable ref, so it doesn't belong in the dep array.
-  }, [view, currentLevelId, gameState]);
+    },
+  });
 
   // Unlock the next level, complete the session and show the result card as
   // soon as the puzzle is solved. Nothing here waits on the network or on

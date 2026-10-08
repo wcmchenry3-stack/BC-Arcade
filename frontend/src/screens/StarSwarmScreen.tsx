@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useReducer, useRef, useState } from "rea
 import {
   AccessibilityInfo,
   ActivityIndicator,
-  AppState,
-  AppStateStatus,
   LayoutChangeEvent,
   Pressable,
   ScrollView,
@@ -64,6 +62,7 @@ import {
   isPausedStateHydrated,
 } from "../game/starswarm/pauseStore";
 import { useStarSwarmAudio } from "../hooks/useStarSwarmAudio";
+import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import {
   initialRunState,
   isLiveRun as isLiveRunOf,
@@ -78,6 +77,9 @@ import {
  * release builds, and reaching wave 5 or 9 there needs the panel. Store builds never show it.
  */
 const DEV_TOOLS = __DEV__ || isPreLaunchApiBuild();
+
+/** The run stays paused on return until the player resumes it: nothing to do then. */
+const noop = () => {};
 
 // Each tier on its own row, its score multiplier underneath (#2982).
 const tierOptions: readonly DifficultyOption<DifficultyTier>[] = DIFFICULTY_TIERS.map((tier) => ({
@@ -483,17 +485,11 @@ function StarSwarmGame() {
     savePausedRun(state);
   }, [handlePause, savePausedRun]);
 
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
-      if (next !== "background" && next !== "inactive") return;
-      pauseLiveRun();
-    });
-    return () => sub.remove();
-  }, [pauseLiveRun]);
-
   // Leaving the screen mid-run (the ⋯ menu's Leaderboard, #2633) pauses it the same way:
   // the screen stays mounted under the pushed one, so the run would go on unseen.
-  useEffect(() => navigation.addListener("blur", pauseLiveRun), [navigation, pauseLiveRun]);
+  // Both act on every leave event (`onLeave`), not once per absence (`onPause`): a run resumed
+  // while the player still counts as away (the app inactive, say) is paused by the next one.
+  usePauseWhileAway(navigation, noop, noop, { onLeave: pauseLiveRun });
 
   // The canvas reads its dev options through a ref, so a fresh object per render costs nothing.
   const canvasDev = DEV_TOOLS ? canvasDevOptions(lastDevOptsRef.current, devOptions) : undefined;

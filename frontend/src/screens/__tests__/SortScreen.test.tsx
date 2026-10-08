@@ -1,6 +1,8 @@
 import React from "react";
 import { act, fireEvent, render, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AppState } from "react-native";
+import type { AppStateStatus } from "react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import SortScreen from "../SortScreen";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
@@ -50,9 +52,22 @@ jest.mock("../../components/sort/SortBoard", () => {
 const mockGoBack = jest.fn();
 const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
+// usePauseWhileAway's focus listeners (#3087), live so a test can blur the screen.
+const mockNavListeners = new Map<string, Set<() => void>>();
+const mockAddListener = jest.fn((event: string, cb: () => void) => {
+  const set = mockNavListeners.get(event) ?? new Set();
+  set.add(cb);
+  mockNavListeners.set(event, set);
+  return () => set.delete(cb);
+});
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(
-    () => ({ goBack: mockGoBack, popToTop: mockPopToTop, navigate: mockNavigate }),
+    () => ({
+      goBack: mockGoBack,
+      popToTop: mockPopToTop,
+      navigate: mockNavigate,
+      addListener: mockAddListener,
+    }),
     { actual: true }
   )
 );
@@ -343,6 +358,53 @@ describe("SortScreen — entering and playing a level", () => {
     });
     const undoBtn = await findByLabelText("Undo");
     expect(undoBtn.props.accessibilityState?.disabled).toBeFalsy();
+  });
+});
+
+describe("SortScreen — save on leaving the app", () => {
+  let appStateListeners: Set<(s: AppStateStatus) => void>;
+  beforeEach(() => {
+    appStateListeners = new Set();
+    jest.spyOn(AppState, "addEventListener").mockImplementation(((
+      _type: string,
+      cb: (s: AppStateStatus) => void
+    ) => {
+      appStateListeners.add(cb);
+      return { remove: () => appStateListeners.delete(cb) };
+    }) as unknown as typeof AppState.addEventListener);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  const setAppState = (s: AppStateStatus) =>
+    act(async () => appStateListeners.forEach((cb) => cb(s)));
+  const blur = () => act(async () => mockNavListeners.get("blur")?.forEach((cb) => cb()));
+
+  it("saves the board in play on each move to inactive or background, and not on a blur", async () => {
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    await r.findByLabelText("Back to levels");
+    storage.saveProgress.mockClear();
+
+    await setAppState("inactive");
+    await setAppState("background");
+    expect(storage.saveProgress).toHaveBeenCalledTimes(2);
+    expect(storage.saveProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ currentLevelId: 1, currentState: expect.any(Object) })
+    );
+
+    await setAppState("active");
+    await blur();
+    expect(storage.saveProgress).toHaveBeenCalledTimes(2);
+  });
+
+  it("saves nothing at the level select", async () => {
+    const r = await renderScreen();
+    await r.findByLabelText("Level 1");
+    storage.saveProgress.mockClear();
+    await setAppState("background");
+    expect(storage.saveProgress).not.toHaveBeenCalled();
   });
 });
 
