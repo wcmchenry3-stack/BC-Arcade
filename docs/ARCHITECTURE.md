@@ -248,6 +248,46 @@ are headless and pure like the engines that import them:
   hints and auto-complete are not shared. Blackjack's cards (`rank: string`,
   suit glyphs) are a different domain and do not use `_shared/cards`.
 
+### 3.4 Star Swarm engine layout (#2988)
+
+An engine that outgrows one file becomes a package behind a barrel: the
+public module keeps its path (`game/starswarm/engine.ts`, now a pure
+`export *` barrel, so no importer changes) and the code lives in
+`game/starswarm/engine/`, one module per subsystem, each under the
+`max-lines` gate with its own `__tests__/engine.<module>.test.ts`:
+
+| Module           | Owns                                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------------- |
+| `tuning.ts`      | Every tunable, the difficulty tiers (`DIFFICULTY_TIERS`), and the injectable `Tuning` / `DEFAULT_TUNING`    |
+| `rng.ts`         | The seeded LCG (`seedRng`, via `_shared/seededRng`) and the id counters; `engineCounters()` for saves       |
+| `geometry.ts`    | Béziers, overlap tests, the formation slot layout, path factories, proportional aim, `hashFrac`             |
+| `roster.ts`      | Roster reads (leader tiers, Carrier armor and stage), the per-tick `TickCtx`, `mapKeep` / `mapFilterKeep`   |
+| `stats.ts`       | Per-tier dodge/flak counters and the run-wide counters                                                      |
+| `entities.ts`    | Pickups, explosions, the power-up type roll                                                                 |
+| `extraction.ts`  | The `weaponsFree` / `hazardsLive` gates, live hazards, the extraction autopilot, `clearTransientCombat`     |
+| `asteroids.ts`   | Rocks: entries, spawns, the threat contract, and the enemies' response to them (`tickAsteroidThreats`)      |
+| `buddy.ts`       | Buddy: station, attack runs, evasion, the fire it draws, the hits it takes                                  |
+| `carrier.ts`     | The Carrier: cadences, the volley seam, beam, attack run, and the event selectors                           |
+| `enemyPhases.ts` | The per-ship phase machine (SwoopIn → Formation → Wiggling → Diving → Circling → Returning, Fleeing)        |
+| `enemies.ts`     | `tickEnemies`: the fleet-wide tick (dive scheduling, sway, the Carrier context, reinforcements, stragglers) |
+| `collisions.ts`  | Bullets in flight and the single damage-resolution pass (`tickCollisions`, `applyBombBlast`)                |
+| `powerups.ts`    | The player's volley, upgrade ladders, pickups, `applyPowerUp`                                               |
+| `wave.ts`        | `initStarSwarm`, `buildWaveState`, `tick` (the pipeline order is in its header), the phase machine          |
+
+Modules only import downward in that order (no cycles), and the barrel is the
+only thing outside the package that imports them.
+
+**Tuning injection.** The tunables the balance simulator sweeps are fields of
+a `Tuning` object; `tick(state, dt, input, tuning = DEFAULT_TUNING)`,
+`initStarSwarm(…, tuning)` and `applyPowerUp(state, type, tuning)` thread one
+object through the sub-ticks that read it — a property read per use, no
+per-tick allocation, and the shipped game never passes one. The simulator
+(`tooling/starswarm/engineVariant.ts`) binds those entry points to
+`DEFAULT_TUNING` plus a variant's overrides instead of patching the engine's
+source. Adding a sweepable knob means adding a `Tuning` field (defaulting to
+the module constant of the same name) and reading it where the behaviour
+lives; a prototype behaviour is a knob that is a no-op at its default.
+
 ## 4. Persistence and offline contract
 
 **One write path.** Every game records its sessions the same way, and **no
