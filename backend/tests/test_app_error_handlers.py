@@ -268,6 +268,33 @@ def test_require_entitlement_shares_the_route_session(monkeypatch: pytest.Monkey
     assert seen["dependency"] is seen["route"]
 
 
+def test_require_entitlement_releases_its_connection_before_the_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The read-only check must not keep a pooled connection checked out
+    (idle in transaction) for the whole of a slow route."""
+    seen: dict[str, bool] = {}
+
+    async def reading_check(db: AsyncSession, session_id: str, game_slug: str) -> None:
+        await db.execute(text("SELECT 1"))  # opens a transaction, as the real check does
+        seen["checked_in_transaction"] = db.in_transaction()
+
+    monkeypatch.setattr(ent_deps, "check_entitlement", reading_check)
+    router = APIRouter(dependencies=[Depends(ent_deps.require_entitlement("hearts"))])
+
+    @router.get("/x")
+    async def route(request: Request, db: DbSession) -> dict:
+        seen["in_transaction"] = db.in_transaction()
+        return {}
+
+    app = FastAPI()
+    app.include_router(router)
+    r = TestClient(app).get("/x", headers={"X-Session-ID": str(uuid.uuid4())})
+    assert r.status_code == 200
+    assert seen["checked_in_transaction"] is True
+    assert seen["in_transaction"] is False
+
+
 def test_get_db_session_is_closed_before_the_response_is_sent() -> None:
     """``scope="function"``: like the old ``async with factory() as db:`` blocks,
     the session (and its connection) is released before the body goes out."""

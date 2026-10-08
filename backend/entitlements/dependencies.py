@@ -54,10 +54,17 @@ def require_entitlement(game_slug: str):
 
     Depends on ``get_db``, so it checks on the request's own session (the one
     a route taking ``db: DbSession`` also gets) rather than opening a second.
+    The check only reads, so its transaction is ended straight away: the
+    connection goes back to the pool instead of staying checked out for the
+    rest of a slow route (``/sort/levels`` builds levels for ~0.4 s).
     """
 
     async def _dep(request: Request, db: DbSession) -> None:
         sid = get_session_id(request)
-        await check_entitlement(db, sid, game_slug)
+        try:
+            await check_entitlement(db, sid, game_slug)
+        finally:
+            if db.in_transaction():
+                await db.commit()
 
     return _dep
