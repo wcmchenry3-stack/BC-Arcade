@@ -219,7 +219,7 @@ def test_render_yaml_apis_declare_their_sentry_environment() -> None:
 # ---------------------------------------------------------------------------
 # CORS — web platform requests must receive Access-Control-Allow-Origin (#1739)
 #
-# _allowed_origins is resolved at import time from ALLOWED_ORIGINS env var;
+# CORS origins come from ALLOWED_ORIGINS (settings.Settings) when the app is built;
 # when the var is unset in tests the default is ["http://localhost:8081",
 # "http://localhost:19006"].  Tests use one of those values as the Origin so
 # they exercise real CORSMiddleware behaviour without re-importing the module.
