@@ -715,6 +715,7 @@ function StarSwarmGame() {
             visible
             onRequestClose={handleConfirmDifficulty}
             title={t("difficulty.selectTitle")}
+            size="md"
           >
             <ScrollView showsVerticalScrollIndicator={false} style={styles.pickerScroll}>
               <DifficultyPicker
@@ -1168,8 +1169,11 @@ const baseStyles = StyleSheet.create({
   devTierTextActive: {
     color: "#ff8000",
   },
+  // The md card caps its height; the tier list shrinks inside it so the
+  // Start button stays on screen in short landscape windows.
   pickerScroll: {
     maxHeight: 320,
+    flexShrink: 1,
     alignSelf: "stretch",
   },
   pickerActions: {
