@@ -380,7 +380,9 @@ describe("useGameRank: offline, pending, backoff and errors (#2677)", () => {
     const { result } = await setup(jest.fn().mockRejectedValue(new Error("bug")));
     await act(() => result.current.lookup(GAME_ID));
     expect(result.current.status).toBe("error");
-    expect(Sentry.captureException).toHaveBeenCalled();
+    expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      tags: { subsystem: "leaderboardSubmit", gameType: "sudoku" },
+    });
   });
 
   it("reset() cancels the timer and the reconnect fetch", async () => {

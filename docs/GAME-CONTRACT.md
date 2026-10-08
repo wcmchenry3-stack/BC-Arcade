@@ -551,7 +551,7 @@ const { leaderboard, openLeaderboard } = useGameLeaderboard("sudoku", navigation
   difficulty, // the partition played, if the board has one
 });
 // on game over, with the id complete() returned:
-void leaderboard.submit({ gameId });
+void leaderboard.lookup(gameId);
 // the card:
 <GameResultModal submission={toSubmission(leaderboard)} onViewLeaderboard={openLeaderboard} … />
 // the shell:
@@ -626,7 +626,7 @@ Use this checklist when adding a new game. Each item links to the file to create
 - [ ] **`useGameSync`** (§2.3) — `start()` with the metadata, `markStarted()` on the first real action, `complete()` with an explicit `result` block, `setProgressSnapshot()` so the hook's abandons carry it; `resume()` if the screen restores saved progress; no `beforeRemove` abandon handler
 - [ ] **Outcome** (§2.4) — `recordedOutcome(cardOutcome)` if `has_winner`, else `"completed"`; drive every finish path in a screen test (the outcome guard throws there)
 - [ ] **Duration** — send the game's own active clock as `durationMs` if it has one (paused while backgrounded and on `blur`); otherwise send nothing and let the play window count; call `resetPlayWindow()` where a new board or picker appears before the session opens (§2.3)
-- [ ] **Result card** (§2.5) — end on `GameResultModal`; with an enabled board, `useGameLeaderboard("mygame", navigation, partition)`, `leaderboard.submit({ gameId })` with the id `complete()` returned, `leaderboard.reset()` on a new game, and `toSubmission(leaderboard)` as `submission`
+- [ ] **Result card** (§2.5) — end on `GameResultModal`; with an enabled board, `useGameLeaderboard("mygame", navigation, partition)`, `leaderboard.lookup(gameId)` with the id `complete()` returned, `leaderboard.reset()` on a new game, and `toSubmission(leaderboard)` as `submission`
 - [ ] **Leaderboard link** — `useGameLeaderboard`'s `openLeaderboard` passed to both `GameResultModal.onViewLeaderboard` and `GameShell.onOpenLeaderboard`
 - [ ] **Stats entry** — nothing to build: `GameStats` and Profile read `/stats/me` (§2.6); check the game's tiles show sensible values (win figures "—" for a score-only game)
 - [ ] **`noUncheckedIndexedAccess`** clean — no suppression comments
