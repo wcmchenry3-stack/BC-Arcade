@@ -143,6 +143,8 @@ class Settings(BaseSettings):
     )
     @classmethod
     def _strip_store_value(cls, value: Any) -> Any:
+        if isinstance(value, SecretStr):
+            return SecretStr(value.get_secret_value().strip())
         return value.strip() if isinstance(value, str) else value
 
     @classmethod

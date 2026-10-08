@@ -39,7 +39,10 @@ def set_dev_override(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
 class StoreEnv(pytest.MonkeyPatch):
     """A ``MonkeyPatch`` whose ``setenv`` / ``delenv`` also drop ``purchases._common``'s lazy
     ``Settings``, so the next store-config read sees the new ``APPLE_*`` / ``GOOGLE_*``
-    values (it is otherwise built once per process)."""
+    values (it is otherwise built once per process).
+
+    Limits: a ``_settings`` a test injected earlier is dropped by the next ``setenv`` /
+    ``delenv``, and env changes made through ``setitem`` / ``context()`` do not reset it."""
 
     def setenv(self, name: str, value: str, prepend: str | None = None) -> None:
         super().setenv(name, value, prepend)

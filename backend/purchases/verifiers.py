@@ -126,9 +126,10 @@ def allowed_environments(platform: str) -> frozenset[str]:
     Read from ``APPLE_IAP_ENVIRONMENTS`` / ``GOOGLE_PLAY_ENVIRONMENTS``
     (comma-separated, case-insensitive: ``Production,Sandbox`` /
     ``production,test``; empty means the default) through ``purchases._common``'s
-    lazy ``Settings``, so it is read once per process, not on every call. The verifiers of #2786 / #2787 must
-    apply the same list before any store call; the purchase service checks
-    it again on the verified answer (defence in depth).
+    lazy ``Settings``, so it is read once per process, not on every call. A blank
+    (whitespace-only) value yields no environments. The verifiers of #2786 /
+    #2787 must apply the same list before any store call; the purchase service
+    checks it again on the verified answer (defence in depth).
     """
     settings = get_settings()
     configured = {

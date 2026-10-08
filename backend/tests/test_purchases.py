@@ -1247,6 +1247,8 @@ def test_allowed_environments_parsing(store_env: pytest.MonkeyPatch) -> None:
     assert allowed_environments("google") == {"production", "test"}
     store_env.setenv("APPLE_IAP_ENVIRONMENTS", " Production , ")
     assert allowed_environments("apple") == {"production"}
+    store_env.setenv("APPLE_IAP_ENVIRONMENTS", "   ")  # blank is not unset: no environments
+    assert allowed_environments("apple") == frozenset()
     assert allowed_environments("amazon") == frozenset()
 
 

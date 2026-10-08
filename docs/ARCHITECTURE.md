@@ -1119,11 +1119,11 @@ Operational tunables (TTLs, windows, caps) are named constants, never env vars.
 | `APPLE_APP_ID`         | unset (required when `Production` is allowed)     | `purchases/apple_store.py` (lazy)                       |
 | `APPLE_IAP_ISSUER_ID` / `APPLE_IAP_KEY_ID` / `APPLE_IAP_PRIVATE_KEY` | unset (no App Store Server API; all three or none) | `purchases/apple_store.py` (lazy) |
 | `APPLE_IAP_ONLINE_CHECKS` | unset (on; refused when off in production)     | `purchases/apple_store.py` (lazy)                       |
-| `APPLE_IAP_ENVIRONMENTS` | empty → `Production,Sandbox`                    | `purchases/verifiers.py` (lazy, once per process)       |
+| `APPLE_IAP_ENVIRONMENTS` | unset/empty → `Production,Sandbox` (blank → none: misconfigured) | `purchases/verifiers.py` (lazy, once per process)       |
 | `GOOGLE_PLAY_PACKAGE_NAME` | unset (Google verification dormant)           | `purchases/google_play.py` (lazy)                       |
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | unset (required with the package name) | `purchases/google_play.py` (lazy)                       |
 | `GOOGLE_RTDN_AUDIENCE` / `GOOGLE_RTDN_PUSH_SA` | unset (required with the package name) | `purchases/google_play.py` (lazy)             |
-| `GOOGLE_PLAY_ENVIRONMENTS` | empty → `production,test`                     | `purchases/verifiers.py` (lazy, once per process)       |
+| `GOOGLE_PLAY_ENVIRONMENTS` | unset/empty → `production,test` (blank → none: misconfigured) | `purchases/verifiers.py` (lazy, once per process)       |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is
@@ -1150,9 +1150,8 @@ process instead of on every call. Tests reset it with
 The admin token, the keys, the Apple private key and the Google service-account
 JSON are `SecretStr`, so `repr(settings)` does not show them.
 
-Not yet migrated (each package moves in its own PR): the `APPLE_*` / `GOOGLE_*`
-store config (`purchases/`). Their meanings and where
-each is set are in [RENDER.md](RENDER.md#environment-variables).
+The meaning of each variable and where it is set are in
+[RENDER.md](RENDER.md#environment-variables).
 
 ## 12. Daily cross-game challenge
 
