@@ -31,10 +31,11 @@ codes (IAP.md §8.2) instead of returning a partial result:
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, Protocol, runtime_checkable
+
+from ._common import get_settings
 
 Platform = Literal["apple", "google"]
 PurchaseState = Literal["pending", "owned", "revoked", "cancelled"]
@@ -117,10 +118,6 @@ _DEFAULT_ENVIRONMENTS: dict[str, str] = {
     "apple": "Production,Sandbox",
     "google": "production,test",
 }
-_ENVIRONMENT_VARS: dict[str, str] = {
-    "apple": "APPLE_IAP_ENVIRONMENTS",
-    "google": "GOOGLE_PLAY_ENVIRONMENTS",
-}
 
 
 def allowed_environments(platform: str) -> frozenset[str]:
@@ -128,14 +125,19 @@ def allowed_environments(platform: str) -> frozenset[str]:
 
     Read from ``APPLE_IAP_ENVIRONMENTS`` / ``GOOGLE_PLAY_ENVIRONMENTS``
     (comma-separated, case-insensitive: ``Production,Sandbox`` /
-    ``production,test``) on every call. The verifiers of #2786 / #2787 must
+    ``production,test``; empty means the default) through ``purchases._common``'s
+    lazy ``Settings``, so it is read once per process, not on every call. The verifiers of #2786 / #2787 must
     apply the same list before any store call; the purchase service checks
     it again on the verified answer (defence in depth).
     """
-    var = _ENVIRONMENT_VARS.get(platform)
-    if var is None:
+    settings = get_settings()
+    configured = {
+        "apple": settings.apple_iap_environments_raw,
+        "google": settings.google_play_environments_raw,
+    }.get(platform)
+    if configured is None:
         return frozenset()
-    raw = os.environ.get(var) or _DEFAULT_ENVIRONMENTS[platform]
+    raw = configured or _DEFAULT_ENVIRONMENTS[platform]
     return frozenset(e.strip().lower() for e in raw.split(",") if e.strip())
 
 

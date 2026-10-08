@@ -1115,6 +1115,15 @@ Operational tunables (TTLs, windows, caps) are named constants, never env vars.
 | `ADMIN_API_TOKEN`      | empty (admin `PATCH /games/catalog/{id}` always 403s) | `games/router.py` (at startup, via `app.state.settings`) |
 | `ENTITLEMENT_DEV_OVERRIDE` | unset (override off; only `true` turns it on) | `entitlements/service.py` (lazy, on first use)          |
 | `ENTITLEMENT_PRIVATE_KEY` / `ENTITLEMENT_PUBLIC_KEY` | unset or blank (an ephemeral pair is generated) | `entitlements/service.py` (lazy, on first use) |
+| `APPLE_BUNDLE_ID`      | unset (Apple verification dormant)                | `purchases/apple_store.py` (lazy, via `purchases/_common.py`) |
+| `APPLE_APP_ID`         | unset (required when `Production` is allowed)     | `purchases/apple_store.py` (lazy)                       |
+| `APPLE_IAP_ISSUER_ID` / `APPLE_IAP_KEY_ID` / `APPLE_IAP_PRIVATE_KEY` | unset (no App Store Server API; all three or none) | `purchases/apple_store.py` (lazy) |
+| `APPLE_IAP_ONLINE_CHECKS` | unset (on; refused when off in production)     | `purchases/apple_store.py` (lazy)                       |
+| `APPLE_IAP_ENVIRONMENTS` | empty → `Production,Sandbox`                    | `purchases/verifiers.py` (lazy, once per process)       |
+| `GOOGLE_PLAY_PACKAGE_NAME` | unset (Google verification dormant)           | `purchases/google_play.py` (lazy)                       |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | unset (required with the package name) | `purchases/google_play.py` (lazy)                       |
+| `GOOGLE_RTDN_AUDIENCE` / `GOOGLE_RTDN_PUSH_SA` | unset (required with the package name) | `purchases/google_play.py` (lazy)             |
+| `GOOGLE_PLAY_ENVIRONMENTS` | empty → `production,test`                     | `purchases/verifiers.py` (lazy, once per process)       |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is
@@ -1132,7 +1141,14 @@ imports.
 (`entitlements/service.py`) follow the `db/base.py` pattern: built on first use,
 kept for the process, overridden in tests with
 `monkeypatch.setattr(service, "_settings", ...)` (`tests/_helpers.set_dev_override`).
-The admin token and the keys are `SecretStr`, so `repr(settings)` does not show them.
+The `APPLE_*` / `GOOGLE_*` store config (`purchases/_common.py`'s `_settings`,
+via `get_settings()`) follows the same pattern, including the two
+`*_ENVIRONMENTS` lists, which `allowed_environments()` therefore reads once per
+process instead of on every call. Tests reset it with
+`monkeypatch.setattr(_common, "_settings", None)` after changing those env vars
+(`tests/_helpers.StoreEnv`, the `store_env` fixture).
+The admin token, the keys, the Apple private key and the Google service-account
+JSON are `SecretStr`, so `repr(settings)` does not show them.
 
 Not yet migrated (each package moves in its own PR): the `APPLE_*` / `GOOGLE_*`
 store config (`purchases/`). Their meanings and where

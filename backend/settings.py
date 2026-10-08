@@ -4,8 +4,9 @@
 keeps it on ``app.state.settings`` and hands the relevant fields to the code that
 needs them. Tests override configuration by passing ``create_app(Settings(...))``
 or by setting env vars before ``create_app()``, except for the values a module reads
-from its own lazy ``Settings``: ``DATABASE_URL`` (``db.base._settings``) and the
-``ENTITLEMENT_*`` fields (``entitlements.service._settings``). Passing those through
+from its own lazy ``Settings``: ``DATABASE_URL`` (``db.base._settings``), the
+``ENTITLEMENT_*`` fields (``entitlements.service._settings``) and the ``APPLE_*`` /
+``GOOGLE_*`` fields (``purchases._common._settings``). Passing those through
 ``create_app(settings)`` has no effect; tests set the module's ``_settings`` instead
 (``tests/_helpers.set_dev_override``). Two values are still read when
 their module is imported: ``DAILY_WORD_SALT`` (``daily_word/puzzle.py``) and
@@ -31,10 +32,13 @@ Migrated so far: the app-level settings ``main``, ``limiter`` and
 (``games.router``, from ``app.state.settings``, so read once at startup rather
 than per request); and ``ENTITLEMENT_DEV_OVERRIDE`` / ``ENTITLEMENT_PRIVATE_KEY``
 / ``ENTITLEMENT_PUBLIC_KEY`` (``entitlements.service``, read lazily on first use
-and kept for the process). The ``APPLE_*`` / ``GOOGLE_*`` store config moves
-here in a later PR.
+and kept for the process); and the ``APPLE_*`` / ``GOOGLE_*`` store config
+(``purchases._common``, read lazily on first use and kept for the process, so
+``APPLE_IAP_ENVIRONMENTS`` / ``GOOGLE_PLAY_ENVIRONMENTS`` are no longer re-read on
+every ``allowed_environments()`` call).
 
-Secrets (``ADMIN_API_TOKEN`` and the entitlement keys) are ``SecretStr``, so a
+Secrets (``ADMIN_API_TOKEN``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
+``GOOGLE_PLAY_SERVICE_ACCOUNT_JSON``) are ``SecretStr``, so a
 ``repr()`` or log of ``Settings`` shows ``**********``; call ``.get_secret_value()``
 where the value is used.
 """
@@ -43,7 +47,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 # CORS origins when ALLOWED_ORIGINS is unset or empty: the local Expo dev servers.
@@ -102,6 +106,44 @@ class Settings(BaseSettings):
         default=SecretStr(""), alias="ENTITLEMENT_PRIVATE_KEY"
     )
     entitlement_public_key: SecretStr = Field(default=SecretStr(""), alias="ENTITLEMENT_PUBLIC_KEY")
+
+    # The APPLE_* / GOOGLE_* store config is read from purchases._common's own lazy
+    # Settings, not app.state.settings; create_app(settings) does not affect it.
+    # Every value except the two *_ENVIRONMENTS lists is stripped on load, so unset,
+    # empty and blank all read as "" (the old ``(os.environ.get(n) or "").strip()``).
+    apple_bundle_id: str = Field(default="", alias="APPLE_BUNDLE_ID")
+    apple_app_id: str = Field(default="", alias="APPLE_APP_ID")
+    apple_iap_issuer_id: str = Field(default="", alias="APPLE_IAP_ISSUER_ID")
+    apple_iap_key_id: str = Field(default="", alias="APPLE_IAP_KEY_ID")
+    apple_iap_private_key: SecretStr = Field(default=SecretStr(""), alias="APPLE_IAP_PRIVATE_KEY")
+    apple_iap_online_checks: str = Field(default="", alias="APPLE_IAP_ONLINE_CHECKS")
+    google_play_package_name: str = Field(default="", alias="GOOGLE_PLAY_PACKAGE_NAME")
+    google_play_service_account_json: SecretStr = Field(
+        default=SecretStr(""), alias="GOOGLE_PLAY_SERVICE_ACCOUNT_JSON"
+    )
+    google_rtdn_audience: str = Field(default="", alias="GOOGLE_RTDN_AUDIENCE")
+    google_rtdn_push_sa: str = Field(default="", alias="GOOGLE_RTDN_PUSH_SA")
+    # Raw, not stripped: ``purchases.verifiers.allowed_environments`` falls back to
+    # its default when the value is empty and does the strip/lowercase/split itself.
+    apple_iap_environments_raw: str = Field(default="", alias="APPLE_IAP_ENVIRONMENTS")
+    google_play_environments_raw: str = Field(default="", alias="GOOGLE_PLAY_ENVIRONMENTS")
+
+    @field_validator(
+        "apple_bundle_id",
+        "apple_app_id",
+        "apple_iap_issuer_id",
+        "apple_iap_key_id",
+        "apple_iap_private_key",
+        "apple_iap_online_checks",
+        "google_play_package_name",
+        "google_play_service_account_json",
+        "google_rtdn_audience",
+        "google_rtdn_push_sa",
+        mode="before",
+    )
+    @classmethod
+    def _strip_store_value(cls, value: Any) -> Any:
+        return value.strip() if isinstance(value, str) else value
 
     @classmethod
     def isolated(cls, **values: Any) -> Settings:

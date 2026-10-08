@@ -40,7 +40,7 @@ import google.auth.transport
 import httpx
 from google.oauth2 import service_account
 
-from ._common import env_str, misconfigured
+from ._common import get_settings, misconfigured
 from .verifiers import (
     Environment,
     GoogleEvidence,
@@ -124,7 +124,8 @@ def load_config() -> GoogleConfig | None:
     Unset package name → quietly dormant. Package name set but anything else
     missing or invalid → dormant and reported.
     """
-    package = env_str("GOOGLE_PLAY_PACKAGE_NAME")
+    settings = get_settings()
+    package = settings.google_play_package_name
     if not package:
         return None
     if not _PACKAGE_RE.match(package):
@@ -134,7 +135,7 @@ def load_config() -> GoogleConfig | None:
     if not envs:
         misconfigured("google", "environments")
         return None
-    raw_key = env_str("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON")
+    raw_key = settings.google_play_service_account_json.get_secret_value()
     if not raw_key:
         misconfigured("google", "service_account_missing")
         return None
@@ -142,8 +143,8 @@ def load_config() -> GoogleConfig | None:
     if info is None:
         misconfigured("google", "service_account")
         return None
-    audience = env_str("GOOGLE_RTDN_AUDIENCE")
-    push_sa = env_str("GOOGLE_RTDN_PUSH_SA")
+    audience = settings.google_rtdn_audience
+    push_sa = settings.google_rtdn_push_sa
     if not audience:
         misconfigured("google", "rtdn_audience")
         return None

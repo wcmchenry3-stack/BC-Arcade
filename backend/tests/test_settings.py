@@ -325,3 +325,83 @@ def test_log_proxy_trust_reports_refusal_from_the_flag(
     with caplog.at_level("INFO", logger="audit"):
         limiter_module.log_proxy_trust(log_proxy_headers_requested=True)
     assert "log_proxy_headers_ignored" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# APPLE_* / GOOGLE_* store config (#2997 PR 4)
+# ---------------------------------------------------------------------------
+
+STORE_STRIPPED = {
+    "APPLE_BUNDLE_ID": "apple_bundle_id",
+    "APPLE_APP_ID": "apple_app_id",
+    "APPLE_IAP_ISSUER_ID": "apple_iap_issuer_id",
+    "APPLE_IAP_KEY_ID": "apple_iap_key_id",
+    "APPLE_IAP_ONLINE_CHECKS": "apple_iap_online_checks",
+    "GOOGLE_PLAY_PACKAGE_NAME": "google_play_package_name",
+    "GOOGLE_RTDN_AUDIENCE": "google_rtdn_audience",
+    "GOOGLE_RTDN_PUSH_SA": "google_rtdn_push_sa",
+}
+STORE_SECRETS = {
+    "APPLE_IAP_PRIVATE_KEY": "apple_iap_private_key",
+    "GOOGLE_PLAY_SERVICE_ACCOUNT_JSON": "google_play_service_account_json",
+}
+STORE_ENVIRONMENTS = {
+    "APPLE_IAP_ENVIRONMENTS": "apple_iap_environments_raw",
+    "GOOGLE_PLAY_ENVIRONMENTS": "google_play_environments_raw",
+}
+STORE_VARS = (*STORE_STRIPPED, *STORE_SECRETS, *STORE_ENVIRONMENTS)
+
+
+def test_store_defaults_match_the_old_reads(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in STORE_VARS:
+        monkeypatch.delenv(name, raising=False)
+    s = Settings()
+    for field in STORE_STRIPPED.values():
+        assert getattr(s, field) == ""
+    for field in STORE_SECRETS.values():
+        assert getattr(s, field).get_secret_value() == ""
+    # Empty means "use the default": allowed_environments applies it, not Settings.
+    assert s.apple_iap_environments_raw == "" and s.google_play_environments_raw == ""
+
+
+def test_store_values_are_stripped_and_blank_reads_as_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # (os.environ.get(name) or "").strip()
+    for name in (*STORE_STRIPPED, *STORE_SECRETS):
+        monkeypatch.setenv(name, "  value \n")
+    s = Settings()
+    for field in STORE_STRIPPED.values():
+        assert getattr(s, field) == "value"
+    for field in STORE_SECRETS.values():
+        assert getattr(s, field).get_secret_value() == "value"
+    for name in (*STORE_STRIPPED, *STORE_SECRETS):
+        monkeypatch.setenv(name, "   ")
+    s = Settings()
+    assert all(getattr(s, f) == "" for f in STORE_STRIPPED.values())
+    assert all(getattr(s, f).get_secret_value() == "" for f in STORE_SECRETS.values())
+
+
+def test_store_environment_lists_stay_raw(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in STORE_ENVIRONMENTS:
+        monkeypatch.setenv(name, " Production , ")
+    s = Settings()
+    assert s.apple_iap_environments_raw == " Production , "
+    assert s.google_play_environments_raw == " Production , "
+
+
+def test_store_secrets_are_hidden_in_repr(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in STORE_SECRETS:
+        monkeypatch.setenv(name, "super-secret-material")
+    s = Settings()
+    assert "super-secret-material" not in repr(s) and "super-secret-material" not in str(s)
+    assert "**********" in repr(s)
+
+
+def test_store_env_names_are_case_sensitive(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in STORE_VARS:
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv(name.lower(), "x")
+    s = Settings()
+    assert all(getattr(s, f) == "" for f in STORE_STRIPPED.values())
+    assert s.apple_iap_environments_raw == ""

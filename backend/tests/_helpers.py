@@ -9,15 +9,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import jwt
+import pytest
 from pydantic import SecretStr
 from sqlalchemy import func, select
 
 from db.base import get_session_factory
 from entitlements import service as entitlements_service
+from purchases import _common as purchases_common
 from settings import Settings
 
 if TYPE_CHECKING:
-    import pytest
     from fastapi.testclient import TestClient
 
 
@@ -33,6 +34,20 @@ def set_dev_override(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
         "_settings",
         base.model_copy(update={"entitlement_dev_override_raw": value}),
     )
+
+
+class StoreEnv(pytest.MonkeyPatch):
+    """A ``MonkeyPatch`` whose ``setenv`` / ``delenv`` also drop ``purchases._common``'s lazy
+    ``Settings``, so the next store-config read sees the new ``APPLE_*`` / ``GOOGLE_*``
+    values (it is otherwise built once per process)."""
+
+    def setenv(self, name: str, value: str, prepend: str | None = None) -> None:
+        super().setenv(name, value, prepend)
+        self.setattr(purchases_common, "_settings", None)
+
+    def delenv(self, name: str, raising: bool = True) -> None:
+        super().delenv(name, raising)
+        self.setattr(purchases_common, "_settings", None)
 
 
 def set_admin_token(client: TestClient, monkeypatch: pytest.MonkeyPatch, token: str) -> None:

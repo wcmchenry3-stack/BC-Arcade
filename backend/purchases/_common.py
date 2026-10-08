@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from datetime import UTC, datetime
 from typing import Literal
 
 import sentry_sdk
+
+from settings import Settings
 
 _log = logging.getLogger("audit")
 
@@ -22,9 +23,19 @@ _log = logging.getLogger("audit")
 _MISCONFIGURED_PREFIX = {"apple": "apple_iap", "google": "google_play"}
 
 
-def env_str(name: str) -> str:
-    """``os.environ[name]`` stripped, or ``""`` when unset or empty."""
-    return (os.environ.get(name) or "").strip()
+# The APPLE_* / GOOGLE_* store config, built from the environment on first use and
+# kept for the process (like ``entitlements.service._settings``; ``create_app()`` does
+# not pass its own here). A test overrides it with
+# ``monkeypatch.setattr(_common, "_settings", Settings.isolated(...))``, or resets it
+# to ``None`` after changing env vars (``tests/_helpers.StoreEnv``).
+_settings: Settings | None = None
+
+
+def get_settings() -> Settings:
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
 
 
 def misconfigured(platform: Literal["apple", "google"], reason: str) -> None:

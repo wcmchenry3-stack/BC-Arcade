@@ -1255,7 +1255,9 @@ Tests override the dependencies with fakes.
   request started verifying, before the store call. See "Event ordering".
 - **Environment allow-list.** `purchases.verifiers.allowed_environments()`
   reads `APPLE_IAP_ENVIRONMENTS` (default `Production,Sandbox`) and
-  `GOOGLE_PLAY_ENVIRONMENTS` (default `production,test`). The verifiers must
+  `GOOGLE_PLAY_ENVIRONMENTS` (default `production,test`; empty means the
+  default) through the lazy `Settings` in `purchases/_common.py`, once per
+  process: a change needs a restart. The verifiers must
   apply it before any store call (§6.2 step 1); `process_verified_purchase`
   checks it again on the verified answer and returns `422
   environment_not_allowed` before writing anything, whatever a verifier

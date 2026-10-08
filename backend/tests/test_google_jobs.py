@@ -217,11 +217,11 @@ async def test_jobs_loop_is_deterministic_and_survives_failures(monkeypatch) -> 
     assert len(captured) == 3
 
 
-async def test_lifespan_starts_google_jobs_only_when_configured(monkeypatch) -> None:
+async def test_lifespan_starts_google_jobs_only_when_configured(monkeypatch, store_env) -> None:
     from jobs import lifespan as jobs_lifespan
 
     google.reset_google_runtime()
-    monkeypatch.delenv("GOOGLE_PLAY_PACKAGE_NAME", raising=False)
+    store_env.delenv("GOOGLE_PLAY_PACKAGE_NAME", raising=False)
     assert jobs_lifespan.google_jobs_job() is None  # dormant
     google._runtime = make_harness().runtime
     try:
