@@ -607,7 +607,9 @@ async def test_lifespan_starts_replay_only_when_api_configured(monkeypatch) -> N
     try:
         job = configured_job()
         assert job is not None and job.name == "apple_replay" and not job.reraise_on_crash
-        task = asyncio.create_task(job.loop())
+        # A stand-in task: running the real loop would start a replay/sweep
+        # against the fakes depending on scheduling; only the stop is checked.
+        task = asyncio.create_task(asyncio.sleep(3600))
         await asyncio.sleep(0)
         await job.stop(task)
         assert task.cancelled()

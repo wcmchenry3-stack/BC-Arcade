@@ -228,7 +228,9 @@ async def test_lifespan_starts_google_jobs_only_when_configured(monkeypatch) -> 
     try:
         job = jobs_lifespan.google_jobs_job()
         assert job is not None and job.name == "google_jobs" and not job.reraise_on_crash
-        task = asyncio.create_task(job.loop())
+        # A stand-in task: running the real loop would start a replay/sweep
+        # against the fakes depending on scheduling; only the stop is checked.
+        task = asyncio.create_task(asyncio.sleep(3600))
         await asyncio.sleep(0)
         await job.stop(task)
         assert task.cancelled()

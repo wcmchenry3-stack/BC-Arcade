@@ -261,8 +261,8 @@ async def test_clean_shutdown_cancels_every_task() -> None:
 
 
 async def test_one_crashed_stop_does_not_skip_the_others() -> None:
-    """retention (reraise) stops last; apple/google crashes are swallowed, and a
-    retention crash surfaces only after the later-started jobs are stopped."""
+    """A reraising crash in a job that stops first still lets the jobs started
+    before it stop, and the crash surfaces only after all of them have."""
     order: list[str] = []
 
     async def crashing_loop(sleep=asyncio.sleep) -> None:
@@ -278,9 +278,20 @@ async def test_one_crashed_stop_does_not_skip_the_others() -> None:
     tasks: dict[str, asyncio.Task] = {}
     with pytest.raises(RuntimeError, match="retention crashed"):
         async with AsyncExitStack() as stack:
-            jobs_lifespan.start_jobs(stack, [retention, apple], tasks)
+            # retention is started last, so it stops (and raises) first.
+            jobs_lifespan.start_jobs(stack, [apple, retention], tasks)
             await asyncio.sleep(0.01)
-    assert order[-2:] == ["stop:apple", "stop:retention"]
+    assert order[-2:] == ["stop:retention", "stop:apple"]
+    assert tasks == {}
+
+
+async def test_start_jobs_rejects_duplicate_names() -> None:
+    order: list[str] = []
+    jobs = [_recording_job("apple", order), _recording_job("apple", order)]
+    tasks: dict[str, asyncio.Task] = {}
+    async with AsyncExitStack() as stack:
+        with pytest.raises(ValueError, match="duplicate job name"):
+            jobs_lifespan.start_jobs(stack, jobs, tasks)
     assert tasks == {}
 
 

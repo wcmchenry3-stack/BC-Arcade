@@ -74,6 +74,9 @@ def start_jobs(
     (a crashed ``reraise_on_crash`` job), so every task is stopped and removed
     from ``tasks``; the error then surfaces.
     """
+    names = [job.name for job in jobs]
+    if len(set(names)) != len(names) or set(names) & set(tasks):
+        raise ValueError(f"duplicate job name in {names}")
     for job in jobs:
         tasks[job.name] = asyncio.create_task(job.loop())
         stack.push_async_callback(_stop_job, job, tasks)
