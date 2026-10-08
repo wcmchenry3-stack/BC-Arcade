@@ -237,8 +237,8 @@ The old Free Fire Zone / shooting-gallery bonus wave no longer exists.
 
 ## Carrier Encounter (#2843)
 
-The Carrier is a staged boss encounter. Its code lives in `tickCarrier` (engine.ts); the stage is
-derived from the live roster.
+The Carrier is a staged boss encounter. Its code lives in `tickCarrier` (`engine/carrier.ts`);
+the stage is derived from the live roster (`engine/roster.ts`).
 
 ### Stages
 
@@ -513,10 +513,14 @@ Buddy's attack runs fired it. The attribution is checked against Buddy's real HP
   because the engine's LCG makes neighbouring seeds nearly identical. The same index gives the
   same seed in every cell and variant.
 - **House rules.** Pickups are removed as they spawn, so no stray Bomb or Shield skews a sortie.
-- **Overrides.** `tooling/starswarm/engineVariant.ts` builds a private copy of `engine.ts` with named constants
-  (or exact code snippets) rewritten, for sweeps and behaviour prototypes. The shipped engine is
-  never modified. An anchor that no longer matches throws, and the smoke test re-applies every
-  preset. The variants and presets are in `tooling/starswarm/presets.ts`.
+- **Overrides.** The engine's sweepable tunables are a `Tuning` object (`engine/tuning.ts`;
+  `DEFAULT_TUNING` is the shipped game), and `tick`, `initStarSwarm` and `applyPowerUp` take one
+  (#2988). `tooling/starswarm/engineVariant.ts` binds the real engine's entry points to
+  `DEFAULT_TUNING` plus a variant's overrides — no source is read or patched, and the shipped
+  engine is never modified. Behaviour prototypes (the Carrier tracking Buddy, its run aimed at
+  Buddy, Buddy's shot damage and lane floor) are `Tuning` knobs that are no-ops at their shipped
+  defaults. An override naming something that is not a `Tuning` key throws, and the smoke test
+  resolves every preset. The variants and presets are data in `tooling/starswarm/presets.ts`.
 
 **Rebalance and results.** The sim found Buddy's problem was per-sortie _output_, not toughness: 3
 runs of 5–7 shots with unlimited pierce wiped 43–52% of a normal wave per sortie and solo-killed
@@ -567,16 +571,17 @@ position at launch (read only), so its id, and with it its side, fan size and no
 (`LEGACY`), so `--preset sensitivity|offense|candidates` reproduce the investigation. `BASE` is
 the shipped engine, and `--preset shipped` is a small sweep around it (HP 8/10, evade speed,
 aimed-notice chance). The no-evade and notice sweeps also set the aimed-notice chance
-(`aimedNotice`), because `BUDDY_NOTICE` no longer covers shots aimed at Buddy.
+(`BUDDY_NOTICE_AIMED`), because `BUDDY_NOTICE` no longer covers shots aimed at Buddy.
 
 The files follow the Hearts sim layout, and are ready for a regression gate (#2884):
 
-| File                            | Role                                                                                                                                                    |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tooling/starswarm/balance.ts`  | Pure and deterministic, with no output. `runCell` / `measureCell(engine, {scenario, difficulty, pilot, variant, seeds})` returns a plain `CellSummary`. |
-| `tooling/starswarm/presets.ts`  | The variants, `engineFor`, and the presets: `fast`, `baseline`, `offense`, `sensitivity`, `candidates`, `shipped`, `proposal`.                          |
-| `tooling/starswarm/report.ts`   | Markdown tables built from `CellSummary`.                                                                                                               |
-| `tools/sim/simulate-starswarm.ts` | The CLI.                                                                                                                                                |
+| File                                 | Role                                                                                                                                                    |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tooling/starswarm/balance.ts`       | Pure and deterministic, with no output. `runCell` / `measureCell(engine, {scenario, difficulty, pilot, variant, seeds})` returns a plain `CellSummary`. |
+| `tooling/starswarm/engineVariant.ts` | `loadEngineVariant(overrides)`: the real engine bound to a `Tuning` override set (#2988); `resolveTuning` validates the keys.                           |
+| `tooling/starswarm/presets.ts`       | The variants (as `Tuning` overrides), `engineFor`, and the presets: `fast`, `baseline`, `offense`, `sensitivity`, `candidates`, `shipped`, `proposal`.  |
+| `tooling/starswarm/report.ts`        | Markdown tables built from `CellSummary`.                                                                                                               |
+| `tools/sim/simulate-starswarm.ts`    | The CLI.                                                                                                                                                |
 
 The `fast` preset (3 seeds, two cells) is the jest smoke test in
 `tooling/starswarm/__tests__/balance.test.ts`, which runs with `npx jest tooling/starswarm` in about 15 s. The
@@ -971,7 +976,9 @@ This replaces the old, incorrect statement that Star Swarm had no local resume s
 
 ### Native rendering pipeline (epic #2562)
 
-The engine (`engine.ts`) is pure and ticks on the JS thread in the canvas's RAF loop. Every
+The engine (`engine.ts`, a re-export barrel over the `engine/` package — see
+[ARCHITECTURE.md §3.4](../ARCHITECTURE.md#34-star-swarm-engine-layout-2988)) is pure and ticks
+on the JS thread in the canvas's RAF loop. Every
 drawing decision for the native canvas lives in `render/frame.ts`: `buildFrame(state, { loaded,
 width, height })` returns a flat, back-to-front display list of primitive ops (`fill`, `rect`,
 `circle`, `image`, `poly`) — plain data, no Skia objects. Colours are packed `0xAARRGGBB`
@@ -1022,7 +1029,7 @@ React commits per second over the game. See
 - Module: `backend/starswarm/module.py`, registered in `backend/games/registry.py` (#2623)
 - Metadata model: `StarSwarmMetadata` in `backend/starswarm/models.py` — `difficulty_tier` only (extra keys forbidden)
 - Result model: `StarSwarmResult` — `outcome`, `wave_reached`, `difficulty_tier`, `score_breakdown` (`StarSwarmScoreBreakdown`, #2837), all optional; unknown keys are ignored. A `score_breakdown` that doesn't validate (over 64 waves or 48 sources a wave, a source over 32 characters, a non-integer) is dropped to `null` and the run still completes and ranks
-- Tiers: only a `difficulty_tier` in `DIFFICULTY_TIERS` (`backend/starswarm/models.py`) has a board — `Ensign`, `LieutenantJG`, `Lieutenant`, `LieutenantCommander`, `Commander`, `Captain`, `RearAdmiral`, `ViceAdmiral`, `Admiral`, `FleetAdmiral`, the client's `DIFFICULTY_TIERS` (`frontend/src/game/starswarm/engine.ts`). Creation and completion accept any other string up to 32 characters (`captain`, a forged tier) and store it, so the run is never dead-lettered; that row never ranks, and naming it or requesting its board is a 400. `tests/test_starswarm_module.py` parses the client list and fails if the two drift, so **a tier added to the app must be added to the backend in the same release**, or its runs stay off the leaderboard. A missing or `null` tier is allowed
+- Tiers: only a `difficulty_tier` in `DIFFICULTY_TIERS` (`backend/starswarm/models.py`) has a board — `Ensign`, `LieutenantJG`, `Lieutenant`, `LieutenantCommander`, `Commander`, `Captain`, `RearAdmiral`, `ViceAdmiral`, `Admiral`, `FleetAdmiral`, the client's `DIFFICULTY_TIERS` (`frontend/src/game/starswarm/engine/tuning.ts`). Creation and completion accept any other string up to 32 characters (`captain`, a forged tier) and store it, so the run is never dead-lettered; that row never ranks, and naming it or requesting its board is a 400. `tests/test_starswarm_module.py` parses the client list and fails if the two drift, so **a tier added to the app must be added to the backend in the same release**, or its runs stay off the leaderboard. A missing or `null` tier is allowed
 - Board: `final_score` desc, one board per `difficulty_tier` (`GET /games/leaderboard/starswarm?difficulty_tier=Captain`), no cap. A row with no tier counts as `LieutenantJG` (`DEFAULT_DIFFICULTY_TIER`), and a request without `difficulty_tier` is the `LieutenantJG` board; an unknown tier is a 400. `has_winner = False`
 - Stats: default pass-through `stats_shape` (`default_stats_shape`)
 - Endpoints: none of its own — the generic `/games` routes. The legacy `POST /starswarm/score` (unused since #2626) and `GET /starswarm/leaderboard` (unused since #2633, when the Ranks tab moved to the shared `LeaderboardScreen`; the tab itself was retired in #2634) were removed in #2644

@@ -21,7 +21,7 @@ Adding a new game
 6. Optionally define ``async reconcile_result(session, game, result) -> dict``
    to correct a validated result against server-side state before it is
    stored — see ``backend/daily_word/module.py`` (#2541). Not part of the
-   Protocol: ``games/service.py`` looks it up with ``getattr``.
+   Protocol: ``games/stats.py`` looks it up with ``getattr``.
 7. Optionally define ``derive_final_score(final_score, outcome, result) -> int | None``
    to fill in the stored ``final_score`` from the validated result when the
    client left it out — see ``backend/blackjack/module.py`` (#2745). It may
@@ -87,7 +87,7 @@ class GameModule(Protocol):
     -------
     stats_shape(raw_stats):
         Transform a raw aggregate stats dict (produced by
-        ``games/service.py``) into the final shape for the ``/stats/me``
+        ``games/stats.py``) into the final shape for the ``/stats/me``
         API response.
 
         ``raw_stats`` keys

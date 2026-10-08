@@ -194,7 +194,7 @@ The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.t
 - **Sudoku** scores `DIFFICULTY_BASE[difficulty] - 10 × errors` (`SudokuScreen.tsx`), so each difficulty has its own cap. Rows from before #748 carry no `variant` and count as `classic`, as in `sudoku/router.py`.
 - **Daily Word**'s best is the fewest guesses in a won game; a loss is not a best.
 - **Twenty48** has one global board with no ceiling (#2519 decisions 1 and 14). A `kept_playing` completion counts like `completed`.
-- **Star Swarm** has one board per `difficulty_tier` (plan §4.2) and no ceiling (decision 14). The tier is creation metadata and is repeated in the result, so it is in `games.metadata` either way. Only the ten tiers the app can send have a board (`partition_values`, from `DIFFICULTY_TIERS` in `starswarm/models.py`, which `tests/test_starswarm_module.py` checks against `DIFFICULTY_TIERS` in the client's `engine.ts`); a run on any other tier (a forged `captain`, or a tier a newer app sends first) is stored but can't be named (400 `This game's board does not exist.`), so it can't open a public board and the run isn't dead-lettered. A row with no tier counts as `LieutenantJG` (`DEFAULT_DIFFICULTY_TIER`, the engine's default). The result also carries a bounded per-wave `score_breakdown` (#2837; ≤ 4 KiB, a malformed one is dropped, never the run), which is recorded but never ranked: see [Star Swarm](games/starswarm.md#per-wave-score-breakdown-2837).
+- **Star Swarm** has one board per `difficulty_tier` (plan §4.2) and no ceiling (decision 14). The tier is creation metadata and is repeated in the result, so it is in `games.metadata` either way. Only the ten tiers the app can send have a board (`partition_values`, from `DIFFICULTY_TIERS` in `starswarm/models.py`, which `tests/test_starswarm_module.py` checks against `DIFFICULTY_TIERS` in the client's `engine/tuning.ts`); a run on any other tier (a forged `captain`, or a tier a newer app sends first) is stored but can't be named (400 `This game's board does not exist.`), so it can't open a public board and the run isn't dead-lettered. A row with no tier counts as `LieutenantJG` (`DEFAULT_DIFFICULTY_TIER`, the engine's default). The result also carries a bounded per-wave `score_breakdown` (#2837; ≤ 4 KiB, a malformed one is dropped, never the run), which is recorded but never ranked: see [Star Swarm](games/starswarm.md#per-wave-score-breakdown-2837).
 - **Mahjong** (#2747) ranks by fastest clear: `duration_ms` ascending, wins only, one board per `layout`. Only the app's layouts have a board (`partition_values`, `LAYOUTS` in `mahjong/models.py`, checked against the client's layout registry by `tests/test_board_definitions.py`). There is no default layout: a row from before #2627 has none, so it ranks on no board (`not_rankable`) rather than on Turtle's, and a board request needs `?layout=`. A clear under `min_value` (36 s, half a second per pair) or with no `duration_ms` is stored but never ranks. `final_score` is still recorded and shown on the result card, but ranks nothing. See [Mahjong](games/mahjong.md#scoring-persistence).
 - **Legacy rows:** the removed per-game routes wrote their rows under unattributable `*-anon` sessions, with values unlike the boards' declarations (Yacht's stored `400 - raw`, Sort's the level in `final_score`). Migrations 0026 (#2622) and 0029 (#2644, after the routes were gone) deleted them; any written during the deploy window after 0029 are kept off every board by the `*-anon` filter (rule 3).
 - **Sort** (#2625): every solved level is a session row with `won: true` and the `level` actually played, its `moves` and `undos` (`SortResult`). Every solve, replays included, is scored with the player's standing after it: `final_score` and `level_reached` are the highest level solved, and `total_moves` is the sum of the player's best moves over levels 1 to it (`@sort/best_moves`; left out when one of them has no best on record). `total_moves` is recorded but not ranked (#2746): levels are random per request, so players on the same level rank by the earliest completion. The board keeps each player's best row, their first solve of their highest level; a replay never displaces it. Abandons carry no score and never rank.
@@ -229,7 +229,7 @@ The per-game leaderboard routes (`/solitaire/scores`, `/cascade/score/{id}`, …
 
 The `@runtime_checkable` decorator means CI can assert `isinstance(module, GameModule)` for each registered game (see `tests/test_game_module_protocol.py`).
 
-**Registry:** `backend/games/registry.py` maps `GameType` string values to module singletons. `games/service.py` uses `get_module(name)` for generic dispatch — there are no `if name == "<game>"` branches anywhere in the service layer.
+**Registry:** `backend/games/registry.py` maps `GameType` string values to module singletons. `games/stats.py` and `games/sessions.py` use `get_module(name)` for generic dispatch — there are no `if name == "<game>"` branches anywhere in the service layer.
 
 **Adding a module:**
 
@@ -301,14 +301,14 @@ Unregistered game types (e.g. seeded in the DB before their module is implemente
 
 ### 1.5 stats_shape()
 
-**Authority: `backend/<game>/module.py` (`stats_shape` method); `games/service.py` (`get_stats_for_session`) for the comparable fields**
+**Authority: `backend/<game>/module.py` (`stats_shape` method); `games/stats.py` (`get_stats_for_session`) for the comparable fields**
 
-`games/service.py` runs one aggregate query per session, pre-fetches the latest score and metadata per game, and (only when some game has a `win` or `loss`) one ordered scan for win streaks. It then:
+`games/stats.py` runs one aggregate query per session, pre-fetches the latest score and metadata per game, and (only when some game has a `win` or `loss`) one ordered scan for win streaks. It then:
 
 1. calls `module.stats_shape(raw_stats)` for the game-specific part of the `/stats/me` entry, and
 2. sets the **comparable fields** itself, from the queries and the game's `BoardDefinition` (§1.3). `stats_shape` cannot change them, nor `completed` (the Arcade XP input; see [PROGRESSION.md](PROGRESSION.md) and `games/progression.py`).
 
-There is no game-specific logic in `service.py`.
+There is no game-specific logic in `games/stats.py`.
 
 **`raw_stats` keys passed to every `stats_shape` call:**
 
@@ -395,7 +395,7 @@ When a client omits `players` from `POST /games`, the router auto-fills `[{"play
 
 ### 1.7 Completion, idempotency and the stale-session sweep
 
-**Authority: `backend/games/service.py`** (`create_game`, `append_events`, `complete_game`, `sweep_stale_games`).
+**Authority: `backend/games/sessions.py`** (`create_game`, `append_events`, `complete_game`) and `backend/games/sweep.py` (`sweep_stale_games`).
 
 - **Idempotent writes (#364).** `POST /games` with a client `id` that already exists returns that row (403 if another session owns it). Events are keyed `(game_id, event_index)` and inserted with `ON CONFLICT DO NOTHING`, so a resent batch is harmless — but only while the row is open (or swept, below): `POST /games/{id}/events` on a row with a real completion returns **409** `Game is already completed.`, and `SyncWorker` deletes those events from the device without retrying (`frontend/src/game/_shared/syncWorker.ts`, `isAlreadyCompleted`). **Events that arrive after a real completion are dropped.** `PATCH /games/{id}/complete` on a finished row returns it unchanged: **the first completion wins**, so a replayed or late completion from the device's sync queue never overwrites a result. This has been the rule since the write API (#364); it is not new in #2519.
 - **Stale-session sweep (#2621).** `GET /stats/me` and the first page of `GET /games/me` (no `cursor`; later pages continue the listing just swept) first close the caller's own games still open 24 h after `started_at`: `outcome = 'abandoned'`, `completed_at = started_at + 24 h`, `duration_ms` left null, and `metadata.swept = true` (`SWEPT_KEY` in `games/filters.py`, server-written only: `create_game` and `complete_game` strip it from client input). A sweep failure is logged and never fails the read. A swept row is the only finished row that still accepts events (`append_events` checks `is_swept`), and a real completion that arrives later **replaces** the sweep and clears the flag; after that, first completion wins again. Swept rows are abandoned, so they never rank, score or earn XP, and `last_played_at` ignores them.

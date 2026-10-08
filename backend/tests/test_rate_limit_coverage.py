@@ -27,7 +27,7 @@ from fastapi.testclient import TestClient
 from starlette.routing import Route
 
 import main
-from games import service as games_service
+from games import catalog as games_catalog
 from games.router import CATALOG_RATE_LIMIT
 from limiter import limiter
 
@@ -147,7 +147,7 @@ def test_catalog_is_rate_limited(client: TestClient, monkeypatch: pytest.MonkeyP
         return []
 
     # The limit is what is under test, not the catalog rows: no seed-data coupling.
-    monkeypatch.setattr(games_service, "get_catalog", _empty_catalog)
+    monkeypatch.setattr(games_catalog, "get_catalog", _empty_catalog)
 
     assert CATALOG_RATE_LIMIT.endswith("/minute"), "test assumes a per-minute window"
     allowed = int(CATALOG_RATE_LIMIT.split("/")[0])

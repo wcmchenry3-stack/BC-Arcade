@@ -1,97 +1,62 @@
 /**
- * #2880 balance sim — a *sim-only* copy of the Star Swarm engine with tuning overrides.
+ * #2880 balance sim — a *sim-only* engine variant: the real Star Swarm engine with a tuning
+ * override set injected (#2988).
  *
- * Node/Jest only (reads `engine.ts` from disk and compiles it with `typescript`); never imported
- * by the app. The real engine keeps its tuning as module-level constants, so to sweep a value
- * without touching gameplay code this loads the engine source, rewrites the named constant
- * declarations (and, for behaviour prototypes, exact code snippets), transpiles it and evaluates
- * it as a fresh, isolated module instance (its own rng and id counters).
- *
- * Every rewrite must match: a constant that no longer exists, or a snippet that no longer
- * appears verbatim, throws — so a prototype can never silently measure the unmodified engine.
- * With no overrides the variant is the real engine (a smoke test holds that it replays a seeded
- * run identically).
+ * The engine's sweepable tunables are a `Tuning` object (`engine/tuning.ts`); `tick`,
+ * `initStarSwarm` and `applyPowerUp` take one and default to `DEFAULT_TUNING`, the shipped game.
+ * A variant is the engine module with those entry points bound to `DEFAULT_TUNING` plus the
+ * overrides, and the overridden constants re-exported with their new values — no source is
+ * read, patched or re-evaluated, and the rng and id counters are the real module's (the harness
+ * seeds and restores them per run). An override naming something that is not a `Tuning` key
+ * throws, so a prototype can never silently measure the unmodified engine. With no overrides the
+ * variant is the real engine (a smoke test holds that it replays a seeded run identically).
  */
-/* eslint-disable @typescript-eslint/no-require-imports */
-import type * as EngineModule from "../../src/game/starswarm/engine";
+import * as realEngine from "../../src/game/starswarm/engine";
+import { DEFAULT_TUNING, type Tuning } from "../../src/game/starswarm/engine/tuning";
 
-export type Engine = typeof EngineModule;
+/** The public engine surface plus the (variant-bound) `DEFAULT_TUNING` the harness reads back. */
+export type Engine = typeof realEngine & { readonly DEFAULT_TUNING: Tuning };
 
-// CommonJS module scope under Jest/Node (the app's typecheck carries no Node types)
-declare const __dirname: string;
+/** A tuning override set: `Tuning` key → replacement value. */
+export type TuningOverrides = Readonly<Partial<Tuning>>;
 
-/** A tuning override set: constant name → replacement TypeScript expression (source text). */
-export type ConstOverrides = Readonly<Record<string, string>>;
-
-/** A behaviour prototype: replace `find` (must appear exactly once) with `replace`. */
-export interface SourcePatch {
-  readonly find: string;
-  readonly replace: string;
-}
-
-export interface EngineVariantSpec {
-  readonly consts?: ConstOverrides;
-  readonly patches?: readonly SourcePatch[];
-}
+/** A variant's spec is its overrides; an empty object is the shipped engine. */
+export type EngineVariantSpec = TuningOverrides;
 
 const cache = new Map<string, Engine>();
 
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** `DEFAULT_TUNING` with `spec` applied; throws on a key that is not a tunable. */
+export function resolveTuning(spec: EngineVariantSpec): Tuning {
+  const base = DEFAULT_TUNING;
+  for (const key of Object.keys(spec)) {
+    if (!Object.hasOwn(base, key)) throw new Error(`engineVariant: ${key} is not a Tuning key`);
+  }
+  return { ...base, ...spec };
 }
 
-/** The engine source with `spec` applied (exported for tests). */
-export function patchEngineSource(src: string, spec: EngineVariantSpec): string {
-  let out = src;
-  for (const [name, expr] of Object.entries(spec.consts ?? {})) {
-    // `[export ]const NAME[: Type] = <expr>;` — the expression runs to the first `;`
-    const re = new RegExp(`(^|\\n)((?:export )?const ${escapeRe(name)}\\b[^=]*=)[^;]*;`);
-    if (!re.test(out)) throw new Error(`engineVariant: no constant ${name} in engine.ts`);
-    out = out.replace(re, (_m, pre: string, decl: string) => `${pre}${decl} ${expr};`);
-  }
-  for (const p of spec.patches ?? []) {
-    const first = out.indexOf(p.find);
-    if (first < 0 || out.indexOf(p.find, first + 1) >= 0) {
-      throw new Error(
-        `engineVariant: patch anchor must appear exactly once: ${p.find.slice(0, 80)}`
-      );
-    }
-    out = out.replace(p.find, () => p.replace);
-  }
-  return out;
-}
-
-/** A fresh engine module with `spec` applied. Cached per spec. */
+/** The engine with `spec` applied, bound once. Cached per spec. */
 export function loadEngineVariant(spec: EngineVariantSpec = {}): Engine {
-  const key = JSON.stringify(spec);
+  const key = JSON.stringify(spec, (_k, v: unknown) => (v === Infinity ? "Infinity" : v));
   const hit = cache.get(key);
   if (hit) return hit;
-  // the app's typecheck has no Node types, so the few Node calls used here are typed locally
-  const fs = require("fs") as { readFileSync(p: string, enc: "utf8"): string };
-  const path = require("path") as {
-    resolve(...p: string[]): string;
-    join(...p: string[]): string;
+  const tuning = resolveTuning(spec);
+  const bound = {
+    ...realEngine,
+    ...spec, // the overridden constants read back with their variant values (BUDDY_HP, …)
+    DEFAULT_TUNING: tuning,
+    tick: (...[state, dtMs, input, t = tuning]: Parameters<Engine["tick"]>) =>
+      realEngine.tick(state, dtMs, input, t),
+    initStarSwarm: (
+      ...[canvasW, canvasH, wave, seed, difficulty, straggler, t = tuning]: Parameters<
+        Engine["initStarSwarm"]
+      >
+    ) => realEngine.initStarSwarm(canvasW, canvasH, wave, seed, difficulty, straggler, t),
+    applyPowerUp: (...[state, type, t = tuning]: Parameters<Engine["applyPowerUp"]>) =>
+      realEngine.applyPowerUp(state, type, t),
   };
-  const ts = require("typescript") as typeof import("typescript");
-  const dir = path.resolve(__dirname, "../../src/game/starswarm");
-  const src = patchEngineSource(fs.readFileSync(path.join(dir, "engine.ts"), "utf8"), spec);
-  const js = ts.transpileModule(src, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
-  }).outputText;
-  const mod: { exports: Record<string, unknown> } = { exports: {} };
-  const localRequire = (id: string): unknown => {
-    if (id.startsWith("./") || id.startsWith("../")) return require(path.join(dir, id));
-    return require(id);
-  };
-  const g = globalThis as { __DEV__?: boolean };
-  const fn = new Function("exports", "require", "module", "__DEV__", js) as (
-    e: Record<string, unknown>,
-    r: (id: string) => unknown,
-    m: { exports: Record<string, unknown> },
-    dev: boolean
-  ) => void;
-  fn(mod.exports, localRequire, mod, g.__DEV__ ?? false);
-  const engine = mod.exports as unknown as Engine;
+  // the module's constants have literal types (`BUDDY_HP: 9`); a variant widens the overridden
+  // ones to their `Tuning` types, which is exactly what the harness reads them as
+  const engine = bound as unknown as Engine;
   cache.set(key, engine);
   return engine;
 }

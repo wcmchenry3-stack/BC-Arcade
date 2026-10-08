@@ -1,9 +1,8 @@
 """Google background jobs: acknowledgement sweep, voided-purchases poll, jobs loop (#2787).
 
-Follows the planned ``purchases/google_jobs.py`` (#2998): ``acknowledge_sweep``,
-``poll_voided_purchases`` and ``run_google_jobs[_loop]`` in
-``purchases/google_notifications.py`` today, plus the lifespan wiring and the
-manual script. Split out of ``test_google_iap.py`` (#2955); the harness lives
+Covers ``purchases/google_jobs.py`` (#2998): ``acknowledge_sweep``,
+``poll_voided_purchases``, ``run_google_jobs`` and the ``google_jobs_job``
+``PeriodicJob``, plus the lifespan wiring and the manual script. Split out of ``test_google_iap.py`` (#2955); the harness lives
 in ``tests/_google_iap_harness.py``.
 """
 
@@ -19,13 +18,14 @@ from sqlalchemy import update
 
 from db.base import get_session_factory
 from db.models import Purchase
-from purchases import google, google_notifications
+from observability import report
+from purchases import google, google_jobs
 from purchases import service as purchase_service
-from purchases.google_notifications import (
+from purchases.google_jobs import (
     acknowledge_sweep,
+    google_jobs_job,
     poll_voided_purchases,
     run_google_jobs,
-    run_google_jobs_loop,
 )
 from tests._google_iap_harness import (
     NOW,
@@ -205,14 +205,12 @@ async def test_jobs_loop_is_deterministic_and_survives_failures(monkeypatch) -> 
         fixed[0] += timedelta(days=1)
         return fixed[0]
 
-    monkeypatch.setattr(google_notifications, "run_google_jobs", failing)
+    monkeypatch.setattr(google_jobs, "run_google_jobs", failing)
     captured: list[BaseException] = []
-    monkeypatch.setattr(
-        google_notifications.sentry_sdk, "capture_exception", lambda exc: captured.append(exc)
-    )
+    monkeypatch.setattr(report.sentry_sdk, "capture_exception", lambda exc: captured.append(exc))
     with pytest.raises(asyncio.CancelledError):
-        await run_google_jobs_loop(
-            lambda: None, get_session_factory, interval_s=77.0, sleep=fake_sleep, clock=clock
+        await google_jobs_job(lambda: None, get_session_factory, interval_s=77.0, clock=clock).loop(
+            sleep=fake_sleep
         )
     assert sleeps == [77.0] * 3
     assert seen == [datetime(2026, 10, d, 12, tzinfo=UTC) for d in (1, 2, 3)]
@@ -220,27 +218,23 @@ async def test_jobs_loop_is_deterministic_and_survives_failures(monkeypatch) -> 
 
 
 async def test_lifespan_starts_google_jobs_only_when_configured(monkeypatch) -> None:
-    import main
+    from jobs import lifespan as jobs_lifespan
 
     google.reset_google_runtime()
     monkeypatch.delenv("GOOGLE_PLAY_PACKAGE_NAME", raising=False)
-    assert main._start_google_play_jobs() is None  # dormant
-    started = asyncio.Event()
-
-    async def fake_loop(get_verifier, get_factory):
-        started.set()
-        await asyncio.sleep(3600)
-
-    monkeypatch.setattr(google_notifications, "run_google_jobs_loop", fake_loop)
+    assert jobs_lifespan.google_jobs_job() is None  # dormant
     google._runtime = make_harness().runtime
     try:
-        task = main._start_google_play_jobs()
-        assert task is not None
-        await asyncio.wait_for(started.wait(), 30)
-        await main._stop_purchase_task(task, "google_jobs_stop_timeout")
+        job = jobs_lifespan.google_jobs_job()
+        assert job is not None and job.name == "google_jobs" and not job.reraise_on_crash
+        # A stand-in task: running the real loop would start a replay/sweep
+        # against the fakes depending on scheduling; only the stop is checked.
+        task = asyncio.create_task(asyncio.sleep(3600))
+        await asyncio.sleep(0)
+        await job.stop(task)
         assert task.cancelled()
-        monkeypatch.setattr(main, "is_configured", lambda: False)
-        assert main._start_google_play_jobs() is None
+        monkeypatch.setattr(jobs_lifespan, "is_configured", lambda: False)
+        assert jobs_lifespan.google_jobs_job() is None
     finally:
         google.reset_google_runtime()
 

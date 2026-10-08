@@ -62,9 +62,25 @@ one pure-ASGI layer for the security headers and the JSON request log, outermost
 `body_size.py`, the per-path body caps, innermost) and `backend/routes/`
 (`/health`, `/health/db`, the test-only `/debug/error`).
 
+**Background jobs (#2994).** The three in-process jobs (Daily Word retention,
+the App Store notification replay, the Google Play jobs) are `PeriodicJob`s
+(`backend/jobs/periodic.py`): `run`, `interval_s`, `timeout_s`, and the Sentry
+`subsystem_tag` and `fingerprint` for a failed run. `loop()` runs the job now
+and then every interval; a failure or timeout is logged, reported through
+`observability.report.report_exception` and retried next cycle, never raised.
+`backend/jobs/lifespan.py` lists them in `configured_jobs()` (a job whose
+config is missing returns `None` and is left out). `main.lifespan` starts them
+in that order as tasks in `app.state.job_tasks`, before the DB health check,
+and stops them in reverse on every exit. `PeriodicJob.stop` cancels the task
+and waits at most `STOP_TIMEOUT_S` (5 s), logging when the task will not stop.
+A task that crashed is re-raised when the job sets `reraise_on_crash` (retention
+only) and swallowed otherwise (the purchase jobs); either way every other job is
+still stopped. Adding a job is one `PeriodicJob(...)` builder plus one line in
+`configured_jobs()`.
+
 | Area                      | Location                   | Responsibility                                                                                                     |
 | ------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Shared game sessions      | `backend/games/`           | Create/complete games, append events, ranking, board definitions, progression helpers, shared schemas              |
+| Shared game sessions      | `backend/games/`           | Create/complete games, append events, ranking, board definitions, progression helpers, shared schemas (modules below) |
 | Game vocabulary           | `backend/vocab.py`         | Canonical `GameType` and `GameOutcome` vocabulary                                                                  |
 | Database                  | `backend/db/`              | SQLAlchemy engine/session setup and persisted models                                                               |
 | Schema migrations         | `backend/alembic/`         | The only production schema-evolution path                                                                          |
@@ -77,6 +93,18 @@ one pure-ASGI layer for the security headers and the JSON request log, outermost
 | Delete-my-data            | `backend/me/`              | Player/session data deletion                                                                                       |
 | Bottle Sort level service | `backend/sort/`            | Generated/verified level sets                                                                                      |
 | Per-game descriptors      | `backend/<game>/module.py` | `GameModule` metadata/result models, winner semantics, board definition and Stats shaping—not a second rule engine |
+
+The `backend/games/` service layer is split by job (#2991; the former
+`games/service.py` is gone, nothing re-exports it):
+
+| Module                   | Responsibility                                                                                            |
+| ------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `games/sessions.py`      | Session writes: `create_game`, `append_events`, `complete_game` and result validation; `GameServiceError` |
+| `games/sweep.py`         | Stale-session sweep (`sweep_stale_games`, `sweep_stale_games_safely`, `STALE_GAME_AFTER`)                 |
+| `games/stats.py`         | `/stats/me` aggregation: `get_stats_for_session`, `GameTypeStats`, `StatsSummary`, `win_streaks`          |
+| `games/stats_columns.py` | SQL column helpers for the comparable per-game stats (best-value candidate, time played, W/L/T)           |
+| `games/history.py`       | Read side of `GET /games/me` and `GET /games/{id}`: `list_games_for_session`, `get_game_detail`           |
+| `games/catalog.py`       | `GET /games/catalog` and the admin tier edit `patch_game_type` (invalidates the catalog cache)            |
 
 Most per-game backend directories are **descriptors**, not gameplay services.
 A normal single-player game's rules stay in the TypeScript engine on the
@@ -255,6 +283,46 @@ are headless and pure like the engines that import them:
   hints and auto-complete are not shared. Blackjack's cards (`rank: string`,
   suit glyphs) are a different domain and do not use `_shared/cards`.
 
+### 3.4 Star Swarm engine layout (#2988)
+
+An engine that outgrows one file becomes a package behind a barrel: the
+public module keeps its path (`game/starswarm/engine.ts`, now a pure
+`export *` barrel, so no importer changes) and the code lives in
+`game/starswarm/engine/`, one module per subsystem, each under the
+`max-lines` gate with its own `__tests__/engine.<module>.test.ts`:
+
+| Module           | Owns                                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------------- |
+| `tuning.ts`      | Every tunable, the difficulty tiers (`DIFFICULTY_TIERS`), and the injectable `Tuning` / `DEFAULT_TUNING`    |
+| `rng.ts`         | The seeded LCG (`seedRng`, via `_shared/seededRng`) and the id counters; `engineCounters()` for saves       |
+| `geometry.ts`    | Béziers, overlap tests, the formation slot layout, path factories, proportional aim, `hashFrac`             |
+| `roster.ts`      | Roster reads (leader tiers, Carrier armor and stage), the per-tick `TickCtx`, `mapKeep` / `mapFilterKeep`   |
+| `stats.ts`       | Per-tier dodge/flak counters and the run-wide counters                                                      |
+| `entities.ts`    | Pickups, explosions, the power-up type roll                                                                 |
+| `extraction.ts`  | The `weaponsFree` / `hazardsLive` gates, live hazards, the extraction autopilot, `clearTransientCombat`     |
+| `asteroids.ts`   | Rocks: entries, spawns, the threat contract, and the enemies' response to them (`tickAsteroidThreats`)      |
+| `buddy.ts`       | Buddy: station, attack runs, evasion, the fire it draws, the hits it takes                                  |
+| `carrier.ts`     | The Carrier: cadences, the volley seam, beam, attack run, and the event selectors                           |
+| `enemyPhases.ts` | The per-ship phase machine (SwoopIn → Formation → Wiggling → Diving → Circling → Returning, Fleeing)        |
+| `enemies.ts`     | `tickEnemies`: the fleet-wide tick (dive scheduling, sway, the Carrier context, reinforcements, stragglers) |
+| `collisions.ts`  | Bullets in flight and the single damage-resolution pass (`tickCollisions`, `applyBombBlast`)                |
+| `powerups.ts`    | The player's volley, upgrade ladders, pickups, `applyPowerUp`                                               |
+| `wave.ts`        | `initStarSwarm`, `buildWaveState`, `tick` (the pipeline order is in its header), the phase machine          |
+
+Modules only import downward in that order (no cycles), and the barrel is the
+only thing outside the package that imports them.
+
+**Tuning injection.** The tunables the balance simulator sweeps are fields of
+a `Tuning` object; `tick(state, dt, input, tuning = DEFAULT_TUNING)`,
+`initStarSwarm(…, tuning)` and `applyPowerUp(state, type, tuning)` thread one
+object through the sub-ticks that read it — a property read per use, no
+per-tick allocation, and the shipped game never passes one. The simulator
+(`tooling/starswarm/engineVariant.ts`) binds those entry points to
+`DEFAULT_TUNING` plus a variant's overrides instead of patching the engine's
+source. Adding a sweepable knob means adding a `Tuning` field (defaulting to
+the module constant of the same name) and reading it where the behaviour
+lives; a prototype behaviour is a knob that is a no-op at its default.
+
 ## 4. Persistence and offline contract
 
 **One write path.** Every game records its sessions the same way, and **no
@@ -367,7 +435,7 @@ typed on the device before #2624 that the server was never sent becomes a
 join, once. "Get a new name" is online only.
 
 **Safe replays (idempotency).** Retries are the normal case, so every write
-the app makes is safe to repeat (`backend/games/service.py` module docstring):
+the app makes is safe to repeat (`backend/games/sessions.py` module docstring):
 `POST /games` dedupes on the client game id (`create_game`); events dedupe on
 `(game_id, event_index)` (`INSERT … ON CONFLICT DO NOTHING`); a completed game
 can't be completed again — the first completion wins and a replayed
@@ -530,7 +598,7 @@ fallback for devices that never report back.
 
 **Stale-session sweep (#2621, #2519 decisions 9 and 15).** A row still open
 24 h after `started_at` was left by a killed app that never reported back.
-`sweep_stale_games` (`backend/games/service.py`) closes the caller's own such
+`sweep_stale_games` (`backend/games/sweep.py`) closes the caller's own such
 rows as `abandoned` — `completed_at = started_at + 24 h`, `duration_ms` left
 NULL, `metadata.swept = true` — in one UPDATE. It runs **on read, per player**,
 at the start of `GET /stats/me` and on the first page of `GET /games/me` (no

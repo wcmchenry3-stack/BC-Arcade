@@ -46,7 +46,7 @@ from entitlements.schemas import EntitlementsResponse
 from limiter import limiter, session_key
 from session import get_session_id
 
-from . import apple, apple_notifications, google, google_notifications, service
+from . import apple, apple_notifications, google, google_rtdn, service
 from .google import get_google_verifier
 from .schemas import (
     AppleNotificationRequest,
@@ -277,8 +277,8 @@ async def post_google_notification(request: Request) -> dict:
         raise HTTPException(status_code=503, detail="store_unavailable")
     try:
         await runtime.push_auth.authenticate(request.headers.get("authorization"))
-        message_id, note = google_notifications.parse_push(await request.body())
-        outcome = await google_notifications.handle_developer_notification(
+        message_id, note = google_rtdn.parse_push(await request.body())
+        outcome = await google_rtdn.handle_developer_notification(
             runtime.verifier, note, message_id, get_session_factory()
         )
     except PurchaseError as exc:

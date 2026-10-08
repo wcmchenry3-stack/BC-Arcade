@@ -19,7 +19,7 @@ import pytest
 from appstoreserverlibrary.api_client import APIException
 from fastapi.testclient import TestClient
 
-from purchases import apple, apple_store
+from purchases import _common, apple, apple_store
 from purchases.apple_store import AppleConfig, AppStoreVerifier, load_config
 from purchases.verifiers import AppleEvidence, NotConfiguredAppleVerifier, PurchaseError
 from tests._apple_iap_harness import (
@@ -475,7 +475,7 @@ def test_online_checks_ignore_a_backdated_signed_date(
 def sentry_messages(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     messages: list[str] = []
     monkeypatch.setattr(
-        apple_store.sentry_sdk, "capture_message", lambda msg, level=None: messages.append(msg)
+        _common.sentry_sdk, "capture_message", lambda msg, level=None: messages.append(msg)
     )
     return messages
 

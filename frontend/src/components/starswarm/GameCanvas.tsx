@@ -42,7 +42,7 @@ import {
   isAutopilot,
   PLAYER_W,
 } from "../../game/starswarm/engine";
-import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
+import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/engine";
 import { areTestHooksEnabled, isPreLaunchApiBuild } from "../../game/_shared/envFlags";
 import {
   createFrameStats,
