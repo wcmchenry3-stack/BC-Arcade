@@ -542,7 +542,7 @@ verified environment again before writing. Production needs `APPLE_APP_ID`.
 | `apple.py`               | `appAccountToken`, the unverified store-key parse for rate limits, the cached verifier and its FastAPI dependency |
 | `apple_store.py`         | `load_config`, `AppStoreVerifier` (JWS chain checks, Get Transaction Info), `build_from_env`           |
 | `apple_notifications.py` | the ASSN v2 webhook handler, the notification-history replay and its `apple_replay_job` (`PeriodicJob`) |
-| `_common.py`             | helpers shared with Google (#2998): `env_str`, `misconfigured(platform, reason)`, `ms_to_datetime`, `log_event` |
+| `_common.py`             | helpers shared with Google (#2998): `get_settings()` (lazy `Settings`), `misconfigured(platform, reason)`, `ms_to_datetime`, `log_event` |
 | `certs/`                 | the bundled Apple Root CA - G3                                                                         |
 
 Tests: `tests/test_apple_store.py`, `tests/test_apple_notifications.py`
@@ -973,7 +973,7 @@ Restore on a fresh install re-links, and erase-and-restore churn still hits
 | `google_push_auth.py` | `GoogleJwks`, `PushAuthenticator` (Pub/Sub OIDC) and `GoogleRuntime` / `build_runtime` / `build_from_env`   |
 | `google_rtdn.py`      | `parse_push`, `handle_developer_notification` and the one-time / voided notification handling              |
 | `google_jobs.py`      | `poll_voided_purchases`, `acknowledge_sweep`, `run_google_jobs` and `google_jobs_job` (`PeriodicJob`)       |
-| `_common.py`          | helpers shared with Apple: `env_str`, `misconfigured(platform, reason)`, `ms_to_datetime`, `log_event`      |
+| `_common.py`          | helpers shared with Apple: `get_settings()` (lazy `Settings`), `misconfigured(platform, reason)`, `ms_to_datetime`, `log_event`      |
 
 Tests, one file per module: `tests/test_google_play.py`,
 `tests/test_google_push_auth.py`, `tests/test_google_rtdn.py`,
@@ -1255,7 +1255,9 @@ Tests override the dependencies with fakes.
   request started verifying, before the store call. See "Event ordering".
 - **Environment allow-list.** `purchases.verifiers.allowed_environments()`
   reads `APPLE_IAP_ENVIRONMENTS` (default `Production,Sandbox`) and
-  `GOOGLE_PLAY_ENVIRONMENTS` (default `production,test`). The verifiers must
+  `GOOGLE_PLAY_ENVIRONMENTS` (default `production,test`; empty means the
+  default) through the lazy `Settings` in `purchases/_common.py`, once per
+  process: a change needs a restart. The verifiers must
   apply it before any store call (§6.2 step 1); `process_verified_purchase`
   checks it again on the verified answer and returns `422
   environment_not_allowed` before writing anything, whatever a verifier

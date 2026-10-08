@@ -1216,16 +1216,16 @@ async def test_environment_outside_allow_list_is_rejected_even_if_verified(
     client: TestClient,
     fake_apple: FakeAppleVerifier,
     fake_google: FakeGoogleVerifier,
-    monkeypatch: pytest.MonkeyPatch,
+    store_env: pytest.MonkeyPatch,
     platform: str,
     environment: str,
     setting: str | None,
 ) -> None:
     var = "APPLE_IAP_ENVIRONMENTS" if platform == "apple" else "GOOGLE_PLAY_ENVIRONMENTS"
     if setting is None:
-        monkeypatch.delenv(var, raising=False)
+        store_env.delenv(var, raising=False)
     else:
-        monkeypatch.setenv(var, setting)
+        store_env.setenv(var, setting)
     answer = verified("k1", platform=platform, environment=environment)
     if platform == "apple":
         fake_apple.answers["k1"] = answer
@@ -1238,15 +1238,17 @@ async def test_environment_outside_allow_list_is_rejected_even_if_verified(
     assert await count(Purchase) == 0 and await count(PurchaseLink) == 0
 
 
-def test_allowed_environments_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_allowed_environments_parsing(store_env: pytest.MonkeyPatch) -> None:
     from purchases.verifiers import allowed_environments
 
-    monkeypatch.delenv("APPLE_IAP_ENVIRONMENTS", raising=False)
-    monkeypatch.delenv("GOOGLE_PLAY_ENVIRONMENTS", raising=False)
+    store_env.delenv("APPLE_IAP_ENVIRONMENTS", raising=False)
+    store_env.delenv("GOOGLE_PLAY_ENVIRONMENTS", raising=False)
     assert allowed_environments("apple") == {"production", "sandbox"}
     assert allowed_environments("google") == {"production", "test"}
-    monkeypatch.setenv("APPLE_IAP_ENVIRONMENTS", " Production , ")
+    store_env.setenv("APPLE_IAP_ENVIRONMENTS", " Production , ")
     assert allowed_environments("apple") == {"production"}
+    store_env.setenv("APPLE_IAP_ENVIRONMENTS", "   ")  # blank is not unset: no environments
+    assert allowed_environments("apple") == frozenset()
     assert allowed_environments("amazon") == frozenset()
 
 

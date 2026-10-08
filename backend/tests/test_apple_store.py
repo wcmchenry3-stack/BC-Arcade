@@ -34,7 +34,7 @@ from tests._apple_iap_harness import (
     signed_txn,
     tamper,
 )
-from tests._helpers import jwt_games
+from tests._helpers import StoreEnv, jwt_games
 from tests.apple_jws import APP_APPLE_ID, BUNDLE_ID, default_ca, make_ca, now_ms, transaction
 
 # Shared fixtures (apple_use_verifier, apple_verifier) come from the harness module.
@@ -75,12 +75,14 @@ _APPLE_VARS = (
 
 
 @pytest.fixture()
-def apple_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[pytest.MonkeyPatch]:
+def apple_env() -> Iterator[pytest.MonkeyPatch]:
+    env = StoreEnv()  # setenv / delenv also rebuild the lazy store Settings
     for var in _APPLE_VARS:
-        monkeypatch.delenv(var, raising=False)
+        env.delenv(var, raising=False)
     apple.reset_apple_verifier()
-    yield monkeypatch
+    yield env
     apple.reset_apple_verifier()
+    env.undo()
 
 
 def _pem_key() -> str:

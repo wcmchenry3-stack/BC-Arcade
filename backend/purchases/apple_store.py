@@ -55,7 +55,7 @@ from appstoreserverlibrary.signed_data_verifier import (
     VerificationStatus,
 )
 
-from ._common import env_str, misconfigured, ms_to_datetime
+from ._common import get_settings, misconfigured, ms_to_datetime
 from .verifiers import (
     AppleEvidence,
     Environment,
@@ -123,7 +123,8 @@ def load_config() -> AppleConfig | None:
     the App Store Server API; ``APPLE_IAP_ONLINE_CHECKS`` (default on).
     A half-set configuration is logged (names only) and treated as missing.
     """
-    bundle_id = env_str("APPLE_BUNDLE_ID")
+    settings = get_settings()
+    bundle_id = settings.apple_bundle_id
     if not bundle_id:
         return None
     envs = frozenset(e for e in allowed_environments("apple") if e in _APPLE_ENV)
@@ -131,7 +132,7 @@ def load_config() -> AppleConfig | None:
         misconfigured("apple", "environments")
         return None
     app_apple_id: int | None = None
-    raw_app_id = env_str("APPLE_APP_ID")
+    raw_app_id = settings.apple_app_id
     if raw_app_id:
         if not (raw_app_id.isascii() and raw_app_id.isdigit()):
             misconfigured("apple", "app_id")
@@ -142,9 +143,9 @@ def load_config() -> AppleConfig | None:
         return None
 
     api_parts = [
-        env_str("APPLE_IAP_ISSUER_ID"),
-        env_str("APPLE_IAP_KEY_ID"),
-        env_str("APPLE_IAP_PRIVATE_KEY"),
+        settings.apple_iap_issuer_id,
+        settings.apple_iap_key_id,
+        settings.apple_iap_private_key.get_secret_value(),
     ]
     api: AppleApiCredentials | None = None
     if all(api_parts):
@@ -155,8 +156,8 @@ def load_config() -> AppleConfig | None:
         misconfigured("apple", "api_key")
         return None
 
-    online = env_str("APPLE_IAP_ONLINE_CHECKS").lower() not in {"0", "false", "no", "off"}
-    if not online and env_str("ENVIRONMENT") == "production":
+    online = settings.apple_iap_online_checks.lower() not in {"0", "false", "no", "off"}
+    if not online and (settings.environment or "").strip() == "production":
         # Offline checks trust the JWS's own signedDate for certificate
         # validity and skip OCSP; never acceptable on the production API.
         misconfigured("apple", "online_checks_off_in_production")
