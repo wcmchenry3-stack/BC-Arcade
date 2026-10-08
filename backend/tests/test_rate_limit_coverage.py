@@ -24,12 +24,13 @@ import sys
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
+from limits import parse_many
 from starlette.routing import Route
 
 import main
 from games import catalog as games_catalog
-from games.router import CATALOG_RATE_LIMIT
 from limiter import limiter
+from rate_limits import CATALOG_RATE_LIMIT, CONDITIONAL_ROUTES, ROUTE_LIMITS
 
 # FastAPI's built-in docs routes are plain Starlette routes with no handler of
 # ours to decorate. They are exempt *by name*, so a new kind of route (a
@@ -108,6 +109,42 @@ def test_every_api_route_has_a_rate_limit() -> None:
         "handlers without @limiter.limit (hard rule #12 — unauthenticated routes key by IP, "
         f"authenticated routes by user/session): {unthrottled}"
     )
+
+
+def _expected(limit_strings) -> list[str]:
+    """Normalise `rate_limits` strings the way slowapi registers them ("a;b" is
+    two entries), so they compare equal to `str(Limit.limit)`."""
+    return sorted(str(item) for s in limit_strings for item in parse_many(s))
+
+
+def test_route_limits_table_matches_every_route() -> None:
+    """`rate_limits.ROUTE_LIMITS` is the one table of expected limits: every route
+    must have an entry (a new route without one fails), no entry may be stale, and
+    each handler's registered limits must equal its entry (a decorator that drifts
+    from the table fails)."""
+    routes, _ = _walk_routes(main.app.routes)
+    keys = {_route_key(r) for r in routes}
+    missing = sorted(keys - set(ROUTE_LIMITS))
+    assert missing == [], f"routes with no entry in rate_limits.ROUTE_LIMITS: {missing}"
+    stale = sorted(set(ROUTE_LIMITS) - keys - CONDITIONAL_ROUTES)
+    assert stale == [], f"rate_limits.ROUTE_LIMITS entries for routes that do not exist: {stale}"
+
+    registry = limiter._route_limits
+    drifted = {
+        key: (_expected(ROUTE_LIMITS[key]), sorted(str(lim.limit) for lim in registry[key]))
+        for key in sorted(keys)
+        if key in registry
+        and _expected(ROUTE_LIMITS[key]) != sorted(str(lim.limit) for lim in registry[key])
+    }
+    assert (
+        drifted == {}
+    ), f"decorators differ from rate_limits.ROUTE_LIMITS (table, actual): {drifted}"
+
+
+def test_route_limits_entries_are_not_empty_or_unparseable() -> None:
+    for key, limit_strings in ROUTE_LIMITS.items():
+        assert limit_strings, f"{key} has no limits listed"
+        assert _expected(limit_strings), f"{key}: limits did not parse"
 
 
 def test_no_two_handlers_share_a_limiter_key() -> None:

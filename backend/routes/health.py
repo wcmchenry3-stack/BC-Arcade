@@ -15,6 +15,10 @@ from fastapi.responses import JSONResponse
 
 from db.base import get_engine, is_configured
 from limiter import limiter
+from rate_limits import (
+    HEALTH_DB_IP_RATE_LIMIT,
+    HEALTH_IP_RATE_LIMIT,
+)
 
 _audit_log = logging.getLogger("audit")
 
@@ -41,13 +45,13 @@ async def _ping_db() -> None:
 
 
 @router.get("/health")
-@limiter.limit("120/minute")
+@limiter.limit(HEALTH_IP_RATE_LIMIT)
 def health(request: Request) -> dict:
     return {"status": "ok"}
 
 
 @router.get("/health/db")
-@limiter.limit("30/minute")
+@limiter.limit(HEALTH_DB_IP_RATE_LIMIT)
 async def health_db(request: Request) -> JSONResponse:
     """DB round-trip for the uptime monitor.
 

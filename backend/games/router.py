@@ -21,6 +21,19 @@ from db.base import DbSession
 from db.models import Game
 from entitlements.dependencies import check_entitlement
 from limiter import limiter, session_key
+from rate_limits import (
+    CATALOG_ADMIN_SESSION_RATE_LIMIT,
+    CATALOG_RATE_LIMIT,
+    GAMES_COMPLETE_SESSION_RATE_LIMIT,
+    GAMES_CREATE_SESSION_RATE_LIMIT,
+    GAMES_DETAIL_SESSION_RATE_LIMIT,
+    GAMES_EVENTS_SESSION_RATE_LIMIT,
+    GAMES_LIST_SESSION_RATE_LIMIT,
+    LEADERBOARD_IP_RATE_LIMIT,
+    LEADERBOARD_SESSION_RATE_LIMIT,
+    RANK_IP_RATE_LIMIT,
+    RANK_SESSION_RATE_LIMIT,
+)
 from session import get_session_id, optional_session_id
 
 from . import catalog, history, sessions, sweep, sweep_gate
@@ -46,18 +59,6 @@ from .schemas import (
 )
 
 router = APIRouter()
-
-# Public, IP-keyed (unauthenticated). A constant so the rate-limit test derives
-# its request count from the configured limit instead of duplicating it.
-CATALOG_RATE_LIMIT = "60/minute"
-
-# Generic leaderboard (#2618). Keyed by session, with a looser per-IP backstop
-# so rotating the X-Session-ID header doesn't lift the limit (#2217).
-LEADERBOARD_SESSION_RATE_LIMIT = "60/minute"
-LEADERBOARD_IP_RATE_LIMIT = "300/minute"
-# GET /games/{id}/rank (#2677): a read, limited like the leaderboard.
-RANK_SESSION_RATE_LIMIT = "60/minute"
-RANK_IP_RATE_LIMIT = "300/minute"
 
 
 def _to_state(game) -> GameStateResponse:
@@ -103,7 +104,7 @@ async def get_catalog(request: Request, db: DbSession) -> JSONResponse:
 
 
 @router.patch("/catalog/{game_type_id}", response_model=GameTypeOut)
-@limiter.limit("30/minute", key_func=session_key)
+@limiter.limit(CATALOG_ADMIN_SESSION_RATE_LIMIT, key_func=session_key)
 async def patch_game_type(
     request: Request,
     game_type_id: int,
@@ -146,7 +147,7 @@ def _to_row(g) -> GameRowResponse:
 
 
 @router.get("/me", response_model=GameHistoryResponse)
-@limiter.limit("60/minute", key_func=session_key)
+@limiter.limit(GAMES_LIST_SESSION_RATE_LIMIT, key_func=session_key)
 async def list_my_games(
     request: Request,
     db: DbSession,
@@ -283,7 +284,7 @@ async def _load_owned_game(db: AsyncSession, game_id: uuid.UUID, sid: str) -> Ga
 
 
 @router.get("/{game_id}", response_model=GameDetailResponse)
-@limiter.limit("60/minute", key_func=session_key)
+@limiter.limit(GAMES_DETAIL_SESSION_RATE_LIMIT, key_func=session_key)
 async def get_game_detail(
     request: Request,
     game_id: uuid.UUID,
@@ -321,7 +322,7 @@ async def get_game_detail(
 
 
 @router.post("", response_model=CreateGameResponse)
-@limiter.limit("10/minute", key_func=session_key)
+@limiter.limit(GAMES_CREATE_SESSION_RATE_LIMIT, key_func=session_key)
 async def create_game(
     request: Request, body: CreateGameRequest, db: DbSession
 ) -> CreateGameResponse:
@@ -344,7 +345,7 @@ async def create_game(
 
 
 @router.post("/{game_id}/events", response_model=AppendEventsResponse)
-@limiter.limit("60/minute", key_func=session_key)
+@limiter.limit(GAMES_EVENTS_SESSION_RATE_LIMIT, key_func=session_key)
 async def append_events(
     request: Request, game_id: uuid.UUID, body: AppendEventsRequest, db: DbSession
 ) -> AppendEventsResponse:
@@ -363,7 +364,7 @@ async def append_events(
 
 
 @router.patch("/{game_id}/complete", response_model=GameStateResponse)
-@limiter.limit("10/minute", key_func=session_key)
+@limiter.limit(GAMES_COMPLETE_SESSION_RATE_LIMIT, key_func=session_key)
 async def complete_game(
     request: Request, game_id: uuid.UUID, body: CompleteGameRequest, db: DbSession
 ) -> GameStateResponse:

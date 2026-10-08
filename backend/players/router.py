@@ -28,6 +28,11 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from db.base import DbSession
 from limiter import limiter, session_key
+from rate_limits import (
+    PLAYER_READ_RATE_LIMIT,
+    PLAYER_REROLL_RATE_LIMIT,
+    PLAYER_WRITE_RATE_LIMIT,
+)
 from session import get_session_id
 
 from . import service
@@ -36,14 +41,6 @@ from .schemas import PlayerResponse
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Keyed by session, like the games write routes.
-PLAYER_READ_RATE_LIMIT = "60/minute"
-PLAYER_WRITE_RATE_LIMIT = "10/minute"
-# On top of the write limit: rerolling is a name picker, not a stream of fresh
-# public identities (a reroll every few seconds would let one player cycle
-# through names on the boards).
-PLAYER_REROLL_RATE_LIMIT = "5/hour"
 
 
 def _db_error(what: str, detail: str, exc: SQLAlchemyError) -> HTTPException:

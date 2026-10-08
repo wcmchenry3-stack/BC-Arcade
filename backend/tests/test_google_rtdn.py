@@ -20,7 +20,7 @@ from db.models import PurchaseEvent, PurchaseLink
 from purchases import google, google_rtdn
 from purchases.google_jobs import acknowledge_sweep, poll_voided_purchases
 from purchases.google_play import PENDING_EVENT_AT
-from purchases.router import GOOGLE_NOTIFICATION_IP_RATE_LIMIT
+from rate_limits import GOOGLE_NOTIFICATION_IP_RATE_LIMIT
 from tests._google_iap_harness import (
     NOW,
     grant,

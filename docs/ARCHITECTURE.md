@@ -1153,6 +1153,36 @@ JSON are `SecretStr`, so `repr(settings)` does not show them.
 The meaning of each variable and where it is set are in
 [RENDER.md](RENDER.md#environment-variables).
 
+**Rate limits (#2997).** Every rate-limit string lives in
+`backend/rate_limits.py` (not `limits.py`: a top-level `limits` module would
+shadow the third-party `limits` package slowapi uses). Routes pass its
+constants to `@limiter.limit(...)`; none spells a literal. Its `ROUTE_LIMITS`
+table maps each handler to the limits it must carry, and
+`tests/test_rate_limit_coverage.py` fails on a route with no entry, a stale
+entry, or a decorator that differs from the table.
+
+**Operational tunables** stay as named constants beside the code they govern
+(they are not env vars and not in `Settings`):
+
+| Constant                                      | Module                       | Value                                  |
+| --------------------------------------------- | ---------------------------- | -------------------------------------- |
+| `TOKEN_TTL_HOURS`                             | `entitlements/service.py`    | `24`                                   |
+| `STALE_GAME_AFTER` (`STALE_GAME_HOURS`)       | `games/sweep.py`             | 24 hours                               |
+| `_TS_WINDOW_LOW` / `_TS_WINDOW_HIGH`          | `games/sessions.py`          | 365 days back / 24 hours ahead         |
+| `_MAX_RESULT_BYTES`                           | `games/sessions.py`          | `8192`                                 |
+| `RETENTION`                                   | `daily_word/retention.py`    | 14 days                                |
+| `MAX_GUESSES`                                 | `daily_word/progress.py`     | `6`                                    |
+| `LOOKBACK_DAYS`                               | `daily_challenge/streak.py`  | `60`                                   |
+| `REPLAY_WINDOW`                               | `purchases/apple_notifications.py` | 48 hours                         |
+| `VOIDED_WINDOW`                               | `purchases/google_jobs.py`   | 48 hours                               |
+| `ACK_SWEEP_MAX_AGE` / `ACK_SWEEP_LIMIT`       | `purchases/google_jobs.py`   | 4 days / `500`                         |
+| `MAX_SESSIONS_PER_PURCHASE`                   | `purchases/service.py`       | `5`                                    |
+| `NEW_LINK_WINDOW`                             | `purchases/service.py`       | 30 days                                |
+| `DEFAULT_MAX_BODY_BYTES`                      | `middleware/body_size.py`    | 1 KB (default)                         |
+| `LARGE_BODY_BYTES`                            | `middleware/body_size.py`    | 256 KB (`/games`, `/logs`, `/stats`)   |
+| `PURCHASE_BODY_BYTES`                         | `middleware/body_size.py`    | 32 KB (`/purchases`)                   |
+| `DB_PING_TIMEOUT_SECONDS`                     | `routes/health.py`           | `5.0`                                  |
+
 ## 12. Daily cross-game challenge
 
 Daily Challenge is a shared read-side product system built on completed
