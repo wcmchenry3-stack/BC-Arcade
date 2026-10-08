@@ -47,7 +47,7 @@ from pydantic import BaseModel, Field
 
 from daily_word.progress import MAX_GUESSES, GuessOutcome, may_see_answer, record_guess
 from daily_word.puzzle import get_answer, get_today_meta, is_valid_guess
-from db.base import get_session_factory
+from db.base import DbSession, get_session_factory
 from limiter import _real_ip, limiter
 from session import get_session_id
 
@@ -248,6 +248,8 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
     # a permanent degrade is visible rather than a cap that quietly never
     # applies. `/answer` stays closed: without the record there is nothing to
     # check entitlement against.
+    # The session is opened here, not taken as ``db: DbSession`` (#2993): a
+    # ``get_db`` failure would answer 500 before this degrade-open ``try`` ran.
     outcome: GuessOutcome | None = None
     try:
         factory = get_session_factory()
@@ -286,6 +288,7 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
 @limiter.limit("20/minute")
 async def get_answer_route(
     request: Request,
+    db: DbSession,
     puzzle_id: str = Query(...),
 ) -> dict:
     """Return the answer, but only to a session that has earned it (#2197).
@@ -304,9 +307,7 @@ async def get_answer_route(
         raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
 
     sid = get_session_id(request)
-    factory = get_session_factory()
-    async with factory() as db:
-        earned = await may_see_answer(db, session_id=sid, puzzle_id=puzzle_id)
+    earned = await may_see_answer(db, session_id=sid, puzzle_id=puzzle_id)
     if not earned:
         raise HTTPException(status_code=403, detail="guesses_remaining")
     return {"answer": answer}

@@ -62,6 +62,25 @@ one pure-ASGI layer for the security headers and the JSON request log, outermost
 `body_size.py`, the per-path body caps, innermost) and `backend/routes/`
 (`/health`, `/health/db`, the test-only `/debug/error`).
 
+**Errors and database sessions in routes (#2993).** Routers raise the domain
+errors untranslated: `GameServiceError` (`games/sessions.py`) and
+`PurchaseError` (`purchases/verifiers.py`) both carry `status_code` and
+`detail`, and one app-level handler in `main.py` answers them with exactly the
+response `HTTPException(status_code, detail)` gives (`{"detail": ...}`),
+beside the `EntitlementError` handler (`{"detail": "not_entitled", "game": ...}`).
+The one exception is the Google RTDN `401`, which the route still raises as
+an `HTTPException` because it carries `WWW-Authenticate: Bearer`. Routes take
+their session as `db: DbSession`, an `Annotated` alias for
+`Depends(db.base.get_db, scope="function")`: one session per request, shared
+with `require_entitlement`, and closed when the route returns, before the
+response is sent. A session costs no I/O until its first query. Two routes
+open their own session on purpose: `POST /daily-word/guess`, whose
+degrade-open `try` must also catch a failure to build one, and
+`GET /entitlements`, whose dev override answers without a database. The
+webhook routes and background jobs pass a session factory, since they run
+several transactions. Tests replace the session with
+`app.dependency_overrides[get_db]`.
+
 **Background jobs (#2994).** The three in-process jobs (Daily Word retention,
 the App Store notification replay, the Google Play jobs) are `PeriodicJob`s
 (`backend/jobs/periodic.py`): `run`, `interval_s`, `timeout_s`, and the Sentry
