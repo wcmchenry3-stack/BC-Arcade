@@ -184,12 +184,13 @@ All per-frame animation uses `react-native-reanimated` shared values and worklet
 
 ### Reference implementations
 
-| Game        | Animation                                               | File                                                            |
-| ----------- | ------------------------------------------------------- | --------------------------------------------------------------- |
-| Solitaire   | Win cascade, card lift/glow, shake                      | `frontend/src/components/solitaire/SolitaireWinCascade.tsx`     |
-| FreeCell    | Foundation complete, game win, auto-complete            | `frontend/src/components/freecell/FreeCellGameWinAnimation.tsx` |
-| Bottle Sort | Pour choreography (lift, travel, tilt, stream)          | `frontend/src/components/sort/SortBoard.tsx`                    |
-| Mahjong     | Match burst (FlyingPair), shuffle pulse, deadlock shake | `frontend/src/screens/MahjongScreen.tsx`                        |
+| Game        | Animation                                      | File                                                            |
+| ----------- | ---------------------------------------------- | --------------------------------------------------------------- |
+| Solitaire   | Win cascade, card lift/glow, shake             | `frontend/src/components/solitaire/SolitaireWinCascade.tsx`     |
+| FreeCell    | Foundation complete, game win, auto-complete   | `frontend/src/components/freecell/FreeCellGameWinAnimation.tsx` |
+| Bottle Sort | Pour choreography (lift, travel, tilt, stream) | `frontend/src/components/sort/SortBoard.tsx`                    |
+| Mahjong     | Match burst (FlyingPair)                       | `frontend/src/components/mahjong/FlyingPair.tsx`                |
+| Mahjong     | Shuffle pulse, deadlock shake                  | `frontend/src/screens/MahjongScreen.tsx`                        |
 
 ---
 
