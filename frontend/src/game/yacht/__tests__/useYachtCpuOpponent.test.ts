@@ -72,9 +72,8 @@ describe("useYachtCpuOpponent", () => {
     expect(preloadOracleTable).toHaveBeenCalledTimes(1);
   });
 
-  it("plays a turn: rolls all dice, scores, hands back control and reports the scorecard", async () => {
-    const onTurnDone = jest.fn();
-    const { result } = await render({ onTurnDone });
+  it("plays a turn: rolls all dice, scores, hands back control", async () => {
+    const { result } = await render();
 
     await act(async () => result.current.startTurn());
     expect(result.current.isTurn).toBe(true);
@@ -88,8 +87,6 @@ describe("useYachtCpuOpponent", () => {
     expect(mockScore).toHaveBeenCalledWith(expect.anything(), "medium");
     expect(result.current.state!.scores.chance).not.toBeNull();
     expect(result.current.state!.round).toBe(2);
-    expect(onTurnDone).toHaveBeenCalledTimes(1);
-    expect(onTurnDone).toHaveBeenCalledWith(result.current.state);
   });
 
   it("re-rolls the dice it does not hold, up to three rolls", async () => {
@@ -127,8 +124,7 @@ describe("useYachtCpuOpponent", () => {
     mockScore.mockImplementation(() => {
       throw new Error("strategy failed");
     });
-    const onTurnDone = jest.fn();
-    const { result } = await render({ onTurnDone });
+    const { result } = await render();
     await act(async () => result.current.startTurn());
     await playOut();
     expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
@@ -136,29 +132,24 @@ describe("useYachtCpuOpponent", () => {
     });
     expect(result.current.isTurn).toBe(false);
     expect(result.current.state!.round).toBe(2);
-    expect(onTurnDone).toHaveBeenCalledWith(result.current.state);
   });
 
   it("endTurn cancels a running turn at its next step", async () => {
-    const onTurnDone = jest.fn();
-    const { result } = await render({ onTurnDone });
+    const { result } = await render();
     await act(async () => result.current.startTurn());
     await act(async () => result.current.endTurn());
     await playOut();
     expect(result.current.isTurn).toBe(false);
     expect(result.current.state!.round).toBe(1);
     expect(mockScore).not.toHaveBeenCalled();
-    expect(onTurnDone).not.toHaveBeenCalled();
   });
 
   it("unmounting cancels a running turn", async () => {
-    const onTurnDone = jest.fn();
-    const { result, unmount } = await render({ onTurnDone });
+    const { result, unmount } = await render();
     await act(async () => result.current.startTurn());
     await act(async () => unmount());
     await playOut();
     expect(mockScore).not.toHaveBeenCalled();
-    expect(onTurnDone).not.toHaveBeenCalled();
   });
 
   it("onAppBackground drops the roll animation mid-turn", async () => {

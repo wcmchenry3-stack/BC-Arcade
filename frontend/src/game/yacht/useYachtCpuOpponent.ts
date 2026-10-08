@@ -4,8 +4,8 @@
  *
  * `startTurn()` hands the computer its turn. The loop rolls, shows each hold
  * decision, re-rolls up to twice and scores, with pauses the player can
- * follow; then it hands control back and calls `onTurnDone` with the
- * computer's scorecard. Ending the turn (`endTurn`, a new game) or unmounting
+ * follow; then it hands control back (`isTurn` goes false; the scorecard is
+ * `state`). Ending the turn (`endTurn`, a new game) or unmounting
  * cancels a running loop at its next step.
  *
  * A turn that throws is reported and finished with `finishTurnFallback`, so
@@ -38,8 +38,6 @@ function delay(ms: number): Promise<void> {
 export interface YachtCpuOpponentOptions {
   /** The computer's difficulty; null in a solo game (no opponent). */
   difficulty: AiDifficulty | null;
-  /** Called with the computer's scorecard once its turn is over. */
-  onTurnDone?: (cpu: GameState) => void;
   /** The computer's scorecard of a restored game. */
   initialState?: GameState | null;
   /** True when a restored game was killed mid-way through the computer's turn. */
@@ -66,7 +64,6 @@ export interface YachtCpuOpponent {
 
 export function useYachtCpuOpponent({
   difficulty,
-  onTurnDone,
   initialState = null,
   resumeTurn = false,
 }: YachtCpuOpponentOptions): YachtCpuOpponent {
@@ -94,11 +91,6 @@ export function useYachtCpuOpponent({
     isTurnRef.current = isTurn;
   }, [isTurn]);
 
-  const onTurnDoneRef = useRef(onTurnDone);
-  useEffect(() => {
-    onTurnDoneRef.current = onTurnDone;
-  }, [onTurnDone]);
-
   // The turn loop: runs whenever the computer's turn starts.
   useEffect(() => {
     if (!isTurn || !difficultyRef.current || !stateRef.current) return;
@@ -108,11 +100,6 @@ export function useYachtCpuOpponent({
     // The AI's state as of its last completed step, so a failure part-way
     // through can finish the turn from there.
     let s = stateRef.current;
-
-    function finish(final: GameState) {
-      setIsTurn(false);
-      onTurnDoneRef.current?.(final);
-    }
 
     async function runAiTurn() {
       const diff = difficultyRef.current!;
@@ -162,7 +149,7 @@ export function useYachtCpuOpponent({
       const cat = scoreStrategy(s, diff);
       s = engineScore(s, cat);
       setState(s);
-      finish(s);
+      setIsTurn(false);
     }
 
     // If the turn fails, report it and finish the computer's turn with a
@@ -182,7 +169,7 @@ export function useYachtCpuOpponent({
           tags: { subsystem: "yacht.ai", op: "finishTurnFallback" },
         });
       }
-      finish(s);
+      setIsTurn(false);
     });
     return () => {
       cancelledRef.current = true;
