@@ -152,4 +152,49 @@ describe("useLastDifficulty", () => {
     expect(result.current.difficulty).toBe("hard");
     expect(await AsyncStorage.getItem("hearts.difficulty")).toBe("hard");
   });
+
+  describe("custom store", () => {
+    const makeStore = (loaded: string | null) => ({
+      load: jest.fn(async () => loaded as Level | null),
+      save: jest.fn(),
+    });
+
+    it("restores a valid level from store.load()", async () => {
+      const store = makeStore("hard");
+      const { result } = await renderHook(() =>
+        useLastDifficulty<Level>("yacht", LEVELS, "easy", { store })
+      );
+      await flush();
+      expect(store.load).toHaveBeenCalledTimes(1);
+      expect(result.current.difficulty).toBe("hard");
+    });
+
+    it("rejects a loaded level that is not in the list or is premium", async () => {
+      const unknown = makeStore("expert");
+      const a = await renderHook(() =>
+        useLastDifficulty<Level>("yacht", LEVELS, "easy", { store: unknown })
+      );
+      await flush();
+      expect(a.result.current.difficulty).toBe("easy");
+
+      __setPremiumLevelsForTests({ yacht: ["hard"] });
+      const premium = makeStore("hard");
+      const b = await renderHook(() =>
+        useLastDifficulty<Level>("yacht", LEVELS, "easy", { store: premium })
+      );
+      await flush();
+      expect(b.result.current.difficulty).toBe("easy");
+    });
+
+    it("rememberDifficulty saves through the store, not the shared slot", async () => {
+      const store = makeStore(null);
+      const { result } = await renderHook(() =>
+        useLastDifficulty<Level>("yacht", LEVELS, "easy", { store })
+      );
+      await flush();
+      await act(async () => result.current.rememberDifficulty("hard"));
+      expect(store.save).toHaveBeenCalledWith("hard");
+      expect(await AsyncStorage.getItem("yacht.difficulty")).toBeNull();
+    });
+  });
 });

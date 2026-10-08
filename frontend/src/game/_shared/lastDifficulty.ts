@@ -40,6 +40,19 @@ export async function saveLastDifficulty(gameKey: string, level: string): Promis
   }
 }
 
+/**
+ * Where a game's last difficulty is kept. The default is the shared
+ * `lastDifficultyKey(gameKey)` slot; a game whose remembered difficulty
+ * already lives in its own preference (Yacht keeps it beside the last mode)
+ * passes that instead, so the player's saved value keeps loading.
+ */
+export interface LastDifficultyStore<T extends string> {
+  /** The stored level, or null when there is none to restore. Never rejects. */
+  load: () => Promise<T | null>;
+  /** Never rejects: reports its own failures, as `saveLastDifficulty` does. */
+  save: (level: T) => Promise<void> | void;
+}
+
 export interface LastDifficulty<T extends string> {
   /** Starts at `fallback` (or `initial`), then the stored difficulty once it loads. */
   difficulty: T;
@@ -65,12 +78,16 @@ export interface LastDifficulty<T extends string> {
  * `rememberDifficulty` turn it into `fallback`, which must not be premium. A
  * game already in progress at a level that has since become premium (a
  * resumed save, `initial`) plays on; its next game does not.
+ *
+ * Pass `store` (a stable object) to keep the difficulty somewhere other than
+ * the shared slot; a level it loads is still checked against `levels` and
+ * premium.
  */
 export function useLastDifficulty<T extends string>(
   gameKey: string,
   levels: readonly T[],
   fallback: T,
-  { initial }: { initial?: T } = {}
+  { initial, store }: { initial?: T; store?: LastDifficultyStore<T> } = {}
 ): LastDifficulty<T> {
   const [difficulty, setState] = useState<T>(initial ?? fallback);
   const chosenRef = useRef(false);
@@ -81,8 +98,12 @@ export function useLastDifficulty<T extends string>(
     }
     if (initial !== undefined) return;
     let alive = true;
-    void loadLastDifficulty(gameKey, levels).then((level) => {
-      if (alive && level !== null && !chosenRef.current) setState(level);
+    const load = store?.load() ?? loadLastDifficulty(gameKey, levels);
+    void load.then((stored) => {
+      // A custom store's level is checked as the shared slot's is.
+      const level = levels.find((l) => l === stored);
+      if (level === undefined || isPremiumLevel(gameKey, level)) return;
+      if (alive && !chosenRef.current) setState(level);
     });
     return () => {
       alive = false;
@@ -104,10 +125,11 @@ export function useLastDifficulty<T extends string>(
       const playable = isPremiumLevel(gameKey, level) ? fallback : level;
       chosenRef.current = true;
       setState(playable);
-      void saveLastDifficulty(gameKey, playable);
+      if (store) void store.save(playable);
+      else void saveLastDifficulty(gameKey, playable);
       return playable;
     },
-    [gameKey, fallback]
+    [gameKey, fallback, store]
   );
 
   return { difficulty, setDifficulty, rememberDifficulty };
