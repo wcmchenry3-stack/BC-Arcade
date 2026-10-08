@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { act, renderHook } from "@testing-library/react-native";
 import {
   useGameRestored,
@@ -129,6 +130,57 @@ describe("usePersistedGameState", () => {
     expect(save).not.toHaveBeenCalled();
     expect(before.hasLoadedRef.current).toBe(false);
     expect(result.current.state).toBeNull();
+  });
+
+  it("under StrictMode restores once and saves nothing before the load lands", async () => {
+    const loads: ReturnType<typeof deferred<Game | null>>[] = [];
+    const save = jest.fn<Promise<void>, [Game]>(() => Promise.resolve());
+    const onRestored = jest.fn();
+    const { result } = await renderHook(
+      () => {
+        const game = usePersistedGameState<Game>({
+          load: () => {
+            const d = deferred<Game | null>();
+            loads.push(d);
+            return d.promise;
+          },
+          save,
+        });
+        useGameRestored(game, onRestored);
+        return game;
+      },
+      { wrapper: StrictMode }
+    );
+
+    await act(async () => result.current.setState({ moves: 0 }));
+    expect(save).not.toHaveBeenCalled();
+
+    // StrictMode's discarded mount loads too; whichever lands, the handler runs once.
+    const saved = { moves: 6 };
+    await act(async () => loads.forEach((d) => d.resolve(saved)));
+    expect(onRestored).toHaveBeenCalledTimes(1);
+    expect(onRestored).toHaveBeenCalledWith(saved);
+    expect(result.current.state).toBe(saved);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith(saved);
+  });
+
+  it("calls the handler of the latest commit even before its passive effects flush", async () => {
+    const load = deferred<Game | null>();
+    const first = jest.fn();
+    const second = jest.fn();
+    const { rerender } = await renderHook(
+      ({ handler }: { handler: (g: Game | null) => void }) => {
+        const game = usePersistedGameState<Game>({ load: () => load.promise, save: jest.fn() });
+        useGameRestored(game, handler);
+        return game;
+      },
+      { initialProps: { handler: first } }
+    );
+    await rerender({ handler: second });
+    await act(async () => load.resolve(null));
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledWith(null);
   });
 
   it("loads once, not on re-render", async () => {

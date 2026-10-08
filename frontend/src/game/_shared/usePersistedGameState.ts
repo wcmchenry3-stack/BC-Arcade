@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 
 /** What a restore hands the screen: the loaded game, or null for a clean slot. */
@@ -22,8 +22,8 @@ export interface PersistedGameState<T> {
   setState: Dispatch<SetStateAction<T | null>>;
   /**
    * The latest committed state, for callbacks and timers that can't close
-   * over `state`. Written when a commit brings a new state (this hook's
-   * effect, so before the effects the screen declares after it). A screen
+   * over `state`. Written at layout time when a commit brings a new state,
+   * so before any passive effect or later handler reads it. A screen
    * may also write a state it has just set but not yet rendered to it
    * (Solitaire's Auto Complete steps); only the next new state overwrites it.
    */
@@ -38,7 +38,11 @@ export interface PersistedGameState<T> {
   hasLoadedRef: { readonly current: boolean };
   /** Deletes the save (`options.clear`), ignoring a failure. */
   clear: () => void;
-  /** Set by `useGameRestored`; called once when the load lands. */
+  /**
+   * Internal: the handler `useGameRestored` registers, called once when the
+   * load lands. Screens pass the whole result to `useGameRestored` and never
+   * touch this.
+   */
   readonly restoredRef: MutableRefObject<RestoredHandler<T> | null>;
 }
 
@@ -68,9 +72,11 @@ export interface PersistedGameState<T> {
 export function usePersistedGameState<T>(
   options: PersistedGameStateOptions<T>
 ): PersistedGameState<T> {
-  // The latest callbacks, so the mount-only load and stable `clear` read this render's.
+  // The latest callbacks, so the mount-only load and stable `clear` read this
+  // render's. A layout effect, so a load landing between a commit and its
+  // passive effects still reads that commit's callbacks.
   const optionsRef = useRef(options);
-  useEffect(() => {
+  useLayoutEffect(() => {
     optionsRef.current = options;
   });
 
@@ -99,8 +105,14 @@ export function usePersistedGameState<T>(
     };
   }, []);
 
-  useEffect(() => {
+  // Mirrored at layout time, so a handler that runs between a commit and its
+  // passive effects reads the committed state. Only a new state writes it, so
+  // a state the screen wrote ahead of its commit survives other re-renders.
+  useLayoutEffect(() => {
     stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
     if (!hasLoadedRef.current || state === null) return;
     optionsRef.current.save(state).catch(() => {});
   }, [state]);
@@ -129,7 +141,9 @@ export function useGameRestored<T>(
   onRestored: RestoredHandler<T>
 ): void {
   const { restoredRef } = game;
-  useEffect(() => {
+  // A layout effect, so a load landing before this commit's passive effects
+  // flush still calls this render's handler.
+  useLayoutEffect(() => {
     restoredRef.current = onRestored;
   });
 }
