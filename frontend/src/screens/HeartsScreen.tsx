@@ -624,44 +624,13 @@ export default function HeartsScreen() {
   }
 
   // ─── Game over / play again ───────────────────────────────────────────────
-  function handleStartGame(requested: AiPreset) {
-    // A premium style starts at the default instead (#1129).
-    const difficulty = rememberDifficulty(requested);
-    // The game in play is abandoned now (the hook's close(), with the progress
-    // snapshot), not when the next game's first card opens a session.
-    syncClose();
-    gameGenerationRef.current += 1;
-    setLastTrick(null);
-    setShowMoonShot(false);
-    setShowHeartsBroken(false);
-    setShowQueenOfSpades(false);
-    resetSubmission();
-    loopActiveRef.current = false;
-    gameOverFiredRef.current = false;
-    clearGame().catch(() => {});
-    const fresh = dealGame(difficulty);
-    if (__DEV__) {
-      setHandLogs([]);
-      trickLogBufferRef.current = [];
-      dealSnapshotRef.current = debugMode
-        ? {
-            initialHands: fresh.playerHands,
-            passSelections: [[], [], [], []],
-            finalHands: fresh.playerHands,
-          }
-        : null;
-      setHandNotes([]);
-    }
-    // A new game's clock starts at 0.
-    clockRef.current = pausedClock();
-    updateClock(fresh);
-    setGameState(fresh);
-  }
-
-  /** Back to the difficulty picker (the ⋯ New Game item, and Change Difficulty). */
-  function handleChangeDifficulty() {
-    // The game in play is abandoned now (the hook's close(), with the progress
-    // snapshot), not when the next game's first card opens a session.
+  /**
+   * Leaves the game in play: abandons it now (the hook's close(), with the
+   * progress snapshot), not when the next game's first card opens a session;
+   * stops its AI loop and overlays, clears its save, its result and (in dev)
+   * its logs, and stops its clock at 0.
+   */
+  function leaveCurrentGame() {
     syncClose();
     gameGenerationRef.current += 1;
     setLastTrick(null);
@@ -679,6 +648,28 @@ export default function HeartsScreen() {
       setHandNotes([]);
     }
     clockRef.current = pausedClock();
+  }
+
+  function handleStartGame(requested: AiPreset) {
+    // A premium style starts at the default instead (#1129).
+    const difficulty = rememberDifficulty(requested);
+    leaveCurrentGame();
+    const fresh = dealGame(difficulty);
+    if (__DEV__ && debugMode) {
+      dealSnapshotRef.current = {
+        initialHands: fresh.playerHands,
+        passSelections: [[], [], [], []],
+        finalHands: fresh.playerHands,
+      };
+    }
+    // A new game's clock starts at 0.
+    updateClock(fresh);
+    setGameState(fresh);
+  }
+
+  /** Back to the difficulty picker (the ⋯ New Game item, and Change Difficulty). */
+  function handleChangeDifficulty() {
+    leaveCurrentGame();
     setGameState(null);
   }
 
