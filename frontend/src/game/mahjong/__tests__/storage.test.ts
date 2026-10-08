@@ -41,6 +41,30 @@ describe("mahjong game storage", () => {
     expect(loaded!.isComplete).toBe(false);
   });
 
+  it("never saves the engine's one-shot events (#3087)", async () => {
+    const s = seedState();
+    const [a, b] = getAnyFreePair(s.tiles)!;
+    const matched = selectTile(selectTile(s, a), b);
+    expect(matched.events?.length).toBeGreaterThan(0);
+    await saveGame(matched);
+    const raw = JSON.parse((await AsyncStorage.getItem(GAME_KEY))!);
+    expect(raw).not.toHaveProperty("events");
+    const loaded = await loadGame();
+    expect(loaded!.events).toBeUndefined();
+    expect(loaded!.tiles).toEqual(matched.tiles);
+  });
+
+  it("ignores events in a save that has them, so a restore replays nothing", async () => {
+    const s = seedState();
+    const [a] = getAnyFreePair(s.tiles)!;
+    const selected = selectTile(s, a);
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(selected));
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect(loaded).not.toHaveProperty("events");
+    expect(loaded!.selected?.id).toBe(a);
+  });
+
   it("returns null when no save exists", async () => {
     expect(await loadGame()).toBeNull();
   });
@@ -141,9 +165,9 @@ describe("mahjong storage — delta undo history (#2961)", () => {
     return { before, state };
   }
 
-  /** What an undo restores: everything but the clock and the remaining history. */
+  /** What an undo restores: everything but the clock, the remaining history and the events. */
   function board(s: MahjongState) {
-    const { startedAt: _s, accumulatedMs: _a, paused: _p, undoStack: _u, ...rest } = s;
+    const { startedAt: _s, accumulatedMs: _a, paused: _p, undoStack: _u, events: _e, ...rest } = s;
     return rest;
   }
 
