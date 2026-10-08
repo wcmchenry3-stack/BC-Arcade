@@ -286,7 +286,7 @@ hung request. It is rate limited to 30/minute per IP.
   by hand, so `render.yaml` does not apply to them). A value pasted from
   `render.yaml` with its quotes still gets sent, but browsers ignore it. When you
   change a header in `render.yaml`, make the same change in the dashboard,
-  without the quotes. The API sets its own headers in `main.py`.
+  without the quotes. The API sets its own headers in `backend/middleware/headers_and_log.py`.
 - The scan reads the service IDs from two **secrets**, `RENDER_PROD_API_SERVICE_ID`
   and `RENDER_PROD_FRONTEND_SERVICE_ID`, plus `RENDER_API_KEY`.
 - It is `workflow_run`-triggered on purpose: a `push`-triggered job would be one of
