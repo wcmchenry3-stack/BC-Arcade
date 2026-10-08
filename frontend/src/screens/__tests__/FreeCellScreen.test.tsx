@@ -42,7 +42,7 @@ jest.mock("../../game/freecell/storage", () => ({
   saveStats: jest.fn().mockResolvedValue(undefined),
 }));
 
-import { loadGame, loadStats, saveStats } from "../../game/freecell/storage";
+import { clearGame, loadGame, loadStats, saveGame, saveStats } from "../../game/freecell/storage";
 
 // The real engine; one test swaps in a fixed deal for New Game / Play Again.
 const mockDealGame = jest.fn();
@@ -624,6 +624,61 @@ describe("FreeCellScreen — result card (#2508)", () => {
       jest.advanceTimersByTime(1000);
     });
     expect(mockGetGameRank).not.toHaveBeenCalled();
+  });
+});
+
+describe("FreeCellScreen — a won game is not saved again (#3087)", () => {
+  let reduceMotion: jest.SpyInstance;
+  /** The save slot: the storage mocks write, clear and read it in call order. */
+  let slot: FreeCellState | null;
+
+  beforeEach(() => {
+    reduceMotion = jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(true);
+    slot = nearlyWon(12);
+    (loadGame as jest.Mock).mockImplementation(() => Promise.resolve(slot));
+    (saveGame as jest.Mock).mockImplementation((s: FreeCellState) => {
+      slot = s;
+      return Promise.resolve();
+    });
+    (clearGame as jest.Mock).mockImplementation(() => {
+      slot = null;
+      return Promise.resolve();
+    });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      jest.runAllTimers();
+    });
+    reduceMotion.mockRestore();
+    (loadGame as jest.Mock).mockResolvedValue(null);
+    (saveGame as jest.Mock).mockResolvedValue(undefined);
+    (clearGame as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  // The events clear after the winning move used to write the won board back
+  // after the win had cleared it, so the next mount resumed the won game.
+  it("the next mount after a win deals a fresh game, not the won board", async () => {
+    const first = await renderScreen();
+    await waitFor(() => first.getByLabelText("Hint"));
+    await act(async () => {
+      jest.advanceTimersByTime(AUTO_STEP_MS); // the winning move
+    });
+    await first.findByTestId("freecell-result");
+    await act(async () => {
+      jest.runAllTimers();
+    });
+    expect(slot).toBeNull();
+    await act(async () => {
+      first.unmount();
+    });
+
+    const second = await renderScreen();
+    await waitFor(() => second.getByLabelText("Hint"));
+    expect(second.queryByTestId("freecell-result")).toBeNull();
+    expect(second.getByLabelText("Moves: 0")).toBeTruthy();
+    expect(slot).not.toBeNull();
+    expect(slot!.isComplete).toBe(false);
   });
 });
 

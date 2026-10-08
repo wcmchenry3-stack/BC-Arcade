@@ -212,7 +212,10 @@ export default function FreeCellScreen() {
       },
       noMovesAvailable: () => setShowNoMovesBanner(true),
     },
-    () => setState((prev) => (prev === null ? null : { ...prev, events: [] }))
+    // A completed game keeps its events: a new state would be saved again after the
+    // win's clear, and the next mount would resume the won board (#3087). The
+    // identity check above already keeps them from firing twice.
+    () => setState((prev) => (prev === null || prev.isComplete ? prev : { ...prev, events: [] }))
   );
 
   // Open the session on the first move made here — not on load, so opening a
