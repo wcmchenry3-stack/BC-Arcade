@@ -11,6 +11,9 @@
  * engine already guarantees nested stacks are `[]` at write time — this
  * is defensive belt-and-suspenders.
  *
+ * One-shot `events` are never persisted, and are dropped from older saves on
+ * load, so a restore does not replay the last move's sound (#3093).
+ *
  * The play clock is saved banked and restarted on load (`clockForSave`,
  * `clockOnLoad`, #2750), so the time the app was closed never counts.
  *
@@ -45,6 +48,16 @@ function stripNestedUndo(state: SolitaireState): SolitaireState {
   };
 }
 
+/**
+ * `state` without its one-shot `events`: a save holds the game only, so a
+ * restore never replays the last move's sound (#3093).
+ */
+function withoutEvents(state: SolitaireState): SolitaireState {
+  if (!("events" in state)) return state;
+  const { events: _events, ...game } = state;
+  return game;
+}
+
 function isSavedGame(p: unknown): p is ParsedSave {
   const parsed = p as ParsedSave;
   return !(
@@ -75,10 +88,11 @@ export const {
     // Normalize timer fields — absent in saves created before timer tracking was added.
     parsed.startedAt = parsed.startedAt ?? null;
     parsed.accumulatedMs = parsed.accumulatedMs ?? 0;
-    const loaded = parsed as SolitaireState;
+    // Saves written before #3093 still carry the last move's events.
+    const loaded = withoutEvents(parsed as SolitaireState);
     return clockOnLoad(loaded, loaded.isComplete);
   },
-  beforeSave: (state) => stripNestedUndo(clockForSave(state)),
+  beforeSave: (state) => stripNestedUndo(clockForSave(withoutEvents(state))),
 });
 
 export const { load: loadStats, save: saveStats } = createRecord<SolitaireStats>({

@@ -56,6 +56,27 @@ describe("solitaire storage", () => {
     expect(withFoundation).toBeDefined();
   });
 
+  it("never saves the one-shot events", async () => {
+    const s: SolitaireState = { ...seedState(), events: ["cardPlace", "gameWin"] };
+    await saveGame(s);
+    const parsed = JSON.parse((await AsyncStorage.getItem(GAME_KEY))!);
+    expect("events" in parsed).toBe(false);
+    expect(parsed.score).toBe(s.score);
+  });
+
+  it("restores an older save that has events without them", async () => {
+    const s = seedState();
+    await AsyncStorage.setItem(
+      GAME_KEY,
+      JSON.stringify({ ...s, _v: 1, events: ["cardPlace", "gameWin"] })
+    );
+    const loaded = await loadGame();
+    expect(loaded).not.toBeNull();
+    expect("events" in loaded!).toBe(false);
+    expect(loaded!.score).toBe(s.score);
+    expect(loaded!.tableau.length).toBe(7);
+  });
+
   it("returns null and captures a warning on a corrupt JSON payload", async () => {
     await AsyncStorage.setItem(GAME_KEY, "not-json{{");
     expect(await loadGame()).toBeNull();
