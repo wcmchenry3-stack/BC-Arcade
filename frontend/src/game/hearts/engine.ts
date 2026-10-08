@@ -6,6 +6,7 @@
  * on each transition — state is immutable.
  */
 
+import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
 import type { AiPreset, Card, HeartsState, PassDirection, Rank, Suit, TrickCard } from "./types";
 import { passOffset, RANKS, SUITS } from "./types";
 
@@ -13,25 +14,11 @@ import { passOffset, RANKS, SUITS } from "./types";
 // Seedable RNG — tests can pin shuffles via setRng(createSeededRng(seed)).
 // ---------------------------------------------------------------------------
 
-export type RandomSource = () => number;
-
-let _rng: RandomSource = Math.random;
-
-export function setRng(fn: RandomSource): void {
-  _rng = fn;
-}
-
-export function getRng(): RandomSource {
-  return _rng;
-}
-
-export function createSeededRng(seed: number): RandomSource {
-  let state = seed >>> 0;
-  return () => {
-    state = (Math.imul(1664525, state) + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
-}
+const rngSlot = createRngSlot();
+export const setRng = rngSlot.setRng;
+export const getRng = rngSlot.getRng;
+export { createSeededRng };
+export type { RandomSource };
 
 // ---------------------------------------------------------------------------
 // Deck helpers
@@ -50,7 +37,7 @@ function createDeck(): Card[] {
 function shuffle<T>(arr: readonly T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(_rng() * (i + 1));
+    const j = Math.floor(rngSlot.rng() * (i + 1));
     const tmp = a[i]!;
     a[i] = a[j]!;
     a[j] = tmp;

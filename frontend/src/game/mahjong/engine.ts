@@ -9,6 +9,7 @@
  * valid. Tests can pin the shuffle via `setRng(createSeededRng(seed))`.
  */
 
+import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
 import type {
   Layout,
   MahjongState,
@@ -73,21 +74,10 @@ export const DEADLOCK_OVERLAY_DELAY_MS = 500;
 // Seedable RNG — LCG matching Cascade / Blackjack / Twenty48 / Solitaire.
 // ---------------------------------------------------------------------------
 
-export type RandomSource = () => number;
-
-let _rng: RandomSource = Math.random;
-
-export function setRng(fn: RandomSource): void {
-  _rng = fn;
-}
-
-export function createSeededRng(seed: number): RandomSource {
-  let state = seed >>> 0;
-  return () => {
-    state = (Math.imul(1664525, state) + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
-}
+const rngSlot = createRngSlot();
+export const setRng = rngSlot.setRng;
+export { createSeededRng };
+export type { RandomSource };
 
 // ---------------------------------------------------------------------------
 // Tile matching
@@ -569,7 +559,7 @@ function computeDealId(tiles: readonly SlotTile[]): string {
 
 /** Deal a fresh solvable game using the supplied layout. */
 export function createGame(layout: Layout, seed?: number): MahjongState {
-  const rng = seed !== undefined ? createSeededRng(seed) : _rng;
+  const rng = seed !== undefined ? createSeededRng(seed) : rngSlot.rng;
   const specs = buildFullTileSet();
   const pairs = buildPairs(specs);
   const tiles = shuffleFaceAssignments(buildBoard(layout, pairs, rng), rng);
@@ -776,8 +766,8 @@ export function shuffleBoard(state: MahjongState): MahjongState {
 
   let newTiles: SlotTile[] = [];
   for (let attempt = 0; attempt < 50; attempt++) {
-    const shuffledPairs = fisherYates([...pairs], _rng);
-    const shuffledSlots = fisherYates([...slots], _rng);
+    const shuffledPairs = fisherYates([...pairs], rngSlot.rng);
+    const shuffledSlots = fisherYates([...slots], rngSlot.rng);
     const candidate: SlotTile[] = [];
     let id = 0;
     for (let i = 0; i < shuffledPairs.length; i++) {
@@ -802,9 +792,9 @@ export function shuffleBoard(state: MahjongState): MahjongState {
 
   // Fallback: guaranteed interleaving algorithm for skewed or pure-stack boards.
   if (newTiles.length === 0) {
-    const interleaved = buildValidSlotPairing(slots, _rng);
+    const interleaved = buildValidSlotPairing(slots, rngSlot.rng);
     if (interleaved !== null) {
-      const shuffledPairs = fisherYates([...pairs], _rng);
+      const shuffledPairs = fisherYates([...pairs], rngSlot.rng);
       const candidate: SlotTile[] = [];
       for (let i = 0; i < shuffledPairs.length; i++) {
         const pair = shuffledPairs[i]!;

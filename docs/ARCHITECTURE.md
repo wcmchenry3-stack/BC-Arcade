@@ -196,6 +196,26 @@ Explicit exception to the lint rule, plus contexts that stay under `game/`:
   `game/<name>/` by design. They are **not** exempt from the lint rule; they pass
   because they import no UI.
 
+### 3.2 Determinism and the seeded RNG (#2985)
+
+Engines with seedable shuffles, deals or rolls route that randomness through a
+per-engine slot rather than calling `Math.random` directly (purely cosmetic
+randomness, such as Star Swarm visual effects, may still use `Math.random`):
+`frontend/src/game/_shared/seededRng.ts` exports `createSeededRng(seed)` (one
+32-bit LCG, `state / 2^32`, so a draw is always in `[0, 1)`), `createRngSlot()`
+(an engine's swappable source: `rng()`, `setRng(fn)`, `getRng()`) and
+`RandomSource`. Each engine owns its own slot, so tests pin shuffles or rolls
+with `setRng(createSeededRng(seed))` without affecting other engines. Star Swarm
+keeps its LCG state in its engine (it is part of the replay counters) and steps
+it with the shared `lcgNext`. `_shared/simRandom.ts` (Mulberry32) is the
+simulators' separate generator; do not use it in engines.
+
+Known exception: Star Swarm's power-up type (`pickPowerUpType`) and power-up
+drop position still call `Math.random`, and they do affect play. Seeding the LCG
+alone therefore does not reproduce a Star Swarm run; the golden replay test
+stubs `Math.random` as well. Moving those draws onto the seeded source would
+change Star Swarm's gameplay sequence and needs its own golden re-record.
+
 ## 4. Persistence and offline contract
 
 **One write path.** Every game records its sessions the same way, and **no
