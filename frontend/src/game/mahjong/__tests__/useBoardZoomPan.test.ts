@@ -39,8 +39,9 @@ async function setup(camera: Camera = CAMERA) {
   // The mocked animated style is evaluated at render: re-render to read a write.
   const transform = async () => {
     await hook.rerender({ c: current });
-    const t = (hook.result.current.gestureAnimStyle as { transform: Record<string, number>[] })
-      .transform;
+    const t = (
+      hook.result.current.gestureAnimStyle as unknown as { transform: Record<string, number>[] }
+    ).transform;
     return { x: t[0]!.translateX!, y: t[1]!.translateY!, scale: t[2]!.scale! };
   };
   const setCamera = async (c: Camera) => {

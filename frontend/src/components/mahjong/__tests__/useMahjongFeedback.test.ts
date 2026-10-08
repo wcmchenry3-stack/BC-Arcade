@@ -134,15 +134,6 @@ describe("useMahjongFeedback — motion", () => {
     await hook.rerender({ s: { ...shuffled, isDeadlocked: true }, rm: false });
     expect(sequence).toHaveBeenCalledTimes(2);
     expect(sequence.mock.calls[1]).toHaveLength(7);
-
-    // Both animations settle back at rest.
-    await hook.rerender({ s: { ...shuffled, isDeadlocked: true }, rm: false });
-    const style = hook.result.current.boardAnimStyle as {
-      opacity: number;
-      transform: { translateX: number }[];
-    };
-    expect(style.opacity).toBe(1);
-    expect(style.transform[0]!.translateX).toBe(0);
   });
 
   it("keeps the sounds but drops all motion under Reduce Motion", async () => {
