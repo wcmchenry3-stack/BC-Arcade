@@ -2,23 +2,21 @@
  * Star Swarm engine tests: the shared entity factories (`engine/entities.ts`, #2988) — pickups,
  * explosions and the power-up type roll.
  */
+import { CANVAS_H, CANVAS_W, _resetIds, initStarSwarm, seedRng } from "../engine";
 import {
-  CANVAS_H,
-  CANVAS_W,
+  makePickup,
+  pickPowerUpType,
+  powerUpDespawnMs,
+  spawnExplosion,
+  tickExplosions,
+} from "../engine/entities";
+import {
   EXPLOSION_FRAMES,
   EXPLOSION_FRAME_MS,
   POWERUP_H,
   POWERUP_VY,
   POWERUP_W,
-  _resetIds,
-  initStarSwarm,
-  makePickup,
-  pickPowerUpType,
-  powerUpDespawnMs,
-  seedRng,
-  spawnExplosion,
-  tickExplosions,
-} from "../engine";
+} from "../engine/tuning";
 import type { Explosion, PowerUpType } from "../types";
 
 beforeEach(() => {

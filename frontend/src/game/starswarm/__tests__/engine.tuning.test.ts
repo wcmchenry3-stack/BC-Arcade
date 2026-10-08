@@ -12,31 +12,35 @@ import {
   _resetIds,
   applyPowerUp,
   buddyBurstCount,
+  buddyStation,
   CANVAS_W,
   CANVAS_H,
   DIFFICULTY_TIERS,
   difficultyMultiplier,
   difficultyParamScale,
   difficultyLabel,
-  DEFAULT_TUNING,
   BUDDY_HP,
   BUDDY_SPEED,
   BUDDY_REPLAN_MS,
   BUDDY_BURSTS,
-  BUDDY_BULLET_COUNT_MIN,
-  BUDDY_BULLET_COUNT_MAX,
   BUDDY_PIERCE_HITS,
-  BUDDY_SPREAD_HALF,
   BUDDY_STANDOFF,
-  BUDDY_STRAFE,
   BUDDY_NOTICE,
   BUDDY_NOTICE_AIMED,
   BUDDY_MAX_INCOMING,
   BUDDY_TARGETING,
   CARRIER_CADENCE,
   CARRIER_CADENCE_CAP,
-  type Tuning,
 } from "../engine";
+import {
+  BUDDY_BULLET_COUNT_MAX,
+  BUDDY_BULLET_COUNT_MIN,
+  BUDDY_SPREAD_HALF,
+  BUDDY_STRAFE,
+  DEFAULT_TUNING,
+  type Tuning,
+} from "../engine/tuning";
+import { tickCarrier, type CarrierCtx } from "../engine/carrier";
 import type { Bullet, DifficultyTier, StarSwarmState } from "../types";
 import { FIRE_INPUT, NO_INPUT, advanceMs, runExtraction } from "./helpers/engineFixtures";
 
@@ -270,5 +274,61 @@ describe("#2988 injectable Tuning", () => {
     const centre = CANVAS_W / 2;
     expect(station(0)).toBe(centre);
     expect(station(0.1)).toBeLessThan(centre);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2988 — knobs read by one pure function: a direct call with an override vs the default
+// ---------------------------------------------------------------------------
+
+describe("#2988 Tuning knobs read directly", () => {
+  const BUDDY_STUB = { ageMs: 0, burstTimer: 99_999, burstsLeft: 3, phase: "Holding" } as never;
+  const fresh = (): StarSwarmState => initStarSwarm(CANVAS_W, CANVAS_H, 5, 42, "Captain");
+
+  it("BUDDY_LANE_FLOOR sets Buddy's lane when no ship or Carrier forces it lower", () => {
+    const s: StarSwarmState = { ...fresh(), enemies: [] };
+    const dflt = buddyStation(s, BUDDY_STUB).y;
+    const low = buddyStation(s, BUDDY_STUB, { ...DEFAULT_TUNING, BUDDY_LANE_FLOOR: 0.6 }).y;
+    expect(dflt).toBeCloseTo(CANVAS_H * DEFAULT_TUNING.BUDDY_LANE_FLOOR);
+    expect(low).toBeCloseTo(CANVAS_H * 0.6);
+    expect(low).toBeGreaterThan(dflt);
+  });
+
+  it("BUDDY_STANDOFF holds Buddy that far below the Carrier", () => {
+    const base = fresh();
+    const carrier = base.enemies.find((e) => e.tier === "Carrier")!;
+    const s: StarSwarmState = { ...base, enemies: [{ ...carrier, isAlive: true, y: 200 }] };
+    const dflt = buddyStation(s, BUDDY_STUB).y;
+    const wide = buddyStation(s, BUDDY_STUB, { ...DEFAULT_TUNING, BUDDY_STANDOFF: 200 }).y;
+    expect(dflt).toBeCloseTo(200 + BUDDY_STANDOFF);
+    expect(wide).toBeCloseTo(400);
+  });
+
+  it("CARRIER_RUN_AT_BUDDY aims the attack run at Buddy's column, not the player's", () => {
+    const base = fresh();
+    const buddy = { ...applyPowerUp(base, "buddy").buddyShips[0]!, x: 40 };
+    const carrier = {
+      ...base.enemies.find((e) => e.tier === "Carrier")!,
+      phase: "Formation" as const,
+      runPhase: "idle" as const,
+      runTimer: 0,
+      beamTimer: 1e9,
+      shootTimer: 1e9,
+    };
+    const ctx: CarrierCtx = {
+      playing: true,
+      stage: "exposed",
+      prevStage: "exposed",
+      bossWave: false,
+      difficulty: "Captain",
+      playerX: 300,
+      playerY: 560,
+      canvasH: CANVAS_H,
+      flakRock: null,
+      buddy,
+    };
+    const aim = (t: Tuning) => tickCarrier(carrier, 16, ctx, t).enemy.diveTargetX;
+    expect(aim(DEFAULT_TUNING)).toBe(300);
+    expect(aim({ ...DEFAULT_TUNING, CARRIER_RUN_AT_BUDDY: true })).toBe(40);
   });
 });

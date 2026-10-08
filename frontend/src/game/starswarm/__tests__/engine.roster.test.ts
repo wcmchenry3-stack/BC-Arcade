@@ -10,15 +10,12 @@ import {
   CANVAS_W,
   _resetIds,
   carrierStage,
-  carrierStageOf,
   initStarSwarm,
   isCarrierArmored,
   isLeaderTier,
-  mapFilterKeep,
-  mapKeep,
   seedRng,
-  tickCtx,
 } from "../engine";
+import { carrierStageOf, mapFilterKeep, mapKeep, tickCtx } from "../engine/roster";
 import type { Enemy, StarSwarmState } from "../types";
 
 beforeEach(() => {

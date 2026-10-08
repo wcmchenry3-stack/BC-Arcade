@@ -17,7 +17,7 @@ import {
   rng,
   seedBuddyIdRange,
   seedRng,
-} from "../engine";
+} from "../engine/rng";
 
 beforeEach(() => {
   seedRng(42);

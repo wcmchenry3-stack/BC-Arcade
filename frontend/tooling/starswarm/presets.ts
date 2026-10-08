@@ -4,7 +4,8 @@
  * `Tuning` override set (data), applied by engineVariant.ts to the real engine's entry points.
  */
 import * as realEngine from "../../src/game/starswarm/engine";
-import type { BuddyTargeting, Tuning } from "../../src/game/starswarm/engine";
+import type { BuddyTargeting } from "../../src/game/starswarm/engine";
+import { DEFAULT_TUNING, type Tuning } from "../../src/game/starswarm/engine/tuning";
 import type { DifficultyTier, EnemyTier } from "../../src/game/starswarm/types";
 import { PILOTS, SCENARIOS, type PilotConfig, type Scenario } from "./balance";
 import { loadEngineVariant, type Engine, type EngineVariantSpec } from "./engineVariant";
@@ -97,9 +98,12 @@ export function isShipped(v: Variant): boolean {
   return Object.keys(v.spec).length === 0;
 }
 
+/** The real module's public surface plus its `DEFAULT_TUNING` (what an `Engine` carries). */
+const SHIPPED_ENGINE: Engine = { ...realEngine, DEFAULT_TUNING };
+
 /** The engine a variant runs on: the real module, or its sim-only tuned copy. */
 export function engineFor(v: Variant): Engine {
-  return isShipped(v) ? realEngine : loadEngineVariant(v.spec);
+  return isShipped(v) ? SHIPPED_ENGINE : loadEngineVariant(v.spec);
 }
 
 /**

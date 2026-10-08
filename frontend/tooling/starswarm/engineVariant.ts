@@ -12,9 +12,10 @@
  * variant is the real engine (a smoke test holds that it replays a seeded run identically).
  */
 import * as realEngine from "../../src/game/starswarm/engine";
-import type { Tuning } from "../../src/game/starswarm/engine";
+import { DEFAULT_TUNING, type Tuning } from "../../src/game/starswarm/engine/tuning";
 
-export type Engine = typeof realEngine;
+/** The public engine surface plus the (variant-bound) `DEFAULT_TUNING` the harness reads back. */
+export type Engine = typeof realEngine & { readonly DEFAULT_TUNING: Tuning };
 
 /** A tuning override set: `Tuning` key → replacement value. */
 export type TuningOverrides = Readonly<Partial<Tuning>>;
@@ -26,9 +27,9 @@ const cache = new Map<string, Engine>();
 
 /** `DEFAULT_TUNING` with `spec` applied; throws on a key that is not a tunable. */
 export function resolveTuning(spec: EngineVariantSpec): Tuning {
-  const base = realEngine.DEFAULT_TUNING;
+  const base = DEFAULT_TUNING;
   for (const key of Object.keys(spec)) {
-    if (!(key in base)) throw new Error(`engineVariant: ${key} is not a Tuning key`);
+    if (!Object.hasOwn(base, key)) throw new Error(`engineVariant: ${key} is not a Tuning key`);
   }
   return { ...base, ...spec };
 }

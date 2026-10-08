@@ -3,7 +3,8 @@
  *
  * The harness drives the real engine, its attribution adds up to Buddy's real HP loss, a seeded
  * cell replays to the same metrics, a no-override engine variant is the shipped engine, and every
- * preset variant names only tunables the engine actually reads (#2988). The full run is the CLI
+ * preset variant names only keys that exist in `DEFAULT_TUNING` (#2988; that the engine reads a
+ * knob is covered per knob in engine.tuning.test.ts). The full run is the CLI
  * (`npx tsx tools/sim/simulate-starswarm.ts`), see docs/games/starswarm.md → "Balance simulation".
  */
 import * as realEngine from "../../../src/game/starswarm/engine";
@@ -83,7 +84,7 @@ describe("balance sim harness (fast)", () => {
     expect(runOne(loadEngineVariant({}), spec)).toEqual(runOne(realEngine, spec));
   });
 
-  it("every preset variant names only Tuning keys the engine reads", () => {
+  it("every preset variant names only keys that exist in DEFAULT_TUNING", () => {
     for (const v of VARIANTS) {
       expect(() => resolveTuning(v.spec)).not.toThrow();
       const E = engineFor(v);
@@ -95,6 +96,8 @@ describe("balance sim harness (fast)", () => {
       }
     }
     expect(() => resolveTuning({ NOT_A_CONSTANT: 1 } as never)).toThrow(/NOT_A_CONSTANT/);
+    // inherited Object.prototype members are not tunables
+    expect(() => resolveTuning({ constructor: 1 } as never)).toThrow(/constructor/);
     expect(() => loadEngineVariant({ NOT_A_CONSTANT: 1 } as never)).toThrow();
   });
 
