@@ -62,6 +62,22 @@ one pure-ASGI layer for the security headers and the JSON request log, outermost
 `body_size.py`, the per-path body caps, innermost) and `backend/routes/`
 (`/health`, `/health/db`, the test-only `/debug/error`).
 
+**Background jobs (#2994).** The three in-process jobs (Daily Word retention,
+the App Store notification replay, the Google Play jobs) are `PeriodicJob`s
+(`backend/jobs/periodic.py`): `run`, `interval_s`, `timeout_s`, and the Sentry
+`subsystem_tag` and `fingerprint` for a failed run. `loop()` runs the job now
+and then every interval; a failure or timeout is logged, reported through
+`observability.report.report_exception` and retried next cycle, never raised.
+`backend/jobs/lifespan.py` lists them in `configured_jobs()` (a job whose
+config is missing returns `None` and is left out). `main.lifespan` starts them
+in that order as tasks in `app.state.job_tasks`, before the DB health check,
+and stops them in reverse on every exit. `PeriodicJob.stop` cancels the task
+and waits at most `STOP_TIMEOUT_S` (5 s), logging when the task will not stop.
+A task that crashed is re-raised when the job sets `reraise_on_crash` (retention
+only) and swallowed otherwise (the purchase jobs); either way every other job is
+still stopped. Adding a job is one `PeriodicJob(...)` builder plus one line in
+`configured_jobs()`.
+
 | Area                      | Location                   | Responsibility                                                                                                     |
 | ------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Shared game sessions      | `backend/games/`           | Create/complete games, append events, ranking, board definitions, progression helpers, shared schemas              |
