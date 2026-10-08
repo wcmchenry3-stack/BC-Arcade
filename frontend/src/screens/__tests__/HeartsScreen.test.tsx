@@ -114,7 +114,16 @@ function resetSyncMocks() {
 
 const mockNavigate = jest.fn();
 const mockPopToTop = jest.fn();
-const mockAddListener = jest.fn((_event: string, _cb: unknown) => jest.fn());
+// Live navigation listeners, so a test can blur and focus the screen (#3087).
+const mockNavListeners = new Map<string, Set<() => void>>();
+const mockAddListener = jest.fn((event: string, cb: () => void) => {
+  const set = mockNavListeners.get(event) ?? new Set();
+  set.add(cb);
+  mockNavListeners.set(event, set);
+  return () => {
+    set.delete(cb);
+  };
+});
 jest.mock("@react-navigation/native", () =>
   mockScreenDeps().mockNavigation(
     () => ({
@@ -1014,6 +1023,36 @@ describe("HeartsScreen — game session (#2629)", () => {
     const r = await renderScreen();
     await r.findByTestId("hearts-hand-card-0");
     expect(mockAddListener).not.toHaveBeenCalledWith("beforeRemove", expect.anything());
+  });
+
+  it("another screen covering the game is not play time (#3087)", async () => {
+    resumeKilledSession();
+    (loadGame as jest.Mock).mockResolvedValue({
+      ...humanLastCardState("schemer"),
+      accumulatedMs: 40_000,
+    });
+    const r = await renderScreen();
+    await r.findByTestId("hearts-hand-card-0");
+    await act(async () => {
+      jest.advanceTimersByTime(5_000);
+    });
+    const emitNav = (event: "blur" | "focus") =>
+      act(async () => {
+        for (const cb of [...(mockNavListeners.get(event) ?? [])]) cb();
+      });
+    // e.g. the Scoreboard pushed on top: a minute under it adds nothing.
+    await emitNav("blur");
+    await act(async () => {
+      jest.advanceTimersByTime(60_000);
+    });
+    await emitNav("focus");
+    const getSnapshot = mockSetProgressSnapshot.mock.calls.at(-1)![0];
+    expect(getSnapshot().durationMs).toBe(45_000);
+    // Back on screen, the clock runs again.
+    await act(async () => {
+      jest.advanceTimersByTime(2_000);
+    });
+    expect(getSnapshot().durationMs).toBe(47_000);
   });
 
   it("going to the background saves the game with its play time and stops the clock", async () => {

@@ -14,8 +14,33 @@ export interface FocusEventSource {
  * report `unknown` (or nothing) before its first transition: that counts as
  * the foreground, so a clock is never held by a state no event will clear.
  */
-function isAwayStatus(status: AppStateStatus | null | undefined): boolean {
+export function isAwayStatus(status: AppStateStatus | null | undefined): boolean {
   return status === "background" || status === "inactive";
+}
+
+/**
+ * One event that takes the player away, as `onLeave` reports it: a blur, or a
+ * change of `AppState` to an away status (`isAwayStatus`). `previous` is the
+ * status of the change event before this one: `null` for the first, since the
+ * status at mount isn't a change.
+ */
+export type LeaveEvent =
+  | { readonly reason: "blur" }
+  | {
+      readonly reason: "appState";
+      readonly status: "background" | "inactive";
+      readonly previous: AppStateStatus | null;
+    };
+
+export interface PauseWhileAwayOptions {
+  /**
+   * Called on every leave event, whether or not the player was already away,
+   * after `onPause` (if this event started the absence). Never at mount. For
+   * work a screen does on each departure rather than once per absence: Star
+   * Swarm pauses a run the player resumed while the app stayed inactive, and
+   * Sort and Hearts save on the app's move to the background.
+   */
+  onLeave?: (event: LeaveEvent) => void;
 }
 
 /**
@@ -47,10 +72,12 @@ function isAwayStatus(status: AppStateStatus | null | undefined): boolean {
 export function usePauseWhileAway(
   navigation: FocusEventSource,
   onPause: () => void,
-  onResume: () => void
+  onResume: () => void,
+  options: PauseWhileAwayOptions = {}
 ): { readonly current: boolean } {
-  const handlersRef = useRef({ onPause, onResume });
-  handlersRef.current = { onPause, onResume };
+  const { onLeave } = options;
+  const handlersRef = useRef({ onPause, onResume, onLeave });
+  handlersRef.current = { onPause, onResume, onLeave };
 
   const blurredRef = useRef(false);
   const backgroundedRef = useRef(false);
@@ -70,9 +97,15 @@ export function usePauseWhileAway(
     // `active` would look like no change.
     backgroundedRef.current = isAwayStatus(AppState.currentState);
     update();
+    let previous: AppStateStatus | null = null;
     const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
+      const last = previous;
+      previous = next;
       backgroundedRef.current = isAwayStatus(next);
       update();
+      if (next === "background" || next === "inactive") {
+        handlersRef.current.onLeave?.({ reason: "appState", status: next, previous: last });
+      }
     });
     return () => sub?.remove();
   }, [update]);
@@ -85,6 +118,7 @@ export function usePauseWhileAway(
     const offBlur = navigation.addListener("blur", () => {
       blurredRef.current = true;
       update();
+      handlersRef.current.onLeave?.({ reason: "blur" });
     });
     const offFocus = navigation.addListener("focus", () => {
       blurredRef.current = false;

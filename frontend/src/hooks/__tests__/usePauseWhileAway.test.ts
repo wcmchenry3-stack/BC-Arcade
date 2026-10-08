@@ -1,7 +1,12 @@
 import { act, renderHook } from "@testing-library/react-native";
 import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
-import { usePauseWhileAway, type FocusEventSource } from "../usePauseWhileAway";
+import {
+  isAwayStatus,
+  usePauseWhileAway,
+  type FocusEventSource,
+  type LeaveEvent,
+} from "../usePauseWhileAway";
 
 function fakeNavigation() {
   const listeners = new Map<string, Set<() => void>>();
@@ -161,5 +166,77 @@ describe("usePauseWhileAway (#2750)", () => {
     expect(appStateListeners.size).toBe(0);
     expect(count("blur")).toBe(0);
     expect(count("focus")).toBe(0);
+  });
+
+  describe("onLeave (#3087)", () => {
+    async function setupWithLeave() {
+      const nav = fakeNavigation();
+      const order: string[] = [];
+      const onPause = jest.fn(() => order.push("pause"));
+      const onLeave = jest.fn((e: LeaveEvent) => order.push(`leave:${e.reason}`));
+      const hook = await renderHook(() =>
+        usePauseWhileAway(nav.navigation, onPause, jest.fn(), { onLeave })
+      );
+      return { ...nav, onPause, onLeave, order, hook };
+    }
+
+    it("is called on every leave event, after onPause, even while already away", async () => {
+      const { emit, onPause, onLeave, order } = await setupWithLeave();
+      await act(async () => setAppState("inactive"));
+      await act(async () => setAppState("background"));
+      await act(async () => emit("blur"));
+      expect(onPause).toHaveBeenCalledTimes(1);
+      expect(onLeave.mock.calls.map(([e]) => e)).toEqual([
+        { reason: "appState", status: "inactive", previous: null },
+        { reason: "appState", status: "background", previous: "inactive" },
+        { reason: "blur" },
+      ]);
+      expect(order).toEqual(["pause", "leave:appState", "leave:appState", "leave:blur"]);
+    });
+
+    it("is not called on a return, nor at mount", async () => {
+      const { emit, onLeave } = await setupWithLeave();
+      expect(onLeave).not.toHaveBeenCalled();
+      await act(async () => setAppState("active"));
+      await act(async () => emit("focus"));
+      expect(onLeave).not.toHaveBeenCalled();
+    });
+
+    it("calls the latest onLeave without re-subscribing", async () => {
+      const nav = fakeNavigation();
+      const first = jest.fn();
+      const second = jest.fn();
+      const { rerender } = await renderHook(
+        ({ onLeave }: { onLeave: (e: LeaveEvent) => void }) =>
+          usePauseWhileAway(nav.navigation, jest.fn(), jest.fn(), { onLeave }),
+        { initialProps: { onLeave: first } }
+      );
+      await rerender({ onLeave: second });
+      expect(appStateListeners.size).toBe(1);
+      await act(async () => setAppState("background"));
+      await act(async () => nav.emit("blur"));
+      expect(first).not.toHaveBeenCalled();
+      expect(second).toHaveBeenCalledTimes(2);
+    });
+
+    it("reports the previous change's status, a return included", async () => {
+      const { onLeave } = await setupWithLeave();
+      await act(async () => setAppState("background"));
+      await act(async () => setAppState("active"));
+      await act(async () => setAppState("background"));
+      expect(onLeave.mock.calls.map(([e]) => e)).toEqual([
+        { reason: "appState", status: "background", previous: null },
+        { reason: "appState", status: "background", previous: "active" },
+      ]);
+    });
+  });
+
+  it("isAwayStatus: background and inactive only", () => {
+    expect(isAwayStatus("background")).toBe(true);
+    expect(isAwayStatus("inactive")).toBe(true);
+    expect(isAwayStatus("active")).toBe(false);
+    expect(isAwayStatus("unknown")).toBe(false);
+    expect(isAwayStatus(null)).toBe(false);
+    expect(isAwayStatus(undefined)).toBe(false);
   });
 });

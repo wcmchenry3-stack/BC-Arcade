@@ -69,6 +69,7 @@ import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { PillButton } from "../components/shared/PillButton";
+import { isAwayStatus } from "../hooks/usePauseWhileAway";
 
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "Game">;
@@ -281,7 +282,7 @@ export default function GameScreen({ navigation, route }: Props) {
   // The async AI turn keeps running; no cancellation or replay needed.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
-      if (next === "background" || next === "inactive") {
+      if (isAwayStatus(next)) {
         onCpuAppBackground();
         // The process may be killed from here (#2505). "inactive" too: iOS's
         // app switcher only makes the app inactive, and a swipe-away there
