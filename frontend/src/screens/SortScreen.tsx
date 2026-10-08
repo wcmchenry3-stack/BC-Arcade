@@ -262,7 +262,7 @@ export default function SortScreen() {
       setWinSummary(solve);
       // Storage mirrors memory; skipped while it couldn't be read, so a failed
       // read never overwrites the stored bests.
-      if (solve.isNewBest && bestsStoredRef.current) void saveBestMoves(bests);
+      if (solve.improved && bestsStoredRef.current) void saveBestMoves(bests);
       // Every solve is scored with the player's standing after it (#2625): the
       // highest level solved, and the sum of best moves up to it (recorded,
       // not ranked: #2746). The board keeps each player's best row, their

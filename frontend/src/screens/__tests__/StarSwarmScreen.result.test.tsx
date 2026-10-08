@@ -112,11 +112,19 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     expect(card.getByRole("button", { name: "Home" })).toBeTruthy();
   });
 
-  it("saves a new best so it survives a restart", async () => {
+  it("flags a run that beats an earlier best as a new best (#2977)", async () => {
+    await AsyncStorage.setItem("starswarm.bestScore", "1000");
     await renderScreen();
     await startRun();
     await endRun(4200, 7);
     expect(within(screen.getByTestId("starswarm-result")).getByText("New best")).toBeTruthy();
+  });
+
+  it("saves the first run as the best, but it is not a new best (#2977)", async () => {
+    await renderScreen();
+    await startRun();
+    await endRun(4200, 7);
+    expect(within(screen.getByTestId("starswarm-result")).queryByText("New best")).toBeNull();
     await waitFor(async () =>
       expect(await AsyncStorage.getItem("starswarm.bestScore")).toBe("4200")
     );

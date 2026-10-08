@@ -42,7 +42,7 @@ jest.mock("../../game/freecell/storage", () => ({
   saveStats: jest.fn().mockResolvedValue(undefined),
 }));
 
-import { loadGame, loadStats } from "../../game/freecell/storage";
+import { loadGame, loadStats, saveStats } from "../../game/freecell/storage";
 
 // The real engine; one test swaps in a fixed deal for New Game / Play Again.
 const mockDealGame = jest.fn();
@@ -526,6 +526,23 @@ describe("FreeCellScreen — result card (#2508)", () => {
     const card = within(await r.findByTestId("freecell-result"));
     expect(card.getByText("New best")).toBeTruthy();
     expect(card.getByText("Best")).toBeTruthy();
+  });
+
+  it("does not mark a first win as a new best, but still records it as the best (#2977)", async () => {
+    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 0, gamesPlayed: 0, gamesWon: 0 });
+    (saveStats as jest.Mock).mockClear();
+    const r = await winInOneMove();
+    const card = within(await r.findByTestId("freecell-result"));
+    expect(card.queryByText("New best")).toBeNull();
+    expect(card.getByText("Best")).toBeTruthy();
+    expect(saveStats).toHaveBeenCalledWith(expect.objectContaining({ bestMoves: 1, gamesWon: 1 }));
+  });
+
+  it("does not mark a win that fails to beat the best as a new best", async () => {
+    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 1, gamesPlayed: 4, gamesWon: 2 });
+    const r = await winInOneMove();
+    const card = within(await r.findByTestId("freecell-result"));
+    expect(card.queryByText("New best")).toBeNull();
   });
 
   it("plays the win celebration before the card", async () => {

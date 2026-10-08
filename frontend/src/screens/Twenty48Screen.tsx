@@ -7,6 +7,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
+import { bestOf } from "../game/_shared/bestOf";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { usePausableClock } from "../hooks/usePausableClock";
 import { Twenty48State } from "../game/twenty48/types";
@@ -498,7 +499,7 @@ export default function Twenty48Screen({ navigation }: Props) {
         subtitle={canKeepPlaying ? t("twenty48:win.body") : tResult("subtitle.noMoves")}
         hero={{ kind: "score", label: tResult("stat.score"), value: state?.score ?? 0 }}
         isNewBest={
-          !!state?.game_over && bestAtGameStart > 0 && (state?.score ?? 0) > bestAtGameStart
+          !!state?.game_over && bestOf(bestAtGameStart, state?.score ?? 0, false).isNewBest
         }
         stats={
           state
