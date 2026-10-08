@@ -5,8 +5,16 @@
  *   1. Engine: pure functions from game/daily_word/engine.ts
  *   2. Persistence: AsyncStorage via game/daily_word/storage.ts; state loaded
  *      on mount and saved after every mutation.
- *   3. API: GET /daily-word/today, POST /daily-word/guess, GET /daily-word/answer
+ *   3. API: GET /daily-word/today and GET /daily-word/answer here;
+ *      POST /daily-word/guess and its 403/422/429 recovery live in
+ *      useDailyWordSubmit (components/daily_word, #2981).
  *   4. Animation: Reanimated scaleX tile flip on each guess submission.
+ *
+ * State (#2981): the result card's visibility is derived — shown when
+ * `state.is_complete`, unless `revealPending` holds it back while the last
+ * row flips or the answer loads (`state.won` picks the win or loss card).
+ * The card has no dismiss: closing it goes Home. The error toast and the
+ * "Copied!" label both run on the shared useTransientToast.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -35,17 +43,13 @@ import {
   initialState,
   setCurrentRowLetter,
   deleteLastLetter,
-  applyServerResult,
-  markComplete,
   buildShareText,
   guessCount as countGuesses,
-  withServerGuessCount,
   sessionResult,
 } from "../game/daily_word/engine";
 import type { DailyWordState } from "../game/daily_word/types";
 import { dailyWordApi } from "../game/daily_word/api";
 import { withRetry } from "../game/_shared/withRetry";
-import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useGameSync } from "../game/_shared/useGameSync";
 import {
   loadState,
@@ -54,12 +58,13 @@ import {
   saveTodayMeta,
   loadTodayMeta,
 } from "../game/daily_word/storage";
-import { ApiError, isNetworkError } from "../game/_shared/httpClient";
-import { devLog } from "../game/daily_word/devLog";
+import { isNetworkError } from "../game/_shared/httpClient";
 import DailyWordDevPanel from "../components/daily_word/DailyWordDevPanel";
-import { FLIP_HALF_MS, TILE_STAGGER_MS, TileRow } from "../components/daily_word/WordTile";
+import { TileRow } from "../components/daily_word/WordTile";
 import { WordKeyboard } from "../components/daily_word/WordKeyboard";
 import { Toast } from "../components/daily_word/Toast";
+import { useDailyWordSubmit } from "../components/daily_word/useDailyWordSubmit";
+import { useTransientToast } from "../components/shared/useTransientToast";
 import { DAILY_WORD_SOUNDS } from "../game/daily_word/sounds";
 import { useSound } from "../game/_shared/useSound";
 import { getLanguage, getTimezoneOffset, localDateKey } from "../game/daily_word/todayMeta";
@@ -72,6 +77,11 @@ const TOAST_DURATION_MS = 2000;
 /** How long to wait before retrying when the server hasn't rolled over yet. */
 const NEXT_WORD_RETRY_MS = 60_000;
 const DEEP_LINK = "https://bcarcade.app/daily-word";
+/** The GameShell error for each load failure (#2925). */
+const LOAD_ERROR_KEY = {
+  offline: "error.needsConnection",
+  failed: "error.couldNotLoad",
+} as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -106,11 +116,6 @@ async function shareResult(text: string): Promise<"copied" | "shared" | "none"> 
 // Main screen
 // ---------------------------------------------------------------------------
 
-/** A finished puzzle is a win or a loss on the games row (#2517), not just "completed". */
-function finishedOutcome(state: { won: boolean }) {
-  return recordedOutcome(state.won ? "win" : "loss");
-}
-
 export default function DailyWordScreen() {
   const { t } = useTranslation("daily_word");
   const { t: tResult } = useTranslation("result");
@@ -126,10 +131,13 @@ export default function DailyWordScreen() {
   const [loading, setLoading] = useState(true);
   // "offline" = network failure with no cached metadata (#2925); "failed" = anything else.
   const [loadError, setLoadError] = useState<"offline" | "failed" | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [winModalVisible, setWinModalVisible] = useState(false);
-  const [lossModalVisible, setLossModalVisible] = useState(false);
+  // The latest toast text; `errorToast` decides whether it is showing.
+  const [toastMessage, setToastMessage] = useState("");
+  const errorToast = useTransientToast(TOAST_DURATION_MS);
+  const copiedToast = useTransientToast(TOAST_DURATION_MS);
+  // Holds a finished board's result card back while its last row flips or
+  // its answer loads; otherwise the card shows whenever the puzzle is done.
+  const [revealPending, setRevealPending] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
   // The next puzzle's release time, fixed when the result appears (#2514).
   // msUntilMidnight() jumps to the following midnight once one passes, so a
@@ -137,7 +145,6 @@ export default function DailyWordScreen() {
   // CountdownButtonLabel ticks toward it on its own (#2964).
   const [nextWordAt, setNextWordAt] = useState<number | null>(null);
   const [nextWordReady, setNextWordReady] = useState(false);
-  const [copied, setCopied] = useState(false);
   // Play Again couldn't load the next puzzle (offline, server error).
   const [playAgainFailed, setPlayAgainFailed] = useState(false);
   const [flippingRowIndex, setFlippingRowIndex] = useState<number | null>(null);
@@ -147,8 +154,6 @@ export default function DailyWordScreen() {
 
   const hasLoadedRef = useRef(false);
   const mountedRef = useRef(true);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const language = getLanguage();
   const tzOffset = getTimezoneOffset();
 
@@ -194,6 +199,7 @@ export default function DailyWordScreen() {
    * review). With `requireNewPuzzle`, a server still serving the current
    * puzzle (device clock ahead of the server's) changes nothing: "same".
    */
+  const hideCopied = copiedToast.hide;
   const resetToToday = useCallback(
     async ({ requireNewPuzzle = false } = {}): Promise<"ok" | "same" | "failed"> => {
       try {
@@ -211,19 +217,18 @@ export default function DailyWordScreen() {
         const fresh = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
         setState(fresh);
         setAnswer(null);
-        setWinModalVisible(false);
-        setLossModalVisible(false);
+        setRevealPending(false);
         setFlippingRowIndex(null);
         setNextWordReady(false);
         setNextWordAt(null);
-        setCopied(false);
+        hideCopied();
         setPlayAgainFailed(false);
         return "ok";
       } catch {
         return "failed";
       }
     },
-    [tzOffset, language, syncGetGameId, syncComplete]
+    [tzOffset, language, syncGetGameId, syncComplete, hideCopied]
   );
 
   const handlePlayAgain = useCallback(async () => {
@@ -242,8 +247,6 @@ export default function DailyWordScreen() {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      if (flipTimerRef.current) clearTimeout(flipTimerRef.current);
     };
   }, []);
 
@@ -251,11 +254,14 @@ export default function DailyWordScreen() {
   // Toast
   // ---------------------------------------------------------------------------
 
-  const showToast = useCallback((message: string) => {
-    setToast(message);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(null), TOAST_DURATION_MS);
-  }, []);
+  const showErrorToast = errorToast.show;
+  const showToast = useCallback(
+    (message: string) => {
+      setToastMessage(message);
+      showErrorToast();
+    },
+    [showErrorToast]
+  );
 
   // ---------------------------------------------------------------------------
   // Mount: load today's puzzle and any saved state
@@ -314,18 +320,16 @@ export default function DailyWordScreen() {
 
       setState(gameState);
 
+      // A restored finished board shows its card at once (derived from
+      // is_complete); a loss fills in the answer when it arrives.
       if (gameState.is_complete) {
-        if (gameState.won) {
-          setWinModalVisible(true);
-        } else {
-          // Fetch answer for loss modal
+        if (!gameState.won) {
           dailyWordApi
             .getAnswer(gameState.puzzle_id)
             .then((r) => {
               if (alive()) setAnswer(r.answer.toUpperCase());
             })
             .catch(() => {});
-          setLossModalVisible(true);
         }
         startCountdown();
       }
@@ -375,239 +379,26 @@ export default function DailyWordScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   }, []);
 
-  const lastSubmitMsRef = useRef<number>(0);
-
-  const onSubmit = useCallback(async () => {
-    const s = stateRef.current;
-    if (!s || submitting || s.is_complete) return;
-
-    // Debounce rapid double-taps (e.g. two Enter presses within 500 ms) so they
-    // don't consume a rate-limit slot without advancing the game.
-    const now = Date.now();
-    if (now - lastSubmitMsRef.current < 500) return;
-    lastSubmitMsRef.current = now;
-
-    const row = s.rows[s.current_row];
-    if (!row) return;
-
-    const guess = row.tiles.map((tile) => tile.letter).join("");
-    const filled = row.tiles.filter((tile) => tile.letter !== "").length;
-
-    if (filled < s.word_length) {
-      showToast(t("error.tooShort"));
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-      return;
+  const { submit: onSubmit, submitting } = useDailyWordSubmit(
+    stateRef,
+    {
+      start: syncStart,
+      markStarted: syncMarkStarted,
+      complete: syncComplete,
+      getGameId: syncGetGameId,
+    },
+    {
+      tzOffset,
+      setState,
+      showToast,
+      setFlippingRowIndex,
+      setRevealPending,
+      setAnswer,
+      startCountdown,
+      playWin,
+      resetToToday,
     }
-
-    // #2197 — a word already on the board must not be submitted again. The
-    // server treats a repeat of a recorded guess as a replay (so a re-send
-    // after a lost response cannot rob a turn), which means a *deliberate*
-    // repeat would advance the board without spending a server-side guess.
-    // Six rows and five recorded guesses would then leave the player short of
-    // the answer they earned.
-    const alreadyGuessed = s.rows
-      .slice(0, s.current_row)
-      .some((r) => r.submitted && r.tiles.map((tile) => tile.letter).join("") === guess);
-    if (alreadyGuessed) {
-      showToast(t("error.alreadyGuessed"));
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-      return;
-    }
-
-    const _devTs = __DEV__ ? Date.now() : 0;
-    const _devBody = __DEV__
-      ? { puzzle_id: s.puzzle_id, guess, tz_offset_minutes: tzOffset }
-      : undefined;
-
-    setSubmitting(true);
-    try {
-      const result = await dailyWordApi.submitGuess(s.puzzle_id, guess, tzOffset);
-      if (__DEV__)
-        devLog.push({
-          ts: _devTs,
-          method: "POST",
-          path: "/daily-word/guess",
-          body: _devBody,
-          status: 200,
-          response: result,
-        });
-      // The player left while the guess was in flight. useGameSync's unmount
-      // cleanup has already run, so opening a session now would leave one that
-      // nothing ever completes or abandons.
-      if (!mountedRef.current) return;
-      const tileStates = result.tiles.map((t) => ({ letter: t.letter, status: t.status }));
-
-      // #2541 — keep the server's count on the state; `guessCount` reads it.
-      const afterApply = withServerGuessCount(
-        applyServerResult(s, tileStates),
-        result.guesses_used
-      );
-      const won = tileStates.every((tile) => tile.status === "correct");
-      // Deliberately the board's rows, not the server's `guesses_remaining`
-      // (#2541 review). A 200 can be a replay of a recorded guess — on a
-      // puzzle the server has as solved, or on a wiped board — and the 200
-      // carries no `solved` flag, so ending the game here would record a
-      // loss for a win, or a fresh completion for a finished puzzle. A board
-      // that is behind reaches its next guess, which the server refuses with
-      // a 403 that the recovery path below handles, guards included.
-      const outOfGuesses = !won && afterApply.current_row >= 6;
-
-      if (!syncGetGameId()) {
-        syncStart({ puzzle_id: s.puzzle_id }, { puzzle_id: s.puzzle_id, language: s.language });
-      }
-      syncMarkStarted();
-
-      let finalState = afterApply;
-      if (won || outOfGuesses) {
-        finalState = markComplete(afterApply, won);
-        // Daily Word has no numeric score: final_score stays null and the
-        // challenge reads the result block instead.
-        const result = sessionResult(finalState);
-        syncComplete({ finalScore: null, outcome: finishedOutcome(finalState), result }, result);
-      }
-
-      setState(finalState);
-
-      // Trigger flip animation for the submitted row
-      const submittedRowIndex = s.current_row;
-      setFlippingRowIndex(submittedRowIndex);
-
-      const totalFlipMs = s.word_length * TILE_STAGGER_MS + FLIP_HALF_MS * 2;
-      flipTimerRef.current = setTimeout(async () => {
-        setFlippingRowIndex(null);
-        if (finalState.is_complete) {
-          if (finalState.won) {
-            setWinModalVisible(true);
-            playWin();
-          } else {
-            try {
-              const answerData = await dailyWordApi.getAnswer(s.puzzle_id);
-              setAnswer(answerData.answer.toUpperCase());
-            } catch {
-              // show modal without answer
-            }
-            setLossModalVisible(true);
-          }
-          startCountdown();
-        }
-      }, totalFlipMs);
-    } catch (err) {
-      if (__DEV__)
-        devLog.push({
-          ts: _devTs,
-          method: "POST",
-          path: "/daily-word/guess",
-          body: _devBody,
-          status: err instanceof ApiError ? err.status : undefined,
-          error: err instanceof ApiError ? err.message : String(err),
-        });
-      if (err instanceof ApiError && err.status === 422) {
-        if (err.message === "not_a_word") {
-          showToast(t("error.notAWord"));
-        } else if (err.message === "stale_puzzle_id") {
-          const recovered = (await resetToToday()) === "ok";
-          showToast(recovered ? t("error.stalePuzzle") : t("error.couldNotLoad"));
-        } else if (err.message === "wrong_guess_length") {
-          showToast(t("error.wrongLength"));
-        } else {
-          showToast(t("error.couldNotSubmit"));
-        }
-      } else if (err instanceof ApiError && err.status === 429) {
-        showToast(t("error.rateLimited"));
-      } else if (
-        err instanceof ApiError &&
-        err.status === 403 &&
-        (err.message === "no_guesses_remaining" || err.message === "already_solved")
-      ) {
-        // #2197 — the server says this puzzle is finished and the local board
-        // disagrees, which happens when a guess was recorded but its response
-        // never arrived. Trust the server: close the game out and reveal the
-        // answer it will now release, rather than stranding the player on a
-        // board that can never complete.
-        // Same guard as the success path: the player may have left while the
-        // guess was in flight, in which case useGameSync's unmount cleanup has
-        // already run and there is nothing left to close out.
-        const current = stateRef.current;
-        if (mountedRef.current && current) {
-          // `already_solved` means the server recorded a winning guess — the
-          // player won, and only the response was lost. Marking that a loss
-          // would persist won:false and show them the word they had already
-          // found.
-          const wonIt = err.message === "already_solved";
-          // The board is behind the server here by definition — that is why
-          // this 403 happened — so its row count is too low. Take the
-          // server's count from the refusal (#2541); `guessCount` falls back
-          // to the board if an older API sent none.
-          const finished = markComplete(
-            withServerGuessCount(current, err.body?.guesses_used),
-            wonIt
-          );
-
-          // Only report a session this visit actually played. `already_solved`
-          // is returned for *any* guess on a puzzle this session finished at
-          // any earlier time, and the board can be missing independently of
-          // the session id — they are separate AsyncStorage keys
-          // (`daily_word_state_v1` vs `game_session_id`), and loadState drops
-          // only the board on a corrupt payload. Without this guard, opening a
-          // wiped board and typing one word would fabricate a completed game
-          // for a puzzle finished hours ago, with a guesses_used taken from an
-          // empty board — free XP and a free "win in N guesses" goal credit.
-          const playedThisVisit = current.rows.some((r) => r.submitted);
-          if (playedThisVisit) {
-            // The session must be completed, or the unmount cleanup reports
-            // outcome:"abandoned" — and abandoned games earn no
-            // daily-challenge credit, no streak day and no XP (#2468/#2472).
-            if (!syncGetGameId()) {
-              syncStart(
-                { puzzle_id: current.puzzle_id },
-                { puzzle_id: current.puzzle_id, language: current.language }
-              );
-            }
-            syncMarkStarted();
-            const result = sessionResult(finished);
-            syncComplete({ finalScore: null, outcome: finishedOutcome(finished), result }, result);
-          }
-
-          setState(finished);
-          saveState(finished).catch(() => {});
-
-          if (wonIt) {
-            setWinModalVisible(true);
-            // A wiped board reopening a puzzle finished earlier is a restore,
-            // not a solve this visit revealed: no fanfare.
-            if (playedThisVisit) playWin();
-          } else {
-            try {
-              const answerData = await dailyWordApi.getAnswer(finished.puzzle_id);
-              if (mountedRef.current) setAnswer(answerData.answer.toUpperCase());
-            } catch {
-              // Modal still opens; it just won't reveal the word.
-            }
-            if (!mountedRef.current) return;
-            setLossModalVisible(true);
-          }
-          startCountdown();
-        }
-      } else {
-        showToast(t("error.couldNotSubmit"));
-      }
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-    } finally {
-      setSubmitting(false);
-    }
-  }, [
-    submitting,
-    showToast,
-    startCountdown,
-    t,
-    tzOffset,
-    resetToToday,
-    syncGetGameId,
-    syncStart,
-    syncMarkStarted,
-    syncComplete,
-    playWin,
-  ]);
+  );
 
   const handleKey = useCallback(
     (key: string) => {
@@ -632,11 +423,8 @@ export default function DailyWordScreen() {
     if (!state) return;
     try {
       const outcome = await shareResult(buildShareText(state, DEEP_LINK));
-      if (outcome !== "copied") return;
-      setCopied(true);
-      setTimeout(() => {
-        if (mountedRef.current) setCopied(false);
-      }, TOAST_DURATION_MS);
+      if (outcome !== "copied" || !mountedRef.current) return;
+      copiedToast.show();
     } catch {
       // Share dismissed or clipboard unavailable — nothing to report.
     }
@@ -656,18 +444,12 @@ export default function DailyWordScreen() {
       title={t("game.title")}
       requireBack
       gutter={null}
-      error={
-        loadError === "offline"
-          ? t("error.needsConnection")
-          : loadError
-            ? t("error.couldNotLoad")
-            : null
-      }
+      error={loadError ? t(LOAD_ERROR_KEY[loadError]) : null}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >
       <View style={styles.body}>
         {/* Toast */}
-        <Toast message={toast} />
+        <Toast message={errorToast.visible ? toastMessage : null} />
 
         {loadError === "offline" && (
           <Pressable
@@ -733,7 +515,7 @@ export default function DailyWordScreen() {
       {/* End-of-game result card (#2514) */}
       {state !== null && (
         <GameResultModal
-          visible={winModalVisible || lossModalVisible}
+          visible={state.is_complete && !revealPending}
           outcome={state.won ? "win" : "loss"}
           eyebrow={t("game.title")}
           subtitle={
@@ -769,7 +551,7 @@ export default function DailyWordScreen() {
                 }
           }
           secondaryAction={{
-            label: copied ? t("result.copied") : t("result.share"),
+            label: copiedToast.visible ? t("result.copied") : t("result.share"),
             accessibilityLabel: t("result.share"),
             onPress: () => void handleShare(),
           }}
