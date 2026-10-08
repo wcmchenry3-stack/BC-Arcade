@@ -10,7 +10,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { PillButton } from "../components/shared/PillButton";
 import FreeCellBoard from "../components/freecell/FreeCellBoard";
@@ -18,6 +18,7 @@ import { CARD_WIDTH, CARD_HEIGHT } from "../components/freecell/FreeCellSlot";
 import { FreeCellFoundationAnimation } from "../components/freecell/FreeCellFoundationAnimation";
 import { FreeCellGameWinAnimation } from "../components/freecell/FreeCellGameWinAnimation";
 import GameResultModal from "../components/shared/GameResultModal";
+import { toSubmission } from "../components/shared/toSubmission";
 import {
   dealGame,
   applyMove,
@@ -36,8 +37,6 @@ import {
   saveStats,
   type FreeCellStats,
 } from "../game/freecell/storage";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useSound } from "../game/_shared/useSound";
@@ -49,9 +48,6 @@ const TABLEAU_COLS = 8;
 const COL_GAP = 2;
 const SCREEN_H_PADDING = 24;
 const BANNER_MARGIN_TOP = 8;
-
-/** The result card reads the synced game's rank on the session board (#2632). */
-const freecellBoard = sessionBoardAdapter("freecell");
 
 export default function FreeCellScreen() {
   const { t } = useTranslation("freecell");
@@ -83,10 +79,9 @@ export default function FreeCellScreen() {
    * `clearGame()`. Its result was submitted and its celebration played back then.
    */
   const [resumedWin, setResumedWin] = useState(false);
-  const leaderboard = useLeaderboardSubmit(freecellBoard);
+  // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("freecell", navigation);
   const { submit: submitScore, reset: resetSubmission } = leaderboard;
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openLeaderboard = useLeaderboardLink(navigation, "freecell");
 
   // #2452 — record each game as a per-session `games` row so FreeCell earns Arcade
   // XP, shows in Profile history and can be measured by the daily challenge. Since
@@ -406,12 +401,7 @@ export default function FreeCellScreen() {
       title={t("freecell:game.title")}
       requireBack
       loading={loading}
-      onBack={() => navigation.popToTop()}
-      style={{
-        paddingBottom: Math.max(insets.bottom, 16),
-        paddingLeft: Math.max(insets.left, 12),
-        paddingRight: Math.max(insets.right, 12),
-      }}
+      style={{ paddingBottom: Math.max(insets.bottom, 16) }}
       onNewGame={handleNewGame}
       onOpenLeaderboard={openLeaderboard}
       rightSlot={
@@ -505,14 +495,7 @@ export default function FreeCellScreen() {
               ? [{ label: tResult("stat.best"), value: winSummary.best }]
               : []
           }
-          submission={{
-            status: leaderboard.status,
-            rank: leaderboard.rank,
-            isBest: leaderboard.isBest,
-            playerName: leaderboard.playerName,
-            onJoinLeaderboards: leaderboard.joinLeaderboards,
-            onRetry: leaderboard.retry,
-          }}
+          submission={toSubmission(leaderboard)}
           onViewLeaderboard={openLeaderboard}
           onPlayAgain={handleNewGame}
           onHome={() => navigation.popToTop()}

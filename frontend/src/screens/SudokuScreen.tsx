@@ -25,7 +25,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { ElapsedText, createClockActivity } from "../components/shared/ElapsedText";
@@ -56,15 +56,11 @@ import {
   type SudokuStats,
 } from "../game/sudoku/storage";
 import { useGameSync } from "../game/_shared/useGameSync";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import GameResultModal from "../components/shared/GameResultModal";
+import { toSubmission } from "../components/shared/toSubmission";
 
 const FLASH_MS = 200;
-
-/** The result card reads the synced game's rank on the session board (#2632). */
-const sudokuBoard = sessionBoardAdapter("sudoku");
 const DIFFICULTY_BASE: Record<Difficulty, number> = {
   easy: 100,
   medium: 200,
@@ -114,14 +110,13 @@ export default function SudokuScreen() {
     bestTimeS: number;
     isNewBest: boolean;
   } | null>(null);
-  const leaderboard = useLeaderboardSubmit(sudokuBoard);
-  const { submit: submitScore, reset: resetScore } = leaderboard;
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633) open the
-  // board of the puzzle on screen, else of the picker's choice.
-  const openLeaderboard = useLeaderboardLink(navigation, "sudoku", {
+  // The card's rank line, and its "View leaderboard" link and the ⋯ menu item
+  // (#2633), which open the board of the puzzle on screen, else of the picker's.
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("sudoku", navigation, {
     difficulty: state?.difficulty ?? difficulty,
     variant: state?.variant ?? variant,
   });
+  const { submit: submitScore, reset: resetScore } = leaderboard;
 
   // Timer bookkeeping.  `startMs` is the wall-clock at which play began,
   // shifted forward while the app sits in the background so elapsed
@@ -492,15 +487,10 @@ export default function SudokuScreen() {
       title={t("game.title")}
       requireBack
       loading={loading}
-      onBack={() => navigation.popToTop()}
       onNewGame={state !== null ? handleNewGameRequest : undefined}
       onOpenLeaderboard={openLeaderboard}
       rightSlot={headerRight}
-      style={{
-        paddingBottom: Math.max(insets.bottom, 16),
-        paddingLeft: Math.max(insets.left, 12),
-        paddingRight: Math.max(insets.right, 12),
-      }}
+      style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >
       {state === null ? (
         <PreGame
@@ -620,14 +610,7 @@ export default function SudokuScreen() {
               ? [{ label: tResult("stat.best"), value: formatElapsed(result.bestTimeS) }]
               : []),
           ]}
-          submission={{
-            status: leaderboard.status,
-            rank: leaderboard.rank,
-            isBest: leaderboard.isBest,
-            playerName: leaderboard.playerName,
-            onJoinLeaderboards: leaderboard.joinLeaderboards,
-            onRetry: leaderboard.retry,
-          }}
+          submission={toSubmission(leaderboard)}
           onViewLeaderboard={openLeaderboard}
           onPlayAgain={handleStart}
           secondaryAction={{ label: t("action.changeDifficulty"), onPress: handleChangeDifficulty }}

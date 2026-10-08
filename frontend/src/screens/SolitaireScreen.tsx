@@ -28,7 +28,7 @@ import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { usePausableClock } from "../hooks/usePausableClock";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { PillButton } from "../components/shared/PillButton";
@@ -38,6 +38,7 @@ import StockWastePile from "../components/solitaire/StockWastePile";
 import { SolitaireWinCascade } from "../components/solitaire/SolitaireWinCascade";
 import PreGameModal from "../components/solitaire/PreGameModal";
 import GameResultModal from "../components/shared/GameResultModal";
+import { toSubmission } from "../components/shared/toSubmission";
 import { useSound } from "../game/_shared/useSound";
 import { SOLITAIRE_SOUNDS } from "../game/solitaire/sounds";
 import { CARD_HEIGHT, CARD_WIDTH } from "../components/solitaire/CardView";
@@ -72,8 +73,6 @@ import {
 } from "../game/solitaire/storage";
 import { formatMs } from "../game/_shared/formatMs";
 import { useGameSync } from "../game/_shared/useGameSync";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { useCardSelection } from "../game/_shared/useCardSelection";
 import { rankLabel } from "../game/_shared/decks/cardId";
 
@@ -82,9 +81,6 @@ const COL_GAP = 6;
 const SCREEN_H_PADDING = 24;
 const DOUBLE_TAP_MS = 300;
 const AUTO_STEP_MS = 120;
-
-/** The result card reads the synced game's rank on the session board (#2632). */
-const solitaireBoard = sessionBoardAdapter("solitaire");
 
 /** The game's play timer so far: time banked plus the running segment. */
 function activeMs(state: SolitaireState, now: number = Date.now()): number {
@@ -139,10 +135,9 @@ export default function SolitaireScreen() {
    * `clearGame()`. Its score was submitted and its cascade played back then.
    */
   const [resumedWin, setResumedWin] = useState(false);
-  const leaderboard = useLeaderboardSubmit(solitaireBoard);
+  // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("solitaire", navigation);
   const { submit: submitScore, reset: resetSubmission } = leaderboard;
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openLeaderboard = useLeaderboardLink(navigation, "solitaire");
 
   const { play: playCardFlip } = useSound("solitaire.cardFlip", SOLITAIRE_SOUNDS);
   const { play: playCardPlace } = useSound("solitaire.cardPlace", SOLITAIRE_SOUNDS);
@@ -800,12 +795,7 @@ export default function SolitaireScreen() {
         title={t("solitaire:game.title")}
         requireBack
         loading={loading}
-        onBack={() => navigation.popToTop()}
-        style={{
-          paddingBottom: Math.max(insets.bottom, 16),
-          paddingLeft: Math.max(insets.left, 12),
-          paddingRight: Math.max(insets.right, 12),
-        }}
+        style={{ paddingBottom: Math.max(insets.bottom, 16) }}
         onNewGame={resetToPreGame}
         onOpenLeaderboard={openLeaderboard}
         rightSlot={
@@ -953,14 +943,7 @@ export default function SolitaireScreen() {
                 ? [{ label: tResult("stat.best"), value: formatMs(winSummary.bestTimeMs) }]
                 : []),
             ]}
-            submission={{
-              status: leaderboard.status,
-              rank: leaderboard.rank,
-              isBest: leaderboard.isBest,
-              playerName: leaderboard.playerName,
-              onJoinLeaderboards: leaderboard.joinLeaderboards,
-              onRetry: leaderboard.retry,
-            }}
+            submission={toSubmission(leaderboard)}
             onViewLeaderboard={openLeaderboard}
             onPlayAgain={handlePlayAgain}
             secondaryAction={{ label: tResult("action.changeMode"), onPress: resetToPreGame }}
