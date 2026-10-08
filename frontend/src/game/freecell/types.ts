@@ -5,26 +5,20 @@
  * engine, UI components, and persistence layer alike.
  */
 
-export type Suit = "spades" | "hearts" | "diamonds" | "clubs";
+import type { Foundations as SharedFoundations } from "../_shared/cards/foundations";
+import type { PlayingCard, Suit } from "../_shared/cards/types";
 
-export const SUITS: readonly Suit[] = ["spades", "hearts", "diamonds", "clubs"];
-
-/** 1 = Ace, 11 = Jack, 12 = Queen, 13 = King. */
-export type Rank = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
-
-export const RANKS: readonly Rank[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+export { cardColor, RANKS, SUITS } from "../_shared/cards/types";
+export type { Rank, Suit } from "../_shared/cards/types";
 
 /** All FreeCell cards are always face-up — no faceUp field needed. */
-export interface Card {
-  readonly suit: Suit;
-  readonly rank: Rank;
-}
+export type Card = PlayingCard;
 
 /** 4 temporary holding cells; each slot holds at most one card. */
 export type FreeCells = readonly [Card | null, Card | null, Card | null, Card | null];
 
 /** 4 foundation piles keyed by suit; each is ascending A→K. */
-export type Foundations = Readonly<Record<Suit, readonly Card[]>>;
+export type Foundations = SharedFoundations<Card>;
 
 export type GameEvent =
   | { readonly type: "cardPlace" }
@@ -68,8 +62,3 @@ export type Move =
       readonly fromSuit: Suit;
       readonly toCol: number;
     };
-
-/** Red suits (hearts, diamonds) must alternate with black (spades, clubs) in the tableau. */
-export function cardColor(card: Card): "red" | "black" {
-  return card.suit === "hearts" || card.suit === "diamonds" ? "red" : "black";
-}

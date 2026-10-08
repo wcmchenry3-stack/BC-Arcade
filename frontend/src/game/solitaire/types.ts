@@ -5,27 +5,19 @@
  * engine, UI components, and persistence layer alike.
  */
 
-export type Suit = "spades" | "hearts" | "diamonds" | "clubs";
+import type { Foundations as SharedFoundations } from "../_shared/cards/foundations";
+import type { PlayingCard, Suit } from "../_shared/cards/types";
 
-export const SUITS: readonly Suit[] = ["spades", "hearts", "diamonds", "clubs"];
+export { cardColor, RANKS, SUITS } from "../_shared/cards/types";
+export type { Rank, Suit } from "../_shared/cards/types";
 
-/** 1 = Ace, 11 = Jack, 12 = Queen, 13 = King. Numeric so rank arithmetic
- * (foundation ascends A→K, tableau descends K→A) stays obvious. */
-export type Rank = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
-
-export const RANKS: readonly Rank[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
-
-export interface Card {
-  readonly suit: Suit;
-  readonly rank: Rank;
-  readonly faceUp: boolean;
-}
+export type Card = PlayingCard & { readonly faceUp: boolean };
 
 /** Draw-1 flips one card per stock click; Draw-3 flips three. Leaderboard is shared. */
 export type DrawMode = 1 | 3;
 
 /** 4 foundation piles keyed by suit; each is ascending A→K. */
-export type Foundations = Readonly<Record<Suit, readonly Card[]>>;
+export type Foundations = SharedFoundations<Card>;
 
 /** Immutable snapshot of the full game. `_v` is a schema version so
  * persisted saves can be migrated or rejected safely. */
@@ -72,8 +64,3 @@ export type Move =
     }
   | { readonly type: "tableau-to-foundation"; readonly fromCol: number }
   | { readonly type: "foundation-to-tableau"; readonly fromSuit: Suit; readonly toCol: number };
-
-/** Red suits (hearts, diamonds) must alternate with black (spades, clubs) in the tableau. */
-export function cardColor(card: Card): "red" | "black" {
-  return card.suit === "hearts" || card.suit === "diamonds" ? "red" : "black";
-}
