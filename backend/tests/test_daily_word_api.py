@@ -403,7 +403,7 @@ def test_answer_stays_closed_when_the_record_is_unreachable(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The other half of #2542: no record, no entitlement, no answer."""
-    import daily_word.router as router_mod
+    import db.base as db_base
 
     headers = _sid_headers()
     puzzle_id = _today_puzzle_id()
@@ -416,7 +416,9 @@ def test_answer_stays_closed_when_the_record_is_unreachable(
     def boom():
         raise RuntimeError("database unavailable")
 
-    monkeypatch.setattr(router_mod, "get_session_factory", boom)
+    # /answer takes its session from db.base.get_db (#2993), so the outage is
+    # simulated where that dependency builds it.
+    monkeypatch.setattr(db_base, "get_session_factory", boom)
     # TestClient re-raises server exceptions rather than converting them; in
     # production this surfaces as a 500. Either way the answer is not released,
     # which is the property under test.

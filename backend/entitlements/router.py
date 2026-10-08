@@ -22,6 +22,8 @@ async def get_entitlements(request: Request) -> EntitlementsResponse:
     if service.is_dev_override_active():
         entitled_games = await service.get_entitled_games(None, sid)
     else:
+        # Opened here, not taken as ``db: DbSession`` (#2993): the dev override
+        # answers without a database, so it must not need one configured.
         factory = get_session_factory()
         async with factory() as db:
             entitled_games = await service.get_entitled_games(db, sid)
