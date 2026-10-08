@@ -21,7 +21,7 @@ the event time and ``pubsub:<messageId>`` as the dedupe key.
 for the last 48 h and revokes matches (event time ``voidedTimeMillis``,
 dedupe per voided purchase); :func:`acknowledge_sweep` acknowledges ``owned``
 purchases that are still unacknowledged inside Google's 3-day window. Both
-run at startup and daily (:func:`run_google_jobs_loop`) and by hand
+run at startup and daily (:func:`google_jobs_job`) and by hand
 (``scripts/google_play_jobs.py``).
 
 Nothing here logs a payload, a purchase token, an order id or the bearer
@@ -44,11 +44,11 @@ from typing import Any, Literal
 
 import httpx
 import jwt
-import sentry_sdk
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from db.models import Purchase
+from jobs.periodic import PeriodicJob
 
 from . import service
 from .google_play import (
@@ -784,30 +784,28 @@ async def run_google_jobs(
     return voided, swept  # type: ignore[return-value]
 
 
-async def run_google_jobs_loop(
+def google_jobs_job(
     get_verifier: Callable[[], PlayVerifier | None],
     get_session_factory: Callable[[], async_sessionmaker[AsyncSession]],
     *,
     interval_s: float = JOBS_INTERVAL_S,
     timeout_s: float = JOBS_TIMEOUT_S,
-    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
-) -> None:
-    """Run the Google jobs now, then every ``interval_s``, until cancelled (``main.lifespan``).
+) -> PeriodicJob:
+    """Run the Google jobs now, then every ``interval_s`` (started by ``jobs.lifespan``).
 
-    A failure is reported and retried next cycle, never raised. ``sleep`` and
-    ``clock`` are injectable so tests drive cycles without real time.
+    A failure is reported and retried next cycle, never raised; a crashed task
+    is swallowed at shutdown (``reraise_on_crash=False``). ``clock`` is
+    injectable so tests drive cycles without real time.
     """
-    while True:
-        try:
-            await asyncio.wait_for(
-                run_google_jobs(get_verifier(), get_session_factory(), now=clock()),
-                timeout=timeout_s,
-            )
-        except Exception as exc:  # noqa: BLE001 — any failure waits for the next cycle
-            _log.warning(json.dumps({"event": "google_jobs_failed"}))
-            with sentry_sdk.new_scope() as scope:
-                scope.set_tag("subsystem", "purchases.google_jobs")
-                scope.fingerprint = ["google-play-jobs-failed"]
-                sentry_sdk.capture_exception(exc)
-        await sleep(interval_s)
+
+    return PeriodicJob(
+        name="google_jobs",
+        run=lambda: run_google_jobs(get_verifier(), get_session_factory(), now=clock()),
+        interval_s=interval_s,
+        timeout_s=timeout_s,
+        subsystem_tag="purchases.google_jobs",
+        fingerprint="google-play-jobs-failed",
+        on_failure=lambda _exc: _log.warning(json.dumps({"event": "google_jobs_failed"})),
+        on_stop_timeout=lambda _w: _log.warning(json.dumps({"event": "google_jobs_stop_timeout"})),
+    )
