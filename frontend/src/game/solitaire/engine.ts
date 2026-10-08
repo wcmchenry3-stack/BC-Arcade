@@ -19,17 +19,16 @@ import seedsJson from "./seeds.json";
 // `envFlags` leaf, not `_shared/testHooks.ts`, so this pure engine doesn't
 // pull in that module's AsyncStorage/HTTP/timer-touching imports.
 import { areTestHooksEnabled } from "../_shared/envFlags";
-import type {
-  Card,
-  DrawMode,
-  Foundations,
-  GameEvent,
-  Move,
-  Rank,
-  SolitaireState,
-  Suit,
-} from "./types";
-import { cardColor, RANKS, SUITS } from "./types";
+import { createDeck as createPlainDeck, fisherYates } from "../_shared/cards/deck";
+import {
+  canStackOnFoundation,
+  emptyFoundations,
+  isWin,
+  withFoundation,
+} from "../_shared/cards/foundations";
+import { withUndo as pushUndoSnapshot } from "../_shared/undoStack";
+import type { Card, DrawMode, GameEvent, Move, SolitaireState } from "./types";
+import { cardColor, SUITS } from "./types";
 import {
   pauseClock,
   resumeClock,
@@ -51,7 +50,6 @@ const SCORE_RECYCLE_PENALTY = -50;
 const SCORE_WIN_BONUS = 500;
 const HINT_PENALTY = 20;
 
-const UNDO_CAP = 50;
 const TABLEAU_COLUMNS = 7;
 const DECK_SIZE = 52;
 
@@ -113,36 +111,12 @@ function pickSeed(drawMode: DrawMode): number {
  * Ordered 52-card deck, all face-down. Callers shuffle before dealing.
  */
 export function createDeck(): Card[] {
-  const deck: Card[] = [];
-  for (const suit of SUITS) {
-    for (const rank of RANKS) {
-      deck.push({ suit, rank, faceUp: false });
-    }
-  }
-  return deck;
-}
-
-/** Fisher-Yates in-place against a supplied PRNG. Returns the same array. */
-function fisherYates(deck: Card[], rng: RandomSource): Card[] {
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    const a = deck[i];
-    const b = deck[j];
-    if (a !== undefined && b !== undefined) {
-      deck[i] = b;
-      deck[j] = a;
-    }
-  }
-  return deck;
+  return createPlainDeck().map((card) => ({ ...card, faceUp: false }));
 }
 
 // ---------------------------------------------------------------------------
 // Deal
 // ---------------------------------------------------------------------------
-
-function emptyFoundations(): Foundations {
-  return { spades: [], hearts: [], diamonds: [], clubs: [] };
-}
 
 /**
  * Deal a new Klondike game. If `explicitSeed` is not provided, a seed is
@@ -181,7 +155,7 @@ export function dealGame(drawMode: DrawMode, explicitSeed?: number): SolitaireSt
     _v: 1,
     drawMode,
     tableau,
-    foundations: emptyFoundations(),
+    foundations: emptyFoundations<Card>(),
     stock,
     waste: [],
     score: 0,
@@ -202,17 +176,6 @@ function canStackOnTableau(moving: Card, dest: Card | undefined): boolean {
     return moving.rank === 13;
   }
   return cardColor(moving) !== cardColor(dest) && moving.rank === dest.rank - 1;
-}
-
-function canStackOnFoundation(moving: Card, pile: readonly Card[]): boolean {
-  if (pile.length === 0) {
-    return moving.rank === 1;
-  }
-  const top = pile[pile.length - 1];
-  if (top === undefined) {
-    return false;
-  }
-  return moving.suit === top.suit && moving.rank === ((top.rank + 1) as Rank);
 }
 
 /** A tableau slice to be moved must be face-up and a valid
@@ -297,16 +260,19 @@ function clampScore(score: number): number {
   return score < 0 ? 0 : score;
 }
 
-/** Take a snapshot of `prev` (with its own undoStack cleared to []), append
- * it to `prev.undoStack`, cap at UNDO_CAP, and attach to `next`. */
+/** Snapshot `prev` (its undoStack cleared to [] and its one-shot events
+ * dropped) onto `prev.undoStack`, capped, and attach it to `next` with the
+ * live clock carried over from `prev`. `withClock` writes the clock fields
+ * after `undoStack`, so saved key order is unchanged. */
 function withUndo(
   prev: SolitaireState,
   next: Omit<SolitaireState, "undoStack" | "startedAt" | "accumulatedMs" | "paused">
 ): SolitaireState {
-  const snapshot: SolitaireState = { ...prev, undoStack: [], events: undefined };
-  const stack = [...prev.undoStack, snapshot];
-  const capped = stack.length > UNDO_CAP ? stack.slice(stack.length - UNDO_CAP) : stack;
-  return withClock({ ...next, undoStack: capped, startedAt: null, accumulatedMs: 0 }, prev);
+  const withHistory = pushUndoSnapshot(
+    { ...prev, events: undefined },
+    next as Omit<SolitaireState, "undoStack">
+  );
+  return withClock(withHistory, prev);
 }
 
 /** Start, advance, or freeze the timer. Called after every state mutation. */
@@ -343,18 +309,6 @@ function revealIfNeeded(col: readonly Card[]): { col: readonly Card[]; scoreDelt
   return { col: [...col.slice(0, -1), flipped], scoreDelta: SCORE_REVEAL };
 }
 
-function withFoundation(foundations: Foundations, suit: Suit, pile: readonly Card[]): Foundations {
-  return { ...foundations, [suit]: pile };
-}
-
-function isWin(foundations: Foundations): boolean {
-  let total = 0;
-  for (const suit of SUITS) {
-    total += foundations[suit].length;
-  }
-  return total === DECK_SIZE;
-}
-
 function finalizeAfterMove(
   prev: SolitaireState,
   next: Omit<
@@ -363,7 +317,7 @@ function finalizeAfterMove(
   >
 ): SolitaireState {
   const wasComplete = prev.isComplete;
-  const nowComplete = isWin(next.foundations);
+  const nowComplete = isWin(next.foundations, DECK_SIZE);
   const bonus = !wasComplete && nowComplete ? SCORE_WIN_BONUS : 0;
   const finalScore = clampScore(next.score + bonus);
 

@@ -18,19 +18,17 @@ import seedsJson from "./seeds.json";
 // `envFlags` leaf, not `_shared/testHooks.ts`, so this pure engine doesn't
 // pull in that module's AsyncStorage/HTTP/timer-touching imports.
 import { areTestHooksEnabled } from "../_shared/envFlags";
-import type {
-  Card,
-  Foundations,
-  FreeCellState,
-  FreeCells,
-  GameEvent,
-  Move,
-  Rank,
-  Suit,
-} from "./types";
-import { cardColor, RANKS, SUITS } from "./types";
+import { createDeck, fisherYates } from "../_shared/cards/deck";
+import {
+  canStackOnFoundation,
+  emptyFoundations,
+  isWin,
+  withFoundation,
+} from "../_shared/cards/foundations";
+import { withUndo } from "../_shared/undoStack";
+import type { Card, FreeCellState, FreeCells, GameEvent, Move, Suit } from "./types";
+import { cardColor } from "./types";
 
-const UNDO_CAP = 50;
 const TABLEAU_COLUMNS = 8;
 const DECK_SIZE = 52;
 const FREE_CELL_COUNT = 4;
@@ -44,33 +42,6 @@ const rngSlot = createRngSlot();
 export const setRng = rngSlot.setRng;
 export { createSeededRng };
 export type { RandomSource };
-
-// ---------------------------------------------------------------------------
-// Deck construction
-// ---------------------------------------------------------------------------
-
-function createDeck(): Card[] {
-  const deck: Card[] = [];
-  for (const suit of SUITS) {
-    for (const rank of RANKS) {
-      deck.push({ suit, rank });
-    }
-  }
-  return deck;
-}
-
-function fisherYates(deck: Card[], rng: RandomSource): Card[] {
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    const a = deck[i];
-    const b = deck[j];
-    if (a !== undefined && b !== undefined) {
-      deck[i] = b;
-      deck[j] = a;
-    }
-  }
-  return deck;
-}
 
 // ---------------------------------------------------------------------------
 // Seed bank
@@ -114,10 +85,6 @@ function pickSeed(): number {
 // ---------------------------------------------------------------------------
 // Deal
 // ---------------------------------------------------------------------------
-
-function emptyFoundations(): Foundations {
-  return { spades: [], hearts: [], diamonds: [], clubs: [] };
-}
 
 function emptyFreeCells(): FreeCells {
   return [null, null, null, null];
@@ -164,13 +131,6 @@ export function dealGame(explicitSeed?: number): FreeCellState {
 function canStackOnTableau(moving: Card, dest: Card | undefined): boolean {
   if (dest === undefined) return moving.rank === 13;
   return cardColor(moving) !== cardColor(dest) && moving.rank === dest.rank - 1;
-}
-
-function canStackOnFoundation(moving: Card, pile: readonly Card[]): boolean {
-  if (pile.length === 0) return moving.rank === 1;
-  const top = pile[pile.length - 1];
-  if (top === undefined) return false;
-  return moving.suit === top.suit && moving.rank === ((top.rank + 1) as Rank);
 }
 
 /** A tableau run to be moved must form a valid alternating-color descending sequence.
@@ -276,33 +236,12 @@ function replaceAt<T>(arr: readonly T[], idx: number, value: T): readonly T[] {
   return out;
 }
 
-function withFoundation(foundations: Foundations, suit: Suit, pile: readonly Card[]): Foundations {
-  return { ...foundations, [suit]: pile };
-}
-
-function isWin(foundations: Foundations): boolean {
-  let total = 0;
-  for (const suit of SUITS) {
-    total += foundations[suit].length;
-  }
-  return total === DECK_SIZE;
-}
-
-/** Take a snapshot of `prev` (undoStack cleared to []), append to the stack,
- * cap at UNDO_CAP, then attach to `next`. */
-function withUndo(prev: FreeCellState, next: Omit<FreeCellState, "undoStack">): FreeCellState {
-  const snapshot: FreeCellState = { ...prev, undoStack: [] };
-  const stack = [...prev.undoStack, snapshot];
-  const capped = stack.length > UNDO_CAP ? stack.slice(stack.length - UNDO_CAP) : stack;
-  return { ...next, undoStack: capped };
-}
-
 function finalizeAfterMove(
   prev: FreeCellState,
   next: Omit<FreeCellState, "undoStack" | "isComplete" | "events" | "hint">,
   events: readonly GameEvent[]
 ): FreeCellState {
-  const win = isWin(next.foundations);
+  const win = isWin(next.foundations, DECK_SIZE);
   const baseEvents: readonly GameEvent[] = win ? [...events, { type: "gameWin" } as const] : events;
   // Hint is always cleared after a real move.
   const result = withUndo(prev, { ...next, hint: undefined, isComplete: win, events: baseEvents });

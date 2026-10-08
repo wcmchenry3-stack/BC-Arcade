@@ -216,6 +216,38 @@ alone therefore does not reproduce a Star Swarm run; the golden replay test
 stubs `Math.random` as well. Moving those draws onto the seeded source would
 change Star Swarm's gameplay sequence and needs its own golden re-record.
 
+### 3.3 Shared engine modules (#2986)
+
+Rule-agnostic engine pieces live once under `frontend/src/game/_shared/` and
+are headless and pure like the engines that import them:
+
+| Module                         | Exports                                                                                              | Used by                                                  |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `_shared/seededRng.ts`         | `createSeededRng`, `createRngSlot`, `RandomSource` (§3.2)                                            | every seeded engine                                      |
+| `_shared/cards/types.ts`       | `Suit`, `Rank`, `SUITS`, `RANKS`, `PlayingCard {suit, rank}`, `cardColor`                            | Solitaire, FreeCell, Hearts                              |
+| `_shared/cards/deck.ts`        | `createDeck()` (ordered 52), `fisherYates(deck, rng)`                                                | Solitaire, FreeCell, Hearts                              |
+| `_shared/cards/foundations.ts` | `Foundations<C>`, `emptyFoundations`, `withFoundation`, `isWin(f, deckSize)`, `canStackOnFoundation` | Solitaire, FreeCell                                      |
+| `_shared/undoStack.ts`         | `UNDO_CAP` (50), `pushCapped(stack, entry, cap)`, `withUndo(prev, next, cap)`                        | Solitaire, FreeCell (`withUndo`), Mahjong (`pushCapped`) |
+
+- Each game's `types.ts` re-exports the shared card names, so `Card`, `Suit`,
+  `Foundations` and `cardColor` still import from `game/<name>/types`. A game
+  extends `PlayingCard` for its own state: Solitaire's `Card` is
+  `PlayingCard & { faceUp: boolean }`; FreeCell's and Hearts' are
+  `PlayingCard`. The saved card shape (`{suit, rank[, faceUp]}`, in that key
+  order) is unchanged.
+- `fisherYates` always takes the RNG as an argument; engines pass a
+  `createSeededRng(seed)` or their own slot's `rng`. There is no shared RNG
+  slot. The deck order and draw order are part of every seeded deal (and are
+  mirrored by `backend/scripts/gen_*_seeds.py`), so changing either is a
+  behaviour change that breaks the `seeds.json` parity tests.
+- `withUndo` stores whole-state snapshots (the snapshot's own `undoStack`
+  emptied so they never nest) and appends `undoStack` after `next`'s fields.
+  Solitaire wraps it to drop one-shot `events` and carry the live clock.
+  Mahjong keeps its delta entries (#2961) and only shares the capped push.
+- Game rules stay in the game: `validateMove`, `applyMove`, tableau stacking,
+  hints and auto-complete are not shared. Blackjack's cards (`rank: string`,
+  suit glyphs) are a different domain and do not use `_shared/cards`.
+
 ## 4. Persistence and offline contract
 
 **One write path.** Every game records its sessions the same way, and **no
@@ -287,7 +319,7 @@ replays saves recorded from the pre-#2987 modules).
 
 - `createJsonSlot` — the saved game. `load` resolves null when nothing usable
   is stored. A payload that can't be read or parsed, or whose loading throws,
-  is removed and reported as a Sentry *warning* (`captureMessage`): the
+  is removed and reported as a Sentry _warning_ (`captureMessage`): the
   screen recovers by starting fresh. A payload that parses but fails the
   game's check is removed silently (Blackjack, 2048, Yacht and Daily Word
   leave it stored instead; Hearts and Sudoku report it). Save and clear

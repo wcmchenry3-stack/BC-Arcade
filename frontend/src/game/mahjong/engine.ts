@@ -10,6 +10,7 @@
  */
 
 import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
+import { pushCapped } from "../_shared/undoStack";
 import type {
   Layout,
   MahjongState,
@@ -857,7 +858,7 @@ function undoBase(state: MahjongState) {
 
 /** `state`'s undo history with `entry` on top, dropping the oldest past UNDO_CAP. */
 function pushUndo(state: MahjongState, entry: MahjongUndoEntry): readonly MahjongUndoEntry[] {
-  return [...state.undoStack.slice(-(UNDO_CAP - 1)), entry];
+  return pushCapped(state.undoStack, entry, UNDO_CAP);
 }
 
 /**
