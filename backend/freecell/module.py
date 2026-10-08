@@ -1,7 +1,6 @@
 """FreeCell GameModule descriptor (#2452).
 
-Satisfies the ``GameModule`` Protocol from ``games/protocol.py`` via
-structural subtyping — no inheritance required.
+A ``GameModuleBase`` subclass (``games/module_base.py``).
 
 Registering FreeCell lets the app record a per-session ``games`` row
 (``POST /games`` + ``PATCH /games/{id}/complete``) like every other game, so a
@@ -13,16 +12,12 @@ from __future__ import annotations
 
 from freecell.models import FreeCellMetadata, FreeCellResult
 from games.board import SCORE_METRIC, BoardDefinition
-from games.protocol import default_stats_shape
+from games.module_base import GameModuleBase
 from vocab import GameType
 
 
-class FreeCellModule:
-    """GameModule implementation for FreeCell.
-
-    Uses the default pass-through stats shape: raw aggregate fields are
-    forwarded as-is; ``latest_score`` is stripped (not exposed in API).
-    """
+class FreeCellModule(GameModuleBase):
+    """GameModule implementation for FreeCell."""
 
     game_type = GameType.FREECELL
     metadata_model = FreeCellMetadata
@@ -32,9 +27,6 @@ class FreeCellModule:
     # FreeCell completion is a won game (a game given up is abandoned, with no
     # score). Since #2632 the app's win sends ``final_score = moveCount``.
     board = BoardDefinition(metric=SCORE_METRIC, direction="asc", label_key="moves")
-
-    def stats_shape(self, raw_stats: dict) -> dict:
-        return default_stats_shape(raw_stats)
 
 
 module = FreeCellModule()

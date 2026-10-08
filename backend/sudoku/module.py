@@ -1,23 +1,18 @@
 """Sudoku GameModule descriptor (#614).
 
-Satisfies the ``GameModule`` Protocol from ``games/protocol.py`` via
-structural subtyping — no inheritance required.
+A ``GameModuleBase`` subclass (``games/module_base.py``).
 """
 
 from __future__ import annotations
 
 from games.board import SCORE_METRIC, BoardDefinition
-from games.protocol import default_stats_shape
+from games.module_base import GameModuleBase
 from sudoku.models import SudokuMetadata, SudokuResult
 from vocab import GameType
 
 
-class SudokuModule:
-    """GameModule implementation for Sudoku.
-
-    Uses the default pass-through stats shape: raw aggregate fields are
-    forwarded as-is; ``latest_score`` is stripped (not exposed in API).
-    """
+class SudokuModule(GameModuleBase):
+    """GameModule implementation for Sudoku."""
 
     game_type = GameType.SUDOKU
     metadata_model = SudokuMetadata
@@ -43,9 +38,6 @@ class SudokuModule:
             ("difficulty", "hard", 300),
         ),
     )
-
-    def stats_shape(self, raw_stats: dict) -> dict:
-        return default_stats_shape(raw_stats)
 
 
 module = SudokuModule()

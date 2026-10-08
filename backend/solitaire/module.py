@@ -1,23 +1,18 @@
 """Solitaire GameModule descriptor (#592).
 
-Satisfies the ``GameModule`` Protocol from ``games/protocol.py`` via
-structural subtyping — no inheritance required.
+A ``GameModuleBase`` subclass (``games/module_base.py``).
 """
 
 from __future__ import annotations
 
 from games.board import SCORE_METRIC, BoardDefinition
-from games.protocol import default_stats_shape
+from games.module_base import GameModuleBase
 from solitaire.models import SolitaireMetadata, SolitaireResult
 from vocab import GameType
 
 
-class SolitaireModule:
-    """GameModule implementation for Solitaire.
-
-    Uses the default pass-through stats shape: raw aggregate fields are
-    forwarded as-is; ``latest_score`` is stripped (not exposed in API).
-    """
+class SolitaireModule(GameModuleBase):
+    """GameModule implementation for Solitaire."""
 
     game_type = GameType.SOLITAIRE
     metadata_model = SolitaireMetadata
@@ -29,9 +24,6 @@ class SolitaireModule:
     board = BoardDefinition(
         metric=SCORE_METRIC, direction="desc", label_key="score", max_value=1245
     )
-
-    def stats_shape(self, raw_stats: dict) -> dict:
-        return default_stats_shape(raw_stats)
 
 
 module = SolitaireModule()

@@ -1,3 +1,6 @@
+"""Yacht metadata and result models: solo or vs-the-computer games, and the
+scorecard sent on completion."""
+
 import logging
 from typing import Any, Literal
 

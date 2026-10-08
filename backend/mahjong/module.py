@@ -1,18 +1,17 @@
 """Mahjong Solitaire GameModule descriptor (#871).
 
-Satisfies the ``GameModule`` Protocol from ``games/protocol.py`` via
-structural subtyping — no inheritance required.
+A ``GameModuleBase`` subclass (``games/module_base.py``).
 """
 
 from __future__ import annotations
 
 from games.board import DURATION_METRIC, BoardDefinition
-from games.protocol import default_stats_shape
+from games.module_base import GameModuleBase
 from mahjong.models import LAYOUTS, MIN_CLEAR_MS, MahjongMetadata, MahjongResult
 from vocab import GameType
 
 
-class MahjongModule:
+class MahjongModule(GameModuleBase):
     game_type = GameType.MAHJONG
     metadata_model = MahjongMetadata
     result_model = MahjongResult
@@ -38,9 +37,6 @@ class MahjongModule:
         min_value=MIN_CLEAR_MS,
         qualifying_outcomes=("win",),
     )
-
-    def stats_shape(self, raw_stats: dict) -> dict:
-        return default_stats_shape(raw_stats)
 
 
 module = MahjongModule()

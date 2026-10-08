@@ -843,10 +843,9 @@ async def complete_game(
     # Optional per-game hook: a game whose score is part of its result block
     # fills in a missing ``final_score`` from it, or rejects one that doesn't
     # match it (Blackjack's closing chips, #2745).
-    derive_final_score = getattr(mod, "derive_final_score", None)
-    if derive_final_score is not None:
+    if mod is not None:
         try:
-            final_score = derive_final_score(final_score, outcome, validated_result)
+            final_score = mod.derive_final_score(final_score, outcome, validated_result)
         except ValueError as e:
             _report_rejected_result(name, "final_score mismatch", {"outcome": outcome})
             raise GameServiceError(400, f"Invalid final_score for {name}: {e}") from e
@@ -928,9 +927,8 @@ async def _validate_result(
         raise GameServiceError(400, f"Invalid result for {name}: {fields}") from e
     # Optional per-game hook: correct a validated result against server-side
     # state the client cannot be trusted on (Daily Word's guess record, #2541).
-    reconcile = getattr(mod, "reconcile_result", None)
-    if reconcile is not None:
-        validated = await reconcile(session, game, validated)
+    if mod is not None:
+        validated = await mod.reconcile_result(session, game, validated)
     return validated
 
 

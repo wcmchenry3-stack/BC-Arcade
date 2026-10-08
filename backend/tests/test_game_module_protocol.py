@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 import uuid
 
 import pytest
@@ -11,7 +10,7 @@ from fastapi.testclient import TestClient
 from blackjack.module import module as blackjack_module
 from cascade.module import module as cascade_module
 from daily_word.module import module as daily_word_module
-from games import service
+from games import module_base, service
 from games.board import COLUMN_METRICS, BoardDefinition
 from games.protocol import GameModule, default_stats_shape
 from games.registry import _REGISTRY, get_module
@@ -325,9 +324,8 @@ def test_pass_through_modules_use_the_shared_stats_shape(
     """Every pass-through module delegates to ``default_stats_shape``, not a copy of it."""
     mod = _REGISTRY[name]
     shaped = {"shaped_by": "default_stats_shape"}
-    monkeypatch.setattr(
-        sys.modules[type(mod).__module__], "default_stats_shape", lambda raw: shaped
-    )
+    # Pass-through modules inherit GameModuleBase.stats_shape (#2995).
+    monkeypatch.setattr(module_base, "default_stats_shape", lambda raw: shaped)
     assert mod.stats_shape(dict(_RAW)) is shaped
 
 

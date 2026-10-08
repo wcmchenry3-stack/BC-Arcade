@@ -1,12 +1,18 @@
+"""Bottle Sort GameModule descriptor.
+
+A ``GameModuleBase`` subclass (``games/module_base.py``). Sort ranks the
+highest level a player has cleared (``level_reached``), a metadata metric.
+"""
+
 from __future__ import annotations
 
 from games.board import BoardDefinition
-from games.protocol import default_stats_shape
+from games.module_base import GameModuleBase
 from sort.models import SortMetadata, SortResult
 from vocab import GameType
 
 
-class SortModule:
+class SortModule(GameModuleBase):
     game_type = GameType.SORT
     metadata_model = SortMetadata
     result_model = SortResult
@@ -33,9 +39,6 @@ class SortModule:
         label_key="level",
         max_value=23,
     )
-
-    def stats_shape(self, raw_stats: dict) -> dict:
-        return default_stats_shape(raw_stats)
 
 
 module = SortModule()
