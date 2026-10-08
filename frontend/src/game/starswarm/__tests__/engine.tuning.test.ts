@@ -1,7 +1,7 @@
 /**
  * Star Swarm engine tests: difficulty tiers and their multipliers.
  *
- * One file per planned `engine/` module (#2988): this file follows `engine/tuning.ts`. Split out of
+ * One file per `engine/` module (#2988): this file follows `engine/tuning.ts`. Split out of
  * the former monolithic `engine.test.ts` (#2955) with describe blocks moved whole; shared fixtures
  * live in `helpers/engineFixtures.ts`.
  */
@@ -10,15 +10,35 @@ import {
   tick,
   seedRng,
   _resetIds,
+  applyPowerUp,
+  buddyBurstCount,
   CANVAS_W,
   CANVAS_H,
   DIFFICULTY_TIERS,
   difficultyMultiplier,
   difficultyParamScale,
   difficultyLabel,
+  DEFAULT_TUNING,
+  BUDDY_HP,
+  BUDDY_SPEED,
+  BUDDY_REPLAN_MS,
+  BUDDY_BURSTS,
+  BUDDY_BULLET_COUNT_MIN,
+  BUDDY_BULLET_COUNT_MAX,
+  BUDDY_PIERCE_HITS,
+  BUDDY_SPREAD_HALF,
+  BUDDY_STANDOFF,
+  BUDDY_STRAFE,
+  BUDDY_NOTICE,
+  BUDDY_NOTICE_AIMED,
+  BUDDY_MAX_INCOMING,
+  BUDDY_TARGETING,
+  CARRIER_CADENCE,
+  CARRIER_CADENCE_CAP,
+  type Tuning,
 } from "../engine";
 import type { Bullet, DifficultyTier, StarSwarmState } from "../types";
-import { NO_INPUT, advanceMs, runExtraction } from "./helpers/engineFixtures";
+import { FIRE_INPUT, NO_INPUT, advanceMs, runExtraction } from "./helpers/engineFixtures";
 
 beforeEach(() => {
   seedRng(42);
@@ -136,5 +156,119 @@ describe("#1037 Difficulty tiers", () => {
     expect(base.wave).toBe(2);
     expect(hard.wave).toBe(2);
     expect(hard.score).toBeGreaterThanOrEqual(base.score * 4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2988 — injectable Tuning
+// ---------------------------------------------------------------------------
+
+describe("#2988 injectable Tuning", () => {
+  it("DEFAULT_TUNING is the shipped constants, and its prototype knobs are off", () => {
+    expect(DEFAULT_TUNING.BUDDY_HP).toBe(BUDDY_HP);
+    expect(DEFAULT_TUNING.BUDDY_SPEED).toBe(BUDDY_SPEED);
+    expect(DEFAULT_TUNING.BUDDY_REPLAN_MS).toBe(BUDDY_REPLAN_MS);
+    expect(DEFAULT_TUNING.BUDDY_BURSTS).toBe(BUDDY_BURSTS);
+    expect(DEFAULT_TUNING.BUDDY_BULLET_COUNT_MIN).toBe(BUDDY_BULLET_COUNT_MIN);
+    expect(DEFAULT_TUNING.BUDDY_BULLET_COUNT_MAX).toBe(BUDDY_BULLET_COUNT_MAX);
+    expect(DEFAULT_TUNING.BUDDY_PIERCE_HITS).toBe(BUDDY_PIERCE_HITS);
+    expect(DEFAULT_TUNING.BUDDY_SPREAD_HALF).toBe(BUDDY_SPREAD_HALF);
+    expect(DEFAULT_TUNING.BUDDY_STANDOFF).toBe(BUDDY_STANDOFF);
+    expect(DEFAULT_TUNING.BUDDY_STRAFE).toBe(BUDDY_STRAFE);
+    expect(DEFAULT_TUNING.BUDDY_NOTICE).toBe(BUDDY_NOTICE);
+    expect(DEFAULT_TUNING.BUDDY_NOTICE_AIMED).toBe(BUDDY_NOTICE_AIMED);
+    expect(DEFAULT_TUNING.BUDDY_MAX_INCOMING).toBe(BUDDY_MAX_INCOMING);
+    expect(DEFAULT_TUNING.BUDDY_TARGETING).toBe(BUDDY_TARGETING);
+    expect(DEFAULT_TUNING.CARRIER_CADENCE).toBe(CARRIER_CADENCE);
+    // the shipped values of the knobs the simulator used to patch into the source
+    expect(DEFAULT_TUNING.BUDDY_SHOT_DAMAGE).toBe(1);
+    expect(DEFAULT_TUNING.BUDDY_LANE_FLOOR).toBe(0.4);
+    expect(DEFAULT_TUNING.CARRIER_RUN_AT_BUDDY).toBe(false);
+    expect(DEFAULT_TUNING.CARRIER_TRACK_BUDDY_SPEED).toBe(0);
+  });
+
+  it("tick without a tuning is tick with DEFAULT_TUNING, state for state", () => {
+    const run = (tuning?: Tuning): StarSwarmState => {
+      _resetIds();
+      let s = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Captain");
+      s = advanceMs(s, 8000);
+      s = applyPowerUp(s, "buddy", tuning);
+      for (let t = 0; t < 3000; t += 16) s = tick(s, 16, FIRE_INPUT, tuning);
+      return s;
+    };
+    const random = jest.spyOn(Math, "random").mockReturnValue(0.5);
+    try {
+      expect(run(DEFAULT_TUNING)).toEqual(run());
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it("a tuning override reaches Buddy's launch, bursts and shots, and the Carrier's cadence", () => {
+    const tuning: Tuning = {
+      ...DEFAULT_TUNING,
+      BUDDY_HP: 123,
+      BUDDY_BURSTS: 7,
+      BUDDY_BULLET_COUNT_MIN: 6,
+      BUDDY_BULLET_COUNT_MAX: 6,
+      BUDDY_PIERCE_HITS: Infinity,
+      BUDDY_SHOT_DAMAGE: 0.5,
+      CARRIER_CADENCE: {
+        ...DEFAULT_TUNING.CARRIER_CADENCE,
+        beam: { protected: { min: 99_000, max: 99_000 } },
+      },
+    };
+    _resetIds();
+    const s0 = initStarSwarm(CANVAS_W, CANVAS_H, 3, 42, "Captain", undefined, tuning);
+    const carrier = s0.enemies.find((e) => e.tier === "Carrier")!;
+    expect(carrier.beamTimer).toBeGreaterThanOrEqual(99_000 / CARRIER_CADENCE_CAP - 1);
+    let s = advanceMs(s0, 8000);
+    s = applyPowerUp(s, "buddy", tuning);
+    expect(s.buddyShips[0]!.hp).toBe(123);
+    expect(s.buddyShips[0]!.burstsLeft).toBe(7);
+    expect(buddyBurstCount(s.buddyShips[0]!, tuning)).toBe(6);
+    s = { ...s, player: { ...s.player, invincibleTimer: 999_999 }, enemyFireDisabled: true };
+    let fan: Bullet[] = [];
+    for (let t = 0; t < 4000 && fan.length === 0; t += 16) {
+      s = tick(s, 16, NO_INPUT, tuning);
+      fan = s.playerBullets.filter((b) => b.source === "buddy");
+    }
+    expect(fan.length).toBe(6);
+    for (const b of fan) {
+      expect(b.damage).toBe(0.5);
+      expect(b.pierceLeft).toBe(Infinity);
+    }
+  });
+
+  it("the Carrier tracks an on-station Buddy only when CARRIER_TRACK_BUDDY_SPEED is set", () => {
+    const station = (speed: number): number => {
+      _resetIds();
+      const tuning: Tuning = { ...DEFAULT_TUNING, CARRIER_TRACK_BUDDY_SPEED: speed };
+      let s = initStarSwarm(CANVAS_W, CANVAS_H, 5, 42, "Captain", undefined, tuning);
+      s = advanceMs(s, 8000);
+      // expose the Carrier and park a Buddy on station far to one side
+      s = {
+        ...s,
+        enemies: s.enemies.map((e) =>
+          e.tier === "Guardian" ? { ...e, isAlive: false, hp: 0 } : e
+        ),
+        player: { ...s.player, invincibleTimer: 999_999 },
+      };
+      s = applyPowerUp(s, "buddy", tuning);
+      s = {
+        ...s,
+        buddyShips: s.buddyShips.map((b) => ({
+          ...b,
+          phase: "OnStation" as const,
+          x: 40,
+          goalX: 40,
+        })),
+      };
+      for (let t = 0; t < 1000; t += 16) s = tick(s, 16, NO_INPUT, tuning);
+      return s.enemies.find((e) => e.tier === "Carrier")!.formationX;
+    };
+    const centre = CANVAS_W / 2;
+    expect(station(0)).toBe(centre);
+    expect(station(0.1)).toBeLessThan(centre);
   });
 });
