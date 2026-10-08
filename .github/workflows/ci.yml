@@ -35,26 +35,14 @@ jobs:
       ruff-version: "0.16.8"
     secrets: inherit
 
-  # tools/**/*.py (dev tooling, #2974). The reusable lint-python workflow above takes a
-  # single working-directory (backend), so tools/ gets this small local job instead. It
-  # installs the exact black/ruff pins from backend/requirements-dev.txt and uses
-  # tools/pyproject.toml (extends backend's ruff rules, line length 100).
+  # tools/**/*.py (dev tooling, #2974): the same reusable workflow, pointed at tools/.
+  # tools/pyproject.toml extends backend's ruff rules (line length 100).
   lint-python-tools:
-    name: Lint tools (ruff + black)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-      - name: Install pinned black and ruff
-        run: pip install $(grep -E '^(black|ruff)==' backend/requirements-dev.txt)
-      - name: ruff check
-        working-directory: tools
-        run: ruff check .
-      - name: black --check
-        working-directory: tools
-        run: black --check .
+    uses: wcmchenry3-stack/.github/.github/workflows/called-lint-python.yml@main
+    with:
+      working-directory: tools
+      ruff-version: "0.16.8"
+    secrets: inherit
 
   # Unit tests for the Python asset tools (not collected by the backend suite).
   test-tools:
