@@ -582,6 +582,7 @@ function CascadeGame() {
       const finalScore = scoreRef.current;
       const previousBest = bestScoreRef.current;
       const { improved, isNewBest } = bestOf(previousBest, finalScore, false);
+      // bestOf counts any result as improving on no best; a 0 score never set one.
       if (improved && finalScore > 0) {
         bestScoreRef.current = finalScore;
         saveBestScore(finalScore).catch(() => {});

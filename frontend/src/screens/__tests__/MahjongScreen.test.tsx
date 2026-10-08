@@ -514,7 +514,7 @@ describe("MahjongScreen — win result card (#2510)", () => {
   });
 
   // Owner decision on #2747: the device best is per layout, like the boards.
-  it("a fast clear on another layout doesn't block a new best on this one", async () => {
+  it("a fast clear on another layout doesn't count as this layout's best", async () => {
     await AsyncStorage.setItem(
       "mahjong_stats_v1",
       JSON.stringify({

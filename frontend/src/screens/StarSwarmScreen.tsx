@@ -231,6 +231,7 @@ function StarSwarmGame() {
       // The result card's haptic marks the end of the run (#2516).
       const priorBest = highScoreRef.current;
       const { improved, isNewBest } = bestOf(priorBest, finalScore, false);
+      // bestOf counts any result as improving on no best; a 0 score never set one.
       if (improved && finalScore > 0) {
         highScoreRef.current = finalScore;
         setHighScore(finalScore);
