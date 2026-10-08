@@ -82,17 +82,12 @@ jest.mock("../../game/sort/api", () => ({
 // The board is the shared leaderboard screen (#2633): Sort never reads it itself.
 jest.mock("../../api/stats", () => mockScreenDeps().mockStatsApi({ getLeaderboard: jest.fn() }));
 
-// The card's rank lookup (#2677): the real adapter's HTTP is covered by its own
+// The card's rank lookup (#2677): the real lookup's HTTP is covered by its own
 // tests; here we check Sort hands it the finished game.
 const mockRankSubmit = jest.fn();
-// Every adapter built, in order. `useGameLeaderboard` builds Sort's on first
-// render and keeps it (#2976); a plain array survives beforeEach's clearAllMocks.
-const mockAdapterGameTypes: string[] = [];
-jest.mock("../../game/_shared/sessionBoardAdapter", () => ({
-  sessionBoardAdapter: jest.fn((gameType: string) => {
-    mockAdapterGameTypes.push(gameType);
-    return { gameType, submit: (...args: unknown[]) => mockRankSubmit(...args) };
-  }),
+jest.mock("../../game/_shared/lookupGameRank", () => ({
+  ...jest.requireActual("../../game/_shared/lookupGameRank"),
+  lookupGameRank: (...args: unknown[]) => mockRankSubmit(...args),
 }));
 
 jest.mock("../../game/sort/storage", () => {
@@ -911,7 +906,7 @@ describe("SortScreen — result card (#2512)", () => {
     expect(summary.result).toEqual({ won: true, level: 2, moves: 1, undos: 0, level_reached: 2 });
   });
 
-  it("asks the generic board adapter for the rank of the finished game", async () => {
+  it("asks for the rank of the finished game", async () => {
     await AsyncStorage.setItem("player_display_name", "Riley");
     mockRankSubmit.mockResolvedValue({ kind: "ranked", rank: 2 });
     const r = await renderScreen();
@@ -919,9 +914,8 @@ describe("SortScreen — result card (#2512)", () => {
     await waitFor(() =>
       expect(card.getByText("Saved as Riley · #2 on the leaderboard")).toBeTruthy()
     );
-    expect(mockAdapterGameTypes).toEqual(["sort"]);
     expect(mockRankSubmit).toHaveBeenCalledTimes(1);
-    expect(mockRankSubmit).toHaveBeenCalledWith("Riley", { gameId: "sort-game-id" });
+    expect(mockRankSubmit).toHaveBeenCalledWith("sort-game-id");
   });
 
   it("shows the best entry's rank when this solve isn't it, and links to the board (#2633)", async () => {

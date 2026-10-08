@@ -64,8 +64,7 @@ import ScoreDisplay from "../components/cascade/ScoreDisplay";
 import ThemeSelector from "../components/cascade/ThemeSelector";
 import FruitGlyph from "../components/cascade/FruitGlyph";
 import { useGameSync } from "../game/_shared/useGameSync";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
+import { useGameRank } from "../game/_shared/useGameRank";
 import {
   saveGame as saveCascadeGame,
   loadGame as loadCascadeGame,
@@ -99,9 +98,6 @@ import { CASCADE_SOUNDS } from "../game/cascade/sounds";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
 
 const SAVE_THROTTLE_MS = 2000;
-
-/** The result card reads the synced game's rank on the session board (#2632). */
-const cascadeBoard = sessionBoardAdapter("cascade");
 
 // ---------------------------------------------------------------------------
 // Merge burst animation (react-native-reanimated)
@@ -311,8 +307,8 @@ function CascadeGame() {
     /** False when the game had no sync id, so nothing could be submitted. */
     submittable: boolean;
   } | null>(null);
-  const leaderboard = useLeaderboardSubmit(cascadeBoard);
-  const { submit: submitScore, reset: resetScore } = leaderboard;
+  const leaderboard = useGameRank("cascade");
+  const { lookup: lookupRank, reset: resetScore } = leaderboard;
   // The card's "View leaderboard" link and the ⋯ menu item (#2633).
   const openLeaderboard = useLeaderboardLink(navigation, "cascade");
   const [containerWidth, setContainerWidth] = useState(0);
@@ -596,9 +592,9 @@ function CascadeGame() {
         merges: mergeCountRef.current,
         submittable: gameId !== null,
       });
-      if (gameId) void submitScore({ gameId });
+      if (gameId) void lookupRank(gameId);
     },
-    [submitScore]
+    [lookupRank]
   );
 
   const handleGameOver = useCallback(() => {

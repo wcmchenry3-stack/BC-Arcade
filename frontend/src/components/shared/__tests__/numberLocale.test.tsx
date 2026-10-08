@@ -2,7 +2,7 @@ import React from "react";
 import { cleanup, render, screen } from "@testing-library/react-native";
 import i18n from "i18next";
 import { ThemeProvider } from "../../../theme/ThemeContext";
-import GameResultModal from "../GameResultModal";
+import GameResultModal from "../../result/GameResultModal";
 import LevelProgress from "../LevelProgress";
 
 jest.mock("expo-haptics", () => ({

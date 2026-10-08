@@ -1,19 +1,15 @@
 /**
  * useGameLeaderboard (#2976): a game screen's rank lookup and leaderboard
- * opener in one call, on a per-game `sessionBoardAdapter` the hook owns.
+ * opener in one call, on `useGameRank`.
  */
 import { act, renderHook } from "@testing-library/react-native";
 import { resetDisplayNameCacheForTests, storeAssignedDisplayName } from "../displayName";
 import { useGameLeaderboard } from "../useGameLeaderboard";
 
-// Every adapter built, by game type; a plain array survives clearAllMocks.
-const mockBuilt: string[] = [];
-const mockRankSubmit = jest.fn();
-jest.mock("../sessionBoardAdapter", () => ({
-  sessionBoardAdapter: (gameType: string) => {
-    mockBuilt.push(gameType);
-    return { gameType, submit: (...args: unknown[]) => mockRankSubmit(gameType, ...args) };
-  },
+const mockLookupGameRank = jest.fn();
+jest.mock("../lookupGameRank", () => ({
+  ...jest.requireActual("../lookupGameRank"),
+  lookupGameRank: (...args: unknown[]) => mockLookupGameRank(...args),
 }));
 
 jest.mock("../displayNameSync", () => ({
@@ -47,27 +43,17 @@ describe("useGameLeaderboard", () => {
     });
   });
 
-  it("looks the finished game up on that game's session board", async () => {
+  it("looks the finished game up", async () => {
     await storeAssignedDisplayName("Riley");
-    mockRankSubmit.mockResolvedValue({ kind: "ranked", rank: 3 });
+    mockLookupGameRank.mockResolvedValue({ kind: "ranked", rank: 3 });
     const { result } = await renderHook(() => useGameLeaderboard("freecell", navigation));
     await act(async () => {
-      await result.current.leaderboard.submit({ gameId: "g-1" });
+      await result.current.leaderboard.lookup("g-1");
     });
-    expect(mockRankSubmit).toHaveBeenCalledWith("freecell", "Riley", { gameId: "g-1" });
+    expect(mockLookupGameRank).toHaveBeenCalledWith("g-1");
     expect(result.current.leaderboard.status).toBe("saved");
     expect(result.current.leaderboard.rank).toBe(3);
     expect(result.current.leaderboard.playerName).toBe("Riley");
-  });
-
-  it("builds one adapter per game type and keeps it across renders and mounts", async () => {
-    const first = await renderHook(() => useGameLeaderboard("twenty48", navigation));
-    await first.rerender({});
-    await first.unmount();
-    await renderHook(() => useGameLeaderboard("twenty48", navigation));
-    await renderHook(() => useGameLeaderboard("hearts", navigation));
-    expect(mockBuilt.filter((g) => g === "twenty48")).toEqual(["twenty48"]);
-    expect(mockBuilt.filter((g) => g === "hearts")).toEqual(["hearts"]);
   });
 
   it("has no opener for a game without an openable board", async () => {

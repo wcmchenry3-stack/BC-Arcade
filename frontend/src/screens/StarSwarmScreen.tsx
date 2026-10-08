@@ -167,7 +167,7 @@ function StarSwarmGame() {
   const { leaderboard, openLeaderboard } = useGameLeaderboard("starswarm", navigation, {
     difficulty_tier: result?.tier ?? difficulty,
   });
-  const { submit: submitRank, reset: resetSubmission } = leaderboard;
+  const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
   const scoreRef = useRef(0);
   const highScoreRef = useRef(0);
@@ -258,7 +258,7 @@ function StarSwarmGame() {
       const gameId = syncComplete({ outcome, finalScore, result }, payload);
       // The card reads the run's rank on its tier's board (shown when it is the player's best).
       if (gameId) {
-        void submitRank({ gameId });
+        void lookupRank(gameId);
       } else {
         // No open session: the run gets no row and no rank. Say so.
         syncReportBug("warn", "starswarm", "game over with no open session: run not recorded", {
@@ -275,7 +275,7 @@ function StarSwarmGame() {
         }
       }
     },
-    [playGameOver, difficulty, syncComplete, syncReportBug, submitRank]
+    [playGameOver, difficulty, syncComplete, syncReportBug, lookupRank]
   );
 
   // #2490: a boss wave has no on-screen text beyond the banner — play the sting and speak it.

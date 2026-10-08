@@ -48,7 +48,7 @@ jest.mock("../../hooks/useStarSwarmAudio", () =>
 
 jest.mock("../../game/starswarm/telemetry", () => ({ reportRunStats: jest.fn() }));
 
-// #2626: the card reads the run's rank from GET /games/{id}/rank (sessionBoardAdapter);
+// #2626: the card reads the run's rank from GET /games/{id}/rank (lookupGameRank);
 // nothing is posted to the legacy POST /starswarm/score any more.
 const mockGetRank = jest.fn();
 jest.mock("../../api/stats", () =>

@@ -11,7 +11,7 @@
  *      first real move with the deal's `draw_mode` in its metadata, completed
  *      on win, abandoned by the hook on unmount for anything else, #2632), and
  *      the shared GameResultModal (#2509) on win, which shows where the synced
- *      game ranks on the session board (`sessionBoardAdapter`, #2677).
+ *      game ranks on the session board (`lookupGameRank`, #2677).
  *
  * Route wiring into HomeStack and the lobby card live in #599; this file
  * is intentionally route-agnostic and reads its navigation via the hook.
@@ -137,7 +137,7 @@ export default function SolitaireScreen() {
   const [resumedWin, setResumedWin] = useState(false);
   // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
   const { leaderboard, openLeaderboard } = useGameLeaderboard("solitaire", navigation);
-  const { submit: submitScore, reset: resetSubmission } = leaderboard;
+  const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
   const { play: playCardFlip } = useSound("solitaire.cardFlip", SOLITAIRE_SOUNDS);
   const { play: playCardPlace } = useSound("solitaire.cardPlace", SOLITAIRE_SOUNDS);
@@ -292,7 +292,7 @@ export default function SolitaireScreen() {
         winRecordedRef.current = true;
         // Only a win that happened this session has a session to rank (a
         // resumed won game's was completed back then).
-        if (gameId) void submitScore({ gameId });
+        if (gameId) void lookupRank(gameId);
         const priorBest = statsRef.current.bestTimeMs;
         const improved = priorBest === 0 || finalMs < priorBest;
         setWinSummary({
@@ -319,7 +319,7 @@ export default function SolitaireScreen() {
       }
     }
     prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, submitScore]);
+  }, [state, syncComplete, lookupRank]);
 
   useEffect(() => {
     if (!state?.events) return;

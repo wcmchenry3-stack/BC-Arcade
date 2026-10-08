@@ -107,7 +107,7 @@ export default function HeartsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
   const { leaderboard, openLeaderboard } = useGameLeaderboard("hearts", navigation);
-  const { submit: submitRank, reset: resetSubmission } = leaderboard;
+  const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
   const [gameState, setGameState] = useState<HeartsState | null>(null);
   // Opens on the opponent style of the last game started (#1129).
@@ -225,7 +225,7 @@ export default function HeartsScreen() {
           loadFinishedGameId().then((gameId) => {
             // Not once the player has moved on to another game.
             if (unmountedRef.current || generation !== gameGenerationRef.current) return;
-            if (gameId) void submitRank({ gameId });
+            if (gameId) void lookupRank(gameId);
           });
         }
         // The play time lives in the clock, not in the state (#2629).
@@ -257,7 +257,7 @@ export default function HeartsScreen() {
         setDraftNames(names);
       }
     });
-  }, [syncResume, setSelectedDifficulty, submitRank, updateClock]);
+  }, [syncResume, setSelectedDifficulty, lookupRank, updateClock]);
 
   // ─── Sync snapshot to shared rounds context (read by ScorecardScreen) ────
   const { setSnapshot: setRoundsSnapshot } = useHeartsRounds();
@@ -485,13 +485,13 @@ export default function HeartsScreen() {
     if (!gameId) return;
     // Kept beside the saved game-over state, so a reopened card asks again.
     void saveFinishedGameId(gameId);
-    void submitRank({ gameId });
+    void lookupRank(gameId);
   }, [
     gameState?.phase,
     gameState?.cumulativeScores,
     gameState?.scoreHistory,
     syncComplete,
-    submitRank,
+    lookupRank,
   ]);
 
   useEffect(() => {

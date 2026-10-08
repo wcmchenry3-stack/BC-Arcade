@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
-import { sessionBoardAdapter } from "../sessionBoardAdapter";
-import { useLeaderboardSubmit } from "../useLeaderboardSubmit";
+import { lookupGameRank } from "../lookupGameRank";
+import { useGameRank } from "../useGameRank";
 import {
   loadDisplayName,
   resetDisplayNameCacheForTests,
@@ -48,8 +48,7 @@ function unranked(reason: GameRankResponse["reason"]): GameRankResponse {
 }
 
 async function setup() {
-  const adapter = sessionBoardAdapter("sudoku", FAST);
-  return renderHook(() => useLeaderboardSubmit(adapter));
+  return renderHook(() => useGameRank("sudoku"));
 }
 
 beforeEach(async () => {
@@ -63,19 +62,60 @@ beforeEach(async () => {
   mockFlushDisplayNameSync.mockResolvedValue(true);
 });
 
-describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
-  it("only has a game type and a rank lookup: nothing to queue", () => {
-    const adapter = sessionBoardAdapter("cascade");
-    expect(Object.keys(adapter).sort()).toEqual(["gameType", "submit"]);
-    expect(adapter.gameType).toBe("cascade");
+describe("lookupGameRank (#2677, #2990)", () => {
+  it("sends the game and the name first, then reads the rank: nothing is queued", async () => {
+    mockGetRank.mockResolvedValue(ranked(3));
+    await expect(lookupGameRank("g-1")).resolves.toEqual({ kind: "ranked", rank: 3, isBest: true });
+    expect(mockFlushQueuedGames).toHaveBeenCalledTimes(1);
+    expect(mockFlushDisplayNameSync).toHaveBeenCalledTimes(1);
+    expect(mockGetRank).toHaveBeenCalledWith("g-1");
   });
 
+  it("keeps the best entry's rank and says this game isn't it", async () => {
+    mockGetRank.mockResolvedValue(ranked(3, false));
+    await expect(lookupGameRank("g-1")).resolves.toEqual({
+      kind: "ranked",
+      rank: 3,
+      isBest: false,
+    });
+  });
+
+  it("a not_finished that outlasts the retries is pending (the hook asks again)", async () => {
+    mockGetRank.mockResolvedValue(unranked("not_finished"));
+    await expect(lookupGameRank("g-1", FAST)).resolves.toEqual({ kind: "pending" });
+    expect(mockGetRank).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(["not_rankable", "board_disabled"] as const)(
+    "%s is final at once: unranked, no retry",
+    async (reason) => {
+      mockGetRank.mockResolvedValue(unranked(reason));
+      await expect(lookupGameRank("g-1", FAST)).resolves.toEqual({ kind: "unranked" });
+      expect(mockGetRank).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it("no_name is needsName once the name is synced, pending while the join is waiting", async () => {
+    mockGetRank.mockResolvedValue(unranked("no_name"));
+    await expect(lookupGameRank("g-1")).resolves.toEqual({ kind: "needsName" });
+    mockFlushDisplayNameSync.mockResolvedValue(false);
+    await expect(lookupGameRank("g-1")).resolves.toEqual({ kind: "pending" });
+  });
+
+  it("a 404 that outlasts the retries throws", async () => {
+    mockGetRank.mockRejectedValue(new ApiError("Game not found.", 404));
+    await expect(lookupGameRank("g-1", FAST)).rejects.toThrow("Game not found.");
+    expect(mockGetRank).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("lookupGameRank in useGameRank (#2677)", () => {
   it("named and online: fetches the rank and reports it as saved", async () => {
     await storeAssignedDisplayName("Riley");
     mockGetRank.mockResolvedValue(ranked(3));
     const { result } = await setup();
 
-    await act(() => result.current.submit({ gameId: "g-1" }));
+    await act(() => result.current.lookup("g-1"));
 
     expect(mockGetRank).toHaveBeenCalledWith("g-1");
     // The game and the name are sent before the rank is read.
@@ -90,7 +130,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     await storeAssignedDisplayName("Riley");
     mockGetRank.mockResolvedValue(ranked(3, false));
     const { result } = await setup();
-    await act(() => result.current.submit({ gameId: "g-1" }));
+    await act(() => result.current.lookup("g-1"));
     expect(result.current.status).toBe("saved");
     expect(result.current.rank).toBe(3);
     expect(result.current.isBest).toBe(false);
@@ -100,11 +140,11 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     await storeAssignedDisplayName("Riley");
     mockGetRank.mockResolvedValueOnce(ranked(3, false)).mockResolvedValueOnce(ranked(2));
     const { result } = await setup();
-    await act(() => result.current.submit({ gameId: "g-1" }));
+    await act(() => result.current.lookup("g-1"));
     expect(result.current.isBest).toBe(false);
     await act(async () => result.current.reset());
     expect(result.current.isBest).toBe(true);
-    await act(() => result.current.submit({ gameId: "g-2" }));
+    await act(() => result.current.lookup("g-2"));
     expect(result.current.rank).toBe(2);
     expect(result.current.isBest).toBe(true);
   });
@@ -113,7 +153,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     await storeAssignedDisplayName("Riley");
     mockGetRank.mockResolvedValue(ranked(25));
     const { result } = await setup();
-    await act(() => result.current.submit({ gameId: "g-1" }));
+    await act(() => result.current.lookup("g-1"));
     expect(result.current.status).toBe("saved");
     expect(result.current.rank).toBeNull();
   });
@@ -122,7 +162,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     mockGetRank.mockResolvedValue(ranked(2));
     const { result } = await setup();
 
-    await act(() => result.current.submit({ gameId: "g-1" }));
+    await act(() => result.current.lookup("g-1"));
     expect(result.current.status).toBe("needsName");
     expect(mockGetRank).not.toHaveBeenCalled();
 
@@ -145,7 +185,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     mockGetRank.mockResolvedValueOnce(unranked("no_name")).mockResolvedValueOnce(ranked(1));
     const { result } = await setup();
 
-    await act(() => result.current.submit({ gameId: "g-1" }));
+    await act(() => result.current.lookup("g-1"));
     expect(result.current.status).toBe("needsName");
 
     await act(async () => {
@@ -161,7 +201,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     mockGetRank.mockResolvedValue(unranked("no_name"));
     const { result } = await setup();
 
-    await act(() => result.current.submit({ gameId: "g-1" }));
+    await act(() => result.current.lookup("g-1"));
     expect(result.current.status).toBe("submitting");
   });
 
@@ -171,7 +211,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     mockGetRank.mockResolvedValue(ranked(4));
     const { result, rerender } = await setup();
 
-    await act(() => result.current.submit({ gameId: "g-1" }));
+    await act(() => result.current.lookup("g-1"));
     expect(result.current.status).toBe("offline");
     expect(mockGetRank).not.toHaveBeenCalled();
 
@@ -188,7 +228,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     mockGetRank.mockResolvedValue(ranked(1));
     const { result, rerender } = await setup();
 
-    await act(() => result.current.submit({ gameId: "g-1" }));
+    await act(() => result.current.lookup("g-1"));
     expect(result.current.status).toBe("needsName");
     await act(async () => {
       await result.current.joinLeaderboards();
@@ -208,7 +248,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
       .mockResolvedValueOnce(ranked(5));
     const { result } = await setup();
 
-    await act(() => result.current.submit({ gameId: "g-1" }));
+    await act(() => result.current.lookup("g-1"));
 
     expect(mockGetRank).toHaveBeenCalledTimes(2);
     expect(result.current.status).toBe("saved");
@@ -220,21 +260,10 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     mockGetRank.mockResolvedValueOnce(unranked("not_finished")).mockResolvedValueOnce(ranked(6));
     const { result } = await setup();
 
-    await act(() => result.current.submit({ gameId: "g-1" }));
+    await act(() => result.current.lookup("g-1"));
 
     expect(mockGetRank).toHaveBeenCalledTimes(2);
     expect(result.current.rank).toBe(6);
-  });
-
-  it("a not_finished that outlasts the retries stays pending (the hook asks again)", async () => {
-    await storeAssignedDisplayName("Riley");
-    mockGetRank.mockResolvedValue(unranked("not_finished"));
-    const { result } = await setup();
-
-    await act(() => result.current.submit({ gameId: "g-1" }));
-
-    expect(mockGetRank).toHaveBeenCalledTimes(3);
-    expect(result.current.status).toBe("submitting");
   });
 
   it.each(["not_rankable", "board_disabled"] as const)(
@@ -244,7 +273,7 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
       mockGetRank.mockResolvedValue(unranked(reason));
       const { result } = await setup();
 
-      await act(() => result.current.submit({ gameId: "g-1" }));
+      await act(() => result.current.lookup("g-1"));
 
       expect(mockGetRank).toHaveBeenCalledTimes(1);
       expect(result.current.status).toBe("unranked");
@@ -252,13 +281,13 @@ describe("sessionBoardAdapter in useLeaderboardSubmit (#2677)", () => {
     }
   );
 
-  it("a 404 that outlasts the retries is an error, and retry() asks again", async () => {
+  it("an HTTP error is an error, and retry() asks again", async () => {
     await storeAssignedDisplayName("Riley");
-    mockGetRank.mockRejectedValue(new ApiError("Game not found.", 404));
+    mockGetRank.mockRejectedValue(new ApiError("Forbidden.", 403));
     const { result } = await setup();
 
-    await act(() => result.current.submit({ gameId: "g-1" }));
-    expect(mockGetRank).toHaveBeenCalledTimes(3);
+    await act(() => result.current.lookup("g-1"));
+    expect(mockGetRank).toHaveBeenCalledTimes(1);
     expect(result.current.status).toBe("error");
 
     mockGetRank.mockResolvedValue(ranked(7));
