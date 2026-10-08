@@ -4,7 +4,7 @@ Every per-IP rate-limit bucket (:func:`client_ip_bucket`) and every logged
 client IP (:func:`client_ip`) comes from here. No other app code reads
 ``X-Forwarded-For``, ``CF-Connecting-IP`` or ``request.client`` to identify a
 caller. (Sentry never gets them either: see ``SENTRY_SCRUBBED_KEYS`` in
-``main.py``.)
+``observability/sentry.py``.)
 
 Trust model (SECURITY.md §9, RENDER.md "Client IP and rate-limit keys"):
 
@@ -85,8 +85,9 @@ class ProxyTrust:
 def load_proxy_trust(environ: Mapping[str, str] | None = None) -> ProxyTrust:
     """Read ``TRUSTED_PROXY_MODE`` / ``TRUSTED_PROXY_HOPS``.
 
-    A bad value raises at import, so a typo stops the deploy (Render keeps
-    the previous instance) instead of silently trusting the wrong header.
+    A bad value raises when the app is built (``import main``), so a typo
+    stops the deploy (Render keeps the previous instance) instead of silently
+    trusting the wrong header.
     """
     env = os.environ if environ is None else environ
     mode = (env.get("TRUSTED_PROXY_MODE") or DEFAULT_PROXY_MODE).strip().lower()
@@ -116,8 +117,22 @@ def proxy_header_debug_enabled(environ: Mapping[str, str] | None = None) -> bool
     return env.get("ENVIRONMENT") != "production"
 
 
-_TRUST = load_proxy_trust()
-_LOG_PROXY_HEADERS = proxy_header_debug_enabled()
+# Defaults until ``configure_proxy_trust()`` runs (``main.create_app()`` calls it
+# at startup); they match an environment with neither variable set.
+_TRUST = ProxyTrust()
+_LOG_PROXY_HEADERS = False
+
+
+def configure_proxy_trust(environ: Mapping[str, str] | None = None) -> ProxyTrust:
+    """Load the trust settings into this module (``main.create_app()`` calls it).
+
+    Raises ``ValueError`` on a bad value, so ``import main`` (which builds the
+    app) still fails and a typo stops the deploy.
+    """
+    global _TRUST, _LOG_PROXY_HEADERS
+    _TRUST = load_proxy_trust(environ)
+    _LOG_PROXY_HEADERS = proxy_header_debug_enabled(environ)
+    return _TRUST
 
 
 def log_proxy_trust() -> None:

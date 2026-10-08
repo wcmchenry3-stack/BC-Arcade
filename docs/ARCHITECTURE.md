@@ -51,9 +51,16 @@ different trust model and is treated separately.
 The backend is a **shared reporting/persistence service**, not twelve separate
 game servers.
 
-`backend/main.py` creates the FastAPI application and mounts a small set of
-shared product routers plus the few game-specific services that genuinely need
-server behavior.
+`backend/main.py` holds `create_app()`, which builds the FastAPI application and
+mounts a small set of shared product routers plus the few game-specific services
+that genuinely need server behavior; `app = create_app()` is the `main:app`
+entrypoint Render runs. It also owns the lifespan (background jobs), the
+app-level exception handlers, CORS and the middleware order. Process-wide setup
+lives beside it (#2993): `backend/observability/` (Sentry options, scrub lists,
+`init_sentry()`; logging setup), `backend/middleware/` (`headers_and_log.py`,
+one pure-ASGI layer for the security headers and the JSON request log, outermost;
+`body_size.py`, the per-path body caps, innermost) and `backend/routes/`
+(`/health`, `/health/db`, the test-only `/debug/error`).
 
 | Area                      | Location                   | Responsibility                                                                                                     |
 | ------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -936,7 +943,7 @@ in their runbooks.
 | **GitHub**                                 | Source, PR review, Actions/CI, dependency/security automation and repository history | Development/release automation stops; already-installed apps continue to run                                                    | Root workflows + testing/build docs                                                    |
 | **Render**                                 | Dev/prod FastAPI services and secondary Expo Web sites; dev Postgres                 | Server reads/sync/entitlement/daily services are unavailable; offline-capable single-player continues locally and queues writes | [RENDER.md](RENDER.md)                                                                 |
 | **Supabase**                               | Production PostgreSQL only, through the session pooler                               | Production server features that require DB access fail; local single-player can continue until sync/read services are needed    | [RENDER.md](RENDER.md)                                                                 |
-| **Sentry**                                 | Native app + backend crashes/errors/performance and in-app User Feedback             | Diagnostics/feedback visibility is reduced; gameplay should continue                                                            | `sentryConfig.ts`, backend `main.py`; canonical feedback/observability doc under #2805 |
+| **Sentry**                                 | Native app + backend crashes/errors/performance and in-app User Feedback             | Diagnostics/feedback visibility is reduced; gameplay should continue                                                            | `sentryConfig.ts`, backend `observability/sentry.py`; canonical feedback/observability doc under #2805 |
 | **Cloudflare**                             | DNS/TLS/network routing for BC Arcade domains                                        | Custom domains/routing may fail even when Render services are healthy                                                           | Render/domain configuration                                                            |
 | **Apple/Xcode Cloud/App Store Connect**    | iOS build/sign/test/distribution toolchain                                           | New iOS builds/releases stop; installed builds are unaffected                                                                   | [IOS.md](IOS.md)                                                                       |
 | **Google Play / Gradle signing toolchain** | Android build/sign/test/distribution                                                 | New Android releases stop; installed builds are unaffected                                                                      | [ANDROID-CI.md](ANDROID-CI.md)                                                         |
