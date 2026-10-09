@@ -176,7 +176,7 @@
     "knip": "^5.88.1",
     "prettier": "^3.9.8",
     "react-test-renderer": "19.2.8",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "source-map-explorer": "^2.5.3",
     "test-renderer": "^1.3.0",
     "tsx": "4.23.15",
