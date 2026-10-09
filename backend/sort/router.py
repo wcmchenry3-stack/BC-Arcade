@@ -27,7 +27,7 @@ router = APIRouter(dependencies=[Depends(require_entitlement("sort"))])
 @router.get("/levels", response_model=LevelsResponse)
 @limiter.limit(SORT_LEVELS_IP_RATE_LIMIT)
 async def get_levels(
-    request: Request,
-) -> LevelsResponse:  # noqa: ARG001 - slowapi resolves `request` by name
+    request: Request,  # noqa: ARG001 - slowapi resolves `request` by name
+) -> LevelsResponse:
     raw = await asyncio.to_thread(build_levels)
     return LevelsResponse(levels=[LevelData(**item) for item in raw])

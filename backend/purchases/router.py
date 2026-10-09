@@ -238,8 +238,9 @@ async def post_google_purchase(
 @router.post("/apple/notifications")
 @limiter.limit(APPLE_NOTIFICATION_IP_RATE_LIMIT)
 async def post_apple_notification(
-    request: Request, body: AppleNotificationRequest
-) -> dict:  # noqa: ARG001 - slowapi resolves `request` by name
+    request: Request,  # noqa: ARG001 - slowapi resolves `request` by name
+    body: AppleNotificationRequest,
+) -> dict:
     """App Store Server Notifications V2 (docs/IAP.md §6.5)."""
     verifier = apple.configured_verifier()
     if verifier is None:

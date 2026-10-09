@@ -70,8 +70,8 @@ class GameModuleBase:
     def derive_final_score(
         self,
         final_score: int | None,
-        outcome: str | None,
-        result: Mapping[str, Any],  # noqa: ARG002 - default hook; subclasses override and use these
+        outcome: str | None,  # noqa: ARG002 - default hook; subclasses override
+        result: Mapping[str, Any],  # noqa: ARG002 - default hook; subclasses override
     ) -> int | None:
         """The ``final_score`` to store for a completion.
 
@@ -83,9 +83,9 @@ class GameModuleBase:
 
     async def reconcile_result(
         self,
-        session: AsyncSession,
-        game: Game,
-        result: dict[str, Any],  # noqa: ARG002 - default hook; subclasses override and use these
+        session: AsyncSession,  # noqa: ARG002 - default hook; subclasses override
+        game: Game,  # noqa: ARG002 - default hook; subclasses override
+        result: dict[str, Any],
     ) -> dict[str, Any]:
         """The validated result block corrected against server-side state.
 

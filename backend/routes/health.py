@@ -62,8 +62,8 @@ def health(request: Request) -> dict:  # noqa: ARG001 - slowapi resolves `reques
 @router.get("/health/db")
 @limiter.limit(HEALTH_DB_IP_RATE_LIMIT)
 async def health_db(
-    request: Request,
-) -> JSONResponse:  # noqa: ARG001 - slowapi resolves `request` by name
+    request: Request,  # noqa: ARG001 - slowapi resolves `request` by name
+) -> JSONResponse:
     """DB round-trip for the uptime monitor.
 
     `/health` never touches the database, so Render's health check alone would

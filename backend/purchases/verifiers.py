@@ -167,8 +167,9 @@ class NotConfiguredAppleVerifier:
     """Used while Apple verification is not configured: every call is ``503``."""
 
     async def verify(
-        self, evidence: AppleEvidence
-    ) -> VerifiedPurchase:  # noqa: ARG002 - Protocol signature
+        self,
+        evidence: AppleEvidence,  # noqa: ARG002 - Protocol signature
+    ) -> VerifiedPurchase:
         raise PurchaseError(503, "store_unavailable")
 
 
@@ -176,11 +177,13 @@ class NotConfiguredGoogleVerifier:
     """Used while Google verification is not configured: every call is ``503``."""
 
     async def verify(
-        self, evidence: GoogleEvidence
-    ) -> VerifiedPurchase:  # noqa: ARG002 - Protocol signature
+        self,
+        evidence: GoogleEvidence,  # noqa: ARG002 - Protocol signature
+    ) -> VerifiedPurchase:
         raise PurchaseError(503, "store_unavailable")
 
     async def acknowledge(
-        self, evidence: GoogleEvidence
-    ) -> None:  # noqa: ARG002 - Protocol signature
+        self,
+        evidence: GoogleEvidence,  # noqa: ARG002 - Protocol signature
+    ) -> None:
         raise PurchaseError(503, "store_unavailable")
