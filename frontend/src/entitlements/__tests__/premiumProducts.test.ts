@@ -8,9 +8,7 @@ import { HIDDEN_GAMES } from "../gameVisibility";
 import {
   PREMIUM_PRODUCTS,
   PRODUCT_ID_PREFIX,
-  gameForProductId,
   isPremiumGameSlug,
-  productIdForGame,
   type PremiumGameSlug,
 } from "../premiumProducts";
 
@@ -46,12 +44,5 @@ describe("premiumProducts", () => {
       expect(productId).toMatch(/^[a-z0-9][a-z0-9_.]{0,39}$/);
     }
     expect(new Set(PREMIUM_PRODUCTS.map((p) => p.productId)).size).toBe(PREMIUM_PRODUCTS.length);
-  });
-
-  it("maps game ↔ product both ways", () => {
-    expect(productIdForGame("hearts")).toBe("com.buffingchi.games.premium.hearts");
-    expect(gameForProductId("com.buffingchi.games.premium.hearts")).toBe("hearts");
-    expect(productIdForGame("yacht")).toBeUndefined();
-    expect(gameForProductId("com.buffingchi.games.premium.yacht")).toBeUndefined();
   });
 });

@@ -84,9 +84,6 @@ export const BOTTLE_CHECKMARK_STROKE = "#0e0e13";
 /** Colorblind mode symbol text color. */
 export const BOTTLE_COLORBLIND_TEXT = "rgba(0,0,0,0.65)";
 
-/** Colour-blind symbol fill (BallView), drawn on every liquid colour. */
-export const BOTTLE_SYMBOL_FILL = "#ffffff";
-
 /** Liquid surface sheen and the pour stream's inner highlight (SortBoard). */
 export const BOTTLE_LIQUID_SHEEN = "rgba(255,255,255,0.22)";
 export const BOTTLE_STREAM_HIGHLIGHT = "rgba(255,255,255,0.4)";

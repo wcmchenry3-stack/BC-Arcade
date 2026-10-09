@@ -319,7 +319,10 @@ export function useEntitlementGate(): EntitlementGateValue {
   return useContext(EntitlementGateContext);
 }
 
-/** `lastRefreshed`, which changes on every refresh. */
+/**
+ * `lastRefreshed`, which changes on every refresh.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function useEntitlementStatus(): EntitlementStatusValue {
   return useContext(EntitlementStatusContext);
 }
@@ -328,6 +331,7 @@ export function useEntitlementStatus(): EntitlementStatusValue {
  * The whole value, as before the split. It re-renders on every refresh (it
  * reads `lastRefreshed`); a screen that only gates should use
  * `useEntitlementGate()`.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
  */
 export function useEntitlements(): EntitlementContextValue {
   const gate = useContext(EntitlementGateContext);

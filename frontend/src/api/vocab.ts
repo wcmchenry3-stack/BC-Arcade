@@ -42,7 +42,10 @@ export type GameOutcome = (typeof GAME_OUTCOMES)[number];
 /** Outcomes that say who won. Only a game with a winner (`HAS_WINNER`) records them. */
 export const RESULT_OUTCOMES = ["win", "loss", "push"] as const satisfies readonly GameOutcome[];
 
-/** Every other outcome: all a game with no winner ever records. */
+/**
+ * Every other outcome: all a game with no winner ever records.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export const LIFECYCLE_OUTCOMES = [
   "completed",
   "abandoned",

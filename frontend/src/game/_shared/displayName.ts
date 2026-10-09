@@ -90,7 +90,10 @@ export async function clearDisplayName(): Promise<boolean> {
   return true;
 }
 
-/** Test-only: forget the cached name so the next load re-reads storage. */
+/**
+ * Test-only: forget the cached name so the next load re-reads storage.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function resetDisplayNameCacheForTests(): void {
   cached = null;
   loadPromise = null;
