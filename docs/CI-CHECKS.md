@@ -42,8 +42,8 @@ Podfile.lock freshness needs only detect-native-changes.
 | --- | --- | --- | --- | --- | --- | --- |
 | `lint-python` | black + ruff on `backend/` (ruff pinned to 0.16.8, in lockstep with `requirements-dev.txt`) | Unformatted code, unused imports, bugbear/complexity findings landing in the backend | `ci.yml:lint-python` (org `called-lint-python.yml`) | 2026-03-22, 12715a0c | Tier 0, always | 17s |
 | `lint-python-tools` | Same lint, pointed at `tools/` (dev tooling) | Style drift in the asset, sim and generator scripts | `ci.yml:lint-python-tools` | 2026-10-07, #3057 | Tier 0, always | 12s |
-| `lint-frontend` | eslint + prettier on `frontend/` (includes the file-size and complexity rules from #2951) | Lint errors, formatting drift, 800-line files and 150-line functions growing unchecked | `ci.yml:lint-frontend` (org `called-lint-frontend.yml`) | 2026-03-22, 12715a0c | Tier 0, always | 57s |
-| `typecheck-frontend` | `npm run typecheck` over production sources (`tsconfig.typecheck.json`, tests excluded) | A type error merging because Jest/Babel do not type-check | `ci.yml:typecheck-frontend` | 2026-09-23, #2211 | Tier 1 | 36s |
+| `lint-frontend` | eslint + prettier on `frontend/` (includes the file-size and complexity rules from #2951) | Lint errors, formatting drift, and new files over 800 lines (`max-lines` is an error). The 150-line function limit (`max-lines-per-function`) and the grandfathered large files are warnings only, so they are reported but do not block | `ci.yml:lint-frontend` (org `called-lint-frontend.yml`) | 2026-03-22, 12715a0c | Tier 0, always | 57s |
+| `typecheck-frontend` | `npm run typecheck`: `tsc` over production sources (`tsconfig.typecheck.json`, tests excluded) and over the dev tooling (`tsconfig.tooling.json`: `frontend/tooling/**`, `tools/sim/*.ts`, `tools/generators/*.ts`) | A type error merging because Jest/Babel do not type-check | `ci.yml:typecheck-frontend` | 2026-09-23, #2211 | Tier 1 | 36s |
 | `Backend file length` | `backend/scripts/check_file_length.py`: `.py` files must stay within 800 lines (per-file caps otherwise) | A backend module quietly growing into an unreviewable monolith | `ci.yml:backend-file-length` | 2026-10-04, #3006 | Tier 1 | 16s |
 | `Duplication (jscpd)` | jscpd over `frontend/src`, `frontend/tooling`, `backend`; fails above 2.5% duplicated lines | Copy-paste growth across games and backend modules | `ci.yml:duplication` | 2026-10-04, #3006 | Tier 1 | 17s |
 | `Unused code (knip)` | `npx knip` for unused files, exports and dependencies in `frontend/` | Dead code and unused dependencies accumulating. The step has `continue-on-error: true`, so today it **reports but does not fail** | `ci.yml:knip` | 2026-10-04, #3006 | Tier 1 | 46s |
@@ -176,17 +176,17 @@ What the repo does tell us:
 
 These are recommendations, not a record of current settings. Two rules of thumb: a conditional job that is skipped counts as passing for required-check purposes, so conditional build checks can safely be required; and a required check must exist on every PR, so required names should come from jobs that always start. Use the exact check names as shown in the PR (for reusable workflows, `<job> / <inner job>`).
 
-**`dev`** (fast, deterministic, always-on):
+**`dev`** (fast, deterministic, always-on). Names are the exact check-run names as GitHub shows them on a PR:
 
-- `gate-main-source`, `secret-scan`, `lint-python`, `lint-frontend`, `conflict-markers`, `forbidden-terms`, `commitlint`
-- `typecheck-frontend`, `test-python`, `test-frontend`, `Playwright E2E`, `schema-check`
-- `cve-python`, `cve-frontend`
-- `design-token-check`, `openai-policy-check`, `gemini-policy-check`
-- `Colour literals` and `Markdown links (lychee)` (the subject of #3102)
-- `i18n completeness check`, `Backend file length`, `Large tracked file guard`, `local-path-check`, `android-bundle-check`
+- `gate-main-source / Verify PR source is dev`, `secret-scan / Secret scan (gitleaks)`, `lint-python / Lint Python (black + ruff)`, `lint-frontend / Lint frontend (eslint + prettier)`, `Conflict marker check`, `Forbidden brand/trademark terms`, `commitlint / Lint PR title`
+- `typecheck-frontend`, `test-python / Test Python (pytest)`, `test-frontend / Test frontend (jest/vitest)`, `Playwright E2E`, `schema-check / Schema migration check`
+- `cve-python / CVE scan Python (pip-audit)`, `cve-frontend / CVE scan frontend (npm audit)`
+- `design-token-check / Design Tokens & Accessibility Check`, `openai-policy-check / OpenAI API Policy Check`, `gemini-policy-check / Gemini API Policy Check`
+- `Colour literals (per-game palettes)` and `Markdown links (lychee, offline)` (the subject of #3102)
+- `i18n completeness check`, `Backend file length (per-file caps, default 800)`, `Large tracked file guard (over 5 MiB)`, `local-path-check / Local Path Detection`, `android-bundle-check`
 - `ios-build-check`, `android-build-check`, `Podfile.lock freshness`, `android-release-smoke` (safe to require because they skip when not applicable)
 
-Leave advisory for now: `Unused code (knip)` (does not fail today), `sentry-cli-check` (warns only), `backend-health` (depends on the live dev Render service), `Duplication (jscpd)` (a threshold that can trip on unrelated PRs), `Test tools (pytest)` and `lint-python-tools` (only meaningful when `tools/` changes), and the sim gates (path-conditional; if required they must be required on the conditional path only).
+Check-run names change if a job's `name:` changes, so re-copy them from a recent PR's checks list when applying this. Leave advisory for now: `Unused code (knip)` (does not fail today), `sentry-cli-check` (warns only), `backend-health / Backend Health` (depends on the live dev Render service), `Duplication (jscpd)` (a threshold that can trip on unrelated PRs), `Test tools (pytest)` and `lint-python-tools / Lint Python (black + ruff)` (only meaningful when `tools/` changes), and the sim gates (path-conditional; if required they must be required on the conditional path only).
 
 **`main`**: everything above, plus the checks that are skipped on `dev`: `ios-build-check` and `android-build-check` become real builds on every release PR, and `Playwright E2E` is the full suite. `gate-main-source` is the check that matters most on `main`.
 
