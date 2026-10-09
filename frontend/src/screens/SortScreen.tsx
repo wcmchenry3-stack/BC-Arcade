@@ -20,7 +20,8 @@
  *      standing (#2625, #2746) and abandoned otherwise (#2619).
  *   6. Result (#2512) — the shared GameResultModal with the level's best
  *      moves (a new best only once a prior best exists) and the synced
- *      game's rank (#2633).
+ *      game's rank (#2633). A solve is handled on a `useCompletionTransition`
+ *      edge (#3109).
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -60,6 +61,7 @@ import { useSortLevels } from "../game/sort/useSortLevels";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import { GameShell } from "../components/shared/GameShell";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
+import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { PillButton } from "../components/shared/PillButton";
 import { useSortAudio } from "../game/sort/useSortAudio";
@@ -243,75 +245,72 @@ export default function SortScreen() {
   // Unlock the next level, complete the session and show the result card as
   // soon as the puzzle is solved. Nothing here waits on the network or on
   // storage, so Next Level is available at once.
-  useEffect(() => {
-    if (!gameState?.isComplete || showWinModal) return;
+  //
+  // The edge (useCompletionTransition, #3109) is a solved board whose card is
+  // not up, so it keeps the screen's own timing: it fires on the solve, and
+  // again whenever the card is closed while the solved board is still in state
+  // (Change Level). The plain-function form has no once-per-game guard, since
+  // every solve is scored, replays included. Nothing is cleared: a solve saves
+  // progress (the save effect above has already dropped the solved board).
+  // Sort never restores a solved board (only an unfinished one is saved), so
+  // there is nothing to mark with `markRestoredComplete`.
+  useCompletionTransition(gameState, !!gameState?.isComplete && !showWinModal, (solved) => {
     setShowWinModal(true);
-    if (currentLevelId !== null) {
-      const solvedLevel = currentLevelId;
-      const moves = gameState.moveCount;
-      // Decided now, from the bests in memory, so the session completes before
-      // the player can leave the card (#2625).
-      const { solve, bests } = applyLevelSolve(bestMovesRef.current, solvedLevel, moves);
-      bestMovesRef.current = bests;
-      setWinSummary(solve);
-      // Storage mirrors memory; skipped while it couldn't be read, so a failed
-      // read never overwrites the stored bests.
-      if (solve.improved && bestsStoredRef.current) void saveBestMoves(bests);
-      // Every solve is scored with the player's standing after it (#2625): the
-      // highest level solved, and the sum of best moves up to it (recorded,
-      // not ranked: #2746). The board keeps each player's best row, their
-      // first solve of their highest level. `level`/`moves`/`undos` are the
-      // level actually played.
-      const frontier = Math.min(
-        Math.max(
-          solvedLevel,
-          progressRef.current.unlockedLevel - 1, // read before the unlock below
-          highestSolvedLevel(bests)
-        ),
-        // Never past the last level: the server rejects (and the sync worker
-        // would drop) a level_reached above its cap.
-        Math.max(levels.length, solvedLevel)
-      );
-      const result: Record<string, number | boolean> = {
-        won: true,
-        level: solvedLevel,
-        moves,
-        undos: gameState.undosUsed,
-        level_reached: frontier,
-      };
-      const totalMoves = totalBestMoves(bests, frontier);
-      if (totalMoves !== null) result.total_moves = totalMoves;
-      const gameId = syncComplete(
-        { outcome: "completed", finalScore: frontier, result },
-        { outcome: "completed", ...result }
-      );
-      // The row ranks by itself under the player's name (#2624): the card
-      // only asks where it landed, or for a name if there is none.
-      if (gameId) void lookupRank(gameId);
-      const newUnlocked = Math.min(
-        Math.max(progressRef.current.unlockedLevel, currentLevelId + 1),
-        levels.length || currentLevelId + 1
-      );
-      const updated: SortProgress = {
-        ...progressRef.current,
-        unlockedLevel: newUnlocked,
-        currentLevelId: null,
-        currentState: null,
-      };
-      setProgress(updated);
-      void saveProgress(updated);
-    }
-  }, [
-    gameState?.isComplete,
-    gameState?.moveCount,
-    gameState?.undosUsed,
-    showWinModal,
-    currentLevelId,
-    levels,
-    setProgress,
-    syncComplete,
-    lookupRank,
-  ]);
+    if (currentLevelId === null) return;
+    const solvedLevel = currentLevelId;
+    const moves = solved.moveCount;
+    // Decided now, from the bests in memory, so the session completes before
+    // the player can leave the card (#2625).
+    const { solve, bests } = applyLevelSolve(bestMovesRef.current, solvedLevel, moves);
+    bestMovesRef.current = bests;
+    setWinSummary(solve);
+    // Storage mirrors memory; skipped while it couldn't be read, so a failed
+    // read never overwrites the stored bests.
+    if (solve.improved && bestsStoredRef.current) void saveBestMoves(bests);
+    // Every solve is scored with the player's standing after it (#2625): the
+    // highest level solved, and the sum of best moves up to it (recorded,
+    // not ranked: #2746). The board keeps each player's best row, their
+    // first solve of their highest level. `level`/`moves`/`undos` are the
+    // level actually played.
+    const frontier = Math.min(
+      Math.max(
+        solvedLevel,
+        progressRef.current.unlockedLevel - 1, // read before the unlock below
+        highestSolvedLevel(bests)
+      ),
+      // Never past the last level: the server rejects (and the sync worker
+      // would drop) a level_reached above its cap.
+      Math.max(levels.length, solvedLevel)
+    );
+    const result: Record<string, number | boolean> = {
+      won: true,
+      level: solvedLevel,
+      moves,
+      undos: solved.undosUsed,
+      level_reached: frontier,
+    };
+    const totalMoves = totalBestMoves(bests, frontier);
+    if (totalMoves !== null) result.total_moves = totalMoves;
+    const gameId = syncComplete(
+      { outcome: "completed", finalScore: frontier, result },
+      { outcome: "completed", ...result }
+    );
+    // The row ranks by itself under the player's name (#2624): the card
+    // only asks where it landed, or for a name if there is none.
+    if (gameId) void lookupRank(gameId);
+    const newUnlocked = Math.min(
+      Math.max(progressRef.current.unlockedLevel, solvedLevel + 1),
+      levels.length || solvedLevel + 1
+    );
+    const updated: SortProgress = {
+      ...progressRef.current,
+      unlockedLevel: newUnlocked,
+      currentLevelId: null,
+      currentState: null,
+    };
+    setProgress(updated);
+    void saveProgress(updated);
+  });
 
   // ---------------------------------------------------------------------------
   // Game handlers
