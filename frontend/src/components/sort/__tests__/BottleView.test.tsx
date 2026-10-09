@@ -43,7 +43,7 @@ describe("BottleView", () => {
     expect(onTap).toHaveBeenCalledTimes(1);
   });
 
-  it("renders a BallView for each color in the bottle", async () => {
+  it("renders a ball for each color in the bottle", async () => {
     const bottle: Color[] = ["red", "blue", "green"];
     const { getByLabelText } = await render(withTheme(<BottleView bottle={bottle} index={0} />));
     expect(getByLabelText("Red")).toBeTruthy();

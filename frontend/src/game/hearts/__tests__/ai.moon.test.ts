@@ -3,7 +3,7 @@
  *
  * Split out of the former `ai.test.ts` (#2955) along the exported-function clusters of `ai.ts`:
  * passing (`selectCardsToPass`), playing (`selectCardToPlay`) and moon detection
- * (`detectPotentialMoon` / `detectMoonAttempt` and the moon-mode play paths they drive). Describe
+ * (`detectMoonAttempt` and the moon-mode play paths they drive). Describe
  * blocks moved whole; shared fixtures live in `helpers/aiFixtures.ts`.
  */
 import { detectMoonAttempt, selectCardToPlay } from "../ai";
