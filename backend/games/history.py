@@ -2,17 +2,53 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from db.models import Game, GameEvent, GameType
 from games.sessions import GameServiceError
+
+_SPACE_OFFSET = re.compile(r" (\d{2}:\d{2})$")
+
+# A decoded cursor: the last game of the previous page, as (started_at, id). ``id`` is None
+# for the legacy timestamp-only form that app builds already in the field may still send.
+Cursor = tuple[datetime, uuid.UUID | None]
+
+
+def parse_cursor(raw: str) -> Cursor:
+    """Parse a ``GET /games/me`` cursor: ``<iso-timestamp>~<game-uuid>`` or a bare timestamp.
+
+    The timestamp may be ``Z``, an offset, or naive; a naive value is read as UTC, since
+    asyncpg rejects naive datetimes for a timestamptz column (#3015). A trailing offset whose
+    ``+`` a client left unencoded arrives as a space (``... 00:00``) and is repaired.
+    Raises ``ValueError`` for anything unparseable, including offsets so extreme that the
+    UTC conversion leaves datetime's range.
+    """
+    ts_part, sep, id_part = raw.partition("~")
+    ts_part = _SPACE_OFFSET.sub(r"+\1", ts_part)
+    try:
+        game_id = uuid.UUID(id_part) if sep else None
+        parsed = datetime.fromisoformat(ts_part)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=UTC), game_id
+        return parsed.astimezone(UTC), game_id
+    except OverflowError as exc:  # e.g. 0001-01-01T00:00:00+23:59
+        raise ValueError("cursor out of range") from exc
+
+
+def format_cursor(started_at: datetime, game_id: uuid.UUID) -> str:
+    """The opaque ``next_cursor``: ``<UTC iso with Z>~<game id>``, URL-safe (no ``+``)."""
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=UTC)
+    stamp = started_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return f"{stamp}~{game_id}"
 
 
 @dataclass
@@ -39,7 +75,7 @@ async def list_games_for_session(
     *,
     session_id: str,
     limit: int,
-    cursor: datetime | None,
+    cursor: Cursor | None,
 ) -> GamePage:
     stmt = (
         select(Game, GameType.name)
@@ -49,7 +85,13 @@ async def list_games_for_session(
         .limit(limit + 1)
     )
     if cursor is not None:
-        stmt = stmt.where(Game.started_at < cursor)
+        ts, cursor_id = cursor
+        # Strictly after the cursor game in (started_at DESC, id DESC) order; the id breaks
+        # ties so games sharing a started_at are not skipped across a page boundary.
+        after = Game.started_at < ts
+        if cursor_id is not None:
+            after = or_(after, and_(Game.started_at == ts, Game.id < cursor_id))
+        stmt = stmt.where(after)
 
     rows = (await session.execute(stmt)).all()
     items = [
@@ -66,7 +108,11 @@ async def list_games_for_session(
         )
         for g, name in rows[:limit]
     ]
-    next_cursor = rows[limit][0].started_at.isoformat() if len(rows) > limit else None
+    # The cursor is the last game on this page; the next page starts strictly after it.
+    next_cursor = None
+    if len(rows) > limit:
+        last = rows[limit - 1][0]
+        next_cursor = format_cursor(last.started_at, last.id)
     return GamePage(items=items, next_cursor=next_cursor)
 
 

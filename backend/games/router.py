@@ -11,7 +11,6 @@ from __future__ import annotations
 import hmac
 import uuid
 from dataclasses import asdict
-from datetime import datetime
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -155,10 +154,10 @@ async def list_my_games(
     cursor: str | None = None,
 ) -> GameHistoryResponse:
     sid = get_session_id(request)
-    parsed_cursor: datetime | None = None
+    parsed_cursor: history.Cursor | None = None
     if cursor:
         try:
-            parsed_cursor = datetime.fromisoformat(cursor)
+            parsed_cursor = history.parse_cursor(cursor)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="Invalid cursor.") from exc
     # Close this player's games left open > 24 h before listing them (#2621).
