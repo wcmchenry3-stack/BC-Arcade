@@ -28,6 +28,9 @@ interface Props {
   onNewGame: () => void;
 }
 
+/** How far (px) the ship may sit from this drag's last command before it counts as moved. */
+const SHIP_MOVED_EPSILON_PX = 0.5;
+
 export default function Controls({
   canvasRef,
   scale,
@@ -89,12 +92,19 @@ export default function Controls({
       // keeps its commanded X on the autopilot's) so control resumes from where the ship is
       // instead of snapping back under the finger. The wave change is what triggers the
       // re-anchor, so it works whether or not any move arrived during the extraction.
+      // #3132: an extraction can also hand control back within the same wave (salvage while
+      // the ship still holds its lane), so the drag also re-anchors whenever the ship isn't
+      // where this drag last put it: something else moved it.
       const handle = canvasRef.current;
       const state = handle?.getState();
       if (state?.phase === "Extraction") return;
-      if (state && anchorWaveRef.current !== null && state.wave !== anchorWaveRef.current) {
+      const shipX = handle?.getPlayerX?.() ?? state?.player.x;
+      const waveChanged =
+        !!state && anchorWaveRef.current !== null && state.wave !== anchorWaveRef.current;
+      const movedElsewhere =
+        shipX !== undefined && Math.abs(shipX - playerXRef.current) > SHIP_MOVED_EPSILON_PX;
+      if (state && shipX !== undefined && (waveChanged || movedElsewhere)) {
         anchorWaveRef.current = state.wave;
-        const shipX = handle?.getPlayerX?.() ?? state.player.x;
         shipXAtDragStartRef.current = shipX - e.translationX / scale;
       }
       const dragStart = shipXAtDragStartRef.current;

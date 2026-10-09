@@ -288,6 +288,22 @@ describe.each([1, 1.5])("Controls edge drag through canvas + engine (scale %s)",
     expect(t.canvas.x).toBeCloseTo(CANVAS_W / 2 + 5, 5);
   });
 
+  it("a held drag resumes from the ship when something else moved it mid-wave (#3132)", async () => {
+    const t = await setup(scale);
+    t.canvas.state = { ...t.canvas.state, enemyFireDisabled: true, asteroidsDisabled: true };
+    while (t.canvas.state.phase === "SwoopIn") t.canvas.frame();
+    t.begin();
+    t.moveTo(100 * scale);
+    expect(t.canvas.handle.getPlayerX()).toBeCloseTo(CANVAS_W / 2 + 100, 5);
+    // The extraction autopilot holds the ship's lane, then salvage hands control back in the
+    // same wave: the ship is somewhere the finger didn't put it.
+    t.canvas.handle.setPlayerX(CANVAS_W / 2 - 40);
+    t.moveTo(105 * scale);
+    expect(t.canvas.handle.getPlayerX()).toBeCloseTo(CANVAS_W / 2 - 40, 5);
+    t.moveTo(110 * scale);
+    expect(t.canvas.handle.getPlayerX()).toBeCloseTo(CANVAS_W / 2 - 35, 5);
+  });
+
   it("a drag held through the wave-clear autopilot resumes from the ship (#2842)", async () => {
     const t = await setup(scale);
     t.canvas.state = { ...t.canvas.state, enemyFireDisabled: true, asteroidsDisabled: true };
