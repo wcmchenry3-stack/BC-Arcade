@@ -183,6 +183,57 @@ describe("usePersistedGameState", () => {
     expect(second).toHaveBeenCalledWith(null);
   });
 
+  it("reload runs the load again: loading turns true, then the handler runs with the result", async () => {
+    const loads: ReturnType<typeof deferred<Game | null>>[] = [];
+    const onRestored = jest.fn();
+    const { render, save } = setup(() => {
+      const d = deferred<Game | null>();
+      loads.push(d);
+      return d.promise;
+    }, onRestored);
+    const { result } = await render();
+    await act(async () => loads[0]!.resolve(null));
+    expect(onRestored).toHaveBeenLastCalledWith(null);
+    expect(result.current.loading).toBe(false);
+
+    await act(async () => result.current.reload());
+    expect(result.current.loading).toBe(true);
+    expect(loads).toHaveLength(2);
+
+    const saved = { moves: 2 };
+    await act(async () => loads[1]!.resolve(saved));
+    expect(result.current.loading).toBe(false);
+    expect(result.current.state).toBe(saved);
+    expect(onRestored).toHaveBeenCalledTimes(2);
+    expect(onRestored).toHaveBeenLastCalledWith(saved);
+    expect(save).toHaveBeenCalledWith(saved);
+  });
+
+  it("reload drops a load still in flight, and a reload landing after unmount sets nothing", async () => {
+    const loads: ReturnType<typeof deferred<Game | null>>[] = [];
+    const onRestored = jest.fn();
+    const { render } = setup(() => {
+      const d = deferred<Game | null>();
+      loads.push(d);
+      return d.promise;
+    }, onRestored);
+    const { result, unmount } = await render();
+
+    await act(async () => result.current.reload());
+    await act(async () => loads[0]!.resolve({ moves: 1 }));
+    expect(onRestored).not.toHaveBeenCalled();
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => loads[1]!.resolve({ moves: 2 }));
+    expect(onRestored).toHaveBeenCalledTimes(1);
+    expect(result.current.state).toEqual({ moves: 2 });
+
+    await act(async () => result.current.reload());
+    await act(async () => unmount());
+    await act(async () => loads[2]!.resolve({ moves: 3 }));
+    expect(onRestored).toHaveBeenCalledTimes(1);
+  });
+
   it("loads once, not on re-render", async () => {
     const load = jest.fn(() => Promise.resolve<Game | null>({ moves: 1 }));
     const { render } = setup(load);

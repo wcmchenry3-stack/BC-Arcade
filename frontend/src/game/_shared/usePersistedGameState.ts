@@ -39,6 +39,13 @@ export interface PersistedGameState<T> {
   /** Deletes the save (`options.clear`), ignoring a failure. */
   clear: () => void;
   /**
+   * Runs the load again, as on mount: `loading` turns true, and a load still
+   * in flight is dropped. For a screen whose load can fail and offers a Retry
+   * (Daily Word, #3109). It lands like the first one: the state is set to what
+   * it loaded and the `useGameRestored` handler runs again.
+   */
+  reload: () => void;
+  /**
    * Internal: the handler `useGameRestored` registers, called once when the
    * load lands. Screens pass the whole result to `useGameRestored` and never
    * touch this.
@@ -50,7 +57,8 @@ export interface PersistedGameState<T> {
  * A game screen's saved game (#3087): restored on mount, saved on every
  * change after that. Its state is the screen's game state.
  *
- * - The load runs once, on mount. One that lands after unmount sets nothing.
+ * - The load runs once, on mount, and again on each `reload()`. One that
+ *   lands after unmount, or after a later `reload()`, sets nothing.
  * - When it lands, `hasLoadedRef` turns true, the state is set to what it
  *   loaded (null for a clean slot), the screen's `useGameRestored` handler
  *   runs with it, and `loading` ends, all in one batch.
@@ -86,24 +94,42 @@ export function usePersistedGameState<T>(
   const stateRef = useRef<T | null>(null);
   const restoredRef = useRef<RestoredHandler<T> | null>(null);
 
-  useEffect(() => {
-    let alive = true;
+  // Bumped by every load, so only the latest one lands; each load's own
+  // `cancelled` drops it after unmount (the alive guard).
+  const loadSeqRef = useRef(0);
+  const startLoad = useCallback(() => {
+    const seq = ++loadSeqRef.current;
+    let cancelled = false;
+    const alive = () => !cancelled && loadSeqRef.current === seq;
     optionsRef.current.load().then(
       (loaded) => {
-        if (!alive) return;
+        if (!alive()) return;
         hasLoadedRef.current = true;
         setState(loaded);
         restoredRef.current?.(loaded);
         setLoading(false);
       },
       () => {
-        if (alive) setLoading(false);
+        if (alive()) setLoading(false);
       }
     );
     return () => {
-      alive = false;
+      cancelled = true;
     };
   }, []);
+
+  // A reload's load is cancelled on unmount too.
+  const cancelLoadRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    cancelLoadRef.current = startLoad();
+    const cancelLoad = cancelLoadRef;
+    return () => cancelLoad.current();
+  }, [startLoad]);
+
+  const reload = useCallback(() => {
+    setLoading(true);
+    cancelLoadRef.current = startLoad();
+  }, [startLoad]);
 
   // Mirrored at layout time, so a handler that runs between a commit and its
   // passive effects reads the committed state. Only a new state writes it, so
@@ -121,7 +147,7 @@ export function usePersistedGameState<T>(
     optionsRef.current.clear?.().catch(() => {});
   }, []);
 
-  return { state, setState, stateRef, loading, hasLoadedRef, clear, restoredRef };
+  return { state, setState, stateRef, loading, hasLoadedRef, clear, reload, restoredRef };
 }
 
 /**

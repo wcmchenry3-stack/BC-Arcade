@@ -3,8 +3,11 @@
  *
  * Layers:
  *   1. Engine: pure functions from game/daily_word/engine.ts
- *   2. Persistence: AsyncStorage via game/daily_word/storage.ts; state loaded
- *      on mount and saved after every mutation.
+ *   2. Persistence: `usePersistedGameState` (#3109) over
+ *      game/daily_word/storage.ts. The load fetches today's puzzle with the
+ *      save (Retry runs it again); a save for another day is cleared and
+ *      today's board dealt in its place. Every change is saved after that,
+ *      except a finished board just restored, which is already stored.
  *   3. API: GET /daily-word/today and GET /daily-word/answer here;
  *      POST /daily-word/guess and its 403/422/429 recovery live in
  *      useDailyWordSubmit (components/daily_word, #2981).
@@ -51,6 +54,7 @@ import type { DailyWordState } from "../game/daily_word/types";
 import { dailyWordApi } from "../game/daily_word/api";
 import { withRetry } from "../game/_shared/withRetry";
 import { useGameSync } from "../game/_shared/useGameSync";
+import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
 import {
   loadState,
   saveState,
@@ -123,12 +127,68 @@ export default function DailyWordScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
-  const [state, setState] = useState<DailyWordState | null>(null);
-  // Always holds the latest state — read by the async submit, the session
+  // Why the last load found no puzzle, read by the restore handler below.
+  const loadFailureRef = useRef<"offline" | "failed" | null>(null);
+  // True when the load restored a save for today, not a fresh board.
+  const restoredSaveRef = useRef(false);
+  // A finished board the load restored: it is already stored as it is, so the
+  // save below skips it (a finished puzzle is never re-saved, #3109).
+  const restoredFinishedRef = useRef<DailyWordState | null>(null);
+
+  // The saved game (usePersistedGameState, #3109), in the one slot
+  // `daily_word_state_v1` and keyed to the puzzle by its `puzzle_id`
+  // ("YYYY-MM-DD:lang"). The load fetches today's puzzle with the save, both
+  // recomputed per call: Retry (`reload`) can run hours after mount (new day,
+  // new language). A save for today resumes; one for another day is cleared,
+  // before today's fresh board is set, and the fresh board is then saved. A
+  // failed load resolves null and leaves its reason in `loadFailureRef`.
+  // `stateRef` is the latest state, read by the async submit, the session
   // abandon paths and the unmount snapshot, none of which can close over `state`.
-  const stateRef = useRef<DailyWordState | null>(null);
-  stateRef.current = state;
-  const [loading, setLoading] = useState(true);
+  const game = usePersistedGameState<DailyWordState>({
+    load: async () => {
+      loadFailureRef.current = null;
+      restoredSaveRef.current = false;
+      const tzOffset = getTimezoneOffset();
+      const language = getLanguage();
+      const dateKey = localDateKey(tzOffset, language);
+      let failure: "offline" | "failed" = "failed";
+      try {
+        const [todayMeta, saved] = await Promise.all([
+          withRetry(() => dailyWordApi.getToday(tzOffset, language))
+            .then((meta) => {
+              saveTodayMeta(dateKey, meta).catch(() => {});
+              return meta;
+            })
+            // Only serve cached meta on network failures (isNetworkError). HTTP errors
+            // such as 401 mean the server is actively denying access — falling
+            // back to cache would bypass that.
+            .catch(async (e) => {
+              if (!isNetworkError(e)) return null;
+              const cached = await loadTodayMeta(dateKey);
+              if (!cached) failure = "offline";
+              return cached;
+            }),
+          loadState(),
+        ]);
+
+        if (!todayMeta) {
+          loadFailureRef.current = failure;
+          return null;
+        }
+        if (saved && saved.puzzle_id === todayMeta.puzzle_id) {
+          restoredSaveRef.current = true;
+          return saved;
+        }
+        if (saved) await clearState();
+        return initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
+      } catch {
+        loadFailureRef.current = "failed";
+        return null;
+      }
+    },
+    save: (s) => (s === restoredFinishedRef.current ? Promise.resolve() : saveState(s)),
+  });
+  const { state, setState, stateRef, loading, reload } = game;
   // "offline" = network failure with no cached metadata (#2925); "failed" = anything else.
   const [loadError, setLoadError] = useState<"offline" | "failed" | null>(null);
   // The latest toast text; `errorToast` decides whether it is showing.
@@ -152,7 +212,6 @@ export default function DailyWordScreen() {
   // Dev panel (#1293) — gated by __DEV__
   const [devOpen, setDevOpen] = useState(false);
 
-  const hasLoadedRef = useRef(false);
   const mountedRef = useRef(true);
   const language = getLanguage();
   const tzOffset = getTimezoneOffset();
@@ -177,7 +236,7 @@ export default function DailyWordScreen() {
 
   useEffect(() => {
     syncSetProgressSnapshot(() => ({ result: sessionResult(stateRef.current) }));
-  }, [syncSetProgressSnapshot]);
+  }, [syncSetProgressSnapshot, stateRef]);
 
   // ---------------------------------------------------------------------------
   // Countdown timer
@@ -228,7 +287,7 @@ export default function DailyWordScreen() {
         return "failed";
       }
     },
-    [tzOffset, language, syncGetGameId, syncComplete, hideCopied]
+    [tzOffset, language, syncGetGameId, syncComplete, hideCopied, stateRef, setState]
   );
 
   const handlePlayAgain = useCallback(async () => {
@@ -264,112 +323,50 @@ export default function DailyWordScreen() {
   );
 
   // ---------------------------------------------------------------------------
-  // Mount: load today's puzzle and any saved state
+  // Mount (and Retry): today's puzzle and any saved state
   // ---------------------------------------------------------------------------
 
-  // Bumped by every load and by unmount so a superseded load never touches state.
-  const loadSeqRef = useRef(0);
-
-  const load = useCallback(async () => {
-    const seq = ++loadSeqRef.current;
-    const alive = () => loadSeqRef.current === seq;
-    // Recomputed per call: Retry can run hours after mount (new day, new language).
-    const tzOffset = getTimezoneOffset();
-    const language = getLanguage();
-    const dateKey = localDateKey(tzOffset, language);
-    let failure: "offline" | "failed" = "failed";
-    try {
-      const [todayMeta, saved] = await Promise.all([
-        withRetry(() => dailyWordApi.getToday(tzOffset, language))
-          .then((meta) => {
-            saveTodayMeta(dateKey, meta).catch(() => {});
-            return meta;
-          })
-          // Only serve cached meta on network failures (isNetworkError). HTTP errors
-          // such as 401 mean the server is actively denying access — falling
-          // back to cache would bypass that.
-          .catch(async (e) => {
-            if (!isNetworkError(e)) return null;
-            const cached = await loadTodayMeta(dateKey);
-            if (!cached) failure = "offline";
-            return cached;
-          }),
-        loadState(),
-      ]);
-
-      if (!alive()) return;
-
-      if (!todayMeta) {
-        setLoadError(failure);
-        return;
-      }
-
-      hasLoadedRef.current = true;
-      setLoadError(null);
-
-      let gameState: DailyWordState;
-      if (saved && saved.puzzle_id === todayMeta.puzzle_id) {
-        gameState = saved;
-        // A restored board continues the session a killed app left open for
-        // this puzzle (#2654).
-        if (!saved.is_complete) syncResume({ puzzle_id: saved.puzzle_id });
-      } else {
-        if (saved) await clearState();
-        gameState = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
-      }
-
-      setState(gameState);
-
-      // A restored finished board shows its card at once (derived from
-      // is_complete); a loss fills in the answer when it arrives.
-      if (gameState.is_complete) {
-        if (!gameState.won) {
-          dailyWordApi
-            .getAnswer(gameState.puzzle_id)
-            .then((r) => {
-              if (alive()) setAnswer(r.answer.toUpperCase());
-            })
-            .catch(() => {});
-        }
-        startCountdown();
-      }
-    } catch {
-      if (alive()) setLoadError("failed");
-    } finally {
-      if (alive()) setLoading(false);
+  useGameRestored(game, (gameState) => {
+    if (gameState === null) {
+      setLoadError(loadFailureRef.current ?? "failed");
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    load();
-    return () => {
-      loadSeqRef.current++;
-    };
-    // Run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Persist on every state change after load
-  // ---------------------------------------------------------------------------
-
-  useEffect(() => {
-    if (!hasLoadedRef.current || state === null) return;
-    saveState(state).catch(() => {});
-  }, [state]);
+    setLoadError(null);
+    // A restored board continues the session a killed app left open for this
+    // puzzle (#2654).
+    if (restoredSaveRef.current && !gameState.is_complete) {
+      syncResume({ puzzle_id: gameState.puzzle_id });
+    }
+    // A restored finished board shows its card at once (derived from
+    // is_complete); a loss fills in the answer when it arrives.
+    if (gameState.is_complete) {
+      restoredFinishedRef.current = gameState;
+      if (!gameState.won) {
+        dailyWordApi
+          .getAnswer(gameState.puzzle_id)
+          .then((r) => {
+            if (mountedRef.current) setAnswer(r.answer.toUpperCase());
+          })
+          .catch(() => {});
+      }
+      startCountdown();
+    }
+  });
 
   // ---------------------------------------------------------------------------
   // Input handlers
   // ---------------------------------------------------------------------------
 
-  const handleLetter = useCallback(async (letter: string) => {
-    setState((s) => {
-      if (!s || s.is_complete) return s;
-      return setCurrentRowLetter(s, letter.toLowerCase());
-    });
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-  }, []);
+  const handleLetter = useCallback(
+    async (letter: string) => {
+      setState((s) => {
+        if (!s || s.is_complete) return s;
+        return setCurrentRowLetter(s, letter.toLowerCase());
+      });
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    },
+    [setState]
+  );
 
   const handleDelete = useCallback(async () => {
     setState((s) => {
@@ -377,7 +374,7 @@ export default function DailyWordScreen() {
       return deleteLastLetter(s);
     });
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-  }, []);
+  }, [setState]);
 
   const { submit: onSubmit, submitting } = useDailyWordSubmit(
     stateRef,
@@ -458,8 +455,7 @@ export default function DailyWordScreen() {
             style={[styles.retryButton, { backgroundColor: colors.accent }]}
             onPress={() => {
               setLoadError(null);
-              setLoading(true);
-              load();
+              reload();
             }}
           >
             <Text style={[styles.retryText, { color: colors.textOnAccent }]}>
