@@ -5,7 +5,7 @@
 # Offline: only relative/local links and #fragments are resolved, so the job has no
 # network flakiness and an outside site being down never fails a PR.
 offline = true
-include_fragments = true
+include_fragments = "full"
 no_progress = true
 
 # Explicit exclusions (regexes matched against the resolved link):
