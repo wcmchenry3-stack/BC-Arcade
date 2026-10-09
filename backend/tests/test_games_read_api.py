@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from db.base import get_session_factory
 from db.models import GameEntitlement
-from games.history import parse_cursor
+from games.history import format_cursor, parse_cursor
 from games.progression import (
     BASE_XP_PER_GAME,
     LEVEL_THRESHOLDS,
@@ -465,19 +465,78 @@ async def test_my_games_cursor_excludes_games_started_at_or_after_it(
     assert [g["id"] for g in r.json()["items"]] == [ids["older"]]
 
 
-async def test_my_games_next_cursor_is_z_suffixed_and_round_trips(client: TestClient) -> None:
+def _start_game(client: TestClient, sid: str, started_at: datetime) -> str:
+    r = client.post(
+        "/games",
+        headers=_headers(sid),
+        json={"game_type": "yacht", "started_at": started_at.isoformat()},
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["id"]
+
+
+def _page_through(client: TestClient, sid: str) -> list[list[str]]:
+    """Page /games/me with limit=1, sending each next_cursor back unencoded."""
+    pages: list[list[str]] = []
+    url = "/games/me?limit=1"
+    for _ in range(10):
+        body = client.get(url, headers=_headers(sid)).json()
+        pages.append([g["id"] for g in body["items"]])
+        cursor = body["next_cursor"]
+        if cursor is None:
+            return pages
+        assert "+" not in cursor
+        url = f"/games/me?limit=1&cursor={cursor}"
+    raise AssertionError("paging did not terminate")
+
+
+async def test_my_games_pages_newest_first_without_overlap(client: TestClient) -> None:
     sid = str(uuid.uuid4())
     await _grant(sid, "yacht")
-    for s in (10, 20, 30):
-        _create_and_complete(client, sid, game_type="yacht", final_score=s)
-    first = client.get("/games/me?limit=1", headers=_headers(sid)).json()
-    cursor = first["next_cursor"]
-    assert cursor.endswith("Z") and "+" not in cursor
-    # Unencoded, exactly as a client would append it. Page contents are not asserted:
-    # SQLite stores second-resolution server timestamps, so ties make them meaningless.
-    second = client.get(f"/games/me?limit=1&cursor={cursor}", headers=_headers(sid))
-    assert second.status_code == 200, second.text
-    assert parse_cursor(cursor).utcoffset() == timedelta(0)
+    base = datetime.now(UTC) - timedelta(days=5)
+    g1 = _start_game(client, sid, base)
+    g2 = _start_game(client, sid, base + timedelta(days=1))
+    g3 = _start_game(client, sid, (base + timedelta(days=2)).replace(microsecond=123456))
+    assert _page_through(client, sid) == [[g3], [g2], [g1]]
+
+
+async def test_my_games_pages_games_sharing_a_started_at_exactly_once(
+    client: TestClient,
+) -> None:
+    sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
+    base = datetime.now(UTC) - timedelta(days=5)
+    tied = {_start_game(client, sid, base), _start_game(client, sid, base)}
+    newest = _start_game(client, sid, base + timedelta(days=1))
+    pages = _page_through(client, sid)
+    assert pages[0] == [newest]
+    assert {p[0] for p in pages[1:]} == tied
+    assert len(pages) == 3
+
+
+@pytest.mark.parametrize(
+    "cursor",
+    [
+        "not-a-timestamp",
+        "2026-10-05T12:00:00Z~not-a-uuid",
+        "0001-01-01T00:00:00+23:59",
+        "9999-12-31T23:59:59-23:59",
+    ],
+)
+def test_my_games_rejects_unusable_cursors_with_400(client: TestClient, cursor: str) -> None:
+    r = client.get(
+        f"/games/me?cursor={quote(cursor, safe='')}", headers=_headers(str(uuid.uuid4()))
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Invalid cursor."
+
+
+def test_next_cursor_is_z_suffixed_timestamp_and_game_id() -> None:
+    game_id = uuid.uuid4()
+    stamp = datetime(2026, 10, 5, 12, 0, 0, 5, tzinfo=UTC)
+    cursor = format_cursor(stamp, game_id)
+    assert cursor == f"2026-10-05T12:00:00.000005Z~{game_id}"
+    assert parse_cursor(cursor) == (stamp, game_id)
 
 
 def test_an_inactive_game_has_no_leaderboard(
