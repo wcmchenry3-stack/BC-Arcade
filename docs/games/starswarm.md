@@ -1034,7 +1034,7 @@ React commits per second over the game. See
 - Board: `final_score` desc, one board per `difficulty_tier` (`GET /games/leaderboard/starswarm?difficulty_tier=Captain`), no cap. A row with no tier counts as `LieutenantJG` (`DEFAULT_DIFFICULTY_TIER`), and a request without `difficulty_tier` is the `LieutenantJG` board; an unknown tier is a 400. `has_winner = False`
 - Stats: default pass-through `stats_shape` (inherited from `GameModuleBase`, `default_stats_shape`)
 - Endpoints: none of its own — the generic `/games` routes. The legacy `POST /starswarm/score` (unused since #2626) and `GET /starswarm/leaderboard` (unused since #2633, when the Ranks tab moved to the shared `LeaderboardScreen`; the tab itself was retired in #2634) were removed in #2644
-- Scoring: each run's session row (`useGameSync("starswarm")`) completes with its `final_score` and is the leaderboard entry on its tier's board (#2626); see [Scoring](#scoring-persistence)
+- Scoring: each run's session row (`useGameSync("starswarm")`) completes with its `final_score` and is the leaderboard entry on its tier's board (#2626); see [Scoring](#scoring)
 
 ## Accessibility
 

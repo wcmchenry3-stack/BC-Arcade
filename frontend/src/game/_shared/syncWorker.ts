@@ -2,9 +2,12 @@
  * SyncWorker — drains the local event queue to the backend (367c).
  *
  * ┌──────────────────────── server-confirmed deletion ────────────────────────┐
- * │ A row is only deleted from eventStore after the server returns 2xx       │
- * │ confirming acceptance. Tests assert this invariant by spying on          │
- * │ eventStore.deleteByIds during simulated 4xx/5xx responses.               │
+ * │ A row leaves eventStore (deleteByIds) only when the server accepts it     │
+ * │ (2xx), or on the one benign 409 "Game is already completed." Every other  │
+ * │ terminal 4xx DEAD-LETTERS the row instead: markDeadLettered flags it, it  │
+ * │ stays in the queue until eviction or TTL, and peek() skips it.            │
+ * │ 429/5xx/network keep the row for a later retry. Tests spy on              │
+ * │ eventStore.deleteByIds and markDeadLettered during simulated 4xx/5xx.     │
  * └───────────────────────────────────────────────────────────────────────────┘
  *
  * Flush algorithm (one pass):

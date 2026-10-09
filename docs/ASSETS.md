@@ -26,12 +26,12 @@ frontend/assets/
     └── SOUND_CREDITS.md
 ```
 
-Pipeline input directories live at the repo root but are **gitignored** (large source art, not shipped):
+Pipeline input directories live at the repo root. They are **tracked in version control** (force-added past the `.gitignore` entries for `fruit_images/` and `celestial_images/`), as plain files, **not Git LFS** (`.gitattributes` has no `filter=lfs` rule). They are source art for `tools/assets/bake_sprites.py` and are not in the app bundle:
 
-- `fruit_images/` (~77 MB) — high-res PNG sources for the fruit theme
-- `celestial_images/` (~86 MB) — high-res PNG sources for the celestial theme
+- `fruit_images/` (~77 MB, 12 PNGs) — high-res PNG sources for the fruit theme
+- `celestial_images/` (~86 MB, 12 PNGs) — high-res PNG sources for the celestial theme
 
-Originals and the older `source-icons/` bundle are stored in **Google Drive** (`bc-arcade` folder):
+Most are over 5 MiB, so `scripts/check_large_files.py` (CI job `large-file-guard`, #2967) grandfathers them by exact path with a size cap. Moving them to Git LFS is tracked in #3033; that change removes the grandfathered entries. The older `frontend/assets/source-icons/` bundle stays gitignored; it and the original-resolution art are in **Google Drive** (`bc-arcade` folder):
 https://drive.google.com/drive/folders/1LW97pBFsqfG67bQKvQwkhMlLBswzIVhm
 
 ## Format rules
@@ -133,7 +133,7 @@ Icons optimized: `icon.png`, `splash-icon.png`, `adaptive-icon.png`, `favicon.pn
 
 ## Regenerating baked Cascade sprites
 
-Source images are in `fruit_images/` and `celestial_images/` (gitignored — download from Google Drive).
+Source images are in `fruit_images/` and `celestial_images/` at the repo root (tracked as plain files today; see "Directory map" above and #3033).
 
 ```bash
 pip install Pillow

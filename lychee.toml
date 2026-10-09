@@ -1,0 +1,18 @@
+# Markdown/HTML link check for the docs (#3000). Run by the `docs-links` job in
+# .github/workflows/ci.yml; run it locally with:
+#   lychee --config lychee.toml "docs/**/*.md" "docs/**/*.html" "*.md"
+#
+# Offline: only relative/local links and #fragments are resolved, so the job has no
+# network flakiness and an outside site being down never fails a PR.
+offline = true
+include_fragments = true
+no_progress = true
+
+# Explicit exclusions (regexes matched against the resolved link):
+exclude = [
+  # User-level Claude standards (~/.claude/standards/*.md), referenced by CLAUDE.md and
+  # TESTING.md. They live on the developer's machine, not in this repo.
+  '/~/\.claude/',
+  # JS template literal inside docs/research/asset-preview.html (`${issueUrl}`), not a link.
+  '%7BissueUrl%7D',
+]

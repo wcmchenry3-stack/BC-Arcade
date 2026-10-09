@@ -2,6 +2,21 @@
 
 See [~/.claude/standards/testing.md](~/.claude/standards/testing.md) for universal conventions (coverage thresholds, what not to test, accessible query priority).
 
+## Test layers and which gate PRs
+
+Source of truth: `.github/workflows/`. "Gates" means a failing run blocks the PR. Details: "Test layers and which gate PRs (#2975)" and "Quality gates" below.
+
+| Layer                    | Where                                                                   | Gates PRs?                                                                                                                                               |
+| ------------------------ | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| pytest (backend)         | `backend/tests`, job `test-python`                                      | Yes. `--cov-fail-under=96`                                                                                                                               |
+| jest (frontend)          | `frontend/src/**/__tests__`, job `test-frontend`                        | Yes. Coverage floors in `package.json`                                                                                                                   |
+| Playwright (web)         | `e2e/tests`, job `e2e`                                                  | Yes. Selective by changed paths; push and `main` PRs run the full suite                                                                                  |
+| Maestro (iOS/Android)    | `e2e/maestro`, `mobile-smoke-{android,ios}.yml`                         | No. `workflow_dispatch` only (not on PRs or push) until #2400 is fixed                                                                                   |
+| Colour-literal check     | `frontend/scripts/check-color-literals.mjs`, job `check-color-literals` | Yes. No colour literals outside the theme and the per-game palettes (#2989); the checker has its own `node --test` run                                   |
+| Markdown link check      | `lychee.toml`, job `docs-links`                                         | Yes. Dead relative links and `#anchors` in `docs/**` and root `*.md` (offline; run `lychee --config lychee.toml "docs/**/*.md" "docs/**/*.html" "*.md"`) |
+| Tools pytest             | `tools/`, job `test-tools`                                              | Yes (asset tools only)                                                                                                                                   |
+| Yacht / Hearts sim gates | `yacht-sim-gate.yml`, `hearts-sim-gate.yml`                             | Only PRs touching the AI, engine or gate paths; the nightly full runs do not gate PRs                                                                    |
+
 ## Quality gates and ratchet schedule
 
 Cheap ratchets added for the refactor epic (#2950, issue #2951). They are set at today's numbers so the epic's gains cannot silently regress. Run the same commands locally before opening a PR.
@@ -10,7 +25,7 @@ Cheap ratchets added for the refactor epic (#2950, issue #2951). They are set at
 | ------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | ruff complexity / bugbear | `backend/pyproject.toml` (`extend-select`, `[tool.ruff.lint.mccabe]`)                                      | `B`, `C901`, `RUF`, `PLR0912`, `PLR0915`, `SIM`, `UP`; `max-complexity = 12`. Offenders carry `# noqa: C901  # see #2951`                                                                                                                     | Yes (`lint-python`)                         |
 | Backend coverage floor    | `backend/pyproject.toml` (`addopts` `--cov-fail-under`, `[tool.coverage.run] omit`)                        | `--cov-fail-under=96` over the whole backend (measured 97.6 % on both Python 3.11 and 3.13; see "Backend coverage (#2958)" below). Only `tests/`, `scripts/` and `perf/` are omitted                                                          | Yes (`test-python`)                         |
-| Backend file length       | `backend/scripts/check_file_length.py`, CI job `backend-file-length`                                       | 800 lines per `.py` (excl. `tests/`, `alembic/`, `.venv/`). Per-file `CAPS` (a file's count when capped, so it cannot grow) for any file over 800: none today (`purchases/google_notifications.py` was split in #2998)        | Yes                                         |
+| Backend file length       | `backend/scripts/check_file_length.py`, CI job `backend-file-length`                                       | 800 lines per `.py` (excl. `tests/`, `alembic/`, `.venv/`). Per-file `CAPS` (a file's count when capped, so it cannot grow) for any file over 800: none today (`purchases/google_notifications.py` was split in #2998)                        | Yes                                         |
 | eslint `max-lines`        | `frontend/eslint.config.js`                                                                                | 800 lines (skip blanks/comments) for `src/**` excl. `__tests__`. The 11 files already over 800 effective lines are `warn` in a `files:` override                                                                                              | Error for new offenders                     |
 | eslint function size      | `frontend/eslint.config.js`                                                                                | `max-lines-per-function` 150, `complexity` 20                                                                                                                                                                                                 | Warn                                        |
 | eslint react-hooks v7     | `frontend/eslint.config.js`                                                                                | `refs`, `immutability`, `set-state-in-effect`, `purity`, `globals` at `warn`                                                                                                                                                                  | Warn                                        |
@@ -85,14 +100,7 @@ Original baseline, for history (2026-10-04, before the coverage stories): lines 
 
 ## Test layers and which gate PRs (#2975)
 
-Web (Expo Web) is a supported secondary platform used for testing and the free games; it is not a revenue platform. iOS and Android are primary. Platform-specific bugs should name the platform.
-
-| Layer                 | Where                               | Gates PRs?                                                                                            |
-| --------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Backend pytest        | `backend/tests`                     | Yes (`test-python`)                                                                                   |
-| Frontend jest         | `frontend/src/**/__tests__`         | Yes (`test-frontend`)                                                                                 |
-| Playwright (web)      | `e2e/tests`, CI job `e2e`           | **Yes, the PR gate.** Selective by changed paths; push and `main` PRs run the full suite              |
-| Maestro (iOS/Android) | `e2e/maestro`, `mobile-smoke-*.yml` | No. Manual (`workflow_dispatch`) until further notice; Maestro is not expected to ship before go-live |
+The at-a-glance table is at the top of this guide. Web (Expo Web) is a supported secondary platform used for testing and the free games; it is not a revenue platform. iOS and Android are primary. Platform-specific bugs should name the platform.
 
 E2E hooks (`window.__*`, `EXPO_PUBLIC_TEST_HOOKS=1` builds only) are installed through `registerTestHooks(namespace, hooks)` in `frontend/src/game/_shared/testHooksRegistry.ts`; per-game hooks live in `game/<game>/testHooks.ts`. Import `areTestHooksEnabled` from `game/_shared/envFlags`, never from the heavy `_shared/testHooks` module. `releaseBuildConfig.test.ts` asserts no release input enables the flag.
 
@@ -135,8 +143,7 @@ cd backend && python -m pip install -r requirements.txt
 python -m pytest tests/ -v
 
 # By file
-python -m pytest tests/test_game.py -v       # Yacht game logic
-python -m pytest tests/test_api.py -v        # Yacht API endpoints
+python -m pytest tests/test_yacht_api.py -v            # Yacht API endpoints
 python -m pytest tests/test_generic_leaderboard.py -v  # Leaderboard API (every game)
 
 # With coverage
@@ -147,28 +154,24 @@ python -m pytest tests/ -v --cov=. --cov-report=term-missing
 
 ### Structure
 
+`backend/tests/` has one `test_<module>.py` per backend module (about 100 files; list them with `ls backend/tests`), plus `conftest.py`, underscore helper modules (`_helpers.py`, `_migration_helpers.py`, `_pg_scratch.py`, the IAP harnesses) and fakes (`google_play_fakes.py`, `apple_jws.py`). Yacht scoring and rules are client-side (`frontend/src/game/yacht/engine.ts`, tested by jest); the backend only stores and ranks Yacht sessions. Representative files:
+
 ```
 backend/tests/
-├── __init__.py
-├── test_game.py              # YachtGame unit tests — all 13 scoring categories
-├── test_api.py               # Yacht FastAPI endpoints via TestClient
-└── test_generic_leaderboard.py  # GET /games/leaderboard/{game_type} via TestClient
+├── test_yacht_api.py            # Yacht sessions on the generic board; scorecard round trip
+├── test_yacht_models.py         # YachtMetadata rules, removed legacy models (no database)
+├── test_yacht_result.py         # YachtResult and the final scorecard (no database)
+├── test_generic_leaderboard.py  # GET /games/leaderboard/{game_type} via TestClient
+└── ...                          # games, entitlements, purchases, migrations, stats, ...
 ```
 
 ### What's Tested
 
-**test_game.py**
+**test_yacht_api.py / test_yacht_models.py / test_yacht_result.py**
 
-- All 13 scoring categories (hit and miss cases)
-- Upper section bonus (triggers at ≥63)
-- Roll logic, roll count enforcement (max 3), held dice
-- Scoring validation: must roll first, no duplicates, unknown category
-- Round advancement, game-over after round 13
-- `possible_scores()` only returns unfilled categories
-
-**test_api.py**
-
-- `POST /yacht/new`, `GET /yacht/state`, `POST /yacht/roll`, `POST /yacht/score`, `GET /yacht/possible-scores`
+- `YachtMetadata` validation and the removed legacy `/yacht/*` routes (they answer 404)
+- Yacht sessions rank on `GET /games/leaderboard/yacht` like every game: one entry per named player (their best), abandoned and unnamed rows never rank
+- The scorecard saved by `PATCH /games/{id}/complete` and read back by `GET /games/{id}`, including reconciliation against the stored final score
 
 **test_generic_leaderboard.py**
 
@@ -188,8 +191,6 @@ backend/tests/
 ### Notes
 
 - API tests use FastAPI's `TestClient` (no running server needed).
-- Each test file has an `autouse` fixture that resets in-memory state before/after each test.
-- Game logic tests set `game.dice` and `game.rolls_used` directly to avoid randomness.
 - Shared fixtures live in `tests/conftest.py`; plain helpers live in `tests/_helpers.py` (`session_headers`, `jwt_games`, `count`), `tests/_migration_helpers.py` (`run_alembic`, `run_alembic_url`, `AlembicError`) and `tests/_pg_scratch.py` (`scratch_database`, `require_pg_url`: a throwaway Postgres database for planner tests, only via `LEADERBOARD_EXPLAIN_PG_URL`). Fixtures resolve by name, so a test file defines its own only when it needs a different shape (a local definition overrides the shared one). Never import from `conftest` itself (pytest does not support it); put shared plain functions in an underscore module instead:
   - `client`: the app under `TestClient` with its lifespan running.
   - `session_id`: a fresh UUID string.
@@ -546,7 +547,7 @@ YACHT_SIM_FULL=3000 npx jest --testPathPattern="ai.calibrate" -t "regret" --sile
 ```
 
 Each decision requires an **awaited** oracle query — mean ~2.5ms for hold EVs
-in isolation on dev hardware (`docs/YACHT_ORACLE.md` §7), but end-to-end
+in isolation on dev hardware ([`docs/research/YACHT_ORACLE.md`](research/YACHT_ORACLE.md) §7), but end-to-end
 through this test file (oracle query + simulation overhead) that measures at
 **~20-26ms/decision** across two real runs: 19.75ms/decision at N=30 (6,941
 decisions, 137s), 25.59ms/decision at N=150 (34,628 decisions, 886s). At that
