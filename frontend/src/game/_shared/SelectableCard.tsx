@@ -12,6 +12,7 @@ import PlayingCard from "../../components/shared/PlayingCard";
 import type { PlayingCardProps } from "../../components/shared/PlayingCard";
 import { useDeck } from "./decks/CardDeckContext";
 import { useTheme } from "../../theme/ThemeContext";
+import { CARD_SELECT_GLOW } from "../../theme/theme.cards";
 
 export interface SelectableCardProps extends Omit<PlayingCardProps, "highlighted"> {
   selected?: boolean;
@@ -48,7 +49,7 @@ export default function SelectableCard({
   }, [selected]); // lift/scale/glow are stable SharedValue refs — safe to omit
 
   const isNeon = activeDeck.id === "neon";
-  const glowColor = isNeon ? colors.accentBright : "#ffffff";
+  const glowColor = isNeon ? colors.accentBright : CARD_SELECT_GLOW;
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [

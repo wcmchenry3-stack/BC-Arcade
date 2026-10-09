@@ -64,7 +64,7 @@ export interface Colors {
   /**
    * Playing-card face colours (#2983): the face fill, the ink for ranks and
    * black suits, and the red-suit colour. A card face is a physical object, so
-   * these are the same in both themes today; #2989 may give light mode its own.
+   * these are the same in both themes (a card is a physical object).
    */
   cardFace: string;
   cardInk: string;

@@ -1,7 +1,7 @@
 /**
  * #2983: the playing-card colour tokens. They replace literals PlayingCard and Hearts'
  * CapturedPile used to hard-code, so their values are pinned to those literals in both themes
- * (#2989 may later give light mode its own), and PlayingCard must hand them to the deck.
+ * (a card is the same physical object in both themes), and PlayingCard must hand them to the deck.
  */
 import React from "react";
 import { render } from "@testing-library/react-native";

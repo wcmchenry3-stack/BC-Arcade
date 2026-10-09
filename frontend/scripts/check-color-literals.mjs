@@ -62,17 +62,6 @@ export const ALLOWLIST = [
   // Cascade's palette moved to the Cascade rework epic (#3033).
   { path: "screens/CascadeScreen.tsx", reason: "Cascade, #3033" },
   { path: "game/cascade/", reason: "Cascade, #3033" },
-  // Card faces and ink: PR 2 of #2989, after #3059 (cardFace / cardInk / cardRedSuit tokens).
-  // Remove each of these in #2989 PR 2.
-  { path: "components/shared/PlayingCard.tsx", reason: "card face; remove in #2989 PR 2" },
-  { path: "components/hearts/CapturedPile.tsx", reason: "card face; remove in #2989 PR 2" },
-  { path: "components/freecell/FoundationPile.tsx", reason: "red-suit ink; remove in #2989 PR 2" },
-  { path: "game/_shared/decks/", reason: "card deck faces; remove in #2989 PR 2" },
-  { path: "game/_shared/SelectableCard.tsx", reason: "card ink; remove in #2989 PR 2" },
-  {
-    path: "game/_shared/drag/DragOverlay.tsx",
-    reason: "dragged-card shadow; remove in #2989 PR 2",
-  },
   // Colour-math helpers: they build a colour from computed channels, they are not a colour.
   {
     path: "game/starswarm/render/color.ts",
