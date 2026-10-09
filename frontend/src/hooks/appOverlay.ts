@@ -54,6 +54,7 @@ export function useAppOverlayOpen(): boolean {
  * that leaves a header mounted with its menu open (react-test-renderer has
  * no auto-cleanup) must not start the next test's screen paused.
  * `jest.setup-after-env.ts` calls it before each test.
+ * @public Reached only through `jest.requireActual`, which knip cannot follow.
  */
 export function __resetAppOverlayForTests(): void {
   openTokens.clear();
