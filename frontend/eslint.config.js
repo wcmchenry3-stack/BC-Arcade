@@ -6,6 +6,8 @@ const pluginReact = require("eslint-plugin-react");
 const pluginReactHooks = require("eslint-plugin-react-hooks");
 const js = require("@eslint/js");
 const globals = require("globals");
+const { importX } = require("eslint-plugin-import-x");
+const { createTypeScriptImportResolver } = require("eslint-import-resolver-typescript");
 
 // eslint-plugin-import v2's no-restricted-paths silently skips TypeScript imports
 // in ESLint 9 flat config because its resolver returns null without a TS resolver
@@ -140,7 +142,7 @@ module.exports = [
     },
   },
 
-  // The 11 files over 800 effective lines (blanks/comments skipped) when the gate landed:
+  // The 6 files over 800 effective lines (blanks/comments skipped) when the gate landed:
   // warn only, so current PRs still pass. Remove each entry as its split lands
   // (#2951, epic #2950). Do NOT add new files here.
   {
@@ -154,6 +156,23 @@ module.exports = [
     ],
     rules: {
       "max-lines": ["warn", { max: 800, skipBlankLines: true, skipComments: true }],
+    },
+  },
+
+  // Circular imports break module load order on React Native (Metro). #3108.
+  // Type-only imports are erased at compile time, so import-x ignores them by
+  // default and they cannot form a runtime cycle.
+  {
+    files: ["src/**/*.ts", "src/**/*.tsx", "App.tsx"],
+    plugins: { "import-x": importX },
+    settings: {
+      // Default is [".js"]; without this ExportMap skips every .ts/.tsx module and
+      // the rule silently finds no cycles.
+      "import-x/extensions": [".ts", ".tsx", ".js", ".jsx"],
+      "import-x/resolver-next": [createTypeScriptImportResolver({ project: "./tsconfig.json" })],
+    },
+    rules: {
+      "import-x/no-cycle": ["error", { ignoreExternal: true }],
     },
   },
 
