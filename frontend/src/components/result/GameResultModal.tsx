@@ -80,12 +80,20 @@ function fireHaptic(outcome: GameOutcome) {
  */
 export function useResultFeedback({
   active,
+  presented = true,
   outcome,
   winnerName,
   subtitle,
   hero,
 }: {
+  /** The result is up; turning false re-arms the feedback for the next one. */
   active: boolean;
+  /**
+   * Whether the card is on screen right now (default true). Feedback waits
+   * for it, and hiding the card again doesn't re-arm it, so a card the player
+   * comes back to isn't announced twice.
+   */
+  presented?: boolean;
   outcome: GameOutcome;
   winnerName?: string;
   subtitle?: string;
@@ -110,14 +118,14 @@ export function useResultFeedback({
       announcedRef.current = false;
       return;
     }
-    if (announcedRef.current) return;
+    if (!presented || announcedRef.current) return;
     announcedRef.current = true;
     fireHaptic(outcome);
     const detailText = [subtitle, heroA11y].filter(Boolean).join(". ");
     AccessibilityInfo.announceForAccessibility(
       detailText ? t("a11y.announce", { title, detail: detailText }) : title
     );
-  }, [active, outcome, subtitle, heroA11y, title, t]);
+  }, [active, presented, outcome, subtitle, heroA11y, title, t]);
 }
 
 /** The one end-of-game result card every game uses, in a modal. */
@@ -157,26 +165,29 @@ export default function GameResultModal({
   // closed.
   const overlayClear = useAppOverlayClear();
 
-  // Announce + haptic once per appearance of the card: when it is actually
-  // shown, not while an overlay holds it back.
+  // A native Modal is its own window: hide it while a screen pushed from the
+  // card (the leaderboard, #2633) covers the game, and show it again, without
+  // a second announcement, when the player comes back.
+  const screenFocused = useIsScreenFocused();
+  const cardShown = phase === "card" && screenFocused && overlayClear;
+
+  // Announce + haptic once per result, when the card is first actually shown:
+  // not while an overlay holds it back or another screen covers the game, and
+  // not again when it comes back after one of those.
   useResultFeedback({
-    active: phase === "card" && overlayClear,
+    active: phase === "card",
+    presented: cardShown,
     outcome: card.outcome,
     winnerName: card.winnerName,
     subtitle: card.subtitle,
     hero: card.hero,
   });
 
-  // A native Modal is its own window: hide it while a screen pushed from the
-  // card (the leaderboard, #2633) covers the game, and show it again, without
-  // a second announcement, when the player comes back.
-  const screenFocused = useIsScreenFocused();
-
   return (
     <>
       {phase === "celebrating" && celebration?.(() => setPhase("card"))}
       <Modal
-        visible={phase === "card" && screenFocused && overlayClear}
+        visible={cardShown}
         transparent
         animationType="fade"
         statusBarTranslucent

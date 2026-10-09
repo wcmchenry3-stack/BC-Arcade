@@ -609,13 +609,68 @@ describe("GameResultModal — app overlay (#2944)", () => {
     }
   });
 
-  it("hides the card the moment an overlay opens", async () => {
-    await renderCard();
-    expect(screen.getByText("You Win!")).toBeTruthy();
-    const sheet = await overlay(false);
-    await act(async () => sheet.rerender({ open: true }));
-    expect(screen.queryByText("You Win!")).toBeNull();
-    await act(async () => sheet.unmount());
+  it("hides the card the moment an overlay opens, and doesn't announce it again after", async () => {
+    jest.useFakeTimers();
+    try {
+      // The overlay first: `screen` follows the latest render.
+      const sheet = await overlay(false);
+      await renderCard();
+      expect(screen.getByText("You Win!")).toBeTruthy();
+      await act(async () => sheet.rerender({ open: true }));
+      expect(screen.queryByText("You Win!")).toBeNull();
+      await act(async () => sheet.rerender({ open: false }));
+      await act(async () => {
+        jest.advanceTimersByTime(OVERLAY_DISMISS_SETTLE_MS);
+      });
+      expect(screen.getByText("You Win!")).toBeTruthy();
+      expect(announce).toHaveBeenCalledTimes(1);
+      await act(async () => sheet.unmount());
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("holds the announcement for a screen pushed from the menu before the card showed", async () => {
+    // The run ends with the ⋯ menu open and the player picks Stats: the game
+    // blurs before the settle delay ends, so the card never shows until they
+    // come back, and only then is it announced.
+    jest.useFakeTimers();
+    try {
+      const listeners: Record<string, (() => void)[]> = {};
+      let focused = true;
+      const navigation = {
+        isFocused: () => focused,
+        addListener: (event: string, cb: () => void) => {
+          (listeners[event] ??= []).push(cb);
+          return () => undefined;
+        },
+      };
+      const emit = async (event: "focus" | "blur") => {
+        focused = event === "focus";
+        await act(async () => listeners[event]?.forEach((cb) => cb()));
+      };
+      const sheet = await overlay(true);
+      await render(
+        <ThemeProvider>
+          <NavigationContext.Provider value={navigation as never}>
+            <GameResultModal visible outcome="win" onHome={jest.fn()} />
+          </NavigationContext.Provider>
+        </ThemeProvider>
+      );
+      await act(async () => sheet.rerender({ open: false }));
+      await emit("blur");
+      await act(async () => {
+        jest.advanceTimersByTime(OVERLAY_DISMISS_SETTLE_MS);
+      });
+      expect(screen.queryByText("You Win!")).toBeNull();
+      expect(announce).not.toHaveBeenCalled();
+
+      await emit("focus");
+      expect(screen.getByText("You Win!")).toBeTruthy();
+      expect(announce).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("shows the card at once when no overlay was ever open", async () => {
