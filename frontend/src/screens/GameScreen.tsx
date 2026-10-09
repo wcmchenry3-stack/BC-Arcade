@@ -1,3 +1,27 @@
+/**
+ * GameScreen — Yacht, solo or against the computer (VS mode).
+ *
+ * Layers:
+ *   1. Pure engine (`game/yacht/engine.ts`): the screen holds the player's
+ *      `GameState` and applies roll / hold / score to it locally.
+ *   2. Mode picker (#1129): shown once per fresh game; Solo or VS at a
+ *      difficulty, opened on the ones last played (`useYachtModePicker`, on
+ *      the shared `useLastDifficulty`). The session starts only once a mode
+ *      is chosen (#2710).
+ *   3. Computer opponent (#2981): `useYachtCpuOpponent` owns the computer's
+ *      scorecard and its paced turn loop, started after each player score
+ *      and resumed for a game killed mid-turn (#2203). The screen keeps the
+ *      one AppState listener and forwards backgrounding to it (#1850).
+ *   4. Persistence: `saveGame` after every change (player, difficulty,
+ *      computer, finished game id); cleared on a new game.
+ *   5. Instrumentation (#368 / #549): `useGameSync("yacht")`. Solo completes
+ *      on the last score; VS completes with the result once the computer has
+ *      finished too, or records the finished game on unmount / background
+ *      while it is still playing (#2505).
+ *   6. Result + leaderboard (#2630 / #2633): the shared GameResultModal,
+ *      ranked by the finished game's session id.
+ */
+
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { AppState, View, Text, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,16 +40,14 @@ import {
   isInProgress,
   Category,
 } from "../game/yacht/engine";
-import { holdStrategy, scoreStrategy } from "../game/yacht/ai";
-import { preloadOracleTable } from "../game/yacht/oracle/oracle";
-import { finishTurnFallback, isAiTurnPending } from "../game/yacht/vsTurn";
-import { saveGame, clearGame, saveLastMode, loadLastMode } from "../game/yacht/storage";
+import { isAiTurnPending } from "../game/yacht/vsTurn";
+import { saveGame, clearGame } from "../game/yacht/storage";
+import { useYachtCpuOpponent } from "../game/yacht/useYachtCpuOpponent";
+import { useYachtModePicker } from "../game/yacht/useYachtModePicker";
 import { isPremiumLevel } from "../entitlements/premiumLevels";
 import { useYachtScorecard } from "../game/yacht/ScorecardContext";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useGameEvents } from "../game/_shared/useGameEvents";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { useSound } from "../game/_shared/useSound";
 import { YACHT_SOUNDS } from "../game/yacht/sounds";
 import * as Sentry from "@sentry/react-native";
@@ -33,6 +55,7 @@ import DiceRow from "../components/DiceRow";
 import Scorecard from "../components/Scorecard";
 import VsScorecard from "../components/yacht/VsScorecard";
 import GameResultModal, { type GameOutcome } from "../components/shared/GameResultModal";
+import { toSubmission } from "../components/shared/toSubmission";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { buildEndedPayload } from "../game/yacht/resultPayload";
 import YachtFinalScorecard from "../components/yacht/YachtFinalScorecard";
@@ -44,20 +67,14 @@ import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
 import { ModalCard } from "../components/shared/ModalCard";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { PillButton } from "../components/shared/PillButton";
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+import { isAwayStatus } from "../hooks/usePauseWhileAway";
 
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "Game">;
   route: RouteProp<HomeStackParamList, "Game">;
 };
-
-/** Solo and vs games rank on Yacht's one session board (#2630). */
-const yachtBoard = sessionBoardAdapter("yacht");
 
 /**
  * The session's creation metadata (#2630): the mode, and in vs mode the
@@ -100,62 +117,38 @@ export default function GameScreen({ navigation, route }: Props) {
   const [difficultyChosen, setDifficultyChosen] = useState(
     !isFreshGame || route.params.aiDifficulty !== undefined
   );
-  const [pendingMode, setPendingMode] = useState<"solo" | "vs">("solo");
-  const [pendingDiff, setPendingDiff] = useState<AiDifficulty>("medium");
-  // The difficulty the last VS game started at, not one merely tapped in the picker (#1129).
-  const lastVsDiffRef = useRef<AiDifficulty>("medium");
+  // The picker opens on the mode and VS difficulty last played (#1129).
+  const modePicker = useYachtModePicker();
+  const { reload: reloadModePicker } = modePicker;
   const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty | null>(
     route.params.aiDifficulty ?? null
   );
-  const [aiGameState, setAiGameState] = useState<GameState | null>(route.params.aiState ?? null);
-  // A restored game may have been killed mid-AI-turn: resume it (#2203).
-  const [isAiTurn, setIsAiTurn] = useState(
-    () =>
+  // The computer's scorecard and turn loop. A restored game may have been
+  // killed mid-AI-turn: resume it (#2203).
+  const {
+    state: aiGameState,
+    setState: setAiGameState,
+    stateRef: aiGameStateRef,
+    difficultyRef: aiDifficultyRef,
+    isTurn: isAiTurn,
+    rollingIndices: aiRollingIndices,
+    startTurn: startAiTurn,
+    endTurn: endAiTurn,
+    onAppBackground: onCpuAppBackground,
+  } = useYachtCpuOpponent({
+    difficulty: aiDifficulty,
+    initialState: route.params.aiState ?? null,
+    resumeTurn:
       !!route.params.aiDifficulty &&
       !!route.params.aiState &&
-      isAiTurnPending(route.params.initialState, route.params.aiState)
-  );
-  const [aiRollingIndices, setAiRollingIndices] = useState<readonly number[]>([]);
-  const isAiTurnRef = useRef(isAiTurn);
-  const aiTurnCancelledRef = useRef(false);
+      isAiTurnPending(route.params.initialState, route.params.aiState),
+  });
 
-  // Keep refs in sync for use inside async AI turn loop and callbacks.
+  // Keep a ref in sync for callbacks.
   const gameStateRef = useRef(gameState);
   useEffect(() => {
     gameStateRef.current = gameState;
   }, [gameState]);
-
-  const aiDifficultyRef = useRef(aiDifficulty);
-  useEffect(() => {
-    aiDifficultyRef.current = aiDifficulty;
-    // Decode the AI's optimal-play table before its first turn (#2246). If
-    // this fails, the AI decodes it on demand instead, so just record it.
-    if (aiDifficulty) preloadOracleTable().catch((e) => Sentry.captureException(e));
-  }, [aiDifficulty]);
-
-  const aiGameStateRef = useRef(aiGameState);
-  useEffect(() => {
-    aiGameStateRef.current = aiGameState;
-  }, [aiGameState]);
-
-  useEffect(() => {
-    isAiTurnRef.current = isAiTurn;
-  }, [isAiTurn]);
-
-  // Seed the mode selector with whatever the user picked last.
-  useEffect(() => {
-    let cancelled = false;
-    loadLastMode().then((pref) => {
-      if (!cancelled && pref) {
-        setPendingMode(pref.mode);
-        setPendingDiff(pref.difficulty);
-        lastVsDiffRef.current = pref.difficulty;
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // #2505: in vs mode the session completes only once the CPU has finished
   // (so the result can be reported). While the CPU is still playing its last
@@ -183,10 +176,9 @@ export default function GameScreen({ navigation, route }: Props) {
 
   // Result card leaderboard line (#2630): the finished session row ranks on
   // its own; the card only asks where it landed.
-  const leaderboard = useLeaderboardSubmit(yachtBoard);
-  const { submit: submitRank, reset: resetRank } = leaderboard;
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openLeaderboard = useLeaderboardLink(navigation, "yacht");
+  // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("yacht", navigation);
+  const { lookup: lookupRank, reset: resetRank } = leaderboard;
   // The finished game's session id, captured when the player's game ends —
   // complete() clears the hook's id, and in vs mode (or on a background during
   // the CPU's last turn) it runs before the card shows. Saved with the game,
@@ -290,8 +282,8 @@ export default function GameScreen({ navigation, route }: Props) {
   // The async AI turn keeps running; no cancellation or replay needed.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
-      if (next === "background" || next === "inactive") {
-        if (isAiTurnRef.current) setAiRollingIndices([]);
+      if (isAwayStatus(next)) {
+        onCpuAppBackground();
         // The process may be killed from here (#2505). "inactive" too: iOS's
         // app switcher only makes the app inactive, and a swipe-away there
         // kills it without it ever reaching "background".
@@ -299,91 +291,7 @@ export default function GameScreen({ navigation, route }: Props) {
       }
     });
     return () => sub.remove();
-  }, []);
-
-  // AI turn loop: fires whenever isAiTurn becomes true.
-  useEffect(() => {
-    if (!isAiTurn || !aiDifficultyRef.current || !aiGameStateRef.current) return;
-
-    aiTurnCancelledRef.current = false;
-
-    // The AI's state as of its last completed step, so a failure part-way
-    // through can finish the turn from there.
-    let s = aiGameStateRef.current!;
-
-    async function runAiTurn() {
-      const diff = aiDifficultyRef.current!;
-
-      if (s.rolls_used === 0) {
-        // Initial roll (all dice free) — compute result first so animation plays over final values.
-        s = engineRoll(s, [false, false, false, false, false]);
-        setAiGameState(s);
-        setAiRollingIndices([0, 1, 2, 3, 4]);
-        await delay(1000);
-        if (aiTurnCancelledRef.current) return;
-        setAiRollingIndices([]);
-      }
-      // Resuming a turn interrupted after it had rolled (app killed, or the
-      // effect re-ran) keeps the dice it already has rather than re-rolling
-      // them — and with all three rolls used, re-rolling would throw (#2203).
-      // Settle pause: let the player read the dice values
-      await delay(800);
-      if (aiTurnCancelledRef.current) return;
-
-      // Up to two re-rolls using hold strategy
-      while (s.rolls_used < 3) {
-        const holds = holdStrategy(s, diff);
-        if (holds.every((h) => h)) break; // all dice held — go straight to scoring
-        // Show hold decision on current values so the player sees the AI's choice
-        setAiGameState({ ...s, held: holds });
-        await delay(800);
-        if (aiTurnCancelledRef.current) return;
-        const rolledIdxs = holds.reduce<number[]>((acc, h, i) => {
-          if (!h) acc.push(i);
-          return acc;
-        }, []);
-        // Compute result before starting animation
-        s = engineRoll(s, holds);
-        setAiGameState(s);
-        setAiRollingIndices(rolledIdxs);
-        await delay(1000);
-        if (aiTurnCancelledRef.current) return;
-        setAiRollingIndices([]);
-        await delay(800);
-        if (aiTurnCancelledRef.current) return;
-      }
-
-      // Beat before the AI locks in its category
-      await delay(1000);
-      if (aiTurnCancelledRef.current) return;
-      const cat = scoreStrategy(s, diff);
-      s = engineScore(s, cat);
-      setAiGameState(s);
-      setIsAiTurn(false);
-    }
-
-    // If the turn fails, report it and finish the computer's turn with a
-    // plain fallback before handing back control. Just unlocking would leave
-    // the computer a round behind for good, so its game could never end and
-    // the VS result screen would never show (#2203).
-    runAiTurn().catch((e: unknown) => {
-      Sentry.captureException(e, { tags: { subsystem: "yacht.ai", op: "runAiTurn" } });
-      if (aiTurnCancelledRef.current) return;
-      setAiRollingIndices([]);
-      try {
-        setAiGameState(finishTurnFallback(s));
-      } catch (fallbackError: unknown) {
-        // Last resort: unlock the board rather than freeze it.
-        Sentry.captureException(fallbackError, {
-          tags: { subsystem: "yacht.ai", op: "finishTurnFallback" },
-        });
-      }
-      setIsAiTurn(false);
-    });
-    return () => {
-      aiTurnCancelledRef.current = true;
-    };
-  }, [isAiTurn]);
+  }, [onCpuAppBackground]);
 
   function handleRoll() {
     if (isAiTurn) return;
@@ -445,7 +353,7 @@ export default function GameScreen({ navigation, route }: Props) {
           // the still-open id now, before the CPU (or an unmount/background,
           // via completeIfCpuStillPlayingRef) closes it.
           setFinishedGameId(syncGetGameId());
-          setIsAiTurn(true);
+          startAiTurn();
         } else {
           const payload = endedPayload(next, "completed");
           setFinishedGameId(
@@ -456,7 +364,7 @@ export default function GameScreen({ navigation, route }: Props) {
           );
         }
       } else if (aiDifficultyRef.current && aiGameStateRef.current) {
-        setIsAiTurn(true);
+        startAiTurn();
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -490,7 +398,7 @@ export default function GameScreen({ navigation, route }: Props) {
       await clearGame();
       setFinishedGameId(null);
       setGameState(newGame());
-      setIsAiTurn(false);
+      endAiTurn();
       setGameKey((k) => k + 1);
       setError(null);
       if (keep) {
@@ -500,10 +408,7 @@ export default function GameScreen({ navigation, route }: Props) {
         setDifficultyChosen(true);
         syncStart(undefined, sessionMetadata(keptDifficulty));
       } else {
-        const pref = await loadLastMode();
-        setPendingMode(pref?.mode ?? "solo");
-        setPendingDiff(pref?.difficulty ?? "medium");
-        lastVsDiffRef.current = pref?.difficulty ?? "medium";
+        await reloadModePicker();
         setAiDifficulty(null);
         setAiGameState(null);
         setDifficultyChosen(false);
@@ -516,7 +421,16 @@ export default function GameScreen({ navigation, route }: Props) {
         level: "info",
       });
     },
-    [syncComplete, syncStart, resetRank]
+    [
+      syncComplete,
+      syncStart,
+      resetRank,
+      endAiTurn,
+      reloadModePicker,
+      setAiGameState,
+      aiDifficultyRef,
+      aiGameStateRef,
+    ]
   );
 
   /** New game via the mode picker (header New Game, Change Difficulty). */
@@ -549,19 +463,18 @@ export default function GameScreen({ navigation, route }: Props) {
 
   // VS mode: choose Solo or VS difficulty before first roll.
   function handleChooseSolo() {
-    // Keep the last VS difficulty played, so the next VS game still opens on it (#1129).
-    void saveLastMode("solo", lastVsDiffRef.current);
+    // Keeps the last VS difficulty played, so the next VS game still opens on it (#1129).
+    modePicker.chooseSolo();
     setDifficultyChosen(true);
     startChosenGame(null);
   }
 
   function handleChooseVs() {
-    void saveLastMode("vs", pendingDiff);
-    lastVsDiffRef.current = pendingDiff;
-    setAiDifficulty(pendingDiff);
+    const difficulty = modePicker.chooseVs();
+    setAiDifficulty(difficulty);
     setAiGameState(newGame());
     setDifficultyChosen(true);
-    startChosenGame(pendingDiff);
+    startChosenGame(difficulty);
   }
 
   // VS result computed when both games are complete.
@@ -597,8 +510,8 @@ export default function GameScreen({ navigation, route }: Props) {
   // (after the vs completion above). Never on an abandon: an abandoned game
   // never reaches game over, so it never sets finishedGameId.
   useEffect(() => {
-    if (gameReallyOver && finishedGameId) void submitRank({ gameId: finishedGameId });
-  }, [gameReallyOver, finishedGameId, submitRank]);
+    if (gameReallyOver && finishedGameId) void lookupRank(finishedGameId);
+  }, [gameReallyOver, finishedGameId, lookupRank]);
 
   completeIfCpuStillPlayingRef.current = () => {
     // Player done, CPU still playing its last turn: record the finished game.
@@ -674,14 +587,12 @@ export default function GameScreen({ navigation, route }: Props) {
       title={t("game.title")}
       rightSlot={roundPill}
       requireBack
-      onBack={() => navigation.popToTop()}
       onNewGame={startNewGame}
       onOpenLeaderboard={openLeaderboard}
       error={error}
+      gutter={16}
       style={{
         paddingBottom: Math.max(insets.bottom, 16),
-        paddingLeft: Math.max(insets.left, 16),
-        paddingRight: Math.max(insets.right, 16),
       }}
     >
       {/* New Game */}
@@ -815,14 +726,7 @@ export default function GameScreen({ navigation, route }: Props) {
               }
             : undefined
         }
-        submission={{
-          status: leaderboard.status,
-          rank: leaderboard.rank,
-          isBest: leaderboard.isBest,
-          playerName: leaderboard.playerName,
-          onJoinLeaderboards: leaderboard.joinLeaderboards,
-          onRetry: leaderboard.retry,
-        }}
+        submission={toSubmission(leaderboard)}
         onViewLeaderboard={openLeaderboard}
         onHome={() => navigation.popToTop()}
         testID="yacht-result"
@@ -847,7 +751,7 @@ export default function GameScreen({ navigation, route }: Props) {
             <ModeButton
               testID="yacht-mode-solo"
               label={t("vsMode.solo")}
-              selected={pendingMode === "solo"}
+              selected={modePicker.mode === "solo"}
               onPress={handleChooseSolo}
             />
 
@@ -857,11 +761,14 @@ export default function GameScreen({ navigation, route }: Props) {
               {t("vsMode.vsComputer")}
             </Text>
 
-            <AiDifficultySelector value={pendingDiff} onChange={setPendingDiff} />
+            <AiDifficultySelector
+              value={modePicker.difficulty}
+              onChange={modePicker.setDifficulty}
+            />
 
             <ModeButton
               label={t("vsMode.vsComputer")}
-              selected={pendingMode === "vs"}
+              selected={modePicker.mode === "vs"}
               onPress={handleChooseVs}
             />
           </View>

@@ -1,8 +1,7 @@
 """Google Real-Time Developer Notification handling (#2787).
 
-Follows the planned ``purchases/google_rtdn.py`` (#2998): push parsing,
-one-time / voided handling, dedupe, event ordering and the RTDN ack budget in
-``purchases/google_notifications.py`` today. Split out of
+Covers ``purchases/google_rtdn.py`` (#2998): push parsing, one-time /
+voided handling, dedupe, event ordering and the RTDN ack budget. Split out of
 ``test_google_iap.py`` (#2955); the harness lives in
 ``tests/_google_iap_harness.py``.
 """
@@ -18,10 +17,10 @@ import pytest
 
 from db.base import get_session_factory
 from db.models import PurchaseEvent, PurchaseLink
-from purchases import google, google_notifications
-from purchases.google_notifications import acknowledge_sweep, poll_voided_purchases
+from purchases import google, google_rtdn
+from purchases.google_jobs import acknowledge_sweep, poll_voided_purchases
 from purchases.google_play import PENDING_EVENT_AT
-from purchases.router import GOOGLE_NOTIFICATION_IP_RATE_LIMIT
+from rate_limits import GOOGLE_NOTIFICATION_IP_RATE_LIMIT
 from tests._google_iap_harness import (
     NOW,
     grant,
@@ -426,15 +425,15 @@ async def test_far_future_event_time_is_clamped(client, google_gp) -> None:
     )
     assert post_rtdn(client, note).json() == {"status": "applied"}
     changed = utc((await row(token)).state_changed_at)
-    assert changed <= NOW() + google_notifications.EVENT_TIME_LEEWAY
-    assert google_notifications.clamp_event_time(None, NOW()) is None
+    assert changed <= NOW() + google_rtdn.EVENT_TIME_LEEWAY
+    assert google_rtdn.clamp_event_time(None, NOW()) is None
 
 
 async def test_rtdn_ack_is_bounded(client, google_gp, monkeypatch) -> None:
     async def hang(evidence):
         await asyncio.sleep(3600)
 
-    monkeypatch.setattr(google_notifications, "RTDN_ACK_BUDGET_S", 0.05)
+    monkeypatch.setattr(google_rtdn, "RTDN_ACK_BUDGET_S", 0.05)
     monkeypatch.setattr(google_gp.verifier, "acknowledge", hang)
     token = tok()
     google_gp.play.purchases[token] = play_purchase()

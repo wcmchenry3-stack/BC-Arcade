@@ -25,6 +25,7 @@ This document is the single reference for adding a new game to BC Arcade. It cov
    - [Stats, Scorecard and Profile](#26-stats-scorecard-and-profile)
    - [ESLint boundary](#27-eslint-boundary)
    - [Testing and QA](#28-testing-and-qa)
+   - [Engine](#29-engine)
 3. [New-game checklist](#3-new-game-checklist)
 
 ---
@@ -137,21 +138,35 @@ The `CHECK` constraint on `games.outcome` is **generated** from this enum in `db
 
 ### 1.3 GameModule Protocol
 
-**Authority: `backend/games/protocol.py`**
+**Authority: `backend/games/module_base.py` (`GameModuleBase`) and `backend/games/protocol.py` (`GameModule`)**
 
-Every game module must expose an object that satisfies the `GameModule` `typing.Protocol` (structural subtyping — no inheritance required):
+Every game module is a subclass of `GameModuleBase` (#2995): a class of declarations plus three optional hooks, each with a default that changes nothing. The shared code (`games/sessions.py`, `games/stats.py`, `games/boards/`) is typed against the `GameModule` `typing.Protocol`, which the base satisfies, and calls every hook on every module directly (there are no `getattr` lookups):
 
 ```python
-@runtime_checkable
-class GameModule(Protocol):
-    game_type: GameType          # identifies this module in the registry
-    metadata_model: type[BaseModel]  # Pydantic model for games.metadata validation
-    result_model: type[BaseModel] | None  # result block on PATCH /games/{id}/complete, or None
-    has_winner: bool             # True → this game can record win/loss/push (see §1.2)
-    board: BoardDefinition            # how the game is ranked (#2617); required
+class GameModuleBase:
+    # Declarations
+    game_type: ClassVar[GameType]                  # required: identifies this module in the registry
+    metadata_model: ClassVar[type[BaseModel]]      # required: Pydantic model for games.metadata validation
+    board: ClassVar[BoardDefinition]               # required: how the game is ranked (#2617)
+    result_model: ClassVar[type[BaseModel] | None] = None  # result block on PATCH /games/{id}/complete
+    has_winner: ClassVar[bool] = False             # True → this game can record win/loss/push (see §1.2)
 
-    def stats_shape(self, raw_stats: dict) -> dict: ...
+    # Optional hooks (defaults shown)
+    def stats_shape(self, raw_stats: dict) -> dict:
+        return default_stats_shape(raw_stats)      # §1.5; Blackjack overrides
+    def derive_final_score(self, final_score, outcome, result) -> int | None:
+        return final_score                         # Blackjack overrides (#2745)
+    async def reconcile_result(self, session, game, result) -> dict:
+        return result                              # Daily Word overrides (#2541)
 ```
+
+A subclass that leaves out `game_type`, `metadata_model` or `board` fails at import with a `TypeError`. Every registered module still declares `has_winner` itself (`tests/test_game_module_protocol.py` checks the class body), so the default only matters for a game in progress.
+
+| Hook                 | Called by                                            | Contract                                                                                                                                                                                       |
+| -------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stats_shape`        | `get_stats_for_session` (`/stats/me`)                | The game-specific part of the stats entry (§1.5).                                                                                                                                              |
+| `derive_final_score` | `complete_game`, after the result block is validated | Returns the `final_score` to store, given the one sent, the outcome and the validated result. Raising `ValueError` rejects the completion (400, reported to Sentry as `final_score mismatch`). |
+| `reconcile_result`   | `_validate_result`, after `result_model` validation  | Awaited with the DB session and the game row; returns the result block corrected against server-side state. Runs only for a game that declares a `result_model`.                               |
 
 **`board`** (`backend/games/board.py`, #2617) declares the game's leaderboard rule once. It is required: a game with no leaderboard declares a board with `enabled=False`, never `None`. Boards are shared class-level singletons, so the model is frozen and every container field is a tuple. The generic leaderboard routes below read them (#2618); stats read them too (#2620, §1.5).
 
@@ -194,7 +209,7 @@ The definitions are exported to the app as `BOARDS` in `frontend/src/api/vocab.t
 - **Sudoku** scores `DIFFICULTY_BASE[difficulty] - 10 × errors` (`SudokuScreen.tsx`), so each difficulty has its own cap. Rows from before #748 carry no `variant` and count as `classic`, as in `sudoku/router.py`.
 - **Daily Word**'s best is the fewest guesses in a won game; a loss is not a best.
 - **Twenty48** has one global board with no ceiling (#2519 decisions 1 and 14). A `kept_playing` completion counts like `completed`.
-- **Star Swarm** has one board per `difficulty_tier` (plan §4.2) and no ceiling (decision 14). The tier is creation metadata and is repeated in the result, so it is in `games.metadata` either way. Only the ten tiers the app can send have a board (`partition_values`, from `DIFFICULTY_TIERS` in `starswarm/models.py`, which `tests/test_starswarm_module.py` checks against `DIFFICULTY_TIERS` in the client's `engine.ts`); a run on any other tier (a forged `captain`, or a tier a newer app sends first) is stored but can't be named (400 `This game's board does not exist.`), so it can't open a public board and the run isn't dead-lettered. A row with no tier counts as `LieutenantJG` (`DEFAULT_DIFFICULTY_TIER`, the engine's default). The result also carries a bounded per-wave `score_breakdown` (#2837; ≤ 4 KiB, a malformed one is dropped, never the run), which is recorded but never ranked: see [Star Swarm](games/starswarm.md#per-wave-score-breakdown-2837).
+- **Star Swarm** has one board per `difficulty_tier` (plan §4.2) and no ceiling (decision 14). The tier is creation metadata and is repeated in the result, so it is in `games.metadata` either way. Only the ten tiers the app can send have a board (`partition_values`, from `DIFFICULTY_TIERS` in `starswarm/models.py`, which `tests/test_starswarm_module.py` checks against `DIFFICULTY_TIERS` in the client's `engine/tuning.ts`); a run on any other tier (a forged `captain`, or a tier a newer app sends first) is stored but can't be named (400 `This game's board does not exist.`), so it can't open a public board and the run isn't dead-lettered. A row with no tier counts as `LieutenantJG` (`DEFAULT_DIFFICULTY_TIER`, the engine's default). The result also carries a bounded per-wave `score_breakdown` (#2837; ≤ 4 KiB, a malformed one is dropped, never the run), which is recorded but never ranked: see [Star Swarm](games/starswarm.md#per-wave-score-breakdown-2837).
 - **Mahjong** (#2747) ranks by fastest clear: `duration_ms` ascending, wins only, one board per `layout`. Only the app's layouts have a board (`partition_values`, `LAYOUTS` in `mahjong/models.py`, checked against the client's layout registry by `tests/test_board_definitions.py`). There is no default layout: a row from before #2627 has none, so it ranks on no board (`not_rankable`) rather than on Turtle's, and a board request needs `?layout=`. A clear under `min_value` (36 s, half a second per pair) or with no `duration_ms` is stored but never ranks. `final_score` is still recorded and shown on the result card, but ranks nothing. See [Mahjong](games/mahjong.md#scoring-persistence).
 - **Legacy rows:** the removed per-game routes wrote their rows under unattributable `*-anon` sessions, with values unlike the boards' declarations (Yacht's stored `400 - raw`, Sort's the level in `final_score`). Migrations 0026 (#2622) and 0029 (#2644, after the routes were gone) deleted them; any written during the deploy window after 0029 are kept off every board by the `*-anon` filter (rule 3).
 - **Sort** (#2625): every solved level is a session row with `won: true` and the `level` actually played, its `moves` and `undos` (`SortResult`). Every solve, replays included, is scored with the player's standing after it: `final_score` and `level_reached` are the highest level solved, and `total_moves` is the sum of the player's best moves over levels 1 to it (`@sort/best_moves`; left out when one of them has no best on record). `total_moves` is recorded but not ranked (#2746): levels are random per request, so players on the same level rank by the earliest completion. The board keeps each player's best row, their first solve of their highest level; a replay never displaces it. Abandons carry no score and never rank.
@@ -205,13 +220,13 @@ Every `GameType` has a module since #2623, so no game exports `null`.
 
 #### Leaderboard routes (#2618)
 
-**Authority: `backend/games/leaderboard.py`, `backend/games/ranking.py`, `backend/games/router.py`.** Every game's board is served by these generic routes; a game gets a leaderboard by declaring `board`, with no router of its own. The rank route computes a player's standing with `leaderboard.player_standing`, using the board's own filters and order, so it always agrees with the listed board. A player joins the boards, under a server-generated name, with `PUT /players/me` (below; #2778); `PATCH /games/{id}/name`, which set a typed name, was removed in #2644.
+**Authority: `backend/games/boards/`, `backend/games/ranking.py`, `backend/games/router.py`.** Every game's board is served by these generic routes; a game gets a leaderboard by declaring `board`, with no router of its own. The rank route computes a player's standing with `games.boards.queries.player_standing`, using the board's own filters and order, so it always agrees with the listed board. A player joins the boards, under a server-generated name, with `PUT /players/me` (below; #2778); `PATCH /games/{id}/name`, which set a typed name, was removed in #2644.
 
-- **`GET /games/leaderboard/{game_type}`** returns `{game_type, partition, label_key, entries: [{rank, player_name, value, completed_at, is_me}], me}`, top 10 by default (`?limit=` 1–100). With a valid `X-Session-ID` (#2633) the caller's own entry is flagged `is_me`, and `me` is their best entry on that board with its exact rank (`leaderboard.viewer_entry`, the same filters, order and `compute_rank` as the list), whether or not it is in `entries`; `me` is null without the header or when the caller has no entry (no display name, or no eligible game). The app never matches a row by name. Read-only; a free board stays public without the header. Partition values are query params named after `board.partitions` (e.g. `?difficulty=hard&variant=mini`); a missing, unknown, empty or repeated partition is a 400, and so is a value outside the key's `partition_values` (e.g. `?difficulty_tier=captain`). Unknown games, games without a module or board, and `enabled=False` boards are a 404.
+- **`GET /games/leaderboard/{game_type}`** returns `{game_type, partition, label_key, entries: [{rank, player_name, value, completed_at, is_me}], me}`, top 10 by default (`?limit=` 1–100). With a valid `X-Session-ID` (#2633) the caller's own entry is flagged `is_me`, and `me` is their best entry on that board with its exact rank (`games.boards.queries.viewer_entry`, the same filters, order and `compute_rank` as the list), whether or not it is in `entries`; `me` is null without the header or when the caller has no entry (no display name, or no eligible game). The app never matches a row by name. Read-only; a free board stays public without the header. Partition values are query params named after `board.partitions` (e.g. `?difficulty=hard&variant=mini`); a missing, unknown, empty or repeated partition is a 400, and so is a value outside the key's `partition_values` (e.g. `?difficulty_tier=captain`). Unknown games, games without a module or board, and `enabled=False` boards are a 404.
 - **`GET /games/{id}/rank`** (#2677) is the result card's call: where this game puts the caller, without setting anything. It returns `{rank, is_best, ranked, reason}`. When `ranked` is true, `rank` is the exact rank of the caller's best entry in that game's partition and `is_best` says whether this game is that entry. When it is false, both are null and `reason` is the first of these that applies: `board_disabled` (the board has `enabled=False`, e.g. Blackjack); `not_finished` (no `completed_at` or no metric value yet, usually because the completion is still in the app's sync queue, so asking again later can give a rank); `not_rankable` (the game can never rank: abandoned, a non-qualifying outcome, a disallowed partition value or a missing one with no default, a bad, below-floor or over-cap metric, or a session the board excludes; a completed game with no `duration_ms` on a `duration_ms` board is `not_rankable`, not `not_finished`, since the completion writes both; a row the stale-game sweep closed (`metadata.swept`) is `not_finished` on every board, since its real completion can still replace it); or `no_name` (the player has no display name, so no board shows them and no rank is computed). `not_finished` and `not_rankable` both come before `no_name`, so a card never asks for a name the game couldn't use. "Has a name" is decided through `players.names`, like every board. 403 if another session owns the game or a premium game isn't entitled, 404 if the game doesn't exist or its game has no board definition, 400 without `X-Session-ID`. It is read-only: no name and no metadata are written. Rate limit: 60/minute per session with a 300/minute per-IP backstop, like the leaderboard.
 - **Public names are generated, never typed** (#2778; decision record [LEADERBOARD-IDENTITIES.md](LEADERBOARD-IDENTITIES.md)). **`GET /players/me`** returns `{display_name}`, the caller's generated name or `null`. **`PUT /players/me`** joins the leaderboards: it takes **no body** (any `display_name` sent is ignored and never stored), assigns a generated name (`players.generated`: curated adjective + animal + number, e.g. "Brave Otter 4821") and returns `{display_name}`. Joining again keeps the current name and writes nothing. **`POST /players/me/reroll`** assigns a different generated name (404 when the caller hasn't joined, so it never opts anyone in). **`DELETE /players/me`** leaves (204, also when not joined), which takes the player off every board. **Authority: `backend/players/`.** The player is the `X-Session-ID` (one per install until accounts, #1047); `players` holds one generated `display_name` per player, with no history. `DELETE /me` erases it with the player's other data, and the app's "Delete my data" also forgets the name on the device (after any sync in flight). Profile's "Leave leaderboards" (#2637) forgets the name on the device and sends `DELETE /players/me` through the same one-slot sync as the join, so an offline leave goes out on reconnect.
 - **A legacy name path still opts the player in** (#2624, #2778): builds from before #2624 never call `PUT /players/me`, so a non-blank `player_name` they send in `POST /games` metadata joins the caller to the boards (that was the old model's opt-in), **under a generated name**. The typed text is never used as the public name. The name routes that did the same (`PATCH /games/{id}/name`, `PATCH /sudoku/score/{id}`, `PATCH /cascade/score/{id}`, the `POST /<game>/score` routes) were removed in #2644.
-- **Result-card flow for session boards** (#2677): the card doesn't submit a score. A game passes `sessionBoardAdapter(gameType)` (`frontend/src/game/_shared/sessionBoardAdapter.ts`) to `useLeaderboardSubmit` and calls `submit({ gameId })` when the game ends. The adapter flushes the local game queue and any pending display-name sync, then calls `statsApi.getGameRank(gameId)` (`frontend/src/api/stats.ts`), retrying a 404 or `not_finished` briefly while the completion lands (`retryUntilGameSynced`); `not_rankable` is final at once. With no local name (and no join pending) the card shows `needsName`, the one-time **Join leaderboards** prompt; `joinLeaderboards()` stores the join (synced through `PUT /players/me`, which assigns the generated name) and then fetches the rank. A server `no_name` also shows the prompt once the sync has settled. Online, the card shows `saved` with the rank of the player's best entry when it is in the top 10: "#N on the leaderboard" when this game is that entry (`is_best`), else "Your best: #N" (#2633; `toRankLookup` carries both). Every game with an openable board (`hasLeaderboard`: enabled and visible in the build) also gets a "View leaderboard" link on the card and a "Leaderboard" item in its ⋯ menu (`useLeaderboardLink`), both opening the shared `Leaderboard` screen in the Home stack. The board refetches when the player returns to it and on pull-to-refresh; opened from a card whose rank is still pending (`refreshAfterSync`), it refetches once local games and the display name have synced. A game covered by the board (or by Stats or the Scorecard) pauses its own clock on the navigation `blur` event: Star Swarm's run, Mahjong's clock (#2633), Hearts' play clock (the `useFocusEffect` cleanup in `HeartsScreen.tsx`, #2629), and Solitaire, Sudoku, Twenty48 and Cascade (#2743); `useGameSync`'s own play window stops too (§2.3). Offline, the card shows `offline` and **nothing is queued**: the game syncs through `SyncWorker` and the join through `displayNameSync`. Until the lookup settles (still `not_finished`, a join still syncing, a network failure), the hook asks again while the card is mounted: on reconnect, and while online after 5 s, 15 s, 60 s and then every 60 s; `reset()` and unmounting stop it. A game on no board (`board_disabled`, `not_rankable`) gets the `unranked` status, and `GameResultModal` shows no leaderboard line for it. Other failures (403, a 404 that outlasts the retries, 5xx) show `error` with Retry. Every game with an enabled board uses `sessionBoardAdapter` (Yacht, Solitaire, FreeCell, Mahjong, Hearts, Sudoku, Cascade, Sort, Twenty48, Star Swarm); Blackjack and Daily Word have disabled boards and pass no `submission`. `useLeaderboardSubmit` takes only this kind of `LeaderboardAdapter`, which looks the rank up: the old per-game adapter that submitted scores, and the `scoreQueue` it queued through, were removed in #2644. The frontend side of this flow is in §2.5.
+- **Result-card flow for session boards** (#2677): the card doesn't submit a score. A game runs `useGameRank(gameType)` (`frontend/src/game/_shared/useGameRank.ts`, #2990; screens get it through `useGameLeaderboard`) and calls `lookup(gameId)` when the game ends. `lookupGameRank` (`frontend/src/game/_shared/lookupGameRank.ts`) flushes the local game queue and any pending display-name sync, then calls `statsApi.getGameRank(gameId)` (`frontend/src/api/stats.ts`), retrying a 404 or `not_finished` briefly while the completion lands (`retryUntilGameSynced`); `not_rankable` is final at once. With no local name (and no join pending) the card shows `needsName`, the one-time **Join leaderboards** prompt; `joinLeaderboards()` stores the join (synced through `PUT /players/me`, which assigns the generated name) and then fetches the rank. A server `no_name` also shows the prompt once the sync has settled. Online, the card shows `saved` with the rank of the player's best entry when it is in the top 10: "#N on the leaderboard" when this game is that entry (`is_best`), else "Your best: #N" (#2633; `toRankLookup` carries both). Every game with an openable board (`hasLeaderboard`: enabled and visible in the build) also gets a "View leaderboard" link on the card and a "Leaderboard" item in its ⋯ menu (`useLeaderboardLink`), both opening the shared `Leaderboard` screen in the Home stack. The board refetches when the player returns to it and on pull-to-refresh; opened from a card whose rank is still pending (`refreshAfterSync`), it refetches once local games and the display name have synced. A game covered by the board (or by Stats or the Scorecard) pauses its own clock on the navigation `blur` event: Star Swarm's run, Mahjong's clock (#2633), Hearts' play clock (the `useFocusEffect` cleanup in `HeartsScreen.tsx`, #2629), and Solitaire, Sudoku, Twenty48 and Cascade (#2743); `useGameSync`'s own play window stops too (§2.3). Offline, the card shows `offline` and **nothing is queued**: the game syncs through `SyncWorker` and the join through `displayNameSync`. Until the lookup settles (still `not_finished`, a join still syncing, a network failure), the hook asks again while the card is mounted: on reconnect, and while online after 5 s, 15 s, 60 s and then every 60 s; `reset()` and unmounting stop it. A game on no board (`board_disabled`, `not_rankable`) gets the `unranked` status, and `GameResultModal` shows no leaderboard line for it. Other failures (403, a 404 that outlasts the retries, 5xx) show `error` with Retry. Every game with an enabled board uses `useGameRank` (Yacht, Solitaire, FreeCell, Mahjong, Hearts, Sudoku, Cascade, Sort, Twenty48, Star Swarm); Blackjack and Daily Word have disabled boards and pass no `submission`. `useGameRank` has only this one lookup, so there is no adapter to pass (#2990 removed `LeaderboardAdapter`, `SessionBoardSubmission` and `sessionBoardAdapter`): the old per-game adapter that submitted scores, and the `scoreQueue` it queued through, were removed in #2644. The frontend side of this flow is in §2.5.
 - **`PATCH /games/{id}/complete`** rejects a metric above the row's effective cap, `board.max_value_for(metadata)` (e.g. 100 for an easy Sudoku), with 400 (absorbs #2215); on an uncapped board the bound is 2³¹−1. A metric or tie-break read from metadata must be an integer from 0 to 2³¹−1. A negative `final_score` is **not** rejected: a 400 would dead-letter the game in the sync worker and lose its stats, so the board ignores the row instead (rule 6). Nor is a metric below `min_value` (Mahjong's floor), and a `duration_ms` metric is bounded only by the body's own validation (non-negative): the board ignores what it can't rank.
 
 Board rules, identical for every game:
@@ -229,33 +244,29 @@ The per-game leaderboard routes (`/solitaire/scores`, `/cascade/score/{id}`, …
 
 The `@runtime_checkable` decorator means CI can assert `isinstance(module, GameModule)` for each registered game (see `tests/test_game_module_protocol.py`).
 
-**Registry:** `backend/games/registry.py` maps `GameType` string values to module singletons. `games/service.py` uses `get_module(name)` for generic dispatch — there are no `if name == "<game>"` branches anywhere in the service layer.
+**Registry:** `backend/games/registry.py` builds `_REGISTRY` (keyed by `GameType` string value) from the `_MODULES` tuple of module singletons. `games/stats.py`, `games/sessions.py` and `games/boards/` use `get_module(name)` for generic dispatch — there are no `if name == "<game>"` branches anywhere in the service layer. `tests/test_game_module_base.py` fails if a `<game>/module.py` is left out of `_MODULES`.
 
 **Adding a module:**
 
-1. Create `backend/<game>/module.py` with a class that has `game_type`, `metadata_model`, `result_model`, `has_winner`, `board` and `stats_shape`.
+1. Create `backend/<game>/module.py` with a `GameModuleBase` subclass declaring `game_type`, `metadata_model`, `has_winner`, `board` and, if the game sends a result block, `result_model`. Override a hook only if the game needs it.
 2. Expose a module-level singleton: `module = MyGameModule()`.
-3. Add an entry to `_REGISTRY` in `backend/games/registry.py`, to `_HAS_WINNER` in `tests/test_game_module_protocol.py` and to `_GAMES` in `tests/test_board_definitions.py`.
+3. Add the singleton to `_MODULES` in `backend/games/registry.py`, the game to `_HAS_WINNER` in `tests/test_game_module_protocol.py` and to `_GAMES` in `tests/test_board_definitions.py`. A hook override also goes in `_OVERRIDES` in `tests/test_game_module_base.py`.
 4. Regenerate `frontend/src/api/vocab.ts` (§1.1): `BOARDS` and `HAS_WINNER` come from the module.
 
-Example (pass-through stats, no metadata):
+Example (pass-through stats, no result block):
 
 ```python
 # backend/mygame/module.py
 from games.board import SCORE_METRIC, BoardDefinition
-from games.protocol import default_stats_shape
+from games.module_base import GameModuleBase
 from mygame.models import MyGameMetadata
 from vocab import GameType
 
-class MyGameModule:
+class MyGameModule(GameModuleBase):
     game_type = GameType.MYGAME
     metadata_model = MyGameMetadata
-    result_model = None
     has_winner = False  # score-only: outcome is completed / kept_playing
     board = BoardDefinition(metric=SCORE_METRIC, direction="desc", label_key="score")
-
-    def stats_shape(self, raw_stats: dict) -> dict:
-        return default_stats_shape(raw_stats)
 
 module = MyGameModule()
 ```
@@ -279,13 +290,15 @@ All metadata models use `extra="forbid"` to prevent arbitrary data from being si
 | Hearts      | `HeartsMetadata`    | `player_name: str = ""` (max 64 chars), `ai_difficulty: str \| None` (≤ 32 chars): the opponent style, recorded and not ranked on (`cautious`, `schemer`, `daring`, `mixed`)              |
 | Mahjong     | `MahjongMetadata`   | `player_name: str = ""` (max 64 chars), `layout: str \| None` (layout id, `^[a-z0-9_]+$`, ≤ 32 chars; sent since #2627)                                                                   |
 | Solitaire   | `SolitaireMetadata` | `player_name: str = ""` (max 64 chars), `draw_mode: Literal[1, 3] \| None` (#2632; recorded, not a partition: both modes share one board)                                                 |
-| Bottle Sort | `SortMetadata`      | `player_name: str = ""` (max 32 chars)                                                                                                                                                    |
+| Bottle Sort | `SortMetadata`      | `player_name: str = ""` (max 64 chars; 32 before #2995)                                                                                                                                   |
 | Starswarm   | `StarSwarmMetadata` | `difficulty_tier: str \| None` (≤ 32 chars); only the app's ten tiers (`DIFFICULTY_TIERS`) rank                                                                                           |
 | Sudoku      | `SudokuMetadata`    | `player_name: str = ""` (max 64 chars), `difficulty: Literal["easy","medium","hard"]` (required), `variant: Literal["classic","mini"] = "classic"`                                        |
 | Twenty48    | `Twenty48Metadata`  | None (empty model). The opening board is `game_started` event data                                                                                                                        |
 | Yacht       | `YachtMetadata`     | `mode: Literal["solo","vs"] \| None`, `difficulty: Literal["easy","medium","hard"] \| None` (the computer's: required for `vs`, forbidden for `solo`; builds before #2630 send no `mode`) |
 
-**Completion merge:** `PATCH /games/{id}/complete` merges the validated result block into `games.metadata` (`merge_result_metadata` in `games/leaderboard.py`; the board's limit check merges the same way). Creation-time keys win, so a result can't rewrite `player_name` or a partition. A creation key holding `null` has no value to protect and doesn't win: the result's value fills it (a Star Swarm run created with `difficulty_tier: null` keeps the tier its completion reports). A `null` in the result never clears a creation value.
+**Legacy `player_name`:** the six models that accept it declare it as `player_name: LegacyPlayerName = ""` (`backend/games/metadata.py`), one limit for every game: `LEGACY_PLAYER_NAME_MAX_LENGTH = 64` (#2995; Sort allowed 32 before). It is validation-only JSON metadata that plays no part in ranking (§1.3 "Leaderboard routes"), so changing the limit needs no migration. `tests/test_game_module_base.py` checks that 64 characters pass and 65 fail for every game with the field.
+
+**Completion merge:** `PATCH /games/{id}/complete` merges the validated result block into `games.metadata` (`merge_result_metadata` in `games/boards/limits.py`; the board's limit check merges the same way). Creation-time keys win, so a result can't rewrite `player_name` or a partition. A creation key holding `null` has no value to protect and doesn't win: the result's value fills it (a Star Swarm run created with `difficulty_tier: null` keeps the tier its completion reports). A `null` in the result never clears a creation value.
 
 **Hearts result** (#2838): `HeartsResult` adds the optional `hand_scores` / `final_scores` / `human_seat` breakdown of a finished game. A breakdown that is malformed or doesn't reconcile is dropped, not rejected (a 400 on `/complete` would dead-letter the game). See [`games/hearts.md`](games/hearts.md). Result models are validated with `context={"final_score": <the /complete body's final_score>}` (`_validate_result`), so a model can reconcile its block against the value that becomes `games.final_score`; models that don't read `info.context` are unaffected.
 
@@ -301,14 +314,14 @@ Unregistered game types (e.g. seeded in the DB before their module is implemente
 
 ### 1.5 stats_shape()
 
-**Authority: `backend/<game>/module.py` (`stats_shape` method); `games/service.py` (`get_stats_for_session`) for the comparable fields**
+**Authority: `backend/<game>/module.py` (`stats_shape` method); `games/stats.py` (`get_stats_for_session`) for the comparable fields**
 
-`games/service.py` runs one aggregate query per session, pre-fetches the latest score and metadata per game, and (only when some game has a `win` or `loss`) one ordered scan for win streaks. It then:
+`games/stats.py` runs one aggregate query per session, pre-fetches the latest score and metadata per game, and (only when some game has a `win` or `loss`) one ordered scan for win streaks. It then:
 
 1. calls `module.stats_shape(raw_stats)` for the game-specific part of the `/stats/me` entry, and
 2. sets the **comparable fields** itself, from the queries and the game's `BoardDefinition` (§1.3). `stats_shape` cannot change them, nor `completed` (the Arcade XP input; see [PROGRESSION.md](PROGRESSION.md) and `games/progression.py`).
 
-There is no game-specific logic in `service.py`.
+There is no game-specific logic in `games/stats.py`.
 
 **`raw_stats` keys passed to every `stats_shape` call:**
 
@@ -347,11 +360,10 @@ The deprecated aliases `played` (= `sessions`), `best`, `avg` and Blackjack's to
 
 `/stats/me` runs the stale-session sweep (§1.7) for the caller before it aggregates. The app surfaces that read it are in §2.6.
 
-**Default implementation** — pass `last_played_at` through; `best`, `latest_score` and `metadata` are inputs only. Every game but Blackjack uses the shared helper in `games/protocol.py`:
+**Default implementation** — pass `last_played_at` through; `best`, `latest_score` and `metadata` are inputs only. Every game but Blackjack inherits it from `GameModuleBase`, which calls the shared helper `default_stats_shape` in `games/protocol.py`:
 
 ```python
-from games.protocol import default_stats_shape
-
+# games/module_base.py
 def stats_shape(self, raw_stats: dict) -> dict:
     return default_stats_shape(raw_stats)
 ```
@@ -395,7 +407,7 @@ When a client omits `players` from `POST /games`, the router auto-fills `[{"play
 
 ### 1.7 Completion, idempotency and the stale-session sweep
 
-**Authority: `backend/games/service.py`** (`create_game`, `append_events`, `complete_game`, `sweep_stale_games`).
+**Authority: `backend/games/sessions.py`** (`create_game`, `append_events`, `complete_game`) and `backend/games/sweep.py` (`sweep_stale_games`).
 
 - **Idempotent writes (#364).** `POST /games` with a client `id` that already exists returns that row (403 if another session owns it). Events are keyed `(game_id, event_index)` and inserted with `ON CONFLICT DO NOTHING`, so a resent batch is harmless — but only while the row is open (or swept, below): `POST /games/{id}/events` on a row with a real completion returns **409** `Game is already completed.`, and `SyncWorker` deletes those events from the device without retrying (`frontend/src/game/_shared/syncWorker.ts`, `isAlreadyCompleted`). **Events that arrive after a real completion are dropped.** `PATCH /games/{id}/complete` on a finished row returns it unchanged: **the first completion wins**, so a replayed or late completion from the device's sync queue never overwrites a result. This has been the rule since the write API (#364); it is not new in #2519.
 - **Stale-session sweep (#2621).** `GET /stats/me` and the first page of `GET /games/me` (no `cursor`; later pages continue the listing just swept) first close the caller's own games still open 24 h after `started_at`: `outcome = 'abandoned'`, `completed_at = started_at + 24 h`, `duration_ms` left null, and `metadata.swept = true` (`SWEPT_KEY` in `games/filters.py`, server-written only: `create_game` and `complete_game` strip it from client input). A sweep failure is logged and never fails the read. A swept row is the only finished row that still accepts events (`append_events` checks `is_swept`), and a real completion that arrives later **replaces** the sweep and clears the flag; after that, first completion wins again. Swept rows are abandoned, so they never rank, score or earn XP, and `last_played_at` ignores them.
@@ -418,10 +430,11 @@ The app side of a game: how it opens and closes its `games` row, what outcome an
 | Result card outcome → `games.outcome`                                                                                 | `frontend/src/game/_shared/recordedOutcome.ts`                                                                        |
 | Outcome guard                                                                                                         | `frontend/src/game/_shared/outcomeGuard.ts`                                                                           |
 | Result card                                                                                                           | `frontend/src/components/shared/GameResultModal.tsx`                                                                  |
-| Rank lookup for the card                                                                                              | `useLeaderboardSubmit.ts`, `sessionBoardAdapter.ts` in `frontend/src/game/_shared/`                                   |
+| Rank lookup for the card                                                                                              | `useGameLeaderboard.ts` (wraps `useGameRank.ts`, `lookupGameRank.ts`) in `frontend/src/game/_shared/`   |
+| Hook state → card's `submission`                                                                                      | `frontend/src/components/shared/toSubmission.ts`                                                                      |
 | Display name                                                                                                          | `displayName.ts`, `displayNameSync.ts` in `frontend/src/game/_shared/`                                                |
 | Leaderboard link / availability                                                                                       | `frontend/src/hooks/useLeaderboardLink.ts`, `frontend/src/game/_shared/leaderboardAvailability.ts`                    |
-| Screen wrapper                                                                                                        | `frontend/src/components/shared/GameShell.tsx`                                                                        |
+| Screen wrapper                                                                                                        | `frontend/src/components/shared/GameShell.tsx` (game screens), `ScreenFrame.tsx` (other screens)                      |
 | Shared screens                                                                                                        | `LeaderboardScreen.tsx`, `GameStatsScreen.tsx`, `ScorecardScreen.tsx`, `ProfileScreen.tsx` in `frontend/src/screens/` |
 
 `frontend/src/game/_shared/types.ts` also declares `GameSession<TState, TAction>` and `Player`. Only Yacht, Twenty48, Blackjack and Cascade alias `GameSession` in their `types.ts`, and nothing else reads those aliases: they are optional, not part of the contract.
@@ -433,6 +446,9 @@ Every game screen renders inside `GameShell` (`frontend/src/components/shared/Ga
 - **`gameType` is required** (#2635). With a game type, `GameShell` adds a **Stats** item to the ⋯ menu (the shared `GameStats` screen for that game) and, for a game in `SCORECARD_GAMES` (`frontend/src/navigation/scorecards.ts`: Hearts, Yacht, Blackjack), a **Scorecard** item (#2636). The game does not wire either. Pass `gameType={null}` only for a screen that is not one game's play screen (a scorecard, a run history, a dev tool).
 - The game passes the other menu entries it has: `onOpenLeaderboard` (from `useLeaderboardLink`, §2.5), `onNewGame`, `onLevelSelect`, `onEditPlayerNames`.
 - While `loading` is true the header keeps its title and back button and hides the ⋯ menu.
+- **Back defaults to the lobby** (#2976): without `onBack`, the back button calls `navigation.popToTop()` (`GameShell` already has the navigation). Pass `onBack` only for another back (Hearts and Sort go back one screen; Star Swarm saves a paused run first), or `onBack={null}` for no back button.
+- **Side gutter** (#2976): `GameShell` pads the container's sides by `Math.max(inset, gutter)`, so content clears a landscape notch and keeps a margin. `gutter` defaults to 12 (`GAME_SHELL_GUTTER`); pass `gutter={16}` (Yacht, Twenty48) or `gutter={0}` (insets only, Star Swarm) for outliers, and `gutter={null}` for a screen that lays out its own edges (no side padding). A `paddingBottom` in `style` is still a minimum over the tab bar.
+- **Screens that are not a game** (Profile, Leaderboard, Game Stats, Game Detail, Settings) wrap their `AppHeader` and content in `ScreenFrame` (`frontend/src/components/shared/ScreenFrame.tsx`): the themed full-height container that clears the header and the bottom safe area (`padBottom={false}` leaves the bottom to the screen). A run history or dev tool that wants the ⋯ menu shell uses `GameShell gameType={null}` instead.
 
 ### 2.3 useGameSync
 
@@ -456,7 +472,7 @@ const sync = useGameSync("sudoku");
 
 **Outcome.** Pass `recordedOutcome(cardOutcome)` (§2.4) for a game with a winner, `"completed"` for a score-only game. `complete()` and the hook's abandons run the outcome guard first.
 
-**Duration.** The rule in one line: the game's own `durationMs` when it is > 0, otherwise the hook's active-play window; a value of 0 is sent as "unknown". Solitaire, Sudoku, Mahjong, Hearts, Twenty48 and Cascade send their own clock; Yacht, Blackjack, FreeCell, Sort, Daily Word and Star Swarm rely on the window. The window and every game's own clock leave out time in the background (`AppState`) and time while another screen covers the game (navigation `blur`). Solitaire, Twenty48, Cascade, Mahjong and Sudoku pause on both through `usePauseWhileAway` (`frontend/src/hooks/usePauseWhileAway.ts`, #2750), which pauses when the first reason starts (at mount too, when the screen opens away) and resumes only once both have ended. A game whose clock is on its React state (Solitaire, Twenty48, Mahjong) uses `usePausableClock` on top of it: the pause and the resume are functional updates, `adoptLoaded` pauses a game loaded while the player is away, and the pause saves in its own event handler. Their clock is a `PlayClock` (`startedAt`, `accumulatedMs`, and `paused` for a paused clock, as opposed to one not started or stopped); an engine move starts a clock that never started but never a paused one. Across an app kill, Solitaire, Twenty48 and Mahjong save the clock banked and restart it from the load (`clockForSave` / `clockOnLoad` in `frontend/src/game/_shared/playClock.ts`), and Cascade saves its `playedMs`, so the play before the kill is kept and the time the app was closed never counts. Sudoku's clock restarts from 0 on a relaunch (intentional). See each game's Duration note in [`docs/games/`](games/). The details:
+**Duration.** The rule in one line: the game's own `durationMs` when it is > 0, otherwise the hook's active-play window; a value of 0 is sent as "unknown". Solitaire, Sudoku, Mahjong, Hearts, Twenty48 and Cascade send their own clock; Yacht, Blackjack, FreeCell, Sort, Daily Word and Star Swarm rely on the window. The window and every game's own clock leave out time in the background (`AppState`) and time while another screen covers the game (navigation `blur`). Solitaire, Twenty48, Cascade, Mahjong, Sudoku and Hearts pause on both through `usePauseWhileAway` (`frontend/src/hooks/usePauseWhileAway.ts`, #2750), which pauses when the first reason starts (at mount too, when the screen opens away) and resumes only once both have ended. A game whose clock is on its React state (Solitaire, Twenty48, Mahjong) uses `usePausableClock` on top of it: the pause and the resume are functional updates, `adoptLoaded` pauses a game loaded while the player is away, and the pause saves in its own event handler. Their clock is a `PlayClock` (`startedAt`, `accumulatedMs`, and `paused` for a paused clock, as opposed to one not started or stopped); an engine move starts a clock that never started but never a paused one. Across an app kill, Solitaire, Twenty48 and Mahjong save the clock banked and restart it from the load (`clockForSave` / `clockOnLoad` in `frontend/src/game/_shared/playClock.ts`), and Cascade saves its `playedMs`, so the play before the kill is kept and the time the app was closed never counts. Sudoku's clock restarts from 0 on a relaunch (intentional). See each game's Duration note in [`docs/games/`](games/). The details:
 
 **`durationMs` (#2619).** Pass the game's own active play time — a timer that
 should pause while the app is backgrounded or the game is covered (see
@@ -535,21 +551,28 @@ at 10 minutes; a game's own measured duration wins.
 
 ### 2.5 Result card and leaderboard
 
-**The card.** Every game ends on `GameResultModal` (`frontend/src/components/shared/GameResultModal.tsx`, #2504): the game passes data (`outcome`, `hero`, `stats`, `detail`, actions) and never builds its own result screen. (Blackjack's Goal Reached screen renders the same `ResultCard` inline, with `useResultFeedback`.) Two props connect it to the leaderboard:
+**The card.** Every game ends on `GameResultModal` (`frontend/src/components/result/GameResultModal.tsx`, #2504; split in #2990 into `GameResultModal` (modal + `useResultFeedback`), `ResultCard`, `SubmissionLine` (the only part that knows the rank-lookup status), `resultButtons` and `resultTypes`, with `components/shared/GameResultModal.tsx` re-exporting them for one release): the game passes data (`outcome`, `hero`, `stats`, `detail`, actions) and never builds its own result screen. (Blackjack's Goal Reached screen renders the same `ResultCard` inline, with `useResultFeedback`.) Two props connect it to the leaderboard:
 
-- `submission` — the rank line: `{ status, rank, isBest, playerName, onProvideName, onRetry }` from `useLeaderboardSubmit`. Omit it for a game without a leaderboard (Blackjack, Daily Word).
-- `onViewLeaderboard` — the "View leaderboard" link, from `useLeaderboardLink`.
+- `submission` — the rank line: `{ status, rank, isBest, playerName, onJoinLeaderboards, onRetry }`. The card keeps this shape of its own (owner decision on #2976 / #2990); build it from the hook with `toSubmission(leaderboard)` (`frontend/src/components/shared/toSubmission.ts`), which passes the status fields through and renames the hook's `joinLeaderboards` / `retry` to `onJoinLeaderboards` / `onRetry`. Omit it for a game without a leaderboard (Blackjack, Daily Word).
+- `onViewLeaderboard` — the "View leaderboard" link, `openLeaderboard` from `useGameLeaderboard` (or `useLeaderboardLink`).
 
 **The rank line.** There is no score submission and no per-game name (#2624, #2677): a finished game of a named player is already on its board once `SyncWorker` uploads it. The card only asks where it landed:
 
-```ts
-const board = sessionBoardAdapter("sudoku"); // module scope
-const leaderboard = useLeaderboardSubmit(board);
+```tsx
+const { leaderboard, openLeaderboard } = useGameLeaderboard("sudoku", navigation, {
+  difficulty, // the partition played, if the board has one
+});
 // on game over, with the id complete() returned:
-void leaderboard.submit({ gameId });
+void leaderboard.lookup(gameId);
+// the card:
+<GameResultModal submission={toSubmission(leaderboard)} onViewLeaderboard={openLeaderboard} … />
+// the shell:
+<GameShell gameType="sudoku" onOpenLeaderboard={openLeaderboard} … />
 ```
 
-`sessionBoardAdapter` (`frontend/src/game/_shared/sessionBoardAdapter.ts`) flushes the local game queue and any pending display-name sync, then calls `GET /games/{id}/rank`, retrying briefly while the completion lands. `useLeaderboardSubmit` turns the answer into a status — `saved` (with the top-10 rank of the player's best entry and `isBest`), `needsName` (the one-time Join leaderboards prompt; `joinLeaderboards()` joins through `PUT /players/me`, which assigns a generated name), `submitting`, `offline`, `unranked` (no line) or `error` (Retry) — and keeps asking while the card is mounted until it settles. Nothing is ever queued. The server side, statuses and retry timings are in [Leaderboard routes (#2618)](#leaderboard-routes-2618). Call `leaderboard.reset()` when a new game starts, so the next card starts clean.
+`useGameLeaderboard(gameType, navigation, partition?)` (`frontend/src/game/_shared/useGameLeaderboard.ts`, #2976) is the whole preamble: it runs `useGameRank(gameType)` for the rank lookup and `useLeaderboardLink` for the opener, and returns `{ leaderboard, openLeaderboard }`. `leaderboard` is `useGameRank`'s `{ status, rank, isBest, playerName, lookup(gameId), joinLeaderboards, retry, reset }`. Cascade still wires the pieces by hand (`useGameRank("cascade")` and `useLeaderboardLink`; its screen is out of scope while epic #3033 reworks it).
+
+`lookupGameRank` (`frontend/src/game/_shared/lookupGameRank.ts`) flushes the local game queue and any pending display-name sync, then calls `GET /games/{id}/rank`, retrying briefly while the completion lands. `useGameRank` turns the answer into a status — `saved` (with the top-10 rank of the player's best entry and `isBest`), `needsName` (the one-time Join leaderboards prompt; `joinLeaderboards()` joins through `PUT /players/me`, which assigns a generated name), `submitting`, `offline`, `unranked` (no line) or `error` (Retry) — and keeps asking while the card is mounted until it settles. Nothing is ever queued. The server side, statuses and retry timings are in [Leaderboard routes (#2618)](#leaderboard-routes-2618). Call `leaderboard.reset()` when a new game starts, so the next card starts clean.
 
 **The name.** One server-generated name per player who has joined (#2624, #2778): `players` table, `PUT` (join) / `POST .../reroll` / `GET` / `DELETE` (leave) on `/players/me`. In the app it is `displayName.ts` (the device copy of the server-assigned name) and `displayNameSync.ts` (a one-slot queue that sends the latest join or leave on the action, launch, reconnect and foreground, and refreshes the device copy from `GET /players/me`). Profile shows the name with "Get a new name" and "Leave leaderboards", or "Join leaderboards" (#2637, #2778); "Delete my data" clears it on the device and the server.
 
@@ -560,7 +583,7 @@ void leaderboard.submit({ gameId });
 
 Stats use the server's copy instead: `/stats/me` sends `best_value` with `best_label_key` (§1.5).
 
-**Opening the board.** `useLeaderboardLink(navigation, gameType, partition?)` (`frontend/src/hooks/useLeaderboardLink.ts`) returns an opener, or `undefined` when the game has no openable board. Pass it to both `GameResultModal.onViewLeaderboard` and `GameShell.onOpenLeaderboard`, so the card link and the ⋯ menu item appear together. Pass the partition the player just played. Both open `LeaderboardScreen` (#2633, `Leaderboard` route in the Home stack): one entry per player, the player's own row flagged by `is_me` and, when outside the list, pinned below it from `me`; pull to refresh; opened from a card whose rank is pending (`refreshAfterSync`), it refetches once local games and the name have synced.
+**Opening the board.** `useLeaderboardLink(navigation, gameType, partition?)` (called for you by `useGameLeaderboard`) (`frontend/src/hooks/useLeaderboardLink.ts`) returns an opener, or `undefined` when the game has no openable board. Pass it to both `GameResultModal.onViewLeaderboard` and `GameShell.onOpenLeaderboard`, so the card link and the ⋯ menu item appear together. Pass the partition the player just played. Both open `LeaderboardScreen` (#2633, `Leaderboard` route in the Home stack): one entry per player, the player's own row flagged by `is_me` and, when outside the list, pinned below it from `me`; pull to refresh; opened from a card whose rank is pending (`refreshAfterSync`), it refetches once local games and the name have synced.
 
 **Covered screens.** A game with its own clock pauses it on the navigation `blur` event, since a pushed Leaderboard, Stats or Scorecard screen leaves it mounted, and while the app is in the background: `usePauseWhileAway` handles both (§2.3 for the play window).
 
@@ -581,6 +604,15 @@ These read the server; a game adds nothing for them beyond passing `gameType` to
 - Screen tests normally run against the real `useGameSync` with the shared `foregroundClock` mock (§2.3); `HeartsScreen.test.tsx`, `MahjongScreen.test.tsx` and `BlackjackGameContext.test.tsx` mock the hook, so the guard does not run in those suites. The outcome guard throws in tests, so drive every finish path your game has.
 - **Maestro is paused past v1.0** (owner decision; [`docs/MAESTRO.md`](MAESTRO.md)), including the result-submission flow (#2643). The result card, leaderboards, stats and Profile are checked by hand on iOS and Android builds with [`docs/MANUAL-QA-LEADERBOARDS.md`](MANUAL-QA-LEADERBOARDS.md).
 
+### 2.9 Engine
+
+The rules live in `frontend/src/game/<game>/engine.ts`: headless (no React, no storage, no platform imports, §2.7) and pure apart from module-level singletons. Two rules apply to every engine; the detail is [`ARCHITECTURE.md` §3.2](ARCHITECTURE.md#32-determinism-rng-and-counters-2985-2999):
+
+- **Replayable from `(seed, inputs)`.** Randomness that affects play goes through a seed (`createSeededRng` from `game/_shared/seededRng.ts`) or the engine's `setRng` slot, never `Math.random` directly; tests pin the slot with `setRng(createSeededRng(seed))`.
+- **Counters are restored on load.** An id counter or RNG state kept at module level (Twenty48's `seedNextTileId`, Star Swarm's `engineCounters` / `restoreEngineCounters`) is saved with the game, or derived from it, and put back when the storage module loads it, before the first move.
+
+How a screen wraps the engine (shell, session, saving, pausing, result card) is the screen layer in [`GAMEPLAY_STANDARDS.md` §8](GAMEPLAY_STANDARDS.md#8-screen-layer).
+
 ---
 
 ## 3. New-game checklist
@@ -596,11 +628,12 @@ Use this checklist when adding a new game. Each item links to the file to create
 - [ ] **`backend/mygame/`** — create the game package with at minimum `__init__.py`, `models.py`, `module.py`. No `router.py` is needed: the generic `/games` routes create, complete, rank and list every game (§1.3). Add one only for game-specific server logic (e.g. Daily Word's puzzle routes)
 - [ ] **`backend/mygame/models.py`** — define `MyGameMetadata(BaseModel)` with `extra="forbid"`, and a `MyGameResult` model for the completion's `result` block (or `result_model = None` to accept any dict). Accept any value a shipped app could send: a 4xx on create or completion dead-letters the game on the device
   - CI: `tests/test_game_metadata.py` pattern (add a valid/invalid unit test)
-- [ ] **`backend/mygame/module.py`** — implement the `GameModule` Protocol (§1.3): `game_type`, `metadata_model`, `result_model`, `has_winner`, `board`, `stats_shape()`
+- [ ] **`backend/mygame/module.py`** — subclass `GameModuleBase` (§1.3): declare `game_type`, `metadata_model`, `has_winner`, `board` and `result_model` (if the game sends a result block); override `stats_shape` / `derive_final_score` / `reconcile_result` only if the game needs it
   - `has_winner`: `True` only if the client records `win` / `loss` / `push` (§1.2); a score-only game is `False` and records `completed`
   - `board`: a `BoardDefinition` — metric, direction, tie-break, partitions, `max_value` cap, `qualifying_outcomes`; `enabled=False` if the game has no leaderboard (it still defines the "best" in stats)
   - CI: `tests/test_game_module_protocol.py` (registry-wide conformance; add the game to `_HAS_WINNER`) and `tests/test_board_definitions.py` (add it to `_GAMES`)
-- [ ] **`backend/games/registry.py`** — add the module singleton to `_REGISTRY`
+- [ ] **`backend/games/registry.py`** — add the module singleton to `_MODULES`
+  - CI: `tests/test_game_module_base.py` (every `<game>/module.py` registered)
 - [ ] **`backend/scripts/gen_vocab_ts.py`** — regenerate `frontend/src/api/vocab.ts` (`GAME_TYPES`, `HAS_WINNER`, `BOARDS`)
   - CI: `tests/test_vocab.py` (TS contract drift check)
 - [ ] **Premium tier** _(if applicable)_ — set `is_premium=true` in the Alembic migration; `POST /games` and the generic leaderboard and rank routes then check the entitlement themselves (`check_entitlement`, defined in `backend/entitlements/dependencies.py` and called from `games/router.py`); add `require_entitlement("<slug>")` to the game's own router, if it has one; add the slug to `PREMIUM_GAMES` in `frontend/src/entitlements/EntitlementContext.tsx` and to `HIDDEN_GAMES` for v1.0 store builds (frontend routing: see Route and Home tile below). See [`docs/ARCHITECTURE.md §10`](ARCHITECTURE.md#10-premium-entitlements).
@@ -609,14 +642,14 @@ Use this checklist when adding a new game. Each item links to the file to create
 ### Frontend
 
 - [ ] **`frontend/src/api/vocab.ts`** — the committed generated file includes the new `GameType`, its `HAS_WINNER` flag and its `BOARDS` entry
-- [ ] **Engine** — game logic in `frontend/src/game/mygame/engine.ts` (no imports from `components/` or `screens/`, §2.7). A `GameSession<TState>` alias in `types.ts` is optional (§2.1)
+- [ ] **Engine** — game logic in `frontend/src/game/mygame/engine.ts` (no imports from `components/` or `screens/`, §2.7), seeded or behind `setRng`, with any module-level counter restored on load (§2.9). A `GameSession<TState>` alias in `types.ts` is optional (§2.1)
 - [ ] **Route and Home tile** — a screen in `frontend/src/screens/`, typed in `frontend/src/types/navigation.ts`. A free game is registered as a plain `HomeStack.Screen` in `frontend/App.tsx`. A premium game is **not**: add its route to `PREMIUM_ROUTES` (`frontend/src/entitlements/premiumRoutes.ts`) and its unguarded screen to `PREMIUM_SCREEN_BASES` in `App.tsx`; `LobbyStack` registers it wrapped in `makePremiumScreen` (the entitlement gate, `LockedGameScreen` when not entitled) and only when it is visible in the build (`visiblePremiumRoutes()`). Add the slug to `PREMIUM_GAMES` (`EntitlementContext.tsx`) and, while v1.0 hides premium games, to `HIDDEN_GAMES` (`frontend/src/entitlements/gameVisibility.ts`); the `gameVisibility` / `premiumRoutes` tests fail if these sets drift. This mirrors [`docs/ARCHITECTURE.md` §10.6](ARCHITECTURE.md#106-adding-a-premium-game), step 5. Add a tile in `HomeScreen.tsx` and an i18n namespace (`frontend/src/i18n/localeLoaders.ts`) with `game.title`
 - [ ] **`GameShell`** with `gameType="mygame"` (required, §2.2): the ⋯ menu then gets Stats (and Scorecard, if the game is in `SCORECARD_GAMES`) with no further wiring. `gameType={null}` is only for screens that are not one game's play screen (a live scorecard, a run history, a dev tool)
 - [ ] **`useGameSync`** (§2.3) — `start()` with the metadata, `markStarted()` on the first real action, `complete()` with an explicit `result` block, `setProgressSnapshot()` so the hook's abandons carry it; `resume()` if the screen restores saved progress; no `beforeRemove` abandon handler
 - [ ] **Outcome** (§2.4) — `recordedOutcome(cardOutcome)` if `has_winner`, else `"completed"`; drive every finish path in a screen test (the outcome guard throws there)
 - [ ] **Duration** — send the game's own active clock as `durationMs` if it has one (paused while backgrounded and on `blur`); otherwise send nothing and let the play window count; call `resetPlayWindow()` where a new board or picker appears before the session opens (§2.3)
-- [ ] **Result card** (§2.5) — end on `GameResultModal`; with an enabled board, `useLeaderboardSubmit(sessionBoardAdapter("mygame"))`, `submit({ gameId })` with the id `complete()` returned, `reset()` on a new game, and the hook's state as `submission`
-- [ ] **Leaderboard link** — `useLeaderboardLink(navigation, "mygame", partition)` passed to both `GameResultModal.onViewLeaderboard` and `GameShell.onOpenLeaderboard`
+- [ ] **Result card** (§2.5) — end on `GameResultModal`; with an enabled board, `useGameLeaderboard("mygame", navigation, partition)`, `leaderboard.lookup(gameId)` with the id `complete()` returned, `leaderboard.reset()` on a new game, and `toSubmission(leaderboard)` as `submission`
+- [ ] **Leaderboard link** — `useGameLeaderboard`'s `openLeaderboard` passed to both `GameResultModal.onViewLeaderboard` and `GameShell.onOpenLeaderboard`
 - [ ] **Stats entry** — nothing to build: `GameStats` and Profile read `/stats/me` (§2.6); check the game's tiles show sensible values (win figures "—" for a score-only game)
 - [ ] **`noUncheckedIndexedAccess`** clean — no suppression comments
 - [ ] **Icon assets are WebP** — any new icons added to `assets/fruit-icons/` or `assets/celestial-icons/` must be converted before committing: `python tools/assets/convert_icons_to_webp.py <dir>`. Raw PNGs in non-exempt asset directories will fail CI (`assetTransparency.test.ts`).

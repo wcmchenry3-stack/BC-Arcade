@@ -28,7 +28,7 @@ import {
   MAHJONG_HINT_COLOR,
   MAHJONG_HINT_GLOW_BG,
   MAHJONG_TILE_FACE_SELECTED,
-} from "../../../theme/theme.constants";
+} from "../../../theme/theme.mahjong";
 import {
   createGame,
   freeTileIds,

@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { GAME_TITLE_NAMESPACES, gameTitle } from "../i18n/gameTitle";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RouteProp } from "@react-navigation/native";
 import { EmptyState } from "../components/shared/EmptyState";
 import { useTheme } from "../theme/ThemeContext";
-import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
+import { AppHeader } from "../components/shared/AppHeader";
+import { ScreenFrame } from "../components/shared/ScreenFrame";
 import { statsApi } from "../api/stats";
 import type { GameDetailResponse } from "../api/types";
 import { formatMetric, gameMetric, outcomeLabel } from "../api/outcomeDisplay";
@@ -46,7 +46,6 @@ function formatDuration(ms: number | null): string {
 export default function GameDetailScreen({ navigation, route }: Props) {
   const { gameId } = route.params;
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const { t } = useTranslation(["profile", "stats", ...GAME_TITLE_NAMESPACES]);
 
   const [detail, setDetail] = useState<GameDetailResponse | null>(null);
@@ -136,19 +135,10 @@ export default function GameDetailScreen({ navigation, route }: Props) {
   }
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.background,
-          paddingTop: APP_HEADER_HEIGHT + insets.top,
-          paddingBottom: Math.max(insets.bottom, 16),
-        },
-      ]}
-    >
+    <ScreenFrame>
       <AppHeader title={t("detail.title")} requireBack onBack={() => navigation.goBack()} />
       {body}
-    </View>
+    </ScreenFrame>
   );
 }
 
@@ -180,7 +170,6 @@ function DetailRow({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   scrollContent: { padding: 16 },
   card: {
     borderRadius: 16,

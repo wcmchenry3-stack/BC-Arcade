@@ -356,16 +356,16 @@ def test_degraded_guesses_report_once_per_window(
     as #513 and #2430.
     """
     import daily_word.router as router_mod
+    from observability import report
+    from observability.report import Throttle
 
     def boom():
         raise RuntimeError("database unavailable")
 
     sent: list[str] = []
     monkeypatch.setattr(router_mod, "get_session_factory", boom)
-    monkeypatch.setattr(router_mod, "_last_degrade_report", None)
-    monkeypatch.setattr(
-        router_mod.sentry_sdk, "capture_message", lambda msg, **kw: sent.append(msg)
-    )
+    monkeypatch.setattr(router_mod, "_degrade_throttle", Throttle(600.0))
+    monkeypatch.setattr(report.sentry_sdk, "capture_message", lambda msg, **kw: sent.append(msg))
 
     headers = _sid_headers()
     puzzle_id = _today_puzzle_id()
@@ -384,13 +384,15 @@ def test_degraded_guess_logs_at_warning_so_sentry_gets_one_event(
     import logging
 
     import daily_word.router as router_mod
+    from observability import report
+    from observability.report import Throttle
 
     def boom():
         raise RuntimeError("database unavailable")
 
     monkeypatch.setattr(router_mod, "get_session_factory", boom)
-    monkeypatch.setattr(router_mod, "_last_degrade_report", None)
-    monkeypatch.setattr(router_mod.sentry_sdk, "capture_message", lambda msg, **kw: None)
+    monkeypatch.setattr(router_mod, "_degrade_throttle", Throttle(600.0))
+    monkeypatch.setattr(report.sentry_sdk, "capture_message", lambda msg, **kw: None)
 
     with caplog.at_level(logging.INFO, logger="daily_word.router"):
         assert _guess(client, _sid_headers(), _today_puzzle_id(), _SIX_WRONG[0]).status_code == 200
@@ -403,7 +405,7 @@ def test_answer_stays_closed_when_the_record_is_unreachable(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The other half of #2542: no record, no entitlement, no answer."""
-    import daily_word.router as router_mod
+    import db.base as db_base
 
     headers = _sid_headers()
     puzzle_id = _today_puzzle_id()
@@ -416,7 +418,9 @@ def test_answer_stays_closed_when_the_record_is_unreachable(
     def boom():
         raise RuntimeError("database unavailable")
 
-    monkeypatch.setattr(router_mod, "get_session_factory", boom)
+    # /answer takes its session from db.base.get_db (#2993), so the outage is
+    # simulated where that dependency builds it.
+    monkeypatch.setattr(db_base, "get_session_factory", boom)
     # TestClient re-raises server exceptions rather than converting them; in
     # production this surfaces as a 500. Either way the answer is not released,
     # which is the property under test.

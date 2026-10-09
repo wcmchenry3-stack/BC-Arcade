@@ -29,10 +29,10 @@ from collections.abc import Callable, Iterable
 from datetime import date
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from daily_challenge.definitions import Slate, Template, goal_from_spec, goal_to_spec
+from db.dialect import dialect_insert
 from db.models import DailyChallengeDay
 
 
@@ -57,7 +57,8 @@ async def get_or_create_templates(
 ) -> dict[date, Template]:
     """The frozen templates for every day in ``days`` under ``slate`` — one SELECT,
     plus one INSERT only for the days nobody has ever requested before (usually none,
-    or just today). Used directly by the streak, which needs up to 60 days at once —
+    or just today), and one more SELECT only when a concurrent request froze some of
+    those days first. Used directly by the streak, which needs up to 60 days at once —
     the query count stays fixed however long the lookback."""
     days = list(dict.fromkeys(days))
     rows = (
@@ -73,31 +74,54 @@ async def get_or_create_templates(
         return result
 
     fresh = {d: compute(d) for d in missing}
-    session.add_all(
-        DailyChallengeDay(
-            date=d,
-            slate=slate,
-            template_id=t.id,
-            goals=[goal_to_spec(g) for g in t.goals],
+    # INSERT ... ON CONFLICT DO NOTHING (#3013): a day a concurrent request froze
+    # first is skipped rather than failing the statement, so there is no
+    # IntegrityError, no rollback (which would also discard any pending work the
+    # caller has in this session) and no retry. RETURNING names the days this
+    # statement froze; every other missing day was frozen by the rival and is read
+    # back from the table, whose row wins over our own computation. Rows go in date
+    # order so two overlapping batches take their row locks in the same order and
+    # cannot deadlock each other on Postgres.
+    stmt = (
+        dialect_insert(session, DailyChallengeDay)
+        .values(
+            [
+                {
+                    "date": d,
+                    "slate": slate,
+                    "template_id": fresh[d].id,
+                    "goals": [goal_to_spec(g) for g in fresh[d].goals],
+                }
+                for d in sorted(fresh)
+            ]
         )
-        for d, t in fresh.items()
+        .on_conflict_do_nothing(index_elements=[DailyChallengeDay.date, DailyChallengeDay.slate])
+        .returning(DailyChallengeDay.date)
     )
-    try:
-        await session.commit()
-    except IntegrityError:
-        # Lost a race to a concurrent request freezing (some of) the same days —
-        # trust what is now in the table over our own computation.
-        await session.rollback()
+    inserted = set((await session.execute(stmt)).scalars())
+    lost = [d for d in missing if d not in inserted]
+    if lost:
+        # Postgres' ON CONFLICT waits for the conflicting transaction to end, and
+        # under READ COMMITTED this next statement then sees the row it committed.
         rows = (
             await session.execute(
                 select(DailyChallengeDay).where(
-                    DailyChallengeDay.date.in_(missing), DailyChallengeDay.slate == slate
+                    DailyChallengeDay.date.in_(lost), DailyChallengeDay.slate == slate
                 )
             )
         ).scalars()
-        from_db = {row.date: _row_to_template(row) for row in rows}
-        for d in missing:
-            result[d] = from_db.get(d, fresh[d])
-        return result
-    result.update(fresh)
+        result.update((row.date, _row_to_template(row)) for row in rows)
+        unpersisted = [d for d in lost if d not in result]
+        if unpersisted:
+            # Never answer with a template that is not in the table: the next request
+            # would recompute it, and could show a different challenge for that day.
+            # Unreachable under READ COMMITTED (the default here): ON CONFLICT skips a
+            # day only once the conflicting rival has committed its row, and the
+            # re-read above takes a fresh snapshot that sees it. Kept as a guard in
+            # case the isolation level ever changes.
+            raise RuntimeError(
+                f"daily challenge days {unpersisted} ({slate}) were neither frozen nor found"
+            )
+    await session.commit()
+    result.update((d, fresh[d]) for d in inserted)
     return result

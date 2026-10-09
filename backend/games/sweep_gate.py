@@ -40,7 +40,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Game
-from games import service
+from games import sweep
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ def _remember(session_id: str, due: datetime) -> None:
 def note_open_game(session_id: str, started_at: datetime) -> None:
     """``POST /games`` returned a game (new, or an idempotent re-create): a backdated
     start may make the sweep due sooner. A completed game only makes it run early."""
-    stale_at = _utc(started_at) + service.STALE_GAME_AFTER
+    stale_at = _utc(started_at) + sweep.STALE_GAME_AFTER
     for noted in _in_flight.get(session_id, ()):
         noted.append(stale_at)
     due = _next_due.get(session_id)
@@ -120,7 +120,7 @@ async def sweep_if_due(db: AsyncSession, *, session_id: str, now: datetime | Non
 
 async def _sweep_and_find_due(db: AsyncSession, session_id: str, now: datetime) -> datetime | None:
     """Sweep, then when the sweep could next match anything; None if either step failed."""
-    if not await service.sweep_stale_games_safely(db, session_id=session_id):
+    if not await sweep.sweep_stale_games_safely(db, session_id=session_id):
         return None
     try:
         oldest = await _oldest_open_start(db, session_id)
@@ -131,5 +131,5 @@ async def _sweep_and_find_due(db: AsyncSession, session_id: str, now: datetime) 
         return None
     due = now + MAX_SKIP
     if oldest is not None:
-        due = min(due, oldest + service.STALE_GAME_AFTER)
+        due = min(due, oldest + sweep.STALE_GAME_AFTER)
     return due

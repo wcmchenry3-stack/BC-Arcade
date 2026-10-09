@@ -373,6 +373,7 @@ Premium entitlement behavior is a platform concern; see [ARCHITECTURE.md §10](.
 ## Key files
 
 - Rules engine: `frontend/src/game/hearts/engine.ts`
+- Screen: [`frontend/src/screens/HeartsScreen.tsx`](../../frontend/src/screens/HeartsScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Current AI: `frontend/src/game/hearts/ai.ts`
 - Utility considerations: `frontend/src/game/hearts/aiConsiderations.ts`
 - Persona weights/noise: `frontend/src/game/hearts/aiWeights.ts`

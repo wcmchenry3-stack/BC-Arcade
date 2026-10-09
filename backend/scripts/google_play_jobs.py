@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from db.base import get_session_factory, is_configured
 from purchases import google
-from purchases.google_notifications import acknowledge_sweep, poll_voided_purchases
+from purchases.google_jobs import acknowledge_sweep, poll_voided_purchases
 
 
 async def _main(hours: int, sweep_only: bool) -> int:

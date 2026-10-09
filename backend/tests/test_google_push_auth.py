@@ -1,8 +1,7 @@
 """Google RTDN push authentication: OIDC bearer, JWKS cache and key rotation (#2787).
 
-Follows the planned ``purchases/google_push_auth.py`` (#2998): ``GoogleJwks``
-and ``PushAuthenticator`` in ``purchases/google_notifications.py`` today.
-Split out of ``test_google_iap.py`` (#2955); the harness lives in
+Covers ``GoogleJwks`` and ``PushAuthenticator`` in
+``purchases/google_push_auth.py`` (#2998). Split out of ``test_google_iap.py`` (#2955); the harness lives in
 ``tests/_google_iap_harness.py``.
 """
 
@@ -11,8 +10,8 @@ from __future__ import annotations
 import jwt
 import pytest
 
-from purchases import google_notifications
-from purchases.google_notifications import GoogleJwks
+from purchases import google_push_auth
+from purchases.google_push_auth import GoogleJwks
 from purchases.verifiers import PurchaseError
 from tests._google_iap_harness import (
     grant,
@@ -168,10 +167,10 @@ async def test_jwks_cache_refresh_and_filtering() -> None:
     for kid in ("ec", "hs", "enc", "broken"):
         assert await jwks.key(kid) is None
     assert fake.calls == 1  # an unknown kid does not refetch within JWKS_MIN_REFRESH_S
-    clock[0] += google_notifications.JWKS_MIN_REFRESH_S
+    clock[0] += google_push_auth.JWKS_MIN_REFRESH_S
     assert await jwks.key("rotated") is None
     assert fake.calls == 2  # ... but does after it
-    clock[0] += google_notifications.JWKS_TTL_S
+    clock[0] += google_push_auth.JWKS_TTL_S
     await jwks.key("test-kid-1")
     assert fake.calls == 3  # expired cache refetches
 
@@ -184,18 +183,18 @@ async def test_jwks_outage_backs_off_and_serves_stale_keys_for_a_grace_period() 
     jwks = GoogleJwks(fake.transport(), clock=lambda: clock[0])
     assert await jwks.key("test-kid-1") is not None
     fake.fail = True
-    clock[0] += google_notifications.JWKS_TTL_S  # expired
+    clock[0] += google_push_auth.JWKS_TTL_S  # expired
     assert await jwks.key("test-kid-1") is not None  # refresh failed; stale key served
     assert fake.calls == 2
     for _ in range(50):  # junk kids and repeats during the outage: no refetch
         assert await jwks.key("junk") is None
         assert await jwks.key("test-kid-1") is not None
     assert fake.calls == 2
-    clock[0] += google_notifications.JWKS_RETRY_BACKOFF_S
+    clock[0] += google_push_auth.JWKS_RETRY_BACKOFF_S
     await jwks.key("test-kid-1")
     assert fake.calls == 3  # retried once the backoff passed
     # Past TTL + grace with Google still down: fail closed.
-    clock[0] = google_notifications.JWKS_TTL_S + google_notifications.JWKS_STALE_GRACE_S
+    clock[0] = google_push_auth.JWKS_TTL_S + google_push_auth.JWKS_STALE_GRACE_S
     with pytest.raises(PurchaseError) as exc:
         await jwks.key("test-kid-1")
     assert exc.value.status_code == 503
@@ -206,7 +205,7 @@ async def test_jwks_outage_backs_off_and_serves_stale_keys_for_a_grace_period() 
     assert fake.calls == calls
     # Google comes back: recovers after the backoff.
     fake.fail = False
-    clock[0] += google_notifications.JWKS_RETRY_BACKOFF_S
+    clock[0] += google_push_auth.JWKS_RETRY_BACKOFF_S
     assert await jwks.key("test-kid-1") is not None
 
 

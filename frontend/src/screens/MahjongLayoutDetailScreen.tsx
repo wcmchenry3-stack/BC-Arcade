@@ -99,6 +99,7 @@ export default function MahjongLayoutDetailScreen() {
       title={meta?.name ?? layoutId}
       requireBack
       onBack={() => navigation.goBack()}
+      gutter={null}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >
       <View style={styles.content}>

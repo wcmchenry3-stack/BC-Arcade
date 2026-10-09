@@ -146,7 +146,7 @@ Historical Stats and public ranking come from the shared server reporting model,
 ## Implementation
 
 - Engine: `frontend/src/game/twenty48/engine.ts`
-- Screen: `frontend/src/screens/Twenty48Screen.tsx`
+- Screen: [`frontend/src/screens/Twenty48Screen.tsx`](../../frontend/src/screens/Twenty48Screen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Storage: `frontend/src/game/twenty48/storage.ts`
 - Types: `frontend/src/game/twenty48/types.ts`
 - Backend descriptor: `backend/twenty48/module.py`

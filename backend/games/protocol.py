@@ -1,47 +1,45 @@
 """GameModule Protocol — single contract for all game modules (#540).
 
-Any object with the declared attributes and methods satisfies this Protocol
-without inheriting from it (structural subtyping).
+Every game module subclasses ``games.module_base.GameModuleBase`` (#2995),
+which supplies the defaults of the optional hooks; this Protocol is the
+structural type the shared code (``games/sessions.py``, ``games/stats.py``,
+``games/boards/``) is written against, and CI asserts
+``isinstance(module, GameModule)`` for every registered module.
 
 Adding a new game
 -----------------
-1. Create ``backend/<game>/module.py`` with a class whose instance passes
-   ``isinstance(instance, GameModule)``.
-2. Register it in ``backend/games/registry.py``.
-3. Implement ``stats_shape`` to transform the raw aggregate dict into the
-   game's final API shape.  See ``backend/blackjack/module.py`` for an
-   example that renames keys; most games return ``default_stats_shape``
-   (below), the pass-through pattern.
-4. Define a ``metadata_model`` Pydantic ``BaseModel`` subclass (in the
+1. Create ``backend/<game>/module.py`` with a ``GameModuleBase`` subclass and a
+   module-level singleton ``module = <Game>Module()``.
+2. Add the singleton to ``_MODULES`` in ``backend/games/registry.py``.
+3. Define a ``metadata_model`` Pydantic ``BaseModel`` subclass (in the
    game's ``models.py``) and assign it as a class variable.  The generic
-   ``POST /games`` endpoint validates incoming ``metadata`` against it.
-5. Optionally define a ``result_model`` (also in ``models.py``) describing the
-   per-game result block sent on ``PATCH /games/{id}/complete``, or set
-   ``result_model = None`` to accept any dict unvalidated.
-6. Optionally define ``async reconcile_result(session, game, result) -> dict``
-   to correct a validated result against server-side state before it is
-   stored — see ``backend/daily_word/module.py`` (#2541). Not part of the
-   Protocol: ``games/service.py`` looks it up with ``getattr``.
-7. Optionally define ``derive_final_score(final_score, outcome, result) -> int | None``
-   to fill in the stored ``final_score`` from the validated result when the
-   client left it out — see ``backend/blackjack/module.py`` (#2745). It may
-   raise ``ValueError`` to reject a ``final_score`` that contradicts the
-   result (400). Not part of the Protocol either: ``complete_game`` looks it
-   up with ``getattr``.
-8. Declare ``board`` — a ``BoardDefinition`` (``games/board.py``) saying how
-   the game is ranked — then regenerate ``frontend/src/api/vocab.ts`` with
-   ``python backend/scripts/gen_vocab_ts.py`` (#2617).
+   ``POST /games`` endpoint validates incoming ``metadata`` against it. A
+   legacy ``player_name`` field is declared with ``games.metadata.LegacyPlayerName``.
+4. Optionally define a ``result_model`` (also in ``models.py``) describing the
+   per-game result block sent on ``PATCH /games/{id}/complete``; the default
+   ``None`` accepts any dict unvalidated.
+5. Declare ``has_winner`` and ``board`` — a ``BoardDefinition``
+   (``games/board.py``) saying how the game is ranked — then regenerate
+   ``frontend/src/api/vocab.ts`` with ``python backend/scripts/gen_vocab_ts.py``
+   (#2617).
+6. Override a hook only when the game needs it:
+   ``stats_shape`` (Blackjack's chips), ``derive_final_score`` (Blackjack's
+   closing chips, #2745) or ``reconcile_result`` (Daily Word's guess record,
+   #2541).
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from vocab import GameType
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
+    from sqlalchemy.ext.asyncio import AsyncSession
 
+    from db.models import Game
     from games.board import BoardDefinition
 
 
@@ -87,7 +85,7 @@ class GameModule(Protocol):
     -------
     stats_shape(raw_stats):
         Transform a raw aggregate stats dict (produced by
-        ``games/service.py``) into the final shape for the ``/stats/me``
+        ``games/stats.py``) into the final shape for the ``/stats/me``
         API response.
 
         ``raw_stats`` keys
@@ -102,6 +100,16 @@ class GameModule(Protocol):
         The comparable fields (``sessions``, ``completed``, win counts and
         streaks, ``time_played_ms``, ``best_value``) are computed by the
         service from the board and cannot be changed here (#2620).
+
+    derive_final_score(final_score, outcome, result):
+        The ``final_score`` ``complete_game`` stores, given the one the client
+        sent, the outcome and the validated result block. ``ValueError``
+        rejects the completion (400). The base default returns ``final_score``.
+
+    reconcile_result(session, game, result):
+        Awaited after ``result_model`` validation to correct the result block
+        against server-side state before it is stored. The base default
+        returns ``result`` unchanged.
     """
 
     game_type: GameType
@@ -111,6 +119,14 @@ class GameModule(Protocol):
     board: BoardDefinition
 
     def stats_shape(self, raw_stats: dict) -> dict: ...
+
+    def derive_final_score(
+        self, final_score: int | None, outcome: str | None, result: Mapping[str, Any]
+    ) -> int | None: ...
+
+    async def reconcile_result(
+        self, session: AsyncSession, game: Game, result: dict[str, Any]
+    ) -> dict[str, Any]: ...
 
 
 def default_stats_shape(raw_stats: dict) -> dict:

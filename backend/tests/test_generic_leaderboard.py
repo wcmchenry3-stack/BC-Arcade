@@ -20,8 +20,9 @@ from sqlalchemy import event, select
 
 from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType, Player
-from games import leaderboard
 from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
+from games.boards import limits, partitions, queries
+from games.boards import types as board_types
 from games.registry import get_module
 from limiter import _real_ip, limiter, session_key
 from tests._helpers import session_headers as _headers
@@ -35,12 +36,12 @@ pytestmark = pytest.mark.skipif(
 T0 = datetime(2026, 1, 1, tzinfo=UTC)
 
 ENABLED_BOARDS = sorted(
-    gt.value for gt in GameTypeEnum if leaderboard.enabled_board(gt.value) is not None
+    gt.value for gt in GameTypeEnum if partitions.enabled_board(gt.value) is not None
 )
 DISABLED_BOARDS = sorted(
     gt.value
     for gt in GameTypeEnum
-    if get_module(gt.value) is not None and leaderboard.enabled_board(gt.value) is None
+    if get_module(gt.value) is not None and partitions.enabled_board(gt.value) is None
 )
 
 # Creation metadata each game's metadata_model requires, and the partition
@@ -355,7 +356,7 @@ _LEGACY_SENTINEL_GAMES = (
 async def test_sentinel_rows_never_rank(client: TestClient, game_type: str) -> None:
     """A sentinel row that would otherwise rank (valid metric, qualifying
     outcome, right partition) never appears; an identical real row does."""
-    board = leaderboard.enabled_board(game_type)
+    board = partitions.enabled_board(game_type)
     assert board is not None, game_type
     outcome = board.qualifying_outcomes[0] if board.qualifying_outcomes else "completed"
     fields = metric_fields(board, metric_value(board, 10))
@@ -639,7 +640,7 @@ def test_leaderboard_rate_limit_keyed_by_session_with_ip_backstop() -> None:
 
 
 def test_leaderboard_session_limit_is_enforced(client: TestClient) -> None:
-    from games.router import LEADERBOARD_SESSION_RATE_LIMIT
+    from rate_limits import LEADERBOARD_SESSION_RATE_LIMIT
 
     allowed = int(LEADERBOARD_SESSION_RATE_LIMIT.split("/")[0])
     sid = _sid()
@@ -660,7 +661,7 @@ def test_leaderboard_session_limit_is_enforced(client: TestClient) -> None:
 async def _board_with_tier(premium: bool) -> str:
     for game_type in ENABLED_BOARDS:
         if (
-            not leaderboard.enabled_board(game_type).partitions
+            not partitions.enabled_board(game_type).partitions
             and await _is_premium(game_type) is premium
         ):
             return game_type
@@ -713,7 +714,7 @@ def _complete(client: TestClient, sid: str, game_id: str, **body: Any):
 async def test_complete_rejects_score_above_max_value(client: TestClient) -> None:
     sid = _sid()
     await _grant_all(sid)
-    cap = leaderboard.enabled_board("solitaire").max_value
+    cap = partitions.enabled_board("solitaire").max_value
     assert cap is not None
 
     over = _create(client, sid, "solitaire")
@@ -755,7 +756,7 @@ async def test_complete_rejects_bad_tiebreak_value(
 async def test_complete_allows_uncapped_board(client: TestClient) -> None:
     sid = _sid()
     await _grant_all(sid)
-    assert leaderboard.enabled_board("cascade").max_value is None
+    assert partitions.enabled_board("cascade").max_value is None
     game_id = _create(client, sid, "cascade")
     assert _complete(client, sid, game_id, final_score=10**7).status_code == 200
 
@@ -795,13 +796,13 @@ async def test_complete_allows_uncapped_board(client: TestClient) -> None:
     ],
 )
 def test_merge_result_metadata(created, result, merged) -> None:
-    assert leaderboard.merge_result_metadata(created, result) == merged
+    assert limits.merge_result_metadata(created, result) == merged
 
 
 def test_merge_result_metadata_does_not_mutate_its_inputs() -> None:
     created = {"difficulty_tier": None}
     result = {"difficulty_tier": "Captain"}
-    leaderboard.merge_result_metadata(created, result)
+    limits.merge_result_metadata(created, result)
     assert created == {"difficulty_tier": None}
     assert result == {"difficulty_tier": "Captain"}
 
@@ -812,13 +813,8 @@ def test_completion_limits_see_the_tier_a_null_creation_value_would_hide() -> No
     mod = get_module("sudoku")
     board = mod.board
     # A "hard" result under a null creation difficulty is checked against hard's cap.
-    assert (
-        leaderboard.check_completion_limits("sudoku", mod, game, 300, {"difficulty": "hard"})
-        is None
-    )
-    violation = leaderboard.check_completion_limits(
-        "sudoku", mod, game, 150, {"difficulty": "easy"}
-    )
+    assert limits.check_completion_limits("sudoku", mod, game, 300, {"difficulty": "hard"}) is None
+    violation = limits.check_completion_limits("sudoku", mod, game, 150, {"difficulty": "easy"})
     assert violation is not None
     assert board.max_value_for({"difficulty": "easy"}) == 100
 
@@ -834,7 +830,7 @@ def test_every_enabled_game_is_covered() -> None:
 
 @pytest.mark.parametrize("game_type", ENABLED_BOARDS)
 async def test_named_session_row_appears_exactly_once(client: TestClient, game_type: str) -> None:
-    board = leaderboard.enabled_board(game_type)
+    board = partitions.enabled_board(game_type)
     sid = _sid()
     await _grant_all(sid)
     path = f"{game_type}{PARTITION_QUERY.get(game_type, '')}"
@@ -933,8 +929,8 @@ def test_board_sql_never_casts_json_to_float(monkeypatch: pytest.MonkeyPatch) ->
     from sqlalchemy.dialects import postgresql
 
     _sort_with_moves_tiebreak(monkeypatch)  # the tie-break is read from JSON too
-    board = leaderboard.enabled_board("sort")
-    stmt = leaderboard.top_statement(board, 1, {})
+    board = partitions.enabled_board("sort")
+    stmt = queries.top_statement(board, 1, {})
     sql = str(stmt.compile(dialect=postgresql.dialect())).upper()
     assert "FLOAT" not in sql
     assert "JSONB_TYPEOF" in sql
@@ -968,7 +964,7 @@ async def test_a_non_integer_or_negative_metric_never_ranks(client: TestClient, 
 
 
 async def test_stored_rows_above_the_cap_never_rank(client: TestClient) -> None:
-    cap = leaderboard.enabled_board("solitaire").max_value
+    cap = partitions.enabled_board("solitaire").max_value
     await _seed("solitaire", _sid(), score=cap + 1, name="Over")
     await _seed("solitaire", _sid(), score=cap, name="AtCap")
     assert _pairs(_board(client, "solitaire")) == [("AtCap", cap)]
@@ -1120,9 +1116,9 @@ async def test_top_entries_db_error_is_logged_and_chained(
 ) -> None:
     from sqlalchemy.exc import OperationalError
 
-    board = leaderboard.enabled_board("solitaire")
-    with caplog.at_level("ERROR"), pytest.raises(leaderboard.LeaderboardError) as info:
-        await leaderboard.top_entries(
+    board = partitions.enabled_board("solitaire")
+    with caplog.at_level("ERROR"), pytest.raises(board_types.LeaderboardError) as info:
+        await queries.top_entries(
             _FailingDB(fail_execute=True),  # type: ignore[arg-type]
             game_type="solitaire",
             board=board,
@@ -1139,9 +1135,9 @@ async def test_viewer_entry_db_error_is_logged_and_chained(
 ) -> None:
     from sqlalchemy.exc import OperationalError
 
-    board = leaderboard.enabled_board("solitaire")
-    with caplog.at_level("ERROR"), pytest.raises(leaderboard.LeaderboardError) as info:
-        await leaderboard.viewer_entry(
+    board = partitions.enabled_board("solitaire")
+    with caplog.at_level("ERROR"), pytest.raises(board_types.LeaderboardError) as info:
+        await queries.viewer_entry(
             _FailingDB(fail_execute=True),  # type: ignore[arg-type]
             game_type="solitaire",
             board=board,
@@ -1176,7 +1172,7 @@ async def test_complete_game_looks_up_the_game_type_once() -> None:
     from sqlalchemy import event
 
     from db.base import get_engine
-    from games import service
+    from games import sessions as service
 
     sid = _sid()
     factory = get_session_factory()

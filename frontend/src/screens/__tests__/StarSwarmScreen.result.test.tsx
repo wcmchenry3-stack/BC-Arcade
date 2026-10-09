@@ -48,7 +48,7 @@ jest.mock("../../hooks/useStarSwarmAudio", () =>
 
 jest.mock("../../game/starswarm/telemetry", () => ({ reportRunStats: jest.fn() }));
 
-// #2626: the card reads the run's rank from GET /games/{id}/rank (sessionBoardAdapter);
+// #2626: the card reads the run's rank from GET /games/{id}/rank (lookupGameRank);
 // nothing is posted to the legacy POST /starswarm/score any more.
 const mockGetRank = jest.fn();
 jest.mock("../../api/stats", () =>
@@ -112,11 +112,19 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     expect(card.getByRole("button", { name: "Home" })).toBeTruthy();
   });
 
-  it("saves a new best so it survives a restart", async () => {
+  it("flags a run that beats an earlier best as a new best (#2977)", async () => {
+    await AsyncStorage.setItem("starswarm.bestScore", "1000");
     await renderScreen();
     await startRun();
     await endRun(4200, 7);
     expect(within(screen.getByTestId("starswarm-result")).getByText("New best")).toBeTruthy();
+  });
+
+  it("saves the first run as the best, but it is not a new best (#2977)", async () => {
+    await renderScreen();
+    await startRun();
+    await endRun(4200, 7);
+    expect(within(screen.getByTestId("starswarm-result")).queryByText("New best")).toBeNull();
     await waitFor(async () =>
       expect(await AsyncStorage.getItem("starswarm.bestScore")).toBe("4200")
     );

@@ -36,14 +36,11 @@ import binascii
 import hashlib
 import json
 import logging
-import os
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import anyio
-import sentry_sdk
 from appstoreserverlibrary.api_client import APIException, AsyncAppStoreServerAPIClient
 from appstoreserverlibrary.models.Environment import Environment as AppleEnvironment
 from appstoreserverlibrary.models.JWSTransactionDecodedPayload import (
@@ -58,6 +55,7 @@ from appstoreserverlibrary.signed_data_verifier import (
     VerificationStatus,
 )
 
+from ._common import get_settings, misconfigured, ms_to_datetime
 from .verifiers import (
     AppleEvidence,
     Environment,
@@ -116,21 +114,6 @@ class AppleConfig:
     api: AppleApiCredentials | None
 
 
-def _env(name: str) -> str:
-    return (os.environ.get(name) or "").strip()
-
-
-def _misconfigured(reason: str) -> None:
-    """Report why Apple verification stays dormant: the reason code only.
-
-    Never an exception text or a variable's value (the private key). Goes to
-    the audit log and, as a message, to Sentry, so a set-but-broken
-    configuration is not silent.
-    """
-    _log.warning(json.dumps({"event": "apple_iap_misconfigured", "reason": reason}))
-    sentry_sdk.capture_message(f"apple_iap_misconfigured: {reason}", level="warning")
-
-
 def load_config() -> AppleConfig | None:
     """The Apple settings from the environment, or None when verification must stay dormant.
 
@@ -140,28 +123,29 @@ def load_config() -> AppleConfig | None:
     the App Store Server API; ``APPLE_IAP_ONLINE_CHECKS`` (default on).
     A half-set configuration is logged (names only) and treated as missing.
     """
-    bundle_id = _env("APPLE_BUNDLE_ID")
+    settings = get_settings()
+    bundle_id = settings.apple_bundle_id
     if not bundle_id:
         return None
     envs = frozenset(e for e in allowed_environments("apple") if e in _APPLE_ENV)
     if not envs:
-        _misconfigured("environments")
+        misconfigured("apple", "environments")
         return None
     app_apple_id: int | None = None
-    raw_app_id = _env("APPLE_APP_ID")
+    raw_app_id = settings.apple_app_id
     if raw_app_id:
         if not (raw_app_id.isascii() and raw_app_id.isdigit()):
-            _misconfigured("app_id")
+            misconfigured("apple", "app_id")
             return None
         app_apple_id = int(raw_app_id)
     elif "production" in envs:
-        _misconfigured("app_id")
+        misconfigured("apple", "app_id")
         return None
 
     api_parts = [
-        _env("APPLE_IAP_ISSUER_ID"),
-        _env("APPLE_IAP_KEY_ID"),
-        _env("APPLE_IAP_PRIVATE_KEY"),
+        settings.apple_iap_issuer_id,
+        settings.apple_iap_key_id,
+        settings.apple_iap_private_key.get_secret_value(),
     ]
     api: AppleApiCredentials | None = None
     if all(api_parts):
@@ -169,14 +153,14 @@ def load_config() -> AppleConfig | None:
         pem = api_parts[2].replace("\\n", "\n").encode("utf-8")
         api = AppleApiCredentials(issuer_id=api_parts[0], key_id=api_parts[1], private_key=pem)
     elif any(api_parts):
-        _misconfigured("api_key")
+        misconfigured("apple", "api_key")
         return None
 
-    online = _env("APPLE_IAP_ONLINE_CHECKS").lower() not in {"0", "false", "no", "off"}
-    if not online and _env("ENVIRONMENT") == "production":
+    online = settings.apple_iap_online_checks.lower() not in {"0", "false", "no", "off"}
+    if not online and (settings.environment or "").strip() == "production":
         # Offline checks trust the JWS's own signedDate for certificate
         # validity and skip OCSP; never acceptable on the production API.
-        _misconfigured("online_checks_off_in_production")
+        misconfigured("apple", "online_checks_off_in_production")
         return None
     return AppleConfig(
         bundle_id=bundle_id,
@@ -205,12 +189,6 @@ def _unverified_payload(jws: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise PurchaseError(400, "invalid_request")
     return payload
-
-
-def _ms(value: int | None) -> datetime | None:
-    if value is None:
-        return None
-    return datetime.fromtimestamp(value / 1000, tz=UTC)
 
 
 def _verification_error(exc: VerificationException) -> PurchaseError:
@@ -422,11 +400,11 @@ class AppStoreVerifier:
             # StoreKit 2 has no "pending" transaction: an Ask-to-Buy purchase
             # produces no JWS until it is approved (IAP.md §5).
             state="revoked" if revoked else "owned",
-            purchased_at=_ms(txn.purchaseDate),
+            purchased_at=ms_to_datetime(txn.purchaseDate),
             account_token=txn.appAccountToken,
-            revoked_at=_ms(txn.revocationDate),
+            revoked_at=ms_to_datetime(txn.revocationDate),
             revocation_reason=revocation_reason(txn) if revoked else None,
-            event_at=_ms(txn.signedDate),
+            event_at=ms_to_datetime(txn.signedDate),
         )
 
     async def verify(self, evidence: AppleEvidence) -> VerifiedPurchase:
@@ -452,10 +430,10 @@ def build_from_env(root_certificates: list[bytes] | None = None) -> AppStoreVeri
         try:
             root_certificates = load_apple_root_certificates()
         except Exception:  # noqa: BLE001 — missing or altered file: stay dormant, loudly
-            _misconfigured("root_certificate")
+            misconfigured("apple", "root_certificate")
             return None
     try:
         return AppStoreVerifier(config, root_certificates=root_certificates)
     except Exception:  # noqa: BLE001 — e.g. an unreadable private key: stay dormant, loudly
-        _misconfigured("init")
+        misconfigured("apple", "init")
         return None

@@ -1,7 +1,7 @@
 """Dialect-aware upsert helper shared by service modules (#2675).
 
 Postgres runs in production; SQLite runs the test suite. ``players.service``,
-``games.service`` and ``logs.service`` each need the dialect's own
+``games.sessions`` and ``logs.service`` each need the dialect's own
 ``insert()`` construct to build an ``ON CONFLICT`` upsert — the generic
 ``sqlalchemy.insert`` has no ``on_conflict_do_nothing``/``on_conflict_do_update``.
 Centralised here so a future change, such as the ``db.bind is None`` fallback,

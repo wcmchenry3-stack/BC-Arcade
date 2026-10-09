@@ -512,6 +512,20 @@ jobs:
         run: node scripts/check-i18n-strings.js
         working-directory: frontend
 
+  check-color-literals:
+    name: Colour literals (per-game palettes)
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-frontend
+      - name: No colour literals outside the theme and the game palettes (#2989)
+        run: node scripts/check-color-literals.mjs
+        working-directory: frontend
+      - name: Colour-literal checker tests
+        run: node --test scripts/check-color-literals.test.mjs
+        working-directory: frontend
+
   # --- Refactor quality gates (#2951, epic #2950) ---------------------------
   # Ratchets set at today's numbers so the epic's gains cannot silently regress.
   # Thresholds and the quarterly lowering schedule: docs/TESTING.md.

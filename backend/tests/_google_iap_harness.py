@@ -25,7 +25,7 @@ from sqlalchemy import select
 from db.base import get_session_factory
 from db.models import Purchase
 from purchases import google
-from purchases.google_notifications import GoogleRuntime, build_runtime
+from purchases.google_push_auth import GoogleRuntime, build_runtime
 from tests._helpers import session_headers
 from tests.google_play_fakes import (
     HEARTS,

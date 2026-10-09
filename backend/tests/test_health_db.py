@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import main
+import routes.health as health_routes
 
 
 @pytest.fixture()
@@ -28,7 +29,7 @@ def test_health_db_503_when_query_fails(
     async def _boom() -> None:
         raise RuntimeError("connection to pooler.example:5432 refused — secret-detail")
 
-    monkeypatch.setattr(main, "_ping_db", _boom)
+    monkeypatch.setattr(health_routes, "_ping_db", _boom)
     r = client.get("/health/db")
     assert r.status_code == 503
     assert r.json() == {"status": "unavailable"}
@@ -51,8 +52,8 @@ def test_health_db_503_when_database_stalls(
         async def __aexit__(self, *exc: object) -> None:
             return None
 
-    monkeypatch.setattr(main, "get_engine", lambda: _StalledEngine())
-    monkeypatch.setattr(main, "DB_PING_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(health_routes, "get_engine", lambda: _StalledEngine())
+    monkeypatch.setattr(health_routes, "DB_PING_TIMEOUT_SECONDS", 0.05)
     r = client.get("/health/db")
     assert r.status_code == 503
     assert r.json() == {"status": "unavailable"}
@@ -61,7 +62,7 @@ def test_health_db_503_when_database_stalls(
 def test_health_db_503_when_database_unconfigured(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(main, "is_configured", lambda: False)
+    monkeypatch.setattr(health_routes, "is_configured", lambda: False)
     r = client.get("/health/db")
     assert r.status_code == 503
     assert r.json() == {"status": "unconfigured"}

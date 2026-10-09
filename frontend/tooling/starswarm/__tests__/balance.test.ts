@@ -3,10 +3,10 @@
  *
  * The harness drives the real engine, its attribution adds up to Buddy's real HP loss, a seeded
  * cell replays to the same metrics, a no-override engine variant is the shipped engine, and every
- * preset variant still applies to the current engine source. The full run is the CLI
+ * preset variant names only keys that exist in `DEFAULT_TUNING` (#2988; that the engine reads a
+ * knob is covered per knob in engine.tuning.test.ts). The full run is the CLI
  * (`npx tsx tools/sim/simulate-starswarm.ts`), see docs/games/starswarm.md → "Balance simulation".
  */
-import * as fs from "fs";
 import * as realEngine from "../../../src/game/starswarm/engine";
 import {
   PILOTS,
@@ -18,7 +18,7 @@ import {
   type CellSpec,
   type RunSpec,
 } from "../balance";
-import { loadEngineVariant, patchEngineSource } from "../engineVariant";
+import { loadEngineVariant, resolveTuning } from "../engineVariant";
 import { BASE, CANDIDATES, FAST, SWEEPS, VARIANTS, engineFor, isShipped } from "../presets";
 import { formatOffense, formatReport } from "../report";
 
@@ -84,13 +84,35 @@ describe("balance sim harness (fast)", () => {
     expect(runOne(loadEngineVariant({}), spec)).toEqual(runOne(realEngine, spec));
   });
 
-  it("every preset variant still applies to the current engine source", () => {
-    const src = fs.readFileSync(require.resolve("../../../src/game/starswarm/engine.ts"), "utf8");
+  it("every preset variant names only keys that exist in DEFAULT_TUNING", () => {
     for (const v of VARIANTS) {
-      expect(() => patchEngineSource(src, v.spec)).not.toThrow();
-      expect(typeof engineFor(v).tick).toBe("function");
+      expect(() => resolveTuning(v.spec)).not.toThrow();
+      const E = engineFor(v);
+      expect(typeof E.tick).toBe("function");
+      // the bound entry points carry the variant's tuning, and its constants read back overridden
+      for (const [key, value] of Object.entries(v.spec)) {
+        expect(E.DEFAULT_TUNING[key as keyof typeof E.DEFAULT_TUNING]).toEqual(value);
+        expect(E[key as keyof typeof E]).toEqual(value);
+      }
     }
-    expect(() => patchEngineSource(src, { consts: { NOT_A_CONSTANT: "1" } })).toThrow();
+    expect(() => resolveTuning({ NOT_A_CONSTANT: 1 } as never)).toThrow(/NOT_A_CONSTANT/);
+    // inherited Object.prototype members are not tunables
+    expect(() => resolveTuning({ constructor: 1 } as never)).toThrow(/constructor/);
+    expect(() => loadEngineVariant({ NOT_A_CONSTANT: 1 } as never)).toThrow();
+  });
+
+  it("a tuning override changes the run the variant plays (it is really injected)", () => {
+    const spec: RunSpec = {
+      scenario: "boss-exposed",
+      difficulty: "Commander",
+      seed: cellSeed(1),
+      pilot: PILOTS.duel,
+      variant: "x",
+    };
+    const shipped = runOne(realEngine, spec);
+    const tough = runOne(loadEngineVariant({ BUDDY_HP: 1000 }), spec);
+    expect(tough.hpEnd).toBeGreaterThan(shipped.hpEnd);
+    expect(tough.destroyed).toBe(false);
   });
 
   it("does not credit the player's Carrier damage to a Buddy shot spent on an escort that tick", () => {
@@ -174,10 +196,10 @@ describe("balance sim harness (fast)", () => {
     expect(isShipped(BASE)).toBe(true);
     for (const v of [...SWEEPS, ...CANDIDATES]) {
       expect(isShipped(v)).toBe(false);
-      expect(v.spec.consts).toHaveProperty("BUDDY_REPLAN_MS"); // legacy values are explicit
+      expect(v.spec).toHaveProperty("BUDDY_REPLAN_MS"); // legacy values are explicit
     }
     // a no-evade variant also stops noticing shots aimed at Buddy
     const noEvade = SWEEPS.find((v) => v.name === "noEvade")!;
-    expect(JSON.stringify(noEvade.spec.patches)).toContain("? 0 :");
+    expect(noEvade.spec.BUDDY_NOTICE_AIMED).toBe(0);
   });
 });

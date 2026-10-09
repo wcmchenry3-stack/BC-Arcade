@@ -79,10 +79,15 @@ function freeIdsOf(tiles: readonly SlotTile[]): number[] {
   return tiles.filter((t) => isFreeTile(t, tiles)).map((t) => t.id);
 }
 
-/** Everything the engine's queries say about `s`, alongside the state itself. */
+/**
+ * Everything the engine's queries say about `s`, alongside the state itself. The one-shot
+ * `events` (#3087) are left out: they are feedback for the screen, not game state, so the
+ * record (pinned before they existed) stays byte-identical.
+ */
 function observe(s: MahjongState) {
+  const { events: _events, ...game } = s;
   return {
-    state: canonical(s),
+    state: canonical(game),
     free: freeIdsOf(s.tiles),
     hint: getAnyFreePair(s.tiles),
     hasFreePairs: hasFreePairs(s.tiles),

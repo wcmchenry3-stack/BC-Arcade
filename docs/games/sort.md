@@ -39,7 +39,7 @@ Every level played is its own session row (#2625): progress is not carried in on
 - **Outcomes:** `has_winner = False`. Every solve, a replay included, records `completed` scored with the player's standing after it (`SortScreen.tsx`). The board keeps each player's best row: their first solve of their highest level. A replay never displaces it, even one that lowers a best move count. Leaving a level unsolved records `abandoned` with `{ won: false, level, moves }` and no score: going back to the level grid, resetting the level, or leaving the screen.
 - **Duration:** `useGameSync`'s active-play window; Sort sends no duration of its own. Entering or restarting a level restarts the window (`resetPlayWindow`), so time on the level grid is not counted.
 - **How it reaches the server:** the `useGameSync("sort")` session row, opened at the level's first pour. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best row once. The legacy `POST /sort/score` was removed in #2644, and the unattributable rows it wrote (`sort-anon`) were deleted (#2622). Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
-- **Where the player sees it:** the level's win card shows the rank through `sessionBoardAdapter` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu; "Best" there is the highest level reached.
+- **Where the player sees it:** the level's win card shows the rank through `lookupGameRank` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu; "Best" there is the highest level reached.
 
 ## Hint, Undo, Reset, and Level Navigation
 
@@ -53,6 +53,7 @@ Every level played is its own session row (#2625): progress is not carried in on
 
 - Location: `frontend/src/game/sort/engine.ts`
 - Key exports: `validatePour(state, from, to) → boolean`, `applyPour(state, from, to) → GameState`, win detection
+- Screen: [`frontend/src/screens/SortScreen.tsx`](../../frontend/src/screens/SortScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Level data: fetched from `GET /sort/levels` and cached on the device for offline play (`frontend/src/game/sort/storage.ts`)
 
 ## Backend
@@ -65,7 +66,7 @@ Every level played is its own session row (#2625): progress is not carried in on
   - In CI, `backend/tests/test_sort_levels_solvable.py` solves every level of 20 fixed-seed sets and replays each solution this way. It also checks the small levels with the reference BFS in the same module.
   - `test_sort_fast_solver.py` checks that the solver agrees with that BFS.
   - `python scripts/sort_solvability_survey.py` (from `backend/`) measures the unsolvable rate over many sets or raw shuffles.
-- Metadata model: `SortMetadata` — `player_name: str = ""` (max 32 chars). Current builds send no metadata.
+- Metadata model: `SortMetadata` — `player_name: str = ""` (max 64 chars, `LegacyPlayerName`; 32 before #2995). Current builds send no metadata.
 - Result model: `SortResult` — `level`, `moves`, `undos`, `level_reached`, `total_moves`, `won`, `outcome`, all optional
 - Scoring: see [Scoring](#scoring-persistence)
 

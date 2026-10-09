@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
+import { HEARTS_HAND_SHADOW } from "../../theme/theme.hearts";
 import type { Card } from "../../game/hearts/types";
 import { rankLabel, suitEmoji } from "../../game/_shared/decks/cardId";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
@@ -29,7 +30,7 @@ const V_H = 22;
 const V_OFFSET = 5;
 
 const cardShadow = {
-  shadowColor: "#000",
+  shadowColor: HEARTS_HAND_SHADOW,
   shadowOffset: { width: 0, height: 1 },
   shadowOpacity: 0.3,
   shadowRadius: 3,

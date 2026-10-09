@@ -34,7 +34,7 @@ import {
   isAutopilot,
   PLAYER_W,
 } from "../../game/starswarm/engine";
-import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
+import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/engine";
 import {
   isUpgradePickup,
   upgradePickupOps,
@@ -44,6 +44,37 @@ import type { UpgradePickupType } from "../../game/starswarm/render/pickups";
 import { buddyOps } from "../../game/starswarm/render/buddy";
 import { carrierOps } from "../../game/starswarm/render/carrier";
 import { flinchWobble } from "../../game/starswarm/render/flinch";
+import {
+  ACCENT_RGB,
+  ASTEROID_EDGE_RGB,
+  ASTEROID_FLASH_RGB,
+  ASTEROID_RGB,
+  BG_RGB,
+  BOMB_RGB,
+  BUDDY_POWERUP_RGB,
+  BUDDY_SHIP_RGB,
+  CHARGE_SHOT_RGB,
+  ENEMY_SHOT_RGB,
+  EXPLOSION_COOL_RGB,
+  EXPLOSION_HOT_RGB,
+  FLAK_SHOT_RGB,
+  HULL_BLUE_RGB,
+  LIGHTNING_RGB,
+  PLAYER_SHOT_RGB,
+  TIER_RGB,
+  WHITE_RGB,
+} from "../../game/starswarm/render/palette";
+import { cssHex, cssRgba } from "../../game/starswarm/render/color";
+import {
+  STARSWARM_ACCENT,
+  STARSWARM_BOSS_WAVE,
+  STARSWARM_HUD_DIFFICULTY,
+  STARSWARM_HUD_TEXT,
+  STARSWARM_HULL_BLUE,
+  STARSWARM_LIGHTNING,
+  STARSWARM_POWERUP_TRACK,
+  STARSWARM_TEXT_OUTLINE,
+} from "../../theme/theme.starswarm";
 import {
   pickupCues,
   pickupCueFrame,
@@ -123,42 +154,43 @@ const DT_CAP_MS = 33;
 const INVINCIBLE_BLINK_INTERVAL = 120; // ms
 
 const C = {
-  bg: "#000010",
-  star: "#ffffff",
-  bulletEnemy: "#ff4422",
-  bulletFlak: "#ffd27a", // #2487
-  bulletPlayer: "#00ffcc",
-  enemyGrunt: "#8888ff",
-  enemyElite: "#ff88ff",
-  enemyGuardian: "#ffff44",
-  enemyCarrier: "#b06cff",
-  asteroid: "#8b6a47",
-  asteroidFlash: "#e8d3b8",
-  asteroidEdge: "#c9a27a",
-  hitFlash: "#ff2200",
-  pipFilled: "#ffffff",
-  pipEmpty: "rgba(255,255,255,0.2)",
-  player: "#00ffcc",
-  superTint: "#ffee00",
-  shieldAura: "rgba(0,170,255,0.25)",
-  shieldRing: "rgba(0,170,255,0.8)",
-  buddyShip: "rgba(0,120,255,0.8)",
-  powerUpLightning: "#ffee00",
-  powerUpShield: "rgba(0,170,255,0.9)",
-  powerUpBomb: "rgba(255,80,0,0.9)",
-  powerUpBuddy: "rgba(0,255,200,0.9)",
-  powerBarFillShield: "#00aaff",
-  buddyTint: "rgba(255,238,0,0.5)",
-  explosionHot: "#ffcc00",
-  explosionCool: "#ff4400",
-  hudText: "#ffffff",
-  hudDiff: "#aaffee",
-  lives: "#00ffcc",
-  powerBarBg: "rgba(255,255,255,0.18)",
-  powerBarFill: "#ffee00",
-  waveClear: "#00ffcc",
-  bossWave: "#ffdd00",
-} as const;
+  bg: cssHex(BG_RGB),
+  star: cssHex(WHITE_RGB),
+  bulletEnemy: cssHex(ENEMY_SHOT_RGB),
+  bulletFlak: cssHex(FLAK_SHOT_RGB), // #2487
+  bulletPlayer: cssHex(PLAYER_SHOT_RGB),
+  bulletCharge: cssHex(CHARGE_SHOT_RGB),
+  enemyGrunt: cssHex(TIER_RGB.Grunt),
+  enemyElite: cssHex(TIER_RGB.Elite),
+  enemyGuardian: cssHex(TIER_RGB.Guardian),
+  enemyCarrier: cssHex(TIER_RGB.Carrier),
+  asteroid: cssHex(ASTEROID_RGB),
+  asteroidFlash: cssHex(ASTEROID_FLASH_RGB),
+  asteroidEdge: cssHex(ASTEROID_EDGE_RGB),
+  pipFilled: cssHex(WHITE_RGB),
+  pipEmpty: cssRgba(WHITE_RGB, 0.2),
+  player: cssHex(ACCENT_RGB),
+  superTint: cssHex(LIGHTNING_RGB),
+  shieldAura: cssRgba(HULL_BLUE_RGB, 0.25),
+  shieldRing: cssRgba(HULL_BLUE_RGB, 0.8),
+  armorRing: cssRgba(HULL_BLUE_RGB, 0.45),
+  buddyShip: cssRgba(BUDDY_SHIP_RGB, 0.8),
+  powerUpLightning: cssHex(LIGHTNING_RGB),
+  powerUpShield: cssRgba(HULL_BLUE_RGB, 0.9),
+  powerUpBomb: cssRgba(BOMB_RGB, 0.9),
+  powerUpBuddy: cssRgba(BUDDY_POWERUP_RGB, 0.9),
+  powerBarFillShield: STARSWARM_HULL_BLUE,
+  explosionHot: cssHex(EXPLOSION_HOT_RGB),
+  explosionCool: cssHex(EXPLOSION_COOL_RGB),
+  hudText: STARSWARM_HUD_TEXT,
+  hudDiff: STARSWARM_HUD_DIFFICULTY,
+  lives: STARSWARM_ACCENT,
+  powerBarBg: STARSWARM_POWERUP_TRACK,
+  powerBarFill: STARSWARM_LIGHTNING,
+  waveClear: STARSWARM_ACCENT,
+  bossWave: STARSWARM_BOSS_WAVE,
+  textOutline: STARSWARM_TEXT_OUTLINE,
+};
 
 /** The fading MISSION COMPLETE wave-clear banner. */
 function drawMissionCompleteBanner(
@@ -607,7 +639,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         if (img) {
           ctx.drawImage(img, b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
         } else {
-          ctx.fillStyle = isCharged ? "#00f0ff" : C.bulletPlayer;
+          ctx.fillStyle = isCharged ? C.bulletCharge : C.bulletPlayer;
           ctx.fillRect(b.x - b.width / 2, b.y - b.height / 2, b.width, b.height);
         }
       }
@@ -658,7 +690,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
         if (enemy.tier === "Carrier" && carrierArmored) {
           ctx.beginPath();
           ctx.arc(enemy.x, enemy.y, Math.max(enemy.width, enemy.height) * 0.62, 0, Math.PI * 2);
-          ctx.strokeStyle = "rgba(0,170,255,0.45)";
+          ctx.strokeStyle = C.armorRing;
           ctx.lineWidth = 2;
           ctx.stroke();
         }
@@ -669,11 +701,11 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           const a = enemy.hitFlashTimer / HIT_FLASH_DURATION;
           ctx.beginPath();
           ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(0,170,255,${(a * 0.25).toFixed(3)})`;
+          ctx.fillStyle = cssRgba(HULL_BLUE_RGB, Number((a * 0.25).toFixed(3)));
           ctx.fill();
           ctx.beginPath();
           ctx.arc(enemy.x, enemy.y, r, 0, Math.PI * 2);
-          ctx.strokeStyle = `rgba(0,170,255,${(a * 0.75).toFixed(3)})`;
+          ctx.strokeStyle = cssRgba(HULL_BLUE_RGB, Number((a * 0.75).toFixed(3)));
           ctx.lineWidth = 3;
           ctx.stroke();
         }
@@ -830,7 +862,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       // #1034 Bomb flash — full-screen white overlay fading out
       if (state.bombFlashTimer > 0) {
         ctx.globalAlpha = (state.bombFlashTimer / 300) * 0.75;
-        ctx.fillStyle = "#ffffff";
+        ctx.fillStyle = C.star;
         ctx.fillRect(0, 0, width, height);
         ctx.globalAlpha = 1;
       }
@@ -909,7 +941,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillStyle = pickupCueColor(pc.cue.kind);
-          ctx.shadowColor = "#000000";
+          ctx.shadowColor = C.textOutline;
           ctx.shadowBlur = 4;
           ctx.translate(width / 2, 66 + f.offsetY);
           ctx.scale(f.scale, f.scale);

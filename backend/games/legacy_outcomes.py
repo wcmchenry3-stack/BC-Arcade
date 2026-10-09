@@ -6,7 +6,7 @@ Mahjong (#2627), Blackjack (#2628) and Twenty48 (#2631) record ``win`` /
 keep doing so. Where the stored result proves that such a game was won, the row
 is stored as ``win``, so win counts and streaks in ``/stats/me`` include it.
 
-This is the live copy of the rules, as SQL: ``games.service.complete_game``
+This is the live copy of the rules, as SQL: ``games.sessions.complete_game``
 runs :func:`win_update` for the one row it just completed, in the same
 transaction, so rows from older builds that arrive later are stored as ``win``.
 Migration ``0028_backfill_win_outcomes`` applied the same rules once to every
@@ -55,7 +55,7 @@ import uuid
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
-_JSONB = sa.JSON().with_variant(JSONB(), "postgresql")
+from db.models import JSONB_VARIANT as _JSONB
 
 WIN = "win"
 # The first tile that is a Twenty48 win.

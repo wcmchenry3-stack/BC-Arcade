@@ -77,10 +77,6 @@ jest.mock("@react-navigation/native", () =>
     { useFocusEffect: () => undefined }
   )
 );
-jest.mock("expo-screen-orientation", () => ({
-  lockAsync: jest.fn().mockResolvedValue(undefined),
-  OrientationLock: { LANDSCAPE: "LANDSCAPE", PORTRAIT_UP: "PORTRAIT_UP" },
-}));
 jest.mock("../../game/_shared/gameEventClient", () => mockScreenDeps().mockGameEventClient());
 jest.mock("../../api/stats", () => mockScreenDeps().mockStatsApi({ getGameRank: jest.fn() }));
 jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());

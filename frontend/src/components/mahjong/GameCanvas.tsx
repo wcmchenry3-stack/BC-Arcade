@@ -23,12 +23,22 @@ import { freeTileIds, getMatchingFreeTileIds, hasFreePairs } from "../../game/ma
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { ART_INSET, useTileFaces } from "./tileFaces";
 import {
+  MAHJONG_BORDER_NORMAL,
+  MAHJONG_BORDER_SELECTED,
   MAHJONG_BOARD_BG,
+  MAHJONG_FACE_LOADING,
   MAHJONG_GLOW_BG,
   MAHJONG_HINT_COLOR,
   MAHJONG_HINT_GLOW_BG,
+  MAHJONG_SIDE_B,
+  MAHJONG_SIDE_R,
+  MAHJONG_SUIT_COLOR as SUIT_COLOR,
+  MAHJONG_SUIT_FALLBACK,
+  MAHJONG_TILE_FACE,
+  MAHJONG_TILE_FACE_LOCKED,
   MAHJONG_TILE_FACE_SELECTED,
-} from "../../theme/theme.constants";
+  MAHJONG_TILE_SHADOW,
+} from "../../theme/theme.mahjong";
 import type { BoardCamera } from "../../game/mahjong/layout";
 
 // ---------------------------------------------------------------------------
@@ -36,25 +46,15 @@ import type { BoardCamera } from "../../game/mahjong/layout";
 // ---------------------------------------------------------------------------
 
 const BG = MAHJONG_BOARD_BG;
-const TILE_FACE = "#f5f0e8";
+const TILE_FACE = MAHJONG_TILE_FACE;
 const TILE_FACE_SELECTED = MAHJONG_TILE_FACE_SELECTED;
-const TILE_FACE_LOCKED = "#d0c8b8";
-const BORDER_NORMAL = "#8b7355";
-const BORDER_SELECTED = "#ffd700";
+const TILE_FACE_LOCKED = MAHJONG_TILE_FACE_LOCKED;
+const BORDER_NORMAL = MAHJONG_BORDER_NORMAL;
+const BORDER_SELECTED = MAHJONG_BORDER_SELECTED;
 const BORDER_HINT = MAHJONG_HINT_COLOR;
-const SIDE_R = "#a89070";
-const SIDE_B = "#987860";
-const SHADOW = "rgba(0,0,0,0.35)";
-
-const SUIT_COLOR: Record<string, string> = {
-  characters: "#cc0000",
-  circles: "#006633",
-  bamboos: "#003322",
-  winds: "#334455",
-  dragons: "#880011",
-  flowers: "#aa2299",
-  seasons: "#0044aa",
-};
+const SIDE_R = MAHJONG_SIDE_R;
+const SIDE_B = MAHJONG_SIDE_B;
+const SHADOW = MAHJONG_TILE_SHADOW;
 
 // ---------------------------------------------------------------------------
 // Face art — the face's cached bitmap, or a suit-colour placeholder until it
@@ -79,7 +79,7 @@ function TileFaceLayer({
   opacity: number;
 }) {
   if (!face) {
-    const fallbackColor = SUIT_COLOR[suit] ?? "#888888";
+    const fallbackColor = SUIT_COLOR[suit] ?? MAHJONG_SUIT_FALLBACK;
     return (
       <Rect
         x={x + 6}
@@ -206,7 +206,7 @@ const TileNode = memo(function TileNode({
           y={y + ART_INSET + liftY}
           width={faceWidth - 2 * ART_INSET}
           height={faceHeight - 2 * ART_INSET}
-          color="#00cc44"
+          color={MAHJONG_FACE_LOADING}
           opacity={0.3}
         />
       )}

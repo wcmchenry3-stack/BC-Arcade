@@ -1,6 +1,6 @@
 """EXPLAIN gate: no enabled leaderboard plans a full scan of ``games`` (#2965).
 
-Every board reads through ``top_statement`` (``games/leaderboard.py``, "exposed
+Every board reads through ``top_statement`` (``games/boards/queries.py``, "exposed
 for EXPLAIN checks"); ``viewer_entry`` and the rank query apply the same
 ``board_filters``, so they ride the same index. A board whose filters no
 partial index's predicate covers scans every game row of every type on each
@@ -44,7 +44,8 @@ from sqlalchemy.ext.compiler import compiles
 from db.base import get_engine
 from db.models import Game
 from games.board import DURATION_METRIC, SCORE_METRIC, BoardDefinition
-from games.leaderboard import enabled_board, metric_cap, top_statement
+from games.boards.partitions import enabled_board, metric_cap
+from games.boards.queries import top_statement
 from tests._migration_helpers import run_alembic_url
 from tests._pg_scratch import (
     PG_URL_ENV,

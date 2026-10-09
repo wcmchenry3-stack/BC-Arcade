@@ -9,6 +9,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import type { SortState } from "./types";
 import type { LevelsResponse } from "./api";
+import { bestOf } from "../_shared/bestOf";
 import { createJsonSlot } from "../_shared/storageSlot";
 
 export interface SortProgress {
@@ -126,8 +127,10 @@ export function mergeBestMoves(a: BestMoves, b: BestMoves): BestMoves {
 export interface LevelSolve {
   /** The level's best (fewest) moves, including this solve. */
   readonly best: number;
-  /** This solve set the best. */
+  /** This solve beat an earlier best (never the first solve, see `bestOf`). */
   readonly isNewBest: boolean;
+  /** The stored best changes: the first solve, or a new best. */
+  readonly improved: boolean;
   /** No earlier solve of this level is on record. */
   readonly firstSolve: boolean;
 }
@@ -140,10 +143,10 @@ export function applyLevelSolve(
 ): { solve: LevelSolve; bests: BestMoves } {
   const previous = bests[String(levelId)];
   const firstSolve = typeof previous !== "number";
-  const isNewBest = firstSolve || moves < previous;
-  if (!isNewBest) return { solve: { best: previous, isNewBest, firstSolve }, bests };
+  const { best, improved, isNewBest } = bestOf(firstSolve ? 0 : previous, moves, true);
+  if (!improved) return { solve: { best, isNewBest, improved, firstSolve }, bests };
   return {
-    solve: { best: moves, isNewBest, firstSolve },
+    solve: { best, isNewBest, improved, firstSolve },
     bests: { ...bests, [String(levelId)]: moves },
   };
 }

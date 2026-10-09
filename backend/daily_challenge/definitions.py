@@ -63,13 +63,14 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 import random
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from functools import cache
 from typing import Any, Literal
+
+from settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,7 @@ def parse_salt(raw: str | None) -> int:
 
 
 # Must be set in production; the default 0 makes the schedule trivially derivable.
-SALT = parse_salt(os.environ.get("DAILY_CHALLENGE_SALT"))
+SALT = parse_salt(Settings().daily_challenge_salt)
 
 Tier = Literal["easy", "medium", "hard"]
 Slate = Literal["free", "premium"]

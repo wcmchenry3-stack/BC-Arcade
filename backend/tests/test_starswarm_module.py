@@ -26,9 +26,9 @@ from db.models import GameType as GameTypeRow
 from games.board import SCORE_METRIC
 from games.protocol import GameModule
 from games.registry import get_module
-from games.service import _MAX_RESULT_BYTES
+from games.sessions import _MAX_RESULT_BYTES
 from main import app
-from starswarm import models as starswarm_models
+from observability import report
 from starswarm.models import (
     DEFAULT_DIFFICULTY_TIER,
     DIFFICULTY_TIERS,
@@ -45,10 +45,10 @@ _CLIENT_DIR = Path(__file__).parents[2] / "frontend" / "src" / "game" / "starswa
 
 
 def _engine_tiers() -> list[str]:
-    """``DIFFICULTY_TIERS`` in ``engine.ts``: the tiers the picker offers, in order."""
-    source = (_CLIENT_DIR / "engine.ts").read_text(encoding="utf-8")
+    """``DIFFICULTY_TIERS`` in ``engine/tuning.ts``: the tiers the picker offers, in order."""
+    source = (_CLIENT_DIR / "engine" / "tuning.ts").read_text(encoding="utf-8")
     match = re.search(r"export const DIFFICULTY_TIERS\b[^=]*=\s*\[(.*?)\];", source, re.DOTALL)
-    assert match, "DIFFICULTY_TIERS not found in frontend/src/game/starswarm/engine.ts"
+    assert match, "DIFFICULTY_TIERS not found in frontend/src/game/starswarm/engine/tuning.ts"
     return re.findall(r'"([^"]+)"', match.group(1))
 
 
@@ -111,7 +111,7 @@ def test_board_is_partitioned_by_difficulty_tier() -> None:
 
 
 def test_the_allow_list_is_exactly_the_clients_tiers() -> None:
-    # engine.ts DIFFICULTY_TIERS is what the picker, the dev panel and the
+    # engine/tuning.ts DIFFICULTY_TIERS is what the picker, the dev panel and the
     # saved-difficulty restore all check against, so it is every value sent.
     assert list(DIFFICULTY_TIERS) == _engine_tiers()
     assert sorted(DIFFICULTY_TIERS) == sorted(_type_tiers())
@@ -702,7 +702,7 @@ def test_only_the_owner_can_read_a_runs_breakdown() -> None:
 def sentry_messages(monkeypatch) -> list[tuple[str, dict]]:
     calls: list[tuple[str, dict]] = []
     monkeypatch.setattr(
-        starswarm_models.sentry_sdk,
+        report.sentry_sdk,
         "capture_message",
         lambda message, **kw: calls.append((message, kw)),
     )

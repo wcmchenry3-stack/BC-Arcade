@@ -1,9 +1,23 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+/**
+ * StarSwarmScreen — the Star Swarm arcade shooter's run lifecycle (#2516).
+ *
+ * Concerns:
+ *   1. Run lifecycle (#2981) — one reducer (`game/starswarm/runPhase`): picker | running |
+ *      paused | over; every new run goes through `startRun`. The engine ticks in the canvas
+ *      (components/starswarm/GameCanvas), never through React state (#2562).
+ *   2. Pause and resume (#2645) — leaving the app or the screen pauses and saves the run with
+ *      its engine counters (`pauseStore`); a saved run restores before the game mounts.
+ *   3. Instrumentation — `useGameSync("starswarm")`, one session per run; a restored run
+ *      resumes the killed process's session (#2654); the run is the leaderboard entry (#2626).
+ *   4. Result + leaderboard (#2516, #2633) — the shared GameResultModal, ranked on the tier
+ *      board via `useGameLeaderboard`.
+ *   5. Audio and screen-reader cues (#2484–#2490) — `useStarSwarmAudio` and spoken events.
+ *   6. Dev panel (#2567) — StarSwarmDevPanel, dev and internal pre-launch builds only.
+ */
+import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
-  AppState,
-  AppStateStatus,
   LayoutChangeEvent,
   Pressable,
   ScrollView,
@@ -15,10 +29,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { useTheme } from "../theme/ThemeContext";
+import { STARSWARM_HULL_BLUE } from "../theme/theme.starswarm";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { bestOf } from "../game/_shared/bestOf";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import GameCanvas from "../components/starswarm/GameCanvas";
 import type { GameCanvasHandle, DevOptions } from "../components/starswarm/GameCanvas";
 import Controls, { hapticPlayerHit, hapticWaveClear } from "../components/starswarm/Controls";
@@ -49,8 +65,7 @@ import StarSwarmDevPanel, {
 import { DevButton } from "../components/dev/DevPanelShell";
 import { loadBestScore, saveBestScore } from "../game/starswarm/bestScore";
 import GameResultModal from "../components/shared/GameResultModal";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
+import { toSubmission } from "../components/shared/toSubmission";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import { DifficultyPicker, type DifficultyOption } from "../components/shared/DifficultyPicker";
@@ -64,6 +79,14 @@ import {
   isPausedStateHydrated,
 } from "../game/starswarm/pauseStore";
 import { useStarSwarmAudio } from "../hooks/useStarSwarmAudio";
+import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
+import {
+  initialRunState,
+  isLiveRun as isLiveRunOf,
+  isRunOver,
+  isRunPaused,
+  runReducer,
+} from "../game/starswarm/runPhase";
 
 /**
  * #2567: the dev panel exists in dev builds and in internal pre-launch builds (TestFlight / Play
@@ -72,8 +95,8 @@ import { useStarSwarmAudio } from "../hooks/useStarSwarmAudio";
  */
 const DEV_TOOLS = __DEV__ || isPreLaunchApiBuild();
 
-// #2626: the result card reads the run's rank on its tier's board (`GET /games/{id}/rank`).
-const STARSWARM_BOARD = sessionBoardAdapter("starswarm");
+/** The run stays paused on return until the player resumes it: nothing to do then. */
+const noop = () => {};
 
 // Each tier on its own row, its score multiplier underneath (#2982).
 const tierOptions: readonly DifficultyOption<DifficultyTier>[] = DIFFICULTY_TIERS.map((tier) => ({
@@ -85,6 +108,13 @@ const tierOptions: readonly DifficultyOption<DifficultyTier>[] = DIFFICULTY_TIER
 }));
 
 /**
+ * Star Swarm: the canvas, its touch controls, the difficulty picker, the result card and the
+ * dev panel. The game itself is the engine in game/starswarm; this screen owns the run's
+ * lifecycle, one reducer (game/starswarm/runPhase, #2981) with the phases
+ * picker | running | paused | over. Every new run goes through `startRun(tier, devOpts?)`:
+ * the picker's Start, the card's Play Again and the dev panel's New Game. Leaving the app or
+ * the screen mid-run pauses and saves the run; a game over records it through useGameSync.
+ *
  * A run paused by a previous process is on disk (#2645); the game reads the saved pause
  * synchronously at mount, so it mounts once that's loaded — a few ms, once per process, and
  * never more than HYDRATE_TIMEOUT_MS. Until then the header, its back button and a spinner are up.
@@ -92,7 +122,6 @@ const tierOptions: readonly DifficultyOption<DifficultyTier>[] = DIFFICULTY_TIER
 export default function StarSwarmScreen() {
   const { t } = useTranslation("starswarm");
   const { colors } = useTheme();
-  const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "StarSwarm">>();
   const [hydrated, setHydrated] = useState(isPausedStateHydrated);
   useEffect(() => {
     if (hydrated) return;
@@ -106,12 +135,7 @@ export default function StarSwarmScreen() {
   }, [hydrated]);
   if (hydrated) return <StarSwarmGame />;
   return (
-    <GameShell
-      gameType="starswarm"
-      title={t("game.title")}
-      requireBack
-      onBack={() => navigation.popToTop()}
-    >
+    <GameShell gameType="starswarm" title={t("game.title")} requireBack gutter={null}>
       <View style={styles.canvasOuter}>
         <ActivityIndicator color={colors.accent} size="large" />
       </View>
@@ -132,18 +156,17 @@ function StarSwarmGame() {
   const savedPauseRef = useRef(getSavedPausedState());
 
   const [highScore, setHighScore] = useState(0);
-  /** The finished run the result card shows (#2516); null while playing. */
-  const [result, setResult] = useState<{
-    score: number;
-    wave: number;
-    /** The tier the run was played at — its board, which can differ from the picker's (#2567). */
-    tier: DifficultyTier;
-    best: number;
-    isNewBest: boolean;
-  } | null>(null);
-  const leaderboard = useLeaderboardSubmit(STARSWARM_BOARD);
-  const { submit: submitRank, reset: resetSubmission } = leaderboard;
-
+  // The run lifecycle (#2981): picker | running | paused | over, the finished run's result card
+  // (#2516) and the canvas's reset tick. A restored pause opens paused, skipping the picker.
+  const [run, dispatchRun] = useReducer(
+    runReducer,
+    savedPauseRef.current !== null,
+    initialRunState
+  );
+  const { phase, result, resetTick } = run;
+  const isPaused = isRunPaused(run);
+  const isGameOver = isRunOver(run);
+  const showDifficultyPicker = phase === "picker";
   // Per-session `games` row (#2516), like every other game: XP, Profile history
   // and SyncWorker. Since #2626 the finished run carries its score and is the
   // leaderboard entry itself, on its difficulty tier's board.
@@ -156,8 +179,6 @@ function StarSwarmGame() {
     reportBug: syncReportBug,
     resetPlayWindow: syncResetPlayWindow,
   } = useGameSync("starswarm");
-  const [isGameOver, setIsGameOver] = useState(false);
-  const [isPaused, setIsPaused] = useState(savedPauseRef.current !== null);
   const [containerW, setContainerW] = useState(0);
   const [containerH, setContainerH] = useState(0);
 
@@ -166,7 +187,7 @@ function StarSwarmGame() {
   const [devOptions, setDevOptions] = useState<StarSwarmDevOptions>(DEFAULT_STARSWARM_DEV_OPTIONS);
 
   // Pre-game difficulty selector — shown before each new game (skipped when restoring a saved session).
-  // Defaults to Ensign for new users, then opens on the last tier played (#1129). A saved
+  // Its tier defaults to Ensign for new users, then opens on the last tier played (#1129). A saved
   // paused run supplies its own tier, which takes precedence.
   const { difficulty, setDifficulty, rememberDifficulty } = useLastDifficulty<DifficultyTier>(
     "starswarm",
@@ -174,12 +195,12 @@ function StarSwarmGame() {
     "Ensign",
     { initial: savedPauseRef.current?.difficulty }
   );
-  const [showDifficultyPicker, setShowDifficultyPicker] = useState(savedPauseRef.current === null);
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633) open the
-  // finished run's tier board, else the current tier's.
-  const openLeaderboard = useLeaderboardLink(navigation, "starswarm", {
+  // The card's rank line, and its "View leaderboard" link and the ⋯ menu item
+  // (#2633), which open the finished run's tier board, else the current tier's.
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("starswarm", navigation, {
     difficulty_tier: result?.tier ?? difficulty,
   });
+  const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
   const scoreRef = useRef(0);
   const highScoreRef = useRef(0);
@@ -196,8 +217,6 @@ function StarSwarmGame() {
       alive = false;
     };
   }, []);
-  // Increments on every new-game request; GameCanvas watches this via useEffect to reset.
-  const [resetTick, setResetTick] = useState(0);
 
   const {
     playLaser,
@@ -212,8 +231,8 @@ function StarSwarmGame() {
     playCarrierEvent,
     playUpgrade,
   } = useStarSwarmAudio(!isGameOver, devOptions.volumes, resetTick, isPaused);
-  // In dev builds, track the last opts from the panel so every subsequent "New Game"
-  // (header, game-over overlay) re-applies them without reopening the dev panel.
+  // In dev builds, the dev panel's opts for the current run (applied to the canvas). Any
+  // start other than the panel's own New Game clears them (#2567).
   const lastDevOptsRef = useRef<DevOptions | undefined>(undefined);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
@@ -228,7 +247,7 @@ function StarSwarmGame() {
 
   // #2491: the run's counters go to Sentry once per run; the canvas has already stored the
   // game-over state when it calls back, so getState() sees the final tick's counts too.
-  // Re-armed on every new game: both paths (difficulty picker, dev panel) bump resetTick.
+  // Re-armed on every new game: startRun (difficulty picker, dev panel) bumps resetTick.
   const runStatsReportedRef = useRef(false);
   useEffect(() => {
     runStatsReportedRef.current = false;
@@ -236,25 +255,22 @@ function StarSwarmGame() {
 
   const handleGameOver = useCallback(
     (finalScore: number, wave: number) => {
-      setIsGameOver(true);
       clearSavedPausedState();
       playGameOver();
       // The result card's haptic marks the end of the run (#2516).
       const priorBest = highScoreRef.current;
-      const isNewBest = finalScore > priorBest;
-      if (isNewBest) {
+      const { improved, isNewBest } = bestOf(priorBest, finalScore, false);
+      // bestOf counts any result as improving on no best; a 0 score never set one.
+      if (improved && finalScore > 0) {
         highScoreRef.current = finalScore;
         setHighScore(finalScore);
         void saveBestScore(finalScore);
       }
       // #2567: the tier the run was actually played at — a dev-panel New Game sets its own
       const tier = canvasRef.current?.getState()?.difficulty ?? difficulty;
-      setResult({
-        score: finalScore,
-        wave,
-        tier,
-        best: Math.max(finalScore, priorBest),
-        isNewBest,
+      dispatchRun({
+        type: "GAME_OVER",
+        result: { score: finalScore, wave, tier, best: Math.max(finalScore, priorBest), isNewBest },
       });
       // #2626: the run is the leaderboard entry. `difficulty_tier` lands in
       // games.metadata (StarSwarmResult), where the board partitions on it.
@@ -270,7 +286,7 @@ function StarSwarmGame() {
       const gameId = syncComplete({ outcome, finalScore, result }, payload);
       // The card reads the run's rank on its tier's board (shown when it is the player's best).
       if (gameId) {
-        void submitRank({ gameId });
+        void lookupRank(gameId);
       } else {
         // No open session: the run gets no row and no rank. Say so.
         syncReportBug("warn", "starswarm", "game over with no open session: run not recorded", {
@@ -287,7 +303,7 @@ function StarSwarmGame() {
         }
       }
     },
-    [playGameOver, difficulty, syncComplete, syncReportBug, submitRank]
+    [playGameOver, difficulty, syncComplete, syncReportBug, lookupRank]
   );
 
   // #2490: a boss wave has no on-screen text beyond the banner — play the sting and speak it.
@@ -378,14 +394,14 @@ function StarSwarmGame() {
     () =>
       registerStarSwarmTestHooks({
         getCanvas: () => canvasRef.current,
-        pause: () => setIsPaused(true),
+        pause: () => dispatchRun({ type: "PAUSE" }),
         endRun: (score, wave) => handleGameOverRef.current(score, wave),
       }),
     []
   );
 
-  /** Opens the new run's sync session (abandoning any open one) and clears the last result. */
-  const beginRun = useCallback(
+  /** Opens the run's sync session, abandoning any open one, and clears the last rank lookup. */
+  const openRunSession = useCallback(
     (tier: DifficultyTier) => {
       // The run's play time starts now: time on the difficulty picker is not
       // play (#2710). With a session open, syncRestart() closes it and starts
@@ -393,7 +409,6 @@ function StarSwarmGame() {
       if (!syncGetGameId()) syncResetPlayWindow();
       syncRestart({ difficulty_tier: tier }, { difficulty_tier: tier });
       syncMarkStarted();
-      setResult(null);
       resetSubmission();
     },
     [syncGetGameId, syncResetPlayWindow, syncRestart, syncMarkStarted, resetSubmission]
@@ -403,57 +418,55 @@ function StarSwarmGame() {
   // start that is the killed process's session for the run, if it is still open (#2654).
   useEffect(() => {
     if (savedPauseRef.current !== null && !syncResume()) {
-      beginRun(savedPauseRef.current.difficulty);
+      openRunSession(savedPauseRef.current.difficulty);
     }
     // Mount-only: the saved pause is read once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleNewGame = useCallback(
-    (opts?: DevOptions) => {
-      if (DEV_TOOLS && opts !== undefined) lastDevOptsRef.current = opts;
+  /**
+   * Starts a fresh run at `tier` (#2981): the picker's Start and the card's Play Again (no dev
+   * options), and the dev panel's New Game (with them). Any saved pause is dropped, a new sync
+   * session opens, and the canvas resets on the bumped tick.
+   */
+  const startRun = useCallback(
+    (tier: DifficultyTier, devOpts?: DevOptions) => {
+      // #2567: a picker New Game is a clean run — the dev panel's wave, lives and difficulty stay
+      // with the panel's own New Game, now that internal testers can reach it. A picker or Play
+      // Again start (no devOpts) clears the last panel opts.
+      lastDevOptsRef.current = DEV_TOOLS ? devOpts : undefined;
       clearSavedPausedState();
-      // A new run: a premium tier (e.g. a paused run's) starts at Ensign instead (#1129).
-      beginRun(opts?.difficulty ?? rememberDifficulty(difficulty));
+      savedPauseRef.current = null;
+      openRunSession(tier);
       scoreRef.current = 0;
-      setIsGameOver(false);
-      setIsPaused(false);
-      setResetTick((t) => t + 1);
+      dispatchRun({ type: "START" });
     },
-    [beginRun, difficulty, rememberDifficulty]
+    [openRunSession]
+  );
+
+  // The picker's Start and the card's Play Again: same tier, a clean run.
+  // A premium tier (e.g. a paused run's) starts at Ensign instead (#1129).
+  const handleStartFromPicker = useCallback(
+    () => startRun(rememberDifficulty(difficulty)),
+    [startRun, rememberDifficulty, difficulty]
+  );
+
+  // The dev panel's New Game: its own tier if it sets one.
+  const handleDevNewGame = useCallback(
+    (opts: DevOptions) => startRun(opts.difficulty ?? rememberDifficulty(difficulty), opts),
+    [startRun, rememberDifficulty, difficulty]
   );
 
   // Show difficulty picker — header "New Game", the pause overlay, and the
   // result card's Change Difficulty. The card steps aside for the picker.
-  const handleRequestNewGame = useCallback(() => {
-    setResult(null);
-    setShowDifficultyPicker(true);
-  }, []);
+  const handleRequestNewGame = useCallback(() => dispatchRun({ type: "OPEN_PICKER" }), []);
 
-  // Confirm difficulty selection and start the game
-  const handleConfirmDifficulty = useCallback(() => {
-    // #2567: a picker New Game is a clean run — the dev panel's wave, lives and difficulty stay
-    // with the panel's own New Game, now that internal testers can reach it
-    lastDevOptsRef.current = undefined;
-    const tier = rememberDifficulty(difficulty);
-    clearSavedPausedState();
-    savedPauseRef.current = null;
-    setShowDifficultyPicker(false);
-    beginRun(tier);
-    scoreRef.current = 0;
-    setIsGameOver(false);
-    setIsPaused(false);
-    setResetTick((t) => t + 1);
-  }, [difficulty, beginRun, rememberDifficulty]);
-
-  const handlePause = useCallback(() => {
-    setIsPaused(true);
-  }, []);
+  const handlePause = useCallback(() => dispatchRun({ type: "PAUSE" }), []);
 
   // The run is live again: a save of it is stale from here on.
   const handleResume = useCallback(() => {
     clearSavedPausedState();
-    setIsPaused(false);
+    dispatchRun({ type: "RESUME" });
   }, []);
 
   /** Saves the paused run, to survive navigation and, since #2645, the process. */
@@ -471,7 +484,7 @@ function StarSwarmGame() {
   }, []);
 
   /** A run is on screen and not over — the only time pausing means anything. */
-  const isLiveRun = !showDifficultyPicker && !isGameOver;
+  const isLiveRun = isLiveRunOf(run);
   const isLiveRunRef = useRef(isLiveRun);
   isLiveRunRef.current = isLiveRun;
 
@@ -489,17 +502,11 @@ function StarSwarmGame() {
     savePausedRun(state);
   }, [handlePause, savePausedRun]);
 
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
-      if (next !== "background" && next !== "inactive") return;
-      pauseLiveRun();
-    });
-    return () => sub.remove();
-  }, [pauseLiveRun]);
-
   // Leaving the screen mid-run (the ⋯ menu's Leaderboard, #2633) pauses it the same way:
   // the screen stays mounted under the pushed one, so the run would go on unseen.
-  useEffect(() => navigation.addListener("blur", pauseLiveRun), [navigation, pauseLiveRun]);
+  // Both act on every leave event (`onLeave`), not once per absence (`onPause`): a run resumed
+  // while the player still counts as away (the app inactive, say) is paused by the next one.
+  usePauseWhileAway(navigation, noop, noop, { onLeave: pauseLiveRun });
 
   // The canvas reads its dev options through a ref, so a fresh object per render costs nothing.
   const canvasDev = DEV_TOOLS ? canvasDevOptions(lastDevOptsRef.current, devOptions) : undefined;
@@ -546,10 +553,9 @@ function StarSwarmGame() {
           </Pressable>
         ) : undefined
       }
+      gutter={0}
       style={{
         paddingBottom: Math.max(insets.bottom, 8),
-        paddingLeft: Math.max(insets.left, 0),
-        paddingRight: Math.max(insets.right, 0),
       }}
     >
       <View testID="starswarm-canvas-outer" style={styles.canvasOuter} onLayout={onLayout}>
@@ -598,7 +604,7 @@ function StarSwarmGame() {
         {showDifficultyPicker && scale > 0 && (
           <ModalCard
             visible
-            onRequestClose={handleConfirmDifficulty}
+            onRequestClose={handleStartFromPicker}
             title={t("difficulty.selectTitle")}
             size="md"
           >
@@ -616,7 +622,7 @@ function StarSwarmGame() {
             <ModalActions style={styles.pickerActions}>
               <ModalPrimaryButton
                 label={t("difficulty.start")}
-                onPress={handleConfirmDifficulty}
+                onPress={handleStartFromPicker}
                 testID="starswarm-start-game"
               />
             </ModalActions>
@@ -638,17 +644,10 @@ function StarSwarmGame() {
                 ]
               : []
           }
-          submission={{
-            status: leaderboard.status,
-            rank: leaderboard.rank,
-            isBest: leaderboard.isBest,
-            playerName: leaderboard.playerName,
-            onJoinLeaderboards: leaderboard.joinLeaderboards,
-            onRetry: leaderboard.retry,
-          }}
+          submission={toSubmission(leaderboard)}
           onViewLeaderboard={openLeaderboard}
           // Same difficulty, straight into a new run.
-          onPlayAgain={handleConfirmDifficulty}
+          onPlayAgain={handleStartFromPicker}
           secondaryAction={{
             label: tResult("action.changeDifficulty"),
             onPress: handleRequestNewGame,
@@ -664,7 +663,7 @@ function StarSwarmGame() {
           canvasRef={canvasRef}
           options={devOptions}
           onOptionsChange={setDevOptions}
-          onNewGame={handleNewGame}
+          onNewGame={handleDevNewGame}
         />
       </View>
     </GameShell>
@@ -683,7 +682,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#00aaff",
+    backgroundColor: STARSWARM_HULL_BLUE,
   },
   pauseHeaderBtnPressed: {
     opacity: 0.7,

@@ -45,7 +45,7 @@ jest.mock("../../game/freecell/storage", () => ({
 }));
 import { loadGame as loadFreeCell } from "../../game/freecell/storage";
 
-// The result card's rank lookup (sessionBoardAdapter, #2677).
+// The result card's rank lookup (lookupGameRank, #2677).
 const mockGetGameRank = jest.fn();
 jest.mock("../../api/stats", () => ({
   statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },

@@ -42,7 +42,7 @@ import {
   isAutopilot,
   PLAYER_W,
 } from "../../game/starswarm/engine";
-import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
+import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/engine";
 import { areTestHooksEnabled, isPreLaunchApiBuild } from "../../game/_shared/envFlags";
 import {
   createFrameStats,
@@ -72,6 +72,18 @@ import {
   PICKUP_CUE_MS,
 } from "../../game/starswarm/render/pickupCue";
 import type { PickupCue } from "../../game/starswarm/render/pickupCue";
+import {
+  STARSWARM_ACCENT,
+  STARSWARM_BONUS_LIFE,
+  STARSWARM_BONUS_LIFE_GLOW,
+  STARSWARM_BOSS_WAVE,
+  STARSWARM_HUD_DIFFICULTY,
+  STARSWARM_HUD_TEXT,
+  STARSWARM_HULL_BLUE,
+  STARSWARM_LIGHTNING,
+  STARSWARM_POWERUP_TRACK,
+  STARSWARM_TEXT_OUTLINE,
+} from "../../theme/theme.starswarm";
 import { drawFrame } from "../../game/starswarm/render/drawFrame";
 import type { DrawImages } from "../../game/starswarm/render/drawFrame";
 import { buildFrame } from "../../game/starswarm/render/frame";
@@ -832,7 +844,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
             <Text
               style={[
                 styles.powerUpLabel,
-                { color: hud.powerUp === "shield" ? "#00aaff" : "#ffee00" },
+                { color: hud.powerUp === "shield" ? STARSWARM_HULL_BLUE : STARSWARM_LIGHTNING },
               ]}
             >
               {hud.powerUp === "shield" ? "SHIELD" : "LIGHTNING"}
@@ -842,7 +854,10 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               <Animated.View
                 style={[
                   styles.powerUpBar,
-                  { backgroundColor: hud.powerUp === "shield" ? "#00aaff" : "#ffee00" },
+                  {
+                    backgroundColor:
+                      hud.powerUp === "shield" ? STARSWARM_HULL_BLUE : STARSWARM_LIGHTNING,
+                  },
                   powerUpBarStyle,
                 ]}
               />
@@ -874,7 +889,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   hudText: {
-    color: "#ffffff",
+    color: STARSWARM_HUD_TEXT,
     fontSize: 12,
     fontWeight: "bold",
     fontVariant: ["tabular-nums"],
@@ -889,7 +904,7 @@ const styles = StyleSheet.create({
   lifeIndicator: {
     width: 10,
     height: 14,
-    backgroundColor: "#00ffcc",
+    backgroundColor: STARSWARM_ACCENT,
   },
   powerUpIndicator: {
     position: "absolute",
@@ -905,7 +920,7 @@ const styles = StyleSheet.create({
   powerUpBarWrap: {
     width: POWERUP_BAR_WIDTH,
     height: 6,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: STARSWARM_POWERUP_TRACK,
     borderRadius: 3,
     overflow: "hidden",
   },
@@ -920,16 +935,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   overlayTitle: {
-    color: "#00ffcc",
+    color: STARSWARM_ACCENT,
     fontSize: 22,
     fontWeight: "bold",
     textAlign: "center",
   },
   bossWaveTitle: {
-    color: "#ffdd00",
+    color: STARSWARM_BOSS_WAVE,
   },
   waveIncomingText: {
-    color: "#00ffcc",
+    color: STARSWARM_ACCENT,
     fontSize: 16,
     fontWeight: "bold",
     textAlign: "center",
@@ -937,10 +952,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   countdownText: {
-    color: "#00ffcc",
+    color: STARSWARM_ACCENT,
     fontSize: 96,
     fontWeight: "bold",
-    textShadowColor: "#00ffcc",
+    textShadowColor: STARSWARM_ACCENT,
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 24,
   },
@@ -950,10 +965,10 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   bonusLifeText: {
-    color: "#ffff00",
+    color: STARSWARM_BONUS_LIFE,
     fontSize: 36,
     fontWeight: "bold",
-    textShadowColor: "#ff8800",
+    textShadowColor: STARSWARM_BONUS_LIFE_GLOW,
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 8,
   },
@@ -962,7 +977,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 18,
     fontWeight: "bold",
-    textShadowColor: "#000000",
+    textShadowColor: STARSWARM_TEXT_OUTLINE,
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 4,
   },
@@ -971,7 +986,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   hudDifficultyText: {
-    color: "#aaffee",
+    color: STARSWARM_HUD_DIFFICULTY,
     fontSize: 10,
     fontWeight: "bold",
     textAlign: "center",

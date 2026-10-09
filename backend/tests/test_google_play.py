@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from db.models import GameEntitlement, PurchaseEvent, PurchaseLink
-from purchases import google, google_play
+from purchases import _common, google, google_play
 from purchases.google_play import PENDING_EVENT_AT, load_config, to_verified
 from purchases.verifiers import GoogleEvidence, NotConfiguredGoogleVerifier, PurchaseError
 from tests._google_iap_harness import (
@@ -34,7 +34,7 @@ from tests._google_iap_harness import (
     tok,
     utc,
 )
-from tests._helpers import count, jwt_games
+from tests._helpers import StoreEnv, count, jwt_games
 from tests.google_play_fakes import (
     ACCESS_TOKEN,
     AUDIENCE,
@@ -65,19 +65,21 @@ _GOOGLE_VARS = (
 
 
 @pytest.fixture()
-def google_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[pytest.MonkeyPatch]:
+def google_env() -> Iterator[pytest.MonkeyPatch]:
+    env = StoreEnv()  # setenv / delenv also rebuild the lazy store Settings
     for var in _GOOGLE_VARS:
-        monkeypatch.delenv(var, raising=False)
+        env.delenv(var, raising=False)
     google.reset_google_runtime()
-    yield monkeypatch
+    yield env
     google.reset_google_runtime()
+    env.undo()
 
 
 @pytest.fixture()
 def sentry_messages(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     messages: list[str] = []
     monkeypatch.setattr(
-        google_play.sentry_sdk, "capture_message", lambda msg, level=None: messages.append(msg)
+        _common.sentry_sdk, "capture_message", lambda msg, level=None: messages.append(msg)
     )
     return messages
 
@@ -359,11 +361,11 @@ async def test_environment_allow_list(client: TestClient, google_install) -> Non
 
 
 async def test_service_rechecks_environment_allow_list(
-    client: TestClient, google_gp: Harness, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, google_gp: Harness, store_env: pytest.MonkeyPatch
 ) -> None:
     token = tok()
     google_gp.play.purchases[token] = play_purchase(test=True)
-    monkeypatch.setenv("GOOGLE_PLAY_ENVIRONMENTS", "production")
+    store_env.setenv("GOOGLE_PLAY_ENVIRONMENTS", "production")
     r = post_google(client, sid(), token)
     assert r.status_code == 422 and r.json()["detail"] == "environment_not_allowed"
 

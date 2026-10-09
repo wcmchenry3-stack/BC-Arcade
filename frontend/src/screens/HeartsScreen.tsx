@@ -1,13 +1,31 @@
+/**
+ * HeartsScreen — four-player Hearts against three computer players.
+ *
+ * Concerns:
+ *   1. Game logic — the pure engine plus the AI (`game/hearts/ai`); `runAiTurns` paces the
+ *      computer seats; the opponent style opens on the last one played (#1129).
+ *   2. Persistence — `saveGame` on trick and hand transitions, on blur and on background.
+ *   3. Play clock (#2629) — its own clock, sent as the game's durationMs: `usePauseWhileAway`
+ *      pauses it on blur and background and resumes it once both end; its `onLeave` saves the
+ *      game on the move to background (#3087).
+ *   4. Instrumentation — `useGameSync("hearts")`; the result records who won (#2517) and the
+ *      per-hand scores (#2838); a restored game resumes its session (#2654).
+ *   5. Result + leaderboard (#2506, #2633) — the shared GameResultModal with the final
+ *      standings, ranked via `useGameLeaderboard`.
+ *   6. Events and scorecard — `useGameEvents` drives the hearts-broken, moon-shot and queen
+ *      animations; the rounds context feeds the live ScorecardScreen.
+ *   7. Debug panel — HeartsDebugPanel, required lazily in dev and pre-launch builds (#2970).
+ */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import type { AppStateStatus } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { ModalCard } from "../components/shared/ModalCard";
 import { OpponentCapturedPile, SelfCapturedPile } from "../components/hearts/CapturedPile";
 import OpponentHand from "../components/hearts/OpponentHand";
@@ -52,8 +70,7 @@ import {
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import HeartsFinalStandings from "../components/hearts/HeartsFinalStandings";
 import GameResultModal from "../components/shared/GameResultModal";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
+import { toSubmission } from "../components/shared/toSubmission";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import { useHeartsRounds } from "../game/hearts/RoundsContext";
 import { createIntegrityReporter } from "../game/hearts/integrity";
@@ -81,9 +98,6 @@ function loadHeartsDebugPanel(): HeartsDebugPanelType {
     .default;
 }
 
-// The result card asks the session board where the finished game ranks (#2629).
-const HEARTS_BOARD = sessionBoardAdapter("hearts");
-
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -109,10 +123,9 @@ export default function HeartsScreen() {
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
-  const leaderboard = useLeaderboardSubmit(HEARTS_BOARD);
-  const { submit: submitRank, reset: resetSubmission } = leaderboard;
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openLeaderboard = useLeaderboardLink(navigation, "hearts");
+  // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("hearts", navigation);
+  const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
   const [gameState, setGameState] = useState<HeartsState | null>(null);
   // Opens on the opponent style of the last game started (#1129).
@@ -160,12 +173,6 @@ export default function HeartsScreen() {
   // The play clock (#2629): active play time, sent as the game's durationMs.
   // It runs while an unfinished game is on screen with the app in front.
   const clockRef = useRef<PlayClock>(pausedClock());
-  const focusedRef = useRef(true);
-  // A screen being opened is in front unless the app says otherwise (the
-  // initial state can be unknown); AppState changes keep it current.
-  const appActiveRef = useRef(
-    AppState.currentState !== "background" && AppState.currentState !== "inactive"
-  );
   const reportIntegrity = useMemo(() => createIntegrityReporter(), []);
 
   const {
@@ -178,15 +185,40 @@ export default function HeartsScreen() {
     setProgressSnapshot: syncSetProgressSnapshot,
   } = useGameSync("hearts");
 
-  /** Runs the clock while `s` is unfinished, focused and in front; else pauses it. */
-  const updateClock = useCallback((s: HeartsState | null) => {
-    const running =
-      !!s && !s.isComplete && s.phase !== "game_over" && focusedRef.current && appActiveRef.current;
+  /** Saves the game with its play time so far. */
+  const persist = useCallback((s: HeartsState) => saveGame(withPlayTime(s, clockRef.current)), []);
+
+  /** Runs the clock while `s` is unfinished and the player is here; else pauses it. */
+  const setClockFor = useCallback((s: HeartsState | null, away: boolean) => {
+    const running = !!s && !s.isComplete && s.phase !== "game_over" && !away;
     clockRef.current = running ? runClock(clockRef.current) : pauseClock(clockRef.current);
   }, []);
 
-  /** Saves the game with its play time so far. */
-  const persist = useCallback((s: HeartsState) => saveGame(withPlayTime(s, clockRef.current)), []);
+  // ─── Play clock: time away is not play time (#2629) ───────────────────────
+  // The player is away while another screen covers this one or the app is not
+  // in front (iOS passes through "inactive" on the way out, and for the
+  // control centre): the clock pauses, and runs again once both have ended.
+  // The game is saved with its play time once, on the move to "background",
+  // so a game killed there keeps it.
+  const awayRef = usePauseWhileAway(
+    navigation,
+    () => setClockFor(gameStateRef.current, true),
+    () => setClockFor(gameStateRef.current, false),
+    {
+      onLeave: (event) => {
+        if (event.reason !== "appState" || event.status !== "background") return;
+        if (event.previous === "background") return;
+        const gs = gameStateRef.current;
+        if (gs && !gs.isComplete) void persist(gs);
+      },
+    }
+  );
+
+  /** `setClockFor` with whether the player is away now. */
+  const updateClock = useCallback(
+    (s: HeartsState | null) => setClockFor(s, awayRef.current),
+    [setClockFor, awayRef]
+  );
 
   // The hook abandons a started session itself (unmount, and New Game /
   // Change Difficulty through close()); the abandon carries how many hands
@@ -230,7 +262,7 @@ export default function HeartsScreen() {
           loadFinishedGameId().then((gameId) => {
             // Not once the player has moved on to another game.
             if (unmountedRef.current || generation !== gameGenerationRef.current) return;
-            if (gameId) void submitRank({ gameId });
+            if (gameId) void lookupRank(gameId);
           });
         }
         // The play time lives in the clock, not in the state (#2629).
@@ -262,7 +294,7 @@ export default function HeartsScreen() {
         setDraftNames(names);
       }
     });
-  }, [syncResume, setSelectedDifficulty, submitRank, updateClock]);
+  }, [syncResume, setSelectedDifficulty, lookupRank, updateClock]);
 
   // ─── Sync snapshot to shared rounds context (read by ScorecardScreen) ────
   const { setSnapshot: setRoundsSnapshot } = useHeartsRounds();
@@ -309,39 +341,17 @@ export default function HeartsScreen() {
   // Tab switches unmount the Lobby HomeStack; without this, mid-trick or
   // pass-phase state is lost (saveGame elsewhere only fires on trick complete
   // and hand transitions). Persisting on blur keeps full game continuity.
-  // The play clock stops while the screen is out of focus.
+  // (The play clock's pause on blur is usePauseWhileAway's, above.)
   useFocusEffect(
-    useCallback(() => {
-      focusedRef.current = true;
-      updateClock(gameStateRef.current);
-      return () => {
-        focusedRef.current = false;
+    useCallback(
+      () => () => {
         const gs = gameStateRef.current;
-        updateClock(gs);
         if (!gs || gs.isComplete) return;
         void persist(gs);
-      };
-    }, [updateClock, persist])
+      },
+      [persist]
+    )
   );
-
-  // ─── Play clock: background time is not play time (#2629) ──────────────────
-  // Paused whenever the app is not active (iOS passes through "inactive" on
-  // the way out, and for the control centre). The game is saved with its play
-  // time once, on the move to "background", so a game killed there keeps it.
-  const appStateRef = useRef<AppStateStatus | null>(null);
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
-      const previous = appStateRef.current;
-      appStateRef.current = next;
-      appActiveRef.current = next === "active";
-      const gs = gameStateRef.current;
-      updateClock(gs);
-      if (next === "background" && previous !== "background" && gs && !gs.isComplete) {
-        void persist(gs);
-      }
-    });
-    return () => sub.remove();
-  }, [updateClock, persist]);
 
   const { play: playHeartsBroken } = useSound("hearts.heartsBroken", HEARTS_SOUNDS);
   const { play: playMoonShot } = useSound("hearts.moonShot", HEARTS_SOUNDS);
@@ -490,13 +500,13 @@ export default function HeartsScreen() {
     if (!gameId) return;
     // Kept beside the saved game-over state, so a reopened card asks again.
     void saveFinishedGameId(gameId);
-    void submitRank({ gameId });
+    void lookupRank(gameId);
   }, [
     gameState?.phase,
     gameState?.cumulativeScores,
     gameState?.scoreHistory,
     syncComplete,
-    submitRank,
+    lookupRank,
   ]);
 
   useEffect(() => {
@@ -614,44 +624,13 @@ export default function HeartsScreen() {
   }
 
   // ─── Game over / play again ───────────────────────────────────────────────
-  function handleStartGame(requested: AiPreset) {
-    // A premium style starts at the default instead (#1129).
-    const difficulty = rememberDifficulty(requested);
-    // The game in play is abandoned now (the hook's close(), with the progress
-    // snapshot), not when the next game's first card opens a session.
-    syncClose();
-    gameGenerationRef.current += 1;
-    setLastTrick(null);
-    setShowMoonShot(false);
-    setShowHeartsBroken(false);
-    setShowQueenOfSpades(false);
-    resetSubmission();
-    loopActiveRef.current = false;
-    gameOverFiredRef.current = false;
-    clearGame().catch(() => {});
-    const fresh = dealGame(difficulty);
-    if (__DEV__) {
-      setHandLogs([]);
-      trickLogBufferRef.current = [];
-      dealSnapshotRef.current = debugMode
-        ? {
-            initialHands: fresh.playerHands,
-            passSelections: [[], [], [], []],
-            finalHands: fresh.playerHands,
-          }
-        : null;
-      setHandNotes([]);
-    }
-    // A new game's clock starts at 0.
-    clockRef.current = pausedClock();
-    updateClock(fresh);
-    setGameState(fresh);
-  }
-
-  /** Back to the difficulty picker (the ⋯ New Game item, and Change Difficulty). */
-  function handleChangeDifficulty() {
-    // The game in play is abandoned now (the hook's close(), with the progress
-    // snapshot), not when the next game's first card opens a session.
+  /**
+   * Leaves the game in play: abandons it now (the hook's close(), with the
+   * progress snapshot), not when the next game's first card opens a session;
+   * stops its AI loop and overlays, clears its save, its result and (in dev)
+   * its logs, and stops its clock at 0.
+   */
+  function leaveCurrentGame() {
     syncClose();
     gameGenerationRef.current += 1;
     setLastTrick(null);
@@ -669,6 +648,28 @@ export default function HeartsScreen() {
       setHandNotes([]);
     }
     clockRef.current = pausedClock();
+  }
+
+  function handleStartGame(requested: AiPreset) {
+    // A premium style starts at the default instead (#1129).
+    const difficulty = rememberDifficulty(requested);
+    leaveCurrentGame();
+    const fresh = dealGame(difficulty);
+    if (__DEV__ && debugMode) {
+      dealSnapshotRef.current = {
+        initialHands: fresh.playerHands,
+        passSelections: [[], [], [], []],
+        finalHands: fresh.playerHands,
+      };
+    }
+    // A new game's clock starts at 0.
+    updateClock(fresh);
+    setGameState(fresh);
+  }
+
+  /** Back to the difficulty picker (the ⋯ New Game item, and Change Difficulty). */
+  function handleChangeDifficulty() {
+    leaveCurrentGame();
     setGameState(null);
   }
 
@@ -706,6 +707,7 @@ export default function HeartsScreen() {
         gameType="hearts"
         title={t("game.title")}
         onBack={() => navigation.goBack()}
+        gutter={null}
         onNewGame={() => handleStartGame(selectedDifficulty)}
         onOpenLeaderboard={openLeaderboard}
         onEditPlayerNames={handleOpenRename}
@@ -736,6 +738,7 @@ export default function HeartsScreen() {
       gameType="hearts"
       title={t("game.title")}
       onBack={() => navigation.goBack()}
+      gutter={null}
       onNewGame={handleChangeDifficulty}
       onOpenLeaderboard={openLeaderboard}
       onEditPlayerNames={handleOpenRename}
@@ -893,14 +896,7 @@ export default function HeartsScreen() {
             humanIndex={HUMAN}
           />
         }
-        submission={{
-          status: leaderboard.status,
-          rank: leaderboard.rank,
-          isBest: leaderboard.isBest,
-          playerName: leaderboard.playerName,
-          onJoinLeaderboards: leaderboard.joinLeaderboards,
-          onRetry: leaderboard.retry,
-        }}
+        submission={toSubmission(leaderboard)}
         onViewLeaderboard={openLeaderboard}
         onPlayAgain={() => handleStartGame(gameState.aiDifficulty)}
         secondaryAction={{

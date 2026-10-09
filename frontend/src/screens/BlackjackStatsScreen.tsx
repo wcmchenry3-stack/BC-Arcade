@@ -11,6 +11,7 @@ import { loadRuns, RunRecord } from "../game/blackjack/storage";
 import { comebackLow, isComebackRun } from "../game/blackjack/unlocks";
 import { TABLE_CONFIGS } from "../game/blackjack/tables";
 import { GameShell } from "../components/shared/GameShell";
+import { StatList, type StatListItem } from "../components/shared/StatRow";
 import { formatDate } from "../utils/formatTimestamp";
 
 type Props = {
@@ -68,6 +69,32 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
     null
   );
 
+  const allTimeBest: StatListItem[] = [];
+  if (bestRun) {
+    allTimeBest.push({
+      key: "bestRun",
+      label: t("stats.allTimeBestRun"),
+      value: t("stats.chips", { chips: bestRun.finalChips.toLocaleString() }),
+    });
+  }
+  if (mostHandsRun) {
+    allTimeBest.push({
+      key: "mostHands",
+      label: t("stats.allTimeMostHands"),
+      value: t("stats.hands", { hands: mostHandsRun.handsPlayed }),
+    });
+  }
+  if (biggestComebackRun) {
+    allTimeBest.push({
+      key: "biggestComeback",
+      label: t("stats.allTimeBiggestComeback"),
+      value: t("stats.comebackLow", {
+        chips: comebackLow(biggestComebackRun).toLocaleString(),
+      }),
+      valueColor: colors.accent,
+    });
+  }
+
   const sortedRuns = [...runs].sort((a, b) => b.startedAt - a.startedAt);
 
   function tableLabel(tableId: string): string {
@@ -88,6 +115,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
       title={t("stats.title")}
       requireBack
       onBack={() => navigation.goBack()}
+      gutter={null}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -101,56 +129,37 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
               {t("stats.currentRunEmpty")}
             </Text>
           ) : (
-            <>
-              <View style={styles.statRow}>
-                <Text style={[styles.statLabel, { color: colors.textMuted }]}>
-                  {t("stats.chipsLabel")}
-                </Text>
-                <Text style={[styles.statValue, { color: colors.text }]}>
-                  {t("stats.chips", {
-                    chips: sessionStats.chips.toLocaleString(),
-                  })}
-                </Text>
-              </View>
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <View style={styles.statRow}>
-                <Text style={[styles.statLabel, { color: colors.textMuted }]}>
-                  {t("stats.handsLabel")}
-                </Text>
-                <Text style={[styles.statValue, { color: colors.text }]}>
-                  {t("stats.hands", { hands: sessionStats.handsPlayed })}
-                  {"  ·  "}
-                  {t("stats.winRate", { winRate })}
-                </Text>
-              </View>
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <View style={styles.statRow}>
-                <Text style={[styles.statLabel, { color: colors.textMuted }]}>
-                  {t("stats.biggestWin")}
-                </Text>
-                <Text style={[styles.statValue, { color: colors.text }]}>
-                  {t("stats.biggestWinAmount", {
-                    amount: sessionStats.biggestWin,
-                  })}
-                </Text>
-              </View>
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <View style={styles.statRow}>
-                <Text style={[styles.statLabel, { color: colors.textMuted }]}>
-                  {t("stats.netPL")}
-                </Text>
-                <Text
-                  style={[
-                    styles.statValue,
-                    { color: sessionStats.plChips >= 0 ? colors.bonus : colors.error },
-                  ]}
-                >
-                  {sessionStats.plChips >= 0
-                    ? t("stats.netPLPositive", { amount: sessionStats.plChips })
-                    : t("stats.netPLNegative", { amount: sessionStats.plChips })}
-                </Text>
-              </View>
-            </>
+            <StatList
+              items={[
+                {
+                  key: "chips",
+                  label: t("stats.chipsLabel"),
+                  value: t("stats.chips", { chips: sessionStats.chips.toLocaleString() }),
+                },
+                {
+                  key: "hands",
+                  label: t("stats.handsLabel"),
+                  value: `${t("stats.hands", { hands: sessionStats.handsPlayed })}  ·  ${t(
+                    "stats.winRate",
+                    { winRate }
+                  )}`,
+                },
+                {
+                  key: "biggestWin",
+                  label: t("stats.biggestWin"),
+                  value: t("stats.biggestWinAmount", { amount: sessionStats.biggestWin }),
+                },
+                {
+                  key: "netPL",
+                  label: t("stats.netPL"),
+                  value:
+                    sessionStats.plChips >= 0
+                      ? t("stats.netPLPositive", { amount: sessionStats.plChips })
+                      : t("stats.netPLNegative", { amount: sessionStats.plChips }),
+                  valueColor: sessionStats.plChips >= 0 ? colors.bonus : colors.error,
+                },
+              ]}
+            />
           )}
         </View>
 
@@ -161,50 +170,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
               {t("stats.allTimeBest")}
             </Text>
             <View style={[styles.card, { backgroundColor: colors.surface }]}>
-              {bestRun && (
-                <>
-                  <View style={styles.statRow}>
-                    <Text style={[styles.statLabel, { color: colors.textMuted }]}>
-                      {t("stats.allTimeBestRun")}
-                    </Text>
-                    <Text style={[styles.statValue, { color: colors.text }]}>
-                      {t("stats.chips", {
-                        chips: bestRun.finalChips.toLocaleString(),
-                      })}
-                    </Text>
-                  </View>
-                  {(mostHandsRun || biggestComebackRun) && (
-                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
-                  )}
-                </>
-              )}
-              {mostHandsRun && (
-                <>
-                  <View style={styles.statRow}>
-                    <Text style={[styles.statLabel, { color: colors.textMuted }]}>
-                      {t("stats.allTimeMostHands")}
-                    </Text>
-                    <Text style={[styles.statValue, { color: colors.text }]}>
-                      {t("stats.hands", { hands: mostHandsRun.handsPlayed })}
-                    </Text>
-                  </View>
-                  {biggestComebackRun && (
-                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
-                  )}
-                </>
-              )}
-              {biggestComebackRun && (
-                <View style={styles.statRow}>
-                  <Text style={[styles.statLabel, { color: colors.textMuted }]}>
-                    {t("stats.allTimeBiggestComeback")}
-                  </Text>
-                  <Text style={[styles.statValue, { color: colors.accent }]}>
-                    {t("stats.comebackLow", {
-                      chips: comebackLow(biggestComebackRun).toLocaleString(),
-                    })}
-                  </Text>
-                </View>
-              )}
+              <StatList items={allTimeBest} />
             </View>
           </>
         )}
@@ -295,20 +261,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     paddingVertical: 14,
     textAlign: "center",
-  },
-  statRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-  statLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  statValue: {
-    fontSize: 14,
-    fontWeight: "700",
   },
   divider: {
     height: StyleSheet.hairlineWidth,

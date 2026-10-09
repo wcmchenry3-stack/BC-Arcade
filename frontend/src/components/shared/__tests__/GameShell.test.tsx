@@ -5,9 +5,11 @@ import { GameShell } from "../GameShell";
 
 // GameShell's Stats item (#2635) navigates through useNavigation.
 const mockShellNavigate = jest.fn();
+// The default back handler (#2976) returns to the lobby through it too.
+const mockShellPopToTop = jest.fn();
 jest.mock("@react-navigation/native", () => ({
   ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ navigate: mockShellNavigate }),
+  useNavigation: () => ({ navigate: mockShellNavigate, popToTop: mockShellPopToTop }),
 }));
 
 jest.mock("react-i18next", () => ({
@@ -21,8 +23,10 @@ jest.mock("react-i18next", () => ({
   }),
 }));
 
+// Mutable so the gutter cases (#2976) can give the device side insets.
+const mockInsets = { top: 44, bottom: 0, left: 0, right: 0 };
 jest.mock("react-native-safe-area-context", () => ({
-  useSafeAreaInsets: () => ({ top: 44, bottom: 0, left: 0, right: 0 }),
+  useSafeAreaInsets: () => mockInsets,
 }));
 
 jest.mock("../../../theme/ThemeContext", () => ({
@@ -184,4 +188,106 @@ describe("GameShell", () => {
       expect(screen.queryByTestId("nav-menu-scorecard")).toBeNull();
     }
   );
+
+  describe("default back handler (#2976)", () => {
+    beforeEach(() => mockShellPopToTop.mockClear());
+
+    it("returns to the lobby when no onBack is given", async () => {
+      await render(
+        <GameShell gameType="freecell" title="FreeCell">
+          <Text>game content</Text>
+        </GameShell>
+      );
+      await fireEvent.press(screen.getByTestId("nav-back"));
+      expect(mockShellPopToTop).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the default while loading", async () => {
+      await render(<GameShell gameType="freecell" title="FreeCell" loading />);
+      await fireEvent.press(screen.getByTestId("nav-back"));
+      expect(mockShellPopToTop).toHaveBeenCalledTimes(1);
+    });
+
+    it("uses the screen's own onBack instead", async () => {
+      const onBack = jest.fn();
+      await render(
+        <GameShell gameType="hearts" title="Hearts" onBack={onBack}>
+          <Text>game content</Text>
+        </GameShell>
+      );
+      await fireEvent.press(screen.getByTestId("nav-back"));
+      expect(onBack).toHaveBeenCalledTimes(1);
+      expect(mockShellPopToTop).not.toHaveBeenCalled();
+    });
+
+    it("shows no back button for onBack={null}", async () => {
+      await render(<GameShell gameType="sort" title="Sort" onBack={null} loading />);
+      expect(screen.queryByTestId("nav-back")).toBeNull();
+    });
+  });
+
+  describe("side gutter (#2976)", () => {
+    afterEach(() => {
+      mockInsets.left = 0;
+      mockInsets.right = 0;
+    });
+
+    async function rootStyle(props: Partial<React.ComponentProps<typeof GameShell>> = {}) {
+      await render(
+        <GameShell gameType={null} title="Yacht" onBack={noop} {...props}>
+          <Text>game content</Text>
+        </GameShell>
+      );
+      const root = screen.toJSON() as { props: { style: unknown } };
+      return StyleSheet.flatten(root.props.style as never) as {
+        paddingLeft?: number;
+        paddingRight?: number;
+        paddingBottom?: number;
+      };
+    }
+
+    it("pads both sides by 12 by default", async () => {
+      const style = await rootStyle();
+      expect(style.paddingLeft).toBe(12);
+      expect(style.paddingRight).toBe(12);
+    });
+
+    it("pads by the inset where it is wider than the gutter", async () => {
+      mockInsets.left = 47;
+      mockInsets.right = 5;
+      const style = await rootStyle();
+      expect(style.paddingLeft).toBe(47);
+      expect(style.paddingRight).toBe(12);
+    });
+
+    it("takes another gutter for outliers", async () => {
+      mockInsets.right = 30;
+      const style = await rootStyle({ gutter: 16 });
+      expect(style.paddingLeft).toBe(16);
+      expect(style.paddingRight).toBe(30);
+    });
+
+    it("pads by the insets alone with gutter 0", async () => {
+      mockInsets.left = 20;
+      const style = await rootStyle({ gutter: 0 });
+      expect(style.paddingLeft).toBe(20);
+      expect(style.paddingRight).toBe(0);
+    });
+
+    it("applies no side padding with gutter null", async () => {
+      mockInsets.left = 20;
+      const style = await rootStyle({ gutter: null });
+      expect(style.paddingLeft).toBeUndefined();
+      expect(style.paddingRight).toBeUndefined();
+    });
+
+    it("lets a caller's paddingLeft / paddingRight win, and keeps paddingBottom a minimum", async () => {
+      const style = await rootStyle({
+        style: { paddingLeft: 3, paddingRight: 4, paddingBottom: 24 },
+      });
+      expect(style.paddingLeft).toBe(3);
+      expect(style.paddingRight).toBe(4);
+      expect(style.paddingBottom).toBe(24);
+    });
+  });
 });

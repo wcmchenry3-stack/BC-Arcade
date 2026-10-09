@@ -1,6 +1,10 @@
+"""Sudoku metadata and result models (#614)."""
+
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from games.metadata import LegacyPlayerName
 
 Difficulty = Literal["easy", "medium", "hard"]
 Variant = Literal["classic", "mini"]
@@ -15,7 +19,7 @@ class SudokuMetadata(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid")
-    player_name: str = Field(default="", max_length=64)
+    player_name: LegacyPlayerName = ""
     difficulty: Difficulty
     variant: Variant = "classic"
 

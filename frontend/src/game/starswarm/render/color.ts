@@ -26,3 +26,23 @@ export function cssColor(c: PackedColor): string {
   const a = Math.round(alphaOf(c) * 1000) / 1000;
   return `rgba(${(c >>> 16) & 255},${(c >>> 8) & 255},${c & 255},${a})`;
 }
+
+/** A 0xRRGGBB colour as a fully opaque packed 0xFFRRGGBB. */
+export function opaque(rgb: number): PackedColor {
+  return (0xff000000 | (rgb & 0xffffff)) >>> 0;
+}
+
+/** Parse a `#rrggbb` string (the theme's form) to 0xRRGGBB. */
+export function rgbFromHex(hex: string): number {
+  return parseInt(hex.slice(1), 16);
+}
+
+/** A 0xRRGGBB colour as a `#rrggbb` string — for the 2D-context (web) canvas. */
+export function cssHex(rgb: number): string {
+  return `#${(rgb & 0xffffff).toString(16).padStart(6, "0")}`;
+}
+
+/** A 0xRRGGBB colour with an alpha in 0–1 as a CSS `rgba()` string — web canvas, alpha kept as is. */
+export function cssRgba(rgb: number, alpha: number): string {
+  return `rgba(${(rgb >>> 16) & 255},${(rgb >>> 8) & 255},${rgb & 255},${alpha})`;
+}

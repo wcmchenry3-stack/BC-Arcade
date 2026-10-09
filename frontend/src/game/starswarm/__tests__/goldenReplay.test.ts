@@ -2,7 +2,8 @@
  * Star Swarm golden seeded replay (#2955).
  *
  * Seeds the engine (`seedRng` via `initStarSwarm(..., seed)`, `_resetIds`) and a stand-in for
- * the engine's two cosmetic `Math.random` calls, then drives the public API (`initStarSwarm`,
+ * the engine's two `Math.random` calls (they affect play: the known exception in
+ * docs/ARCHITECTURE.md §3.2), then drives the public API (`initStarSwarm`,
  * `tick`, `applyPowerUp`, `throwAsteroid`, `killEscorts`) with a scripted pilot for a fixed
  * number of ticks. Every CHECKPOINT_EVERY ticks it records a short summary plus a SHA-256 of
  * the canonical `JSON.stringify(state)`, and at the end the module counters (`engineCounters()`);
@@ -86,7 +87,7 @@ const SCENARIOS: Scenario[] = [
  */
 const PILOT_LIVES = 30;
 
-/** Independent LCG for the engine's cosmetic Math.random calls (power-up type and spawn X). */
+/** Independent LCG for the engine's two Math.random calls (power-up type and spawn X). */
 function stubMathRandom(seed: number): jest.SpyInstance {
   let s = seed >>> 0;
   return jest.spyOn(Math, "random").mockImplementation(() => {

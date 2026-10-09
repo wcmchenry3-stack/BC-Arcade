@@ -8,14 +8,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from games import catalog_cache
-from tests._helpers import session_headers
+from tests._helpers import session_headers, set_admin_token
 
 _ADMIN_TOKEN = "test-admin-token-1150"
 
 
 @pytest.fixture(autouse=True)
-def set_admin_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_API_TOKEN", _ADMIN_TOKEN)
+def admin_token(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    set_admin_token(client, monkeypatch, _ADMIN_TOKEN)
 
 
 def _admin_headers() -> dict[str, str]:

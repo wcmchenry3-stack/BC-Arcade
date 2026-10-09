@@ -12,6 +12,12 @@ import Animated, {
 import { useTranslation } from "react-i18next";
 import { useReduceMotion } from "../shared/useReduceMotion";
 import { playTimedPhases } from "../shared/timedPhases";
+import { useTheme } from "../../theme/ThemeContext";
+import {
+  HEARTS_QUEEN_CARD_FACE,
+  HEARTS_QUEEN_INK,
+  HEARTS_QUEEN_SHADOW,
+} from "../../theme/theme.hearts";
 
 interface Props {
   visible: boolean;
@@ -21,6 +27,7 @@ interface Props {
 
 export function HeartsQueenOfSpadesAnimation({ visible, takerLabel, onAnimationEnd }: Props) {
   const { t } = useTranslation("hearts");
+  const { colors } = useTheme();
   const reduceMotion = useReduceMotion();
 
   const overlayOpacity = useSharedValue(0);
@@ -106,7 +113,14 @@ export function HeartsQueenOfSpadesAnimation({ visible, takerLabel, onAnimationE
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Animated.View style={[StyleSheet.absoluteFill, styles.overlay, overlayStyle]} />
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          styles.overlay,
+          { backgroundColor: colors.error },
+          overlayStyle,
+        ]}
+      />
       <View style={styles.content}>
         <Animated.View
           style={[styles.card, cardStyle]}
@@ -124,7 +138,6 @@ export function HeartsQueenOfSpadesAnimation({ visible, takerLabel, onAnimationE
 
 const styles = StyleSheet.create({
   overlay: {
-    backgroundColor: "#dc2626",
     zIndex: 100,
   },
   content: {
@@ -136,13 +149,13 @@ const styles = StyleSheet.create({
   card: {
     width: 72,
     height: 100,
-    backgroundColor: "#ffffff",
+    backgroundColor: HEARTS_QUEEN_CARD_FACE,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: "#1e1b4b",
+    borderColor: HEARTS_QUEEN_INK,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000000",
+    shadowColor: HEARTS_QUEEN_SHADOW,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
@@ -151,12 +164,12 @@ const styles = StyleSheet.create({
   cardRank: {
     fontSize: 28,
     fontWeight: "800",
-    color: "#1e1b4b",
+    color: HEARTS_QUEEN_INK,
     lineHeight: 32,
   },
   cardSuit: {
     fontSize: 24,
-    color: "#1e1b4b",
+    color: HEARTS_QUEEN_INK,
     lineHeight: 28,
   },
 });

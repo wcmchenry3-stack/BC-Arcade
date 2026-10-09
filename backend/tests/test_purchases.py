@@ -30,11 +30,6 @@ from entitlements import service as entitlements_service
 from games import catalog_cache
 from purchases import apple, google
 from purchases import service as purchase_service
-from purchases.router import (
-    PURCHASE_IP_RATE_LIMIT,
-    PURCHASE_SESSION_RATE_LIMIT,
-    PURCHASE_STORE_KEY_RATE_LIMIT,
-)
 from purchases.verifiers import (
     AppleEvidence,
     AppleVerifier,
@@ -44,7 +39,12 @@ from purchases.verifiers import (
     PurchaseError,
     VerifiedPurchase,
 )
-from tests._helpers import count, jwt_games, session_headers
+from rate_limits import (
+    PURCHASE_IP_RATE_LIMIT,
+    PURCHASE_SESSION_RATE_LIMIT,
+    PURCHASE_STORE_KEY_RATE_LIMIT,
+)
+from tests._helpers import count, jwt_games, session_headers, set_admin_token
 
 HEARTS = "com.buffingchi.games.premium.hearts"
 CASCADE = "com.buffingchi.games.premium.cascade"
@@ -839,7 +839,7 @@ def _catalog_id(client: TestClient, name: str) -> int:
 def test_patch_cannot_flip_catalog_game_to_free(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ADMIN_API_TOKEN", _ADMIN)
+    set_admin_token(client, monkeypatch, _ADMIN)
     gid = _catalog_id(client, "hearts")
     headers = {"X-Admin-Token": _ADMIN}
     r = client.patch(f"/games/catalog/{gid}", json={"is_premium": False}, headers=headers)
@@ -853,7 +853,7 @@ def test_patch_cannot_flip_catalog_game_to_free(
 async def test_patch_cannot_change_tier_of_game_with_purchases(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ADMIN_API_TOKEN", _ADMIN)
+    set_admin_token(client, monkeypatch, _ADMIN)
     async with get_session_factory()() as db:
         db.add(
             Purchase(
@@ -1216,16 +1216,16 @@ async def test_environment_outside_allow_list_is_rejected_even_if_verified(
     client: TestClient,
     fake_apple: FakeAppleVerifier,
     fake_google: FakeGoogleVerifier,
-    monkeypatch: pytest.MonkeyPatch,
+    store_env: pytest.MonkeyPatch,
     platform: str,
     environment: str,
     setting: str | None,
 ) -> None:
     var = "APPLE_IAP_ENVIRONMENTS" if platform == "apple" else "GOOGLE_PLAY_ENVIRONMENTS"
     if setting is None:
-        monkeypatch.delenv(var, raising=False)
+        store_env.delenv(var, raising=False)
     else:
-        monkeypatch.setenv(var, setting)
+        store_env.setenv(var, setting)
     answer = verified("k1", platform=platform, environment=environment)
     if platform == "apple":
         fake_apple.answers["k1"] = answer
@@ -1238,15 +1238,17 @@ async def test_environment_outside_allow_list_is_rejected_even_if_verified(
     assert await count(Purchase) == 0 and await count(PurchaseLink) == 0
 
 
-def test_allowed_environments_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_allowed_environments_parsing(store_env: pytest.MonkeyPatch) -> None:
     from purchases.verifiers import allowed_environments
 
-    monkeypatch.delenv("APPLE_IAP_ENVIRONMENTS", raising=False)
-    monkeypatch.delenv("GOOGLE_PLAY_ENVIRONMENTS", raising=False)
+    store_env.delenv("APPLE_IAP_ENVIRONMENTS", raising=False)
+    store_env.delenv("GOOGLE_PLAY_ENVIRONMENTS", raising=False)
     assert allowed_environments("apple") == {"production", "sandbox"}
     assert allowed_environments("google") == {"production", "test"}
-    monkeypatch.setenv("APPLE_IAP_ENVIRONMENTS", " Production , ")
+    store_env.setenv("APPLE_IAP_ENVIRONMENTS", " Production , ")
     assert allowed_environments("apple") == {"production"}
+    store_env.setenv("APPLE_IAP_ENVIRONMENTS", "   ")  # blank is not unset: no environments
+    assert allowed_environments("apple") == frozenset()
     assert allowed_environments("amazon") == frozenset()
 
 

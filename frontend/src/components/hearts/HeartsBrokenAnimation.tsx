@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { Particle, useParticleGroup, type ParticleMotion } from "../shared/Particle";
 import { useReduceMotion } from "../shared/useReduceMotion";
 import { playTimedPhases } from "../shared/timedPhases";
+import { useTheme } from "../../theme/ThemeContext";
 
 interface Props {
   visible: boolean;
@@ -28,6 +29,7 @@ const CRACKS: readonly ParticleMotion[] = [0, 30, 60, 90, 120, 150].map((angle) 
 
 export function HeartsBrokenAnimation({ visible, onAnimationEnd }: Props) {
   const { t } = useTranslation("hearts");
+  const { colors } = useTheme();
   const reduceMotion = useReduceMotion();
   const cracks = useParticleGroup();
 
@@ -122,14 +124,27 @@ export function HeartsBrokenAnimation({ visible, onAnimationEnd }: Props) {
     // Non-interactive wrapper — never blocks touches
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {/* Red tint layer — separate from content so its opacity does not bleed into children */}
-      <Animated.View style={[StyleSheet.absoluteFill, styles.tintLayer, tintStyle]} />
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          styles.tintLayer,
+          { backgroundColor: colors.error },
+          tintStyle,
+        ]}
+      />
       {/* Content: heart icon + radiating crack lines */}
       <View style={styles.content}>
         {CRACKS.map((motion, i) => (
-          <Particle key={i} index={i} group={cracks} motion={motion} style={styles.crackLine} />
+          <Particle
+            key={i}
+            index={i}
+            group={cracks}
+            motion={motion}
+            style={[styles.crackLine, { backgroundColor: colors.error }]}
+          />
         ))}
         <Animated.Text
-          style={[styles.heartIcon, iconStyle]}
+          style={[styles.heartIcon, { color: colors.error }, iconStyle]}
           accessibilityLabel={t("events.heartsBroken")}
           accessibilityRole="text"
           accessibilityLiveRegion="polite"
@@ -143,7 +158,6 @@ export function HeartsBrokenAnimation({ visible, onAnimationEnd }: Props) {
 
 const styles = StyleSheet.create({
   tintLayer: {
-    backgroundColor: "#dc2626",
     zIndex: 100,
   },
   content: {
@@ -154,7 +168,6 @@ const styles = StyleSheet.create({
   },
   heartIcon: {
     fontSize: 48,
-    color: "#dc2626",
     lineHeight: 56,
   },
   crackLine: {
@@ -162,6 +175,5 @@ const styles = StyleSheet.create({
     width: 80,
     height: 3,
     borderRadius: 2,
-    backgroundColor: "#dc2626",
   },
 });

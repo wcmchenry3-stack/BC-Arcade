@@ -38,6 +38,7 @@ from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType
 from entitlements.service import ALL_PREMIUM_SLUGS
 from tests._helpers import session_headers as _headers
+from tests._helpers import set_dev_override
 
 # ---------------------------------------------------------------------------
 # definitions — no DB
@@ -799,7 +800,7 @@ _DAY = date(2026, 10, 9)
 @pytest.fixture()
 def two_slates(monkeypatch: pytest.MonkeyPatch) -> Template:
     # A shell that exports the dev override must not change what these assert.
-    monkeypatch.delenv("ENTITLEMENT_DEV_OVERRIDE", raising=False)
+    set_dev_override(monkeypatch, "")
 
     def pick(_day: date, slate: str = "free") -> Template:
         return _PREMIUM_DAY if slate == "premium" else _FIXED
@@ -854,7 +855,7 @@ async def test_entitlement_to_other_premium_games_does_not_unlock_it(two_slates:
 async def test_dev_override_session_is_always_premium_eligible(
     two_slates: Template, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    set_dev_override(monkeypatch, "true")
     assert await _slate(str(uuid.uuid4())) == "premium"  # no entitlement rows at all
 
 
@@ -904,7 +905,7 @@ async def test_override_follows_the_same_rule_as_production(
 ) -> None:
     # Real pools: nothing premium is named, so the override changes nothing — dev
     # must not report "premium" while production would say "free".
-    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    set_dev_override(monkeypatch, "true")
     assert await _slate(str(uuid.uuid4())) == "free"
 
 
@@ -918,9 +919,9 @@ async def test_a_differing_premium_template_naming_only_free_games_is_free(
         return only_free if slate == "premium" else _FIXED
 
     monkeypatch.setattr("daily_challenge.service.template_for", pick)
-    monkeypatch.delenv("ENTITLEMENT_DEV_OVERRIDE", raising=False)
+    set_dev_override(monkeypatch, "")
     assert await _slate(str(uuid.uuid4())) == "free"
-    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    set_dev_override(monkeypatch, "true")
     assert await _slate(str(uuid.uuid4())) == "free"  # the override does not skip the rule
 
 

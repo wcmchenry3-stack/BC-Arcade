@@ -3,16 +3,18 @@
  *
  * Layers:
  *   1. Pure engine from #616 + components from #617 (screen from #618).
- *   2. Persistence (#619) — AsyncStorage save after every mutation so a
- *      backgrounded or force-killed app resumes at the exact puzzle
- *      state; cleared on New Puzzle / Change Difficulty.
+ *   2. Persistence (#619) — `usePersistedGameState` (#3087) restores the
+ *      save on mount and saves after every mutation, so a backgrounded or
+ *      force-killed app resumes at the exact puzzle state; cleared on New
+ *      Puzzle / Change Difficulty.
  *   3. Instrumentation (#619) — `useGameSync("sudoku")` session started
- *      on the first `enterDigit`, completed on win, and otherwise
+ *      on the first `enterDigit`, completed on win (`useCompletionTransition`,
+ *      #3087), and otherwise
  *      abandoned by the hook on unmount (back-navigation included) with
  *      its progress snapshot and no score (#2632).
  *   4. Result + leaderboard (#2511) — the shared GameResultModal shows
  *      where the synced game ranks on its (difficulty, variant) board
- *      (`sessionBoardAdapter`, #2677).
+ *      (`lookupGameRank`, #2677).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -25,7 +27,11 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { bestOf } from "../game/_shared/bestOf";
+import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
+import { useGameEvents } from "../game/_shared/useGameEvents";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
+import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { ElapsedText, createClockActivity } from "../components/shared/ElapsedText";
@@ -56,15 +62,11 @@ import {
   type SudokuStats,
 } from "../game/sudoku/storage";
 import { useGameSync } from "../game/_shared/useGameSync";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
 import GameResultModal from "../components/shared/GameResultModal";
+import { toSubmission } from "../components/shared/toSubmission";
 
 const FLASH_MS = 200;
-
-/** The result card reads the synced game's rank on the session board (#2632). */
-const sudokuBoard = sessionBoardAdapter("sudoku");
 const DIFFICULTY_BASE: Record<Difficulty, number> = {
   easy: 100,
   medium: 200,
@@ -98,14 +100,32 @@ export default function SudokuScreen() {
     "easy"
   );
   const [variant, setVariant] = useState<Variant>("classic");
-  const [state, setState] = useState<SudokuState | null>(null);
+  // The device's cached best time per puzzle kind (`sudoku_stats_v1`), for the
+  // result card's best time and "New best" badge only (#2636): the player's
+  // history is the Stats screen, fed by the server.
+  const statsRef = useRef<SudokuStats>(EMPTY_SUDOKU_STATS);
+  // The saved puzzle (usePersistedGameState, #3087): loaded with the stats on
+  // mount, then saved on every state change once that load has landed, so a
+  // fresh puzzle can't clobber a resumable save still being read off disk.
+  // `state === null` is pre-game: nothing is saved, and the callers clear
+  // the save. Called before the completion effect, so a solving move is saved
+  // before the completion clears it. The restore is below.
+  const game = usePersistedGameState<SudokuState>({
+    load: async () => {
+      const [saved, savedStats] = await Promise.all([loadGame(), loadStats()]);
+      statsRef.current = savedStats;
+      return saved;
+    },
+    save: saveGame,
+    clear: clearGame,
+  });
+  const { state, setState, stateRef, loading, clear: clearSavedGame } = game;
   // Bumped when a puzzle starts over, so the HUD clock shows 00:00 at once.
   const [clockEpoch, setClockEpoch] = useState(0);
   // Whether the clock is advancing (started, not paused). It lives outside
   // React state: the first move, a pause and a resume reach the HUD's
   // `ElapsedText` without re-rendering the screen, grid and pad (#2964).
   const [clockActivity] = useState(createClockActivity);
-  const [loading, setLoading] = useState(true);
   const [newGameModalVisible, setNewGameModalVisible] = useState(false);
   // What the result card shows, captured when the puzzle is solved.
   const [result, setResult] = useState<{
@@ -114,31 +134,19 @@ export default function SudokuScreen() {
     bestTimeS: number;
     isNewBest: boolean;
   } | null>(null);
-  const leaderboard = useLeaderboardSubmit(sudokuBoard);
-  const { submit: submitScore, reset: resetScore } = leaderboard;
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633) open the
-  // board of the puzzle on screen, else of the picker's choice.
-  const openLeaderboard = useLeaderboardLink(navigation, "sudoku", {
+  // The card's rank line, and its "View leaderboard" link and the ⋯ menu item
+  // (#2633), which open the board of the puzzle on screen, else of the picker's.
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("sudoku", navigation, {
     difficulty: state?.difficulty ?? difficulty,
     variant: state?.variant ?? variant,
   });
+  const { lookup: lookupRank, reset: resetScore } = leaderboard;
 
   // Timer bookkeeping.  `startMs` is the wall-clock at which play began,
   // shifted forward while the app sits in the background so elapsed
   // reads as "time actively spent playing." null = no input yet.
   const startMsRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
-
-  // Lifecycle refs.  `hasLoadedRef` gates saves so a fresh puzzle can't
-  // clobber a resumable save still being read off disk.
-  const hasLoadedRef = useRef(false);
-  const stateRef = useRef<SudokuState | null>(null);
-  const prevCompleteRef = useRef(false);
-
-  // The device's cached best time per puzzle kind (`sudoku_stats_v1`), for the
-  // result card's best time and "New best" badge only (#2636): the player's
-  // history is the Stats screen, fed by the server.
-  const statsRef = useRef<SudokuStats>(EMPTY_SUDOKU_STATS);
 
   const flashOpacity = useRef(new Animated.Value(0)).current;
   const unitFlashOpacity = useRef(new Animated.Value(0)).current;
@@ -162,7 +170,7 @@ export default function SudokuScreen() {
   // screen unmounts, and that abandon carries no score (#2632).
   const progressResult = useCallback(
     () => ({ won: false, errors: stateRef.current?.errorCount ?? 0 }),
-    []
+    [stateRef]
   );
   // The puzzle's own play timer (#2684), which wins over the hook's foreground
   // clock: time since the first input, with backgrounded time taken out (the
@@ -197,58 +205,33 @@ export default function SudokuScreen() {
   }, [syncClockActivity]);
   const awayRef = usePauseWhileAway(navigation, pauseTimer, resumeTimer);
 
-  // Mount load — restores a saved game silently; on a clean slot the
-  // pre-game picker shows.
-  useEffect(() => {
-    let alive = true;
-    Promise.all([loadGame(), loadStats()])
-      .then(([saved, savedStats]) => {
-        if (!alive) return;
-        statsRef.current = savedStats;
-        hasLoadedRef.current = true;
-        if (saved !== null) {
-          setState(saved);
-          setDifficulty(saved.difficulty);
-          setVariant(saved.variant);
-          // A restored game continues the session a killed app left open
-          // (#2654) — only one for the same puzzle settings, so a restore never
-          // adopts another difficulty's or variant's session.
-          if (!saved.isComplete) {
-            syncResume({ difficulty: saved.difficulty, variant: saved.variant });
-          }
-          // Treat any resumed state that already has moves as "timer
-          // already started" — the player wants to see it ticking
-          // immediately on return.  Elapsed resets to 0 because we
-          // don't persist it; this is intentional per the issue.
-          const anyMoves =
-            saved.errorCount > 0 ||
-            saved.undoStack.length > 0 ||
-            saved.grid.some((row) => row.some((c) => !c.given && c.value !== 0));
-          if (anyMoves) {
-            startMsRef.current = Date.now();
-            // A load that lands while the player is away (#2750) starts
-            // paused, and resumes with everything else on return.
-            if (awayRef.current) pausedAtRef.current = startMsRef.current;
-          }
-        }
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [syncResume, setDifficulty, awayRef]);
-
-  // Persist on every state change after the initial load has resolved.
-  // Suppressed pre-load to protect the disk copy; `state === null`
-  // represents pre-game and is handled by `clearGame` in the callers.
-  useEffect(() => {
-    stateRef.current = state;
-    if (!hasLoadedRef.current) return;
-    if (state === null) return;
-    saveGame(state).catch(() => {});
-  }, [state]);
+  // The mount load's restore — restores a saved game silently; on a clean
+  // slot the pre-game picker shows.
+  useGameRestored(game, (saved) => {
+    if (saved === null) return;
+    setDifficulty(saved.difficulty);
+    setVariant(saved.variant);
+    // A restored game continues the session a killed app left open
+    // (#2654) — only one for the same puzzle settings, so a restore never
+    // adopts another difficulty's or variant's session.
+    if (!saved.isComplete) {
+      syncResume({ difficulty: saved.difficulty, variant: saved.variant });
+    }
+    // Treat any resumed state that already has moves as "timer
+    // already started" — the player wants to see it ticking
+    // immediately on return.  Elapsed resets to 0 because we
+    // don't persist it; this is intentional per the issue.
+    const anyMoves =
+      saved.errorCount > 0 ||
+      saved.undoStack.length > 0 ||
+      saved.grid.some((row) => row.some((c) => !c.given && c.value !== 0));
+    if (anyMoves) {
+      startMsRef.current = Date.now();
+      // A load that lands while the player is away (#2750) starts
+      // paused, and resumes with everything else on return.
+      if (awayRef.current) pausedAtRef.current = startMsRef.current;
+    }
+  });
 
   // A move, a load or a new puzzle can start or clear the clock (inside state
   // updaters and handlers, which only touch the refs): tell the HUD.
@@ -261,64 +244,60 @@ export default function SudokuScreen() {
   // screen, grid and pad do not re-render as time passes (#2964).
   const elapsedA11yLabel = useCallback((time: string) => t("hud.elapsed", { time }), [t]);
 
-  // Complete the gameSync session exactly once on the completion
-  // transition; clear the saved game so the next mount starts fresh.
-  useEffect(() => {
-    if (state === null) {
-      prevCompleteRef.current = false;
-      return;
-    }
-    if (state.isComplete && !prevCompleteRef.current) {
-      const score = computeScore(state.difficulty, state.errorCount);
-      // A time is usable only when positive: a device clock that stepped back
-      // after a resume cannot make a 00:00 solve, a "New best", or a best of 0
-      // (which is also the "no best yet" mark). Then the duration is unknown.
-      const playedS = Math.floor((playedMs() ?? 0) / 1000);
-      const finalElapsed = playedS > 0 ? playedS : null;
-      const gid = syncComplete(
-        {
-          finalScore: score,
-          outcome: "completed",
-          durationMs: finalElapsed === null ? null : finalElapsed * 1000,
-          result: { won: true, errors: state.errorCount },
-        },
-        {
-          final_score: score,
-          outcome: "completed",
-          won: true,
-          difficulty: state.difficulty,
-          variant: state.variant,
-          errors: state.errorCount,
-        }
-      );
-      if (gid) {
-        // The card shows where this game ranks on its board.
-        void submitScore({ gameId: gid });
+  // The completion transition (useCompletionTransition, #3087): complete the
+  // gameSync session and clear the saved game so the next mount starts fresh.
+  // Every step to complete runs it, a restored solved puzzle included: there
+  // is no once-per-game guard, as a restored one has no session to complete
+  // and no usable time (its clock restarts on load), so it records no time
+  // and no best: only its result card is filled in.
+  useCompletionTransition(state, isComplete, (s) => {
+    const score = computeScore(s.difficulty, s.errorCount);
+    // A time is usable only when positive: a device clock that stepped back
+    // after a resume cannot make a 00:00 solve, a "New best", or a best of 0
+    // (which is also the "no best yet" mark). Then the duration is unknown.
+    const playedS = Math.floor((playedMs() ?? 0) / 1000);
+    const finalElapsed = playedS > 0 ? playedS : null;
+    const gid = syncComplete(
+      {
+        finalScore: score,
+        outcome: "completed",
+        durationMs: finalElapsed === null ? null : finalElapsed * 1000,
+        result: { won: true, errors: s.errorCount },
+      },
+      {
+        final_score: score,
+        outcome: "completed",
+        won: true,
+        difficulty: s.difficulty,
+        variant: s.variant,
+        errors: s.errorCount,
       }
-      clearGame().catch(() => {});
+    );
+    if (gid) {
+      // The card shows where this game ranks on its board.
+      void lookupRank(gid);
+    }
+    clearSavedGame();
 
-      const diff = state.difficulty;
-      const variantKey = state.variant;
-      const prev = statsRef.current[variantKey][diff];
-      const improved =
-        finalElapsed !== null && (prev.bestTimeS === 0 || finalElapsed < prev.bestTimeS);
-      // The cache is written only when this puzzle kind's best improves.
-      if (improved) {
-        statsRef.current = {
-          ...statsRef.current,
-          [variantKey]: { ...statsRef.current[variantKey], [diff]: { bestTimeS: finalElapsed } },
-        };
-        saveStats(statsRef.current).catch(() => {});
-      }
-      setResult({
-        elapsedS: finalElapsed,
-        bestTimeS: improved && finalElapsed !== null ? finalElapsed : prev.bestTimeS,
-        // Only a beaten previous time is a "new best" — not a first solve.
-        isNewBest: finalElapsed !== null && prev.bestTimeS > 0 && finalElapsed < prev.bestTimeS,
-      });
+    const diff = s.difficulty;
+    const variantKey = s.variant;
+    const prev = statsRef.current[variantKey][diff];
+    const outcome = finalElapsed !== null ? bestOf(prev.bestTimeS, finalElapsed, true) : null;
+    const improved = outcome?.improved ?? false;
+    // The cache is written only when this puzzle kind's best improves.
+    if (improved) {
+      statsRef.current = {
+        ...statsRef.current,
+        [variantKey]: { ...statsRef.current[variantKey], [diff]: { bestTimeS: finalElapsed } },
+      };
+      saveStats(statsRef.current).catch(() => {});
     }
-    prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, submitScore, playedMs]);
+    setResult({
+      elapsedS: finalElapsed,
+      bestTimeS: outcome?.best ?? prev.bestTimeS,
+      isNewBest: outcome?.isNewBest ?? false,
+    });
+  });
 
   const ensureSyncStarted = useCallback(
     (next: SudokuState) => {
@@ -362,26 +341,21 @@ export default function SudokuScreen() {
     ]).start();
   }, [flashOpacity]);
 
-  useEffect(() => {
-    const evts = state?.events;
-    if (!evts?.length) return;
-    for (const evt of evts) {
-      if (evt.type === "errorEntered") {
-        flashError();
-      } else if (evt.type === "unitComplete") {
-        Animated.sequence([
-          Animated.timing(unitFlashOpacity, { toValue: 0.35, duration: 80, useNativeDriver: true }),
-          Animated.timing(unitFlashOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
-        ]).start();
-      } else if (evt.type === "puzzleComplete") {
-        playPuzzleComplete();
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.events]);
+  // The engine emits a new array on each digit entry; the events stay in
+  // state (a save drops them), so no clear is needed.
+  useGameEvents(state?.events, {
+    errorEntered: () => flashError(),
+    unitComplete: () => {
+      Animated.sequence([
+        Animated.timing(unitFlashOpacity, { toValue: 0.35, duration: 80, useNativeDriver: true }),
+        Animated.timing(unitFlashOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
+      ]).start();
+    },
+    puzzleComplete: () => playPuzzleComplete(),
+  });
 
   const handleStart = useCallback(() => {
-    clearGame().catch(() => {});
+    clearSavedGame();
     const fresh = loadPuzzle(rememberDifficulty(difficulty), variant);
     openPuzzleSession(fresh);
     setState(fresh);
@@ -390,13 +364,21 @@ export default function SudokuScreen() {
     resetScore();
     startMsRef.current = null;
     pausedAtRef.current = null;
-  }, [difficulty, variant, resetScore, rememberDifficulty, openPuzzleSession]);
+  }, [
+    difficulty,
+    variant,
+    resetScore,
+    rememberDifficulty,
+    openPuzzleSession,
+    clearSavedGame,
+    setState,
+  ]);
 
   const handleStartWithSettings = useCallback(
     (d: Difficulty, v: Variant) => {
       setNewGameModalVisible(false);
       setVariant(v);
-      clearGame().catch(() => {});
+      clearSavedGame();
       // A premium level starts at the default instead (#1129).
       const fresh = loadPuzzle(rememberDifficulty(d), v);
       openPuzzleSession(fresh);
@@ -407,16 +389,19 @@ export default function SudokuScreen() {
       startMsRef.current = null;
       pausedAtRef.current = null;
     },
-    [resetScore, rememberDifficulty, openPuzzleSession]
+    [resetScore, rememberDifficulty, openPuzzleSession, clearSavedGame, setState]
   );
 
   const handleNewGameRequest = useCallback(() => {
     setNewGameModalVisible(true);
   }, []);
 
-  const handleCellPress = useCallback((row: number, col: number) => {
-    setState((s) => (s ? selectCell(s, row, col) : s));
-  }, []);
+  const handleCellPress = useCallback(
+    (row: number, col: number) => {
+      setState((s) => (s ? selectCell(s, row, col) : s));
+    },
+    [setState]
+  );
 
   const handleDigit = useCallback(
     (digit: CellValue) => {
@@ -433,33 +418,33 @@ export default function SudokuScreen() {
         return next;
       });
     },
-    [ensureSyncStarted]
+    [ensureSyncStarted, setState]
   );
 
   const handleErase = useCallback(() => {
     setState((s) => (s ? eraseCell(s) : s));
-  }, []);
+  }, [setState]);
 
   const handleToggleNotes = useCallback(() => {
     setState((s) => (s ? toggleNotesMode(s) : s));
-  }, []);
+  }, [setState]);
 
   const handleUndo = useCallback(() => {
     setState((s) => (s ? undo(s) : s));
-  }, []);
+  }, [setState]);
 
   const handleChangeDifficulty = useCallback(() => {
     // #2690: close this puzzle's session now, while the snapshot still reads
     // it (abandoned if started, discarded if not). The next puzzle opens its own.
     syncClose();
-    clearGame().catch(() => {});
+    clearSavedGame();
     setState(null);
     setClockEpoch((n) => n + 1);
     setResult(null);
     resetScore();
     startMsRef.current = null;
     pausedAtRef.current = null;
-  }, [resetScore, syncClose]);
+  }, [resetScore, syncClose, clearSavedGame, setState]);
 
   const handleHint = useCallback(() => {
     setState((s) => {
@@ -473,7 +458,7 @@ export default function SudokuScreen() {
       ensureSyncStarted(s);
       return enterDigit(s, hintDigit);
     });
-  }, [ensureSyncStarted]);
+  }, [ensureSyncStarted, setState]);
 
   const headerRight = useMemo(() => {
     if (!state) return null;
@@ -492,15 +477,10 @@ export default function SudokuScreen() {
       title={t("game.title")}
       requireBack
       loading={loading}
-      onBack={() => navigation.popToTop()}
       onNewGame={state !== null ? handleNewGameRequest : undefined}
       onOpenLeaderboard={openLeaderboard}
       rightSlot={headerRight}
-      style={{
-        paddingBottom: Math.max(insets.bottom, 16),
-        paddingLeft: Math.max(insets.left, 12),
-        paddingRight: Math.max(insets.right, 12),
-      }}
+      style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >
       {state === null ? (
         <PreGame
@@ -587,7 +567,7 @@ export default function SudokuScreen() {
             importantForAccessibility="no-hide-descendants"
             style={[
               StyleSheet.absoluteFill,
-              { backgroundColor: "#2ecc71", opacity: unitFlashOpacity },
+              { backgroundColor: colors.bonus, opacity: unitFlashOpacity },
             ]}
             testID="sudoku-unit-flash"
           />
@@ -620,14 +600,7 @@ export default function SudokuScreen() {
               ? [{ label: tResult("stat.best"), value: formatElapsed(result.bestTimeS) }]
               : []),
           ]}
-          submission={{
-            status: leaderboard.status,
-            rank: leaderboard.rank,
-            isBest: leaderboard.isBest,
-            playerName: leaderboard.playerName,
-            onJoinLeaderboards: leaderboard.joinLeaderboards,
-            onRetry: leaderboard.retry,
-          }}
+          submission={toSubmission(leaderboard)}
           onViewLeaderboard={openLeaderboard}
           onPlayAgain={handleStart}
           secondaryAction={{ label: t("action.changeDifficulty"), onPress: handleChangeDifficulty }}

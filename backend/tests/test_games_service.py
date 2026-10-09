@@ -1,4 +1,4 @@
-"""Unit tests for games/service.py covering core write-API paths (#1559).
+"""Unit tests for games/sessions.py and siblings covering core write-API paths (#1559).
 
 Calls service functions directly via the DB session (no FastAPI router layer)
 to cover code paths that the API-level tests miss.
@@ -15,16 +15,10 @@ from sqlalchemy import select
 
 from db.base import get_session_factory
 from db.models import GameType
-from games.service import (
-    GameServiceError,
-    append_events,
-    complete_game,
-    create_game,
-    get_game_detail,
-    get_stats_for_session,
-    list_games_for_session,
-    patch_game_type,
-)
+from games.catalog import patch_game_type
+from games.history import get_game_detail, list_games_for_session, parse_cursor
+from games.sessions import GameServiceError, append_events, complete_game, create_game
+from games.stats import get_stats_for_session
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -345,7 +339,7 @@ async def test_complete_game_rejected_result_reported_to_sentry(db, monkeypatch)
     )
     captured = []
     monkeypatch.setattr(
-        "games.service.sentry_sdk.capture_message",
+        "observability.report.sentry_sdk.capture_message",
         lambda msg, **kw: captured.append((msg, kw)),
     )
     with pytest.raises(GameServiceError):
@@ -407,7 +401,7 @@ async def test_complete_game_rejects_oversized_result(db, monkeypatch):
     sid = _sid()
     captured = []
     monkeypatch.setattr(
-        "games.service.sentry_sdk.capture_message",
+        "observability.report.sentry_sdk.capture_message",
         lambda msg, **kw: captured.append((msg, kw)),
     )
     game = await _make_game(db, sid, "yacht")
@@ -593,16 +587,20 @@ async def test_list_games_cursor_filters_results(db):
     for i in range(4):
         await _make_game(db, sid, started_at=base - timedelta(hours=i))
     # Descending order: base, base-1h, base-2h, base-3h
-    # page1 (limit=2): items=[base, base-1h], peek-ahead=base-2h → cursor=base-2h
-    # page2 (started_at < base-2h): items=[base-3h] → exactly 1
+    # page1 (limit=2): items=[base, base-1h]; the cursor is its last game (base-1h)
+    # page2 (strictly after the cursor): items=[base-2h, base-3h]
 
     page1 = await list_games_for_session(db, session_id=sid, limit=2, cursor=None)
     assert len(page1.items) == 2
     assert page1.next_cursor is not None
 
-    cursor_dt = datetime.fromisoformat(page1.next_cursor)
-    page2 = await list_games_for_session(db, session_id=sid, limit=2, cursor=cursor_dt)
-    assert len(page2.items) == 1
+    page2 = await list_games_for_session(
+        db, session_id=sid, limit=2, cursor=parse_cursor(page1.next_cursor)
+    )
+    assert [g.started_at.replace(tzinfo=UTC) for g in page2.items] == [
+        base - timedelta(hours=2),
+        base - timedelta(hours=3),
+    ]
     assert page2.next_cursor is None
 
 

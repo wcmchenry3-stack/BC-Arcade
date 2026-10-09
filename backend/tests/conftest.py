@@ -133,6 +133,35 @@ def reset_rate_limiter():
 
 
 @pytest.fixture(autouse=True)
+def _reset_entitlement_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Rebuild entitlements.service's lazy ``Settings`` per test, so an env var a test
+    sets before the first build cannot leak into later tests. (The key cache stays.)"""
+    from entitlements import service
+
+    monkeypatch.setattr(service, "_settings", None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_purchases_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Rebuild purchases._common's lazy ``Settings`` per test (the APPLE_* / GOOGLE_*
+    store config), so an env var a test sets before the first build cannot leak."""
+    from purchases import _common
+
+    monkeypatch.setattr(_common, "_settings", None)
+
+
+@pytest.fixture
+def store_env() -> Iterator[pytest.MonkeyPatch]:
+    """A MonkeyPatch whose setenv / delenv also rebuild purchases._common's lazy
+    ``Settings`` (``tests/_helpers.StoreEnv``), for tests that set APPLE_* / GOOGLE_*."""
+    from tests._helpers import StoreEnv
+
+    env = StoreEnv()
+    yield env
+    env.undo()
+
+
+@pytest.fixture(autouse=True)
 def _reset_process_caches():
     """Drop the process-level caches (#2966) around each test.
 

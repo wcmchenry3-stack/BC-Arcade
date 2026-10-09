@@ -13,7 +13,6 @@ from __future__ import annotations
 import logging
 from typing import Annotated, Any, Literal, get_args
 
-import sentry_sdk
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -27,6 +26,8 @@ from pydantic import (
     model_validator,
 )
 from pydantic_core import PydanticCustomError
+
+from observability.report import report_event
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ DifficultyTier = Literal[
 ]
 """Every tier the app can send, easiest to hardest.
 
-Mirrors ``DIFFICULTY_TIERS`` in ``frontend/src/game/starswarm/engine.ts`` (the
+Mirrors ``DIFFICULTY_TIERS`` in ``frontend/src/game/starswarm/engine/tuning.ts`` (the
 ``DifficultyTier`` union in ``types.ts``); ``tests/test_starswarm_module.py``
 parses both and fails on drift. Each tier is its own public board
 (``partition_values``), so a run on a tier outside this list is stored but
@@ -227,7 +228,7 @@ def _report_dropped_breakdown(
 
     Field paths and error types only, never values. One issue per ``reason``.
     """
-    sentry_sdk.capture_message(
+    report_event(
         f"starswarm result: score_breakdown {reason}",
         level="warning",
         fingerprint=["starswarm-result-breakdown-dropped", reason],

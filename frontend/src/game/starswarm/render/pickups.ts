@@ -11,10 +11,18 @@
  * pulsing halo ring — "shiny reward", never a rock — while the crate's amber and the plate's cyan
  * keep them apart from each other and from the grey-brown asteroids.
  */
-import { cssColor, withAlpha } from "./color";
+import { cssColor, cssHex, opaque, withAlpha } from "./color";
 import type { PackedColor } from "./color";
 import type { DrawOp } from "./frame";
 import { debugOpKeys } from "./opKeys";
+import {
+  HULL_BLUE_RGB,
+  HULL_EDGE,
+  SALVAGE_BAND,
+  SALVAGE_EDGE,
+  SALVAGE_RGB,
+  WHITE,
+} from "./palette";
 import type { PowerUp, PowerUpType } from "../types";
 
 export type UpgradePickupType = Extract<PowerUpType, "salvage" | "hull">;
@@ -31,8 +39,8 @@ export const PICKUP_ACCENT: Record<
   UpgradePickupType,
   { rgb: number; color: PackedColor; hex: string }
 > = {
-  salvage: { rgb: 0xffb020, color: 0xffffb020, hex: "#ffb020" },
-  hull: { rgb: 0x00aaff, color: 0xff00aaff, hex: "#00aaff" },
+  salvage: { rgb: SALVAGE_RGB, color: opaque(SALVAGE_RGB), hex: cssHex(SALVAGE_RGB) },
+  hull: { rgb: HULL_BLUE_RGB, color: opaque(HULL_BLUE_RGB), hex: cssHex(HULL_BLUE_RGB) },
 };
 
 /** Halo pulse period, ms — phase comes from the pickup's own countdown, so it needs no clock. */
@@ -92,13 +100,13 @@ export function upgradePickupOps(
       y: ly + ph * 0.55,
       w: bw,
       h: ph * 0.1,
-      color: 0xff7a4d08,
+      color: SALVAGE_BAND,
     });
     ops.push({
       k: "poly",
       key: key && `${key}-edge`,
       points: [bx, by, bx + bw, by, bx + bw, by + bh, bx, by + bh],
-      color: 0xfffff2c0,
+      color: SALVAGE_EDGE,
       stroke: 1.5,
     });
     // up-chevron: "more guns"
@@ -106,7 +114,7 @@ export function upgradePickupOps(
       k: "poly",
       key: key && `${key}-glyph`,
       points: [cx, ly + ph * 0.22, cx + pw * 0.17, ly + ph * 0.46, cx - pw * 0.17, ly + ph * 0.46],
-      color: 0xffffffff,
+      color: WHITE,
     });
   } else {
     const hex = [
@@ -128,7 +136,7 @@ export function upgradePickupOps(
       k: "poly",
       key: key && `${key}-edge`,
       points: hex,
-      color: 0xffd8f4ff,
+      color: HULL_EDGE,
       stroke: 1.5,
     });
     // plus: "more plating"
@@ -141,7 +149,7 @@ export function upgradePickupOps(
       y: cy - th,
       w: arm * 2,
       h: th * 2,
-      color: 0xffffffff,
+      color: WHITE,
     });
     ops.push({
       k: "rect",
@@ -150,7 +158,7 @@ export function upgradePickupOps(
       y: cy - arm,
       w: th * 2,
       h: arm * 2,
-      color: 0xffffffff,
+      color: WHITE,
     });
   }
   return ops;

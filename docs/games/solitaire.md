@@ -168,7 +168,7 @@ For generic syncing, rank lookup, display names, Stats, and result-card behavior
 ## Implementation
 
 - Engine: `frontend/src/game/solitaire/engine.ts`
-- Screen: `frontend/src/screens/SolitaireScreen.tsx`
+- Screen: [`frontend/src/screens/SolitaireScreen.tsx`](../../frontend/src/screens/SolitaireScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Seed bank: `frontend/src/game/solitaire/seeds.json`
 - Seed generator/solver: `backend/scripts/gen_solitaire_seeds.py`
 - Storage: `frontend/src/game/solitaire/storage.ts`

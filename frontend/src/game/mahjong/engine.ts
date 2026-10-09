@@ -9,10 +9,12 @@
  * valid. Tests can pin the shuffle via `setRng(createSeededRng(seed))`.
  */
 
+import { bestOf } from "../_shared/bestOf";
 import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
 import { pushCapped } from "../_shared/undoStack";
 import type {
   Layout,
+  MahjongEvent,
   MahjongState,
   MahjongUndoEntry,
   RemovedTile,
@@ -62,8 +64,8 @@ export function nextBestTime(
 ): { bestTimeMs: number; isNewBest: boolean } {
   const prior = plausibleBestMs(priorBestMs);
   if (plausibleBestMs(finalMs) === 0) return { bestTimeMs: prior, isNewBest: false };
-  const isNewBest = prior === 0 || finalMs < prior;
-  return { bestTimeMs: isNewBest ? finalMs : prior, isNewBest };
+  const { best, isNewBest } = bestOf(prior, finalMs, true);
+  return { bestTimeMs: best, isNewBest };
 }
 /** The most moves `undoMove` can take back; the oldest entry goes first. */
 export const UNDO_CAP = 50;
@@ -608,16 +610,18 @@ export function selectTile(
   // The first tap starts the clock; a tap while it is paused leaves it so.
   const clock = startClockOnMove(state, now);
 
+  // Each action emits a new events array (#3087): the screen fires each array
+  // once, by identity, so two selects in a row must not share one.
   if (!state.selected) {
-    return withClock({ ...state, selected: tile }, clock);
+    return withClock({ ...state, selected: tile, events: [{ type: "tileSelect" }] }, clock);
   }
 
   if (state.selected.id === tile.id) {
-    return { ...state, selected: null };
+    return { ...state, selected: null, events: undefined };
   }
 
   if (!tilesMatch(state.selected, tile)) {
-    return withClock({ ...state, selected: tile }, clock);
+    return withClock({ ...state, selected: tile, events: [{ type: "tileSelect" }] }, clock);
   }
 
   // Matched pair — remove both tiles.
@@ -633,6 +637,12 @@ export function selectTile(
   // board searched for a pair (one indexed pass, #2962).
   const isDeadlocked = state.shufflesLeft === 0 && !isComplete && !hasFreePairs(newTiles);
   const ended = isComplete || isDeadlocked;
+  const events: MahjongEvent[] = [
+    { type: "tileMatch", tiles: [removedTiles[0].tile, removedTiles[1].tile] },
+  ];
+  if (isComplete) events.push({ type: "boardCleared" });
+  // Only the step into a deadlock is one (the screen shakes the board once).
+  if (isDeadlocked && !state.isDeadlocked) events.push({ type: "deadlock" });
 
   // The tiles come back from the board itself, so the selection undoes to none.
   const undoStack = pushUndo(state, {
@@ -653,6 +663,7 @@ export function selectTile(
       undoStack,
       isComplete,
       isDeadlocked,
+      events,
     },
     ended ? stopClock(clock, now) : clock
   );
@@ -759,7 +770,9 @@ function buildValidSlotPairing(slots: readonly Slot[], rng: RandomSource): Slot[
  * arrangement — so we consume the token and surface the deadlock overlay.
  */
 export function shuffleBoard(state: MahjongState): MahjongState {
-  if (state.shufflesLeft === 0) return state;
+  // No token left, or the board is already deadlocked (e.g. a second tap while
+  // the deadlock overlay is still delayed): nothing to shuffle, spend nothing.
+  if (state.shufflesLeft === 0 || state.isDeadlocked) return state;
 
   const slots: Slot[] = state.tiles.map(({ col, row, layer }) => ({ col, row, layer }));
   const specs: TileSpec[] = state.tiles.map(({ suit, rank, faceId }) => ({ suit, rank, faceId }));
@@ -819,7 +832,14 @@ export function shuffleBoard(state: MahjongState): MahjongState {
     const shufflesLeft = state.shufflesLeft - 1;
     const undoStack = pushUndo(state, { ...undoBase(state), kind: "shuffle", tilesBefore: null });
     return stopClock(
-      { ...state, selected: null, shufflesLeft, isDeadlocked: true, undoStack },
+      {
+        ...state,
+        selected: null,
+        shufflesLeft,
+        isDeadlocked: true,
+        undoStack,
+        events: [{ type: "shuffle" }, { type: "deadlock" }],
+      },
       Date.now()
     );
   }
@@ -837,6 +857,7 @@ export function shuffleBoard(state: MahjongState): MahjongState {
     shufflesLeft: state.shufflesLeft - 1,
     undoStack,
     isDeadlocked: false,
+    events: [{ type: "shuffle" }],
   };
 }
 
@@ -899,6 +920,9 @@ export function undoMove(state: MahjongState, now: number = Date.now()): Mahjong
       isComplete: entry.isCompleteBefore,
       isDeadlocked: entry.isDeadlockedBefore,
       undoStack: state.undoStack.slice(0, -1),
+      // An undone shuffle can bring a selection back (a match never does):
+      // that is a select, as the board shows it.
+      events: entry.selectedBefore !== null ? [{ type: "tileSelect" }] : undefined,
     },
     live
   );

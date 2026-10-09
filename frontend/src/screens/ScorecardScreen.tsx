@@ -66,6 +66,7 @@ export default function ScorecardScreen() {
       title={t("overflow.menu.scorecard")}
       requireBack
       onBack={() => navigation.goBack()}
+      gutter={null}
     >
       {LiveView ? (
         <View style={styles.body}>

@@ -1,7 +1,8 @@
 """Blackjack GameModule descriptor (#540).
 
-Satisfies the ``GameModule`` Protocol from ``games/protocol.py`` via
-structural subtyping — no inheritance required.
+A ``GameModuleBase`` subclass (``games/module_base.py``), and the one game that
+overrides ``stats_shape`` (its chip figures) and ``derive_final_score`` (the
+closing balance, #2745).
 """
 
 from __future__ import annotations
@@ -11,13 +12,14 @@ from typing import Any
 
 from blackjack.models import BlackjackMetadata, BlackjackResult
 from games.board import BoardDefinition
+from games.module_base import GameModuleBase
 from vocab import GameOutcome, GameType
 
 # The run's closing balance, in the validated result (``BlackjackResult``).
 FINAL_CHIPS_KEY = "final_chips"
 
 
-class BlackjackModule:
+class BlackjackModule(GameModuleBase):
     """GameModule implementation for Blackjack.
 
     A run's score is its closing balance, ``result.final_chips`` (#2745). Stats

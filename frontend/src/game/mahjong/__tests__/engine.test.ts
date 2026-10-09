@@ -555,9 +555,9 @@ describe("undoMove", () => {
 
   // #2961: undo entries are deltas; an undo must still give back exactly the
   // state before the move, bar the live clock.
-  /** The fields an undo restores (everything but the clock and the history). */
+  /** The fields an undo restores (everything but the clock, the history and the one-shot events). */
   function board(s: MahjongState) {
-    const { startedAt: _s, accumulatedMs: _a, paused: _p, undoStack: _u, ...rest } = s;
+    const { startedAt: _s, accumulatedMs: _a, paused: _p, undoStack: _u, events: _e, ...rest } = s;
     return rest;
   }
 
@@ -932,6 +932,25 @@ describe("shuffleBoard", () => {
       // Undo snapshot pushed so user can back out.
       expect(result.undoStack.length).toBe(1);
     }
+  });
+
+  it("shuffling an already-deadlocked board spends no token and returns the same state (#3090)", () => {
+    const tiles: SlotTile[] = [
+      { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 },
+      { id: 1, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 1 },
+      { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 2 },
+      { id: 3, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 3 },
+    ];
+    const state: MahjongState = { ...createGame(TURTLE_LAYOUT), tiles, shufflesLeft: 3 };
+    const dead = shuffleBoard(state);
+    expect(dead.isDeadlocked).toBe(true);
+    expect(dead.shufflesLeft).toBe(2);
+    const again = shuffleBoard(dead);
+    expect(again).toBe(dead);
+    expect(again.shufflesLeft).toBe(2);
+    expect(again.events).toBe(dead.events);
+    const flagged: MahjongState = { ...createGame(TURTLE_LAYOUT, 1), isDeadlocked: true };
+    expect(shuffleBoard(flagged)).toBe(flagged);
   });
 
   it("geometric deadlock freezes the clock, and undo resumes it", () => {
@@ -1336,8 +1355,8 @@ describe("device best time (#2747)", () => {
     expect(plausibleBestMs(36_000)).toBe(36_000);
   });
 
-  it("keeps the fastest plausible clear", () => {
-    expect(nextBestTime(0, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: true });
+  it("keeps the fastest plausible clear; a first clear is a best but not a new best (#2977)", () => {
+    expect(nextBestTime(0, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
     expect(nextBestTime(90_000, 60_000)).toEqual({ bestTimeMs: 60_000, isNewBest: true });
     expect(nextBestTime(60_000, 90_000)).toEqual({ bestTimeMs: 60_000, isNewBest: false });
     expect(nextBestTime(60_000, 60_000)).toEqual({ bestTimeMs: 60_000, isNewBest: false });
@@ -1348,7 +1367,7 @@ describe("device best time (#2747)", () => {
     expect(nextBestTime(90_000, 5_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
   });
 
-  it("ignores a stored best under the floor, so a real clear beats it", () => {
-    expect(nextBestTime(4_000, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: true });
+  it("ignores a stored best under the floor: a real clear replaces it but is a first best", () => {
+    expect(nextBestTime(4_000, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
   });
 });

@@ -1,15 +1,26 @@
+/**
+ * ProfileScreen — the player's cross-game stats and leaderboard membership (#2637).
+ *
+ * Concerns:
+ *   1. Top tiles — only figures that mean the same for every game, summed over the games
+ *      visible in this build (#2390); no cross-game score.
+ *   2. Per-game rows from `/stats/me` (remembered for offline, #2635) and recent games.
+ *   3. Leaderboard membership — join, reroll or leave the generated name (#2778).
+ *   Not a game screen: it uses ScreenFrame, not GameShell.
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { EmptyState } from "../components/shared/EmptyState";
+import { StatTileGrid, type StatTile } from "../components/shared/StatTileGrid";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
-import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
+import { AppHeader } from "../components/shared/AppHeader";
+import { ScreenFrame } from "../components/shared/ScreenFrame";
 import { statsApi } from "../api/stats";
 import { fetchAndRememberMyStats } from "../hooks/useMyStats";
 import type { StatsResponse, GameRow, GameTypeStats } from "../api/types";
@@ -32,12 +43,6 @@ import { isGameVisible } from "../entitlements/gameVisibility";
 import { GAME_TITLE_NAMESPACES, gameTitle } from "../i18n/gameTitle";
 
 type ProfileNav = NativeStackNavigationProp<ProfileStackParamList, "ProfileHome">;
-
-interface StatsCardData {
-  key: string;
-  label: string;
-  value: string;
-}
 
 interface GameSummaryRow {
   game: string;
@@ -91,7 +96,7 @@ function deriveBentoTiles(
   stats: StatsResponse,
   summaries: GameSummaryRow[],
   t: TFunction
-): StatsCardData[] {
+): StatTile[] {
   const visible = visibleStats(stats);
   const sessions = visible.reduce((sum, [, s]) => sum + sessionsOf(s), 0);
   const hasCompleted = visible.every(([, s]) => completedOf(s) != null);
@@ -124,7 +129,6 @@ function deriveBentoTiles(
 
 export default function ProfileScreen() {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const { t } = useTranslation(["profile", ...GAME_TITLE_NAMESPACES]);
   const navigation = useNavigation<ProfileNav>();
 
@@ -248,26 +252,7 @@ export default function ProfileScreen() {
         />
       )}
       {bentoTiles && (
-        <View style={styles.bento}>
-          {bentoTiles.map((tile) => (
-            <View
-              key={tile.key}
-              testID={`profile-tile-${tile.key}`}
-              accessible
-              accessibilityLabel={`${tile.label}: ${tile.value}`}
-              style={[styles.bentoCard, { backgroundColor: colors.surfaceAlt }]}
-            >
-              <Text style={[styles.bentoLabel, { color: colors.textMuted }]}>{tile.label}</Text>
-              <Text
-                style={[styles.bentoValue, { color: colors.text }]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-              >
-                {tile.value}
-              </Text>
-            </View>
-          ))}
-        </View>
+        <StatTileGrid tiles={bentoTiles} testIDPrefix="profile-tile" style={styles.bento} />
       )}
       {gameSummaries && gameSummaries.length > 0 && (
         <View>
@@ -391,16 +376,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.background,
-          paddingTop: APP_HEADER_HEIGHT + insets.top,
-          paddingBottom: Math.max(insets.bottom, 16),
-        },
-      ]}
-    >
+    <ScreenFrame>
       <AppHeader title={t("title")} />
       <ConnectedOfflineBanner style={styles.offlineBannerWrap} />
       <View
@@ -412,12 +388,11 @@ export default function ProfileScreen() {
         <LeaderboardMembership />
       </View>
       {body}
-    </View>
+    </ScreenFrame>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   offlineBannerWrap: { marginHorizontal: 16, marginTop: 12 },
   displayNameCard: {
     marginHorizontal: 16,
@@ -427,27 +402,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  bento: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    padding: 12,
-    gap: 12,
-  },
-  bentoCard: {
-    flexGrow: 1,
-    flexBasis: "45%",
-    minHeight: 84,
-    padding: 14,
-    borderRadius: 16,
-  },
-  bentoLabel: {
-    fontFamily: typography.label,
-    fontSize: 10,
-    textTransform: "uppercase",
-    letterSpacing: 1.2,
-    marginBottom: 6,
-  },
-  bentoValue: { fontFamily: typography.heading, fontSize: 22 },
+  bento: { padding: 12 },
   sectionTitle: {
     fontFamily: typography.label,
     fontSize: 13,

@@ -6,6 +6,9 @@ from fastapi import APIRouter, Request
 
 from db.base import get_session_factory
 from limiter import limiter, session_key
+from rate_limits import (
+    ENTITLEMENTS_SESSION_RATE_LIMIT,
+)
 from session import get_session_id
 
 from . import service
@@ -15,13 +18,15 @@ router = APIRouter()
 
 
 @router.get("", response_model=EntitlementsResponse)
-@limiter.limit("30/minute", key_func=session_key)
+@limiter.limit(ENTITLEMENTS_SESSION_RATE_LIMIT, key_func=session_key)
 async def get_entitlements(request: Request) -> EntitlementsResponse:
     """Return a signed RS256 JWT listing games this session may access."""
     sid = get_session_id(request)
     if service.is_dev_override_active():
         entitled_games = await service.get_entitled_games(None, sid)
     else:
+        # Opened here, not taken as ``db: DbSession`` (#2993): the dev override
+        # answers without a database, so it must not need one configured.
         factory = get_session_factory()
         async with factory() as db:
             entitled_games = await service.get_entitled_games(db, sid)
