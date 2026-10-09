@@ -68,7 +68,7 @@ describe("FoundationPile via FreeCell", () => {
       fontSize: 18,
       lineHeight: 22,
       opacity: 0.75,
-      color: dark.cardRedSuit,
+      color: dark.error,
     });
     expect(flat("Empty Hearts foundation")).toMatchObject({ borderRadius: 6, borderWidth: 1 });
 

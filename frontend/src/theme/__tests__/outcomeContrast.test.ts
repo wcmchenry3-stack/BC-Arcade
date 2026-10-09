@@ -102,8 +102,8 @@ describe.each([
     expect(contrast(palette.cardInk, palette.cardFace)).toBeGreaterThanOrEqual(7);
   });
 
-  it("cardRedSuit stays at least 2.5:1 on cardFace and is distinct from cardInk", () => {
-    expect(contrast(palette.cardRedSuit, palette.cardFace)).toBeGreaterThanOrEqual(2.5);
+  it("cardRedSuit reaches WCAG AA (4.5:1) on cardFace (#3101) and is distinct from cardInk", () => {
+    expect(contrast(palette.cardRedSuit, palette.cardFace)).toBeGreaterThanOrEqual(4.5);
     expect(palette.cardRedSuit.toLowerCase()).not.toBe(palette.cardInk.toLowerCase());
   });
 });

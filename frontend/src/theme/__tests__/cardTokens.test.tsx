@@ -28,11 +28,14 @@ describe("card colour tokens", () => {
   it.each([
     ["dark", dark],
     ["light", light],
-  ])("%s: the face, ink and red-suit colours cards rendered before #2983", (_name, colors) => {
-    expect(colors.cardFace).toBe("#fff");
-    expect(colors.cardInk).toBe("#0e0e13");
-    expect(colors.cardRedSuit).toBe("#ff716c");
-  });
+  ])(
+    "%s: the face, ink and red-suit colours cards rendered before #2983 (red suit darkened in #3101)",
+    (_name, colors) => {
+      expect(colors.cardFace).toBe("#fff");
+      expect(colors.cardInk).toBe("#0e0e13");
+      expect(colors.cardRedSuit).toBe("#d32f2f");
+    }
+  );
 
   it("PlayingCard passes the tokens to the active deck's face", async () => {
     mockFaceProps.length = 0;

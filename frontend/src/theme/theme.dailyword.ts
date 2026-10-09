@@ -12,8 +12,8 @@
 /** Right letter, right place. */
 export const DAILYWORD_CORRECT = "#538d4e";
 
-/** Right letter, wrong place. */
-export const DAILYWORD_PRESENT = "#b59f3b";
+/** Right letter, wrong place. Dark amber so the white label clears WCAG AA (4.69:1, #3101). */
+export const DAILYWORD_PRESENT = "#8c7100";
 
 /** Letter not in the word. */
 export const DAILYWORD_ABSENT = "#3a3a3c";
