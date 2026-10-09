@@ -234,6 +234,27 @@ describe("usePersistedGameState", () => {
     expect(onRestored).toHaveBeenCalledTimes(1);
   });
 
+  it("saves nothing while a reload is in flight", async () => {
+    const loads: ReturnType<typeof deferred<Game | null>>[] = [];
+    const { render, save } = setup(() => {
+      const d = deferred<Game | null>();
+      loads.push(d);
+      return d.promise;
+    });
+    const { result } = await render();
+    await act(async () => loads[0]!.resolve({ moves: 1 }));
+    save.mockClear();
+
+    await act(async () => result.current.reload());
+    expect(result.current.hasLoadedRef.current).toBe(false);
+    await act(async () => result.current.setState({ moves: 9 }));
+    expect(save).not.toHaveBeenCalled();
+
+    await act(async () => loads[1]!.resolve({ moves: 2 }));
+    expect(save).toHaveBeenCalledWith({ moves: 2 });
+    expect(save).not.toHaveBeenCalledWith({ moves: 9 });
+  });
+
   it("loads once, not on re-render", async () => {
     const load = jest.fn(() => Promise.resolve<Game | null>({ moves: 1 }));
     const { render } = setup(load);

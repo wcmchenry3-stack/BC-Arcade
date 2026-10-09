@@ -62,8 +62,9 @@ export interface PersistedGameState<T> {
  * - When it lands, `hasLoadedRef` turns true, the state is set to what it
  *   loaded (null for a clean slot), the screen's `useGameRestored` handler
  *   runs with it, and `loading` ends, all in one batch.
- * - Nothing is saved until the load has landed, so a state set before it (or
- *   the initial null) never overwrites a resumable save.
+ * - Nothing is saved until the load has landed (the mount load or a
+ *   `reload()`), so a state set before it (or the initial null) never
+ *   overwrites a resumable save.
  * - Every non-null state after that is saved, the loaded one included. A
  *   null state (no game, pre-game) saves nothing: the screen clears the save
  *   itself where it ends a game (`clear`).
@@ -126,7 +127,10 @@ export function usePersistedGameState<T>(
     return () => cancelLoad.current();
   }, [startLoad]);
 
+  // Saves pause until the reload lands, so a state set meanwhile never
+  // overwrites the save being reloaded.
   const reload = useCallback(() => {
+    hasLoadedRef.current = false;
     setLoading(true);
     cancelLoadRef.current = startLoad();
   }, [startLoad]);
