@@ -13,6 +13,12 @@ import Animated, {
 
 import type { BoardCamera } from "../../game/mahjong/layout";
 import type { SlotTile } from "../../game/mahjong/types";
+import {
+  MAHJONG_FP_BORDER,
+  MAHJONG_FP_FACE,
+  MAHJONG_FP_SIDE_B,
+  MAHJONG_FP_SIDE_R,
+} from "../../theme/theme.mahjong";
 
 // ---------------------------------------------------------------------------
 // FlyingPair — two matched tiles slide toward each other then burst and fade
@@ -25,10 +31,10 @@ export interface FlyingPairData {
 }
 
 // Colors that match the canvas tile rendering.
-const FP_FACE = "#f5f0e8";
-const FP_BORDER = "#ffd700";
-const FP_SIDE_R = "#a89070";
-const FP_SIDE_B = "#987860";
+const FP_FACE = MAHJONG_FP_FACE;
+const FP_BORDER = MAHJONG_FP_BORDER;
+const FP_SIDE_R = MAHJONG_FP_SIDE_R;
+const FP_SIDE_B = MAHJONG_FP_SIDE_B;
 // Border inset between the gold frame and the ivory face, in logical pixels.
 const FACE_INSET = 2;
 

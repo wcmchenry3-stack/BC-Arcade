@@ -23,9 +23,27 @@ import {
 } from "../engine";
 import { buddyOps } from "./buddy";
 import { carrierOps } from "./carrier";
-import { withAlpha } from "./color";
+import { opaque, withAlpha } from "./color";
 import type { PackedColor } from "./color";
 import { flinchWobble } from "./flinch";
+import {
+  ASTEROID_EDGE_RGB,
+  ASTEROID_FLASH_RGB,
+  ASTEROID_RGB,
+  BOMB_RGB,
+  BUDDY_POWERUP_RGB,
+  BUDDY_SHIP_RGB,
+  CHARGE_SHOT,
+  ENEMY_SHOT,
+  EXPLOSION_COOL_RGB,
+  EXPLOSION_HOT_RGB,
+  FLAK_SHOT,
+  HULL_BLUE_RGB,
+  LIGHTNING_RGB,
+  PLAYER_SHOT,
+  TIER_FALLBACK,
+  WHITE_RGB,
+} from "./palette";
 import { debugOpKeys } from "./opKeys";
 import { isUpgradePickup, upgradePickupOps } from "./pickups";
 import type { UpgradePickupType } from "./pickups";
@@ -140,12 +158,6 @@ const TIER_SPRITE: Record<EnemyTier, Exclude<SpriteKey, "explosion">> = {
   Guardian: "enemyGuardian",
   Carrier: "enemyCarrier",
 };
-const TIER_FALLBACK: Record<EnemyTier, PackedColor> = {
-  Grunt: 0xff8888ff,
-  Elite: 0xffff88ff,
-  Guardian: 0xffffff44,
-  Carrier: 0xffb06cff,
-};
 const POWERUP_SPRITE: Partial<Record<PowerUpType, Exclude<SpriteKey, "explosion">>> = {
   shield: "puShield",
   bomb: "puBomb",
@@ -154,15 +166,15 @@ const POWERUP_SPRITE: Partial<Record<PowerUpType, Exclude<SpriteKey, "explosion"
 };
 
 /** The shield / armor blue every ring and flash below is drawn in. */
-const SHIELD_RGB = 0x00aaff;
+const SHIELD_RGB = HULL_BLUE_RGB;
 const ARMOR_RING = withAlpha(SHIELD_RGB, 0.45);
 const SHIELD_FILL = withAlpha(SHIELD_RGB, 0.25);
 const SHIELD_RING = withAlpha(SHIELD_RGB, 0.75);
-const LIGHTNING_TINT = withAlpha(0xffee00, 0.45);
-const BUDDY_FALLBACK = withAlpha(0x0078ff, 0.8);
+const LIGHTNING_TINT = withAlpha(LIGHTNING_RGB, 0.45);
+const BUDDY_FALLBACK = withAlpha(BUDDY_SHIP_RGB, 0.8);
 const PU_SHIELD = withAlpha(SHIELD_RGB, 0.9);
-const PU_BOMB = withAlpha(0xff5000, 0.9);
-const PU_BUDDY = withAlpha(0x00ffc8, 0.9);
+const PU_BOMB = withAlpha(BOMB_RGB, 0.9);
+const PU_BUDDY = withAlpha(BUDDY_POWERUP_RGB, 0.9);
 
 /** Whether the player ship and its overlays are drawn this frame. */
 export function playerVisible(state: StarSwarmState): boolean {
@@ -225,7 +237,7 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
       y: b.y - b.height / 2,
       w: b.width,
       h: b.height,
-      color: b.flak ? 0xffffd27a : 0xffff4422,
+      color: b.flak ? FLAK_SHOT : ENEMY_SHOT,
     });
   }
 
@@ -237,11 +249,11 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
     const w = b.width;
     const h = b.height;
     if (b.width >= BULLET_C_W) {
-      ops.push({ k: "rect", key, x, y, w, h, color: 0xff00f0ff });
+      ops.push({ k: "rect", key, x, y, w, h, color: CHARGE_SHOT });
     } else if (loaded.bulletPlayer) {
       ops.push({ k: "image", key, sprite: "bulletPlayer", x, y, w, h, fit: "fill" });
     } else {
-      ops.push({ k: "rect", key, x, y, w, h, color: 0xff00ffcc });
+      ops.push({ k: "rect", key, x, y, w, h, color: PLAYER_SHOT });
     }
   }
 
@@ -317,7 +329,7 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
         fit: "fill",
       });
     } else {
-      ops.push({ k: "rect", key: dbg ? "player" : undefined, x, y, w, h, color: 0xff00ffcc });
+      ops.push({ k: "rect", key: dbg ? "player" : undefined, x, y, w, h, color: PLAYER_SHOT });
     }
     // #1033 shield aura
     if (state.activePowerUp?.type === "shield") {
@@ -424,7 +436,7 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
           lx + pw * 0.542,
           ly + ph * 0.458,
         ],
-        color: 0xffffee00,
+        color: opaque(LIGHTNING_RGB),
       });
     }
   }
@@ -455,19 +467,19 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
           cx: a.x,
           cy: a.y,
           r: f.r,
-          color: withAlpha(0xffffff, f.strokeAlpha),
+          color: withAlpha(WHITE_RGB, f.strokeAlpha),
           stroke: 2,
         });
       }
     } else {
       const points = flatRounded(asteroidOutline(a));
-      const color = a.hitFlashTimer > 0 ? 0xffe8d3b8 : 0xff8b6a47;
+      const color = opaque(a.hitFlashTimer > 0 ? ASTEROID_FLASH_RGB : ASTEROID_RGB);
       ops.push({ k: "poly", key, points, color });
       ops.push({
         k: "poly",
         key: dbg ? `${key}-edge` : undefined,
         points,
-        color: 0xffc9a27a,
+        color: opaque(ASTEROID_EDGE_RGB),
         stroke: 1.5,
       });
     }
@@ -497,7 +509,7 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
         cx: exp.x,
         cy: exp.y,
         r: 6 + progress * 18,
-        color: progress < 0.4 ? 0xffffcc00 : 0xffff4400,
+        color: opaque(progress < 0.4 ? EXPLOSION_HOT_RGB : EXPLOSION_COOL_RGB),
         opacity: 1 - progress,
       });
     }
@@ -512,7 +524,7 @@ export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] 
       y: 0,
       w: opts.width,
       h: opts.height,
-      color: withAlpha(0xffffff, (state.bombFlashTimer / 300) * 0.75),
+      color: withAlpha(WHITE_RGB, (state.bombFlashTimer / 300) * 0.75),
     });
   }
 

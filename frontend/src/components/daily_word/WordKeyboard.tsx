@@ -3,6 +3,12 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
 import { useTheme } from "../../theme/ThemeContext";
+import {
+  DAILYWORD_ABSENT,
+  DAILYWORD_CORRECT,
+  DAILYWORD_LETTER_TEXT,
+  DAILYWORD_PRESENT,
+} from "../../theme/theme.dailyword";
 import { typography } from "../../theme/typography";
 import type { DailyWordState } from "../../game/daily_word/types";
 
@@ -41,10 +47,10 @@ export function WordKeyboard({
   // Memoized rather than hoisted: the "unused" key colour follows the theme.
   const KEY_BG = useMemo<Record<string, string>>(
     () => ({
-      correct: "#538d4e",
-      present: "#b59f3b",
-      absent: "#3a3a3c",
-      unused: colors.surfaceAlt ?? "#818384",
+      correct: DAILYWORD_CORRECT,
+      present: DAILYWORD_PRESENT,
+      absent: DAILYWORD_ABSENT,
+      unused: colors.surfaceAlt,
     }),
     [colors.surfaceAlt]
   );
@@ -52,9 +58,7 @@ export function WordKeyboard({
   function renderKey(key: string, idx: number) {
     const isAction = key === "Enter" || key === "Delete";
     const letterStatus = keyboardState[key.toLowerCase()] ?? keyboardState[key] ?? "unused";
-    const bg = isAction
-      ? (colors.surfaceHigh ?? "#818384")
-      : (KEY_BG[letterStatus] ?? KEY_BG.unused);
+    const bg = isAction ? colors.surfaceHigh : (KEY_BG[letterStatus] ?? KEY_BG.unused);
     const label =
       key === "Enter" ? t("keyboard.enter") : key === "Delete" ? t("keyboard.delete") : key;
 
@@ -67,7 +71,7 @@ export function WordKeyboard({
         accessibilityRole="button"
         accessibilityLabel={label}
       >
-        <Text style={[keyStyles.keyText, { color: "#ffffff" }]}>{label}</Text>
+        <Text style={[keyStyles.keyText, { color: DAILYWORD_LETTER_TEXT }]}>{label}</Text>
       </Pressable>
     );
   }

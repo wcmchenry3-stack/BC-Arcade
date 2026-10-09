@@ -12,6 +12,11 @@ import { useTranslation } from "react-i18next";
 import { Particle, useParticleGroup, type ParticleMotion } from "../shared/Particle";
 import { useReduceMotion } from "../shared/useReduceMotion";
 import { playTimedPhases } from "../shared/timedPhases";
+import {
+  HEARTS_MOONSHOT_BACKDROP,
+  HEARTS_MOONSHOT_LABEL,
+  HEARTS_MOONSHOT_STAR,
+} from "../../theme/theme.hearts";
 
 interface Props {
   visible: boolean;
@@ -141,7 +146,7 @@ export function HeartsMoonShotAnimation({ visible, shooterLabel, onAnimationEnd 
 
 const styles = StyleSheet.create({
   backdrop: {
-    backgroundColor: "#000000",
+    backgroundColor: HEARTS_MOONSHOT_BACKDROP,
     zIndex: 100,
   },
   content: {
@@ -157,13 +162,13 @@ const styles = StyleSheet.create({
   star: {
     position: "absolute",
     fontSize: 24,
-    color: "#fbbf24",
+    color: HEARTS_MOONSHOT_STAR,
   },
   label: {
     marginTop: 16,
     fontSize: 20,
     fontWeight: "700",
-    color: "#ffffff",
+    color: HEARTS_MOONSHOT_LABEL,
     textAlign: "center",
     paddingHorizontal: 24,
   },

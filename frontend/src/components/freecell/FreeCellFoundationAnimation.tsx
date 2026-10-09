@@ -12,6 +12,7 @@ import Animated, {
 import { Particle, useParticleGroup, type ParticleMotion } from "../shared/Particle";
 import { useReduceMotion } from "../shared/useReduceMotion";
 import { playTimedPhases } from "../shared/timedPhases";
+import { CELEBRATION_SPARKLE } from "../../theme/theme.constants";
 
 // Six sparkle rays at 60° intervals
 const RAYS: readonly ParticleMotion[] = [0, 60, 120, 180, 240, 300].map((angle) => ({
@@ -107,10 +108,23 @@ export function FreeCellFoundationAnimation({ visible, onAnimationEnd }: Props) 
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Animated.View style={[StyleSheet.absoluteFill, styles.tintLayer, tintStyle]} />
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          styles.tintLayer,
+          { backgroundColor: CELEBRATION_SPARKLE },
+          tintStyle,
+        ]}
+      />
       <View style={styles.content}>
         {RAYS.map((motion, i) => (
-          <Particle key={i} index={i} group={rays} motion={motion} style={styles.sparkleRay} />
+          <Particle
+            key={i}
+            index={i}
+            group={rays}
+            motion={motion}
+            style={[styles.sparkleRay, { backgroundColor: CELEBRATION_SPARKLE }]}
+          />
         ))}
         <Animated.Text
           style={[styles.sparkleIcon, iconStyle]}
@@ -127,7 +141,6 @@ export function FreeCellFoundationAnimation({ visible, onAnimationEnd }: Props) 
 
 const styles = StyleSheet.create({
   tintLayer: {
-    backgroundColor: "#ffd700",
     zIndex: 100,
   },
   content: {
@@ -145,6 +158,5 @@ const styles = StyleSheet.create({
     width: 70,
     height: 3,
     borderRadius: 2,
-    backgroundColor: "#ffd700",
   },
 });

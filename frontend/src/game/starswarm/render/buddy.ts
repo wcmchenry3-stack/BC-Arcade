@@ -12,6 +12,13 @@
  */
 import { BUDDY_HP, HIT_FLASH_DURATION } from "../engine";
 import { withAlpha } from "./color";
+import {
+  BUDDY_HIT_FLASH_RGB,
+  BUDDY_HP_HIGH,
+  BUDDY_HP_LOW,
+  BUDDY_HP_MID,
+  BUDDY_HP_TRACK_RGB,
+} from "./palette";
 import type { PackedColor } from "./color";
 import type { DrawOp } from "./frame";
 import { debugOpKeys } from "./opKeys";
@@ -27,12 +34,12 @@ const PIP_GAP = 1;
 /** The bar colour for this much HP left (fraction of BUDDY_HP). */
 function buddyHpColor(hp: number): PackedColor {
   const f = hp / BUDDY_HP;
-  if (f > 0.5) return 0xff4dff88;
-  if (f > 0.25) return 0xffffc233;
-  return 0xffff4a3d;
+  if (f > 0.5) return BUDDY_HP_HIGH;
+  if (f > 0.25) return BUDDY_HP_MID;
+  return BUDDY_HP_LOW;
 }
 
-const TRACK = withAlpha(0x000000, 0.65);
+const TRACK = withAlpha(BUDDY_HP_TRACK_RGB, 0.65);
 
 /**
  * Draw ops for one Buddy's HP bar (and hit flash). `size` is the sprite's drawn size. Appends to
@@ -73,7 +80,7 @@ export function buddyOps(b: BuddyShip, size: number, ops: DrawOp[] = []): DrawOp
       cx: b.x,
       cy: b.y,
       r: size * (0.55 + 0.25 * (1 - a)),
-      color: withAlpha(0xff785a, 0.8 * a),
+      color: withAlpha(BUDDY_HIT_FLASH_RGB, 0.8 * a),
       stroke: 2,
     });
   }

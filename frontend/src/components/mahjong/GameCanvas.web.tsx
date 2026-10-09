@@ -14,12 +14,22 @@ import { freeTileIds, getMatchingFreeTileIds, hasFreePairs } from "../../game/ma
 import type { MahjongState, SlotTile } from "../../game/mahjong/types";
 import { loadTileAssets } from "./tileAssetLoader";
 import {
+  MAHJONG_BORDER_NORMAL,
+  MAHJONG_BORDER_SELECTED,
   MAHJONG_BOARD_BG,
+  MAHJONG_FACE_LOADING,
   MAHJONG_GLOW_SHADOW,
   MAHJONG_HINT_COLOR,
   MAHJONG_HINT_GLOW_SHADOW,
+  MAHJONG_SIDE_B,
+  MAHJONG_SIDE_R,
+  MAHJONG_SUIT_COLOR as SUIT_COLOR,
+  MAHJONG_SUIT_FALLBACK,
+  MAHJONG_TILE_FACE,
+  MAHJONG_TILE_FACE_LOCKED,
   MAHJONG_TILE_FACE_SELECTED,
-} from "../../theme/theme.constants";
+  MAHJONG_TILE_SHADOW,
+} from "../../theme/theme.mahjong";
 import type { BoardCamera } from "../../game/mahjong/layout";
 
 // ---------------------------------------------------------------------------
@@ -27,24 +37,14 @@ import type { BoardCamera } from "../../game/mahjong/layout";
 // ---------------------------------------------------------------------------
 
 const BG = MAHJONG_BOARD_BG;
-const TILE_FACE = "#f5f0e8";
+const TILE_FACE = MAHJONG_TILE_FACE;
 const TILE_FACE_SELECTED = MAHJONG_TILE_FACE_SELECTED;
-const TILE_FACE_LOCKED = "#d0c8b8";
-const BORDER_NORMAL = "#8b7355";
-const BORDER_SELECTED = "#ffd700";
+const TILE_FACE_LOCKED = MAHJONG_TILE_FACE_LOCKED;
+const BORDER_NORMAL = MAHJONG_BORDER_NORMAL;
+const BORDER_SELECTED = MAHJONG_BORDER_SELECTED;
 const BORDER_HINT = MAHJONG_HINT_COLOR;
-const SIDE_R = "#a89070";
-const SIDE_B = "#987860";
-
-const SUIT_COLOR: Record<string, string> = {
-  characters: "#cc0000",
-  circles: "#006633",
-  bamboos: "#003322",
-  winds: "#334455",
-  dragons: "#880011",
-  flowers: "#aa2299",
-  seasons: "#0044aa",
-};
+const SIDE_R = MAHJONG_SIDE_R;
+const SIDE_B = MAHJONG_SIDE_B;
 
 // ---------------------------------------------------------------------------
 // Felt texture
@@ -148,7 +148,7 @@ function drawBoard(
 
     const borderColor = isSelected ? BORDER_SELECTED : isHint ? BORDER_HINT : BORDER_NORMAL;
     const faceColor = isSelected ? TILE_FACE_SELECTED : isFree ? TILE_FACE : TILE_FACE_LOCKED;
-    const suitColor = SUIT_COLOR[tile.suit] ?? "#888888";
+    const suitColor = SUIT_COLOR[tile.suit] ?? MAHJONG_SUIT_FALLBACK;
 
     // Right 3-D side
     ctx.fillStyle = SIDE_R;
@@ -169,7 +169,7 @@ function drawBoard(
       ctx.shadowColor = MAHJONG_HINT_GLOW_SHADOW;
       ctx.shadowBlur = 8;
     } else {
-      ctx.shadowColor = "rgba(0,0,0,0.35)";
+      ctx.shadowColor = MAHJONG_TILE_SHADOW;
       ctx.shadowBlur = 3;
     }
 
@@ -206,7 +206,7 @@ function drawBoard(
     // Debug: green tint over free tiles when dev overlay is active.
     if (debugShowFree && isFree) {
       ctx.globalAlpha = 0.3;
-      ctx.fillStyle = "#00cc44";
+      ctx.fillStyle = MAHJONG_FACE_LOADING;
       ctx.fillRect(x + 2 + liftX, y + 2 + liftY, faceWidth - 4, faceHeight - 4);
     }
 

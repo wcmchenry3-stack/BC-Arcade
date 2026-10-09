@@ -99,6 +99,26 @@ Each outcome also has a `*Tint` (same hue, 10–14% alpha) for icon discs and ba
 
 Use `colors.overlay` behind every modal card: `rgba(0,0,0,0.75)` in dark, `rgba(0,0,0,0.5)` in light (a 75% scrim over cream reads as an error state). Don't hardcode a scrim.
 
+### Per-game palette modules
+
+Some colours are not UI chrome and must not follow the light/dark theme: a Mahjong tile is ivory, Star Swarm is drawn on black, a Wordle tile is green or yellow because that is the game. These live in a per-game module `frontend/src/theme/theme.<game>.ts` as named constants, never inlined in a screen or component:
+
+| Module                                  | Holds                                                                                                                               |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `theme.mahjong.ts`                      | Board, tile face / border / sides, suit placeholder colours (`MAHJONG_SUIT_COLOR`), flying pair (`MAHJONG_FP_*`), overlay           |
+| `theme.starswarm.ts`                    | Screen, HUD and Controls colours: space, cyan accent, hull blue, lightning, pause scrim                                             |
+| `game/starswarm/render/palette.ts`      | Star Swarm's in-canvas colours as `0xRRGGBB` (`*_RGB`) and packed `0xAARRGGBB`: shots, tiers, asteroids, Buddy HP, Carrier, pickups |
+| `theme.dailyword.ts`                    | Wordle tile and key colours (correct / present / absent) and their letter colour                                                    |
+| `theme.hearts.ts`                       | Hearts event-animation colours with no shared token (queen-of-spades card and ink, moon shot)                                       |
+| `theme.bottle.ts`, `theme.constants.ts` | Sort liquids; shared one-offs (badges, menu shadow, dev-panel accents)                                                              |
+
+Rules:
+
+- **One definition, every renderer.** The native (Skia) and web (2D canvas) renderers import the same constants, so they cannot drift. The Star Swarm canvas colours that the HUD shares (space, accent, hull blue, lightning) are defined once in `theme.starswarm.ts` and `palette.ts` derives from them; `GameCanvas.web.tsx` builds its colour table from `palette.ts` with `cssHex` / `cssRgba`.
+- **Use a token first.** If `colors.*` already has the meaning (`celebration`, `error`, `bonus`, `accent`), use it. A per-game module is for colours that are fixed by the game's look, not for avoiding a token.
+- **Contrast is tested.** Add new text or tile colours to `frontend/src/theme/__tests__/gamePalettes.test.ts` (WCAG helpers, same pattern as `outcomeContrast.test.ts`).
+- **Enforced in CI.** `npm run check-colors` (`frontend/scripts/check-color-literals.mjs`) fails on a colour literal in `src/screens`, `src/components`, `src/game/_shared`, `src/game/cascade` or `src/game/starswarm/render` (multi-line strings included; tests: `npm run test:check-colors`). `theme.*.ts` and `palette.ts` are exempt by design; its allowlist is the dev-only code, Cascade (#3033) and the card faces, `SelectableCard` and `DragOverlay` (each tagged "remove in #2989 PR 2", after #3059); an entry that matches no file fails the check. Do not add to the allowlist to get a literal past the check.
+
 ---
 
 ## Stitch-as-basis rule
@@ -132,4 +152,4 @@ Cascade has its own asset pipeline (background removal, vertex extraction, fruit
 - **Fonts:** `import { typography } from "@/theme/typography"` then `typography.heading`, `typography.body`. Never hardcode family strings.
 - **Theme toggle:** `const { theme, toggle } = useTheme()`. The theme persists to `AsyncStorage` under `gaming_app_theme`.
 
-If you need a token that doesn't exist yet, add it to both `dark` and `light` palettes in `ThemeContext.tsx` and document it here — don't invent a one-off hex in a component.
+If you need a token that doesn't exist yet, add it to both `dark` and `light` palettes in `ThemeContext.tsx` and document it here — don't invent a one-off hex in a component. If the colour is fixed by one game's look and should not change with the theme, add it to that game's `theme.<game>.ts` instead (see [Per-game palette modules](#per-game-palette-modules)).

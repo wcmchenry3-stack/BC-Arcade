@@ -14,15 +14,14 @@
  */
 import { carrierBeamCharge, carrierRunBrace } from "../engine";
 import { withAlpha } from "./color";
+import { BEAM_CORE_RGB, BEAM_RGB, BRACE_RGB, WHITE } from "./palette";
 import type { DrawOp } from "./frame";
 import { debugOpKeys } from "./opKeys";
 import type { CarrierBeam, StarSwarmState } from "../types";
 
 /** 0xRRGGBB — the beam's violet and the brace's amber. */
-const BEAM_RGB = 0xb06cff;
-const BRACE_RGB = 0xffaa28;
 const BEAM_GLOW = withAlpha(BEAM_RGB, 0.35);
-const BEAM_CORE = withAlpha(0xe6cdff, 0.9);
+const BEAM_CORE = withAlpha(BEAM_CORE_RGB, 0.9);
 
 /** Draw ops for one released beam: glow, core, then its head — appended to `ops` (#2963). */
 export function carrierBeamOps(b: CarrierBeam, ops: DrawOp[] = []): DrawOp[] {
@@ -53,7 +52,7 @@ export function carrierBeamOps(b: CarrierBeam, ops: DrawOp[] = []): DrawOp[] {
       cx: b.x,
       cy: b.y,
       r: b.halfWidth * 0.9,
-      color: 0xffffffff,
+      color: WHITE,
     }
   );
   return ops;

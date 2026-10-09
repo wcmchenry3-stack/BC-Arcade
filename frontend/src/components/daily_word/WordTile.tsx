@@ -9,6 +9,12 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useTheme } from "../../theme/ThemeContext";
+import {
+  DAILYWORD_ABSENT,
+  DAILYWORD_CORRECT,
+  DAILYWORD_LETTER_TEXT,
+  DAILYWORD_PRESENT,
+} from "../../theme/theme.dailyword";
 import { typography } from "../../theme/typography";
 import type { DailyWordState, TileStatus } from "../../game/daily_word/types";
 
@@ -20,9 +26,9 @@ export const TILE_STAGGER_MS = 100;
 // ---------------------------------------------------------------------------
 
 const TILE_STATUS_COLORS: Record<TileStatus, string> = {
-  correct: "#538d4e",
-  present: "#b59f3b",
-  absent: "#3a3a3c",
+  correct: DAILYWORD_CORRECT,
+  present: DAILYWORD_PRESENT,
+  absent: DAILYWORD_ABSENT,
   tbd: "transparent",
   empty: "transparent",
 };
@@ -71,7 +77,7 @@ function WordTile({
 
   const bg =
     visibleStatus === "tbd" || visibleStatus === "empty"
-      ? (colors.surface ?? "#1a1a1b")
+      ? colors.surface
       : TILE_STATUS_COLORS[visibleStatus];
   const hasBorder = visibleStatus === "empty" || visibleStatus === "tbd";
   const borderColor = letter ? colors.textMuted : colors.border;
@@ -102,7 +108,7 @@ function WordTile({
               visibleStatus === "correct" ||
               visibleStatus === "present" ||
               visibleStatus === "absent"
-                ? "#ffffff"
+                ? DAILYWORD_LETTER_TEXT
                 : colors.text,
           },
         ]}
