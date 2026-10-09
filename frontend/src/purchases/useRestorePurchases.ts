@@ -15,7 +15,7 @@ export type RestoreStatus =
   | "nothing" // the store account owns nothing to restore
   | "error";
 
-export function statusOfRestore(result: RestoreResult): RestoreStatus {
+function statusOfRestore(result: RestoreResult): RestoreStatus {
   if (result.error) return "error";
   if (result.restored.length > 0 || result.alreadyOwned.length > 0) return "restored";
   if (result.pending.length > 0) return "pending";

@@ -2,7 +2,7 @@
 
 **Issue:** #2240
 **Date:** 2026-08-16
-**Scope:** Research only. No production code changed. Prototype lives entirely in `scripts/hearts-pimc-spike.ts`, outside `frontend/src/game/hearts/`.
+**Scope:** Research only. No production code changed. Prototype lives entirely in `tools/sim/hearts-pimc-spike.ts`, outside `frontend/src/game/hearts/`.
 
 ---
 
@@ -12,11 +12,11 @@ The current Hearts AI (`selectCardToPlayUtility`, `frontend/src/game/hearts/ai.t
 
 This spike was blocked on two prerequisites from the parent epic (#2233 / #2283):
 - **Pass-history/received-pass inference (#2237)** — merged to `dev` immediately before this spike started. Its `passedCards`/`passedToPlayerIndex` info-set fields are the determinization-quality lever this spike exists to test.
-- **Sim gate v2 (#2238)** — **not yet landed.** This spike uses the existing `scripts/simulate-hearts.ts`-style statistics (binomial CI, z-test) as the best available interim comparison tool, not the more rigorous paired-deal/SPRT methodology #2238 would provide. Treat the benchmark numbers below as directionally informative, not as the final statistically-airtight gate #2238 is meant to be.
+- **Sim gate v2 (#2238)** — **not yet landed.** This spike uses the existing `tools/sim/simulate-hearts.ts`-style statistics (binomial CI, z-test) as the best available interim comparison tool, not the more rigorous paired-deal/SPRT methodology #2238 would provide. Treat the benchmark numbers below as directionally informative, not as the final statistically-airtight gate #2238 is meant to be.
 
 ## 2. Prototype implementation
 
-`scripts/hearts-pimc-spike.ts` (self-contained; imports the production engine/AI/info-set modules read-only, modifies nothing):
+`tools/sim/hearts-pimc-spike.ts` (self-contained; imports the production engine/AI/info-set modules read-only, modifies nothing):
 
 - **`determinizeOpponentHands`** — samples one full, rules-consistent 4-hand deal given only information the acting player could legitimately have: `seenKeys`, own hand, remaining-hand-size counts derived from public trick progress (never from reading opponents' actual `state.playerHands`), `voidLedger`, and — the thing under test — pass-memory (`passedCards`/`passedToPlayerIndex` from #2237). Two modes:
   - `constrained` — pins cards the AI knows it passed away to the known recipient, and respects `voidLedger` for the rest, via a most-constrained-suit-first randomized assignment with retry.
@@ -168,3 +168,10 @@ on that measurement.
 Derive the easier levels from it with plausible mistakes read off the
 engine's own card values. Bring moon attempts and defence inside the engine.
 Re-tune the ladder to 40 / 26 / 16 on the sim gate.
+
+**Retired: `tools/hearts-analysis/`.** This was a local-only FastAPI app (plus a
+static page) that ran batches of Hearts simulations and showed the analysis.
+It was removed on the owner's decision because nothing in CI or deploy used it.
+It is recoverable from git history (check out the commit before the one that
+removed it, e.g. `git log --diff-filter=D -- tools/hearts-analysis`). The
+simulator it drove, `tools/sim/simulate-hearts.ts`, is unchanged.

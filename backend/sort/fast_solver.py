@@ -4,11 +4,11 @@ Decides whether a level can be solved, with a node budget, and returns the
 pours that solve it. ``generate_levels`` deals each level again until this
 proves it solvable. The rules are the game's own (``applyPour`` in
 ``frontend/src/game/sort/engine.ts``, and the reference simulator in
-``verify_levels.py``): a pour moves the whole same-colour run on top of the
+``scripts/sort_verify_levels.py``): a pour moves the whole same-colour run on top of the
 source, or as much of it as fits, onto an empty bottle or onto the same colour.
 A level is solved when every bottle is empty or full of one colour.
 
-Why this is much faster than the plain BFS in ``verify_levels.py``, without
+Why this is much faster than the plain BFS in ``scripts/sort_verify_levels.py``, without
 giving up the proof of unsolvability:
 
 * A state is keyed with its bottles sorted, so bottle permutations (two empty
@@ -28,7 +28,7 @@ solution" is only returned after every reachable state was expanded: that is
 a proof. Running out of budget returns ``None`` (unknown). A "solvable"
 verdict comes with the pours, as indices into the level's own bottles, so it
 can be checked by replaying them with an independent simulator
-(``verify_levels.is_solution``).
+(``sort_verify_levels.is_solution``).
 """
 
 from __future__ import annotations

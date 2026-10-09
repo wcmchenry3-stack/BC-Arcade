@@ -1,19 +1,25 @@
 """The fast Sort solver agrees with the plain BFS and decides big levels (#2764).
 
 Every "solvable" verdict here is also certified: its pours are replayed with the
-reference simulator in ``verify_levels`` (``is_solution``), which shares none of
+reference simulator in ``sort_verify_levels`` (``is_solution``), which shares none of
 the solver's pruning.
 """
 
 from __future__ import annotations
 
 import random
+import sys
+from pathlib import Path
 
 import pytest
 
 from sort.fast_solver import encode, heuristic, solve, successors
 from sort.generate_levels import SOLVER_BUDGET
-from sort.verify_levels import bfs_solvable, is_solution
+
+# The reference pour simulator is a CLI under backend/scripts (#2972).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+
+from sort_verify_levels import bfs_solvable, is_solution
 
 _COLORS = [chr(97 + i) for i in range(8)]
 

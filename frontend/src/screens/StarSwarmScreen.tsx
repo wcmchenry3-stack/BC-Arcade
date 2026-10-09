@@ -1,17 +1,27 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+/**
+ * StarSwarmScreen — the Star Swarm arcade shooter's run lifecycle (#2516).
+ *
+ * Concerns:
+ *   1. Run lifecycle (#2981) — one reducer (`game/starswarm/runPhase`): picker | running |
+ *      paused | over; every new run goes through `startRun`. The engine ticks in the canvas
+ *      (components/starswarm/GameCanvas), never through React state (#2562).
+ *   2. Pause and resume (#2645) — leaving the app or the screen pauses and saves the run with
+ *      its engine counters (`pauseStore`); a saved run restores before the game mounts.
+ *   3. Instrumentation — `useGameSync("starswarm")`, one session per run; a restored run
+ *      resumes the killed process's session (#2654); the run is the leaderboard entry (#2626).
+ *   4. Result + leaderboard (#2516, #2633) — the shared GameResultModal, ranked on the tier
+ *      board via `useGameLeaderboard`.
+ *   5. Audio and screen-reader cues (#2484–#2490) — `useStarSwarmAudio` and spoken events.
+ *   6. Dev panel (#2567) — StarSwarmDevPanel, dev and internal pre-launch builds only.
+ */
+import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
-  AppState,
-  AppStateStatus,
   LayoutChangeEvent,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
-  Text,
   View,
 } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -22,7 +32,8 @@ import { useTheme } from "../theme/ThemeContext";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { bestOf } from "../game/_shared/bestOf";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import GameCanvas from "../components/starswarm/GameCanvas";
 import type { GameCanvasHandle, DevOptions } from "../components/starswarm/GameCanvas";
 import Controls, { hapticPlayerHit, hapticWaveClear } from "../components/starswarm/Controls";
@@ -32,30 +43,32 @@ import {
   DIFFICULTY_TIERS,
   difficultyLabel,
   difficultyMultiplier,
-  dodgeRateByTier,
   engineCounters,
 } from "../game/starswarm/engine";
-import type { TierDodgeRow } from "../game/starswarm/engine";
 import type {
-  PowerUpType,
   DifficultyTier,
   CarrierEvent,
   UpgradeEvent,
-  RunStats,
   StarSwarmState,
 } from "../game/starswarm/types";
 import { reportRunStats } from "../game/starswarm/telemetry";
 import { summarizeScoreLedger } from "../game/starswarm/scoreLedger";
-import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
+import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
+import { registerStarSwarmTestHooks } from "../game/starswarm/testHooks";
 import FrameStatsReadout from "../components/starswarm/FrameStatsReadout";
-import type { FrameStatsSummary } from "../game/starswarm/render/frameStats";
+import StarSwarmDevPanel, {
+  DEFAULT_STARSWARM_DEV_OPTIONS,
+  canvasDevOptions,
+  type StarSwarmDevOptions,
+} from "../components/starswarm/StarSwarmDevPanel";
+import { DevButton } from "../components/dev/DevPanelShell";
 import { loadBestScore, saveBestScore } from "../game/starswarm/bestScore";
 import GameResultModal from "../components/shared/GameResultModal";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
+import { toSubmission } from "../components/shared/toSubmission";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useLastDifficulty } from "../game/_shared/lastDifficulty";
-import { PREMIUM_LEVEL_OPACITY, usePremiumLevels } from "../components/shared/usePremiumLevels";
+import { DifficultyPicker, type DifficultyOption } from "../components/shared/DifficultyPicker";
+import { ModalActions, ModalCard, ModalPrimaryButton } from "../components/shared/ModalCard";
 import { useGameSync } from "../game/_shared/useGameSync";
 import {
   getSavedPausedState,
@@ -64,8 +77,15 @@ import {
   hydratePausedState,
   isPausedStateHydrated,
 } from "../game/starswarm/pauseStore";
-import { useStarSwarmAudio, DEFAULT_SFX_VOLUMES } from "../hooks/useStarSwarmAudio";
-import type { SfxVolumes } from "../hooks/useStarSwarmAudio";
+import { useStarSwarmAudio } from "../hooks/useStarSwarmAudio";
+import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
+import {
+  initialRunState,
+  isLiveRun as isLiveRunOf,
+  isRunOver,
+  isRunPaused,
+  runReducer,
+} from "../game/starswarm/runPhase";
 
 /**
  * #2567: the dev panel exists in dev builds and in internal pre-launch builds (TestFlight / Play
@@ -74,68 +94,26 @@ import type { SfxVolumes } from "../hooks/useStarSwarmAudio";
  */
 const DEV_TOOLS = __DEV__ || isPreLaunchApiBuild();
 
-// #2626: the result card reads the run's rank on its tier's board (`GET /games/{id}/rank`).
-const STARSWARM_BOARD = sessionBoardAdapter("starswarm");
+/** The run stays paused on return until the player resumes it: nothing to do then. */
+const noop = () => {};
 
-// #2491: dev-panel run-stats view — a 4 Hz snapshot of the engine's counters.
-const DEV_STATS_POLL_MS = 250;
-
-interface DevStatsSnapshot {
-  readonly wave: number;
-  readonly difficulty: DifficultyTier;
-  readonly score: number;
-  readonly rows: readonly TierDodgeRow[];
-  readonly run: RunStats;
-}
-
-function snapshotStats(s: StarSwarmState): DevStatsSnapshot {
-  return {
-    wave: s.wave,
-    difficulty: s.difficulty,
-    score: s.score,
-    rows: dodgeRateByTier(s),
-    run: s.runStats,
-  };
-}
-
-/** What the `__starswarm_getRunStats` test hook returns (#2491). */
-interface RunStatsHook {
-  readonly runStats: RunStats;
-  readonly tierStats: StarSwarmState["tierStats"];
-  readonly wave: number;
-  readonly difficulty: DifficultyTier;
-  readonly score: number;
-  /** #2567: the last second of frame times and canvas commits (null on web or before a frame). */
-  readonly frame: FrameStatsSummary | null;
-}
-
-const pct = (x: number) => `${Math.round(x * 100)}%`.padStart(4);
-const col = (x: number | string, w: number) => String(x).padStart(w);
-const TIER_TABLE_HEADER = `${"tier".padEnd(7)} base  eff rolls dodge  rate struck flak`;
-
-function tierTableLine(row: TierDodgeRow): string {
-  const rate = row.rolls > 0 ? pct(row.dodged / row.rolls) : col("-", 4);
-  return (
-    `${row.tier.padEnd(7)} ${pct(row.base)} ${pct(row.effective)} ` +
-    `${col(row.rolls, 5)} ${col(row.dodged, 5)} ${col(rate, 5)} ${col(row.struck, 6)} ${col(row.flak, 4)}`
-  );
-}
-
-const RUN_STAT_LINES: readonly (readonly [string, keyof RunStats])[] = [
-  ["Reinforcements launched", "reinforced"],
-  ["Armor deflections", "armorDeflects"],
-  ["Beam hits on player", "beamHits"],
-  ["Rout caught", "routCaught"],
-  ["Rout escaped", "routEscaped"],
-  ["Rocks spawned", "rocksSpawned"],
-  ["Rocks broken by player", "rocksBrokenByPlayer"],
-  ["Rocks broken by enemies", "rocksBrokenByEnemy"],
-  ["Buddy launched", "buddyLaunched"], // #2845
-  ["Buddy lost", "buddyLost"],
-  ["Shots drawn by Buddy", "buddyShotsDrawn"],
-];
+// Each tier on its own row, its score multiplier underneath (#2982).
+const tierOptions: readonly DifficultyOption<DifficultyTier>[] = DIFFICULTY_TIERS.map((tier) => ({
+  value: tier,
+  label: difficultyLabel(tier),
+  description: `×${difficultyMultiplier(tier)}`,
+  accessibilityLabel: `${difficultyLabel(tier)} ×${difficultyMultiplier(tier)}`,
+  fullWidth: true,
+}));
 
 /**
+ * Star Swarm: the canvas, its touch controls, the difficulty picker, the result card and the
+ * dev panel. The game itself is the engine in game/starswarm; this screen owns the run's
+ * lifecycle, one reducer (game/starswarm/runPhase, #2981) with the phases
+ * picker | running | paused | over. Every new run goes through `startRun(tier, devOpts?)`:
+ * the picker's Start, the card's Play Again and the dev panel's New Game. Leaving the app or
+ * the screen mid-run pauses and saves the run; a game over records it through useGameSync.
+ *
  * A run paused by a previous process is on disk (#2645); the game reads the saved pause
  * synchronously at mount, so it mounts once that's loaded — a few ms, once per process, and
  * never more than HYDRATE_TIMEOUT_MS. Until then the header, its back button and a spinner are up.
@@ -143,7 +121,6 @@ const RUN_STAT_LINES: readonly (readonly [string, keyof RunStats])[] = [
 export default function StarSwarmScreen() {
   const { t } = useTranslation("starswarm");
   const { colors } = useTheme();
-  const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "StarSwarm">>();
   const [hydrated, setHydrated] = useState(isPausedStateHydrated);
   useEffect(() => {
     if (hydrated) return;
@@ -157,12 +134,7 @@ export default function StarSwarmScreen() {
   }, [hydrated]);
   if (hydrated) return <StarSwarmGame />;
   return (
-    <GameShell
-      gameType="starswarm"
-      title={t("game.title")}
-      requireBack
-      onBack={() => navigation.popToTop()}
-    >
+    <GameShell gameType="starswarm" title={t("game.title")} requireBack gutter={null}>
       <View style={styles.canvasOuter}>
         <ActivityIndicator color={colors.accent} size="large" />
       </View>
@@ -183,18 +155,17 @@ function StarSwarmGame() {
   const savedPauseRef = useRef(getSavedPausedState());
 
   const [highScore, setHighScore] = useState(0);
-  /** The finished run the result card shows (#2516); null while playing. */
-  const [result, setResult] = useState<{
-    score: number;
-    wave: number;
-    /** The tier the run was played at — its board, which can differ from the picker's (#2567). */
-    tier: DifficultyTier;
-    best: number;
-    isNewBest: boolean;
-  } | null>(null);
-  const leaderboard = useLeaderboardSubmit(STARSWARM_BOARD);
-  const { submit: submitRank, reset: resetSubmission } = leaderboard;
-
+  // The run lifecycle (#2981): picker | running | paused | over, the finished run's result card
+  // (#2516) and the canvas's reset tick. A restored pause opens paused, skipping the picker.
+  const [run, dispatchRun] = useReducer(
+    runReducer,
+    savedPauseRef.current !== null,
+    initialRunState
+  );
+  const { phase, result, resetTick } = run;
+  const isPaused = isRunPaused(run);
+  const isGameOver = isRunOver(run);
+  const showDifficultyPicker = phase === "picker";
   // Per-session `games` row (#2516), like every other game: XP, Profile history
   // and SyncWorker. Since #2626 the finished run carries its score and is the
   // leaderboard entry itself, on its difficulty tier's board.
@@ -207,31 +178,15 @@ function StarSwarmGame() {
     reportBug: syncReportBug,
     resetPlayWindow: syncResetPlayWindow,
   } = useGameSync("starswarm");
-  const [isGameOver, setIsGameOver] = useState(false);
-  const [isPaused, setIsPaused] = useState(savedPauseRef.current !== null);
   const [containerW, setContainerW] = useState(0);
   const [containerH, setContainerH] = useState(0);
 
-  // Dev panel state — used only when DEV_TOOLS (dev and internal pre-launch builds, #2567)
-  const [devPanelOpen, setDevPanelOpen] = useState(false);
-  const [devWave, setDevWave] = useState(1);
-  const [devInfiniteLives, setDevInfiniteLives] = useState(false);
-  const [devStragglerEnabled, setDevStragglerEnabled] = useState(true);
-  const [devPauseStraggler, setDevPauseStraggler] = useState(false);
-  const [devDifficulty, setDevDifficulty] = useState<DifficultyTier>("LieutenantJG");
-  const [devVolumes, setDevVolumes] = useState<SfxVolumes>(DEFAULT_SFX_VOLUMES);
-  const [devPlayerFireOff, setDevPlayerFireOff] = useState(false);
-  const [devEnemyFireOff, setDevEnemyFireOff] = useState(false);
-  const [devAsteroidsOff, setDevAsteroidsOff] = useState(false); // #2486
-  const [devDodgeOff, setDevDodgeOff] = useState(false); // #2491
-  const [devFlakOff, setDevFlakOff] = useState(false); // #2491
-  const [devRoutOff, setDevRoutOff] = useState(false); // #2489
-  const [devFrameReadout, setDevFrameReadout] = useState(false); // #2567
-  // #2491: a snapshot of the engine's counters, polled at ≤4 Hz while the panel is open
-  const [devStats, setDevStats] = useState<DevStatsSnapshot | null>(null);
+  // Dev panel — used only when DEV_TOOLS (dev and internal pre-launch builds, #2567)
+  const [devOpen, setDevOpen] = useState(false);
+  const [devOptions, setDevOptions] = useState<StarSwarmDevOptions>(DEFAULT_STARSWARM_DEV_OPTIONS);
 
   // Pre-game difficulty selector — shown before each new game (skipped when restoring a saved session).
-  // Defaults to Ensign for new users, then opens on the last tier played (#1129). A saved
+  // Its tier defaults to Ensign for new users, then opens on the last tier played (#1129). A saved
   // paused run supplies its own tier, which takes precedence.
   const { difficulty, setDifficulty, rememberDifficulty } = useLastDifficulty<DifficultyTier>(
     "starswarm",
@@ -239,20 +194,12 @@ function StarSwarmGame() {
     "Ensign",
     { initial: savedPauseRef.current?.difficulty }
   );
-  const [showDifficultyPicker, setShowDifficultyPicker] = useState(savedPauseRef.current === null);
-  const premium = usePremiumLevels("starswarm", "starswarm-premium");
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633) open the
-  // finished run's tier board, else the current tier's.
-  const openLeaderboard = useLeaderboardLink(navigation, "starswarm", {
+  // The card's rank line, and its "View leaderboard" link and the ⋯ menu item
+  // (#2633), which open the finished run's tier board, else the current tier's.
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("starswarm", navigation, {
     difficulty_tier: result?.tier ?? difficulty,
   });
-
-  const adjustVolume = useCallback((key: keyof SfxVolumes, delta: number) => {
-    setDevVolumes((v) => ({
-      ...v,
-      [key]: Math.round(Math.min(1, Math.max(0, v[key] + delta)) * 10) / 10,
-    }));
-  }, []);
+  const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
   const scoreRef = useRef(0);
   const highScoreRef = useRef(0);
@@ -269,8 +216,6 @@ function StarSwarmGame() {
       alive = false;
     };
   }, []);
-  // Increments on every new-game request; GameCanvas watches this via useEffect to reset.
-  const [resetTick, setResetTick] = useState(0);
 
   const {
     playLaser,
@@ -284,9 +229,9 @@ function StarSwarmGame() {
     playBonusLife,
     playCarrierEvent,
     playUpgrade,
-  } = useStarSwarmAudio(!isGameOver, devVolumes, resetTick, isPaused);
-  // In dev builds, track the last opts from the panel so every subsequent "New Game"
-  // (header, game-over overlay) re-applies them without reopening the dev panel.
+  } = useStarSwarmAudio(!isGameOver, devOptions.volumes, resetTick, isPaused);
+  // In dev builds, the dev panel's opts for the current run (applied to the canvas). Any
+  // start other than the panel's own New Game clears them (#2567).
   const lastDevOptsRef = useRef<DevOptions | undefined>(undefined);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
@@ -301,7 +246,7 @@ function StarSwarmGame() {
 
   // #2491: the run's counters go to Sentry once per run; the canvas has already stored the
   // game-over state when it calls back, so getState() sees the final tick's counts too.
-  // Re-armed on every new game: both paths (difficulty picker, dev panel) bump resetTick.
+  // Re-armed on every new game: startRun (difficulty picker, dev panel) bumps resetTick.
   const runStatsReportedRef = useRef(false);
   useEffect(() => {
     runStatsReportedRef.current = false;
@@ -309,25 +254,22 @@ function StarSwarmGame() {
 
   const handleGameOver = useCallback(
     (finalScore: number, wave: number) => {
-      setIsGameOver(true);
       clearSavedPausedState();
       playGameOver();
       // The result card's haptic marks the end of the run (#2516).
       const priorBest = highScoreRef.current;
-      const isNewBest = finalScore > priorBest;
-      if (isNewBest) {
+      const { improved, isNewBest } = bestOf(priorBest, finalScore, false);
+      // bestOf counts any result as improving on no best; a 0 score never set one.
+      if (improved && finalScore > 0) {
         highScoreRef.current = finalScore;
         setHighScore(finalScore);
         void saveBestScore(finalScore);
       }
       // #2567: the tier the run was actually played at — a dev-panel New Game sets its own
       const tier = canvasRef.current?.getState()?.difficulty ?? difficulty;
-      setResult({
-        score: finalScore,
-        wave,
-        tier,
-        best: Math.max(finalScore, priorBest),
-        isNewBest,
+      dispatchRun({
+        type: "GAME_OVER",
+        result: { score: finalScore, wave, tier, best: Math.max(finalScore, priorBest), isNewBest },
       });
       // #2626: the run is the leaderboard entry. `difficulty_tier` lands in
       // games.metadata (StarSwarmResult), where the board partitions on it.
@@ -343,7 +285,7 @@ function StarSwarmGame() {
       const gameId = syncComplete({ outcome, finalScore, result }, payload);
       // The card reads the run's rank on its tier's board (shown when it is the player's best).
       if (gameId) {
-        void submitRank({ gameId });
+        void lookupRank(gameId);
       } else {
         // No open session: the run gets no row and no rank. Say so.
         syncReportBug("warn", "starswarm", "game over with no open session: run not recorded", {
@@ -360,7 +302,7 @@ function StarSwarmGame() {
         }
       }
     },
-    [playGameOver, difficulty, syncComplete, syncReportBug, submitRank]
+    [playGameOver, difficulty, syncComplete, syncReportBug, lookupRank]
   );
 
   // #2490: a boss wave has no on-screen text beyond the banner — play the sting and speak it.
@@ -440,73 +382,25 @@ function StarSwarmGame() {
     playBonusLife();
   }, [playBonusLife]);
 
-  const handleTriggerPowerUp = useCallback((type: PowerUpType) => {
-    canvasRef.current?.triggerPowerUp(type);
-  }, []);
-
-  const handleThrowAsteroid = useCallback(() => {
-    canvasRef.current?.throwAsteroid(); // #2486
-  }, []);
-
   // #2567: stable, so the readout's poll timer is not restarted by screen re-renders
   const readFrameStats = useCallback(() => canvasRef.current?.getFrameStats() ?? null, []);
-
-  const handleKillEscorts = useCallback(() => {
-    canvasRef.current?.killEscorts(); // #2491
-  }, []);
-
-  // #2491: refresh the dev panel's counters at 4 Hz while it is open — a timer, never a
-  // per-frame React update; the loop itself keeps running in the canvas untouched.
-  useEffect(() => {
-    if (!DEV_TOOLS || !devPanelOpen) return;
-    const read = () => {
-      const s = canvasRef.current?.getState();
-      setDevStats(s ? snapshotStats(s) : null);
-    };
-    read();
-    const id = setInterval(read, DEV_STATS_POLL_MS);
-    return () => clearInterval(id);
-  }, [devPanelOpen]);
 
   const handleGameOverRef = useRef(handleGameOver);
   handleGameOverRef.current = handleGameOver;
 
-  // #2491: test-hook seam (EXPO_PUBLIC_TEST_HOOKS=1 builds only) so an E2E driver can read the
-  // counters without the panel: `__starswarm_getRunStats()` → counts + wave/difficulty/score.
-  // #2516: `__starswarm_endRun(score, wave)` ends the run through the real game-over path
-  // (result card, leaderboard submit, game sync) with the canvas frozen behind the card —
-  // reaching game over by real play isn't practical in an E2E run.
-  useEffect(() => {
-    if (!areTestHooksEnabled()) return;
-    const g = globalThis as typeof globalThis & {
-      __starswarm_getRunStats?: () => RunStatsHook | null;
-      __starswarm_endRun?: (score: number, wave: number) => void;
-    };
-    g.__starswarm_endRun = (score, wave) => {
-      setIsPaused(true);
-      handleGameOverRef.current(score, wave);
-    };
-    g.__starswarm_getRunStats = () => {
-      const s = canvasRef.current?.getState();
-      return s
-        ? {
-            runStats: s.runStats,
-            tierStats: s.tierStats,
-            wave: s.wave,
-            difficulty: s.difficulty,
-            score: s.score,
-            frame: canvasRef.current?.getFrameStats() ?? null,
-          }
-        : null;
-    };
-    return () => {
-      delete g.__starswarm_getRunStats;
-      delete g.__starswarm_endRun;
-    };
-  }, []);
+  // #2491 / #2516: E2E hooks (EXPO_PUBLIC_TEST_HOOKS=1 builds only), see game/starswarm/testHooks.ts.
+  useEffect(
+    () =>
+      registerStarSwarmTestHooks({
+        getCanvas: () => canvasRef.current,
+        pause: () => dispatchRun({ type: "PAUSE" }),
+        endRun: (score, wave) => handleGameOverRef.current(score, wave),
+      }),
+    []
+  );
 
-  /** Opens the new run's sync session (abandoning any open one) and clears the last result. */
-  const beginRun = useCallback(
+  /** Opens the run's sync session, abandoning any open one, and clears the last rank lookup. */
+  const openRunSession = useCallback(
     (tier: DifficultyTier) => {
       // The run's play time starts now: time on the difficulty picker is not
       // play (#2710). With a session open, syncRestart() closes it and starts
@@ -514,7 +408,6 @@ function StarSwarmGame() {
       if (!syncGetGameId()) syncResetPlayWindow();
       syncRestart({ difficulty_tier: tier }, { difficulty_tier: tier });
       syncMarkStarted();
-      setResult(null);
       resetSubmission();
     },
     [syncGetGameId, syncResetPlayWindow, syncRestart, syncMarkStarted, resetSubmission]
@@ -524,57 +417,55 @@ function StarSwarmGame() {
   // start that is the killed process's session for the run, if it is still open (#2654).
   useEffect(() => {
     if (savedPauseRef.current !== null && !syncResume()) {
-      beginRun(savedPauseRef.current.difficulty);
+      openRunSession(savedPauseRef.current.difficulty);
     }
     // Mount-only: the saved pause is read once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleNewGame = useCallback(
-    (opts?: DevOptions) => {
-      if (DEV_TOOLS && opts !== undefined) lastDevOptsRef.current = opts;
+  /**
+   * Starts a fresh run at `tier` (#2981): the picker's Start and the card's Play Again (no dev
+   * options), and the dev panel's New Game (with them). Any saved pause is dropped, a new sync
+   * session opens, and the canvas resets on the bumped tick.
+   */
+  const startRun = useCallback(
+    (tier: DifficultyTier, devOpts?: DevOptions) => {
+      // #2567: a picker New Game is a clean run — the dev panel's wave, lives and difficulty stay
+      // with the panel's own New Game, now that internal testers can reach it. A picker or Play
+      // Again start (no devOpts) clears the last panel opts.
+      lastDevOptsRef.current = DEV_TOOLS ? devOpts : undefined;
       clearSavedPausedState();
-      // A new run: a premium tier (e.g. a paused run's) starts at Ensign instead (#1129).
-      beginRun(opts?.difficulty ?? rememberDifficulty(difficulty));
+      savedPauseRef.current = null;
+      openRunSession(tier);
       scoreRef.current = 0;
-      setIsGameOver(false);
-      setIsPaused(false);
-      setResetTick((t) => t + 1);
+      dispatchRun({ type: "START" });
     },
-    [beginRun, difficulty, rememberDifficulty]
+    [openRunSession]
+  );
+
+  // The picker's Start and the card's Play Again: same tier, a clean run.
+  // A premium tier (e.g. a paused run's) starts at Ensign instead (#1129).
+  const handleStartFromPicker = useCallback(
+    () => startRun(rememberDifficulty(difficulty)),
+    [startRun, rememberDifficulty, difficulty]
+  );
+
+  // The dev panel's New Game: its own tier if it sets one.
+  const handleDevNewGame = useCallback(
+    (opts: DevOptions) => startRun(opts.difficulty ?? rememberDifficulty(difficulty), opts),
+    [startRun, rememberDifficulty, difficulty]
   );
 
   // Show difficulty picker — header "New Game", the pause overlay, and the
   // result card's Change Difficulty. The card steps aside for the picker.
-  const handleRequestNewGame = useCallback(() => {
-    setResult(null);
-    setShowDifficultyPicker(true);
-  }, []);
+  const handleRequestNewGame = useCallback(() => dispatchRun({ type: "OPEN_PICKER" }), []);
 
-  // Confirm difficulty selection and start the game
-  const handleConfirmDifficulty = useCallback(() => {
-    // #2567: a picker New Game is a clean run — the dev panel's wave, lives and difficulty stay
-    // with the panel's own New Game, now that internal testers can reach it
-    lastDevOptsRef.current = undefined;
-    const tier = rememberDifficulty(difficulty);
-    clearSavedPausedState();
-    savedPauseRef.current = null;
-    setShowDifficultyPicker(false);
-    beginRun(tier);
-    scoreRef.current = 0;
-    setIsGameOver(false);
-    setIsPaused(false);
-    setResetTick((t) => t + 1);
-  }, [difficulty, beginRun, rememberDifficulty]);
-
-  const handlePause = useCallback(() => {
-    setIsPaused(true);
-  }, []);
+  const handlePause = useCallback(() => dispatchRun({ type: "PAUSE" }), []);
 
   // The run is live again: a save of it is stale from here on.
   const handleResume = useCallback(() => {
     clearSavedPausedState();
-    setIsPaused(false);
+    dispatchRun({ type: "RESUME" });
   }, []);
 
   /** Saves the paused run, to survive navigation and, since #2645, the process. */
@@ -592,7 +483,7 @@ function StarSwarmGame() {
   }, []);
 
   /** A run is on screen and not over — the only time pausing means anything. */
-  const isLiveRun = !showDifficultyPicker && !isGameOver;
+  const isLiveRun = isLiveRunOf(run);
   const isLiveRunRef = useRef(isLiveRun);
   isLiveRunRef.current = isLiveRun;
 
@@ -610,19 +501,14 @@ function StarSwarmGame() {
     savePausedRun(state);
   }, [handlePause, savePausedRun]);
 
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
-      if (next !== "background" && next !== "inactive") return;
-      pauseLiveRun();
-    });
-    return () => sub.remove();
-  }, [pauseLiveRun]);
-
   // Leaving the screen mid-run (the ⋯ menu's Leaderboard, #2633) pauses it the same way:
   // the screen stays mounted under the pushed one, so the run would go on unseen.
-  useEffect(() => navigation.addListener("blur", pauseLiveRun), [navigation, pauseLiveRun]);
+  // Both act on every leave event (`onLeave`), not once per absence (`onPause`): a run resumed
+  // while the player still counts as away (the app inactive, say) is paused by the next one.
+  usePauseWhileAway(navigation, noop, noop, { onLeave: pauseLiveRun });
 
-  const dynamicStyles = getStyles(colors);
+  // The canvas reads its dev options through a ref, so a fresh object per render costs nothing.
+  const canvasDev = DEV_TOOLS ? canvasDevOptions(lastDevOptsRef.current, devOptions) : undefined;
 
   const scale =
     containerW > 0 && containerH > 0 ? Math.min(containerW / CANVAS_W, containerH / CANVAS_H) : 0;
@@ -666,10 +552,9 @@ function StarSwarmGame() {
           </Pressable>
         ) : undefined
       }
+      gutter={0}
       style={{
         paddingBottom: Math.max(insets.bottom, 8),
-        paddingLeft: Math.max(insets.left, 0),
-        paddingRight: Math.max(insets.right, 0),
       }}
     >
       <View testID="starswarm-canvas-outer" style={styles.canvasOuter} onLayout={onLayout}>
@@ -700,24 +585,7 @@ function StarSwarmGame() {
               difficulty={difficulty}
               resetTick={resetTick}
               initialState={savedPauseRef.current?.gameState}
-              // #1311/#1312: spread lastDevOptsRef for new-game options (wave, lives, etc.),
-              // then override live-toggleable fields so they propagate mid-game without New Game.
-              // pauseStraggler is also overridden here (fixes a pre-existing gap where the toggle
-              // only took effect after New Game).
-              devOptions={
-                DEV_TOOLS
-                  ? {
-                      ...lastDevOptsRef.current,
-                      pauseStraggler: devPauseStraggler,
-                      playerFireDisabled: devPlayerFireOff,
-                      enemyFireDisabled: devEnemyFireOff,
-                      asteroidsDisabled: devAsteroidsOff,
-                      dodgeDisabled: devDodgeOff,
-                      flakDisabled: devFlakOff,
-                      routDisabled: devRoutOff,
-                    }
-                  : undefined
-              }
+              devOptions={canvasDev}
             />
             <Controls
               canvasRef={canvasRef}
@@ -728,77 +596,36 @@ function StarSwarmGame() {
               onResume={handleResume}
               onNewGame={handleRequestNewGame}
             />
-            {DEV_TOOLS && (
-              <Pressable style={dynamicStyles.devButton} onPress={() => setDevPanelOpen(true)}>
-                <Text style={styles.devButtonText}>DEV</Text>
-              </Pressable>
-            )}
-            {DEV_TOOLS && devFrameReadout && <FrameStatsReadout read={readFrameStats} />}
+            <DevButton enabled={DEV_TOOLS} onPress={() => setDevOpen(true)} />
+            {DEV_TOOLS && devOptions.frameReadout && <FrameStatsReadout read={readFrameStats} />}
           </View>
         )}
         {showDifficultyPicker && scale > 0 && (
-          <Modal
+          <ModalCard
             visible
-            transparent
-            animationType="fade"
-            onRequestClose={handleConfirmDifficulty}
-            accessibilityViewIsModal
+            onRequestClose={handleStartFromPicker}
+            title={t("difficulty.selectTitle")}
+            size="md"
           >
-            <View style={styles.pickerOverlay}>
-              <View style={dynamicStyles.pickerPanel}>
-                <Text style={dynamicStyles.pickerTitle}>{t("difficulty.selectTitle")}</Text>
-                <ScrollView
-                  showsVerticalScrollIndicator={false}
-                  style={styles.pickerScroll}
-                  contentContainerStyle={styles.pickerScrollContent}
-                >
-                  {DIFFICULTY_TIERS.map((tier) => {
-                    const tierLabel = `${difficultyLabel(tier)} ×${difficultyMultiplier(tier)}`;
-                    // A premium tier shows a lock; a tap explains it (#1129).
-                    const locked = premium.isLocked(tier);
-                    return (
-                      <Pressable
-                        key={tier}
-                        style={[
-                          dynamicStyles.pickerRow,
-                          difficulty === tier && dynamicStyles.pickerRowSelected,
-                          locked && styles.pickerRowLocked,
-                        ]}
-                        onPress={() => (locked ? premium.explain() : setDifficulty(tier))}
-                        accessibilityRole="radio"
-                        accessibilityState={{ checked: difficulty === tier }}
-                        aria-checked={difficulty === tier}
-                        accessibilityLabel={locked ? premium.lockedLabel(tierLabel) : tierLabel}
-                        testID={`starswarm-tier-${tier}`}
-                      >
-                        <Text
-                          style={[
-                            dynamicStyles.pickerTierName,
-                            difficulty === tier && dynamicStyles.pickerTierNameSelected,
-                          ]}
-                        >
-                          {locked
-                            ? premium.lockedText(difficultyLabel(tier))
-                            : difficultyLabel(tier)}
-                        </Text>
-                        <Text
-                          style={styles.pickerTierMult}
-                        >{`×${difficultyMultiplier(tier)}`}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-                <Pressable
-                  testID="starswarm-start-game"
-                  style={[styles.devActionBtn, dynamicStyles.devPrimary, styles.pickerStartBtn]}
-                  onPress={handleConfirmDifficulty}
-                >
-                  <Text style={styles.devPrimaryText}>{t("difficulty.start")}</Text>
-                </Pressable>
-              </View>
-            </View>
-            {premium.notice}
-          </Modal>
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.pickerScroll}>
+              <DifficultyPicker
+                gameKey="starswarm"
+                options={tierOptions}
+                value={difficulty}
+                onChange={setDifficulty}
+                accessibilityLabel={t("difficulty.selectTitle")}
+                testID="starswarm-tier"
+                premiumTestID="starswarm-premium"
+              />
+            </ScrollView>
+            <ModalActions style={styles.pickerActions}>
+              <ModalPrimaryButton
+                label={t("difficulty.start")}
+                onPress={handleStartFromPicker}
+                testID="starswarm-start-game"
+              />
+            </ModalActions>
+          </ModalCard>
         )}
 
         <GameResultModal
@@ -816,17 +643,10 @@ function StarSwarmGame() {
                 ]
               : []
           }
-          submission={{
-            status: leaderboard.status,
-            rank: leaderboard.rank,
-            isBest: leaderboard.isBest,
-            playerName: leaderboard.playerName,
-            onJoinLeaderboards: leaderboard.joinLeaderboards,
-            onRetry: leaderboard.retry,
-          }}
+          submission={toSubmission(leaderboard)}
           onViewLeaderboard={openLeaderboard}
           // Same difficulty, straight into a new run.
-          onPlayAgain={handleConfirmDifficulty}
+          onPlayAgain={handleStartFromPicker}
           secondaryAction={{
             label: tResult("action.changeDifficulty"),
             onPress: handleRequestNewGame,
@@ -835,284 +655,21 @@ function StarSwarmGame() {
           testID="starswarm-result"
         />
 
-        {DEV_TOOLS && devPanelOpen && (
-          <View
-            style={dynamicStyles.devPanelOverlay}
-            accessible
-            accessibilityLabel="Developer panel"
-            accessibilityRole="menu"
-          >
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.devScrollContent}
-            >
-              <Text style={dynamicStyles.devTitle}>DEV</Text>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Wave</Text>
-                <Pressable
-                  style={styles.devStepBtn}
-                  onPress={() => setDevWave((w) => Math.max(1, w - 1))}
-                  accessibilityLabel="Decrease wave"
-                >
-                  <Text style={styles.devStepText}>−</Text>
-                </Pressable>
-                <Text style={styles.devValue}>{devWave}</Text>
-                <Pressable
-                  style={styles.devStepBtn}
-                  onPress={() => setDevWave((w) => Math.min(15, w + 1))}
-                  accessibilityLabel="Increase wave"
-                >
-                  <Text style={styles.devStepText}>+</Text>
-                </Pressable>
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Infinite lives</Text>
-                <Switch
-                  value={devInfiniteLives}
-                  onValueChange={setDevInfiniteLives}
-                  accessibilityLabel="Infinite lives"
-                />
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Straggler AI</Text>
-                <Switch
-                  value={devStragglerEnabled}
-                  onValueChange={setDevStragglerEnabled}
-                  accessibilityLabel="Straggler AI"
-                />
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Pause straggler</Text>
-                <Switch
-                  value={devPauseStraggler}
-                  onValueChange={setDevPauseStraggler}
-                  accessibilityLabel="Pause straggler"
-                />
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Player missiles off</Text>
-                <Switch
-                  value={devPlayerFireOff}
-                  onValueChange={setDevPlayerFireOff}
-                  accessibilityLabel="Player missiles off"
-                />
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Enemy missiles off</Text>
-                <Switch
-                  value={devEnemyFireOff}
-                  onValueChange={setDevEnemyFireOff}
-                  accessibilityLabel="Enemy missiles off"
-                />
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Asteroids off</Text>
-                <Switch
-                  value={devAsteroidsOff}
-                  onValueChange={setDevAsteroidsOff}
-                  accessibilityLabel="Asteroids off"
-                />
-              </View>
-
-              <Pressable
-                style={styles.devActionBtn}
-                onPress={handleThrowAsteroid}
-                accessibilityLabel="Throw asteroid"
-              >
-                <Text style={dynamicStyles.devLabel}>Throw asteroid</Text>
-              </Pressable>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Dodge off</Text>
-                <Switch
-                  value={devDodgeOff}
-                  onValueChange={setDevDodgeOff}
-                  accessibilityLabel="Dodge off"
-                />
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Flak off</Text>
-                <Switch
-                  value={devFlakOff}
-                  onValueChange={setDevFlakOff}
-                  accessibilityLabel="Flak off"
-                />
-              </View>
-
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Rout off</Text>
-                <Switch
-                  value={devRoutOff}
-                  onValueChange={setDevRoutOff}
-                  accessibilityLabel="Rout off"
-                />
-              </View>
-
-              {/* #2567: frame-time avg / p95 and canvas commits/s, shown over the game */}
-              <View style={styles.devRow}>
-                <Text style={dynamicStyles.devLabel}>Frame readout</Text>
-                <Switch
-                  value={devFrameReadout}
-                  onValueChange={setDevFrameReadout}
-                  accessibilityLabel="Frame readout"
-                />
-              </View>
-
-              <Pressable
-                style={styles.devActionBtn}
-                onPress={handleKillEscorts}
-                accessibilityLabel="Kill escorts"
-              >
-                <Text style={dynamicStyles.devLabel}>Kill escorts</Text>
-              </Pressable>
-
-              <Text style={dynamicStyles.devSectionHeader}>── Run stats ──</Text>
-
-              {devStats ? (
-                <View accessibilityLabel="Run stats">
-                  <Text style={styles.devMono}>
-                    {`wave ${devStats.wave} · ${devStats.difficulty} · score ${devStats.score}`}
-                  </Text>
-                  <Text style={styles.devMono}>{TIER_TABLE_HEADER}</Text>
-                  {devStats.rows.map((row) => (
-                    <Text key={row.tier} style={styles.devMono}>
-                      {tierTableLine(row)}
-                    </Text>
-                  ))}
-                  {RUN_STAT_LINES.map(([label, key]) => (
-                    <View key={key} style={styles.devRow}>
-                      <Text style={dynamicStyles.devLabel}>{label}</Text>
-                      <Text style={styles.devValue}>{devStats.run[key]}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <Text style={dynamicStyles.devLabel}>Start a game to see counters</Text>
-              )}
-
-              <Text style={dynamicStyles.devSectionHeader}>── Difficulty ──</Text>
-
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.devTierScroll}
-                contentContainerStyle={styles.devTierScrollContent}
-              >
-                {DIFFICULTY_TIERS.map((tier) => (
-                  <Pressable
-                    key={tier}
-                    style={[styles.devTierBtn, devDifficulty === tier && styles.devTierBtnActive]}
-                    onPress={() => setDevDifficulty(tier)}
-                    accessibilityLabel={`Dev difficulty ${difficultyLabel(tier)}`}
-                  >
-                    <Text
-                      style={[
-                        styles.devTierText,
-                        devDifficulty === tier && styles.devTierTextActive,
-                      ]}
-                    >
-                      {difficultyLabel(tier)}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-
-              <Text style={dynamicStyles.devSectionHeader}>── Power-ups ──</Text>
-
-              <View style={styles.devPowerUpRow}>
-                {(["lightning", "shield", "buddy", "bomb", "salvage", "hull"] as PowerUpType[]).map(
-                  (type) => (
-                    <Pressable
-                      key={type}
-                      style={styles.devPowerUpBtn}
-                      onPress={() => handleTriggerPowerUp(type)}
-                      accessibilityLabel={`Trigger ${type} power-up`}
-                    >
-                      <Text style={styles.devPowerUpText}>{type}</Text>
-                    </Pressable>
-                  )
-                )}
-              </View>
-
-              <Text style={dynamicStyles.devSectionHeader}>── Sound ──</Text>
-
-              {(
-                [
-                  ["Laser", "laser"],
-                  ["PU: Lightning", "poweruplightning"],
-                  ["PU: Shield", "powerupshield"],
-                  ["PU: Buddy", "powerupbuddy"],
-                  ["PU: Bomb", "powerupbomb"],
-                  ["Explosion", "explosion"],
-                  ["Player hit", "playerhit"],
-                  ["Wave clear", "waveclear"],
-                  ["Game over", "gameover"],
-                  ["Boss wave", "bosswave"],
-                  ["Beam charge", "beamcharge"],
-                  ["Beam fire", "beamfire"],
-                  ["Reinforce", "reinforce"],
-                  ["Salvage", "salvage"],
-                  ["Hull up", "hullup"],
-                  ["Hull hit", "hullhit"],
-                  ["Rout", "rout"],
-                ] as [string, keyof SfxVolumes][]
-              ).map(([label, key]) => (
-                <View key={key} style={styles.devRow}>
-                  <Text style={[dynamicStyles.devLabel, styles.devMixerLabel]}>{label}</Text>
-                  <Pressable
-                    style={styles.devStepBtn}
-                    onPress={() => adjustVolume(key, -0.1)}
-                    accessibilityLabel={`Decrease ${label} volume`}
-                  >
-                    <Text style={styles.devStepText}>−</Text>
-                  </Pressable>
-                  <Text style={styles.devValue}>{devVolumes[key].toFixed(1)}</Text>
-                  <Pressable
-                    style={styles.devStepBtn}
-                    onPress={() => adjustVolume(key, 0.1)}
-                    accessibilityLabel={`Increase ${label} volume`}
-                  >
-                    <Text style={styles.devStepText}>+</Text>
-                  </Pressable>
-                </View>
-              ))}
-
-              <Pressable
-                style={[styles.devActionBtn, dynamicStyles.devPrimary]}
-                onPress={() => {
-                  setDevPanelOpen(false);
-                  handleNewGame({
-                    wave: devWave,
-                    infiniteLives: devInfiniteLives,
-                    stragglerEnabled: devStragglerEnabled,
-                    pauseStraggler: devPauseStraggler,
-                    difficulty: devDifficulty,
-                  });
-                }}
-              >
-                <Text style={styles.devPrimaryText}>New Game</Text>
-              </Pressable>
-
-              <Pressable style={styles.devActionBtn} onPress={() => setDevPanelOpen(false)}>
-                <Text style={dynamicStyles.devLabel}>Collapse</Text>
-              </Pressable>
-            </ScrollView>
-          </View>
-        )}
+        <StarSwarmDevPanel
+          enabled={DEV_TOOLS}
+          open={devOpen}
+          onClose={() => setDevOpen(false)}
+          canvasRef={canvasRef}
+          options={devOptions}
+          onOptionsChange={setDevOptions}
+          onNewGame={handleDevNewGame}
+        />
       </View>
     </GameShell>
   );
 }
 
-const baseStyles = StyleSheet.create({
+const styles = StyleSheet.create({
   canvasOuter: {
     flex: 1,
     alignItems: "center",
@@ -1129,227 +686,14 @@ const baseStyles = StyleSheet.create({
   pauseHeaderBtnPressed: {
     opacity: 0.7,
   },
-  devButtonText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1,
-  },
-  devRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  devStepBtn: {
-    backgroundColor: "rgba(255,255,255,0.1)",
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  devStepText: {
-    color: "#fff",
-    fontSize: 18,
-    lineHeight: 22,
-  },
-  devValue: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-    minWidth: 28,
-    textAlign: "center",
-  },
-  devMono: {
-    color: "#fff",
-    fontSize: 11,
-    lineHeight: 16,
-    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
-  },
-  devScrollContent: {
-    gap: 16,
-  },
-  devMixerLabel: {
-    fontSize: 11,
-    minWidth: 80,
-  },
-  devPowerUpRow: {
-    flexDirection: "row",
-    gap: 6,
-    flexWrap: "wrap",
-  },
-  devPowerUpBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 6,
-    alignItems: "center",
-    backgroundColor: "rgba(255,200,0,0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(255,200,0,0.4)",
-  },
-  devPowerUpText: {
-    color: "#ffc800",
-    fontSize: 10,
-    fontWeight: "700",
-    textTransform: "capitalize",
-  },
-  devActionBtn: {
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-  devPrimaryText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  devTierScroll: {
-    marginVertical: 2,
-  },
-  devTierScrollContent: {
-    gap: 6,
-    paddingVertical: 2,
-  },
-  devTierBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 6,
-    backgroundColor: "rgba(255,255,255,0.07)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-  },
-  devTierBtnActive: {
-    backgroundColor: "rgba(255,128,0,0.3)",
-    borderColor: "rgba(255,128,0,0.8)",
-  },
-  devTierText: {
-    color: "rgba(255,255,255,0.55)",
-    fontSize: 9,
-    fontWeight: "700",
-  },
-  devTierTextActive: {
-    color: "#ff8000",
-  },
-  pickerOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,10,0.88)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  // The md card caps its height; the tier list shrinks inside it so the
+  // Start button stays on screen in short landscape windows.
   pickerScroll: {
     maxHeight: 320,
+    flexShrink: 1,
+    alignSelf: "stretch",
   },
-  pickerScrollContent: {
-    gap: 6,
-    paddingVertical: 4,
-  },
-  pickerTierMult: {
-    color: "rgba(255,238,0,0.8)",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  pickerRowLocked: {
-    opacity: PREMIUM_LEVEL_OPACITY,
-  },
-  pickerStartBtn: {
+  pickerActions: {
     marginTop: 12,
-    backgroundColor: "#b05800", // #fff text on this gives ~5.1:1 contrast (WCAG AA)
   },
 });
-
-// Create dynamic styles based on theme tokens to comply with design-tokens policy
-const getStyles = (colors: ReturnType<typeof useTheme>["colors"]) =>
-  StyleSheet.create({
-    ...baseStyles,
-    devButton: {
-      position: "absolute",
-      top: 6,
-      left: 6,
-      backgroundColor: "rgba(255,128,0,0.85)",
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 4,
-      zIndex: 100,
-    },
-    devPanelOverlay: {
-      position: "absolute",
-      right: 0,
-      top: 0,
-      bottom: 0,
-      width: 180,
-      backgroundColor: "rgba(0,0,0,0.88)",
-      borderLeftWidth: 1,
-      borderLeftColor: "rgba(255,128,0,0.4)",
-      zIndex: 100,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-    },
-    devTitle: {
-      color: "rgba(255,128,0,1)",
-      fontSize: 14,
-      fontWeight: "700",
-      letterSpacing: 2,
-      textAlign: "center",
-      textTransform: "uppercase",
-    },
-    devLabel: {
-      color: colors.textMuted,
-      fontSize: 13,
-      flex: 1,
-    },
-    devSectionHeader: {
-      color: "rgba(255,128,0,0.7)",
-      fontSize: 10,
-      letterSpacing: 1,
-      textAlign: "center",
-      marginTop: 4,
-    },
-    devPrimary: {
-      backgroundColor: "rgba(255,128,0,1)",
-    },
-    pickerPanel: {
-      backgroundColor: colors.surfaceHigh,
-      borderRadius: 14,
-      padding: 24,
-      width: 300,
-      maxHeight: "80%",
-      borderWidth: 1,
-      borderColor: "rgba(0,255,200,0.3)",
-    },
-    pickerTitle: {
-      color: "#00ffcc",
-      fontSize: 15,
-      fontWeight: "700",
-      letterSpacing: 1.5,
-      textAlign: "center",
-      textTransform: "uppercase",
-      marginBottom: 14,
-    },
-    pickerRowSelected: {
-      backgroundColor: "rgba(0,255,200,0.12)",
-      borderColor: "rgba(0,255,200,0.55)",
-    },
-    pickerTierNameSelected: {
-      color: "#ffffff",
-    },
-    pickerRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.textMuted + "30",
-      backgroundColor: colors.textMuted + "0d",
-    },
-    pickerTierName: {
-      color: colors.text,
-      fontSize: 13,
-      fontWeight: "600",
-    },
-  });
-
-const styles = baseStyles;

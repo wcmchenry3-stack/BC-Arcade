@@ -1,3 +1,19 @@
+/**
+ * Twenty48Screen — 2048 on a 4×4 board.
+ *
+ * Concerns:
+ *   1. Game logic — swipes (RNGH Pan) and, on web, arrow keys go to the pure engine's
+ *      `move`; its tile-id counter is restored by `loadGame` (`seedNextTileId`, #698).
+ *   2. Persistence — `saveGame` after every move with one-shot `events` stripped;
+ *      cleared on game over.
+ *   3. Play clock (#2735, #2750) — `usePausableClock` pauses it on blur and background.
+ *   4. Instrumentation (#369, #549) — `useGameSync("twenty48")`, one session per game; the
+ *      2048 win completes it and Keep Playing is untracked (#2631); a restored game resumes
+ *      its session (#2654).
+ *   5. Result + leaderboard (#2513, #2633) — the shared GameResultModal; "new best" from
+ *      `bestOf`; ranked via `useGameLeaderboard`.
+ *   6. Audio — engine events play the 2048 and game-over sounds.
+ */
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
@@ -7,7 +23,9 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { bestOf } from "../game/_shared/bestOf";
+import { useGameEvents } from "../game/_shared/useGameEvents";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { usePausableClock } from "../hooks/usePausableClock";
 import { Twenty48State } from "../game/twenty48/types";
 import {
@@ -27,11 +45,10 @@ import {
 import Grid from "../components/twenty48/Grid";
 import ScoreBoard from "../components/twenty48/ScoreBoard";
 import GameResultModal from "../components/shared/GameResultModal";
+import { toSubmission } from "../components/shared/toSubmission";
 import StatsBento from "../components/twenty48/StatsBento";
 import NewGameConfirmModal from "../components/shared/NewGameConfirmModal";
 import { useGameSync } from "../game/_shared/useGameSync";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useSound } from "../game/_shared/useSound";
 import { TWENTY48_SOUNDS } from "../game/twenty48/sounds";
@@ -47,9 +64,6 @@ function highestTile(board: number[][]): number {
 function computeDurationMs(s: Twenty48State): number {
   return s.accumulatedMs + (s.startedAt !== null ? Date.now() - s.startedAt : 0);
 }
-
-/** The result card's leaderboard line: one global board by score (#2631). */
-const twenty48Board = sessionBoardAdapter("twenty48");
 
 const SWIPE_THRESHOLD = 30;
 /** How long (ms) to hold the move lock — matches slide animation duration. */
@@ -102,10 +116,9 @@ export default function Twenty48Screen({ navigation }: Props) {
   } = useGameSync("twenty48");
   // The card's leaderboard line (#2631, #2677): looked up once per session, at
   // the win or the game over; never on an abandon.
-  const leaderboard = useLeaderboardSubmit(twenty48Board);
-  const { submit: submitLeaderboard, reset: resetLeaderboard } = leaderboard;
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openLeaderboard = useLeaderboardLink(navigation, "twenty48");
+  // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("twenty48", navigation);
+  const { lookup: lookupRank, reset: resetLeaderboard } = leaderboard;
   const moveCountRef = useRef(0);
   const stateRef = useRef<Twenty48State | null>(null);
   useEffect(() => {
@@ -169,9 +182,9 @@ export default function Twenty48Screen({ navigation }: Props) {
         payload
       );
       if (!gameId) return;
-      void submitLeaderboard({ gameId });
+      void lookupRank(gameId);
     },
-    [progressResult, syncComplete, submitLeaderboard]
+    [progressResult, syncComplete, lookupRank]
   );
 
   // Disable back swipe gesture on this screen.
@@ -242,13 +255,13 @@ export default function Twenty48Screen({ navigation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.tiles]);
 
-  // Fire one-shot event sounds from engine events.
-  useEffect(() => {
-    if (!state?.events) return;
-    if (state.events.includes("win2048")) playWin2048();
-    if (state.events.includes("gameOver")) playGameOverSound();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.events]);
+  // Fire one-shot event sounds from engine events. The engine emits a new
+  // array (win2048 before gameOver) on the move that caused them, and every
+  // save and load strips them, so they are left in state rather than cleared.
+  useGameEvents(state?.events, {
+    win2048: () => playWin2048(),
+    gameOver: () => playGameOverSound(),
+  });
 
   const executeMove = useCallback(
     (direction: Direction, currentState: Twenty48State) => {
@@ -434,14 +447,12 @@ export default function Twenty48Screen({ navigation }: Props) {
       gameType="twenty48"
       title={t("game.title")}
       requireBack
-      onBack={() => navigation.popToTop()}
       onNewGame={resetGame}
       onOpenLeaderboard={openLeaderboard}
       loading={!state && loading}
+      gutter={16}
       style={{
         paddingBottom: Math.max(insets.bottom, 16),
-        paddingLeft: Math.max(insets.left, 16),
-        paddingRight: Math.max(insets.right, 16),
         alignItems: "center",
       }}
     >
@@ -505,7 +516,7 @@ export default function Twenty48Screen({ navigation }: Props) {
         subtitle={canKeepPlaying ? t("twenty48:win.body") : tResult("subtitle.noMoves")}
         hero={{ kind: "score", label: tResult("stat.score"), value: state?.score ?? 0 }}
         isNewBest={
-          !!state?.game_over && bestAtGameStart > 0 && (state?.score ?? 0) > bestAtGameStart
+          !!state?.game_over && bestOf(bestAtGameStart, state?.score ?? 0, false).isNewBest
         }
         stats={
           state
@@ -530,18 +541,7 @@ export default function Twenty48Screen({ navigation }: Props) {
         }
         // The session's leaderboard line. A game over after Keep Playing is
         // untracked, so its card has none.
-        submission={
-          winDismissed
-            ? undefined
-            : {
-                status: leaderboard.status,
-                rank: leaderboard.rank,
-                isBest: leaderboard.isBest,
-                playerName: leaderboard.playerName,
-                onJoinLeaderboards: leaderboard.joinLeaderboards,
-                onRetry: leaderboard.retry,
-              }
-        }
+        submission={winDismissed ? undefined : toSubmission(leaderboard)}
         onViewLeaderboard={openLeaderboard}
         onHome={() => navigation.popToTop()}
         testID="twenty48-result"
@@ -607,10 +607,5 @@ const styles = StyleSheet.create({
     right: -24,
     borderRadius: 96,
     opacity: 0.1,
-  },
-  error: {
-    fontSize: 13,
-    textAlign: "center",
-    marginTop: 12,
   },
 });

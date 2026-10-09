@@ -20,7 +20,7 @@ import {
   tick,
 } from "../../../game/starswarm/engine";
 import type { StarSwarmState } from "../../../game/starswarm/engine";
-import { WAVE_COUNTDOWN_MS } from "../../../game/starswarm/constants";
+import { WAVE_COUNTDOWN_MS } from "../../../game/starswarm/engine";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Handlers = Partial<Record<"onBegin" | "onChange" | "onEnd" | "onFinalize", (e: any) => void>>;

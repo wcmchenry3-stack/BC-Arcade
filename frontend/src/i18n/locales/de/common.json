@@ -96,5 +96,10 @@
   "restore.pending": "Warte auf Genehmigung. Dein Spiel wird nach der Genehmigung freigeschaltet.",
   "restore.nothing": "Für dieses Store-Konto gibt es keine Käufe zum Wiederherstellen.",
   "restore.error": "Käufe konnten nicht wiederhergestellt werden. Bitte versuche es erneut.",
-  "settings.restorePurchases.description": "Hol dir Spiele zurück, die du mit diesem Store-Konto gekauft hast."
+  "settings.restorePurchases.description": "Hol dir Spiele zurück, die du mit diesem Store-Konto gekauft hast.",
+  "locked.title": "Gesperrt",
+  "locked.heading": "Premium-Spiel",
+  "locked.body": "Dieses Spiel erfordert ein BC-Arcade-Abonnement.",
+  "locked.back": "Zurück zur Lobby",
+  "locked.back_label": "Zurück zur Lobby"
 }

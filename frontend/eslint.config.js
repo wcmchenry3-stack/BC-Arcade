@@ -17,7 +17,16 @@ const noGameUiImports = {
   create(context) {
     const filename = context.filename ?? context.getFilename?.() ?? "";
     if (!filename.startsWith(gameDir + path.sep) && filename !== gameDir) return {};
-    if (filename.endsWith(".tsx")) return {}; // game-level UI components may use shared components
+    // #2980: the blanket game/**/*.tsx exemption is gone. The only remaining
+    // exception is the shared card/drag UI kit in game/_shared (see
+    // docs/ARCHITECTURE.md §3.1); every other game/<name>/ file is headless
+    // or a React context and must not import components/ or screens/.
+    if (
+      filename.endsWith(".tsx") &&
+      filename.startsWith(path.join(gameDir, "_shared") + path.sep)
+    ) {
+      return {};
+    }
     return {
       ImportDeclaration(node) {
         const resolved = path.resolve(path.dirname(filename), node.source.value);
@@ -138,18 +147,42 @@ module.exports = [
     files: [
       "src/components/starswarm/GameCanvas.tsx",
       "src/components/starswarm/GameCanvas.web.tsx",
-      "src/game/starswarm/engine.ts",
-      "src/game/starswarm/sim/balance.ts",
       "src/screens/CascadeScreen.tsx",
-      "src/screens/DailyWordScreen.tsx",
-      "src/screens/GameScreen.tsx",
       "src/screens/HeartsScreen.tsx",
       "src/screens/MahjongScreen.tsx",
       "src/screens/SolitaireScreen.tsx",
-      "src/screens/StarSwarmScreen.tsx",
     ],
     rules: {
       "max-lines": ["warn", { max: 800, skipBlankLines: true, skipComments: true }],
+    },
+  },
+
+  // Sound maps: Metro needs a literal require() per asset, so a generic loader is
+  // impossible. (Cascade keeps its per-line disables until epic #3033.)
+  {
+    files: ["src/game/*/sounds.ts"],
+    ignores: ["src/game/cascade/**"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+
+  // The app must not import the CI/script-only simulators in tooling/ (#2969):
+  // they would be bundled into the production app.
+  {
+    files: ["src/**/*.ts", "src/**/*.tsx", "App.tsx", "index.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/tooling", "**/tooling/**"],
+              message: "tooling/ is script/CI-only simulation code; the app must not import it.",
+            },
+          ],
+        },
+      ],
     },
   },
 ];

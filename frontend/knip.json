@@ -1,16 +1,28 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["scripts/*.mjs", "scripts/*.js", "App.tsx"],
-  "project": ["src/**/*.{ts,tsx}", "scripts/*.{js,mjs}"],
-  "ignore": [
-    "src/screens/__dev__/**",
-    "**/*.web.tsx",
-    "**/*.web.ts",
-    // CI-only simulators; relocated by #2969
-    "src/game/*/sim/**",
-    "src/game/yacht/oracleBuild/**"
+  // tooling/** holds the CI/script-only simulators (#2969); the
+  // tools/sim and tools/generators scripts drive it. knip resolves those scripts' imports (so tooling
+  // files they reach count as used) but does not credit the exports they use,
+  // since the scripts sit outside this workspace: the few tooling exports only
+  // a script uses carry an `@public` JSDoc tag instead.
+  "entry": [
+    "scripts/*.mjs",
+    "scripts/*.js",
+    "App.tsx",
+    "../tools/sim/*.ts",
+    "../tools/generators/*.ts"
   ],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "scripts/*.{js,mjs}",
+    "tooling/**/*.ts",
+    "../tools/sim/*.ts",
+    "../tools/generators/*.ts"
+  ],
+  "ignore": ["src/screens/__dev__/**", "**/*.web.tsx", "**/*.web.ts"],
+  // tsx runs tools/sim and tools/generators (`npx --prefix frontend tsx tools/sim/...`).
   "ignoreDependencies": [
+    "tsx",
     // jsdom: provided by jest-environment-jsdom, selected via @jest-environment docblocks in tests
     "jsdom",
     // @eslint/js: required by eslint.config.js, installed as an eslint dependency

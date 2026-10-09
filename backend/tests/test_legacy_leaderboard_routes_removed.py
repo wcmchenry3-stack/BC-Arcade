@@ -73,11 +73,13 @@ def test_no_removed_route_is_registered() -> None:
 
 
 def test_the_name_route_models_and_service_are_gone() -> None:
-    from games import leaderboard, schemas
+    from games import schemas
+    from games.boards import limits, partitions, queries, sql
 
     for name in ("SetPlayerNameRequest", "SetPlayerNameResponse"):
         assert not hasattr(schemas, name), f"games.schemas.{name}"
-    assert not hasattr(leaderboard, "set_player_name")
+    for mod in (limits, partitions, queries, sql):
+        assert not hasattr(mod, "set_player_name"), mod.__name__
 
 
 def test_sort_levels_is_unaffected() -> None:

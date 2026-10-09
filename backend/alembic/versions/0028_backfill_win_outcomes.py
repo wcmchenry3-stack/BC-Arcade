@@ -11,7 +11,7 @@ This rewrites a stored row to ``win`` only where its stored result proves the
 game was won; every other row is left as it is.
 
 The rules below are a frozen copy of ``games.legacy_outcomes``, the live copy
-that ``games.service.complete_game`` applies to each row an older build
+that ``games.sessions.complete_game`` applies to each row an older build
 completes from now on. That module's docstring says what each rule is and why
 it is certain. The copy is deliberate: a migration must keep meaning what it
 meant when written (see ``0026_delete_anon_leaderboard``), so a later edit to

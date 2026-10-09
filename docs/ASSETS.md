@@ -137,7 +137,7 @@ Source images are in `fruit_images/` and `celestial_images/` (gitignored — dow
 
 ```bash
 pip install Pillow
-python frontend/scripts/bake_sprites.py
+python tools/assets/bake_sprites.py
 ```
 
 Writes `fruits-baked/` and `cosmos-baked/`, updates `fruit-vertices.json` / `cosmos-vertices.json`.
@@ -145,8 +145,8 @@ Writes `fruits-baked/` and `cosmos-baked/`, updates `fruit-vertices.json` / `cos
 ## Converting icon PNGs to WebP
 
 ```bash
-python frontend/scripts/convert_icons_to_webp.py frontend/assets/fruit-icons
-python frontend/scripts/convert_icons_to_webp.py frontend/assets/celestial-icons
+python tools/assets/convert_icons_to_webp.py frontend/assets/fruit-icons
+python tools/assets/convert_icons_to_webp.py frontend/assets/celestial-icons
 ```
 
 Do **not** run on `*-baked/` directories — Skia textures must stay PNG.

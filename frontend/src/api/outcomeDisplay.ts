@@ -88,7 +88,7 @@ export function knownOutcome(outcome: string | null): OutcomeDisplay | null {
 const METRIC_LABEL_KEYS = new Set(["score", "moves", "level", "guesses", "chips"]);
 
 /** The board label key of a metric in milliseconds (Mahjong's clear time, #2747). */
-export const TIME_LABEL_KEY = "time";
+const TIME_LABEL_KEY = "time";
 
 /**
  * A board value without its label: a "time" metric (milliseconds) as a clock,

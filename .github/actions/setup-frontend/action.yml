@@ -1,0 +1,39 @@
+name: Setup frontend
+description: >
+  Node 22 with the npm cache, plus `npm ci` in frontend/. Replaces the
+  setup-node + npm ci block that used to be copied into every workflow.
+  Call after actions/checkout. To make it conditional, put `if:` on the
+  calling step.
+
+inputs:
+  metro-cache:
+    description: >
+      "true" also restores/saves Metro's bundler transform cache. Metro's default
+      FileStore cache lives at $TMPDIR/metro-cache (/tmp on ubuntu-latest); sharing
+      it across the jobs that invoke the JS bundler (android-bundle-check,
+      android-release-smoke, mobile-smoke-android) avoids re-transforming
+      unchanged sources from scratch in each.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install frontend dependencies
+      shell: bash
+      run: npm ci
+      working-directory: frontend
+
+    - name: Cache Metro bundler transforms
+      if: inputs.metro-cache == 'true'
+      uses: actions/cache@v6
+      with:
+        path: /tmp/metro-cache
+        key: metro-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+        restore-keys: metro-${{ runner.os }}-

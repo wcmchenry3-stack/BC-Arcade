@@ -3,7 +3,7 @@
 * :func:`expected_account_token` — the ``obfuscatedAccountId`` the client must
   pass to Play Billing for this session (docs/IAP.md §4).
 * :func:`configured_runtime` — the real verifier and the RTDN push
-  authenticator (:class:`purchases.google_notifications.GoogleRuntime`),
+  authenticator (:class:`purchases.google_push_auth.GoogleRuntime`),
   built from the environment on first use.
 * :func:`get_google_verifier` — the FastAPI dependency that supplies the
   :class:`~purchases.verifiers.GoogleVerifier`.
@@ -13,7 +13,8 @@ missing, docs/IAP.md §16) the runtime is None, the dependency keeps returning
 :class:`~purchases.verifiers.NotConfiguredGoogleVerifier`, and every Google
 route answers ``503 store_unavailable`` — the dormant default. Verification
 is in ``purchases/google_play.py``; the RTDN webhook, the voided-purchases
-poll and the acknowledgement sweep in ``purchases/google_notifications.py``.
+poll and the acknowledgement sweep in ``purchases/google_rtdn.py`` and
+``purchases/google_jobs.py``; the push authenticator in ``purchases/google_push_auth.py``.
 """
 
 from __future__ import annotations
@@ -53,11 +54,11 @@ _UNSET: Any = object()
 _runtime: Any = _UNSET  # GoogleRuntime | None once read
 
 
-def configured_runtime():  # -> purchases.google_notifications.GoogleRuntime | None
+def configured_runtime():  # -> purchases.google_push_auth.GoogleRuntime | None
     """The Google runtime built from the environment (cached), or None when dormant."""
     global _runtime
     if _runtime is _UNSET:
-        from .google_notifications import build_from_env
+        from .google_push_auth import build_from_env
 
         _runtime = build_from_env()
     return _runtime

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * X-Wing layout - 144 slots.
  *
  * Two crossing 4-wide diagonal bands forming an X shape.  The bands spread
@@ -14,173 +14,34 @@
  */
 
 import type { Layout } from "../types";
+import { cols, rect, row } from "./build";
 
 export const X_WING_LAYOUT: Layout = [
-  // Layers 0-1 interspersed by row (L0: full X, 72 tiles; L1: inner 2-wide X, 38 tiles)
-  // Layer 0
-  { col: 0, row: 0, layer: 0 },
-  { col: 2, row: 0, layer: 0 },
-  { col: 4, row: 0, layer: 0 },
-  { col: 6, row: 0, layer: 0 },
-  { col: 16, row: 0, layer: 0 },
-  { col: 18, row: 0, layer: 0 },
-  { col: 20, row: 0, layer: 0 },
-  { col: 22, row: 0, layer: 0 },
-  // Layer 1
-  { col: 2, row: 0, layer: 1 },
-  { col: 4, row: 0, layer: 1 },
-  { col: 18, row: 0, layer: 1 },
-  { col: 20, row: 0, layer: 1 },
-  // Layer 0
-  { col: 2, row: 1, layer: 0 },
-  { col: 4, row: 1, layer: 0 },
-  { col: 6, row: 1, layer: 0 },
-  { col: 8, row: 1, layer: 0 },
-  { col: 14, row: 1, layer: 0 },
-  { col: 16, row: 1, layer: 0 },
-  { col: 18, row: 1, layer: 0 },
-  { col: 20, row: 1, layer: 0 },
-  // Layer 1
-  { col: 4, row: 1, layer: 1 },
-  { col: 6, row: 1, layer: 1 },
-  { col: 16, row: 1, layer: 1 },
-  { col: 18, row: 1, layer: 1 },
-  // Layer 0
-  { col: 4, row: 2, layer: 0 },
-  { col: 6, row: 2, layer: 0 },
-  { col: 8, row: 2, layer: 0 },
-  { col: 10, row: 2, layer: 0 },
-  { col: 12, row: 2, layer: 0 },
-  { col: 14, row: 2, layer: 0 },
-  { col: 16, row: 2, layer: 0 },
-  { col: 18, row: 2, layer: 0 },
-  // Layer 1
-  { col: 6, row: 2, layer: 1 },
-  { col: 8, row: 2, layer: 1 },
-  { col: 14, row: 2, layer: 1 },
-  { col: 16, row: 2, layer: 1 },
-  // Layer 0
-  { col: 6, row: 3, layer: 0 },
-  { col: 8, row: 3, layer: 0 },
-  { col: 10, row: 3, layer: 0 },
-  { col: 12, row: 3, layer: 0 },
-  { col: 14, row: 3, layer: 0 },
-  { col: 16, row: 3, layer: 0 },
-  // Layer 1
-  { col: 8, row: 3, layer: 1 },
-  { col: 10, row: 3, layer: 1 },
-  { col: 12, row: 3, layer: 1 },
-  { col: 14, row: 3, layer: 1 },
-  // Layer 0
-  { col: 8, row: 4, layer: 0 },
-  { col: 10, row: 4, layer: 0 },
-  { col: 12, row: 4, layer: 0 },
-  { col: 14, row: 4, layer: 0 },
-  // Layer 1
-  { col: 10, row: 4, layer: 1 },
-  { col: 12, row: 4, layer: 1 },
-  // Layer 0
-  { col: 10, row: 5, layer: 0 },
-  { col: 12, row: 5, layer: 0 },
-  { col: 14, row: 5, layer: 0 },
-  { col: 16, row: 5, layer: 0 },
-  { col: 6, row: 5, layer: 0 },
-  { col: 8, row: 5, layer: 0 },
-  // Layer 1
-  { col: 12, row: 5, layer: 1 },
-  { col: 14, row: 5, layer: 1 },
-  { col: 8, row: 5, layer: 1 },
-  { col: 10, row: 5, layer: 1 },
-  // Layer 0
-  { col: 12, row: 6, layer: 0 },
-  { col: 14, row: 6, layer: 0 },
-  { col: 16, row: 6, layer: 0 },
-  { col: 18, row: 6, layer: 0 },
-  { col: 4, row: 6, layer: 0 },
-  { col: 6, row: 6, layer: 0 },
-  { col: 8, row: 6, layer: 0 },
-  { col: 10, row: 6, layer: 0 },
-  // Layer 1
-  { col: 14, row: 6, layer: 1 },
-  { col: 16, row: 6, layer: 1 },
-  { col: 6, row: 6, layer: 1 },
-  { col: 8, row: 6, layer: 1 },
-  // Layer 0
-  { col: 14, row: 7, layer: 0 },
-  { col: 16, row: 7, layer: 0 },
-  { col: 18, row: 7, layer: 0 },
-  { col: 20, row: 7, layer: 0 },
-  { col: 2, row: 7, layer: 0 },
-  { col: 4, row: 7, layer: 0 },
-  { col: 6, row: 7, layer: 0 },
-  { col: 8, row: 7, layer: 0 },
-  // Layer 1
-  { col: 16, row: 7, layer: 1 },
-  { col: 18, row: 7, layer: 1 },
-  { col: 4, row: 7, layer: 1 },
-  { col: 6, row: 7, layer: 1 },
-  // Layer 0
-  { col: 16, row: 8, layer: 0 },
-  { col: 18, row: 8, layer: 0 },
-  { col: 20, row: 8, layer: 0 },
-  { col: 22, row: 8, layer: 0 },
-  { col: 0, row: 8, layer: 0 },
-  { col: 2, row: 8, layer: 0 },
-  { col: 4, row: 8, layer: 0 },
-  { col: 6, row: 8, layer: 0 },
-  // Layer 1
-  { col: 18, row: 8, layer: 1 },
-  { col: 20, row: 8, layer: 1 },
-  { col: 2, row: 8, layer: 1 },
-  { col: 4, row: 8, layer: 1 },
-  // Layer 0
-  { col: 16, row: 9, layer: 0 },
-  { col: 18, row: 9, layer: 0 },
-  { col: 20, row: 9, layer: 0 },
-  { col: 22, row: 9, layer: 0 },
-  { col: 0, row: 9, layer: 0 },
-  { col: 2, row: 9, layer: 0 },
-  { col: 4, row: 9, layer: 0 },
-  { col: 6, row: 9, layer: 0 },
-  // Layer 1
-  { col: 18, row: 9, layer: 1 },
-  { col: 20, row: 9, layer: 1 },
-  { col: 2, row: 9, layer: 1 },
-  { col: 4, row: 9, layer: 1 },
-  // Layer 2 - 24 tiles: centre stacking zone cols 8-14, rows 2-7 (4 cols x 6 rows)
-  { col: 8, row: 2, layer: 2 },
-  { col: 10, row: 2, layer: 2 },
-  { col: 12, row: 2, layer: 2 },
-  { col: 14, row: 2, layer: 2 },
-  { col: 8, row: 3, layer: 2 },
-  { col: 10, row: 3, layer: 2 },
-  { col: 12, row: 3, layer: 2 },
-  { col: 14, row: 3, layer: 2 },
-  { col: 8, row: 4, layer: 2 },
-  { col: 10, row: 4, layer: 2 },
-  { col: 12, row: 4, layer: 2 },
-  { col: 14, row: 4, layer: 2 },
-  { col: 8, row: 5, layer: 2 },
-  { col: 10, row: 5, layer: 2 },
-  { col: 12, row: 5, layer: 2 },
-  { col: 14, row: 5, layer: 2 },
-  { col: 8, row: 6, layer: 2 },
-  { col: 10, row: 6, layer: 2 },
-  { col: 12, row: 6, layer: 2 },
-  { col: 14, row: 6, layer: 2 },
-  { col: 8, row: 7, layer: 2 },
-  { col: 10, row: 7, layer: 2 },
-  { col: 12, row: 7, layer: 2 },
-  { col: 14, row: 7, layer: 2 },
-  // Layer 3 - 10 tiles: centre spine cols 10-12, rows 3-7 (2 cols x 5 rows)
-  { col: 10, row: 3, layer: 3 },
-  { col: 12, row: 3, layer: 3 },
-  { col: 10, row: 4, layer: 3 },
-  { col: 12, row: 4, layer: 3 },
-  { col: 10, row: 5, layer: 3 },
-  { col: 12, row: 5, layer: 3 },
-  { col: 10, row: 6, layer: 3 },
-  { col: 12, row: 6, layer: 3 },
-  { col: 10, row: 7, layer: 3 },
-  { col: 12, row: 7, layer: 3 },
+  // Layers 0 and 1, row by row: each row emits its layer-0 band, then the
+  // inner layer-1 band on top of it. Below the crossing (rows 5-9) the
+  // right-hand arm is listed before the left.
+  ...row(0, 0, [...cols(0, 6), ...cols(16, 22)]),
+  ...row(1, 0, [...cols(2, 4), ...cols(18, 20)]),
+  ...row(0, 1, [...cols(2, 8), ...cols(14, 20)]),
+  ...row(1, 1, [...cols(4, 6), ...cols(16, 18)]),
+  ...row(0, 2, cols(4, 18)),
+  ...row(1, 2, [...cols(6, 8), ...cols(14, 16)]),
+  ...row(0, 3, cols(6, 16)),
+  ...row(1, 3, cols(8, 14)),
+  ...row(0, 4, cols(8, 14)),
+  ...row(1, 4, cols(10, 12)),
+  ...row(0, 5, [...cols(10, 16), ...cols(6, 8)]),
+  ...row(1, 5, [...cols(12, 14), ...cols(8, 10)]),
+  ...row(0, 6, [...cols(12, 18), ...cols(4, 10)]),
+  ...row(1, 6, [...cols(14, 16), ...cols(6, 8)]),
+  ...row(0, 7, [...cols(14, 20), ...cols(2, 8)]),
+  ...row(1, 7, [...cols(16, 18), ...cols(4, 6)]),
+  ...row(0, 8, [...cols(16, 22), ...cols(0, 6)]),
+  ...row(1, 8, [...cols(18, 20), ...cols(2, 4)]),
+  ...row(0, 9, [...cols(16, 22), ...cols(0, 6)]),
+  ...row(1, 9, [...cols(18, 20), ...cols(2, 4)]),
+  // Layer 2
+  ...rect(2, 8, 14, 2, 7),
+  // Layer 3
+  ...rect(3, 10, 12, 3, 7),
 ];

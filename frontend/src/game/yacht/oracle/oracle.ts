@@ -2,7 +2,7 @@
  * Yacht runtime oracle — public API (#2243).
  *
  * Shipped, lazy-loaded: `oracleTable.generated.ts` (the precomputed ~786K-
- * entry EV table, built offline by `scripts/build-yacht-oracle.ts`, stored
+ * entry EV table, built offline by `tools/generators/build-yacht-oracle.ts`, stored
  * compressed — see `tableCodec.ts`) is `require()`d lazily inside
  * `getOracleTable()`, not imported at module top-level — its ~0.6 MB base64
  * payload is never parsed/decoded during app startup, only when a caller
@@ -59,11 +59,6 @@ async function loadTable(): Promise<Float32Array> {
 export function getHoldOptions(): readonly (readonly HoldOption[])[] {
   if (!holdOptionsCache) holdOptionsCache = buildHoldOptions();
   return holdOptionsCache;
-}
-
-/** True once the oracle table has been decoded. */
-export function isOracleTableLoaded(): boolean {
-  return table !== null;
 }
 
 /**

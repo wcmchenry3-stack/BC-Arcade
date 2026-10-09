@@ -145,6 +145,47 @@ from Sentry events through its event scrubber.
 
 The pseudonymous session id can exist in BC Arcade's own database/logging systems, but it should not be forwarded as a Sentry request header.
 
+### Background-job failures
+
+A failed run of a background job (`backend/jobs/periodic.py`) is reported by one
+helper, `observability.report.report_exception(exc, subsystem=..., fingerprint=...)`:
+one event per failure, tagged `subsystem` and grouped by a fixed fingerprint.
+The jobs log the failure at WARNING, never ERROR, because the Sentry logging
+integration would turn an ERROR record into a second, untagged event.
+
+| Job                    | `subsystem`               | Fingerprint                        |
+| ---------------------- | ------------------------- | ---------------------------------- |
+| Daily Word retention   | `daily_word.retention`    | `daily-word-retention-prune-failed` |
+| App Store replay       | `purchases.apple_replay`  | `apple-notification-replay-failed`  |
+| Google Play jobs       | `purchases.google_jobs`   | `google-play-jobs-failed`           |
+
+### One reporter
+
+Background-job failures and the dropped/rejected-result reports go through
+`backend/observability/report.py`. Two plain one-line messages still call
+`sentry_sdk.capture_message` directly: the missing-`GameModule` report in
+`games/stats.py` and the store-misconfiguration report in
+`purchases/_common.misconfigured`.
+
+- `report_exception(exc, subsystem=..., fingerprint=...)` for a caught exception
+  (the background jobs above);
+- `report_event(message, *, level, fingerprint, tags, context=None, extras=None)`
+  for a message, with an explicit fingerprint, tags and Sentry contexts on a
+  throwaway scope that never leaks onto other events;
+- `Throttle(window_s)` for a reporter that could flood during one outage:
+  `allow()` is True for the first call in a window and False for the rest.
+
+The "dropped/rejected result" reporters are all `report_event` calls. They send
+field paths and error types only, never values or a session id.
+
+| Reporter                                       | Level   | Fingerprint                                                       | Tags                            |
+| ---------------------------------------------- | ------- | ----------------------------------------------------------------- | ------------------------------- |
+| `games.sessions._report_rejected_result` (400) | error   | `games-complete-result-rejected`, game type, reason               | `game_type`                     |
+| `yacht.models._report_dropped_card`            | error   | same as above, game type `yacht`, reason `<field> dropped`        | `game_type`                     |
+| `hearts.models._report_dropped_breakdown`      | warning | `hearts-result-breakdown-dropped`, reason                         | `game_type`                     |
+| `starswarm.models._report_dropped_breakdown`   | warning | `starswarm-result-breakdown-dropped`, reason                      | `game_type`, `reason`           |
+| `daily_word.router._report_degraded_guess`     | warning | `daily-word-guess-state-unavailable` (one event per 600 s window) | `subsystem=daily_word.progress` |
+
 ## 4. Session replay
 
 **BC Arcade does not currently enable Sentry Session Replay in app initialization.**
@@ -283,7 +324,7 @@ The broader privacy declarations are owned by their dedicated legal/privacy work
 - Console-error forwarding → `utils/sentryConsoleError.ts`.
 - Internal bug logging → `gameEventClient.ts`, `eventStore.ts`, SyncWorker.
 - Backend bug-log API/storage → `backend/logs/`.
-- Backend Sentry initialization/scrubbing → `backend/main.py`.
+- Backend Sentry initialization/scrubbing → `backend/observability/sentry.py` (called from `create_app()` in `backend/main.py`).
 
 When changing one of these flows:
 

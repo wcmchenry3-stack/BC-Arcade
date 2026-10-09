@@ -2,8 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import type { DailyWordState } from "./types";
 import type { TodayResponse } from "./api";
-
-const STORAGE_KEY = "daily_word_state_v1";
+import { createJsonSlot } from "../_shared/storageSlot";
 
 // Callers must compare loaded state's puzzle_id against today's puzzle
 // (via dailyWordApi.getToday) and call clearState() on a mismatch so a
@@ -21,39 +20,17 @@ export function looksValid(v: unknown): v is DailyWordState {
   return true;
 }
 
-export async function saveState(state: DailyWordState): Promise<void> {
-  try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "daily_word.storage", op: "save" } });
-  }
-}
-
-export async function loadState(): Promise<DailyWordState | null> {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (!looksValid(parsed)) return null;
-    return parsed;
-  } catch (e) {
-    Sentry.captureMessage("daily_word.storage: corrupt payload, discarding", {
-      level: "warning",
-      tags: { subsystem: "daily_word.storage", op: "load" },
-      extra: { error: String(e), key: STORAGE_KEY },
-    });
-    await AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
-    return null;
-  }
-}
-
-export async function clearState(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(STORAGE_KEY);
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "daily_word.storage", op: "clear" } });
-  }
-}
+export const {
+  save: saveState,
+  load: loadState,
+  clear: clearState,
+} = createJsonSlot<DailyWordState>({
+  key: "daily_word_state_v1",
+  subsystem: "daily_word.storage",
+  isValid: looksValid,
+  keepInvalid: true,
+  corruptMessage: "daily_word.storage: corrupt payload, discarding",
+});
 
 const TODAY_META_KEY_PREFIX = "daily_word_today_";
 

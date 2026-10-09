@@ -42,6 +42,7 @@ import {
 import { GameShell } from "../components/shared/GameShell";
 import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
 import { usePauseWhileAway } from "../hooks/usePauseWhileAway";
+import { bestOf } from "../game/_shared/bestOf";
 import { clockElapsedMs, pauseClock, resumeClock, type PlayClock } from "../game/_shared/playClock";
 import GameResultModal from "../components/shared/GameResultModal";
 import { FruitSetProvider, useFruitSet } from "../theme/FruitSetContext";
@@ -64,8 +65,7 @@ import ScoreDisplay from "../components/cascade/ScoreDisplay";
 import ThemeSelector from "../components/cascade/ThemeSelector";
 import FruitGlyph from "../components/cascade/FruitGlyph";
 import { useGameSync } from "../game/_shared/useGameSync";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
+import { useGameRank } from "../game/_shared/useGameRank";
 import {
   saveGame as saveCascadeGame,
   loadGame as loadCascadeGame,
@@ -96,11 +96,9 @@ function makeQueue(rng?: () => number): { queue: PieceQueue; history: number[] }
 import { useSound } from "../game/_shared/useSound";
 import { useSoundSettings } from "../game/_shared/SoundContext";
 import { CASCADE_SOUNDS } from "../game/cascade/sounds";
+import { useReduceMotion } from "../components/shared/useReduceMotion";
 
 const SAVE_THROTTLE_MS = 2000;
-
-/** The result card reads the synced game's rank on the session board (#2632). */
-const cascadeBoard = sessionBoardAdapter("cascade");
 
 // ---------------------------------------------------------------------------
 // Merge burst animation (react-native-reanimated)
@@ -256,7 +254,7 @@ function PieceRenderer({
             // converts a radius into the full canvas half-size (see
             // FruitDefinition.bakedClipR) so the drawn fruit matches the circle.
             //
-            // bakedClipR was produced by scripts/bake_sprites.py against
+            // bakedClipR was produced by tools/assets/bake_sprites.py against
             // FruitDefinition.radius (fruitSets.ts's RADII table), NOT PIECE_DEFS'
             // physics radius (`r` above) — the two scales diverge up to ~31% by the
             // top tier. Use the radius bakedClipR was actually calibrated against.
@@ -310,8 +308,8 @@ function CascadeGame() {
     /** False when the game had no sync id, so nothing could be submitted. */
     submittable: boolean;
   } | null>(null);
-  const leaderboard = useLeaderboardSubmit(cascadeBoard);
-  const { submit: submitScore, reset: resetScore } = leaderboard;
+  const leaderboard = useGameRank("cascade");
+  const { lookup: lookupRank, reset: resetScore } = leaderboard;
   // The card's "View leaderboard" link and the ⋯ menu item (#2633).
   const openLeaderboard = useLeaderboardLink(navigation, "cascade");
   const [containerWidth, setContainerWidth] = useState(0);
@@ -322,10 +320,7 @@ function CascadeGame() {
 
   // Animation state
   const [mergeBursts, setMergeBursts] = useState<MergeBurstData[]>([]);
-  const [reduceMotion, setReduceMotion] = useState(false);
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-  }, []);
+  const reduceMotion = useReduceMotion();
   const nextBurstId = useId();
 
   // Sounds
@@ -586,21 +581,22 @@ function CascadeGame() {
     (gameId: string | null) => {
       const finalScore = scoreRef.current;
       const previousBest = bestScoreRef.current;
-      if (finalScore > previousBest) {
+      const { improved, isNewBest } = bestOf(previousBest, finalScore, false);
+      // bestOf counts any result as improving on no best; a 0 score never set one.
+      if (improved && finalScore > 0) {
         bestScoreRef.current = finalScore;
         saveBestScore(finalScore).catch(() => {});
       }
       setResult({
         score: finalScore,
         bestScore: bestScoreRef.current,
-        // Only a beaten previous best counts — not the first game.
-        isNewBest: previousBest > 0 && finalScore > previousBest,
+        isNewBest,
         merges: mergeCountRef.current,
         submittable: gameId !== null,
       });
-      if (gameId) void submitScore({ gameId });
+      if (gameId) void lookupRank(gameId);
     },
-    [submitScore]
+    [lookupRank]
   );
 
   const handleGameOver = useCallback(() => {

@@ -1,14 +1,26 @@
+/**
+ * SettingsScreen — app-wide preferences and data controls.
+ *
+ * Concerns:
+ *   1. Preferences — theme, card deck, language and sound effects.
+ *   2. Data — clear bug logs; Delete my data clears the device and the server (#2624),
+ *      including the leaderboard name (#2778) and the remembered stats (#2635).
+ *   3. Purchases and legal — Restore purchases (when purchases are available), privacy, terms.
+ *   Not a game screen: no GameShell.
+ */
 import React, { useState } from "react";
 import { View, Text, Pressable, StyleSheet, Switch, Linking, ScrollView } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import { usePurchases } from "../purchases/PurchaseProvider";
 import { useRestorePurchases } from "../purchases/useRestorePurchases";
 import { useTheme, type ThemeMode } from "../theme/ThemeContext";
 import LanguageSwitcher from "../components/LanguageSwitcher";
-import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
+import { AppHeader } from "../components/shared/AppHeader";
+import { ScreenFrame } from "../components/shared/ScreenFrame";
 import { ConfirmModal } from "../components/shared/ConfirmModal";
+import { useTransientToast } from "../components/shared/useTransientToast";
+import { SettingsRow } from "../components/settings/SettingsRow";
 import { gameEventClient } from "../game/_shared/gameEventClient";
 import { useDeck } from "../game/_shared/decks/CardDeckContext";
 import { useSoundSettings } from "../game/_shared/SoundContext";
@@ -28,7 +40,6 @@ export default function SettingsScreen() {
   const { colors, themeMode, setThemeMode } = useTheme();
   const { activeDeck, setDeck, availableDecks } = useDeck();
   const { muted, setMuted } = useSoundSettings();
-  const insets = useSafeAreaInsets();
   const { t } = useTranslation("common");
   // Restore Purchases (Apple 3.1.1) exists only where purchases do: hidden with
   // the unavailable adapter, i.e. web and v1.0 store builds.
@@ -42,17 +53,16 @@ export default function SettingsScreen() {
   };
 
   const [confirmVisible, setConfirmVisible] = useState(false);
-  const [successVisible, setSuccessVisible] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
-  const [deleteSuccessVisible, setDeleteSuccessVisible] = useState(false);
-  const [deleteErrorVisible, setDeleteErrorVisible] = useState(false);
+  const clearLogsToast = useTransientToast(2000);
+  const deleteSuccessToast = useTransientToast(3000);
+  const deleteErrorToast = useTransientToast(3000);
 
   const handleClearLogs = async () => {
     setConfirmVisible(false);
     try {
       await gameEventClient.clearAll();
-      setSuccessVisible(true);
-      setTimeout(() => setSuccessVisible(false), 2000);
+      clearLogsToast.show();
     } catch (e) {
       Sentry.captureException(e, {
         tags: { subsystem: "settings", op: "clearLogs" },
@@ -84,14 +94,12 @@ export default function SettingsScreen() {
         eventStore.clearAll(),
         clearLegacyScoreQueue(),
       ]);
-      setDeleteSuccessVisible(true);
-      setTimeout(() => setDeleteSuccessVisible(false), 3000);
+      deleteSuccessToast.show();
     } catch (e) {
       Sentry.captureException(e, {
         tags: { subsystem: "settings", op: "deleteData" },
       });
-      setDeleteErrorVisible(true);
-      setTimeout(() => setDeleteErrorVisible(false), 3000);
+      deleteErrorToast.show();
     }
   };
 
@@ -102,12 +110,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View
-      style={[
-        styles.container,
-        { backgroundColor: colors.background, paddingTop: APP_HEADER_HEIGHT + insets.top },
-      ]}
-    >
+    <ScreenFrame padBottom={false}>
       <AppHeader title={t("nav.settings")} />
 
       <ScrollView
@@ -209,15 +212,10 @@ export default function SettingsScreen() {
           />
         </View>
 
-        <View style={[styles.rowStacked, { borderColor: colors.border }]}>
-          <View style={styles.rowStackedText}>
-            <Text style={[styles.label, { color: colors.text }]}>
-              {t("clearLogs.label", "Clear local logs")}
-            </Text>
-            <Text style={[styles.description, { color: colors.text, opacity: 0.7 }]}>
-              {t("clearLogs.description")}
-            </Text>
-          </View>
+        <SettingsRow
+          label={t("clearLogs.label", "Clear local logs")}
+          description={t("clearLogs.description")}
+        >
           <Pressable
             onPress={() => setConfirmVisible(true)}
             style={[styles.destructive, { backgroundColor: colors.surfaceAlt }]}
@@ -227,17 +225,12 @@ export default function SettingsScreen() {
           >
             <Text style={{ color: colors.text }}>{t("clearLogs.button", "Clear")}</Text>
           </Pressable>
-        </View>
+        </SettingsRow>
 
-        <View style={[styles.rowStacked, { borderColor: colors.border }]}>
-          <View style={styles.rowStackedText}>
-            <Text style={[styles.label, { color: colors.text }]}>
-              {t("deleteData.label", "Delete my data")}
-            </Text>
-            <Text style={[styles.description, { color: colors.text, opacity: 0.7 }]}>
-              {t("deleteData.description")}
-            </Text>
-          </View>
+        <SettingsRow
+          label={t("deleteData.label", "Delete my data")}
+          description={t("deleteData.description")}
+        >
           <Pressable
             onPress={() => setDeleteConfirmVisible(true)}
             style={[styles.destructive, { backgroundColor: colors.error }]}
@@ -249,16 +242,15 @@ export default function SettingsScreen() {
               {t("deleteData.button", "Delete")}
             </Text>
           </Pressable>
-        </View>
+        </SettingsRow>
 
         {purchasesAvailable && (
-          <View style={[styles.rowStacked, { borderColor: colors.border }]}>
-            <View style={styles.rowStackedText}>
-              <Text style={[styles.label, { color: colors.text }]}>{t("paywall.restore")}</Text>
-              <Text style={[styles.description, { color: colors.text, opacity: 0.7 }]}>
-                {t("settings.restorePurchases.description")}
-              </Text>
-              {restorer.status !== "idle" && restorer.status !== "busy" && (
+          <SettingsRow
+            label={t("paywall.restore")}
+            description={t("settings.restorePurchases.description")}
+            details={
+              restorer.status !== "idle" &&
+              restorer.status !== "busy" && (
                 <Text
                   style={[styles.description, { color: colors.text }]}
                   accessibilityLiveRegion="polite"
@@ -266,8 +258,9 @@ export default function SettingsScreen() {
                 >
                   {t(`restore.${restorer.status}`)}
                 </Text>
-              )}
-            </View>
+              )
+            }
+          >
             <Pressable
               onPress={() => void restorer.restore()}
               disabled={restorer.busy}
@@ -283,7 +276,7 @@ export default function SettingsScreen() {
             >
               <Text style={{ color: colors.text }}>{t("paywall.restore")}</Text>
             </Pressable>
-          </View>
+          </SettingsRow>
         )}
 
         <View style={styles.legalRow}>
@@ -336,29 +329,28 @@ export default function SettingsScreen() {
         testID="delete-data"
       />
 
-      {successVisible && (
+      {clearLogsToast.visible && (
         <View style={[styles.toast, { backgroundColor: colors.surface }]}>
           <Text style={{ color: colors.text }}>{t("clearLogs.success")}</Text>
         </View>
       )}
 
-      {deleteSuccessVisible && (
+      {deleteSuccessToast.visible && (
         <View style={[styles.toast, { backgroundColor: colors.surface }]}>
           <Text style={{ color: colors.text }}>{t("deleteData.success")}</Text>
         </View>
       )}
 
-      {deleteErrorVisible && (
+      {deleteErrorToast.visible && (
         <View style={[styles.toast, { backgroundColor: colors.error }]}>
           <Text style={{ color: colors.textOnAccent }}>{t("deleteData.error")}</Text>
         </View>
       )}
-    </View>
+    </ScreenFrame>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   scroll: { flex: 1 },
   scrollContent: { padding: 24 },
   row: {
@@ -368,15 +360,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
   },
-  rowStacked: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    gap: 12,
-  },
-  rowStackedText: { flex: 1 },
   label: { fontSize: 16 },
   description: { fontSize: 13, marginTop: 4 },
   destructive: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },

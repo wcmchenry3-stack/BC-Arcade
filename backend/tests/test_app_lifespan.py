@@ -21,6 +21,12 @@ def test_no_on_event_hooks_remain() -> None:
     assert main.app.router.on_shutdown == []
 
 
+def _retention():
+    from daily_word.retention import retention_job
+
+    return retention_job(lambda: None)  # type: ignore[arg-type,return-value]
+
+
 def _audit_events(records: list[logging.LogRecord]) -> list[str]:
     events = []
     for record in records:
@@ -52,17 +58,11 @@ def test_a_failed_startup_still_cancels_the_retention_task(
     import main
 
     created: list[asyncio.Task] = []
-    start = main._start_daily_word_retention
-
-    def recording_start():
-        task = start()
-        created.append(task)
-        return task
 
     async def failing_health_check() -> None:
+        created.extend(main.app.state.job_tasks.values())
         raise RuntimeError("startup interrupted")
 
-    monkeypatch.setattr(main, "_start_daily_word_retention", recording_start)
     monkeypatch.setattr(main, "_db_health_check", failing_health_check)
 
     with pytest.raises(RuntimeError, match="startup interrupted"), TestClient(main.app):
@@ -70,14 +70,13 @@ def test_a_failed_startup_still_cancels_the_retention_task(
 
     assert created and created[0] is not None
     assert created[0].cancelled()
-    assert main.app.state.retention_task is None
+    assert main.app.state.job_tasks == {}
 
 
 async def test_stopping_does_not_swallow_its_own_cancellation() -> None:
     """If shutdown itself is cancelled while waiting for the task, that
     cancellation must propagate, not be mistaken for the task's own (#2672
     review)."""
-    import main
 
     async def slow_to_stop() -> None:
         try:
@@ -87,7 +86,7 @@ async def test_stopping_does_not_swallow_its_own_cancellation() -> None:
 
     task = asyncio.create_task(slow_to_stop())
     await asyncio.sleep(0)
-    stopper = asyncio.create_task(main._stop_daily_word_retention(task))
+    stopper = asyncio.create_task(_retention().stop(task))
     await asyncio.sleep(0.01)
     stopper.cancel()
 
@@ -100,7 +99,6 @@ async def test_stopping_does_not_swallow_its_own_cancellation() -> None:
 async def test_stopping_surfaces_a_task_that_crashed() -> None:
     """A task that ends in an error is re-raised, as ``await task`` did (#2667),
     rather than silently absorbed."""
-    import main
 
     async def fails_on_cancel() -> None:
         try:
@@ -111,24 +109,31 @@ async def test_stopping_surfaces_a_task_that_crashed() -> None:
     task = asyncio.create_task(fails_on_cancel())
     await asyncio.sleep(0)
     with pytest.raises(RuntimeError, match="cleanup failed"):
-        await main._stop_daily_word_retention(task)
+        await _retention().stop(task)
 
 
 def test_shutdown_resets_state_even_when_the_task_crashed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The lifespan clears app.state.retention_task however stopping ends."""
+    """The lifespan empties app.state.job_tasks however stopping ends."""
     import main
-    from daily_word import retention
+    from jobs import lifespan as jobs_lifespan
 
-    async def crashes_on_cancel(_get_session_factory, **_kw) -> None:
+    async def crashes_on_cancel() -> None:
         try:
             await asyncio.sleep(3600)
         except asyncio.CancelledError:
             raise RuntimeError("cleanup failed") from None
 
-    monkeypatch.setattr(retention, "run_retention_loop", crashes_on_cancel)
+    real = jobs_lifespan.retention_job
+
+    def build():
+        job = real()
+        monkeypatch.setattr(job, "loop", crashes_on_cancel)
+        return job
+
+    monkeypatch.setattr(jobs_lifespan, "retention_job", build)
 
     with pytest.raises(RuntimeError, match="cleanup failed"), TestClient(main.app):
-        assert main.app.state.retention_task is not None
-    assert main.app.state.retention_task is None
+        assert "daily_word_retention" in main.app.state.job_tasks
+    assert main.app.state.job_tasks == {}

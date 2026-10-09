@@ -59,15 +59,12 @@ jobs:
           # branch is safe here.
           cache-read-only: false
 
-      - uses: actions/setup-node@v7
+      # metro-cache: Metro's default FileStore cache lives at $TMPDIR/metro-cache;
+      # shared with android-bundle-check and android-release-smoke (ci.yml), which
+      # each also invoke the JS bundler independently.
+      - uses: ./.github/actions/setup-frontend
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install JS dependencies
-        run: npm ci
-        working-directory: frontend
+          metro-cache: "true"
 
       - name: Enable KVM
         run: |
@@ -75,11 +72,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Install Maestro CLI
-        run: |
-          export MAESTRO_VERSION=1.39.13
-          curl -Ls "https://get.maestro.mobile.dev" | bash
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - uses: ./.github/actions/maestro-install
 
       - name: Generate debug keystore for CI
         run: |
@@ -89,18 +82,6 @@ jobs:
             -keyalg RSA -keysize 2048 -validity 10000 \
             -storepass android -keypass android \
             -dname "CN=Android Debug,O=Android,C=US"
-
-      - name: Cache Metro bundler transforms
-        # Metro's default FileStore cache lives at $TMPDIR/metro-cache (see
-        # metro-config's defaults) — /tmp on ubuntu-latest. android-bundle-check
-        # and android-release-smoke (ci.yml) each also invoke the JS bundler
-        # independently; sharing this cache across those jobs' runs on the same
-        # branch avoids re-transforming unchanged sources from scratch in each.
-        uses: actions/cache@v6
-        with:
-          path: /tmp/metro-cache
-          key: metro-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: metro-${{ runner.os }}-
 
       - name: Build debug APK
         # -PreactNativeArchitectures=x86_64: restrict native (CMake/NDK)
@@ -158,29 +139,7 @@ jobs:
 
       - name: Write job summary
         if: always()
-        shell: python3 {0}
-        run: |
-          import xml.etree.ElementTree as ET, os, glob
-          out = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
-          rows = []
-          # One report.xml per flow directory now (see the run step's
-          # per-directory invocation note above / #2350).
-          reports = sorted(glob.glob('maestro-results/*/report.xml'))
-          if not reports:
-              rows.append('| _(no reports — test runner may have crashed before any directory ran)_ | — |\n')
-          for report in reports:
-              try:
-                  root = ET.parse(report).getroot()
-                  suites = root.findall('testsuite') if root.tag == 'testsuites' else [root]
-                  for s in suites:
-                      name = s.get('name', 'unknown').removeprefix('e2e/maestro/flows/').removesuffix('.yaml')
-                      failed = int(s.get('failures', 0)) + int(s.get('errors', 0))
-                      rows.append(f'| `{name}` | {"❌ FAIL" if failed else "✅ PASS"} |\n')
-              except ET.ParseError as exc:
-                  rows.append(f'| _(parse error in {report}: {exc})_ | — |\n')
-          with open(out, 'a') as f:
-              f.write('## Maestro Android Smoke (${{ needs.detect-maestro-scope.outputs.label }})\n\n| Flow | Result |\n|---|---|\n')
-              f.writelines(rows)
+        run: python3 e2e/maestro/summarize.py "Android" "${{ needs.detect-maestro-scope.outputs.label }}"
 
       - name: Upload Maestro results
         uses: actions/upload-artifact@v7

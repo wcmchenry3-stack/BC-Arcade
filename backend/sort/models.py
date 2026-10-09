@@ -1,11 +1,19 @@
+"""Bottle Sort metadata and result models (#2625)."""
+
 from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from games.board import MAX_BOARD_VALUE
+from games.metadata import LegacyPlayerName
 
 
 class SortMetadata(BaseModel):
+    """Creation-time metadata for a Sort game row: only the legacy ``player_name``.
+
+    ``extra="forbid"`` rejects unknown keys.
+    """
+
     model_config = ConfigDict(extra="forbid")
-    player_name: str = Field(default="", max_length=32)
+    player_name: LegacyPlayerName = ""
 
 
 class SortResult(BaseModel):

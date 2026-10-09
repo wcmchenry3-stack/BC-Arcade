@@ -34,7 +34,7 @@ import {
   isAutopilot,
   PLAYER_W,
 } from "../../game/starswarm/engine";
-import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/constants";
+import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/engine";
 import {
   isUpgradePickup,
   upgradePickupOps,

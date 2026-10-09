@@ -11,6 +11,7 @@
  * player phase (mirrors backend's conceal behavior).
  */
 
+import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
 import { BlackjackGameEvent, BlackjackState, CardResponse, GameRules, HandResponse } from "./types";
 
 const SUITS = ["♠", "♥", "♦", "♣"] as const;
@@ -165,31 +166,16 @@ function cardsCanSplit(cards: readonly Card[]): boolean {
 // ---------------------------------------------------------------------------
 // Seedable RNG
 //
-// The deck shuffle goes through `_rng` so tests and e2e flows can pin the
+// The deck shuffle goes through `rngSlot.rng` so tests and e2e flows can pin the
 // deal sequence with `setRng(createSeededRng(seed))`. Default is Math.random
 // for normal gameplay. Tests that call setRng must restore Math.random in
 // afterEach to avoid leaking determinism into later tests.
 // ---------------------------------------------------------------------------
 
-export type RandomSource = () => number;
-
-let _rng: RandomSource = Math.random;
-
-export function setRng(fn: RandomSource): void {
-  _rng = fn;
-}
-
-/**
- * LCG (same parameters as Cascade's and Twenty48's seeded RNGs).
- * Deterministic for a given seed. Not cryptographic — testing only.
- */
-export function createSeededRng(seed: number): RandomSource {
-  let state = seed >>> 0;
-  return () => {
-    state = (1664525 * state + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
-}
+const rngSlot = createRngSlot();
+export const setRng = rngSlot.setRng;
+export { createSeededRng };
+export type { RandomSource };
 
 function freshShuffledDeck(deckCount: number = 1): Card[] {
   const deck: Card[] = [];
@@ -202,7 +188,7 @@ function freshShuffledDeck(deckCount: number = 1): Card[] {
   }
   // Fisher–Yates shuffle
   for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(_rng() * (i + 1));
+    const j = Math.floor(rngSlot.rng() * (i + 1));
     const tmp = deck[i];
     const dj = deck[j];
     if (tmp !== undefined && dj !== undefined) {

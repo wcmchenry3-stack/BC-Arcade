@@ -392,7 +392,7 @@ def test_default_key_route_health(proxied: TestClient, trust: ProxyTrust) -> Non
 def test_purchases_per_ip_limit_ignores_forged_xff_and_fresh_sessions(
     proxied: TestClient, trust: ProxyTrust
 ) -> None:
-    from purchases.router import PURCHASE_IP_RATE_LIMIT
+    from rate_limits import PURCHASE_IP_RATE_LIMIT
 
     # A fresh session (and store key) per call, so only the per-IP bucket fills.
     _hammer(
@@ -411,7 +411,7 @@ def test_purchases_per_ip_limit_ignores_forged_xff_and_fresh_sessions(
 
 
 def test_purchase_webhook_per_ip_limit(proxied: TestClient, trust: ProxyTrust) -> None:
-    from purchases.router import GOOGLE_NOTIFICATION_IP_RATE_LIMIT
+    from rate_limits import GOOGLE_NOTIFICATION_IP_RATE_LIMIT
 
     limit = _first_limit(GOOGLE_NOTIFICATION_IP_RATE_LIMIT)
     _hammer(proxied, trust, "POST", "/purchases/google/notifications", limit, content=b"{}")

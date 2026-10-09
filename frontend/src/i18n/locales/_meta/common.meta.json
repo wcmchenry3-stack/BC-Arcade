@@ -880,5 +880,50 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "locked.title": {
+    "component": "LockedGameScreen",
+    "description": "Header title of the screen shown when a premium game is locked.",
+    "tone": "functional",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "locked.heading": {
+    "component": "LockedGameScreen",
+    "description": "Heading on the locked-game screen.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "locked.body": {
+    "component": "LockedGameScreen",
+    "description": "Body text explaining the game needs a subscription.",
+    "tone": "functional",
+    "characterLimit": 80,
+    "placeholders": [],
+    "doNotTranslate": ["BC Arcade"],
+    "notes": null
+  },
+  "locked.back": {
+    "component": "LockedGameScreen",
+    "description": "Button that returns to the game lobby.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "locked.back_label": {
+    "component": "LockedGameScreen",
+    "description": "Screen-reader label of the back-to-lobby button.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
   }
 }

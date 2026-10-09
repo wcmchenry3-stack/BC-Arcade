@@ -279,26 +279,26 @@ Expected large contributors (approximate arm64-v8a sizes based on published rele
 
 ### Directory map
 
-| Directory                                       | Size         | Files    | Bundled?      | Owner / Purpose                                                                                     |
-| ----------------------------------------------- | ------------ | -------- | ------------- | --------------------------------------------------------------------------------------------------- |
-| `assets/source-icons/cosmos/`                   | 85.6 MB      | 12 PNG   | No            | Pipeline input — master source files for `npm run process-assets`. Not imported by app code.        |
-| `assets/source-icons/fruits/`                   | 76.8 MB      | 12 PNG   | No            | Pipeline input — same as above.                                                                     |
-| `assets/celestial-icons/`                       | 36.8 MB      | 12 PNG   | **Yes**       | Cosmos theme UI icons. Imported in `src/theme/fruitSets.ts`.                                        |
-| `assets/fruit-icons/`                           | 26.1 MB      | 12 PNG   | **Yes**       | Fruits theme UI icons. Imported in `src/theme/fruitSets.ts`.                                        |
-| `assets/logo.png`                               | 7.1 MB       | 1 PNG    | **Yes**       | App logo. Imported in `src/components/shared/AppHeader.tsx`.                                        |
-| `assets/adaptive-icon.png`                      | 7.1 MB       | 1 PNG    | Platform only | Android adaptive icon (`app.json`). Identical file to `logo.png`.                                   |
-| `assets/icon.png`                               | 7.1 MB       | 1 PNG    | Platform only | App icon (`app.json`). Identical file to `logo.png`.                                                |
-| `assets/cosmos-baked/`                          | 1.2 MB       | 12 PNG   | **Yes**       | Cosmos game pieces (Skia pre-composited). Imported in `src/theme/useFruitImages.ts`.                |
-| `assets/fruits-baked/`                          | 1.0 MB       | 12 PNG   | **Yes**       | Fruits game pieces (Skia pre-composited). Imported in `src/theme/useFruitImages.ts`.                |
-| `assets/cosmos-vertices.json`                   | 43 KB        | 1 JSON   | **Yes**       | Cascade physics polygon vertices for Cosmos theme.                                                  |
-| `assets/fruit-vertices.json`                    | 58 KB        | 1 JSON   | **Yes**       | Cascade physics polygon vertices for Fruits theme.                                                  |
-| `assets/*.png` (Android icons, splash, favicon) | ~0.2 MB      | 4 PNG    | Platform only | App store / launcher assets.                                                                        |
-| Hearts                                          | —            | —        | No            | No dedicated asset directory — lobby card uses Unicode ♥ emoji; all card rendering is programmatic. |
+| Directory                                       | Size         | Files    | Bundled?      | Owner / Purpose                                                                                                                                   |
+| ----------------------------------------------- | ------------ | -------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `assets/source-icons/cosmos/`                   | 85.6 MB      | 12 PNG   | No            | Pipeline input — master source files for `npm run process-assets`. Not imported by app code.                                                      |
+| `assets/source-icons/fruits/`                   | 76.8 MB      | 12 PNG   | No            | Pipeline input — same as above.                                                                                                                   |
+| `assets/celestial-icons/`                       | 36.8 MB      | 12 PNG   | **Yes**       | Cosmos theme UI icons. Imported in `src/theme/fruitSets.ts`.                                                                                      |
+| `assets/fruit-icons/`                           | 26.1 MB      | 12 PNG   | **Yes**       | Fruits theme UI icons. Imported in `src/theme/fruitSets.ts`.                                                                                      |
+| `assets/logo.png`                               | 7.1 MB       | 1 PNG    | **Yes**       | App logo. Imported in `src/components/shared/AppHeader.tsx`.                                                                                      |
+| `assets/adaptive-icon.png`                      | 7.1 MB       | 1 PNG    | Platform only | Android adaptive icon (`app.json`). Identical file to `logo.png`.                                                                                 |
+| `assets/icon.png`                               | 7.1 MB       | 1 PNG    | Platform only | App icon (`app.json`). Identical file to `logo.png`.                                                                                              |
+| `assets/cosmos-baked/`                          | 1.2 MB       | 12 PNG   | **Yes**       | Cosmos game pieces (Skia pre-composited). Imported in `src/theme/useFruitImages.ts`.                                                              |
+| `assets/fruits-baked/`                          | 1.0 MB       | 12 PNG   | **Yes**       | Fruits game pieces (Skia pre-composited). Imported in `src/theme/useFruitImages.ts`.                                                              |
+| `assets/cosmos-vertices.json`                   | 43 KB        | 1 JSON   | **Yes**       | Cascade physics polygon vertices for Cosmos theme.                                                                                                |
+| `assets/fruit-vertices.json`                    | 58 KB        | 1 JSON   | **Yes**       | Cascade physics polygon vertices for Fruits theme.                                                                                                |
+| `assets/*.png` (Android icons, splash, favicon) | ~0.2 MB      | 4 PNG    | Platform only | App store / launcher assets.                                                                                                                      |
+| Hearts                                          | —            | —        | No            | No dedicated asset directory — lobby card uses Unicode ♥ emoji; all card rendering is programmatic.                                               |
 | `src/game/sudoku/puzzles.json`                  | ~261 KB      | 1 JSON   | **Yes**       | Sudoku puzzle bank — 3 000 unique-solution puzzles (1 000 per difficulty). ~60 KB gzipped over the wire. Imported by `src/game/sudoku/engine.ts`. |
-| Sudoku (lobby card)                             | —            | —        | No            | No dedicated asset directory — lobby card uses Unicode 🧩 emoji; the board and cells are programmatic. |
-| **Repo total**                                  | **249.1 MB** | 83 files |               |                                                                                                     |
-| **Bundled game assets**                         | **~72 MB**   |          |               | `celestial-icons` + `fruit-icons` + `logo` + `*-baked` + JSON                                       |
-| **Not bundled (pipeline inputs)**               | **162.4 MB** |          |               | `source-icons/` — needed locally, not shipped                                                       |
+| Sudoku (lobby card)                             | —            | —        | No            | No dedicated asset directory — lobby card uses Unicode 🧩 emoji; the board and cells are programmatic.                                            |
+| **Repo total**                                  | **249.1 MB** | 83 files |               |                                                                                                                                                   |
+| **Bundled game assets**                         | **~72 MB**   |          |               | `celestial-icons` + `fruit-icons` + `logo` + `*-baked` + JSON                                                                                     |
+| **Not bundled (pipeline inputs)**               | **162.4 MB** |          |               | `source-icons/` — needed locally, not shipped                                                                                                     |
 
 ### Asset pipeline
 
@@ -545,11 +545,11 @@ The `android-bundle-check` CI job enforces an **8.0 MB hard limit** (`MAX_BYTES=
 - 8.0 MB: limit raised for `@sentry/react-native` 7 → 8 (#1965).
 - **7.74 MB → 7.27 MB (2026-09-30, #2869).** The bundle had reached 7.74 MB (8,114,007 bytes), 280 KB under the limit, before the premium client work (`expo-iap`, the five premium games made visible). Two behaviour-preserving changes cut 483 KB and left **752 KB of headroom** (769,634 bytes):
 
-| Change                                                                                                                                                                       | Bundle after              | Saved  |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ------ |
-| Baseline (`dev` at e5bb82b2)                                                                                                                                                 | 8,114,007 B (7.74 MB)     | –      |
-| Yacht oracle table: delta + zigzag + byte planes before zlib (`frontend/src/game/yacht/oracle/tableCodec.ts`). Values bit-identical, pinned by `pinnedEV.test.ts`.           | 7,828,231 B (7.47 MB)     | 279 KB |
-| Sudoku puzzle banks shipped packed (`puzzleBanks.generated.ts`, from `scripts/pack-sudoku-puzzles.ts`). JSON stays the source of truth; `puzzleBanks.test.ts` pins equality. | **7,618,974 B (7.27 MB)** | 204 KB |
+| Change                                                                                                                                                                                | Bundle after              | Saved  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ------ |
+| Baseline (`dev` at e5bb82b2)                                                                                                                                                          | 8,114,007 B (7.74 MB)     | –      |
+| Yacht oracle table: delta + zigzag + byte planes before zlib (`frontend/src/game/yacht/oracle/tableCodec.ts`). Values bit-identical, pinned by `pinnedEV.test.ts`.                    | 7,828,231 B (7.47 MB)     | 279 KB |
+| Sudoku puzzle banks shipped packed (`puzzleBanks.generated.ts`, from `tools/generators/pack-sudoku-puzzles.ts`). JSON stays the source of truth; `puzzleBanks.test.ts` pins equality. | **7,618,974 B (7.27 MB)** | 204 KB |
 
 The final row is CI's exact command with `--reset-cache`. The earlier rows were built with `--sourcemap-output` as well, which adds about 100 bytes (see below).
 
@@ -630,8 +630,8 @@ For new game additions specifically, the reviewer checklist in [`docs/GAME-CONTR
 A separate CI gate in `test-frontend` (`assetTransparency.test.ts`) asserts that no raw PNGs exist in non-exempt icon subdirectories under `frontend/assets/`. To convert new PNGs before staging:
 
 ```bash
-python frontend/scripts/convert_icons_to_webp.py frontend/assets/fruit-icons
-python frontend/scripts/convert_icons_to_webp.py frontend/assets/celestial-icons
+python tools/assets/convert_icons_to_webp.py frontend/assets/fruit-icons
+python tools/assets/convert_icons_to_webp.py frontend/assets/celestial-icons
 ```
 
 **Exempt directories** (must stay PNG, never pass to the script):
@@ -738,6 +738,13 @@ The `buildFrame` "before" column leaves out the per-frame `tickStarfield` copy o
 because the collector runs during the loop, so the GC pass count is the better signal.
 
 Profiling the tick benchmark after #2963 shows that most of the remaining time goes into copying
-whole `Enemy` objects (`{ ...enemy, … }`) in `tickFormation` and the `tickEnemies` per-ship map:
-about half of the self time under V8. That is the next thing to look at, once the engine split (#2988)
-has landed.
+whole `Enemy` objects (`{ ...enemy, … }`) in `tickFormation` and the `tickEnemies` per-ship map
+(both in `engine/enemies.ts` since the #2988 split): about half of the self time under V8. That
+is the next thing to look at.
+
+The #2988 split itself is performance-neutral: the `Tuning` parameter is one object threaded
+through the sub-ticks (no per-tick allocation), and the identity-preserving passes above are
+unchanged (`mapKeep` / `mapFilterKeep` live in `engine/roster.ts`). An interleaved A/B of the
+same benchmark (three rounds, `dev`'s `engine.ts` swapped in and out on the same loaded
+container) measured 929–1022 µs/tick before the split and 824–892 µs/tick after it, with the GC
+pass count unchanged (179 vs 179–180); on the idle container `dev` measured 632–721 µs/tick.

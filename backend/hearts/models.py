@@ -1,7 +1,12 @@
+"""Hearts metadata and result models, including the optional per-hand score
+breakdown of a finished game (#2838)."""
+
 import logging
 
-import sentry_sdk
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validator
+
+from games.metadata import LegacyPlayerName
+from observability.report import report_event
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +24,7 @@ class HeartsMetadata(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid")
-    player_name: str = Field(default="", max_length=64)
+    player_name: LegacyPlayerName = ""
     ai_difficulty: str | None = Field(default=None, max_length=32)
 
 
@@ -86,16 +91,16 @@ def _report_dropped_breakdown(reason: str) -> None:
 
     The completion still succeeds; this makes the lost detail visible. Reason
     only: no session id or score values (same privacy rule as
-    ``games.service._report_rejected_result``).
+    ``games.sessions._report_rejected_result``).
     """
     logger.warning("hearts result: breakdown dropped (%s)", reason)
-    with sentry_sdk.new_scope() as scope:
-        scope.set_tag("game_type", "hearts")
-        scope.set_context("result_breakdown", {"reason": reason})
-        scope.fingerprint = ["hearts-result-breakdown-dropped", reason]
-        sentry_sdk.capture_message(
-            f"PATCH /games/{{id}}/complete dropped hearts breakdown: {reason}", level="warning"
-        )
+    report_event(
+        f"PATCH /games/{{id}}/complete dropped hearts breakdown: {reason}",
+        level="warning",
+        fingerprint=["hearts-result-breakdown-dropped", reason],
+        tags={"game_type": "hearts"},
+        context={"result_breakdown": {"reason": reason}},
+    )
 
 
 _BREAKDOWN_KEYS = ("hand_scores", "final_scores", "human_seat")

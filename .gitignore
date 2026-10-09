@@ -72,3 +72,11 @@ e2e/test-results/
 # Symlinks (e.g. worktree setup) are not matched by the trailing-slash patterns above
 backend/.venv
 frontend/node_modules
+
+# Local SQLite dev databases (backend/dev.db was untracked in #2967)
+backend/*.db
+*.db-journal
+
+# Smoke-test output (Playwright report, Maestro results) - transient CI artifacts
+e2e/playwright-report/
+maestro-results/

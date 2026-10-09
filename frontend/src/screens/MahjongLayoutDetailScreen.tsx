@@ -2,9 +2,8 @@ import React, { useEffect, useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Animated, { useSharedValue, useAnimatedStyle } from "react-native-reanimated";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { RouteProp } from "@react-navigation/core";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HomeStackParamList } from "../types/navigation";
 import { getLayout, LAYOUTS } from "../game/mahjong/layouts/registry";
@@ -100,6 +99,7 @@ export default function MahjongLayoutDetailScreen() {
       title={meta?.name ?? layoutId}
       requireBack
       onBack={() => navigation.goBack()}
+      gutter={null}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >
       <View style={styles.content}>

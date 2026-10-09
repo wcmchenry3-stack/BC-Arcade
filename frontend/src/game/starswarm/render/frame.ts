@@ -11,7 +11,7 @@
  * own Pictures and scrolled on the UI thread (`starfieldPictures.ts`), drawn under this one.
  * Colours are packed numbers (`color.ts`), and op keys exist only while `setDebugOpKeys` is on.
  *
- * The web renderer (`GameCanvas.web.tsx`, unmaintained) still derives the same rules itself.
+ * The web renderer (`GameCanvas.web.tsx`, secondary platform) still derives the same rules itself.
  */
 import {
   BULLET_C_W,
@@ -38,7 +38,7 @@ export const INVINCIBLE_BLINK_INTERVAL = 120;
 /** Buddy ship sprite size, px (square, centred on the ship). */
 export const BUDDY_SIZE = 34;
 /** Explosion strip length — the procedural fallback's progress runs over this many frames. */
-export const EXPLOSION_FRAME_COUNT = 20;
+const EXPLOSION_FRAME_COUNT = 20;
 
 /** Sprite names — identical to the `StarSwarmImages` fields they resolve to. */
 export type SpriteKey =

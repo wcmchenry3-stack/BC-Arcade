@@ -1,8 +1,8 @@
 /**
  * @jest-environment jsdom
  *
- * #2956: the Star Swarm web canvas (GameCanvas.web.tsx, Expo Web — a secondary, unmaintained
- * target). Cheap coverage only: the real engine plays a seeded game against a recording 2D
+ * #2956: the Star Swarm web canvas (GameCanvas.web.tsx, Expo Web — a secondary
+ * platform). Cheap coverage only: the real engine plays a seeded game against a recording 2D
  * context, so the draw path runs end to end, and the loop's callbacks, pause and tab-hide
  * behaviour are pinned. The native renderer (GameCanvas.tsx) is the one tested in depth.
  *

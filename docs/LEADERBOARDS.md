@@ -18,7 +18,7 @@ The server exports those board definitions into the generated frontend vocabular
 
 ## 2. BoardDefinition
 
-The authoritative model lives in `backend/games/board.py`.
+The authoritative model lives in `backend/games/board.py`; the code that ranks boards from it (partitions, SQL building blocks, board and rank queries, submission limits) lives in the `backend/games/boards/` package (#2992).
 
 A board declares:
 
@@ -121,7 +121,7 @@ When a board's product design changes, update the backend module first and regen
 
 ## 7a. Indexes (#2965)
 
-Every board read (`top_statement`, the caller's own entry and `GET /games/{id}/rank`) applies the same `board_filters`: `game_type_id = ?`, the metric `IS NOT NULL`, `completed_at IS NOT NULL`, then the value, outcome, name and partition checks. Each metric kind rides a partial index whose `WHERE` those filters imply, so the query seeks to its game type instead of scanning every game:
+Every board read (`top_statement` in `backend/games/boards/queries.py`, the caller's own entry and `GET /games/{id}/rank`) applies the same `board_filters` (`backend/games/boards/sql.py`): `game_type_id = ?`, the metric `IS NOT NULL`, `completed_at IS NOT NULL`, then the value, outcome, name and partition checks. Each metric kind rides a partial index whose `WHERE` those filters imply, so the query seeks to its game type instead of scanning every game:
 
 | Metric kind | Boards | Index |
 | --- | --- | --- |

@@ -1,5 +1,6 @@
 /**
- * AsyncStorage persistence for in-progress Mahjong games (#872).
+ * AsyncStorage persistence for in-progress Mahjong games (#872), through the
+ * shared `storageSlot` (#2987).
  *
  * One slot per device; no account linkage in V1. The screen decides when to
  * save (`useMahjongPersistence`: when the board, its undo history or the
@@ -18,19 +19,21 @@
  * as a warning — the caller recovers by starting a fresh game. An undo
  * history that doesn't check out only costs the entries from the bad one
  * back (`loadUndoEntries`); the game itself loads.
+ *
+ * The engine's one-shot `events` (#3087) are never saved and never loaded: a
+ * restored game must not replay the feedback of the move before the save.
+ * Saves from before them have none, and load as they always did.
  */
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Sentry from "@sentry/react-native";
 import type { LayoutMeta, MahjongState } from "./types";
 import { resolveLayoutId } from "./layouts/registry";
 import { clockForSave, clockOnLoad } from "../_shared/playClock";
 import { plausibleBestMs } from "./engine";
 import { migrateLegacyUndoStack } from "./legacyUndo";
 import { loadUndoEntries } from "./undoEntries";
+import { createJsonSlot, createRecord } from "../_shared/storageSlot";
 
-const GAME_KEY = "mahjong_game";
-const STATS_KEY = "mahjong_stats_v1";
+const SUBSYSTEM = "mahjong.storage";
 
 export interface MahjongStats {
   bestScore: number;
@@ -56,14 +59,6 @@ function loadBestTimes(raw: unknown): Record<string, number> {
     if (best > 0) out[layoutId] = best;
   }
   return out;
-}
-
-export async function saveGame(state: MahjongState): Promise<void> {
-  try {
-    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(clockForSave(state)));
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "mahjong.storage", op: "save" } });
-  }
 }
 
 /** A save as parsed, before `loadGame` has checked and normalised it. */
@@ -98,76 +93,73 @@ function fillMissingFields(parsed: ParsedSave): boolean {
   return filled;
 }
 
-export async function loadGame(): Promise<MahjongState | null> {
-  try {
-    const raw = await AsyncStorage.getItem(GAME_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as ParsedSave;
-    const legacy = parsed._v === 1;
-    if (
-      (parsed._v !== 2 && !legacy) ||
-      !Array.isArray(parsed.tiles) ||
-      typeof parsed.pairsRemoved !== "number" ||
-      typeof parsed.score !== "number" ||
-      typeof parsed.shufflesLeft !== "number" ||
-      !Array.isArray(parsed.undoStack) ||
-      typeof parsed.isComplete !== "boolean" ||
-      typeof parsed.isDeadlocked !== "boolean"
-    ) {
-      await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
-      return null;
-    }
-    // Undo deltas since #2961; a version 1 save's snapshots are converted,
-    // then checked like any history, so what is written back is what loads.
-    const rawUndo = parsed.undoStack;
-    const undoStack = loadUndoEntries(
-      legacy ? migrateLegacyUndoStack(rawUndo, parsed.tiles) : rawUndo,
-      parsed.tiles
-    );
-    parsed.undoStack = undoStack;
-    parsed._v = 2;
-    const filled = fillMissingFields(parsed);
-    const normalised = legacy || undoStack.length !== rawUndo.length || filled;
-    // A cleared or deadlocked board has a frozen clock: saves from before the
-    // engine banked time on completion can still carry a running startedAt,
-    // which would make the win card's time grow, so clockOnLoad drops it.
-    const loaded = parsed as MahjongState;
-    const state = clockOnLoad(loaded, loaded.isComplete || loaded.isDeadlocked);
-    // A save that had to be normalised (a version 1 history, dropped entries,
-    // missing fields) is written back once, now: the screen treats a loaded
-    // game as saved, and the shim that read it goes away next release.
-    if (normalised) await saveGame(state);
-    return state;
-  } catch (e) {
-    Sentry.captureMessage("mahjong.storage: corrupt game payload, discarding", {
-      level: "warning",
-      tags: { subsystem: "mahjong.storage", op: "load" },
-      extra: { error: String(e), key: GAME_KEY },
-    });
-    await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
-    return null;
-  }
+function isSavedGame(p: unknown): p is ParsedSave {
+  const parsed = p as ParsedSave;
+  return !(
+    (parsed._v !== 2 && parsed._v !== 1) ||
+    !Array.isArray(parsed.tiles) ||
+    typeof parsed.pairsRemoved !== "number" ||
+    typeof parsed.score !== "number" ||
+    typeof parsed.shufflesLeft !== "number" ||
+    !Array.isArray(parsed.undoStack) ||
+    typeof parsed.isComplete !== "boolean" ||
+    typeof parsed.isDeadlocked !== "boolean"
+  );
 }
 
-export async function clearGame(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(GAME_KEY);
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "mahjong.storage", op: "clear" } });
-  }
+/** `state` without its one-shot `events`, so the save holds the game only. */
+function withoutEvents(state: MahjongState): MahjongState {
+  if (!("events" in state)) return state;
+  const { events: _events, ...game } = state;
+  return game;
 }
 
-const EMPTY_STATS: MahjongStats = {
-  bestScore: 0,
-  bestTimeMsByLayout: {},
-  gamesPlayed: 0,
-  gamesWon: 0,
-};
+async function restore(parsed: ParsedSave): Promise<MahjongState> {
+  const legacy = parsed._v === 1;
+  // Undo deltas since #2961; a version 1 save's snapshots are converted,
+  // then checked like any history, so what is written back is what loads.
+  const rawUndo = parsed.undoStack as unknown[];
+  const tiles = parsed.tiles as MahjongState["tiles"];
+  const undoStack = loadUndoEntries(
+    legacy ? migrateLegacyUndoStack(rawUndo, tiles) : rawUndo,
+    tiles
+  );
+  parsed.undoStack = undoStack;
+  parsed._v = 2;
+  // Transient: a save written with events (none should be) mustn't replay them.
+  delete parsed.events;
+  const filled = fillMissingFields(parsed);
+  const normalised = legacy || undoStack.length !== rawUndo.length || filled;
+  // A cleared or deadlocked board has a frozen clock: saves from before the
+  // engine banked time on completion can still carry a running startedAt,
+  // which would make the win card's time grow, so clockOnLoad drops it.
+  const loaded = parsed as MahjongState;
+  const state = clockOnLoad(loaded, loaded.isComplete || loaded.isDeadlocked);
+  // A save that had to be normalised (a version 1 history, dropped entries,
+  // missing fields) is written back once, now: the screen treats a loaded
+  // game as saved, and the shim that read it goes away next release.
+  if (normalised) await saveGame(state);
+  return state;
+}
 
-export async function loadStats(): Promise<MahjongStats> {
-  try {
-    const raw = await AsyncStorage.getItem(STATS_KEY);
-    if (!raw) return { ...EMPTY_STATS };
+export const {
+  save: saveGame,
+  load: loadGame,
+  clear: clearGame,
+} = createJsonSlot<MahjongState, ParsedSave>({
+  key: "mahjong_game",
+  subsystem: SUBSYSTEM,
+  isValid: isSavedGame,
+  onLoad: restore,
+  beforeSave: (state) => clockForSave(withoutEvents(state)),
+});
+
+export const { load: loadStats, save: saveStats } = createRecord<MahjongStats>({
+  key: "mahjong_stats_v1",
+  subsystem: SUBSYSTEM,
+  ops: { load: "loadStats", save: "saveStats" },
+  fallback: () => ({ bestScore: 0, bestTimeMsByLayout: {}, gamesPlayed: 0, gamesWon: 0 }),
+  read: (raw) => {
     const parsed = JSON.parse(raw);
     return {
       bestScore: typeof parsed.bestScore === "number" ? parsed.bestScore : 0,
@@ -177,25 +169,13 @@ export async function loadStats(): Promise<MahjongStats> {
       gamesPlayed: typeof parsed.gamesPlayed === "number" ? parsed.gamesPlayed : 0,
       gamesWon: typeof parsed.gamesWon === "number" ? parsed.gamesWon : 0,
     };
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "mahjong.storage", op: "loadStats" } });
-    return { ...EMPTY_STATS };
-  }
-}
-
-export async function saveStats(stats: MahjongStats): Promise<void> {
-  try {
-    await AsyncStorage.setItem(STATS_KEY, JSON.stringify(stats));
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "mahjong.storage", op: "saveStats" } });
-  }
-}
+  },
+  write: (stats) => JSON.stringify(stats),
+});
 
 // ---------------------------------------------------------------------------
 // Progress — unlock state for the layout select screen (#1689)
 // ---------------------------------------------------------------------------
-
-const PROGRESS_KEY = "@mahjong/progress";
 
 export interface MahjongProgress {
   readonly unlockedLayouts: string[];
@@ -210,29 +190,21 @@ export const DEFAULT_PROGRESS: MahjongProgress = {
   currentState: null,
 };
 
-export async function saveProgress(data: MahjongProgress): Promise<void> {
-  try {
-    await AsyncStorage.setItem(PROGRESS_KEY, JSON.stringify(data));
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "mahjong.storage", op: "saveProgress" } });
-  }
-}
-
-export async function loadProgress(): Promise<MahjongProgress> {
-  try {
-    const raw = await AsyncStorage.getItem(PROGRESS_KEY);
-    if (!raw) return { ...DEFAULT_PROGRESS };
+export const { save: saveProgress, load: loadProgress } = createRecord<MahjongProgress>({
+  key: "@mahjong/progress",
+  subsystem: SUBSYSTEM,
+  ops: { load: "loadProgress", save: "saveProgress" },
+  fallback: () => ({ ...DEFAULT_PROGRESS }),
+  read: (raw) => {
     const parsed = JSON.parse(raw);
     return {
       unlockedLayouts: Array.isArray(parsed.unlockedLayouts) ? parsed.unlockedLayouts : ["turtle"],
       currentLayoutId: typeof parsed.currentLayoutId === "string" ? parsed.currentLayoutId : null,
       currentState: parsed.currentState ?? null,
     };
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "mahjong.storage", op: "loadProgress" } });
-    return { ...DEFAULT_PROGRESS };
-  }
-}
+  },
+  write: (data) => JSON.stringify(data),
+});
 
 /**
  * Return the updated unlockedLayouts array after completing `completedId`.

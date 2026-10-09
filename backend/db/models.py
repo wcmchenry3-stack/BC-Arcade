@@ -46,7 +46,8 @@ from db.base import Base
 from vocab import GameOutcome
 
 # JSONB on Postgres, JSON (TEXT) on sqlite — both round-trip Python dicts.
-_JSONB = JSON().with_variant(JSONB(), "postgresql")
+# The one definition (#2996): ``games.legacy_outcomes`` imports it too.
+JSONB_VARIANT = JSON().with_variant(JSONB(), "postgresql")
 
 # Built from GameOutcome in vocab.py — the single source of truth.
 # Adding a value to the enum is the only change needed; this string rebuilds automatically.
@@ -153,9 +154,9 @@ class Game(Base):
     outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     game_metadata: Mapped[dict] = mapped_column(
-        "metadata", _JSONB, nullable=False, server_default="{}"
+        "metadata", JSONB_VARIANT, nullable=False, server_default="{}"
     )
-    players: Mapped[list] = mapped_column(_JSONB, nullable=False, server_default="[]")
+    players: Mapped[list] = mapped_column(JSONB_VARIANT, nullable=False, server_default="[]")
 
     game_type: Mapped[GameType] = relationship(back_populates="games")
     events: Mapped[list[GameEvent]] = relationship(
@@ -179,7 +180,7 @@ class GameEvent(Base):
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    data: Mapped[dict] = mapped_column(_JSONB, nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB_VARIANT, nullable=False)
 
     game: Mapped[Game] = relationship(back_populates="events")
     event_type: Mapped[EventType] = relationship(back_populates="events")
@@ -344,7 +345,7 @@ class PurchaseEvent(Base):
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     dedupe_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     session_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
-    detail: Mapped[dict] = mapped_column(_JSONB, nullable=False, server_default="{}")
+    detail: Mapped[dict] = mapped_column(JSONB_VARIANT, nullable=False, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
@@ -404,7 +405,7 @@ class BugLog(Base):
     level: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(Text, nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
-    context: Mapped[dict] = mapped_column(_JSONB, nullable=False, server_default="{}")
+    context: Mapped[dict] = mapped_column(JSONB_VARIANT, nullable=False, server_default="{}")
 
 
 class DailyWordProgress(Base):
@@ -442,7 +443,7 @@ class DailyWordProgress(Base):
     session_id: Mapped[str] = mapped_column(Text, nullable=False)
     # "YYYY-MM-DD:{lang}" — the same id the client sends on every guess.
     puzzle_id: Mapped[str] = mapped_column(Text, nullable=False)
-    guesses: Mapped[list] = mapped_column(_JSONB, nullable=False, default=list)
+    guesses: Mapped[list] = mapped_column(JSONB_VARIANT, nullable=False, default=list)
     solved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -475,7 +476,7 @@ class DailyChallengeDay(Base):
     date: Mapped[dt_date] = mapped_column(Date, primary_key=True)
     slate: Mapped[str] = mapped_column(Text, primary_key=True)
     template_id: Mapped[str] = mapped_column(Text, nullable=False)
-    goals: Mapped[list] = mapped_column(_JSONB, nullable=False)
+    goals: Mapped[list] = mapped_column(JSONB_VARIANT, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

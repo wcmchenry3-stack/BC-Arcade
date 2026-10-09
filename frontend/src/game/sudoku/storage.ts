@@ -1,5 +1,6 @@
 /**
- * AsyncStorage persistence for in-progress Sudoku games (#619, #748).
+ * AsyncStorage persistence for in-progress Sudoku games (#619, #748), through
+ * the shared `storageSlot` (#2987).
  *
  * Saves after every state mutation so a crash or backgrounded app
  * doesn't lose progress. One slot per device — no account linkage in
@@ -15,11 +16,10 @@
  * field was added in #748; saves without it are migrated to "classic".
  */
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Sentry from "@sentry/react-native";
 import type { Grid, NoteDigit, SudokuCell, SudokuState, Variant } from "./types";
+import { createJsonSlot, createRecord } from "../_shared/storageSlot";
 
-const GAME_KEY = "sudoku_game";
+const SUBSYSTEM = "sudoku.storage";
 
 interface SerializedCell {
   value: number;
@@ -145,52 +145,9 @@ function looksValid(p: unknown): p is SerializedState {
   return true;
 }
 
-export async function saveGame(state: SudokuState): Promise<void> {
-  try {
-    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(serializeState(state)));
-  } catch (e) {
-    Sentry.captureException(e, {
-      tags: { subsystem: "sudoku.storage", op: "save" },
-    });
-  }
-}
-
-export async function loadGame(): Promise<SudokuState | null> {
-  let raw: string | null = null;
-  try {
-    raw = await AsyncStorage.getItem(GAME_KEY);
-  } catch (e) {
-    Sentry.captureException(e, {
-      tags: { subsystem: "sudoku.storage", op: "load" },
-    });
-    return null;
-  }
-  if (!raw) return null;
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    Sentry.captureMessage("sudoku.storage: unparseable payload, discarding", {
-      level: "warning",
-      tags: { subsystem: "sudoku.storage", op: "load" },
-    });
-    await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
-    return null;
-  }
-
-  if (!looksValid(parsed)) {
-    Sentry.captureMessage("sudoku.storage: invalid payload shape, discarding", {
-      level: "warning",
-      tags: { subsystem: "sudoku.storage", op: "load" },
-    });
-    await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
-    return null;
-  }
-
-  const snapshot = restoreSnapshot(parsed);
+function restoreState(parsed: SerializedState): SudokuState {
   return {
-    ...snapshot,
+    ...restoreSnapshot(parsed),
     undoStack: parsed.undoStack.map((snap) => ({
       ...restoreSnapshot(snap),
       undoStack: [] as const,
@@ -198,21 +155,29 @@ export async function loadGame(): Promise<SudokuState | null> {
   };
 }
 
-export async function clearGame(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(GAME_KEY);
-  } catch (e) {
-    Sentry.captureException(e, {
-      tags: { subsystem: "sudoku.storage", op: "clear" },
-    });
-  }
-}
+/**
+ * A failed read is reported as an error and the save kept; a payload that
+ * won't parse, or fails `looksValid`, is removed with a warning.
+ */
+export const {
+  save: saveGame,
+  load: loadGame,
+  clear: clearGame,
+} = createJsonSlot<SudokuState, SerializedState>({
+  key: "sudoku_game",
+  subsystem: SUBSYSTEM,
+  isValid: looksValid,
+  invalidWarning: () => ({ message: "sudoku.storage: invalid payload shape, discarding" }),
+  corruptMessage: "sudoku.storage: unparseable payload, discarding",
+  corruptExtra: "none",
+  readFailureIsError: true,
+  onLoad: restoreState,
+  beforeSave: serializeState,
+});
 
 // ---------------------------------------------------------------------------
 // Stats persistence (#762, #748)
 // ---------------------------------------------------------------------------
-
-const STATS_KEY = "sudoku_stats_v1";
 
 /**
  * The device's cached best time for one puzzle kind, for the result card's
@@ -262,12 +227,13 @@ function parseVariantStats(v: unknown): VariantStats {
   };
 }
 
-export async function loadStats(): Promise<SudokuStats> {
-  try {
-    const raw = await AsyncStorage.getItem(STATS_KEY);
-    if (!raw) return { ...EMPTY_SUDOKU_STATS };
+export const { load: loadStats, save: saveStats } = createRecord<SudokuStats>({
+  key: "sudoku_stats_v1",
+  subsystem: SUBSYSTEM,
+  ops: { load: "loadStats", save: "saveStats" },
+  fallback: () => ({ ...EMPTY_SUDOKU_STATS }),
+  read: (raw) => {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-
     // Migration: pre-#748 saves have flat { easy, medium, hard } — wrap as classic.
     if ("classic" in parsed || "mini" in parsed) {
       return {
@@ -280,16 +246,6 @@ export async function loadStats(): Promise<SudokuStats> {
       classic: parseVariantStats(parsed),
       mini: { ...EMPTY_VARIANT_STATS },
     };
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "sudoku.storage", op: "loadStats" } });
-    return { ...EMPTY_SUDOKU_STATS };
-  }
-}
-
-export async function saveStats(stats: SudokuStats): Promise<void> {
-  try {
-    await AsyncStorage.setItem(STATS_KEY, JSON.stringify(stats));
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "sudoku.storage", op: "saveStats" } });
-  }
-}
+  },
+  write: (stats) => JSON.stringify(stats),
+});

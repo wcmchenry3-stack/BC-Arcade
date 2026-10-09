@@ -96,5 +96,10 @@
   "restore.pending": "等待批准。获批后你的游戏将解锁。",
   "restore.nothing": "此商店账号没有可恢复的购买项目。",
   "restore.error": "无法恢复购买。请重试。",
-  "settings.restorePurchases.description": "找回你已用此商店账号购买的游戏。"
+  "settings.restorePurchases.description": "找回你已用此商店账号购买的游戏。",
+  "locked.title": "已锁定",
+  "locked.heading": "高级游戏",
+  "locked.body": "此游戏需要 BC Arcade 订阅。",
+  "locked.back": "返回大厅",
+  "locked.back_label": "返回大厅"
 }

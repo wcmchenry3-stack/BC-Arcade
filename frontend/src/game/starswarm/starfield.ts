@@ -1,3 +1,5 @@
+import { createSeededRng } from "../_shared/seededRng";
+
 export interface Star {
   id: number;
   x: number;
@@ -34,17 +36,8 @@ const LAYERS = [
   { count: 15, speed: 0.1, r: 1.4, opacity: 1.0 },
 ] as const;
 
-/** Deterministic LCG so tests can use a fixed seed. */
-function makePrng(seed: number) {
-  let s = seed >>> 0;
-  return () => {
-    s = (Math.imul(1664525, s) + 1013904223) >>> 0;
-    return s / 0xffffffff;
-  };
-}
-
 export function initStarfield(width: number, height: number, seed = 42): StarfieldState {
-  const rand = makePrng(seed);
+  const rand = createSeededRng(seed);
   const stars: Star[] = [];
   let id = 0;
   for (const layer of LAYERS) {

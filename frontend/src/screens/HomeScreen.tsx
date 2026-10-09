@@ -1,3 +1,14 @@
+/**
+ * HomeScreen — the lobby: one tile per game visible in this build.
+ *
+ * Concerns:
+ *   1. Tiles — store builds hide the premium games (#2390); a locked premium tile opens the
+ *      paywall (#841); a tap warms the game's lazy chunk first (#706).
+ *   2. Header stats — Arcade level (#2391) and streak (#2457) from one `/stats/me`, refreshed
+ *      on foreground and remembered for an offline Stats screen (#2635).
+ *   3. Daily — the Daily Challenge card, and today's Daily Word cached for offline (#2925).
+ *   4. Resume — Yacht opens its saved game, including a VS game mid computer turn (#2203).
+ */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppState,

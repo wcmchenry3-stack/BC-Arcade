@@ -5,9 +5,10 @@
  * engine, AI, UI components, and persistence layer alike.
  */
 
+import type { PlayingCard, Suit } from "../_shared/cards/types";
+
 export type AiPersona = "cautious" | "schemer" | "daring";
 export type AiPreset = AiPersona | "mixed";
-export const AI_PERSONAS: readonly AiPersona[] = ["cautious", "schemer", "daring"];
 export const AI_PRESETS: readonly AiPreset[] = ["cautious", "schemer", "daring", "mixed"];
 
 // Mixed table canonical seat assignment (seats 1–3 are AI; seat 0 is human).
@@ -29,16 +30,9 @@ export type GameEvent =
   | { readonly type: "queenOfSpadesPlayed" }
   | { readonly type: "queenOfSpades"; readonly takerSeat: number };
 
-export type Suit = "spades" | "hearts" | "diamonds" | "clubs";
-export type Rank = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
-
-export const SUITS: readonly Suit[] = ["spades", "hearts", "diamonds", "clubs"];
-export const RANKS: readonly Rank[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
-
-export interface Card {
-  readonly suit: Suit;
-  readonly rank: Rank;
-}
+export { RANKS, SUITS } from "../_shared/cards/types";
+export type { Rank, Suit } from "../_shared/cards/types";
+export type Card = PlayingCard;
 
 /** One card played in a trick, annotated with which player played it. */
 export interface TrickCard {

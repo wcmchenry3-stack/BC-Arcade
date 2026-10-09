@@ -39,7 +39,7 @@ Every level played is its own session row (#2625): progress is not carried in on
 - **Outcomes:** `has_winner = False`. Every solve, a replay included, records `completed` scored with the player's standing after it (`SortScreen.tsx`). The board keeps each player's best row: their first solve of their highest level. A replay never displaces it, even one that lowers a best move count. Leaving a level unsolved records `abandoned` with `{ won: false, level, moves }` and no score: going back to the level grid, resetting the level, or leaving the screen.
 - **Duration:** `useGameSync`'s active-play window; Sort sends no duration of its own. Entering or restarting a level restarts the window (`resetPlayWindow`), so time on the level grid is not counted.
 - **How it reaches the server:** the `useGameSync("sort")` session row, opened at the level's first pour. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. The board shows each named player's best row once. The legacy `POST /sort/score` was removed in #2644, and the unattributable rows it wrote (`sort-anon`) were deleted (#2622). Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
-- **Where the player sees it:** the level's win card shows the rank through `sessionBoardAdapter` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu; "Best" there is the highest level reached.
+- **Where the player sees it:** the level's win card shows the rank through `lookupGameRank` (`GET /games/{id}/rank`), or asks once for a display name. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633). Stats (#2635) are in the ⋯ menu; "Best" there is the highest level reached.
 
 ## Hint, Undo, Reset, and Level Navigation
 
@@ -53,6 +53,7 @@ Every level played is its own session row (#2625): progress is not carried in on
 
 - Location: `frontend/src/game/sort/engine.ts`
 - Key exports: `validatePour(state, from, to) → boolean`, `applyPour(state, from, to) → GameState`, win detection
+- Screen: [`frontend/src/screens/SortScreen.tsx`](../../frontend/src/screens/SortScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Level data: fetched from `GET /sort/levels` and cached on the device for offline play (`frontend/src/game/sort/storage.ts`)
 
 ## Backend
@@ -61,13 +62,17 @@ Every level played is its own session row (#2625): progress is not carried in on
 - Endpoints: `backend/sort/router.py`. `GET /sort/levels` serves the levels. The legacy `POST /sort/score` and `GET /sort/scores` were removed in #2644.
 - Level data: generated per request by `backend/sort/generate_levels.py` (`build_levels`); nothing is saved to disk. Every level is proven solvable before it is served (#2764). Each level is a uniform random shuffle, dealt again until `backend/sort/fast_solver.py` proves a solution exists. A deal it proves dead, or can't decide within `SOLVER_BUDGET` (200,000 states), is thrown away. If `MAX_ATTEMPTS` (5,000) deals of one level all fail, `build_levels` logs an error and raises `LevelGenerationError`, so the request fails with a 500 rather than serve an unproven level. With the measured solvable rates that can't practically happen: the rarest is about 1% of deals at 9 colors with one empty bottle, so the odds are about 1e-23. A request takes about 0.25 s on average (p95 about 0.5 s).
 - Solver: `fast_solver.solve(bottles, budget)` returns a `Result`. Its verdict is `True`, `False` (proven: the whole reachable space was searched) or `None` (budget spent), and a `True` verdict comes with the solution's pours as indices into the level's bottles. It ignores bottle order, drops full single-colour bottles, and searches best-first. It decides every level in well under a second; the most states any deal has needed is about 40,000. `DEPTH` (units per bottle) is defined there once for the backend; the frontend's `BOTTLE_DEPTH` must match it.
-- Checks: `python -m sort.verify_levels [--seed N] [--runs N]` (from `backend/`) runs the solver over freshly built sets and replays each solution. `verify_levels.py` also holds a reference pour simulator written independently of the solver. Its `is_solution` replays a solution pour by pour and checks that the level ends solved, so a "solvable" verdict is certified without trusting the solver's pruning.
+- Checks: `python scripts/sort_verify_levels.py [--seed N] [--runs N]` (from `backend/`) runs the solver over freshly built sets and replays each solution. `scripts/sort_verify_levels.py` also holds a reference pour simulator written independently of the solver. Its `is_solution` replays a solution pour by pour and checks that the level ends solved, so a "solvable" verdict is certified without trusting the solver's pruning.
   - In CI, `backend/tests/test_sort_levels_solvable.py` solves every level of 20 fixed-seed sets and replays each solution this way. It also checks the small levels with the reference BFS in the same module.
   - `test_sort_fast_solver.py` checks that the solver agrees with that BFS.
   - `python scripts/sort_solvability_survey.py` (from `backend/`) measures the unsolvable rate over many sets or raw shuffles.
-- Metadata model: `SortMetadata` — `player_name: str = ""` (max 32 chars). Current builds send no metadata.
+- Metadata model: `SortMetadata` — `player_name: str = ""` (max 64 chars, `LegacyPlayerName`; 32 before #2995). Current builds send no metadata.
 - Result model: `SortResult` — `level`, `moves`, `undos`, `level_reached`, `total_moves`, `won`, `outcome`, all optional
 - Scoring: see [Scoring](#scoring-persistence)
+
+## Colour palette
+
+The 14 liquid colours live in `BOTTLE_LIQUID_COLORS` (`frontend/src/theme/theme.bottle.ts`), one set per theme. Each set must keep every colour at 3:1 contrast or better against its theme background and every pair at CIEDE2000 delta-E 20 or better. Whenever you change them, update the copy in `tools/assets/check_palette.py` and run `python tools/assets/check_palette.py` (needs `tools/assets/requirements.txt`). Nothing runs it automatically. What it checks, the exact output to expect and its limits are in [`tools/README.md`](../../tools/README.md#sort-palette-check-check_palettepy).
 
 ## Entitlement
 

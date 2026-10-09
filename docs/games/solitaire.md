@@ -64,7 +64,7 @@ A top foundation card can also be moved back to tableau when it fits; that retre
 
 Cards can be moved through the shared card-selection/drag interaction.
 
-The current UI uses tap-to-select rather than the older smart-single-tap auto-move experiment; the deprecated `resolveAutoMove()` helper remains in the engine only as tested reference code and is not current gameplay.
+The current UI uses tap-to-select. The older smart-single-tap auto-move experiment (`resolveAutoMove`, #2039) was removed in #2970.
 
 A quick second activation on eligible cards can use the screen's explicit double-tap path where implemented, but ordinary legal selection/drag remains the core interaction.
 
@@ -168,7 +168,7 @@ For generic syncing, rank lookup, display names, Stats, and result-card behavior
 ## Implementation
 
 - Engine: `frontend/src/game/solitaire/engine.ts`
-- Screen: `frontend/src/screens/SolitaireScreen.tsx`
+- Screen: [`frontend/src/screens/SolitaireScreen.tsx`](../../frontend/src/screens/SolitaireScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Seed bank: `frontend/src/game/solitaire/seeds.json`
 - Seed generator/solver: `backend/scripts/gen_solitaire_seeds.py`
 - Storage: `frontend/src/game/solitaire/storage.ts`

@@ -18,9 +18,9 @@ from sqlalchemy.dialects import postgresql
 
 from db.base import get_engine, get_session_factory
 from db.models import Game, GameType
-from games import service
+from games import sessions, sweep
 from games.filters import not_swept
-from games.service import STALE_GAME_AFTER, sweep_stale_games
+from games.sweep import STALE_GAME_AFTER, sweep_stale_games
 from tests._helpers import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
@@ -429,7 +429,7 @@ async def test_a_failing_sweep_never_breaks_the_read(
             raise
         return 0
 
-    monkeypatch.setattr(service, "sweep_stale_games", broken_sweep)
+    monkeypatch.setattr(sweep, "sweep_stale_games", broken_sweep)
     # INFO and up: what Sentry's default logging integration records (DEBUG
     # driver chatter, e.g. aiosqlite echoing statements, never reaches it).
     with caplog.at_level(logging.INFO):
@@ -549,7 +549,7 @@ async def test_create_game_drops_the_swept_flag() -> None:
     # Defence in depth below the models: create_game never stores the flag.
     sid = str(uuid.uuid4())
     async with get_session_factory()() as db:
-        game = await service.create_game(
+        game = await sessions.create_game(
             db,
             session_id=sid,
             client_id=None,
@@ -587,7 +587,7 @@ async def test_a_sweep_committing_mid_completion_leaves_the_row_unflagged(
     # unflagged, or a later completion could overwrite it.
     sid = str(uuid.uuid4())
     gid = await _add(sid, started_ago=timedelta(hours=25), metadata={"player_name": "Ann"})
-    real_get = service._get_owned_game
+    real_get = sessions._get_owned_game
     swept_mid_completion: list[int] = []
 
     async def get_then_sweep(*args, **kwargs):
@@ -597,9 +597,9 @@ async def test_a_sweep_committing_mid_completion_leaves_the_row_unflagged(
             swept_mid_completion.append(await _sweep(sid))
         return game
 
-    monkeypatch.setattr(service, "_get_owned_game", get_then_sweep)
+    monkeypatch.setattr(sessions, "_get_owned_game", get_then_sweep)
     body = _complete(client, sid, str(gid), 240)
-    monkeypatch.setattr(service, "_get_owned_game", real_get)
+    monkeypatch.setattr(sessions, "_get_owned_game", real_get)
 
     assert swept_mid_completion == [1]
     assert (body["outcome"], body["final_score"]) == ("completed", 240)

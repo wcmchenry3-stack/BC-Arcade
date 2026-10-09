@@ -1,4 +1,9 @@
+"""Mahjong Solitaire metadata and result models, and the layouts that have a
+board (#871, #2747)."""
+
 from pydantic import BaseModel, ConfigDict, Field
+
+from games.metadata import LegacyPlayerName
 
 LAYOUTS: tuple[str, ...] = (
     "turtle",
@@ -54,7 +59,7 @@ class MahjongMetadata(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid")
-    player_name: str = Field(default="", max_length=64)
+    player_name: LegacyPlayerName = ""
     layout: str | None = Field(default=None, min_length=1, max_length=32, pattern=r"^[a-z0-9_]+$")
 
 

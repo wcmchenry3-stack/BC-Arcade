@@ -35,6 +35,32 @@ jobs:
       ruff-version: "0.16.8"
     secrets: inherit
 
+  # tools/**/*.py (dev tooling, #2974): the same reusable workflow, pointed at tools/.
+  # tools/pyproject.toml extends backend's ruff rules (line length 100).
+  lint-python-tools:
+    uses: wcmchenry3-stack/.github/.github/workflows/called-lint-python.yml@main
+    with:
+      working-directory: tools
+      ruff-version: "0.16.8"
+    secrets: inherit
+
+  # Unit tests for the Python asset tools (not collected by the backend suite).
+  test-tools:
+    name: Test tools (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: tools/assets/requirements.txt
+      - name: Install tools requirements
+        run: pip install -r tools/assets/requirements.txt
+      - name: pytest
+        working-directory: tools
+        run: python -m pytest
+
   lint-frontend:
     uses: wcmchenry3-stack/.github/.github/workflows/called-lint-frontend.yml@main
     with:
@@ -131,13 +157,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-frontend
       - name: TypeScript type-check
         run: npm run typecheck
 
@@ -149,13 +169,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-frontend
       - name: Expo Compatibility Check
         run: |
           echo "Checking dependency compatibility with Expo SDK..."
@@ -248,17 +262,8 @@ jobs:
             package_json:
               - 'frontend/package.json'
 
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/setup-frontend
         if: steps.pkg_filter.outputs.package_json == 'true' && github.event_name == 'pull_request'
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        if: steps.pkg_filter.outputs.package_json == 'true' && github.event_name == 'pull_request'
-        run: npm ci
-        working-directory: frontend
 
       - name: Detect native package bumps
         id: detect
@@ -420,99 +425,23 @@ jobs:
       - uses: dorny/paths-filter@v4
         id: filter
         with:
-          filters: |
-            yacht:
-              - 'frontend/src/screens/GameScreen*'
-              - 'frontend/src/components/Die*'
-              - 'frontend/src/components/DiceRow*'
-              - 'frontend/src/components/Scorecard*'
-              - 'frontend/src/components/ScoreRow*'
-              - 'frontend/src/game/yacht/**'
-              - 'backend/games/yacht*'
-            blackjack:
-              - 'frontend/src/screens/BlackjackScreen*'
-              - 'frontend/src/components/blackjack/**'
-              - 'frontend/src/game/blackjack/**'
-              - 'backend/games/blackjack*'
-            twenty48:
-              - 'frontend/src/screens/Twenty48Screen*'
-              - 'frontend/src/components/twenty48/**'
-              - 'frontend/src/game/twenty48/**'
-              - 'backend/games/twenty48*'
-
-            cascade:
-              - 'frontend/src/screens/CascadeScreen*'
-              - 'frontend/src/components/cascade/**'
-              - 'frontend/src/game/cascade/**'
-              - 'backend/games/cascade*'
-            mahjong:
-              - 'frontend/src/screens/MahjongScreen*'
-              - 'frontend/src/components/mahjong/**'
-              - 'frontend/src/game/mahjong/**'
-              - 'backend/mahjong/**'
-            freecell:
-              - 'frontend/src/screens/FreeCellScreen*'
-              - 'frontend/src/components/freecell/**'
-              - 'frontend/src/game/freecell/**'
-              - 'backend/freecell/**'
-            starswarm:
-              - 'frontend/src/screens/StarSwarmScreen*'
-              - 'frontend/src/components/starswarm/**'
-              - 'frontend/src/game/starswarm/**'
-              - 'backend/starswarm/**'
-            hearts:
-              - 'frontend/src/screens/HeartsScreen*'
-              - 'frontend/src/components/hearts/**'
-              - 'frontend/src/game/hearts/**'
-              - 'backend/hearts/**'
-            solitaire:
-              - 'frontend/src/screens/SolitaireScreen*'
-              - 'frontend/src/components/solitaire/**'
-              - 'frontend/src/game/solitaire/**'
-              - 'backend/solitaire/**'
-            sudoku:
-              - 'frontend/src/screens/SudokuScreen*'
-              - 'frontend/src/components/sudoku/**'
-              - 'frontend/src/game/sudoku/**'
-              - 'backend/sudoku/**'
-            logstore:
-              - 'frontend/src/game/_shared/eventStore*'
-              - 'frontend/src/game/_shared/eventQueueConfig*'
-              - 'frontend/src/game/_shared/gameEventClient*'
-              - 'frontend/src/game/_shared/syncWorker*'
-              - 'frontend/src/game/_shared/syncApi*'
-              - 'frontend/src/game/_shared/pendingGamesStore*'
-              - 'frontend/src/game/_shared/bugReportLimiter*'
-              - 'frontend/src/game/_shared/testHooks*'
-              - 'frontend/src/game/_shared/NetworkContext*'
-              - 'backend/games/**'
-              - 'backend/logs/**'
-              - 'e2e/tests/logs-*.spec.ts'
-              - 'e2e/tests/helpers/logstore*'
-            shared:
-              - 'frontend/App.tsx'
-              - 'frontend/app.json'
-              - 'frontend/src/theme/**'
-              - 'frontend/src/components/OfflineBanner*'
-              - 'frontend/src/components/LanguageSwitcher*'
-              - 'backend/main.py'
-              - 'e2e/**'
-              - '.github/workflows/**'
+          # One table for every scope job — see .github/paths/game-paths.yml (#2973).
+          filters: .github/paths/game-paths.yml
 
       - id: scope
         run: |
           # Push events or PRs targeting main always run the full suite
           if [[ "${{ github.event_name }}" == "push" ]] || \
              [[ "${{ github.base_ref }}" == "main" ]] || \
-             [[ "${{ steps.filter.outputs.shared }}" == "true" ]]; then
-            echo "projects=yacht blackjack twenty48 cascade mahjong freecell starswarm hearts solitaire sudoku cross logs-budget" >> "$GITHUB_OUTPUT"
+             [[ "${{ steps.filter.outputs.shared }}" == "true" ]] || \
+             [[ "${{ steps.filter.outputs.playwright_shared }}" == "true" ]]; then
+            echo "projects=yacht blackjack twenty48 cascade mahjong freecell starswarm hearts solitaire sudoku sort daily_word cross logs-budget" >> "$GITHUB_OUTPUT"
             echo "label=full suite (push/main/shared change)" >> "$GITHUB_OUTPUT"
           else
             projects="cross"
             [[ "${{ steps.filter.outputs.yacht }}"     == "true" ]] && projects="$projects yacht"
             [[ "${{ steps.filter.outputs.blackjack }}" == "true" ]] && projects="$projects blackjack"
             [[ "${{ steps.filter.outputs.twenty48 }}"  == "true" ]] && projects="$projects twenty48"
-
             [[ "${{ steps.filter.outputs.cascade }}"   == "true" ]] && projects="$projects cascade"
             [[ "${{ steps.filter.outputs.mahjong }}"   == "true" ]] && projects="$projects mahjong"
             [[ "${{ steps.filter.outputs.freecell }}"  == "true" ]] && projects="$projects freecell"
@@ -520,6 +449,8 @@ jobs:
             [[ "${{ steps.filter.outputs.hearts }}"    == "true" ]] && projects="$projects hearts"
             [[ "${{ steps.filter.outputs.solitaire }}" == "true" ]] && projects="$projects solitaire"
             [[ "${{ steps.filter.outputs.sudoku }}"    == "true" ]] && projects="$projects sudoku"
+            [[ "${{ steps.filter.outputs.sort }}"      == "true" ]] && projects="$projects sort"
+            [[ "${{ steps.filter.outputs.daily_word }}" == "true" ]] && projects="$projects daily_word"
             [[ "${{ steps.filter.outputs.logstore }}"  == "true" ]] && projects="$projects logs-budget"
             echo "projects=$projects" >> "$GITHUB_OUTPUT"
             echo "label=selective: $projects" >> "$GITHUB_OUTPUT"
@@ -532,15 +463,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend deps
-        run: npm ci
-        working-directory: frontend
+      - uses: ./.github/actions/setup-frontend
 
       - name: Build Expo web
         run: npx expo export --platform web
@@ -584,14 +507,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-      - name: Install frontend deps
-        run: npm ci
-        working-directory: frontend
+      - uses: ./.github/actions/setup-frontend
       - name: Check all locale strings are translated
         run: node scripts/check-i18n-strings.js
         working-directory: frontend
@@ -611,6 +527,16 @@ jobs:
         run: python3 scripts/check_file_length.py
         working-directory: backend
 
+  large-file-guard:
+    name: Large tracked file guard (over 5 MiB)
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # stdlib-only script; the allow-list (Cascade art -> #3033, BGM -> #1779) lives in the script
+      - name: Fail on tracked files over 5 MiB outside the allow-list
+        run: python3 scripts/check_large_files.py
+
   duplication:
     name: Duplication (jscpd)
     needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
@@ -624,9 +550,9 @@ jobs:
         run: >
           npx --yes jscpd@4.3.0
           --threshold 2.5 --min-lines 20 --min-tokens 70
-          --ignore "**/__tests__/**,**/mahjong/layouts/**,**/node_modules/**,**/.venv/**,**/*.generated.*,**/locales/**,**/tests/**,**/alembic/**"
+          --ignore "**/__tests__/**,**/node_modules/**,**/.venv/**,**/*.generated.*,**/locales/**,**/tests/**,**/alembic/**"
           --format "typescript,tsx,python"
-          frontend/src backend
+          frontend/src frontend/tooling backend
 
   knip:
     name: Unused code (knip)
@@ -637,22 +563,14 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-frontend
       # warn-only until 2026-11-04, then --strict; see #2951
       - name: knip
         run: npx knip --no-progress
         continue-on-error: true
 
-  openai-policy:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
-    uses: wcmchenry3-stack/.github/.github/workflows/called-openai-policy.yml@main
-    secrets: inherit
+  # openai-policy is NOT a job here: openai-policy.yml already runs the same
+  # reusable workflow on every PR to dev/main (#2973 removed the duplicate).
 
   feedback-token-lint:
     needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
@@ -679,21 +597,10 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      # metro-cache is shared with android-release-smoke below and mobile-smoke-android.yml.
+      - uses: ./.github/actions/setup-frontend
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Install dependencies
-        run: npm ci
-      - name: Cache Metro bundler transforms
-        # Shared with mobile-smoke-android.yml and android-release-smoke below —
-        # see the cache step there for why.
-        uses: actions/cache@v6
-        with:
-          path: /tmp/metro-cache
-          key: metro-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: metro-${{ runner.os }}-
+          metro-cache: "true"
       - name: Create Android JS bundle
         run: |
           mkdir -p dist
@@ -857,16 +764,11 @@ jobs:
           cache: gradle
           cache-dependency-path: frontend/android/**/*.gradle*
 
-      - uses: actions/setup-node@v7
+      # metro-cache is shared with android-bundle-check above and mobile-smoke-android.yml.
+      - uses: ./.github/actions/setup-frontend
         if: steps.changes.outputs.should_run == 'true'
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install JS dependencies
-        if: steps.changes.outputs.should_run == 'true'
-        run: npm ci
+          metro-cache: "true"
 
       - name: Generate debug keystore for smoke test
         if: steps.changes.outputs.should_run == 'true'
@@ -880,16 +782,6 @@ jobs:
             -storepass android \
             -keypass android \
             -dname "CN=Android Debug,O=Android,C=US"
-
-      - name: Cache Metro bundler transforms
-        # Shared with android-bundle-check above and mobile-smoke-android.yml —
-        # see the cache step in android-bundle-check for why.
-        if: steps.changes.outputs.should_run == 'true'
-        uses: actions/cache@v6
-        with:
-          path: /tmp/metro-cache
-          key: metro-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: metro-${{ runner.os }}-
 
       - name: Release build smoke test (arm64-v8a only)
         if: steps.changes.outputs.should_run == 'true'
@@ -925,14 +817,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-frontend
 
       - name: Validate Sentry CLI auth
         run: |

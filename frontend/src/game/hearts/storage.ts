@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Sentry from "@sentry/react-native";
+import { createJsonSlot } from "../_shared/storageSlot";
 import type { AiPreset, HeartsState, SavedHeartsState } from "./types";
 import { AI_PRESETS } from "./types";
 
@@ -18,91 +18,88 @@ const LEGACY_PERSONA_MAP: Record<string, string> = {
   hard: "daring",
 };
 
-/** Saves the game with its play time (`withPlayTime` in ./clock builds it). */
-export async function saveGame(state: SavedHeartsState): Promise<void> {
-  try {
-    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(state));
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "hearts.storage", op: "save" } });
+type ParsedSave = Partial<HeartsState> & { accumulatedMs?: unknown };
+
+/** v2 → v3 (adds `aiDifficulty`), and pre-#1653 persona names; in place. */
+function migrate(p: unknown): unknown {
+  const parsed = p as Record<string, unknown>;
+  // v2 → v3 migration: add aiDifficulty default
+  if (parsed["_v"] === 2) {
+    parsed["_v"] = 3;
+    parsed["aiDifficulty"] = "schemer";
   }
+  // Migrate pre-#1653 persona values ("easy"→"cautious", etc.)
+  const storedPersona = parsed["aiDifficulty"];
+  if (typeof storedPersona === "string" && storedPersona in LEGACY_PERSONA_MAP) {
+    parsed["aiDifficulty"] = LEGACY_PERSONA_MAP[storedPersona];
+  }
+  return parsed;
+}
+
+function isSavedGame(parsed: unknown): parsed is ParsedSave {
+  const p = parsed as ParsedSave;
+  return !(
+    p._v !== 3 ||
+    !(AI_PRESETS as readonly string[]).includes(p.aiDifficulty as string) ||
+    !Array.isArray(p.playerHands) ||
+    p.playerHands.length !== 4 ||
+    !Array.isArray(p.cumulativeScores) ||
+    p.cumulativeScores.length !== 4 ||
+    !Array.isArray(p.handScores) ||
+    p.handScores.length !== 4 ||
+    !p.handScores.every((v) => typeof v === "number" && v >= 0 && v <= 26) ||
+    !Array.isArray(p.scoreHistory) ||
+    !p.scoreHistory.every(
+      (row) =>
+        Array.isArray(row) &&
+        row.length === 4 &&
+        row.every((v) => typeof v === "number" && v >= 0 && v <= 26)
+    ) ||
+    !Array.isArray(p.currentTrick) ||
+    !Array.isArray(p.wonCards) ||
+    typeof p.tricksPlayedInHand !== "number" ||
+    typeof p.heartsBroken !== "boolean" ||
+    typeof p.isComplete !== "boolean"
+  );
 }
 
 /**
- * The saved game, or null. Its `accumulatedMs` is always a usable play time:
- * 0 when an older save has none or the stored value is bad.
+ * `saveGame` saves the game with its play time (`withPlayTime` in ./clock
+ * builds it). `loadGame` resolves the saved game, or null; its
+ * `accumulatedMs` is always a usable play time: 0 when an older save has
+ * none or the stored value is bad. `clearGame` forgets the saved game and
+ * its finished-game id (new game).
  */
-export async function loadGame(): Promise<SavedHeartsState | null> {
-  try {
-    const raw = await AsyncStorage.getItem(GAME_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const rawV = parsed["_v"];
-
-    // v2 → v3 migration: add aiDifficulty default
-    if (rawV === 2) {
-      parsed["_v"] = 3;
-      parsed["aiDifficulty"] = "schemer";
-    } else if (rawV !== 3) {
-      await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
-      return null;
-    }
-
-    // Migrate pre-#1653 persona values ("easy"→"cautious", etc.)
-    const storedPersona = parsed["aiDifficulty"];
-    if (typeof storedPersona === "string" && storedPersona in LEGACY_PERSONA_MAP) {
-      parsed["aiDifficulty"] = LEGACY_PERSONA_MAP[storedPersona];
-    }
-
-    const p = parsed as Partial<HeartsState> & { accumulatedMs?: unknown };
-    if (
-      p._v !== 3 ||
-      !(AI_PRESETS as readonly string[]).includes(p.aiDifficulty as string) ||
-      !Array.isArray(p.playerHands) ||
-      p.playerHands.length !== 4 ||
-      !Array.isArray(p.cumulativeScores) ||
-      p.cumulativeScores.length !== 4 ||
-      !Array.isArray(p.handScores) ||
-      p.handScores.length !== 4 ||
-      !p.handScores.every((v) => typeof v === "number" && v >= 0 && v <= 26) ||
-      !Array.isArray(p.scoreHistory) ||
-      !p.scoreHistory.every(
-        (row) =>
-          Array.isArray(row) &&
-          row.length === 4 &&
-          row.every((v) => typeof v === "number" && v >= 0 && v <= 26)
-      ) ||
-      !Array.isArray(p.currentTrick) ||
-      !Array.isArray(p.wonCards) ||
-      typeof p.tricksPlayedInHand !== "number" ||
-      typeof p.heartsBroken !== "boolean" ||
-      typeof p.isComplete !== "boolean"
-    ) {
-      Sentry.captureMessage("hearts.storage: invalid game state, discarding", {
-        level: "warning",
-        tags: { subsystem: "hearts.storage", op: "load" },
-        extra: {
-          _v: p._v,
-          handScores: p.handScores,
-          scoreHistoryLength: Array.isArray(p.scoreHistory) ? p.scoreHistory.length : null,
-        },
-      });
-      await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
-      return null;
-    }
+export const {
+  save: saveGame,
+  load: loadGame,
+  clear: clearGame,
+} = createJsonSlot<SavedHeartsState, ParsedSave>({
+  key: GAME_KEY,
+  subsystem: "hearts.storage",
+  migrate,
+  isValid: isSavedGame,
+  // An unknown version is dropped silently; a v3 save that fails the check is reported.
+  invalidWarning: (parsed) => {
+    const p = parsed as ParsedSave;
+    if (p._v !== 3) return null;
+    return {
+      message: "hearts.storage: invalid game state, discarding",
+      extra: {
+        _v: p._v,
+        handScores: p.handScores,
+        scoreHistoryLength: Array.isArray(p.scoreHistory) ? p.scoreHistory.length : null,
+      },
+    };
+  },
+  onLoad: (p) => {
     // Play time (#2629): absent in older saves, and a bad value counts as none.
     const ms = p.accumulatedMs;
     const accumulatedMs = typeof ms === "number" && Number.isFinite(ms) && ms > 0 ? ms : 0;
     return { ...p, aiDifficulty: p.aiDifficulty as AiPreset, accumulatedMs } as SavedHeartsState;
-  } catch (e) {
-    Sentry.captureMessage("hearts.storage: corrupt game payload, discarding", {
-      level: "warning",
-      tags: { subsystem: "hearts.storage", op: "load" },
-      extra: { error: String(e), key: GAME_KEY },
-    });
-    await AsyncStorage.removeItem(GAME_KEY).catch(() => {});
-    return null;
-  }
-}
+  },
+  clearAlso: [FINISHED_GAME_ID_KEY, LEGACY_PENDING_SUBMISSION_KEY],
+});
 
 export async function saveFinishedGameId(gameId: string): Promise<void> {
   try {
@@ -118,18 +115,5 @@ export async function loadFinishedGameId(): Promise<string | null> {
     return id ? id : null;
   } catch {
     return null;
-  }
-}
-
-/** Forgets the saved game and its finished-game id (new game). */
-export async function clearGame(): Promise<void> {
-  try {
-    await Promise.all(
-      [GAME_KEY, FINISHED_GAME_ID_KEY, LEGACY_PENDING_SUBMISSION_KEY].map((key) =>
-        AsyncStorage.removeItem(key)
-      )
-    );
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "hearts.storage", op: "clear" } });
   }
 }

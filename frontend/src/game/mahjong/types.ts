@@ -57,8 +57,8 @@ export interface LayoutMeta {
   /** 1 = free, 2 = premium. */
   readonly tier: 1 | 2;
   readonly tileCount: number;
-  /** Raw JSON data: flat array of {col, row, layer} objects. */
-  readonly data: readonly { col: number; row: number; layer: number }[];
+  /** Slot list from `layouts/<id>.ts` — the single source of truth (#2968). */
+  readonly data: Layout;
 }
 
 /** A tile a match removed, and its index in `tiles` just before the match. */
@@ -100,6 +100,24 @@ export interface ShuffleUndoEntry extends UndoEntryBase {
 /** One undoable move, stored as what it changed rather than a board snapshot (#2961). */
 export type MahjongUndoEntry = MatchUndoEntry | ShuffleUndoEntry;
 
+/**
+ * One-shot feedback an engine action emits (#3087), in the order the screen
+ * answers them: a select or a match, then a shuffle, then the board clearing
+ * or deadlocking.
+ */
+export type MahjongEvent =
+  /** A tile became selected: a first tap, a non-matching second tap, or an
+   * undo that brings a selection back. */
+  | { readonly type: "tileSelect" }
+  /** A pair left the board; `tiles` in their board order before the match. */
+  | { readonly type: "tileMatch"; readonly tiles: readonly [SlotTile, SlotTile] }
+  /** A shuffle was spent (even one that left a geometric deadlock). */
+  | { readonly type: "shuffle" }
+  /** The last pair left the board. */
+  | { readonly type: "boardCleared" }
+  /** The board just deadlocked: no free pair and no shuffle left. */
+  | { readonly type: "deadlock" };
+
 /** Immutable snapshot of a Mahjong Solitaire game. `_v` is a schema version
  * so persisted saves can be migrated or rejected safely: 2 since undo entries
  * became deltas (#2961); a version 1 save held full snapshots. */
@@ -130,4 +148,11 @@ export interface MahjongState {
   /** Registry ID of the layout used for this game (e.g. "turtle").
    * Optional so old persisted saves without this field remain valid. */
   readonly currentLayoutId?: string;
+  /**
+   * What the action that produced this state emitted (#3087); absent when it
+   * emitted nothing. Transient: never saved (`saveGame` drops it and
+   * `loadGame` ignores it), never in an undo entry, and never read by the
+   * engine, so it touches neither the RNG nor the game itself.
+   */
+  readonly events?: readonly MahjongEvent[];
 }

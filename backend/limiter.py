@@ -4,7 +4,7 @@ Every per-IP rate-limit bucket (:func:`client_ip_bucket`) and every logged
 client IP (:func:`client_ip`) comes from here. No other app code reads
 ``X-Forwarded-For``, ``CF-Connecting-IP`` or ``request.client`` to identify a
 caller. (Sentry never gets them either: see ``SENTRY_SCRUBBED_KEYS`` in
-``main.py``.)
+``observability/sentry.py``.)
 
 Trust model (SECURITY.md §9, RENDER.md "Client IP and rate-limit keys"):
 
@@ -50,13 +50,14 @@ from __future__ import annotations
 import ipaddress
 import json
 import logging
-import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
 from fastapi import Request
 from slowapi import Limiter
+
+from settings import Settings
 
 ProxyMode = Literal["cloudflare", "render", "none"]
 PROXY_MODES: tuple[str, ...] = ("cloudflare", "render", "none")
@@ -82,13 +83,20 @@ class ProxyTrust:
     hops: int = DEFAULT_PROXY_HOPS
 
 
+def _environ(environ: Mapping[str, str] | None) -> Mapping[str, str]:
+    """``environ``, or the trust variables of a ``Settings`` read from the environment now."""
+    return Settings().proxy_environ() if environ is None else environ
+
+
 def load_proxy_trust(environ: Mapping[str, str] | None = None) -> ProxyTrust:
     """Read ``TRUSTED_PROXY_MODE`` / ``TRUSTED_PROXY_HOPS``.
 
-    A bad value raises at import, so a typo stops the deploy (Render keeps
-    the previous instance) instead of silently trusting the wrong header.
+    A bad value raises when the app is built (``import main``), so a typo
+    stops the deploy (Render keeps the previous instance) instead of silently
+    trusting the wrong header. ``main.create_app()`` passes
+    ``Settings.proxy_environ()``.
     """
-    env = os.environ if environ is None else environ
+    env = _environ(environ)
     mode = (env.get("TRUSTED_PROXY_MODE") or DEFAULT_PROXY_MODE).strip().lower()
     if mode not in PROXY_MODES:
         raise ValueError(
@@ -110,18 +118,39 @@ def proxy_header_debug_enabled(environ: Mapping[str, str] | None = None) -> bool
     For the owner checks in RENDER.md. Never honoured when
     ``ENVIRONMENT=production``: the raw values are client IPs and forgeries.
     """
-    env = os.environ if environ is None else environ
+    env = _environ(environ)
     if env.get("LOG_PROXY_HEADERS", "").strip() != "1":
         return False
     return env.get("ENVIRONMENT") != "production"
 
 
-_TRUST = load_proxy_trust()
-_LOG_PROXY_HEADERS = proxy_header_debug_enabled()
+# Defaults until ``configure_proxy_trust()`` runs (``main.create_app()`` calls it
+# at startup); they match an environment with neither variable set.
+_TRUST = ProxyTrust()
+_LOG_PROXY_HEADERS = False
 
 
-def log_proxy_trust() -> None:
-    """Log the trust settings once at startup (``main`` calls it after logging is set up)."""
+def configure_proxy_trust(environ: Mapping[str, str] | None = None) -> ProxyTrust:
+    """Load the trust settings into this module (``main.create_app()`` calls it).
+
+    Raises ``ValueError`` on a bad value, so ``import main`` (which builds the
+    app) still fails and a typo stops the deploy.
+    """
+    global _TRUST, _LOG_PROXY_HEADERS
+    _TRUST = load_proxy_trust(environ)
+    _LOG_PROXY_HEADERS = proxy_header_debug_enabled(environ)
+    return _TRUST
+
+
+def log_proxy_trust(log_proxy_headers_requested: bool | None = None) -> None:
+    """Log the trust settings once at startup (``main`` calls it after logging is set up).
+
+    ``log_proxy_headers_requested`` is ``Settings.log_proxy_headers_requested``
+    (read from the environment now when omitted): whether ``LOG_PROXY_HEADERS=1``
+    was set, so a refusal in production is logged.
+    """
+    if log_proxy_headers_requested is None:
+        log_proxy_headers_requested = Settings().log_proxy_headers_requested
     _log.info(
         json.dumps(
             {
@@ -132,7 +161,7 @@ def log_proxy_trust() -> None:
             }
         )
     )
-    if os.environ.get("LOG_PROXY_HEADERS", "").strip() == "1" and not _LOG_PROXY_HEADERS:
+    if log_proxy_headers_requested and not _LOG_PROXY_HEADERS:
         _log.warning('{"event": "log_proxy_headers_ignored", "reason": "production"}')
 
 

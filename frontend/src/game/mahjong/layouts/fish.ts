@@ -12,26 +12,17 @@
  */
 
 import type { Layout } from "../types";
-
-function slot(col: number, row: number, layer: number) {
-  return { col, row, layer };
-}
-
-function rng(start: number, stopInclusive: number, step = 2): number[] {
-  const out: number[] = [];
-  for (let v = start; v <= stopInclusive; v += step) out.push(v);
-  return out;
-}
+import { cols, grid, slot } from "./build";
 
 const BODY_ROWS: Record<number, number[]> = {
-  2: rng(8, 20),
-  3: rng(6, 24),
-  4: rng(4, 26),
-  5: rng(4, 28),
-  6: rng(4, 28),
-  7: rng(4, 26),
-  8: rng(6, 24),
-  9: rng(8, 20),
+  2: cols(8, 20),
+  3: cols(6, 24),
+  4: cols(4, 26),
+  5: cols(4, 28),
+  6: cols(4, 28),
+  7: cols(4, 26),
+  8: cols(6, 24),
+  9: cols(8, 20),
 };
 
 export const FISH_LAYOUT: Layout = [
@@ -40,13 +31,9 @@ export const FISH_LAYOUT: Layout = [
     cols.map((col) => slot(col, Number(row), 0))
   ),
   // Layer 0 — tail fin
-  ...[3, 4, 5, 6, 7, 8].flatMap((r) => [slot(0, r, 0), slot(2, r, 0)]),
+  ...grid(0, [0, 2], [3, 4, 5, 6, 7, 8]),
   // Layer 1 — scales
-  ...[3, 4, 5, 6, 7, 8].flatMap((r) => rng(8, 18).map((c) => slot(c, r, 1))),
+  ...grid(1, cols(8, 18), [3, 4, 5, 6, 7, 8]),
   // Layer 2 — inner scales
-  ...[4, 5, 6, 7].flatMap((r) => rng(12, 16).map((c) => slot(c, r, 2))),
+  ...grid(2, cols(12, 16), [4, 5, 6, 7]),
 ];
-
-if (FISH_LAYOUT.length !== 144) {
-  throw new Error(`FISH_LAYOUT has ${FISH_LAYOUT.length} slots, expected 144`);
-}

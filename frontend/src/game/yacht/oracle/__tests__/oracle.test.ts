@@ -1,7 +1,7 @@
 /**
  * Oracle table codec round-trip (#2243, compact format #2246).
  *
- * Encodes synthetic data with the SAME function scripts/build-yacht-oracle.ts
+ * Encodes synthetic data with the SAME function tools/generators/build-yacht-oracle.ts
  * uses and decodes it with the shipped runtime decoder — the actual code path
  * the app runs — without depending on the real generated table (pinnedEV.test.ts
  * covers that).

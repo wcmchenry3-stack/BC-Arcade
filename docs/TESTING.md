@@ -9,13 +9,13 @@ Cheap ratchets added for the refactor epic (#2950, issue #2951). They are set at
 | Gate                      | Where                                                                                                      | Threshold (today)                                                                                                                                                                                                                             | Blocking?                                   |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | ruff complexity / bugbear | `backend/pyproject.toml` (`extend-select`, `[tool.ruff.lint.mccabe]`)                                      | `B`, `C901`, `RUF`, `PLR0912`, `PLR0915`, `SIM`, `UP`; `max-complexity = 12`. Offenders carry `# noqa: C901  # see #2951`                                                                                                                     | Yes (`lint-python`)                         |
-| Backend coverage floor    | `backend/pyproject.toml` (`addopts` `--cov-fail-under`, `[tool.coverage.run] omit`)                        | `--cov-fail-under=96` over the whole backend (measured 97.6 % on both Python 3.11 and 3.13; see "Backend coverage (#2958)" below). Only `tests/`, `scripts/`, `perf/` and `sort/verify_levels.py` are omitted                                 | Yes (`test-python`)                         |
-| Backend file length       | `backend/scripts/check_file_length.py`, CI job `backend-file-length`                                       | 800 lines per `.py` (excl. `tests/`, `alembic/`, `.venv/`). Per-file `CAPS` for the two files already over 800 (today's counts, so they cannot grow): `games/service.py` 1005 (#2991), `purchases/google_notifications.py` 813 (#2998)        | Yes                                         |
+| Backend coverage floor    | `backend/pyproject.toml` (`addopts` `--cov-fail-under`, `[tool.coverage.run] omit`)                        | `--cov-fail-under=96` over the whole backend (measured 97.6 % on both Python 3.11 and 3.13; see "Backend coverage (#2958)" below). Only `tests/`, `scripts/` and `perf/` are omitted                                                          | Yes (`test-python`)                         |
+| Backend file length       | `backend/scripts/check_file_length.py`, CI job `backend-file-length`                                       | 800 lines per `.py` (excl. `tests/`, `alembic/`, `.venv/`). Per-file `CAPS` (a file's count when capped, so it cannot grow) for any file over 800: none today (`purchases/google_notifications.py` was split in #2998)        | Yes                                         |
 | eslint `max-lines`        | `frontend/eslint.config.js`                                                                                | 800 lines (skip blanks/comments) for `src/**` excl. `__tests__`. The 11 files already over 800 effective lines are `warn` in a `files:` override                                                                                              | Error for new offenders                     |
 | eslint function size      | `frontend/eslint.config.js`                                                                                | `max-lines-per-function` 150, `complexity` 20                                                                                                                                                                                                 | Warn                                        |
 | eslint react-hooks v7     | `frontend/eslint.config.js`                                                                                | `refs`, `immutability`, `set-state-in-effect`, `purity`, `globals` at `warn`                                                                                                                                                                  | Warn                                        |
-| Duplication (jscpd)       | CI job `duplication`                                                                                       | `--threshold 2.5 --min-lines 20 --min-tokens 70` over `frontend/src backend`                                                                                                                                                                  | Yes                                         |
-| Unused code (knip)        | `frontend/knip.json`, CI job `knip`                                                                        | `npx knip --no-progress` (CI-only `src/game/*/sim/**` and `oracleBuild/**` ignored until #2969)                                                                                                                                               | Warn-only until 2026-11-04, then `--strict` |
+| Duplication (jscpd)       | CI job `duplication`                                                                                       | `--threshold 2.5 --min-lines 20 --min-tokens 70` over `frontend/src frontend/tooling backend`                                                                                                                                                 | Yes                                         |
+| Unused code (knip)        | `frontend/knip.json`, CI job `knip`                                                                        | `npx knip --no-progress`; repo-root `tools/sim/*.ts` and `tools/generators/*.ts` are entries, and tooling exports only they use carry `@public` (see "Simulators")                                                                            | Warn-only until 2026-11-04, then `--strict` |
 | Jest coverage floors      | `frontend/package.json` (`jest.coverageThreshold.global`, `collectCoverageFrom`), run by `npm run test:ci` | Global floors: lines 90, statements 90, branches 85, functions 88 (measured 2026-10-05: lines 96.0, statements 94.3, branches 88.3, functions 91.9; see "Coverage policy") plus per-file 80 % lines for the solitaire/freecell/hearts engines | Yes (`test-frontend`)                       |
 
 ```bash
@@ -25,8 +25,8 @@ cd backend && ruff check . && black --check . && python scripts/check_file_lengt
 cd frontend && npx eslint . && npx knip --no-progress
 # duplication (repo root)
 npx --yes jscpd@4.3.0 --threshold 2.5 --min-lines 20 --min-tokens 70 \
-  --ignore "**/__tests__/**,**/mahjong/layouts/**,**/node_modules/**,**/.venv/**,**/*.generated.*,**/locales/**,**/tests/**,**/alembic/**" \
-  --format "typescript,tsx,python" frontend/src backend
+  --ignore "**/__tests__/**,**/node_modules/**,**/.venv/**,**/*.generated.*,**/locales/**,**/tests/**,**/alembic/**" \
+  --format "typescript,tsx,python" frontend/src frontend/tooling backend
 ```
 
 **Ratchet schedule.** Once a quarter, lower the thresholds to the current measured numbers and never raise them:
@@ -37,7 +37,7 @@ npx --yes jscpd@4.3.0 --threshold 2.5 --min-lines 20 --min-tokens 70 \
 - jscpd `--threshold` 2.5, then 2.0, then 1.5 (measured at 0.35% when the gate landed with backend `tests/` and `alembic/` excluded, so there is headroom).
 - Flip `knip` to `--strict` (drop `continue-on-error`) after the warn-only window and fix or ignore the remaining findings.
 - Backend file-length `CAPS`: lower or delete each entry as its split lands; an entry fails with "remove <path> from CAPS" once the file is at or under 800.
-- Backend `--cov-fail-under`: 96 now (one point under the measured 97.6 %, rounded down). Raise it as coverage lands, in the same PR that adds the tests; never lower it to make a PR pass. Every non-migration module is at 100 % lines except `games/leaderboard.py` and `main.py` (a handful of lines each); the modules below 90 % are `alembic/versions/*` (migration scripts whose `downgrade()` bodies the suite does not run).
+- Backend `--cov-fail-under`: 96 now (one point under the measured 97.6 %, rounded down). Raise it as coverage lands, in the same PR that adds the tests; never lower it to make a PR pass. Every non-migration module is at 100 % lines except `main.py`, `games/stats_columns.py` and `games/legacy_outcomes.py` (a handful of lines each; `games/boards/` is at 100 % since #2992); the modules below 90 % are `alembic/versions/*` (migration scripts whose `downgrade()` bodies the suite does not run).
 - ruff is pinned to 0.16.8 in both `backend/requirements-dev.txt` and the `lint-python` job in `ci.yml`; bump them together.
 - jest `coverageThreshold.global`: ratcheted after the Phase 0 coverage stories (#3010, #3014, #3017) landed. Floors are now lines 90, statements 90, branches 85, functions 88 (previously 82 / 81 / 78 / 75), each set to the measured value minus 3, rounded down, capped at 90. Measured on `dev` on 2026-10-05: lines 96.0 %, statements 94.3 %, branches 88.3 %, functions 91.9 %. The next ratchet step is 90 on every metric, once the remaining under-90 files are covered (see "Coverage policy" below).
 
@@ -47,12 +47,24 @@ npx --yes jscpd@4.3.0 --threshold 2.5 --min-lines 20 --min-tokens 70 \
 
 **Permanent exclusions** (package.json cannot hold comments, so they are documented here): `src/**/__tests__/**`, `src/**/__mocks__/**`, `*.d.ts`, `**/*.generated.ts`, `src/screens/__dev__/**` (dev-only screens), `src/i18n/glossary.js` (build-time input for `scripts/translate.js`, not shipped) and `src/i18n/localeLoaders.ts` (#2957: 247 of its lines are `() => import("./locales/<lng>/<ns>.json")` loaders, which jest cannot run without `--experimental-vm-modules`; `i18n/__tests__/localeLoaders.test.ts` instead checks that every locale file on disk has a loader whose source names its own path, and covers `loadLocaleNamespace` itself).
 
-**Temporary exclusions (until #2969 relocates the code out of `src/`):**
+The CI/script-only simulators live outside `src/` in `frontend/tooling/` (#2969), so they are not collected at all; see "Simulators" below.
 
-- `src/game/*/sim/**` (offline simulation harnesses)
-- `src/game/yacht/oracleBuild/**` (oracle table build tooling)
+### Simulators (`frontend/tooling/`, #2969)
 
-The `jest.collectCoverageFrom` entries and `frontend/knip.json` `ignore` carry the same sim/oracleBuild list (same glob dialect) until #2969 deletes both; keep them identical, and remove both in the same PR that moves the code.
+The Hearts, Yacht and Star Swarm balance simulators and the Yacht oracle table builder are not part of the app. They live in `frontend/tooling/<game>/` and only the repo-root scripts (`scripts/simulate-*.ts`, `tools/generators/build-yacht-oracle.ts`), their own tests and the sim-gate workflows use them:
+
+| Path                                  | What                                                                           | CLI                                      |
+| ------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------- |
+| `frontend/tooling/hearts/`            | Duplicate-deal harness, SPRT gate, `baseline.json`, regret reference           | `tools/sim/simulate-hearts.ts`           |
+| `frontend/tooling/yacht/`             | Paired-dice harness, stats, calibration bands                                  | `tools/sim/simulate-yacht.ts`            |
+| `frontend/tooling/yacht/oracleBuild/` | Offline retrograde solver for `src/game/yacht/oracle/oracleTable.generated.ts` | `tools/generators/build-yacht-oracle.ts` |
+| `frontend/tooling/starswarm/`         | Buddy balance harness, engine variants, presets, asteroid-awareness sim        | `tools/sim/simulate-starswarm.ts`        |
+
+- **Run a simulator** from the repo root: `npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate --group presets` (each script's header lists its flags).
+- **Tests** sit in `frontend/tooling/<game>/__tests__/` and run under the jest project `tooling` (the app's tests are the `app` project). Plain `npx jest` runs both; `npx jest --selectProjects tooling` runs only the simulators'. Their smoke runs (`ai.simulate.test.ts`, `ai.calibrate.test.ts`, the `fast` Star Swarm preset) still run in every PR with the rest of Jest.
+- **Type-check:** `npm run typecheck` checks the app (`tsconfig.typecheck.json`, which excludes `tooling/`) and then `tsconfig.tooling.json` (`tooling/**` plus `tools/sim/*.ts` and `tools/generators/*.ts`, with Node and Jest types).
+- **Boundary:** app code must not import `tooling/` (an eslint `no-restricted-imports` rule fails the lint), so nothing in it can reach the Metro bundle. Tooling imports app modules (engines, AI) by relative path into `src/`.
+- **knip:** `frontend/knip.json` lists `../tools/sim/*.ts` and `../tools/generators/*.ts` as entries so the tooling files they import count as used. knip cannot credit exports used from outside its workspace, so the few tooling exports only a root script uses carry a `@public` JSDoc tag; delete the tag with the export when the script stops using it.
 
 **Measured** (2026-10-05 on `dev` after the Phase 0 coverage stories #3010, #3014 and #3017, 324 suites / 6,063 tests, `jest --coverage`, all collected files):
 
@@ -71,11 +83,36 @@ Original baseline, for history (2026-10-04, before the coverage stories): lines 
 
 **Reading the report.** `jest --coverage` writes `frontend/coverage/` (`lcov-report/index.html` for browsing, `coverage-summary.json` for totals; the `coverageReporters` list in package.json guarantees both exist). Files with 0 % are now listed in the text table instead of being absent; sort by uncovered lines to pick the next target. Quick totals only: `npx jest --coverage --coverageReporters=text-summary --silent`.
 
+## Test layers and which gate PRs (#2975)
+
+Web (Expo Web) is a supported secondary platform used for testing and the free games; it is not a revenue platform. iOS and Android are primary. Platform-specific bugs should name the platform.
+
+| Layer                 | Where                               | Gates PRs?                                                                                            |
+| --------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Backend pytest        | `backend/tests`                     | Yes (`test-python`)                                                                                   |
+| Frontend jest         | `frontend/src/**/__tests__`         | Yes (`test-frontend`)                                                                                 |
+| Playwright (web)      | `e2e/tests`, CI job `e2e`           | **Yes, the PR gate.** Selective by changed paths; push and `main` PRs run the full suite              |
+| Maestro (iOS/Android) | `e2e/maestro`, `mobile-smoke-*.yml` | No. Manual (`workflow_dispatch`) until further notice; Maestro is not expected to ship before go-live |
+
+E2E hooks (`window.__*`, `EXPO_PUBLIC_TEST_HOOKS=1` builds only) are installed through `registerTestHooks(namespace, hooks)` in `frontend/src/game/_shared/testHooksRegistry.ts`; per-game hooks live in `game/<game>/testHooks.ts`. Import `areTestHooksEnabled` from `game/_shared/envFlags`, never from the heavy `_shared/testHooks` module. `releaseBuildConfig.test.ts` asserts no release input enables the flag.
+
+## CI workflow structure (#2973)
+
+Shared pieces so a workflow change is made once:
+
+- **`.github/actions/setup-frontend`** (composite): Node 22 + npm cache + `npm ci` in `frontend/`. Input `metro-cache: "true"` also restores the Metro transform cache (used by the Android bundle/release/Maestro jobs). Every workflow that needs the frontend toolchain calls it right after `actions/checkout`; put `if:` on the calling step to make it conditional.
+- **`.github/actions/maestro-install`** (composite): installs the pinned Maestro CLI. **`e2e/maestro/summarize.py <platform> <label>`** writes the per-flow job summary for both `mobile-smoke-android.yml` and `mobile-smoke-ios.yml`.
+- **`.github/paths/game-paths.yml`**: the one path-to-game table. `detect-e2e-scope` (Playwright, in `ci.yml`) and `detect-maestro-scope.yml` both pass it to `dorny/paths-filter` as `filters:`. Per-game keys are shared; `shared` is common to both, `playwright_shared` / `maestro_shared` are suite-specific "run everything" triggers, and `logstore` is Playwright-only. Adding a game means adding a key there and one line in each scope step.
+- **`tsx`** is a pinned `frontend` devDependency. From the repo root run scripts as `npx --prefix frontend tsx scripts/<name>.ts` (CI and every doc use this form); the working directory stays the repo root.
+- `openai-policy` runs only from `openai-policy.yml` (it used to run a second time inside `ci.yml`). `gemini-policy.yml` is kept on purpose; see the comment in the file.
+
+Required check names are unchanged by this restructuring; do not rename a job's `name:` (or a job id that has no `name:`) without updating branch protection.
+
 ## Test layout rules (#2955)
 
 These keep the suite split-safe: when a large source file is split into modules, its tests move one-to-one instead of being rewritten, and a moved test can never silently stop testing the shipped code.
 
-- **One test file per module.** Name it after the module it tests (`engine.ts` → `engine.test.ts`; a module of a planned split → `<file>.<module>.test.ts`, e.g. `starswarm/__tests__/engine.carrier.test.ts` for the planned `engine/carrier.ts` of #2988). When a test file passes ~1,000 lines, split it along the source's own seams (planned modules or exported-function clusters) by moving whole `describe` blocks: the test count and every test's full name stay the same. Helpers used by more than one of the new files go in `__tests__/helpers/<name>Fixtures.ts` (not a test file: `testMatch` only picks up `*.test.ts(x)`); single-file helpers stay local.
+- **One test file per module.** Name it after the module it tests (`engine.ts` → `engine.test.ts`; a module of a package behind a barrel → `<file>.<module>.test.ts`, e.g. `starswarm/__tests__/engine.carrier.test.ts` for `starswarm/engine/carrier.ts` (#2988) — the tests keep importing from the barrel, so a move inside the package never touches them). When a test file passes ~1,000 lines, split it along the source's own seams (planned modules or exported-function clusters) by moving whole `describe` blocks: the test count and every test's full name stay the same. Helpers used by more than one of the new files go in `__tests__/helpers/<name>Fixtures.ts` (not a test file: `testMatch` only picks up `*.test.ts(x)`); single-file helpers stay local.
 - **No local re-implementations of shipped code.** A test imports the function it checks. If the logic is inline in a component, extract it into a pure module first (as `game/starswarm/drag.ts` was extracted from `Controls.tsx`) and test that; a copy in the test cannot fail when the shipped code regresses.
 - **Prefer targeted assertions to large snapshots.** Assert the roles, texts and theme tokens that matter (`getByRole`, `getByText`, `toHaveStyle({ color: colors.accent })`, `accessibilityState`) so a token change fails one line with a readable diff instead of regenerating a few thousand lines nobody reviews. A snapshot is fine for one small element or a pure value (`toMatchInlineSnapshot`); keep `.snap` files under a few hundred lines.
 - **Golden replay for seeded engines.** An engine with a seeded RNG gets a golden replay test before it is refactored: seed it, drive the public API with scripted input for N ticks, and compare a hash of the canonical state (keys sorted, non-integer numbers rounded to 6 decimals so Node/V8 float differences cannot move it) at checkpoints, plus exact integer gameplay fields, with a committed fixture (`starswarm/__tests__/goldenReplay.test.ts` and `__fixtures__/golden-replay-seed42.json`; re-record with `UPDATE_GOLDEN=1`). A pure-move refactor must leave the fixture byte-identical; a re-record is a behaviour change and the PR says why (the one sanctioned Star Swarm re-record is the `rng()` range fix of #2985).
@@ -106,7 +143,7 @@ python -m pytest tests/test_generic_leaderboard.py -v  # Leaderboard API (every 
 python -m pytest tests/ -v --cov=. --cov-report=term-missing
 ```
 
-**Backend coverage (#2958).** `pyproject.toml` sets `addopts = "--cov=. --cov-report=term-missing --cov-fail-under=96"`, so a plain `pytest` run enforces the gate. `[tool.coverage.run]` sets `concurrency = ["greenlet", "thread"]`: the async code runs under SQLAlchemy greenlets and TestClient portal threads, and without it coverage drops every line after the first `await` that switches greenlet (it used to read `me/router.py` at 74 % although its tests ran). With it the number does not depend on the interpreter (97.6 % on 3.11 and on 3.13, a few lines apart in `main.py`). It replaces `core = "sysmon"`, which only worked on Python 3.12+, so a 3.11 run silently under-reported; the cost is the C tracer on 3.13 (a full run is roughly 2x slower, 4 to 8 minutes). `sort/generate_levels.py` is measured (it has tests in `test_sort_generation.py`); `sort/verify_levels.py` stays omitted.
+**Backend coverage (#2958).** `pyproject.toml` sets `addopts = "--cov=. --cov-report=term-missing --cov-fail-under=96"`, so a plain `pytest` run enforces the gate. `[tool.coverage.run]` sets `concurrency = ["greenlet", "thread"]`: the async code runs under SQLAlchemy greenlets and TestClient portal threads, and without it coverage drops every line after the first `await` that switches greenlet (it used to read `me/router.py` at 74 % although its tests ran). With it the number does not depend on the interpreter (97.6 % on 3.11 and on 3.13, a few lines apart in `main.py`). It replaces `core = "sysmon"`, which only worked on Python 3.12+, so a 3.11 run silently under-reported; the cost is the C tracer on 3.13 (a full run is roughly 2x slower, 4 to 8 minutes). `sort/generate_levels.py` is measured (it has tests in `test_sort_generation.py`); the reference pour simulator now lives in `scripts/sort_verify_levels.py` (omitted with the rest of `scripts/`).
 
 ### Structure
 
@@ -230,6 +267,37 @@ Each factory keeps the shape the screen tests had before #2954, and takes overri
 where tests differ; mock shapes decide what the screen sees, so change one only on purpose.
 Module mocks particular to one screen (its engine, canvas, storage) stay in that test file.
 
+### Adding a dev control (#2978)
+
+In-screen developer panels live next to the game's components, one per game:
+`components/starswarm/StarSwarmDevPanel.tsx`, `components/daily_word/DailyWordDevPanel.tsx`,
+`components/yacht/YachtDevPanel.tsx`, `components/mahjong/MahjongDevPanel.tsx` (Hearts has its
+own `HeartsDebugPanel`). Each is built on `components/dev/DevPanelShell.tsx`, which draws the
+DEV button, the panel (`variant="modal"`, or `"sidebar"` over a live game) and its title, and
+exports the controls: `DevSection` (a `── Title ──` header), `DevRow` (label + value),
+`DevStepper` (`− value +`, or a `column` cell), `DevToggle` (labelled `Switch`) and
+`DevActionButton` (`variant="primary"` for the solid accent button). Colours come from the
+`DEV_*` tokens in `theme/theme.constants.ts`; add a token there rather than an `rgba(...)`
+literal in a component (the design-token check flags those).
+
+To add a control:
+
+1. Add it to the game's `<Game>DevPanel.tsx` using the shell's controls. Give it a label a test
+   can find: `DevToggle` and `DevStepper` use their labels as accessibility labels, and a
+   `DevActionButton` takes `accessibilityLabel` / `testID`.
+2. Keep the panel's own state inside the panel. State the screen needs (Star Swarm's
+   `StarSwarmDevOptions`, Mahjong's free-tile overlay) stays in the screen and is passed in with
+   a setter; the screen keeps only `devOpen` and renders one `<XDevPanel enabled={...} />`.
+3. Pass the screen's existing gate as `enabled` (`__DEV__`, or Star Swarm's
+   `DEV_TOOLS = __DEV__ || isPreLaunchApiBuild()`). The panel component returns `null` before
+   any hook runs when it is false, so store builds neither show it nor run its timers or
+   listeners. Never widen the gate in a panel.
+4. Test it through the screen's dev-panel cases (`StarSwarmScreen.devpanel.test.tsx`, the
+   "developer panel" blocks of `DailyWordScreen.flow.test.tsx` and `MahjongScreen.board.test.tsx`)
+   or the panel's own test (`components/yacht/__tests__/YachtDevPanel.test.tsx`), driving it by
+   label or testID. Shell behaviour itself is covered by
+   `components/dev/__tests__/DevPanelShell.test.tsx`.
+
 ### Testing a native renderer (#2956)
 
 The iOS/Android Skia renderers (`components/starswarm/GameCanvas.tsx`,
@@ -316,7 +384,7 @@ frontend/src/
 
 ### Yacht AI simulation — two-layer model (#2245)
 
-All Yacht AI simulation runs on one harness, `frontend/src/game/yacht/sim/`:
+All Yacht AI simulation runs on one harness, `frontend/tooling/yacht/`:
 
 - `streams.ts` gives each player their own seeded dice and AI-noise streams.
   Dice for roll _k_ of round _r_ come from a per-(stream, round) table, so one
@@ -337,7 +405,7 @@ All Yacht AI simulation runs on one harness, `frontend/src/game/yacht/sim/`:
 - `gate.ts` holds the calibration gate: matchups, game counts and bands. It is
   the only place bands are defined.
 
-**Layer 1: PR smoke test.** `__tests__/ai.simulate.test.ts` runs in every PR
+**Layer 1: PR smoke test.** `frontend/tooling/yacht/__tests__/ai.simulate.test.ts` runs in every PR
 (about 140 games, ~15s under Jest with the #2246 tiers). It catches total breakage:
 the AI throwing, invalid scores, a harder tier no longer beating Easy, or
 mirroring broken (paired self-play must come out at exactly 50%). It is far too
@@ -351,11 +419,11 @@ added by #2156); its `regret` job runs
 `ai.calibrate.test.ts` (#2244, below). Run it locally from the repo root:
 
 ```bash
-npx tsx scripts/simulate-yacht.ts --gate                       # everything (~40 min)
-npx tsx scripts/simulate-yacht.ts --gate --group self-play     # one CI group
-npx tsx scripts/simulate-yacht.ts --gate --group hard-vs-easy --games 400  # quick look
-npx tsx scripts/simulate-yacht.ts --a hard --b medium --blocks 250         # ad-hoc matchup
-npx tsx scripts/simulate-yacht.ts --a hard --b medium --mode independent   # unpaired dice
+npx --prefix frontend tsx tools/sim/simulate-yacht.ts --gate                       # everything (~40 min)
+npx --prefix frontend tsx tools/sim/simulate-yacht.ts --gate --group self-play     # one CI group
+npx --prefix frontend tsx tools/sim/simulate-yacht.ts --gate --group hard-vs-easy --games 400  # quick look
+npx --prefix frontend tsx tools/sim/simulate-yacht.ts --a hard --b medium --blocks 250         # ad-hoc matchup
+npx --prefix frontend tsx tools/sim/simulate-yacht.ts --a hard --b medium --mode independent   # unpaired dice
 ```
 
 A failing band prints the band, the observed value and its CI, e.g.
@@ -440,7 +508,7 @@ a first-mover win rate of 48.8% ± 1.1: no first-mover handicap remains after
 games. The 57.3/42.7 split reported on #2317 came from 150 games per side, where
 the CI is about ±8pp.
 
-`scripts/simulate-yacht.ts` (#2213) is now a thin CLI over this harness. Its
+`tools/sim/simulate-yacht.ts` (#2213) is now a thin CLI over this harness. Its
 old bands table (stale since the utility-AI rewrite) and the separate
 `ai.baseline.test.ts` metrics printer were retired; `--gate` and the ad-hoc
 report replace both.
@@ -471,7 +539,7 @@ real committed table) `regretOracle.test.ts`.
 
 **Run it** — lives in `ai.calibrate.test.ts`, gated behind `YACHT_SIM_FULL`,
 and runs nightly as the `regret` job of `yacht-sim-gate.yml`. Its games use
-the harness's per-player streams (`sim/streams.ts`):
+the harness's per-player streams (`tooling/yacht/streams.ts`):
 
 ```bash
 YACHT_SIM_FULL=3000 npx jest --testPathPattern="ai.calibrate" -t "regret" --silent=false
@@ -530,8 +598,8 @@ aggregate win-rate can't surface.
 
 ### Hearts AI sim gate v2 — duplicate deals, SPRT, conditional metrics (#2238)
 
-All Hearts AI simulation runs on `frontend/src/game/hearts/sim/`;
-`scripts/simulate-hearts.ts` is the CLI around it.
+All Hearts AI simulation runs on `frontend/tooling/hearts/`;
+`tools/sim/simulate-hearts.ts` is the CLI around it.
 
 - `harness.ts` — **duplicate-deal replay.** A _block_ replays one sequence
   of deals once per line-up of a matchup. Hand _h_ of block _b_ is always
@@ -603,10 +671,10 @@ the midpoint between H0 and H1. The report marks it
 `(truncated at the block cap)`. `--max-blocks` must be at least 1.
 
 ```bash
-npx tsx scripts/simulate-hearts.ts --gate                     # both groups
-npx tsx scripts/simulate-hearts.ts --gate --group field       # one CI group
-npx tsx scripts/simulate-hearts.ts --gate --max-blocks 1000   # quick look (truncates)
-npx tsx scripts/simulate-hearts.ts --count 3000               # descriptive report, no verdicts
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate                     # both groups
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate --group field       # one CI group
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate --max-blocks 1000   # quick look (truncates)
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --count 3000               # descriptive report, no verdicts
 ```
 
 **Reading a failure.**
@@ -637,7 +705,7 @@ behaviour updates `baseline.json`, and it does so in the same PR as the
 change:
 
 ```bash
-npx tsx scripts/simulate-hearts.ts --update-baseline --reason "#1234: rank-aware moon attempts"
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --update-baseline --reason "#1234: rank-aware moon attempts"
 ```
 
 This re-measures every regression metric at a fixed sample size on a seed
@@ -667,13 +735,13 @@ Worst case, with every check running to its cap (presets 12,000 blocks ×
 45 min. That is cheap enough to gate per PR, so there is no reduced-N PR
 variant — the smoke layer below only proves the pipeline runs.
 
-**Per-PR smoke layer.** `frontend/src/game/hearts/__tests__/ai.calibrate.test.ts`
+**Per-PR smoke layer.** `frontend/tooling/hearts/__tests__/ai.calibrate.test.ts`
 (run by `ci.yml` with the rest of Jest, ~5 s) runs every group at a 12-block
 cap: each check must evaluate, find its denominator and produce finite
 estimates. Its verdicts at that size mean nothing. Unit tests for the SPRT
 on synthetic sequences (including its error rates over 300 runs), the
 duplicate-deal invariants and the gate config are in
-`frontend/src/game/hearts/sim/__tests__/`.
+`frontend/tooling/hearts/__tests__/`.
 
 **What duplicate deals buy.** Measured on 1,500 blocks:
 
@@ -753,14 +821,14 @@ counts are in `baseline.json`):
 
 **Relation to #2204.** The v2 gate keeps #2204's HRT-1 fix: `moon_success`
 is the paired rate (completions in attempted hands ÷ attempted hands, never
-÷ a narrower trigger count), pinned by `sim/__tests__/metrics.test.ts`.
+÷ a narrower trigger count), pinned by `tooling/hearts/__tests__/metrics.test.ts`.
 HRT-3 corrected the old Cautious-vs-Schemer check to "the human does better
 against Schemers" — true only because the ladder was inverted. #2555 fixed
 the ladder, so the gate now pre-registers the opposite direction (the human
 does better against Cautious players), pinned by `gate.test.ts`. The old six
 fixed-N batches and their ✓/✗ threshold checks are retired; `--count` keeps
-#2204's meaning (games per matchup), and `--log-games` (used by
-`hearts-analysis`) is unchanged.
+#2204's meaning (games per matchup), and `--log-games` is
+unchanged.
 
 ### Hearts AI regret metric — points lost vs a perfect-information reference (#2239)
 
@@ -771,7 +839,7 @@ sees all four hands. The AI only ever sees its own hand; the harness deals
 every hand, so it can grade a decision afterwards without giving the AI
 anything it didn't have.
 
-- **Reference (`sim/oracle.ts`).** For each graded play, every legal card is
+- **Reference (`tooling/hearts/oracle.ts`).** For each graded play, every legal card is
   tried on the true state and the hand is finished by a perfect-information
   rollout for all four seats. The rollout is greedy and moon-aware: a lone
   point-holder with 10+ points plays the moon out and the others try to take
@@ -804,17 +872,17 @@ anything it didn't have.
   | `blunder` | `r >= 10`       | Q♠-sized, or a moon       |
 
 - **Noise split.** ai.ts's noise is one `rng() < NOISE_RATE` draw per play.
-  `sim/regret.ts` tags each graded play as noise or deliberate from that
+  `tooling/hearts/regret.ts` tags each graded play as noise or deliberate from that
   draw, passing the RNG through unchanged; a test pins that grading and
   tagging leave every game identical.
 
 **Run it.** It is a report, not a gate, and always exits 0:
 
 ```bash
-npx tsx scripts/simulate-hearts.ts --regret                                  # 100 blocks, every play graded
-npx tsx scripts/simulate-hearts.ts --regret --blocks 40 --sample-every 4     # quicker
-npx tsx scripts/simulate-hearts.ts --regret --oracle-player                  # also run the cheating reference player
-npx tsx scripts/simulate-hearts.ts --regret --pimc 16                        # also grade the PIMC engine (#2587), 16 deals a move
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --regret                                  # 100 blocks, every play graded
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --regret --blocks 40 --sample-every 4     # quicker
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --regret --oracle-player                  # also run the cheating reference player
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --regret --pimc 16                        # also grade the PIMC engine (#2587), 16 deals a move
 ```
 
 Each persona takes the test seat against a Schemer field on the same deals,
@@ -827,7 +895,7 @@ so per-block differences are paired as in the gate.
   pseudo-randomly per play so a K that divides 13 can't lock onto one trick
   of every hand, and scales points lost back up by K.
 
-Unit tests: `sim/__tests__/oracle.test.ts` covers a known four-hand endgame
+Unit tests: `tooling/hearts/__tests__/oracle.test.ts` covers a known four-hand endgame
 where the reference must find the 13-point difference, rollout rules, hand
 cost and bands. `regret.test.ts` covers the tallies, the noise split, win
 share reported independently of regret, and the ladder check.
@@ -880,9 +948,9 @@ reports, per difficulty × wave type:
 - its damage and kill share, and its per-sortie kills and share of the fleet;
 - the Carrier's time-to-kill, with and without Buddy, on the same seeds.
 
-It lives in `frontend/src/game/starswarm/sim/`, and its CLI is `scripts/simulate-starswarm.ts`. A
+It lives in `frontend/tooling/starswarm/`, and its CLI is `tools/sim/simulate-starswarm.ts`. A
 fast smoke preset runs with the normal jest suite. The full runs use the CLI
-(`npx tsx scripts/simulate-starswarm.ts --preset baseline --jobs 4`). How to run it, shard it and
+(`npx --prefix frontend tsx tools/sim/simulate-starswarm.ts --preset baseline --jobs 4`). How to run it, shard it and
 override tuning in the sim only:
 [starswarm.md → Balance simulation](games/starswarm.md#balance-simulation-2880).
 
@@ -987,8 +1055,9 @@ test (see "What's Tested" note above — no React/canvas coverage).
 The question the panel answers is "does the collision rate match the enemy's skill?" — the
 per-tier dodge odds are configuration; the panel shows what actually happened next to them. Dev
 builds and internal pre-launch builds only (the `DEV` button in the corner of the canvas). The
-panel is behind `DEV_TOOLS` in `StarSwarmScreen.tsx`, which is `__DEV__` or a build against the
-pre-launch API (#2567, as Hearts does), so store builds never show it.
+panel (`components/starswarm/StarSwarmDevPanel.tsx`) is behind `DEV_TOOLS` in
+`StarSwarmScreen.tsx`, which is `__DEV__` or a build against the pre-launch API (#2567, as Hearts
+does), so store builds never show it.
 
 1. Start a run at the difficulty you are tuning (the _Difficulty_ section applies on New Game).
 2. Open the panel. Under _Run stats_ the tier table has one row per tier:

@@ -1,6 +1,6 @@
 /**
  * GENERATED FILE — do not edit by hand.
- * Produced by scripts/pack-sudoku-puzzles.ts (#2869) from puzzles.json and
+ * Produced by tools/generators/pack-sudoku-puzzles.ts (#2869) from puzzles.json and
  * puzzles_mini.json. Format: see puzzleCodec.ts.
  */
 

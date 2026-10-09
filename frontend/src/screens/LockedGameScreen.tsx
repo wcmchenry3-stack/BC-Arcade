@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
@@ -8,12 +9,13 @@ import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
 
 export default function LockedGameScreen() {
   const navigation = useNavigation();
+  const { t } = useTranslation("common");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <AppHeader title="Locked" />
+      <AppHeader title={t("locked.title")} />
       <View
         style={[
           styles.content,
@@ -21,17 +23,15 @@ export default function LockedGameScreen() {
         ]}
       >
         <Text style={styles.lockEmoji}>🔒</Text>
-        <Text style={[styles.heading, { color: colors.text }]}>Premium Game</Text>
-        <Text style={[styles.body, { color: colors.textMuted }]}>
-          This game requires a BC Arcade subscription.
-        </Text>
+        <Text style={[styles.heading, { color: colors.text }]}>{t("locked.heading")}</Text>
+        <Text style={[styles.body, { color: colors.textMuted }]}>{t("locked.body")}</Text>
         <Pressable
           style={[styles.backBtn, { backgroundColor: colors.surfaceHigh }]}
           onPress={() => navigation.goBack()}
           accessibilityRole="button"
-          accessibilityLabel="Go back to lobby"
+          accessibilityLabel={t("locked.back_label")}
         >
-          <Text style={[styles.backBtnText, { color: colors.text }]}>Back to Lobby</Text>
+          <Text style={[styles.backBtnText, { color: colors.text }]}>{t("locked.back")}</Text>
         </Pressable>
       </View>
     </View>

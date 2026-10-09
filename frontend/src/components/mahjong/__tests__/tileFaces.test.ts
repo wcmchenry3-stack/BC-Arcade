@@ -5,10 +5,9 @@
  * (`loadData`, `Skia.SVG`, `Skia.Surface.Make`) to pin the decode and retry, the bitmap
  * geometry, the surface's disposal, the LRU of sizes and its disposal on eviction, and the
  * hook rasterising after the commit rather than during a render.
- * GameCanvas.native.test.tsx covers the same cache through the canvas.
+ * GameCanvas.native.test.tsx covers the same cache through the canvas; tileFacesLoadOrder.test.ts
+ * covers a load completing between a mount's commit and its effects (on a mocked scheduler).
  */
-import React from "react";
-import TestRenderer from "react-test-renderer";
 import { act, renderHook } from "@testing-library/react-native";
 import { PixelRatio } from "react-native";
 import { loadData, Skia } from "@shopify/react-native-skia";
@@ -352,46 +351,5 @@ describe("useTileFaces: shared cache, timing and identity", () => {
     expect(mockLoadData).toHaveBeenCalledTimes(43); // the retry happened
     expect(second.result.current).toBe(faces); // and changed nothing
     expect(renders).toBe(1);
-  });
-
-  it("faces appear when the load completes between a mount's render and its effects", async () => {
-    // Rendered outside act, React commits in one task and runs the passive effects in a later
-    // one, as on a device; the load (begun by another canvas) completes in between.
-    jest.useRealTimers();
-    const pending: (() => void)[] = [];
-    mockLoadData.mockImplementation((source: unknown, factory: (d: unknown) => unknown) =>
-      new Promise<void>((r) => pending.push(r)).then(() => factory(source))
-    );
-    const loading = loadTileSVGs();
-    const seen: (ReturnType<typeof useTileFaces> | "effect")[] = [];
-    function Probe() {
-      const faces = useTileFaces(40, 52);
-      seen.push(faces);
-      React.useEffect(() => {
-        seen.push("effect");
-      }, []);
-      return null;
-    }
-    const env = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
-    const actEnv = env.IS_REACT_ACT_ENVIRONMENT;
-    env.IS_REACT_ACT_ENVIRONMENT = false;
-    jest.spyOn(console, "error").mockImplementation(() => {}); // the renderer's deprecation note
-    const nextTask = () => new Promise((r) => setTimeout(r, 0));
-    try {
-      const root = TestRenderer.create(React.createElement(Probe));
-      await nextTask();
-      expect(seen).toEqual([null]); // rendered and committed with no SVGs; effects to come
-      pending.forEach((r) => r());
-      await loading;
-      expect(seen).toEqual([null]); // the load is done before the mount's effects
-      for (let i = 0; i < 20 && !Array.isArray(seen.at(-1)); i++) await nextTask();
-      expect(seen).toContain("effect");
-      expect(seen.at(-1)).toHaveLength(42);
-      root.unmount();
-      await nextTask();
-    } finally {
-      env.IS_REACT_ACT_ENVIRONMENT = actEnv;
-      jest.restoreAllMocks();
-    }
   });
 });

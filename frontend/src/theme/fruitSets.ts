@@ -4,7 +4,6 @@ import { COSMOS_BAKED, COSMOS_ICONS, FRUIT_BAKED, FRUIT_ICONS } from "../game/ca
 import type { FruitDefinition as FruitDefinitionBase } from "./fruitSets.engine";
 
 export type { FruitTier } from "./fruitSets.engine";
-export { MAX_SPAWN_TIER } from "./fruitSets.engine";
 import type { FruitTier } from "./fruitSets.engine";
 
 export interface FruitDefinition extends FruitDefinitionBase {
@@ -14,7 +13,7 @@ export interface FruitDefinition extends FruitDefinitionBase {
   /**
    * Normalised clip radius of the baked PNG (= clipR / physics radius).
    * At render time: half-size = bakedClipR * def.radius
-   * Originally produced by scripts/bake_sprites.py. When physics radii change
+   * Originally produced by tools/assets/bake_sprites.py. When physics radii change
    * without a sprite rebake, rescale as: new = old * (old_radius / new_radius).
    * Re-running bake_sprites.py will overwrite these with authoritative values.
    */

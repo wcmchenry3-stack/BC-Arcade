@@ -1,7 +1,8 @@
 import React from "react";
-import { render } from "@testing-library/react-native";
+import { act, render } from "@testing-library/react-native";
 import { HeartsQueenOfSpadesAnimation } from "../HeartsQueenOfSpadesAnimation";
 import { advanceBy, flushReduceMotion, mockReduceMotion } from "./helpers/animationFixtures";
+import { captureReduceMotionChange } from "../../../test-utils/reduceMotion";
 
 // Phases (ms): the card springs in from 0, shakes from 200, fades out from 700,
 // and the overlay reports it is done at 1000. Reduced motion is a red flash with
@@ -119,5 +120,17 @@ describe("HeartsQueenOfSpadesAnimation", () => {
       await advanceBy(10_000);
       expect(onAnimationEnd).not.toHaveBeenCalled();
     });
+  });
+
+  it("switches to the 800 ms flash once reduce motion is turned on mid-session (#2984)", async () => {
+    const emit = captureReduceMotionChange();
+    const { onAnimationEnd } = await show();
+    await advanceBy(500);
+
+    await act(async () => emit(true));
+    await advanceBy(799);
+    expect(onAnimationEnd).not.toHaveBeenCalled();
+    await advanceBy(1);
+    expect(onAnimationEnd).toHaveBeenCalledTimes(1);
   });
 });

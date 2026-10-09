@@ -96,5 +96,10 @@
   "restore.pending": "अनुमोदन की प्रतीक्षा है। स्वीकृत होते ही आपका गेम अनलॉक हो जाएगा।",
   "restore.nothing": "इस स्टोर खाते के लिए बहाल करने योग्य कोई खरीदारी नहीं है।",
   "restore.error": "खरीदारी बहाल नहीं हो सकी। कृपया फिर कोशिश करें।",
-  "settings.restorePurchases.description": "इस स्टोर खाते से पहले खरीदे गए गेम वापस पाएँ।"
+  "settings.restorePurchases.description": "इस स्टोर खाते से पहले खरीदे गए गेम वापस पाएँ।",
+  "locked.title": "लॉक है",
+  "locked.heading": "प्रीमियम गेम",
+  "locked.body": "इस गेम के लिए BC Arcade सदस्यता चाहिए।",
+  "locked.back": "लॉबी पर वापस जाएँ",
+  "locked.back_label": "लॉबी पर वापस जाएँ"
 }

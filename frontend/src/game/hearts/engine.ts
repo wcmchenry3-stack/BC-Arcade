@@ -6,60 +6,27 @@
  * on each transition — state is immutable.
  */
 
+import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
+import { createDeck, fisherYates } from "../_shared/cards/deck";
 import type { AiPreset, Card, HeartsState, PassDirection, Rank, Suit, TrickCard } from "./types";
-import { passOffset, RANKS, SUITS } from "./types";
+import { passOffset } from "./types";
 
 // ---------------------------------------------------------------------------
 // Seedable RNG — tests can pin shuffles via setRng(createSeededRng(seed)).
 // ---------------------------------------------------------------------------
 
-export type RandomSource = () => number;
-
-let _rng: RandomSource = Math.random;
-
-export function setRng(fn: RandomSource): void {
-  _rng = fn;
-}
-
-export function getRng(): RandomSource {
-  return _rng;
-}
-
-export function createSeededRng(seed: number): RandomSource {
-  let state = seed >>> 0;
-  return () => {
-    state = (Math.imul(1664525, state) + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
-}
+const rngSlot = createRngSlot();
+export const setRng = rngSlot.setRng;
+export const getRng = rngSlot.getRng;
+export { createSeededRng };
+export type { RandomSource };
 
 // ---------------------------------------------------------------------------
 // Deck helpers
 // ---------------------------------------------------------------------------
 
-function createDeck(): Card[] {
-  const deck: Card[] = [];
-  for (const suit of SUITS) {
-    for (const rank of RANKS) {
-      deck.push({ suit, rank });
-    }
-  }
-  return deck;
-}
-
-function shuffle<T>(arr: readonly T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(_rng() * (i + 1));
-    const tmp = a[i]!;
-    a[i] = a[j]!;
-    a[j] = tmp;
-  }
-  return a;
-}
-
 function dealHands(): readonly (readonly Card[])[] {
-  const deck = shuffle(createDeck());
+  const deck = fisherYates(createDeck(), rngSlot.rng);
   return [deck.slice(0, 13), deck.slice(13, 26), deck.slice(26, 39), deck.slice(39, 52)];
 }
 

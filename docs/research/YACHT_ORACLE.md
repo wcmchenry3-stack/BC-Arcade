@@ -37,10 +37,10 @@ The Joker rule's three-tier legal-category priority (mandatory matching-upper, t
 | `oracle/oracle.ts`                | Yes             | Public API: `optimalStateEV`, `optimalCategoryEVs`, `optimalHoldEVs` (async), plus `getOracleTable`/`getHoldOptions`/`preloadOracleTable` for the synchronous live AI. Lazy-loads the generated table.                                                                                                                                                                                                            |
 | `oracle/tableCodec.ts`            | Yes             | Compact table encoding (§5), shared by the build and the runtime decoder so they can't drift.                                                                                                                                                                                                                    |
 | `oracle/oracleTable.generated.ts` | Yes             | Generated data asset — committed, not hand-edited. See §5.                                                                                                                                                                                                                                                       |
-| `oracleBuild/solver.ts`           | No (build-only) | The outer retrograde loop over all ~786K states. Takes tens of minutes; must never run on-device. Not imported by any app screen/component, so Metro never bundles it.                                                                                                                                           |
-| `scripts/build-yacht-oracle.ts`   | No (build-only) | CLI entry point: `npx tsx scripts/build-yacht-oracle.ts`. Regenerate after any change to `stateKey.ts`'s scoring/transition rules.                                                                                                                                                                               |
+| `tooling/yacht/oracleBuild/solver.ts` | No (build-only) | The outer retrograde loop over all ~786K states. Takes tens of minutes; must never run on-device. Not imported by any app screen/component, so Metro never bundles it.                                                                                                                                           |
+| `tools/generators/build-yacht-oracle.ts`   | No (build-only) | CLI entry point: `npx --prefix frontend tsx tools/generators/build-yacht-oracle.ts`. Regenerate after any change to `stateKey.ts`'s scoring/transition rules.                                                                                                                                                                               |
 
-**Why `oracleBuild/` lives under `frontend/src/` despite being build-only:** so it's covered by the same Jest config/conventions as the rest of the codebase (describe/it, `setRng`/`createSeededRng`, etc.) rather than a second, differently-configured test setup. It's kept out of the shipped bundle by construction — nothing under `oracle/` or any app screen ever imports it, only the standalone script does.
+**Where `oracleBuild/` lives:** in `frontend/tooling/yacht/oracleBuild/` (moved out of `src/` by #2969). Its tests run under the jest `tooling` project with the same conventions as the app's (describe/it, `setRng`/`createSeededRng`, etc.). It's kept out of the shipped bundle by construction — app code may not import `tooling/` (eslint `no-restricted-imports`); only the standalone script does.
 
 ## 5. Generated table format
 
@@ -83,7 +83,7 @@ Measured on dev hardware (Node/tsx, not on-device — same dev-vs-mobile caveat 
 ## 8. Regenerating the table
 
 ```
-npx tsx scripts/build-yacht-oracle.ts
+npx --prefix frontend tsx tools/generators/build-yacht-oracle.ts
 ```
 
 Takes tens of minutes on typical dev hardware — this matches published implementations of the same problem (Verhoeff, Glenn 2006, and others solving the same joker/bonus-score variant), not a performance bug in this implementation. Necessary whenever `stateKey.ts`'s scoring/transition logic changes; the generated file's header records when it was last built and from what state, so a stale table is at least detectable by inspection.

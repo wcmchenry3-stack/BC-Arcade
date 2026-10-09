@@ -203,9 +203,10 @@ test.describe("Star Swarm — result card", () => {
     await routeStarswarmApi(page);
     await startRun(page);
     await endRun(page, 4200, 7);
-    await expect(
-      page.getByTestId("starswarm-result").getByText("New best"),
-    ).toBeVisible();
+    const first = page.getByTestId("starswarm-result");
+    await expect(first.getByText("4,200").first()).toBeVisible();
+    // #2977: a first run sets the best but is never a "New best".
+    await expect(first.getByText("New best")).not.toBeVisible();
 
     await page.goto("/");
     await startRun(page);
@@ -213,5 +214,12 @@ test.describe("Star Swarm — result card", () => {
     const card = page.getByTestId("starswarm-result");
     await expect(card.getByText("New best")).not.toBeVisible();
     await expect(card.getByText("4,200")).toBeVisible(); // Best
+
+    // Beating the best that survived the reload is a new best.
+    await card.getByRole("button", { name: "Play Again" }).click();
+    await endRun(page, 5000, 8);
+    await expect(
+      page.getByTestId("starswarm-result").getByText("New best"),
+    ).toBeVisible();
   });
 });

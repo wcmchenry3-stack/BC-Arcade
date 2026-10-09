@@ -9,7 +9,13 @@
 import type { Theme } from "./ThemeContext";
 import type { Color } from "../game/sort/types";
 
-/** Liquid colors per theme, validated: ΔE₂₀₀₀ ≥ 20 for all 91 pairs, contrast ≥ 3:1 vs bg. */
+/**
+ * Liquid colors per theme, validated: ΔE₂₀₀₀ ≥ 20 for all 91 pairs, contrast ≥ 3:1 vs bg.
+ *
+ * After changing any color here, mirror it into the PROPOSED table of
+ * tools/assets/check_palette.py and run `python tools/assets/check_palette.py`
+ * (manual; no CI job runs it). See tools/README.md "Sort palette check".
+ */
 export const BOTTLE_LIQUID_COLORS: Record<Theme, Record<Color, string>> = {
   dark: {
     red: "#ff7777",

@@ -23,6 +23,10 @@ the Google-signed OIDC bearer token is verified before the body is parsed
 Developer API before anything is written, and anything authenticated but
 irrelevant is 200 so Pub/Sub stops retrying. ``503`` while Google is not
 configured or the Play API is down (Pub/Sub retries).
+
+A ``PurchaseError`` that leaves a route is answered by the app-level handler in
+``main.py`` as ``{"detail": code}`` with its status (#2993); the notification
+routes catch it only to log why a payload was refused.
 """
 
 from __future__ import annotations
@@ -39,14 +43,22 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 from limits import parse_many
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.base import get_session_factory
+from db.base import DbSession, get_session_factory
 from entitlements import service as entitlements_service
 from entitlements.schemas import EntitlementsResponse
 from limiter import limiter, session_key
+from rate_limits import (
+    APPLE_NOTIFICATION_IP_RATE_LIMIT,
+    GOOGLE_NOTIFICATION_IP_RATE_LIMIT,
+    PURCHASE_IP_RATE_LIMIT,
+    PURCHASE_SESSION_RATE_LIMIT,
+    PURCHASE_STORE_KEY_RATE_LIMIT,
+)
 from session import get_session_id
 
-from . import apple, apple_notifications, google, google_notifications, service
+from . import apple, apple_notifications, google, google_rtdn, service
 from .google import get_google_verifier
 from .schemas import (
     AppleNotificationRequest,
@@ -65,16 +77,6 @@ from .verifiers import (
 
 _log = logging.getLogger("audit")
 
-# Owner-tunable (IAP.md §8.2).
-PURCHASE_SESSION_RATE_LIMIT = "20/minute"
-PURCHASE_IP_RATE_LIMIT = "30/minute;200/day"
-PURCHASE_STORE_KEY_RATE_LIMIT = "10/hour;30/day"
-# Apple sends from its own address ranges; a 429 loses nothing (Apple retries,
-# and the notification-history replay backfills).
-APPLE_NOTIFICATION_IP_RATE_LIMIT = "300/minute"
-# Pub/Sub pushes from Google's ranges; a 429 loses nothing (Pub/Sub retries,
-# and the daily voided-purchases poll backfills revocations).
-GOOGLE_NOTIFICATION_IP_RATE_LIMIT = "300/minute"
 # Most time POST /purchases/google spends acknowledging after the grant is
 # committed (#2787 review N3); past it the acknowledgement sweep takes over.
 GOOGLE_ACK_BUDGET_S = 8.0
@@ -127,6 +129,7 @@ def _hit_store_key_limit(platform: str, store_key: str) -> None:
 
 
 async def _complete(
+    db: AsyncSession,
     *,
     session_id: str,
     source: service.Source,
@@ -140,29 +143,29 @@ async def _complete(
     if verified.platform != platform or verified.store_key != store_key:
         # The verifier's answer must describe the evidence that was rate-limited.
         raise PurchaseError(422, "verification_failed")
-    factory = get_session_factory()
-    async with factory() as db:
-        result = await service.process_verified_purchase(
-            db,
-            session_id=session_id,
-            source=source,
-            verified=verified,
-            observed_at=observed_at,
-        )
-        if result.needs_acknowledgement and google_verifier and google_evidence:
-            try:
-                # Bounded: retries and timeouts must not hold the client's
-                # request for ~50 s; the sweep finishes anything left.
-                await asyncio.wait_for(
-                    google_verifier.acknowledge(google_evidence), timeout=GOOGLE_ACK_BUDGET_S
-                )
-            except (PurchaseError, TimeoutError):
-                # The grant is persisted; the unacknowledged-purchase sweep
-                # (#2787) retries within Google's 3-day window.
-                _log.warning('{"event": "purchase_ack_failed", "platform": "google"}')
-            else:
-                await service.mark_acknowledged(db, result.purchase_id)
-        entitled = await entitlements_service.get_entitled_games(db, session_id)
+    # The request's session has done no I/O yet: its first query is here, after
+    # the store call, so no connection is held while the store answers.
+    result = await service.process_verified_purchase(
+        db,
+        session_id=session_id,
+        source=source,
+        verified=verified,
+        observed_at=observed_at,
+    )
+    if result.needs_acknowledgement and google_verifier and google_evidence:
+        try:
+            # Bounded: retries and timeouts must not hold the client's
+            # request for ~50 s; the sweep finishes anything left.
+            await asyncio.wait_for(
+                google_verifier.acknowledge(google_evidence), timeout=GOOGLE_ACK_BUDGET_S
+            )
+        except (PurchaseError, TimeoutError):
+            # The grant is persisted; the unacknowledged-purchase sweep
+            # (#2787) retries within Google's 3-day window.
+            _log.warning('{"event": "purchase_ack_failed", "platform": "google"}')
+        else:
+            await service.mark_acknowledged(db, result.purchase_id)
+    entitled = await entitlements_service.get_entitled_games(db, session_id)
     token, expires_at = entitlements_service.issue_token(session_id, entitled)
     return PurchaseResponse(
         status=result.status,
@@ -173,36 +176,31 @@ async def _complete(
     )
 
 
-def _http(exc: PurchaseError) -> HTTPException:
-    return HTTPException(status_code=exc.status_code, detail=exc.detail)
-
-
 @router.post("/apple", response_model=PurchaseResponse)
 @limiter.limit(PURCHASE_IP_RATE_LIMIT)
 @limiter.limit(PURCHASE_SESSION_RATE_LIMIT, key_func=session_key)
 async def post_apple_purchase(
     request: Request,
     body: ApplePurchaseRequest,
+    db: DbSession,
     verifier: AppleVerifier = Depends(apple.get_apple_verifier),  # noqa: B008
 ) -> PurchaseResponse:
     """Verify an App Store transaction and link it to this session."""
     sid = _session_id(request)
-    try:
-        store_key = apple.parse_store_key(body.signed_transaction)
-        _hit_store_key_limit("apple", store_key)
-        # Taken before the store call: a stale answer must lose to a newer event.
-        observed_at = datetime.now(UTC)
-        verified = await verifier.verify(AppleEvidence(signed_transaction=body.signed_transaction))
-        return await _complete(
-            session_id=sid,
-            source=body.source,
-            verified=verified,
-            observed_at=observed_at,
-            platform="apple",
-            store_key=store_key,
-        )
-    except PurchaseError as exc:
-        raise _http(exc) from None
+    store_key = apple.parse_store_key(body.signed_transaction)
+    _hit_store_key_limit("apple", store_key)
+    # Taken before the store call: a stale answer must lose to a newer event.
+    observed_at = datetime.now(UTC)
+    verified = await verifier.verify(AppleEvidence(signed_transaction=body.signed_transaction))
+    return await _complete(
+        db,
+        session_id=sid,
+        source=body.source,
+        verified=verified,
+        observed_at=observed_at,
+        platform="apple",
+        store_key=store_key,
+    )
 
 
 @router.post("/google", response_model=PurchaseResponse)
@@ -211,31 +209,30 @@ async def post_apple_purchase(
 async def post_google_purchase(
     request: Request,
     body: GooglePurchaseRequest,
+    db: DbSession,
     verifier: GoogleVerifier = Depends(get_google_verifier),  # noqa: B008
 ) -> PurchaseResponse:
     """Verify a Google Play purchase, link it to this session and acknowledge it."""
     sid = _session_id(request)
-    try:
-        if service.slug_for_product(body.product_id) is None:
-            raise PurchaseError(422, "unknown_product")
-        _hit_store_key_limit("google", body.purchase_token)
-        evidence = GoogleEvidence(product_id=body.product_id, purchase_token=body.purchase_token)
-        observed_at = datetime.now(UTC)
-        verified = await verifier.verify(evidence)
-        if verified.product_id != body.product_id:
-            raise PurchaseError(422, "verification_failed")
-        return await _complete(
-            session_id=sid,
-            source=body.source,
-            verified=verified,
-            observed_at=observed_at,
-            platform="google",
-            store_key=body.purchase_token,
-            google_verifier=verifier,
-            google_evidence=evidence,
-        )
-    except PurchaseError as exc:
-        raise _http(exc) from None
+    if service.slug_for_product(body.product_id) is None:
+        raise PurchaseError(422, "unknown_product")
+    _hit_store_key_limit("google", body.purchase_token)
+    evidence = GoogleEvidence(product_id=body.product_id, purchase_token=body.purchase_token)
+    observed_at = datetime.now(UTC)
+    verified = await verifier.verify(evidence)
+    if verified.product_id != body.product_id:
+        raise PurchaseError(422, "verification_failed")
+    return await _complete(
+        db,
+        session_id=sid,
+        source=body.source,
+        verified=verified,
+        observed_at=observed_at,
+        platform="google",
+        store_key=body.purchase_token,
+        google_verifier=verifier,
+        google_evidence=evidence,
+    )
 
 
 @router.post("/apple/notifications")
@@ -260,7 +257,7 @@ async def post_apple_notification(request: Request, body: AppleNotificationReque
                 }
             )
         )
-        raise _http(exc) from None
+        raise
     return {"status": outcome}
 
 
@@ -277,8 +274,8 @@ async def post_google_notification(request: Request) -> dict:
         raise HTTPException(status_code=503, detail="store_unavailable")
     try:
         await runtime.push_auth.authenticate(request.headers.get("authorization"))
-        message_id, note = google_notifications.parse_push(await request.body())
-        outcome = await google_notifications.handle_developer_notification(
+        message_id, note = google_rtdn.parse_push(await request.body())
+        outcome = await google_rtdn.handle_developer_notification(
             runtime.verifier, note, message_id, get_session_factory()
         )
     except PurchaseError as exc:
@@ -292,8 +289,11 @@ async def post_google_notification(request: Request) -> dict:
                 }
             )
         )
-        headers = {"WWW-Authenticate": "Bearer"} if exc.status_code == 401 else None
-        raise HTTPException(
-            status_code=exc.status_code, detail=exc.detail, headers=headers
-        ) from None
+        if exc.status_code == 401:
+            # The one refusal that carries a header, so it can't go to the
+            # app-level handler, which answers with the body alone.
+            raise HTTPException(
+                status_code=401, detail=exc.detail, headers={"WWW-Authenticate": "Bearer"}
+            ) from None
+        raise
     return {"status": outcome}

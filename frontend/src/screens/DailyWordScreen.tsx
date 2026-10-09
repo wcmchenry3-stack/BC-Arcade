@@ -5,29 +5,28 @@
  *   1. Engine: pure functions from game/daily_word/engine.ts
  *   2. Persistence: AsyncStorage via game/daily_word/storage.ts; state loaded
  *      on mount and saved after every mutation.
- *   3. API: GET /daily-word/today, POST /daily-word/guess, GET /daily-word/answer
+ *   3. API: GET /daily-word/today and GET /daily-word/answer here;
+ *      POST /daily-word/guess and its 403/422/429 recovery live in
+ *      useDailyWordSubmit (components/daily_word, #2981).
  *   4. Animation: Reanimated scaleX tile flip on each guess submission.
+ *
+ * State (#2981): the result card's visibility is derived — shown when
+ * `state.is_complete`, unless `revealPending` holds it back while the last
+ * row flips or the answer loads (`state.won` picks the win or loss card).
+ * The card has no dismiss: closing it goes Home. The error toast and the
+ * "Copied!" label both run on the shared useTransientToast.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
   Share,
 } from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSequence,
-  withTiming,
-  withDelay,
-} from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -36,7 +35,6 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
-import { DEV_OVERLAY_BG } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import GameResultModal from "../components/shared/GameResultModal";
@@ -45,17 +43,13 @@ import {
   initialState,
   setCurrentRowLetter,
   deleteLastLetter,
-  applyServerResult,
-  markComplete,
   buildShareText,
   guessCount as countGuesses,
-  withServerGuessCount,
   sessionResult,
 } from "../game/daily_word/engine";
-import type { DailyWordState, TileStatus } from "../game/daily_word/types";
+import type { DailyWordState } from "../game/daily_word/types";
 import { dailyWordApi } from "../game/daily_word/api";
 import { withRetry } from "../game/_shared/withRetry";
-import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { useGameSync } from "../game/_shared/useGameSync";
 import {
   loadState,
@@ -64,35 +58,30 @@ import {
   saveTodayMeta,
   loadTodayMeta,
 } from "../game/daily_word/storage";
-import { ApiError, isNetworkError } from "../game/_shared/httpClient";
-import { devLog } from "../game/daily_word/devLog";
+import { isNetworkError } from "../game/_shared/httpClient";
+import DailyWordDevPanel from "../components/daily_word/DailyWordDevPanel";
+import { TileRow } from "../components/daily_word/WordTile";
+import { WordKeyboard } from "../components/daily_word/WordKeyboard";
+import { Toast } from "../components/daily_word/Toast";
+import { useDailyWordSubmit } from "../components/daily_word/useDailyWordSubmit";
+import { useTransientToast } from "../components/shared/useTransientToast";
 import { DAILY_WORD_SOUNDS } from "../game/daily_word/sounds";
 import { useSound } from "../game/_shared/useSound";
 import { getLanguage, getTimezoneOffset, localDateKey } from "../game/daily_word/todayMeta";
-import type { DevLogEntry } from "../game/daily_word/devLog";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const FLIP_HALF_MS = 150;
-const TILE_STAGGER_MS = 100;
 const TOAST_DURATION_MS = 2000;
+/** How long to wait before retrying when the server hasn't rolled over yet. */
+const NEXT_WORD_RETRY_MS = 60_000;
 const DEEP_LINK = "https://bcarcade.app/daily-word";
-
-const QWERTY_ROWS = [
-  ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
-  ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
-  ["Enter", "Z", "X", "C", "V", "B", "N", "M", "Delete"],
-] as const;
-
-// Devanagari consonants + matras in Varnamala order
-const DEVANAGARI_ROWS = [
-  ["क", "ख", "ग", "घ", "च", "छ", "ज", "झ", "ट", "ठ"],
-  ["ड", "ढ", "त", "थ", "द", "ध", "न", "प", "फ", "ब"],
-  ["Enter", "भ", "म", "य", "र", "ल", "व", "श", "स", "Delete"],
-  ["ह", "ा", "ि", "ी", "ु", "ू", "े", "ै", "ो", "ौ"],
-] as const;
+/** The GameShell error for each load failure (#2925). */
+const LOAD_ERROR_KEY = {
+  offline: "error.needsConnection",
+  failed: "error.couldNotLoad",
+} as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -124,299 +113,8 @@ async function shareResult(text: string): Promise<"copied" | "shared" | "none"> 
 }
 
 // ---------------------------------------------------------------------------
-// Tile component
-// ---------------------------------------------------------------------------
-
-const TILE_STATUS_COLORS: Record<TileStatus, string> = {
-  correct: "#538d4e",
-  present: "#b59f3b",
-  absent: "#3a3a3c",
-  tbd: "transparent",
-  empty: "transparent",
-};
-
-function WordTile({
-  letter,
-  status,
-  isFlipping,
-  flipDelay,
-  testID,
-}: {
-  readonly letter: string;
-  readonly status: TileStatus;
-  readonly isFlipping: boolean;
-  readonly flipDelay: number;
-  readonly testID?: string;
-}) {
-  const { colors } = useTheme();
-  // scaleX 1→0→1 gives the same visual flip as rotateY without 3D compositing
-  // artifacts that cause black-screen flicker on web and some iOS renderers.
-  const scale = useSharedValue(1);
-  const [visibleStatus, setVisibleStatus] = useState<TileStatus>(isFlipping ? "tbd" : status);
-
-  useEffect(() => {
-    if (!isFlipping) {
-      setVisibleStatus(status);
-      return;
-    }
-    scale.value = 1;
-    scale.value = withDelay(
-      flipDelay,
-      withSequence(
-        withTiming(0, { duration: FLIP_HALF_MS }),
-        withTiming(1, { duration: FLIP_HALF_MS })
-      )
-    );
-    const timer = setTimeout(() => setVisibleStatus(status), flipDelay + FLIP_HALF_MS);
-    return () => clearTimeout(timer);
-    // isFlipping and status are the only meaningful triggers
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFlipping, status]);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scaleX: scale.value }],
-  }));
-
-  const bg =
-    visibleStatus === "tbd" || visibleStatus === "empty"
-      ? (colors.surface ?? "#1a1a1b")
-      : TILE_STATUS_COLORS[visibleStatus];
-  const hasBorder = visibleStatus === "empty" || visibleStatus === "tbd";
-  const borderColor = letter ? colors.textMuted : colors.border;
-
-  return (
-    <Animated.View
-      testID={testID}
-      style={[
-        tileStyles.tile,
-        animStyle,
-        {
-          backgroundColor: bg,
-          borderColor: hasBorder ? borderColor : "transparent",
-          borderWidth: hasBorder ? StyleSheet.hairlineWidth * 2 : 0,
-        },
-      ]}
-      accessibilityLabel={
-        letter
-          ? `${letter}${visibleStatus !== "tbd" && visibleStatus !== "empty" ? ` ${visibleStatus}` : ""}`
-          : undefined
-      }
-    >
-      <Text
-        style={[
-          tileStyles.letter,
-          {
-            color:
-              visibleStatus === "correct" ||
-              visibleStatus === "present" ||
-              visibleStatus === "absent"
-                ? "#ffffff"
-                : colors.text,
-          },
-        ]}
-      >
-        {letter.toUpperCase()}
-      </Text>
-    </Animated.View>
-  );
-}
-
-const tileStyles = StyleSheet.create({
-  tile: {
-    width: 52,
-    height: 52,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 4,
-  },
-  letter: {
-    fontFamily: typography.heading,
-    fontSize: 22,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Tile row
-// ---------------------------------------------------------------------------
-
-function TileRow({
-  state,
-  rowIndex,
-  wordLength,
-  isFlipping,
-}: {
-  readonly state: DailyWordState;
-  readonly rowIndex: number;
-  readonly wordLength: number;
-  readonly isFlipping: boolean;
-}) {
-  const row = state.rows[rowIndex];
-  if (!row) return null;
-
-  return (
-    <View testID={`daily-word-row-${rowIndex}`} style={rowStyles.row}>
-      {row.tiles.map((tile, tileIndex) => (
-        <WordTile
-          key={tileIndex}
-          letter={tile.letter}
-          status={tile.status}
-          isFlipping={isFlipping}
-          flipDelay={tileIndex * TILE_STAGGER_MS}
-          testID={`tile-${rowIndex}-${tileIndex}`}
-        />
-      ))}
-      {/* Pad empty tiles if row is shorter than word_length (shouldn't happen) */}
-      {Array.from({ length: Math.max(0, wordLength - row.tiles.length) }, (_, i) => (
-        <WordTile key={`pad-${i}`} letter="" status="empty" isFlipping={false} flipDelay={0} />
-      ))}
-    </View>
-  );
-}
-
-const rowStyles = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    gap: 6,
-    justifyContent: "center",
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Keyboard
-// ---------------------------------------------------------------------------
-
-function WordKeyboard({
-  keyboardState,
-  language,
-  onKey,
-}: {
-  readonly keyboardState: DailyWordState["keyboard_state"];
-  readonly language: string;
-  readonly onKey: (key: string) => void;
-}) {
-  const { t } = useTranslation("daily_word");
-  const { colors } = useTheme();
-
-  const rows = language === "hi" ? DEVANAGARI_ROWS : QWERTY_ROWS;
-
-  const KEY_BG: Record<string, string> = {
-    correct: "#538d4e",
-    present: "#b59f3b",
-    absent: "#3a3a3c",
-    unused: colors.surfaceAlt ?? "#818384",
-  };
-
-  function renderKey(key: string, idx: number) {
-    const isAction = key === "Enter" || key === "Delete";
-    const letterStatus = keyboardState[key.toLowerCase()] ?? keyboardState[key] ?? "unused";
-    const bg = isAction
-      ? (colors.surfaceHigh ?? "#818384")
-      : (KEY_BG[letterStatus] ?? KEY_BG.unused);
-    const label =
-      key === "Enter" ? t("keyboard.enter") : key === "Delete" ? t("keyboard.delete") : key;
-
-    return (
-      <Pressable
-        key={`${key}-${idx}`}
-        testID={`daily-word-key-${key.toLowerCase()}`}
-        onPress={() => onKey(key)}
-        style={[keyStyles.key, isAction && keyStyles.actionKey, { backgroundColor: bg }]}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-      >
-        <Text style={[keyStyles.keyText, { color: "#ffffff" }]}>{label}</Text>
-      </Pressable>
-    );
-  }
-
-  return (
-    <View style={keyStyles.keyboard}>
-      {(rows as ReadonlyArray<ReadonlyArray<string>>).map((row, rowIdx) => (
-        <View key={rowIdx} style={keyStyles.keyRow}>
-          {row.map((key, keyIdx) => renderKey(key, keyIdx))}
-        </View>
-      ))}
-    </View>
-  );
-}
-
-const keyStyles = StyleSheet.create({
-  keyboard: {
-    gap: 6,
-    paddingHorizontal: 4,
-  },
-  keyRow: {
-    flexDirection: "row",
-    gap: 5,
-    justifyContent: "center",
-  },
-  key: {
-    minWidth: 30,
-    height: 56,
-    paddingHorizontal: 6,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionKey: {
-    minWidth: 52,
-  },
-  keyText: {
-    fontFamily: typography.label,
-    fontSize: 13,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-});
-
-// ---------------------------------------------------------------------------
-// Toast
-// ---------------------------------------------------------------------------
-
-function Toast({ message }: { readonly message: string | null }) {
-  const { colors } = useTheme();
-  if (!message) return null;
-  return (
-    <View
-      style={[toastStyles.container, { backgroundColor: colors.text }]}
-      accessibilityRole="alert"
-      accessibilityLiveRegion="assertive"
-    >
-      <Text style={[toastStyles.text, { color: colors.background }]}>{message}</Text>
-    </View>
-  );
-}
-
-const toastStyles = StyleSheet.create({
-  container: {
-    position: "absolute",
-    top: 12,
-    alignSelf: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-    zIndex: 100,
-    maxWidth: 280,
-  },
-  text: {
-    fontFamily: typography.body,
-    fontSize: 13,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-});
-
-// ---------------------------------------------------------------------------
 // Main screen
 // ---------------------------------------------------------------------------
-
-/** A finished puzzle is a win or a loss on the games row (#2517), not just "completed". */
-function finishedOutcome(state: { won: boolean }) {
-  return recordedOutcome(state.won ? "win" : "loss");
-}
 
 export default function DailyWordScreen() {
   const { t } = useTranslation("daily_word");
@@ -433,10 +131,13 @@ export default function DailyWordScreen() {
   const [loading, setLoading] = useState(true);
   // "offline" = network failure with no cached metadata (#2925); "failed" = anything else.
   const [loadError, setLoadError] = useState<"offline" | "failed" | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [winModalVisible, setWinModalVisible] = useState(false);
-  const [lossModalVisible, setLossModalVisible] = useState(false);
+  // The latest toast text; `errorToast` decides whether it is showing.
+  const [toastMessage, setToastMessage] = useState("");
+  const errorToast = useTransientToast(TOAST_DURATION_MS);
+  const copiedToast = useTransientToast(TOAST_DURATION_MS);
+  // Holds a finished board's result card back while its last row flips or
+  // its answer loads; otherwise the card shows whenever the puzzle is done.
+  const [revealPending, setRevealPending] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
   // The next puzzle's release time, fixed when the result appears (#2514).
   // msUntilMidnight() jumps to the following midnight once one passes, so a
@@ -444,22 +145,15 @@ export default function DailyWordScreen() {
   // CountdownButtonLabel ticks toward it on its own (#2964).
   const [nextWordAt, setNextWordAt] = useState<number | null>(null);
   const [nextWordReady, setNextWordReady] = useState(false);
-  const [copied, setCopied] = useState(false);
   // Play Again couldn't load the next puzzle (offline, server error).
   const [playAgainFailed, setPlayAgainFailed] = useState(false);
   const [flippingRowIndex, setFlippingRowIndex] = useState<number | null>(null);
 
-  // Dev panel (#1293) — all gated by __DEV__; Metro eliminates in production
-  const [devPanelOpen, setDevPanelOpen] = useState(false);
-  const [devAnswer, setDevAnswer] = useState<string | null>(null);
-  const [devAnswerVisible, setDevAnswerVisible] = useState(false);
-  const [devLogEntries, setDevLogEntries] = useState<DevLogEntry[]>([]);
-  const [devExpandedIndex, setDevExpandedIndex] = useState<number | null>(null);
+  // Dev panel (#1293) — gated by __DEV__
+  const [devOpen, setDevOpen] = useState(false);
 
   const hasLoadedRef = useRef(false);
   const mountedRef = useRef(true);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const language = getLanguage();
   const tzOffset = getTimezoneOffset();
 
@@ -505,6 +199,7 @@ export default function DailyWordScreen() {
    * review). With `requireNewPuzzle`, a server still serving the current
    * puzzle (device clock ahead of the server's) changes nothing: "same".
    */
+  const hideCopied = copiedToast.hide;
   const resetToToday = useCallback(
     async ({ requireNewPuzzle = false } = {}): Promise<"ok" | "same" | "failed"> => {
       try {
@@ -522,23 +217,19 @@ export default function DailyWordScreen() {
         const fresh = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
         setState(fresh);
         setAnswer(null);
-        setWinModalVisible(false);
-        setLossModalVisible(false);
+        setRevealPending(false);
         setFlippingRowIndex(null);
         setNextWordReady(false);
         setNextWordAt(null);
-        setCopied(false);
+        hideCopied();
         setPlayAgainFailed(false);
         return "ok";
       } catch {
         return "failed";
       }
     },
-    [tzOffset, language, syncGetGameId, syncComplete]
+    [tzOffset, language, syncGetGameId, syncComplete, hideCopied]
   );
-
-  /** How long to wait before retrying when the server hasn't rolled over yet. */
-  const NEXT_WORD_RETRY_MS = 60_000;
 
   const handlePlayAgain = useCallback(async () => {
     setPlayAgainFailed(false);
@@ -556,26 +247,21 @@ export default function DailyWordScreen() {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      if (flipTimerRef.current) clearTimeout(flipTimerRef.current);
     };
-  }, []);
-
-  useEffect(() => {
-    if (!__DEV__) return;
-    setDevLogEntries(devLog.list().slice());
-    return devLog.subscribe(() => setDevLogEntries(devLog.list().slice()));
   }, []);
 
   // ---------------------------------------------------------------------------
   // Toast
   // ---------------------------------------------------------------------------
 
-  const showToast = useCallback((message: string) => {
-    setToast(message);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(null), TOAST_DURATION_MS);
-  }, []);
+  const showErrorToast = errorToast.show;
+  const showToast = useCallback(
+    (message: string) => {
+      setToastMessage(message);
+      showErrorToast();
+    },
+    [showErrorToast]
+  );
 
   // ---------------------------------------------------------------------------
   // Mount: load today's puzzle and any saved state
@@ -634,18 +320,16 @@ export default function DailyWordScreen() {
 
       setState(gameState);
 
+      // A restored finished board shows its card at once (derived from
+      // is_complete); a loss fills in the answer when it arrives.
       if (gameState.is_complete) {
-        if (gameState.won) {
-          setWinModalVisible(true);
-        } else {
-          // Fetch answer for loss modal
+        if (!gameState.won) {
           dailyWordApi
             .getAnswer(gameState.puzzle_id)
             .then((r) => {
               if (alive()) setAnswer(r.answer.toUpperCase());
             })
             .catch(() => {});
-          setLossModalVisible(true);
         }
         startCountdown();
       }
@@ -695,239 +379,26 @@ export default function DailyWordScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   }, []);
 
-  const lastSubmitMsRef = useRef<number>(0);
-
-  const onSubmit = useCallback(async () => {
-    const s = stateRef.current;
-    if (!s || submitting || s.is_complete) return;
-
-    // Debounce rapid double-taps (e.g. two Enter presses within 500 ms) so they
-    // don't consume a rate-limit slot without advancing the game.
-    const now = Date.now();
-    if (now - lastSubmitMsRef.current < 500) return;
-    lastSubmitMsRef.current = now;
-
-    const row = s.rows[s.current_row];
-    if (!row) return;
-
-    const guess = row.tiles.map((tile) => tile.letter).join("");
-    const filled = row.tiles.filter((tile) => tile.letter !== "").length;
-
-    if (filled < s.word_length) {
-      showToast(t("error.tooShort"));
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-      return;
+  const { submit: onSubmit, submitting } = useDailyWordSubmit(
+    stateRef,
+    {
+      start: syncStart,
+      markStarted: syncMarkStarted,
+      complete: syncComplete,
+      getGameId: syncGetGameId,
+    },
+    {
+      tzOffset,
+      setState,
+      showToast,
+      setFlippingRowIndex,
+      setRevealPending,
+      setAnswer,
+      startCountdown,
+      playWin,
+      resetToToday,
     }
-
-    // #2197 — a word already on the board must not be submitted again. The
-    // server treats a repeat of a recorded guess as a replay (so a re-send
-    // after a lost response cannot rob a turn), which means a *deliberate*
-    // repeat would advance the board without spending a server-side guess.
-    // Six rows and five recorded guesses would then leave the player short of
-    // the answer they earned.
-    const alreadyGuessed = s.rows
-      .slice(0, s.current_row)
-      .some((r) => r.submitted && r.tiles.map((tile) => tile.letter).join("") === guess);
-    if (alreadyGuessed) {
-      showToast(t("error.alreadyGuessed"));
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-      return;
-    }
-
-    const _devTs = __DEV__ ? Date.now() : 0;
-    const _devBody = __DEV__
-      ? { puzzle_id: s.puzzle_id, guess, tz_offset_minutes: tzOffset }
-      : undefined;
-
-    setSubmitting(true);
-    try {
-      const result = await dailyWordApi.submitGuess(s.puzzle_id, guess, tzOffset);
-      if (__DEV__)
-        devLog.push({
-          ts: _devTs,
-          method: "POST",
-          path: "/daily-word/guess",
-          body: _devBody,
-          status: 200,
-          response: result,
-        });
-      // The player left while the guess was in flight. useGameSync's unmount
-      // cleanup has already run, so opening a session now would leave one that
-      // nothing ever completes or abandons.
-      if (!mountedRef.current) return;
-      const tileStates = result.tiles.map((t) => ({ letter: t.letter, status: t.status }));
-
-      // #2541 — keep the server's count on the state; `guessCount` reads it.
-      const afterApply = withServerGuessCount(
-        applyServerResult(s, tileStates),
-        result.guesses_used
-      );
-      const won = tileStates.every((tile) => tile.status === "correct");
-      // Deliberately the board's rows, not the server's `guesses_remaining`
-      // (#2541 review). A 200 can be a replay of a recorded guess — on a
-      // puzzle the server has as solved, or on a wiped board — and the 200
-      // carries no `solved` flag, so ending the game here would record a
-      // loss for a win, or a fresh completion for a finished puzzle. A board
-      // that is behind reaches its next guess, which the server refuses with
-      // a 403 that the recovery path below handles, guards included.
-      const outOfGuesses = !won && afterApply.current_row >= 6;
-
-      if (!syncGetGameId()) {
-        syncStart({ puzzle_id: s.puzzle_id }, { puzzle_id: s.puzzle_id, language: s.language });
-      }
-      syncMarkStarted();
-
-      let finalState = afterApply;
-      if (won || outOfGuesses) {
-        finalState = markComplete(afterApply, won);
-        // Daily Word has no numeric score: final_score stays null and the
-        // challenge reads the result block instead.
-        const result = sessionResult(finalState);
-        syncComplete({ finalScore: null, outcome: finishedOutcome(finalState), result }, result);
-      }
-
-      setState(finalState);
-
-      // Trigger flip animation for the submitted row
-      const submittedRowIndex = s.current_row;
-      setFlippingRowIndex(submittedRowIndex);
-
-      const totalFlipMs = s.word_length * TILE_STAGGER_MS + FLIP_HALF_MS * 2;
-      flipTimerRef.current = setTimeout(async () => {
-        setFlippingRowIndex(null);
-        if (finalState.is_complete) {
-          if (finalState.won) {
-            setWinModalVisible(true);
-            playWin();
-          } else {
-            try {
-              const answerData = await dailyWordApi.getAnswer(s.puzzle_id);
-              setAnswer(answerData.answer.toUpperCase());
-            } catch {
-              // show modal without answer
-            }
-            setLossModalVisible(true);
-          }
-          startCountdown();
-        }
-      }, totalFlipMs);
-    } catch (err) {
-      if (__DEV__)
-        devLog.push({
-          ts: _devTs,
-          method: "POST",
-          path: "/daily-word/guess",
-          body: _devBody,
-          status: err instanceof ApiError ? err.status : undefined,
-          error: err instanceof ApiError ? err.message : String(err),
-        });
-      if (err instanceof ApiError && err.status === 422) {
-        if (err.message === "not_a_word") {
-          showToast(t("error.notAWord"));
-        } else if (err.message === "stale_puzzle_id") {
-          const recovered = (await resetToToday()) === "ok";
-          showToast(recovered ? t("error.stalePuzzle") : t("error.couldNotLoad"));
-        } else if (err.message === "wrong_guess_length") {
-          showToast(t("error.wrongLength"));
-        } else {
-          showToast(t("error.couldNotSubmit"));
-        }
-      } else if (err instanceof ApiError && err.status === 429) {
-        showToast(t("error.rateLimited"));
-      } else if (
-        err instanceof ApiError &&
-        err.status === 403 &&
-        (err.message === "no_guesses_remaining" || err.message === "already_solved")
-      ) {
-        // #2197 — the server says this puzzle is finished and the local board
-        // disagrees, which happens when a guess was recorded but its response
-        // never arrived. Trust the server: close the game out and reveal the
-        // answer it will now release, rather than stranding the player on a
-        // board that can never complete.
-        // Same guard as the success path: the player may have left while the
-        // guess was in flight, in which case useGameSync's unmount cleanup has
-        // already run and there is nothing left to close out.
-        const current = stateRef.current;
-        if (mountedRef.current && current) {
-          // `already_solved` means the server recorded a winning guess — the
-          // player won, and only the response was lost. Marking that a loss
-          // would persist won:false and show them the word they had already
-          // found.
-          const wonIt = err.message === "already_solved";
-          // The board is behind the server here by definition — that is why
-          // this 403 happened — so its row count is too low. Take the
-          // server's count from the refusal (#2541); `guessCount` falls back
-          // to the board if an older API sent none.
-          const finished = markComplete(
-            withServerGuessCount(current, err.body?.guesses_used),
-            wonIt
-          );
-
-          // Only report a session this visit actually played. `already_solved`
-          // is returned for *any* guess on a puzzle this session finished at
-          // any earlier time, and the board can be missing independently of
-          // the session id — they are separate AsyncStorage keys
-          // (`daily_word_state_v1` vs `game_session_id`), and loadState drops
-          // only the board on a corrupt payload. Without this guard, opening a
-          // wiped board and typing one word would fabricate a completed game
-          // for a puzzle finished hours ago, with a guesses_used taken from an
-          // empty board — free XP and a free "win in N guesses" goal credit.
-          const playedThisVisit = current.rows.some((r) => r.submitted);
-          if (playedThisVisit) {
-            // The session must be completed, or the unmount cleanup reports
-            // outcome:"abandoned" — and abandoned games earn no
-            // daily-challenge credit, no streak day and no XP (#2468/#2472).
-            if (!syncGetGameId()) {
-              syncStart(
-                { puzzle_id: current.puzzle_id },
-                { puzzle_id: current.puzzle_id, language: current.language }
-              );
-            }
-            syncMarkStarted();
-            const result = sessionResult(finished);
-            syncComplete({ finalScore: null, outcome: finishedOutcome(finished), result }, result);
-          }
-
-          setState(finished);
-          saveState(finished).catch(() => {});
-
-          if (wonIt) {
-            setWinModalVisible(true);
-            // A wiped board reopening a puzzle finished earlier is a restore,
-            // not a solve this visit revealed: no fanfare.
-            if (playedThisVisit) playWin();
-          } else {
-            try {
-              const answerData = await dailyWordApi.getAnswer(finished.puzzle_id);
-              if (mountedRef.current) setAnswer(answerData.answer.toUpperCase());
-            } catch {
-              // Modal still opens; it just won't reveal the word.
-            }
-            if (!mountedRef.current) return;
-            setLossModalVisible(true);
-          }
-          startCountdown();
-        }
-      } else {
-        showToast(t("error.couldNotSubmit"));
-      }
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-    } finally {
-      setSubmitting(false);
-    }
-  }, [
-    submitting,
-    showToast,
-    startCountdown,
-    t,
-    tzOffset,
-    resetToToday,
-    syncGetGameId,
-    syncStart,
-    syncMarkStarted,
-    syncComplete,
-    playWin,
-  ]);
+  );
 
   const handleKey = useCallback(
     (key: string) => {
@@ -952,11 +423,8 @@ export default function DailyWordScreen() {
     if (!state) return;
     try {
       const outcome = await shareResult(buildShareText(state, DEEP_LINK));
-      if (outcome !== "copied") return;
-      setCopied(true);
-      setTimeout(() => {
-        if (mountedRef.current) setCopied(false);
-      }, 2000);
+      if (outcome !== "copied" || !mountedRef.current) return;
+      copiedToast.show();
     } catch {
       // Share dismissed or clipboard unavailable — nothing to report.
     }
@@ -964,13 +432,7 @@ export default function DailyWordScreen() {
 
   if (loading) {
     return (
-      <GameShell
-        gameType="daily_word"
-        title={t("game.title")}
-        requireBack
-        onBack={() => navigation.popToTop()}
-        loading
-      >
+      <GameShell gameType="daily_word" title={t("game.title")} requireBack gutter={null} loading>
         {null}
       </GameShell>
     );
@@ -981,19 +443,13 @@ export default function DailyWordScreen() {
       gameType="daily_word"
       title={t("game.title")}
       requireBack
-      onBack={() => navigation.popToTop()}
-      error={
-        loadError === "offline"
-          ? t("error.needsConnection")
-          : loadError
-            ? t("error.couldNotLoad")
-            : null
-      }
+      gutter={null}
+      error={loadError ? t(LOAD_ERROR_KEY[loadError]) : null}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >
       <View style={styles.body}>
         {/* Toast */}
-        <Toast message={toast} />
+        <Toast message={errorToast.visible ? toastMessage : null} />
 
         {loadError === "offline" && (
           <Pressable
@@ -1045,18 +501,21 @@ export default function DailyWordScreen() {
         {/* Loading indicator during submit */}
         {submitting && <ActivityIndicator style={styles.submitIndicator} color={colors.accent} />}
 
-        {/* Dev panel trigger */}
-        {__DEV__ && (
-          <Pressable style={styles.devButton} onPress={() => setDevPanelOpen(true)}>
-            <Text style={styles.devButtonText}>DEV</Text>
-          </Pressable>
-        )}
+        {/* Dev panel (#1293): its DEV button sits in the board's top-left corner */}
+        <DailyWordDevPanel
+          enabled={__DEV__}
+          open={devOpen}
+          onOpen={() => setDevOpen(true)}
+          onClose={() => setDevOpen(false)}
+          state={state}
+          onReset={resetToToday}
+        />
       </View>
 
       {/* End-of-game result card (#2514) */}
       {state !== null && (
         <GameResultModal
-          visible={winModalVisible || lossModalVisible}
+          visible={state.is_complete && !revealPending}
           outcome={state.won ? "win" : "loss"}
           eyebrow={t("game.title")}
           subtitle={
@@ -1092,170 +551,13 @@ export default function DailyWordScreen() {
                 }
           }
           secondaryAction={{
-            label: copied ? t("result.copied") : t("result.share"),
+            label: copiedToast.visible ? t("result.copied") : t("result.share"),
             accessibilityLabel: t("result.share"),
             onPress: () => void handleShare(),
           }}
           onHome={() => navigation.popToTop()}
           testID="daily-word-result"
         />
-      )}
-
-      {/* Dev panel (#1293) */}
-      {__DEV__ && (
-        <Modal
-          visible={devPanelOpen}
-          transparent
-          animationType="fade"
-          accessibilityViewIsModal
-          onRequestClose={() => setDevPanelOpen(false)}
-        >
-          <View style={styles.devOverlay}>
-            <View style={[styles.devPanel, { backgroundColor: colors.surfaceHigh }]}>
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.devScrollContent}
-              >
-                <Text style={styles.devPanelTitle}>Dev Panel</Text>
-
-                <Text style={styles.devSectionHeader}>{"── Today's Puzzle ──"}</Text>
-
-                {state !== null && (
-                  <>
-                    <Text style={[styles.devInfoText, { color: colors.textMuted }]}>
-                      {`puzzle_id: ${state.puzzle_id}\nword_length: ${state.word_length}\nlang: ${state.language}`}
-                    </Text>
-
-                    <Pressable
-                      style={styles.devActionBtn}
-                      onPress={async () => {
-                        if (devAnswerVisible) {
-                          setDevAnswerVisible(false);
-                          setDevAnswer(null);
-                        } else {
-                          try {
-                            const r = await dailyWordApi.getAnswer(state.puzzle_id);
-                            setDevAnswer(r.answer.toUpperCase());
-                            setDevAnswerVisible(true);
-                          } catch {
-                            setDevAnswer("(failed to fetch)");
-                            setDevAnswerVisible(true);
-                          }
-                        }
-                      }}
-                    >
-                      <Text style={[styles.devBtnText, { color: colors.textMuted }]}>
-                        {devAnswerVisible ? "Hide Answer" : "Show Answer"}
-                      </Text>
-                    </Pressable>
-
-                    {devAnswerVisible && devAnswer !== null && (
-                      <Text style={styles.devAnswerText}>{devAnswer}</Text>
-                    )}
-
-                    <Pressable
-                      style={styles.devPrimaryBtn}
-                      onPress={async () => {
-                        await resetToToday();
-                        setDevAnswer(null);
-                        setDevAnswerVisible(false);
-                        setDevPanelOpen(false);
-                      }}
-                    >
-                      <Text style={[styles.devBtnText, { color: "#fff" }]}>Reset Game</Text>
-                    </Pressable>
-                    <Text style={styles.devWarningText}>
-                      {
-                        "Resets local board only — backend rate limit (20/hr per session+puzzle) still applies"
-                      }
-                    </Text>
-                  </>
-                )}
-
-                <Text style={styles.devSectionHeader}>── Game State ──</Text>
-
-                {state !== null && (
-                  <Text style={[styles.devInfoText, { color: colors.textMuted }]}>
-                    {`row: ${state.current_row}  won: ${state.won}  done: ${state.is_complete}`}
-                    {state.rows
-                      .filter((r) => r.submitted)
-                      .map(
-                        (r, i) =>
-                          `\n${i + 1}: ${r.tiles.map((tile) => tile.letter).join("")}  [${r.tiles.map((tile) => tile.status[0]).join("")}]`
-                      )
-                      .join("")}
-                  </Text>
-                )}
-
-                <Text style={styles.devSectionHeader}>── API Log ──</Text>
-
-                <Pressable
-                  style={styles.devActionBtn}
-                  onPress={() => {
-                    devLog.clear();
-                    setDevExpandedIndex(null);
-                  }}
-                >
-                  <Text style={[styles.devBtnText, { color: colors.textMuted }]}>Clear log</Text>
-                </Pressable>
-
-                {devLogEntries.length === 0 && (
-                  <Text style={[styles.devInfoText, { color: colors.textMuted }]}>
-                    No API calls yet
-                  </Text>
-                )}
-
-                {devLogEntries.map((entry, idx) => (
-                  <Pressable
-                    key={`${entry.ts}-${entry.method}-${entry.path}`}
-                    style={styles.devLogEntry}
-                    onPress={() => setDevExpandedIndex(devExpandedIndex === idx ? null : idx)}
-                  >
-                    <View style={styles.devLogHeader}>
-                      <Text
-                        style={[
-                          styles.devLogStatus,
-                          {
-                            backgroundColor: entry.error
-                              ? "rgba(255,60,60,0.2)"
-                              : "rgba(60,200,60,0.2)",
-                            color: entry.error ? "#ff6060" : "#60e060",
-                          },
-                        ]}
-                      >
-                        {entry.status ?? "err"}
-                      </Text>
-                      <Text style={styles.devLogPath} numberOfLines={1}>
-                        {entry.method} {entry.path.split("?")[0]}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.devInfoText,
-                          { color: colors.textMuted, flex: 0, fontSize: 10 },
-                        ]}
-                      >
-                        {new Date(entry.ts).toLocaleTimeString()}
-                      </Text>
-                    </View>
-                    {devExpandedIndex === idx && (
-                      <Text style={styles.devLogBody}>
-                        {JSON.stringify(
-                          { body: entry.body, response: entry.response, error: entry.error },
-                          null,
-                          2
-                        )}
-                      </Text>
-                    )}
-                  </Pressable>
-                ))}
-
-                <Pressable style={styles.devActionBtn} onPress={() => setDevPanelOpen(false)}>
-                  <Text style={[styles.devBtnText, { color: colors.textMuted }]}>Close</Text>
-                </Pressable>
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
       )}
     </GameShell>
   );
@@ -1290,115 +592,5 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     alignSelf: "center",
-  },
-  // Dev panel styles
-  devButton: {
-    position: "absolute",
-    top: 6,
-    left: 6,
-    backgroundColor: "rgba(255,128,0,0.85)",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    zIndex: 100,
-  },
-  devButtonText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1,
-  },
-  devOverlay: {
-    flex: 1,
-    backgroundColor: DEV_OVERLAY_BG,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  devPanel: {
-    borderRadius: 12,
-    padding: 20,
-    width: 300,
-    maxHeight: "85%",
-    borderWidth: 1,
-    borderColor: "rgba(255,128,0,0.5)",
-  },
-  devScrollContent: {
-    gap: 12,
-    paddingBottom: 4,
-  },
-  devPanelTitle: {
-    color: "rgba(255,128,0,1)",
-    fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 2,
-    textAlign: "center",
-    textTransform: "uppercase",
-  },
-  devSectionHeader: {
-    color: "rgba(255,128,0,0.7)",
-    fontSize: 10,
-    letterSpacing: 1,
-    textAlign: "center",
-    marginTop: 4,
-  },
-  devActionBtn: {
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-  devPrimaryBtn: {
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: "center",
-    backgroundColor: "rgba(255,128,0,0.9)",
-  },
-  devBtnText: {
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  devInfoText: {
-    fontSize: 11,
-    lineHeight: 17,
-  },
-  devAnswerText: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: "#ffd700",
-    textAlign: "center",
-    letterSpacing: 6,
-  },
-  devWarningText: {
-    fontSize: 10,
-    color: "rgba(255,200,0,0.7)",
-    textAlign: "center",
-    fontStyle: "italic",
-  },
-  devLogEntry: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: 6,
-    padding: 8,
-    gap: 4,
-  },
-  devLogHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  devLogStatus: {
-    fontSize: 10,
-    fontWeight: "700",
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  devLogPath: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.7)",
-    flex: 1,
-  },
-  devLogBody: {
-    fontSize: 10,
-    color: "rgba(255,255,255,0.5)",
   },
 });
