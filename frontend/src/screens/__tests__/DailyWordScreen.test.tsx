@@ -306,6 +306,26 @@ describe("DailyWordScreen — saved game (usePersistedGameState, #3109)", () => 
     expect(lastSaved().puzzle_id).toBe(TODAY_META.puzzle_id);
   });
 
+  it("still saves today's board, and later changes, when clearing another day's save fails", async () => {
+    storage.loadState.mockResolvedValue(STALE_STATE);
+    storage.clearState.mockRejectedValue(new Error("removeItem failed"));
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(storage.clearState).toHaveBeenCalledTimes(1);
+    expect(storage.saveState).toHaveBeenCalledTimes(1);
+    expect(lastSaved().puzzle_id).toBe(TODAY_META.puzzle_id);
+
+    await act(async () => {
+      await fireEvent.press(api.getByTestId("daily-word-key-c"));
+    });
+    expect(storage.saveState).toHaveBeenCalledTimes(2);
+    expect(lastSaved().rows[0]!.tiles[0]!.letter).toBe("c");
+  });
+
   // Two overlapping loads (StrictMode's double mount), the older landing last
   // (#3127): the load is side-effect-free, so the dropped older one can't
   // clear today's board after the newer one saved it, or flip the restore.

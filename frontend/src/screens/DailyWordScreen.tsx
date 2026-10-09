@@ -378,9 +378,14 @@ export default function DailyWordScreen() {
     // after it commits, and that save waits for `staleClearRef`, so the clear
     // always lands first.
     if (info.staleSave) {
-      const clearing: Promise<void> = clearState().then(() => {
-        if (staleClearRef.current === clearing) staleClearRef.current = null;
-      });
+      // A failed clear must never block saves: the slot already reports it
+      // (storageSlot's `clear`, op "clear") and resolves, and the catch keeps
+      // a rejection from leaving every later save waiting on it.
+      const clearing: Promise<void> = clearState()
+        .catch(() => {})
+        .then(() => {
+          if (staleClearRef.current === clearing) staleClearRef.current = null;
+        });
       staleClearRef.current = clearing;
     }
     // A restored board continues the session a killed app left open for this
