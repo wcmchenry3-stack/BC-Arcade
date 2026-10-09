@@ -68,7 +68,9 @@ def closed_face(c="#1a0a00"):
   <ellipse cx="327" cy="308" rx="24" ry="15" fill="rgba(255,130,130,0.38)"/>"""
 
 
-def write(name, c0, c1, c2, c3, details="", face="", extra_defs="", post_face=""):
+def write(  # noqa: PLR0913 - positional sprite-definition helper called from many sprite blocks
+    name, c0, c1, c2, c3, details="", face="", extra_defs="", post_face=""
+):
     content = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
 {defs(c0, c1, c2, c3, extra_defs)}
 

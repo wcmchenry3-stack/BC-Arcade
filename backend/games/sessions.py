@@ -246,7 +246,7 @@ async def append_events(
     )
 
 
-async def complete_game(
+async def complete_game(  # noqa: PLR0913 - keyword-only fields of one completion
     session: AsyncSession,
     *,
     game_id: uuid.UUID,

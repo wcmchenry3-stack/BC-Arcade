@@ -62,7 +62,6 @@ DEFAULT_TARGETS = [
 def _opaque_pixels(
     pixels: list[tuple[int, int, int, int]],
     width: int,
-    height: int,
     alpha_threshold: int = 200,
 ) -> list[tuple[int, int]]:
     """Return (x, y) coordinates of every pixel whose alpha > alpha_threshold."""
@@ -230,7 +229,7 @@ def extract_hull(
                 return empty
             points = np.column_stack((xs.astype(float), ys.astype(float)))
         else:
-            opaque = _opaque_pixels(pixels, width, height)
+            opaque = _opaque_pixels(pixels, width)
             if len(opaque) < 3:
                 return empty
             points = np.array(opaque, dtype=float)
@@ -238,7 +237,7 @@ def extract_hull(
         hull_obj = ConvexHull(points)
         hull_pts = [tuple(points[i]) for i in hull_obj.vertices]
     except ImportError:
-        opaque = _opaque_pixels(pixels, width, height)
+        opaque = _opaque_pixels(pixels, width)
         if len(opaque) < 3:
             return empty
         hull_pts = _graham_scan([(float(x), float(y)) for x, y in opaque])
