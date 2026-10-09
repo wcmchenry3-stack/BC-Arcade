@@ -1203,9 +1203,9 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `GOOGLE_PLAY_ENVIRONMENTS` | unset/empty → `production,test` (blank → none: misconfigured) | `purchases/verifiers.py` (lazy, once per process)       |
 | `ENTITLEMENT_TOKEN_TTL_HOURS` | `24` (1–168; the client's offline grace is 7 days)  | `entitlements/service.py` (lazy)                        |
 | `STALE_GAME_AFTER_HOURS` | `24` (1–720)                                    | `games/sweep.py`, `games/sweep_gate.py` (lazy)          |
-| `MAX_RESULT_BYTES`     | `8192` (1024–1048576)                             | `games/sessions.py` (lazy)                              |
+| `MAX_RESULT_BYTES`     | `8192` (1024–131072)                              | `games/sessions.py` (lazy)                              |
 | `STREAK_LOOKBACK_DAYS` | `60` (1–365; also the largest streak reported)    | `daily_challenge/streak.py` (lazy)                      |
-| `APPLE_REPLAY_WINDOW_HOURS` | `48` (1–4320)                                | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`) |
+| `APPLE_REPLAY_WINDOW_HOURS` | `48` (1–720)                                 | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`) |
 | `DB_PING_TIMEOUT_SECONDS` | `5.0` (above 0, at most 60)                    | `routes/health.py` (lazy)                               |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /

@@ -424,9 +424,9 @@ TUNABLES = (
 TUNABLE_BOUNDS = (
     ("ENTITLEMENT_TOKEN_TTL_HOURS", "0", "169"),
     ("STALE_GAME_AFTER_HOURS", "0", "721"),
-    ("MAX_RESULT_BYTES", "1023", "1048577"),
+    ("MAX_RESULT_BYTES", "1023", "131073"),
     ("STREAK_LOOKBACK_DAYS", "0", "366"),
-    ("APPLE_REPLAY_WINDOW_HOURS", "0", "4321"),
+    ("APPLE_REPLAY_WINDOW_HOURS", "0", "721"),
     ("DB_PING_TIMEOUT_SECONDS", "0", "60.5"),
 )
 
@@ -467,6 +467,8 @@ def test_tunable_bounds_accept_the_edges() -> None:
     assert Settings.isolated(ENTITLEMENT_TOKEN_TTL_HOURS=1).entitlement_token_ttl_hours == 1
     assert Settings.isolated(ENTITLEMENT_TOKEN_TTL_HOURS=168).entitlement_token_ttl_hours == 168
     assert Settings.isolated(MAX_RESULT_BYTES=1024).max_result_bytes == 1024
+    assert Settings.isolated(MAX_RESULT_BYTES=131_072).max_result_bytes == 131_072
+    assert Settings.isolated(APPLE_REPLAY_WINDOW_HOURS=720).apple_replay_window_hours == 720
     assert Settings.isolated(DB_PING_TIMEOUT_SECONDS=60).db_ping_timeout_seconds == 60
 
 
@@ -533,3 +535,12 @@ def test_max_guesses_stays_a_game_rule() -> None:
 
     assert MAX_GUESSES == 6
     assert not any("guess" in name for name in Settings.model_fields)
+
+
+def test_max_result_bytes_cap_fits_inside_the_games_body_cap() -> None:
+    """A result at the cap must still pass the /games request-body limit (no 413)."""
+    from middleware.body_size import LARGE_BODY_BYTES
+
+    cap = Settings.model_fields["max_result_bytes"].metadata
+    le = next(m.le for m in cap if getattr(m, "le", None) is not None)
+    assert le * 2 <= LARGE_BODY_BYTES

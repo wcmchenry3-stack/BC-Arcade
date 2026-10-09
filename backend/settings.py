@@ -147,14 +147,17 @@ class Settings(BaseSettings):
     )
     # An open game this old is closed as abandoned (games.sweep, games.sweep_gate).
     stale_game_after_hours: int = Field(default=24, alias="STALE_GAME_AFTER_HOURS", ge=1, le=720)
-    # Largest accepted JSON ``result`` on game completion (games.sessions).
-    max_result_bytes: int = Field(default=8192, alias="MAX_RESULT_BYTES", ge=1024, le=1_048_576)
+    # Largest accepted JSON ``result`` on game completion (games.sessions). Capped at
+    # 128 KiB, half the 256 KiB ``/games`` request-body cap (middleware.body_size), so
+    # the completion envelope always fits and a valid result is never rejected with 413.
+    max_result_bytes: int = Field(default=8192, alias="MAX_RESULT_BYTES", ge=1024, le=131_072)
     # How far back the daily-challenge streak looks, and so its cap (daily_challenge.streak).
     streak_lookback_days: int = Field(default=60, alias="STREAK_LOOKBACK_DAYS", ge=1, le=365)
-    # The App Store notification-history replay window (purchases.apple_notifications);
-    # 4320 h = 180 days, the longest history the App Store Server API keeps.
+    # The App Store notification-history replay window (purchases.apple_notifications).
+    # The one window is sent to every environment, and Sandbox only accepts a startDate
+    # within 30 days (Production allows 180), so the cap is 720 h = 30 days.
     apple_replay_window_hours: int = Field(
-        default=48, alias="APPLE_REPLAY_WINDOW_HOURS", ge=1, le=4320
+        default=48, alias="APPLE_REPLAY_WINDOW_HOURS", ge=1, le=720
     )
     # Bound on the ``/health/db`` ``SELECT 1`` (routes.health).
     db_ping_timeout_seconds: float = Field(
