@@ -268,9 +268,11 @@ function isGridComplete(grid: Grid, solution: string): boolean {
   return true;
 }
 
-/** Alias exported so tests (and downstream UI) can ask the question
+/**
+ * Alias exported so tests (and downstream UI) can ask the question
+ * without reaching into the `state.isComplete` field directly.
  * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
- * without reaching into the `state.isComplete` field directly. */
+ */
 export function isComplete(grid: Grid, solution: string): boolean {
   return isGridComplete(grid, solution);
 }
@@ -442,4 +444,31 @@ export function peers(r1: number, c1: number, r2: number, c2: number, cfg: GridC
     Math.floor(r1 / cfg.boxRows) === Math.floor(r2 / cfg.boxRows) &&
     Math.floor(c1 / cfg.boxCols) === Math.floor(c2 / cfg.boxCols)
   );
+}
+
+/**
+ * Return the coordinates of all cells that already hold `value` in the
+ * same row, column, or box as (`row`, `col`). Pure conflict-detection
+ * helper (exercised by the engine test suite).
+ * @internal No production caller yet; planned for the illegal-move indicator (Sentry BC_GAMES-5J)
+ */
+export function getConflicts(
+  grid: Grid,
+  row: number,
+  col: number,
+  value: number,
+  cfg: GridConfig = CLASSIC_CONFIG
+): Array<[number, number]> {
+  const { size } = cfg;
+  if (value < 1 || value > size) return [];
+  const out: Array<[number, number]> = [];
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (r === row && c === col) continue;
+      if (!peers(row, col, r, c, cfg)) continue;
+      const cell = cellAt(grid, r, c);
+      if (cell.value === value) out.push([r, c]);
+    }
+  }
+  return out;
 }
