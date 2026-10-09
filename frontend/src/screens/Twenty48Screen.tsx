@@ -4,8 +4,9 @@
  * Concerns:
  *   1. Game logic — swipes (RNGH Pan) and, on web, arrow keys go to the pure engine's
  *      `move`; its tile-id counter is restored by `loadGame` (`seedNextTileId`, #698).
- *   2. Persistence — `saveGame` after every move with one-shot `events` stripped;
- *      cleared on game over.
+ *   2. Persistence — `usePersistedGameState` (#3109) restores the save on mount (or deals
+ *      fresh) and saves every change with one-shot `events` stripped; the game-over edge
+ *      (`useCompletionTransition`) clears it.
  *   3. Play clock (#2735, #2750) — `usePausableClock` pauses it on blur and background.
  *   4. Instrumentation (#369, #549) — `useGameSync("twenty48")`, one session per game; the
  *      2048 win completes it and Keep Playing is untracked (#2631); a restored game resumes
@@ -26,6 +27,8 @@ import { GameShell } from "../components/shared/GameShell";
 import { bestOf } from "../game/_shared/bestOf";
 import { useGameEvents } from "../game/_shared/useGameEvents";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
+import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
+import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
 import { usePausableClock } from "../hooks/usePausableClock";
 import { Twenty48State } from "../game/twenty48/types";
 import {
@@ -79,8 +82,31 @@ export default function Twenty48Screen({ navigation }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
-  const [state, setState] = useState<Twenty48State | null>(null);
-  const [loading, setLoading] = useState(true);
+  // The best score as the mount load read it, for the restore below.
+  const loadedBestRef = useRef(0);
+  // The saved game as the restore applied it: already stored, so not written
+  // back (a fresh deal is saved at once instead).
+  const restoredRef = useRef<Twenty48State | null>(null);
+  // The saved game (usePersistedGameState, #3109), loaded with the best score
+  // on mount. The best score is the only local figure kept: the result card's
+  // "New best" badge compares with it. The old `twenty48_stats_v1` counters are
+  // no longer read or written (#2636); the Stats screen reads the server.
+  // Every change is saved once the load has landed, with the one-shot events
+  // stripped (they must never replay on reload); the fresh game a clean slot
+  // deals is saved at once, and a restored game is not written back. Called before the game-over edge, so a losing move
+  // is saved before that edge clears it. `stateRef` is the latest state, for
+  // the progress snapshot and New Game. The restore is below.
+  const game = usePersistedGameState<Twenty48State>({
+    load: async () => {
+      const [saved, best] = await Promise.all([loadGame(), loadBestScore()]);
+      loadedBestRef.current = best;
+      return saved;
+    },
+    save: (s) =>
+      s === restoredRef.current ? Promise.resolve() : saveGame({ ...s, events: undefined }),
+    clear: clearGame,
+  });
+  const { state, setState, stateRef, loading, clear: clearSavedGame } = game;
   const [winDismissed, setWinDismissed] = useState(false);
   /** The move that made 2048 also ended the game: the card is still the win. */
   const [wonOnLastMove, setWonOnLastMove] = useState(false);
@@ -120,16 +146,13 @@ export default function Twenty48Screen({ navigation }: Props) {
   const { leaderboard, openLeaderboard } = useGameLeaderboard("twenty48", navigation);
   const { lookup: lookupRank, reset: resetLeaderboard } = leaderboard;
   const moveCountRef = useRef(0);
-  const stateRef = useRef<Twenty48State | null>(null);
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
 
   // Another screen covering the game (⋯ → Stats, Leaderboard, Scoreboard,
   // #2735) or the app going to the background (#2750) stops its clock, so
   // the reported duration counts only play (usePausableClock). The paused
-  // board is saved (2048 otherwise saves only on a move), so a kill while
-  // backgrounded keeps the time played since the last move. `awayRef` also
+  // board is saved on the way out (`saveOnLeave`, without waiting for a render
+  // that may never come in the background) and again when it commits, so a
+  // kill while backgrounded keeps the time played since the last move. `awayRef` also
   // gates the queued move below: applying it while away would run move()'s
   // timer logic on a paused (`startedAt: null`) state, restarting the clock.
   const { awayRef, adoptLoaded, matchPresence } = usePausableClock({
@@ -139,7 +162,6 @@ export default function Twenty48Screen({ navigation }: Props) {
     pauseGame,
     resumeGame,
     saveOnLeave: (paused) => saveGame({ ...paused, events: undefined }),
-    onPaused: (paused) => saveGame({ ...paused, events: undefined }),
   });
 
   // #2450 / #2619 — the board's result block. The hook's own abandon (unmount)
@@ -165,7 +187,7 @@ export default function Twenty48Screen({ navigation }: Props) {
       // hook's foreground window (#2684).
       return { result, durationMs: result.duration_ms };
     });
-  }, [syncSetProgressSnapshot, progressResult]);
+  }, [syncSetProgressSnapshot, progressResult, stateRef]);
 
   // Close the session as a finished game (#2631): `win` when the 2048 card
   // shows, `loss` on a game over without it. New builds never write
@@ -192,46 +214,49 @@ export default function Twenty48Screen({ navigation }: Props) {
     navigation.setOptions({ gestureEnabled: false });
   }, [navigation]);
 
-  // Load the saved game and the best score on mount. The best score is the
-  // only local figure kept: the result card's "New best" badge compares with
-  // it. The old `twenty48_stats_v1` counters are no longer read or written
-  // (#2636); the Stats screen reads the server.
-  useEffect(() => {
-    let active = true;
-    Promise.all([loadGame(), loadBestScore()]).then(([saved, best]) => {
-      if (!active) return;
-      // loadGame restarts a saved mid-game's clock from now (#2750): the time
-      // played before the app was closed is kept, the time it was closed isn't.
-      const next = adoptLoaded(saved ?? newGame());
-      setState(next);
-      if (!saved) saveGame(next);
-      setBestScore(best);
-      setBestAtGameStart(best);
-      setLoading(false);
-      if (!next.game_over && next.has_won) {
-        // A saved game past 2048 was finished at the win (#2631): the rest of
-        // it is untracked, so it opens no session. A build from before #2631
-        // left its session open while the win card was up, though; if the app
-        // was killed then, record that session now as the win it was.
-        moveCountRef.current = 0;
-        if (saved && syncResume()) finishSession(next, "win");
-      } else if (!next.game_over) {
-        moveCountRef.current = 0;
-        // A saved mid-game continues the session a killed app left open (#2654).
-        if (!(saved && syncResume())) {
-          syncStart({ initial_board: flattenBoard(next.board) });
-          // Resuming a saved mid-game means the player already started — mark it.
-          if (saved) syncMarkStarted();
-        }
+  // When the game ends, remove the saved state so a fresh game starts next
+  // launch (useCompletionTransition, #3109). The session is not finished here:
+  // the move handler finishes it in the same call as the move (the 2048 win or
+  // a game over without it). A game the restore loaded already over only
+  // clears its leftover save.
+  const { markRestoredComplete, reset: resetGameOver } = useCompletionTransition(
+    state,
+    !!state?.game_over,
+    { onComplete: () => clearSavedGame(), onAlreadyComplete: () => clearSavedGame() }
+  );
+
+  // Mount: resume the saved game, or deal fresh in its place.
+  useGameRestored(game, (saved) => {
+    // loadGame restarts a saved mid-game's clock from now (#2750): the time
+    // played before the app was closed is kept, the time it was closed isn't.
+    const next = adoptLoaded(saved ?? newGame());
+    setState(next);
+    // A load landing while the player is away is paused (`adoptLoaded`), and a
+    // paused board is saved, as it always was.
+    if (saved && !next.paused) restoredRef.current = next;
+    const best = loadedBestRef.current;
+    setBestScore(best);
+    setBestAtGameStart(best);
+    if (next.game_over) markRestoredComplete();
+    if (!next.game_over && next.has_won) {
+      // A saved game past 2048 was finished at the win (#2631): the rest of
+      // it is untracked, so it opens no session. A build from before #2631
+      // left its session open while the win card was up, though; if the app
+      // was killed then, record that session now as the win it was.
+      moveCountRef.current = 0;
+      if (saved && syncResume()) finishSession(next, "win");
+    } else if (!next.game_over) {
+      moveCountRef.current = 0;
+      // A saved mid-game continues the session a killed app left open (#2654).
+      if (!(saved && syncResume())) {
+        syncStart({ initial_board: flattenBoard(next.board) });
+        // Resuming a saved mid-game means the player already started — mark it.
+        if (saved) syncMarkStarted();
       }
-      // Suppress re-counting a win when resuming an already-won game.
-      if (next.has_won) winRecordedRef.current = true;
-    });
-    return () => {
-      active = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    }
+    // Suppress re-counting a win when resuming an already-won game.
+    if (next.has_won) winRecordedRef.current = true;
+  });
 
   // Unmount cleanup is handled by useGameSync (abandons any open session).
 
@@ -278,7 +303,6 @@ export default function Twenty48Screen({ navigation }: Props) {
         return;
       }
       setState(next);
-      saveGame({ ...next, events: undefined });
       moveCountRef.current += 1;
       syncMarkStarted();
       // The first win per session finishes it.
@@ -320,7 +344,7 @@ export default function Twenty48Screen({ navigation }: Props) {
         }
       }, MOVE_LOCK_MS);
     },
-    [finishSession, syncEnqueue, syncMarkStarted, awayRef, matchPresence]
+    [finishSession, syncEnqueue, syncMarkStarted, awayRef, matchPresence, setState]
   );
 
   const handleMove = useCallback(
@@ -342,6 +366,7 @@ export default function Twenty48Screen({ navigation }: Props) {
     movingRef.current = false;
     pendingMove.current = null;
     winRecordedRef.current = false;
+    resetGameOver();
     setWinDismissed(false);
     setWonOnLastMove(false);
     setBestAtGameStart((prevBest) => Math.max(prevBest, stateRef.current?.score ?? 0));
@@ -354,9 +379,8 @@ export default function Twenty48Screen({ navigation }: Props) {
     // (stateRef still holds the old board until the next render).
     syncStart({ initial_board: flattenBoard(next.board) });
     setState(next);
-    saveGame(next);
     moveCountRef.current = 0;
-  }, [syncStart, resetLeaderboard]);
+  }, [syncStart, resetLeaderboard, resetGameOver, stateRef, setState]);
 
   const handleNewGamePress = useCallback(() => {
     // Only a game still in progress is lost: after the 2048 win its session
@@ -372,11 +396,6 @@ export default function Twenty48Screen({ navigation }: Props) {
     setConfirmNewGameVisible(false);
     resetGame();
   }, [resetGame]);
-
-  // When game ends, remove the saved state so a fresh game starts next launch.
-  useEffect(() => {
-    if (state?.game_over) clearGame();
-  }, [state?.game_over]);
 
   // Web keyboard controls — arrow keys + WASD.
   useEffect(() => {
