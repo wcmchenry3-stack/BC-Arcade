@@ -1,7 +1,7 @@
 # Yacht Optimal-Play EV Oracle
 
 **Issue:** #2243
-**Scope:** Ground-truth optimal-EV table + runtime lookup API for the Yacht AI. Since #2246 it drives every difficulty tier (`frontend/src/game/yacht/ai.ts`, see [ARCHITECTURE.md §13](ARCHITECTURE.md#13-yacht-computer-opponent)) and the simulator's regret metric (#2244).
+**Scope:** Ground-truth optimal-EV table + runtime lookup API for the Yacht AI. Since #2246 it drives every difficulty tier (`frontend/src/game/yacht/ai.ts`, see [ARCHITECTURE.md §13](../ARCHITECTURE.md#13-yacht-computer-opponent)) and the simulator's regret metric (#2244).
 
 ---
 

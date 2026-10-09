@@ -2,8 +2,8 @@
  * Tunable thresholds for the local event log queue (#367).
  *
  * This file is the single source of truth for every cap, interval, and
- * backoff used by eventStore, gameEventClient, and syncWorker. Any magic
- * number that lives elsewhere is a bug — tests grep for hardcoded caps.
+ * backoff used by eventStore, gameEventClient, and syncWorker. Keep any new
+ * cap, interval or backoff here rather than as a literal elsewhere.
  *
  * Note (issue 367): originally specified expo-sqlite, but we chose AsyncStorage
  * (sharded by priority tier) to avoid a native-module rebuild and keep

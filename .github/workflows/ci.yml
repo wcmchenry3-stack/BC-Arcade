@@ -526,6 +526,22 @@ jobs:
         run: node --test scripts/check-color-literals.test.mjs
         working-directory: frontend
 
+  # Dead relative links and #anchors in docs/** and the root *.md files (#3000).
+  # lychee --offline resolves only local links, so a third-party site being down can't
+  # fail a PR. Exclusions (~/.claude/... user-level standards) live in lychee.toml.
+  docs-links:
+    name: Markdown links (lychee, offline)
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check relative links and anchors
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --config lychee.toml "docs/**/*.md" "docs/**/*.html" "*.md"
+          fail: true
+          lycheeVersion: v0.24.2
+
   # --- Refactor quality gates (#2951, epic #2950) ---------------------------
   # Ratchets set at today's numbers so the epic's gains cannot silently regress.
   # Thresholds and the quarterly lowering schedule: docs/TESTING.md.

@@ -1,14 +1,12 @@
 /**
  * Shared HTTP client factory for all game API clients.
  *
- * Every game's per-request logic (BASE_URL derivation, Sentry breadcrumbs,
- * X-Session-ID injection, error shaping) is identical apart from the
- * Sentry `tags.api` value. This factory collapses the 5 duplicated
- * `request<T>()` functions into one.
- *
- * Phase 1 of offline-play support (#131) uses this for the score queue's
- * cascade submissions. Migration of the 5 existing *Client.ts files to
- * this factory is tracked separately in #153.
+ * Every API client's per-request logic (BASE_URL derivation, Sentry
+ * breadcrumbs, X-Session-ID injection, error shaping) is identical apart from
+ * the Sentry `tags.api` value. `createGameClient` builds one `request<T>()`
+ * for a given tag; the sync layer (`syncApi.ts`), the stats and players APIs,
+ * the entitlements context and the Daily Word, Daily Challenge and Sort APIs
+ * all use it.
  */
 
 import * as Sentry from "@sentry/react-native";

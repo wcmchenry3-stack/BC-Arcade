@@ -794,7 +794,7 @@ a priority.
 Even though the server is not a referee, it remains the security boundary:
 
 - Every endpoint validates input shape and types.
-- Every endpoint is rate-limited (per [security.md](~/.claude/standards/security.md)).
+- Every endpoint is rate-limited (per the security standard in `~/.claude/standards/security.md`, outside this repo).
 - Payload size caps on every POST.
 - Content sanitization on any user-supplied text (player names, bug report
   bodies, etc.).
