@@ -36,8 +36,8 @@ jest.mock("@react-navigation/native", () => ({
   }),
 }));
 jest.mock("../../game/twenty48/storage", () => ({
-  saveGame: jest.fn(),
-  clearGame: jest.fn(),
+  saveGame: jest.fn(() => Promise.resolve()),
+  clearGame: jest.fn(() => Promise.resolve()),
   loadGame: jest.fn().mockResolvedValue(null),
   saveBestScore: jest.fn(),
   loadBestScore: jest.fn().mockResolvedValue(0),

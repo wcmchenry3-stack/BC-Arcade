@@ -13,7 +13,9 @@
  *      and resumed for a game killed mid-turn (#2203). The screen keeps the
  *      one AppState listener and forwards backgrounding to it (#1850).
  *   4. Persistence: `saveGame` after every change (player, difficulty,
- *      computer, finished game id); cleared on a new game.
+ *      computer, finished game id); cleared on a new game. The lobby loads
+ *      the save and passes it through the route, so this screen has no mount
+ *      load and doesn't use `usePersistedGameState` (GAMEPLAY_STANDARDS §8).
  *   5. Instrumentation (#368 / #549): `useGameSync("yacht")`. Solo completes
  *      on the last score; VS completes with the result once the computer has
  *      finished too, or records the finished game on unmount / background

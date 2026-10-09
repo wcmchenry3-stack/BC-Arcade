@@ -29,8 +29,9 @@ export interface PausableClockOptions<T extends PlayClock> {
    */
   saveOnLeave?: (paused: T) => void;
   /**
-   * Called once with each committed state whose clock is paused. A game that
-   * saves only on a move (2048) saves here as well as in `saveOnLeave`.
+   * Called once with each committed state whose clock is paused, for a game
+   * that doesn't save every state (2048 used it before it saved through
+   * `usePersistedGameState`, #3109).
    */
   onPaused?: (paused: T) => void;
 }

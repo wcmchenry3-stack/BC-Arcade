@@ -24,8 +24,8 @@ jest.mock("@react-navigation/native", () =>
 
 // Mock storage — no saved game, no-op persistence.
 jest.mock("../../game/twenty48/storage", () => ({
-  saveGame: jest.fn(),
-  clearGame: jest.fn(),
+  saveGame: jest.fn(() => Promise.resolve()),
+  clearGame: jest.fn(() => Promise.resolve()),
   loadGame: jest.fn().mockResolvedValue(null),
   saveBestScore: jest.fn(),
   loadBestScore: jest.fn().mockResolvedValue(0),
@@ -443,6 +443,112 @@ describe("Twenty48Screen — game-over", () => {
     const { queryByText } = await mountAndSettle();
     expect(queryByText("Game Over")).toBeNull();
   });
+});
+
+// ---------------------------------------------------------------------------
+// Saved game and the game-over edge (usePersistedGameState,
+// useCompletionTransition, #3109)
+// ---------------------------------------------------------------------------
+
+describe("Twenty48Screen — saved game and game-over edge (#3109)", () => {
+  beforeEach(() => jest.clearAllMocks());
+  afterEach(async () => {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+  });
+
+  const lastSaved = () => (saveGame as jest.Mock).mock.calls.at(-1)?.[0] as Twenty48State;
+
+  async function swipeOnce(result: Twenty48State) {
+    mockedEngineMove.mockImplementationOnce(() => result);
+    await act(() => {
+      dispatchKey("ArrowLeft");
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+  }
+
+  it("restores the board it saved after a remount, with the events stripped", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const first = await mountAndSettle();
+    await act(() => {
+      dispatchKey("ArrowRight");
+    });
+    const saved = lastSaved();
+    expect(saved.board).not.toEqual(NOOP_LEFT_BOARD);
+    expect(saved.events).toBeUndefined();
+    await first.unmount();
+
+    (loadGame as jest.Mock).mockResolvedValueOnce(saved);
+    (saveGame as jest.Mock).mockClear();
+    const second = await mountAndSettle();
+    await waitFor(() => expect(second.getByLabelText("Game board")).toBeTruthy());
+    expect(loadGame).toHaveBeenCalledTimes(2);
+    // The restored board is already stored: nothing is written back.
+    expect(saveGame).not.toHaveBeenCalled();
+    expect(clearGame).not.toHaveBeenCalled();
+    await second.unmount();
+  });
+
+  it("saves the losing move, then clears it once; nothing finished is saved after", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const r = await mountAndSettle();
+    await swipeOnce({ ...GAME_OVER_STATE, events: ["gameOver"] });
+
+    expect(lastSaved().game_over).toBe(true);
+    expect(clearGame).toHaveBeenCalledTimes(1);
+    expect((saveGame as jest.Mock).mock.invocationCallOrder.at(-1)!).toBeLessThan(
+      (clearGame as jest.Mock).mock.invocationCallOrder[0]!
+    );
+    await waitFor(() => expect(r.getByText("Game Over")).toBeTruthy());
+
+    // Leaving and coming back over the finished board writes nothing more.
+    const saves = (saveGame as jest.Mock).mock.calls.length;
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    await act(async () => {
+      mockNavListeners.get("focus")?.forEach((h) => h());
+    });
+    expect((saveGame as jest.Mock).mock.calls.length).toBe(saves);
+    expect(clearGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("a game restored already over clears its save once and records nothing", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(GAME_OVER_STATE);
+    const r = await mountAndSettle();
+    await waitFor(() => expect(r.getByText("Game Over")).toBeTruthy());
+
+    expect(clearGame).toHaveBeenCalledTimes(1);
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(mockResumeGame).not.toHaveBeenCalled();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockGetRank).not.toHaveBeenCalled();
+    await r.unmount();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+  });
+
+  it("Play Again replaces the save with the fresh board, and its own game over clears again", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(GAME_OVER_STATE);
+    const r = await mountAndSettle();
+    await waitFor(() => expect(r.getByText("Game Over")).toBeTruthy());
+    expect(clearGame).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+    expect(lastSaved()).toEqual(
+      expect.objectContaining({ score: 0, game_over: false, has_won: false })
+    );
+
+    await swipeOnce({ ...GAME_OVER_STATE, events: ["gameOver"] });
+    expect(clearGame).toHaveBeenCalledTimes(2);
+    expect(outcomesOf()).toEqual(["loss"]);
+  });
+
+  const outcomesOf = () => mockCompleteGame.mock.calls.map((c) => c[1].outcome);
 });
 
 // ---------------------------------------------------------------------------
@@ -1480,17 +1586,20 @@ describe("Twenty48Screen — app background and relaunch (#2750)", () => {
       }
     });
     const saves = (saveGame as jest.Mock).mock.calls.map((c) => c[0] as Twenty48State);
-    const moved = saves[savesBefore]!; // the ArrowLeft move's own save
-    // The save written in the background event's own handler, before any
-    // render: if iOS suspends the app right there, this is what relaunches.
-    // It must be the move's board paused, not the board rendered before it.
-    const leaving = saves[savesBefore + 1]!;
-    expect(leaving.board).toEqual(moved.board);
+    const before = saves[savesBefore - 1]!; // the board rendered before the move
+    // The move is saved when it commits (usePersistedGameState, #3109), so
+    // the first save after it is the one written in the background event's
+    // own handler, before any render: if iOS suspends the app right there,
+    // this is what relaunches. It must be the move's board paused, not the
+    // board rendered before it.
+    const leaving = saves[savesBefore]!;
+    expect(leaving.board).not.toEqual(before.board);
     expect(leaving).toEqual(
       expect.objectContaining({ startedAt: null, accumulatedMs: 20_000, paused: true })
     );
-    const paused = saves.at(-1)!; // the committed pause's
-    expect(paused.board).toEqual(moved.board);
+    const paused = saves.at(-1)!; // the committed move, paused
+    expect(saves.length).toBeGreaterThan(savesBefore + 1);
+    expect(paused.board).toEqual(leaving.board);
     expect(paused).toEqual(expect.objectContaining({ startedAt: null, accumulatedMs: 20_000 }));
 
     now += 60 * 60_000;
@@ -1586,6 +1695,7 @@ describe("Twenty48Screen — app background and relaunch (#2750)", () => {
       expect(abandonDuration()).toBe(35_000);
     } finally {
       (saveGame as jest.Mock).mockReset();
+      (saveGame as jest.Mock).mockImplementation(() => Promise.resolve());
       (loadGame as jest.Mock).mockReset();
       (loadGame as jest.Mock).mockResolvedValue(null);
     }

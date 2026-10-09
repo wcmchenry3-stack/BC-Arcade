@@ -8,6 +8,7 @@ import SortScreen from "../SortScreen";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import { applyPour, initState } from "../../game/sort/engine";
 import type { Color } from "../../game/sort/types";
+import type { SortProgress } from "../../game/sort/storage";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
 // ---------------------------------------------------------------------------
@@ -1118,6 +1119,37 @@ describe("SortScreen — result card (#2512)", () => {
     expect(await r.findByText("Level 2")).toBeTruthy();
     // Moving on doesn't abandon (or re-complete) the solved session.
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+  });
+
+  // useCompletionTransition (#3109): the solve edge keeps the screen's timing.
+  it("handles a solve once, and Change Level after it records nothing new", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    mockRankSubmit.mockResolvedValue({ kind: "ranked", rank: 2 });
+    const r = await renderScreen();
+    const card = await solveLevel(r, 1);
+    await waitFor(() =>
+      expect(card.getByText("Saved as Riley · #2 on the leaderboard")).toBeTruthy()
+    );
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockRankSubmit).toHaveBeenCalledTimes(1);
+    // The solved board is never saved as the level in progress.
+    const saved = storage.saveProgress.mock.calls.map((c) => c[0] as SortProgress);
+    expect(saved.at(-1)).toEqual(
+      expect.objectContaining({ unlockedLevel: 2, currentLevelId: null, currentState: null })
+    );
+    expect(saved.some((p) => p.currentState?.isComplete)).toBe(false);
+
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Change Level" }));
+    });
+    expect(await r.findByLabelText("Level 1")).toBeTruthy();
+    // Closing the card over the solved board fires the edge again, as it always
+    // has, but the session is closed and no rank is asked for twice.
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockRankSubmit).toHaveBeenCalledTimes(1);
+    expect(storage.saveProgress.mock.calls.at(-1)![0]).toEqual(
+      expect.objectContaining({ unlockedLevel: 2, currentLevelId: null, currentState: null })
+    );
   });
 
   it("shows each level's own best on its card", async () => {

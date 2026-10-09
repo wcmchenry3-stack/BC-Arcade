@@ -215,6 +215,114 @@ describe("DailyWordScreen — stale state", () => {
   });
 });
 
+describe("DailyWordScreen — saved game (usePersistedGameState, #3109)", () => {
+  /** The last board written to `daily_word_state_v1`. */
+  function lastSaved(): DailyWordState {
+    const calls = storage.saveState.mock.calls;
+    return calls[calls.length - 1]![0] as DailyWordState;
+  }
+
+  it("saves today's fresh board once the load lands, and every change after it", async () => {
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    expect(storage.saveState).toHaveBeenCalledTimes(1);
+    expect(lastSaved().puzzle_id).toBe(TODAY_META.puzzle_id);
+
+    await act(async () => {
+      await fireEvent.press(api.getByTestId("daily-word-key-c"));
+    });
+    expect(storage.saveState).toHaveBeenCalledTimes(2);
+    expect(lastSaved().rows[0]!.tiles[0]!.letter).toBe("c");
+  });
+
+  it("restores the board after a remount, in the same storage format", async () => {
+    const first = await renderScreen();
+    await first.findByTestId("tile-0-0");
+    await act(async () => {
+      await fireEvent.press(first.getByTestId("daily-word-key-c"));
+    });
+    await act(async () => {
+      await fireEvent.press(first.getByTestId("daily-word-key-r"));
+    });
+    const saved = lastSaved();
+    // The stored shape is unchanged: version 1, keyed to the puzzle by its date.
+    expect(saved._v).toBe(1);
+    expect(saved.puzzle_id).toBe("2026-05-03:en");
+    await act(async () => first.unmount());
+
+    storage.loadState.mockResolvedValue(saved);
+    storage.saveState.mockClear();
+    const second = await renderScreen();
+    await second.findByTestId("tile-0-0");
+    expect(second.getByTestId("tile-0-0")).toHaveTextContent("C");
+    expect(second.getByTestId("tile-0-1")).toHaveTextContent("R");
+    expect(storage.clearState).not.toHaveBeenCalled();
+  });
+
+  it("clears another day's save before today's fresh board is saved", async () => {
+    storage.loadState.mockResolvedValue(STALE_STATE);
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+
+    expect(storage.clearState).toHaveBeenCalledTimes(1);
+    expect(storage.saveState).toHaveBeenCalledTimes(1);
+    expect(lastSaved().puzzle_id).toBe(TODAY_META.puzzle_id);
+    expect(lastSaved().rows.every((r) => !r.submitted)).toBe(true);
+    expect(storage.clearState.mock.invocationCallOrder[0]).toBeLessThan(
+      storage.saveState.mock.invocationCallOrder[0]!
+    );
+  });
+
+  it.each([
+    ["won", WIN_STATE, "You Win!"],
+    ["lost", LOSS_STATE, "You Lose"],
+  ] as const)(
+    "does not re-save a %s puzzle it restores, and records its end only once",
+    async (_label, saved, title) => {
+      storage.loadState.mockResolvedValue(saved);
+      const api = await renderScreen();
+      await api.findByText(title);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(storage.saveState).not.toHaveBeenCalled();
+      expect(storage.clearState).not.toHaveBeenCalled();
+      // The finished game was recorded when it happened: no session now.
+      expect(mockStartGame).not.toHaveBeenCalled();
+      expect(mockCompleteGame).not.toHaveBeenCalled();
+      expect(dailyWordApi.getAnswer).toHaveBeenCalledTimes(saved.won ? 0 : 1);
+
+      await act(async () => api.unmount());
+      expect(mockCompleteGame).not.toHaveBeenCalled();
+    }
+  );
+
+  it("saves nothing while the load has failed, and today's board after Retry", async () => {
+    jest.useFakeTimers();
+    try {
+      dailyWordApi.getToday.mockRejectedValue(new TypeError("Network request failed"));
+      const api = await renderScreen();
+      await act(async () => {
+        await jest.runAllTimersAsync();
+      });
+      const retry = await api.findByText("Retry");
+      expect(storage.saveState).not.toHaveBeenCalled();
+
+      dailyWordApi.getToday.mockResolvedValue(TODAY_META);
+      await act(async () => {
+        await fireEvent.press(retry);
+        await jest.runAllTimersAsync();
+      });
+      await api.findByTestId("tile-0-0");
+      expect(storage.saveState).toHaveBeenCalledTimes(1);
+      expect(lastSaved().puzzle_id).toBe(TODAY_META.puzzle_id);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
 describe("DailyWordScreen — win modal", () => {
   it("shows win modal when state is already won on mount", async () => {
     storage.loadState.mockResolvedValue(WIN_STATE);
@@ -819,6 +927,9 @@ describe("DailyWordScreen — result card (#2514)", () => {
 
     expect(storage.clearState).toHaveBeenCalled();
     await waitFor(() => expect(r.queryByText("You Win!")).toBeNull());
+    // The new puzzle's board is saved in the finished one's place (#3109).
+    const calls = storage.saveState.mock.calls;
+    expect((calls[calls.length - 1]![0] as DailyWordState).puzzle_id).toBe("2026-05-04:en");
   });
 
   it("keeps the finished game when the server still serves the same puzzle (#2553 review)", async () => {
