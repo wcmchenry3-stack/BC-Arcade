@@ -560,6 +560,7 @@ export function asteroidOutline(a: Asteroid): Vec2[] {
   return pts;
 }
 
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export function asteroidAttention(tier: EnemyTier): AsteroidAttention {
   return ASTEROID_ATTENTION[tier];
 }

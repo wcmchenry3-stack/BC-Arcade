@@ -76,7 +76,10 @@ export function assertOutcomeAllowed(gameType: string, outcome: unknown, path: O
   });
 }
 
-/** Tests only: force production (`false`) or strict (`true`) behaviour; `null` restores it. */
+/**
+ * Tests only: force production (`false`) or strict (`true`) behaviour; `null` restores it.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function setOutcomeGuardStrictForTests(strict: boolean | null): void {
   strictOverride = strict;
   reported.clear();

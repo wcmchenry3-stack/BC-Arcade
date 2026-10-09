@@ -433,7 +433,10 @@ export async function forgetSyncedDisplayName(): Promise<void> {
   }
 }
 
-/** Test-only: forget in-flight state (AsyncStorage is cleared by the tests). */
+/**
+ * Test-only: forget in-flight state (AsyncStorage is cleared by the tests).
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function resetDisplayNameSyncForTests(): void {
   running = null;
   queued = null;

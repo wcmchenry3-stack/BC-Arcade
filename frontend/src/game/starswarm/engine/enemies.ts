@@ -642,12 +642,18 @@ export function tickEnemies(
 // Derived helpers (useful for renderers)
 // ---------------------------------------------------------------------------
 
-/** True while any enemy is still in the SwoopIn entry animation. */
+/**
+ * True while any enemy is still in the SwoopIn entry animation.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function isSwooping(state: StarSwarmState): boolean {
   return state.enemies.some((e) => e.isAlive && e.phase === "SwoopIn");
 }
 
-/** Number of enemies currently airborne (Diving or Circling). */
+/**
+ * Number of enemies currently airborne (Diving or Circling).
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function diverCount(state: StarSwarmState): number {
   return state.enemies.filter((e) => e.isAlive && (e.phase === "Diving" || e.phase === "Circling"))
     .length;

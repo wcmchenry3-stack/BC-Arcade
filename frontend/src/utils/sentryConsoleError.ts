@@ -55,7 +55,10 @@ export function installSentryConsoleErrorCapture(): void {
   };
 }
 
-/** Test-only: restore the original console.error and reset install flag. */
+/**
+ * Test-only: restore the original console.error and reset install flag.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function _resetSentryConsoleErrorCaptureForTests(): void {
   if (installed && originalError) {
     console.error = originalError;

@@ -8,15 +8,26 @@
   "entry": [
     "scripts/*.mjs",
     "scripts/*.js",
-    "App.tsx",
+    // Production entries (#3126): `knip --production` only follows entries and
+    // project globs marked with a trailing `!`.
+    "App.tsx!",
     "../tools/sim/*.ts",
     "../tools/generators/*.ts",
     // Metro resolves *.web.ts(x) next to the native file by platform extension
     // (loaded by convention, never imported by name), so they are entries.
-    "src/**/*.web.{ts,tsx}"
+    "src/**/*.web.{ts,tsx}!"
   ],
   "project": [
-    "src/**/*.{ts,tsx}",
+    "src/**/*.{ts,tsx}!",
+    // Test-only support code is not production (#3126).
+    "!src/test-utils/**!",
+    // Test double: releaseBuildConfig.test.ts asserts no production file imports it.
+    "!src/purchases/fakeAdapter.ts!",
+    // Offline simulation helpers under src/ that only tooling/** and tests
+    // import (RNG streams, regret metrics); no production caller by design.
+    "!src/game/_shared/simRandom.ts!",
+    "!src/game/yacht/oracle/regret.ts!",
+    "!src/game/yacht/oracle/regretAggregate.ts!",
     "scripts/*.{js,mjs}",
     "tooling/**/*.ts",
     "../tools/sim/*.ts",
@@ -64,5 +75,8 @@
     // declaring it would count as a native package bump.
     "expo-asset"
   ],
+  // Exports that exist only so tests or offline tooling can reach them carry an
+  // `@internal` JSDoc tag (#3126); `-internal` excludes them from the report.
+  "tags": ["-internal"],
   "ignoreExportsUsedInFile": true
 }

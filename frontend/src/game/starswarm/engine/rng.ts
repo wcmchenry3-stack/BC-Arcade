@@ -61,7 +61,10 @@ export function seedBuddyIdRange(): void {
   _nextBuddyId = Math.max(_nextBuddyId, BUDDY_ID_BASE + _nextId * 100);
 }
 
-/** Reset for testing only. */
+/**
+ * Reset for testing only.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function _resetIds(): void {
   _nextId = 1;
   _nextBuddyId = BUDDY_ID_BASE;

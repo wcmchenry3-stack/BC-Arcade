@@ -47,7 +47,10 @@ export const FEEDBACK_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
 let recentSubmissions: number[] = [];
 
-/** Test hook. */
+/**
+ * Test hook.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function _resetFeedbackRateLimit(): void {
   recentSubmissions = [];
 }
