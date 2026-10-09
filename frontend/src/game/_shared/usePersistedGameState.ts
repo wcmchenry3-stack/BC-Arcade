@@ -75,7 +75,7 @@ export interface PersistedGameState<T> {
  * saved first, and the completion's `clear()` then removes it.
  *
  * Throttling and debouncing stay with the screen: Mahjong's debounced saves
- * keep their own hook (`components/mahjong/useMahjongPersistence.ts`).
+ * keep their own hook (`game/mahjong/useMahjongPersistence.ts`).
  */
 export function usePersistedGameState<T>(
   options: PersistedGameStateOptions<T>
