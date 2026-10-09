@@ -58,7 +58,11 @@
     // app.json (userInterfaceStyle / updates). They are intentionally not
     // installed (native projects are committed), so nothing imports them.
     "expo-updates",
-    "expo-system-ui"
+    "expo-system-ui",
+    // expo-asset: imported only by the *.web.* files. It ships inside `expo`
+    // (already linked natively, see ios/Podfile.lock), so it is not declared:
+    // declaring it would count as a native package bump.
+    "expo-asset"
   ],
   "ignoreExportsUsedInFile": true
 }
