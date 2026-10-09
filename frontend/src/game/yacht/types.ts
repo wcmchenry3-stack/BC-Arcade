@@ -31,7 +31,3 @@ export interface GameState {
   total_score: number;
   events?: readonly GameEvent[];
 }
-
-export interface PossibleScores {
-  possible_scores: Record<string, number>;
-}
