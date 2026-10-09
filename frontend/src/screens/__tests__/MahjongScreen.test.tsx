@@ -1800,6 +1800,10 @@ describe("MahjongScreen — debounced saves (#2961)", () => {
     await act(async () => {
       await fireEvent.press(api.getByLabelText("More options"));
     });
+    // The ⋯ menu is an app overlay (#2944): it pauses the clock, and a pause is written at
+    // once, with the play banked. That is the one write here.
+    expect(gameSaves()).toHaveLength(1);
+    expect(gameSaves()[0]).toEqual(expect.objectContaining({ paused: true, startedAt: null }));
     await act(async () => {
       await fireEvent.press(api.getByText("New Game"));
     });
@@ -1814,7 +1818,7 @@ describe("MahjongScreen — debounced saves (#2961)", () => {
     });
     expect(api.getByLabelText("mock-tile-0")).toBeTruthy();
     await wait(5 * SAVE_DEBOUNCE_MS);
-    expect(gameSaves()).toHaveLength(0);
+    expect(gameSaves()).toHaveLength(1);
   });
 
   it("rewrites a saved selection the player cleared, so a relaunch restores none", async () => {

@@ -4,6 +4,7 @@ import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { useIsScreenFocused } from "../../hooks/useIsScreenFocused";
+import { useAppOverlayOpen } from "../../hooks/appOverlay";
 import { ResultCard, useResultTitle } from "./ResultCard";
 import {
   formatValue,
@@ -25,6 +26,37 @@ import {
 
 /** Safety net so a celebration that never calls `done` can't hide the card. */
 export const CELEBRATION_MAX_MS = 4000;
+
+/**
+ * How long the card waits after an app overlay closes before it presents
+ * (#2944). On iOS a view controller still animating a Modal's dismissal
+ * (the feedback sheet slides out) can't present another one, so presenting
+ * in the same tick would fail silently, as the overlay did itself.
+ */
+export const OVERLAY_DISMISS_SETTLE_MS = 500;
+
+/**
+ * Whether no app overlay (the header's ⋯ menu, the feedback sheet, #2944) is
+ * open, and the last one has had `OVERLAY_DISMISS_SETTLE_MS` to finish
+ * closing. Turns false in the same render an overlay opens.
+ */
+function useAppOverlayClear(): boolean {
+  const overlayOpen = useAppOverlayOpen();
+  // `settling` turns on in the render where the overlay closes (derived state,
+  // set during render), and off once the settle delay has passed.
+  const [prevOpen, setPrevOpen] = useState(overlayOpen);
+  const [settling, setSettling] = useState(false);
+  if (prevOpen !== overlayOpen) {
+    setPrevOpen(overlayOpen);
+    setSettling(!overlayOpen);
+  }
+  useEffect(() => {
+    if (!settling) return;
+    const timer = setTimeout(() => setSettling(false), OVERLAY_DISMISS_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [settling]);
+  return !overlayOpen && !settling;
+}
 
 /** Best-effort: a haptic that fails (sync or async) must never break the card. */
 function fireHaptic(outcome: GameOutcome) {
@@ -119,9 +151,16 @@ export default function GameResultModal({
     return () => clearTimeout(timer);
   }, [phase]);
 
-  // Announce + haptic once per appearance of the card.
+  // An app overlay (#2944) is a native Modal too: on iOS the card can't
+  // present while one is up, and a `visible` that stayed true would never
+  // present it afterwards. So it waits, and appears once the overlay has
+  // closed.
+  const overlayClear = useAppOverlayClear();
+
+  // Announce + haptic once per appearance of the card: when it is actually
+  // shown, not while an overlay holds it back.
   useResultFeedback({
-    active: phase === "card",
+    active: phase === "card" && overlayClear,
     outcome: card.outcome,
     winnerName: card.winnerName,
     subtitle: card.subtitle,
@@ -137,7 +176,7 @@ export default function GameResultModal({
     <>
       {phase === "celebrating" && celebration?.(() => setPhase("card"))}
       <Modal
-        visible={phase === "card" && screenFocused}
+        visible={phase === "card" && screenFocused && overlayClear}
         transparent
         animationType="fade"
         statusBarTranslucent

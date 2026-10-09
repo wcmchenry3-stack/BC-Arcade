@@ -11,6 +11,7 @@ import { typography } from "../../theme/typography";
 import FeedbackWidget from "../FeedbackWidget/FeedbackWidget";
 import FeedbackThanksBanner from "../FeedbackWidget/FeedbackThanksBanner";
 import { ConfirmModal } from "./ConfirmModal";
+import { useReportAppOverlay } from "../../hooks/appOverlay";
 import logoSource from "../../../assets/logo.png";
 
 export const APP_HEADER_HEIGHT = 64;
@@ -114,6 +115,12 @@ export function AppHeader({
   const dismissThanks = useCallback(() => setThanksVisible(false), []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [abandonVisible, setAbandonVisible] = useState(false);
+
+  // #2944 — each of these is a native Modal over the game, which neither
+  // blurs the screen nor changes AppState. Reporting them lets game screens
+  // treat the player as away (`usePauseWhileAway`) and keeps the result card
+  // from presenting under them (`GameResultModal`).
+  useReportAppOverlay(menuOpen || helpOpen || abandonVisible);
 
   const totalHeight = APP_HEADER_HEIGHT + insets.top;
   const showMenu =

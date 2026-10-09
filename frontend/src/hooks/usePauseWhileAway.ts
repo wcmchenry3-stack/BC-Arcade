@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
+import { isAppOverlayOpen, subscribeAppOverlay } from "./appOverlay";
 
 /** The part of a screen's navigation object this hook listens to. */
 export interface FocusEventSource {
@@ -19,13 +20,15 @@ export function isAwayStatus(status: AppStateStatus | null | undefined): boolean
 }
 
 /**
- * One event that takes the player away, as `onLeave` reports it: a blur, or a
- * change of `AppState` to an away status (`isAwayStatus`). `previous` is the
- * status of the change event before this one: `null` for the first, since the
- * status at mount isn't a change.
+ * One event that takes the player away, as `onLeave` reports it: a blur, an
+ * app overlay opening over the game (`appOverlay`, #2944), or a change of
+ * `AppState` to an away status (`isAwayStatus`). `previous` is the status of
+ * the change event before this one: `null` for the first, since the status at
+ * mount isn't a change.
  */
 export type LeaveEvent =
   | { readonly reason: "blur" }
+  | { readonly reason: "overlay" }
   | {
       readonly reason: "appState";
       readonly status: "background" | "inactive";
@@ -44,17 +47,20 @@ export interface PauseWhileAwayOptions {
 }
 
 /**
- * Pauses a game's play clock while the player is away from it, for either of
- * two independent reasons:
+ * Pauses a game's play clock while the player is away from it, for any of
+ * three independent reasons:
  *
  * - another screen (Stats, Leaderboard, Scoreboard) is pushed over this one
  *   and blurs it without unmounting it (#2735);
  * - the app leaves the foreground: `AppState` is `background`, or `inactive`
- *   on iOS (#2750).
+ *   on iOS (#2750);
+ * - an app overlay is open over the game: the header's ⋯ menu, the feedback
+ *   sheet or the New Game confirmation (`appOverlay`, #2944). A native
+ *   `Modal` neither blurs the screen nor changes `AppState`.
  *
  * `onPause` runs when the first reason starts, including at mount when the
  * app is already in the background or the screen already covered; `onResume`
- * runs once both have ended. So returning to the foreground while another
+ * runs once all have ended. So returning to the foreground while another
  * screen still covers the game doesn't resume the clock, and neither does
  * closing that screen while the app is still in the background.
  *
@@ -81,10 +87,11 @@ export function usePauseWhileAway(
 
   const blurredRef = useRef(false);
   const backgroundedRef = useRef(false);
+  const overlaidRef = useRef(false);
   const awayRef = useRef(false);
 
   const update = useCallback(() => {
-    const away = blurredRef.current || backgroundedRef.current;
+    const away = blurredRef.current || backgroundedRef.current || overlaidRef.current;
     if (away === awayRef.current) return;
     awayRef.current = away;
     if (away) handlersRef.current.onPause();
@@ -108,6 +115,21 @@ export function usePauseWhileAway(
       }
     });
     return () => sub?.remove();
+  }, [update]);
+
+  // An app overlay (#2944) counts as away: the clock stops while the player
+  // is in the ⋯ menu or the feedback sheet, and `onLeave` lets a real-time
+  // game (Star Swarm) pause its run so it doesn't go on unseen.
+  useEffect(() => {
+    overlaidRef.current = isAppOverlayOpen();
+    update();
+    return subscribeAppOverlay(() => {
+      const open = isAppOverlayOpen();
+      if (open === overlaidRef.current) return;
+      overlaidRef.current = open;
+      update();
+      if (open) handlersRef.current.onLeave?.({ reason: "overlay" });
+    });
   }, [update]);
 
   useEffect(() => {
