@@ -160,7 +160,7 @@ export function SelfCapturedPile({ cards }: SelfProps) {
                   testID="card-rank"
                   style={[
                     styles.selfRank,
-                    { color: isRedSuit(card.suit) ? colors.error : colors.cardInk },
+                    { color: isRedSuit(card.suit) ? colors.cardRedSuit : colors.cardInk },
                   ]}
                 >
                   {rankText(card.rank)}
@@ -168,7 +168,7 @@ export function SelfCapturedPile({ cards }: SelfProps) {
                 <Text
                   style={[
                     styles.selfSuit,
-                    { color: isRedSuit(card.suit) ? colors.error : colors.cardInk },
+                    { color: isRedSuit(card.suit) ? colors.cardRedSuit : colors.cardInk },
                   ]}
                 >
                   {SUIT_SYMBOL[card.suit]}
