@@ -4,14 +4,6 @@ import ActionButtons from "../ActionButtons";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import { calculateBlackjackLayout } from "../../../game/blackjack/layout";
 
-// ---------------------------------------------------------------------------
-// Mock icon libraries — string mocks are the safest approach for Expo
-// vector-icons in Jest: no require(), no ESLint violations, and the
-// component renders as a plain native view so other assertions still work.
-// ---------------------------------------------------------------------------
-jest.mock("@expo/vector-icons/MaterialIcons", () => "MockMaterialIcons");
-jest.mock("@expo/vector-icons/MaterialCommunityIcons", () => "MockMaterialCommunityIcons");
-
 const defaultLayout = calculateBlackjackLayout({ availableWidth: 390, availableHeight: 812 });
 
 async function renderButtons(

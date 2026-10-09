@@ -52,7 +52,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          # One Python version for the repo (#2972, #3107): backend/.python-version.
+          python-version-file: backend/.python-version
           cache: pip
           cache-dependency-path: tools/assets/requirements.txt
       - name: Install tools requirements
@@ -382,6 +383,68 @@ jobs:
     with:
       working-directory: backend
     secrets: inherit
+
+  # Advisory until it proves stable (#3107): continue-on-error keeps a red run from
+  # blocking merges. Runs the Postgres-only halves the SQLite-backed test-python job
+  # skips: the EXPLAIN gate (#2965) and the dialect/JSON SQL tests (#2996). Drop
+  # continue-on-error (and add it to branch protection) once it is green for a few weeks.
+  test-postgres:
+    name: Test backend on Postgres (advisory)
+    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      PG_SERVER: postgresql://postgres:postgres@localhost:5432
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: backend/.python-version
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - name: Install backend requirements
+        run: pip install -r requirements-dev.txt
+      - name: EXPLAIN gate and index migration (Postgres)
+        # LEADERBOARD_EXPLAIN_PG_URL names a scratch server: each test creates and
+        # drops its own database there. DATABASE_URL stays the suite's SQLite default.
+        env:
+          LEADERBOARD_EXPLAIN_PG_URL: ${{ env.PG_SERVER }}/postgres
+        run: >-
+          python -m pytest tests/test_leaderboard_query_plans.py
+          tests/test_leaderboard_indexes_migration.py -v -rs --no-cov
+      - name: Create and migrate the suite database
+        env:
+          DATABASE_URL: ${{ env.PG_SERVER }}/bcarcade_test
+        run: |
+          psql "${PG_SERVER}/postgres" -c "CREATE DATABASE bcarcade_test"
+          alembic upgrade head
+      - name: Dialect and JSON SQL tests (Postgres)
+        # With DATABASE_URL on Postgres, conftest skips provisioning SQLite. The asyncpg
+        # pool outlives pytest's default per-test event loops, so run them on one
+        # session-wide loop.
+        env:
+          DATABASE_URL: ${{ env.PG_SERVER }}/bcarcade_test
+        run: >-
+          python -m pytest tests/test_jsonx.py -v --no-cov
+          -o asyncio_default_fixture_loop_scope=session
+          -o asyncio_default_test_loop_scope=session
 
   test-frontend:
     needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]

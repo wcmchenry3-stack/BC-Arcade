@@ -23,8 +23,6 @@
   // tsx runs tools/sim and tools/generators (`npx --prefix frontend tsx tools/sim/...`).
   "ignoreDependencies": [
     "tsx",
-    // jsdom: provided by jest-environment-jsdom, selected via @jest-environment docblocks in tests
-    "jsdom",
     // @eslint/js: required by eslint.config.js, installed as an eslint dependency
     "@eslint/js"
   ],

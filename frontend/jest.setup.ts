@@ -198,6 +198,12 @@ jest.mock("expo-linear-gradient", () => {
   };
 });
 
+// @expo/vector-icons — one shared string mock per icon family (#2954/#3107) instead of
+// per-test copies. Renders as a plain native element so other assertions still work. A
+// test that needs another shape mocks the module itself; its jest.mock wins.
+jest.mock("@expo/vector-icons/MaterialIcons", () => "MockMaterialIcons");
+jest.mock("@expo/vector-icons/MaterialCommunityIcons", () => "MockMaterialCommunityIcons");
+
 // Shared screen-test mock factories (#2954), as a global so hoisted jest.mock
 // factories can call it: babel-plugin-jest-hoist lets a factory reference a
 // name matching /^mock/i. Usage: src/test-utils/mockScreenDeps.ts.

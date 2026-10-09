@@ -37,8 +37,6 @@ jest.mock("react-i18next", () => ({
   }),
 }));
 
-jest.mock("@expo/vector-icons/MaterialIcons", () => "MockMaterialIcons");
-
 function buildProps(activeIndex = 0): BottomTabBarProps {
   const routes = [
     { key: "lobby", name: "Lobby" },
