@@ -168,7 +168,7 @@ class GuessRequest(BaseModel):
 @router.get("/today")
 @limiter.limit(DAILY_WORD_TODAY_IP_RATE_LIMIT)
 async def get_today(
-    request: Request,
+    request: Request,  # noqa: ARG001 - slowapi resolves `request` by name
     tz_offset_minutes: int = Query(0, ge=-840, le=840),
     lang: str = Query("en"),
 ) -> dict:

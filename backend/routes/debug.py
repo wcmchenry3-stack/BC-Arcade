@@ -19,5 +19,5 @@ router = APIRouter()
 
 @router.get("/debug/error")
 @limiter.limit(DEBUG_ERROR_IP_RATE_LIMIT)
-def trigger_error(request: Request) -> None:
+def trigger_error(request: Request) -> None:  # noqa: ARG001 - slowapi resolves `request` by name
     raise RuntimeError("Intentional test error for Sentry verification")

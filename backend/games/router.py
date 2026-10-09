@@ -93,7 +93,9 @@ def _gt_to_out(gt) -> GameTypeOut:
 
 @router.get("/catalog", response_model=CatalogResponse)
 @limiter.limit(CATALOG_RATE_LIMIT)
-async def get_catalog(request: Request, db: DbSession) -> JSONResponse:
+async def get_catalog(
+    request: Request, db: DbSession
+) -> JSONResponse:  # noqa: ARG001 - slowapi resolves `request` by name
     game_types = await catalog.get_catalog(db)
     body = CatalogResponse(items=[_gt_to_out(gt) for gt in game_types])
     return JSONResponse(

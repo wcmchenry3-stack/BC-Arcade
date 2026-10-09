@@ -58,24 +58,24 @@ def _circle_pixels(
 class TestOpaquePixels:
     def test_fully_opaque_image_returns_all_pixels(self):
         pixels = _flat_image(4, 4, (255, 255, 255, 255))
-        result = _opaque_pixels(pixels, 4, 4)
+        result = _opaque_pixels(pixels, 4)
         assert len(result) == 16
 
     def test_fully_transparent_returns_empty(self):
         pixels = _flat_image(4, 4, (255, 255, 255, 0))
-        result = _opaque_pixels(pixels, 4, 4)
+        result = _opaque_pixels(pixels, 4)
         assert result == []
 
     def test_alpha_at_threshold_excluded(self):
         """Alpha == 200 is NOT > 200 (the pipeline threshold), so it is excluded."""
         pixels = _flat_image(2, 2, (100, 100, 100, 200))
-        result = _opaque_pixels(pixels, 2, 2)
+        result = _opaque_pixels(pixels, 2)
         assert result == []
 
     def test_alpha_just_above_threshold_included(self):
         """Alpha == 201 is > 200, so it should be included."""
         pixels = _flat_image(2, 2, (100, 100, 100, 201))
-        result = _opaque_pixels(pixels, 2, 2)
+        result = _opaque_pixels(pixels, 2)
         assert len(result) == 4
 
     def test_mixed_alphas_only_opaque_returned(self):
@@ -85,18 +85,18 @@ class TestOpaquePixels:
             (0, 0, 0, 200),  # alpha=200 → excluded (not > 200)
             (0, 0, 0, 201),  # alpha=201 → included
         ]
-        result = _opaque_pixels(pixels, 3, 1)
+        result = _opaque_pixels(pixels, 3)
         assert result == [(2, 0)]
 
     def test_coordinates_are_correct(self):
         # 3×2 image, only pixel at (1, 1) is opaque
         pixels = _flat_image(3, 2, (0, 0, 0, 0))
         pixels[1 * 3 + 1] = (255, 255, 255, 255)
-        result = _opaque_pixels(pixels, 3, 2)
+        result = _opaque_pixels(pixels, 3)
         assert result == [(1, 1)]
 
     def test_empty_image_returns_empty(self):
-        result = _opaque_pixels([], 0, 0)
+        result = _opaque_pixels([], 0)
         assert result == []
 
 

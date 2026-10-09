@@ -197,11 +197,13 @@ class Settings(BaseSettings):
             @classmethod
             def settings_customise_sources(
                 cls_,
-                settings_cls: type[BaseSettings],
+                settings_cls: type[
+                    BaseSettings
+                ],  # noqa: ARG003 - pydantic-settings passes these by keyword
                 init_settings: PydanticBaseSettingsSource,
-                env_settings: PydanticBaseSettingsSource,
-                dotenv_settings: PydanticBaseSettingsSource,
-                file_secret_settings: PydanticBaseSettingsSource,
+                env_settings: PydanticBaseSettingsSource,  # noqa: ARG003 - pydantic-settings passes these by keyword
+                dotenv_settings: PydanticBaseSettingsSource,  # noqa: ARG003 - pydantic-settings passes these by keyword
+                file_secret_settings: PydanticBaseSettingsSource,  # noqa: ARG003 - pydantic-settings passes these by keyword
             ) -> tuple[PydanticBaseSettingsSource, ...]:
                 return (init_settings,)
 
