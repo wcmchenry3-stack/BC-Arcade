@@ -11,7 +11,10 @@ import {
   CANVAS_H,
   ATTACK_RUN,
   ATTACK_RUN_BRACE_MS,
+  engineCounters,
+  restoreEngineCounters,
 } from "../engine";
+import { fitsSaveShape } from "../saveShape";
 import {
   asteroidHitsBox,
   asteroidThreatens,
@@ -152,6 +155,50 @@ describe("pathStrikesRock (#3131): pure, rng-free commit-time check", () => {
     expect(pathStrikesRock(path, 1800, box, [fast])).toBe(true);
   });
 
+  it("a corner graze of the Carrier's rectangular hitbox is caught (half-diagonal radius)", () => {
+    const carrierBox = { width: TIER_SIZE.Carrier.w, height: TIER_SIZE.Carrier.h }; // 54 × 48
+    const down: CubicBezier = {
+      p0: { x: 100, y: 100 },
+      p1: { x: 100, y: 166.67 },
+      p2: { x: 100, y: 233.33 },
+      p3: { x: 100, y: 300 },
+    };
+    // a small rock parked just off the bottom-right corner of the box where the run ends
+    const corner = { x: 100 + carrierBox.width / 2, y: 300 + carrierBox.height / 2 };
+    const off = 10 / Math.SQRT2; // 10 px from the corner, inside the rock's 12 px radius
+    const rock = rockAt(corner.x + off, corner.y + off, 0, 0, { kind: "small", radius: 12 });
+    expect(flown(down, 1200, TIER_SIZE.Carrier, rock)).toBe(true); // it really touches
+    // the old max(w, h) / 2 circle (27 + 4 margin) stops short of it — the half-diagonal does not
+    const fromCentre = Math.hypot(rock.x - 100, rock.y - 300);
+    expect(fromCentre).toBeGreaterThan(rock.radius + carrierBox.width / 2 + 4);
+    expect(pathStrikesRock(down, 1200, carrierBox, [rock])).toBe(true);
+  });
+
+  it("a rock that would reach the station only after the path has flown into it is rejected", () => {
+    const carrierBox = { width: TIER_SIZE.Carrier.w, height: TIER_SIZE.Carrier.h };
+    const ms = 3400;
+    const run: CubicBezier = {
+      p0: { x: 180, y: 70 },
+      p1: { x: 180, y: 170 },
+      p2: { x: 180, y: 270 },
+      p3: { x: 180, y: 370 },
+    };
+    // climbing slowly up the column: the run meets it after ~0.5 s, the station only at ~1.6 s
+    const rock = rockAt(180, 198, 0, -0.04);
+    const stationR = Math.hypot(carrierBox.width, carrierBox.height) / 2 + 4;
+    // over the whole run it does reach the station, so a whole-duration baseline would excuse it
+    expect(asteroidThreatens(rock, { x: 180, y: 70, r: stationR }, ms)).toBe(true);
+    expect(asteroidThreatens(rock, { x: 180, y: 70, r: stationR }, 1000)).toBe(false);
+    expect(flown(run, ms, TIER_SIZE.Carrier, rock)).toBe(true);
+    expect(pathStrikesRock(run, ms, carrierBox, [rock])).toBe(true);
+  });
+
+  it("only the flown part of a path is vetted (untilT)", () => {
+    const rock = rockCrossing(path, 0.8, 1440, 0.2, 0);
+    expect(pathStrikesRock(path, 1800, box, [rock])).toBe(true);
+    expect(pathStrikesRock(path, 1800, box, [rock], { untilT: 0.5 })).toBe(false);
+  });
+
   it("onScreenRocks keeps only live rocks at least partly on the canvas", () => {
     const rocks = [
       rockAt(100, 100, 0, 0),
@@ -241,7 +288,7 @@ describe("Carrier attack run never flies into a passing rock (#3131, BC_GAMES-5P
     const { s: s0 } = aboutToRun(CANVAS_W * 0.5);
     let c = carrierOf(s0);
     // a huge parked rock under the Carrier: clear of it on station, in the way of every swoop
-    const wall = rockAt(c.x, c.formationY + 190, 0, 0, { radius: 150 });
+    const wall = rockAt(c.x, c.formationY + 200, 0, 0, { radius: 150 });
     const ctx: CarrierCtx = {
       ...NO_CARRIER_CTX,
       playing: true,
@@ -265,7 +312,98 @@ describe("Carrier attack run never flies into a passing rock (#3131, BC_GAMES-5P
     expect(c.runPhase).toBe("idle");
     expect(c.runTimer).toBeGreaterThan(0); // a fresh roll
   });
+
+  it("a stand-down draws from rng() exactly as a completed run cycle does", () => {
+    const { s: s0 } = aboutToRun(CANVAS_W * 0.5);
+    const c0 = carrierOf(s0);
+    const ctx = (rocks: Asteroid[]): CarrierCtx => ({
+      ...NO_CARRIER_CTX,
+      playing: true,
+      stage: "exposed",
+      prevStage: "exposed",
+      playerX: 40,
+      playerY: 560,
+      rocks,
+    });
+    // a run that commits, flies and returns: one roll for the next run, on arrival
+    seedRng(7);
+    let c = c0;
+    let flew = false;
+    for (let t = 0; t < 6000 && !(flew && c.phase === "Formation"); t += DT) {
+      c = tickCarrier(c, DT, ctx([])).enemy;
+      flew ||= c.phase === "AttackRun";
+    }
+    expect(flew && c.phase === "Formation").toBe(true);
+    const afterRun = rng();
+    // a run that never finds a clear path: one roll, at the stand-down
+    const wall = rockAt(c0.x, c0.formationY + 200, 0, 0, { radius: 150 });
+    seedRng(7);
+    c = c0;
+    for (let t = 0; t < 3000 && c.runPhase === "brace"; t += DT) {
+      c = tickCarrier(c, DT, ctx([wall])).enemy;
+      expect(c.phase).toBe("Formation");
+    }
+    expect(c.runPhase).toBe("idle");
+    expect(rng()).toBe(afterRun);
+  });
+
+  it("a save taken mid-hold restores and replays the hold and stand-down exactly", () => {
+    // the final stand (Carrier alone), braced over a parked rock that blocks every run
+    let s = tick(settled(), DT, ASIDE);
+    s = {
+      ...s,
+      enemies: s.enemies.map((e) => (e.tier === "Carrier" ? e : { ...e, isAlive: false, hp: 0 })),
+    };
+    s = tick(s, DT, ASIDE);
+    const c0 = carrierOf(s);
+    s = patch(s, (e) => e.tier === "Carrier", {
+      runPhase: "brace",
+      runTimer: 1,
+      beamTimer: 1e9,
+      shootTimer: 1e9,
+      diveTargetX: CANVAS_W * 0.5,
+      y: c0.formationY,
+    });
+    s = { ...s, asteroids: [rockAt(c0.formationX, c0.formationY + 200, 0, 0, { radius: 150 })] };
+    for (let i = 0; i < 20; i++) s = tick(s, DT, ASIDE);
+    expect(carrierOf(s).runPhase).toBe("brace");
+    expect(carrierOf(s).runTimer).toBeLessThan(0); // holding
+    const end = replaysAfterRestore(s, Math.ceil(ATTACK_RUN_HOLD_MAX_MS / DT));
+    expect(carrierOf(end).runPhase).toBe("idle"); // stood down
+    expect(carrierOf(end).phase).toBe("Formation");
+  });
 });
+
+/**
+ * Round-trip `s` through JSON (as a pause-save does), check it fits the save shape, then tick the
+ * original and the restored copy `ticks` times from the same engine counters: they must agree.
+ * (`restoreEngineCounters` only moves ids forward, so the window must not mint new ids — the
+ * scenarios keep the parked rock clear of every other ship.)
+ */
+function replaysAfterRestore(s: StarSwarmState, ticks: number): StarSwarmState {
+  const restored: unknown = JSON.parse(JSON.stringify(s));
+  expect(fitsSaveShape(restored)).toBe(true);
+  // the engine's two Math.random calls (pickup type / spawn x) are the known exception to the
+  // seeded replay (docs/ARCHITECTURE.md §3.2): pin them so both runs see the same values
+  const random = jest.spyOn(Math, "random").mockReturnValue(0.5);
+  try {
+    const counters = engineCounters();
+    let a = s;
+    for (let i = 0; i < ticks; i++) a = tick(a, DT, ASIDE);
+    restoreEngineCounters(counters);
+    let b = restored as StarSwarmState;
+    for (let i = 0; i < ticks; i++) b = tick(b, DT, ASIDE);
+    const diff = Object.keys(a).filter(
+      (k) =>
+        JSON.stringify((a as unknown as Record<string, unknown>)[k]) !==
+        JSON.stringify((b as unknown as Record<string, unknown>)[k])
+    );
+    expect(diff).toEqual([]);
+    return a;
+  } finally {
+    random.mockRestore();
+  }
+}
 
 // ---------------------------------------------------------------------------
 
@@ -329,16 +467,51 @@ describe("Elite and Guardian dives never fly into a passing rock (#3131)", () =>
       seedRng(1234);
       let rock = rock0;
       let out = launch(e, [rock]);
+      let heldMs = 0;
       while (out.phase === "Wiggling") {
         rock = { ...rock, x: rock.x + rock.vx * DT, y: rock.y + rock.vy * DT };
         out = launch(out, [rock]);
+        heldMs += DT;
       }
       expect(rng()).toBe(nextDrawPlain); // determinism: no extra draws
-      expect(["Diving", "Formation"]).toContain(out.phase);
-      if (out.phase === "Diving") {
-        expect(out.path!.p3).toEqual(planned.p3); // same committed endpoint
-        expect(flown(out.path!, ms, TIER_SIZE[tier], rock)).toBe(false);
-      }
+      // this crossing blocks every variant at first: the wiggle holds a little, then (with the
+      // rock further along) a clear dive commits — the same endpoint, and it misses the rock
+      expect(heldMs).toBeGreaterThan(0);
+      expect(heldMs).toBeLessThan(DIVE_HOLD_MAX_MS);
+      expect(out.phase).toBe("Diving");
+      expect(out.path!.p3).toEqual(planned.p3);
+      expect(out.path!.p1).not.toEqual(planned.p1); // an alternative, not the planned dive
+      expect(flown(out.path!, ms, TIER_SIZE[tier], rock)).toBe(false);
+    });
+
+    it(`${tier}: a save taken mid-hold restores and replays the wiggle hold exactly`, () => {
+      let s = settled(tier === "Guardian" ? 5 : 3);
+      const centre = (a: Enemy, b: Enemy) =>
+        Math.abs(a.formationX - CANVAS_W / 2) - Math.abs(b.formationX - CANVAS_W / 2);
+      const ship = s.enemies.filter((x) => x.isAlive && x.tier === tier).sort(centre)[0];
+      if (!ship) throw new Error(`no ${tier}`);
+      // it is the last ship (which also unlocks Guardian dives), so the parked rock under it
+      // has nothing else to strike
+      s = {
+        ...s,
+        enemies: s.enemies.map((e) => (e.id === ship.id ? e : { ...e, isAlive: false, hp: 0 })),
+      };
+      s = patch(s, (e) => e.id === ship.id, {
+        phase: "Wiggling",
+        wiggleTimer: 1,
+        diveTargetX: CANVAS_W * 0.5,
+      });
+      s = {
+        ...s,
+        asteroids: [rockAt(ship.formationX, ship.formationY + 200, 0, 0, { radius: 150 })],
+      };
+      const shipOf = (st: StarSwarmState) => st.enemies.find((e) => e.id === ship.id)!;
+      for (let i = 0; i < 10; i++) s = tick(s, DT, ASIDE);
+      expect(shipOf(s).phase).toBe("Wiggling");
+      expect(shipOf(s).wiggleTimer).toBeLessThan(0); // holding, planned path kept in `path`
+      expect(shipOf(s).path).not.toBeNull();
+      const end = replaysAfterRestore(s, Math.ceil(DIVE_HOLD_MAX_MS / DT));
+      expect(shipOf(end).phase).toBe("Formation"); // stood down
     });
 
     it(`${tier}: takes the first clear alternative (fixed order) when one exists`, () => {

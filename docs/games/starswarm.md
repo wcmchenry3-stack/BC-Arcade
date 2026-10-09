@@ -320,11 +320,14 @@ run.
 **Path vetting (#3131).** When the brace ends, the run is checked against every live rock that is
 already on screen before the Carrier commits (`pathStrikesRock`, a pure, rng-free helper in
 `asteroids.ts`). Each rock is projected in a straight line (`x + vx·t`, `y + vy·t`). The run is
-sampled every 100 ms (`PATH_CHECK_STEP_MS`) and each segment is swept against the Carrier's
-hitbox (plus a 4 px `PATH_CHECK_MARGIN`) with the same exact closest-approach test as
-`asteroidThreatens`. A candidate is rejected only if it strikes a rock that **holding station would
-not**. A rock that would hit the Carrier on station anyway is ignored, because it is already on
-course and still hits. The Carrier tries fixed-order alternatives (`carrierRunCandidates`): the
+sampled every 100 ms (`PATH_CHECK_STEP_MS`) and each segment is swept, with the same exact
+closest-approach geometry as `asteroidThreatens`, against the circle that encloses the Carrier's
+rectangular hitbox: half its diagonal plus a 4 px `PATH_CHECK_MARGIN`, so a corner graze counts.
+The sweep gives the time the run would first touch each rock. A candidate is rejected only if it
+strikes a rock that **holding station would not have met by then**. A rock that would reach the
+Carrier on station no later than the run would reach it is ignored, because it is already on
+course and still hits. A rock that would reach the station only later, after the run has flown
+into it, still rejects the run. The Carrier tries fixed-order alternatives (`carrierRunCandidates`): the
 planned run, the mirrored lean, then a shallower run (`ATTACK_RUN_SHALLOW_FACTOR`, 75% depth) with
 the planned lean, then mirrored. All of them return to the same station. If every candidate is
 blocked, the Carrier stays braced on station and re-checks each tick, with `runTimer` running below
@@ -797,7 +800,11 @@ into a rock that would have passed it by:
   jitter is drawn exactly as before. The ship then tries rng-free variants in a fixed order
   (`diveCandidates`): the planned dive, the mirrored opening sweep, then the `LATE_NUDGE_PX` nudges
   (+60 px, then −60 px). All of them share the same endpoint. A variant is rejected only if
-  `pathStrikesRock` says it strikes an on-screen rock that holding station would not. If every
+  `pathStrikesRock` says it strikes an on-screen rock that holding station would not have met by
+  then (the same rule and hitbox circle as the Carrier's run). Only the part of the dive the ship
+  actually flies is vetted: down to the depth where it hands over to Returning or Circling (60% of
+  the canvas height for the shallow dives, 85% otherwise). **Known limit:** the return or circle
+  that follows the dive is not vetted. If every
   variant is blocked, the wiggle continues, with `wiggleTimer` running below zero and a re-check
   each tick. The planned path is kept in `path` so nothing is redrawn. After `DIVE_HOLD_MAX_MS`
   (700 ms) the ship settles back into Formation. Seeded runs stay deterministic, and no new `Enemy`

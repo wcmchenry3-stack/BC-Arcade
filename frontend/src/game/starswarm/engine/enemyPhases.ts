@@ -42,6 +42,7 @@ import {
   GUARDIAN_BULLET_VY,
   GUARDIAN_DIVE_PATH_DURATION,
   LATE_NUDGE_PX,
+  PATH_CHECK_STEP_MS,
   RETURN_DURATION,
   SHOOT_INTERVAL_BASE,
   SHOOT_INTERVAL_JITTER,
@@ -301,6 +302,8 @@ function guardianBurstFire(enemy: Enemy, playerX: number, playerY: number): Enem
  * #3131: an Elite/Guardian dive's candidates, in the fixed order they are tried: the planned
  * dive, the mirrored opening sweep, then the LATE_NUDGE_PX nudges (+, then −). The endpoint (p3)
  * is the same for all of them. Rng-free — the jitter was drawn once, into `planned`.
+ *
+ * @internal Exported for tests only; no production caller (knip --production, #3126).
  */
 export function diveCandidates(enemy: Enemy, planned: CubicBezier): CubicBezier[] {
   return [
@@ -311,12 +314,35 @@ export function diveCandidates(enemy: Enemy, planned: CubicBezier): CubicBezier[
   ];
 }
 
+/**
+ * The depth (y) at which a dive hands over to Returning or Circling (see tickDiving): 60% of the
+ * canvas for the shallow dives (Elite stage 1, Guardian stage 2), 85% otherwise.
+ */
+function diveHandoffY(canvasH: number, shallow: boolean): number {
+  return shallow ? canvasH * 0.6 : canvasH * 0.85;
+}
+
+/**
+ * #3131: how much of a dive (path progress, 0–1) is actually flown before the hand-off depth, so
+ * vetting covers the dive the ship flies and not the unflown tail. The mirrored and nudged
+ * variants only move control points sideways, so they share this. Coarse (PATH_CHECK_STEP_MS
+ * steps, rounded up), which only ever vets a little more, never less.
+ */
+function diveFlownT(path: CubicBezier, durationMs: number, handoffY: number): number {
+  const steps = Math.max(1, Math.ceil(durationMs / PATH_CHECK_STEP_MS));
+  for (let i = 1; i <= steps; i++) {
+    if (evalCubic(path, i / steps).y > handoffY) return i / steps;
+  }
+  return 1;
+}
+
 // #975: oscillate ±WIGGLE_AMPLITUDE px for WIGGLE_DURATION ms, then launch Bézier dive.
 // #3131: an Elite or Guardian dive is vetted against on-screen rocks at launch; if every
 // candidate (`diveCandidates`) would fly into a rock that holding station would miss, the ship
 // keeps wiggling (wiggleTimer runs below zero, re-checked each tick) for up to DIVE_HOLD_MAX_MS,
 // then settles back into Formation. The planned path is kept in `path` while it holds, so the
-// single rng() jitter is drawn once, on the first launch attempt, exactly as before.
+// single rng() jitter is drawn once, on the first launch attempt, exactly as before. Only the
+// dive down to its hand-off depth is vetted; the return or circle that follows is not.
 function tickWiggling(
   enemy: Enemy,
   dtMs: number,
@@ -340,7 +366,9 @@ function tickWiggling(
     const vetted = enemy.tier === "Elite" || enemy.tier === "Guardian"; // Grunts unchanged
     const path =
       vetted && rocks.length > 0
-        ? firstClearPath(diveCandidates(enemy, planned), duration, enemy, rocks)
+        ? firstClearPath(diveCandidates(enemy, planned), duration, enemy, rocks, {
+            untilT: diveFlownT(planned, duration, diveHandoffY(canvasH, shallow)),
+          })
         : planned;
     if (!path) {
       if (newTimer <= -DIVE_HOLD_MAX_MS) {
@@ -432,7 +460,7 @@ function tickDiving(
   // #1077: Stage 2 Guardian uses shallow arc — return to formation like Elite Phase 1, no Circling
   const isGuardianStage2 =
     enemy.tier === "Guardian" && guardianThresholdCrossed && !guardianDeepThresholdCrossed;
-  const depthThreshold = isElitePhase1 || isGuardianStage2 ? canvasH * 0.6 : canvasH * 0.85;
+  const depthThreshold = diveHandoffY(canvasH, isElitePhase1 || isGuardianStage2);
   const pathDone = pos.y > depthThreshold || newT >= 1;
 
   if (pathDone) {

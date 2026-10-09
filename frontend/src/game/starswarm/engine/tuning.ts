@@ -265,7 +265,7 @@ export const ATTACK_RUN: Readonly<
  * on-screen rocks' straight-line projections before it is committed (see `pathStrikesRock`).
  */
 export const PATH_CHECK_STEP_MS = 100; // path sample spacing; each segment is swept exactly
-export const PATH_CHECK_MARGIN = 4; // px of slack added to the ship's threat radius
+export const PATH_CHECK_MARGIN = 4; // px of slack around the circle enclosing the hitbox (half-diagonal)
 /** Shallower alternative run: this fraction of the stage's ATTACK_RUN depth. */
 export const ATTACK_RUN_SHALLOW_FACTOR = 0.75;
 /** Longest a braced Carrier holds for a clear run before it stands down and re-rolls its timer. */
