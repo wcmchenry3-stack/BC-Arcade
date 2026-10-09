@@ -1,5 +1,5 @@
 /**
- * @jest-environment node
+ * @jest-environment ./jest-env/node.js
  *
  * Asset transparency smoke test — CI gate
  * ----------------------------------------

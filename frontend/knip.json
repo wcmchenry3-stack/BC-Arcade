@@ -9,12 +9,15 @@
     "scripts/*.mjs",
     "scripts/*.js",
     "App.tsx",
+    // Jest test environments: package.json `testEnvironment` and `@jest-environment` docblocks (#3004)
+    "jest-env/*.js",
     "../tools/sim/*.ts",
     "../tools/generators/*.ts"
   ],
   "project": [
     "src/**/*.{ts,tsx}",
     "scripts/*.{js,mjs}",
+    "jest-env/*.js",
     "tooling/**/*.ts",
     "../tools/sim/*.ts",
     "../tools/generators/*.ts"
@@ -23,10 +26,11 @@
   // tsx runs tools/sim and tools/generators (`npx --prefix frontend tsx tools/sim/...`).
   "ignoreDependencies": [
     "tsx",
-    // jsdom: provided by jest-environment-jsdom, selected via @jest-environment docblocks in tests
-    "jsdom",
     // @eslint/js: required by eslint.config.js, installed as an eslint dependency
     "@eslint/js"
   ],
+  // Jest resolves `@jest-environment ./jest-env/...` docblocks against <rootDir> (this
+  // directory); knip resolves them against the test file. The files are entries above.
+  "ignoreUnresolved": ["./jest-env/node.js", "./jest-env/jsdom.js"],
   "ignoreExportsUsedInFile": true
 }

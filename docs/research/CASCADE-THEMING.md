@@ -253,7 +253,7 @@ All of these must pass before merging a new theme:
 
 ```bash
 cd frontend
-npx jest --testPathPattern="fruitAssets|fruitVertices"
+npx jest --testPathPatterns="fruitAssets|fruitVertices"
 ```
 
 - **`fruitAssets.test.ts`**: hull coverage ≥ 60%, vertex count ≤ 24, all vertices within [-1.001, 1.001], centroid near origin, spriteClipRadius > 0

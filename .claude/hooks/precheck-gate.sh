@@ -36,6 +36,11 @@ FAIL=0
 # Upstream-blocked advisories (unfixable without a breaking Expo downgrade):
 #   GHSA-w3rx-r6r6-pgpr – image-size ICNS DoS (lodged in metro, awaiting Expo fix)
 #   GHSA-5p2g-fcmc-qvqq – image-size JXL/HEIF DoS (same as above)
+#   GHSA-86w9-cpqp-85rv – node-forge <=1.4.0 RSA PKCS#1 v1.5 signature check (high; via
+#     @expo/cli → @expo/code-signing-certificates). 2026-10-09: still no patched release
+#     (latest node-forge is 1.4.0), so overrides["node-forge"] stays at ">=1.3.4". Not listed in
+#     the sets below: this gate only fails on critical advisories. Raise the override once a
+#     fixed node-forge ships (#3004).
 # Remove these entries once Expo ships a metro update with a patched image-size.
 NPM_AUDIT_BLOCKED="GHSA-w3rx-r6r6-pgpr GHSA-5p2g-fcmc-qvqq"
 if [ -f "frontend/package.json" ]; then

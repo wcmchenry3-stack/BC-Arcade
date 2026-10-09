@@ -167,6 +167,14 @@ module.exports = [
     },
   },
 
+  // Jest test environments (#3004): Jest loads them with require(), so they are CommonJS.
+  {
+    files: ["jest-env/*.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+
   // The app must not import the CI/script-only simulators in tooling/ (#2969):
   // they would be bundled into the production app.
   {

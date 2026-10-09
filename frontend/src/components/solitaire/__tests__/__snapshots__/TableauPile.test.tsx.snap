@@ -1,4 +1,4 @@
-// Jest Snapshot v1, https://goo.gl/fbAQLP
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
 
 exports[`TableauPile — cascade offsets (#1247) 12-card column height snapshot (6 face-down + 6 face-up, natural card size) 1`] = `
 {

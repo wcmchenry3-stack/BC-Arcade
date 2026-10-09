@@ -542,7 +542,7 @@ and runs nightly as the `regret` job of `yacht-sim-gate.yml`. Its games use
 the harness's per-player streams (`tooling/yacht/streams.ts`):
 
 ```bash
-YACHT_SIM_FULL=3000 npx jest --testPathPattern="ai.calibrate" -t "regret" --silent=false
+YACHT_SIM_FULL=3000 npx jest --testPathPatterns="ai.calibrate" -t "regret" --silent=false
 ```
 
 Each decision requires an **awaited** oracle query — mean ~2.5ms for hold EVs

@@ -1,5 +1,5 @@
 /**
- * @jest-environment jsdom
+ * @jest-environment ./jest-env/jsdom.js
  *
  * #2956: the Star Swarm web canvas (GameCanvas.web.tsx, Expo Web — a secondary
  * platform). Cheap coverage only: the real engine plays a seeded game against a recording 2D

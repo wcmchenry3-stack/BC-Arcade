@@ -1,5 +1,5 @@
 /**
- * @jest-environment node
+ * @jest-environment ./jest-env/node.js
  *
  * render.yaml deployment config guard
  * ------------------------------------

@@ -1,5 +1,5 @@
 /**
- * @jest-environment node
+ * @jest-environment ./jest-env/node.js
  *
  * React / react-native version guard
  * -----------------------------------
