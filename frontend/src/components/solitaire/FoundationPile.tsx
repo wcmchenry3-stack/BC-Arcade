@@ -3,30 +3,18 @@
  *
  * Stateless. Shows the top card if the pile is non-empty; otherwise a
  * placeholder with the expected suit symbol in `colors.textMuted` — this
- * is how the player identifies which foundation is for which suit.
+ * is how the player identifies which foundation is for which suit. The pile
+ * itself is the shared `components/cards/FoundationPile` (#2983).
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useTranslation } from "react-i18next";
-
-import { useTheme } from "../../theme/ThemeContext";
-import type { Card, Suit } from "../../game/solitaire/types";
-import { useCardSize } from "../../game/_shared/CardSizeContext";
-import type { CanonicalSuit } from "../../game/_shared/decks/types";
-import { rankLabel } from "../../game/_shared/decks/cardId";
-import SelectableCard from "../../game/_shared/SelectableCard";
-import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
-import { DropTarget } from "../../game/_shared/drag/DropTarget";
-import type { DropHandler } from "../../game/_shared/drag/DragContext";
+import { StyleSheet } from "react-native";
 import type { SharedValue } from "react-native-reanimated";
 
-const SUIT_SYMBOL: Record<Suit, string> = {
-  spades: "♠",
-  hearts: "♥",
-  diamonds: "♦",
-  clubs: "♣",
-};
+import SharedFoundationPile from "../cards/FoundationPile";
+import type { Colors } from "../../theme/ThemeContext";
+import type { DropHandler } from "../../game/_shared/drag/DragContext";
+import type { Card, Suit } from "../../game/solitaire/types";
 
 export interface FoundationPileProps {
   readonly pile: readonly Card[];
@@ -41,128 +29,28 @@ export interface FoundationPileProps {
   readonly onDrop?: DropHandler;
 }
 
-export default function FoundationPile({
-  pile,
-  suit,
-  selected = false,
-  hintDestination = false,
-  hintSource = false,
-  shakeX,
-  onPress,
-  dropId,
-  onDrop,
-}: FoundationPileProps) {
-  const { colors } = useTheme();
-  const { t } = useTranslation("solitaire");
-  const { cardWidth, cardHeight } = useCardSize();
-  const hasDrop = dropId !== undefined && onDrop !== undefined;
+const CARD_LABEL_KEYS = { normal: "card.faceUp", selected: "card.faceUpSelected" } as const;
 
-  const highlightStyle = { borderColor: colors.accent, borderWidth: 2, borderRadius: 8 };
-  const hintStyle = { borderColor: colors.bonus, borderWidth: 3, borderRadius: 8 };
-  const dimStyle = { opacity: 0.4 };
+const glyphColor = (_suit: Suit, colors: Colors) => colors.textMuted;
 
-  const inner = (() => {
-    if (pile.length > 0) {
-      const top = pile[pile.length - 1];
-      if (top !== undefined) {
-        const rl = rankLabel(top.rank);
-        const suitName = t(`suit.${top.suit}` as const);
-        const cardLabel = selected
-          ? t("card.faceUpSelected", { rank: rl, suit: suitName })
-          : t("card.faceUp", { rank: rl, suit: suitName });
-        return (
-          <View style={hintDestination || hintSource ? hintStyle : undefined}>
-            <DraggableCard
-              testID={`solitaire-foundation-${suit}-card`}
-              onTap={onPress ? () => onPress(suit) : undefined}
-              accessibilityLabel={cardLabel}
-              dragCards={[
-                {
-                  suit: top.suit as CanonicalSuit,
-                  rank: top.rank,
-                  faceDown: false,
-                  width: cardWidth,
-                  height: cardHeight,
-                },
-              ]}
-              dragSource={{ game: "solitaire", type: "foundation", suit }}
-            >
-              <SelectableCard
-                suit={top.suit as CanonicalSuit}
-                rank={top.rank}
-                width={cardWidth}
-                height={cardHeight}
-                selected={selected}
-                shakeX={shakeX}
-                accessibilityLabel={cardLabel}
-              />
-            </DraggableCard>
-          </View>
-        );
-      }
-    }
-
-    const label = t("pile.foundation.empty", { suit: t(`suit.${suit}` as const) });
-    const style = [
-      styles.empty,
-      {
-        width: cardWidth,
-        height: cardHeight,
-        borderColor:
-          hintDestination || hintSource ? colors.bonus : selected ? colors.accent : colors.border,
-        borderWidth: hintDestination || hintSource ? 3 : selected ? 2 : 1,
-        backgroundColor: colors.background,
-      },
-    ];
-    const content = (
-      <Text style={[styles.suit, { color: colors.textMuted }]}>{SUIT_SYMBOL[suit]}</Text>
-    );
-
-    if (onPress) {
-      return (
-        <Pressable
-          onPress={() => onPress(suit)}
-          style={style}
-          accessibilityRole="button"
-          accessibilityLabel={label}
-        >
-          {content}
-        </Pressable>
-      );
-    }
-    return (
-      <View style={style} accessibilityRole="image" accessibilityLabel={label}>
-        {content}
-      </View>
-    );
-  })();
-
-  if (hasDrop) {
-    return (
-      // testID mirrors TableauPile/FreeCellSlot's convention (dropId doubles
-      // as the Maestro-queryable id) — without it, an empty foundation pile
-      // has no element Maestro can target as a drag destination. See #2346.
-      <DropTarget
-        id={dropId!}
-        testID={dropId}
-        onDrop={onDrop!}
-        highlightStyle={highlightStyle}
-        dimStyle={dimStyle}
-      >
-        {inner}
-      </DropTarget>
-    );
-  }
-
-  return inner;
+export default function FoundationPile(props: FoundationPileProps) {
+  return (
+    <SharedFoundationPile
+      {...props}
+      game="solitaire"
+      ns="solitaire"
+      testIdPrefix="solitaire"
+      cardLabelKeys={CARD_LABEL_KEYS}
+      emptyRadius={8}
+      hintBorderWidth={3}
+      topCardHint="frame"
+      suitGlyphStyle={styles.suit}
+      suitGlyphColor={glyphColor}
+    />
+  );
 }
 
 const styles = StyleSheet.create({
-  empty: {
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   suit: {
     fontSize: 32,
     lineHeight: 36,

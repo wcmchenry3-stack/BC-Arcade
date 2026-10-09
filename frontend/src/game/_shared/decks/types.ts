@@ -4,10 +4,11 @@ export type CanonicalSuit = "spades" | "hearts" | "diamonds" | "clubs";
 
 /**
  * Props passed by PlayingCard to whichever deck renderer is active.
- * All colours come from ThemeContext so every deck is dark-mode aware
- * by default. A deck may ignore colours it doesn't need (e.g. the Neon
- * deck uses its own fixed palette) but must never hardcode colours that
- * would break in light mode.
+ * Every colour comes from the ThemeContext `colors` tokens: the face, ink and
+ * red-suit colours from the card tokens (`cardFace`, `cardInk`, `cardRedSuit`,
+ * #2983), the back and borders from the surface/border/accent tokens. A deck
+ * may ignore colours it doesn't need (the Neon deck draws its own fixed dark
+ * palette in both themes) but must stay legible in light and dark mode.
  */
 export interface CardFaceProps {
   suit: CanonicalSuit;
@@ -16,12 +17,12 @@ export interface CardFaceProps {
   height: number;
   faceDown: boolean;
   // ThemeContext colours injected by PlayingCard
-  cardBg: string; // card face background
+  cardBg: string; // card face background (colors.cardFace)
   cardBgBack: string; // card back background
   border: string; // normal border colour
   borderHighlight: string; // accent border when highlighted/selected
-  textColor: string; // rank text + black suits
-  redSuitColor: string; // hearts / diamonds
+  textColor: string; // rank text + black suits (colors.cardInk)
+  redSuitColor: string; // hearts / diamonds (colors.cardRedSuit)
 }
 
 export interface DeckTheme {

@@ -11,18 +11,23 @@ import { useWindowDimensions } from "react-native";
  */
 export const MIN_CARD_W = 36;
 
-// default avoids 0×0 renders outside a Provider
-const DEFAULT_CARD_WIDTH = 52;
-const DEFAULT_CARD_HEIGHT = 74;
+/**
+ * Natural (unscaled) playing-card size, in dp (#2983). The single source for
+ * every 52 x 74 card: PlayingCard's defaults, the Hearts hand, Solitaire's
+ * natural board and this context's out-of-Provider default.
+ */
+export const CARD_NATURAL_W = 52;
+export const CARD_NATURAL_H = 74;
 
 export interface CardSizeContextValue {
   readonly cardWidth: number;
   readonly cardHeight: number;
 }
 
+// default avoids 0×0 renders outside a Provider
 export const CardSizeContext = createContext<CardSizeContextValue>({
-  cardWidth: DEFAULT_CARD_WIDTH,
-  cardHeight: DEFAULT_CARD_HEIGHT,
+  cardWidth: CARD_NATURAL_W,
+  cardHeight: CARD_NATURAL_H,
 });
 
 export function useCardSize(): CardSizeContextValue {

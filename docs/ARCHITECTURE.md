@@ -264,6 +264,10 @@ One folder convention (#2980, epic #2950):
 | React components for a game (boards, piles, tiles, pickers) | `frontend/src/components/<name>/` |
 | Screens                                                     | `frontend/src/screens/`           |
 
+React components shared by several card games live in `frontend/src/components/cards/`
+(the foundation pile and tableau column FreeCell and Solitaire both use, #2983); the
+game folders keep thin wrappers that fix the per-game props.
+
 `game/<name>/` is headless: nothing in it may import from `components/` or
 `screens/` (enforced by the `bc-arcade/no-game-ui-imports` ESLint rule, which
 has no `.tsx` exemption apart from the list below).

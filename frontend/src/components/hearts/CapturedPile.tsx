@@ -151,7 +151,7 @@ export function SelfCapturedPile({ cards }: SelfProps) {
                   styles.selfCard,
                   {
                     left: i * SELF_OFFSET,
-                    backgroundColor: "#fff",
+                    backgroundColor: colors.cardFace,
                     borderColor: colors.border,
                   },
                 ]}
@@ -160,7 +160,7 @@ export function SelfCapturedPile({ cards }: SelfProps) {
                   testID="card-rank"
                   style={[
                     styles.selfRank,
-                    { color: isRedSuit(card.suit) ? colors.error : "#0e0e13" },
+                    { color: isRedSuit(card.suit) ? colors.error : colors.cardInk },
                   ]}
                 >
                   {rankText(card.rank)}
@@ -168,7 +168,7 @@ export function SelfCapturedPile({ cards }: SelfProps) {
                 <Text
                   style={[
                     styles.selfSuit,
-                    { color: isRedSuit(card.suit) ? colors.error : "#0e0e13" },
+                    { color: isRedSuit(card.suit) ? colors.error : colors.cardInk },
                   ]}
                 >
                   {SUIT_SYMBOL[card.suit]}

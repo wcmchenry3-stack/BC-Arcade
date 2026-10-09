@@ -3,24 +3,21 @@
  *
  * Stateless. Vertically offsets cards so all are visible; empty columns
  * render a dashed placeholder. Bubbles taps up as `(colIndex, cardIndex)`
- * so the parent screen can run its tap-to-select state machine.
+ * so the parent screen can run its tap-to-select state machine. The column
+ * itself is the shared `components/cards/TableauColumn` (#2983).
  */
 
 import React from "react";
-import { Pressable, StyleSheet, View, ViewStyle } from "react-native";
 import { useTranslation } from "react-i18next";
+import type { SharedValue } from "react-native-reanimated";
 
-import { useTheme } from "../../theme/ThemeContext";
+import SharedTableauColumn from "../cards/TableauColumn";
 import type { Card } from "../../game/solitaire/types";
-import type { CanonicalSuit } from "../../game/_shared/decks/types";
 import CardView, { CARD_WIDTH } from "./CardView";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
 import { rankLabel } from "../../game/_shared/decks/cardId";
 import SelectableCard from "../../game/_shared/SelectableCard";
-import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
-import { DropTarget } from "../../game/_shared/drag/DropTarget";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
-import type { SharedValue } from "react-native-reanimated";
 
 const FACE_UP_OFFSET = 28;
 const FACE_DOWN_OFFSET = 20;
@@ -69,168 +66,56 @@ export default function TableauPile({
   dropId,
   onDrop,
 }: TableauPileProps) {
-  const { colors } = useTheme();
   const { t } = useTranslation("solitaire");
   const { cardWidth, cardHeight } = useCardSize();
   const { faceUpOffset, faceDownOffset } = computeTableauOffsets(cardWidth);
 
-  const highlightStyle: ViewStyle = {
-    borderColor: colors.accent,
-    borderWidth: 2,
-    borderRadius: 8,
-  };
-  const hintStyle: ViewStyle = {
-    borderColor: colors.bonus,
-    borderWidth: 3,
-    borderRadius: 8,
-  };
-  const dimStyle: ViewStyle = { opacity: 0.4 };
-  const hasDrop = dropId !== undefined && onDrop !== undefined;
-
-  if (pile.length === 0) {
-    const empty = (
-      <Pressable
-        onPress={onEmptyPress ? () => onEmptyPress(colIndex) : undefined}
-        style={[
-          styles.empty,
-          {
-            width: cardWidth,
-            height: cardHeight,
-            borderColor: hintDestination ? colors.bonus : colors.border,
-            borderWidth: hintDestination ? 3 : 1,
-            backgroundColor: colors.background,
-          },
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel={t("pile.tableau.empty", { col: colIndex + 1 })}
+  // Selected cards lift and carry a label; the rest are plain CardViews.
+  const renderCard = (card: Card, cardIndex: number) => {
+    const isSelected = selectedIndex !== undefined && cardIndex >= selectedIndex;
+    if (!isSelected) return <CardView card={card} />;
+    const selectedLabel = card.faceUp
+      ? t("card.faceUpSelected", {
+          rank: rankLabel(card.rank),
+          suit: t(`suit.${card.suit}` as const),
+        })
+      : t("card.faceDownSelected");
+    return (
+      <SelectableCard
+        suit={card.suit}
+        rank={card.rank}
+        faceDown={!card.faceUp}
+        width={cardWidth}
+        height={cardHeight}
+        selected
+        shakeX={shakeX}
+        accessibilityLabel={selectedLabel}
       />
     );
-    if (hasDrop) {
-      return (
-        <DropTarget
-          id={dropId!}
-          testID={dropId}
-          onDrop={onDrop!}
-          highlightStyle={highlightStyle}
-          dimStyle={dimStyle}
-        >
-          {empty}
-        </DropTarget>
-      );
-    }
-    return empty;
-  }
+  };
 
-  const offsets: number[] = [];
-  let acc = 0;
-  for (let i = 0; i < pile.length; i++) {
-    offsets.push(acc);
-    const card = pile[i];
-    if (card === undefined) break;
-    acc += card.faceUp ? faceUpOffset : faceDownOffset;
-  }
-  const containerHeight = cardHeight + (offsets[pile.length - 1] ?? 0);
-  const containerStyle: ViewStyle = { width: cardWidth, height: containerHeight };
-
-  const cards = pile.map((card, cardIndex) => {
-    const isTop = cardIndex === pile.length - 1;
-    const isSelected = selectedIndex !== undefined && cardIndex >= selectedIndex;
-    const isHintSource = hintIndex !== undefined && cardIndex === hintIndex;
-    const handlePress = onCardPress ? () => onCardPress(colIndex, cardIndex) : undefined;
-    const dragCards = pile.slice(cardIndex).map((c) => ({
-      suit: c.suit as CanonicalSuit,
-      rank: c.rank,
-      faceDown: !c.faceUp,
-      width: cardWidth,
-      height: cardHeight,
-    }));
-    const selectedLabel = isSelected
-      ? card.faceUp
-        ? t("card.faceUpSelected", {
-            rank: rankLabel(card.rank),
-            suit: t(`suit.${card.suit}` as const),
-          })
-        : t("card.faceDownSelected")
-      : undefined;
-    const stripeHeight = isTop ? 0 : (offsets[cardIndex + 1] ?? 0) - (offsets[cardIndex] ?? 0);
-    const hitSlop = isTop
-      ? undefined
-      : { top: 0, bottom: Math.min(24, stripeHeight), left: 4, right: 4 };
-    return (
-      <DraggableCard
-        key={cardIndex}
-        // Column-scoped: a bare `draggable-card-${cardIndex}` collides across
-        // all 7 columns (every column has a card at index 0), so Maestro
-        // couldn't reliably pick a drag *source* by testID (only drop
-        // targets, via TableauPile's per-column `dropId`). See #2346.
-        testID={
-          isHintSource ? "solitaire-hint-source" : `solitaire-tableau-${colIndex}-card-${cardIndex}`
-        }
-        style={[styles.cardSlot, { top: offsets[cardIndex] ?? 0 }, isHintSource && hintStyle]}
-        onTap={handlePress}
-        dragCards={dragCards}
-        dragSource={{ game: "solitaire", type: "tableau", col: colIndex, fromIndex: cardIndex }}
-        draggable={card.faceUp}
-        hitSlop={hitSlop}
-      >
-        {isSelected ? (
-          <SelectableCard
-            suit={card.suit as CanonicalSuit}
-            rank={card.rank}
-            faceDown={!card.faceUp}
-            width={cardWidth}
-            height={cardHeight}
-            selected
-            shakeX={shakeX}
-            accessibilityLabel={selectedLabel}
-          />
-        ) : (
-          <CardView card={card} />
-        )}
-      </DraggableCard>
-    );
-  });
-
-  const pileView = (
-    <View
-      style={containerStyle}
-      accessibilityLabel={t("pile.tableau.label", { col: colIndex + 1, count: pile.length })}
-    >
-      {cards}
-    </View>
+  return (
+    <SharedTableauColumn
+      game="solitaire"
+      ns="solitaire"
+      emptyRadius={8}
+      hintBorderWidth={3}
+      faceUpOffset={faceUpOffset}
+      faceDownOffset={faceDownOffset}
+      cardTestID={(cardIndex) =>
+        cardIndex === hintIndex
+          ? "solitaire-hint-source"
+          : `solitaire-tableau-${colIndex}-card-${cardIndex}`
+      }
+      renderCard={renderCard}
+      hintFrameIndex={hintIndex}
+      pile={pile}
+      colIndex={colIndex}
+      hintDestination={hintDestination}
+      onCardPress={onCardPress}
+      onEmptyPress={onEmptyPress}
+      dropId={dropId}
+      onDrop={onDrop}
+    />
   );
-
-  if (hasDrop) {
-    return (
-      <DropTarget
-        id={dropId!}
-        testID={dropId}
-        onDrop={onDrop!}
-        style={containerStyle}
-        highlightStyle={highlightStyle}
-        dimStyle={dimStyle}
-      >
-        <View
-          style={StyleSheet.absoluteFill}
-          accessibilityLabel={t("pile.tableau.label", { col: colIndex + 1, count: pile.length })}
-        >
-          {cards}
-        </View>
-      </DropTarget>
-    );
-  }
-
-  return pileView;
 }
-
-const styles = StyleSheet.create({
-  empty: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderStyle: "dashed",
-  },
-  cardSlot: {
-    position: "absolute",
-    left: 0,
-  },
-});

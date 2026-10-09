@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import PlayingCard from "./PlayingCard";
 import { sortHand } from "./cardSort";
 import type { Card } from "../../game/hearts/types";
+import { CARD_NATURAL_H, CARD_NATURAL_W } from "../../game/_shared/CardSizeContext";
 
 interface Props {
   hand: Card[];
@@ -22,8 +23,8 @@ function cardKey(c: Card): string {
   return `${c.suit}-${c.rank}`;
 }
 
-const CARD_WIDTH = 52;
-const CARD_HEIGHT = 74;
+const CARD_WIDTH = CARD_NATURAL_W;
+const CARD_HEIGHT = CARD_NATURAL_H;
 const LIFT_AMOUNT = 28;
 const H_PADDING = 8;
 

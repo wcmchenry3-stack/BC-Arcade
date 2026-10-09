@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import SharedPlayingCard from "../shared/PlayingCard";
 import { rankLabel } from "../../game/_shared/decks/cardId";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
-import { useCardSize } from "../../game/_shared/CardSizeContext";
+import { CARD_NATURAL_H, CARD_NATURAL_W, useCardSize } from "../../game/_shared/CardSizeContext";
 import type { Card } from "../../game/solitaire/types";
 
 export interface CardViewProps {
@@ -40,5 +40,5 @@ export default function CardView({ card, selected = false, onPress }: CardViewPr
   );
 }
 
-export const CARD_WIDTH = 52;
-export const CARD_HEIGHT = 74;
+export const CARD_WIDTH = CARD_NATURAL_W;
+export const CARD_HEIGHT = CARD_NATURAL_H;
