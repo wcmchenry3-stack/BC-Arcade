@@ -12,7 +12,7 @@ import Animated, {
 import { Particle, useParticleGroup, type ParticleMotion } from "../shared/Particle";
 import { useReduceMotion } from "../shared/useReduceMotion";
 import { playTimedPhases } from "../shared/timedPhases";
-import { useTheme } from "../../theme/ThemeContext";
+import { CELEBRATION_SPARKLE } from "../../theme/theme.constants";
 
 // Six sparkle rays at 60° intervals
 const RAYS: readonly ParticleMotion[] = [0, 60, 120, 180, 240, 300].map((angle) => ({
@@ -27,7 +27,6 @@ interface Props {
 
 export function FreeCellFoundationAnimation({ visible, onAnimationEnd }: Props) {
   const reduceMotion = useReduceMotion();
-  const { colors } = useTheme();
   const rays = useParticleGroup();
 
   const iconScale = useSharedValue(0);
@@ -113,7 +112,7 @@ export function FreeCellFoundationAnimation({ visible, onAnimationEnd }: Props) 
         style={[
           StyleSheet.absoluteFill,
           styles.tintLayer,
-          { backgroundColor: colors.celebration },
+          { backgroundColor: CELEBRATION_SPARKLE },
           tintStyle,
         ]}
       />
@@ -124,7 +123,7 @@ export function FreeCellFoundationAnimation({ visible, onAnimationEnd }: Props) 
             index={i}
             group={rays}
             motion={motion}
-            style={[styles.sparkleRay, { backgroundColor: colors.celebration }]}
+            style={[styles.sparkleRay, { backgroundColor: CELEBRATION_SPARKLE }]}
           />
         ))}
         <Animated.Text

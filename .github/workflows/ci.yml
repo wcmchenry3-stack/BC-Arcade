@@ -520,7 +520,10 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-frontend
       - name: No colour literals outside the theme and the game palettes (#2989)
-        run: node scripts/check-color-literals.js
+        run: node scripts/check-color-literals.mjs
+        working-directory: frontend
+      - name: Colour-literal checker tests
+        run: node --test scripts/check-color-literals.test.mjs
         working-directory: frontend
 
   # --- Refactor quality gates (#2951, epic #2950) ---------------------------

@@ -28,6 +28,7 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
+import { CELEBRATION_SPARKLE } from "../theme/theme.constants";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { bestOf } from "../game/_shared/bestOf";
@@ -873,7 +874,7 @@ export default function SolitaireScreen() {
                       style={[
                         StyleSheet.absoluteFill,
                         {
-                          backgroundColor: colors.celebration,
+                          backgroundColor: CELEBRATION_SPARKLE,
                           opacity: sparkleOpacity,
                           borderRadius: 8,
                         },

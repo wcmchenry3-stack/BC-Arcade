@@ -24,6 +24,11 @@ export const MENU_SHADOW_COLOR = "#000000";
  *  `MENU_SHADOW_COLOR`). */
 export const MENU_SHADOW_CSS = "0 8px 24px rgba(0,0,0,0.5)";
 
+/** Gold of the FreeCell foundation and Solitaire sparkles: bright in both themes.
+ *  `colors.celebration` is darkened in light mode so it can be text; a sparkle
+ *  fill must stay gold, so it does not use it. */
+export const CELEBRATION_SPARKLE = "#ffd700";
+
 /** Yacht celebration badge text — near-black on the gold / purple badge. */
 export const BADGE_TEXT = "#1a1a1a";
 
