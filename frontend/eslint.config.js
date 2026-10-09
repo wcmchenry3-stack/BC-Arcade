@@ -172,7 +172,7 @@ module.exports = [
       "import-x/resolver-next": [createTypeScriptImportResolver({ project: "./tsconfig.json" })],
     },
     rules: {
-      "import-x/no-cycle": ["error", { maxDepth: 10, ignoreExternal: true }],
+      "import-x/no-cycle": ["error", { ignoreExternal: true }],
     },
   },
 
