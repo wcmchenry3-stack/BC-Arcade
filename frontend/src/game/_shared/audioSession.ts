@@ -66,7 +66,10 @@ export function retainAudioSession(): () => void {
   };
 }
 
-/** Test-only: reset module state between tests. */
+/**
+ * Test-only: reset module state between tests.
+ * @internal Exported for tests only; no production caller (knip --production, #3126).
+ */
 export function resetAudioSessionForTests(): void {
   holders = 0;
   if (releaseTimer !== null) clearTimeout(releaseTimer);
