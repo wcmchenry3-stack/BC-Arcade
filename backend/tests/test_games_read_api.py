@@ -5,12 +5,14 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
+from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
 
 from db.base import get_session_factory
 from db.models import GameEntitlement
+from games.history import parse_cursor
 from games.progression import (
     BASE_XP_PER_GAME,
     LEVEL_THRESHOLDS,
@@ -423,7 +425,24 @@ def test_my_games_rejects_an_unparseable_cursor(client: TestClient) -> None:
     assert r.json()["detail"] == "Invalid cursor."
 
 
-async def test_my_games_cursor_excludes_games_started_at_or_after_it(client: TestClient) -> None:
+def _cursor_forms(moment: datetime) -> dict[str, str]:
+    """The same instant as a client might send it, keyed by form (the query string, raw)."""
+    naive = moment.astimezone(UTC).replace(tzinfo=None).isoformat()
+    return {
+        "naive": naive,
+        "plus_offset_encoded": quote(naive + "+00:00", safe=""),
+        "z": naive + "Z",
+        "plus_decoded_to_space": naive + " 00:00",
+        "plus_literal": naive + "+00:00",
+    }
+
+
+@pytest.mark.parametrize(
+    "form", ["naive", "plus_offset_encoded", "z", "plus_decoded_to_space", "plus_literal"]
+)
+async def test_my_games_cursor_excludes_games_started_at_or_after_it(
+    client: TestClient, form: str
+) -> None:
     sid = str(uuid.uuid4())
     await _grant(sid, "yacht")
     # Relative to now: the server only accepts a client start time within a year of it.
@@ -439,10 +458,26 @@ async def test_my_games_cursor_excludes_games_started_at_or_after_it(client: Tes
         assert r.status_code == 200, r.text
         ids[label] = r.json()["id"]
 
-    # An offset-bearing cursor: a timezone-aware value is what Postgres compares against.
-    r = client.get("/games/me", params={"cursor": newer.isoformat()}, headers=_headers(sid))
+    # A naive cursor must be read as UTC (asyncpg rejects naive for timestamptz, #3015);
+    # every spelling of the same instant returns the same page.
+    r = client.get(f"/games/me?cursor={_cursor_forms(newer)[form]}", headers=_headers(sid))
     assert r.status_code == 200, r.text
     assert [g["id"] for g in r.json()["items"]] == [ids["older"]]
+
+
+async def test_my_games_next_cursor_is_z_suffixed_and_round_trips(client: TestClient) -> None:
+    sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
+    for s in (10, 20, 30):
+        _create_and_complete(client, sid, game_type="yacht", final_score=s)
+    first = client.get("/games/me?limit=1", headers=_headers(sid)).json()
+    cursor = first["next_cursor"]
+    assert cursor.endswith("Z") and "+" not in cursor
+    # Unencoded, exactly as a client would append it. Page contents are not asserted:
+    # SQLite stores second-resolution server timestamps, so ties make them meaningless.
+    second = client.get(f"/games/me?limit=1&cursor={cursor}", headers=_headers(sid))
+    assert second.status_code == 200, second.text
+    assert parse_cursor(cursor).utcoffset() == timedelta(0)
 
 
 def test_an_inactive_game_has_no_leaderboard(

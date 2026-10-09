@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -13,6 +13,25 @@ from sqlalchemy.orm import selectinload
 
 from db.models import Game, GameEvent, GameType
 from games.sessions import GameServiceError
+
+
+def parse_cursor(raw: str) -> datetime:
+    """Parse a ``GET /games/me`` cursor into an aware UTC datetime.
+
+    Accepts ``Z``, ``+00:00`` (or any offset) and naive forms; a naive value is read as
+    UTC, since asyncpg rejects naive datetimes for a timestamptz column (#3015). A ``+``
+    that a client left unencoded arrives as a space, so a space is read as ``+``.
+    Raises ``ValueError`` when the value is not a timestamp.
+    """
+    parsed = datetime.fromisoformat(raw.replace(" ", "+"))
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+
+
+def format_cursor(started_at: datetime) -> str:
+    """The opaque ``next_cursor`` for a game: UTC with a ``Z`` suffix (no ``+`` to mangle)."""
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=UTC)
+    return started_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass
@@ -66,7 +85,7 @@ async def list_games_for_session(
         )
         for g, name in rows[:limit]
     ]
-    next_cursor = rows[limit][0].started_at.isoformat() if len(rows) > limit else None
+    next_cursor = format_cursor(rows[limit][0].started_at) if len(rows) > limit else None
     return GamePage(items=items, next_cursor=next_cursor)
 
 
