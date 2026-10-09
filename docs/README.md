@@ -29,6 +29,7 @@ The purpose of this index is to make one thing clear: **which document is the so
 | How does a particular game play? | [Game specifications](games/) |
 | How do accessibility requirements work? | [ACCESSIBILITY.md](ACCESSIBILITY.md) |
 | How do I run or write tests? | [TESTING.md](TESTING.md) |
+| What does each PR check do, and which are required? | [CI-CHECKS.md](CI-CHECKS.md) |
 | How do I deploy the backend/web app? | [RENDER.md](RENDER.md) |
 | How are iOS builds produced? | [IOS.md](IOS.md) |
 | How are Android builds produced? | [ANDROID-CI.md](ANDROID-CI.md) |
@@ -94,6 +95,7 @@ These are current runbooks/procedures, not product-design sources of truth.
 | Document | Purpose |
 | --- | --- |
 | [TESTING.md](TESTING.md) | Automated/manual testing strategy, commands, game-specific simulation guidance |
+| [CI-CHECKS.md](CI-CHECKS.md) | **Operational.** Inventory of every PR check (purpose, what it prevents, workflow:job, origin, gating) and branch-protection notes for `dev` and `main` (#3103) |
 | [RENDER.md](RENDER.md) | Render environments, deployment, environment variables, production DB/health checks |
 | [IOS.md](IOS.md) | Xcode Cloud/iOS build and release workflow |
 | [ANDROID-CI.md](ANDROID-CI.md) | Android/Gradle/Play build and CI workflow |
