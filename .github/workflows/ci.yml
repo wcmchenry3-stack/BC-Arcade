@@ -68,12 +68,17 @@ jobs:
       working-directory: frontend
     secrets: inherit
 
-  conflict-markers:
-    name: Conflict marker check
+  # Repo hygiene (#3113): the former conflict-markers, forbidden-terms and
+  # large-file-guard jobs, one step each. Each check step runs even if an earlier
+  # one failed, so every failure shows under its own step name in a single run.
+  repo-hygiene:
+    name: Repo hygiene
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Check for merge conflict markers
+        id: checkout
+      - name: Conflict marker check
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         run: |
           if grep -rn \
               -e "^<<<<<<< " -e "^=======$" -e "^>>>>>>> " \
@@ -86,13 +91,8 @@ jobs:
             exit 1
           fi
           echo "No conflict markers found"
-
-  forbidden-terms:
-    name: Forbidden brand/trademark terms
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Scan for trademarked or competitor brand references
+      - name: Forbidden brand/trademark terms
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         run: |
           # Third-party trademarks and competitor brands must not appear in source,
           # docs, or config. To add a term, append it to TERMS below.
@@ -131,11 +131,15 @@ jobs:
             exit 1
           fi
           echo "No forbidden terms found"
+      # stdlib-only script; the allow-list (Cascade art -> #3033, BGM -> #1779) lives in the script
+      - name: Large tracked file guard (over 5 MiB)
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        run: python3 scripts/check_large_files.py
 
   # === Tier 1: Substantive fast checks (need lint + secret-scan) ===========
 
   backend-health:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     uses: wcmchenry3-stack/.github/.github/workflows/called-backend-health.yml@main
     with:
       # Direct Render origin intentionally used here instead of dev-games-api.buffingchi.com.
@@ -148,10 +152,14 @@ jobs:
       probe-expected-status: "400"
     secrets: inherit
 
-  # TypeScript type-check (#2211). Separate job so a red X points straight at a type error.
-  # Scope: production sources only (tsconfig.typecheck.json excludes tests).
-  typecheck-frontend:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+  # Frontend static checks (#3113): the former typecheck-frontend, knip, check-i18n
+  # and check-color-literals jobs, one step each, sharing one setup-frontend install.
+  # Each check step runs even if an earlier one failed, so every failure shows under
+  # its own step name. Runtime-heavy frontend jobs (jest, Playwright, the Android
+  # bundle) and expo-compat (depends on Expo's remote compat matrix) stay separate.
+  frontend-static:
+    name: Frontend static checks
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -159,11 +167,29 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-frontend
+        id: setup
+      # #2211. Scope: production sources plus dev tooling (tsconfig.typecheck.json
+      # excludes tests; tsconfig.tooling.json covers tooling/ and tools/).
       - name: TypeScript type-check
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: npm run typecheck
+      # Blocking (#3111): findings are at zero, so any new unused file, export
+      # or dependency fails the step. Allowlist entries live in frontend/knip.json.
+      - name: Unused code (knip)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: npx knip --no-progress
+      - name: i18n completeness check
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: node scripts/check-i18n-strings.js
+      - name: Colour literals (per-game palettes, #2989)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: node scripts/check-color-literals.mjs
+      - name: Colour literals checker tests
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: node --test scripts/check-color-literals.test.mjs
 
   expo-compat:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -244,7 +270,7 @@ jobs:
 
   detect-native-changes:
     name: Detect native package changes
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     runs-on: ubuntu-latest
     outputs:
       has_native_ios: ${{ steps.detect.outputs.has_native_ios }}
@@ -362,7 +388,7 @@ jobs:
           echo "::warning::detect-native-changes failed — native build gates will not auto-trigger on dev PRs. main-branch conditions still apply." >> "$GITHUB_STEP_SUMMARY"
 
   sentry-check:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     uses: wcmchenry3-stack/.github/.github/workflows/called-sentry-check.yml@main
     with:
       working-directory: backend
@@ -370,7 +396,7 @@ jobs:
       SENTRY_DSN: ${{ secrets.SENTRY_BC_GAMES }}
 
   local-path-check:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     uses: wcmchenry3-stack/.github/.github/workflows/called-local-path-check.yml@main
     with:
       scan-paths: "frontend/ios/GamingApp.xcodeproj,frontend/android"
@@ -378,7 +404,7 @@ jobs:
     secrets: inherit
 
   test-python:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     uses: wcmchenry3-stack/.github/.github/workflows/called-test-python.yml@main
     with:
       working-directory: backend
@@ -390,7 +416,7 @@ jobs:
   # continue-on-error (and add it to branch protection) once it is green for a few weeks.
   test-postgres:
     name: Test backend on Postgres (advisory)
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     runs-on: ubuntu-latest
     continue-on-error: true
     services:
@@ -447,14 +473,14 @@ jobs:
           -o asyncio_default_test_loop_scope=session
 
   test-frontend:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     uses: wcmchenry3-stack/.github/.github/workflows/called-test-frontend.yml@main
     with:
       working-directory: frontend
     secrets: inherit
 
   cve-python:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     uses: wcmchenry3-stack/.github/.github/workflows/called-cve-python.yml@main
     with:
       working-directory: backend
@@ -462,7 +488,7 @@ jobs:
     secrets: inherit
 
   cve-frontend:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     uses: wcmchenry3-stack/.github/.github/workflows/called-cve-frontend.yml@main
     with:
       working-directory: frontend
@@ -477,7 +503,7 @@ jobs:
 
   detect-e2e-scope:
     name: Detect E2E scope
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     runs-on: ubuntu-latest
     outputs:
       projects: ${{ steps.scope.outputs.projects }}
@@ -564,37 +590,12 @@ jobs:
             e2e/test-results/
           retention-days: 7
 
-  check-i18n:
-    name: i18n completeness check
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-frontend
-      - name: Check all locale strings are translated
-        run: node scripts/check-i18n-strings.js
-        working-directory: frontend
-
-  check-color-literals:
-    name: Colour literals (per-game palettes)
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-frontend
-      - name: No colour literals outside the theme and the game palettes (#2989)
-        run: node scripts/check-color-literals.mjs
-        working-directory: frontend
-      - name: Colour-literal checker tests
-        run: node --test scripts/check-color-literals.test.mjs
-        working-directory: frontend
-
   # Dead relative links and #anchors in docs/** and the root *.md files (#3000).
   # lychee --offline resolves only local links, so a third-party site being down can't
   # fail a PR. Exclusions (~/.claude/... user-level standards) live in lychee.toml.
   docs-links:
     name: Markdown links (lychee, offline)
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -611,7 +612,7 @@ jobs:
 
   backend-file-length:
     name: Backend file length (per-file caps, default 800)
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -620,19 +621,9 @@ jobs:
         run: python3 scripts/check_file_length.py
         working-directory: backend
 
-  large-file-guard:
-    name: Large tracked file guard (over 5 MiB)
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      # stdlib-only script; the allow-list (Cascade art -> #3033, BGM -> #1779) lives in the script
-      - name: Fail on tracked files over 5 MiB outside the allow-list
-        run: python3 scripts/check_large_files.py
-
   duplication:
     name: Duplication (jscpd)
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -647,31 +638,16 @@ jobs:
           --format "typescript,tsx,python"
           frontend/src frontend/tooling backend
 
-  knip:
-    name: Unused code (knip)
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-frontend
-      # Blocking (#3111): findings are at zero, so any new unused file, export
-      # or dependency fails the job. Allowlist entries live in frontend/knip.json.
-      - name: knip
-        run: npx knip --no-progress
-
   # openai-policy is NOT a job here: openai-policy.yml already runs the same
   # reusable workflow on every PR to dev/main (#2973 removed the duplicate).
 
   feedback-token-lint:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     uses: wcmchenry3-stack/.github/.github/workflows/called-feedback-token-lint.yml@main
     secrets: inherit
 
   provenance-coverage:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     uses: wcmchenry3-stack/.github/.github/workflows/called-provenance-coverage.yml@main
     secrets: inherit
 
@@ -681,7 +657,7 @@ jobs:
   # so it cannot detect issues with the JS bundler or entry-point resolution.
 
   android-bundle-check:
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -902,7 +878,7 @@ jobs:
 
   sentry-cli-check:
     if: github.event_name == 'pull_request'
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -934,7 +910,7 @@ jobs:
 
   gradle-wrapper-check:
     if: github.event_name == 'pull_request'
-    needs: [lint-python, lint-frontend, secret-scan, conflict-markers, forbidden-terms]
+    needs: [lint-python, lint-frontend, secret-scan, repo-hygiene]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
