@@ -84,10 +84,17 @@ export const MAHJONG_SUIT_FALLBACK = "#888888";
 // Flying pair — "colours that match the canvas tile rendering"
 // ---------------------------------------------------------------------------
 
+/** @alias */
 export const MAHJONG_FP_FACE = MAHJONG_TILE_FACE;
+/** @alias */
 export const MAHJONG_FP_BORDER = MAHJONG_BORDER_SELECTED;
+/** @alias */
 export const MAHJONG_FP_SIDE_R = MAHJONG_SIDE_R;
+/** @alias */
 export const MAHJONG_FP_SIDE_B = MAHJONG_SIDE_B;
 
-/** Shuffle button in the HUD — the same gold as a selected tile. */
+/**
+ * Shuffle button in the HUD — the same gold as a selected tile.
+ * @alias
+ */
 export const MAHJONG_SHUFFLE_COLOR = MAHJONG_BORDER_SELECTED;

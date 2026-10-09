@@ -48,7 +48,10 @@ export const ENEMY_SHOT: PackedColor = opaque(ENEMY_SHOT_RGB);
 export const FLAK_SHOT_RGB = 0xffd27a;
 export const FLAK_SHOT: PackedColor = opaque(FLAK_SHOT_RGB);
 
-/** The player's fallback bullet when its sprite has not loaded. */
+/**
+ * The player's fallback bullet when its sprite has not loaded.
+ * @alias
+ */
 export const PLAYER_SHOT_RGB = ACCENT_RGB;
 export const PLAYER_SHOT: PackedColor = opaque(PLAYER_SHOT_RGB);
 

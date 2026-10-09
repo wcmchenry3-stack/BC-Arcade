@@ -10,7 +10,10 @@
     "scripts/*.js",
     "App.tsx",
     "../tools/sim/*.ts",
-    "../tools/generators/*.ts"
+    "../tools/generators/*.ts",
+    // Metro resolves *.web.ts(x) next to the native file by platform extension
+    // (loaded by convention, never imported by name), so they are entries.
+    "src/**/*.web.{ts,tsx}"
   ],
   "project": [
     "src/**/*.{ts,tsx}",
@@ -19,12 +22,47 @@
     "../tools/sim/*.ts",
     "../tools/generators/*.ts"
   ],
-  "ignore": ["src/screens/__dev__/**", "**/*.web.tsx", "**/*.web.ts"],
+  "ignore": [
+    "src/screens/__dev__/**",
+    // Cascade is retired/hidden and kept for the revival epic (#3033). Its
+    // files below are only reachable from the cascade screen, which is not an
+    // entry, so knip reports them.
+    "src/components/cascade/GameCanvas.tsx",
+    "src/game/cascade/scoring.ts",
+    "src/game/cascade/types.ts",
+    // Loaded with a lazy `require("./oracleTable.generated")` in oracle.ts and
+    // written by tools/generators/build-yacht-oracle.ts; knip does not follow
+    // the lazy require.
+    "src/game/yacht/oracle/oracleTable.generated.ts"
+  ],
+  "ignoreIssues": {
+    // Consumed through the `mockScreenDeps()` global (jest.setup.ts does
+    // jest.requireActual on this file so jest.mock factories can reach it),
+    // never by import, so knip cannot see the uses.
+    "src/test-utils/mockScreenDeps.ts": ["exports"],
+    // Cascade-only shared types/constants (#3033); only cascade code uses them.
+    "src/theme/fruitSets.engine.ts": ["exports", "types"]
+  },
+  // `python` is the system interpreter for the asset scripts in package.json
+  // (process-assets, extract-vertices), not an npm binary.
+  "ignoreBinaries": ["python"],
   // tsx runs tools/sim and tools/generators (`npx --prefix frontend tsx tools/sim/...`).
   "ignoreDependencies": [
     "tsx",
     // @eslint/js: required by eslint.config.js, installed as an eslint dependency
-    "@eslint/js"
+    "@eslint/js",
+    // poly-decomp: optional runtime peer of matter-js (Cascade physics, #3033);
+    // matter-js loads it itself, so the app never imports it.
+    "poly-decomp",
+    // expo-updates / expo-system-ui: inferred by knip's Expo plugin from
+    // app.json (userInterfaceStyle / updates). They are intentionally not
+    // installed (native projects are committed), so nothing imports them.
+    "expo-updates",
+    "expo-system-ui",
+    // expo-asset: imported only by the *.web.* files. It ships inside `expo`
+    // (already linked natively, see ios/Podfile.lock), so it is not declared:
+    // declaring it would count as a native package bump.
+    "expo-asset"
   ],
   "ignoreExportsUsedInFile": true
 }

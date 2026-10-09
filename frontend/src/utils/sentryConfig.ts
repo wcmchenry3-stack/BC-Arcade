@@ -10,8 +10,6 @@
 import { Platform } from "react-native";
 import { areTestHooksEnabled, isPreLaunchApiBuild } from "../game/_shared/envFlags";
 
-export type SentryEnvironment = "production" | "development";
-
 /**
  * An explicit `EXPO_PUBLIC_SENTRY_ENVIRONMENT` wins. Otherwise the environment
  * follows the API URL — the same rule as game visibility (#2417) — so there is

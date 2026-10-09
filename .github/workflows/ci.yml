@@ -657,10 +657,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-frontend
-      # warn-only until 2026-11-04, then --strict; see #2951
+      # Blocking (#3111): findings are at zero, so any new unused file, export
+      # or dependency fails the job. Allowlist entries live in frontend/knip.json.
       - name: knip
         run: npx knip --no-progress
-        continue-on-error: true
 
   # openai-policy is NOT a job here: openai-policy.yml already runs the same
   # reusable workflow on every PR to dev/main (#2973 removed the duplicate).
@@ -912,6 +912,9 @@ jobs:
 
       - uses: ./.github/actions/setup-frontend
 
+      # Blocking when the secret is set: `sentry-cli info` exits nonzero on an
+      # invalid or expired token. Only the unset-secret case (fork PRs, which get
+      # no secrets) is a warning, so the job name stays as is (#3111).
       - name: Validate Sentry CLI auth
         run: |
           if [ -z "$SENTRY_AUTH_TOKEN" ]; then
@@ -939,7 +942,9 @@ jobs:
           fetch-depth: 0
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v6
-      - name: Check Gradle build file consistency
+      # Advisory step (#3111): it only emits notices/warnings and always exits 0.
+      # The job can still fail on the wrapper validation step above.
+      - name: Check Gradle build file consistency (advisory)
         run: |
           CHANGED_FILES=$(git diff --name-only "${{ github.event.pull_request.base.sha }}"...HEAD)
           if echo "$CHANGED_FILES" | grep -qE 'frontend/android/(app/)?build\.gradle|frontend/android/settings\.gradle'; then
