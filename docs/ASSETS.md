@@ -31,7 +31,7 @@ Pipeline input directories live at the repo root. They are **tracked in version 
 - `fruit_images/` (~77 MB, 12 PNGs) — high-res PNG sources for the fruit theme
 - `celestial_images/` (~86 MB, 12 PNGs) — high-res PNG sources for the celestial theme
 
-Most are over 5 MiB, so `scripts/check_large_files.py` (CI job `large-file-guard`, #2967) grandfathers them by exact path with a size cap. Moving them to Git LFS is tracked in #3033; that change removes the grandfathered entries. The older `frontend/assets/source-icons/` bundle stays gitignored; it and the original-resolution art are in **Google Drive** (`bc-arcade` folder):
+Most are over 5 MiB, so `scripts/check_large_files.py` (the `Large tracked file guard` step of the CI job `repo-hygiene`, #2967) grandfathers them by exact path with a size cap. Moving them to Git LFS is tracked in #3033; that change removes the grandfathered entries. The older `frontend/assets/source-icons/` bundle stays gitignored; it and the original-resolution art are in **Google Drive** (`bc-arcade` folder):
 https://drive.google.com/drive/folders/1LW97pBFsqfG67bQKvQwkhMlLBswzIVhm
 
 ## Format rules
