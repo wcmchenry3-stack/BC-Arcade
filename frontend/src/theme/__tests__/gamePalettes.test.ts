@@ -41,7 +41,7 @@ describe("Daily Word tile and key colours (#2989)", () => {
 
   it("keeps the Wordle colours the tiles and keys always had", () => {
     expect(dailyword.DAILYWORD_CORRECT).toBe("#538d4e");
-    expect(dailyword.DAILYWORD_PRESENT).toBe("#b59f3b");
+    expect(dailyword.DAILYWORD_PRESENT).toBe("#8c7100");
     expect(dailyword.DAILYWORD_ABSENT).toBe("#3a3a3c");
     expect(dailyword.DAILYWORD_LETTER_TEXT).toBe("#ffffff");
   });
@@ -52,7 +52,7 @@ describe("Daily Word tile and key colours (#2989)", () => {
   // only improve it. Raising "present" is a design change for its own issue.
   it.each([
     ["correct", dailyword.DAILYWORD_CORRECT, 3.9],
-    ["present", dailyword.DAILYWORD_PRESENT, 2.6],
+    ["present", dailyword.DAILYWORD_PRESENT, 4.5],
     ["absent", dailyword.DAILYWORD_ABSENT, 4.5],
   ] as const)("%s: the white letter holds its measured contrast floor", (_n, bg, floor) => {
     expect(contrast(dailyword.DAILYWORD_LETTER_TEXT, bg)).toBeGreaterThanOrEqual(floor);

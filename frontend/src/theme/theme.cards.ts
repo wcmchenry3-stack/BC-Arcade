@@ -9,6 +9,12 @@
  * Matches the design-tokens policy skip pattern `theme\.[^./]+\.[jt]sx?$`.
  */
 
+/**
+ * Red suit (hearts / diamonds) ink on the white card face, both themes (#3101). The card face is
+ * always white, so this must be dark enough for WCAG AA text there (5.0:1), unlike `errorDark`.
+ */
+export const CARD_RED_SUIT = "#d32f2f";
+
 /** Drop shadow under a card and under a card being dragged. */
 export const CARD_SHADOW = "#000";
 

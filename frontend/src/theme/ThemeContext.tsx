@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useColorScheme } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { CARD_RED_SUIT } from "./theme.cards";
 
 export type Theme = "dark" | "light";
 export type ThemeMode = "system" | "light" | "dark";
@@ -114,7 +115,7 @@ const TOKENS = {
   // Playing cards (#2983) — one physical deck, identical in both themes
   cardFace: "#fff",
   cardInk: "#0e0e13",
-  cardRedSuit: "#ff716c",
+  cardRedSuit: CARD_RED_SUIT,
 } as const;
 
 export const dark: Colors = {

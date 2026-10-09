@@ -23,7 +23,7 @@ export interface FoundationPileProps {
 const CARD_LABEL_KEYS = { normal: "card.label", selected: "card.selected" } as const;
 
 const glyphColor = (suit: CanonicalSuit, colors: Colors) =>
-  RED_SUITS.has(suit) ? colors.cardRedSuit : colors.textFilled;
+  RED_SUITS.has(suit) ? colors.error : colors.textFilled;
 
 /** FreeCell's foundation: the shared pile (#2983) with FreeCell's look and ids. */
 export default function FoundationPile(props: FoundationPileProps) {
