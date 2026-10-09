@@ -38,13 +38,24 @@ from games.protocol import GameModule
 from games.registry import get_module
 from observability.report import report_rejected_result
 from players.service import remember_legacy_opt_in
+from settings import Settings
 from vocab import GameOutcome
 
 logger = logging.getLogger(__name__)
 
 _VALID_OUTCOMES = frozenset(v.value for v in GameOutcome)
 
-_MAX_RESULT_BYTES = 8192
+_settings: Settings | None = None
+
+
+def _max_result_bytes() -> int:
+    """``MAX_RESULT_BYTES`` (settings.py), read lazily."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings.max_result_bytes
+
+
 _TS_WINDOW_LOW = timedelta(days=365)
 _TS_WINDOW_HIGH = timedelta(hours=24)
 
@@ -328,12 +339,12 @@ async def _validate_result(
     actually sent are returned. The request body's ``final_score`` (what becomes
     ``games.final_score``) is handed to the model as ``context={"final_score": ...}``
     so a model can reconcile its block against it; models that don't read it
-    are unaffected. Results over ``_MAX_RESULT_BYTES`` are
+    are unaffected. Results over ``MAX_RESULT_BYTES`` are
     rejected — unvalidated games have no other bound.
     """
     if not result:
         return {}
-    if len(json.dumps(result, default=str)) > _MAX_RESULT_BYTES:
+    if len(json.dumps(result, default=str)) > _max_result_bytes():
         _report_rejected_result(name, "result too large", {"keys": sorted(result)[:20]})
         raise GameServiceError(400, "Result too large.")
     result_model = mod.result_model if mod is not None else None

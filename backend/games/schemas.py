@@ -218,7 +218,7 @@ class StatsResponse(BaseModel):
     xp_into_level: int
     xp_for_next_level: int
     # Consecutive days with >= 2 of 3 daily goals met (#2456) — see
-    # daily_challenge.streak. Capped at its LOOKBACK_DAYS; a count only, no reward.
+    # daily_challenge.streak. Capped at its STREAK_LOOKBACK_DAYS; a count only, no reward.
     streak_days: int
 
 

@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 import main
 import routes.health as health_routes
+from settings import Settings
 
 
 @pytest.fixture()
@@ -53,7 +54,7 @@ def test_health_db_503_when_database_stalls(
             return None
 
     monkeypatch.setattr(health_routes, "get_engine", lambda: _StalledEngine())
-    monkeypatch.setattr(health_routes, "DB_PING_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(health_routes, "_settings", Settings.isolated(DB_PING_TIMEOUT_SECONDS=0.05))
     r = client.get("/health/db")
     assert r.status_code == 503
     assert r.json() == {"status": "unavailable"}

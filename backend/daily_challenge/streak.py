@@ -12,13 +12,13 @@ Rule (owner decision, 2026-09-20): count consecutive qualifying days ending **to
 if today already has 2 of 3 goals met; otherwise ending **yesterday** — today is not
 failed, just not finished yet. It stops at the first day with fewer than 2.
 
-Cost: the lookback is capped at ``LOOKBACK_DAYS`` and the player's games are read with
+Cost: the lookback is capped at ``STREAK_LOOKBACK_DAYS`` and the player's games are read with
 ONE windowed query, grouped by local day in Python, rather than a query per day. Each
 slate's frozen templates for the window come from one more query each (schedule.py's
 batch form) — a second only when some day's free and premium templates differ, which
 until #2458 they never do — plus the session's entitlements (one more) in that same
-case. The query count is fixed regardless of ``LOOKBACK_DAYS``, not one per day. The
-streak never exceeds ``LOOKBACK_DAYS``: a value equal to it means "at least that many",
+case. The query count is fixed regardless of ``STREAK_LOOKBACK_DAYS``, not one per day. The
+streak never exceeds ``STREAK_LOOKBACK_DAYS``: a value equal to it means "at least that many",
 so a client renders it as "60+" (a true 60 and a true 200 look the same — that is the
 cap, not a bug).
 
@@ -58,12 +58,21 @@ from daily_challenge.service import EndedGame, evaluate_template, slate_for_game
 from db.models import Game, GameEntitlement, GameType
 from entitlements.service import is_dev_override_active
 from games.filters import not_abandoned
+from settings import Settings
 
 # A day counts if at least this many of its goals are met.
 GOALS_TO_QUALIFY = 2
 # How far back to look, and so the largest streak reported. One windowed query
 # bounds the cost; longer streaks are shown as this value ("60+").
-LOOKBACK_DAYS = 60
+# (``STREAK_LOOKBACK_DAYS`` in settings.py, default 60, read lazily.)
+_settings: Settings | None = None
+
+
+def lookback_days() -> int:
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings.streak_lookback_days
 
 
 def _local_date(completed_at: datetime, tz_offset_minutes: int) -> date:
@@ -79,9 +88,10 @@ async def compute_streak(
     tz_offset_minutes: int,
     utc_now: datetime | None = None,
 ) -> int:
-    """Consecutive qualifying days for ``session_id``, at most ``LOOKBACK_DAYS``."""
+    """Consecutive qualifying days for ``session_id``, at most ``STREAK_LOOKBACK_DAYS``."""
+    lookback = lookback_days()
     today = local_day(tz_offset_minutes, utc_now)
-    oldest = local_day_of(today.date - timedelta(days=LOOKBACK_DAYS), tz_offset_minutes)
+    oldest = local_day_of(today.date - timedelta(days=lookback), tz_offset_minutes)
     spec_games = {game for pool in GOAL_POOLS.values() for game in pool}
 
     # One query for the whole window …
@@ -117,12 +127,12 @@ async def compute_streak(
     # premium template differs from its free one. Until #2458 none do, so skip the query.
     # This is a structural check on the current *policy*, not on history, so it uses the
     # pure template_for rather than a frozen day — nothing here is being scored yet.
-    days = [today.date - timedelta(days=n) for n in range(LOOKBACK_DAYS + 1)]  # today first
+    days = [today.date - timedelta(days=n) for n in range(lookback + 1)]  # today first
     slates_differ = any(template_for(d, "premium") != template_for(d, "free") for d in days)
 
     # Frozen templates (#2493) for the whole window — one SELECT (+ an INSERT only for
     # days nobody has ever requested before) per slate actually needed, however long
-    # LOOKBACK_DAYS is.
+    # the lookback is.
     free_templates = await schedule.get_or_create_templates(
         session, days, "free", lambda d: template_for(d, "free")
     )
@@ -158,7 +168,7 @@ async def compute_streak(
             streak += 1
         elif i > 0:
             break
-    return min(streak, LOOKBACK_DAYS)
+    return min(streak, lookback)
 
 
 async def _premium_and_owned(session: AsyncSession, session_id: str) -> tuple[set[str], set[str]]:

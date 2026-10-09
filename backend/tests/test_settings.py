@@ -405,3 +405,131 @@ def test_store_env_names_are_case_sensitive(monkeypatch: pytest.MonkeyPatch) -> 
     s = Settings()
     assert all(getattr(s, f) == "" for f in STORE_STRIPPED.values())
     assert s.apple_iap_environments_raw == ""
+
+
+# ---------------------------------------------------------------------------
+# Operational tunables (#3110)
+# ---------------------------------------------------------------------------
+
+TUNABLES = (
+    # (field, env var, default, override env string, override value)
+    ("entitlement_token_ttl_hours", "ENTITLEMENT_TOKEN_TTL_HOURS", 24, "48", 48),
+    ("stale_game_after_hours", "STALE_GAME_AFTER_HOURS", 24, "36", 36),
+    ("max_result_bytes", "MAX_RESULT_BYTES", 8192, "16384", 16384),
+    ("streak_lookback_days", "STREAK_LOOKBACK_DAYS", 60, "30", 30),
+    ("apple_replay_window_hours", "APPLE_REPLAY_WINDOW_HOURS", 48, "72", 72),
+    ("db_ping_timeout_seconds", "DB_PING_TIMEOUT_SECONDS", 5.0, "2.5", 2.5),
+)
+# (env var, value just below the minimum, value just above the maximum)
+TUNABLE_BOUNDS = (
+    ("ENTITLEMENT_TOKEN_TTL_HOURS", "0", "169"),
+    ("STALE_GAME_AFTER_HOURS", "0", "721"),
+    ("MAX_RESULT_BYTES", "1023", "1048577"),
+    ("STREAK_LOOKBACK_DAYS", "0", "366"),
+    ("APPLE_REPLAY_WINDOW_HOURS", "0", "4321"),
+    ("DB_PING_TIMEOUT_SECONDS", "0", "60.5"),
+)
+
+
+@pytest.mark.parametrize(("field", "env", "default", "_raw", "_value"), TUNABLES)
+def test_tunable_defaults_keep_the_old_constants(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    env: str,
+    default: object,
+    _raw: str,
+    _value: object,
+) -> None:
+    monkeypatch.delenv(env, raising=False)
+    assert getattr(Settings(), field) == default
+    assert getattr(Settings.isolated(), field) == default
+
+
+@pytest.mark.parametrize(("field", "env", "_default", "raw", "value"), TUNABLES)
+def test_tunable_env_override(
+    monkeypatch: pytest.MonkeyPatch, field: str, env: str, _default: object, raw: str, value: object
+) -> None:
+    monkeypatch.setenv(env, raw)
+    assert getattr(Settings(), field) == value
+
+
+@pytest.mark.parametrize(("env", "low", "high"), TUNABLE_BOUNDS)
+def test_tunable_bounds_are_enforced(
+    monkeypatch: pytest.MonkeyPatch, env: str, low: str, high: str
+) -> None:
+    for bad in (low, high, "-1", "abc"):
+        monkeypatch.setenv(env, bad)
+        with pytest.raises(ValidationError):
+            Settings()
+
+
+def test_tunable_bounds_accept_the_edges() -> None:
+    assert Settings.isolated(ENTITLEMENT_TOKEN_TTL_HOURS=1).entitlement_token_ttl_hours == 1
+    assert Settings.isolated(ENTITLEMENT_TOKEN_TTL_HOURS=168).entitlement_token_ttl_hours == 168
+    assert Settings.isolated(MAX_RESULT_BYTES=1024).max_result_bytes == 1024
+    assert Settings.isolated(DB_PING_TIMEOUT_SECONDS=60).db_ping_timeout_seconds == 60
+
+
+def test_modules_read_tunables_lazily(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each module takes its value from its own ``_settings`` on use, not at import."""
+    from datetime import timedelta
+
+    import entitlements.service as ent
+    from daily_challenge import streak
+    from games import sessions, sweep
+    from routes import health
+
+    monkeypatch.setattr(ent, "_settings", Settings.isolated(ENTITLEMENT_TOKEN_TTL_HOURS=2))
+    monkeypatch.setattr(sweep, "_settings", Settings.isolated(STALE_GAME_AFTER_HOURS=3))
+    monkeypatch.setattr(sessions, "_settings", Settings.isolated(MAX_RESULT_BYTES=2048))
+    monkeypatch.setattr(streak, "_settings", Settings.isolated(STREAK_LOOKBACK_DAYS=7))
+    monkeypatch.setattr(health, "_settings", Settings.isolated(DB_PING_TIMEOUT_SECONDS=1.5))
+    assert ent._get_settings().entitlement_token_ttl_hours == 2
+    assert sweep.stale_game_hours() == 3
+    assert sweep.stale_game_after() == timedelta(hours=3)
+    assert sessions._max_result_bytes() == 2048
+    assert streak.lookback_days() == 7
+    assert health._db_ping_timeout() == 1.5
+
+
+def test_apple_replay_window_default_comes_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    from purchases import _common, apple_notifications
+
+    monkeypatch.setattr(_common, "_settings", Settings.isolated(APPLE_REPLAY_WINDOW_HOURS=72))
+    starts: list[datetime] = []
+
+    class _Client:
+        async def get_notification_history(self, token, request, **_kw):
+            starts.append(request.startDate)
+            return SimpleNamespace(notificationHistory=[], hasMore=False, paginationToken=None)
+
+    verifier = SimpleNamespace(
+        has_api=True, api_environments=lambda: ["Sandbox"], api_client=lambda _env: _Client()
+    )
+    now = datetime(2026, 1, 10, tzinfo=UTC)
+    asyncio.run(apple_notifications.replay_notification_history(verifier, lambda: None, now=now))
+    assert starts == [int((now - timedelta(hours=72)).timestamp() * 1000)]
+
+
+def test_token_ttl_setting_sets_the_token_expiry(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    import entitlements.service as ent
+
+    monkeypatch.setattr(ent, "_settings", Settings.isolated(ENTITLEMENT_TOKEN_TTL_HOURS=2))
+    before = datetime.now(UTC)
+    _token, exp = ent.issue_token("sid", [])
+    assert (
+        timedelta(hours=2) - timedelta(seconds=5) <= exp - before <= timedelta(hours=2, seconds=5)
+    )
+
+
+def test_max_guesses_stays_a_game_rule() -> None:
+    from daily_word.progress import MAX_GUESSES
+
+    assert MAX_GUESSES == 6
+    assert not any("guess" in name for name in Settings.model_fields)

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.jsonx import json_set_true, plus_hours
 from db.models import Game
 from games.filters import SWEPT_KEY
+from settings import Settings
 from vocab import GameOutcome
 
 logger = logging.getLogger(__name__)
@@ -24,8 +25,20 @@ logger = logging.getLogger(__name__)
 # A game still open this long after it started was left by killing the app.
 # The sweep marks what it closes with metadata[SWEPT_KEY] = true (games.filters),
 # which lets a real completion that arrives later replace it (complete_game).
-STALE_GAME_HOURS = 24
-STALE_GAME_AFTER = timedelta(hours=STALE_GAME_HOURS)
+# The age is ``STALE_GAME_AFTER_HOURS`` (settings.py), read lazily; the Python cut-off and
+# the SQL ``completed_at`` below both derive from it, so they cannot drift (#2996).
+_settings: Settings | None = None
+
+
+def stale_game_hours() -> int:
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings.stale_game_after_hours
+
+
+def stale_game_after() -> timedelta:
+    return timedelta(hours=stale_game_hours())
 
 
 async def sweep_stale_games(
@@ -44,6 +57,8 @@ async def sweep_stale_games(
     only affects analytics.
     """
     now = now or datetime.now(UTC)
+    hours = stale_game_hours()
+    hours_ago = timedelta(hours=hours)
     # Both values compile per dialect (db.jsonx): on SQLite the timestamp is
     # built in the ORM's text format so it orders against ORM-written rows.
     stmt = (
@@ -51,11 +66,11 @@ async def sweep_stale_games(
         .where(
             Game.session_id == session_id,
             Game.completed_at.is_(None),
-            Game.started_at < now - STALE_GAME_AFTER,
+            Game.started_at < now - hours_ago,
         )
         .values(
             outcome=GameOutcome.ABANDONED.value,
-            completed_at=plus_hours(Game.started_at, STALE_GAME_HOURS),
+            completed_at=plus_hours(Game.started_at, hours),
             game_metadata=json_set_true(Game.game_metadata, SWEPT_KEY),
         )
         .execution_options(synchronize_session=False)
