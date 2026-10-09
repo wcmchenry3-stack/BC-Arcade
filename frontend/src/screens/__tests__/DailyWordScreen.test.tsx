@@ -8,7 +8,7 @@
  *   - formatCountdown produces HH:MM:SS
  */
 
-import React from "react";
+import React, { StrictMode } from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import { Share } from "react-native";
 import { CodedError } from "expo-modules-core";
@@ -158,6 +158,23 @@ const STALE_STATE: DailyWordState = {
 // Helper
 // ---------------------------------------------------------------------------
 
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+}
+
+/** A promise the test settles by hand. */
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 async function renderScreen() {
   return await render(
     <ThemeProvider>
@@ -272,6 +289,92 @@ describe("DailyWordScreen — saved game (usePersistedGameState, #3109)", () => 
       storage.saveState.mock.invocationCallOrder[0]!
     );
   });
+
+  it("saves today's fresh board only once another day's save has been cleared (#3127)", async () => {
+    storage.loadState.mockResolvedValue(STALE_STATE);
+    const clearing = deferred<void>();
+    storage.clearState.mockReturnValue(clearing.promise);
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+
+    // The restore handler started the clear; the save effect has run but waits.
+    expect(storage.clearState).toHaveBeenCalledTimes(1);
+    expect(storage.saveState).not.toHaveBeenCalled();
+
+    await act(async () => clearing.resolve());
+    expect(storage.saveState).toHaveBeenCalledTimes(1);
+    expect(lastSaved().puzzle_id).toBe(TODAY_META.puzzle_id);
+  });
+
+  it("still saves today's board, and later changes, when clearing another day's save fails", async () => {
+    storage.loadState.mockResolvedValue(STALE_STATE);
+    storage.clearState.mockRejectedValue(new Error("removeItem failed"));
+    const api = await renderScreen();
+    await api.findByTestId("tile-0-0");
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(storage.clearState).toHaveBeenCalledTimes(1);
+    expect(storage.saveState).toHaveBeenCalledTimes(1);
+    expect(lastSaved().puzzle_id).toBe(TODAY_META.puzzle_id);
+
+    await act(async () => {
+      await fireEvent.press(api.getByTestId("daily-word-key-c"));
+    });
+    expect(storage.saveState).toHaveBeenCalledTimes(2);
+    expect(lastSaved().rows[0]!.tiles[0]!.letter).toBe("c");
+  });
+
+  // Two overlapping loads (StrictMode's double mount), the older landing last
+  // (#3127): the load is side-effect-free, so the dropped older one can't
+  // clear today's board after the newer one saved it, or flip the restore.
+  it.each([
+    ["finds the same stale save", (d: Deferred<typeof TODAY_META>) => d.resolve(TODAY_META)],
+    ["fails", (d: Deferred<typeof TODAY_META>) => d.reject(new Error("boom"))],
+  ] as const)(
+    "keeps today's save when an older overlapping load lands last and %s",
+    async (_label, settleOlder) => {
+      storage.loadState.mockResolvedValue(STALE_STATE);
+      const todays: Deferred<typeof TODAY_META>[] = [];
+      dailyWordApi.getToday.mockImplementation(() => {
+        const d = deferred<typeof TODAY_META>();
+        todays.push(d);
+        return d.promise;
+      });
+      const api = await render(
+        <StrictMode>
+          <ThemeProvider>
+            <DailyWordScreen />
+          </ThemeProvider>
+        </StrictMode>
+      );
+      expect(todays).toHaveLength(2);
+
+      // The newer load lands: another day's save is cleared, then today's
+      // fresh board is saved.
+      await act(async () => todays[1]!.resolve(TODAY_META));
+      await api.findByTestId("tile-0-0");
+      expect(storage.clearState).toHaveBeenCalledTimes(1);
+      expect(storage.saveState).toHaveBeenCalledTimes(1);
+      expect(lastSaved().puzzle_id).toBe(TODAY_META.puzzle_id);
+      expect(storage.clearState.mock.invocationCallOrder[0]).toBeLessThan(
+        storage.saveState.mock.invocationCallOrder[0]!
+      );
+
+      // The older load lands last: nothing more is cleared, saved or shown.
+      await act(async () => settleOlder(todays[0]!));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(storage.clearState).toHaveBeenCalledTimes(1);
+      expect(storage.saveState).toHaveBeenCalledTimes(1);
+      expect(api.queryByText("Retry")).toBeNull();
+      expect(api.getByTestId("tile-0-0")).toBeTruthy();
+      // A fresh board, not a resumed one: no session is resumed or started.
+      expect(mockStartGame).not.toHaveBeenCalled();
+    }
+  );
 
   it.each([
     ["won", WIN_STATE, "You Win!"],

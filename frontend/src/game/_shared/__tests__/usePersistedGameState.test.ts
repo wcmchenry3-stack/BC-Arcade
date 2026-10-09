@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { act, renderHook } from "@testing-library/react-native";
 import {
+  LoadResult,
   useGameRestored,
   usePersistedGameState,
   type PersistedGameStateOptions,
@@ -232,6 +233,35 @@ describe("usePersistedGameState", () => {
     await act(async () => unmount());
     await act(async () => loads[2]!.resolve({ moves: 3 }));
     expect(onRestored).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands a LoadResult's info to the handler, only for the load that lands (#3127)", async () => {
+    const loads: ReturnType<typeof deferred<LoadResult<Game, string>>>[] = [];
+    const onRestored = jest.fn();
+    const save = jest.fn<Promise<void>, [Game]>(() => Promise.resolve());
+    const { result } = await renderHook(() => {
+      const game = usePersistedGameState<Game, string>({
+        load: () => {
+          const d = deferred<LoadResult<Game, string>>();
+          loads.push(d);
+          return d.promise;
+        },
+        save,
+      });
+      useGameRestored(game, onRestored);
+      return game;
+    });
+
+    await act(async () => result.current.reload());
+    // The newer load lands first; the older one, landing last, is dropped.
+    await act(async () => loads[1]!.resolve(new LoadResult({ moves: 2 }, "newer")));
+    await act(async () => loads[0]!.resolve(new LoadResult({ moves: 1 }, "older")));
+
+    expect(onRestored).toHaveBeenCalledTimes(1);
+    expect(onRestored).toHaveBeenCalledWith({ moves: 2 }, "newer");
+    expect(result.current.state).toEqual({ moves: 2 });
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith({ moves: 2 });
   });
 
   it("saves nothing while a reload is in flight", async () => {
