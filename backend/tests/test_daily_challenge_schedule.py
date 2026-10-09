@@ -4,6 +4,7 @@ never recomputed after, however the pool or DAILY_CHALLENGE_SALT changes."""
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
@@ -120,27 +121,40 @@ async def test_reconstructed_goal_equals_the_original_even_outside_any_pool() ->
     assert frozen_again == template  # cache-hit path reconstructs correctly too
 
 
+@dataclass
+class _Race:
+    """Whether the rival actually froze its days ahead of our INSERT."""
+
+    rival_landed: bool = False
+
+
 def _insert_after_rival_freezes(
     monkeypatch: pytest.MonkeyPatch,
     db: AsyncSession,
     factory: async_sessionmaker[AsyncSession],
     rival_days: dict[date, Template],
     slate: Slate,
-) -> None:
+) -> _Race:
     """Make ``db``'s next INSERT land after a concurrent request froze ``rival_days``.
 
     That is the race window: ``db`` has already read the table and found the days
     missing, and the rival commits through its own session before ``db`` writes, so
     ``db``'s INSERT then meets the real committed rows, exactly as when two requests
-    race.
+    race. Each race test asserts the returned ``rival_landed`` flag, so a change that
+    stops the hook firing (no INSERT, or a different statement type) fails loudly
+    instead of quietly testing the no-race path.
+
+    Only an already-committed rival is simulated. The in-flight case, where Postgres'
+    ON CONFLICT waits for the rival's transaction and then skips the row, is covered
+    by reasoning (see ``schedule.get_or_create_templates``), not by a test: SQLite
+    serialises writers, so it cannot show it.
     """
     real_execute = db.execute
-    rival_landed = False
+    race = _Race()
 
     async def execute(statement: Any, *args: Any, **kwargs: Any) -> Any:
-        nonlocal rival_landed
-        if isinstance(statement, Insert) and not rival_landed:
-            rival_landed = True
+        if isinstance(statement, Insert) and not race.rival_landed:
+            race.rival_landed = True
             async with factory() as rival:
                 await schedule.get_or_create_templates(
                     rival, list(rival_days), slate, rival_days.__getitem__
@@ -148,6 +162,7 @@ def _insert_after_rival_freezes(
         return await real_execute(statement, *args, **kwargs)
 
     monkeypatch.setattr(db, "execute", execute)
+    return race
 
 
 async def _frozen(slate: Slate) -> dict[date, str]:
@@ -166,9 +181,10 @@ async def test_losing_the_freeze_race_trusts_the_committed_row(
     answer wins and ours is dropped, so every caller sees one template per day."""
     factory = get_session_factory()
     async with factory() as db:
-        _insert_after_rival_freezes(monkeypatch, db, factory, {_DAY: _V1}, "free")
+        race = _insert_after_rival_freezes(monkeypatch, db, factory, {_DAY: _V1}, "free")
         result = await schedule.get_or_create_template(db, _DAY, "free", lambda: _V2)
 
+    assert race.rival_landed
     assert result == _V1
     assert await _frozen("free") == {_DAY: "v1"}
 
@@ -178,10 +194,12 @@ async def _two_day_batch_after_rival_froze_one_day(
 ) -> dict[date, Template]:
     factory = get_session_factory()
     async with factory() as db:
-        _insert_after_rival_freezes(monkeypatch, db, factory, {_DAY: _V1}, "free")
-        return await schedule.get_or_create_templates(
+        race = _insert_after_rival_freezes(monkeypatch, db, factory, {_DAY: _V1}, "free")
+        result = await schedule.get_or_create_templates(
             db, [_DAY, _OTHER_DAY], "free", lambda _d: _V2
         )
+    assert race.rival_landed
+    return result
 
 
 @needs_db
@@ -214,11 +232,14 @@ async def test_losing_the_race_on_every_day_returns_only_the_rivals_templates(
     nothing of our own computation is written or returned."""
     factory = get_session_factory()
     async with factory() as db:
-        _insert_after_rival_freezes(monkeypatch, db, factory, {_DAY: _V1, _OTHER_DAY: _V1}, "free")
+        race = _insert_after_rival_freezes(
+            monkeypatch, db, factory, {_DAY: _V1, _OTHER_DAY: _V1}, "free"
+        )
         result = await schedule.get_or_create_templates(
             db, [_DAY, _OTHER_DAY], "free", lambda _d: _V2
         )
 
+    assert race.rival_landed
     assert result == {_DAY: _V1, _OTHER_DAY: _V1}
     assert await _frozen("free") == {_DAY: "v1", _OTHER_DAY: "v1"}
 
@@ -228,11 +249,16 @@ async def test_losing_the_race_keeps_the_callers_pending_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Losing the race no longer rolls the session back (#3013), so a write the caller
-    still has pending in the same session survives and is committed with the freeze."""
+    still has pending in the same session survives and is committed with the freeze.
+
+    The test holds the pending row back with ``no_autoflush``, because a flushed row
+    would hold SQLite's single write lock while the rival tries to freeze its day. In
+    production (Postgres, autoflush on) the first SELECT in ``get_or_create_templates``
+    flushes the pending row into the open transaction instead. It survives there too,
+    since nothing rolls that transaction back, and the same commit persists it.
+    """
     factory = get_session_factory()
     async with factory() as db:
-        # no_autoflush keeps the pending row out of the database until commit, so it
-        # does not hold SQLite's write lock while the rival freezes its day.
         with db.no_autoflush:
             db.add(
                 DailyChallengeDay(
@@ -242,9 +268,10 @@ async def test_losing_the_race_keeps_the_callers_pending_work(
                     goals=[goal_to_spec(g) for g in _V2.goals],
                 )
             )
-            _insert_after_rival_freezes(monkeypatch, db, factory, {_DAY: _V1}, "free")
+            race = _insert_after_rival_freezes(monkeypatch, db, factory, {_DAY: _V1}, "free")
             result = await schedule.get_or_create_template(db, _DAY, "free", lambda: _V2)
 
+    assert race.rival_landed
     assert result == _V1
     assert await _frozen("free") == {_DAY: "v1"}
     assert await _frozen("premium") == {_OTHER_DAY: "v2"}
@@ -255,7 +282,13 @@ async def test_a_day_neither_frozen_nor_found_raises_instead_of_answering(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Defensive: if a day the INSERT skipped is not in the table either, the call fails
-    rather than returning a template nobody stored (the next request would recompute it)."""
+    rather than returning a template nobody stored (the next request would recompute it).
+
+    Under READ COMMITTED this guard cannot be reached: ON CONFLICT skips a day only once
+    the conflicting rival has committed its row, and the re-read takes a fresh snapshot
+    that sees it. So the test forces the state by swapping the INSERT for a statement
+    that inserts nothing and returns no rows.
+    """
     factory = get_session_factory()
     async with factory() as db:
         real_execute = db.execute

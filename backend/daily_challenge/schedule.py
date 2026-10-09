@@ -82,26 +82,23 @@ async def get_or_create_templates(
     # back from the table, whose row wins over our own computation. Rows go in date
     # order so two overlapping batches take their row locks in the same order and
     # cannot deadlock each other on Postgres.
-    inserted = set(
-        (
-            await session.execute(
-                dialect_insert(session, DailyChallengeDay)
-                .values(
-                    [
-                        {
-                            "date": d,
-                            "slate": slate,
-                            "template_id": fresh[d].id,
-                            "goals": [goal_to_spec(g) for g in fresh[d].goals],
-                        }
-                        for d in sorted(fresh)
-                    ]
-                )
-                .on_conflict_do_nothing(index_elements=["date", "slate"])
-                .returning(DailyChallengeDay.date)
-            )
-        ).scalars()
+    stmt = (
+        dialect_insert(session, DailyChallengeDay)
+        .values(
+            [
+                {
+                    "date": d,
+                    "slate": slate,
+                    "template_id": fresh[d].id,
+                    "goals": [goal_to_spec(g) for g in fresh[d].goals],
+                }
+                for d in sorted(fresh)
+            ]
+        )
+        .on_conflict_do_nothing(index_elements=[DailyChallengeDay.date, DailyChallengeDay.slate])
+        .returning(DailyChallengeDay.date)
     )
+    inserted = set((await session.execute(stmt)).scalars())
     lost = [d for d in missing if d not in inserted]
     if lost:
         # Postgres' ON CONFLICT waits for the conflicting transaction to end, and
@@ -118,6 +115,10 @@ async def get_or_create_templates(
         if unpersisted:
             # Never answer with a template that is not in the table: the next request
             # would recompute it, and could show a different challenge for that day.
+            # Unreachable under READ COMMITTED (the default here): ON CONFLICT skips a
+            # day only once the conflicting rival has committed its row, and the
+            # re-read above takes a fresh snapshot that sees it. Kept as a guard in
+            # case the isolation level ever changes.
             raise RuntimeError(
                 f"daily challenge days {unpersisted} ({slate}) were neither frozen nor found"
             )
