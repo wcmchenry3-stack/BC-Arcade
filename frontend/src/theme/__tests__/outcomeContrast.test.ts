@@ -1,7 +1,9 @@
 import { dark, light, type Colors } from "../ThemeContext";
+import { NEON_DECK } from "../theme.cards";
 
-// WCAG 2.x relative luminance / contrast ratio for opaque #rrggbb colours.
-function luminance(hex: string): number {
+// WCAG 2.x relative luminance / contrast ratio for opaque #rrggbb (or #rgb) colours.
+function luminance(input: string): number {
+  const hex = input.length === 4 ? `#${[...input.slice(1)].map((c) => c + c).join("")}` : input;
   const linear = (i: number) => {
     const c = parseInt(hex.slice(i, i + 2), 16) / 255;
     return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
@@ -87,4 +89,29 @@ describe.each([
 it("uses a lighter scrim in light mode than in dark mode", () => {
   const alpha = (rgba: string) => Number(rgba.match(/[\d.]+\)$/)?.[0].replace(")", ""));
   expect(alpha(light.overlay)).toBeLessThan(alpha(dark.overlay));
+});
+
+// Playing cards (#2983, #2989): ink sits on the card face. Black ink must reach AAA; the red suit
+// is the pre-#2983 colour and is pinned at 2.5:1 (a large suit glyph also told apart by shape and
+// by the rank beside it). Raising it would change the visible colour.
+describe.each([
+  ["dark", dark],
+  ["light", light],
+] as [string, Colors][])("%s card tokens (#2989)", (_name, palette) => {
+  it("cardInk (black suits, ranks) reaches WCAG AAA (7:1) on cardFace", () => {
+    expect(contrast(palette.cardInk, palette.cardFace)).toBeGreaterThanOrEqual(7);
+  });
+
+  it("cardRedSuit stays at least 2.5:1 on cardFace and is distinct from cardInk", () => {
+    expect(contrast(palette.cardRedSuit, palette.cardFace)).toBeGreaterThanOrEqual(2.5);
+    expect(palette.cardRedSuit.toLowerCase()).not.toBe(palette.cardInk.toLowerCase());
+  });
+});
+
+describe("Neon deck palette (#2989)", () => {
+  it("ranks and black suits reach AAA, the red suit AA, on the Neon face", () => {
+    expect(contrast(NEON_DECK.rank, NEON_DECK.face)).toBeGreaterThanOrEqual(7);
+    expect(contrast(NEON_DECK.blackSuit, NEON_DECK.face)).toBeGreaterThanOrEqual(7);
+    expect(contrast(NEON_DECK.redSuit, NEON_DECK.face)).toBeGreaterThanOrEqual(4.5);
+  });
 });

@@ -4,6 +4,7 @@ import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import SharedPlayingCard from "../../../components/shared/PlayingCard";
 import { useDragContext } from "./DragContext";
 import { useCardSize } from "../CardSizeContext";
+import { CARD_SHADOW } from "../../../theme/theme.cards";
 
 // 52 = CardSizeContext default (= Solitaire natural width). FreeCell's natural
 // width is 40 — at FreeCell scale the ghost offset is ~18 px vs ~22 px actual
@@ -58,7 +59,7 @@ const styles = StyleSheet.create({
     left: 0,
     // Elevation / shadow for "lifted" appearance.
     elevation: 12,
-    shadowColor: "#000",
+    shadowColor: CARD_SHADOW,
     shadowOpacity: 0.35,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },

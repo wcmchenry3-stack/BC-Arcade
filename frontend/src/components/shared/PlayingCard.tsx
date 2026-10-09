@@ -13,6 +13,7 @@ import React from "react";
 import { Pressable, View } from "react-native";
 import { useDeck } from "../../game/_shared/decks/CardDeckContext";
 import { useTheme } from "../../theme/ThemeContext";
+import { CARD_DISABLED_SCRIM, CARD_SHADOW } from "../../theme/theme.cards";
 import type { CanonicalSuit } from "../../game/_shared/decks/types";
 import { CARD_NATURAL_H, CARD_NATURAL_W } from "../../game/_shared/CardSizeContext";
 
@@ -74,7 +75,7 @@ export default function PlayingCard({
     {
       width,
       height,
-      shadowColor: "#000",
+      shadowColor: CARD_SHADOW,
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.2,
       shadowRadius: 4,
@@ -92,7 +93,7 @@ export default function PlayingCard({
         width,
         height,
         borderRadius: 6,
-        backgroundColor: "rgba(0,0,0,0.5)",
+        backgroundColor: CARD_DISABLED_SCRIM,
       }}
     />
   ) : null;

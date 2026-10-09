@@ -3,15 +3,16 @@ import { suitEmoji } from "../cardId";
 import { SUIT_PATHS } from "../classic/suitPaths";
 import SvgCardFace, { type SvgCardGlyphs, type SvgCardPalette } from "../svgCardFace";
 import type { CardFaceProps } from "../types";
+import { NEON_DECK } from "../../../../theme/theme.cards";
 
 // Neon palette — always dark, ignores ThemeContext light/dark mode.
-const BG = "#0f172a";
-const BG_BACK = "#070d1a";
-const BORDER = "#334155";
-const SPADES_CLUBS = "#e2e8f0";
-const HEARTS = "#f43f5e";
-const RANK_TEXT = "#f1f5f9";
-const BACK_GRID = "#06b6d4";
+const BG = NEON_DECK.face;
+const BG_BACK = NEON_DECK.back;
+const BORDER = NEON_DECK.border;
+const SPADES_CLUBS = NEON_DECK.blackSuit;
+const HEARTS = NEON_DECK.redSuit;
+const RANK_TEXT = NEON_DECK.rank;
+const BACK_GRID = NEON_DECK.backGrid;
 
 /** Neon glyphs: today the same vector pips and Unicode corner suits as Classic. */
 const NEON_GLYPHS: SvgCardGlyphs = { pipPaths: SUIT_PATHS, cornerGlyph: suitEmoji };
