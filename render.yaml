@@ -59,6 +59,14 @@ services:
         sync: false
       - key: ADMIN_API_TOKEN
         sync: false
+      # Optional operational tunables (#3110) — leave unset for the defaults; see
+      # ARCHITECTURE.md §11.1 for the allowed range of each.
+      # - key: ENTITLEMENT_TOKEN_TTL_HOURS   # 24
+      # - key: STALE_GAME_AFTER_HOURS        # 24
+      # - key: MAX_RESULT_BYTES              # 8192
+      # - key: STREAK_LOOKBACK_DAYS          # 60
+      # - key: APPLE_REPLAY_WINDOW_HOURS     # 48
+      # - key: DB_PING_TIMEOUT_SECONDS       # 5.0
 
   # --- BC Arcade Expo Web static frontend (prod) ---
   - type: web
@@ -138,6 +146,14 @@ services:
         sync: false
       - key: ADMIN_API_TOKEN
         sync: false
+      # Optional operational tunables (#3110) — leave unset for the defaults; see
+      # ARCHITECTURE.md §11.1 for the allowed range of each.
+      # - key: ENTITLEMENT_TOKEN_TTL_HOURS   # 24
+      # - key: STALE_GAME_AFTER_HOURS        # 24
+      # - key: MAX_RESULT_BYTES              # 8192
+      # - key: STREAK_LOOKBACK_DAYS          # 60
+      # - key: APPLE_REPLAY_WINDOW_HOURS     # 48
+      # - key: DB_PING_TIMEOUT_SECONDS       # 5.0
 
   # --- Expo Web static frontend (dev environment) ---
   - type: web

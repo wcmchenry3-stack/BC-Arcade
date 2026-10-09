@@ -1174,7 +1174,8 @@ loaded it), so tests should build it with `Settings.isolated(ENVIRONMENT="test",
 ...)`, which ignores the environment and uses defaults for the rest. Env var names (case-sensitive,
 no prefix) and defaults are exactly the ones the old `os.environ.get` calls
 used, and a bad `TRUSTED_PROXY_*` value still raises `ValueError` at startup.
-Operational tunables (TTLs, windows, caps) are named constants, never env vars.
+Operational tunables (#3110) are optional env vars with bounds (below); a value outside
+its range fails `Settings()`, so the API refuses to start. Game rules stay constants.
 
 | Setting                | Default when unset                                | Read by                                                 |
 | ---------------------- | ------------------------------------------------- | ------------------------------------------------------- |
@@ -1200,6 +1201,12 @@ Operational tunables (TTLs, windows, caps) are named constants, never env vars.
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | unset (required with the package name) | `purchases/google_play.py` (lazy)                       |
 | `GOOGLE_RTDN_AUDIENCE` / `GOOGLE_RTDN_PUSH_SA` | unset (required with the package name) | `purchases/google_play.py` (lazy)             |
 | `GOOGLE_PLAY_ENVIRONMENTS` | unset/empty → `production,test` (blank → none: misconfigured) | `purchases/verifiers.py` (lazy, once per process)       |
+| `ENTITLEMENT_TOKEN_TTL_HOURS` | `24` (1–168; the client's offline grace is 7 days)  | `entitlements/service.py` (lazy)                        |
+| `STALE_GAME_AFTER_HOURS` | `24` (1–720)                                    | `games/sweep.py`, `games/sweep_gate.py` (lazy)          |
+| `MAX_RESULT_BYTES`     | `8192` (1024–1048576)                             | `games/sessions.py` (lazy)                              |
+| `STREAK_LOOKBACK_DAYS` | `60` (1–365; also the largest streak reported)    | `daily_challenge/streak.py` (lazy)                      |
+| `APPLE_REPLAY_WINDOW_HOURS` | `48` (1–4320)                                | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`) |
+| `DB_PING_TIMEOUT_SECONDS` | `5.0` (above 0, at most 60)                    | `routes/health.py` (lazy)                               |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is
@@ -1223,6 +1230,14 @@ via `get_settings()`) follows the same pattern, including the two
 process instead of on every call. Tests reset it with
 `monkeypatch.setattr(_common, "_settings", None)` after changing those env vars
 (`tests/_helpers.StoreEnv`, the `store_env` fixture).
+The six operational tunables above follow the same pattern: each module keeps its own
+lazy `_settings`, so `create_app(settings)` does not affect them and tests override
+them with `monkeypatch.setattr(module, "_settings", Settings.isolated(...))` (the
+`_reset_tunable_settings` fixture in `tests/conftest.py` clears them per test).
+`daily_word.progress.MAX_GUESSES` (6) is deliberately **not** a setting: it is a game
+rule that must equal the client's board size (`MAX_ROWS` in
+`frontend/src/game/daily_word/engine.ts`), so an env var could only make the server
+disagree with installed apps.
 The admin token, the keys, the Apple private key and the Google service-account
 JSON are `SecretStr`, so `repr(settings)` does not show them.
 
