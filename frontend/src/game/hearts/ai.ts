@@ -364,33 +364,6 @@ export function selectCardsToPass(
   return selectCardsToPassUtility(hand, direction, difficulty, playerIndex);
 }
 
-// ---------------------------------------------------------------------------
-// Moon detection
-// ---------------------------------------------------------------------------
-
-/**
- * Returns the player index who is on track to shoot the moon, or null.
- * Fires when a player has ≥ 4 hearts (or Q♠) and no other player has
- * taken any points yet this hand.
- */
-export function detectPotentialMoon(state: HeartsState): number | null {
-  const totalPointsTaken = state.handScores.reduce((s, v) => s + (v ?? 0), 0);
-  if (totalPointsTaken === 0) return null;
-
-  for (let i = 0; i < 4; i++) {
-    const myPoints = state.handScores[i] ?? 0;
-    if (myPoints === 0) continue;
-    // This player has all the points so far
-    if (myPoints === totalPointsTaken) {
-      const myCards = state.wonCards[i] ?? [];
-      const hearts = myCards.filter((c) => c.suit === "hearts").length;
-      const hasQ = myCards.some(isQueenOfSpades);
-      if (hearts + (hasQ ? 1 : 0) >= 4) return i;
-    }
-  }
-  return null;
-}
-
 /**
  * Choose a card to play.
  * `difficulty` defaults to "schemer" (current behaviour) so existing callers are unchanged.

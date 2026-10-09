@@ -6,7 +6,7 @@
  * (`detectPotentialMoon` / `detectMoonAttempt` and the moon-mode play paths they drive). Describe
  * blocks moved whole; shared fixtures live in `helpers/aiFixtures.ts`.
  */
-import { detectMoonAttempt, detectPotentialMoon, selectCardToPlay } from "../ai";
+import { detectMoonAttempt, selectCardToPlay } from "../ai";
 import { setRng } from "../engine";
 import type { Rank, TrickCard } from "../types";
 import { c, mkState } from "./helpers/aiFixtures";
@@ -175,42 +175,6 @@ describe("selectCardToPlay — Daring difficulty, moon attempt", () => {
     // Moon attempt: play lowest card that beats current winner (9♥) → 10♥.
     // Normal Daring would play its loser (4♥) to avoid winning points.
     expect(pick).toEqual(c("hearts", 10));
-  });
-});
-
-// ---------------------------------------------------------------------------
-// detectPotentialMoon
-// ---------------------------------------------------------------------------
-
-describe("detectPotentialMoon", () => {
-  it("returns null when no points taken", () => {
-    const state = mkState({ handScores: [0, 0, 0, 0], wonCards: [[], [], [], []] });
-    expect(detectPotentialMoon(state)).toBeNull();
-  });
-
-  it("returns player index when they have all points and ≥ 4 hearts", () => {
-    const hearts4 = Array.from({ length: 4 }, (_, i) => c("hearts", (i + 1) as Rank));
-    const state = mkState({
-      handScores: [4, 0, 0, 0],
-      wonCards: [hearts4, [], [], []],
-    });
-    expect(detectPotentialMoon(state)).toBe(0);
-  });
-
-  it("returns null when points are split between players", () => {
-    const state = mkState({
-      handScores: [2, 2, 0, 0],
-      wonCards: [[c("hearts", 1), c("hearts", 2)], [c("hearts", 3), c("hearts", 4)], [], []],
-    });
-    expect(detectPotentialMoon(state)).toBeNull();
-  });
-
-  it("returns null when dominant player has fewer than 4 point cards", () => {
-    const state = mkState({
-      handScores: [3, 0, 0, 0],
-      wonCards: [[c("hearts", 1), c("hearts", 2), c("hearts", 3)], [], [], []],
-    });
-    expect(detectPotentialMoon(state)).toBeNull();
   });
 });
 

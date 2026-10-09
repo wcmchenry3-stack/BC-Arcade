@@ -10,13 +10,11 @@
  *   - eraseCell: clears value + notes; no-op on givens
  *   - undo: restores previous snapshot incl. errorCount and notesMode
  *   - isComplete: true only when all 81 cells match solution
- *   - getConflicts: row, col, box detection; empty when none
  */
 
 import {
   enterDigit,
   eraseCell,
-  getConflicts,
   isComplete,
   loadPuzzle,
   selectCell,
@@ -24,7 +22,7 @@ import {
   toggleNotesMode,
   undo,
 } from "../engine";
-import type { CellValue, GameEvent, Grid, NoteDigit, SudokuCell, SudokuState } from "../types";
+import type { CellValue, GameEvent, Grid, NoteDigit, SudokuState } from "../types";
 import { UNDO_STACK_LIMIT } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -422,64 +420,6 @@ describe("isComplete", () => {
     }
     expect(s.isComplete).toBe(true);
     expect(isComplete(s.grid, s.solution)).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// getConflicts
-// ---------------------------------------------------------------------------
-
-function cellOf(value: CellValue): SudokuCell {
-  return { value, given: false, notes: new Set<NoteDigit>(), isError: false };
-}
-
-function emptyGrid(): Grid {
-  const rows: SudokuCell[][] = [];
-  for (let r = 0; r < 9; r++) {
-    const row: SudokuCell[] = [];
-    for (let c = 0; c < 9; c++) row.push(cellOf(0));
-    rows.push(row);
-  }
-  return rows;
-}
-
-describe("getConflicts", () => {
-  it("returns empty array when no conflicts exist", () => {
-    expect(getConflicts(emptyGrid(), 0, 0, 5)).toEqual([]);
-  });
-
-  it("detects a row conflict", () => {
-    const g = emptyGrid().map((row, ri) =>
-      ri === 4 ? row.map((cell, ci) => (ci === 7 ? cellOf(3) : cell)) : row
-    );
-    expect(getConflicts(g, 4, 2, 3)).toEqual([[4, 7]]);
-  });
-
-  it("detects a column conflict", () => {
-    const g = emptyGrid().map((row, ri) =>
-      ri === 8 ? row.map((cell, ci) => (ci === 1 ? cellOf(7) : cell)) : row
-    );
-    expect(getConflicts(g, 0, 1, 7)).toEqual([[8, 1]]);
-  });
-
-  it("detects a 3x3 box conflict", () => {
-    // (1,1) and (2,2) are in the same top-left box.
-    const g = emptyGrid().map((row, ri) =>
-      ri === 2 ? row.map((cell, ci) => (ci === 2 ? cellOf(9) : cell)) : row
-    );
-    expect(getConflicts(g, 1, 1, 9)).toEqual([[2, 2]]);
-  });
-
-  it("excludes the target cell itself", () => {
-    const g = emptyGrid().map((row, ri) =>
-      ri === 0 ? row.map((cell, ci) => (ci === 0 ? cellOf(5) : cell)) : row
-    );
-    expect(getConflicts(g, 0, 0, 5)).toEqual([]);
-  });
-
-  it("returns empty for out-of-range digits", () => {
-    expect(getConflicts(emptyGrid(), 0, 0, 0)).toEqual([]);
-    expect(getConflicts(emptyGrid(), 0, 0, 10)).toEqual([]);
   });
 });
 
