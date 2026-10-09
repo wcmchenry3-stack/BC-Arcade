@@ -47,7 +47,7 @@ npx --yes jscpd@4.3.0 --threshold 2.5 --min-lines 20 --min-tokens 70 \
 
 **Ratchet schedule.** Once a quarter, lower the thresholds to the current measured numbers and never raise them:
 
-- ruff `max-complexity` 12, then 10; re-enable the families left out of `extend-select` (`ARG`, `PLR0913`; tracked in #3108) once their findings are fixed.
+- ruff `max-complexity` 12, then 10. `ARG` and `PLR0913` are enabled (#3108): `PLR0913` `max-args` is 7, `tests/**` and `scripts/**` are exempt via `per-file-ignores`, and production code uses a targeted `# noqa` with a reason where a signature is fixed by a framework (slowapi `request`, Protocol methods, pydantic hooks).
 - eslint `max-lines` 800, then 600; `max-lines-per-function` 150, then 100; `complexity` 20, then 15. Remove a file from the `max-lines` warn override in the same PR that splits it.
 - Promote the `react-hooks` v7 rules and the function-size rules from `warn` to `error` once their counts reach zero.
 - jscpd `--threshold` 2.5, then 2.0, then 1.5 (measured at 0.35% when the gate landed with backend `tests/` and `alembic/` excluded, so there is headroom).
@@ -151,6 +151,10 @@ python -m pytest tests/test_generic_leaderboard.py -v  # Leaderboard API (every 
 python -m pytest tests/ -v --cov=. --cov-report=term-missing
 ```
 
+**Random test order (#2953, #3107).** `pytest-randomly` (in `requirements-dev.txt`) shuffles test order and reseeds `random` on every run, so a test that only passes after another one fails here. The run header prints the seed (`Using --randomly-seed=1234`). To reproduce an order-dependent failure, rerun with the same seed: `python -m pytest tests/ -p randomly --randomly-seed=1234`. To turn shuffling off (a bisect, or comparing against a fixed order), pass `-p no:randomly`. Fix the test rather than leaving it pinned to the escape hatch.
+
+**Postgres-only tests (#3107).** `test-python` runs on SQLite, so the Postgres EXPLAIN gate and the JSON/dialect SQL execution tests skip there. The advisory `test-postgres` job runs them against a `postgres:16` service: `LEADERBOARD_EXPLAIN_PG_URL=postgresql://postgres:postgres@localhost:5432/postgres python -m pytest tests/test_leaderboard_query_plans.py tests/test_leaderboard_indexes_migration.py --no-cov`, and, with `DATABASE_URL` pointing at a migrated Postgres database (`alembic upgrade head`), `python -m pytest tests/test_jsonx.py --no-cov -o asyncio_default_fixture_loop_scope=session -o asyncio_default_test_loop_scope=session` (the asyncpg pool needs one event loop for the whole session).
+
 **Backend coverage (#2958).** `pyproject.toml` sets `addopts = "--cov=. --cov-report=term-missing --cov-fail-under=96"`, so a plain `pytest` run enforces the gate. `[tool.coverage.run]` sets `concurrency = ["greenlet", "thread"]`: the async code runs under SQLAlchemy greenlets and TestClient portal threads, and without it coverage drops every line after the first `await` that switches greenlet (it used to read `me/router.py` at 74 % although its tests ran). With it the number does not depend on the interpreter (97.6 % on 3.11 and on 3.13, a few lines apart in `main.py`). It replaces `core = "sysmon"`, which only worked on Python 3.12+, so a 3.11 run silently under-reported; the cost is the C tracer on 3.13 (a full run is roughly 2x slower, 4 to 8 minutes). `sort/generate_levels.py` is measured (it has tests in `test_sort_generation.py`); the reference pour simulator now lives in `scripts/sort_verify_levels.py` (omitted with the rest of `scripts/`).
 
 ### Structure
@@ -187,7 +191,7 @@ backend/tests/
   index (SQLite: `SEARCH games USING INDEX ...`, never `SCAN games`). The Postgres
   half (fails on `Seq Scan` over `games`) runs only with `LEADERBOARD_EXPLAIN_PG_URL`
   set to a scratch server (it creates and drops its own database there; the suite's
-  `DATABASE_URL` is never used); it skips otherwise, and CI has no Postgres. See [LEADERBOARDS.md §7a](LEADERBOARDS.md#7a-indexes-2965).
+  `DATABASE_URL` is never used); it skips otherwise, and `test-python` has no Postgres (the advisory `test-postgres` job sets it). See [LEADERBOARDS.md §7a](LEADERBOARDS.md#7a-indexes-2965).
 
 ### Notes
 

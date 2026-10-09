@@ -21,6 +21,10 @@ import { useLeaderboardLink } from "../../../hooks/useLeaderboardLink";
 import { __forceStoreBuildForTests } from "../../../entitlements/gameVisibility";
 import type { GameType } from "../../../api/vocab";
 
+// This suite asserts on real glyph codepoints, so it opts out of the shared icon mock
+// in jest.setup.ts (#3107).
+jest.unmock("@expo/vector-icons/MaterialCommunityIcons");
+
 jest.mock("expo-haptics", () => ({
   notificationAsync: jest.fn(() => Promise.resolve()),
   impactAsync: jest.fn(() => Promise.resolve()),

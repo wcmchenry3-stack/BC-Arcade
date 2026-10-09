@@ -28,7 +28,7 @@ def beats(expr: ColumnElement, value: Any, direction: Direction) -> ColumnElemen
     return expr > value if direction == "desc" else expr < value
 
 
-async def compute_rank(
+async def compute_rank(  # noqa: PLR0913 - keyword-only args describing one rank query
     db: AsyncSession,
     *,
     metric: ColumnElement,

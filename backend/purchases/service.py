@@ -590,7 +590,7 @@ async def _dedupe_seen(db: AsyncSession, dedupe_key: str) -> bool:
     ).first() is not None
 
 
-async def apply_store_state(
+async def apply_store_state(  # noqa: PLR0913 - keyword-only store-notification fields
     db: AsyncSession,
     *,
     platform: str,

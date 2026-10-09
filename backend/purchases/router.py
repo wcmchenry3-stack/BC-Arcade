@@ -128,7 +128,7 @@ def _hit_store_key_limit(platform: str, store_key: str) -> None:
             )
 
 
-async def _complete(
+async def _complete(  # noqa: PLR0913 - keyword-only context of one verified purchase
     db: AsyncSession,
     *,
     session_id: str,
@@ -237,7 +237,10 @@ async def post_google_purchase(
 
 @router.post("/apple/notifications")
 @limiter.limit(APPLE_NOTIFICATION_IP_RATE_LIMIT)
-async def post_apple_notification(request: Request, body: AppleNotificationRequest) -> dict:
+async def post_apple_notification(
+    request: Request,  # noqa: ARG001 - slowapi resolves `request` by name
+    body: AppleNotificationRequest,
+) -> dict:
     """App Store Server Notifications V2 (docs/IAP.md §6.5)."""
     verifier = apple.configured_verifier()
     if verifier is None:

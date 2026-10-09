@@ -3,8 +3,6 @@ import { Text } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { AppHeader, APP_HEADER_HEIGHT } from "../AppHeader";
 
-jest.mock("@expo/vector-icons/MaterialIcons", () => "MockMaterialIcons");
-
 jest.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => {
