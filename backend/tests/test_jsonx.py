@@ -22,7 +22,7 @@ from db.base import get_session_factory
 from db.jsonx import json_is_true, json_number, json_set_true, plus_hours
 from db.models import Game, GameType
 from games.filters import SWEPT_KEY, not_swept
-from games.sweep import STALE_GAME_AFTER, STALE_GAME_HOURS, sweep_stale_games
+from games.sweep import stale_game_after, stale_game_hours, sweep_stale_games
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -257,13 +257,13 @@ async def test_the_sweep_cut_off_is_started_at_plus_24_hours_on_this_dialect() -
     factory = get_session_factory()
     async with factory() as db:
         closed = await sweep_stale_games(
-            db, session_id=sid, now=_STARTED + STALE_GAME_AFTER + timedelta(seconds=1)
+            db, session_id=sid, now=_STARTED + stale_game_after() + timedelta(seconds=1)
         )
     assert closed == 1
     got = await _values(sid, Game.completed_at, Game.game_metadata, Game.outcome)
     completed_at, metadata, outcome = got[gid]
     assert _utc(completed_at) == datetime(2026, 3, 29, 22, 30, 15, 123456, tzinfo=UTC)
-    assert _utc(completed_at) == _STARTED + timedelta(hours=STALE_GAME_HOURS)
+    assert _utc(completed_at) == _STARTED + timedelta(hours=stale_game_hours())
     assert metadata == {"player_name": "Ann", SWEPT_KEY: True}
     assert outcome == "abandoned"
     # Swept rows read as swept through the same element the sweep wrote with.
@@ -273,7 +273,7 @@ async def test_the_sweep_cut_off_is_started_at_plus_24_hours_on_this_dialect() -
 async def test_the_24_hour_cut_off_is_absolute_in_a_session_time_zone_with_a_dst_change() -> None:
     # Postgres only. ``INTERVAL '24 hours'`` is an exact 24 h on a timestamptz, whatever the
     # session TimeZone; a '1 day' interval would be 23 h across Europe/London's 2026-03-29
-    # change (01:00 UTC), and drift from the Python STALE_GAME_AFTER cut-off (#2996).
+    # change (01:00 UTC), and drift from the Python stale_game_after() cut-off (#2996).
     factory = get_session_factory()
     async with factory() as db:
         if db.get_bind().dialect.name != "postgresql":

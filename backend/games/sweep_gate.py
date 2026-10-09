@@ -75,7 +75,7 @@ def _remember(session_id: str, due: datetime) -> None:
 def note_open_game(session_id: str, started_at: datetime) -> None:
     """``POST /games`` returned a game (new, or an idempotent re-create): a backdated
     start may make the sweep due sooner. A completed game only makes it run early."""
-    stale_at = _utc(started_at) + sweep.STALE_GAME_AFTER
+    stale_at = _utc(started_at) + sweep.stale_game_after()
     for noted in _in_flight.get(session_id, ()):
         noted.append(stale_at)
     due = _next_due.get(session_id)
@@ -131,5 +131,5 @@ async def _sweep_and_find_due(db: AsyncSession, session_id: str, now: datetime) 
         return None
     due = now + MAX_SKIP
     if oldest is not None:
-        due = min(due, oldest + sweep.STALE_GAME_AFTER)
+        due = min(due, oldest + sweep.stale_game_after())
     return due

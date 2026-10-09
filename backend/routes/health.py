@@ -19,12 +19,21 @@ from rate_limits import (
     HEALTH_DB_IP_RATE_LIMIT,
     HEALTH_IP_RATE_LIMIT,
 )
+from settings import Settings
 
 _audit_log = logging.getLogger("audit")
 
 router = APIRouter()
 
-DB_PING_TIMEOUT_SECONDS = 5.0
+_settings: Settings | None = None
+
+
+def _db_ping_timeout() -> float:
+    """``DB_PING_TIMEOUT_SECONDS`` (settings.py), read lazily."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings.db_ping_timeout_seconds
 
 
 async def _ping_db() -> None:
@@ -41,7 +50,7 @@ async def _ping_db() -> None:
         async with get_engine().connect() as conn:
             await conn.execute(text("SELECT 1"))
 
-    await asyncio.wait_for(_select_one(), timeout=DB_PING_TIMEOUT_SECONDS)
+    await asyncio.wait_for(_select_one(), timeout=_db_ping_timeout())
 
 
 @router.get("/health")

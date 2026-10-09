@@ -27,7 +27,6 @@ from settings import Settings
 # update when adding a premium game.
 ALL_PREMIUM_SLUGS = ["blackjack", "cascade", "hearts", "mahjong", "starswarm"]
 
-TOKEN_TTL_HOURS = 24
 ALGORITHM = "RS256"
 
 # Per-process cache — each worker generates its own ephemeral pair in local/CI.
@@ -87,7 +86,7 @@ def issue_token(session_id: str, entitled_games: list[str]) -> tuple[str, dateti
     """Sign and return (jwt_string, expires_at)."""
     private_pem, _ = _load_or_generate_keys()
     now = datetime.now(UTC)
-    exp = now + timedelta(hours=TOKEN_TTL_HOURS)
+    exp = now + timedelta(hours=_get_settings().entitlement_token_ttl_hours)
 
     payload: dict[str, Any] = {
         "sub": session_id,

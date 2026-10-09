@@ -23,7 +23,8 @@ Parity rules (the owner decisions on #2997):
   ``limiter.load_proxy_trust``).
 - ``backend/.env`` is still loaded by ``load_dotenv()`` in ``main``, not here, so
   the precedence (a real env var wins) is unchanged.
-- Operational tunables are named constants, not env vars.
+- Operational tunables (#3110) are env-overridable with bounds; game rules
+  (``daily_word.progress.MAX_GUESSES``) stay constants.
 
 Migrated so far: the app-level settings ``main``, ``limiter`` and
 ``observability.sentry`` read; ``DATABASE_URL`` (``db.base``, read lazily, and
@@ -36,6 +37,14 @@ and kept for the process); and the ``APPLE_*`` / ``GOOGLE_*`` store config
 (``purchases._common``, read lazily on first use and kept for the process, so
 ``APPLE_IAP_ENVIRONMENTS`` / ``GOOGLE_PLAY_ENVIRONMENTS`` are no longer re-read on
 every ``allowed_environments()`` call).
+
+The six operational tunables (#3110) are read lazily through the owning module's
+own ``_settings``, like the ``ENTITLEMENT_*`` fields, so ``create_app(settings)`` does
+not affect them: ``ENTITLEMENT_TOKEN_TTL_HOURS`` (``entitlements.service``),
+``STALE_GAME_AFTER_HOURS`` (``games.sweep``), ``MAX_RESULT_BYTES`` (``games.sessions``),
+``STREAK_LOOKBACK_DAYS`` (``daily_challenge.streak``), ``APPLE_REPLAY_WINDOW_HOURS``
+(``purchases.apple_notifications``, via ``purchases._common``) and
+``DB_PING_TIMEOUT_SECONDS`` (``routes.health``).
 
 Secrets (``ADMIN_API_TOKEN``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
 ``GOOGLE_PLAY_SERVICE_ACCOUNT_JSON``) are ``SecretStr``, so a
@@ -127,6 +136,33 @@ class Settings(BaseSettings):
     # its default when the value is empty and does the strip/lowercase/split itself.
     apple_iap_environments_raw: str = Field(default="", alias="APPLE_IAP_ENVIRONMENTS")
     google_play_environments_raw: str = Field(default="", alias="GOOGLE_PLAY_ENVIRONMENTS")
+
+    # Operational tunables (#3110). Defaults are the values the modules hard-coded;
+    # each is read through the owning module's lazy ``_settings`` (never at import).
+    # A value outside its bounds fails ``Settings()`` — at startup via ``create_app``.
+    # Entitlement JWT lifetime (entitlements.service). At most 7 days: the client's
+    # offline grace is 7 days, so a longer token would outlive the grace window.
+    entitlement_token_ttl_hours: int = Field(
+        default=24, alias="ENTITLEMENT_TOKEN_TTL_HOURS", ge=1, le=168
+    )
+    # An open game this old is closed as abandoned (games.sweep, games.sweep_gate).
+    stale_game_after_hours: int = Field(default=24, alias="STALE_GAME_AFTER_HOURS", ge=1, le=720)
+    # Largest accepted JSON ``result`` on game completion (games.sessions). Capped at
+    # 128 KiB, half the 256 KiB ``/games`` request-body cap (middleware.body_size), so
+    # the completion envelope always fits and a valid result is never rejected with 413.
+    max_result_bytes: int = Field(default=8192, alias="MAX_RESULT_BYTES", ge=1024, le=131_072)
+    # How far back the daily-challenge streak looks, and so its cap (daily_challenge.streak).
+    streak_lookback_days: int = Field(default=60, alias="STREAK_LOOKBACK_DAYS", ge=1, le=365)
+    # The App Store notification-history replay window (purchases.apple_notifications).
+    # The one window is sent to every environment, and Sandbox only accepts a startDate
+    # within 30 days (Production allows 180), so the cap is 720 h = 30 days.
+    apple_replay_window_hours: int = Field(
+        default=48, alias="APPLE_REPLAY_WINDOW_HOURS", ge=1, le=720
+    )
+    # Bound on the ``/health/db`` ``SELECT 1`` (routes.health).
+    db_ping_timeout_seconds: float = Field(
+        default=5.0, alias="DB_PING_TIMEOUT_SECONDS", gt=0, le=60
+    )
 
     @field_validator(
         "apple_bundle_id",

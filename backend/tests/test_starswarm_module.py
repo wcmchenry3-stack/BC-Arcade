@@ -26,7 +26,7 @@ from db.models import GameType as GameTypeRow
 from games.board import SCORE_METRIC
 from games.protocol import GameModule
 from games.registry import get_module
-from games.sessions import _MAX_RESULT_BYTES
+from games.sessions import _max_result_bytes
 from main import app
 from observability import report
 from starswarm.models import (
@@ -587,7 +587,7 @@ def test_the_apps_worst_case_breakdown_fits_the_result_limit() -> None:
         "difficulty_tier": "LieutenantCommander",
         "score_breakdown": _worst_case_breakdown(),
     }
-    assert len(json.dumps(result)) < _MAX_RESULT_BYTES
+    assert len(json.dumps(result)) < _max_result_bytes()
     assert StarSwarmResult.model_validate(result).score_breakdown is not None
 
 

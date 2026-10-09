@@ -20,7 +20,7 @@ from db.base import get_engine, get_session_factory
 from db.models import Game, GameType
 from games import sessions, sweep
 from games.filters import not_swept
-from games.sweep import STALE_GAME_AFTER, sweep_stale_games
+from games.sweep import stale_game_after, sweep_stale_games
 from tests._helpers import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
@@ -99,7 +99,7 @@ async def test_a_25_hour_open_row_is_swept_as_abandoned() -> None:
     assert await _sweep(sid) == 1
     g = await _get(gid)
     assert g.outcome == "abandoned"
-    assert _utc(g.completed_at) == _utc(g.started_at) + STALE_GAME_AFTER
+    assert _utc(g.completed_at) == _utc(g.started_at) + stale_game_after()
     assert g.game_metadata == {"player_name": "Ann", "swept": True}
     assert g.duration_ms is None
     assert g.final_score is None
@@ -635,7 +635,7 @@ async def test_a_swept_completed_at_is_stored_in_the_orms_sqlite_format() -> Non
     normal = await _add(
         sid,
         started_ago=timedelta(hours=2),
-        completed_ago=_NOW - (started + STALE_GAME_AFTER - timedelta(microseconds=56)),
+        completed_ago=_NOW - (started + stale_game_after() - timedelta(microseconds=56)),
         outcome="completed",
     )
     # A started_at stored without a fraction (SQLite's CURRENT_TIMESTAMP default).
@@ -650,7 +650,7 @@ async def test_a_swept_completed_at_is_stored_in_the_orms_sqlite_format() -> Non
 
     assert await _sweep(sid) == 2
 
-    expected = (started + STALE_GAME_AFTER).strftime("%Y-%m-%d %H:%M:%S.%f")
+    expected = (started + stale_game_after()).strftime("%Y-%m-%d %H:%M:%S.%f")
     assert await _raw_completed_at(stale) == expected
     assert await _raw_completed_at(whole) == "2026-01-03 03:04:05.000000"
     async with factory() as db:

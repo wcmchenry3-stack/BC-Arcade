@@ -34,7 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from jobs.periodic import PeriodicJob
 
 from . import service
-from ._common import log_event, ms_to_datetime
+from ._common import get_settings, log_event, ms_to_datetime
 from .apple_store import AppStoreVerifier, revocation_reason
 from .verifiers import PurchaseError
 
@@ -50,8 +50,8 @@ _STATE_FOR_TYPE: dict[str, Literal["owned", "revoked"]] = {
     "ONE_TIME_CHARGE": "owned",
 }
 
-# Replay settings (IAP.md §6.5): a 48 h window, once a day.
-REPLAY_WINDOW = timedelta(hours=48)
+# Replay settings (IAP.md §6.5): a window (APPLE_REPLAY_WINDOW_HOURS, default 48 h; read
+# lazily in replay_notification_history), once a day.
 REPLAY_INTERVAL_S = 24 * 60 * 60
 REPLAY_MAX_PAGES = 100  # 20 notifications a page; a bound, not an expectation
 REPLAY_TIMEOUT_S = 300.0
@@ -135,11 +135,11 @@ async def replay_notification_history(
     verifier: AppStoreVerifier | None,
     session_factory: Callable[[], AsyncSession],
     *,
-    window: timedelta = REPLAY_WINDOW,
+    window: timedelta | None = None,
     now: datetime | None = None,
     max_pages: int = REPLAY_MAX_PAGES,
 ) -> ReplayResult | None:
-    """Replay the last ``window`` of App Store notifications through the webhook handler.
+    """Replay the last ``window`` (default ``APPLE_REPLAY_WINDOW_HOURS``) of App Store notifications through the webhook handler.
 
     Uses **Get Notification History** for every allowed environment that has
     an API client. Returns None (and does nothing) when Apple verification or
@@ -151,6 +151,8 @@ async def replay_notification_history(
     if verifier is None or not verifier.has_api:
         return None
     end = now or datetime.now(UTC)
+    if window is None:
+        window = timedelta(hours=get_settings().apple_replay_window_hours)
     start = end - window
     result = ReplayResult()
     for env in verifier.api_environments():
