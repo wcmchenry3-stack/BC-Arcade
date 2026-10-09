@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { createAudioPlayer, AudioPlayer } from "expo-audio";
 import { useSoundSettings } from "./SoundContext";
+import { GAME_AUDIO_PLAYER_OPTIONS, retainAudioSession } from "./audioSession";
 
 // Upper bound on how long one seekTo()→play() chain may hold the in-flight guard below. A
 // native seek whose completion handler never fires (iOS AVPlayer item not ready yet, audio
@@ -34,11 +35,21 @@ export function useSound(
   useEffect(() => {
     const source = registry[key];
     if (source == null) return;
-    const player = createAudioPlayer(source);
+    // keepAudioSessionActive: a one-shot SFX finishing must not deactivate the iOS audio
+    // session under the background music (#2923). See audioSession.ts for the trade-off.
+    const player = createAudioPlayer(source, GAME_AUDIO_PLAYER_OPTIONS);
     player.volume = volume;
     playerRef.current = player;
+    const releaseSession = retainAudioSession();
     return () => {
+      // pause() first: remove() alone does not stop native playback.
+      try {
+        player.pause();
+      } catch {
+        // audio cleanup, failure is safe
+      }
       player.remove();
+      releaseSession();
       playerRef.current = null;
       // A chain still pending against the removed player must not block the next one.
       pendingSinceRef.current = null;
