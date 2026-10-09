@@ -6,7 +6,8 @@
  *   2. Persistence: `usePersistedGameState` (#3109) over
  *      game/daily_word/storage.ts. The load fetches today's puzzle with the
  *      save (Retry runs it again); a save for another day is cleared and
- *      today's board dealt in its place. Every change is saved after that,
+ *      today's board dealt in its place. The load only reads: the restore
+ *      handler does the clearing (#3127). Every change is saved after that,
  *      except a finished board just restored, which is already stored.
  *   3. API: GET /daily-word/today and GET /daily-word/answer here;
  *      POST /daily-word/guess and its 403/422/429 recovery live in
@@ -52,9 +53,14 @@ import {
 } from "../game/daily_word/engine";
 import type { DailyWordState } from "../game/daily_word/types";
 import { dailyWordApi } from "../game/daily_word/api";
+import type { TodayResponse } from "../game/daily_word/api";
 import { withRetry } from "../game/_shared/withRetry";
 import { useGameSync } from "../game/_shared/useGameSync";
-import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
+import {
+  LoadResult,
+  useGameRestored,
+  usePersistedGameState,
+} from "../game/_shared/usePersistedGameState";
 import {
   loadState,
   saveState,
@@ -86,6 +92,35 @@ const LOAD_ERROR_KEY = {
   offline: "error.needsConnection",
   failed: "error.couldNotLoad",
 } as const;
+
+/**
+ * What a load found besides the board, for the restore handler to act on
+ * (#3127): the load itself writes nothing.
+ */
+interface LoadInfo {
+  /** Why no puzzle loaded (the board is null). */
+  failure: "offline" | "failed" | null;
+  /** The board is today's save, resumed. */
+  resumed: boolean;
+  /** The board is today's fresh one, and a save for another day is stored. */
+  staleSave: boolean;
+  /** Today's puzzle as fetched from the server, for the offline cache (#1886). */
+  cache: { dateKey: string; meta: TodayResponse } | null;
+}
+
+/** A load's result: the board (null when none loaded) and what else it found. */
+function loadResult(
+  board: DailyWordState | null,
+  info: Partial<LoadInfo>
+): LoadResult<DailyWordState, LoadInfo> {
+  return new LoadResult(board, {
+    failure: null,
+    resumed: false,
+    staleSave: false,
+    cache: null,
+    ...info,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -127,36 +162,39 @@ export default function DailyWordScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
-  // Why the last load found no puzzle, read by the restore handler below.
-  const loadFailureRef = useRef<"offline" | "failed" | null>(null);
-  // True when the load restored a save for today, not a fresh board.
-  const restoredSaveRef = useRef(false);
   // A finished board the load restored: it is already stored as it is, so the
   // save below skips it (a finished puzzle is never re-saved, #3109).
   const restoredFinishedRef = useRef<DailyWordState | null>(null);
+  // The clear of another day's save, started by the restore handler. A save
+  // waits for it, so today's fresh board is written after the clear, never
+  // before it (#3127). Null once it has settled.
+  const staleClearRef = useRef<Promise<void> | null>(null);
 
   // The saved game (usePersistedGameState, #3109), in the one slot
   // `daily_word_state_v1` and keyed to the puzzle by its `puzzle_id`
   // ("YYYY-MM-DD:lang"). The load fetches today's puzzle with the save, both
   // recomputed per call: Retry (`reload`) can run hours after mount (new day,
-  // new language). A save for today resumes; one for another day is cleared,
-  // before today's fresh board is set, and the fresh board is then saved. A
-  // failed load resolves null and leaves its reason in `loadFailureRef`.
-  // `stateRef` is the latest state, read by the async submit, the session
-  // abandon paths and the unmount snapshot, none of which can close over `state`.
-  const game = usePersistedGameState<DailyWordState>({
-    load: async () => {
-      loadFailureRef.current = null;
-      restoredSaveRef.current = false;
+  // new language). A save for today resumes; for another day, today's fresh
+  // board is returned instead. A failed load resolves null with its reason.
+  // The load only reads (#3127): what it found goes to the restore handler as
+  // `LoadInfo`, and the handler acts on it (the error, the resume, the clear
+  // of another day's save, the today-meta cache), since only the load that
+  // lands reaches the handler. `stateRef` is the latest state, read by the
+  // async submit, the session abandon paths and the unmount snapshot, none of
+  // which can close over `state`.
+  const game = usePersistedGameState<DailyWordState, LoadInfo>({
+    load: async (): Promise<LoadResult<DailyWordState, LoadInfo>> => {
       const tzOffset = getTimezoneOffset();
       const language = getLanguage();
       const dateKey = localDateKey(tzOffset, language);
       let failure: "offline" | "failed" = "failed";
+      // Set in a callback, so typed by assertion to keep it from narrowing to null.
+      let cache = null as LoadInfo["cache"];
       try {
         const [todayMeta, saved] = await Promise.all([
           withRetry(() => dailyWordApi.getToday(tzOffset, language))
             .then((meta) => {
-              saveTodayMeta(dateKey, meta).catch(() => {});
+              cache = { dateKey, meta };
               return meta;
             })
             // Only serve cached meta on network failures (isNetworkError). HTTP errors
@@ -172,21 +210,22 @@ export default function DailyWordScreen() {
         ]);
 
         if (!todayMeta) {
-          loadFailureRef.current = failure;
-          return null;
+          return loadResult(null, { failure, cache });
         }
         if (saved && saved.puzzle_id === todayMeta.puzzle_id) {
-          restoredSaveRef.current = true;
-          return saved;
+          return loadResult(saved, { resumed: true, cache });
         }
-        if (saved) await clearState();
-        return initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
+        const fresh = initialState(todayMeta.puzzle_id, todayMeta.word_length, language);
+        return loadResult(fresh, { staleSave: saved !== null, cache });
       } catch {
-        loadFailureRef.current = "failed";
-        return null;
+        return loadResult(null, { failure: "failed" });
       }
     },
-    save: (s) => (s === restoredFinishedRef.current ? Promise.resolve() : saveState(s)),
+    save: (s) => {
+      if (s === restoredFinishedRef.current) return Promise.resolve();
+      const clearing = staleClearRef.current;
+      return clearing ? clearing.then(() => saveState(s)) : saveState(s);
+    },
   });
   const { state, setState, stateRef, loading, reload } = game;
   // "offline" = network failure with no cached metadata (#2925); "failed" = anything else.
@@ -326,15 +365,27 @@ export default function DailyWordScreen() {
   // Mount (and Retry): today's puzzle and any saved state
   // ---------------------------------------------------------------------------
 
-  useGameRestored(game, (gameState) => {
+  useGameRestored(game, (gameState, info) => {
+    if (info.cache) saveTodayMeta(info.cache.dateKey, info.cache.meta).catch(() => {});
     if (gameState === null) {
-      setLoadError(loadFailureRef.current ?? "failed");
+      setLoadError(info.failure ?? "failed");
       return;
     }
     setLoadError(null);
+    // Another day's save is cleared here, not in the load, so a dropped load
+    // can never clear a save a newer one has written (#3127). The clear starts
+    // in this batch; today's fresh board (this state) is saved by the effect
+    // after it commits, and that save waits for `staleClearRef`, so the clear
+    // always lands first.
+    if (info.staleSave) {
+      const clearing: Promise<void> = clearState().then(() => {
+        if (staleClearRef.current === clearing) staleClearRef.current = null;
+      });
+      staleClearRef.current = clearing;
+    }
     // A restored board continues the session a killed app left open for this
     // puzzle (#2654).
-    if (restoredSaveRef.current && !gameState.is_complete) {
+    if (info.resumed && !gameState.is_complete) {
       syncResume({ puzzle_id: gameState.puzzle_id });
     }
     // A restored finished board shows its card at once (derived from

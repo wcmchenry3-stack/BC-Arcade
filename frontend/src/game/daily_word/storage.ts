@@ -6,7 +6,8 @@ import { createJsonSlot } from "../_shared/storageSlot";
 
 // Callers must compare loaded state's puzzle_id against today's puzzle
 // (via dailyWordApi.getToday) and call clearState() on a mismatch so a
-// stale save from a previous day is never presented to the player.
+// stale save from a previous day is never presented to the player. The
+// screen does that in its restore handler, not in its load (#3127).
 
 // puzzle_id format: "YYYY-MM-DD:lang"
 const PUZZLE_ID_RE = /^\d{4}-\d{2}-\d{2}:[a-z]{2}$/;
