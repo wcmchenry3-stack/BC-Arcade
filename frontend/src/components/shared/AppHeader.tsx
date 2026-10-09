@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import * as Sentry from "@sentry/react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useTheme, type Colors } from "../../theme/ThemeContext";
-import { LOGO_TILE_BG, MENU_SHADOW_COLOR } from "../../theme/theme.constants";
+import { LOGO_TILE_BG, MENU_SHADOW_COLOR, MENU_SHADOW_CSS } from "../../theme/theme.constants";
 import { typography } from "../../theme/typography";
 import FeedbackWidget from "../FeedbackWidget/FeedbackWidget";
 import FeedbackThanksBanner from "../FeedbackWidget/FeedbackThanksBanner";
@@ -351,7 +351,7 @@ export function AppHeader({
               backgroundColor: colors.surfaceHigh,
               borderColor: colors.border,
               ...Platform.select({
-                web: { boxShadow: "0 8px 24px rgba(0,0,0,0.5)" } as object,
+                web: { boxShadow: MENU_SHADOW_CSS } as object,
               }),
             },
           ]}

@@ -872,7 +872,11 @@ export default function SolitaireScreen() {
                       importantForAccessibility="no-hide-descendants"
                       style={[
                         StyleSheet.absoluteFill,
-                        { backgroundColor: "#ffd700", opacity: sparkleOpacity, borderRadius: 8 },
+                        {
+                          backgroundColor: colors.celebration,
+                          opacity: sparkleOpacity,
+                          borderRadius: 8,
+                        },
                       ]}
                     />
                   </View>

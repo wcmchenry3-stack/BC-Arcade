@@ -35,12 +35,15 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { loadTileAssets } from "../components/mahjong/tileAssetLoader";
 import { useTheme } from "../theme/ThemeContext";
+import { DEV_ACCENT } from "../theme/theme.constants";
 import {
-  DEV_ACCENT,
   MAHJONG_HINT_COLOR,
   MAHJONG_NO_MOVES_OVERLAY_BG,
   MAHJONG_OVERLAY_BTN_BG,
-} from "../theme/theme.constants";
+  MAHJONG_OVERLAY_DETAIL_TEXT,
+  MAHJONG_OVERLAY_TEXT,
+  MAHJONG_SHUFFLE_COLOR,
+} from "../theme/theme.mahjong";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
 import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
@@ -676,7 +679,7 @@ export default function MahjongScreen() {
                 accessibilityLabel={t("action.shuffleLabel")}
                 onPress={handleShuffle}
                 disabled={state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked}
-                color="#ffd700"
+                color={MAHJONG_SHUFFLE_COLOR}
                 testID="mahjong-shuffle-button"
               />
               <Text style={[styles.hudText, styles.dealIdText, { color: colors.textMuted }]}>
@@ -885,14 +888,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   overlayTitle: {
-    color: "#ffffff",
+    color: MAHJONG_OVERLAY_TEXT,
     fontSize: 24,
     fontWeight: "bold",
     textAlign: "center",
     marginBottom: 8,
   },
   overlayDetail: {
-    color: "#cccccc",
+    color: MAHJONG_OVERLAY_DETAIL_TEXT,
     fontSize: 14,
     textAlign: "center",
     marginBottom: 16,
@@ -905,7 +908,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   overlayBtnText: {
-    color: "#ffffff",
+    color: MAHJONG_OVERLAY_TEXT,
     fontSize: 15,
     fontWeight: "bold",
     textAlign: "center",

@@ -567,7 +567,7 @@ export default function SudokuScreen() {
             importantForAccessibility="no-hide-descendants"
             style={[
               StyleSheet.absoluteFill,
-              { backgroundColor: "#2ecc71", opacity: unitFlashOpacity },
+              { backgroundColor: colors.bonus, opacity: unitFlashOpacity },
             ]}
             testID="sudoku-unit-flash"
           />

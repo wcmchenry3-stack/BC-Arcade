@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { AnimationOverlay } from "../shared/AnimationOverlay";
 import { useCelebration } from "../shared/useCelebration";
-import { BADGE_JOKER_BG, BADGE_YACHT_BG } from "../../theme/theme.constants";
+import { BADGE_JOKER_BG, BADGE_TEXT, BADGE_YACHT_BG } from "../../theme/theme.constants";
 
 interface Props {
   visible: boolean;
@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 42,
     fontWeight: "900",
-    color: "#1a1a1a",
+    color: BADGE_TEXT,
     letterSpacing: 3,
     textTransform: "uppercase",
   },

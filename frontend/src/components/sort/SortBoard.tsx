@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import type { Bottle, Color, SortState } from "../../game/sort/types";
 import { BOTTLE_DEPTH } from "../../game/sort/types";
 import { useTheme } from "../../theme/ThemeContext";
+import { BOTTLE_LIQUID_SHEEN, BOTTLE_STREAM_HIGHLIGHT } from "../../theme/theme.bottle";
 import BottleView, {
   DEFAULT_BOTTLE_HEIGHT,
   DEFAULT_BOTTLE_WIDTH,
@@ -582,7 +583,7 @@ export default function SortBoard({
                             y={yVb}
                             width={VB_W}
                             height={2.5}
-                            fill="rgba(255,255,255,0.22)"
+                            fill={BOTTLE_LIQUID_SHEEN}
                           />
                         </G>
                       );
@@ -615,7 +616,7 @@ export default function SortBoard({
                 {/* Inner white highlight */}
                 <Path
                   d={streamPath}
-                  stroke="rgba(255,255,255,0.4)"
+                  stroke={BOTTLE_STREAM_HIGHLIGHT}
                   strokeWidth={STREAM_HIGHLIGHT_WIDTH}
                   fill="none"
                   strokeLinecap="round"

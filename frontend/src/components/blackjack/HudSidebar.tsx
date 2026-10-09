@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
+import { BLACKJACK_CHIPS_LOW } from "../../theme/theme.constants";
 import { typography } from "../../theme/typography";
 
 interface HudSidebarProps {
@@ -30,8 +31,8 @@ export default function HudSidebar({
   const isCritical = startingChips > 0 && chips < startingChips * 0.2;
   const showStreak = winStreak >= 3;
 
-  const hudColor = isCritical ? colors.error : isLowChips ? "#ffb547" : colors.text;
-  const barColor = isCritical ? colors.error : isLowChips ? "#ffb547" : tableAccentColor;
+  const hudColor = isCritical ? colors.error : isLowChips ? BLACKJACK_CHIPS_LOW : colors.text;
+  const barColor = isCritical ? colors.error : isLowChips ? BLACKJACK_CHIPS_LOW : tableAccentColor;
   const goalProgress = Math.min(1, chips / runGoal);
 
   return (

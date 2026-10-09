@@ -2,6 +2,7 @@ import React from "react";
 import { Pressable, Text, StyleSheet, View, Platform, TextStyle } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../theme/ThemeContext";
+import { SCORE_ROW_GLOW_LOWER, SCORE_ROW_GLOW_UPPER } from "../theme/theme.constants";
 import CategoryIcon from "./yacht/CategoryIcon";
 
 interface ScoreRowProps {
@@ -39,7 +40,7 @@ export default function ScoreRow({
   const accessLabel = t("score.label", { category: label, state: stateText });
 
   const accentColor = tone === "upper" ? colors.accent : colors.secondary;
-  const glowColor = tone === "upper" ? "rgba(143,245,255,0.45)" : "rgba(214,116,255,0.45)";
+  const glowColor = tone === "upper" ? SCORE_ROW_GLOW_UPPER : SCORE_ROW_GLOW_LOWER;
 
   // neon text-shadow is only meaningful on web
   const glowStyle: TextStyle | null =

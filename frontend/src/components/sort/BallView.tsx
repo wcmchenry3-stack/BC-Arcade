@@ -4,13 +4,13 @@ import Svg, { Circle, Path, Polygon, Rect } from "react-native-svg";
 import { useTranslation } from "react-i18next";
 import type { Color } from "../../game/sort/types";
 import { useTheme } from "../../theme/ThemeContext";
-import { BOTTLE_LIQUID_COLORS } from "../../theme/theme.bottle";
+import { BOTTLE_LIQUID_COLORS, BOTTLE_SYMBOL_FILL } from "../../theme/theme.bottle";
 
 const BALL_SIZE = 36;
 
 // White symbols on a 100×100 viewBox — one per color for colorblind mode.
 // Chosen to be distinct in shape even in greyscale.
-const SYMBOL_FILL = "#ffffff";
+const SYMBOL_FILL = BOTTLE_SYMBOL_FILL;
 
 function TriangleSymbol() {
   return <Polygon points="50,10 90,85 10,85" fill={SYMBOL_FILL} />;

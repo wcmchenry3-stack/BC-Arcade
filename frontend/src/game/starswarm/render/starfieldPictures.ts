@@ -15,9 +15,10 @@ import type { SkPicture } from "@shopify/react-native-skia";
 import { layerOffset, starLayers } from "../starfield";
 import type { StarfieldState } from "../starfield";
 import { withAlpha } from "./color";
+import { BG, WHITE_RGB } from "./palette";
 
 /** The scene's background, under everything. */
-export const BACKGROUND = 0xff000010;
+export const BACKGROUND = BG;
 
 export interface StarfieldPictures {
   readonly backdrop: SkPicture;
@@ -36,7 +37,7 @@ export function recordStarfield(sf: StarfieldState): StarfieldPictures {
       const paint = Skia.Paint();
       paint.setAntiAlias(true);
       for (const star of layer.stars) {
-        paint.setColor(Skia.Color(withAlpha(0xffffff, star.opacity)));
+        paint.setColor(Skia.Color(withAlpha(WHITE_RGB, star.opacity)));
         canvas.drawCircle(star.x, star.y, star.r, paint);
       }
     }, size),

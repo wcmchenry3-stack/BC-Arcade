@@ -14,6 +14,7 @@
     "format:check": "prettier --check .",
     "translate": "node scripts/translate.js",
     "check-i18n": "node scripts/check-i18n-strings.js",
+    "check-colors": "node scripts/check-color-literals.js",
     "process-assets": "python ../tools/assets/remove_backgrounds.py",
     "extract-vertices": "python ../tools/assets/extract_vertices.py",
     "bundlesize": "bundlesize",

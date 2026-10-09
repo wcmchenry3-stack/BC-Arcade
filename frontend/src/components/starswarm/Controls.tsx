@@ -7,6 +7,13 @@ import { useTranslation } from "react-i18next";
 import type { GameCanvasHandle } from "./GameCanvas";
 import { CANVAS_W, CANVAS_H } from "../../game/starswarm/engine";
 import { applyDrag, clamp, DRAG_MAX_X, DRAG_MIN_X } from "../../game/starswarm/drag";
+import {
+  STARSWARM_ACCENT,
+  STARSWARM_PAUSE_LINK_BORDER,
+  STARSWARM_PAUSE_LINK_TEXT,
+  STARSWARM_PAUSE_SCRIM,
+  STARSWARM_SPACE,
+} from "../../theme/theme.starswarm";
 
 const DRAG_ZONE_Y_RATIO = 0.6; // bottom 40% is the drag zone
 
@@ -222,12 +229,12 @@ const styles = StyleSheet.create({
   },
   pauseOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0, 0, 16, 0.72)",
+    backgroundColor: STARSWARM_PAUSE_SCRIM,
     alignItems: "center",
     justifyContent: "center",
   },
   pauseTitle: {
-    color: "#00ffcc",
+    color: STARSWARM_ACCENT,
     fontSize: 26,
     fontWeight: "bold",
     letterSpacing: 3,
@@ -237,12 +244,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 14,
     borderRadius: 8,
-    backgroundColor: "#00ffcc",
+    backgroundColor: STARSWARM_ACCENT,
     minWidth: 180,
     alignItems: "center",
   },
   pauseResumeBtnText: {
-    color: "#000010",
+    color: STARSWARM_SPACE,
     fontWeight: "bold",
     fontSize: 16,
     letterSpacing: 1,
@@ -251,14 +258,14 @@ const styles = StyleSheet.create({
     marginTop: 20,
     backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.35)",
+    borderColor: STARSWARM_PAUSE_LINK_BORDER,
     paddingHorizontal: 18,
     paddingVertical: 7,
     minWidth: 180,
     alignItems: "center",
   },
   pauseNewGameBtnText: {
-    color: "rgba(255,255,255,0.55)",
+    color: STARSWARM_PAUSE_LINK_TEXT,
     fontSize: 12,
     fontWeight: "normal",
     letterSpacing: 0,
@@ -267,10 +274,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 14,
     borderRadius: 8,
-    backgroundColor: "#00ffcc",
+    backgroundColor: STARSWARM_ACCENT,
   },
   newGameBtnText: {
-    color: "#000010",
+    color: STARSWARM_SPACE,
     fontWeight: "bold",
     fontSize: 16,
     letterSpacing: 1,

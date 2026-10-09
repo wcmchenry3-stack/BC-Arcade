@@ -20,6 +20,24 @@ export const LOGO_TILE_BG = "#1a0a2e";
 /** Native shadow colour for floating menus (AppHeader ⋯ dropdown). */
 export const MENU_SHADOW_COLOR = "#000000";
 
+/** Web drop shadow for the AppHeader ⋯ dropdown (the native shadow uses
+ *  `MENU_SHADOW_COLOR`). */
+export const MENU_SHADOW_CSS = "0 8px 24px rgba(0,0,0,0.5)";
+
+/** Yacht celebration badge text — near-black on the gold / purple badge. */
+export const BADGE_TEXT = "#1a1a1a";
+
+/** Yacht scorecard row glow: upper section (cyan) and lower section (purple). */
+export const SCORE_ROW_GLOW_UPPER = "rgba(143,245,255,0.45)";
+export const SCORE_ROW_GLOW_LOWER = "rgba(214,116,255,0.45)";
+
+/** Blackjack HUD warning amber — chips below 30% of the starting stack. */
+export const BLACKJACK_CHIPS_LOW = "#ffb547";
+
+/** 2048 board drop shadow: web `boxShadow`, and the native `shadowColor`. */
+export const TWENTY48_BOARD_SHADOW_CSS = "0 8px 40px #00000099";
+export const TWENTY48_BOARD_SHADOW_COLOR = "#000";
+
 /** Dev-panel accent colour (orange). */
 export const DEV_ACCENT = "rgba(255,128,0,1)";
 
@@ -80,32 +98,3 @@ export const DEV_GOLD_BORDER = "rgba(255,200,0,0.4)";
 /** Daily Word dev API log status badge — failed and succeeded calls. */
 export const DEV_STATUS_ERROR_BG = "rgba(255,60,60,0.2)";
 export const DEV_STATUS_OK_BG = "rgba(60,200,60,0.2)";
-
-/** Mahjong board background — desaturated sage green (hsl 120 15% 21%).
- *  Reduced saturation vs. the original #1a3a1a to lower chromatic contrast
- *  against white tile faces during long play sessions. */
-export const MAHJONG_BOARD_BG = "#2d3d2d";
-
-/** Mahjong tile face when selected — soft yellow highlight. */
-export const MAHJONG_TILE_FACE_SELECTED = "#fff8c0";
-
-/** Mahjong selected tile glow — subtle gold background. */
-export const MAHJONG_GLOW_BG = "rgba(255,215,0,0.35)";
-
-/** Mahjong selected tile glow — stronger gold shadow effect. */
-export const MAHJONG_GLOW_SHADOW = "rgba(255,215,0,0.7)";
-
-/** Mahjong hint tile accent colour — used for borders, text, and glow tints. */
-export const MAHJONG_HINT_COLOR = "#5dbcd2";
-
-/** Mahjong hint tile glow — blue background for matching free tiles. */
-export const MAHJONG_HINT_GLOW_BG = "rgba(93,188,210,0.65)";
-
-/** Mahjong hint tile glow — blue shadow effect (web canvas). */
-export const MAHJONG_HINT_GLOW_SHADOW = "rgba(93,188,210,0.9)";
-
-/** Mahjong "no moves" overlay scrim. */
-export const MAHJONG_NO_MOVES_OVERLAY_BG = "rgba(0,0,0,0.72)";
-
-/** Mahjong overlay action button — dark green, used by the no-moves prompt. */
-export const MAHJONG_OVERLAY_BTN_BG = "#2a7a2a";
