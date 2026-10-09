@@ -421,7 +421,9 @@ jobs:
     continue-on-error: true
     services:
       postgres:
-        image: postgres:16
+        # The official image via the AWS ECR Public mirror: Docker Hub pulls from
+        # Actions runners were timing out at auth.docker.io (2026-10-09).
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
