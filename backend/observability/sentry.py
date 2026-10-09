@@ -65,7 +65,7 @@ def _strip_sql(text: str) -> str:
     return stripped + SQL_REDACTED if stripped != text else text
 
 
-def _sentry_before_send(event: dict, hint: dict) -> dict:
+def _sentry_before_send(event: dict, _hint: dict) -> dict:
     """Remove SQL statements, bound parameters and constraint details from an event."""
     for exc in (event.get("exception") or {}).get("values") or []:
         if isinstance(exc.get("value"), str):
@@ -114,12 +114,12 @@ def _redact_store_ids(value):
     return value
 
 
-def _sentry_before_send_transaction(event: dict, hint: dict) -> dict:
+def _sentry_before_send_transaction(event: dict, _hint: dict) -> dict:
     """Redact store IDs from a performance transaction (span descriptions, span data, breadcrumbs)."""
     return _redact_store_ids(event)
 
 
-def _sentry_before_breadcrumb(crumb: dict, hint: dict) -> dict:
+def _sentry_before_breadcrumb(crumb: dict, _hint: dict) -> dict:
     """Redact store IDs from a breadcrumb (HTTP client breadcrumbs carry the full URL)."""
     return _redact_store_ids(crumb)
 

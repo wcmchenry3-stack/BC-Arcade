@@ -142,7 +142,7 @@ async def _db_health_check() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+async def _rate_limit_handler(request: Request, _exc: RateLimitExceeded) -> JSONResponse:
     _audit_log.warning(
         json.dumps(
             {
@@ -160,7 +160,7 @@ async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONR
     )
 
 
-async def _entitlement_error_handler(request: Request, exc: EntitlementError) -> JSONResponse:
+async def _entitlement_error_handler(_request: Request, exc: EntitlementError) -> JSONResponse:
     return JSONResponse(
         status_code=403,
         content={"detail": "not_entitled", "game": exc.game_slug},

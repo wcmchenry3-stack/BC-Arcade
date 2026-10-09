@@ -193,7 +193,7 @@ class HttpxAuthRequest(google.auth.transport.Request):
         self._client = client
 
     def __call__(  # type: ignore[override]
-        self, url, method="GET", body=None, headers=None, timeout=None, **kwargs
+        self, url, method="GET", body=None, headers=None, timeout=None, **_kwargs
     ) -> _AuthResponse:
         try:
             response = self._client.request(

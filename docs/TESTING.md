@@ -46,7 +46,7 @@ npx --yes jscpd@4.3.0 --threshold 2.5 --min-lines 20 --min-tokens 70 \
 
 **Ratchet schedule.** Once a quarter, lower the thresholds to the current measured numbers and never raise them:
 
-- ruff `max-complexity` 12, then 10; re-enable the families left out of `extend-select` (`ARG`, `PLR0913`) once their findings are fixed.
+- ruff `max-complexity` 12, then 10. `ARG` and `PLR0913` are enabled (#3108): `PLR0913` `max-args` is 7, `tests/**` and `scripts/**` are exempt via `per-file-ignores`, and production code uses a targeted `# noqa` with a reason where a signature is fixed by a framework (slowapi `request`, Protocol methods, pydantic hooks).
 - eslint `max-lines` 800, then 600; `max-lines-per-function` 150, then 100; `complexity` 20, then 15. Remove a file from the `max-lines` warn override in the same PR that splits it.
 - Promote the `react-hooks` v7 rules and the function-size rules from `warn` to `error` once their counts reach zero.
 - jscpd `--threshold` 2.5, then 2.0, then 1.5 (measured at 0.35% when the gate landed with backend `tests/` and `alembic/` excluded, so there is headroom).

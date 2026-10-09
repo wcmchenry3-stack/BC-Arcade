@@ -38,7 +38,7 @@ def _goal_fields(goal: Goal) -> dict:
 @router.get("/today", response_model=ChallengeResponse)
 @limiter.limit(DAILY_CHALLENGE_TODAY_IP_RATE_LIMIT)
 async def get_today(
-    request: Request,
+    request: Request,  # noqa: ARG001 - slowapi resolves `request` by name
     db: DbSession,
     tz_offset_minutes: int = Query(0, ge=-840, le=840),
 ) -> ChallengeResponse:
