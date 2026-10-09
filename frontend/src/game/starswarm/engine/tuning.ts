@@ -102,11 +102,15 @@ export const MISSION_COMPLETE_BANNER_MS = 1200;
 // (dodging) while the surviving hazards resolve, then climbs off the top. The hard transient
 // reset happens once it is off-screen, or at EXTRACTION_MAX_MS whatever happens.
 export const EXTRACTION_HOLD_MIN_MS = 500; // the ship holds the lane at least this long…
-export const EXTRACTION_HOLD_MAX_MS = 2500; // …and climbs by here even if hazards remain (#2945: unless chasing a pickup)
+export const EXTRACTION_HOLD_MAX_MS = 2500; // …and climbs by here even if hazards remain
 export const EXTRACTION_MAX_MS = 6000; // hard cap on the whole extraction
-// #2945: a pickup the last kill left behind is worth holding the lane for — but only until here,
-// leaving the climb enough of the EXTRACTION_MAX_MS cap to clear the top.
-export const EXTRACTION_PICKUP_HOLD_MAX_MS = 4000;
+
+// #3132: a cleared wave with pickups still on screen waits for them (ClearAwaitingPickups), the
+// player flying, before the extraction. Nothing new spawns after the last kill and every pickup
+// leaves by its own despawn timer (never more than powerUpDespawnMs(canvasH)), so the wait ends
+// on its own. The safety cap (`pickupWaitMaxMs` in extraction.ts) is that longest despawn time
+// plus this slack, for a pickup that somehow never leaves.
+export const PICKUP_WAIT_SLACK_MS = 1000;
 export const PILOT_SPEED = 0.3; // px/ms lateral autopilot speed (a brisk drag)
 export const PILOT_CLIMB_ACCEL = 0.0015; // px/ms² climb acceleration
 export const PILOT_CLIMB_MAX = 0.9; // px/ms climb speed cap

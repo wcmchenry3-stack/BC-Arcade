@@ -98,7 +98,6 @@ export {
   EXTRACTION_HOLD_MAX_MS,
   EXTRACTION_HOLD_MIN_MS,
   EXTRACTION_MAX_MS,
-  EXTRACTION_PICKUP_HOLD_MAX_MS,
   FLAK_BASE,
   FLAK_COOLDOWN,
   FLAK_RANGE,
@@ -123,6 +122,7 @@ export {
   MAX_PLAYER_BULLETS,
   MISSION_COMPLETE_BANNER_MS,
   MISSION_COMPLETE_FADE_MS,
+  PICKUP_WAIT_SLACK_MS,
   PILOT_SPEED,
   PLAYER_HURT_RADIUS,
   PLAYER_W,
@@ -229,9 +229,12 @@ export {
   shotHarmsAllies,
 } from "./engine/buddy";
 export {
+  arrivalsAllowed,
   clearTransientCombat,
   hazardsLive,
   isAutopilot,
+  isWaveCleared,
+  pickupWaitMaxMs,
   liveHazards,
   waveJustCleared,
   weaponsFree,

@@ -1,6 +1,6 @@
 /**
  * Star Swarm engine tests: the #2842 wave lifecycle (safe entry, live extraction, projectile
- * persistence, hard reset) and the #2352 non-blocking clear.
+ * persistence, hard reset), the #2352 non-blocking clear and #3132's pickup wait.
  *
  * One file per planned `engine/` module (#2988): this file follows `engine/extraction.ts`. Split
  * out of the former monolithic `engine.test.ts` (#2955) with describe blocks moved whole; shared
@@ -25,14 +25,22 @@ import {
   EXTRACTION_HOLD_MIN_MS,
   EXTRACTION_HOLD_MAX_MS,
   EXTRACTION_MAX_MS,
-  EXTRACTION_PICKUP_HOLD_MAX_MS,
+  PICKUP_WAIT_SLACK_MS,
+  arrivalsAllowed,
   clearTransientCombat,
   weaponsFree,
   hazardsLive,
   isAutopilot,
+  isWaveCleared,
+  killEscorts,
+  pickupWaitMaxMs,
   waveJustCleared,
   liveHazards,
 } from "../engine";
+import { powerUpDespawnMs } from "../engine/entities";
+import { tickPickupWait } from "../engine/extraction";
+import { PLAYER_Y_FROM_BOTTOM, POWERUP_VY } from "../engine/tuning";
+import { fitsSaveShape } from "../saveShape";
 import type { Asteroid, Bullet, PowerUp, StarSwarmState } from "../types";
 import { NO_INPUT, FIRE_INPUT, advanceMs, runExtraction, makeBeam } from "./helpers/engineFixtures";
 
@@ -656,97 +664,339 @@ describe("#2842 hard reset before the next wave", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #2945 — the extraction autopilot collects the pickups the last kill left behind.
+// #3132 — a cleared wave waits for its pickups (ClearAwaitingPickups), the player flying, before
+// the extraction. Replaces #2945's autopilot pickup chase, which is retired.
 // ---------------------------------------------------------------------------
-describe("#2945 extraction collects the last kill's pickups", () => {
-  function makeDrop(s: StarSwarmState, dx: number, dy: number): PowerUp {
-    return {
-      id: 93000,
-      type: "salvage",
-      x: s.player.x + dx,
-      y: s.player.y - dy,
-      vy: 0.08,
-      width: 24,
-      height: 24,
-      despawnTimer: 8000,
-    };
+
+/** A pickup `dy` above the ship and `dx` to its side, falling at the normal speed. */
+function makeDrop(
+  s: StarSwarmState,
+  dx: number,
+  dy: number,
+  type: PowerUp["type"] = "salvage"
+): PowerUp {
+  return {
+    id: 93000,
+    type,
+    x: s.player.x + dx,
+    y: s.player.y - dy,
+    vy: POWERUP_VY,
+    width: 24,
+    height: 24,
+    despawnTimer: 8000,
+  };
+}
+
+/** A quiet wave (no enemy fire, rocks or flak) on a canvas `canvasH` tall, in combat. */
+function quietWave(wave: number, canvasH = CANVAS_H): StarSwarmState {
+  let s = initStarSwarm(CANVAS_W, canvasH, wave);
+  s = { ...s, enemyFireDisabled: true, asteroidsDisabled: true, flakDisabled: true };
+  while (s.phase === "SwoopIn") s = tick(s, 16, NO_INPUT);
+  expect(s.phase).toBe("Playing");
+  return { ...s, player: { ...s.player, invincibleTimer: 0 } };
+}
+
+/**
+ * Kill a boss wave's escorts, then the Carrier on station with one heavy shot, as the wave's
+ * last enemy. Returns the kill tick's state and the Carrier's hull drop.
+ */
+function killCarrierLast(canvasH: number): { s: StarSwarmState; hull: PowerUp } {
+  let s = killEscorts(quietWave(5, canvasH));
+  const carrier = s.enemies.find((e) => e.isAlive && e.tier === "Carrier")!;
+  expect(s.enemies.filter((e) => e.isAlive)).toHaveLength(1);
+  s = {
+    ...s,
+    playerBullets: [
+      makePlayerBullet({ x: carrier.x, y: carrier.y, damage: 999, armorPiercing: true }),
+    ],
+  };
+  s = tick(s, 16, NO_INPUT);
+  expect(s.enemies.some((e) => e.isAlive)).toBe(false);
+  const hull = s.powerUps.find((p) => p.type === "hull")!;
+  expect(hull).toBeDefined();
+  expect(hull.y).toBeLessThan(canvasH / 2); // dropped on station, high up the screen
+  return { s, hull };
+}
+
+/** Tick with the ship under `x` (or a function of the state) while the wave waits. */
+function flyWhileWaiting(s: StarSwarmState, x: (s: StarSwarmState) => number): StarSwarmState {
+  for (let i = 0; i < 2000 && s.phase === "ClearAwaitingPickups"; i++) {
+    s = tick(s, 16, { playerX: x(s), fire: false });
   }
+  return s;
+}
 
-  it("collects a drop that falls into reach while the ship holds the lane", () => {
-    let s = enterExtraction();
-    s = { ...s, powerUps: [makeDrop(s, 90, 120)] };
-    s = advanceMs(s, 1500);
-    expect(s.player.guns).toBe(2);
+describe("#3132 the wave waits for on-screen pickups before the extraction", () => {
+  it("1. a last kill with no pickup on screen goes straight to the extraction, as before", () => {
+    const s = quietPlaying();
     expect(s.powerUps).toHaveLength(0);
-    expect(s.phase).toBe("Extraction");
-  });
-
-  it("does not chase a timed buff the wave reset would wipe", () => {
-    let s = enterExtraction();
-    s = { ...s, powerUps: [{ ...makeDrop(s, 90, 120), type: "shield" }] };
-    s = advanceMs(s, EXTRACTION_HOLD_MIN_MS + 50);
-    expect(s.extraction!.climbMs).toBeGreaterThan(0);
-  });
-
-  it("keeps a collected upgrade into the next wave", () => {
-    let s = enterExtraction();
-    s = { ...s, powerUps: [{ ...makeDrop(s, 90, 120), type: "hull" }] };
-    s = runExtraction(s);
-    expect(s.wave).toBe(2);
-    expect(s.player.hull).toBe(1);
-  });
-
-  it("does not delay the climb when there is no pickup", () => {
-    let s = enterExtraction();
-    s = advanceMs(s, EXTRACTION_HOLD_MIN_MS + 50);
-    expect(s.extraction!.climbMs).toBeGreaterThan(0);
-  });
-
-  it("does not chase a drop that falls past before the ship can reach it", () => {
-    let s = enterExtraction();
-    s = { ...s, powerUps: [makeDrop(s, 400, 60)] };
-    s = advanceMs(s, EXTRACTION_HOLD_MIN_MS + 50);
-    expect(s.extraction!.climbMs).toBeGreaterThan(0);
-    expect(s.player.guns).toBe(1);
-  });
-
-  it("never steers into a hazard to chase a pickup", () => {
-    let s = enterExtraction();
-    const lives = s.player.lives;
-    const drop = makeDrop(s, 90, 120);
-    // a stationary rock sits in the pickup's lane, right where the ship would collect it
-    s = {
-      ...s,
-      powerUps: [drop],
-      asteroids: [makeRock({ x: drop.x, y: s.player.y - 20, vx: 0, vy: 0 })],
-    };
-    s = advanceMs(s, 2500);
-    expect(s.player.lives).toBe(lives);
-    expect(s.player.guns).toBe(1);
-  });
-
-  it("does not wait for a drop that would only arrive after the pickup hold cap", () => {
-    let s = enterExtraction();
-    s = { ...s, powerUps: [makeDrop(s, 0, 400)] };
-    s = advanceMs(s, EXTRACTION_HOLD_MIN_MS + 50);
-    expect(s.extraction!.climbMs).toBeGreaterThan(0);
-    s = runExtraction(s);
-    expect(s.wave).toBe(2);
-    expect(s.extraction).toBeNull();
-  });
-
-  it("extraction ends by EXTRACTION_MAX_MS even while a pickup is being chased", () => {
-    let s = enterExtraction();
-    s = {
-      ...s,
-      powerUps: [makeDrop(s, 0, 150)],
-      extraction: { elapsedMs: EXTRACTION_PICKUP_HOLD_MAX_MS - 100, climbMs: 0 },
-    };
-    let last = s;
-    while (s.wave === 1) {
-      last = s;
-      s = tick(s, 16, NO_INPUT);
+    const killed = { ...s, enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })) };
+    let next = tick(killed, 16, NO_INPUT);
+    // the same tick: the clear bonus, the banner and the extraction, no wait
+    expect(next.phase).toBe("Extraction");
+    expect(next.extraction).toEqual({ elapsedMs: 0, climbMs: 0 });
+    expect(next.phaseTimer).toBe(0);
+    expect(next.score).toBe(s.score + waveClearBonusPoints(1, s.difficulty));
+    expect(next.missionCompleteTimer).toBe(MISSION_COMPLETE_BANNER_MS);
+    // and the same timing: hold the minimum, climb, out — never via the pickup wait
+    const phases = new Set<string>();
+    let ticks = 1;
+    while (next.wave === 1) {
+      next = tick(next, 16, NO_INPUT);
+      phases.add(next.phase);
+      ticks++;
     }
-    expect(last.extraction!.elapsedMs).toBeLessThan(EXTRACTION_MAX_MS);
+    expect(phases.has("ClearAwaitingPickups")).toBe(false);
+    expect(ticks * 16).toBeGreaterThan(EXTRACTION_HOLD_MIN_MS);
+    expect(ticks * 16).toBeLessThan(EXTRACTION_HOLD_MIN_MS + 2000);
+  });
+
+  it("a last kill with a pickup on screen waits, with the clear bonus and banner on the kill", () => {
+    const s = quietPlaying();
+    const killed = {
+      ...s,
+      powerUps: [makeDrop(s, 90, 300)],
+      enemies: s.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+    };
+    const next = tick(killed, 16, NO_INPUT);
+    expect(next.phase).toBe("ClearAwaitingPickups");
+    expect(next.extraction).toBeNull();
+    expect(next.score).toBe(s.score + waveClearBonusPoints(1, s.difficulty));
+    expect(next.missionCompleteTimer).toBe(MISSION_COMPLETE_BANNER_MS);
+    expect(waveJustCleared(s, next)).toBe(true);
+    expect(isWaveCleared(next)).toBe(true);
+    // the player has the ship; hazards and collection stay live; nothing new arrives
+    expect(isAutopilot(next)).toBe(false);
+    expect(hazardsLive(next)).toBe(true);
+    expect(weaponsFree(next)).toBe(false);
+    expect(arrivalsAllowed(next)).toBe(false);
+  });
+
+  it.each([CANVAS_H, 960])(
+    "2. the Carrier killed on station last (canvas %i px): the wave waits, the player collects the plating, +1 hull carries into the next wave",
+    (canvasH) => {
+      const { s: killed, hull } = killCarrierLast(canvasH);
+      expect(killed.phase).toBe("ClearAwaitingPickups");
+      const score = killed.score;
+      // the player flies under the plating and waits for it — no autopilot, no magnet
+      let s = flyWhileWaiting(
+        killed,
+        (st) => st.powerUps.find((p) => p.id === hull.id)?.x ?? st.player.x
+      );
+      expect(s.player.hull).toBe(1);
+      expect(s.powerUps.some((p) => p.id === hull.id)).toBe(false);
+      // only once nothing is left on screen does the extraction start
+      expect(s.phase).toBe("Extraction");
+      expect(s.powerUps).toHaveLength(0);
+      expect(waveJustCleared(killed, s)).toBe(false); // the clear fired once, on the kill
+      s = runExtraction(s);
+      expect(s.wave).toBe(6);
+      expect(s.phase).toBe("SwoopIn");
+      expect(s.player.hull).toBe(1);
+      expect(s.score).toBe(score); // the bonus was paid once, on the kill
+    }
+  );
+
+  it("7. a boss wave pays its ×2 clear bonus once, on the Carrier's kill", () => {
+    const { s } = killCarrierLast(CANVAS_H);
+    const after = runExtraction(flyWhileWaiting(s, (st) => st.player.x));
+    expect(after.score).toBe(s.score);
+    expect(after.wave).toBe(6);
+  });
+
+  it.each([CANVAS_H, 960])(
+    "3. a missed pickup (canvas %i px): the wave waits until it falls off, then clears",
+    (canvasH) => {
+      const { s: killed, hull } = killCarrierLast(canvasH);
+      const awayX = hull.x < CANVAS_W / 2 ? CANVAS_W : 0; // the far edge
+      let s = killed;
+      while (s.powerUps.some((p) => p.id === hull.id)) {
+        expect(s.phase).toBe("ClearAwaitingPickups");
+        s = tick(s, 16, { playerX: awayX, fire: false });
+      }
+      s = flyWhileWaiting(s, () => awayX); // anything else still on screen leaves too
+      expect(s.phase).toBe("Extraction");
+      expect(s.player.hull).toBe(0);
+      s = runExtraction(s);
+      expect(s.wave).toBe(6);
+      expect(s.player.hull).toBe(0);
+    }
+  );
+
+  it("4. a shot in flight that breaks a rock after the last kill drops salvage, and the wave waits for it", () => {
+    const base = enterExtraction(); // no pickup at the kill: straight into the extraction
+    const rock = makeRock({ x: 60, y: 200, hp: 1 });
+    const shot = makePlayerBullet({ x: 60, y: 250 });
+    // the salvage roll is a seeded draw: find a seed where this rock pays out
+    let s: StarSwarmState | null = null;
+    for (let seed = 1; seed < 500 && !s; seed++) {
+      seedRng(seed);
+      let t: StarSwarmState = { ...base, asteroids: [rock], playerBullets: [shot] };
+      for (let i = 0; i < 20 && t.powerUps.length === 0; i++) t = tick(t, 16, NO_INPUT);
+      if (t.powerUps.length > 0) s = t;
+    }
+    expect(s).not.toBeNull();
+    const salvage = s!.powerUps[0]!;
+    expect(salvage.type).toBe("salvage");
+    // the ship was still on station, holding its lane: the player gets it back
+    expect(s!.phase).toBe("ClearAwaitingPickups");
+    expect(s!.extraction).toBeNull();
+    expect(s!.player.y).toBe(CANVAS_H - PLAYER_Y_FROM_BOTTOM);
+    let t = flyWhileWaiting(s!, (st) => st.powerUps[0]?.x ?? st.player.x);
+    expect(t.player.guns).toBe(2);
+    expect(t.phase).toBe("Extraction");
+    t = runExtraction(t);
+    expect(t.wave).toBe(2);
+    expect(t.player.guns).toBe(2);
+  });
+
+  it("a pickup that arrives during the wait (salvage) restarts the wait's clock", () => {
+    const s0 = quietPlaying();
+    let s = tick(
+      {
+        ...s0,
+        powerUps: [makeDrop(s0, 90, 100)],
+        enemies: s0.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+      },
+      16,
+      NO_INPUT
+    );
+    expect(s.phase).toBe("ClearAwaitingPickups");
+    s = advanceMs(s, 400, { playerX: 20, fire: false });
+    expect(s.phaseTimer).toBeGreaterThan(300);
+    const crate = { ...makeDrop(s, -50, 300), id: 93001 };
+    const before = s.powerUps;
+    const arrived = { ...s, powerUps: [...before, crate] };
+    // the clock runs on while the same pickups fall, and restarts on a new arrival
+    expect(tickPickupWait(s, 16, before).phaseTimer).toBe(s.phaseTimer + 16);
+    expect(tickPickupWait(arrived, 16, before).phaseTimer).toBe(0);
+  });
+
+  it("5. after the last kill: no player fire, no new rock, no new top-spawned power-up", () => {
+    const s0 = quietPlaying();
+    let s = tick(
+      {
+        ...s0,
+        powerUps: [makeDrop(s0, 90, 400)],
+        enemies: s0.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+      },
+      16,
+      NO_INPUT
+    );
+    expect(s.phase).toBe("ClearAwaitingPickups");
+    s = {
+      ...s,
+      player: { ...s.player, shootCooldown: 0 },
+      asteroidsDisabled: false,
+      nextAsteroidTimer: 1,
+      wave: 3,
+      killsSinceLastDrop: 999, // a roll would be due…
+      dropJitterTarget: 0,
+    };
+    expect(throwAsteroid(s)).toBe(s);
+    const ids = s.powerUps.map((p) => p.id);
+    s = advanceMs(s, 1000, { playerX: 20, fire: true });
+    expect(s.phase).toBe("ClearAwaitingPickups");
+    expect(s.playerBullets).toHaveLength(0); // …the weapons stopped with the last kill
+    expect(s.asteroids).toHaveLength(0);
+    expect(s.powerUps.map((p) => p.id)).toEqual(ids); // …and nothing new dropped in
+  });
+
+  it("the ordinary drop the last kill's own tick triggers still spawns, and the wave waits for it", () => {
+    const s0 = quietPlaying();
+    const killed = {
+      ...s0,
+      killsSinceLastDrop: 999,
+      dropJitterTarget: 0,
+      enemies: s0.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+    };
+    const s = tick(killed, 16, NO_INPUT);
+    expect(s.powerUps).toHaveLength(1);
+    expect(s.powerUps[0]!.y).toBeLessThan(40); // top-spawned
+    expect(s.phase).toBe("ClearAwaitingPickups");
+  });
+
+  it("6. the safety cap ends a wait for a pickup that never leaves", () => {
+    const s0 = quietPlaying();
+    const stuck = { ...makeDrop(s0, 90, 300), vy: 0, despawnTimer: 1e9 };
+    let s = tick(
+      {
+        ...s0,
+        powerUps: [stuck],
+        enemies: s0.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+      },
+      16,
+      NO_INPUT
+    );
+    expect(s.phase).toBe("ClearAwaitingPickups");
+    const cap = pickupWaitMaxMs(CANVAS_H);
+    expect(cap).toBe(powerUpDespawnMs(CANVAS_H) + PICKUP_WAIT_SLACK_MS);
+    s = advanceMs(s, cap - 100, { playerX: 20, fire: false });
+    expect(s.phase).toBe("ClearAwaitingPickups");
+    s = advanceMs(s, 200, { playerX: 20, fire: false });
+    // the stuck pickup is removed so the extraction never hands the ship back for it
+    expect(s.phase).toBe("Extraction");
+    expect(s.powerUps).toHaveLength(0);
+    s = runExtraction(s);
+    expect(s.wave).toBe(2);
+  });
+
+  it("8. pause and resume during the wait: a saved run resumes the wait exactly", () => {
+    const s0 = quietPlaying();
+    let s = tick(
+      {
+        ...s0,
+        powerUps: [makeDrop(s0, 90, 300)],
+        enemies: s0.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+      },
+      16,
+      NO_INPUT
+    );
+    s = advanceMs(s, 500, { playerX: 20, fire: false });
+    expect(s.phase).toBe("ClearAwaitingPickups");
+    // pausing stops the ticks, so the wait's clock and the pickup hold still; the paused run is
+    // saved (pauseLiveRun) and must restore into the same wait
+    const restored = JSON.parse(JSON.stringify(s)) as unknown;
+    expect(fitsSaveShape(restored)).toBe(true);
+    const r = restored as StarSwarmState;
+    expect(r.phase).toBe("ClearAwaitingPickups");
+    expect(r.phaseTimer).toBe(s.phaseTimer);
+    const a = flyWhileWaiting(s, () => 20);
+    const b = flyWhileWaiting(r, () => 20);
+    expect(b.phase).toBe("Extraction");
+    expect(b.player).toEqual(a.player);
+    expect(b.score).toBe(a.score);
+  });
+
+  it("losing a life during the wait is the normal hit; the last life ends the game", () => {
+    const s0 = quietPlaying();
+    let s = tick(
+      {
+        ...s0,
+        powerUps: [makeDrop(s0, 90, 300)],
+        enemies: s0.enemies.map((e) => ({ ...e, isAlive: false, hp: 0 })),
+      },
+      16,
+      NO_INPUT
+    );
+    s = { ...s, player: { ...s.player, lives: 1, hull: 0, invincibleTimer: 0 } };
+    s = {
+      ...s,
+      enemyBullets: [makeEnemyBullet({ x: s.player.x, y: s.player.y, vy: 0, width: 60 })],
+    };
+    s = tick(s, 16, { playerX: s.player.x, fire: false });
+    expect(s.phase).toBe("GameOver");
+  });
+
+  it("the autopilot never chases a pickup (the #2945 chase is retired)", () => {
+    // a pickup can only meet the extraction if the safety cap removed nothing — force one in
+    let s = enterExtraction();
+    s = advanceMs(s, EXTRACTION_HOLD_MIN_MS + 50);
+    expect(s.extraction!.climbMs).toBeGreaterThan(0); // climbing: it won't hand the ship back
+    const x0 = s.player.x;
+    s = { ...s, powerUps: [makeDrop(s, 90, 20)] };
+    s = tick(s, 16, NO_INPUT);
+    expect(s.phase).toBe("Extraction");
+    expect(s.player.x).toBe(x0); // nothing to dodge, so it holds its lane — no steer to the pickup
   });
 });
