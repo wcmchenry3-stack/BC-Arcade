@@ -326,6 +326,7 @@ describe("#2988 Tuning knobs read directly", () => {
       canvasH: CANVAS_H,
       flakRock: null,
       buddy,
+      rocks: [],
     };
     const aim = (t: Tuning) => tickCarrier(carrier, 16, ctx, t).enemy.diveTargetX;
     expect(aim(DEFAULT_TUNING)).toBe(300);

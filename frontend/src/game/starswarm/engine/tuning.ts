@@ -260,6 +260,18 @@ export const ATTACK_RUN: Readonly<
   exposed: { ms: 3400, depth: 0.46 },
   finalStand: { ms: 2800, depth: 0.56 },
 };
+/**
+ * #3131: commit-time path vetting. A Carrier run or an Elite/Guardian dive is checked against
+ * on-screen rocks' straight-line projections before it is committed (see `pathStrikesRock`).
+ */
+export const PATH_CHECK_STEP_MS = 100; // path sample spacing; each segment is swept exactly
+export const PATH_CHECK_MARGIN = 4; // px of slack added to the ship's threat radius
+/** Shallower alternative run: this fraction of the stage's ATTACK_RUN depth. */
+export const ATTACK_RUN_SHALLOW_FACTOR = 0.75;
+/** Longest a braced Carrier holds for a clear run before it stands down and re-rolls its timer. */
+export const ATTACK_RUN_HOLD_MAX_MS = 1500;
+/** Longest an Elite/Guardian keeps wiggling for a clear dive before it settles back into formation. */
+export const DIVE_HOLD_MAX_MS = 700;
 
 /** A bounded random interval (or count): uniform in [min, max]. */
 export interface CadenceRange {

@@ -7,7 +7,8 @@
  * `Enemy` and returns `EnemyTickResult` — the ship after the tick and anything it fired; the
  * roster-wide logic (dive scheduling, the bullet cap, reinforcements) is `enemies.ts`.
  */
-import type { Bullet, DifficultyTier, Enemy } from "../types";
+import type { Bullet, CubicBezier, DifficultyTier, Enemy } from "../types";
+import { firstClearPath, type RockLike } from "./asteroids";
 import { NO_CARRIER_CTX, tickCarrier, type CarrierCtx, type EnemyTickResult } from "./carrier";
 import {
   aimVelocity,
@@ -15,6 +16,7 @@ import {
   divePath,
   evalCubic,
   fleePath,
+  nudgePath,
   returnPath,
   slotToWorld,
   swoopPath,
@@ -30,6 +32,7 @@ import {
   CIRCLE_RADIUS,
   CIRCLE_SPEED,
   DEFAULT_TUNING,
+  DIVE_HOLD_MAX_MS,
   DIVE_PATH_DURATION,
   DIVE_SHOOT_INTERVAL,
   FLEE_DURATION_MAX,
@@ -38,6 +41,7 @@ import {
   FLEE_STAGGER_MAX,
   GUARDIAN_BULLET_VY,
   GUARDIAN_DIVE_PATH_DURATION,
+  LATE_NUDGE_PX,
   RETURN_DURATION,
   SHOOT_INTERVAL_BASE,
   SHOOT_INTERVAL_JITTER,
@@ -118,7 +122,9 @@ export function tickSingleEnemy(
   guardianDeepThresholdCrossed: boolean,
   paramScale = 1,
   carrierCtx: CarrierCtx = NO_CARRIER_CTX,
-  tuning: Tuning = DEFAULT_TUNING
+  tuning: Tuning = DEFAULT_TUNING,
+  /** #3131: live on-screen rocks an Elite/Guardian dive is vetted against when it launches. */
+  rocks: readonly RockLike[] = []
 ): EnemyTickResult {
   if (!enemy.isAlive) return { enemy, bullet: null };
   // #2485/#2843: the Carrier has its own tick, on station and on its attack run
@@ -146,7 +152,8 @@ export function tickSingleEnemy(
         dtMs,
         canvasH,
         guardianThresholdCrossed,
-        guardianDeepThresholdCrossed
+        guardianDeepThresholdCrossed,
+        rocks
       );
     case "Diving":
       return tickDiving(
@@ -290,13 +297,33 @@ function guardianBurstFire(enemy: Enemy, playerX: number, playerY: number): Enem
   };
 }
 
-// #975: oscillate ±WIGGLE_AMPLITUDE px for WIGGLE_DURATION ms, then launch Bézier dive
+/**
+ * #3131: an Elite/Guardian dive's candidates, in the fixed order they are tried: the planned
+ * dive, the mirrored opening sweep, then the LATE_NUDGE_PX nudges (+, then −). The endpoint (p3)
+ * is the same for all of them. Rng-free — the jitter was drawn once, into `planned`.
+ */
+export function diveCandidates(enemy: Enemy, planned: CubicBezier): CubicBezier[] {
+  return [
+    planned,
+    { ...planned, p1: { x: 2 * enemy.formationX - planned.p1.x, y: planned.p1.y } },
+    nudgePath(planned, 1, LATE_NUDGE_PX),
+    nudgePath(planned, -1, LATE_NUDGE_PX),
+  ];
+}
+
+// #975: oscillate ±WIGGLE_AMPLITUDE px for WIGGLE_DURATION ms, then launch Bézier dive.
+// #3131: an Elite or Guardian dive is vetted against on-screen rocks at launch; if every
+// candidate (`diveCandidates`) would fly into a rock that holding station would miss, the ship
+// keeps wiggling (wiggleTimer runs below zero, re-checked each tick) for up to DIVE_HOLD_MAX_MS,
+// then settles back into Formation. The planned path is kept in `path` while it holds, so the
+// single rng() jitter is drawn once, on the first launch attempt, exactly as before.
 function tickWiggling(
   enemy: Enemy,
   dtMs: number,
   canvasH: number,
   guardianThresholdCrossed: boolean,
-  guardianDeepThresholdCrossed: boolean
+  guardianDeepThresholdCrossed: boolean,
+  rocks: readonly RockLike[]
 ): EnemyTickResult {
   const newTimer = enemy.wiggleTimer - dtMs;
 
@@ -305,8 +332,29 @@ function tickWiggling(
     const isGuardianStage2 =
       enemy.tier === "Guardian" && guardianThresholdCrossed && !guardianDeepThresholdCrossed;
     const shallow = (enemy.tier === "Elite" && !guardianThresholdCrossed) || isGuardianStage2;
-    const path = divePath(enemy, enemy.diveTargetX, canvasH, shallow);
+    const firstAttempt = enemy.wiggleTimer > 0 || !enemy.path;
+    const planned = firstAttempt
+      ? divePath(enemy, enemy.diveTargetX, canvasH, shallow)
+      : { ...enemy.path!, p0: { x: enemy.x, y: enemy.y } };
     const duration = enemy.tier === "Guardian" ? GUARDIAN_DIVE_PATH_DURATION : DIVE_PATH_DURATION;
+    const vetted = enemy.tier === "Elite" || enemy.tier === "Guardian"; // Grunts unchanged
+    const path =
+      vetted && rocks.length > 0
+        ? firstClearPath(diveCandidates(enemy, planned), duration, enemy, rocks)
+        : planned;
+    if (!path) {
+      if (newTimer <= -DIVE_HOLD_MAX_MS) {
+        // no clear dive for the whole hold: stand down, back on station
+        return {
+          enemy: { ...enemy, phase: "Formation", wiggleTimer: 0, path: null, x: enemy.formationX },
+          bullet: null,
+        };
+      }
+      return {
+        enemy: { ...enemy, x: wiggleX(enemy, newTimer), wiggleTimer: newTimer, path: planned },
+        bullet: null,
+      };
+    }
     return {
       enemy: {
         ...enemy,
@@ -323,12 +371,16 @@ function tickWiggling(
     };
   }
 
-  const elapsed = WIGGLE_DURATION - newTimer;
-  const wiggleOffset = Math.sin((4 * Math.PI * elapsed) / WIGGLE_DURATION) * WIGGLE_AMPLITUDE;
   return {
-    enemy: { ...enemy, x: enemy.formationX + wiggleOffset, wiggleTimer: newTimer },
+    enemy: { ...enemy, x: wiggleX(enemy, newTimer), wiggleTimer: newTimer },
     bullet: null,
   };
+}
+
+/** The wiggle's x for a timer value (it keeps oscillating smoothly below zero, see #3131). */
+function wiggleX(enemy: Enemy, wiggleTimer: number): number {
+  const elapsed = WIGGLE_DURATION - wiggleTimer;
+  return enemy.formationX + Math.sin((4 * Math.PI * elapsed) / WIGGLE_DURATION) * WIGGLE_AMPLITUDE;
 }
 
 // #977/#1029/#1030: Bézier arc dive

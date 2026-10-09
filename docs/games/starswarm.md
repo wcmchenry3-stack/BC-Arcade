@@ -317,6 +317,21 @@ to 46% of the canvas height. Final stand: 2.8 s to 56%. It never reaches the pla
 is no body collision. It keeps its twin-fire timer during the run, and on return it rolls the next
 run.
 
+**Path vetting (#3131).** When the brace ends, the run is checked against every live rock that is
+already on screen before the Carrier commits (`pathStrikesRock`, a pure, rng-free helper in
+`asteroids.ts`). Each rock is projected in a straight line (`x + vx·t`, `y + vy·t`). The run is
+sampled every 100 ms (`PATH_CHECK_STEP_MS`) and each segment is swept against the Carrier's
+hitbox (plus a 4 px `PATH_CHECK_MARGIN`) with the same exact closest-approach test as
+`asteroidThreatens`. A candidate is rejected only if it strikes a rock that **holding station would
+not**. A rock that would hit the Carrier on station anyway is ignored, because it is already on
+course and still hits. The Carrier tries fixed-order alternatives (`carrierRunCandidates`): the
+planned run, the mirrored lean, then a shallower run (`ATTACK_RUN_SHALLOW_FACTOR`, 75% depth) with
+the planned lean, then mirrored. All of them return to the same station. If every candidate is
+blocked, the Carrier stays braced on station and re-checks each tick, with `runTimer` running below
+zero. After `ATTACK_RUN_HOLD_MAX_MS` (1.5 s) it stands down and re-rolls its run timer. Only the
+choice made at commit time changes. A rock that enters after the run is committed, a rock still off
+screen, and two moving bodies that happen to meet are all out of scope, and they collide as before.
+
 Telegraphs never overlap: a beam charge never starts during a brace, and a brace waits for a
 charge to finish. While exposed, the beam also holds for the whole run. In the final stand, beam,
 direct fire and movement can combine: a charge may start mid-run, with its usual telegraph.
@@ -679,6 +694,14 @@ third party:
   since collision uses the radius, not the art), spinning at `spin` rad/ms; falls back to the
   procedural rock outline while sprites load (#2573).
 
+**Protected feature (#3131): do not remove or bypass.** Asteroids threaten enemies, enemies
+shoot at and avoid them, and collisions damage enemies (`rocksStrikeEnemies`, called from
+`resolveRockContacts`). No tier is immune beyond the armored Carrier's force field. Rocks never
+deflect off a hull and always fly straight on. A rock already on course to hit a ship still hits
+it. The #3131 fix only changes how the Carrier, Elites and Guardians _choose_ a path when they
+commit a move (see _Attack run_ and _Enemy AI: asteroid response_). It never changes whether a rock
+hurts them.
+
 Salvage drops are #2488.
 
 ### Entry geometry (#2844)
@@ -764,6 +787,24 @@ most distracted, then Elite, then Guardian, then Carrier least.
   always a real miss-angle, bigger for the more distracted tiers. Flak is never degraded.
 - \* The Carrier's flak is its twin volley diverted (below), so its cost is the volley it replaces.
 
+**Never steer into a passing rock (#3131).** The protected feature above stands: rocks threaten,
+hit and damage every tier. On top of it, a ship holding station never _commits_ to a move straight
+into a rock that would have passed it by:
+
+- **Carrier attack run:** vetted when the brace ends. See _Attack run_ for the alternatives, the
+  hold and the stand-down.
+- **Elite and Guardian dives:** vetted at launch, when the wiggle ends. The dive's single `rng()`
+  jitter is drawn exactly as before. The ship then tries rng-free variants in a fixed order
+  (`diveCandidates`): the planned dive, the mirrored opening sweep, then the `LATE_NUDGE_PX` nudges
+  (+60 px, then −60 px). All of them share the same endpoint. A variant is rejected only if
+  `pathStrikesRock` says it strikes an on-screen rock that holding station would not. If every
+  variant is blocked, the wiggle continues, with `wiggleTimer` running below zero and a re-check
+  each tick. The planned path is kept in `path` so nothing is redrawn. After `DIVE_HOLD_MAX_MS`
+  (700 ms) the ship settles back into Formation. Seeded runs stay deterministic, and no new `Enemy`
+  field is added, so saves are unaffected.
+- **Grunts are unchanged**, as is everything after a path is committed (dodge, flinch, the late
+  nudge). Only rocks that are already on screen are considered.
+
 ### Diver awareness (#2881)
 
 Diving ships stay committed to their path and may still hit a rock, but they visibly react. In
@@ -817,7 +858,8 @@ Immunity derives from the armor state, never from `tier === "Carrier"`. `rocksSt
 - **Heavy:** the Carrier never sidesteps and never nudges its path. A rock bearing down takes a small
   attention cost (above) and, while exposed, the Carrier's twin volley is diverted to flak at the
   rock (`carrierFlakRock` / `chooseCarrierTarget`), replacing a player-directed volley with no extra
-  cadence. The armored Carrier ignores rocks entirely.
+  cadence. The armored Carrier ignores rocks entirely. #3131: its attack run is vetted against
+  on-screen rocks when it commits (see _Attack run_). Once committed, it is never steered.
 
 ### Shared threat and collision contract (for Buddy, #2845)
 
