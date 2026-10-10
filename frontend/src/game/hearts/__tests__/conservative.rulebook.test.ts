@@ -1,0 +1,147 @@
+/**
+ * The CONSERVATIVE_AI.md §5 rulebook as a test suite (#3160, epic #3156).
+ *
+ * The doc is the single source: every `yaml` position in §5 is read at test
+ * time and run against the shipped configuration, with no RNG pinning and no
+ * mocks. For each position:
+ *  - the doc is checked against itself (history re-derived: points, flags,
+ *    leaders, hand size, no duplicate cards);
+ *  - the card comes from `selectCardToPlay`/`selectCardsToPass` with the
+ *    "conservative" persona, exactly as the game calls it, and the principle
+ *    from `choosePlay`/`choosePass`;
+ *  - the card does not depend on the order of the CPU's hand (ascending,
+ *    descending, three seeded shuffles);
+ *  - the card does not depend on the seat: the whole position is rotated so
+ *    the CPU sits in each of the four seats.
+ */
+import { selectCardToPlay, selectCardsToPass } from "../ai";
+import { choosePass } from "../conservative/pass";
+import { choosePlay } from "../conservative/play";
+import { card, name } from "./helpers/conservativeFixtures";
+import {
+  buildState,
+  derive,
+  handOrderings,
+  loadRulebook,
+  parseBlock,
+  rotate,
+  toPosition,
+  type RulebookPosition,
+} from "./helpers/rulebook";
+
+const { positions, blocks } = loadRulebook();
+
+/** The card(s) the game would get for `p`, with the CPU's hand in the given order. */
+function shipped(p: RulebookPosition, hand: readonly string[]): string[] {
+  const h = hand.map(card);
+  if (p.decision === "pass") {
+    return selectCardsToPass(h, p.passDirection!, "conservative", p.seat).map(name);
+  }
+  const state = buildState(p, h);
+  return [name(selectCardToPlay(h, [...state.currentTrick], state, p.seat, "conservative"))];
+}
+
+function principleOf(p: RulebookPosition): string | null {
+  const hand = p.hand.map(card);
+  if (p.decision === "pass") return choosePass(hand, p.passDirection!).principle;
+  return choosePlay(buildState(p, hand), p.seat).principle;
+}
+
+const VALID_BLOCK = {
+  id: "R00",
+  decision: "lead",
+  seat: 0,
+  trick_number: 1,
+  hand: ["2C"],
+  played: [],
+  trick: [],
+  hearts_broken: false,
+  queen_played: false,
+  points: [0, 0, 0, 0],
+  expected: ["2C"],
+  principle: "P1-DUCK",
+  reason: "x",
+};
+
+describe("rulebook loading (§5 is the single source)", () => {
+  it("loads every yaml block and finds at least the 42 known positions", () => {
+    expect(blocks).toBe(positions.length);
+    expect(positions.length).toBeGreaterThanOrEqual(42);
+  });
+
+  it("has unique, well-formed ids", () => {
+    const ids = positions.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) expect(id).toMatch(/^R\d{2,}$/);
+  });
+
+  it("covers all four decisions", () => {
+    expect(new Set(positions.map((p) => p.decision))).toEqual(
+      new Set(["pass", "lead", "follow", "discard"])
+    );
+  });
+
+  it("rejects what it cannot parse", () => {
+    expect(() => parseBlock("id R01")).toThrow(/unparseable/);
+    expect(() => parseBlock("hand: [4C, 9C")).toThrow();
+    expect(() => parseBlock("hand: [4C]\nhand: [5C]")).toThrow(/duplicate/);
+    expect(() => toPosition({ id: "R99" })).toThrow(/missing field/);
+    expect(() => toPosition({ ...VALID_BLOCK, bogus: 1 })).toThrow(/unknown field/);
+    expect(() => toPosition({ ...VALID_BLOCK, hand: ["1X"] })).toThrow(/bad card/);
+  });
+
+  it("parses the doc's block shapes", () => {
+    const b = parseBlock(
+      [
+        "id: R00",
+        "played:",
+        "  - { lead: 0, cards: [2C, 5C, AC, 9C] }",
+        "trick: [{ seat: 3, card: 10D }]",
+        "hearts_broken: true",
+        'reason: "a, b: c"',
+      ].join("\n")
+    );
+    expect(b).toEqual({
+      id: "R00",
+      played: [{ lead: 0, cards: ["2C", "5C", "AC", "9C"] }],
+      trick: [{ seat: 3, card: "10D" }],
+      hearts_broken: true,
+      reason: "a, b: c",
+    });
+  });
+});
+
+describe.each(positions.map((p) => [p.id, p] as const))("%s", (_id, p) => {
+  it("is consistent with its own history", () => {
+    const d = derive(p);
+    expect(d.problems).toEqual([]);
+    expect(d.points).toEqual(p.points);
+    expect(d.heartsBroken).toBe(p.heartsBroken);
+    expect(d.queenPlayed).toBe(p.queenPlayed);
+  });
+
+  it("plays the expected card(s) as the game calls the CPU", () => {
+    expect(shipped(p, p.hand)).toEqual(p.expected);
+  });
+
+  it("credits the expected principle", () => {
+    expect(principleOf(p)).toBe(p.principle);
+  });
+
+  it.each(handOrderings(p.hand.map(card)).map((o) => [o.label, o.hand.map(name)] as const))(
+    "does not depend on hand order (%s)",
+    (_label, order) => {
+      expect([...order].sort()).toEqual([...p.hand].sort());
+      expect(shipped(p, order)).toEqual(p.expected);
+    }
+  );
+
+  it.each([1, 2, 3])("does not depend on the seat (rotated by %i)", (k) => {
+    const r = rotate(p, k);
+    const d = derive(r);
+    expect(d.problems).toEqual([]);
+    expect(d.points).toEqual(r.points);
+    expect(shipped(r, r.hand)).toEqual(p.expected);
+    expect(principleOf(r)).toBe(p.principle);
+  });
+});
