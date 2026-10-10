@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}} سيطر على الجولة!",
   "events.queenOfSpades": "{{name}} أخذ ملكة البستوني!",
   "difficulty.groupLabel": "الصعوبة",
+  "difficulty.conservative": "متحفظ",
+  "difficulty.conservative.desc": "يلعب بأمان ويتجنب أخذ النقاط",
   "difficulty.cautious": "الحذر",
   "difficulty.cautious.desc": "يلعب بتحفظ ويتجنب أخذ النقاط",
   "difficulty.schemer": "المخطط",

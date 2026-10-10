@@ -616,6 +616,9 @@ All Hearts AI simulation runs on `frontend/tooling/hearts/`;
   as the human (Daring aims its passes and Q♠ dumps there, and `ai.ts` turns
   that targeting off for an AI in seat 0), so AIs under test only ever sit
   in seats 1–3.
+  - The harness always runs the legacy personas, whatever the app's
+    `HEARTS_LEGACY_PERSONAS` flag (#3158); players only see Conservative in
+    store builds.
   - _Preset matchups_ are the tables the app deals (all-Cautious,
     all-Schemer, all-Daring, mixed), with the AIs rotated across seats 1–3.
   - The _field matchup_ is the duplicate-bridge comparison: one test seat

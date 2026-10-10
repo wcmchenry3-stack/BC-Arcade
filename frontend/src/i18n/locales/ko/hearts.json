@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}}이(가) 올킬 성공!",
   "events.queenOfSpades": "{{name}}이(가) 스페이드 퀸을 가져갔습니다!",
   "difficulty.groupLabel": "난이도",
+  "difficulty.conservative": "보수형",
+  "difficulty.conservative.desc": "안전하게 플레이하며 점수를 피함",
   "difficulty.cautious": "신중형",
   "difficulty.cautious.desc": "안전하게 플레이하며 점수를 피함",
   "difficulty.schemer": "책략가",

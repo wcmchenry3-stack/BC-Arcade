@@ -47,6 +47,8 @@
   "events.moonShot": "¡{{name}} hizo luna!",
   "events.queenOfSpades": "¡{{name}} toma la Reina de Espadas!",
   "difficulty.groupLabel": "Dificultad",
+  "difficulty.conservative": "Conservador",
+  "difficulty.conservative.desc": "Juega seguro y evita sumar puntos",
   "difficulty.cautious": "Prudente",
   "difficulty.cautious.desc": "Juega a lo seguro y evita sumar puntos",
   "difficulty.schemer": "Estratega",

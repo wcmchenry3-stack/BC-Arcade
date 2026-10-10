@@ -7,9 +7,32 @@
 
 import type { PlayingCard, Suit } from "../_shared/cards/types";
 
-export type AiPersona = "cautious" | "schemer" | "daring";
+/** The pre-#3156 personas. Kept unchanged for the sim tooling / comparison runs; players only see them behind `HEARTS_LEGACY_PERSONAS`. */
+export type LegacyPersona = "cautious" | "schemer" | "daring";
+/** `"conservative"` is the single CPU players see (#3158). */
+export type AiPersona = LegacyPersona | "conservative";
 export type AiPreset = AiPersona | "mixed";
-export const AI_PRESETS: readonly AiPreset[] = ["cautious", "schemer", "daring", "mixed"];
+export const AI_PRESETS: readonly AiPreset[] = [
+  "conservative",
+  "cautious",
+  "schemer",
+  "daring",
+  "mixed",
+];
+export const DEFAULT_AI_PRESET: AiPreset = "conservative";
+
+/**
+ * The presets a player can pick: just Conservative in store builds, all of
+ * them when the legacy-persona flag is on (`areLegacyHeartsPersonasEnabled`).
+ */
+export function selectablePresets(legacyEnabled: boolean): readonly AiPreset[] {
+  return legacyEnabled ? AI_PRESETS : [DEFAULT_AI_PRESET];
+}
+
+/** A preset the flag does not offer (a legacy one saved by an earlier build) becomes Conservative. */
+export function resolveAvailablePreset(preset: AiPreset, legacyEnabled: boolean): AiPreset {
+  return legacyEnabled || preset === DEFAULT_AI_PRESET ? preset : DEFAULT_AI_PRESET;
+}
 
 // Mixed table canonical seat assignment (seats 1–3 are AI; seat 0 is human).
 const MIXED_PERSONAS: Readonly<Record<1 | 2 | 3, AiPersona>> = {

@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}} fez a limpa!",
   "events.queenOfSpades": "{{name}} pega a Dama de Espadas!",
   "difficulty.groupLabel": "Dificuldade",
+  "difficulty.conservative": "Conservador",
+  "difficulty.conservative.desc": "Joga com segurança e evita pontos",
   "difficulty.cautious": "Cauteloso",
   "difficulty.cautious.desc": "Joga na defensiva e evita pontos",
   "difficulty.schemer": "Estrategista",

@@ -58,6 +58,8 @@
   "events.queenOfSpades": "{{name}} takes the Queen of Spades!",
 
   "difficulty.groupLabel": "Opponent Style",
+  "difficulty.conservative": "Conservative",
+  "difficulty.conservative.desc": "Plays it safe, avoids taking points",
   "difficulty.cautious": "Cautious",
   "difficulty.cautious.desc": "Plays conservatively, avoids taking points",
   "difficulty.schemer": "Schemer",

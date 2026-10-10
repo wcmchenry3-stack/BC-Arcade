@@ -33,6 +33,7 @@ import {
   DARING_PASS_WEIGHTS,
   NOISE_RATE,
   MISTAKE_SPREAD,
+  conservativeStandIn,
 } from "./aiWeights";
 import type { PlayWeights } from "./aiWeights";
 
@@ -169,10 +170,11 @@ export function selectCardsToPassUtility(
   // ── Normal pass mode ──────────────────────────────────────────────────────
   const passInfoSet = buildHeartsPassInfoSet(hand as readonly Card[], direction, playerIndex);
 
+  const style = conservativeStandIn(difficulty);
   const weights =
-    difficulty === "cautious"
+    style === "cautious"
       ? CAUTIOUS_PASS_WEIGHTS
-      : difficulty === "daring"
+      : style === "daring"
         ? DARING_PASS_WEIGHTS
         : SCHEMER_PASS_WEIGHTS;
 
@@ -286,9 +288,9 @@ export function selectCardToPlayUtility(
       ? DARING_ENDGAME_PLAY_WEIGHTS
       : isAdversarial
         ? DARING_ADVERSARIAL_PLAY_WEIGHTS
-        : difficulty === "cautious"
+        : conservativeStandIn(difficulty) === "cautious"
           ? CAUTIOUS_PLAY_WEIGHTS
-          : difficulty === "schemer"
+          : conservativeStandIn(difficulty) === "schemer"
             ? SCHEMER_PLAY_WEIGHTS
             : DARING_PLAY_WEIGHTS;
 

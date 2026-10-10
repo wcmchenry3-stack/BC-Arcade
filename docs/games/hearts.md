@@ -107,12 +107,11 @@ For the human player's server result:
 
 ## Current computer-player presets
 
-The UI exposes four opponent presets:
+Players see **one** computer opponent: **Conservative** (the default preset, `conservative`). Store builds show no opponent picker and every CPU seat plays Conservative.
 
-- **Cautious**
-- **Schemer**
-- **Daring**
-- **Mixed**
+The legacy personas (**Cautious**, **Schemer**, **Daring**) and the **Mixed** table stay in the code, unchanged, behind the `HEARTS_LEGACY_PERSONAS` flag (#3158, epic #3156) so comparison runs can still use them. The flag is `areLegacyHeartsPersonasEnabled()` in `frontend/src/game/_shared/envFlags.ts`: on only for dev bundles (`__DEV__`) and pre-launch builds (`isPreLaunchApiBuild()`). With it on, the picker shows Conservative first and the four legacy presets. A legacy preset saved by an earlier build loads as Conservative when the flag is off, and is kept when it is on. The sim tooling (`tools/sim/`, `frontend/tooling/hearts/`) always runs the legacy personas, whatever the flag.
+
+Until #3159 lands, Conservative is a stand-in: the legacy Cautious weights with no noise (`conservativeStandIn` in `aiWeights.ts`, `NOISE_RATE.conservative = 0`). #3159 replaces it in that one place.
 
 For a non-Mixed preset, all three AI seats use that persona.
 
@@ -124,7 +123,7 @@ Mixed uses a fixed canonical assignment:
 | 2 | top AI | Schemer |
 | 3 | right AI | Daring |
 
-The selected preset is recorded in game metadata but does **not** partition the public leaderboard.
+The selected preset (`ai_difficulty`: `conservative` in store builds) is recorded in game metadata but does **not** partition the public leaderboard.
 
 ## Current AI architecture
 

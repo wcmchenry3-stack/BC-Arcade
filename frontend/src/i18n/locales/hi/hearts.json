@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}} ने चांद मारा!",
   "events.queenOfSpades": "{{name}} ने हुकुम की रानी ली!",
   "difficulty.groupLabel": "मुश्किल स्तर",
+  "difficulty.conservative": "रूढ़िवादी",
+  "difficulty.conservative.desc": "सुरक्षित खेलता है, अंक लेने से बचता है",
   "difficulty.cautious": "सतर्क",
   "difficulty.cautious.desc": "संभलकर खेलता है, अंक लेने से बचता है",
   "difficulty.schemer": "चालबाज़",

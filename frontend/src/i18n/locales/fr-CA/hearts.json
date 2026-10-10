@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}} a raflé la mise!",
   "events.queenOfSpades": "{{name}} prend la Dame de pique!",
   "difficulty.groupLabel": "Difficulté",
+  "difficulty.conservative": "Conservateur",
+  "difficulty.conservative.desc": "Joue prudemment et évite les points",
   "difficulty.cautious": "Prudent",
   "difficulty.cautious.desc": "Joue la sécurité et évite les points",
   "difficulty.schemer": "Stratège",

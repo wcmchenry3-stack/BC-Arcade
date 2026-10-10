@@ -25,7 +25,7 @@
  */
 
 import type { WeightMap } from "../_shared/utilityAi/types";
-import type { AiPersona } from "./types";
+import type { AiPersona, LegacyPersona } from "./types";
 
 // ─── Key types ────────────────────────────────────────────────────────────────
 
@@ -138,6 +138,7 @@ export const NOISE_RATE: Readonly<Record<AiPersona, number>> = {
   cautious: 0.55,
   schemer: 0.19,
   daring: 0.0,
+  conservative: 0, // never errs: see conservativeStandIn
 };
 
 /**
@@ -150,4 +151,17 @@ export const MISTAKE_SPREAD: Readonly<Record<AiPersona, number>> = {
   cautious: 0.1,
   schemer: 0.1,
   daring: 0.1,
+  conservative: 0.1, // unused while its NOISE_RATE is 0
 };
+
+// ─── Conservative CPU (#3158) ──────────────────────────────────────────────────
+
+/**
+ * The legacy persona whose weights "conservative" plays with, and the only
+ * place that says so. NOISE_RATE.conservative is 0 above, so it never errs.
+ * TODO(#3159): replace with the conservative CPU (and drop this + the two
+ * `conservative` table entries).
+ */
+export function conservativeStandIn(persona: AiPersona): LegacyPersona {
+  return persona === "conservative" ? "cautious" : persona;
+}
