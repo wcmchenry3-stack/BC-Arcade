@@ -221,7 +221,8 @@ function discard(v: View, legal: readonly Card[]): PlayDecision {
     }
   }
 
-  // 4. P7 (filter): keep G while there is a moon threat.
+  // 4. P7 (filter): keep G while there is a moon threat. The length guard is
+  // defensive only: §2.4 shows removing G can never empty the candidates here.
   const g = guardHeart(v);
   if (moonThreat(v) !== null && g && candidates.length > 1) {
     candidates = without(candidates, (c) => c.suit === g.suit && c.rank === g.rank);
