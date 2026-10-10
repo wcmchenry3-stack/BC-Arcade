@@ -1,7 +1,7 @@
 import React from "react";
 import { render, fireEvent } from "@testing-library/react-native";
 import LanguageSwitcher from "../LanguageSwitcher";
-import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
+import { __forceStoreBuildForTests } from "../../game/_shared/buildFlavour";
 
 jest.mock("../../theme/ThemeContext", () => ({
   useTheme: () => ({

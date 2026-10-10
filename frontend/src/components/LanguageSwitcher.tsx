@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { View, Text, Pressable, Modal, FlatList, Platform, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { availableLocales } from "../i18n/resolveLocale";
@@ -9,8 +9,8 @@ export default function LanguageSwitcher() {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
 
-  // Fixed for the life of the build, so FlatList gets one stable array.
-  const locales = useMemo(() => availableLocales(Platform.OS), []);
+  // Read each render (a tiny filter) so the sheet always matches the store-build gate.
+  const locales = availableLocales(Platform.OS);
   // Label from the offered list, so the trigger never names a locale the sheet hides.
   const current = locales.find((l) => l.code === i18n.language) ?? locales[0];
   if (current === undefined) return null;

@@ -1,5 +1,5 @@
 import { availableLocales, resolveLocale } from "../resolveLocale";
-import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
+import { __forceStoreBuildForTests } from "../../game/_shared/buildFlavour";
 
 const dev = (languageTag: string) => ({
   languageTag,
