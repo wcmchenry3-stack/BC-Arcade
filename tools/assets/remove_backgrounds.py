@@ -65,15 +65,18 @@ CELESTIAL_SOFT = 10
 # output_dir  — processed PNGs written here (may be the same dir for in-place runs)
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _FRONTEND_DIR = _SCRIPT_DIR.parent.parent / "frontend"
+# Output goes to the full-resolution masters (#2833); run make_icon_thumbnails.py
+# afterwards to refresh the 256 px runtime icons in frontend/assets/*-icons/.
+_MASTERS_DIR = _SCRIPT_DIR.parent.parent / "cascade_icon_masters"
 DEFAULT_PIPELINE: list[tuple[Path, Path, str]] = [
     (
         _FRONTEND_DIR / "assets" / "source-icons" / "fruits",
-        _FRONTEND_DIR / "assets" / "fruit-icons",
+        _MASTERS_DIR / "fruit-icons",
         "color",
     ),
     (
         _FRONTEND_DIR / "assets" / "source-icons" / "cosmos",
-        _FRONTEND_DIR / "assets" / "celestial-icons",
+        _MASTERS_DIR / "celestial-icons",
         "celestial",
     ),
 ]

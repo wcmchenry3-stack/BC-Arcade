@@ -15,7 +15,10 @@
     "../tools/generators/*.ts",
     // Metro resolves *.web.ts(x) next to the native file by platform extension
     // (loaded by convention, never imported by name), so they are entries.
-    "src/**/*.web.{ts,tsx}!"
+    "src/**/*.web.{ts,tsx}!",
+    // metro/storeBundle.js resolves hidden premium screens to it in store
+    // bundles (#2830); nothing imports it by name.
+    "src/screens/StoreBuildExcludedScreen.tsx!"
   ],
   "project": [
     "src/**/*.{ts,tsx}!",
