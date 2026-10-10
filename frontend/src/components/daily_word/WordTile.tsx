@@ -101,6 +101,7 @@ function WordTile({
       }
     >
       <Text
+        numberOfLines={1}
         style={[
           tileStyles.letter,
           {
@@ -127,10 +128,14 @@ const tileStyles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 4,
   },
+  // The letter spans the full tile width rather than shrink-wrapping its
+  // glyph: a shrink-wrapped narrow glyph ("I") measured a hair under its
+  // advance wraps onto a clipped second line on iOS and paints nothing (#3149).
+  // No fontWeight — the family is already the bold face.
   letter: {
+    alignSelf: "stretch",
     fontFamily: typography.heading,
     fontSize: 22,
-    fontWeight: "700",
     textAlign: "center",
   },
 });
