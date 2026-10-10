@@ -51,7 +51,7 @@ import {
   bulletCap,
   diveInterval,
   isBossWave,
-  maxDivers,
+  diveCap,
   type Tuning,
 } from "./tuning";
 
@@ -120,7 +120,7 @@ export function reinforceCap(wave: number): number {
 }
 
 /**
- * #926 dive scheduler: when the dive timer fires, pick up to `maxDivers(wave)` new divers from
+ * #926 dive scheduler: when the dive timer fires, pick up to `diveCap(wave)` new divers from
  * the formation (Guardians only once `guardianThresholdCrossed`) on the seeded rng, adding their
  * roster indices to `diveIndices`. Returns the dive timer; it only runs in combat.
  */
@@ -149,7 +149,7 @@ export function scheduleDives(
       );
     // Only launch enough new divers to reach the cap; Wiggling enemies are NOT counted (#975)
     const currentDivers = roster.filter((e) => e.isAlive && e.phase === "Diving").length;
-    const allowedNew = Math.max(0, maxDivers(state.wave) - currentDivers);
+    const allowedNew = Math.max(0, diveCap(state.wave) - currentDivers);
     for (let k = 0; k < allowedNew && candidates.length > 0; k++) {
       const pick = Math.floor(rng() * candidates.length);
       diveIndices.add(candidates[pick]!.i);
@@ -556,7 +556,7 @@ export function tickEnemies(
       )
     : state.enemies;
 
-  // #926 Dive AI: pick up to maxDivers(wave) formation enemies to send diving
+  // #926 Dive AI: pick up to diveCap(wave) formation enemies to send diving
   const diveIndices = new Set<number>();
   const nextDiveTimer = scheduleDives(
     state,

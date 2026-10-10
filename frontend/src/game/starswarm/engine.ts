@@ -140,6 +140,7 @@ export {
   difficultyParamScale,
   isBossWave,
   maxDivers,
+  diveCap,
   triggerKills,
   waveClearBonusPoints,
 } from "./engine/tuning";

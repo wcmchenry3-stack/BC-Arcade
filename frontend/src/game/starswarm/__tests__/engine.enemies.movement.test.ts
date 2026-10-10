@@ -12,6 +12,7 @@ import {
   tick,
   diverCount,
   maxDivers,
+  diveCap,
   WIGGLE_DURATION,
   DIVE_PATH_DURATION,
   seedRng,
@@ -135,6 +136,36 @@ describe("maxDivers cap (#969)", () => {
       const divers = s.enemies.filter((e) => e.isAlive && e.phase === "Diving").length;
       expect(divers).toBeLessThanOrEqual(maxDivers(4));
     }
+  });
+});
+
+describe("boss wave dive cap (#3139)", () => {
+  it("keeps the normal-wave cap on every non-boss wave", () => {
+    for (const wave of [1, 2, 3, 4, 6, 7, 8, 10]) {
+      expect(diveCap(wave)).toBe(maxDivers(wave));
+    }
+  });
+
+  it("lifts the cap to 4 on the first boss wave (wave 5)", () => {
+    expect(maxDivers(5)).toBe(3);
+    expect(diveCap(5)).toBe(4);
+    expect(diveCap(9)).toBe(4);
+  });
+
+  it("lets all four Guardians dive at once on wave 5", () => {
+    let s = initStarSwarm(CANVAS_W, CANVAS_H, 5);
+    s = advanceMs(s, 8000);
+    expect(s.phase).toBe("Playing");
+
+    let peak = 0;
+    for (let i = 0; i < 6000; i++) {
+      s = tick(s, 16, NO_INPUT);
+      if (s.phase !== "Playing") break;
+      const divers = s.enemies.filter((e) => e.isAlive && e.phase === "Diving").length;
+      expect(divers).toBeLessThanOrEqual(4);
+      peak = Math.max(peak, divers);
+    }
+    expect(peak).toBe(4);
   });
 });
 
