@@ -18,6 +18,7 @@ on:
         default: ""
   # PRs that change the AI, the engine, or the gate itself.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "frontend/src/game/hearts/ai*.ts"
       - "frontend/src/game/hearts/engine.ts"
@@ -36,6 +37,8 @@ permissions:
 
 jobs:
   gate:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Gate (${{ matrix.group }})
     runs-on: ubuntu-latest
     # Worst case (every check runs to its block cap) is ~12 min per group.

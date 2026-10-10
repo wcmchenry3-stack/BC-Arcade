@@ -2,11 +2,13 @@ name: Design Tokens & Accessibility Check
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
     branches: [main, dev]
 
 permissions: {}
 
 jobs:
   design-token-check:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-design-token-check.yml@main

@@ -37,6 +37,8 @@ Reference files (read when you reach that phase, not all up front):
 - Never use the max tier (Fable) without first trying to split the story and
   writing down why it can't be split (see `model-selection.md`).
 - Never mark a PR ready while known blocking review findings are open.
+- Never merge a PR touching purchases/money or database migrations without
+  the owner's approval (Phase 4).
 - Never use `eas build` / `eas submit` / Expo Go as a release path (CLAUDE.md).
 
 ---
@@ -124,7 +126,9 @@ unrelated infra fix, are always separate PRs. When in doubt, separate.
    re-run local checks.
 7. Wait until at least 10 minutes have passed since the draft was opened, or
    Codex has responded, whichever comes first.
-8. Mark the PR **ready for review**.
+8. Mark the PR **ready for review**. CI skips its jobs while a PR is a draft
+   (see `docs/CI-CHECKS.md`), so this is what starts the full CI run. Don't
+   mark ready early just to see CI; run the local checks instead.
 
 ## Phase 4 — CI, conflicts, merge
 
@@ -140,11 +144,19 @@ unrelated infra fix, are always separate PRs. When in doubt, separate.
    a review round; document on the PR.
 4. **Merge conflict** → merge `origin/dev` in and resolve with the cheapest tier
    that can (`coordination.md`), re-run local checks, push.
-5. **Merge** when: CI green on the head commit, no conflicts, no open blocking
-   findings, required reviews satisfied. Squash-merge (PR title becomes the
-   commit). If several of your PRs are ready and overlap, use the merge order in
-   `coordination.md`.
-6. **After merge**:
+5. **Owner-approval gate.** If the PR touches purchases or money (IAP,
+   receipts, pricing, premium gating/entitlements — `docs/IAP.md`,
+   `docs/ARCHITECTURE.md §10`) or adds/changes a database migration
+   (`backend/alembic/`), **don't merge it yourself.** Once it is otherwise
+   ready, add the `owner-approval-required` label, post a PR comment summarizing
+   what to check, and list it under **Needs you**. Merge only after the owner
+   approves on GitHub or says so in chat; then remove the label. Keep working
+   other stories meanwhile.
+6. **Merge** when: CI green on the head commit, no conflicts, no open blocking
+   findings, required reviews satisfied, and the owner-approval gate passed if
+   it applies. Squash-merge (PR title becomes the commit). If several of your
+   PRs are ready and overlap, use the merge order in `coordination.md`.
+7. **After merge**:
    - Confirm each `Closes #N` issue closed (dev is the default branch, so it
      should auto-close). If not, close it with `state_reason: completed` and a
      comment linking the PR.
@@ -162,7 +174,8 @@ first section is never omitted, even when empty:
 ```
 ## Needs you
 - #123 decision: <one-line question> (blocks #124, #125)
-- (or "Nothing — no open decisions.")
+- PR #142 approval: in-app purchase change, ready for your review
+- (or "Nothing — no open decisions or approvals.")
 
 ## Shipped
 - #101 → PR #140 merged (cost: standard) — <one line>

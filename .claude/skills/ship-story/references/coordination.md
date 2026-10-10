@@ -74,6 +74,8 @@ if it's ready first, let it merge and resolve on your side.
 ## Labels
 
 - `cost:low` / `cost:standard` / `cost:high` / `cost:max` — highest tier
-  used on the PR (create them if missing).
+  used on the PR.
 - `blocked:owner-decision` — on the decision issue and on each story it blocks.
+- `owner-approval-required` — on a PR that touches purchases/money or
+  migrations and is waiting on the owner to approve the merge.
 - Area labels (`hearts`, `yacht`, `backend`, `ios`, ...) — copied from the story.

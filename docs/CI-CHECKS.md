@@ -37,6 +37,8 @@ Podfile.lock freshness needs only detect-native-changes.
 
 `gate-main-source`, `lint-python-tools` and `test-tools` are Tier 0 but are not in the Tier 1 `needs:` list, so a failure in them does not skip the Tier 1 jobs.
 
+**Draft PRs.** Every Tier 0 job has `if: github.event_name != 'pull_request' || !github.event.pull_request.draft`, so on a draft PR the Tier 0 jobs are skipped and every Tier 1 and Tier 2 job is skipped with them (their `needs:` were skipped). `ready_for_review` is in the `pull_request` types, so marking the PR ready starts the full run. The same draft guard is on `design-token-check`, `openai-policy-check`, `gemini-policy-check`, `schema-migration` and the Yacht and Hearts sim gates. `commitlint` still runs on drafts (it is fast and checks the PR title). A draft PR cannot be merged, so skipped checks on a draft never let anything through. The `ship-story` skill keeps PRs in draft through its review rounds for this reason.
+
 ## Code quality and style
 
 | Check                                                                                                       | Purpose                                                                                                                                                                                                                                      | Prevents                                                                                                                                                                                                                                 | Workflow:job                                                                      | Introduced                                                  | Gating                         | Time         |
