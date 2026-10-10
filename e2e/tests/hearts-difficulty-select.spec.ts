@@ -3,8 +3,9 @@
  *
  * Store builds show no opponent picker (#3158; the legacy picker is dev /
  * pre-launch only): the pre-game screen, the result card's Change Difficulty /
- * Play Again (#2506), and Play Again after a saved legacy-persona game (unit tests cover the stored
- * "conservative" value).
+ * Play Again (#2506), and Play Again from a saved legacy-persona game. That
+ * the legacy save plays as "conservative" is asserted in
+ * hearts-leaderboard.spec.ts (ai_difficulty) and the unit tests.
  * No running backend is needed: the routes this spec depends on are
  * intercepted with page.route(), and any other call (such as SyncWorker's
  * game sync) fails, which the app handles like being offline.
@@ -85,7 +86,7 @@ test.describe("Hearts — difficulty selector, store build (#1168, #3158)", () =
     });
   });
 
-  test("store build: a saved legacy-persona game plays on (as conservative) via Play Again", async ({
+  test("store build: Play Again works from a saved legacy-persona game", async ({
     page,
   }) => {
     await injectHeartsState(page, { ...GAME_OVER_STATE, aiDifficulty: "daring" });

@@ -276,6 +276,8 @@ export default function HeartsScreen() {
         // The play time lives in the clock, not in the state (#2629).
         const { accumulatedMs, ...loaded } = saved;
         // A legacy persona the flag does not offer plays on as Conservative (#3158).
+        // loadGame already does this; repeating it here is idempotent and keeps
+        // the screen correct whatever loader it is given.
         const state = {
           ...loaded,
           aiDifficulty: resolveAvailablePreset(loaded.aiDifficulty, legacyPersonas),
