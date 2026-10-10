@@ -30,7 +30,11 @@ jest.mock("../../i18n/locales", () => {
     { code: "es", label: "Spanish", nativeLabel: "Español", flag: "🇪🇸", dir: "ltr" },
     { code: "ar", label: "Arabic", nativeLabel: "العربية", flag: "🇸🇦", dir: "rtl" },
   ];
-  return { LOCALES, NATIVE_LOCALES: LOCALES.filter((l) => l.dir !== "rtl") };
+  return {
+    LOCALES,
+    NATIVE_LOCALES: LOCALES.filter((l) => l.dir !== "rtl"),
+    LAUNCH_LOCALE_CODES: new Set(["en", "fr-CA", "es"]),
+  };
 });
 
 describe("LanguageSwitcher", () => {

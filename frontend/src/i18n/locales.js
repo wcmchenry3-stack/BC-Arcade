@@ -27,3 +27,10 @@ export const RTL_LOCALES = new Set(LOCALES.filter((l) => l.dir === "rtl").map((l
  * Remove this filter once native RTL support lands (see #2212).
  */
 export const NATIVE_LOCALES = LOCALES.filter((l) => l.dir !== "rtl");
+
+/**
+ * Locales shipped in store builds for the v1 US + Canada launch (#3150). The rest stay
+ * in the codebase — and in dev, e2e and pre-launch builds — but are not offered to
+ * store users until they have had the same correctness review (#3152).
+ */
+export const LAUNCH_LOCALE_CODES = new Set(["en", "fr-CA", "es"]);

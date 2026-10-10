@@ -1,6 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { LOCALES } from "../i18n/locales";
+import { availableLocales } from "../i18n/resolveLocale";
 import { useTheme } from "../theme/ThemeContext";
 
 export default function LanguageSwitcher() {
@@ -24,7 +24,7 @@ export default function LanguageSwitcher() {
         cursor: "pointer",
       }}
     >
-      {LOCALES.map((locale) => (
+      {availableLocales("web").map((locale) => (
         <option key={locale.code} value={locale.code}>
           {locale.flag} {locale.nativeLabel}
         </option>

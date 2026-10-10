@@ -42,3 +42,27 @@ describe("availableLocales", () => {
     expect(web).toEqual(expect.arrayContaining(["ar", "he"]));
   });
 });
+
+describe("store builds offer only the launch locales (#3150)", () => {
+  it.each(["ios", "android", "web"])("%s offers exactly en, fr-CA and es", (os) => {
+    expect(availableLocales(os, true).map((l) => l.code)).toEqual(["en", "fr-CA", "es"]);
+  });
+
+  it.each(["hi-IN", "de-DE", "ja-JP", "pt-BR", "ar-SA"])("a %s device falls back to en", (tag) => {
+    expect(resolveLocale([dev(tag)], "ios", true)).toBe("en");
+  });
+
+  it("a hidden first preference falls through to a launch locale", () => {
+    expect(resolveLocale([dev("de-DE"), dev("es-MX")], "android", true)).toBe("es");
+    expect(resolveLocale([dev("hi-IN"), dev("fr-FR")], "ios", true)).toBe("fr-CA");
+  });
+
+  it("es-US and fr-CA devices keep their language", () => {
+    expect(resolveLocale([dev("es-US")], "ios", true)).toBe("es");
+    expect(resolveLocale([dev("fr-CA")], "android", true)).toBe("fr-CA");
+  });
+
+  it("dev and test builds still offer every locale", () => {
+    expect(availableLocales("ios", false).map((l) => l.code)).toContain("hi");
+  });
+});

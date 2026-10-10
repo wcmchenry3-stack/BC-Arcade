@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { View, Text, Pressable, Modal, FlatList, StyleSheet } from "react-native";
+import { View, Text, Pressable, Modal, FlatList, Platform, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
-import { LOCALES, NATIVE_LOCALES } from "../i18n/locales";
+import { LOCALES } from "../i18n/locales";
+import { availableLocales } from "../i18n/resolveLocale";
 import { useTheme } from "../theme/ThemeContext";
 
 export default function LanguageSwitcher() {
@@ -46,7 +47,7 @@ export default function LanguageSwitcher() {
             style={[styles.sheet, { backgroundColor: colors.modalBg, borderColor: colors.border }]}
           >
             <FlatList
-              data={NATIVE_LOCALES}
+              data={availableLocales(Platform.OS)}
               keyExtractor={(item) => item.code}
               renderItem={({ item }) => {
                 const active = item.code === i18n.language;
