@@ -24,6 +24,17 @@ export function isComebackRun(r: RunRecord): boolean {
 
 const UNLOCKS_KEY = "blackjack_unlocks_v1";
 
+/**
+ * Whether the cosmetic unlocks (Felt Classic, Indigo Card Back, Gold Chip Set) are earned and
+ * announced. Off until the rewards can be applied (#1911): nothing reads `Unlock.type` to change
+ * the felt, card backs or chips, so announcing them promises something that does not exist.
+ * A compiled constant like `HIDDEN_GAMES` (#2390). The evaluation code, storage and run history
+ * stay in place so turning this on is the only step left once the cosmetics are wired.
+ */
+export function cosmeticUnlocksEnabled(): boolean {
+  return false;
+}
+
 export interface Unlock {
   id: string;
   name: string;
