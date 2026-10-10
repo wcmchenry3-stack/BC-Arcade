@@ -9,6 +9,7 @@
  * runs on demand only.
  *
  * Modes:
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --game-report --games 600 --seed 3162 --json out.json --md out.md   # whole-game report (#3162); exit 1 if the sanity floor fails, 2 on a bad argument
  *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles     # principle check (#3161): conservative x4, 10,000 hands; exit 1 on any violation, 2 on a bad --hands
  *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles --hands 2000 --persona cautious --json out.json
  *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts                        # descriptive report, 3000 games per matchup
@@ -71,6 +72,14 @@ import {
   parseHandsArg,
   runPrincipleCheck,
 } from "../../frontend/tooling/hearts/principleRun";
+import {
+  DEFAULT_GAME_REPORT_GAMES,
+  SANITY_FLOOR_MARGIN,
+  formatGameReportMarkdown,
+  parseGamesArg,
+  parseSeedArg,
+  runGameReport,
+} from "../../frontend/tooling/hearts/gameReport";
 import { toRulebookYaml } from "../../frontend/tooling/hearts/principles";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -327,6 +336,47 @@ if (argv.includes("--check-principles")) {
     writeFileSync(jsonPath, JSON.stringify(json, null, 2) + "\n");
   }
   process.exit(report.violations > 0 ? 1 : 0);
+}
+
+if (argv.includes("--game-report")) {
+  // Whole-game report (#3162): conservative over full games to 100 against
+  // fixed opponents. Reported, not gated, except the sanity floor: exit 1 if
+  // conservative does not beat random-legal by the margin, or breaks a
+  // principle against the moon-shooter. Exit 2 on a bad argument.
+  let games: number;
+  let reportSeed: number;
+  try {
+    const g = argv.indexOf("--games");
+    games = parseGamesArg(g === -1 ? undefined : argv[g + 1], g !== -1);
+    const s = argv.indexOf("--seed");
+    reportSeed = parseSeedArg(s === -1 ? undefined : argv[s + 1], s !== -1);
+  } catch (e) {
+    process.stderr.write(`Error: ${(e as Error).message}\n`);
+    process.exit(2);
+  }
+  const t0 = Date.now();
+  const report = runGameReport({ games, seed: reportSeed });
+  const secs = (Date.now() - t0) / 1000;
+  const md = formatGameReportMarkdown(report);
+  console.log(md);
+  console.log(
+    `(${secs.toFixed(1)}s; defaults: ${DEFAULT_GAME_REPORT_GAMES} games per matchup, floor ${SANITY_FLOOR_MARGIN} points per hand)`,
+  );
+  const jsonPath = argValue(argv, "--json");
+  if (jsonPath) {
+    writeFileSync(
+      jsonPath,
+      JSON.stringify(
+        { ...report, runtimeSeconds: Number(secs.toFixed(1)) },
+        null,
+        2,
+      ) + "\n",
+    );
+  }
+  const mdPath = argValue(argv, "--md");
+  if (mdPath) writeFileSync(mdPath, md);
+  if (!report.sanityFloor.pass) console.log("Sanity floor FAILED.");
+  process.exit(report.sanityFloor.pass ? 0 : 1);
 }
 
 if (argv.includes("--update-baseline")) {

@@ -738,6 +738,74 @@ the fast versions (`principles.test.ts`, `principleRun.test.ts`) in every PR.
 
 ---
 
+### Hearts whole-game report (#3162)
+
+The principle check says whether each play is sound; the **game report** says
+how the conservative CPU does over whole games to 100 points. Later,
+deliberate principle breaks in advanced CPUs must show up as better results
+here. It is a report (numbers with 95% CIs), not a gate, apart from the
+sanity floor below.
+
+```
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --game-report                                  # 2,000 games per matchup (~2 min)
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --game-report --games 60                       # the PR smoke run (~4 s)
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --game-report --seed 7 --json out.json --md out.md
+```
+
+`--games` and `--seed` are strict integers (anything else exits 2). Exit 1
+means the sanity floor failed. Code: `frontend/tooling/hearts/gameReport.ts`
+(report and metric definitions), `bots.ts` (the simulator-only opponents),
+`__tests__/gameReport.test.ts`.
+
+**Matchups** (duplicate deals: the same cards in rotated seats, so a
+difference between matchups is the players; `--games` is games played per
+matchup, rounded up to whole blocks):
+
+| Matchup               | Table                                                            |
+| --------------------- | ---------------------------------------------------------------- |
+| `random-legal`        | 1 conservative vs 3 uniformly random legal players (random pass) |
+| `conservative-mirror` | 4 conservative                                                   |
+| `legacy-cautious`     | 1 conservative vs 3 legacy Cautious (flagged legacy, #3165)      |
+| `legacy-schemer`      | 1 conservative vs 3 legacy Schemer                               |
+| `legacy-daring`       | 1 conservative vs 3 legacy Daring                                |
+| `moon-shooter`        | 3 conservative vs 1 bot that always tries to take every point    |
+
+**Metrics** (per conservative seat; the opponents' points, win rate and moons
+are reported too). Each is a ratio with its logged numerator and denominator
+in the JSON, and a CI over blocks: `points_per_hand` (moon-adjusted),
+`points_per_game` (final score; a game ends when a seat reaches 100),
+`win_rate` (lowest score; ties split), `qs_taken`, `moon_allowed` (hands where
+another seat shot the moon), `moon_allowed_when_p7` / `_no_p7` (the same,
+split by whether the seat decided a play of that hand with P7, the moon
+guard), `p7_hands`, `zero_hands` and `moon_shot`. It also prints how often
+each principle decided a conservative play or pass card (flagging any that
+never fires, or decides more than 60% of the plays), and how many positions
+reach the moon-complete branches of §2.4 (follow step 1, discard step 1).
+
+**Sanity floor (the only pass/fail).** (1) Conservative's points per hand
+must be at least `SANITY_FLOOR_MARGIN` = **4.0** below random-legal's, on the
+same deals (paired by block; the point estimate must reach the margin).
+Observed at the default size: 6.65 [6.58, 6.71] (conservative 1.79, random
+8.44 points per hand), so the floor sits at about 60% of the observed margin;
+a smoke run of 60 games observed about 6.9. (2) The conservative seats in the
+`moon-shooter` matchup commit **0** principle violations (every decision is
+graded with the checker). A failure of (1) means the CPU no longer plays
+clearly better than chance: look at the principle fire table and the
+`random-legal` row first. A failure of (2) prints the first positions as
+rulebook YAML; fix it as under "Reading a failure" above.
+
+**Reading the numbers.** Moon-shooter hands where the shooter wins the moon
+are about 20% against the conservative CPU: P7 only reacts once a threat has
+10 points (`MOON_THRESHOLD`), which is too late to stop a determined shooter.
+That is a finding to weigh, not a bug in the report.
+
+**CI.** The `game-report` job of `hearts-sim-gate.yml` plays 2,000 games per
+matchup nightly and on manual runs (the `games` input overrides), and 60 games
+on PRs. It uploads the Markdown, JSON and text report (`hearts-game-report`)
+and writes the Markdown to the job summary.
+
+---
+
 ### Hearts AI sim gate v2 — duplicate deals, SPRT, conditional metrics (#2238; legacy, on demand)
 
 **No longer gates PRs or runs nightly (#3161).** It stays runnable: locally

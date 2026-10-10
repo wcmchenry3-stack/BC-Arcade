@@ -1,7 +1,7 @@
 # Conservative Hearts CPU: principles and rulebook
 
 - **Status:** Implemented (#3159, epic #3156) in [`frontend/src/game/hearts/conservative/`](../../frontend/src/game/hearts/conservative/): `terms.ts` (§2.1 terms, §3 knowledge), `play.ts` (`choosePlay`: §2.4 Leading / Following / Discarding) and `pass.ts` (`choosePass`: §2.4 Passing). Every CPU seat players see plays it (`ai.ts` routes the `conservative` persona there). Spec: story #3157.
-- **Builds on it:** the CPU (#3159), the rulebook tests (#3160, `frontend/src/game/hearts/__tests__/conservative.rulebook.test.ts`, which reads §5 at test time) and the independent simulator principle checker (#3161).
+- **Builds on it:** the CPU (#3159), the rulebook tests (#3160, `frontend/src/game/hearts/__tests__/conservative.rulebook.test.ts`, which reads §5 at test time) and the independent simulator principle checker (#3161) and the whole-game report (#3162, `frontend/tooling/hearts/gameReport.ts`; how to run it and what it means: [docs/TESTING.md](../TESTING.md)).
 - **Game rules:** [games/hearts.md](../games/hearts.md) and the engine, [`frontend/src/game/hearts/engine.ts`](../../frontend/src/game/hearts/engine.ts). This file does not restate them. Every expected card below is legal under `getValidPlays`.
 
 This spec defines one CPU that plays plain, careful Hearts from a short list of principles. It does not code each scenario. **When the principles handle a hand badly, the fix is to change a principle, not to add a special case.**
