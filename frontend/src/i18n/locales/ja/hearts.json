@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}}が月を射抜いた！",
   "events.queenOfSpades": "{{name}}がスペードのQを取った！",
   "difficulty.groupLabel": "対戦相手のスタイル",
+  "difficulty.conservative": "堅実",
+  "difficulty.conservative.desc": "安全にプレイし、点数を取らないようにする",
   "difficulty.cautious": "慎重",
   "difficulty.cautious.desc": "保守的にプレイし、点数を取らないようにする",
   "difficulty.schemer": "策士",

@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}} ging voor de volle maan!",
   "events.queenOfSpades": "{{name}} pakt de Schoppenvrauw!",
   "difficulty.groupLabel": "Moeilijkheid",
+  "difficulty.conservative": "Conservatief",
+  "difficulty.conservative.desc": "Speelt veilig en ontwijkt punten",
   "difficulty.cautious": "Voorzichtig",
   "difficulty.cautious.desc": "Speelt behoudend en ontwijkt punten",
   "difficulty.schemer": "Tacticus",

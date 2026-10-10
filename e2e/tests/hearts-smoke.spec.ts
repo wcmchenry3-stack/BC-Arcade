@@ -1,7 +1,7 @@
 /**
  * hearts-smoke.spec.ts — GH #1142
  *
- * Smoke tests: navigation, difficulty picker, hand render, and trick area visibility.
+ * Smoke tests: navigation, pre-game screen, hand render, and trick area visibility.
  * No running backend is needed: the routes this spec depends on are
  * intercepted with page.route(), and any other call (such as SyncWorker's
  * game sync) fails, which the app handles like being offline.
@@ -12,15 +12,20 @@ import { gotoHearts } from "./helpers/hearts";
 import { installEntitlementsMock } from "./helpers/api-mock";
 
 test.describe("Hearts — smoke tests", () => {
-  test("pre-game difficulty selector is visible on first load", async ({ page }) => {
+  test("pre-game screen shows Start Game and no opponent picker on first load", async ({ page }) => {
     await installEntitlementsMock(page);
     await page.goto("/");
     await page.evaluate(() => localStorage.removeItem("hearts_game"));
     await page.getByRole("button", { name: "Play Hearts" }).click();
     await page.getByRole("heading", { name: "Hearts", exact: true }).waitFor({ timeout: 10_000 });
+    // Store builds have no persona choice (#3158): the legacy picker is dev /
+    // pre-launch only, and the e2e build is a store build.
+    await expect(page.getByRole("button", { name: "Start Game" })).toBeVisible({
+      timeout: 5_000,
+    });
     await expect(
       page.getByRole("radiogroup", { name: "Opponent Style" }),
-    ).toBeVisible({ timeout: 5_000 });
+    ).toHaveCount(0);
   });
 
   test.describe("after starting game", () => {

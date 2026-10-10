@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}} собрал всё!",
   "events.queenOfSpades": "{{name}} забирает Даму Пик!",
   "difficulty.groupLabel": "Сложность",
+  "difficulty.conservative": "Консервативный",
+  "difficulty.conservative.desc": "Играет осторожно, избегает очков",
   "difficulty.cautious": "Осторожный",
   "difficulty.cautious.desc": "Играет аккуратно, избегает очков",
   "difficulty.schemer": "Интриган",

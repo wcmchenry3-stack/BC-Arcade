@@ -82,7 +82,13 @@ import { HeartsBrokenAnimation } from "../components/hearts/HeartsBrokenAnimatio
 import { HeartsMoonShotAnimation } from "../components/hearts/HeartsMoonShotAnimation";
 import { HeartsQueenOfSpadesAnimation } from "../components/hearts/HeartsQueenOfSpadesAnimation";
 import type { AiPreset, Card, HeartsState, TrickCard } from "../game/hearts/types";
-import { AI_PRESETS, resolvePersona } from "../game/hearts/types";
+import {
+  DEFAULT_AI_PRESET,
+  resolveAvailablePreset,
+  resolvePersona,
+  selectablePresets,
+} from "../game/hearts/types";
+import { areLegacyHeartsPersonasEnabled } from "../game/_shared/envFlags";
 import type { HandDebugLog, DebugTrick } from "../game/hearts/debugLog";
 type HeartsDebugPanelType = typeof import("../components/hearts/HeartsDebugPanel").default;
 import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
@@ -127,13 +133,15 @@ export default function HeartsScreen() {
   const { leaderboard, openLeaderboard } = useGameLeaderboard("hearts", navigation);
   const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
+  // Legacy personas (and the picker) exist only in dev / pre-launch builds (#3158).
+  const legacyPersonas = areLegacyHeartsPersonasEnabled();
   const [gameState, setGameState] = useState<HeartsState | null>(null);
   // Opens on the opponent style of the last game started (#1129).
   const {
     difficulty: selectedDifficulty,
     setDifficulty: setSelectedDifficulty,
     rememberDifficulty,
-  } = useLastDifficulty<AiPreset>("hearts", AI_PRESETS, "schemer");
+  } = useLastDifficulty<AiPreset>("hearts", selectablePresets(legacyPersonas), DEFAULT_AI_PRESET);
   const [lastTrick, setLastTrick] = useState<LastTrick>(null);
   const [showHeartsBroken, setShowHeartsBroken] = useState(false);
   const [showMoonShot, setShowMoonShot] = useState(false);
@@ -266,7 +274,14 @@ export default function HeartsScreen() {
           });
         }
         // The play time lives in the clock, not in the state (#2629).
-        const { accumulatedMs, ...state } = saved;
+        const { accumulatedMs, ...loaded } = saved;
+        // A legacy persona the flag does not offer plays on as Conservative (#3158).
+        // loadGame already does this; repeating it here is idempotent and keeps
+        // the screen correct whatever loader it is given.
+        const state = {
+          ...loaded,
+          aiDifficulty: resolveAvailablePreset(loaded.aiDifficulty, legacyPersonas),
+        };
         // A restored game continues the session a killed app left open (#2654).
         const resumed = state.phase !== "game_over" && syncResume();
         // The saved play time belongs to that session: kept only when it is
@@ -294,7 +309,7 @@ export default function HeartsScreen() {
         setDraftNames(names);
       }
     });
-  }, [syncResume, setSelectedDifficulty, lookupRank, updateClock]);
+  }, [syncResume, setSelectedDifficulty, lookupRank, updateClock, legacyPersonas]);
 
   // ─── Sync snapshot to shared rounds context (read by ScorecardScreen) ────
   const { setSnapshot: setRoundsSnapshot } = useHeartsRounds();
@@ -652,7 +667,7 @@ export default function HeartsScreen() {
 
   function handleStartGame(requested: AiPreset) {
     // A premium style starts at the default instead (#1129).
-    const difficulty = rememberDifficulty(requested);
+    const difficulty = rememberDifficulty(resolveAvailablePreset(requested, legacyPersonas));
     leaveCurrentGame();
     const fresh = dealGame(difficulty);
     if (__DEV__ && debugMode) {
@@ -713,10 +728,17 @@ export default function HeartsScreen() {
         onEditPlayerNames={handleOpenRename}
       >
         <ScrollView contentContainerStyle={styles.preGameContainer}>
-          <Text style={[styles.preGameTitle, { color: colors.text }]}>
-            {t("difficulty.groupLabel", { defaultValue: "Opponent Style" })}
-          </Text>
-          <HeartsAiDifficultySelector value={selectedDifficulty} onChange={setSelectedDifficulty} />
+          {legacyPersonas && (
+            <>
+              <Text style={[styles.preGameTitle, { color: colors.text }]}>
+                {t("difficulty.groupLabel", { defaultValue: "Opponent Style" })}
+              </Text>
+              <HeartsAiDifficultySelector
+                value={selectedDifficulty}
+                onChange={setSelectedDifficulty}
+              />
+            </>
+          )}
           <Pressable
             testID="hearts-start-game"
             style={[styles.btn, { backgroundColor: colors.accent }]}

@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}} hat den Mond geschossen!",
   "events.queenOfSpades": "{{name}} nimmt die Pik-Dame!",
   "difficulty.groupLabel": "Schwierigkeit",
+  "difficulty.conservative": "Konservativ",
+  "difficulty.conservative.desc": "Spielt sicher und vermeidet Punkte",
   "difficulty.cautious": "Vorsichtig",
   "difficulty.cautious.desc": "Spielt defensiv und vermeidet Punkte",
   "difficulty.schemer": "Taktiker",

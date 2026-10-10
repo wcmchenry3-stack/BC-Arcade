@@ -59,7 +59,7 @@ export function getPassDirection(handNumber: number): PassDirection {
 }
 
 /** Initial game state for a fresh game (hand 1). */
-export function dealGame(difficulty: AiPreset = "schemer"): HeartsState {
+export function dealGame(difficulty: AiPreset = "conservative"): HeartsState {
   const hands = dealHands();
   const passDirection = getPassDirection(1);
   const leaderIndex = passDirection === "none" ? find2ClubsHolder(hands) : 0;

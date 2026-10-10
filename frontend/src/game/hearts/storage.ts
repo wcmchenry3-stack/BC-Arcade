@@ -1,7 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createJsonSlot } from "../_shared/storageSlot";
 import type { AiPreset, HeartsState, SavedHeartsState } from "./types";
-import { AI_PRESETS } from "./types";
+import { AI_PRESETS, resolveAvailablePreset } from "./types";
+import { areLegacyHeartsPersonasEnabled } from "../_shared/envFlags";
 
 const GAME_KEY = "hearts_game";
 /**
@@ -96,7 +97,13 @@ export const {
     // Play time (#2629): absent in older saves, and a bad value counts as none.
     const ms = p.accumulatedMs;
     const accumulatedMs = typeof ms === "number" && Number.isFinite(ms) && ms > 0 ? ms : 0;
-    return { ...p, aiDifficulty: p.aiDifficulty as AiPreset, accumulatedMs } as SavedHeartsState;
+    // A legacy persona saved by an earlier build plays on as Conservative when
+    // the legacy-persona flag is off (#3158): no crash, no stuck picker.
+    const aiDifficulty = resolveAvailablePreset(
+      p.aiDifficulty as AiPreset,
+      areLegacyHeartsPersonasEnabled()
+    );
+    return { ...p, aiDifficulty, accumulatedMs } as SavedHeartsState;
   },
   clearAlso: [FINISHED_GAME_ID_KEY, LEGACY_PENDING_SUBMISSION_KEY],
 });
