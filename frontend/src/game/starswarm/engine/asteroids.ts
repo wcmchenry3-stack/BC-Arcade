@@ -11,6 +11,7 @@ import type {
   Asteroid,
   AsteroidKind,
   Bullet,
+  CubicBezier,
   Enemy,
   EnemyTier,
   Explosion,
@@ -67,6 +68,8 @@ import {
   LATE_NUDGE_CHANCE,
   LATE_NUDGE_PX,
   MAX_ASTEROIDS,
+  PATH_CHECK_MARGIN,
+  PATH_CHECK_STEP_MS,
   PLAYER_H,
   PLAYER_Y_FROM_BOTTOM,
   REACTION_PHASES,
@@ -172,6 +175,149 @@ export function asteroidThreatens(
 /** A ship's hitbox as a threat circle (half the longer side). */
 export function enemyThreatCircle(e: Pick<Enemy, "x" | "y" | "width" | "height">): ThreatCircle {
   return { x: e.x, y: e.y, r: Math.max(e.width, e.height) / 2 };
+}
+
+// ── #3131 commit-time path vetting ────────────────────────────────────────────────────────────
+// A ship holding station while a rock passes safely in front of it must not then commit a move
+// (the Carrier's attack run, an Elite/Guardian dive) straight into that rock. These helpers only
+// pick between candidate paths at the moment of commitment: they never move a rock, never make a
+// ship immune, and never steer a ship once it is on its path (BC_GAMES-5P).
+
+/** Live rocks at least partly inside the canvas — the only ones a commit-time path check looks at. */
+export function onScreenRocks<R extends RockLike>(
+  rocks: readonly R[],
+  canvasW: number,
+  canvasH: number
+): R[] {
+  return rocks.filter(
+    (a) =>
+      a.hp > 0 &&
+      a.x + a.radius > 0 &&
+      a.x - a.radius < canvasW &&
+      a.y + a.radius > 0 &&
+      a.y - a.radius < canvasH
+  );
+}
+
+/**
+ * Earliest time (ms, within [0, lookaheadMs]) at which the rock's body reaches the circle, both
+ * moving in straight lines at their current velocities; null if it never does. 0 if it already
+ * overlaps. The same exact closest-approach geometry as `asteroidThreatens`, solved for the
+ * first entry time instead of a yes/no.
+ */
+function asteroidContactMs(
+  rock: RockLike,
+  circle: ThreatCircle,
+  lookaheadMs: number
+): number | null {
+  if (rock.hp <= 0) return null;
+  const reach = rock.radius + circle.r;
+  const px = rock.x - circle.x;
+  const py = rock.y - circle.y;
+  const c = px * px + py * py - reach * reach;
+  if (c <= 0) return 0;
+  const vx = rock.vx - (circle.vx ?? 0);
+  const vy = rock.vy - (circle.vy ?? 0);
+  const a = vx * vx + vy * vy;
+  if (a === 0) return null;
+  const b = 2 * (px * vx + py * vy);
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return null;
+  const t = (-b - Math.sqrt(disc)) / (2 * a); // entry; c > 0 so both roots share a sign
+  return t >= 0 && t <= lookaheadMs ? t : null;
+}
+
+/**
+ * When does `rock`, flying straight at its current velocity (`x + vx·t`, `y + vy·t`), first meet
+ * a ship that follows `path` (full length `durationMs`) up to path progress `untilT`? The path is
+ * sampled every PATH_CHECK_STEP_MS and each segment is swept exactly (`asteroidContactMs`, the
+ * ship moving linearly across the segment), so a fast rock cannot slip between samples. `r` is
+ * the ship's threat radius plus any margin. Null if they never meet. Pure and rng-free.
+ */
+function rockPathContactMs(
+  rock: RockLike,
+  path: CubicBezier,
+  durationMs: number,
+  r: number,
+  untilT: number
+): number | null {
+  const spanMs = durationMs * Math.max(0, Math.min(1, untilT));
+  if (rock.hp <= 0 || spanMs <= 0) return null;
+  const steps = Math.max(1, Math.ceil(spanMs / PATH_CHECK_STEP_MS));
+  const segMs = spanMs / steps;
+  let from = evalCubic(path, 0);
+  for (let i = 1; i <= steps; i++) {
+    const to = evalCubic(path, (i / steps) * (spanMs / durationMs));
+    const t0 = (i - 1) * segMs;
+    const rockAtT0 = { ...rock, x: rock.x + rock.vx * t0, y: rock.y + rock.vy * t0 };
+    const circle: ThreatCircle = {
+      x: from.x,
+      y: from.y,
+      r,
+      vx: (to.x - from.x) / segMs,
+      vy: (to.y - from.y) / segMs,
+    };
+    const hit = asteroidContactMs(rockAtT0, circle, segMs);
+    if (hit !== null) return t0 + hit;
+    from = to;
+  }
+  return null;
+}
+
+/** Options for `pathStrikesRock` / `firstClearPath`. */
+export interface PathCheckOptions {
+  /** px of slack around the hitbox's enclosing circle (default PATH_CHECK_MARGIN). */
+  readonly margin?: number;
+  /**
+   * Fraction of the path the ship actually flies before something else takes over (an Elite
+   * hands its dive to Returning/Circling at a set depth); default 1, the whole path.
+   */
+  readonly untilT?: number;
+}
+
+/**
+ * #3131: would committing to `path` steer the ship (a `box`, its hitbox size) into a rock that
+ * holding station — staying at the path's start — would not already have met by then?
+ *
+ * The ship is the circle that encloses its hitbox (half its diagonal, plus `margin`), so even a
+ * corner graze counts. For each rock the path's first contact time is found; the rock is ignored
+ * only if it would reach the ship on station no later than that (it is already on course and
+ * still hits, whichever path the ship picks). A rock that would reach the station only *after*
+ * the path has flown into it is the #3131 bug, so the path is rejected. Callers pass on-screen
+ * rocks only (`onScreenRocks`). Pure and rng-free, so vetting never perturbs the seeded stream.
+ *
+ * @internal Exported for tests only; no production caller (knip --production, #3126).
+ */
+export function pathStrikesRock(
+  path: CubicBezier,
+  durationMs: number,
+  box: { readonly width: number; readonly height: number },
+  rocks: readonly RockLike[],
+  opts: PathCheckOptions = {}
+): boolean {
+  const r = Math.hypot(box.width, box.height) / 2 + (opts.margin ?? PATH_CHECK_MARGIN);
+  const untilT = opts.untilT ?? 1;
+  const station: ThreatCircle = { x: path.p0.x, y: path.p0.y, r };
+  for (const rock of rocks) {
+    const pathHit = rockPathContactMs(rock, path, durationMs, r, untilT);
+    if (pathHit === null) continue;
+    if (asteroidContactMs(rock, station, pathHit) !== null) continue; // on course anyway
+    return true;
+  }
+  return false;
+}
+
+/** #3131: the first candidate (in the caller's fixed order) that `pathStrikesRock` clears; else null. */
+export function firstClearPath(
+  candidates: readonly CubicBezier[],
+  durationMs: number,
+  box: { readonly width: number; readonly height: number },
+  rocks: readonly RockLike[],
+  opts: PathCheckOptions = {}
+): CubicBezier | null {
+  if (rocks.length === 0) return candidates[0] ?? null;
+  for (const c of candidates) if (!pathStrikesRock(c, durationMs, box, rocks, opts)) return c;
+  return null;
 }
 
 // ── #2844 entry geometry ──────────────────────────────────────────────────────────────────────
@@ -460,6 +606,13 @@ export function absorbBulletsIntoRocks<B extends Bullet>(
  * field and the Carrier takes nothing. With the last Guardian gone `armored` is false and the
  * Carrier is an ordinary hull — it takes the rock's hit like any ship (a Carrier the rock kills
  * still drops its hull plating, via `drops`).
+ *
+ * PROTECTED FEATURE (#3131, owner rule): asteroids threaten enemies; enemies shoot at and avoid
+ * them; collisions damage enemies. This contact rule must not be removed, bypassed or softened —
+ * no tier gets immunity beyond the armored Carrier's force field above, and rocks never deflect
+ * off a hull. A rock already on course to hit a ship still hits it. The #3131 fix for ships
+ * flying into a passing rock lives only in commit-time path *selection* (`pathStrikesRock`, used
+ * by the Carrier's attack run and the Elite/Guardian dive launch), never here.
  */
 export function rocksStrikeEnemies(
   rocks: readonly Asteroid[],
@@ -560,6 +713,7 @@ export function asteroidOutline(a: Asteroid): Vec2[] {
   return pts;
 }
 
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export function asteroidAttention(tier: EnemyTier): AsteroidAttention {
   return ASTEROID_ATTENTION[tier];
 }

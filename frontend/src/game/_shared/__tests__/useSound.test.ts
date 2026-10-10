@@ -89,6 +89,26 @@ describe("useSound — registered key", () => {
     await unmount();
     expect(mockRemove).toHaveBeenCalledTimes(1);
   });
+
+  // #2923: a finishing one-shot must not deactivate the iOS audio session under the BGM.
+  it("creates the player with keepAudioSessionActive", async () => {
+    const { createAudioPlayer } = jest.requireMock("expo-audio") as {
+      createAudioPlayer: jest.Mock;
+    };
+    await renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
+    expect(createAudioPlayer).toHaveBeenCalledWith(TEST_REGISTRY["test.beep"], {
+      keepAudioSessionActive: true,
+    });
+  });
+
+  it("pauses the player before removing it on unmount", async () => {
+    const { unmount } = await renderHook(() => useSound("test.beep", TEST_REGISTRY), { wrapper });
+    await unmount();
+    expect(mockPause).toHaveBeenCalledTimes(1);
+    expect(mockPause.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRemove.mock.invocationCallOrder[0]
+    );
+  });
 });
 
 // #2410: Star Swarm's Lightning power-up calls play() up to ~14x/sec (SUPER_SHOOT_COOLDOWN).

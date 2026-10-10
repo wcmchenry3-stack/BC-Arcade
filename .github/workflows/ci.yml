@@ -178,6 +178,11 @@ jobs:
       - name: Unused code (knip)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: npx knip --no-progress
+      # Blocking (#3126): production files only (test-only usage no longer counts).
+      # Exports kept for tests/tooling carry an `@internal` JSDoc tag.
+      - name: Unused code, production (knip --production)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: npx knip --production --no-progress
       - name: i18n completeness check
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: node scripts/check-i18n-strings.js
@@ -421,7 +426,9 @@ jobs:
     continue-on-error: true
     services:
       postgres:
-        image: postgres:16
+        # The official image via the AWS ECR Public mirror: Docker Hub pulls from
+        # Actions runners were timing out at auth.docker.io (2026-10-09).
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres

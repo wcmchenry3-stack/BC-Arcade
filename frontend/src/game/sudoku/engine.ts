@@ -268,8 +268,11 @@ function isGridComplete(grid: Grid, solution: string): boolean {
   return true;
 }
 
-/** Alias exported so tests (and downstream UI) can ask the question
- * without reaching into the `state.isComplete` field directly. */
+/**
+ * Alias exported so tests (and downstream UI) can ask the question
+ * without reaching into the `state.isComplete` field directly.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function isComplete(grid: Grid, solution: string): boolean {
   return isGridComplete(grid, solution);
 }
@@ -443,9 +446,12 @@ export function peers(r1: number, c1: number, r2: number, c2: number, cfg: GridC
   );
 }
 
-/** Return the coordinates of all cells that already hold `value` in the
+/**
+ * Return the coordinates of all cells that already hold `value` in the
  * same row, column, or box as (`row`, `col`). Pure conflict-detection
- * helper (exercised by the engine test suite). */
+ * helper (exercised by the engine test suite).
+ * @internal No production caller yet; planned for the illegal-move indicator (Sentry BC_GAMES-5J)
+ */
 export function getConflicts(
   grid: Grid,
   row: number,

@@ -333,6 +333,9 @@ export function resolveRockContacts(
   if (absorbed.broken > 0)
     w.runStats = bumpRun(w.runStats, { rocksBrokenByPlayer: absorbed.broken }); // #2491
   const struckTiers: EnemyTier[] = [];
+  // PROTECTED FEATURE (#3131): asteroids threaten enemies; enemies shoot at and avoid them;
+  // collisions damage enemies. Do not remove, bypass or soften this call (no immunity, no
+  // deflection) — see rocksStrikeEnemies.
   const struck = rocksStrikeEnemies(
     absorbed.rocks,
     w.enemies,

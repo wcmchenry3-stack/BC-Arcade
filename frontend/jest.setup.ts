@@ -148,7 +148,9 @@ jest.mock("expo-audio", () => ({
     pause: jest.fn(),
     seekTo: jest.fn(),
     remove: jest.fn(),
+    addListener: jest.fn(() => ({ remove: jest.fn() })),
   })),
+  setIsAudioActiveAsync: jest.fn(() => Promise.resolve()),
   AudioPlayer: jest.fn(),
 }));
 

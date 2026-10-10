@@ -26,3 +26,12 @@ beforeEach(() => {
     )
     .__resetForegroundClockForTests();
 });
+
+// The "app overlay open" signal (#2944) is module state: a test that leaves a
+// header mounted with its ⋯ menu open must not start the next test's game
+// paused.
+beforeEach(() => {
+  jest
+    .requireActual<typeof import("./src/hooks/appOverlay")>("./src/hooks/appOverlay")
+    .__resetAppOverlayForTests();
+});

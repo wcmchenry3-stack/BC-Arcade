@@ -112,6 +112,29 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     expect(card.getByRole("button", { name: "Home" })).toBeTruthy();
   });
 
+  // #2944 — on iOS the card (a native Modal) can't present over the feedback sheet, and a
+  // `visible` that stayed true never presented it afterwards: the game looked frozen.
+  it("holds the card while the feedback sheet is open and shows it once the sheet closes", async () => {
+    await renderScreen();
+    await startRun();
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("nav-menu"));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("nav-menu-feedback"));
+    });
+    // The run ends under the sheet (here the stand-in canvas has no engine state to pause).
+    await endRun(4200, 7);
+    expect(screen.queryByTestId("starswarm-result")).toBeNull();
+
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Close" }));
+    });
+    await waitFor(() => expect(screen.getByTestId("starswarm-result")).toBeTruthy(), {
+      timeout: 3000,
+    });
+  });
+
   it("flags a run that beats an earlier best as a new best (#2977)", async () => {
     await AsyncStorage.setItem("starswarm.bestScore", "1000");
     await renderScreen();

@@ -53,6 +53,7 @@ let forcedStoreBuild = false;
  * exercise the real predicate under Jest's `__DEV__ === true`. Hide-only by
  * design — there is no way to force hidden games *visible*, so this can never
  * weaken a store build.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
  */
 export function __forceStoreBuildForTests(on: boolean): void {
   forcedStoreBuild = on;

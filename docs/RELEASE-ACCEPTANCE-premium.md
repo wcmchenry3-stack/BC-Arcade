@@ -212,6 +212,8 @@ Free-game regression (one row, not per premium game):
 |                                                                                       | Android  | [ ]   | [ ] | [ ]   | [ ]   | [ ] |                                    |
 | Background music (Mahjong, Star Swarm): loop restart has no audible gap or click      | iOS      | [n/a] | [ ] | [n/a] | [n/a] | [ ] | #1779, #1786                       |
 |                                                                                       | Android  | [n/a] | [ ] | [n/a] | [n/a] | [ ] | Test at least one mid-range device |
+| Background music plays from the first second of every run, even right after game over | iOS      | [n/a] | [ ] | [n/a] | [n/a] | [ ] | #2923                              |
+| Leaving a game lets another app's audio (Music, a podcast) resume                     | iOS      | [ ]   | [ ] | [ ]   | [ ]   | [ ] | #2923                              |
 | Incoming call, lock/unlock, and another audio app: audio pauses and resumes correctly | iOS      | [ ]   | [ ] | [ ]   | [ ]   | [ ] |                                    |
 |                                                                                       | Android  | [ ]   | [ ] | [ ]   | [ ]   | [ ] |                                    |
 | Every shipped sound file has a credit entry (`SOUND_CREDITS.md`)                      | both     | [ ]   | [ ] | [ ]   | [ ]   | [ ] | Section 6, U5                      |

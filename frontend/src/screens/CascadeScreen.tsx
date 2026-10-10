@@ -94,6 +94,7 @@ function makeQueue(rng?: () => number): { queue: PieceQueue; history: number[] }
   return { queue, history: [queue.current, queue.next] };
 }
 import { useSound } from "../game/_shared/useSound";
+import { GAME_AUDIO_PLAYER_OPTIONS, retainAudioSession } from "../game/_shared/audioSession";
 import { useSoundSettings } from "../game/_shared/SoundContext";
 import { CASCADE_SOUNDS } from "../game/cascade/sounds";
 import { useReduceMotion } from "../components/shared/useReduceMotion";
@@ -153,10 +154,18 @@ function useTieredMergeSound() {
   useEffect(() => {
     const source = CASCADE_SOUNDS["cascade.fruitMerge"];
     if (!source) return;
-    const player = createAudioPlayer(source);
+    // Same session handling as useSound: see GAME_AUDIO_PLAYER_OPTIONS in audioSession.ts.
+    const player = createAudioPlayer(source, GAME_AUDIO_PLAYER_OPTIONS);
     playerRef.current = player;
+    const releaseSession = retainAudioSession();
     return () => {
+      try {
+        player.pause();
+      } catch {
+        // audio cleanup, failure is safe
+      }
       player.remove();
+      releaseSession();
       playerRef.current = null;
     };
   }, []);

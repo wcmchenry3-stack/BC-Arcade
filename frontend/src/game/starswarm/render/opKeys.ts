@@ -7,6 +7,7 @@
  */
 let enabled = false;
 
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export function setDebugOpKeys(on: boolean): void {
   enabled = on;
 }

@@ -196,7 +196,10 @@ export type GameOutcome = (typeof GAME_OUTCOMES)[number];
 /** Outcomes that say who won. Only a game with a winner (`HAS_WINNER`) records them. */
 {result_outcomes}
 
-/** Every other outcome: all a game with no winner ever records. */
+/**
+ * Every other outcome: all a game with no winner ever records.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 {lifecycle_outcomes}
 
 /** Whether each game can record a result outcome (its backend module's `has_winner`). */

@@ -86,7 +86,10 @@ function* bfs(state: SortState): Generator<void, Move[] | null> {
 // Public API
 // ---------------------------------------------------------------------------
 
-/** Shortest solution for `state`, or null if unsolvable (or the BFS cap is hit). */
+/**
+ * Shortest solution for `state`, or null if unsolvable (or the BFS cap is hit).
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function solve(state: SortState): Move[] | null {
   const it = bfs(state);
   for (;;) {

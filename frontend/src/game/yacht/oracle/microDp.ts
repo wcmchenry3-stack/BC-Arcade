@@ -75,6 +75,7 @@ export function computeHoldLayer(
  * Full turn value for `key`: expectation over the mandatory first roll (252
  * outcomes) of the best 2-reroll-then-score play. This is VTG(key) — what
  * the offline solver stores in the shipped table for every reachable state.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
  */
 export function solveStateVTG(
   key: number,

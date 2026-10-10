@@ -75,6 +75,7 @@ export const FACE_TO_UPPER: Record<number, Category> = {
 // ---------------------------------------------------------------------------
 
 const rngSlot = createRngSlot();
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export const setRng = rngSlot.setRng;
 export const getRng = rngSlot.getRng;
 export { createSeededRng };
@@ -216,6 +217,7 @@ function totalScore(scores: GameState["scores"], yachtBonusCount: number): numbe
  * Recompute derived fields (upper_subtotal, upper_bonus, yacht_bonus_total,
  * total_score) from a state's base fields. Useful for tests that construct
  * states by hand and for storage hydration.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
  */
 export function computeDerived(state: GameState): GameState {
   return withDerived({

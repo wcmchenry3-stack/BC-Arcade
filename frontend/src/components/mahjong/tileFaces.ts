@@ -221,7 +221,10 @@ export function useTileFaces(faceWidth: number, faceHeight: number): TileFaces |
   return shown?.faces ?? null;
 }
 
-/** Forget every decoded and rasterised face, as at app start. Tests only. */
+/**
+ * Forget every decoded and rasterised face, as at app start. Tests only.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function resetTileFaces(): void {
   decoded = null;
   decoding = null;

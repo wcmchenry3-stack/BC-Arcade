@@ -8,6 +8,7 @@
  * enemy-bullet list, the beam list and the tier stats are copied only when something fires.
  */
 import type {
+  Asteroid,
   Bullet,
   CarrierBeam,
   CarrierStage,
@@ -18,7 +19,7 @@ import type {
   StarSwarmState,
   TierStats,
 } from "../types";
-import { degradeAim, dodgeOffset } from "./asteroids";
+import { degradeAim, dodgeOffset, onScreenRocks } from "./asteroids";
 import { aimAtBuddy, buddyDivertRoll, buddyTargetFor } from "./buddy";
 import {
   carrierFlakRock,
@@ -177,6 +178,13 @@ export function advanceSway(
   return { swayX, swayDir };
 }
 
+/** #3131: the rocks a commit-time path check looks at — live and already on screen. */
+function liveOnScreenRocks(state: StarSwarmState): readonly Asteroid[] {
+  return state.asteroids.length === 0
+    ? state.asteroids
+    : onScreenRocks(state.asteroids, state.canvasW, state.canvasH);
+}
+
 /**
  * #2485/#2843: what the Carrier's tick needs to know this tick — its stage as of the tick's
  * starting roster, the player's position, a rock it would answer with flak (#2844, exposed
@@ -202,6 +210,7 @@ export function buildCarrierCtx(
     canvasH: state.canvasH,
     flakRock: null, // set below once the Carrier's position is known
     buddy: null,
+    rocks: liveOnScreenRocks(state), // #3131: the attack run is vetted against these at commit
   };
   if (carrierNow && stage && stage !== "protected" && !state.flakDisabled) {
     // #2844: an exposed Carrier diverts its twin volley to an approaching rock (never while armored)
@@ -589,7 +598,8 @@ export function tickEnemies(
       guardianDeepThresholdCrossed,
       _ps,
       carrierCtx,
-      tuning
+      tuning,
+      carrierCtx.rocks // #3131: Elite/Guardian dives are vetted against the same on-screen rocks
     );
     let e = result.enemy;
     if (enemy.isAlive && enemy.phase === "Fleeing" && !e.isAlive) routEscaped++; // #2489
@@ -642,12 +652,18 @@ export function tickEnemies(
 // Derived helpers (useful for renderers)
 // ---------------------------------------------------------------------------
 
-/** True while any enemy is still in the SwoopIn entry animation. */
+/**
+ * True while any enemy is still in the SwoopIn entry animation.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function isSwooping(state: StarSwarmState): boolean {
   return state.enemies.some((e) => e.isAlive && e.phase === "SwoopIn");
 }
 
-/** Number of enemies currently airborne (Diving or Circling). */
+/**
+ * Number of enemies currently airborne (Diving or Circling).
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function diverCount(state: StarSwarmState): number {
   return state.enemies.filter((e) => e.isAlive && (e.phase === "Diving" || e.phase === "Circling"))
     .length;

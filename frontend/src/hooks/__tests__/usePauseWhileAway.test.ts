@@ -7,6 +7,7 @@ import {
   type FocusEventSource,
   type LeaveEvent,
 } from "../usePauseWhileAway";
+import { useReportAppOverlay } from "../appOverlay";
 
 function fakeNavigation() {
   const listeners = new Map<string, Set<() => void>>();
@@ -228,6 +229,74 @@ describe("usePauseWhileAway (#2750)", () => {
         { reason: "appState", status: "background", previous: null },
         { reason: "appState", status: "background", previous: "active" },
       ]);
+    });
+  });
+
+  describe("app overlay (#2944)", () => {
+    /** A stand-in for AppHeader's menu or feedback sheet. */
+    async function overlay(initial = false) {
+      return renderHook(({ open }: { open: boolean }) => useReportAppOverlay(open), {
+        initialProps: { open: initial },
+      });
+    }
+
+    it("pauses while the overlay is open and resumes when it closes", async () => {
+      const { onPause, onResume, hook } = await setup();
+      const menu = await overlay();
+      await act(async () => menu.rerender({ open: true }));
+      expect(onPause).toHaveBeenCalledTimes(1);
+      expect(hook.result.current.current).toBe(true);
+
+      await act(async () => menu.rerender({ open: false }));
+      expect(onResume).toHaveBeenCalledTimes(1);
+      expect(hook.result.current.current).toBe(false);
+    });
+
+    it("reports the overlay to onLeave, after onPause", async () => {
+      const nav = fakeNavigation();
+      const order: string[] = [];
+      const onLeave = jest.fn((e: LeaveEvent) => order.push(`leave:${e.reason}`));
+      await renderHook(() =>
+        usePauseWhileAway(nav.navigation, () => order.push("pause"), jest.fn(), { onLeave })
+      );
+      const sheet = await overlay();
+      await act(async () => sheet.rerender({ open: true }));
+      expect(onLeave).toHaveBeenCalledWith({ reason: "overlay" });
+      expect(order).toEqual(["pause", "leave:overlay"]);
+
+      // Closing it is a return, not a leave.
+      await act(async () => sheet.rerender({ open: false }));
+      expect(onLeave).toHaveBeenCalledTimes(1);
+    });
+
+    it("starts paused when an overlay is already open at mount", async () => {
+      const sheet = await overlay(true);
+      const { onPause, onResume, hook } = await setup();
+      expect(onPause).toHaveBeenCalledTimes(1);
+      expect(hook.result.current.current).toBe(true);
+      await act(async () => sheet.unmount());
+      expect(onResume).toHaveBeenCalledTimes(1);
+    });
+
+    it("closing the overlay while the app is in the background doesn't resume", async () => {
+      const { onResume, hook } = await setup();
+      const sheet = await overlay();
+      await act(async () => sheet.rerender({ open: true }));
+      await act(async () => setAppState("background"));
+      await act(async () => sheet.rerender({ open: false }));
+      expect(onResume).not.toHaveBeenCalled();
+      expect(hook.result.current.current).toBe(true);
+      await act(async () => setAppState("active"));
+      expect(onResume).toHaveBeenCalledTimes(1);
+    });
+
+    it("stops listening on unmount", async () => {
+      const { onPause, hook } = await setup();
+      await hook.unmount();
+      const sheet = await overlay();
+      await act(async () => sheet.rerender({ open: true }));
+      expect(onPause).not.toHaveBeenCalled();
+      await act(async () => sheet.unmount());
     });
   });
 

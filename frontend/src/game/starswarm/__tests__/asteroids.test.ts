@@ -675,6 +675,8 @@ describe("Carrier vs asteroids (#2844)", () => {
     expect(after.phase).toBe("ClearAwaitingPickups");
   });
 
+  // #3131: the run is vetted against on-screen rocks when it commits (pathVetting.test.ts); once
+  // committed it is never steered, which is what this guards
   it("the Carrier stays heavy: no sidestep or path nudge, however threatened", () => {
     let s = killGuardians(settled(5));
     const c = carrierOf(s);

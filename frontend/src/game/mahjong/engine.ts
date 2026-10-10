@@ -78,6 +78,7 @@ export const DEADLOCK_OVERLAY_DELAY_MS = 500;
 // ---------------------------------------------------------------------------
 
 const rngSlot = createRngSlot();
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export const setRng = rngSlot.setRng;
 export { createSeededRng };
 export type { RandomSource };
