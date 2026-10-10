@@ -15,7 +15,7 @@ Source of truth: `.github/workflows/`. "Gates" means a failing run blocks the PR
 | Colour-literal check     | `frontend/scripts/check-color-literals.mjs`, job `frontend-static` (`Frontend static checks`) | Yes. No colour literals outside the theme and the per-game palettes (#2989); the checker has its own `node --test` run                                   |
 | Markdown link check      | `lychee.toml`, job `docs-links`                                                               | Yes. Dead relative links and `#anchors` in `docs/**` and root `*.md` (offline; run `lychee --config lychee.toml "docs/**/*.md" "docs/**/*.html" "*.md"`) |
 | Tools pytest             | `tools/`, job `test-tools`                                                                    | Yes (asset tools only)                                                                                                                                   |
-| Yacht / Hearts sim gates | `yacht-sim-gate.yml`, `hearts-sim-gate.yml`                                                   | Only PRs touching the AI, engine or gate paths; the nightly full runs do not gate PRs                                                                    |
+| Yacht / Hearts sim gates | `yacht-sim-gate.yml`, `hearts-sim-gate.yml`                                                   | Only PRs touching the AI, engine or gate paths; the nightly full runs do not gate PRs. Hearts: zero principle violations (#3161)                         |
 
 ## Quality gates and ratchet schedule
 
@@ -71,12 +71,12 @@ The Hearts, Yacht and Star Swarm balance simulators and the Yacht oracle table b
 
 | Path                                  | What                                                                           | CLI                                      |
 | ------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------- |
-| `frontend/tooling/hearts/`            | Duplicate-deal harness, SPRT gate, `baseline.json`, regret reference           | `tools/sim/simulate-hearts.ts`           |
+| `frontend/tooling/hearts/`            | Principle checker, duplicate-deal harness, legacy SPRT gate, regret reference  | `tools/sim/simulate-hearts.ts`           |
 | `frontend/tooling/yacht/`             | Paired-dice harness, stats, calibration bands                                  | `tools/sim/simulate-yacht.ts`            |
 | `frontend/tooling/yacht/oracleBuild/` | Offline retrograde solver for `src/game/yacht/oracle/oracleTable.generated.ts` | `tools/generators/build-yacht-oracle.ts` |
 | `frontend/tooling/starswarm/`         | Buddy balance harness, engine variants, presets, asteroid-awareness sim        | `tools/sim/simulate-starswarm.ts`        |
 
-- **Run a simulator** from the repo root: `npx --prefix frontend tsx tools/sim/simulate-hearts.ts --gate --group presets` (each script's header lists its flags).
+- **Run a simulator** from the repo root: `npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles --hands 2000` (each script's header lists its flags).
 - **Tests** sit in `frontend/tooling/<game>/__tests__/` and run under the jest project `tooling` (the app's tests are the `app` project). Plain `npx jest` runs both; `npx jest --selectProjects tooling` runs only the simulators'. Their smoke runs (`ai.simulate.test.ts`, `ai.calibrate.test.ts`, the `fast` Star Swarm preset) still run in every PR with the rest of Jest.
 - **Type-check:** `npm run typecheck` checks the app (`tsconfig.typecheck.json`, which excludes `tooling/`) and then `tsconfig.tooling.json` (`tooling/**` plus `tools/sim/*.ts` and `tools/generators/*.ts`, with Node and Jest types).
 - **Boundary:** app code must not import `tooling/` (an eslint `no-restricted-imports` rule fails the lint), so nothing in it can reach the Metro bundle. Tooling imports app modules (engines, AI) by relative path into `src/`.
@@ -602,7 +602,118 @@ aggregate win-rate can't surface.
 
 ---
 
-### Hearts AI sim gate v2 — duplicate deals, SPRT, conditional metrics (#2238)
+### Hearts sim gate — principle check (#3161)
+
+The Hearts sim gate checks **every decision** the conservative CPU makes
+against [`docs/hearts/CONSERVATIVE_AI.md`](hearts/CONSERVATIVE_AI.md) §2.4,
+and passes only with **zero violations**. It replaced the persona-separation
+/ SPRT gate below as the PR and nightly gate. That gate compared win shares
+between the legacy personas, so it rewarded tuned-in mistakes and never
+looked at a single play: the legacy CPUs routinely followed trick 1 with a
+low club, and it never noticed.
+
+- `frontend/tooling/hearts/principles.ts` — the checker. Given one decision
+  (the acting seat's hand, the trick so far, the completed tricks, points per
+  seat, trick number, hearts broken and the card chosen; for a pass, the 13
+  cards dealt and the 3 passed) it walks the §2.4 procedure in the §2.3
+  priority order and reports the first step the choice breaks. It is
+  **independent of the CPU**: it imports only the engine's rules and types,
+  never `ai.ts`, `aiConsiderations.ts`, `aiWeights.ts` or `conservative/`
+  (`principles.test.ts` scans its imports), and it was written from the doc.
+- `frontend/tooling/hearts/principleRun.ts` — the seeded run: one persona in
+  all four seats through `harness.ts` (`playGame`, with its `onPass` /
+  `onPlay` hooks capturing each decision), default seed 3161.
+
+**What it checks.** Two kinds of check (`CHECKS` in `principles.ts`):
+
+- _Predicate_ checks flag a property of the chosen card that a principle
+  forbids, whatever the exact expected card: following a free trick (trick 1,
+  or last seat with no points) below its highest led-suit card (P2,
+  `follow.free-trick`); playing over the winning card while holding a card
+  that would lose (P1, `follow.over-when-could-duck`); Q♠ into a trick it
+  wins, A♠/K♠ into a spade trick the queen can still drop on, leading Q♠ or
+  A♠/K♠ while Q♠ is live, keeping Q♠ under A♠/K♠, not discarding a legal Q♠,
+  keeping or passing Q♠/A♠/K♠ against the spade-protection rule (P5); during
+  a moon threat, spending the guard heart, or dropping Q♠ where it would
+  complete X's moon (P7).
+- _Procedure_ checks require the chosen card to equal the card §2.4 names,
+  computed by the checker's own small implementation of the procedure: the
+  P3/P9 lead order (`lead.shed`, `lead.exit`), the P6 discard order
+  (`discard.high-heart`, `discard.most-dangerous`), A♠-then-K♠ discards
+  (P5), the highest loser / highest winner (P1 `follow.duck-highest`,
+  `follow.win-highest`), the P7 guard lead and take, and the P8 pass
+  (`pass.order`; the order of the three cards does not matter).
+
+A forced play (one legal card) is never judged. Each violation carries the
+principle it breaks (`principleId`, used for the counts) and the §2.3
+attribution of the expected card (`attributedTo`). The checker is tested
+against the doc itself: on every §5 rulebook position it must name the
+rulebook's card and principle, accept that card and reject every other legal
+card.
+
+```bash
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles                            # conservative x4, 10,000 hands
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles --hands 2000               # the PR-sized run
+npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles --persona cautious --hands 2000 --json out.json
+```
+
+`--persona` is `conservative` (default), `cautious`, `schemer` or `daring`;
+`--seed` overrides the seed. The command exits 1 on any violation.
+
+**Reading a failure.** The report prints the violation count per principle,
+then per check (with its kind), then the first 5 positions of each principle
+as §5 rulebook yaml blocks. This one is the legacy Cautious CPU's trick-1
+mistake:
+
+```yaml
+id: SIM-P2-1
+decision: follow
+seat: 0
+trick_number: 1
+hand: [5H, 10C, 6S, 9C, 2D, 2S, JS, 9D, 5C, QD, JH, 7D, 3H]
+played: []
+trick: [{ seat: 3, card: 2C }]
+hearts_broken: false
+queen_played: false
+points: [0, 0, 0, 0]
+expected: [10C]
+principle: P2-FREE-TRICK
+reason: "follow.free-trick: On a free trick (trick 1, or last seat with no points) it did not play its highest led-suit card other than Q♠. It played 9C."
+```
+
+`expected` and `principle` are what §2.4 prescribes; `reason` names the check
+and the card the CPU played. Decide which side is wrong:
+
+- If the CPU contradicts the doc, fix the CPU (`frontend/src/game/hearts/conservative/`).
+- If the doc's principle handles the position badly, change the principle in
+  the doc (never add a special case), add the position to the rulebook (paste
+  the block, give it the next `R` id and a real reason) and update the CPU and
+  the checker together.
+- If the checker misreads the doc, fix the checker and add the position to
+  `principles.test.ts`.
+
+Never loosen a check to make a failure go away.
+
+**Measured (seed 3161).** Conservative: 0 violations in 10,000 hands
+(551,300 decisions, 433,710 with a choice; ~25 s). The legacy personas, 2,000
+hands each: Cautious 55,926 violations (6,428 `follow.free-trick`), Schemer
+44,592 (3,261), Daring 40,843 (2,132). `principleRun.test.ts` runs a seeded
+Cautious game as a self-test and requires the trick-1 low-club P2 violation,
+so the checker would have caught the original bug.
+
+**CI.** The `principles` job of `hearts-sim-gate.yml` runs conservative x4:
+2,000 hands on PRs (~6 s of simulation), 10,000 nightly and on manual runs
+(the `hands` input overrides). It uploads the text and JSON report. Jest runs
+the fast versions (`principles.test.ts`, `principleRun.test.ts`) in every PR.
+
+---
+
+### Hearts AI sim gate v2 — duplicate deals, SPRT, conditional metrics (#2238; legacy, on demand)
+
+**No longer gates PRs or runs nightly (#3161).** It stays runnable: locally
+with `--gate` (below), or in CI from Actions → Hearts AI Sim Gate → Run
+workflow with `legacy_gate` ticked (`max_blocks` caps the blocks). Its checks,
+thresholds and `baseline.json` are unchanged.
 
 All Hearts AI simulation runs on `frontend/tooling/hearts/`;
 `tools/sim/simulate-hearts.ts` is the CLI around it.
@@ -726,10 +837,9 @@ diff. Never regenerate the baseline to make an
 unexplained failure go away.
 
 **CI wiring and runtime budget.** `.github/workflows/hearts-sim-gate.yml`
-runs the two groups as parallel matrix jobs on every PR that touches
-`frontend/src/game/hearts/ai*.ts` (which covers `aiConsiderations.ts`,
-`aiWeights.ts` and `aiInfoSet.ts`), `engine.ts`, `types.ts`, the sim
-directory or the script, plus nightly and on demand. Measured on a 4-core
+runs the two groups as parallel matrix jobs (`Legacy gate (<group>)`) only
+on a manual run with `legacy_gate` ticked; until #3161 they ran on every PR
+touching the Hearts AI and nightly. Measured on a 4-core
 dev box (7–14 ms per game under `tsx`), the full gate on unchanged code
 (seed 2238) decided every check early:
 
@@ -741,8 +851,8 @@ dev box (7–14 ms per game under `tsx`), the full gate on unchanged code
 Worst case, with every check running to its cap (presets 12,000 blocks ×
 6 games, field 6,000 × 9), is about 8.5–17 min per group at 7–14 ms a game
 (a full field-group baseline run measured ~14 ms); the job timeout is
-45 min. That is cheap enough to gate per PR, so there is no reduced-N PR
-variant — the smoke layer below only proves the pipeline runs.
+45 min. There is no reduced-N variant — the smoke layer below only proves
+the pipeline runs.
 
 **Per-PR smoke layer.** `frontend/tooling/hearts/__tests__/ai.calibrate.test.ts`
 (run by `ci.yml` with the rest of Jest, ~5 s) runs every group at a 12-block

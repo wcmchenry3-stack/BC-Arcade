@@ -1,30 +1,45 @@
 name: Hearts AI Sim Gate
 
-# Sim gate v2 (#2238): sequential (SPRT) non-regression and persona-
-# separation checks on duplicate-deal replay, defined in
-# frontend/tooling/hearts/gate.ts against the checked-in baseline
-# frontend/tooling/hearts/baseline.json. The fast per-PR smoke layer is
-# frontend/tooling/hearts/__tests__/ai.calibrate.test.ts (run by ci.yml).
-# Runtime budget and how to read a failure: docs/TESTING.md.
+# Principle check (#3161): plays seeded hands with the conservative CPU in all
+# four seats and checks every pass and card play against
+# docs/hearts/CONSERVATIVE_AI.md §2.4 with the independent checker in
+# frontend/tooling/hearts/principles.ts. The gate is zero violations: 2,000
+# hands on PRs, 10,000 nightly and on manual runs.
+#
+# The legacy gate v2 (#2238: SPRT non-regression and persona-separation checks
+# in frontend/tooling/hearts/gate.ts against baseline.json) no longer gates
+# PRs. It stays runnable on demand: Actions -> Hearts AI Sim Gate -> Run
+# workflow with "legacy_gate" ticked. How to read a failure: docs/TESTING.md.
 
 on:
   schedule:
     - cron: "45 7 * * *"
   workflow_dispatch:
     inputs:
-      max_blocks:
-        description: "Block cap per group (blank = the gate's defaults)"
+      hands:
+        description: "Hands for the principle check (blank = 10000)"
         required: false
         default: ""
-  # PRs that change the AI, the engine, or the gate itself.
+      legacy_gate:
+        description: "Also run the legacy persona-separation / SPRT gate (gate.ts)"
+        type: boolean
+        required: false
+        default: false
+      max_blocks:
+        description: "Legacy gate only: block cap per group (blank = the gate's defaults)"
+        required: false
+        default: ""
+  # PRs that change the AI, the engine, the spec or the gate itself.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - "frontend/src/game/hearts/ai*.ts"
+      - "frontend/src/game/hearts/conservative/**"
       - "frontend/src/game/hearts/engine.ts"
       - "frontend/src/game/hearts/types.ts"
       - "frontend/tooling/hearts/**"
       - "frontend/src/game/_shared/simRandom.ts"
+      - "docs/hearts/CONSERVATIVE_AI.md"
       - "tools/sim/simulate-hearts.ts"
       - ".github/workflows/hearts-sim-gate.yml"
 
@@ -36,10 +51,41 @@ permissions:
   contents: read
 
 jobs:
-  gate:
+  principles:
     # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
-    name: Gate (${{ matrix.group }})
+    name: Principle check (conservative)
+    runs-on: ubuntu-latest
+    # 10,000 hands take about 25 s locally; 2,000 about 6 s.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-frontend
+      - name: Check every decision against CONSERVATIVE_AI.md §2.4
+        shell: bash # explicit shell = pipefail, so tee can't mask a failing check
+        env:
+          HANDS_INPUT: ${{ inputs.hands }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ -n "$HANDS_INPUT" ]; then HANDS="$HANDS_INPUT"
+          elif [ "$EVENT" = "pull_request" ]; then HANDS=2000
+          else HANDS=10000; fi
+          # tsx is a frontend devDependency (pinned in frontend/package.json).
+          npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles \
+            --persona conservative --hands "$HANDS" --json hearts-principles.json \
+            | tee hearts-principles.txt
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: hearts-principles
+          path: hearts-principles.*
+          retention-days: 30
+
+  gate:
+    # Legacy gate v2 (#2238), on demand only.
+    if: github.event_name == 'workflow_dispatch' && inputs.legacy_gate
+    name: Legacy gate (${{ matrix.group }})
     runs-on: ubuntu-latest
     # Worst case (every check runs to its block cap) is ~12 min per group.
     timeout-minutes: 45
@@ -59,7 +105,6 @@ jobs:
         run: |
           ARGS=(--gate --group "${{ matrix.group }}" --json "hearts-gate-${{ matrix.group }}.json")
           if [ -n "$MAX_BLOCKS" ]; then ARGS+=(--max-blocks "$MAX_BLOCKS"); fi
-          # tsx is a frontend devDependency (pinned in frontend/package.json).
           npx --prefix frontend tsx tools/sim/simulate-hearts.ts "${ARGS[@]}" | tee "hearts-gate-${{ matrix.group }}.txt"
       - name: Upload report
         if: always()
