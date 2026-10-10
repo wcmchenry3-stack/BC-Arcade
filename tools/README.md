@@ -20,7 +20,8 @@ pip install -r tools/assets/requirements.txt
 | `remove_backgrounds.py` | `cd frontend && npm run process-assets` |
 | `extract_vertices.py` | `cd frontend && npm run extract-vertices` |
 | `bake_sprites.py` | `python tools/assets/bake_sprites.py` |
-| `convert_icons_to_webp.py` | `python tools/assets/convert_icons_to_webp.py frontend/assets/fruit-icons` |
+| `convert_icons_to_webp.py` | `python tools/assets/convert_icons_to_webp.py cascade_icon_masters/fruit-icons` (full-size masters, #2833) |
+| `make_icon_thumbnails.py` | `python tools/assets/make_icon_thumbnails.py` (256 px runtime icons from `cascade_icon_masters/`; see `docs/ASSETS.md`) |
 | `generate_svg_sprites.py` | `python tools/assets/generate_svg_sprites.py` (writes to `/tmp/svg_sprites`) |
 | `check_palette.py` | `python tools/assets/check_palette.py` (Sort palette check; see [Sort palette check](#sort-palette-check-check_palettepy)) |
 
