@@ -1,6 +1,7 @@
 /**
- * Hearts simulation harness (#2238) — the game runner behind the sim gate
- * (gate.ts), the per-PR smoke test and `tools/sim/simulate-hearts.ts`.
+ * Hearts simulation harness (#2238) — the game runner behind the sim gate's
+ * principle check (principleRun.ts, #3161), the legacy gate (gate.ts), the
+ * per-PR smoke test and `tools/sim/simulate-hearts.ts`.
  *
  * Duplicate-deal replay. A *block* replays one sequence of deals once per
  * line-up of a matchup, so every line-up plays the same cards:
@@ -192,6 +193,12 @@ export interface PlayOptions {
    * the engine's RNG — the next seat's noise stream is switched in after it.
    */
   readonly onPlay?: (state: HeartsState, seat: number, card: Card) => void;
+  /**
+   * Observe each pass before it is applied: the state (passing phase, the
+   * seat's 13 dealt cards in `playerHands`), and the three cards chosen
+   * (the principle checker's hook, #3161). Must not touch the engine's RNG.
+   */
+  readonly onPass?: (state: HeartsState, seat: number, cards: readonly Card[]) => void;
 }
 
 /** Final-score win shares: the lowest score wins; a tie splits the win. */
@@ -272,6 +279,7 @@ export function playGame(
         const hand = [...(state.playerHands[seat] ?? [])];
         setRng(noise[seat]!);
         const cards = policies[seat]!.pass([...hand], state.passDirection, state, seat);
+        options.onPass?.(state, seat, cards);
         if (canVoidBySuit(hand)) {
           seats[seat]!.voidOpportunities++;
           if (passEmptiesASuit(hand, cards)) seats[seat]!.voidsCreated++;
