@@ -92,12 +92,14 @@ describe("parseHandsArg (--hands)", () => {
 describe("docs", () => {
   it("TESTING.md lists every check id with its kind and principle", () => {
     const doc = readFileSync(join(__dirname, "../../../../docs/TESTING.md"), "utf8");
+    // Table rows as trimmed cells: | `id` | kind | principle | … |
+    const rows = doc
+      .split("\n")
+      .filter((line) => line.startsWith("| `"))
+      .map((line) => line.split("|").map((cell) => cell.trim()));
     for (const [id, spec] of Object.entries(CHECKS)) {
-      const row = new RegExp(
-        `^\\| \`${id.replace(/\./g, "\\.")}\`\\s*\\| ${spec.kind}\\s*\\| ${spec.principle}\\s*\\|`,
-        "m"
-      );
-      expect(doc).toMatch(row);
+      const row = rows.find((cells) => cells[1] === `\`${id}\``);
+      expect(row?.slice(1, 4)).toEqual([`\`${id}\``, spec.kind, spec.principle]);
     }
   });
 });
