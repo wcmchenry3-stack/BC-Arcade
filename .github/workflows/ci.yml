@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           # One Python version for the repo (#2972, #3107): backend/.python-version.
           python-version-file: backend/.python-version
@@ -447,7 +447,7 @@ jobs:
       PG_SERVER: postgresql://postgres:postgres@localhost:5432
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version-file: backend/.python-version
           cache: pip
