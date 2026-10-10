@@ -27,6 +27,22 @@ import type { AiPersona } from "../../src/game/hearts/types";
 /** Default seed of the principle check (the story number). */
 export const PRINCIPLE_SEED = 3161;
 
+/** Default hand count of `--check-principles` (the nightly run). */
+export const DEFAULT_PRINCIPLE_HANDS = 10_000;
+
+/**
+ * The `--hands` value: the default when the flag is absent, else a strict
+ * positive decimal integer. Anything else ("abc", "5abc", "0", "-3", "1e4",
+ * a missing value) throws, so a typo never silently runs a different size.
+ */
+export function parseHandsArg(raw: string | undefined, present: boolean): number {
+  if (!present) return DEFAULT_PRINCIPLE_HANDS;
+  if (raw === undefined || !/^[1-9][0-9]*$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
+    throw new RangeError(`--hands must be a positive integer (got ${JSON.stringify(raw ?? "")})`);
+  }
+  return Number(raw);
+}
+
 export interface PrincipleRunOptions {
   readonly persona: AiPersona;
   readonly hands: number;

@@ -7,7 +7,15 @@
 import { setRng } from "../../../src/game/hearts/engine";
 import type { Card } from "../../../src/game/hearts/types";
 import type { PlayDecision } from "../principles";
-import { formatPrincipleReport, runPrincipleCheck } from "../principleRun";
+import { readFileSync } from "fs";
+import { join } from "path";
+import { CHECKS } from "../principles";
+import {
+  DEFAULT_PRINCIPLE_HANDS,
+  formatPrincipleReport,
+  parseHandsArg,
+  runPrincipleCheck,
+} from "../principleRun";
 
 afterEach(() => setRng(Math.random));
 
@@ -56,5 +64,40 @@ describe("runPrincipleCheck", () => {
 
   it("refuses a non-positive hand count", () => {
     expect(() => runPrincipleCheck({ persona: "conservative", hands: 0 })).toThrow(RangeError);
+  });
+});
+
+describe("parseHandsArg (--hands)", () => {
+  it("defaults when the flag is absent", () => {
+    expect(parseHandsArg(undefined, false)).toBe(DEFAULT_PRINCIPLE_HANDS);
+  });
+
+  it("accepts a positive decimal integer", () => {
+    expect(parseHandsArg("2000", true)).toBe(2000);
+    expect(parseHandsArg("1", true)).toBe(1);
+  });
+
+  it.each(["abc", "5abc", "0", "-3", "1e4", "2.5", " 20", "", "0x10", "99999999999999999999"])(
+    "refuses %j",
+    (raw) => {
+      expect(() => parseHandsArg(raw, true)).toThrow(RangeError);
+    }
+  );
+
+  it("refuses the flag with no value", () => {
+    expect(() => parseHandsArg(undefined, true)).toThrow(/positive integer/);
+  });
+});
+
+describe("docs", () => {
+  it("TESTING.md lists every check id with its kind and principle", () => {
+    const doc = readFileSync(join(__dirname, "../../../../docs/TESTING.md"), "utf8");
+    for (const [id, spec] of Object.entries(CHECKS)) {
+      const row = new RegExp(
+        `^\\| \`${id.replace(/\./g, "\\.")}\`\\s*\\| ${spec.kind}\\s*\\| ${spec.principle}\\s*\\|`,
+        "m"
+      );
+      expect(doc).toMatch(row);
+    }
   });
 });

@@ -9,7 +9,7 @@
  * runs on demand only.
  *
  * Modes:
- *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles     # principle check (#3161): conservative x4, 10,000 hands; exit 1 on any violation
+ *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles     # principle check (#3161): conservative x4, 10,000 hands; exit 1 on any violation, 2 on a bad --hands
  *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles --hands 2000 --persona cautious --json out.json
  *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts                        # descriptive report, 3000 games per matchup
  *   npx --prefix frontend tsx tools/sim/simulate-hearts.ts --count 900             # ... 900 games per matchup
@@ -68,6 +68,7 @@ import {
 import {
   PRINCIPLE_SEED,
   formatPrincipleReport,
+  parseHandsArg,
   runPrincipleCheck,
 } from "../../frontend/tooling/hearts/principleRun";
 import { toRulebookYaml } from "../../frontend/tooling/hearts/principles";
@@ -285,8 +286,15 @@ if (argv.includes("--check-principles")) {
   // Principle check (#3161): every decision of one persona x4 against
   // docs/hearts/CONSERVATIVE_AI.md §2.4. The sim gate requires 0 violations
   // for conservative; exits 1 on any violation.
-  const hands = parseCount(argv, "--hands") ?? 10_000;
-  if (hands < 1) fail("--hands must be a positive integer");
+  let hands: number;
+  try {
+    const at = argv.indexOf("--hands");
+    hands = parseHandsArg(at === -1 ? undefined : argv[at + 1], at !== -1);
+  } catch (e) {
+    // Exit 2 (usage error), distinct from 1 (violations found).
+    process.stderr.write(`Error: ${(e as Error).message}\n`);
+    process.exit(2);
+  }
   const persona = (argValue(argv, "--persona") ?? "conservative") as AiPersona;
   if (!["conservative", "cautious", "schemer", "daring"].includes(persona)) {
     fail("--persona must be one of conservative, cautious, schemer, daring");

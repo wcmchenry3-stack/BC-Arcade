@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       hands:
-        description: "Hands for the principle check (blank = 10000)"
+        description: "Hands for the principle check: a positive integer, blank = 10000 (anything else fails with exit 2)"
         required: false
         default: ""
       legacy_gate:

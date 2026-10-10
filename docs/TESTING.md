@@ -644,6 +644,36 @@ low club, and it never noticed.
   `follow.win-highest`), the P7 guard lead and take, and the P8 pass
   (`pass.order`; the order of the three cards does not matter).
 
+All 24 checks (`CHECKS` in `principles.ts`; `principleRun.test.ts` fails if
+a check is missing here):
+
+| Check                             | Kind      | Principle     | Flags                                                                                                           |
+| --------------------------------- | --------- | ------------- | --------------------------------------------------------------------------------------------------------------- |
+| `lead.queen`                      | predicate | P5-QUEEN      | Led Q♠ while it had another legal card.                                                                         |
+| `lead.spade-honour`               | predicate | P5-QUEEN      | Led A♠ or K♠ while Q♠ was live and it had another legal card.                                                   |
+| `follow.moon-complete-queen`      | predicate | P7-MOON-GUARD | Dropped Q♠ under A♠/K♠ on a trick X could take when that completes X's moon.                                    |
+| `follow.queen-under-honour`       | predicate | P5-QUEEN      | A♠/K♠ was winning a spade trick and it did not drop Q♠.                                                         |
+| `follow.free-trick`               | predicate | P2-FREE-TRICK | On a free trick (trick 1, or last seat with no points) it did not play its highest led-suit card other than Q♠. |
+| `follow.over-when-could-duck`     | predicate | P1-DUCK       | Played over the winning card while it held a led-suit card that would lose.                                     |
+| `follow.moon-guard-keep`          | predicate | P7-MOON-GUARD | Moon threat and X can still overtake, but it ducked with its guard heart while it had another loser.            |
+| `follow.queen-into-win`           | predicate | P5-QUEEN      | Played Q♠ into a trick it was winning while it held another legal card.                                         |
+| `follow.spade-honour-under-queen` | predicate | P5-QUEEN      | Won a spade trick with A♠/K♠ while Q♠ was out and could still drop on it, holding another spade.                |
+| `discard.moon-complete-queen`     | predicate | P7-MOON-GUARD | Discarded Q♠ onto a trick X could take when that completes X's moon.                                            |
+| `discard.queen`                   | predicate | P5-QUEEN      | Void, holding a legal Q♠, and discarded something else.                                                         |
+| `discard.moon-guard-keep`         | predicate | P7-MOON-GUARD | Moon threat, and it discarded its guard heart.                                                                  |
+| `pass.queen-spades`               | predicate | P5-QUEEN      | Kept Q♠/A♠/K♠ with spades unprotected, or passed one with spades protected (P5 inside P8).                      |
+| `lead.moon-guard`                 | procedure | P7-MOON-GUARD | Moon threat and its highest heart cannot be beaten, but it did not lead it.                                     |
+| `lead.shed`                       | procedure | P3-SHED       | Held a DANGEROUS non-heart but did not lead the most dangerous one.                                             |
+| `lead.exit`                       | procedure | P9-EXIT       | Nothing dangerous to lead, and it did not lead the card least likely to win.                                    |
+| `follow.moon-complete-cover`      | procedure | P7-MOON-GUARD | Kept Q♠ in the moon-complete case but did not play its highest other spade.                                     |
+| `follow.moon-guard-take`          | procedure | P7-MOON-GUARD | Moon threat, X winning a trick with points, and it could take it safely, but it did not.                        |
+| `follow.duck-highest`             | procedure | P1-DUCK       | Ducked, but not with the highest card that loses.                                                               |
+| `follow.win-highest`              | procedure | P1-DUCK       | Could not lose the trick, and did not win with its highest allowed card.                                        |
+| `discard.spade-honour`            | procedure | P5-QUEEN      | Void, Q♠ live, and it did not discard A♠ (then K♠).                                                             |
+| `discard.high-heart`              | procedure | P6-DISCARD    | Did not discard its highest HIGH heart.                                                                         |
+| `discard.most-dangerous`          | procedure | P6-DISCARD    | Did not discard its most dangerous card.                                                                        |
+| `pass.order`                      | procedure | P8-PASS       | Did not pass the first three cards of the P8 list.                                                              |
+
 A forced play (one legal card) is never judged. Each violation carries the
 principle it breaks (`principleId`, used for the counts) and the §2.3
 attribution of the expected card (`attributedTo`). The checker is tested
@@ -658,7 +688,7 @@ npx --prefix frontend tsx tools/sim/simulate-hearts.ts --check-principles --pers
 ```
 
 `--persona` is `conservative` (default), `cautious`, `schemer` or `daring`;
-`--seed` overrides the seed. The command exits 1 on any violation.
+`--seed` overrides the seed. The command exits 1 on any violation, and 2 when `--hands` is not a positive integer (e.g. `abc`, `5abc`, `0`) instead of falling back to a default.
 
 **Reading a failure.** The report prints the violation count per principle,
 then per check (with its kind), then the first 5 positions of each principle

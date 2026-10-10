@@ -122,7 +122,7 @@ interface CheckSpec {
   readonly description: string;
 }
 
-/** Every check this module can report. The docs (TESTING.md) mirror this list. */
+/** Every check this module can report. docs/TESTING.md lists them all (principleRun.test.ts enforces it). */
 export const CHECKS = {
   "lead.moon-guard": {
     kind: "procedure",
