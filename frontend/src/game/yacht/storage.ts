@@ -2,7 +2,9 @@
  * AsyncStorage persistence for Yacht in-progress games.
  *
  * Saves after every action (roll/score/new game) so a crash or app-kill
- * mid-game doesn't lose progress. One slot per device.
+ * mid-game doesn't lose progress. One slot per device, through the shared
+ * `storageSlot` (#2987); a payload that fails the shape check loads as no
+ * game and is left stored.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -10,8 +12,8 @@ import * as Sentry from "@sentry/react-native";
 import { AI_DIFFICULTIES, GameState } from "./types";
 import type { AiDifficulty } from "./types";
 import { isPremiumLevel } from "../../entitlements/premiumLevels";
+import { createJsonSlot } from "../_shared/storageSlot";
 
-const STORAGE_KEY = "yacht_game_v2";
 const PREF_KEY = "yacht_pref_v1";
 
 export interface SavedGame {
@@ -28,37 +30,23 @@ export interface SavedGame {
   finishedGameId?: string;
 }
 
-export async function saveGame(
-  state: GameState,
-  aiDifficulty: AiDifficulty | null = null,
-  aiState: GameState | null = null,
-  finishedGameId: string | null = null
-): Promise<void> {
-  const payload: SavedGame = { state, aiDifficulty, aiState };
-  if (finishedGameId) payload.finishedGameId = finishedGameId;
-  try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "yacht.storage", op: "save" } });
-  }
-}
-
-export async function loadGame(): Promise<SavedGame | null> {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as SavedGame;
-    // Sanity check — shape drift should discard rather than crash the screen.
-    if (
+const gameSlot = createJsonSlot<SavedGame>({
+  key: "yacht_game_v2",
+  subsystem: "yacht.storage",
+  // Sanity check — shape drift should discard rather than crash the screen.
+  isValid: (p): p is SavedGame => {
+    const parsed = p as SavedGame;
+    return !(
       !parsed.state ||
       !Array.isArray(parsed.state.dice) ||
       parsed.state.dice.length !== 5 ||
       typeof parsed.state.round !== "number" ||
       typeof parsed.state.scores !== "object" ||
       parsed.state.scores === null
-    ) {
-      return null;
-    }
+    );
+  },
+  keepInvalid: true,
+  onLoad: (parsed) => {
     // A bad finished-game id only costs the card its rank, not the game.
     const { finishedGameId } = parsed;
     if (
@@ -68,19 +56,21 @@ export async function loadGame(): Promise<SavedGame | null> {
       delete parsed.finishedGameId;
     }
     return parsed;
-  } catch (e) {
-    // Corrupt payload: recovery is complete. See #501/#510 for the
-    // rationale behind downgrading this from captureException to a
-    // warning-level captureMessage.
-    Sentry.captureMessage("yacht.storage: corrupt game payload, discarding", {
-      level: "warning",
-      tags: { subsystem: "yacht.storage", op: "load" },
-      extra: { error: String(e), key: STORAGE_KEY },
-    });
-    await AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
-    return null;
-  }
+  },
+});
+
+export function saveGame(
+  state: GameState,
+  aiDifficulty: AiDifficulty | null = null,
+  aiState: GameState | null = null,
+  finishedGameId: string | null = null
+): Promise<void> {
+  const payload: SavedGame = { state, aiDifficulty, aiState };
+  if (finishedGameId) payload.finishedGameId = finishedGameId;
+  return gameSlot.save(payload);
 }
+
+export const { load: loadGame, clear: clearGame } = gameSlot;
 
 export interface LastModePref {
   mode: "solo" | "vs";
@@ -113,13 +103,5 @@ export async function loadLastMode(): Promise<LastModePref | null> {
       data: { error: String(e) },
     });
     return null;
-  }
-}
-
-export async function clearGame(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(STORAGE_KEY);
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "yacht.storage", op: "clear" } });
   }
 }

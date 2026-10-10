@@ -2,7 +2,6 @@
  * #2847: upgrade-pickup visuals (salvage crate, hull plating) and the collection cue lifecycle.
  */
 import { initStarSwarm, CANVAS_W, CANVAS_H } from "../engine";
-import { initStarfield } from "../starfield";
 import { buildFrame, type DrawOp, type LoadedSprites } from "../render/frame";
 import {
   upgradePickupOps,
@@ -12,6 +11,7 @@ import {
   isUpgradePickup,
   drawPickupOps,
 } from "../render/pickups";
+import { setDebugOpKeys } from "../render/opKeys";
 import {
   pickupCues,
   pickupCueFrame,
@@ -53,6 +53,10 @@ function withPlayer(s: StarSwarmState, over: Partial<StarSwarmState["player"]>):
   return { ...s, player: { ...s.player, ...over } };
 }
 
+// #2963: op keys are debug-only — these tests find ops by key, so they turn them on
+beforeAll(() => setDebugOpKeys(true));
+afterAll(() => setDebugOpKeys(false));
+
 const byKey = (ops: DrawOp[], key: string) => ops.find((o) => o.key === key);
 
 describe("upgrade pickup visuals", () => {
@@ -69,14 +73,14 @@ describe("upgrade pickup visuals", () => {
     const keys = ops.map((o) => o.key);
     expect(keys.indexOf("pu-1-halo")).toBeLessThan(keys.indexOf("pu-1"));
     expect(byKey(ops, "pu-1-halo-ring")).toMatchObject({ k: "circle", stroke: 1.5 });
-    expect(byKey(ops, "pu-1")).toMatchObject({ k: "rect", color: PICKUP_ACCENT.salvage.hex });
-    expect(byKey(ops, "pu-1-glyph")).toMatchObject({ k: "poly", color: "#ffffff" });
+    expect(byKey(ops, "pu-1")).toMatchObject({ k: "rect", color: PICKUP_ACCENT.salvage.color });
+    expect(byKey(ops, "pu-1-glyph")).toMatchObject({ k: "poly", color: 0xffffffff });
   });
 
   it("hull: cyan hexagon with a plus glyph, distinct from the crate", () => {
     const ops = upgradePickupOps(pu(2, "hull") as PowerUp & { type: "hull" });
     const hex = byKey(ops, "pu-2");
-    expect(hex).toMatchObject({ k: "poly", color: PICKUP_ACCENT.hull.hex });
+    expect(hex).toMatchObject({ k: "poly", color: PICKUP_ACCENT.hull.color });
     expect(hex && hex.k === "poly" && hex.points.length).toBe(12);
     expect(byKey(ops, "pu-2-glyph-h")).toBeDefined();
     expect(byKey(ops, "pu-2-glyph-v")).toBeDefined();
@@ -97,7 +101,7 @@ describe("upgrade pickup visuals", () => {
 
   it("buildFrame draws them with the shared geometry (timed power-ups keep sprites)", () => {
     const s = blank({ powerUps: [pu(3, "salvage"), pu(4, "hull"), pu(5, "shield")] });
-    const ops = buildFrame(s, initStarfield(CANVAS_W, CANVAS_H), {
+    const ops = buildFrame(s, {
       loaded: NONE,
       width: CANVAS_W,
       height: CANVAS_H,
@@ -123,6 +127,24 @@ describe("upgrade pickup visuals", () => {
     drawPickupOps(ctx, upgradePickupOps(pu(6, "hull") as PowerUp & { type: "hull" }));
     drawPickupOps(ctx, upgradePickupOps(pu(7, "salvage") as PowerUp & { type: "salvage" }));
     expect(calls).toEqual(expect.arrayContaining(["arc", "fillRect", "lineTo", "stroke", "fill"]));
+  });
+
+  it("web replay turns packed colours into CSS for the 2D context (#2963)", () => {
+    const styles: string[] = [];
+    const ctx = new Proxy(
+      {},
+      {
+        get: () => (): void => {},
+        set: (_t, prop: string, v: unknown) => {
+          if (prop === "fillStyle" || prop === "strokeStyle") styles.push(String(v));
+          return true;
+        },
+      }
+    ) as unknown as CanvasRenderingContext2D;
+    drawPickupOps(ctx, upgradePickupOps(pu(8, "salvage") as PowerUp & { type: "salvage" }));
+    expect(styles).toContain("rgba(255,176,32,1)"); // the crate, PICKUP_ACCENT.salvage
+    expect(styles).toContain("rgba(255,255,255,1)"); // the glyph
+    expect(styles.every((c) => /^rgba\(\d+,\d+,\d+,[\d.]+\)$/.test(c))).toBe(true);
   });
 });
 

@@ -1,8 +1,8 @@
-> **Historical design record.** This file preserves the implementation plan and decision history that led to the current shared reporting system. It is **not** the current behavior contract. For current behavior see [LEADERBOARDS.md](LEADERBOARDS.md); for normative game integration see [GAME-CONTRACT.md](GAME-CONTRACT.md).\n\n# Leaderboards & Scoring — Streamlining Plan
+> **Historical design record.** This file preserves the implementation plan and decision history that led to the current shared reporting system. It is **not** the current behavior contract. For current behavior see [LEADERBOARDS.md](../LEADERBOARDS.md); for normative game integration see [GAME-CONTRACT.md](../GAME-CONTRACT.md).\n\n# Leaderboards & Scoring — Streamlining Plan
 
 **Status:** owner decisions recorded 2026-09-25 (§8, sixteen decisions); filed as issues under epic #2519. Nothing in this plan is scheduled before the v1.0 store submission; see [§6 Sequencing](#6-sequencing).
 **Scope:** how every game *reports* its result, how results are *stored and ranked*, and how results are *shown* (result card, per-game scoreboard, leaderboards, Profile stats). Game rules and scoring formulas stay game-specific and are out of scope.
-**Companion docs:** [`ARCHITECTURE.md`](ARCHITECTURE.md) §4/§9, [`GAME-CONTRACT.md`](GAME-CONTRACT.md), [`PRODUCT.md`](PRODUCT.md), [`RELEASE-PLAN-2026-10.md`](RELEASE-PLAN-2026-10.md).
+**Companion docs:** [`ARCHITECTURE.md`](../ARCHITECTURE.md) §4/§9, [`GAME-CONTRACT.md`](../GAME-CONTRACT.md), [`PRODUCT.md`](../PRODUCT.md), [`RELEASE-PLAN-2026-10.md`](../RELEASE-PLAN-2026-10.md).
 
 ---
 
@@ -88,7 +88,7 @@ No `_top_scores` query filters on `session_id`, so A and B rows mix on the same 
 
 ### 3.4 Stats
 
-- `/stats/me` per game returns `played` (includes abandons), `best`/`avg` (max/mean of `final_score`, wrong for ↓ games, null for Blackjack/FreeCell/Daily Word), `last_played_at`, plus hard-coded Blackjack columns. `completed_played` is computed in `games/service.py:279` but **dropped** from the response, so no client can compute an abandon rate.
+- `/stats/me` per game returns `played` (includes abandons), `best`/`avg` (max/mean of `final_score`, wrong for ↓ games, null for Blackjack/FreeCell/Daily Word), `last_played_at`, plus hard-coded Blackjack columns. `completed_played` is computed in `games/stats.py` but **dropped** from the response, so no client can compute an abandon rate.
 - Sort and Star Swarm have no session rows, so they never appear in `/stats/me` or `/games/me` (#2216 filed for Star Swarm; Sort has the same defect).
 - "Games played" has at least four definitions on device: server rows; FreeCell increments on start; Twenty48 increments on load; Cascade uses an in-memory ref that resets each mount. The Scoreboard overflow shows the local number, Profile shows the server number.
 

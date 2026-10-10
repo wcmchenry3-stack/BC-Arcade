@@ -9,17 +9,17 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from blackjack.module import module as blackjack_module
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType
 from games.board import MAX_BOARD_VALUE
+from tests._helpers import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -36,19 +36,6 @@ _EXTRAS_KEYS = {
     "runs_completed",
     "current_table",
 }
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 async def _grant_blackjack(sid: str) -> None:
@@ -73,7 +60,9 @@ def _play_run(
     Returns the game id.
     """
     r = client.post(
-        "/games", headers=_headers(sid), json={"game_type": "blackjack", "metadata": metadata}
+        "/games",
+        headers=_headers(sid),
+        json={"game_type": "blackjack", "metadata": metadata},
     )
     assert r.status_code == 200, r.text
     gid = r.json()["id"]
@@ -276,7 +265,7 @@ async def test_rows_stored_before_2745_count_toward_best(client: TestClient) -> 
                 Game(
                     session_id=sid,
                     game_type_id=gt_id,
-                    completed_at=datetime.now(timezone.utc),
+                    completed_at=datetime.now(UTC),
                     outcome=outcome,
                     final_score=None,
                     game_metadata={"hands_won": 2, "final_chips": chips},
@@ -374,7 +363,7 @@ async def test_killed_process_win_sweep_counts_its_closing_chips(client: TestCli
     gid = _create(client, sid)
     body = {
         "outcome": "win",
-        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": datetime.now(UTC).isoformat(),
         "result": {
             "hands_won": 4,
             "hands_played": 7,

@@ -10,9 +10,10 @@ from fastapi import HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.base import get_session_factory
-from db.models import GameEntitlement, GameType
+from db.base import DbSession
+from db.models import GameEntitlement
 from entitlements.service import is_dev_override_active
+from games import catalog_cache
 from session import get_session_id
 
 
@@ -27,14 +28,14 @@ class EntitlementError(HTTPException):
 async def check_entitlement(db: AsyncSession, session_id: str, game_slug: str) -> None:
     """Raise EntitlementError if session_id is not entitled to game_slug.
 
-    No-op for free (non-premium) game types and unknown game slugs.
+    No-op for free (non-premium) game types and unknown game slugs. The tier
+    comes from the process-level catalog cache (#2966), so a free game costs no
+    query and a premium one only the indexed ``game_entitlements`` lookup.
     """
     if is_dev_override_active():
         return
-    is_premium = (
-        await db.execute(select(GameType.is_premium).where(GameType.name == game_slug))
-    ).scalar_one_or_none()
-    if not is_premium:
+    game_type = await catalog_cache.get_game_type(db, game_slug)
+    if game_type is None or not game_type.is_premium:
         return
     entitled = (
         await db.execute(
@@ -49,12 +50,21 @@ async def check_entitlement(db: AsyncSession, session_id: str, game_slug: str) -
 
 
 def require_entitlement(game_slug: str):
-    """Dependency factory — inject as router-level dependency to gate all routes."""
+    """Dependency factory — inject as router-level dependency to gate all routes.
 
-    async def _dep(request: Request) -> None:
+    Depends on ``get_db``, so it checks on the request's own session (the one
+    a route taking ``db: DbSession`` also gets) rather than opening a second.
+    The check only reads, so its transaction is ended straight away: the
+    connection goes back to the pool instead of staying checked out for the
+    rest of a slow route (``/sort/levels`` builds levels for ~0.4 s).
+    """
+
+    async def _dep(request: Request, db: DbSession) -> None:
         sid = get_session_id(request)
-        factory = get_session_factory()
-        async with factory() as db:
+        try:
             await check_entitlement(db, sid, game_slug)
+        finally:
+            if db.in_transaction():
+                await db.commit()
 
     return _dep

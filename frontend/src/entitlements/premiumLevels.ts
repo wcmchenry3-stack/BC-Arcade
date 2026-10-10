@@ -23,7 +23,10 @@ export function isPremiumLevel(gameKey: string, level: string): boolean {
   return levels !== undefined && levels.includes(level);
 }
 
-/** Test seam: replaces the premium levels. Pass null to restore them. */
+/**
+ * Test seam: replaces the premium levels. Pass null to restore them.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function __setPremiumLevelsForTests(
   levels: Readonly<Record<string, readonly string[]>> | null
 ): void {

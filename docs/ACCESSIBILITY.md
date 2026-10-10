@@ -32,7 +32,11 @@ Both dark and light themes must pass independently. Use the design tokens from [
 
 BC Arcade uses React Native Reanimated and Matter.js physics. Both must respect the OS-level "Reduce Motion" preference.
 
-- All animations must check `useReduceMotion()` from `frontend/src/components/shared/useReduceMotion.ts` and skip or simplify motion when it returns `true`. It follows the setting live, so a player can toggle Reduce Motion mid-session. Don't use Reanimated's `useReducedMotion()` on its own: it only reports the value from app launch and never updates.
+- All animations must check `useReduceMotion()` from `frontend/src/components/shared/useReduceMotion.ts` and skip or simplify motion when it returns `true`. It follows the setting live, so a player can toggle Reduce Motion mid-session. Don't use Reanimated's `useReducedMotion()` on its own: it only reports the value from app launch and never updates. Don't call `AccessibilityInfo.isReduceMotionEnabled()` directly either: a one-off read misses a mid-session change (#2984).
+- When the setting changes mid-session, how soon it applies depends on the animation:
+  - **Event overlays and long-running sequences** (celebrations, Hearts/FreeCell event overlays, win cascades, Sort's pour) must react mid-sequence: cancel the running sequence (including its timers), clear any frame it left behind, and take the reduced path. Overlays do this by starting their timers with `playTimedPhases` (`components/shared/timedPhases.ts`) from the same effect that starts the animation, keyed on `reduceMotion`, and drawing repeated particles with `Particle` (`components/shared/Particle.tsx`).
+  - **Short animations started by one action** (a score pop, a die roll, a merge burst, a tile-match flight, a board shake or zoom-to-fit) read the setting when the action happens, so a change applies from the next action. They need no cancellation code.
+- An animation that starts the moment it mounts (a win celebration) must not start on a stale value: `useReduceMotion()` starts from the value another mounted consumer is tracking, else from the launch-time value, which can be out of date. Gate such a mount on `useReduceMotionStatus().known`, as `SolitaireWinCascade` does.
 - Physics simulations (Cascade) must resolve immediately to final state when reduce motion is active — no dropping, bouncing, or sliding.
 - Do not auto-play looping animations that cannot be paused.
 - Avoid content that flashes more than 3 times per second (seizure risk).
@@ -123,6 +127,12 @@ Run this before shipping any new game or screen.
 | Bottle Sort | No                 | Bottle contents must be labeled by color sequence                     |
 | Daily Word  | No                 | Letter input cells need row/column position labels                    |
 | Starswarm   | Yes (Skia)         | Score + state overlay required; no keyboard equivalent yet            |
+
+---
+
+## Colour-blind support (Bottle Sort)
+
+Bottle Sort relies on colour, so its 14 liquid colours are checked by `tools/assets/check_palette.py`: at least 3:1 contrast against the theme background and a CIEDE2000 delta-E of at least 20 between every pair. This is a manual check; run it whenever the palette in `frontend/src/theme/theme.bottle.ts` changes. It measures perceptual distance for typical vision and does not simulate colour-blindness, so a pass does not prove the colours stay apart under every deficiency. See [`tools/README.md`](../tools/README.md#sort-palette-check-check_palettepy) for the command and how to read the output, and [`docs/games/sort.md`](games/sort.md#colour-palette).
 
 ---
 

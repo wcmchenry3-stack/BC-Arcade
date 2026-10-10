@@ -671,9 +671,12 @@ describe("Carrier vs asteroids (#2844)", () => {
     const after = tick({ ...s, asteroids: [restingOn(c)] }, DT, ASIDE);
     expect(after.enemies.find((e) => e.id === c.id)!.isAlive).toBe(false);
     expect(after.powerUps.some((p) => p.type === "hull")).toBe(true);
-    expect(after.phase).toBe("Extraction"); // the rock took the last ship: the wave is clear
+    // the rock took the last ship: the wave is clear, and waits for the plating (#3132)
+    expect(after.phase).toBe("ClearAwaitingPickups");
   });
 
+  // #3131: the run is vetted against on-screen rocks when it commits (pathVetting.test.ts); once
+  // committed it is never steered, which is what this guards
   it("the Carrier stays heavy: no sidestep or path nudge, however threatened", () => {
     let s = killGuardians(settled(5));
     const c = carrierOf(s);

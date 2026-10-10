@@ -8,24 +8,25 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event, select
 
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import Game, GameType
 from games.progression import compute_progression
-from games.service import MAX_TIME_PLAYED_PER_GAME_MS, get_stats_for_session, win_streaks
+from games.stats import get_stats_for_session, win_streaks
+from games.stats_columns import MAX_TIME_PLAYED_PER_GAME_MS
+from tests._helpers import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping stats tests",
 )
 
-_T0 = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+_T0 = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 _MINUTE_MS = 60_000
 
 
@@ -320,12 +321,12 @@ async def test_qualifying_outcomes_apply_to_a_score_board(
 ) -> None:
     # The rule is generic: a final_score board with qualifying_outcomes set
     # takes its best from qualifying rows only.
-    from games import service
+    from games import stats_columns
     from hearts.module import module as hearts_module
 
     board = hearts_module.board.model_copy(update={"qualifying_outcomes": ("win",)})
     monkeypatch.setattr(hearts_module, "board", board)
-    service._best_candidate.cache_clear()
+    stats_columns._best_candidate.cache_clear()
     try:
         sid = _sid()
         await _add(sid, "hearts", at=0, outcome="win", final_score=40)
@@ -335,7 +336,7 @@ async def test_qualifying_outcomes_apply_to_a_score_board(
         assert (await _game(sid, "hearts")).best_value == 40
     finally:
         monkeypatch.undo()
-        service._best_candidate.cache_clear()
+        stats_columns._best_candidate.cache_clear()
 
 
 async def test_a_malformed_metadata_metric_is_ignored() -> None:
@@ -493,13 +494,13 @@ async def _statements_for_stats(sid: str) -> list[str]:
 
 
 async def test_streaks_add_one_query_however_many_games() -> None:
-    # Aggregate + latest score + latest metadata, plus one streak scan.
+    # Aggregate + latest score/metadata (one query since #2966), plus one streak scan.
     sid = _sid()
     for game_type in ("hearts", "mahjong", "yacht", "daily_word"):
         await _outcomes(sid, game_type, ["win", "loss", "win", "push", "win"])
     await _outcomes(sid, "cascade", ["completed"] * 5)
 
-    assert len(await _statements_for_stats(sid)) == 4
+    assert len(await _statements_for_stats(sid)) == 3
 
 
 async def test_no_streak_query_without_results() -> None:
@@ -507,25 +508,12 @@ async def test_no_streak_query_without_results() -> None:
     await _outcomes(sid, "cascade", ["completed", "abandoned"])
     await _outcomes(sid, "hearts", ["push"])
 
-    assert len(await _statements_for_stats(sid)) == 3
+    assert len(await _statements_for_stats(sid)) == 2
 
 
 # ---------------------------------------------------------------------------
 # API — /stats/me
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 async def test_stats_me_returns_the_comparable_fields(client: TestClient) -> None:

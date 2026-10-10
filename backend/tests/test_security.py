@@ -1,7 +1,5 @@
 """Security tests — CORS, response headers, rate limiting, session isolation, input sanitization."""
 
-import importlib
-import os
 import uuid
 
 import pytest
@@ -19,18 +17,18 @@ def client_default():
 
 
 @pytest.fixture()
-def client_prod():
-    """Client with a production ALLOWED_ORIGINS env var."""
+def client_prod(monkeypatch):
+    """Client with a production ALLOWED_ORIGINS env var.
+
+    Built with the app factory: reloading ``main`` re-registered every route's
+    rate limit on the shared limiter, so each limit counted twice (#2673).
+    """
     from limiter import limiter
+    from main import create_app
 
-    os.environ["ALLOWED_ORIGINS"] = "https://dev-games.buffingchi.com"
-    import main as m
-
-    importlib.reload(m)
+    monkeypatch.setenv("ALLOWED_ORIGINS", "https://dev-games.buffingchi.com")
     limiter.reset()
-    yield TestClient(m.app)
-    os.environ.pop("ALLOWED_ORIGINS", None)
-    importlib.reload(m)
+    yield TestClient(create_app())
     limiter.reset()
 
 
@@ -161,6 +159,23 @@ def test_cors_preflight_allowed_origin(client_default):
     )
     assert res.status_code == 200
     assert res.headers.get("access-control-allow-origin") == "http://localhost:8081"
+
+
+@pytest.mark.security
+def test_cors_preflight_allows_put_players_me(client_default):
+    """PUT /players/me sets the leaderboard name; a browser preflights it (#2758)."""
+    res = client_default.options(
+        "/players/me",
+        headers={
+            "Origin": "http://localhost:8081",
+            "Access-Control-Request-Method": "PUT",
+            "Access-Control-Request-Headers": "Content-Type, X-Session-ID",
+        },
+    )
+    assert res.status_code == 200
+    assert res.headers.get("access-control-allow-origin") == "http://localhost:8081"
+    allowed = {m.strip() for m in res.headers["access-control-allow-methods"].split(",")}
+    assert "PUT" in allowed
 
 
 @pytest.mark.security

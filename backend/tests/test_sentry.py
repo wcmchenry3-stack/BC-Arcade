@@ -8,12 +8,23 @@ native module incompatibility — these tests catch that class of issue.
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 import sentry_sdk
 
-# Path to main.py source — avoids importing the full app for source checks
-_MAIN_PY = Path(__file__).resolve().parent.parent / "main.py"
+# App setup source — read as text, which avoids importing the full app for source
+# checks. Sentry init moved to observability/ and /debug/error to routes/ (#2993).
+_BACKEND = Path(__file__).resolve().parent.parent
+_APP_SOURCES = (
+    _BACKEND / "main.py",
+    _BACKEND / "observability" / "sentry.py",
+    _BACKEND / "routes" / "debug.py",
+)
+
+
+def _app_source() -> str:
+    return "\n".join(path.read_text() for path in _APP_SOURCES)
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +41,10 @@ class TestSentryUnit:
         if not dsn:
             pytest.skip("SENTRY_DSN not set (expected in CI)")
         assert dsn.startswith("https://"), f"DSN should start with https://, got: {dsn[:20]}..."
-        assert ".sentry.io" in dsn or ".ingest." in dsn, "DSN should contain a Sentry ingest domain"
+        host = urlparse(dsn).hostname or ""
+        assert (
+            host.endswith(".sentry.io") or ".ingest." in host
+        ), "DSN host should be a Sentry ingest domain"
 
     def test_sentry_sdk_importable(self):
         """sentry-sdk should be installed and importable."""
@@ -40,19 +54,19 @@ class TestSentryUnit:
 
     def test_sentry_init_code_present_in_main(self):
         """main.py should contain Sentry initialization logic."""
-        source = _MAIN_PY.read_text()
+        source = _app_source()
         assert "sentry_sdk.init(" in source, "main.py should call sentry_sdk.init()"
         assert "SENTRY_DSN" in source, "main.py should read SENTRY_DSN env var"
 
     def test_sentry_integrations_in_source(self):
         """main.py should register FastAPI and Starlette integrations."""
-        source = _MAIN_PY.read_text()
+        source = _app_source()
         assert "FastApiIntegration" in source
         assert "StarletteIntegration" in source
 
     def test_sentry_traces_sample_rate_in_source(self):
         """Traces sample rate should be configured (not 0 or 1.0 in prod)."""
-        source = _MAIN_PY.read_text()
+        source = _app_source()
         assert "traces_sample_rate" in source, "traces_sample_rate should be set"
         assert (
             "traces_sample_rate=1.0" not in source
@@ -60,7 +74,7 @@ class TestSentryUnit:
 
     def test_sentry_conditional_on_dsn(self):
         """Sentry init should be gated on SENTRY_DSN being set."""
-        source = _MAIN_PY.read_text()
+        source = _app_source()
         assert (
             "if _sentry_dsn:" in source or "if _sentry_dsn" in source
         ), "Sentry init should be conditional on DSN being set"
@@ -245,7 +259,7 @@ class TestSentryUnit:
 
     def test_debug_error_route_in_source(self):
         """main.py should have a test-only /debug/error route."""
-        source = _MAIN_PY.read_text()
+        source = _app_source()
         assert "/debug/error" in source, "main.py should define a /debug/error route"
         assert "ENVIRONMENT" in source, "/debug/error should be gated on ENVIRONMENT env var"
 

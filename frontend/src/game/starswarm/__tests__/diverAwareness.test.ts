@@ -301,6 +301,7 @@ describe("Diver asteroid awareness (#2881)", () => {
     expect(gd).toBeGreaterThan(0);
   });
 
+  // #3131: run selection is vetted at commit (pathVetting.test.ts); mid-run nothing changes
   it("the exposed Carrier's AttackRun never evades or flinches", () => {
     const { s: base } = waveWith("Carrier");
     const carrier = base.enemies.find((e) => e.tier === "Carrier")!;

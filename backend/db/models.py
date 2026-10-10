@@ -18,8 +18,8 @@ pgcrypto.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from datetime import date as dt_date
-from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON,
@@ -46,7 +46,8 @@ from db.base import Base
 from vocab import GameOutcome
 
 # JSONB on Postgres, JSON (TEXT) on sqlite — both round-trip Python dicts.
-_JSONB = JSON().with_variant(JSONB(), "postgresql")
+# The one definition (#2996): ``games.legacy_outcomes`` imports it too.
+JSONB_VARIANT = JSON().with_variant(JSONB(), "postgresql")
 
 # Built from GameOutcome in vocab.py — the single source of truth.
 # Adding a value to the enum is the only change needed; this string rebuilds automatically.
@@ -115,7 +116,29 @@ class Game(Base):
             postgresql_where="final_score IS NOT NULL",
             sqlite_where="final_score IS NOT NULL",
         ),
+        # Boards that don't rank final_score (#2965, alembic 0032): Mahjong's
+        # duration_ms board, and the metadata boards (Sort), which have no
+        # metric column and read their game type's finished rows. The boards
+        # seek on game_type_id only; completed_at is for a future "recent
+        # finished games of this type" read (docs/LEADERBOARDS.md §7a).
+        Index(
+            "games_game_type_completed_idx",
+            "game_type_id",
+            "completed_at",
+            postgresql_where="completed_at IS NOT NULL",
+            sqlite_where="completed_at IS NOT NULL",
+        ),
+        Index(
+            "games_game_type_duration_idx",
+            "game_type_id",
+            "duration_ms",
+            postgresql_where="duration_ms IS NOT NULL AND completed_at IS NOT NULL",
+            sqlite_where="duration_ms IS NOT NULL AND completed_at IS NOT NULL",
+        ),
     )
+    # The INSERT returns the server defaults (started_at) itself (RETURNING), so
+    # POST /games needs no refresh SELECT after it (#2966).
+    __mapper_args__ = {"eager_defaults": True}  # noqa: RUF012
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     session_id: Mapped[str] = mapped_column(Text, nullable=False)
@@ -131,9 +154,9 @@ class Game(Base):
     outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     game_metadata: Mapped[dict] = mapped_column(
-        "metadata", _JSONB, nullable=False, server_default="{}"
+        "metadata", JSONB_VARIANT, nullable=False, server_default="{}"
     )
-    players: Mapped[list] = mapped_column(_JSONB, nullable=False, server_default="[]")
+    players: Mapped[list] = mapped_column(JSONB_VARIANT, nullable=False, server_default="[]")
 
     game_type: Mapped[GameType] = relationship(back_populates="games")
     events: Mapped[list[GameEvent]] = relationship(
@@ -157,7 +180,7 @@ class GameEvent(Base):
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    data: Mapped[dict] = mapped_column(_JSONB, nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB_VARIANT, nullable=False)
 
     game: Mapped[Game] = relationship(back_populates="events")
     event_type: Mapped[EventType] = relationship(back_populates="events")
@@ -207,7 +230,7 @@ class GameEntitlement(Base):
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Purchase(Base):
@@ -322,7 +345,7 @@ class PurchaseEvent(Base):
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     dedupe_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     session_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
-    detail: Mapped[dict] = mapped_column(_JSONB, nullable=False, server_default="{}")
+    detail: Mapped[dict] = mapped_column(JSONB_VARIANT, nullable=False, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
@@ -382,7 +405,7 @@ class BugLog(Base):
     level: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(Text, nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
-    context: Mapped[dict] = mapped_column(_JSONB, nullable=False, server_default="{}")
+    context: Mapped[dict] = mapped_column(JSONB_VARIANT, nullable=False, server_default="{}")
 
 
 class DailyWordProgress(Base):
@@ -420,7 +443,7 @@ class DailyWordProgress(Base):
     session_id: Mapped[str] = mapped_column(Text, nullable=False)
     # "YYYY-MM-DD:{lang}" — the same id the client sends on every guess.
     puzzle_id: Mapped[str] = mapped_column(Text, nullable=False)
-    guesses: Mapped[list] = mapped_column(_JSONB, nullable=False, default=list)
+    guesses: Mapped[list] = mapped_column(JSONB_VARIANT, nullable=False, default=list)
     solved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -453,7 +476,7 @@ class DailyChallengeDay(Base):
     date: Mapped[dt_date] = mapped_column(Date, primary_key=True)
     slate: Mapped[str] = mapped_column(Text, primary_key=True)
     template_id: Mapped[str] = mapped_column(Text, nullable=False)
-    goals: Mapped[list] = mapped_column(_JSONB, nullable=False)
+    goals: Mapped[list] = mapped_column(JSONB_VARIANT, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

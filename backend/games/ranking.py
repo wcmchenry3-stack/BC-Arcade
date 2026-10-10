@@ -18,7 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Game
-from games.board import Direction
+from games.board import FINAL_TIEBREAK, Direction
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def beats(expr: ColumnElement, value: Any, direction: Direction) -> ColumnElemen
     return expr > value if direction == "desc" else expr < value
 
 
-async def compute_rank(
+async def compute_rank(  # noqa: PLR0913 - keyword-only args describing one rank query
     db: AsyncSession,
     *,
     metric: ColumnElement,
@@ -52,14 +52,16 @@ async def compute_rank(
     any NULL coalescing), so the rank always agrees with the listed order.
     Raises a clean 500 on a DB error.
     """
-    last_tie = and_(metric == value, Game.completed_at < completed_at)
+    # Same direction the board orders ``completed_at`` by (``FINAL_TIEBREAK``).
+    earlier = beats(Game.completed_at, completed_at, FINAL_TIEBREAK[1])
+    last_tie = and_(metric == value, earlier)
     if tiebreak is not None:
         tb_expr, tb_dir, tb_value = tiebreak
         last_tie = and_(
             metric == value,
             or_(
                 beats(tb_expr, tb_value, tb_dir),
-                and_(tb_expr == tb_value, Game.completed_at < completed_at),
+                and_(tb_expr == tb_value, earlier),
             ),
         )
     try:

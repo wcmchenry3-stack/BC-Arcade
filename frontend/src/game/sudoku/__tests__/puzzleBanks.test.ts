@@ -4,7 +4,7 @@
  * because saved games and `loadPuzzle`'s index pick refer to it.
  *
  * If this fails after regenerating puzzles.json or puzzles_mini.json, re-run
- * `npx tsx scripts/pack-sudoku-puzzles.ts` from the repo root.
+ * `npx tsx tools/generators/pack-sudoku-puzzles.ts` from the repo root.
  */
 
 import classicJson from "../puzzles.json";

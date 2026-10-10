@@ -49,12 +49,17 @@ Usage
 
 from __future__ import annotations
 
-import argparse
-import json
 import sys
 import time
-from collections.abc import Iterator
-from pathlib import Path
+
+from _cardlib import (
+    DECK_SIZE,
+    RANKS,
+    fisher_yates,
+    lcg,
+    seed_bank_argparser,
+    write_seed_bank,
+)
 
 # ---------------------------------------------------------------------------
 # Card encoding
@@ -66,9 +71,6 @@ from pathlib import Path
 # color: 0=black (spades=0, clubs=3), 1=red (hearts=1, diamonds=2)
 # EMPTY (free-cell slot unoccupied): -1
 
-SUITS = ("spades", "hearts", "diamonds", "clubs")
-RANKS = tuple(range(1, 14))
-DECK_SIZE = 52
 TABLEAU_COLUMNS = 8
 FREE_CELLS = 4
 EMPTY = -1
@@ -95,34 +97,14 @@ def _card_rank(cid: int) -> int:
     return _CARD_RANK[cid]
 
 
-def _card_color(cid: int) -> int:
-    return _CARD_COLOR[cid]
-
-
 # ---------------------------------------------------------------------------
 # LCG + deal — mirrors frontend/src/game/freecell/engine.ts exactly
 # ---------------------------------------------------------------------------
 
 
-def lcg(seed: int) -> Iterator[float]:
-    """LCG matching createSeededRng in engine.ts. Yields floats in [0, 1)."""
-    state = seed & 0xFFFFFFFF
-    while True:
-        state = (1664525 * state + 1013904223) & 0xFFFFFFFF
-        yield state / 4294967296
-
-
 def fresh_deck() -> list[int]:
     """52 card IDs in canonical suit×rank order (suits outer, ranks inner)."""
     return [si * 13 + (r - 1) for si in range(4) for r in RANKS]
-
-
-def fisher_yates(deck: list[int], rng: Iterator[float]) -> list[int]:
-    """In-place Fisher-Yates matching the TS engine's direction and index math."""
-    for i in range(len(deck) - 1, 0, -1):
-        j = int(next(rng) * (i + 1))
-        deck[i], deck[j] = deck[j], deck[i]
-    return deck
 
 
 # State tuple layout:
@@ -278,14 +260,10 @@ def _exposes_useful(tableau: tuple, col: int, foundations: tuple) -> int:
     return 0
 
 
-def _legal_moves(state: FCState) -> list[tuple]:
+def _foundation_moves(state: FCState) -> list[tuple]:
+    """Phase 1: tableau/freecell -> foundation (always all - always progress)."""
     foundations, tableau, freecells = state
     moves: list[tuple] = []
-
-    empty_fc = next((i for i, c in enumerate(freecells) if c == EMPTY), None)
-    first_empty_col = next((i for i, c in enumerate(tableau) if not c), None)
-
-    # 1. Foundation moves (always generate all — always good progress).
     for col in range(TABLEAU_COLUMNS):
         if not tableau[col]:
             continue
@@ -296,6 +274,13 @@ def _legal_moves(state: FCState) -> list[tuple]:
         cid = freecells[fc]
         if cid != EMPTY and foundations[_card_suit(cid)] == _card_rank(cid) - 1:
             moves.append(("ff", fc))
+    return moves
+
+
+def _stack_moves(state: FCState) -> list[tuple]:
+    """Phases 2-3: freecell -> non-empty tableau, then tableau -> non-empty tableau."""
+    _, tableau, freecells = state
+    moves: list[tuple] = []
 
     # 2. Freecell → non-empty tableau (always generate — frees up freecells).
     for fc in range(FREE_CELLS):
@@ -314,43 +299,69 @@ def _legal_moves(state: FCState) -> list[tuple]:
         for dst in range(TABLEAU_COLUMNS):
             if dst != src and tableau[dst] and _can_stack(cid, tableau[dst][-1]):
                 moves.append(("tt", src, dst))
+    return moves
+
+
+def _empty_column_moves(state: FCState) -> list[tuple]:
+    """Phases 4-5: freecell / tableau top -> the first empty column."""
+    _, tableau, freecells = state
+    moves: list[tuple] = []
+    first_empty_col = next((i for i, c in enumerate(tableau) if not c), None)
+    if first_empty_col is None:
+        return moves
 
     # 4. Freecell → first empty column (canonical: all empty cols are equivalent).
-    if first_empty_col is not None:
-        for fc in range(FREE_CELLS):
-            if freecells[fc] != EMPTY:
-                moves.append(("fct", fc, first_empty_col))
+    for fc in range(FREE_CELLS):
+        if freecells[fc] != EMPTY:
+            moves.append(("fct", fc, first_empty_col))
 
     # 5. Tableau top → first empty column.
-    if first_empty_col is not None:
-        for src in range(TABLEAU_COLUMNS):
-            if src == first_empty_col or not tableau[src]:
-                continue
-            # Only generate if src column has more than one card — moving
-            # a single card to an empty col produces a canonically equivalent
-            # state (sorted columns) that the transposition table will
-            # immediately prune when popped.
-            if len(tableau[src]) > 1:
-                moves.append(("tt", src, first_empty_col))
-
-    # 6. Tableau → freecell (last resort). Score each candidate and only
-    #    emit the top _TFC_LIMIT to avoid exponential branching on positions
-    #    where no better move is available.
-    if empty_fc is not None:
-        scored: list[tuple[int, tuple]] = []
-        for col in range(TABLEAU_COLUMNS):
-            if not tableau[col]:
-                continue
-            expose_score = _exposes_useful(tableau, col, foundations)
-            # Prefer parking higher-rank cards: they stay on freecell longer
-            # before returning to foundation, so they're less "valuable" to
-            # keep accessible than low-rank cards.
-            rank_score = _card_rank(tableau[col][-1])
-            scored.append((expose_score * 100 + rank_score, ("tfc", col, empty_fc)))
-        scored.sort(reverse=True)
-        moves.extend(m for _, m in scored[:_TFC_LIMIT])
-
+    for src in range(TABLEAU_COLUMNS):
+        if src == first_empty_col or not tableau[src]:
+            continue
+        # Only generate if src column has more than one card — moving
+        # a single card to an empty col produces a canonically equivalent
+        # state (sorted columns) that the transposition table will
+        # immediately prune when popped.
+        if len(tableau[src]) > 1:
+            moves.append(("tt", src, first_empty_col))
     return moves
+
+
+def _freecell_parking_moves(state: FCState) -> list[tuple]:
+    """Phase 6: tableau -> freecell (last resort).
+
+    Score each candidate and only emit the top ``_TFC_LIMIT`` to avoid
+    exponential branching on positions where no better move is available.
+    """
+    foundations, tableau, freecells = state
+    empty_fc = next((i for i, c in enumerate(freecells) if c == EMPTY), None)
+    if empty_fc is None:
+        return []
+    scored: list[tuple[int, tuple]] = []
+    for col in range(TABLEAU_COLUMNS):
+        if not tableau[col]:
+            continue
+        expose_score = _exposes_useful(tableau, col, foundations)
+        # Prefer parking higher-rank cards: they stay on freecell longer
+        # before returning to foundation, so they're less "valuable" to
+        # keep accessible than low-rank cards.
+        rank_score = _card_rank(tableau[col][-1])
+        scored.append((expose_score * 100 + rank_score, ("tfc", col, empty_fc)))
+    scored.sort(reverse=True)
+    return [m for _, m in scored[:_TFC_LIMIT]]
+
+
+def _legal_moves(state: FCState) -> list[tuple]:
+    # Ordering is load-bearing: the priority order below (foundation, stack,
+    # empty column, park) is what keeps the solver fast on winnable deals.
+    # Do not reorder the concatenation.
+    return (
+        _foundation_moves(state)
+        + _stack_moves(state)
+        + _empty_column_moves(state)
+        + _freecell_parking_moves(state)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -578,27 +589,17 @@ def _generate_parallel(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = seed_bank_argparser(
+        "freecell",
+        description=__doc__,
+        max_attempts=3_000,
+        max_attempts_help="Hard cap on seeds tested before giving up. With 50%% solver "
+        "pass-rate and 4 workers, 3000 attempts fits well inside the 5-minute "
+        "wall-clock target.",
+        state_budget=200_000,
+        state_budget_help="Max distinct states explored per seed.",
+    )
     parser.add_argument("--count", type=int, default=500)
-    parser.add_argument(
-        "--start-seed",
-        type=int,
-        default=1,
-        help="First seed to test. Re-running with the same value produces the same bank.",
-    )
-    parser.add_argument(
-        "--max-attempts",
-        type=int,
-        default=3_000,
-        help="Hard cap on seeds tested before giving up. With 50%% solver pass-rate and "
-        "4 workers, 3000 attempts fits well inside the 5-minute wall-clock target.",
-    )
-    parser.add_argument(
-        "--state-budget",
-        type=int,
-        default=200_000,
-        help="Max distinct states explored per seed.",
-    )
     parser.add_argument(
         "--limit-seconds",
         type=float,
@@ -612,17 +613,6 @@ def main() -> int:
         default=4,
         help="Parallel worker processes (0 = auto = cpu_count). Use 1 for serial mode.",
     )
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=Path(__file__).resolve().parents[2]
-        / "frontend"
-        / "src"
-        / "game"
-        / "freecell"
-        / "seeds.json",
-    )
-    parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
     import os
@@ -649,15 +639,7 @@ def main() -> int:
             file=sys.stderr,
         )
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        json.dumps({"seeds": seeds}, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    print(
-        f"Wrote {len(seeds)} seeds to {args.output} in {elapsed:.1f}s",
-        file=sys.stderr,
-    )
+    write_seed_bank(args.output, {"seeds": seeds}, f"{len(seeds)} seeds", elapsed)
     return 0
 
 

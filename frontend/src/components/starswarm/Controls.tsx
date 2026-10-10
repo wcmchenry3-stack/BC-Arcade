@@ -5,7 +5,15 @@ import * as Haptics from "expo-haptics";
 import * as Sentry from "@sentry/react-native";
 import { useTranslation } from "react-i18next";
 import type { GameCanvasHandle } from "./GameCanvas";
-import { CANVAS_W, CANVAS_H, PLAYER_W } from "../../game/starswarm/engine";
+import { CANVAS_W, CANVAS_H } from "../../game/starswarm/engine";
+import { applyDrag, clamp, DRAG_MAX_X, DRAG_MIN_X } from "../../game/starswarm/drag";
+import {
+  STARSWARM_ACCENT,
+  STARSWARM_PAUSE_LINK_BORDER,
+  STARSWARM_PAUSE_LINK_TEXT,
+  STARSWARM_PAUSE_SCRIM,
+  STARSWARM_SPACE,
+} from "../../theme/theme.starswarm";
 
 const DRAG_ZONE_Y_RATIO = 0.6; // bottom 40% is the drag zone
 
@@ -20,9 +28,8 @@ interface Props {
   onNewGame: () => void;
 }
 
-function clamp(v: number, lo: number, hi: number) {
-  return Math.max(lo, Math.min(hi, v));
-}
+/** How far (px) the ship may sit from this drag's last command before it counts as moved. */
+const SHIP_MOVED_EPSILON_PX = 0.5;
 
 export default function Controls({
   canvasRef,
@@ -85,20 +92,26 @@ export default function Controls({
       // keeps its commanded X on the autopilot's) so control resumes from where the ship is
       // instead of snapping back under the finger. The wave change is what triggers the
       // re-anchor, so it works whether or not any move arrived during the extraction.
+      // #3132: an extraction can also hand control back within the same wave (salvage while
+      // the ship still holds its lane), so the drag also re-anchors whenever the ship isn't
+      // where this drag last put it: something else moved it.
       const handle = canvasRef.current;
       const state = handle?.getState();
       if (state?.phase === "Extraction") return;
-      if (state && anchorWaveRef.current !== null && state.wave !== anchorWaveRef.current) {
+      const shipX = handle?.getPlayerX?.() ?? state?.player.x;
+      const waveChanged =
+        !!state && anchorWaveRef.current !== null && state.wave !== anchorWaveRef.current;
+      const movedElsewhere =
+        shipX !== undefined && Math.abs(shipX - playerXRef.current) > SHIP_MOVED_EPSILON_PX;
+      if (state && shipX !== undefined && (waveChanged || movedElsewhere)) {
         anchorWaveRef.current = state.wave;
-        const shipX = handle?.getPlayerX?.() ?? state.player.x;
         shipXAtDragStartRef.current = shipX - e.translationX / scale;
       }
-      const hw = PLAYER_W / 2;
-      const rawX = shipXAtDragStartRef.current + e.translationX / scale;
-      const newX = clamp(rawX, hw, CANVAS_W - hw);
+      const dragStart = shipXAtDragStartRef.current;
+      const { rawX, newX, nextDragStart } = applyDrag(dragStart, e.translationX, scale);
       // Re-anchor so any reversal immediately moves the ship instead of replaying the overshoot.
+      shipXAtDragStartRef.current = nextDragStart;
       if (rawX !== newX) {
-        shipXAtDragStartRef.current = newX - e.translationX / scale;
         // Breadcrumb so Sentry captures boundary-overshoot context for any surrounding errors.
         // Throttled to once per second — pan events fire at 60 fps and would flood the trail.
         const now = Date.now();
@@ -143,8 +156,7 @@ export default function Controls({
       if (held.size > 0) {
         const dx = (held.has("ArrowRight") ? STEP : 0) - (held.has("ArrowLeft") ? STEP : 0);
         if (dx !== 0) {
-          const hw = PLAYER_W / 2;
-          playerXRef.current = clamp(playerXRef.current + dx, hw, CANVAS_W - hw);
+          playerXRef.current = clamp(playerXRef.current + dx, DRAG_MIN_X, DRAG_MAX_X);
           canvasRef.current?.setPlayerX(playerXRef.current);
         }
       }
@@ -227,12 +239,12 @@ const styles = StyleSheet.create({
   },
   pauseOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0, 0, 16, 0.72)",
+    backgroundColor: STARSWARM_PAUSE_SCRIM,
     alignItems: "center",
     justifyContent: "center",
   },
   pauseTitle: {
-    color: "#00ffcc",
+    color: STARSWARM_ACCENT,
     fontSize: 26,
     fontWeight: "bold",
     letterSpacing: 3,
@@ -242,12 +254,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 14,
     borderRadius: 8,
-    backgroundColor: "#00ffcc",
+    backgroundColor: STARSWARM_ACCENT,
     minWidth: 180,
     alignItems: "center",
   },
   pauseResumeBtnText: {
-    color: "#000010",
+    color: STARSWARM_SPACE,
     fontWeight: "bold",
     fontSize: 16,
     letterSpacing: 1,
@@ -256,14 +268,14 @@ const styles = StyleSheet.create({
     marginTop: 20,
     backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.35)",
+    borderColor: STARSWARM_PAUSE_LINK_BORDER,
     paddingHorizontal: 18,
     paddingVertical: 7,
     minWidth: 180,
     alignItems: "center",
   },
   pauseNewGameBtnText: {
-    color: "rgba(255,255,255,0.55)",
+    color: STARSWARM_PAUSE_LINK_TEXT,
     fontSize: 12,
     fontWeight: "normal",
     letterSpacing: 0,
@@ -272,10 +284,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 14,
     borderRadius: 8,
-    backgroundColor: "#00ffcc",
+    backgroundColor: STARSWARM_ACCENT,
   },
   newGameBtnText: {
-    color: "#000010",
+    color: STARSWARM_SPACE,
     fontWeight: "bold",
     fontSize: 16,
     letterSpacing: 1,

@@ -54,7 +54,7 @@ Readiness Gate" (security requirements this must satisfy).
 The catalog lives in one file:
 [`frontend/src/entitlements/premiumProducts.json`](../frontend/src/entitlements/premiumProducts.json),
 wrapped by `premiumProducts.ts` (`PREMIUM_PRODUCTS`, `PremiumGameSlug`,
-`isPremiumGameSlug`, `productIdForGame`, `gameForProductId`).
+`isPremiumGameSlug`).
 
 | Game       | `game_types.name` (slug) | Product ID                               | Store type (Apple / Google)             |
 | ---------- | ------------------------ | ---------------------------------------- | --------------------------------------- |
@@ -73,10 +73,10 @@ wrapped by `premiumProducts.ts` (`PREMIUM_PRODUCTS`, `PremiumGameSlug`,
   the convention.
 - `backend/tests/test_premium_products.py` — the catalog equals the
   `game_types.is_premium` rows after migrations (read straight from the table,
-  so an inactive premium game still counts) and `_ALL_PREMIUM_SLUGS`.
+  so an inactive premium game still counts) and `ALL_PREMIUM_SLUGS`.
 
 So a tier change (a migration flipping `is_premium`) fails CI until the catalog
-changes with it. #2460 still owns folding `_ALL_PREMIUM_SLUGS` into a query.
+changes with it. #2460 still owns folding `ALL_PREMIUM_SLUGS` into a query.
 
 **The backend does not read the JSON at runtime** (the Render service is built
 from `backend/` only). #840 derives the product ID from the slug with the same
@@ -524,7 +524,8 @@ the webhook handler, so dedupe and ordering are the same. A notification from
 a disallowed environment counts as ignored, not failed. A payload that fails
 verification is counted and skipped; an API error ends that environment's run
 and the next run retries. It runs **in-process** at startup and then every
-24 h (`main.py` lifespan, like the Daily Word retention task), only when the
+24 h (`jobs/lifespan.py` via `main.py`'s lifespan, a `PeriodicJob` like the
+Daily Word retention task), only when the
 database, Apple verification **and** the API key are configured. Several
 instances running it at once are harmless (dedupe). Manual run, from
 `backend/` in a Render shell: `python scripts/apple_replay_notifications.py
@@ -533,6 +534,20 @@ instances running it at once are harmless (dedupe). Manual run, from
 **Environments.** `APPLE_IAP_ENVIRONMENTS` (default `Production,Sandbox`,
 §6.4) decides which verifiers and API clients exist; the service checks the
 verified environment again before writing. Production needs `APPLE_APP_ID`.
+
+**Files (as built).** Under `backend/purchases/`:
+
+| File                     | What it holds                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `apple.py`               | `appAccountToken`, the unverified store-key parse for rate limits, the cached verifier and its FastAPI dependency |
+| `apple_store.py`         | `load_config`, `AppStoreVerifier` (JWS chain checks, Get Transaction Info), `build_from_env`           |
+| `apple_notifications.py` | the ASSN v2 webhook handler, the notification-history replay and its `apple_replay_job` (`PeriodicJob`) |
+| `_common.py`             | helpers shared with Google (#2998): `get_settings()` (lazy `Settings`), `misconfigured(platform, reason)`, `ms_to_datetime`, `log_event` |
+| `certs/`                 | the bundled Apple Root CA - G3                                                                         |
+
+Tests: `tests/test_apple_store.py`, `tests/test_apple_notifications.py`
+(shared helpers in `tests/_apple_iap_harness.py` and `tests/apple_jws.py`).
+Manual replay: `scripts/apple_replay_notifications.py`.
 
 **Owner steps before this does anything.** Create the five Non-Consumables
 (§2, §17 store setup); create an In-App Purchase key (App Store Connect →
@@ -856,8 +871,8 @@ and recorded revoked; a token Play does not know is skipped. An API error
 ends the run; the next run retries.
 
 **Jobs.** The voided poll and the acknowledgement sweep run **in-process** at
-startup and then every 24 h (`main.py` lifespan, `run_google_jobs_loop`,
-with injectable `sleep` and `clock`), only when the database and Google are
+startup and then every 24 h (`jobs/lifespan.py` via `main.py`'s lifespan,
+`google_jobs_job`, with an injectable `clock`; `PeriodicJob.loop` takes the `sleep`), only when the database and Google are
 configured. Several instances running them at once are harmless (dedupe;
 acknowledgement is idempotent). Manual run, from `backend/` in a Render
 shell: `python scripts/google_play_jobs.py` (voided last 48 h, then the
@@ -942,11 +957,29 @@ there for free; keep `production,test` on the dev / purchase-testing backend
 environment.
 
 **Delete My Data (§8.5).** Store-agnostic and verified for Google
-(`tests/test_google_iap.py`): `DELETE /me` removes the install's
+(`tests/test_google_play.py`): `DELETE /me` removes the install's
 `purchase_links` and `game_entitlements` and keeps the Google `purchases` row
 (token, order ID, `account_token`, dates, state) and its `purchase_events`.
 Restore on a fresh install re-links, and erase-and-restore churn still hits
 `409 link_limit`, because the caps count retained `linked` events.
+
+**Files (as built).** Under `backend/purchases/` (the old 813-line
+`google_notifications.py` was split three ways in #2998):
+
+| File                  | What it holds                                                                                              |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `google.py`           | `obfuscatedAccountId`, the cached runtime (`configured_runtime`) and the verifier's FastAPI dependency      |
+| `google_play.py`      | `load_config`, service-account tokens, `PlayApi`, `to_verified` (`_line_item`, `_state_and_event_time`, `_environment`), `PlayVerifier` |
+| `google_push_auth.py` | `GoogleJwks`, `PushAuthenticator` (Pub/Sub OIDC) and `GoogleRuntime` / `build_runtime` / `build_from_env`   |
+| `google_rtdn.py`      | `parse_push`, `handle_developer_notification` and the one-time / voided notification handling              |
+| `google_jobs.py`      | `poll_voided_purchases`, `acknowledge_sweep`, `run_google_jobs` and `google_jobs_job` (`PeriodicJob`)       |
+| `_common.py`          | helpers shared with Apple: `get_settings()` (lazy `Settings`), `misconfigured(platform, reason)`, `ms_to_datetime`, `log_event`      |
+
+Tests, one file per module: `tests/test_google_play.py`,
+`tests/test_google_push_auth.py`, `tests/test_google_rtdn.py`,
+`tests/test_google_jobs.py` (shared harness in `tests/_google_iap_harness.py`,
+fakes in `tests/google_play_fakes.py`). Manual run:
+`scripts/google_play_jobs.py`.
 
 **Owner steps before this does anything.** Create the five one-time products
 (§2); link the service account with the two permissions above; set the four
@@ -1163,7 +1196,7 @@ signed JWS fixture made with a test CA for the verifier.
 | `POST /purchases/apple`, `/google`      | `purchases/router.py`, `purchases/schemas.py`                   |
 | Account tokens, Apple store-key parse   | `purchases/apple.py`, `purchases/google.py`                     |
 | Verifier interface and defaults         | `purchases/verifiers.py`                                        |
-| Admin `PATCH is_premium` guard (§13)    | `games/service.py` `patch_game_type`                            |
+| Admin `PATCH is_premium` guard (§13)    | `games/catalog.py` `patch_game_type`                          |
 | Tests                                   | `tests/test_purchases.py`, `tests/test_purchases_migration.py`, `tests/test_entitlement_lookup_perf.py` |
 
 **Verifier interface.** The service never calls a store. The routes get a
@@ -1222,7 +1255,9 @@ Tests override the dependencies with fakes.
   request started verifying, before the store call. See "Event ordering".
 - **Environment allow-list.** `purchases.verifiers.allowed_environments()`
   reads `APPLE_IAP_ENVIRONMENTS` (default `Production,Sandbox`) and
-  `GOOGLE_PLAY_ENVIRONMENTS` (default `production,test`). The verifiers must
+  `GOOGLE_PLAY_ENVIRONMENTS` (default `production,test`; empty means the
+  default) through the lazy `Settings` in `purchases/_common.py`, once per
+  process: a change needs a restart. The verifiers must
   apply it before any store call (§6.2 step 1); `process_verified_purchase`
   checks it again on the verified answer and returns `422
   environment_not_allowed` before writing anything, whatever a verifier
@@ -1360,7 +1395,7 @@ credentials the verifier makes a store call (Get Transaction Info).
 
 Applies to **both** stores through the same store-agnostic `DELETE /me` code
 path. Apple since #2786; Google verified by #2787's tests
-(`tests/test_google_iap.py`: links removed, `purchases` and
+(`tests/test_google_play.py`: links removed, `purchases` and
 `purchase_events` kept, churn still capped).
 
 **What `DELETE /me` deletes** (`backend/me/router.py`), in addition to the

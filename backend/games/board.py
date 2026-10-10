@@ -5,7 +5,7 @@ Each ``GameModule`` declares how its game is ranked in one place, its
 ``frontend/src/api/vocab.ts``) and the docs all read that declaration instead
 of per-game leaderboard code.
 
-This module only declares. ``games/leaderboard.py`` ranks boards, looks up
+This module only declares. ``games/boards/`` ranks boards, looks up
 ranks and enforces the caps from these definitions (#2618); stats read them
 from #2620.
 
@@ -56,6 +56,12 @@ from vocab import GameOutcome
 Direction = Literal["asc", "desc"]
 """``desc``: higher is better. ``asc``: lower is better (e.g. FreeCell moves)."""
 
+RankReason = Literal["no_name", "not_finished", "not_rankable", "board_disabled"]
+"""Why ``GET /games/{id}/rank`` has no rank (``games.boards.queries.game_rank``).
+
+Declared here, with no heavy imports, so ``games/schemas.py`` can reuse it in
+the response model without importing the query layer (#2992)."""
+
 SCORE_METRIC = "final_score"
 """The ``games.final_score`` column."""
 
@@ -105,7 +111,7 @@ class BoardDefinition(BaseModel):
         ``(partition key, allowed values)`` pairs: the only values that key
         has a board for, e.g. Star Swarm's ten difficulty tiers. A row with
         another value is stored but never ranks (``_unrankable_reason`` in
-        ``games/leaderboard.py``). A key not listed accepts any value.
+        ``games/boards/queries.py``). A key not listed accepts any value.
         Every key is one of ``partitions`` and appears once; its values are
         non-empty and distinct, and its ``partition_defaults`` and
         ``partition_max_values`` values are among them. Read it with
@@ -153,7 +159,12 @@ class BoardDefinition(BaseModel):
     enabled: bool = True
 
     @model_validator(mode="after")
-    def _check_consistency(self) -> BoardDefinition:
+    def _check_consistency(self) -> BoardDefinition:  # noqa: C901, PLR0912  # see #2951
+        if self.metric not in COLUMN_METRICS and not self.metric.isidentifier():
+            # A metadata metric is read with ``db.jsonx.json_number``, which embeds the
+            # key in a JSON path and accepts identifiers only. Fail here, at definition
+            # time, not at request time inside the cached stats expression (#2996).
+            raise ValueError(f"metadata metric must be an identifier, not {self.metric!r}")
         if len(set(self.partitions)) != len(self.partitions):
             raise ValueError(f"duplicate partition keys: {self.partitions}")
 

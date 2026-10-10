@@ -14,13 +14,28 @@ Real Postgres is still used when DATABASE_URL is provided externally
 
 from __future__ import annotations
 
+import functools
 import os
-import subprocess
-import sys
 import tempfile
+import uuid
+from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+# Shared helper modules (#2955) are imported by test modules for plain helpers; the IAP
+# harnesses are also registered through ``pytest_plugins`` for their fixtures. Mark them for
+# assertion rewriting before either happens, so their asserts get pytest's introspection and
+# pytest does not warn that they were imported before they could be rewritten.
+pytest.register_assert_rewrite(
+    "tests._helpers", "tests._google_iap_harness", "tests._apple_iap_harness"
+)
+
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
+
+    from tests._migration_helpers import Alembic
 
 _TEST_DB_FILE: Path | None = None
 
@@ -56,18 +71,9 @@ def pytest_configure(config: pytest.Config) -> None:
 
     # Run alembic upgrade head using the sync sqlite URL (env.py strips the
     # +aiosqlite driver). We invoke the CLI so the stock alembic.ini loads.
-    from tests._alembic_heads import BACKEND
+    from tests._migration_helpers import run_alembic
 
-    env = os.environ.copy()
-    env["DATABASE_URL"] = f"sqlite:///{db_path}"
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
-        cwd=BACKEND,
-        env=env,
-        check=False,  # handled below, with Alembic's stderr in the message
-        capture_output=True,
-        text=True,
-    )
+    result = run_alembic(db_path, "upgrade", "head", check=False)
     if result.returncode != 0:
         # The output is captured, so without this a failing migration shows
         # only an exit status. Stop the run with Alembic's own error.
@@ -127,6 +133,65 @@ def reset_rate_limiter():
 
 
 @pytest.fixture(autouse=True)
+def _reset_entitlement_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Rebuild entitlements.service's lazy ``Settings`` per test, so an env var a test
+    sets before the first build cannot leak into later tests. (The key cache stays.)"""
+    from entitlements import service
+
+    monkeypatch.setattr(service, "_settings", None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_purchases_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Rebuild purchases._common's lazy ``Settings`` per test (the APPLE_* / GOOGLE_*
+    store config), so an env var a test sets before the first build cannot leak."""
+    from purchases import _common
+
+    monkeypatch.setattr(_common, "_settings", None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_tunable_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Rebuild the lazy ``Settings`` of the modules that read an operational tunable
+    (#3110), so an env var or an injected ``Settings`` cannot leak between tests."""
+    from daily_challenge import streak
+    from games import sessions, sweep
+    from routes import health
+
+    for module in (streak, sessions, sweep, health):
+        monkeypatch.setattr(module, "_settings", None)
+
+
+@pytest.fixture
+def store_env() -> Iterator[pytest.MonkeyPatch]:
+    """A MonkeyPatch whose setenv / delenv also rebuild purchases._common's lazy
+    ``Settings`` (``tests/_helpers.StoreEnv``), for tests that set APPLE_* / GOOGLE_*."""
+    from tests._helpers import StoreEnv
+
+    env = StoreEnv()
+    yield env
+    env.undo()
+
+
+@pytest.fixture(autouse=True)
+def _reset_process_caches():
+    """Drop the process-level caches (#2966) around each test.
+
+    The catalog cache holds ``game_types`` / ``event_types`` for 60 s and the
+    sweep gate remembers when each session last swept, so a test that changes
+    those tables directly, or backdates rows, must not see an earlier test's
+    snapshot.
+    """
+    from games import catalog_cache, sweep_gate
+
+    catalog_cache.invalidate()
+    sweep_gate.clear()
+    yield
+    catalog_cache.invalidate()
+    sweep_gate.clear()
+
+
+@pytest.fixture(autouse=True)
 async def _clean_db_tables():
     """Truncate DB state between tests so ordering doesn't matter.
 
@@ -158,3 +223,44 @@ async def _clean_db_tables():
         ):
             await conn.execute(text(f"DELETE FROM {table}"))
     yield
+
+
+# ---------------------------------------------------------------------------
+# Shared fixtures (#2953). Fixtures resolve by name, so a test file only has to
+# not define its own. A file that needs a *different* shape (no lifespan, no
+# Content-Type header, ...) keeps a local definition, which overrides these.
+# Plain helpers (``session_headers``) live in ``tests/_helpers.py``.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def client() -> Iterator[TestClient]:
+    """The app under ``TestClient`` with its lifespan running, against the test DB.
+
+    ``pytest_configure`` guarantees ``DATABASE_URL``, so no configured-check here.
+    """
+    from fastapi.testclient import TestClient
+
+    from main import app
+
+    with TestClient(app) as c:
+        yield c
+
+
+@pytest.fixture()
+def session_id() -> str:
+    return str(uuid.uuid4())
+
+
+@pytest.fixture()
+def migration_db_path(tmp_path: Path) -> Path:
+    """A scratch SQLite path for a migration test (created by the first alembic run)."""
+    return tmp_path / "migration.db"
+
+
+@pytest.fixture()
+def alembic(migration_db_path: Path) -> Alembic:
+    """``alembic(*args)`` bound to ``migration_db_path``: ``alembic("upgrade", rev)``."""
+    from tests._migration_helpers import run_alembic
+
+    return functools.partial(run_alembic, migration_db_path)

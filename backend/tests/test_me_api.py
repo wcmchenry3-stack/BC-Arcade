@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import (
     BugLog,
     DailyWordProgress,
@@ -21,25 +20,12 @@ from db.models import (
     PurchaseEvent,
     PurchaseLink,
 )
+from tests._helpers import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping live API tests",
 )
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-@pytest.fixture()
-def session_id() -> str:
-    return str(uuid.uuid4())
 
 
 @pytest.fixture()
@@ -60,7 +46,7 @@ async def _seed_bug_log(session_id: str) -> None:
         db.add(
             BugLog(
                 session_id=session_id,
-                logged_at=datetime.now(timezone.utc),
+                logged_at=datetime.now(UTC),
                 level="warn",
                 source="test",
                 message="test bug log",
@@ -78,10 +64,6 @@ async def _count_entitlements(session_id: str) -> int:
             .where(GameEntitlement.session_id == session_id)
         )
         return result.scalar_one()
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 @pytest.fixture(autouse=True)
@@ -217,7 +199,7 @@ async def test_delete_me_removes_purchase_links_but_keeps_store_records(
     The `purchases` row and its `purchase_events` are the store's transaction
     record and stay; the other install's link and entitlement are untouched.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     factory = get_session_factory()
     async with factory() as db:
         purchase = Purchase(

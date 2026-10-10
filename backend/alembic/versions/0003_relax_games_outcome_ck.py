@@ -14,7 +14,7 @@ though every one of their frontend screens emits that vocabulary.
 
 #514 documented the symptom (PATCH /games/:id/complete → 400). Prior to
 this migration the 400 was raised by the Pydantic/application validator
-in `games/service.py:_VALID_OUTCOMES`; under the same migration the DB
+in `games/sessions.py:_VALID_OUTCOMES`; under the same migration the DB
 constraint would also have rejected the write. This migration and the
 companion `_VALID_OUTCOMES` expansion bring both layers in line with the
 vocabulary the frontends actually use.

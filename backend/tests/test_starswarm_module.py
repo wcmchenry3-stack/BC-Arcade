@@ -12,7 +12,7 @@ import copy
 import json
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -26,9 +26,9 @@ from db.models import GameType as GameTypeRow
 from games.board import SCORE_METRIC
 from games.protocol import GameModule
 from games.registry import get_module
-from games.service import _MAX_RESULT_BYTES
+from games.sessions import _max_result_bytes
 from main import app
-from starswarm import models as starswarm_models
+from observability import report
 from starswarm.models import (
     DEFAULT_DIFFICULTY_TIER,
     DIFFICULTY_TIERS,
@@ -36,6 +36,7 @@ from starswarm.models import (
     StarSwarmResult,
 )
 from starswarm.module import module as starswarm_module
+from tests._helpers import session_headers as _headers
 from vocab import GameType
 
 client = TestClient(app)
@@ -44,10 +45,10 @@ _CLIENT_DIR = Path(__file__).parents[2] / "frontend" / "src" / "game" / "starswa
 
 
 def _engine_tiers() -> list[str]:
-    """``DIFFICULTY_TIERS`` in ``engine.ts``: the tiers the picker offers, in order."""
-    source = (_CLIENT_DIR / "engine.ts").read_text(encoding="utf-8")
+    """``DIFFICULTY_TIERS`` in ``engine/tuning.ts``: the tiers the picker offers, in order."""
+    source = (_CLIENT_DIR / "engine" / "tuning.ts").read_text(encoding="utf-8")
     match = re.search(r"export const DIFFICULTY_TIERS\b[^=]*=\s*\[(.*?)\];", source, re.DOTALL)
-    assert match, "DIFFICULTY_TIERS not found in frontend/src/game/starswarm/engine.ts"
+    assert match, "DIFFICULTY_TIERS not found in frontend/src/game/starswarm/engine/tuning.ts"
     return re.findall(r'"([^"]+)"', match.group(1))
 
 
@@ -61,10 +62,6 @@ def _type_tiers() -> list[str]:
 
 # Every tier the current client can send, read from the client itself.
 _TIERS = _engine_tiers()
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 # Star Swarm is premium: POST /games needs the entitlement. conftest cleans the
@@ -114,7 +111,7 @@ def test_board_is_partitioned_by_difficulty_tier() -> None:
 
 
 def test_the_allow_list_is_exactly_the_clients_tiers() -> None:
-    # engine.ts DIFFICULTY_TIERS is what the picker, the dev panel and the
+    # engine/tuning.ts DIFFICULTY_TIERS is what the picker, the dev panel and the
     # saved-difficulty restore all check against, so it is every value sent.
     assert list(DIFFICULTY_TIERS) == _engine_tiers()
     assert sorted(DIFFICULTY_TIERS) == sorted(_type_tiers())
@@ -414,7 +411,7 @@ async def _seed(score: int, name: str, meta: dict) -> None:
                 players=[],
                 final_score=score,
                 outcome="completed",
-                completed_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                completed_at=datetime(2026, 1, 1, tzinfo=UTC),
             )
         )
         await db.commit()
@@ -590,7 +587,7 @@ def test_the_apps_worst_case_breakdown_fits_the_result_limit() -> None:
         "difficulty_tier": "LieutenantCommander",
         "score_breakdown": _worst_case_breakdown(),
     }
-    assert len(json.dumps(result)) < _MAX_RESULT_BYTES
+    assert len(json.dumps(result)) < _max_result_bytes()
     assert StarSwarmResult.model_validate(result).score_breakdown is not None
 
 
@@ -705,7 +702,7 @@ def test_only_the_owner_can_read_a_runs_breakdown() -> None:
 def sentry_messages(monkeypatch) -> list[tuple[str, dict]]:
     calls: list[tuple[str, dict]] = []
     monkeypatch.setattr(
-        starswarm_models.sentry_sdk,
+        report.sentry_sdk,
         "capture_message",
         lambda message, **kw: calls.append((message, kw)),
     )

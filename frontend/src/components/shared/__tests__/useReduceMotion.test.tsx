@@ -68,4 +68,55 @@ describe("useReduceMotion", () => {
     });
     expect(remove).toHaveBeenCalledTimes(1);
   });
+
+  it("shares one OS listener, removed only when the last consumer unmounts", async () => {
+    const { remove } = captureListener();
+    // The preset's mock is shared across tests, so count only this test's calls.
+    const addListener = AccessibilityInfo.addEventListener as jest.Mock;
+    const before = addListener.mock.calls.length;
+    const r = await render(
+      <>
+        <Probe />
+        <Probe />
+      </>
+    );
+    expect(addListener.mock.calls.length - before).toBe(1);
+    await r.rerender(<Probe />);
+    expect(remove).not.toHaveBeenCalled();
+    await r.unmount();
+    expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts a later consumer from the current setting, not the launch value (#2984)", async () => {
+    const { emit } = captureListener();
+    // The later consumer's own query never answers.
+    const r = await render(<Probe />);
+    await act(async () => {});
+    await act(async () => emit(true));
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockReturnValue(new Promise(() => {}));
+    await r.rerender(
+      <>
+        <Probe />
+        <LateProbe />
+      </>
+    );
+    expect(screen.getByTestId("late").props.children).toBe("true");
+  });
+
+  it("forgets the cached setting once nothing is tracking it", async () => {
+    const { emit } = captureListener();
+    const r = await render(<Probe />);
+    await act(async () => {});
+    await act(async () => emit(true));
+    await r.unmount();
+
+    jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockReturnValue(new Promise(() => {}));
+    await render(<LateProbe />);
+    // Nothing kept the old value current, so it falls back to the launch value.
+    expect(screen.getByTestId("late").props.children).toBe("false");
+  });
 });
+
+function LateProbe() {
+  return <Text testID="late">{String(useReduceMotion())}</Text>;
+}

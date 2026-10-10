@@ -2,25 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import uuid
 
 import pytest
 from fastapi.testclient import TestClient
 
+from games import catalog_cache
+from tests._helpers import session_headers, set_admin_token
+
 _ADMIN_TOKEN = "test-admin-token-1150"
 
 
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
 @pytest.fixture(autouse=True)
-def set_admin_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ADMIN_API_TOKEN", _ADMIN_TOKEN)
+def admin_token(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    set_admin_token(client, monkeypatch, _ADMIN_TOKEN)
 
 
 def _admin_headers() -> dict[str, str]:
@@ -208,3 +203,29 @@ def test_patch_category_too_long_rejected(client: TestClient) -> None:
         headers=_admin_headers(),
     )
     assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# PATCH /games/catalog/{id} — invalidates the catalog cache (#2966)
+# ---------------------------------------------------------------------------
+
+
+def test_patch_invalidates_the_catalog_cache(client: TestClient) -> None:
+    """The tier change applies to the next request, not one cache TTL later."""
+    gid = _get_game_id(client, "twenty48")
+    headers = session_headers(str(uuid.uuid4()))
+    # Free: creating a game loads the cache with twenty48 as free.
+    assert client.post("/games", headers=headers, json={"game_type": "twenty48"}).status_code == 200
+    assert catalog_cache._snapshot is not None
+    try:
+        r = client.patch(
+            f"/games/catalog/{gid}", json={"is_premium": True}, headers=_admin_headers()
+        )
+        assert r.status_code == 200
+        assert catalog_cache._snapshot is None
+        r = client.post("/games", headers=headers, json={"game_type": "twenty48"})
+        assert r.status_code == 403
+        assert r.json()["detail"] == "not_entitled"
+    finally:
+        client.patch(f"/games/catalog/{gid}", json={"is_premium": False}, headers=_admin_headers())
+    assert client.post("/games", headers=headers, json={"game_type": "twenty48"}).status_code == 200

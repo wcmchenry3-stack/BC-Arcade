@@ -9,7 +9,13 @@
 import type { Theme } from "./ThemeContext";
 import type { Color } from "../game/sort/types";
 
-/** Liquid colors per theme, validated: ΔE₂₀₀₀ ≥ 20 for all 91 pairs, contrast ≥ 3:1 vs bg. */
+/**
+ * Liquid colors per theme, validated: ΔE₂₀₀₀ ≥ 20 for all 91 pairs, contrast ≥ 3:1 vs bg.
+ *
+ * After changing any color here, mirror it into the PROPOSED table of
+ * tools/assets/check_palette.py and run `python tools/assets/check_palette.py`
+ * (manual; no CI job runs it). See tools/README.md "Sort palette check".
+ */
 export const BOTTLE_LIQUID_COLORS: Record<Theme, Record<Color, string>> = {
   dark: {
     red: "#ff7777",
@@ -77,3 +83,7 @@ export const BOTTLE_CHECKMARK_STROKE = "#0e0e13";
 
 /** Colorblind mode symbol text color. */
 export const BOTTLE_COLORBLIND_TEXT = "rgba(0,0,0,0.65)";
+
+/** Liquid surface sheen and the pour stream's inner highlight (SortBoard). */
+export const BOTTLE_LIQUID_SHEEN = "rgba(255,255,255,0.22)";
+export const BOTTLE_STREAM_HIGHLIGHT = "rgba(255,255,255,0.4)";

@@ -4,8 +4,6 @@ import BettingPanel from "../BettingPanel";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import { DEFAULT_RULES } from "../../../game/blackjack/engine";
 
-jest.mock("@expo/vector-icons/MaterialIcons", () => "MockMaterialIcons");
-
 async function renderPanel(
   overrides: Partial<{
     chips: number;

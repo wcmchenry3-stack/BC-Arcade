@@ -7,18 +7,33 @@ import logging
 import pathlib
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from daily_word import retention
-from daily_word.retention import RETENTION, prune_expired_progress, run_retention_loop
+from daily_word.retention import RETENTION, prune_expired_progress, retention_job
 from db.base import get_session_factory
 from db.models import DailyWordProgress
+from jobs import lifespan as jobs_lifespan
+from jobs import periodic
+from observability import report
 
-NOW = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+
+
+def _use_loop(monkeypatch: pytest.MonkeyPatch, loop) -> None:
+    """Make the lifespan's retention job run ``loop`` in place of its own loop."""
+    real = jobs_lifespan.retention_job
+
+    def build():
+        job = real()
+        monkeypatch.setattr(job, "loop", loop)
+        return job
+
+    monkeypatch.setattr(jobs_lifespan, "retention_job", build)
 
 
 async def _add(session_id: str, updated_at: datetime) -> None:
@@ -71,7 +86,7 @@ def test_retention_outlasts_the_offline_sync_window() -> None:
     twice as long."""
     ttl = _offline_queue_ttl()
     assert ttl >= timedelta(days=1), f"implausible TTL parsed: {ttl}"
-    assert RETENTION >= ttl * 2, f"retention {RETENTION} is under twice the queue TTL {ttl}"
+    assert ttl * 2 <= RETENTION, f"retention {RETENTION} is under twice the queue TTL {ttl}"
 
 
 async def test_prune_deletes_only_rows_past_retention() -> None:
@@ -130,10 +145,10 @@ async def test_loop_survives_a_failed_prune_and_reports_it_once(
         return 0
 
     monkeypatch.setattr(retention, "prune_expired_progress", flaky_prune)
-    monkeypatch.setattr(retention.sentry_sdk, "capture_exception", reported.append)
+    monkeypatch.setattr(report.sentry_sdk, "capture_exception", reported.append)
 
     with caplog.at_level(logging.INFO, logger="daily_word.retention"):
-        task = asyncio.create_task(run_retention_loop(get_session_factory, interval_s=0.01))
+        task = asyncio.create_task(retention_job(get_session_factory, interval_s=0.01).loop())
         await _run_until(task, lambda: calls >= 2)
 
     assert calls >= 2, "the loop stopped after the failure"
@@ -159,10 +174,10 @@ async def test_a_stalled_prune_times_out_and_the_loop_carries_on(
         return 0
 
     monkeypatch.setattr(retention, "prune_expired_progress", stalling_prune)
-    monkeypatch.setattr(retention.sentry_sdk, "capture_exception", reported.append)
+    monkeypatch.setattr(report.sentry_sdk, "capture_exception", reported.append)
 
     task = asyncio.create_task(
-        run_retention_loop(get_session_factory, interval_s=0.01, timeout_s=0.05)
+        retention_job(get_session_factory, interval_s=0.01, timeout_s=0.05).loop()
     )
     await _run_until(task, lambda: calls >= 2)
 
@@ -184,9 +199,9 @@ async def test_a_factory_that_raises_does_not_end_the_loop(
         attempts += 1
         raise ValueError("Could not parse SQLAlchemy URL")
 
-    monkeypatch.setattr(retention.sentry_sdk, "capture_exception", reported.append)
+    monkeypatch.setattr(report.sentry_sdk, "capture_exception", reported.append)
 
-    task = asyncio.create_task(run_retention_loop(broken_factory_getter, interval_s=0.01))
+    task = asyncio.create_task(retention_job(broken_factory_getter, interval_s=0.01).loop())
     await _run_until(task, lambda: attempts >= 2)
 
     assert attempts >= 2
@@ -197,9 +212,9 @@ def test_app_starts_the_loop_and_stops_it_on_shutdown() -> None:
     import main
 
     with TestClient(main.app):
-        task = main.app.state.retention_task
+        task = main.app.state.job_tasks["daily_word_retention"]
         assert task is not None and not task.done()
-    assert main.app.state.retention_task is None
+    assert "daily_word_retention" not in main.app.state.job_tasks
     # cancelled() alone: done() would also be true for a loop that had crashed.
     assert task.cancelled()
 
@@ -212,7 +227,7 @@ def test_shutdown_does_not_wait_forever_on_a_loop_that_will_not_stop(
     CI run hung ~28 min here (#2667). Now it waits a bounded time and says so."""
     import main
 
-    async def stuck_loop(_get_session_factory, **_kw) -> None:
+    async def stuck_loop(*_a, **_kw) -> None:
         try:
             await asyncio.sleep(3600)
         except asyncio.CancelledError:
@@ -225,17 +240,17 @@ def test_shutdown_does_not_wait_forever_on_a_loop_that_will_not_stop(
             # returned, so that second cancel never came.
             await asyncio.sleep(3600)
 
-    monkeypatch.setattr(retention, "run_retention_loop", stuck_loop)
-    monkeypatch.setattr(main, "RETENTION_STOP_TIMEOUT_SECONDS", 0.1)
+    _use_loop(monkeypatch, stuck_loop)
+    monkeypatch.setattr(periodic, "STOP_TIMEOUT_S", 0.1)
 
     with caplog.at_level(logging.WARNING, logger="daily_word.retention"):
         with TestClient(main.app):
-            assert main.app.state.retention_task is not None
+            assert main.app.state.job_tasks["daily_word_retention"] is not None
             started = time.monotonic()
         elapsed = time.monotonic() - started
 
     assert elapsed < 5, f"shutdown took {elapsed:.1f}s"
-    assert main.app.state.retention_task is None
+    assert "daily_word_retention" not in main.app.state.job_tasks
     assert [r for r in caplog.records if "still running" in r.getMessage()]
 
 
@@ -249,7 +264,7 @@ def test_app_still_starts_when_the_session_factory_cannot_be_built(
     import main
 
     reported: list[BaseException] = []
-    monkeypatch.setattr(retention.sentry_sdk, "capture_exception", reported.append)
+    monkeypatch.setattr(report.sentry_sdk, "capture_exception", reported.append)
 
     def broken() -> None:
         raise ValueError("Could not parse SQLAlchemy URL")
@@ -258,5 +273,5 @@ def test_app_still_starts_when_the_session_factory_cannot_be_built(
 
     with TestClient(main.app) as client:
         assert client.get("/health").status_code == 200
-        task = main.app.state.retention_task
+        task = main.app.state.job_tasks["daily_word_retention"]
         assert task is not None and not task.done(), "the retention loop died"

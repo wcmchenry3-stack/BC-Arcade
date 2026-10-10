@@ -1,3 +1,12 @@
+/**
+ * BlackjackVictoryScreen — Goal Reached for a Blackjack run (#2507).
+ *
+ * Concerns:
+ *   1. Result — the shared ResultCard rendered inline with `useResultFeedback`, not the modal.
+ *   2. Unlocks — evaluates cosmetic unlocks for the finished run once, on mount.
+ *   3. Next step — the next table (a premium one explains its lock, #1129), keep playing,
+ *      or cash out Home; the run itself lives in `useBlackjackGame`.
+ */
 import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,6 +26,7 @@ import {
 import { formatPL, winRatePct } from "../components/scorecard/blackjackStatsModel";
 import {
   Unlock,
+  cosmeticUnlocksEnabled,
   evaluateUnlocks,
   loadUnlocks,
   mergeUnlocks,
@@ -53,6 +63,8 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
   const [newUnlocks, setNewUnlocks] = useState<Unlock[]>([]);
 
   useEffect(() => {
+    // #1911: the rewards are not applied anywhere yet, so earn and announce none of them.
+    if (!cosmeticUnlocksEnabled()) return;
     let active = true;
     async function evaluate() {
       const [runs, existing] = await Promise.all([loadRuns(), loadUnlocks()]);
@@ -134,6 +146,7 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
       title={t("blackjack:game.title")}
       requireBack
       onBack={() => navigation.popToTop()}
+      gutter={null}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}
     >
       <ScrollView

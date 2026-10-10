@@ -26,8 +26,13 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.exc import SQLAlchemyError
 
-from db.base import get_session_factory
+from db.base import DbSession
 from limiter import limiter, session_key
+from rate_limits import (
+    PLAYER_READ_RATE_LIMIT,
+    PLAYER_REROLL_RATE_LIMIT,
+    PLAYER_WRITE_RATE_LIMIT,
+)
 from session import get_session_id
 
 from . import service
@@ -36,14 +41,6 @@ from .schemas import PlayerResponse
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Keyed by session, like the games write routes.
-PLAYER_READ_RATE_LIMIT = "60/minute"
-PLAYER_WRITE_RATE_LIMIT = "10/minute"
-# On top of the write limit: rerolling is a name picker, not a stream of fresh
-# public identities (a reroll every few seconds would let one player cycle
-# through names on the boards).
-PLAYER_REROLL_RATE_LIMIT = "5/hour"
 
 
 def _db_error(what: str, detail: str, exc: SQLAlchemyError) -> HTTPException:
@@ -54,21 +51,19 @@ def _db_error(what: str, detail: str, exc: SQLAlchemyError) -> HTTPException:
 
 @router.get("/me", response_model=PlayerResponse)
 @limiter.limit(PLAYER_READ_RATE_LIMIT, key_func=session_key)
-async def get_my_player(request: Request) -> PlayerResponse:
+async def get_my_player(request: Request, db: DbSession) -> PlayerResponse:
     """The caller's generated name, or ``{"display_name": null}``."""
     sid = get_session_id(request)
-    factory = get_session_factory()
-    async with factory() as db:
-        try:
-            name = await service.get_display_name(db, sid)
-        except SQLAlchemyError as exc:
-            raise _db_error("read", "Failed to load display name.", exc) from exc
+    try:
+        name = await service.get_display_name(db, sid)
+    except SQLAlchemyError as exc:
+        raise _db_error("read", "Failed to load display name.", exc) from exc
     return PlayerResponse(display_name=name)
 
 
 @router.put("/me", response_model=PlayerResponse)
 @limiter.limit(PLAYER_WRITE_RATE_LIMIT, key_func=session_key)
-async def put_my_player(request: Request) -> PlayerResponse:
+async def put_my_player(request: Request, db: DbSession) -> PlayerResponse:
     """Join the leaderboards; returns the caller's generated name.
 
     Takes no body: a ``display_name`` sent by an older build is ignored (the
@@ -76,32 +71,28 @@ async def put_my_player(request: Request) -> PlayerResponse:
     again returns the same name and writes nothing new.
     """
     sid = get_session_id(request)
-    factory = get_session_factory()
-    async with factory() as db:
-        try:
-            name = await service.join_leaderboards(db, sid)
-            await db.commit()
-        except SQLAlchemyError as exc:
-            await db.rollback()
-            raise _db_error("write", "Failed to join leaderboards.", exc) from exc
+    try:
+        name = await service.join_leaderboards(db, sid)
+        await db.commit()
+    except SQLAlchemyError as exc:
+        await db.rollback()
+        raise _db_error("write", "Failed to join leaderboards.", exc) from exc
     return PlayerResponse(display_name=name)
 
 
 @router.post("/me/reroll", response_model=PlayerResponse)
 @limiter.limit(PLAYER_WRITE_RATE_LIMIT, key_func=session_key)
 @limiter.limit(PLAYER_REROLL_RATE_LIMIT, key_func=session_key)
-async def reroll_my_player(request: Request) -> PlayerResponse:
+async def reroll_my_player(request: Request, db: DbSession) -> PlayerResponse:
     """Give the caller a different generated name. 404 if they haven't joined."""
     sid = get_session_id(request)
-    factory = get_session_factory()
-    async with factory() as db:
-        try:
-            name = await service.reroll_display_name(db, sid)
-            if name is not None:
-                await db.commit()
-        except SQLAlchemyError as exc:
-            await db.rollback()
-            raise _db_error("reroll", "Failed to change display name.", exc) from exc
+    try:
+        name = await service.reroll_display_name(db, sid)
+        if name is not None:
+            await db.commit()
+    except SQLAlchemyError as exc:
+        await db.rollback()
+        raise _db_error("reroll", "Failed to change display name.", exc) from exc
     if name is None:
         raise HTTPException(status_code=404, detail="Not on the leaderboards.")
     return PlayerResponse(display_name=name)
@@ -109,18 +100,16 @@ async def reroll_my_player(request: Request) -> PlayerResponse:
 
 @router.delete("/me", status_code=204)
 @limiter.limit(PLAYER_WRITE_RATE_LIMIT, key_func=session_key)
-async def delete_my_player(request: Request) -> Response:
+async def delete_my_player(request: Request, db: DbSession) -> Response:
     """Leave every leaderboard (the generated name is dropped).
 
     204 whether or not the caller had joined.
     """
     sid = get_session_id(request)
-    factory = get_session_factory()
-    async with factory() as db:
-        try:
-            await service.clear_display_name(db, sid)
-            await db.commit()
-        except SQLAlchemyError as exc:
-            await db.rollback()
-            raise _db_error("delete", "Failed to clear display name.", exc) from exc
+    try:
+        await service.clear_display_name(db, sid)
+        await db.commit()
+    except SQLAlchemyError as exc:
+        await db.rollback()
+        raise _db_error("delete", "Failed to clear display name.", exc) from exc
     return Response(status_code=204)

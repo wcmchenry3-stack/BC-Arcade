@@ -10,6 +10,7 @@
     "jest.setup-after-env.ts",
     "e2e/**",
     "scripts/**",
+    "tooling/**",
     "eslint.config.js",
     "android",
     "ios"

@@ -10,6 +10,8 @@
   "error.alreadyGuessed": "Bereits geraten",
   "error.tooShort": "Nicht genug Buchstaben",
   "error.couldNotLoad": "Rätsel konnte nicht geladen werden",
+  "error.needsConnection": "Wort des Tages braucht eine Verbindung",
+  "error.retry": "Erneut versuchen",
   "error.couldNotSubmit": "Versuch konnte nicht gesendet werden",
   "error.stalePuzzle": "Neues Rätsel verfügbar — heutiges Wort wird geladen",
   "error.wrongLength": "Dein Versuch hat nicht die richtige Länge",

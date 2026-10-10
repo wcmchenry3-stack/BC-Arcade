@@ -17,23 +17,19 @@ import json
 import uuid
 from collections.abc import Iterator
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 
 from db.base import get_session_factory
-from db.models import GameEntitlement, Purchase, PurchaseEvent, PurchaseLink
+from db.models import GameEntitlement, GameType, Purchase, PurchaseEvent, PurchaseLink
 from entitlements import service as entitlements_service
+from games import catalog_cache
 from purchases import apple, google
 from purchases import service as purchase_service
-from purchases.router import (
-    PURCHASE_IP_RATE_LIMIT,
-    PURCHASE_SESSION_RATE_LIMIT,
-    PURCHASE_STORE_KEY_RATE_LIMIT,
-)
 from purchases.verifiers import (
     AppleEvidence,
     AppleVerifier,
@@ -43,6 +39,12 @@ from purchases.verifiers import (
     PurchaseError,
     VerifiedPurchase,
 )
+from rate_limits import (
+    PURCHASE_IP_RATE_LIMIT,
+    PURCHASE_SESSION_RATE_LIMIT,
+    PURCHASE_STORE_KEY_RATE_LIMIT,
+)
+from tests._helpers import count, jwt_games, session_headers, set_admin_token
 
 HEARTS = "com.buffingchi.games.premium.hearts"
 CASCADE = "com.buffingchi.games.premium.cascade"
@@ -80,7 +82,7 @@ def verified(
         environment=kw.pop("environment", "sandbox" if platform == "apple" else "test"),  # type: ignore[arg-type]
         ownership_type=ownership_type,  # type: ignore[arg-type]
         state=state,  # type: ignore[arg-type]
-        purchased_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        purchased_at=datetime(2026, 9, 1, tzinfo=UTC),
         account_token=account_token,
         **kw,  # type: ignore[arg-type]
     )
@@ -117,14 +119,6 @@ class FakeGoogleVerifier:
 
 
 @pytest.fixture()
-def client() -> Iterator[TestClient]:
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-@pytest.fixture()
 def fake_apple() -> Iterator[FakeAppleVerifier]:
     from main import app
 
@@ -148,15 +142,11 @@ def new_sid() -> str:
     return str(uuid.uuid4())
 
 
-def hdr(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
-
-
 def post_apple(client: TestClient, sid: str, store_key: str, source: str = "sync"):
     return client.post(
         "/purchases/apple",
         json={"signed_transaction": make_jws(store_key), "source": source},
-        headers=hdr(sid),
+        headers=session_headers(sid),
     )
 
 
@@ -166,26 +156,13 @@ def post_google(
     return client.post(
         "/purchases/google",
         json={"product_id": product_id, "purchase_token": token, "source": source},
-        headers=hdr(sid),
+        headers=session_headers(sid),
     )
 
 
 def token_games(body: dict) -> list[str]:
     pub = entitlements_service.get_public_key_pem()
     return jwt.decode(body["entitlements"]["token"], pub, algorithms=["RS256"])["entitled_games"]
-
-
-def jwt_games(client: TestClient, sid: str) -> list[str]:
-    r = client.get("/entitlements", headers=hdr(sid))
-    assert r.status_code == 200
-    return token_games({"entitlements": r.json()})
-
-
-async def count(model, *where) -> int:
-    async with get_session_factory()() as db:
-        return (
-            await db.execute(select(func.count()).select_from(model).where(*where))
-        ).scalar_one()
 
 
 async def entitlement(sid: str, slug: str = "hearts") -> GameEntitlement | None:
@@ -202,15 +179,13 @@ async def entitlement(sid: str, slug: str = "hearts") -> GameEntitlement | None:
 async def backdate_links(days: int) -> None:
     async with get_session_factory()() as db:
         await db.execute(
-            update(PurchaseLink).values(
-                created_at=datetime.now(timezone.utc) - timedelta(days=days)
-            )
+            update(PurchaseLink).values(created_at=datetime.now(UTC) - timedelta(days=days))
         )
         # The caps also count the retained "linked" audit events (S1, #2786).
         await db.execute(
             update(PurchaseEvent)
             .where(PurchaseEvent.kind == "linked")
-            .values(created_at=datetime.now(timezone.utc) - timedelta(days=days))
+            .values(created_at=datetime.now(UTC) - timedelta(days=days))
         )
         await db.commit()
 
@@ -301,7 +276,12 @@ async def test_paid_access_denied_before_purchase_allowed_after(
     client: TestClient, fake_apple: FakeAppleVerifier
 ) -> None:
     sid = new_sid()
-    assert client.post("/games", json={"game_type": "hearts"}, headers=hdr(sid)).status_code == 403
+    assert (
+        client.post(
+            "/games", json={"game_type": "hearts"}, headers=session_headers(sid)
+        ).status_code
+        == 403
+    )
 
     fake_apple.answers["1000"] = verified("1000", account_token=apple.expected_account_token(sid))
     r = post_apple(client, sid, "1000", source="purchase")
@@ -313,7 +293,12 @@ async def test_paid_access_denied_before_purchase_allowed_after(
     assert body["finish"] is True
     assert token_games(body) == ["hearts"]
     assert jwt_games(client, sid) == ["hearts"]
-    assert client.post("/games", json={"game_type": "hearts"}, headers=hdr(sid)).status_code != 403
+    assert (
+        client.post(
+            "/games", json={"game_type": "hearts"}, headers=session_headers(sid)
+        ).status_code
+        != 403
+    )
 
     row = await entitlement(sid)
     assert row is not None and row.purchase_id is not None
@@ -471,7 +456,7 @@ async def test_revoke_removes_access_for_all_linked_sessions_and_reversal_restor
     assert changed is True
     for sid in (a, b):
         assert jwt_games(client, sid) == []
-        r = client.post("/games", json={"game_type": "hearts"}, headers=hdr(sid))
+        r = client.post("/games", json={"game_type": "hearts"}, headers=session_headers(sid))
         assert r.status_code == 403
     assert await count(PurchaseLink) == 2  # links are kept
 
@@ -653,6 +638,34 @@ def test_unknown_or_free_product_is_422(
     assert r.json()["detail"] == "unknown_product"
 
 
+async def test_purchase_reads_is_premium_from_the_db_not_the_catalog_cache(
+    client: TestClient, fake_apple: FakeAppleVerifier
+) -> None:
+    """#2966: a worker whose catalog snapshot predates a free->premium PATCH must
+    still accept the purchase the store already charged for."""
+    async with get_session_factory()() as db:
+        cached = await catalog_cache.get_game_type(db, "yacht")
+        assert cached is not None and cached.is_premium is False
+        # Flipped by another worker: this process's snapshot is not invalidated.
+        yacht = update(GameType).where(GameType.name == "yacht")
+        await db.execute(yacht.values(is_premium=True))
+        await db.commit()
+    try:
+        async with get_session_factory()() as db:
+            stale = await catalog_cache.get_game_type(db, "yacht")
+        assert stale is not None and stale.is_premium is False, "the cache must still be warm"
+        fake_apple.answers["1000"] = verified(
+            "1000", product_id="com.buffingchi.games.premium.yacht"
+        )
+        r = post_apple(client, new_sid(), "1000")
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "owned"
+    finally:
+        async with get_session_factory()() as db:
+            await db.execute(yacht.values(is_premium=False))
+            await db.commit()
+
+
 def test_google_bad_product_prefix_rejected_before_verification(
     client: TestClient, fake_google: FakeGoogleVerifier
 ) -> None:
@@ -718,7 +731,7 @@ def test_cancelled_purchase_grants_nothing(
 def test_malformed_apple_request_is_400_invalid_request(
     client: TestClient, fake_apple: FakeAppleVerifier, body: dict
 ) -> None:
-    r = client.post("/purchases/apple", json=body, headers=hdr(new_sid()))
+    r = client.post("/purchases/apple", json=body, headers=session_headers(new_sid()))
     assert r.status_code == 400
     assert r.json()["detail"] == "invalid_request"
     assert fake_apple.calls == 0
@@ -753,7 +766,7 @@ def test_realistic_jws_size_is_not_rejected_as_too_large(
     r = client.post(
         "/purchases/apple",
         json={"signed_transaction": jws, "source": "sync"},
-        headers=hdr(new_sid()),
+        headers=session_headers(new_sid()),
     )
     assert r.status_code == 200, r.text
 
@@ -806,7 +819,7 @@ def test_free_games_unaffected_by_purchase_code(
     sid = new_sid()
     fake_apple.answers["1000"] = verified("1000")
     assert post_apple(client, new_sid(), "1000").status_code == 200
-    r = client.post("/games", json={"game_type": game}, headers=hdr(sid))
+    r = client.post("/games", json={"game_type": game}, headers=session_headers(sid))
     assert r.status_code != 403
     assert jwt_games(client, sid) == []
 
@@ -826,7 +839,7 @@ def _catalog_id(client: TestClient, name: str) -> int:
 def test_patch_cannot_flip_catalog_game_to_free(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ADMIN_API_TOKEN", _ADMIN)
+    set_admin_token(client, monkeypatch, _ADMIN)
     gid = _catalog_id(client, "hearts")
     headers = {"X-Admin-Token": _ADMIN}
     r = client.patch(f"/games/catalog/{gid}", json={"is_premium": False}, headers=headers)
@@ -840,7 +853,7 @@ def test_patch_cannot_flip_catalog_game_to_free(
 async def test_patch_cannot_change_tier_of_game_with_purchases(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ADMIN_API_TOKEN", _ADMIN)
+    set_admin_token(client, monkeypatch, _ADMIN)
     async with get_session_factory()() as db:
         db.add(
             Purchase(
@@ -850,8 +863,8 @@ async def test_patch_cannot_change_tier_of_game_with_purchases(
                 game_slug="twenty48",
                 state="owned",
                 environment="test",
-                verified_at=datetime.now(timezone.utc),
-                state_changed_at=datetime.now(timezone.utc),
+                verified_at=datetime.now(UTC),
+                state_changed_at=datetime.now(UTC),
             )
         )
         await db.commit()
@@ -1025,7 +1038,7 @@ async def test_refund_older_than_refund_reversed_is_ignored(
     sid = new_sid()
     fake_apple.answers["1000"] = verified("1000")
     assert post_apple(client, sid, "1000").status_code == 200
-    t0 = datetime.now(timezone.utc)
+    t0 = datetime.now(UTC)
     assert await apply_state(
         "1000", "revoked", reason="REFUND", dedupe_key="n1", event_at=t0 + timedelta(hours=1)
     )
@@ -1065,7 +1078,7 @@ async def test_same_state_notification_advances_watermark_reversal_then_older_re
     else:
         fake_google.answers[key] = verified(key, platform="google")
         assert post_google(client, sid, key).status_code == 200
-    t0 = datetime.now(timezone.utc) + timedelta(minutes=1)
+    t0 = datetime.now(UTC) + timedelta(minutes=1)
 
     async def apply(state: str, dedupe: str, at: datetime) -> bool:
         async with get_session_factory()() as db:
@@ -1115,7 +1128,7 @@ async def test_same_state_notification_advances_watermark_refund_then_older_reve
     else:
         fake_google.answers[key] = verified(key, platform="google")
         assert post_google(client, sid, key).status_code == 200
-    t0 = datetime.now(timezone.utc) + timedelta(minutes=1)
+    t0 = datetime.now(UTC) + timedelta(minutes=1)
 
     async def apply(state: str, dedupe: str, at: datetime) -> bool:
         async with get_session_factory()() as db:
@@ -1141,7 +1154,7 @@ async def test_same_state_client_post_does_not_advance_watermark(
     """A client answer's time may be only when verification started, so a
     same-state post must not hide a real store event signed just before it."""
     sid = new_sid()
-    t0 = datetime.now(timezone.utc)
+    t0 = datetime.now(UTC)
     fake_apple.answers["wm-c"] = verified("wm-c", event_at=t0)
     assert post_apple(client, sid, "wm-c").status_code == 200
     fake_apple.answers["wm-c"] = verified("wm-c", event_at=t0 + timedelta(hours=2))
@@ -1159,7 +1172,7 @@ async def test_stale_owned_answer_after_webhook_revoke_is_ignored(
     sid = new_sid()
     fake_apple.answers["1000"] = verified("1000")
     assert post_apple(client, sid, "1000").status_code == 200
-    revoked_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+    revoked_at = datetime.now(UTC) + timedelta(minutes=5)
     assert await apply_state("1000", "revoked", reason="REFUND", event_at=revoked_at)
 
     # The client's verifier read the store before the refund: its "owned"
@@ -1183,7 +1196,7 @@ async def test_verified_event_time_orders_client_answers(
     client: TestClient, fake_google: FakeGoogleVerifier
 ) -> None:
     sid = new_sid()
-    t0 = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    t0 = datetime(2026, 9, 1, tzinfo=UTC)
     fake_google.answers["gtok"] = verified("gtok", platform="google", event_at=t0)
     assert post_google(client, sid, "gtok").status_code == 200
     stored = (await purchase_row("gtok")).state_changed_at
@@ -1203,16 +1216,16 @@ async def test_environment_outside_allow_list_is_rejected_even_if_verified(
     client: TestClient,
     fake_apple: FakeAppleVerifier,
     fake_google: FakeGoogleVerifier,
-    monkeypatch: pytest.MonkeyPatch,
+    store_env: pytest.MonkeyPatch,
     platform: str,
     environment: str,
     setting: str | None,
 ) -> None:
     var = "APPLE_IAP_ENVIRONMENTS" if platform == "apple" else "GOOGLE_PLAY_ENVIRONMENTS"
     if setting is None:
-        monkeypatch.delenv(var, raising=False)
+        store_env.delenv(var, raising=False)
     else:
-        monkeypatch.setenv(var, setting)
+        store_env.setenv(var, setting)
     answer = verified("k1", platform=platform, environment=environment)
     if platform == "apple":
         fake_apple.answers["k1"] = answer
@@ -1225,15 +1238,17 @@ async def test_environment_outside_allow_list_is_rejected_even_if_verified(
     assert await count(Purchase) == 0 and await count(PurchaseLink) == 0
 
 
-def test_allowed_environments_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_allowed_environments_parsing(store_env: pytest.MonkeyPatch) -> None:
     from purchases.verifiers import allowed_environments
 
-    monkeypatch.delenv("APPLE_IAP_ENVIRONMENTS", raising=False)
-    monkeypatch.delenv("GOOGLE_PLAY_ENVIRONMENTS", raising=False)
+    store_env.delenv("APPLE_IAP_ENVIRONMENTS", raising=False)
+    store_env.delenv("GOOGLE_PLAY_ENVIRONMENTS", raising=False)
     assert allowed_environments("apple") == {"production", "sandbox"}
     assert allowed_environments("google") == {"production", "test"}
-    monkeypatch.setenv("APPLE_IAP_ENVIRONMENTS", " Production , ")
+    store_env.setenv("APPLE_IAP_ENVIRONMENTS", " Production , ")
     assert allowed_environments("apple") == {"production"}
+    store_env.setenv("APPLE_IAP_ENVIRONMENTS", "   ")  # blank is not unset: no environments
+    assert allowed_environments("apple") == frozenset()
     assert allowed_environments("amazon") == frozenset()
 
 
@@ -1244,7 +1259,7 @@ async def test_owned_never_regresses_to_pending(
     fake_google.answers["gtok"] = verified("gtok", platform="google")
     assert post_google(client, sid, "gtok").json()["status"] == "owned"
     fake_google.answers["gtok"] = verified(
-        "gtok", platform="google", state="pending", event_at=datetime.now(timezone.utc)
+        "gtok", platform="google", state="pending", event_at=datetime.now(UTC)
     )
     with caplog.at_level("WARNING", logger="audit"):
         r = post_google(client, sid, "gtok")
@@ -1338,3 +1353,40 @@ async def test_delete_my_data_churn_cannot_reset_link_caps(
     r = post_apple(client, new_sid(), "churn", source="restore")
     assert r.status_code == 409 and r.json()["detail"] == "link_limit"
     assert await count(PurchaseEvent, PurchaseEvent.kind == "link_rejected") == 2
+
+
+async def test_losing_the_first_insert_race_refreshes_the_winners_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two requests record the same new store transaction at once: one row results,
+    and the loser reports the winner's state as the previous one."""
+    factory = get_session_factory()
+
+    async def rival_records_pending() -> None:
+        async with factory() as rival:
+            pending = verified("race", state="pending", event_at=datetime(2026, 9, 1, tzinfo=UTC))
+            await purchase_service.upsert_purchase(rival, pending, "hearts")
+            await rival.commit()
+
+    async with factory() as db:
+        real_flush = db.flush
+        raced = False
+
+        async def flush_after_rival_commits() -> None:
+            nonlocal raced
+            if not raced:
+                raced = True
+                await rival_records_pending()
+            await real_flush()
+
+        monkeypatch.setattr(db, "flush", flush_after_rival_commits)
+        # Newer than the rival's answer, so it is not dropped as stale.
+        owned = verified("race", state="owned", event_at=datetime(2026, 9, 2, tzinfo=UTC))
+        purchase, previous = await purchase_service.upsert_purchase(db, owned, "hearts")
+        await db.commit()
+
+    assert previous == "pending"
+    assert purchase.state == "owned"
+    async with factory() as db:
+        rows = (await db.execute(select(Purchase).where(Purchase.store_key == "race"))).scalars()
+        assert [r.state for r in rows] == ["owned"]

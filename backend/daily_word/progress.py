@@ -31,8 +31,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import DailyWordProgress
 
-# Matches MAX_ROWS in frontend/src/game/daily_word/engine.ts. The client still
-# enforces its own limit for immediate feedback; this is the one that counts.
+# A game rule, not an operational tunable (#3110), so it is deliberately not in
+# settings.py: it must equal MAX_ROWS in frontend/src/game/daily_word/engine.ts (the
+# shipped board has six rows), and an env var could only make the server disagree with
+# every installed client. The client still enforces its own limit for immediate
+# feedback; this is the one that counts.
 MAX_GUESSES = 6
 
 

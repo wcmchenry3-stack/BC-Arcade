@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "jest", "react-native"]
+  },
+  "include": ["tooling/**/*.ts", "../tools/sim/*.ts", "../tools/generators/*.ts"]
+}

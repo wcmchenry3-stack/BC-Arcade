@@ -14,6 +14,7 @@ import { unavailablePurchaseAdapter } from "./unavailableAdapter";
 
 let registered: PurchaseAdapterFactory | null = null;
 
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export function registerPurchaseAdapterFactory(factory: PurchaseAdapterFactory | null): void {
   registered = factory;
 }

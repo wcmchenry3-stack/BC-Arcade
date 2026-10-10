@@ -1,8 +1,10 @@
 /**
- * Tests for the layout JSON infrastructure (#1688, #1690):
+ * Tests for the layout infrastructure (#1688, #1690, #2968):
  *   - loader.ts  (parseLayout)
- *   - registry.ts (LAYOUTS, getLayout)
- *   - turtle.json, pyramid.json, square.json, arena.json, four_rivers.json
+ *   - registry.ts (LAYOUTS, getLayout) — wires each id to its layouts/<id>.ts
+ *     module; the "matches its .ts source" checks guard that wiring.
+ *   - Coordinate/order equivalence with the deleted JSON assets lives in
+ *     layoutEquivalence.test.ts.
  */
 
 import { parseLayout } from "../layouts/loader";
@@ -98,10 +100,10 @@ describe("LAYOUTS registry", () => {
 });
 
 // ---------------------------------------------------------------------------
-// turtle.json validity
+// turtle layout validity
 // ---------------------------------------------------------------------------
 
-describe("turtle.json", () => {
+describe("turtle layout", () => {
   it("produces a valid Layout via getLayout('turtle')", () => {
     expect(() => getLayout("turtle")).not.toThrow();
   });

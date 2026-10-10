@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -19,11 +18,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, OperationalError
 
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType, Player
-from games import leaderboard
+from games.boards import partitions
 from limiter import limiter, session_key
 from players.generated import is_generated_display_name
+from tests._helpers import session_headers as _headers
 from tests.test_generic_leaderboard import (
     CREATE_METADATA,
     PARTITION_QUERY,
@@ -38,25 +38,12 @@ pytestmark = pytest.mark.skipif(
 )
 
 ENABLED_BOARDS = sorted(
-    gt.value for gt in GameTypeEnum if leaderboard.enabled_board(gt.value) is not None
+    gt.value for gt in GameTypeEnum if partitions.enabled_board(gt.value) is not None
 )
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 def _sid() -> str:
     return str(uuid.uuid4())
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 async def _grant_all(sid: str) -> None:
@@ -108,7 +95,7 @@ def _play(client: TestClient, sid: str, game_type: str, value: int, **create_met
     )
     assert r.status_code == 200, r.text
     game_id = r.json()["id"]
-    board = leaderboard.enabled_board(game_type)
+    board = partitions.enabled_board(game_type)
     assert board is not None, game_type
     body = completion_body(board, value)
     r = client.patch(f"/games/{game_id}/complete", headers=_headers(sid), json=body)
@@ -274,7 +261,7 @@ async def test_a_player_is_absent_until_they_join(client: TestClient, game_type:
     sid = _sid()
     await _grant_all(sid)
     path = f"{game_type}{PARTITION_QUERY.get(game_type, '')}"
-    board = leaderboard.enabled_board(game_type)
+    board = partitions.enabled_board(game_type)
     assert board is not None, game_type
     value = metric_value(board, 5)
     _play(client, sid, game_type, value)
@@ -407,7 +394,7 @@ def test_player_routes_are_rate_limited_by_session(handler: str) -> None:
 
 
 def test_put_rate_limit_is_enforced(client: TestClient) -> None:
-    from players.router import PLAYER_WRITE_RATE_LIMIT
+    from rate_limits import PLAYER_WRITE_RATE_LIMIT
 
     allowed = int(PLAYER_WRITE_RATE_LIMIT.split("/")[0])
     sid = _sid()
@@ -417,7 +404,7 @@ def test_put_rate_limit_is_enforced(client: TestClient) -> None:
 
 
 def test_reroll_has_its_own_tighter_rate_limit(client: TestClient) -> None:
-    from players.router import PLAYER_REROLL_RATE_LIMIT, PLAYER_WRITE_RATE_LIMIT
+    from rate_limits import PLAYER_REROLL_RATE_LIMIT, PLAYER_WRITE_RATE_LIMIT
 
     allowed = int(PLAYER_REROLL_RATE_LIMIT.split("/")[0])
     assert PLAYER_REROLL_RATE_LIMIT.endswith("/hour")
@@ -469,3 +456,14 @@ def test_db_errors_are_500_and_logged_without_the_session_id(
     errors = [rec for rec in caplog.records if rec.levelname == "ERROR"]
     assert errors and "OperationalError" in errors[0].getMessage()
     assert all(SECRET_SID not in rec.getMessage() for rec in errors)
+
+
+@pytest.mark.parametrize("sid", [None, ""])
+async def test_a_legacy_name_without_a_player_id_joins_nobody(sid: str | None) -> None:
+    """Older builds sent a name with no player id: there is no one to opt in."""
+    from players import service
+
+    async with get_session_factory()() as db:
+        await service.remember_legacy_opt_in(db, sid, "Alice")
+        await db.commit()
+        assert (await db.execute(select(Player.session_id))).scalars().all() == []

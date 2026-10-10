@@ -8,19 +8,16 @@ import { ApiError } from "../../game/_shared/httpClient";
 import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
 import type { LeaderboardParams } from "../../types/navigation";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockGetLeaderboard = jest.fn();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getLeaderboard: (...args: unknown[]) => mockGetLeaderboard(...args) },
-}));
+jest.mock("../../api/stats", () => {
+  const { lazy, mockStatsApi } = mockScreenDeps();
+  return mockStatsApi({ getLeaderboard: lazy(() => mockGetLeaderboard) });
+});
 
 const mockNetwork = { isOnline: true, isInitialized: true };
-jest.mock("../../game/_shared/NetworkContext", () => ({
-  useNetwork: () => mockNetwork,
-}));
+jest.mock("../../game/_shared/NetworkContext", () =>
+  mockScreenDeps().mockNetwork({ state: () => mockNetwork })
+);
 
 function entry(
   rank: number,
@@ -40,12 +37,15 @@ function board(
 
 // The card's sync before a post-sync refetch (#2633): held open by tests.
 const mockFlushQueuedGames = jest.fn(() => Promise.resolve());
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: () => mockFlushQueuedGames(),
-}));
-jest.mock("../../game/_shared/displayNameSync", () => ({
-  flushDisplayNameSync: () => Promise.resolve(true),
-}));
+jest.mock("../../game/_shared/flushQueuedGames", () =>
+  mockScreenDeps().mockFlushQueuedGames(() => mockFlushQueuedGames())
+);
+jest.mock("../../game/_shared/displayNameSync", () =>
+  mockScreenDeps().mockDisplayNameSync(
+    { flushDisplayNameSync: () => Promise.resolve(true) },
+    { actual: false }
+  )
+);
 
 const goBack = jest.fn();
 // Live navigation listeners, so a test can leave and come back.

@@ -15,35 +15,28 @@ import {
 import { ApiError } from "../../game/_shared/httpClient";
 import type { StatsResponse, GameHistoryResponse, GameOutcome } from "../../api/types";
 
-const mockNetwork = { isOnline: true };
-jest.mock("../../game/_shared/NetworkContext", () => ({
-  useNetwork: () => ({ isOnline: mockNetwork.isOnline, isInitialized: true }),
-}));
-
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
+const mockNetwork = { isOnline: true, isInitialized: true };
+jest.mock("../../game/_shared/NetworkContext", () =>
+  mockScreenDeps().mockNetwork({ state: () => mockNetwork })
+);
 
 const mockNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  useNavigation: () => ({ navigate: mockNavigate }),
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ navigate: mockNavigate }))
+);
 
 // Mock the stats API — each test sets the resolved values.
 const mockGetMyStats = jest.fn() as jest.Mock<Promise<StatsResponse>, []>;
 const mockGetMyGames = jest.fn() as jest.Mock<Promise<GameHistoryResponse>, [number?]>;
 const mockGetGameDetail = jest.fn();
-jest.mock("../../api/stats", () => ({
-  statsApi: {
+jest.mock("../../api/stats", () => {
+  const { lazy, mockStatsApi } = mockScreenDeps();
+  return mockStatsApi({
     getMyStats: () => mockGetMyStats(),
     getMyGames: (limit?: number) => mockGetMyGames(limit),
-    getGameDetail: (...args: unknown[]) => (mockGetGameDetail as unknown as jest.Mock)(...args),
-  },
-}));
+    getGameDetail: lazy(() => mockGetGameDetail),
+  });
+});
 
 // The leaderboard sync runs for real (its one-slot queue is under test); only
 // the HTTP calls are mocked.

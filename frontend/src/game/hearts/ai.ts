@@ -223,7 +223,7 @@ export function selectCardsToPassUtility(
  * suit and at most one weak suit, #2234),
  * or the player must already be committed (`commitPoints`: it has captured
  * enough points that shooting is the way to recover them). Exported so the
- * sim gate harness (sim/harness.ts) instruments the real trigger instead of
+ * sim gate harness (tooling/hearts/harness.ts) instruments the real trigger instead of
  * re-implementing it (#2204).
  */
 export function detectMoonAttempt(
@@ -362,33 +362,6 @@ export function selectCardsToPass(
   playerIndex = 0
 ): Card[] {
   return selectCardsToPassUtility(hand, direction, difficulty, playerIndex);
-}
-
-// ---------------------------------------------------------------------------
-// Moon detection
-// ---------------------------------------------------------------------------
-
-/**
- * Returns the player index who is on track to shoot the moon, or null.
- * Fires when a player has ≥ 4 hearts (or Q♠) and no other player has
- * taken any points yet this hand.
- */
-export function detectPotentialMoon(state: HeartsState): number | null {
-  const totalPointsTaken = state.handScores.reduce((s, v) => s + (v ?? 0), 0);
-  if (totalPointsTaken === 0) return null;
-
-  for (let i = 0; i < 4; i++) {
-    const myPoints = state.handScores[i] ?? 0;
-    if (myPoints === 0) continue;
-    // This player has all the points so far
-    if (myPoints === totalPointsTaken) {
-      const myCards = state.wonCards[i] ?? [];
-      const hearts = myCards.filter((c) => c.suit === "hearts").length;
-      const hasQ = myCards.some(isQueenOfSpades);
-      if (hearts + (hasQ ? 1 : 0) >= 4) return i;
-    }
-  }
-  return null;
 }
 
 /**

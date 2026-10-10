@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
-import { AccessibilityInfo, StyleSheet, View } from "react-native";
+import React, { useEffect } from "react";
+import { StyleSheet, View } from "react-native";
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
@@ -10,6 +10,10 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useTranslation } from "react-i18next";
+import { Particle, useParticleGroup, type ParticleMotion } from "../shared/Particle";
+import { useReduceMotion } from "../shared/useReduceMotion";
+import { playTimedPhases } from "../shared/timedPhases";
+import { useTheme } from "../../theme/ThemeContext";
 
 interface Props {
   visible: boolean;
@@ -17,40 +21,35 @@ interface Props {
 }
 
 // Six crack lines at 30° intervals radiating outward
-const CRACK_ANGLES = [0, 30, 60, 90, 120, 150] as const;
+const CRACKS: readonly ParticleMotion[] = [0, 30, 60, 90, 120, 150].map((angle) => ({
+  kind: "ray" as const,
+  angle,
+  centerOrigin: true,
+}));
 
 export function HeartsBrokenAnimation({ visible, onAnimationEnd }: Props) {
   const { t } = useTranslation("hearts");
-  const [reduceMotion, setReduceMotion] = useState(false);
-  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const { colors } = useTheme();
+  const reduceMotion = useReduceMotion();
+  const cracks = useParticleGroup();
 
   const iconScale = useSharedValue(0);
   const iconOpacity = useSharedValue(0);
   // Tint opacity: 0 → 0.3 → 0.08 (hold) → 0 (fade out)
   const tintOpacity = useSharedValue(0);
 
-  // One shared value per crack line — hooks cannot be called in a loop
-  const crack0 = useSharedValue(0);
-  const crack1 = useSharedValue(0);
-  const crack2 = useSharedValue(0);
-  const crack3 = useSharedValue(0);
-  const crack4 = useSharedValue(0);
-  const crack5 = useSharedValue(0);
-  const cracks = [crack0, crack1, crack2, crack3, crack4, crack5];
-
   useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-  }, []);
-
-  useEffect(() => {
-    if (!visible) {
+    const crackValues = cracks.all();
+    if (!visible || reduceMotion) {
+      // Hidden — or reduced motion, which may have just been turned on
+      // mid-sequence: clear every frame so nothing is left frozen.
       iconScale.value = 0;
       iconOpacity.value = 0;
       tintOpacity.value = 0;
-      cracks.forEach((c) => {
+      crackValues.forEach((c) => {
         c.value = 0;
       });
-      return;
+      if (!visible) return;
     }
 
     if (reduceMotion) {
@@ -59,12 +58,7 @@ export function HeartsBrokenAnimation({ visible, onAnimationEnd }: Props) {
         withTiming(0.3, { duration: 50 }),
         withDelay(200, withTiming(0, { duration: 50 }))
       );
-      const t1 = setTimeout(onAnimationEnd, 300);
-      timersRef.current.push(t1);
-      return () => {
-        clearTimeout(t1);
-        timersRef.current = [];
-      };
+      return playTimedPhases({ phases: [], endAt: 300 }, onAnimationEnd);
     }
 
     // Phase 1 — burst (0–1000 ms)
@@ -77,35 +71,44 @@ export function HeartsBrokenAnimation({ visible, onAnimationEnd }: Props) {
       withTiming(0.3, { duration: 150 }),
       withDelay(350, withTiming(0.08, { duration: 500 }))
     );
-    cracks.forEach((c, i) => {
+    crackValues.forEach((c, i) => {
       c.value = withDelay(i * 60, withTiming(1, { duration: 300 }));
     });
 
-    // Phase 2 — linger: icon fades to reduced opacity after burst peak
-    const t1 = setTimeout(() => {
-      iconOpacity.value = withTiming(0.25, { duration: 200 });
-    }, 800);
-
-    // Phase 3 — fade everything out at ~2900 ms (total ~3.4 s)
-    const t2 = setTimeout(() => {
-      iconOpacity.value = withTiming(0, { duration: 500 });
-      tintOpacity.value = withTiming(0, { duration: 500 });
-      iconScale.value = withTiming(0, { duration: 500 });
-      cracks.forEach((c) => {
-        c.value = withTiming(0, { duration: 400 });
-      });
-    }, 2900);
-
-    const t3 = setTimeout(onAnimationEnd, 3400);
-    timersRef.current.push(t1, t2, t3);
+    const cancelPhases = playTimedPhases(
+      {
+        phases: [
+          // Phase 2 — linger: icon fades to reduced opacity after burst peak
+          {
+            at: 800,
+            run: () => {
+              iconOpacity.value = withTiming(0.25, { duration: 200 });
+            },
+          },
+          // Phase 3 — fade everything out at ~2900 ms (total ~3.4 s)
+          {
+            at: 2900,
+            run: () => {
+              iconOpacity.value = withTiming(0, { duration: 500 });
+              tintOpacity.value = withTiming(0, { duration: 500 });
+              iconScale.value = withTiming(0, { duration: 500 });
+              crackValues.forEach((c) => {
+                c.value = withTiming(0, { duration: 400 });
+              });
+            },
+          },
+        ],
+        endAt: 3400,
+      },
+      onAnimationEnd
+    );
 
     return () => {
-      timersRef.current.forEach(clearTimeout);
-      timersRef.current = [];
+      cancelPhases();
       cancelAnimation(iconScale);
       cancelAnimation(iconOpacity);
       cancelAnimation(tintOpacity);
-      cracks.forEach((c) => cancelAnimation(c));
+      crackValues.forEach((c) => cancelAnimation(c));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, reduceMotion]);
@@ -116,57 +119,32 @@ export function HeartsBrokenAnimation({ visible, onAnimationEnd }: Props) {
     transform: [{ scale: iconScale.value }],
     opacity: iconOpacity.value,
   }));
-  const crack0Style = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${CRACK_ANGLES[0]}deg` }, { scaleX: crack0.value }],
-    opacity: crack0.value,
-    transformOrigin: "center",
-  }));
-  const crack1Style = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${CRACK_ANGLES[1]}deg` }, { scaleX: crack1.value }],
-    opacity: crack1.value,
-    transformOrigin: "center",
-  }));
-  const crack2Style = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${CRACK_ANGLES[2]}deg` }, { scaleX: crack2.value }],
-    opacity: crack2.value,
-    transformOrigin: "center",
-  }));
-  const crack3Style = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${CRACK_ANGLES[3]}deg` }, { scaleX: crack3.value }],
-    opacity: crack3.value,
-    transformOrigin: "center",
-  }));
-  const crack4Style = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${CRACK_ANGLES[4]}deg` }, { scaleX: crack4.value }],
-    opacity: crack4.value,
-    transformOrigin: "center",
-  }));
-  const crack5Style = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${CRACK_ANGLES[5]}deg` }, { scaleX: crack5.value }],
-    opacity: crack5.value,
-    transformOrigin: "center",
-  }));
-  const crackStyles = [
-    crack0Style,
-    crack1Style,
-    crack2Style,
-    crack3Style,
-    crack4Style,
-    crack5Style,
-  ];
 
   return (
     // Non-interactive wrapper — never blocks touches
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {/* Red tint layer — separate from content so its opacity does not bleed into children */}
-      <Animated.View style={[StyleSheet.absoluteFill, styles.tintLayer, tintStyle]} />
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          styles.tintLayer,
+          { backgroundColor: colors.error },
+          tintStyle,
+        ]}
+      />
       {/* Content: heart icon + radiating crack lines */}
       <View style={styles.content}>
-        {crackStyles.map((crackStyle, i) => (
-          <Animated.View key={i} style={[styles.crackLine, crackStyle]} />
+        {CRACKS.map((motion, i) => (
+          <Particle
+            key={i}
+            index={i}
+            group={cracks}
+            motion={motion}
+            style={[styles.crackLine, { backgroundColor: colors.error }]}
+          />
         ))}
         <Animated.Text
-          style={[styles.heartIcon, iconStyle]}
+          style={[styles.heartIcon, { color: colors.error }, iconStyle]}
           accessibilityLabel={t("events.heartsBroken")}
           accessibilityRole="text"
           accessibilityLiveRegion="polite"
@@ -180,7 +158,6 @@ export function HeartsBrokenAnimation({ visible, onAnimationEnd }: Props) {
 
 const styles = StyleSheet.create({
   tintLayer: {
-    backgroundColor: "#dc2626",
     zIndex: 100,
   },
   content: {
@@ -191,7 +168,6 @@ const styles = StyleSheet.create({
   },
   heartIcon: {
     fontSize: 48,
-    color: "#dc2626",
     lineHeight: 56,
   },
   crackLine: {
@@ -199,6 +175,5 @@ const styles = StyleSheet.create({
     width: 80,
     height: 3,
     borderRadius: 2,
-    backgroundColor: "#dc2626",
   },
 });

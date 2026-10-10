@@ -9,7 +9,20 @@
  * valid. Tests can pin the shuffle via `setRng(createSeededRng(seed))`.
  */
 
-import type { Layout, MahjongState, Slot, SlotTile, Suit, Rank } from "./types";
+import { bestOf } from "../_shared/bestOf";
+import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
+import { pushCapped } from "../_shared/undoStack";
+import type {
+  Layout,
+  MahjongEvent,
+  MahjongState,
+  MahjongUndoEntry,
+  RemovedTile,
+  Slot,
+  SlotTile,
+  Suit,
+  Rank,
+} from "./types";
 import {
   clockElapsedMs,
   pauseClock,
@@ -51,10 +64,11 @@ export function nextBestTime(
 ): { bestTimeMs: number; isNewBest: boolean } {
   const prior = plausibleBestMs(priorBestMs);
   if (plausibleBestMs(finalMs) === 0) return { bestTimeMs: prior, isNewBest: false };
-  const isNewBest = prior === 0 || finalMs < prior;
-  return { bestTimeMs: isNewBest ? finalMs : prior, isNewBest };
+  const { best, isNewBest } = bestOf(prior, finalMs, true);
+  return { bestTimeMs: best, isNewBest };
 }
-const UNDO_CAP = 50;
+/** The most moves `undoMove` can take back; the oldest entry goes first. */
+export const UNDO_CAP = 50;
 export const MAX_SHUFFLES = 3;
 /** Delay before the deadlock overlay appears — matches the board shake animation duration. */
 export const DEADLOCK_OVERLAY_DELAY_MS = 500;
@@ -63,21 +77,11 @@ export const DEADLOCK_OVERLAY_DELAY_MS = 500;
 // Seedable RNG — LCG matching Cascade / Blackjack / Twenty48 / Solitaire.
 // ---------------------------------------------------------------------------
 
-export type RandomSource = () => number;
-
-let _rng: RandomSource = Math.random;
-
-export function setRng(fn: RandomSource): void {
-  _rng = fn;
-}
-
-export function createSeededRng(seed: number): RandomSource {
-  let state = seed >>> 0;
-  return () => {
-    state = (Math.imul(1664525, state) + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
-}
+const rngSlot = createRngSlot();
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
+export const setRng = rngSlot.setRng;
+export { createSeededRng };
+export type { RandomSource };
 
 // ---------------------------------------------------------------------------
 // Tile matching
@@ -124,17 +128,138 @@ export function isFreeTile(tile: SlotTile, tiles: readonly SlotTile[]): boolean 
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Free-tile index (#2962) — one pass over the board instead of one per tile
+// ---------------------------------------------------------------------------
+
+/** Packing range of `posKey`: integer coordinates below this in magnitude. */
+const POS_HALF = 32768;
+const POS_SPAN = 2 * POS_HALF;
+const LAYER_LIMIT = 2 ** 20;
+
+/**
+ * A board position (col, row, layer) as a map key. Integer coordinates (every
+ * layout's) pack into one number: 16 bits each for col and row (offset, so
+ * negatives work) above the layer; a "col,row,layer" string key builds three
+ * strings per lookup and made the index slower than the O(n²) scan it replaces
+ * (engine.freeTiles.bench.test.ts). Anything else (a fractional or huge value
+ * from a bad save) falls back to that string, so the index stays exact for any
+ * finite coordinates. A number and a string key never collide.
+ */
+function posKey(col: number, row: number, layer: number): number | string {
+  // `x | 0` is x only for an int32, so these are integer-and-range checks with no
+  // builtin calls (the index runs them several times per tile).
+  if (
+    (col | 0) === col &&
+    (row | 0) === row &&
+    (layer | 0) === layer &&
+    col > -POS_HALF &&
+    col < POS_HALF &&
+    row > -POS_HALF &&
+    row < POS_HALF &&
+    layer > -LAYER_LIMIT &&
+    layer < LAYER_LIMIT
+  ) {
+    return (layer * POS_SPAN + (row + POS_HALF)) * POS_SPAN + (col + POS_HALF);
+  }
+  return `${col},${row},${layer}`;
+}
+
+/**
+ * What sits at each (col, row, layer) position, and every layer used, ascending
+ * (only when built with `withLayers`; otherwise empty).
+ */
+interface PositionIndex<T> {
+  readonly at: ReadonlyMap<number | string, T>;
+  readonly layers: readonly number[];
+}
+
+/** Index `items` by position in one pass (O(n)). */
+function indexPositions<T>(
+  items: Iterable<T>,
+  slotOf: (item: T) => Slot,
+  withLayers: boolean
+): PositionIndex<T> {
+  const at = new Map<number | string, T>();
+  const layers = new Set<number>();
+  for (const item of items) {
+    const { col, row, layer } = slotOf(item);
+    at.set(posKey(col, row, layer), item);
+    if (withLayers) layers.add(layer);
+  }
+  return { at, layers: withLayers ? [...layers].sort((x, y) => x - y) : [] };
+}
+
+/**
+ * Whether `s` is open in `index`: nothing at its (col, row) on a layer above
+ * it — any layer used on the board above it (as `isFreeTile` reads "above",
+ * whatever the layer values), or only `s.layer + 1` with `nextLayerOnly` (as the
+ * deal always has) — and at least one of (col−2, row, layer) and (col+2, row,
+ * layer) empty. No lookup can find `s` itself, so it needs no exclusion.
+ */
+function isOpenAt(s: Slot, index: PositionIndex<unknown>, nextLayerOnly: boolean): boolean {
+  const { at } = index;
+  if (nextLayerOnly) {
+    if (at.has(posKey(s.col, s.row, s.layer + 1))) return false;
+  } else {
+    for (let i = index.layers.length - 1; i >= 0 && index.layers[i]! > s.layer; i--) {
+      if (at.has(posKey(s.col, s.row, index.layers[i]!))) return false;
+    }
+  }
+  return !at.has(posKey(s.col - 2, s.row, s.layer)) || !at.has(posKey(s.col + 2, s.row, s.layer));
+}
+
+const tileSlot = (t: SlotTile): Slot => t;
+
+/**
+ * The ids of every free tile on the board, exactly the tiles `isFreeTile`
+ * accepts, built from one position index: O(n) where calling `isFreeTile` per
+ * tile is O(n²). Compute it once per board and pass it to the pair functions,
+ * the canvas and `selectTile` (#2962).
+ */
+export function freeTileIds(tiles: readonly SlotTile[]): ReadonlySet<number> {
+  const index = indexPositions(tiles, tileSlot, true);
+  const free = new Set<number>();
+  for (const t of tiles) {
+    if (isOpenAt(t, index, false)) free.add(t.id);
+  }
+  return free;
+}
+
+/**
+ * Every matching pair of free tiles, in board order: the first tile of each
+ * pair comes before the second in `tiles`, and pairs come in the order of
+ * their first, then second, tile. The only pair search in the engine; the
+ * functions below stop it early or collect it. `freeIds` defaults to
+ * `freeTileIds(tiles)`; pass it when the caller already has it.
+ */
+export function* freePairs(
+  tiles: readonly SlotTile[],
+  freeIds: ReadonlySet<number> = freeTileIds(tiles)
+): Generator<[SlotTile, SlotTile], void, undefined> {
+  const free = tiles.filter((t) => freeIds.has(t.id));
+  for (let i = 0; i < free.length; i++) {
+    for (let j = i + 1; j < free.length; j++) {
+      if (tilesMatch(free[i]!, free[j]!)) yield [free[i]!, free[j]!];
+    }
+  }
+}
+
 /**
  * Returns the IDs of all free tiles that match the currently selected tile.
- * Returns an empty set when nothing is selected.
- * O(n²) over all tiles (isFreeTile is O(n) per candidate) — call once per state change, not per frame.
+ * Returns an empty set when nothing is selected. One pass over the board
+ * against the free set; whether the selected tile is itself free does not
+ * matter, as before #2962.
  */
-export function getMatchingFreeTileIds(state: MahjongState): ReadonlySet<number> {
+export function getMatchingFreeTileIds(
+  state: MahjongState,
+  freeIds: ReadonlySet<number> = freeTileIds(state.tiles)
+): ReadonlySet<number> {
   if (!state.selected) return new Set();
   const selected = state.selected;
   const ids = new Set<number>();
   for (const tile of state.tiles) {
-    if (tile.id !== selected.id && isFreeTile(tile, state.tiles) && tilesMatch(tile, selected)) {
+    if (tile.id !== selected.id && freeIds.has(tile.id) && tilesMatch(tile, selected)) {
       ids.add(tile.id);
     }
   }
@@ -142,37 +267,25 @@ export function getMatchingFreeTileIds(state: MahjongState): ReadonlySet<number>
 }
 
 /** Returns true if any two free tiles in `tiles` form a matching pair. */
-export function hasFreePairs(tiles: readonly SlotTile[]): boolean {
-  const free = tiles.filter((t) => isFreeTile(t, tiles));
-  for (let i = 0; i < free.length; i++) {
-    for (let j = i + 1; j < free.length; j++) {
-      if (tilesMatch(free[i]!, free[j]!)) return true;
-    }
-  }
-  return false;
+export function hasFreePairs(tiles: readonly SlotTile[], freeIds?: ReadonlySet<number>): boolean {
+  return freePairs(tiles, freeIds).next().done !== true;
 }
 
 /** Returns all valid free pairs. */
-export function getAllFreePairs(tiles: readonly SlotTile[]): [SlotTile, SlotTile][] {
-  const free = tiles.filter((t) => isFreeTile(t, tiles));
-  const pairs: [SlotTile, SlotTile][] = [];
-  for (let i = 0; i < free.length; i++) {
-    for (let j = i + 1; j < free.length; j++) {
-      if (tilesMatch(free[i]!, free[j]!)) pairs.push([free[i]!, free[j]!]);
-    }
-  }
-  return pairs;
+export function getAllFreePairs(
+  tiles: readonly SlotTile[],
+  freeIds?: ReadonlySet<number>
+): [SlotTile, SlotTile][] {
+  return [...freePairs(tiles, freeIds)];
 }
 
 /** Returns the IDs of one valid free pair, or null when none exists. Used by the hint button. */
-export function getAnyFreePair(tiles: readonly SlotTile[]): [number, number] | null {
-  const free = tiles.filter((t) => isFreeTile(t, tiles));
-  for (let i = 0; i < free.length; i++) {
-    for (let j = i + 1; j < free.length; j++) {
-      if (tilesMatch(free[i]!, free[j]!)) return [free[i]!.id, free[j]!.id];
-    }
-  }
-  return null;
+export function getAnyFreePair(
+  tiles: readonly SlotTile[],
+  freeIds?: ReadonlySet<number>
+): [number, number] | null {
+  const first = freePairs(tiles, freeIds).next();
+  return first.done === true ? null : [first.value[0].id, first.value[1].id];
 }
 
 // ---------------------------------------------------------------------------
@@ -282,40 +395,18 @@ function fisherYates<T>(arr: T[], rng: RandomSource): T[] {
 
 /**
  * Returns the indices (into `slots`) that are accessible given the current
- * unplaced set — i.e., nothing above them and at least one open horizontal
- * side. Mirrors the logic of `isFreeTile` but operates on the unplaced pool
- * rather than the live tile list.
+ * unplaced set — i.e., nothing directly above them (one layer up) and at least
+ * one open horizontal side — in the unplaced set's order. Uses the same
+ * position index as `freeTileIds` (#2962), built once per call: O(n) where it
+ * was O(n²), so a deal attempt is O(n²) rather than O(n³).
  */
-function accessibleInUnplaced(slots: readonly Slot[], unplaced: Set<number>): number[] {
+export function accessibleInUnplaced(slots: readonly Slot[], unplaced: Set<number>): number[] {
+  // The deal looks one layer up only, so it needs no list of layers.
+  const index = indexPositions(unplaced, (i) => slots[i]!, false);
   const accessible: number[] = [];
   for (const i of unplaced) {
     const s = slots[i]!;
-
-    let hasAbove = false;
-    for (const j of unplaced) {
-      if (
-        j !== i &&
-        slots[j]!.layer === s.layer + 1 &&
-        slots[j]!.col === s.col &&
-        slots[j]!.row === s.row
-      ) {
-        hasAbove = true;
-        break;
-      }
-    }
-    if (hasAbove) continue;
-
-    let leftBlocked = false;
-    let rightBlocked = false;
-    for (const j of unplaced) {
-      if (j === i) continue;
-      const s2 = slots[j]!;
-      if (s2.layer !== s.layer || s2.row !== s.row) continue;
-      if (s2.col === s.col - 2) leftBlocked = true;
-      if (s2.col === s.col + 2) rightBlocked = true;
-      if (leftBlocked && rightBlocked) break;
-    }
-    if (!(leftBlocked && rightBlocked)) accessible.push(i);
+    if (isOpenAt(s, index, true)) accessible.push(i);
   }
   return accessible;
 }
@@ -472,14 +563,14 @@ function computeDealId(tiles: readonly SlotTile[]): string {
 
 /** Deal a fresh solvable game using the supplied layout. */
 export function createGame(layout: Layout, seed?: number): MahjongState {
-  const rng = seed !== undefined ? createSeededRng(seed) : _rng;
+  const rng = seed !== undefined ? createSeededRng(seed) : rngSlot.rng;
   const specs = buildFullTileSet();
   const pairs = buildPairs(specs);
   const tiles = shuffleFaceAssignments(buildBoard(layout, pairs, rng), rng);
   const dealId = computeDealId(tiles);
 
   return {
-    _v: 1,
+    _v: 2,
     tiles,
     dealId,
     pairsRemoved: 0,
@@ -503,38 +594,63 @@ export function createGame(layout: Layout, seed?: number): MahjongState {
  * - If a different tile is selected and they match, both are removed.
  * - If a different tile is selected and they don't match, the new tile
  *   becomes selected (replacing the old selection).
+ *
+ * `freeIds` is `freeTileIds(state.tiles)` when the caller already has it (the
+ * screen computes it once per board, #2962); without it the tapped tile alone
+ * is checked (`isFreeTile`, O(n)). It must belong to `state.tiles`.
  */
-export function selectTile(state: MahjongState, tileId: number): MahjongState {
+export function selectTile(
+  state: MahjongState,
+  tileId: number,
+  freeIds?: ReadonlySet<number>
+): MahjongState {
   const tile = state.tiles.find((t) => t.id === tileId);
-  if (!tile || !isFreeTile(tile, state.tiles)) return state;
+  if (!tile || !(freeIds ? freeIds.has(tile.id) : isFreeTile(tile, state.tiles))) return state;
 
   const now = Date.now();
   // The first tap starts the clock; a tap while it is paused leaves it so.
   const clock = startClockOnMove(state, now);
 
+  // Each action emits a new events array (#3087): the screen fires each array
+  // once, by identity, so two selects in a row must not share one.
   if (!state.selected) {
-    return withClock({ ...state, selected: tile }, clock);
+    return withClock({ ...state, selected: tile, events: [{ type: "tileSelect" }] }, clock);
   }
 
   if (state.selected.id === tile.id) {
-    return { ...state, selected: null };
+    return { ...state, selected: null, events: undefined };
   }
 
   if (!tilesMatch(state.selected, tile)) {
-    return withClock({ ...state, selected: tile }, clock);
+    return withClock({ ...state, selected: tile, events: [{ type: "tileSelect" }] }, clock);
   }
 
   // Matched pair — remove both tiles.
   const removedA = state.selected;
   const newTiles = state.tiles.filter((t) => t.id !== removedA.id && t.id !== tile.id);
+  const removedTiles = [removedA, tile]
+    .map((t): RemovedTile => ({ index: state.tiles.findIndex((x) => x.id === t.id), tile: t }))
+    .sort((x, y) => x.index - y.index) as [RemovedTile, RemovedTile];
   const pairsRemoved = state.pairsRemoved + 1;
   const isComplete = newTiles.length === 0;
   const score = state.score + SCORE_PER_PAIR + (isComplete ? SCORE_COMPLETE_BONUS : 0);
-  const isDeadlocked = !isComplete && !hasFreePairs(newTiles) && state.shufflesLeft === 0;
+  // Only a board with no shuffle left can deadlock, so only then is the new
+  // board searched for a pair (one indexed pass, #2962).
+  const isDeadlocked = state.shufflesLeft === 0 && !isComplete && !hasFreePairs(newTiles);
   const ended = isComplete || isDeadlocked;
+  const events: MahjongEvent[] = [
+    { type: "tileMatch", tiles: [removedTiles[0].tile, removedTiles[1].tile] },
+  ];
+  if (isComplete) events.push({ type: "boardCleared" });
+  // Only the step into a deadlock is one (the screen shakes the board once).
+  if (isDeadlocked && !state.isDeadlocked) events.push({ type: "deadlock" });
 
-  const snapshot: MahjongState = { ...state, selected: null, undoStack: [] };
-  const undoStack = [...state.undoStack.slice(-(UNDO_CAP - 1)), snapshot];
+  // The tiles come back from the board itself, so the selection undoes to none.
+  const undoStack = pushUndo(state, {
+    ...undoBase({ ...state, selected: null }),
+    kind: "match",
+    removedTiles,
+  });
 
   // Clearing or deadlocking the board stops the clock: bank the running
   // segment so the elapsed time is frozen and the result card can't tick.
@@ -548,6 +664,7 @@ export function selectTile(state: MahjongState, tileId: number): MahjongState {
       undoStack,
       isComplete,
       isDeadlocked,
+      events,
     },
     ended ? stopClock(clock, now) : clock
   );
@@ -654,7 +771,9 @@ function buildValidSlotPairing(slots: readonly Slot[], rng: RandomSource): Slot[
  * arrangement — so we consume the token and surface the deadlock overlay.
  */
 export function shuffleBoard(state: MahjongState): MahjongState {
-  if (state.shufflesLeft === 0) return state;
+  // No token left, or the board is already deadlocked (e.g. a second tap while
+  // the deadlock overlay is still delayed): nothing to shuffle, spend nothing.
+  if (state.shufflesLeft === 0 || state.isDeadlocked) return state;
 
   const slots: Slot[] = state.tiles.map(({ col, row, layer }) => ({ col, row, layer }));
   const specs: TileSpec[] = state.tiles.map(({ suit, rank, faceId }) => ({ suit, rank, faceId }));
@@ -662,8 +781,8 @@ export function shuffleBoard(state: MahjongState): MahjongState {
 
   let newTiles: SlotTile[] = [];
   for (let attempt = 0; attempt < 50; attempt++) {
-    const shuffledPairs = fisherYates([...pairs], _rng);
-    const shuffledSlots = fisherYates([...slots], _rng);
+    const shuffledPairs = fisherYates([...pairs], rngSlot.rng);
+    const shuffledSlots = fisherYates([...slots], rngSlot.rng);
     const candidate: SlotTile[] = [];
     let id = 0;
     for (let i = 0; i < shuffledPairs.length; i++) {
@@ -688,9 +807,9 @@ export function shuffleBoard(state: MahjongState): MahjongState {
 
   // Fallback: guaranteed interleaving algorithm for skewed or pure-stack boards.
   if (newTiles.length === 0) {
-    const interleaved = buildValidSlotPairing(slots, _rng);
+    const interleaved = buildValidSlotPairing(slots, rngSlot.rng);
     if (interleaved !== null) {
-      const shuffledPairs = fisherYates([...pairs], _rng);
+      const shuffledPairs = fisherYates([...pairs], rngSlot.rng);
       const candidate: SlotTile[] = [];
       for (let i = 0; i < shuffledPairs.length; i++) {
         const pair = shuffledPairs[i]!;
@@ -712,16 +831,25 @@ export function shuffleBoard(state: MahjongState): MahjongState {
   // feedback instead of a silent no-op.
   if (newTiles.length === 0) {
     const shufflesLeft = state.shufflesLeft - 1;
-    const snapshot: MahjongState = { ...state, undoStack: [] };
-    const undoStack = [...state.undoStack.slice(-(UNDO_CAP - 1)), snapshot];
+    const undoStack = pushUndo(state, { ...undoBase(state), kind: "shuffle", tilesBefore: null });
     return stopClock(
-      { ...state, selected: null, shufflesLeft, isDeadlocked: true, undoStack },
+      {
+        ...state,
+        selected: null,
+        shufflesLeft,
+        isDeadlocked: true,
+        undoStack,
+        events: [{ type: "shuffle" }, { type: "deadlock" }],
+      },
       Date.now()
     );
   }
 
-  const snapshot: MahjongState = { ...state, undoStack: [] };
-  const undoStack = [...state.undoStack.slice(-(UNDO_CAP - 1)), snapshot];
+  const undoStack = pushUndo(state, {
+    ...undoBase(state),
+    kind: "shuffle",
+    tilesBefore: state.tiles,
+  });
 
   return {
     ...state,
@@ -730,23 +858,75 @@ export function shuffleBoard(state: MahjongState): MahjongState {
     shufflesLeft: state.shufflesLeft - 1,
     undoStack,
     isDeadlocked: false,
+    events: [{ type: "shuffle" }],
   };
+}
+
+// ---------------------------------------------------------------------------
+// Undo history — deltas, not board snapshots (#2961)
+// ---------------------------------------------------------------------------
+
+/** The non-board fields of `state` as an undo entry records them. */
+function undoBase(state: MahjongState) {
+  return {
+    scoreBefore: state.score,
+    pairsRemovedBefore: state.pairsRemoved,
+    shufflesLeftBefore: state.shufflesLeft,
+    selectedBefore: state.selected,
+    isCompleteBefore: state.isComplete,
+    isDeadlockedBefore: state.isDeadlocked,
+  };
+}
+
+/** `state`'s undo history with `entry` on top, dropping the oldest past UNDO_CAP. */
+function pushUndo(state: MahjongState, entry: MahjongUndoEntry): readonly MahjongUndoEntry[] {
+  return pushCapped(state.undoStack, entry, UNDO_CAP);
+}
+
+/**
+ * The board before the move `entry` records, given the board after it: a
+ * match's two tiles go back at their old indices (ascending, so each index is
+ * the one it had in the full array), a shuffle's board comes back whole.
+ */
+export function tilesBeforeUndo(
+  tiles: readonly SlotTile[],
+  entry: MahjongUndoEntry
+): readonly SlotTile[] {
+  if (entry.kind === "shuffle") return entry.tilesBefore ?? tiles;
+  const restored = [...tiles];
+  for (const { index, tile } of entry.removedTiles) restored.splice(index, 0, tile);
+  return restored;
 }
 
 /** Undo the last pair removal or shuffle. */
 export function undoMove(state: MahjongState, now: number = Date.now()): MahjongState {
   if (state.undoStack.length === 0) return state;
-  const prev = state.undoStack[state.undoStack.length - 1]!;
-  // Restore the snapshot but give it the remaining undo history so that
-  // further undos can continue to chain without exponential nesting.
-  // The live clock stays (#2750): the snapshot's own startedAt predates any
-  // pause or relaunch since, and restoring it would count that gap as play.
-  // Backing out of a deadlock, which stopped the clock, starts it again.
+  const entry = state.undoStack[state.undoStack.length - 1]!;
+  // The live clock stays (#2750): the clock as it was before the move
+  // predates any pause or relaunch since, and restoring it would count that
+  // gap as play. Backing out of a deadlock, which stopped the clock, starts
+  // it again.
   const live =
     state.isDeadlocked && state.startedAt === null && state.paused !== true
       ? { startedAt: now, accumulatedMs: state.accumulatedMs }
       : state;
-  return withClock({ ...prev, undoStack: state.undoStack.slice(0, -1) }, live);
+  return withClock(
+    {
+      ...state,
+      tiles: tilesBeforeUndo(state.tiles, entry),
+      score: entry.scoreBefore,
+      pairsRemoved: entry.pairsRemovedBefore,
+      shufflesLeft: entry.shufflesLeftBefore,
+      selected: entry.selectedBefore,
+      isComplete: entry.isCompleteBefore,
+      isDeadlocked: entry.isDeadlockedBefore,
+      undoStack: state.undoStack.slice(0, -1),
+      // An undone shuffle can bring a selection back (a match never does):
+      // that is a select, as the board shows it.
+      events: entry.selectedBefore !== null ? [{ type: "tileSelect" }] : undefined,
+    },
+    live
+  );
 }
 
 /**

@@ -2,7 +2,7 @@
  * Yacht runtime oracle — public API (#2243).
  *
  * Shipped, lazy-loaded: `oracleTable.generated.ts` (the precomputed ~786K-
- * entry EV table, built offline by `scripts/build-yacht-oracle.ts`, stored
+ * entry EV table, built offline by `tools/generators/build-yacht-oracle.ts`, stored
  * compressed — see `tableCodec.ts`) is `require()`d lazily inside
  * `getOracleTable()`, not imported at module top-level — its ~0.6 MB base64
  * payload is never parsed/decoded during app startup, only when a caller
@@ -61,11 +61,6 @@ export function getHoldOptions(): readonly (readonly HoldOption[])[] {
   return holdOptionsCache;
 }
 
-/** True once the oracle table has been decoded. */
-export function isOracleTableLoaded(): boolean {
-  return table !== null;
-}
-
 /**
  * Decode the table ahead of time (e.g. when a VS game starts) so the first
  * AI decision doesn't pay for it. Defers to a macrotask so the calling
@@ -94,6 +89,7 @@ export function preloadOracleTable(): Promise<void> {
  * under optimal play. This is "value to go" — it does NOT include points
  * already scored (see stateKey.ts's module doc for why the table is
  * structured that way). O(1) once the table is loaded.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
  */
 export async function optimalStateEV(state: GameState): Promise<number> {
   const table = await loadTable();
@@ -105,6 +101,7 @@ export async function optimalStateEV(state: GameState): Promise<number> {
  * EV of scoring each currently-legal category with `dice` (joker-aware —
  * legality and scoring both go through the same rules stateKey.ts shares
  * with the offline solver).
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
  */
 export async function optimalCategoryEVs(
   state: GameState,
@@ -132,6 +129,7 @@ export interface HoldEV {
 /**
  * EV of every legal hold decision on `dice`, given `rerollsLeft` (1 or 2)
  * remaining this turn.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
  */
 export async function optimalHoldEVs(
   state: GameState,

@@ -109,4 +109,48 @@ describe("DifficultyPicker", () => {
       ).toBeNull();
     });
   });
+
+  describe("extensions (#2982)", () => {
+    const OVERRIDE: DifficultyOption<Level>[] = [
+      { value: "easy", label: "Easy", description: "×1", accessibilityLabel: "Easy ×1" },
+      { value: "expert", label: "Expert", description: "×3", accessibilityLabel: "Expert ×3" },
+    ];
+
+    async function renderOverride() {
+      await render(
+        <ThemeProvider>
+          <DifficultyPicker
+            gameKey="test"
+            options={OVERRIDE}
+            value="easy"
+            onChange={jest.fn()}
+            accessibilityLabel="Difficulty"
+            testID="pick"
+            premiumTestID="custom-premium"
+          />
+        </ThemeProvider>
+      );
+    }
+
+    it("gives screen readers an option's accessibilityLabel in place of its label", async () => {
+      await renderOverride();
+      expect(screen.getByTestId("pick-easy").props.accessibilityLabel).toBe("Easy ×1");
+      expect(screen.getByText("Easy")).toBeTruthy();
+    });
+
+    it("wraps the accessibilityLabel of a locked option in the premium wording", async () => {
+      await renderOverride();
+      expect(screen.getByTestId("pick-expert").props.accessibilityLabel).toBe(
+        "Expert ×3, locked. Part of BC Arcade Premium."
+      );
+      expect(screen.getByText("🔒 Expert")).toBeTruthy();
+    });
+
+    it("uses premiumTestID for the premium notice", async () => {
+      await renderOverride();
+      await fireEvent.press(screen.getByTestId("pick-expert"));
+      expect(screen.getByTestId("custom-premium-ok")).toBeTruthy();
+      expect(screen.queryByTestId("pick-premium-ok")).toBeNull();
+    });
+  });
 });

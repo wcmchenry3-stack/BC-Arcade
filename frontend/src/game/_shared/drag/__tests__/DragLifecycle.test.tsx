@@ -16,52 +16,19 @@ import { DragProvider, SNAP_BACK_FALLBACK_MS, useDragContext } from "../DragCont
 import type { Bounds, DragCard, DragSource, DropHandler } from "../DragContext";
 import { DraggableCard } from "../DraggableCard";
 import { DragOverlay } from "../DragOverlay";
+import { detectedGesture } from "../../../../test-utils/mockScreenDeps";
+import type { DetectorRender } from "../../../../test-utils/mockScreenDeps";
 
 // ---------------------------------------------------------------------------
-// Gesture-handler mock that records each GestureDetector's pan callbacks,
-// keyed by the child's testID, so tests can fire them like RNGH does.
+// Gesture-handler mock (src/test-utils/mockScreenDeps.ts): every GestureDetector
+// render records its gesture and its child's testID, so tests can fire a
+// card's pan callbacks like RNGH does.
 // ---------------------------------------------------------------------------
 
-type Handlers = Record<string, (...args: unknown[]) => void>;
-const mockGestures = new Map<string, Handlers>();
-
-jest.mock("react-native-gesture-handler", () => {
-  const builder = (kind: string) => () => {
-    const target = { kind, handlers: {} as Record<string, unknown> };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const proxy: any = new Proxy(target, {
-      get(t, prop: string) {
-        if (prop in t) return (t as Record<string, unknown>)[prop];
-        return (...args: unknown[]) => {
-          if (typeof args[0] === "function") t.handlers[prop] = args[0];
-          return proxy;
-        };
-      },
-    });
-    return proxy;
-  };
-  return {
-    GestureDetector: ({
-      gesture,
-      children,
-    }: {
-      gesture: { kind: string; handlers: Record<string, unknown> };
-      children: { props: { testID?: string } };
-    }) => {
-      const id = children.props.testID;
-      if (id && gesture.kind === "pan") mockGestures.set(id, gesture.handlers as never);
-      if (id && gesture.kind !== "pan") mockGestures.delete(id);
-      return children;
-    },
-    GestureHandlerRootView: ({ children }: { children: unknown }) => children,
-    Gesture: {
-      Pan: builder("pan"),
-      Tap: builder("tap"),
-      Exclusive: (...args: unknown[]) => args[0],
-      Simultaneous: (...args: unknown[]) => args[0],
-    },
-  };
-});
+const mockDetected: DetectorRender[] = [];
+jest.mock("react-native-gesture-handler", () =>
+  mockScreenDeps().mockGestureHandler(() => mockDetected)
+);
 
 const cardA: DragCard[] = [{ suit: "clubs", rank: 11, faceDown: false, width: 60, height: 90 }];
 const cardB: DragCard[] = [{ suit: "diamonds", rank: 9, faceDown: false, width: 60, height: 90 }];
@@ -124,7 +91,7 @@ function Board({
 }
 
 function pan(id: string) {
-  const h = mockGestures.get(id);
+  const h = detectedGesture(mockDetected, "pan", { testID: id });
   if (!h) throw new Error(`no pan gesture for ${id}`);
   return {
     start: (e = IN_ZONE) => act(() => h.onStart!(e)),
@@ -144,19 +111,11 @@ let springCallbacks: ((finished?: boolean) => void)[];
 let withSpringSpy: jest.SpyInstance;
 let appStateListeners: Set<(s: AppStateStatus) => void>;
 let appStateSpy: jest.SpyInstance;
-let stableSvSpy: jest.SpyInstance;
-
 beforeEach(() => {
-  // The global Reanimated mock hands out a fresh object every render; the
-  // real useSharedValue is stable for the component's lifetime, which the
-  // pan callbacks (captured in one render, fired after the next) rely on.
-  stableSvSpy = jest.spyOn(Reanimated, "useSharedValue").mockImplementation(((init: unknown) => {
-    const ref = useRef<{ value: unknown } | null>(null);
-    if (ref.current === null) ref.current = { value: init };
-    return ref.current;
-  }) as never);
+  // The pan callbacks (captured in one render, fired after the next) rely on
+  // stable shared values, which the global Reanimated mock provides.
   jest.useFakeTimers();
-  mockGestures.clear();
+  mockDetected.length = 0;
   ctxRef = null;
   springCallbacks = [];
   withSpringSpy = jest.spyOn(Reanimated, "withSpring").mockImplementation(((
@@ -178,7 +137,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  stableSvSpy.mockRestore();
   withSpringSpy.mockRestore();
   appStateSpy.mockRestore();
   jest.useRealTimers();

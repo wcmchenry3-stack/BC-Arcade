@@ -1,0 +1,53 @@
+import React from "react";
+import { fireEvent, render } from "@testing-library/react-native";
+import { ThemeProvider } from "../../../theme/ThemeContext";
+import BottleView from "../BottleView";
+import type { Color } from "../../../game/sort/types";
+
+function withTheme(children: React.ReactNode) {
+  return <ThemeProvider>{children}</ThemeProvider>;
+}
+
+describe("BottleView", () => {
+  it("labels an empty bottle correctly", async () => {
+    const { getByLabelText } = await render(withTheme(<BottleView bottle={[]} index={0} />));
+    expect(getByLabelText("Bottle 1, empty")).toBeTruthy();
+  });
+
+  it("labels a partially filled bottle with count info", async () => {
+    const bottle: Color[] = ["red", "blue"];
+    const { getByLabelText } = await render(withTheme(<BottleView bottle={bottle} index={1} />));
+    expect(getByLabelText("Bottle 2, 2 of 4 filled")).toBeTruthy();
+  });
+
+  it("labels a selected bottle with the pour instruction", async () => {
+    const bottle: Color[] = ["red"];
+    const { getByLabelText } = await render(
+      withTheme(<BottleView bottle={bottle} index={2} selected />)
+    );
+    expect(getByLabelText(/Bottle 3 selected/)).toBeTruthy();
+  });
+
+  it("labels a solved bottle as complete", async () => {
+    const solved: Color[] = ["red", "red", "red", "red"];
+    const { getByLabelText } = await render(withTheme(<BottleView bottle={solved} index={0} />));
+    expect(getByLabelText("Bottle 1, complete")).toBeTruthy();
+  });
+
+  it("fires onTap when pressed", async () => {
+    const onTap = jest.fn();
+    const { getByLabelText } = await render(
+      withTheme(<BottleView bottle={[]} index={0} onTap={onTap} />)
+    );
+    await fireEvent.press(getByLabelText("Bottle 1, empty"));
+    expect(onTap).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders a ball for each color in the bottle", async () => {
+    const bottle: Color[] = ["red", "blue", "green"];
+    const { getByLabelText } = await render(withTheme(<BottleView bottle={bottle} index={0} />));
+    expect(getByLabelText("Red")).toBeTruthy();
+    expect(getByLabelText("Blue")).toBeTruthy();
+    expect(getByLabelText("Green")).toBeTruthy();
+  });
+});

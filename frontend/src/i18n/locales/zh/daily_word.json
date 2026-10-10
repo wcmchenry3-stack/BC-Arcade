@@ -10,6 +10,8 @@
   "error.alreadyGuessed": "已经猜过",
   "error.tooShort": "字母数量不足",
   "error.couldNotLoad": "无法加载今日谜题",
+  "error.needsConnection": "每日单词需要网络连接",
+  "error.retry": "重试",
   "error.couldNotSubmit": "无法提交你的猜测",
   "error.stalePuzzle": "有新谜题啦 — 正在加载今日单词",
   "error.wrongLength": "猜测的字母数与今日单词不符",

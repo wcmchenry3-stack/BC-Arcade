@@ -93,6 +93,86 @@ describe("runThrottled concurrency (#1788)", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// LazyScreens registry (#2957)
+//
+// Jest cannot execute `import()` (no --experimental-vm-modules), so a chunk
+// never resolves here: the load fails at once and the error reaches the
+// nearest error boundary. That still runs each entry's own loader, which is
+// what the registry promises: a React.lazy per screen that starts loading the
+// first time it renders and leaves the fallback. The App smoke test
+// (src/__tests__/App.test.tsx) covers the resolved side.
+// ---------------------------------------------------------------------------
+
+class LoadFailureBoundary extends React.Component<
+  { children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? <Text>load-failed</Text> : this.props.children;
+  }
+}
+
+describe("LazyScreens registry", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { LazyScreens } = require("../lazyScreens") as typeof import("../lazyScreens");
+  const names = Object.keys(LazyScreens) as Array<keyof typeof LazyScreens>;
+
+  it("registers every game and tab screen once", () => {
+    expect(names.slice().sort()).toEqual(
+      [
+        "BlackjackBetting",
+        "BlackjackStats",
+        "BlackjackTable",
+        "BlackjackVictory",
+        "Cascade",
+        "DailyWord",
+        "FreeCell",
+        "GameDetail",
+        "GameStats",
+        "Hearts",
+        "Leaderboard",
+        "Mahjong",
+        "MahjongLayoutDetail",
+        "MahjongLayoutInspector",
+        "Paywall",
+        "Scorecard",
+        "Settings",
+        "Solitaire",
+        "Sort",
+        "StarSwarm",
+        "Sudoku",
+        "Twenty48",
+      ].sort()
+    );
+  });
+
+  it.each(names)(
+    "%s starts loading on first render and never sticks on the fallback",
+    async (name) => {
+      jest.spyOn(console, "error").mockImplementation(() => undefined);
+      const Screen = LazyScreens[name] as React.ComponentType;
+      const view = await render(
+        <LoadFailureBoundary>
+          <Suspense fallback={<Text>loading</Text>}>
+            <Screen />
+          </Suspense>
+        </LoadFailureBoundary>
+      );
+      // The load either resolves to the (stubbed) screen or fails into the boundary.
+      await waitFor(() => expect(view.queryByText("loading")).toBeNull());
+    }
+  );
+});
+
 describe("prefetchLobbyGameScreens", () => {
   it("resolves without throwing when called repeatedly", () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports

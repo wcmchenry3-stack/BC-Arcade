@@ -9,6 +9,7 @@
  * in __tests__/engine.test.ts.
  */
 
+import { createRngSlot, createSeededRng, type RandomSource } from "../_shared/seededRng";
 import { GameEvent, GameState } from "./types";
 
 export const CATEGORIES = [
@@ -54,7 +55,7 @@ const YACHT_BONUS_VALUE = 100;
 
 /** Die face → its corresponding upper-section category. Used to enforce the
  * Joker rule's mandatory-upper priority (see `score()` and
- * `jokerPossibleScores()` below, and `maxImmediateScore` in aiHelpers.ts). */
+ * `jokerPossibleScores()` below). */
 export const FACE_TO_UPPER: Record<number, Category> = {
   1: "ones",
   2: "twos",
@@ -67,35 +68,18 @@ export const FACE_TO_UPPER: Record<number, Category> = {
 // ---------------------------------------------------------------------------
 // Seedable RNG
 //
-// Die rolls go through `_rng` so tests and e2e flows can pin the dice
+// Die rolls go through `rngSlot.rng` so tests and e2e flows can pin the dice
 // sequence with `setRng(createSeededRng(seed))`. Default is Math.random for
 // normal gameplay. Tests that call setRng must restore Math.random in
 // afterEach to avoid leaking determinism into later tests.
 // ---------------------------------------------------------------------------
 
-export type RandomSource = () => number;
-
-let _rng: RandomSource = Math.random;
-
-export function setRng(fn: RandomSource): void {
-  _rng = fn;
-}
-
-export function getRng(): RandomSource {
-  return _rng;
-}
-
-/**
- * LCG (same parameters as Cascade's, Twenty48's, and Blackjack's seeded
- * RNGs). Deterministic for a given seed. Not cryptographic — testing only.
- */
-export function createSeededRng(seed: number): RandomSource {
-  let state = seed >>> 0;
-  return () => {
-    state = (1664525 * state + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
-}
+const rngSlot = createRngSlot();
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
+export const setRng = rngSlot.setRng;
+export const getRng = rngSlot.getRng;
+export { createSeededRng };
+export type { RandomSource };
 
 // ---------------------------------------------------------------------------
 // Pure scoring functions
@@ -233,6 +217,7 @@ function totalScore(scores: GameState["scores"], yachtBonusCount: number): numbe
  * Recompute derived fields (upper_subtotal, upper_bonus, yacht_bonus_total,
  * total_score) from a state's base fields. Useful for tests that construct
  * states by hand and for storage hydration.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
  */
 export function computeDerived(state: GameState): GameState {
   return withDerived({
@@ -274,7 +259,7 @@ export function isYacht(dice: readonly number[]): boolean {
   return counts(dice).size === 1 && dice[0] !== 0;
 }
 
-export function jokerActive(state: GameState): boolean {
+function jokerActive(state: GameState): boolean {
   return isYacht(state.dice) && state.scores.yacht === 50;
 }
 
@@ -321,7 +306,7 @@ export function roll(
   const rolledIndices: number[] = [];
   for (let i = 0; i < 5; i++) {
     if (!held[i]) {
-      nextDice[i] = opts?.dice != null ? opts.dice[i]! : 1 + Math.floor(_rng() * 6);
+      nextDice[i] = opts?.dice != null ? opts.dice[i]! : 1 + Math.floor(rngSlot.rng() * 6);
       rolledIndices.push(i);
     }
   }

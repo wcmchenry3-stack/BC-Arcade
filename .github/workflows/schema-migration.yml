@@ -7,8 +7,25 @@ on:
 permissions: {}
 
 jobs:
+  # The called workflow takes a version string, not a version file, so read the single
+  # source of truth (backend/.python-version, #2972) here and pass it through.
+  python-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: backend/.python-version
+          sparse-checkout-cone-mode: false
+      - id: read
+        run: echo "version=$(tr -d '[:space:]' < backend/.python-version)" >> "$GITHUB_OUTPUT"
+
   schema-check:
+    needs: python-version
     uses: wcmchenry3-stack/.github/.github/workflows/called-schema-migration.yml@main
     with:
       working-directory: backend
-      python-version: '3.11'
+      python-version: ${{ needs.python-version.outputs.version }}

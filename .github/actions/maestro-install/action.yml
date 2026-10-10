@@ -1,0 +1,21 @@
+name: Install Maestro CLI
+description: >
+  Installs the Maestro CLI and puts it on PATH. Shared by mobile-smoke-android.yml
+  and mobile-smoke-ios.yml. Flow results are summarised by e2e/maestro/summarize.py.
+
+inputs:
+  version:
+    description: Maestro CLI version to install.
+    required: false
+    default: "1.39.13"
+
+runs:
+  using: composite
+  steps:
+    - name: Install Maestro CLI
+      shell: bash
+      env:
+        MAESTRO_VERSION: ${{ inputs.version }}
+      run: |
+        curl -Ls "https://get.maestro.mobile.dev" | bash
+        echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"

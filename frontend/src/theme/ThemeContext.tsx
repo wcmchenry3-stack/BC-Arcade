@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useColorScheme } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { CARD_RED_SUIT } from "./theme.cards";
 
 export type Theme = "dark" | "light";
 export type ThemeMode = "system" | "light" | "dark";
@@ -61,6 +62,14 @@ export interface Colors {
   outcomeEndedTint: string;
   /** Gold used by win celebrations (badges, confetti accents). */
   celebration: string;
+  /**
+   * Playing-card face colours (#2983): the face fill, the ink for ranks and
+   * black suits, and the red-suit colour. A card face is a physical object, so
+   * these are the same in both themes (a card is a physical object).
+   */
+  cardFace: string;
+  cardInk: string;
+  cardRedSuit: string;
   fruitContainer: string;
   fruitBackground: string;
 }
@@ -103,6 +112,10 @@ const TOKENS = {
   celebrationDark: "#ffd700",
   celebrationLight: "#8a6100",
   white: "#ffffff",
+  // Playing cards (#2983) — one physical deck, identical in both themes
+  cardFace: "#fff",
+  cardInk: "#0e0e13",
+  cardRedSuit: CARD_RED_SUIT,
 } as const;
 
 export const dark: Colors = {
@@ -151,6 +164,9 @@ export const dark: Colors = {
   outcomeEnded: TOKENS.accentDark,
   outcomeEndedTint: "rgba(143,245,255,0.12)",
   celebration: TOKENS.celebrationDark,
+  cardFace: TOKENS.cardFace,
+  cardInk: TOKENS.cardInk,
+  cardRedSuit: TOKENS.cardRedSuit,
   fruitContainer: TOKENS.darkSurface,
   fruitBackground: TOKENS.darkBg,
 };
@@ -201,6 +217,9 @@ export const light: Colors = {
   outcomeEnded: TOKENS.outcomeEndedLight,
   outcomeEndedTint: "rgba(0,115,126,0.10)",
   celebration: TOKENS.celebrationLight,
+  cardFace: TOKENS.cardFace,
+  cardInk: TOKENS.cardInk,
+  cardRedSuit: TOKENS.cardRedSuit,
   fruitContainer: TOKENS.lightSurfaceAlt,
   fruitBackground: TOKENS.lightSurfaceHigh,
 };
@@ -252,22 +271,24 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const theme: Theme =
     themeMode === "system" ? (systemScheme === "light" ? "light" : "dark") : themeMode;
 
-  function setThemeMode(mode: ThemeMode) {
+  // Stable setters and a memoised value (#2964): a re-render of the provider
+  // that changes neither the mode nor the OS scheme must not re-render the
+  // 70-odd useTheme() consumers.
+  const setThemeMode = useCallback((mode: ThemeMode) => {
     setThemeModeState(mode);
     AsyncStorage.setItem(STORAGE_KEY_MODE, mode);
-  }
+  }, []);
 
-  function toggle() {
+  const toggle = useCallback(() => {
     setThemeMode(theme === "dark" ? "light" : "dark");
-  }
+  }, [theme, setThemeMode]);
 
-  return (
-    <ThemeContext.Provider
-      value={{ theme, themeMode, colors: PALETTES[theme], toggle, setThemeMode }}
-    >
-      {children}
-    </ThemeContext.Provider>
+  const value = useMemo<ThemeContextValue>(
+    () => ({ theme, themeMode, colors: PALETTES[theme], toggle, setThemeMode }),
+    [theme, themeMode, toggle, setThemeMode]
   );
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme() {

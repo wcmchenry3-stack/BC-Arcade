@@ -18,7 +18,7 @@ import * as solitaireEngine from "../../game/solitaire/engine";
 import { createSeededRng, dealGame, setRng } from "../../game/solitaire/engine";
 import type { SolitaireState } from "../../game/solitaire/types";
 import { loadStats, saveStats } from "../../game/solitaire/storage";
-import { WIN_CASCADE_MS } from "../../game/solitaire/components/SolitaireWinCascade";
+import { WIN_CASCADE_MS } from "../../components/solitaire/SolitaireWinCascade";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 
 // SolitaireScreen's first render pulls in the heaviest module graph in the
@@ -27,10 +27,6 @@ import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 // default, independent of any actual behavioral slowness. Give this file
 // more headroom rather than papering over it with retries.
 jest.setTimeout(15000);
-
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
 
 // Capture the beforeRemove listener so tests can invoke it to simulate
 // back-navigation without rendering a full navigation container.
@@ -49,14 +45,14 @@ const mockAddListener = jest.fn((event: string, handler: () => void) => {
 });
 
 const mockNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  useNavigation: () => ({
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({
     popToTop: jest.fn(),
     goBack: jest.fn(),
     navigate: mockNavigate,
     addListener: mockAddListener,
-  }),
-}));
+  }))
+);
 
 jest.mock("@sentry/react-native", () => ({
   addBreadcrumb: jest.fn(),
@@ -74,35 +70,30 @@ const mockCompleteGame = jest.fn();
 const mockMarkStarted = jest.fn();
 const mockDiscardGame = jest.fn();
 const mockResumeGame = jest.fn<string | null, [string, Record<string, unknown> | undefined]>();
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as unknown as jest.Mock)(...args),
-    enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
-    markStarted: (...args: unknown[]) => (mockMarkStarted as unknown as jest.Mock)(...args),
-    discardGame: (...args: unknown[]) => (mockDiscardGame as unknown as jest.Mock)(...args),
-    resumeGame: (...args: unknown[]) => (mockResumeGame as unknown as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    enqueueEvent: lazy(() => mockEnqueueEvent),
+    completeGame: lazy(() => mockCompleteGame),
+    markStarted: lazy(() => mockMarkStarted),
+    discardGame: lazy(() => mockDiscardGame),
+    resumeGame: lazy(() => mockResumeGame),
+  });
+});
 
-// The result card reads the synced game's rank (#2632, sessionBoardAdapter).
+// The result card reads the synced game's rank (#2632, lookupGameRank).
 const mockGetGameRank = jest.fn();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetGameRank(gameId) })
+);
 jest.mock("../../api/players", () => ({
   playersApi: { putMe: jest.fn(() => Promise.resolve({ display_name: "Brave Otter 4821" })) },
 }));
 // The hook's foreground clock (#2684) is held still by the shared mock
 // jest.setup.ts pins (#2710), so the summaries below carry only what the
 // screen sends: its own play timer.
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: jest.fn(() => Promise.resolve()),
-}));
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
 
 async function renderScreen() {
   return await render(
@@ -1372,6 +1363,34 @@ describe("SolitaireScreen — app background and relaunch (#2750)", () => {
       }
     });
   }
+
+  // The win stops the clock, so pausing a won board (backgrounding, another
+  // screen on top) leaves it as it is: nothing writes the won board back after
+  // the win cleared the save (#3087).
+  it("backgrounding after a win doesn't save the won board: the next mount starts fresh", async () => {
+    await AsyncStorage.setItem("solitaire_game", JSON.stringify(twoFromWin()));
+    const api = await mount();
+    await playToFoundation(api, "Q of Clubs");
+    now += 5_000;
+    await playToFoundation(api, "K of Clubs"); // the win
+    await api.findByTestId("solitaire-result");
+    now += 1_000;
+    await setAppState("background");
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    await act(async () => {
+      await new Promise((resolve) => setImmediate(resolve));
+    });
+    expect(await AsyncStorage.getItem("solitaire_game")).toBeNull();
+    await act(async () => {
+      api.unmount();
+    });
+
+    const next = await mount();
+    expect(next.queryByTestId("solitaire-result")).toBeNull();
+    expect(next.getByLabelText("Draw 1")).toBeTruthy(); // the pre-game picker
+  });
 
   it("doesn't count the time the app spends in the background", async () => {
     await AsyncStorage.setItem("solitaire_game", JSON.stringify(twoFromWin()));

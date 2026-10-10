@@ -1,24 +1,43 @@
-"""FastAPI router for /games/* (#364)."""
+"""FastAPI router for /games/* (#364).
+
+Every route takes its session as ``db: DbSession`` (``db.base.get_db``). A
+``GameServiceError`` raised by the games modules is answered by the app-level
+handler in ``main.py`` with the same ``{"detail": ...}`` body and status an
+``HTTPException`` would give, so the routes don't translate it (#2993).
+"""
 
 from __future__ import annotations
 
 import hmac
-import os
 import uuid
 from dataclasses import asdict
-from datetime import datetime
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.base import get_session_factory
+from db.base import DbSession
 from db.models import Game
 from entitlements.dependencies import check_entitlement
 from limiter import limiter, session_key
+from rate_limits import (
+    CATALOG_ADMIN_SESSION_RATE_LIMIT,
+    CATALOG_RATE_LIMIT,
+    GAMES_COMPLETE_SESSION_RATE_LIMIT,
+    GAMES_CREATE_SESSION_RATE_LIMIT,
+    GAMES_DETAIL_SESSION_RATE_LIMIT,
+    GAMES_EVENTS_SESSION_RATE_LIMIT,
+    GAMES_LIST_SESSION_RATE_LIMIT,
+    LEADERBOARD_IP_RATE_LIMIT,
+    LEADERBOARD_SESSION_RATE_LIMIT,
+    RANK_IP_RATE_LIMIT,
+    RANK_SESSION_RATE_LIMIT,
+)
 from session import get_session_id, optional_session_id
 
-from . import leaderboard, service
+from . import catalog, history, sessions, sweep, sweep_gate
+from .boards import partitions, queries
+from .boards.types import BoardEntry
 from .schemas import (
     AppendEventsRequest,
     AppendEventsResponse,
@@ -39,18 +58,6 @@ from .schemas import (
 )
 
 router = APIRouter()
-
-# Public, IP-keyed (unauthenticated). A constant so the rate-limit test derives
-# its request count from the configured limit instead of duplicating it.
-CATALOG_RATE_LIMIT = "60/minute"
-
-# Generic leaderboard (#2618). Keyed by session, with a looser per-IP backstop
-# so rotating the X-Session-ID header doesn't lift the limit (#2217).
-LEADERBOARD_SESSION_RATE_LIMIT = "60/minute"
-LEADERBOARD_IP_RATE_LIMIT = "300/minute"
-# GET /games/{id}/rank (#2677): a read, limited like the leaderboard.
-RANK_SESSION_RATE_LIMIT = "60/minute"
-RANK_IP_RATE_LIMIT = "300/minute"
 
 
 def _to_state(game) -> GameStateResponse:
@@ -86,10 +93,11 @@ def _gt_to_out(gt) -> GameTypeOut:
 
 @router.get("/catalog", response_model=CatalogResponse)
 @limiter.limit(CATALOG_RATE_LIMIT)
-async def get_catalog(request: Request) -> JSONResponse:
-    factory = get_session_factory()
-    async with factory() as db:
-        game_types = await service.get_catalog(db)
+async def get_catalog(
+    request: Request,  # noqa: ARG001 - slowapi resolves `request` by name
+    db: DbSession,
+) -> JSONResponse:
+    game_types = await catalog.get_catalog(db)
     body = CatalogResponse(items=[_gt_to_out(gt) for gt in game_types])
     return JSONResponse(
         content=body.model_dump(),
@@ -98,30 +106,26 @@ async def get_catalog(request: Request) -> JSONResponse:
 
 
 @router.patch("/catalog/{game_type_id}", response_model=GameTypeOut)
-@limiter.limit("30/minute", key_func=session_key)
+@limiter.limit(CATALOG_ADMIN_SESSION_RATE_LIMIT, key_func=session_key)
 async def patch_game_type(
     request: Request,
     game_type_id: int,
     body: PatchGameTypeRequest,
+    db: DbSession,
     x_admin_token: str = Header(default=""),
 ) -> GameTypeOut:
-    # TODO: replace with admin role check once #971 ships.
-    admin_token = os.environ.get("ADMIN_API_TOKEN", "")
+    # Read once at startup: create_app() puts the Settings on app.state.
+    admin_token = request.app.state.settings.admin_api_token.get_secret_value()
     if not admin_token or not hmac.compare_digest(
         x_admin_token.encode("utf-8"), admin_token.encode("utf-8")
     ):
         raise HTTPException(status_code=403, detail="Forbidden.")
-    factory = get_session_factory()
-    async with factory() as db:
-        try:
-            gt = await service.patch_game_type(
-                db,
-                game_type_id=game_type_id,
-                is_premium=body.is_premium,
-                category=body.category,
-            )
-        except service.GameServiceError as e:
-            raise HTTPException(status_code=e.status_code, detail=e.detail)
+    gt = await catalog.patch_game_type(
+        db,
+        game_type_id=game_type_id,
+        is_premium=body.is_premium,
+        category=body.category,
+    )
     return _gt_to_out(gt)
 
 
@@ -145,28 +149,27 @@ def _to_row(g) -> GameRowResponse:
 
 
 @router.get("/me", response_model=GameHistoryResponse)
-@limiter.limit("60/minute", key_func=session_key)
+@limiter.limit(GAMES_LIST_SESSION_RATE_LIMIT, key_func=session_key)
 async def list_my_games(
     request: Request,
+    db: DbSession,
     limit: int = Query(20, ge=1, le=100),
     cursor: str | None = None,
 ) -> GameHistoryResponse:
     sid = get_session_id(request)
-    parsed_cursor: datetime | None = None
+    parsed_cursor: history.Cursor | None = None
     if cursor:
         try:
-            parsed_cursor = datetime.fromisoformat(cursor)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid cursor.")
-    factory = get_session_factory()
-    async with factory() as db:
-        # Close this player's games left open > 24 h before listing them (#2621).
-        # First page only: later pages continue a listing that was just swept.
-        if parsed_cursor is None:
-            await service.sweep_stale_games_safely(db, session_id=sid)
-        page = await service.list_games_for_session(
-            db, session_id=sid, limit=limit, cursor=parsed_cursor
-        )
+            parsed_cursor = history.parse_cursor(cursor)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid cursor.") from exc
+    # Close this player's games left open > 24 h before listing them (#2621).
+    # First page only: later pages continue a listing that was just swept.
+    if parsed_cursor is None:
+        await sweep.sweep_stale_games_safely(db, session_id=sid)
+    page = await history.list_games_for_session(
+        db, session_id=sid, limit=limit, cursor=parsed_cursor
+    )
     return GameHistoryResponse(items=[_to_row(r) for r in page.items], next_cursor=page.next_cursor)
 
 
@@ -176,7 +179,8 @@ async def list_my_games(
 async def get_leaderboard(
     request: Request,
     game_type: str,
-    limit: int = Query(leaderboard.DEFAULT_LIMIT, ge=1, le=leaderboard.MAX_LIMIT),
+    db: DbSession,
+    limit: int = Query(queries.DEFAULT_LIMIT, ge=1, le=queries.MAX_LIMIT),
 ) -> LeaderboardResponse:
     """Top players on one board: one entry each (their best row).
 
@@ -191,44 +195,42 @@ async def get_leaderboard(
     and returned as ``me`` with its exact rank, even outside the top
     ``limit`` (#2633). Read-only.
     """
-    board = leaderboard.enabled_board(game_type)
+    board = partitions.enabled_board(game_type)
     if board is None:
         raise HTTPException(status_code=404, detail="Leaderboard not found.")
     params = [(k, v) for k, v in request.query_params.multi_items() if k != "limit"]
-    partition = leaderboard.resolve_partition(game_type, board, params)
-    factory = get_session_factory()
-    async with factory() as db:
-        gt = await leaderboard.load_game_type(db, game_type)
-        if gt is None:
-            raise HTTPException(status_code=404, detail="Leaderboard not found.")
-        # Not redundant with check_entitlement's own premium check: a free
-        # board is public, so X-Session-ID is only required (400) for premium.
-        if gt.is_premium:
-            await check_entitlement(db, get_session_id(request), game_type)
-        # The caller, when known, to flag their own entry (#2633). Optional:
-        # a free board stays public without X-Session-ID.
-        viewer = optional_session_id(request)
-        entries = await leaderboard.top_entries(
+    partition = partitions.resolve_partition(game_type, board, params)
+    gt = await queries.load_game_type(db, game_type)
+    if gt is None:
+        raise HTTPException(status_code=404, detail="Leaderboard not found.")
+    # Not redundant with check_entitlement's own premium check: a free
+    # board is public, so X-Session-ID is only required (400) for premium.
+    if gt.is_premium:
+        await check_entitlement(db, get_session_id(request), game_type)
+    # The caller, when known, to flag their own entry (#2633). Optional:
+    # a free board stays public without X-Session-ID.
+    viewer = optional_session_id(request)
+    entries = await queries.top_entries(
+        db,
+        game_type=game_type,
+        board=board,
+        game_type_id=gt.id,
+        partition=partition,
+        limit=limit,
+        viewer_session_id=viewer,
+    )
+    # The caller's row in the list is their best entry with its rank:
+    # only a caller outside the top ``limit`` costs the extra queries.
+    me = next((e for e in entries if e.is_me), None)
+    if viewer is not None and me is None:
+        me = await queries.viewer_entry(
             db,
             game_type=game_type,
             board=board,
             game_type_id=gt.id,
             partition=partition,
-            limit=limit,
-            viewer_session_id=viewer,
+            session_id=viewer,
         )
-        # The caller's row in the list is their best entry with its rank:
-        # only a caller outside the top ``limit`` costs the extra queries.
-        me = next((e for e in entries if e.is_me), None)
-        if viewer is not None and me is None:
-            me = await leaderboard.viewer_entry(
-                db,
-                game_type=game_type,
-                board=board,
-                game_type_id=gt.id,
-                partition=partition,
-                session_id=viewer,
-            )
     return LeaderboardResponse(
         game_type=game_type,
         partition=partition,
@@ -238,7 +240,7 @@ async def get_leaderboard(
     )
 
 
-def _entry_out(e: leaderboard.BoardEntry) -> LeaderboardEntryOut:
+def _entry_out(e: BoardEntry) -> LeaderboardEntryOut:
     return LeaderboardEntryOut(
         rank=e.rank,
         player_name=e.player_name,
@@ -251,7 +253,7 @@ def _entry_out(e: leaderboard.BoardEntry) -> LeaderboardEntryOut:
 @router.get("/{game_id}/rank", response_model=GameRankResponse)
 @limiter.limit(RANK_IP_RATE_LIMIT)
 @limiter.limit(RANK_SESSION_RATE_LIMIT, key_func=session_key)
-async def get_game_rank(request: Request, game_id: uuid.UUID) -> GameRankResponse:
+async def get_game_rank(request: Request, game_id: uuid.UUID, db: DbSession) -> GameRankResponse:
     """Where one of the caller's games puts them on its board (#2677). Read-only.
 
     The result card's call: the rank of the caller's best entry in the game's
@@ -263,10 +265,8 @@ async def get_game_rank(request: Request, game_id: uuid.UUID) -> GameRankRespons
     404 if the game or its board definition doesn't exist.
     """
     sid = get_session_id(request)
-    factory = get_session_factory()
-    async with factory() as db:
-        game = await _load_owned_game(db, game_id, sid)
-        result = await leaderboard.game_rank(db, game=game, session_id=sid)
+    game = await _load_owned_game(db, game_id, sid)
+    result = await queries.game_rank(db, game=game, session_id=sid)
     return GameRankResponse.model_validate(asdict(result))
 
 
@@ -276,7 +276,7 @@ async def _load_owned_game(db: AsyncSession, game_id: uuid.UUID, sid: str) -> Ga
     404 if it doesn't exist, 403 if another session owns it or it is a premium
     game the caller isn't entitled to (a no-op for free games).
     """
-    game = await leaderboard.load_game(db, game_id)
+    game = await queries.load_game(db, game_id)
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found.")
     if game.session_id != sid:
@@ -286,24 +286,20 @@ async def _load_owned_game(db: AsyncSession, game_id: uuid.UUID, sid: str) -> Ga
 
 
 @router.get("/{game_id}", response_model=GameDetailResponse)
-@limiter.limit("60/minute", key_func=session_key)
+@limiter.limit(GAMES_DETAIL_SESSION_RATE_LIMIT, key_func=session_key)
 async def get_game_detail(
     request: Request,
     game_id: uuid.UUID,
+    db: DbSession,
     include_events: int = Query(0, ge=0, le=1),
 ) -> GameDetailResponse:
     sid = get_session_id(request)
-    factory = get_session_factory()
-    async with factory() as db:
-        try:
-            detail = await service.get_game_detail(
-                db,
-                game_id=game_id,
-                session_id=sid,
-                include_events=bool(include_events),
-            )
-        except service.GameServiceError as e:
-            raise HTTPException(status_code=e.status_code, detail=e.detail)
+    detail = await history.get_game_detail(
+        db,
+        game_id=game_id,
+        session_id=sid,
+        include_events=bool(include_events),
+    )
     row = detail.row
     events = None
     if detail.events is not None:
@@ -328,83 +324,62 @@ async def get_game_detail(
 
 
 @router.post("", response_model=CreateGameResponse)
-@limiter.limit("10/minute", key_func=session_key)
-async def create_game(request: Request, body: CreateGameRequest) -> CreateGameResponse:
+@limiter.limit(GAMES_CREATE_SESSION_RATE_LIMIT, key_func=session_key)
+async def create_game(
+    request: Request, body: CreateGameRequest, db: DbSession
+) -> CreateGameResponse:
     sid = get_session_id(request)
     # Default to the creating session when the client omits players (#543).
     players = [p.model_dump() for p in body.players] if body.players else [{"player_id": sid}]
-    factory = get_session_factory()
-    async with factory() as db:
-        await check_entitlement(db, sid, body.game_type)
-        try:
-            game = await service.create_game(
-                db,
-                session_id=sid,
-                client_id=body.id,
-                game_type_name=body.game_type,
-                metadata=body.metadata,
-                players=players,
-                started_at=body.started_at,
-            )
-        except service.GameServiceError as e:
-            raise HTTPException(status_code=e.status_code, detail=e.detail)
-        return CreateGameResponse(id=game.id, started_at=game.started_at)
+    await check_entitlement(db, sid, body.game_type)
+    game = await sessions.create_game(
+        db,
+        session_id=sid,
+        client_id=body.id,
+        game_type_name=body.game_type,
+        metadata=body.metadata,
+        players=players,
+        started_at=body.started_at,
+    )
+    # A backdated start can make this game stale sooner than /stats/me expects.
+    sweep_gate.note_open_game(sid, game.started_at)
+    return CreateGameResponse(id=game.id, started_at=game.started_at)
 
 
 @router.post("/{game_id}/events", response_model=AppendEventsResponse)
-@limiter.limit("60/minute", key_func=session_key)
+@limiter.limit(GAMES_EVENTS_SESSION_RATE_LIMIT, key_func=session_key)
 async def append_events(
-    request: Request, game_id: uuid.UUID, body: AppendEventsRequest
+    request: Request, game_id: uuid.UUID, body: AppendEventsRequest, db: DbSession
 ) -> AppendEventsResponse:
     sid = get_session_id(request)
-    factory = get_session_factory()
-    async with factory() as db:
-        try:
-            result = await service.append_events(
-                db,
-                game_id=game_id,
-                session_id=sid,
-                events=[e.model_dump() for e in body.events],
-            )
-        except service.GameServiceError as e:
-            raise HTTPException(status_code=e.status_code, detail=e.detail)
-        return AppendEventsResponse(
-            accepted=result.accepted,
-            duplicates=result.duplicates,
-            rejected=result.rejected,
-        )
+    result = await sessions.append_events(
+        db,
+        game_id=game_id,
+        session_id=sid,
+        events=[e.model_dump() for e in body.events],
+    )
+    return AppendEventsResponse(
+        accepted=result.accepted,
+        duplicates=result.duplicates,
+        rejected=result.rejected,
+    )
 
 
 @router.patch("/{game_id}/complete", response_model=GameStateResponse)
-@limiter.limit("10/minute", key_func=session_key)
+@limiter.limit(GAMES_COMPLETE_SESSION_RATE_LIMIT, key_func=session_key)
 async def complete_game(
-    request: Request, game_id: uuid.UUID, body: CompleteGameRequest
+    request: Request, game_id: uuid.UUID, body: CompleteGameRequest, db: DbSession
 ) -> GameStateResponse:
     sid = get_session_id(request)
-    factory = get_session_factory()
-    async with factory() as db:
-        try:
-            game = await service.complete_game(
-                db,
-                game_id=game_id,
-                session_id=sid,
-                final_score=body.final_score,
-                outcome=body.outcome,
-                duration_ms=body.duration_ms,
-                completed_at=body.completed_at,
-                result=body.result,
-            )
-        except service.GameServiceError as e:
-            raise HTTPException(status_code=e.status_code, detail=e.detail)
-        # Refresh with relationship loaded for response
-        from sqlalchemy import select
-        from sqlalchemy.orm import selectinload
-
-        from db.models import Game
-
-        loaded = (
-            await db.execute(
-                select(Game).options(selectinload(Game.game_type)).where(Game.id == game.id)
-            )
-        ).scalar_one()
-        return _to_state(loaded)
+    # Returned with ``game_type`` loaded, so the response needs no second query.
+    game = await sessions.complete_game(
+        db,
+        game_id=game_id,
+        session_id=sid,
+        final_score=body.final_score,
+        outcome=body.outcome,
+        duration_ms=body.duration_ms,
+        completed_at=body.completed_at,
+        result=body.result,
+    )
+    return _to_state(game)

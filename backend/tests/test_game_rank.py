@@ -10,25 +10,25 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event, func, select
 
-from db.base import get_engine, get_session_factory, is_configured
+from db.base import get_engine, get_session_factory
 from db.models import Game, Player
-from games import leaderboard
+from games.boards import queries
+from games.boards import types as board_types
 from limiter import _real_ip, limiter, session_key
 from starswarm.models import DEFAULT_DIFFICULTY_TIER
+from tests._helpers import session_headers as _headers
 from tests.test_generic_leaderboard import (
     SECRET_SID,
     _assert_logged_safely,
     _FailingDB,
     _finished_game,
     _grant_all,
-    _headers,
     _patched_board,
     _seed,
     _set_name,
@@ -42,15 +42,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 UNRANKED = {"ranked": False, "rank": None, "is_best": None}
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 def _rank(client: TestClient, game_id: Any, sid: str) -> dict:
@@ -304,13 +295,13 @@ async def test_a_named_row_the_board_still_excludes_is_not_rankable(
     async def off_the_board(*_args: Any, **_kwargs: Any) -> None:
         return None
 
-    monkeypatch.setattr(leaderboard, "player_standing", off_the_board)
+    monkeypatch.setattr(queries, "player_standing", off_the_board)
     factory = get_session_factory()
     async with factory() as db:
-        game = await leaderboard.load_game(db, game_id)
+        game = await queries.load_game(db, game_id)
         assert game is not None
-        result = await leaderboard.game_rank(db, game=game, session_id=sid)
-    assert result == leaderboard.GameRank(ranked=False, reason="not_rankable")
+        result = await queries.game_rank(db, game=game, session_id=sid)
+    assert result == board_types.GameRank(ranked=False, reason="not_rankable")
 
 
 @pytest.mark.parametrize("game_type", ["blackjack", "daily_word"])
@@ -342,7 +333,7 @@ async def test_a_game_without_a_board_definition_is_404(
 ) -> None:
     sid = _sid()
     game_id = await _seed("solitaire", sid, score=100, name="Me")
-    monkeypatch.setattr(leaderboard, "get_module", lambda _name: None)
+    monkeypatch.setattr(queries, "get_module", lambda _name: None)
     r = client.get(f"/games/{game_id}/rank", headers=_headers(sid))
     assert r.status_code == 404
 
@@ -371,8 +362,8 @@ async def test_the_name_lookup_db_error_is_logged_and_chained(
 ) -> None:
     from sqlalchemy.exc import OperationalError
 
-    with caplog.at_level("ERROR"), pytest.raises(leaderboard.LeaderboardError) as info:
-        await leaderboard.game_rank(
+    with caplog.at_level("ERROR"), pytest.raises(board_types.LeaderboardError) as info:
+        await queries.game_rank(
             _FailingDB(fail_execute=True),  # type: ignore[arg-type]
             game=_finished_game("solitaire"),
             session_id=SECRET_SID,
@@ -467,7 +458,7 @@ def test_rank_rate_limit_keyed_by_session_with_ip_backstop() -> None:
 
 
 async def test_rank_session_limit_is_enforced(client: TestClient) -> None:
-    from games.router import RANK_SESSION_RATE_LIMIT
+    from rate_limits import RANK_SESSION_RATE_LIMIT
 
     allowed = int(RANK_SESSION_RATE_LIMIT.split("/")[0])
     sid = _sid()
@@ -479,3 +470,29 @@ async def test_rank_session_limit_is_enforced(client: TestClient) -> None:
     assert statuses == [200] * allowed + [429]
     # Another session from the same IP is still served (its own game: 404 here).
     assert client.get(f"/games/{uuid.uuid4()}/rank", headers=_headers(_sid())).status_code == 404
+
+
+async def test_a_rank_query_db_error_is_a_clean_500_and_logged_safely(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A failing count query never leaks the SQL parameters to the client or the log."""
+    from datetime import UTC, datetime
+
+    from fastapi import HTTPException
+    from sqlalchemy.exc import OperationalError
+
+    from games.ranking import compute_rank
+
+    with caplog.at_level("ERROR"), pytest.raises(HTTPException) as info:
+        await compute_rank(
+            _FailingDB(fail_execute=True),  # type: ignore[arg-type]
+            metric=Game.final_score,
+            direction="desc",
+            value=100,
+            completed_at=datetime.now(UTC),
+            game_label="solitaire",
+        )
+    assert info.value.status_code == 500
+    assert info.value.detail == "Failed to calculate rank."
+    assert isinstance(info.value.__cause__, OperationalError)
+    _assert_logged_safely(caplog, "solitaire")

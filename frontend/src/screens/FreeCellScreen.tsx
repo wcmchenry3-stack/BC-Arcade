@@ -1,3 +1,20 @@
+/**
+ * FreeCellScreen — playable FreeCell with full lifecycle wiring.
+ *
+ * Concerns:
+ *   1. Game logic — FreeCellBoard (components/freecell) sends drags and taps to the pure
+ *      engine (`applyMove`, `undoMove`, `applyHint`); deals come from the solvable seed bank.
+ *   2. Auto-complete — `startAutoComplete` steps the finish with the board input-locked (#2225).
+ *   3. Persistence — `usePersistedGameState` (#3087) restores the save on mount (or deals
+ *      fresh) and saves after every change once it has loaded.
+ *   4. Instrumentation (#2452) — `useGameSync("freecell")`, opened on the first move; a win
+ *      records its move count (#2632); a restored game resumes its session (#2654).
+ *   5. Result + leaderboard (#2633) — the win is `useCompletionTransition` (#3087): once
+ *      per game, a resumed won game records nothing; the shared GameResultModal; best
+ *      moves via `bestOf`; ranked via `useGameLeaderboard`.
+ *   6. Events and layout — `useGameEvents` plays sounds and the foundation animation; tall
+ *      columns compress to fit the screen (#1108).
+ */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
@@ -10,7 +27,9 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { useTheme } from "../theme/ThemeContext";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { bestOf } from "../game/_shared/bestOf";
+import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { HudStatRow } from "../components/shared/HudStatRow";
 import { PillButton } from "../components/shared/PillButton";
 import FreeCellBoard from "../components/freecell/FreeCellBoard";
@@ -18,6 +37,7 @@ import { CARD_WIDTH, CARD_HEIGHT } from "../components/freecell/FreeCellSlot";
 import { FreeCellFoundationAnimation } from "../components/freecell/FreeCellFoundationAnimation";
 import { FreeCellGameWinAnimation } from "../components/freecell/FreeCellGameWinAnimation";
 import GameResultModal from "../components/shared/GameResultModal";
+import { toSubmission } from "../components/shared/toSubmission";
 import {
   dealGame,
   applyMove,
@@ -36,9 +56,8 @@ import {
   saveStats,
   type FreeCellStats,
 } from "../game/freecell/storage";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
 import { useGameEvents } from "../game/_shared/useGameEvents";
+import { useGameRestored, usePersistedGameState } from "../game/_shared/usePersistedGameState";
 import { useGameSync } from "../game/_shared/useGameSync";
 import { useSound } from "../game/_shared/useSound";
 import { FREECELL_SOUNDS } from "../game/freecell/sounds";
@@ -50,9 +69,6 @@ const COL_GAP = 2;
 const SCREEN_H_PADDING = 24;
 const BANNER_MARGIN_TOP = 8;
 
-/** The result card reads the synced game's rank on the session board (#2632). */
-const freecellBoard = sessionBoardAdapter("freecell");
-
 export default function FreeCellScreen() {
   const { t } = useTranslation("freecell");
   const { t: tResult } = useTranslation("result");
@@ -60,22 +76,27 @@ export default function FreeCellScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
-  const [state, setState] = useState<FreeCellState | null>(null);
-  // Always the latest state — read by the new-game abandon and the unmount snapshot,
-  // neither of which can close over `state`.
-  const stateRef = useRef<FreeCellState | null>(null);
-  stateRef.current = state;
-  const [loading, setLoading] = useState(true);
-  const statsRef = useRef<FreeCellStats>({ bestMoves: 0, gamesPlayed: 0, gamesWon: 0 });
+  const statsRef = useRef<FreeCellStats>({ bestMoves: 0 });
+  // The saved game (usePersistedGameState, #3087): loaded with the stats on mount, then
+  // saved on every change once that load has landed. Called before the win effect, so a
+  // winning move is saved before the win clears it. `stateRef` is the latest state, read
+  // by the new-game abandon and the unmount snapshot, neither of which can close over
+  // `state`. The restore is below.
+  const game = usePersistedGameState<FreeCellState>({
+    load: async () => {
+      const [saved, savedStats] = await Promise.all([loadGame(), loadStats()]);
+      statsRef.current = savedStats;
+      return saved;
+    },
+    save: saveGame,
+    clear: clearGame,
+  });
+  const { state, setState, stateRef, loading, hasLoadedRef, clear: clearSavedGame } = game;
 
-  const hasLoadedRef = useRef(false);
   const isMountedRef = useRef(true);
   const autoCompletingRef = useRef(false);
   const autoStepTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [autoCompleting, setAutoCompleting] = useState(false);
-  /** Guards against double-counting a win within a single game session. */
-  const winRecordedRef = useRef(false);
-  const prevCompleteRef = useRef(false);
   /** Best moves after this win, and whether the win beat the old best — for the result card. */
   const [winSummary, setWinSummary] = useState<{ best: number; isNewBest: boolean } | null>(null);
   /**
@@ -83,10 +104,9 @@ export default function FreeCellScreen() {
    * `clearGame()`. Its result was submitted and its celebration played back then.
    */
   const [resumedWin, setResumedWin] = useState(false);
-  const leaderboard = useLeaderboardSubmit(freecellBoard);
-  const { submit: submitScore, reset: resetSubmission } = leaderboard;
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633).
-  const openLeaderboard = useLeaderboardLink(navigation, "freecell");
+  // The card's rank line, "View leaderboard" link and ⋯ menu item (#2633).
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("freecell", navigation);
+  const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
 
   // #2452 — record each game as a per-session `games` row so FreeCell earns Arcade
   // XP, shows in Profile history and can be measured by the daily challenge. Since
@@ -109,7 +129,7 @@ export default function FreeCellScreen() {
   // hook's own abandon (unmount) and the New Game abandon build it here.
   const progressResult = useCallback(
     () => ({ won: false, moves: stateRef.current?.moveCount ?? 0 }),
-    []
+    [stateRef]
   );
   useEffect(() => {
     syncSetProgressSnapshot(() => ({ result: progressResult() }));
@@ -123,41 +143,44 @@ export default function FreeCellScreen() {
   const { play: playFoundationComplete } = useSound("freecell.foundationComplete", FREECELL_SOUNDS);
   const { play: playGameWin } = useSound("freecell.gameWin", FREECELL_SOUNDS);
 
-  const startAutoComplete = useCallback((fromState: FreeCellState) => {
-    if (autoCompletingRef.current) return;
-    if (!canAutoComplete(fromState)) return;
-    autoCompletingRef.current = true;
-    setAutoCompleting(true);
+  const startAutoComplete = useCallback(
+    (fromState: FreeCellState) => {
+      if (autoCompletingRef.current) return;
+      if (!canAutoComplete(fromState)) return;
+      autoCompletingRef.current = true;
+      setAutoCompleting(true);
 
-    const release = () => {
-      autoCompletingRef.current = false;
-      setAutoCompleting(false);
-    };
+      const release = () => {
+        autoCompletingRef.current = false;
+        setAutoCompleting(false);
+      };
 
-    const step = (current: FreeCellState) => {
-      if (!isMountedRef.current) return;
-      // The board is input-locked while this runs (#2225), so every way out
-      // of a step — including a throw — must release the lock, or the player
-      // is left with a board that rejects every tap.
-      let scheduled = false;
-      try {
-        const next = autoComplete(current);
-        if (next === current || next.isComplete) {
-          setState(next === current ? current : next);
-          return;
+      const step = (current: FreeCellState) => {
+        if (!isMountedRef.current) return;
+        // The board is input-locked while this runs (#2225), so every way out
+        // of a step — including a throw — must release the lock, or the player
+        // is left with a board that rejects every tap.
+        let scheduled = false;
+        try {
+          const next = autoComplete(current);
+          if (next === current || next.isComplete) {
+            setState(next === current ? current : next);
+            return;
+          }
+          setState(next);
+          autoStepTimeoutRef.current = setTimeout(() => step(next), AUTO_STEP_MS);
+          scheduled = true;
+        } catch (e) {
+          Sentry.captureException(e, { tags: { subsystem: "autoComplete", game: "freecell" } });
+        } finally {
+          if (!scheduled) release();
         }
-        setState(next);
-        autoStepTimeoutRef.current = setTimeout(() => step(next), AUTO_STEP_MS);
-        scheduled = true;
-      } catch (e) {
-        Sentry.captureException(e, { tags: { subsystem: "autoComplete", game: "freecell" } });
-      } finally {
-        if (!scheduled) release();
-      }
-    };
+      };
 
-    autoStepTimeoutRef.current = setTimeout(() => step(fromState), AUTO_STEP_MS);
-  }, []);
+      autoStepTimeoutRef.current = setTimeout(() => step(fromState), AUTO_STEP_MS);
+    },
+    [setState]
+  );
 
   // Track mount status for async safety
   useEffect(() => {
@@ -167,44 +190,6 @@ export default function FreeCellScreen() {
       if (autoStepTimeoutRef.current !== null) clearTimeout(autoStepTimeoutRef.current);
     };
   }, []);
-
-  // Mount: resume saved game or deal fresh, load stats
-  useEffect(() => {
-    let alive = true;
-    Promise.all([loadGame(), loadStats()]).then(([saved, savedStats]) => {
-      if (!alive) return;
-      hasLoadedRef.current = true;
-      const initial = saved ?? dealGame();
-      setState(initial);
-      // A restored game continues the session a killed app left open (#2654).
-      if (saved && !saved.isComplete) syncResume();
-      // Suppress re-counting a win when resuming an already-won game.
-      if (saved?.isComplete) {
-        winRecordedRef.current = true;
-        setResumedWin(true);
-        setWinSummary({ best: savedStats.bestMoves, isNewBest: false });
-      }
-      if (!saved) {
-        // First deal (not a resume) — count as a game started.
-        const withPlay = { ...savedStats, gamesPlayed: savedStats.gamesPlayed + 1 };
-        statsRef.current = withPlay;
-        saveStats(withPlay).catch(() => {});
-      } else {
-        statsRef.current = savedStats;
-      }
-      setLoading(false);
-      startAutoComplete(initial);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [startAutoComplete, syncResume]);
-
-  // Persist on every state change once the mount load has resolved
-  useEffect(() => {
-    if (!hasLoadedRef.current || state === null) return;
-    saveGame(state).catch(() => {});
-  }, [state]);
 
   useGameEvents(
     state?.events,
@@ -228,7 +213,10 @@ export default function FreeCellScreen() {
       },
       noMovesAvailable: () => setShowNoMovesBanner(true),
     },
-    () => setState((prev) => (prev === null ? null : { ...prev, events: [] }))
+    // A completed game keeps its events: a new state would be saved again after the
+    // win's clear, and the next mount would resume the won board (#3087). The
+    // identity check above already keeps them from firing twice.
+    () => setState((prev) => (prev === null || prev.isComplete ? prev : { ...prev, events: [] }))
   );
 
   // Open the session on the first move made here — not on load, so opening a
@@ -245,50 +233,69 @@ export default function FreeCellScreen() {
       syncStart();
       syncMarkStarted();
     }
-  }, [state, syncGetGameId, syncStart, syncMarkStarted]);
+  }, [state, syncGetGameId, syncStart, syncMarkStarted, hasLoadedRef]);
 
-  // Handle win: update stats and clear saved game
-  useEffect(() => {
-    if (state === null) {
-      prevCompleteRef.current = false;
-      return;
-    }
-    if (state.isComplete && !prevCompleteRef.current) {
-      const gameId = syncComplete(
-        {
-          finalScore: state.moveCount,
-          outcome: "completed",
-          result: { won: true, moves: state.moveCount },
-        },
-        {
-          final_score: state.moveCount,
-          outcome: "completed",
-          won: true,
-          moves: state.moveCount,
-        }
-      );
-      clearGame().catch(() => {});
-      if (!winRecordedRef.current) {
-        winRecordedRef.current = true;
-        const finalMoves = state.moveCount;
+  // The win (useCompletionTransition, #3087): end the session and clear the save on
+  // the step to complete, then record the win once per game. A resumed, already-won
+  // game (marked by the restore below) only has its save cleared: its session ended
+  // and its win was counted when it happened.
+  const finishGame = (s: FreeCellState): string | null => {
+    const gameId = syncComplete(
+      {
+        finalScore: s.moveCount,
+        outcome: "completed",
+        result: { won: true, moves: s.moveCount },
+      },
+      {
+        final_score: s.moveCount,
+        outcome: "completed",
+        won: true,
+        moves: s.moveCount,
+      }
+    );
+    clearSavedGame();
+    return gameId;
+  };
+  const { markRestoredComplete, reset: resetCompletion } = useCompletionTransition(
+    state,
+    state?.isComplete ?? false,
+    {
+      onComplete: (s) => {
+        const gameId = finishGame(s);
+        const finalMoves = s.moveCount;
         const curr = statsRef.current;
-        // Only a win that happened this session has a session to rank (a
-        // resumed won game's was completed back then).
-        if (gameId) void submitScore({ gameId });
-        const isNewBest = curr.bestMoves === 0 || finalMoves < curr.bestMoves;
-        setWinSummary({ best: isNewBest ? finalMoves : curr.bestMoves, isNewBest });
-        const updated: FreeCellStats = {
-          ...curr,
-          gamesWon: curr.gamesWon + 1,
-          bestMoves:
-            curr.bestMoves === 0 || finalMoves < curr.bestMoves ? finalMoves : curr.bestMoves,
-        };
+        // Only a win that happened this session has a session to rank.
+        if (gameId) void lookupRank(gameId);
+        const { best, isNewBest } = bestOf(curr.bestMoves, finalMoves, true);
+        setWinSummary({ best, isNewBest });
+        const updated: FreeCellStats = { ...curr, bestMoves: best };
         statsRef.current = updated;
         saveStats(updated).catch(() => {});
-      }
+      },
+      onAlreadyComplete: finishGame,
     }
-    prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, submitScore]);
+  );
+
+  // Mount: resume the saved game, or deal fresh in its place. After the win hook, whose
+  // guard it sets for a resumed won game (a layout-time registration: its place among
+  // the effects above changes nothing).
+  useGameRestored(game, (saved) => {
+    const initial = saved ?? dealGame();
+    if (!saved) setState(initial);
+    // A restored game continues the session a killed app left open (#2654).
+    if (saved && !saved.isComplete) syncResume();
+    // Suppress re-counting a win when resuming an already-won game.
+    if (saved?.isComplete) {
+      // The winning move was saved with its events, and a save the win never got to
+      // clear still holds them: drop them in the same batch as the load, so the win's
+      // sound and animation don't play again (#3087).
+      setState({ ...saved, events: [] });
+      markRestoredComplete();
+      setResumedWin(true);
+      setWinSummary({ best: statsRef.current.bestMoves, isNewBest: false });
+    }
+    startAutoComplete(initial);
+  });
 
   const handleMove = useCallback(
     (move: Move) => {
@@ -298,14 +305,14 @@ export default function FreeCellScreen() {
       setState(next);
       startAutoComplete(next);
     },
-    [state, startAutoComplete]
+    [state, startAutoComplete, setState]
   );
 
   const handleUndo = useCallback(() => {
     if (state === null || state.undoStack.length === 0) return;
     setShowNoMovesBanner(false);
     setState(undoMove(state));
-  }, [state]);
+  }, [state, setState]);
 
   const handleHint = useCallback(() => {
     if (state === null || state.isComplete) return;
@@ -314,7 +321,7 @@ export default function FreeCellScreen() {
       return;
     }
     setState(applyHint(state));
-  }, [state]);
+  }, [state, setState]);
 
   const handleNewGame = useCallback(() => {
     // Close the current session as abandoned (a no-op after a win or before a move).
@@ -336,16 +343,22 @@ export default function FreeCellScreen() {
     autoCompletingRef.current = false;
     setAutoCompleting(false);
     seenMovesRef.current = 0;
-    clearGame().catch(() => {});
+    clearSavedGame();
     setState(dealGame());
-    const updated = { ...statsRef.current, gamesPlayed: statsRef.current.gamesPlayed + 1 };
-    statsRef.current = updated;
-    saveStats(updated).catch(() => {});
-    winRecordedRef.current = false;
+    resetCompletion();
     setResumedWin(false);
     setWinSummary(null);
     resetSubmission();
-  }, [syncGetGameId, syncComplete, syncResetPlayWindow, resetSubmission, progressResult]);
+  }, [
+    syncGetGameId,
+    syncComplete,
+    syncResetPlayWindow,
+    resetSubmission,
+    resetCompletion,
+    progressResult,
+    clearSavedGame,
+    setState,
+  ]);
 
   const undoDisabled =
     state === null || state.undoStack.length === 0 || state.isComplete || autoCompleting;
@@ -406,12 +419,7 @@ export default function FreeCellScreen() {
       title={t("freecell:game.title")}
       requireBack
       loading={loading}
-      onBack={() => navigation.popToTop()}
-      style={{
-        paddingBottom: Math.max(insets.bottom, 16),
-        paddingLeft: Math.max(insets.left, 12),
-        paddingRight: Math.max(insets.right, 12),
-      }}
+      style={{ paddingBottom: Math.max(insets.bottom, 16) }}
       onNewGame={handleNewGame}
       onOpenLeaderboard={openLeaderboard}
       rightSlot={
@@ -505,14 +513,7 @@ export default function FreeCellScreen() {
               ? [{ label: tResult("stat.best"), value: winSummary.best }]
               : []
           }
-          submission={{
-            status: leaderboard.status,
-            rank: leaderboard.rank,
-            isBest: leaderboard.isBest,
-            playerName: leaderboard.playerName,
-            onJoinLeaderboards: leaderboard.joinLeaderboards,
-            onRetry: leaderboard.retry,
-          }}
+          submission={toSubmission(leaderboard)}
           onViewLeaderboard={openLeaderboard}
           onPlayAgain={handleNewGame}
           onHome={() => navigation.popToTop()}

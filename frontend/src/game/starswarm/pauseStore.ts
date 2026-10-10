@@ -148,7 +148,10 @@ function isRestorable(p: unknown): p is PersistedPauseState & { counters: Engine
   );
 }
 
-/** Test-only: forget everything, as a new process would. */
+/**
+ * Test-only: forget everything, as a new process would.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function _resetPauseStoreForTests(): void {
   _saved = null;
   _hydrated = false;

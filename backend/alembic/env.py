@@ -1,4 +1,4 @@
-"""Alembic environment — sync engine, reads DATABASE_URL from env.
+"""Alembic environment — sync engine, reads DATABASE_URL from env (via ``Settings``).
 
 Uses a plain sync SQLAlchemy engine so migrations run against any driver
 (Postgres in prod, SQLite in CI schema-check). The app's runtime engine in
@@ -11,7 +11,6 @@ is an empty MetaData so `alembic check` works cleanly.
 
 from __future__ import annotations
 
-import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
@@ -19,6 +18,7 @@ from sqlalchemy import engine_from_config, pool
 import db.models  # noqa: F401 — ensure models are registered on Base.metadata
 from alembic import context
 from db.base import Base
+from settings import Settings
 
 config = context.config
 
@@ -35,7 +35,9 @@ def _sync_url(raw: str) -> str:
     return raw
 
 
-_raw = os.environ.get("DATABASE_URL", "").strip()
+# Settings reads no .env file, so the CLI and CI's schema check see only the real
+# environment, as before (#2997).
+_raw = Settings().database_url
 if _raw:
     config.set_main_option("sqlalchemy.url", _sync_url(_raw))
 
@@ -61,7 +63,14 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        # One transaction per migration, so the commit boundary is the same on
+        # every run, whether or not the range includes a migration that commits
+        # mid-run for CREATE INDEX CONCURRENTLY (0032, #2965).
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            transaction_per_migration=True,
+        )
         with context.begin_transaction():
             context.run_migrations()
 

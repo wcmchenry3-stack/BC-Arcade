@@ -13,13 +13,13 @@ jest.mock("../../game/_shared/gameEventClient", () => ({
 }));
 
 const mockCalls: string[] = [];
-jest.mock("../../api/stats", () => ({
-  statsApi: {
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({
     deleteMyData: jest.fn(async () => {
       mockCalls.push("deleteMyData");
     }),
-  },
-}));
+  })
+);
 jest.mock("../../game/_shared/displayNameSync", () => ({
   clearDisplayNameSync: jest.fn(async () => {
     mockCalls.push("clearDisplayNameSync");
@@ -46,14 +46,6 @@ jest.mock("../../hooks/useMyStats", () => ({
   clearMyStatsCache: jest.fn(() => {
     mockCalls.push("clearMyStatsCache");
   }),
-}));
-
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 
 jest.mock("../../components/LanguageSwitcher", () => ({

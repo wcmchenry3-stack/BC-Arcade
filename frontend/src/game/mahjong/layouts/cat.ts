@@ -11,16 +11,7 @@
  */
 
 import type { Layout } from "../types";
-
-function slot(col: number, row: number, layer: number) {
-  return { col, row, layer };
-}
-
-function rng(start: number, stopInclusive: number, step = 2): number[] {
-  const out: number[] = [];
-  for (let v = start; v <= stopInclusive; v += step) out.push(v);
-  return out;
-}
+import { cols, grid, slot } from "./build";
 
 export const CAT_LAYOUT: Layout = [
   // Layer 0 — silhouette
@@ -30,19 +21,15 @@ export const CAT_LAYOUT: Layout = [
     ...[18, 20, 22].map((c) => slot(c, r, 0)),
   ]),
   // Head
-  ...[2, 3, 4, 5, 6].flatMap((r) => rng(8, 22).map((c) => slot(c, r, 0))),
+  ...grid(0, cols(8, 22), [2, 3, 4, 5, 6]),
   // Body
-  ...[7, 8, 9, 10, 11, 12].flatMap((r) => rng(10, 20).map((c) => slot(c, r, 0))),
+  ...grid(0, cols(10, 20), [7, 8, 9, 10, 11, 12]),
   // Paws
-  ...[13, 14].flatMap((r) => [slot(10, r, 0), slot(12, r, 0), slot(18, r, 0), slot(20, r, 0)]),
+  ...grid(0, [10, 12, 18, 20], [13, 14]),
   // Layer 1 — inner head + body
-  ...[3, 4, 5].flatMap((r) => rng(10, 20).map((c) => slot(c, r, 1))),
-  ...[8, 9, 10, 11].flatMap((r) => rng(12, 18).map((c) => slot(c, r, 1))),
+  ...grid(1, cols(10, 20), [3, 4, 5]),
+  ...grid(1, cols(12, 18), [8, 9, 10, 11]),
   // Layer 2 — face + body peak
-  ...[4, 5].flatMap((r) => [slot(12, r, 2), slot(14, r, 2), slot(16, r, 2)]),
-  ...[9, 10].flatMap((r) => rng(12, 18).map((c) => slot(c, r, 2))),
+  ...grid(2, [12, 14, 16], [4, 5]),
+  ...grid(2, cols(12, 18), [9, 10]),
 ];
-
-if (CAT_LAYOUT.length !== 144) {
-  throw new Error(`CAT_LAYOUT has ${CAT_LAYOUT.length} slots, expected 144`);
-}

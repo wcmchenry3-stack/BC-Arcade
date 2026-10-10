@@ -1,7 +1,7 @@
 """Daily Word GameModule descriptor (#1187).
 
-Satisfies the GameModule Protocol from games/protocol.py via
-structural subtyping — no inheritance required.
+A ``GameModuleBase`` subclass (``games/module_base.py``) that overrides
+``reconcile_result`` to hold ``guesses_used`` to the server's guess record.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 from daily_word.models import DailyWordMetadata, DailyWordResult
 from daily_word.progress import recorded_guess_count
 from games.board import BoardDefinition
-from games.protocol import default_stats_shape
+from games.module_base import GameModuleBase
 from vocab import GameType
 
 if TYPE_CHECKING:
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from db.models import Game
 
 
-class DailyWordModule:
+class DailyWordModule(GameModuleBase):
     game_type = GameType.DAILY_WORD
     metadata_model = DailyWordMetadata
     result_model = DailyWordResult
@@ -34,9 +34,6 @@ class DailyWordModule:
         qualifying_outcomes=("win",),
         enabled=False,
     )
-
-    def stats_shape(self, raw_stats: dict) -> dict:
-        return default_stats_shape(raw_stats)
 
     async def reconcile_result(
         self, session: AsyncSession, game: Game, result: dict[str, Any]

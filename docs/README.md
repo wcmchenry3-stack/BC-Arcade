@@ -29,6 +29,7 @@ The purpose of this index is to make one thing clear: **which document is the so
 | How does a particular game play? | [Game specifications](games/) |
 | How do accessibility requirements work? | [ACCESSIBILITY.md](ACCESSIBILITY.md) |
 | How do I run or write tests? | [TESTING.md](TESTING.md) |
+| What does each PR check do, and which are required? | [CI-CHECKS.md](CI-CHECKS.md) |
 | How do I deploy the backend/web app? | [RENDER.md](RENDER.md) |
 | How are iOS builds produced? | [IOS.md](IOS.md) |
 | How are Android builds produced? | [ANDROID-CI.md](ANDROID-CI.md) |
@@ -36,7 +37,15 @@ The purpose of this index is to make one thing clear: **which document is the so
 | How are assets organized? | [ASSETS.md](ASSETS.md) |
 | How do I manually verify leaderboards? | [MANUAL-QA-LEADERBOARDS.md](MANUAL-QA-LEADERBOARDS.md) |
 | What is the current release plan? | [RELEASE-PLAN-2026-10.md](RELEASE-PLAN-2026-10.md) |
-| What should I use for old leaderboard design rationale? | [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) — historical/design record, not the current contract |
+| [RELEASE-ACCEPTANCE-v1.0.md](RELEASE-ACCEPTANCE-v1.0.md) | **Release-specific evidence template (v1.0, #2783).** Copy per candidate build and fill in. |
+| [RELEASE-ACCEPTANCE-premium.md](RELEASE-ACCEPTANCE-premium.md) | **Release-specific evidence template (first premium update, #2789).** Records no device results until filled in. |
+| What should I use for old leaderboard design rationale? | [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) (historical/design record, not the current contract) |
+| How do in-app purchases and premium entitlements work? | [IAP.md](IAP.md) |
+| What personal data does the app collect and where does it go? | [DATA-INVENTORY.md](DATA-INVENTORY.md) |
+| Why are public leaderboard names server-generated? | [LEADERBOARD-IDENTITIES.md](LEADERBOARD-IDENTITIES.md) |
+| Where is the release-verification evidence? | [RELEASE-ACCEPTANCE-v1.0.md](RELEASE-ACCEPTANCE-v1.0.md), [RELEASE-ACCEPTANCE-premium.md](RELEASE-ACCEPTANCE-premium.md) |
+| Which shipped assets have verified rights? | [audits/ASSET-RIGHTS-AUDIT.md](audits/ASSET-RIGHTS-AUDIT.md) |
+| What dev tooling exists (simulators, generators, asset pipeline)? | [../tools/README.md](../tools/README.md) |
 
 The shared-system canonical documents created under #2799 are now part of the source-of-truth set below.
 
@@ -56,6 +65,9 @@ The shared-system canonical documents created under #2799 are now part of the so
 | [ACCESSIBILITY.md](ACCESSIBILITY.md) | Accessibility requirements and testing expectations | Canonical accessibility guidance. |
 | [ASSETS.md](ASSETS.md) | Asset organization and delivery guidance | Canonical asset guidance; audio expansion is tracked in #1787. |
 | [BRANDING.md](BRANDING.md) | Brand/visual identity guidance | Canonical brand reference. |
+| [IAP.md](IAP.md) | **Canonical (premium contract, status: for owner review, #2785).** Premium access, purchases, store verification, entitlements | The backend core and Apple server side have shipped; the Apple verifier is dormant until configured. Read its status header before relying on a section. |
+| [DATA-INVENTORY.md](DATA-INVENTORY.md) | **Canonical, v1.0 snapshot (verified against code).** What data the app collects, stores and sends | Source for the privacy policy, store privacy answers and `PrivacyInfo.xcprivacy`. Re-run when data handling changes. |
+| [LEADERBOARD-IDENTITIES.md](LEADERBOARD-IDENTITIES.md) | **Decision record (accepted for v1.0, #2778).** Public leaderboard names are server-generated | Preserve as the rationale; LEADERBOARDS.md has the current behavior. |
 
 ## Game specifications
 
@@ -83,6 +95,7 @@ These are current runbooks/procedures, not product-design sources of truth.
 | Document | Purpose |
 | --- | --- |
 | [TESTING.md](TESTING.md) | Automated/manual testing strategy, commands, game-specific simulation guidance |
+| [CI-CHECKS.md](CI-CHECKS.md) | **Operational.** Inventory of every PR check (purpose, what it prevents, workflow:job, origin, gating) and branch-protection notes for `dev` and `main` (#3103) |
 | [RENDER.md](RENDER.md) | Render environments, deployment, environment variables, production DB/health checks |
 | [IOS.md](IOS.md) | Xcode Cloud/iOS build and release workflow |
 | [ANDROID-CI.md](ANDROID-CI.md) | Android/Gradle/Play build and CI workflow |
@@ -118,6 +131,8 @@ Preserve these because they contain evidence and rationale, but use the canonica
 | [CASCADE_PHYSICS.md](research/CASCADE_PHYSICS.md) | Cascade physics design/reference |
 | [CASCADE-THEMING.md](research/CASCADE-THEMING.md) | Cascade theming design/reference |
 | [LEADERBOARDS-SCORING-PLAN.md](research/LEADERBOARDS-SCORING-PLAN.md) | Historical leaderboard/scoring implementation plan. Current behavior lives in LEADERBOARDS.md + GAME-CONTRACT.md. |
+| [animation-lab.html](research/animation-lab.html) | Dev-only animation/sound preview page (serve from the repo root; see its header) |
+| [asset-preview.html](research/asset-preview.html) | Dev-only Cascade asset inspector and physics sandbox (serve from the repo root; see its header) |
 
 ## Audits and point-in-time snapshots
 
@@ -125,6 +140,7 @@ These record findings from a specific review/date. They should not silently beco
 
 | Document | Purpose |
 | --- | --- |
+| [ASSET-RIGHTS-AUDIT.md](audits/ASSET-RIGHTS-AUDIT.md) | **Audit / snapshot (v1.0, #2782).** Rights status of every shipped asset; owner action list for the unverified groups |
 | [ATT-AUDIT.md](audits/ATT-AUDIT.md) | App Tracking Transparency audit |
 | [LAUNCH-TRIAGE-2026-09-26.html](audits/LAUNCH-TRIAGE-2026-09-26.html) | Dated launch-triage snapshot |
 | [solitaire-qa-report.md](audits/solitaire-qa-report.md) | Solitaire QA snapshot |

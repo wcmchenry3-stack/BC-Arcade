@@ -20,8 +20,12 @@ from daily_challenge.schemas import (
     GoalResponse,
     GoalStatusResponse,
 )
-from db.base import get_session_factory
+from db.base import DbSession
 from limiter import limiter, session_key
+from rate_limits import (
+    DAILY_CHALLENGE_STATUS_SESSION_RATE_LIMIT,
+    DAILY_CHALLENGE_TODAY_IP_RATE_LIMIT,
+)
 from session import get_session_id
 
 router = APIRouter()
@@ -32,19 +36,18 @@ def _goal_fields(goal: Goal) -> dict:
 
 
 @router.get("/today", response_model=ChallengeResponse)
-@limiter.limit("60/minute")
+@limiter.limit(DAILY_CHALLENGE_TODAY_IP_RATE_LIMIT)
 async def get_today(
-    request: Request,
+    request: Request,  # noqa: ARG001 - slowapi resolves `request` by name
+    db: DbSession,
     tz_offset_minutes: int = Query(0, ge=-840, le=840),
 ) -> ChallengeResponse:
     day = local_day(tz_offset_minutes)
     # Always the free slate: no session here, so nothing to resolve. Only /status
     # (below) may return the premium slate.
-    factory = get_session_factory()
-    async with factory() as db:
-        template = await schedule.get_or_create_template(
-            db, day.date, "free", lambda: template_for(day.date, "free")
-        )
+    template = await schedule.get_or_create_template(
+        db, day.date, "free", lambda: template_for(day.date, "free")
+    )
     return ChallengeResponse(
         challenge_id=day.date.isoformat(),
         template_id=template.id,
@@ -54,17 +57,16 @@ async def get_today(
 
 
 @router.get("/status", response_model=ChallengeStatusResponse)
-@limiter.limit("60/minute", key_func=session_key)
+@limiter.limit(DAILY_CHALLENGE_STATUS_SESSION_RATE_LIMIT, key_func=session_key)
 async def get_status(
     request: Request,
+    db: DbSession,
     tz_offset_minutes: int = Query(0, ge=-840, le=840),
 ) -> ChallengeStatusResponse:
     sid = get_session_id(request)
-    factory = get_session_factory()
-    async with factory() as db:
-        status = await service.get_status_for_session(
-            db, session_id=sid, tz_offset_minutes=tz_offset_minutes
-        )
+    status = await service.get_status_for_session(
+        db, session_id=sid, tz_offset_minutes=tz_offset_minutes
+    )
     return ChallengeStatusResponse(
         challenge_id=status.day.date.isoformat(),
         template_id=status.template.id,

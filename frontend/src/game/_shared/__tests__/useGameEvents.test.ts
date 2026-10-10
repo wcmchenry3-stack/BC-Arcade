@@ -85,6 +85,39 @@ describe("useGameEvents", () => {
     expect(onClear).not.toHaveBeenCalled();
   });
 
+  it("dispatches bare string events on the string itself, in array order", async () => {
+    const calls: string[] = [];
+    const events: readonly ("win2048" | "gameOver")[] = ["win2048", "gameOver"];
+
+    await renderHook(() =>
+      useGameEvents(events, {
+        gameOver: (e) => calls.push(e),
+        win2048: (e) => calls.push(e),
+      })
+    );
+
+    expect(calls).toEqual(["win2048", "gameOver"]);
+  });
+
+  it("works without onClear: the events stay, and the same array never re-fires", async () => {
+    const onMoonShot = jest.fn();
+    const events: GameEvent[] = [{ type: "moonShot", shooter: 1 }];
+
+    const { rerender } = await renderHook(
+      ({ evts }: { evts: readonly GameEvent[] | undefined }) =>
+        useGameEvents(evts, { moonShot: onMoonShot }),
+      { initialProps: { evts: events as readonly GameEvent[] | undefined } }
+    );
+
+    await rerender({ evts: events });
+    await rerender({ evts: undefined });
+    await rerender({ evts: events });
+    expect(onMoonShot).toHaveBeenCalledTimes(1);
+
+    await rerender({ evts: [{ type: "moonShot", shooter: 2 }] });
+    expect(onMoonShot).toHaveBeenCalledTimes(2);
+  });
+
   it("silently skips events with no registered handler", async () => {
     const onClear = jest.fn();
     const events: GameEvent[] = [{ type: "moonShot", shooter: 0 }];

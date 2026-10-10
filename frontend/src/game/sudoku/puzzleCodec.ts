@@ -4,7 +4,7 @@
  * `puzzles.json` (Classic) and `puzzles_mini.json` (Mini) stay the source of
  * truth: the backend generator writes them and the backend and frontend audit
  * tests read them. They are not bundled into the app. Imported as JSON they
- * cost ~370 KB of the JS bundle. Instead `scripts/pack-sudoku-puzzles.ts`
+ * cost ~370 KB of the JS bundle. Instead `tools/generators/pack-sudoku-puzzles.ts`
  * packs each difficulty's puzzles into one string (all puzzles joined,
  * zlib-compressed, base64-encoded) in `puzzleBanks.generated.ts`, ~155 KB in
  * all. The engine unpacks one difficulty the first time a game asks for it.
@@ -20,7 +20,10 @@ import { DIFFICULTIES, type Difficulty } from "./types";
 export type PuzzleBank = Record<Difficulty, readonly string[]>;
 export type PackedPuzzleBank = Record<Difficulty, string>;
 
-/** Pack a bank whose puzzles are all `cells` characters long (build-time only). */
+/**
+ * Pack a bank whose puzzles are all `cells` characters long (build-time only).
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function encodePuzzleBank(bank: PuzzleBank, cells: number): PackedPuzzleBank {
   const out = {} as Record<Difficulty, string>;
   for (const d of DIFFICULTIES) {
@@ -46,7 +49,10 @@ export function decodePuzzles(packed: string, cells: number): string[] {
   return puzzles;
 }
 
-/** Unpack every difficulty of a bank. */
+/**
+ * Unpack every difficulty of a bank.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function decodePuzzleBank(packed: PackedPuzzleBank, cells: number): PuzzleBank {
   const out = {} as Record<Difficulty, string[]>;
   for (const d of DIFFICULTIES) out[d] = decodePuzzles(packed[d], cells);

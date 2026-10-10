@@ -1,6 +1,10 @@
 import React from "react";
 import { View, StyleSheet, Platform, useWindowDimensions } from "react-native";
 import { useTheme } from "../../theme/ThemeContext";
+import {
+  TWENTY48_BOARD_SHADOW_COLOR,
+  TWENTY48_BOARD_SHADOW_CSS,
+} from "../../theme/theme.constants";
 import { TileData } from "../../game/twenty48/types";
 import AnimatedTile from "./AnimatedTile";
 
@@ -15,9 +19,9 @@ interface GridProps {
 // Large drop shadow: native properties + web boxShadow via inline style.
 const BOARD_SHADOW =
   Platform.OS === "web"
-    ? ({ boxShadow: "0 8px 40px #00000099" } as object)
+    ? ({ boxShadow: TWENTY48_BOARD_SHADOW_CSS } as object)
     : ({
-        shadowColor: "#000",
+        shadowColor: TWENTY48_BOARD_SHADOW_COLOR,
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.5,
         shadowRadius: 24,

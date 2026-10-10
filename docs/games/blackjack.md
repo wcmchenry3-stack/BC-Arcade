@@ -247,6 +247,7 @@ Premium entitlement mechanics are shared platform behavior; see [ARCHITECTURE.md
 ## Engine and key files
 
 - Engine: `frontend/src/game/blackjack/engine.ts`
+- Screens: [`frontend/src/screens/BlackjackBettingScreen.tsx`](../../frontend/src/screens/BlackjackBettingScreen.tsx), [`frontend/src/screens/BlackjackTableScreen.tsx`](../../frontend/src/screens/BlackjackTableScreen.tsx) and [`frontend/src/screens/BlackjackVictoryScreen.tsx`](../../frontend/src/screens/BlackjackVictoryScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 - Run/session provider: `frontend/src/game/blackjack/BlackjackGameContext.tsx`
 - Table definitions: `frontend/src/game/blackjack/tables.ts`
 - Local run history/storage: `frontend/src/game/blackjack/storage.ts`

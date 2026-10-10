@@ -4,18 +4,21 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
 
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import GameEntitlement
+from games.history import format_cursor, parse_cursor
 from games.progression import (
     BASE_XP_PER_GAME,
     LEVEL_THRESHOLDS,
     VARIETY_BONUS_PER_GAME_TYPE,
 )
+from tests._helpers import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -23,22 +26,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
 # Sudoku rows need creation metadata: SudokuMetadata forbids extras and
 # requires a difficulty tier.
 _HARD = {"difficulty": "hard"}
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 async def _grant(session_id: str, game_slug: str) -> None:
@@ -427,3 +417,162 @@ def test_game_detail_not_found(client: TestClient) -> None:
     sid = str(uuid.uuid4())
     r = client.get(f"/games/{uuid.uuid4()}", headers=_headers(sid))
     assert r.status_code == 404
+
+
+def test_my_games_rejects_an_unparseable_cursor(client: TestClient) -> None:
+    r = client.get("/games/me?cursor=not-a-timestamp", headers=_headers(str(uuid.uuid4())))
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Invalid cursor."
+
+
+def _cursor_forms(moment: datetime) -> dict[str, str]:
+    """The same instant as a client might send it, keyed by form (the query string, raw)."""
+    naive = moment.astimezone(UTC).replace(tzinfo=None).isoformat()
+    return {
+        "naive": naive,
+        "plus_offset_encoded": quote(naive + "+00:00", safe=""),
+        "z": naive + "Z",
+        "plus_decoded_to_space": naive + " 00:00",
+        "plus_literal": naive + "+00:00",
+    }
+
+
+@pytest.mark.parametrize(
+    "form", ["naive", "plus_offset_encoded", "z", "plus_decoded_to_space", "plus_literal"]
+)
+async def test_my_games_cursor_excludes_games_started_at_or_after_it(
+    client: TestClient, form: str
+) -> None:
+    sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
+    # Relative to now: the server only accepts a client start time within a year of it.
+    newer = datetime.now(UTC) - timedelta(days=1)
+    older = newer - timedelta(days=1)
+    ids = {}
+    for label, started_at in (("older", older), ("newer", newer)):
+        r = client.post(
+            "/games",
+            headers=_headers(sid),
+            json={"game_type": "yacht", "started_at": started_at.isoformat()},
+        )
+        assert r.status_code == 200, r.text
+        ids[label] = r.json()["id"]
+
+    # A naive cursor must be read as UTC (asyncpg rejects naive for timestamptz, #3015);
+    # every spelling of the same instant returns the same page.
+    r = client.get(f"/games/me?cursor={_cursor_forms(newer)[form]}", headers=_headers(sid))
+    assert r.status_code == 200, r.text
+    assert [g["id"] for g in r.json()["items"]] == [ids["older"]]
+
+
+def _start_game(client: TestClient, sid: str, started_at: datetime) -> str:
+    r = client.post(
+        "/games",
+        headers=_headers(sid),
+        json={"game_type": "yacht", "started_at": started_at.isoformat()},
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["id"]
+
+
+def _page_through(client: TestClient, sid: str) -> list[list[str]]:
+    """Page /games/me with limit=1, sending each next_cursor back unencoded."""
+    pages: list[list[str]] = []
+    url = "/games/me?limit=1"
+    for _ in range(10):
+        body = client.get(url, headers=_headers(sid)).json()
+        pages.append([g["id"] for g in body["items"]])
+        cursor = body["next_cursor"]
+        if cursor is None:
+            return pages
+        assert "+" not in cursor
+        url = f"/games/me?limit=1&cursor={cursor}"
+    raise AssertionError("paging did not terminate")
+
+
+async def test_my_games_pages_newest_first_without_overlap(client: TestClient) -> None:
+    sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
+    base = datetime.now(UTC) - timedelta(days=5)
+    g1 = _start_game(client, sid, base)
+    g2 = _start_game(client, sid, base + timedelta(days=1))
+    g3 = _start_game(client, sid, (base + timedelta(days=2)).replace(microsecond=123456))
+    assert _page_through(client, sid) == [[g3], [g2], [g1]]
+
+
+async def test_my_games_pages_games_sharing_a_started_at_exactly_once(
+    client: TestClient,
+) -> None:
+    sid = str(uuid.uuid4())
+    await _grant(sid, "yacht")
+    base = datetime.now(UTC) - timedelta(days=5)
+    tied = {_start_game(client, sid, base), _start_game(client, sid, base)}
+    newest = _start_game(client, sid, base + timedelta(days=1))
+    pages = _page_through(client, sid)
+    assert pages[0] == [newest]
+    assert {p[0] for p in pages[1:]} == tied
+    assert len(pages) == 3
+
+
+@pytest.mark.parametrize(
+    "cursor",
+    [
+        "not-a-timestamp",
+        "2026-10-05T12:00:00Z~not-a-uuid",
+        "0001-01-01T00:00:00+23:59",
+        "9999-12-31T23:59:59-23:59",
+    ],
+)
+def test_my_games_rejects_unusable_cursors_with_400(client: TestClient, cursor: str) -> None:
+    r = client.get(
+        f"/games/me?cursor={quote(cursor, safe='')}", headers=_headers(str(uuid.uuid4()))
+    )
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Invalid cursor."
+
+
+def test_next_cursor_is_z_suffixed_timestamp_and_game_id() -> None:
+    game_id = uuid.uuid4()
+    stamp = datetime(2026, 10, 5, 12, 0, 0, 5, tzinfo=UTC)
+    cursor = format_cursor(stamp, game_id)
+    assert cursor == f"2026-10-05T12:00:00.000005Z~{game_id}"
+    assert parse_cursor(cursor) == (stamp, game_id)
+
+
+def test_an_inactive_game_has_no_leaderboard(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A board whose game type is unavailable is a 404, like an unknown game."""
+    from games.boards import queries
+
+    async def unavailable(_db, _name: str) -> None:
+        return None
+
+    monkeypatch.setattr(queries, "load_game_type", unavailable)
+    r = client.get("/games/leaderboard/solitaire", headers=_headers(str(uuid.uuid4())))
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Leaderboard not found."
+
+
+async def test_load_game_type_hides_inactive_and_unknown_game_types() -> None:
+    """The lookup behind that 404, against a throwaway row so the seeded types stay untouched."""
+    from sqlalchemy import delete
+
+    from db.models import GameType
+    from games.boards import queries
+
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(GameType(id=9001, name="zz_off", display_name="Off", is_active=False))
+        db.add(GameType(id=9002, name="zz_on", display_name="On", is_active=True))
+        await db.commit()
+    try:
+        async with factory() as db:
+            assert await queries.load_game_type(db, "zz_off") is None
+            assert await queries.load_game_type(db, "zz_missing") is None
+            active = await queries.load_game_type(db, "zz_on")
+            assert active is not None and active.name == "zz_on"
+    finally:
+        async with factory() as db:
+            await db.execute(delete(GameType).where(GameType.name.in_(["zz_off", "zz_on"])))
+            await db.commit()

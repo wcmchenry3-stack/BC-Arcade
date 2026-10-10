@@ -1,14 +1,12 @@
 /**
  * Shared HTTP client factory for all game API clients.
  *
- * Every game's per-request logic (BASE_URL derivation, Sentry breadcrumbs,
- * X-Session-ID injection, error shaping) is identical apart from the
- * Sentry `tags.api` value. This factory collapses the 5 duplicated
- * `request<T>()` functions into one.
- *
- * Phase 1 of offline-play support (#131) uses this for the score queue's
- * cascade submissions. Migration of the 5 existing *Client.ts files to
- * this factory is tracked separately in #153.
+ * Every API client's per-request logic (BASE_URL derivation, Sentry
+ * breadcrumbs, X-Session-ID injection, error shaping) is identical apart from
+ * the Sentry `tags.api` value. `createGameClient` builds one `request<T>()`
+ * for a given tag; the sync layer (`syncApi.ts`), the stats and players APIs,
+ * the entitlements context and the Daily Word, Daily Challenge and Sort APIs
+ * all use it.
  */
 
 import * as Sentry from "@sentry/react-native";
@@ -146,9 +144,9 @@ function resolveBaseUrl(): string {
  * window is never tallied, and neither is one cut short by the app closing —
  * so the count is a floor on how bad it was, not a total.
  */
-export const NETWORK_FAILURE_REPORT_INTERVAL_MS = 10 * 60 * 1000;
+const NETWORK_FAILURE_REPORT_INTERVAL_MS = 10 * 60 * 1000;
 /** Bound the map: keys are normalised, but paths are still not a closed set. */
-export const NETWORK_FAILURE_MAX_TRACKED = 100;
+const NETWORK_FAILURE_MAX_TRACKED = 100;
 
 // A path segment that is a record id: all digits, or a UUID (game ids are UUIDs).
 const ID_SEGMENT = /^(?:\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;

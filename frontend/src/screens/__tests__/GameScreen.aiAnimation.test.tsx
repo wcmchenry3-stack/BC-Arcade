@@ -11,19 +11,14 @@ const mockRoll = jest.fn();
 // GameShell's Stats item (#2635) navigates through useNavigation; these
 // screens take their navigation as a prop, so the hook gets its own mock.
 const mockShellNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ navigate: mockShellNavigate }),
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ navigate: mockShellNavigate }), { actual: true })
+);
 
 jest.mock("../../game/yacht/engine", () => {
   const actual = jest.requireActual("../../game/yacht/engine");
   return { ...actual, roll: (...args: unknown[]) => mockRoll(...args) };
 });
-
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
 
 jest.mock("../../game/yacht/storage", () => ({
   saveGame: jest.fn(),
@@ -33,17 +28,9 @@ jest.mock("../../game/yacht/storage", () => ({
   saveLastMode: jest.fn().mockResolvedValue(undefined),
 }));
 
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: jest.fn().mockReturnValue("test-game-id"),
-    enqueueEvent: jest.fn(),
-    completeGame: jest.fn(),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () =>
+  mockScreenDeps().mockGameEventClient({ startGame: jest.fn().mockReturnValue("test-game-id") })
+);
 
 // useGameSync's app-wide foreground clock (#2684) would subscribe to AppState
 // once, on first use — whichever test that lands in. The shared mock

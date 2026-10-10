@@ -96,5 +96,10 @@
   "restore.pending": "Waiting for approval. Your game unlocks once it's approved.",
   "restore.nothing": "No purchases to restore for this store account.",
   "restore.error": "Couldn't restore purchases. Please try again.",
-  "settings.restorePurchases.description": "Get back games you already bought with this store account."
+  "settings.restorePurchases.description": "Get back games you already bought with this store account.",
+  "locked.title": "Locked",
+  "locked.heading": "Premium Game",
+  "locked.body": "This game requires a BC Arcade subscription.",
+  "locked.back": "Back to Lobby",
+  "locked.back_label": "Go back to lobby"
 }

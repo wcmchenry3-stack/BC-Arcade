@@ -1,12 +1,12 @@
-import React from "react";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import StarSwarmScreen from "../StarSwarmScreen";
-import { ThemeProvider } from "../../theme/ThemeContext";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 import type { ScoreLedger } from "../../game/starswarm/scoreLedger";
+import type { StarSwarmState } from "../../game/starswarm/types";
+import { canvas, resetHarness } from "./helpers/starSwarmMocks";
+import { renderScreen, startRun } from "./helpers/starSwarmHarness";
 
 // useGameSync's play clock (#2684) is pinned for every test by jest.setup.ts
 // (#2710); the duration tests move it forward.
@@ -15,39 +15,24 @@ const clock = jest.requireMock<ForegroundClockMock>("../../game/_shared/foregrou
 // The shared result card for Star Swarm (#2516). The Skia canvas is mocked: the
 // test drives its onGameOver callback the way the game loop does.
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  useNavigation: () => ({
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({
     popToTop: mockPopToTop,
     goBack: jest.fn(),
     navigate: mockNavigate,
     addListener: jest.fn(() => jest.fn()),
-  }),
-}));
+  }))
+);
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let mockCanvasProps: any = null;
-// What the canvas's getState() returns — null by default (no engine state).
-let mockCanvasState: { difficulty: string; scoreLedger?: ScoreLedger } | null = null;
-jest.mock("../../components/starswarm/GameCanvas", () => {
+// The canvas and the audio hook are the shared stand-ins (helpers/starSwarmMocks):
+// `canvas.props` are the props the screen gave the canvas, and `canvas.state` is what
+// its getState() returns — null by default (no engine state).
+jest.mock("../../components/starswarm/GameCanvas", () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const React = require("react");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { View } = require("react-native");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const MockCanvas = React.forwardRef((props: any, ref: any) => {
-    mockCanvasProps = props;
-    React.useImperativeHandle(ref, () => ({ getState: () => mockCanvasState }));
-    return React.createElement(View, { testID: "starswarm-canvas" });
-  });
-  MockCanvas.displayName = "MockCanvas";
-  return { __esModule: true, default: MockCanvas };
-});
+  require("./helpers/starSwarmMocks").canvasModule()
+);
 
 jest.mock("../../components/starswarm/Controls", () => ({
   __esModule: true,
@@ -56,76 +41,49 @@ jest.mock("../../components/starswarm/Controls", () => ({
   hapticWaveClear: jest.fn(),
 }));
 
-jest.mock("../../hooks/useStarSwarmAudio", () => {
-  const noop = () => undefined;
-  return {
-    DEFAULT_SFX_VOLUMES: {},
-    useStarSwarmAudio: () => new Proxy({}, { get: () => noop }) as Record<string, () => void>,
-  };
-});
+jest.mock("../../hooks/useStarSwarmAudio", () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("./helpers/starSwarmMocks").audioModule()
+);
 
 jest.mock("../../game/starswarm/telemetry", () => ({ reportRunStats: jest.fn() }));
 
-// #2626: the card reads the run's rank from GET /games/{id}/rank (sessionBoardAdapter);
+// #2626: the card reads the run's rank from GET /games/{id}/rank (lookupGameRank);
 // nothing is posted to the legacy POST /starswarm/score any more.
 const mockGetRank = jest.fn();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getGameRank: (gameId: string) => mockGetRank(gameId) },
-}));
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: jest.fn(() => Promise.resolve()),
-}));
-jest.mock("../../game/_shared/displayNameSync", () => ({
-  ...jest.requireActual("../../game/_shared/displayNameSync"),
-  flushDisplayNameSync: jest.fn(() => Promise.resolve(true)),
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetRank(gameId) })
+);
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+jest.mock("../../game/_shared/displayNameSync", () => mockScreenDeps().mockDisplayNameSync());
 
 const mockStartGame = jest.fn((): string | null => "starswarm-game-id");
 const mockCompleteGame = jest.fn();
 const mockReportBug = jest.fn();
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as jest.Mock)(...args),
-    enqueueEvent: jest.fn(),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: (...args: unknown[]) => (mockReportBug as jest.Mock)(...args),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
-
-async function renderScreen() {
-  const r = await render(
-    <ThemeProvider>
-      <StarSwarmScreen />
-    </ThemeProvider>
-  );
-  // Give the canvas container a size so the canvas mounts.
-  await act(async () => {
-    await fireEvent(r.getByTestId("starswarm-canvas-outer"), "layout", {
-      nativeEvent: { layout: { width: 400, height: 700 } },
-    });
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    completeGame: lazy(() => mockCompleteGame),
+    reportBug: lazy(() => mockReportBug),
   });
-  return r;
-}
+});
 
-async function startRun() {
-  await act(async () => {
-    await fireEvent.press(screen.getByTestId("starswarm-start-game"));
-  });
+/** What the canvas's getState() returns: just the fields the result reads. */
+function setEngineState(state: { difficulty: string; scoreLedger?: ScoreLedger }) {
+  canvas.state = state as unknown as StarSwarmState;
 }
 
 async function endRun(score: number, wave: number) {
   await act(async () => {
-    mockCanvasProps.onGameOver(score, wave);
+    canvas.props.onGameOver(score, wave);
   });
 }
 
 beforeEach(async () => {
   jest.clearAllMocks();
   mockStartGame.mockReturnValue("starswarm-game-id");
-  mockCanvasState = null;
+  resetHarness();
   await AsyncStorage.clear();
   await AsyncStorage.setItem("starswarm.difficulty", "Commander");
   resetDisplayNameCacheForTests();
@@ -154,11 +112,42 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     expect(card.getByRole("button", { name: "Home" })).toBeTruthy();
   });
 
-  it("saves a new best so it survives a restart", async () => {
+  // #2944 — on iOS the card (a native Modal) can't present over the feedback sheet, and a
+  // `visible` that stayed true never presented it afterwards: the game looked frozen.
+  it("holds the card while the feedback sheet is open and shows it once the sheet closes", async () => {
+    await renderScreen();
+    await startRun();
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("nav-menu"));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("nav-menu-feedback"));
+    });
+    // The run ends under the sheet (here the stand-in canvas has no engine state to pause).
+    await endRun(4200, 7);
+    expect(screen.queryByTestId("starswarm-result")).toBeNull();
+
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Close" }));
+    });
+    await waitFor(() => expect(screen.getByTestId("starswarm-result")).toBeTruthy(), {
+      timeout: 3000,
+    });
+  });
+
+  it("flags a run that beats an earlier best as a new best (#2977)", async () => {
+    await AsyncStorage.setItem("starswarm.bestScore", "1000");
     await renderScreen();
     await startRun();
     await endRun(4200, 7);
     expect(within(screen.getByTestId("starswarm-result")).getByText("New best")).toBeTruthy();
+  });
+
+  it("saves the first run as the best, but it is not a new best (#2977)", async () => {
+    await renderScreen();
+    await startRun();
+    await endRun(4200, 7);
+    expect(within(screen.getByTestId("starswarm-result")).queryByText("New best")).toBeNull();
     await waitFor(async () =>
       expect(await AsyncStorage.getItem("starswarm.bestScore")).toBe("4200")
     );
@@ -231,7 +220,7 @@ describe("StarSwarmScreen — result card (#2516)", () => {
   it("sends the run's per-wave score breakdown in the result, not the event", async () => {
     await renderScreen();
     await startRun();
-    mockCanvasState = {
+    setEngineState({
       difficulty: "Commander",
       scoreLedger: {
         waves: [
@@ -240,7 +229,7 @@ describe("StarSwarmScreen — result card (#2516)", () => {
         ],
         earlier: null,
       },
-    };
+    });
     await endRun(3900, 2);
     const [, summary, eventData] = mockCompleteGame.mock.calls[0]!;
     expect(summary.result).toEqual({
@@ -294,7 +283,7 @@ describe("StarSwarmScreen — result card (#2516)", () => {
   it("shows the tier the run was played at, not the picker's", async () => {
     await renderScreen();
     await startRun();
-    mockCanvasState = { difficulty: "Captain" };
+    setEngineState({ difficulty: "Captain" });
     await endRun(4200, 7);
     const card = within(screen.getByTestId("starswarm-result"));
     expect(card.getByText("Star Swarm · Captain")).toBeTruthy();
@@ -306,7 +295,7 @@ describe("StarSwarmScreen — result card (#2516)", () => {
   it("View leaderboard opens the board of the tier the run was played at (#2633)", async () => {
     await renderScreen();
     await startRun();
-    mockCanvasState = { difficulty: "Captain" };
+    setEngineState({ difficulty: "Captain" });
     await endRun(4200, 7);
     const card = within(screen.getByTestId("starswarm-result"));
     await act(async () => {
@@ -322,13 +311,13 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     await renderScreen();
     await startRun();
     await endRun(4200, 7);
-    const resetBefore = mockCanvasProps.resetTick;
+    const resetBefore = canvas.props.resetTick;
     await act(async () => {
       await fireEvent.press(screen.getByRole("button", { name: "Play Again" }));
     });
     expect(screen.queryByTestId("starswarm-result")).toBeNull();
-    expect(mockCanvasProps.resetTick).toBe(resetBefore + 1);
-    expect(mockCanvasProps.difficulty).toBe("Commander");
+    expect(canvas.props.resetTick).toBe(resetBefore + 1);
+    expect(canvas.props.difficulty).toBe("Commander");
     expect(mockStartGame).toHaveBeenCalledTimes(2);
   });
 

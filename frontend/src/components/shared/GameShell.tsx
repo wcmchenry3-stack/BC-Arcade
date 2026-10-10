@@ -11,10 +11,12 @@ import { EmptyState } from "./EmptyState";
 import { useTheme } from "../../theme/ThemeContext";
 import { AppHeader, APP_HEADER_HEIGHT, AppHeaderProps } from "./AppHeader";
 
+/** The side gutter a game screen keeps beyond the safe-area insets (#2976). */
+export const GAME_SHELL_GUTTER = 12;
+
 export interface GameShellProps extends Pick<
   AppHeaderProps,
   | "title"
-  | "onBack"
   | "requireBack"
   | "backAccessibilityLabel"
   | "rightSlot"
@@ -31,6 +33,20 @@ export interface GameShellProps extends Pick<
    * tool): neither item. Required, so a new game screen can't leave it out.
    */
   gameType: GameType | null;
+  /**
+   * The header's back button. Defaults to returning to the lobby
+   * (`navigation.popToTop()`, #2976); pass a handler for any other back
+   * (Hearts and Sort go back one screen), or `null` for no back button.
+   */
+  onBack?: (() => void) | null;
+  /**
+   * The minimum side padding (#2976): the container's `paddingLeft` /
+   * `paddingRight` are `Math.max(inset, gutter)`. Defaults to
+   * `GAME_SHELL_GUTTER` (12); `0` pads by the insets alone, and `null`
+   * applies no side padding (a screen that lays out its own edges). A
+   * `paddingLeft` / `paddingRight` in `style` still wins.
+   */
+  gutter?: number | null;
   /**
    * When true renders a loading spinner instead of children. The header keeps
    * its title and back button so a slow load never strands the player; the ⋯
@@ -66,6 +82,7 @@ export function GameShell({
   onEditPlayerNames,
   loading = false,
   error,
+  gutter = GAME_SHELL_GUTTER,
   style,
   children,
 }: GameShellProps) {
@@ -75,6 +92,8 @@ export function GameShell({
   const flatPaddingBottom = StyleSheet.flatten(style)?.paddingBottom;
   const callerPaddingBottom = typeof flatPaddingBottom === "number" ? flatPaddingBottom : 0;
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
+  const popToTop = useCallback(() => navigation.popToTop(), [navigation]);
+  const handleBack = onBack === null ? undefined : (onBack ?? popToTop);
   const openStats = useCallback(() => {
     if (gameType) navigation.navigate("GameStats", { gameType });
   }, [navigation, gameType]);
@@ -90,6 +109,10 @@ export function GameShell({
           backgroundColor: colors.background,
           paddingTop: APP_HEADER_HEIGHT + insets.top,
         },
+        gutter != null && {
+          paddingLeft: Math.max(insets.left, gutter),
+          paddingRight: Math.max(insets.right, gutter),
+        },
         style,
         { paddingBottom: Math.max(tabBarHeight, callerPaddingBottom) },
       ]}
@@ -97,14 +120,14 @@ export function GameShell({
       {loading ? (
         <AppHeader
           title={title}
-          onBack={onBack}
+          onBack={handleBack}
           requireBack={requireBack}
           backAccessibilityLabel={backAccessibilityLabel}
         />
       ) : (
         <AppHeader
           title={title}
-          onBack={onBack}
+          onBack={handleBack}
           requireBack={requireBack}
           backAccessibilityLabel={backAccessibilityLabel}
           rightSlot={rightSlot}

@@ -51,25 +51,96 @@ different trust model and is treated separately.
 The backend is a **shared reporting/persistence service**, not twelve separate
 game servers.
 
-`backend/main.py` creates the FastAPI application and mounts a small set of
-shared product routers plus the few game-specific services that genuinely need
-server behavior.
+`backend/main.py` holds `create_app()`, which builds the FastAPI application and
+mounts a small set of shared product routers plus the few game-specific services
+that genuinely need server behavior; `app = create_app()` is the `main:app`
+entrypoint Render runs. It also owns the lifespan (background jobs), the
+app-level exception handlers, CORS and the middleware order. Process-wide setup
+lives beside it (#2993): `backend/observability/` (Sentry options, scrub lists,
+`init_sentry()`; logging setup), `backend/middleware/` (`headers_and_log.py`,
+one pure-ASGI layer for the security headers and the JSON request log, outermost;
+`body_size.py`, the per-path body caps, innermost) and `backend/routes/`
+(`/health`, `/health/db`, the test-only `/debug/error`).
 
-| Area | Location | Responsibility |
-| --- | --- | --- |
-| Shared game sessions | `backend/games/` | Create/complete games, append events, ranking, board definitions, progression helpers, shared schemas |
-| Game vocabulary | `backend/vocab.py` | Canonical `GameType` and `GameOutcome` vocabulary |
-| Database | `backend/db/` | SQLAlchemy engine/session setup and persisted models |
-| Schema migrations | `backend/alembic/` | The only production schema-evolution path |
-| Stats / Profile data | `backend/stats/` | Cross-game and per-game aggregates over shared session rows |
-| Player display name | `backend/players/` | Opt-in leaderboard membership and the server-generated public name for the pseudonymous player id (#2778) |
-| Entitlements | `backend/entitlements/` | Which premium games the current session may open |
-| Daily Challenge | `backend/daily_challenge/` | Frozen daily goal schedules, evaluation and streak derivation |
-| Daily Word | `backend/daily_word/` | Daily puzzle/guess service, one of the deliberate server-side gameplay exceptions |
-| Internal bug logs | `backend/logs/` | Session-linked diagnostic log ingestion |
-| Delete-my-data | `backend/me/` | Player/session data deletion |
-| Bottle Sort level service | `backend/sort/` | Generated/verified level sets |
-| Per-game descriptors | `backend/<game>/module.py` | `GameModule` metadata/result models, winner semantics, board definition and Stats shaping—not a second rule engine |
+**Errors and database sessions in routes (#2993).** Routers raise the domain
+errors untranslated: `GameServiceError` (`games/sessions.py`) and
+`PurchaseError` (`purchases/verifiers.py`) both carry `status_code` and
+`detail`, and one app-level handler in `main.py` answers them with exactly the
+response `HTTPException(status_code, detail)` gives (`{"detail": ...}`),
+beside the `EntitlementError` handler (`{"detail": "not_entitled", "game": ...}`).
+The one exception is the Google RTDN `401`, which the route still raises as
+an `HTTPException` because it carries `WWW-Authenticate: Bearer`. Routes take
+their session as `db: DbSession`, an `Annotated` alias for
+`Depends(db.base.get_db, scope="function")`: one session per request, shared
+with `require_entitlement`, and closed when the route returns, before the
+response is sent. A session costs no I/O until its first query. Two routes
+open their own session on purpose: `POST /daily-word/guess`, whose
+degrade-open `try` must also catch a failure to build one, and
+`GET /entitlements`, whose dev override answers without a database. The
+webhook routes and background jobs pass a session factory, since they run
+several transactions. Tests replace the session with
+`app.dependency_overrides[get_db]`.
+
+**Background jobs (#2994).** The three in-process jobs (Daily Word retention,
+the App Store notification replay, the Google Play jobs) are `PeriodicJob`s
+(`backend/jobs/periodic.py`): `run`, `interval_s`, `timeout_s`, and the Sentry
+`subsystem_tag` and `fingerprint` for a failed run. `loop()` runs the job now
+and then every interval; a failure or timeout is logged, reported through
+`observability.report.report_exception` and retried next cycle, never raised.
+`backend/jobs/lifespan.py` lists them in `configured_jobs()` (a job whose
+config is missing returns `None` and is left out). `main.lifespan` starts them
+in that order as tasks in `app.state.job_tasks`, before the DB health check,
+and stops them in reverse on every exit. `PeriodicJob.stop` cancels the task
+and waits at most `STOP_TIMEOUT_S` (5 s), logging when the task will not stop.
+A task that crashed is re-raised when the job sets `reraise_on_crash` (retention
+only) and swallowed otherwise (the purchase jobs); either way every other job is
+still stopped. Adding a job is one `PeriodicJob(...)` builder plus one line in
+`configured_jobs()`.
+
+| Area                      | Location                   | Responsibility                                                                                                     |
+| ------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Shared game sessions      | `backend/games/`           | Create/complete games, append events, ranking, board definitions, progression helpers, shared schemas (modules below) |
+| Game vocabulary           | `backend/vocab.py`         | Canonical `GameType` and `GameOutcome` vocabulary                                                                  |
+| Database                  | `backend/db/`              | SQLAlchemy engine/session setup and persisted models                                                               |
+| Schema migrations         | `backend/alembic/`         | The only production schema-evolution path                                                                          |
+| Stats / Profile data      | `backend/stats/`           | Cross-game and per-game aggregates over shared session rows                                                        |
+| Player display name       | `backend/players/`         | Opt-in leaderboard membership and the server-generated public name for the pseudonymous player id (#2778)          |
+| Entitlements              | `backend/entitlements/`    | Which premium games the current session may open                                                                   |
+| Daily Challenge           | `backend/daily_challenge/` | Frozen daily goal schedules, evaluation and streak derivation                                                      |
+| Daily Word                | `backend/daily_word/`      | Daily puzzle/guess service, one of the deliberate server-side gameplay exceptions                                  |
+| Internal bug logs         | `backend/logs/`            | Session-linked diagnostic log ingestion                                                                            |
+| Delete-my-data            | `backend/me/`              | Player/session data deletion                                                                                       |
+| Bottle Sort level service | `backend/sort/`            | Generated/verified level sets                                                                                      |
+| Per-game descriptors      | `backend/<game>/module.py` | `GameModule` metadata/result models, winner semantics, board definition and Stats shaping—not a second rule engine |
+
+The `backend/games/` service layer is split by job (#2991; the former
+`games/service.py` is gone, nothing re-exports it):
+
+| Module                   | Responsibility                                                                                            |
+| ------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `games/sessions.py`      | Session writes: `create_game`, `append_events`, `complete_game` and result validation; `GameServiceError` |
+| `games/sweep.py`         | Stale-session sweep (`sweep_stale_games`, `sweep_stale_games_safely`, `STALE_GAME_AFTER`)                 |
+| `games/stats.py`         | `/stats/me` aggregation: `get_stats_for_session`, `GameTypeStats`, `StatsSummary`, `win_streaks`          |
+| `games/stats_columns.py` | SQL column helpers for the comparable per-game stats (best-value candidate, time played, W/L/T)           |
+| `games/history.py`       | Read side of `GET /games/me` and `GET /games/{id}`: `list_games_for_session`, `get_game_detail`           |
+| `games/catalog.py`       | `GET /games/catalog` and the admin tier edit `patch_game_type` (invalidates the catalog cache)            |
+
+Leaderboards live in the `backend/games/boards/` package (#2992; the former
+`games/leaderboard.py` is gone, nothing re-exports it). Its package docstring
+holds the rules every board follows.
+
+| Module                       | Responsibility                                                                                            |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `games/boards/types.py`      | Result types: `BoardEntry`, `Standing`, `GameRank`, `LimitViolation`, and `LeaderboardError`              |
+| `games/boards/partitions.py` | Board lookup (`enabled_board`), partition resolution (`resolve_partition`, `row_partition`), `metric_cap` |
+| `games/boards/sql.py`        | SQL building blocks: `metadata_count`, `metric_expr`, `board_filters`, `best_rows`, `board_order`         |
+| `games/boards/queries.py`    | Board and rank queries: `top_entries`, `viewer_entry`, `player_standing`, `game_rank`, `load_game(_type)` |
+| `games/boards/limits.py`     | Submission limits for `PATCH /games/{id}/complete`: `check_completion_limits`, `merge_result_metadata`    |
+
+`RankReason` (why `GET /games/{id}/rank` has no rank) is declared in the
+declarative `games/board.py`, and `games/schemas.py` imports the registry only
+inside its metadata validator, so importing the request schemas loads no
+`<game>/module.py` and no query code (`tests/test_import_graph.py`).
 
 Most per-game backend directories are **descriptors**, not gameplay services.
 A normal single-player game's rules stay in the TypeScript engine on the
@@ -85,6 +156,15 @@ Every registered game exposes a `GameModule` that tells the shared backend:
 - how creation metadata/result data are validated;
 - how its public board / Stats "Best" value are defined;
 - any game-specific Stats shaping.
+
+Each module is a declarative subclass of `GameModuleBase`
+(`backend/games/module_base.py`, #2995). The base supplies the optional hooks
+with defaults that change nothing (`stats_shape`, `derive_final_score`,
+`reconcile_result`), so a game overrides only what it needs and the shared
+code calls every hook on every module, with no `getattr` lookups. The modules
+are listed once, in the `_MODULES` tuple in `backend/games/registry.py`.
+Field types shared by the metadata models (the legacy `player_name`, 64
+characters in every game) live in `backend/games/metadata.py`.
 
 The normative protocol, route behavior, outcome vocabulary, and new-game
 checklist live in [GAME-CONTRACT.md](GAME-CONTRACT.md). This architecture file
@@ -110,6 +190,49 @@ uses Supabase as plain PostgreSQL; dev uses its separate Render Postgres
 database; local development/CI can use SQLite. Environment/deploy details belong
 in [RENDER.md](RENDER.md), not duplicated here.
 
+### Catalog cache and the stale-sweep gate (#2966)
+
+`game_types` and `event_types` change only through migrations and
+`PATCH /games/catalog/{id}`, so `backend/games/catalog_cache.py` keeps one
+snapshot of both per process: `{name: GameTypeRow}` (frozen dataclasses, never
+ORM instances) and `{game_type_id: {event_name: event_type_id}}` for the
+non-deprecated event types. `check_entitlement` (it reads `is_premium` there
+and queries only the `game_entitlements` row of a premium game),
+`POST /games`, `POST /games/{id}/events` and the leaderboard's game-type
+lookup read it instead of the tables. **Purchase verification bypasses the
+cache** (`purchases/service.py` `_premium_slug_for` reads `is_premium` from the
+DB): the store has already charged the user, so a worker whose snapshot
+predates a free → premium PATCH must not reject the purchase as
+`unknown_product`. That path is not hot.
+
+- **TTL 60 s.** `patch_game_type` invalidates the snapshot after its commit, so
+  the worker that served the PATCH applies the change on its next request.
+  Other uvicorn workers and instances keep their snapshot until it expires:
+  **a PATCH reaches every process within 60 s**. Migrations ship with a
+  deploy, which restarts every process.
+- **Concurrency.** A refresh builds a new snapshot and swaps one module-level
+  reference, so readers never see a half-built one; a load that raced an
+  invalidation is discarded rather than stored. No lock, no Redis
+  (cross-process caching is out of scope).
+- **Tests.** The cache is process-global: `tests/conftest.py` clears it (and
+  the sweep gate) around every test, so a test that edits those tables
+  directly starts from the DB.
+
+`/stats/me` runs the stale-session sweep (#2621) through
+`backend/games/sweep_gate.py`: after a sweep it records, per session and in
+process, when the sweep could next match anything (the oldest open game's
+start + 24 h, capped at one hour), and skips the UPDATE until then.
+`POST /games` on the same process moves that time forward for a backdated
+game. A game created through another worker can therefore be counted up to an
+hour late, and only in `sessions` / `total_games` / `favorite_game`: abandoned
+rows never earn XP, streaks, best values or time played. `/games/me` still
+sweeps on every first page. `daily_challenge.definitions.pick_template` is
+memoised (pure, hashable arguments, frozen result).
+
+Steady-state statement counts (guarded by
+`tests/test_entitlement_lookup_perf.py`): `POST /games` 1-3 (was 4-6),
+`/stats/me` 5 (was 7).
+
 ## 3. The rule engine — written once
 
 For any game that may eventually support multi-player, the rule engine lives in
@@ -121,12 +244,205 @@ be:
 - **Headless** — no React, no UI, no platform imports inside `engine.ts`.
 - **Pure(ish)** — no AsyncStorage, network, audio, haptics, or other side
   effects inside the engine itself. Side effects live one layer up (in screen /
-  hook / service code that consumes the engine).
+  hook / service code that consumes the engine). The "ish" is module-level
+  state: eight engines keep a mutable singleton outside their game state (an
+  RNG slot, an id counter, Star Swarm's LCG seed). A move function is pure
+  given that state; the rules for it are in §3.2.
 - **Runnable in Node** — covered by tests that import the engine and exercise it
   outside React Native, to confirm portability.
 
 This is a discipline, not new infrastructure. Existing games are audited for
 compliance under epic #894.
+
+### 3.1 Where game code lives
+
+One folder convention (#2980, epic #2950):
+
+| Kind of code                                                | Location                          |
+| ----------------------------------------------------------- | --------------------------------- |
+| Engines, types, storage, sounds, layout, solvers, hooks     | `frontend/src/game/<name>/`       |
+| React components for a game (boards, piles, tiles, pickers) | `frontend/src/components/<name>/` |
+| Screens                                                     | `frontend/src/screens/`           |
+
+React components shared by several card games live in `frontend/src/components/cards/`
+(the foundation pile and tableau column FreeCell and Solitaire both use, #2983); the
+game folders keep thin wrappers that fix the per-game props.
+
+`game/<name>/` is headless: nothing in it may import from `components/` or
+`screens/` (enforced by the `bc-arcade/no-game-ui-imports` ESLint rule, which
+has no `.tsx` exemption apart from the list below).
+
+Explicit exception to the lint rule, plus contexts that stay under `game/`:
+
+- `game/_shared/**` — the cross-game card/drag/deck UI kit and its contexts
+  (`SelectableCard`, `drag/*`, `decks/*`, `CardSizeContext`, `SoundContext`,
+  `NetworkContext`). These are the only `.tsx` files allowed to import
+  `components/`.
+- Per-game React contexts (`game/blackjack/BlackjackGameContext.tsx`,
+  `game/hearts/RoundsContext.tsx`, `game/yacht/ScorecardContext.tsx`) stay in
+  `game/<name>/` by design. They are **not** exempt from the lint rule; they pass
+  because they import no UI.
+
+### 3.2 Determinism, RNG and counters (#2985, #2999)
+
+The rule: **an engine is replayable from `(seed, inputs)`.** Given the same
+seed (or the same pinned random source) and the same sequence of moves or
+ticks, it produces the same states, ids included. Saved games store the whole
+state, so the app never replays a game to restore it; replayability is what
+lets tests, golden fixtures, seed banks and the balance simulator pin a game
+exactly. Everything below follows from it.
+
+**One LCG.** `frontend/src/game/_shared/seededRng.ts` exports
+`createSeededRng(seed)` (one 32-bit LCG, `state / 2^32`, so a draw is always in
+`[0, 1)`), `lcgNext(state)` (one step, for an engine that keeps its own LCG
+state), `createRngSlot()` and `RandomSource`. Seeded deals use it directly:
+Solitaire and FreeCell shuffle with `createSeededRng(seed)` for a seed from
+their `seeds.json` bank (the same generator `backend/scripts/gen_*_seeds.py`
+mirrors), and Mahjong's `createGame(layout, seed)` does the same when it is
+given a seed. `_shared/simRandom.ts` (Mulberry32) is the simulators' separate
+generator; do not use it in engines.
+
+**The `setRng` test seam.** Randomness that is not dealt from a seed goes
+through a per-engine slot, `const rngSlot = createRngSlot()` with
+`export const setRng = rngSlot.setRng`: Solitaire and FreeCell (which bank seed
+to deal), Mahjong (an unseeded deal and the in-game shuffle), Twenty48 (tile
+spawns), Blackjack (the shoe), Hearts (the deal and the AI's noise) and Yacht (the dice).
+The slot defaults to `Math.random`, so live play is not replayable for these
+draws; tests pin them with `setRng(createSeededRng(seed))` and restore
+`Math.random` afterwards. Each engine owns its slot, so pinning one engine
+never moves another. Sudoku's `loadPuzzle(…, rng = Math.random)` and Cascade's
+spawn selector take the source as a parameter instead.
+
+**Module-level counters.** Ids that must be unique across a game live outside
+the game state, in module `let`s:
+
+| Engine     | Counter                                                        | Set or restored by                                                                   | Test reset            |
+| ---------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------- |
+| Twenty48   | `_nextTileId` (`game/twenty48/engine.ts`)                      | `seedNextTileId(maxId + 1)` in `twenty48/storage.ts` `loadGame` (#698)               | `_resetTileIds()`     |
+| Star Swarm | `_seed`, `_nextId`, `_nextBuddyId` (`starswarm/engine/rng.ts`) | `seedRng` in `initStarSwarm`; `engineCounters()` / `restoreEngineCounters()` (#2645) | `_resetIds()`         |
+| 7 engines  | the RNG slot above                                             | `setRng`                                                                             | `setRng(Math.random)` |
+
+The rules that follow:
+
+- **A restored game restores its counters before its first move or tick.**
+  A new process starts every counter over (ids from 1, Star Swarm's seed from
+  42), so without this a resumed game reissues ids its pieces already hold
+  (duplicate React keys in 2048, #698) and Star Swarm's random stream restarts.
+  Twenty48 derives the counter from the saved tiles; Star Swarm saves
+  `engineCounters()` with a paused run (`StarSwarmScreen`'s `savePausedRun`)
+  and `pauseStore` calls `restoreEngineCounters(save.counters)` when it loads
+  the run. Restoring only moves ids forward (never onto one this process has
+  issued) and sets the seed. A new engine with a counter adds it to its save
+  and restores it in the storage module's load.
+- **Tests reseed.** A test that depends on ids or draws resets the counters
+  (`_resetIds`, `_resetTileIds`) and pins the slot or seed in `beforeEach`;
+  the Mahjong and Star Swarm golden replays (`__tests__/goldenReplay.test.ts`)
+  compare a seeded run against a recorded fixture, Star Swarm's including the
+  final `engineCounters()`.
+- **`Math.random` is for cosmetics only.** A draw that cannot change a game's
+  outcome (the background-music track, Mahjong's web noise texture) may use
+  `Math.random`, or its own `createSeededRng` (Star Swarm's starfield).
+  Anything that feeds the rules goes through the slot or the seed. Picking a
+  seed is not a draw: Star Swarm's canvas seeds each live run from
+  `Date.now() ^ Math.random()` and passes it to `initStarSwarm`. The Hearts
+  PIMC search (`game/hearts/pimc/engine.ts`) takes its source as a parameter
+  (default `Math.random`); only the dev-only debug-panel benchmark reaches it,
+  so no play path draws from `Math.random` there.
+
+**Known exception.** Star Swarm's power-up type (`pickPowerUpType`,
+`engine/entities.ts`) and power-up drop X (`engine/collisions.ts`) still call
+`Math.random`, and they do affect play. Seeding the LCG alone therefore does not reproduce a
+Star Swarm run: the golden replay test stubs `Math.random` as well. Moving
+those draws onto the seeded source would change Star Swarm's gameplay
+sequence and needs its own golden re-record.
+
+**The Star Swarm simulator.** The balance simulator
+(`frontend/tooling/starswarm/`) runs the real engine, not a copy. It couples
+to it in two ways only:
+
+- **Tuning** (#2988): `tick`, `initStarSwarm` and `applyPowerUp` take a
+  `Tuning` object defaulting to `DEFAULT_TUNING`; `engineVariant.ts` binds
+  them to `DEFAULT_TUNING` plus a variant's overrides (§3.4). An override key
+  that is not a `Tuning` field throws.
+- **Counters**: the variant shares the real module's LCG and id counters. The
+  harness seeds them per run (`_resetIds()`, then `initStarSwarm(…, seed)`),
+  and to fork a run (`balance.ts`, the with- and without-Buddy branches) it
+  takes `engineCounters()` at the fork and calls `_resetIds()` plus
+  `restoreEngineCounters()` before the second branch, so both branches see the
+  same ids and draws. Buddy draws ids from its own range (`BUDDY_ID_BASE`,
+  #2880) so launching it does not shift the main stream.
+
+### 3.3 Shared engine modules (#2986)
+
+Rule-agnostic engine pieces live once under `frontend/src/game/_shared/` and
+are headless and pure like the engines that import them:
+
+| Module                         | Exports                                                                                              | Used by                                                  |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `_shared/seededRng.ts`         | `createSeededRng`, `createRngSlot`, `RandomSource` (§3.2)                                            | every seeded engine                                      |
+| `_shared/cards/types.ts`       | `Suit`, `Rank`, `SUITS`, `RANKS`, `PlayingCard {suit, rank}`, `cardColor`                            | Solitaire, FreeCell, Hearts                              |
+| `_shared/cards/deck.ts`        | `createDeck()` (ordered 52), `fisherYates(deck, rng)`                                                | Solitaire, FreeCell, Hearts                              |
+| `_shared/cards/foundations.ts` | `Foundations<C>`, `emptyFoundations`, `withFoundation`, `isWin(f, deckSize)`, `canStackOnFoundation` | Solitaire, FreeCell                                      |
+| `_shared/undoStack.ts`         | `UNDO_CAP` (50), `pushCapped(stack, entry, cap)`, `withUndo(prev, next, cap)`                        | Solitaire, FreeCell (`withUndo`), Mahjong (`pushCapped`) |
+
+- Each game's `types.ts` re-exports the shared card names, so `Card`, `Suit`,
+  `Foundations` and `cardColor` still import from `game/<name>/types`. A game
+  extends `PlayingCard` for its own state: Solitaire's `Card` is
+  `PlayingCard & { faceUp: boolean }`; FreeCell's and Hearts' are
+  `PlayingCard`. The saved card shape (`{suit, rank[, faceUp]}`, in that key
+  order) is unchanged.
+- `fisherYates` always takes the RNG as an argument; engines pass a
+  `createSeededRng(seed)` or their own slot's `rng`. There is no shared RNG
+  slot. The deck order and draw order are part of every seeded deal (and are
+  mirrored by `backend/scripts/gen_*_seeds.py`), so changing either is a
+  behaviour change that breaks the `seeds.json` parity tests.
+- `withUndo` stores whole-state snapshots (the snapshot's own `undoStack`
+  emptied so they never nest) and appends `undoStack` after `next`'s fields.
+  Solitaire wraps it to drop one-shot `events` and carry the live clock.
+  Mahjong keeps its delta entries (#2961) and only shares the capped push.
+- Game rules stay in the game: `validateMove`, `applyMove`, tableau stacking,
+  hints and auto-complete are not shared. Blackjack's cards (`rank: string`,
+  suit glyphs) are a different domain and do not use `_shared/cards`.
+
+### 3.4 Star Swarm engine layout (#2988)
+
+An engine that outgrows one file becomes a package behind a barrel: the
+public module keeps its path (`game/starswarm/engine.ts`, now a pure
+`export *` barrel, so no importer changes) and the code lives in
+`game/starswarm/engine/`, one module per subsystem, each under the
+`max-lines` gate with its own `__tests__/engine.<module>.test.ts`:
+
+| Module           | Owns                                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------------- |
+| `tuning.ts`      | Every tunable, the difficulty tiers (`DIFFICULTY_TIERS`), and the injectable `Tuning` / `DEFAULT_TUNING`    |
+| `rng.ts`         | The seeded LCG (`seedRng`, via `_shared/seededRng`) and the id counters; `engineCounters()` for saves       |
+| `geometry.ts`    | Béziers, overlap tests, the formation slot layout, path factories, proportional aim, `hashFrac`             |
+| `roster.ts`      | Roster reads (leader tiers, Carrier armor and stage), the per-tick `TickCtx`, `mapKeep` / `mapFilterKeep`   |
+| `stats.ts`       | Per-tier dodge/flak counters and the run-wide counters                                                      |
+| `entities.ts`    | Pickups, explosions, the power-up type roll                                                                 |
+| `extraction.ts`  | The `weaponsFree` / `hazardsLive` gates, live hazards, the extraction autopilot, `clearTransientCombat`     |
+| `asteroids.ts`   | Rocks: entries, spawns, the threat contract, and the enemies' response to them (`tickAsteroidThreats`)      |
+| `buddy.ts`       | Buddy: station, attack runs, evasion, the fire it draws, the hits it takes                                  |
+| `carrier.ts`     | The Carrier: cadences, the volley seam, beam, attack run, and the event selectors                           |
+| `enemyPhases.ts` | The per-ship phase machine (SwoopIn → Formation → Wiggling → Diving → Circling → Returning, Fleeing)        |
+| `enemies.ts`     | `tickEnemies`: the fleet-wide tick (dive scheduling, sway, the Carrier context, reinforcements, stragglers) |
+| `collisions.ts`  | Bullets in flight and the single damage-resolution pass (`tickCollisions`, `applyBombBlast`)                |
+| `powerups.ts`    | The player's volley, upgrade ladders, pickups, `applyPowerUp`                                               |
+| `wave.ts`        | `initStarSwarm`, `buildWaveState`, `tick` (the pipeline order is in its header), the phase machine          |
+
+Modules only import downward in that order (no cycles), and the barrel is the
+only thing outside the package that imports them.
+
+**Tuning injection.** The tunables the balance simulator sweeps are fields of
+a `Tuning` object; `tick(state, dt, input, tuning = DEFAULT_TUNING)`,
+`initStarSwarm(…, tuning)` and `applyPowerUp(state, type, tuning)` thread one
+object through the sub-ticks that read it — a property read per use, no
+per-tick allocation, and the shipped game never passes one. The simulator
+(`tooling/starswarm/engineVariant.ts`) binds those entry points to
+`DEFAULT_TUNING` plus a variant's overrides instead of patching the engine's
+source. Adding a sweepable knob means adding a `Tuning` field (defaulting to
+the module constant of the same name) and reading it where the behaviour
+lives; a prototype behaviour is a knob that is a no-op at its default.
 
 ## 4. Persistence and offline contract
 
@@ -146,10 +462,18 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
 - `PendingGamesStore` — pending games (creation metadata, completion summary)
   persisted across app restarts.
 - `eventStore` — queued gameplay events and bug logs, sharded by priority tier.
-- `SyncWorker` — uploads both: every 30 s (`SYNC_INTERVAL_MS`), on foreground
-  and on reconnect (`NetworkContext`), and on demand through
+  The tiers are mirrored in memory (#2959): the first operation loads them
+  from AsyncStorage, every change writes the changed tier back, and `peek`,
+  `stats`, row updates and dead-lettering read only the mirror — so a game
+  move costs one write of its own tier, not a re-read of the whole queue. The
+  on-disk format is unchanged. `onStats` tells subscribers (the
+  capacity-warning toast) the new stats after each change, so nothing polls
+  the queue.
+- `SyncWorker` — uploads both: every 30 s (`SYNC_INTERVAL_MS`) while the app
+  is active, on foreground and on reconnect (`NetworkContext`), and on demand
+  through
   `flushQueuedGames()` (`game/_shared/flushQueuedGames.ts`) from screens that
-  read server results — the result card (`sessionBoardAdapter`), `useMyStats`,
+  read server results — the result card (`lookupGameRank`), `useMyStats`,
   `LeaderboardScreen`, `HomeScreen` and `useDailyChallenge` — so a game just
   finished is uploaded before they ask. After a 5xx or network failure it backs
   off globally, exponentially (1 s → 30 min); after a 429 it backs off globally
@@ -158,7 +482,13 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
   409 "Game is already completed." (below); a 400 or 403 dead-letters it (kept on the
   device, never re-sent); and `eventStore` drops rows older than 7 days and
   evicts over its cap (see "Queue cap" below). So a row that never got a 2xx
-  can still leave the device.
+  can still leave the device. The interval is torn down while `AppState` is
+  `background` or `inactive` and re-armed, with one immediate flush, on the
+  return to `active` (#2959), so nothing wakes to read an empty queue. A
+  flush takes one snapshot of the queue (one `peek`) and derives the per-game
+  batches, the bug-log batches and the "all events delivered" check for
+  completions from it; a game completed after the snapshot waits for the next
+  pass, so its `game_ended` is always sent before its completion.
 - `displayNameSync` — one pending leaderboard join or leave (see below).
 - `PendingGamesStore`, `eventStore` and `displayNameSync`
   (`pendingGamesStore.ts`, `eventStore.ts`, `displayNameSync.ts`) are
@@ -174,6 +504,31 @@ AsyncStorage key is cleared at launch and by "Delete my data"
 (`game/_shared/legacyScoreQueue.ts`). Daily Word's
 `POST /daily-word/guess` checks each guess against the server's answer during
 play; it is not a result write.
+
+**In-progress saves and device stats (#2987).** Each game keeps its resumable
+game (and any device-only stats, best score or progress) in AsyncStorage
+through `game/_shared/storageSlot.ts`, not its own copy of the plumbing. A
+game's `storage.ts` holds only its key, the check of a stored payload and any
+migration or normalising around it; the keys and the bytes written are the
+game's own and have not changed (`_shared/__tests__/storageCompat.test.ts`
+replays saves recorded from the pre-#2987 modules).
+
+- `createJsonSlot` — the saved game. `load` resolves null when nothing usable
+  is stored. A payload that can't be read or parsed, or whose loading throws,
+  is removed and reported as a Sentry _warning_ (`captureMessage`): the
+  screen recovers by starting fresh. A payload that parses but fails the
+  game's check is removed silently (Blackjack, 2048, Yacht and Daily Word
+  leave it stored instead; Hearts and Sudoku report it). Save and clear
+  failures are reported with `captureException`. Nothing rejects.
+- `createRecord` — a value that always loads (stats, a best score, Mahjong's
+  layout progress): its fallback when nothing is stored or it can't be read,
+  the failure reported with `captureException`, and the stored value left
+  alone.
+- Every report is tagged `{ subsystem: "<game>.storage", op }`. Sort's
+  storage used to swallow every failure; it now reports like the others, and
+  a failed read keeps its progress and level cache stored (as Sudoku's does).
+- When a game saves is the screen's decision (most after every move;
+  Mahjong debounced, #2961), not the slot's.
 
 **Identity and leaderboard name (#2624, #2519 decisions 17–18, #2778).** A
 player is their player id: the app's `game_session_id`, sent as `X-Session-ID`
@@ -201,7 +556,7 @@ typed on the device before #2624 that the server was never sent becomes a
 join, once. "Get a new name" is online only.
 
 **Safe replays (idempotency).** Retries are the normal case, so every write
-the app makes is safe to repeat (`backend/games/service.py` module docstring):
+the app makes is safe to repeat (`backend/games/sessions.py` module docstring):
 `POST /games` dedupes on the client game id (`create_game`); events dedupe on
 `(game_id, event_index)` (`INSERT … ON CONFLICT DO NOTHING`); a completed game
 can't be completed again — the first completion wins and a replayed
@@ -233,7 +588,7 @@ section owns only the shared offline event/session pipeline.
 module may declare a `result_model` (a Pydantic model, separate from the
 creation-time `metadata_model`, which forbids extra keys); the validated result
 is merged into `games.metadata` — a creation-time key wins on a collision
-unless it holds `null` (`merge_result_metadata`, `backend/games/leaderboard.py`),
+unless it holds `null` (`merge_result_metadata`, `backend/games/boards/limits.py`),
 because leaderboards read partition keys such as `difficulty` (and the legacy
 per-game leaderboard routes read `player_name`) from there — and an
 invalid or oversized (> 8 KB) result returns 400 without completing the game
@@ -364,7 +719,7 @@ fallback for devices that never report back.
 
 **Stale-session sweep (#2621, #2519 decisions 9 and 15).** A row still open
 24 h after `started_at` was left by a killed app that never reported back.
-`sweep_stale_games` (`backend/games/service.py`) closes the caller's own such
+`sweep_stale_games` (`backend/games/sweep.py`) closes the caller's own such
 rows as `abandoned` — `completed_at = started_at + 24 h`, `duration_ms` left
 NULL, `metadata.swept = true` — in one UPDATE. It runs **on read, per player**,
 at the start of `GET /stats/me` and on the first page of `GET /games/me` (no
@@ -417,14 +772,19 @@ queue-cap tests. It replaced the older pure tier-walk policy because preserving
 fresh events sometimes requires evicting older nominally "higher-priority"
 rows.
 
+Eviction runs against the in-memory mirror (#2959): the row and byte totals
+are kept per row as rows enter and leave, so the check after an enqueue is
+O(1) while the queue is under its caps, and a pass over the pool only happens
+when it is over. The order above is unchanged.
+
 The current priority assignments still matter for batching/sync behavior:
 
-| Tier | Typical contents |
-| --- | --- |
-| **P0** | Bug logs |
-| **P1** | Lifecycle events |
+| Tier   | Typical contents                                      |
+| ------ | ----------------------------------------------------- |
+| **P0** | Bug logs                                              |
+| **P1** | Lifecycle events                                      |
 | **P2** | Mid-tier gameplay events such as score/bet/deal/merge |
-| **P3** | Granular gameplay events |
+| **P3** | Granular gameplay events                              |
 
 Bug/event priority is assigned automatically by the client; users do not choose
 a priority.
@@ -434,7 +794,7 @@ a priority.
 Even though the server is not a referee, it remains the security boundary:
 
 - Every endpoint validates input shape and types.
-- Every endpoint is rate-limited (per [security.md](~/.claude/standards/security.md)).
+- Every endpoint is rate-limited (per the security standard in `~/.claude/standards/security.md`, outside this repo).
 - Payload size caps on every POST.
 - Content sanitization on any user-supplied text (player names, bug report
   bodies, etc.).
@@ -493,7 +853,7 @@ Both issues note that "first step is further research" — the snapshots in thos
 issues are not authoritative.
 
 **Leaderboards.** Every game's board is served by the generic routes
-(`GET /games/leaderboard/{game_type}`, `backend/games/leaderboard.py`), from a
+(`GET /games/leaderboard/{game_type}`, `backend/games/boards/`), from a
 `board` each `GameModule` declares; no game has its own leaderboard store. The
 rules are the same for every game — most importantly **one entry per player**
 (#2519 decision 12): rows are grouped by player (`session_id`, the install,
@@ -568,16 +928,16 @@ entitlement checks and grant access to every game. Never set this in production.
 
 ### 10.5 Key files
 
-| Layer                            | File                                                      |
-| -------------------------------- | --------------------------------------------------------- |
-| Backend — JWT issuance           | `backend/entitlements/service.py`                         |
-| Backend — Route guard            | `backend/entitlements/dependencies.py`                    |
-| Frontend — Token cache & context | `frontend/src/entitlements/EntitlementContext.tsx`        |
-| DB — premium flag                | `backend/alembic/versions/0014_game_types_premium_cat.py` |
-| DB — entitlement rows            | `backend/alembic/versions/0015_add_game_entitlements.py`  |
-| DB — purchases, links, events    | `backend/alembic/versions/0031_add_purchases.py`          |
+| Layer                            | File                                                                     |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| Backend — JWT issuance           | `backend/entitlements/service.py`                                        |
+| Backend — Route guard            | `backend/entitlements/dependencies.py`                                   |
+| Frontend — Token cache & context | `frontend/src/entitlements/EntitlementContext.tsx`                       |
+| DB — premium flag                | `backend/alembic/versions/0014_game_types_premium_cat.py`                |
+| DB — entitlement rows            | `backend/alembic/versions/0015_add_game_entitlements.py`                 |
+| DB — purchases, links, events    | `backend/alembic/versions/0031_add_purchases.py`                         |
 | Backend — purchase routes/logic  | `backend/purchases/` ([IAP.md §8.4](IAP.md#84-implementation-notes-840)) |
-| Store product catalog            | `frontend/src/entitlements/premiumProducts.json`          |
+| Store product catalog            | `frontend/src/entitlements/premiumProducts.json`                         |
 
 ### 10.6 Adding a premium game
 
@@ -585,7 +945,7 @@ entitlement checks and grant access to every game. Never set this in production.
 2. Add the game slug to `PREMIUM_GAMES` in `EntitlementContext.tsx`.
 3. Add `require_entitlement("<slug>")` to every route in `backend/<game>/router.py`.
 4. Document the tier in `docs/games/<game>.md`.
-4a. Add its store product to `frontend/src/entitlements/premiumProducts.json` and create the
+   4a. Add its store product to `frontend/src/entitlements/premiumProducts.json` and create the
    product in both store consoles ([IAP.md §2](IAP.md#2-catalog)); the premium-products drift
    tests fail until the catalog matches `is_premium`.
 5. While v1.0 hides premium games (§10.7), also add the slug to `HIDDEN_GAMES` in
@@ -755,6 +1115,22 @@ Three tiers, and no tier ever points at another's data:
   `test_render_yaml_prod_does_not_set_dev_override`
   (`backend/tests/test_entitlements.py`) keep the blueprint from wiring prod to
   dev data or to the entitlement override.
+- **Dialect policy (#2996).** Postgres is the only runtime dialect; SQLite
+  exists for the test suite and CI's schema check. Service code never branches
+  on `dialect_name(session)` (bar the exceptions listed below). SQL that differs between the two — reading a
+  JSON key as a number or a flag, setting a flag, moving a timestamp — is a
+  dialect-compiled element in `backend/db/jsonx.py` (`json_number`,
+  `json_is_true`, `json_set_true`, `plus_hours`): one statement, compiled per
+  dialect through SQLAlchemy's `@compiles`, with the SQLite body as the default.
+  `games/boards/sql.py`'s `metadata_count` follows the same pattern. The only
+  remaining dialect-aware code is the `insert()` constructor picked in
+  `db/dialect.py` (SQLite's `ON CONFLICT` needs its own), engine/pool setup in
+  `db/base.py`, `games/legacy_outcomes.py`, whose SQL is frozen against
+  migration 0028, and its one caller, `games/sessions.py`, which passes
+  `dialect_name(session)` to `win_update`. `JSONB_VARIANT` (`db/models.py`) is the one JSON column type:
+  JSONB on Postgres, JSON on SQLite. `tests/test_jsonx.py` compiles each element
+  for both dialects and executes it on the suite's database, so running the
+  suite with `DATABASE_URL` pointed at a Postgres checks parity.
 
 Operational detail — env vars, first deploy, connection rules — is in
 [`RENDER.md`](RENDER.md).
@@ -767,15 +1143,15 @@ BC Arcade intentionally keeps external-service responsibilities narrow. This is
 the system map; operational commands, environment variables and secrets belong
 in their runbooks.
 
-| Service | What BC Arcade uses it for | What happens if it is unavailable | Operational source |
-| --- | --- | --- | --- |
-| **GitHub** | Source, PR review, Actions/CI, dependency/security automation and repository history | Development/release automation stops; already-installed apps continue to run | Root workflows + testing/build docs |
-| **Render** | Dev/prod FastAPI services and secondary Expo Web sites; dev Postgres | Server reads/sync/entitlement/daily services are unavailable; offline-capable single-player continues locally and queues writes | [RENDER.md](RENDER.md) |
-| **Supabase** | Production PostgreSQL only, through the session pooler | Production server features that require DB access fail; local single-player can continue until sync/read services are needed | [RENDER.md](RENDER.md) |
-| **Sentry** | Native app + backend crashes/errors/performance and in-app User Feedback | Diagnostics/feedback visibility is reduced; gameplay should continue | `sentryConfig.ts`, backend `main.py`; canonical feedback/observability doc under #2805 |
-| **Cloudflare** | DNS/TLS/network routing for BC Arcade domains | Custom domains/routing may fail even when Render services are healthy | Render/domain configuration |
-| **Apple/Xcode Cloud/App Store Connect** | iOS build/sign/test/distribution toolchain | New iOS builds/releases stop; installed builds are unaffected | [IOS.md](IOS.md) |
-| **Google Play / Gradle signing toolchain** | Android build/sign/test/distribution | New Android releases stop; installed builds are unaffected | [ANDROID-CI.md](ANDROID-CI.md) |
+| Service                                    | What BC Arcade uses it for                                                           | What happens if it is unavailable                                                                                               | Operational source                                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **GitHub**                                 | Source, PR review, Actions/CI, dependency/security automation and repository history | Development/release automation stops; already-installed apps continue to run                                                    | Root workflows + testing/build docs                                                    |
+| **Render**                                 | Dev/prod FastAPI services and secondary Expo Web sites; dev Postgres                 | Server reads/sync/entitlement/daily services are unavailable; offline-capable single-player continues locally and queues writes | [RENDER.md](RENDER.md)                                                                 |
+| **Supabase**                               | Production PostgreSQL only, through the session pooler                               | Production server features that require DB access fail; local single-player can continue until sync/read services are needed    | [RENDER.md](RENDER.md)                                                                 |
+| **Sentry**                                 | Native app + backend crashes/errors/performance and in-app User Feedback             | Diagnostics/feedback visibility is reduced; gameplay should continue                                                            | `sentryConfig.ts`, backend `observability/sentry.py`; canonical feedback/observability doc under #2805 |
+| **Cloudflare**                             | DNS/TLS/network routing for BC Arcade domains                                        | Custom domains/routing may fail even when Render services are healthy                                                           | Render/domain configuration                                                            |
+| **Apple/Xcode Cloud/App Store Connect**    | iOS build/sign/test/distribution toolchain                                           | New iOS builds/releases stop; installed builds are unaffected                                                                   | [IOS.md](IOS.md)                                                                       |
+| **Google Play / Gradle signing toolchain** | Android build/sign/test/distribution                                                 | New Android releases stop; installed builds are unaffected                                                                      | [ANDROID-CI.md](ANDROID-CI.md)                                                         |
 
 ### Secrets and configuration ownership
 
@@ -787,6 +1163,116 @@ documentation, PR descriptions, or tool arguments.
 For the concrete Render/Supabase environment topology and variable inventory,
 use [RENDER.md](RENDER.md). Build-time API-target rules live in
 [IOS.md](IOS.md) and [ANDROID-CI.md](ANDROID-CI.md).
+
+**Backend settings (#2997).** The API reads its env vars through one
+pydantic-settings object, `Settings` in `backend/settings.py`. `create_app()`
+builds it once, keeps it on `app.state.settings` and passes it to the code that
+needs it, so a test either passes a `Settings` to `create_app()` or sets env
+vars before calling it. `Settings(...)` still fills any field it is not given
+from the environment (including a developer's `backend/.env` once `main` has
+loaded it), so tests should build it with `Settings.isolated(ENVIRONMENT="test",
+...)`, which ignores the environment and uses defaults for the rest. Env var names (case-sensitive,
+no prefix) and defaults are exactly the ones the old `os.environ.get` calls
+used, and a bad `TRUSTED_PROXY_*` value still raises `ValueError` at startup.
+Operational tunables (#3110) are optional env vars with bounds (below); a value outside
+its range fails `Settings()`, so the API refuses to start. Game rules stay constants.
+
+| Setting                | Default when unset                                | Read by                                                 |
+| ---------------------- | ------------------------------------------------- | ------------------------------------------------------- |
+| `ENVIRONMENT`          | unset (Sentry reports `development`)              | `main` (docs routes, `/debug/error`), Sentry, `limiter` |
+| `ALLOWED_ORIGINS`      | `http://localhost:8081`, `http://localhost:19006` | `main` (CORS)                                           |
+| `SENTRY_DSN`           | unset (Sentry off)                                | `observability/sentry.py`                               |
+| `RENDER_GIT_COMMIT`    | unset (no Sentry release)                         | `observability/sentry.py`                               |
+| `TRUSTED_PROXY_MODE`   | `cloudflare`                                      | `limiter.py`                                            |
+| `TRUSTED_PROXY_HOPS`   | `1` (1–10)                                        | `limiter.py`                                            |
+| `LOG_PROXY_HEADERS`    | unset (off; ignored in production)                | `limiter.py`                                            |
+| `DATABASE_URL`         | unset or blank (no database; the API still boots) | `db/base.py` (on first use), `alembic/env.py`           |
+| `DAILY_WORD_SALT`      | `0` (empty or non-integer fails the import)       | `daily_word/puzzle.py` (at import)                      |
+| `DAILY_CHALLENGE_SALT` | `0` (blank → `0`; non-integer is hashed)          | `daily_challenge/definitions.py` (at import)            |
+| `ADMIN_API_TOKEN`      | empty (admin `PATCH /games/catalog/{id}` always 403s) | `games/router.py` (at startup, via `app.state.settings`) |
+| `ENTITLEMENT_DEV_OVERRIDE` | unset (override off; only `true` turns it on) | `entitlements/service.py` (lazy, on first use)          |
+| `ENTITLEMENT_PRIVATE_KEY` / `ENTITLEMENT_PUBLIC_KEY` | unset or blank (an ephemeral pair is generated) | `entitlements/service.py` (lazy, on first use) |
+| `APPLE_BUNDLE_ID`      | unset (Apple verification dormant)                | `purchases/apple_store.py` (lazy, via `purchases/_common.py`) |
+| `APPLE_APP_ID`         | unset (required when `Production` is allowed)     | `purchases/apple_store.py` (lazy)                       |
+| `APPLE_IAP_ISSUER_ID` / `APPLE_IAP_KEY_ID` / `APPLE_IAP_PRIVATE_KEY` | unset (no App Store Server API; all three or none) | `purchases/apple_store.py` (lazy) |
+| `APPLE_IAP_ONLINE_CHECKS` | unset (on; refused when off in production)     | `purchases/apple_store.py` (lazy)                       |
+| `APPLE_IAP_ENVIRONMENTS` | unset/empty → `Production,Sandbox` (blank → none: misconfigured) | `purchases/verifiers.py` (lazy, once per process)       |
+| `GOOGLE_PLAY_PACKAGE_NAME` | unset (Google verification dormant)           | `purchases/google_play.py` (lazy)                       |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | unset (required with the package name) | `purchases/google_play.py` (lazy)                       |
+| `GOOGLE_RTDN_AUDIENCE` / `GOOGLE_RTDN_PUSH_SA` | unset (required with the package name) | `purchases/google_play.py` (lazy)             |
+| `GOOGLE_PLAY_ENVIRONMENTS` | unset/empty → `production,test` (blank → none: misconfigured) | `purchases/verifiers.py` (lazy, once per process)       |
+| `ENTITLEMENT_TOKEN_TTL_HOURS` | `24` (1–168; the client's offline grace is 7 days)  | `entitlements/service.py` (lazy)                        |
+| `STALE_GAME_AFTER_HOURS` | `24` (1–720)                                    | `games/sweep.py`, `games/sweep_gate.py` (lazy)          |
+| `MAX_RESULT_BYTES`     | `8192` (1024–131072)                              | `games/sessions.py` (lazy)                              |
+| `STREAK_LOOKBACK_DAYS` | `60` (1–365; also the largest streak reported)    | `daily_challenge/streak.py` (lazy)                      |
+| `APPLE_REPLAY_WINDOW_HOURS` | `48` (1–720)                                 | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`) |
+| `DB_PING_TIMEOUT_SECONDS` | `5.0` (above 0, at most 60)                    | `routes/health.py` (lazy)                               |
+
+`db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
+`get_engine()` call and keeps it for the process, because the engine is
+process-wide; `create_app()` does not pass its `Settings` there, and tests
+override it with `monkeypatch.setattr(base, "_settings", Settings.isolated(...))`.
+The two salts are still read when their modules are imported (the Daily Word
+shuffle needs its salt), so `load_dotenv()` in `main` must still run before the
+imports.
+
+`ADMIN_API_TOKEN` is read once at startup: `games/router.py` takes it from
+`request.app.state.settings`, so a test sets it with
+`monkeypatch.setattr(app.state, "settings", Settings.isolated(ADMIN_API_TOKEN=...))`
+(`tests/_helpers.set_admin_token`) rather than an env var after the app exists.
+`ENTITLEMENT_DEV_OVERRIDE` and `ENTITLEMENT_PRIVATE_KEY` / `_PUBLIC_KEY`
+(`entitlements/service.py`) follow the `db/base.py` pattern: built on first use,
+kept for the process, overridden in tests with
+`monkeypatch.setattr(service, "_settings", ...)` (`tests/_helpers.set_dev_override`).
+The `APPLE_*` / `GOOGLE_*` store config (`purchases/_common.py`'s `_settings`,
+via `get_settings()`) follows the same pattern, including the two
+`*_ENVIRONMENTS` lists, which `allowed_environments()` therefore reads once per
+process instead of on every call. Tests reset it with
+`monkeypatch.setattr(_common, "_settings", None)` after changing those env vars
+(`tests/_helpers.StoreEnv`, the `store_env` fixture).
+The six operational tunables above follow the same pattern: each module keeps its own
+lazy `_settings`, so `create_app(settings)` does not affect them and tests override
+them with `monkeypatch.setattr(module, "_settings", Settings.isolated(...))` (the
+`_reset_tunable_settings` fixture in `tests/conftest.py` clears them per test).
+`daily_word.progress.MAX_GUESSES` (6) is deliberately **not** a setting: it is a game
+rule that must equal the client's board size (`MAX_ROWS` in
+`frontend/src/game/daily_word/engine.ts`), so an env var could only make the server
+disagree with installed apps.
+The admin token, the keys, the Apple private key and the Google service-account
+JSON are `SecretStr`, so `repr(settings)` does not show them.
+
+The meaning of each variable and where it is set are in
+[RENDER.md](RENDER.md#environment-variables).
+
+**Rate limits (#2997).** Every rate-limit string lives in
+`backend/rate_limits.py` (not `limits.py`: a top-level `limits` module would
+shadow the third-party `limits` package slowapi uses). Routes pass its
+constants to `@limiter.limit(...)`; none spells a literal. Its `ROUTE_LIMITS`
+table maps each handler to the limits it must carry, and
+`tests/test_rate_limit_coverage.py` fails on a route with no entry, a stale
+entry, or a decorator that differs from the table.
+
+**Operational tunables** stay as named constants beside the code they govern
+(they are not env vars and not in `Settings`):
+
+| Constant                                | Module                                                | Value                                |
+| --------------------------------------- | ----------------------------------------------------- | ------------------------------------ |
+| `TOKEN_TTL_HOURS`                       | `entitlements/service.py`                             | `24`                                 |
+| `STALE_GAME_AFTER` (`STALE_GAME_HOURS`) | `games/sweep.py` (also read by `games/sweep_gate.py`) | 24 hours                             |
+| `_TS_WINDOW_LOW` / `_TS_WINDOW_HIGH`    | `games/sessions.py`                                   | 365 days back / 24 hours ahead       |
+| `_MAX_RESULT_BYTES`                     | `games/sessions.py`                                   | `8192`                               |
+| `RETENTION`                             | `daily_word/retention.py`                             | 14 days                              |
+| `MAX_GUESSES`                           | `daily_word/progress.py`                              | `6`                                  |
+| `LOOKBACK_DAYS`                         | `daily_challenge/streak.py`                           | `60`                                 |
+| `REPLAY_WINDOW`                         | `purchases/apple_notifications.py`                    | 48 hours                             |
+| `VOIDED_WINDOW`                         | `purchases/google_jobs.py`                            | 48 hours                             |
+| `ACK_SWEEP_MAX_AGE` / `ACK_SWEEP_LIMIT` | `purchases/google_jobs.py`                            | 4 days / `500`                       |
+| `MAX_SESSIONS_PER_PURCHASE`             | `purchases/service.py`                                | `5`                                  |
+| `NEW_LINK_WINDOW`                       | `purchases/service.py`                                | 30 days                              |
+| `DEFAULT_MAX_BODY_BYTES`                | `middleware/body_size.py`                             | 1 KB (default)                       |
+| `LARGE_BODY_BYTES`                      | `middleware/body_size.py`                             | 256 KB (`/games`, `/logs`, `/stats`) |
+| `PURCHASE_BODY_BYTES`                   | `middleware/body_size.py`                             | 32 KB (`/purchases`)                 |
+| `DB_PING_TIMEOUT_SECONDS`               | `routes/health.py`                                    | `5.0`                                |
 
 ## 12. Daily cross-game challenge
 
@@ -826,7 +1312,7 @@ Each tier values a move as **points banked now + λ × the optimal expected poin
 - **The loss cap** stops outright blunders: nothing more than Δ points below the tier's best is ever picked. Holds whose best outcome can't beat banking the roll are excluded too, so no tier rerolls a made yacht or large straight.
 - The tiers ignore the opponent's score (the old Hard adversarial layer was retired), so turn order can't affect their strength.
 
-Head to head, Hard beats Easy ~92% and Medium ~72% of the time. The nightly calibration gate (`frontend/src/game/yacht/sim/gate.ts`, `.github/workflows/yacht-sim-gate.yml`) guards these numbers, and the regret gate checks each tier's per-decision quality against the oracle ([TESTING.md](TESTING.md)).
+Head to head, Hard beats Easy ~92% and Medium ~72% of the time. The nightly calibration gate (`frontend/tooling/yacht/gate.ts`, `.github/workflows/yacht-sim-gate.yml`) guards these numbers, and the regret gate checks each tier's per-decision quality against the oracle ([TESTING.md](TESTING.md)).
 
 **Runtime.** The table ships compressed (~0.6 MB of JS) and decodes on first use (~0.3 s on a dev machine; slower on-device). `GameScreen` calls `preloadOracleTable()` when a VS game's difficulty is set, so the first AI turn doesn't pay for it. After that a decision is a few milliseconds.
 
@@ -851,6 +1337,14 @@ At the architecture level, the important boundary is:
   session contract;
 - Profile aggregates only metrics that are comparable across games and never
   invents a cross-game score.
+
+The result card lives in `frontend/src/components/result/` (`GameResultModal`,
+`ResultCard`, `SubmissionLine`, `resultButtons`, `resultTypes`; #2990). Its
+leaderboard line is fed by `useGameRank(gameType)`
+(`game/_shared/useGameRank.ts`), which runs `lookupGameRank` and exposes
+`{ status, rank, isBest, playerName, lookup(gameId), joinLeaderboards, retry,
+reset }`; `toSubmission(leaderboard)` maps that state to the card's
+`submission` prop.
 
 Manual device verification lives in
 [MANUAL-QA-LEADERBOARDS.md](MANUAL-QA-LEADERBOARDS.md).

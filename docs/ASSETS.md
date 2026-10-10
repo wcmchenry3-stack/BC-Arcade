@@ -15,23 +15,28 @@ frontend/assets/
 │   ├── CREDITS.md      Source file + pack for every sprite (Kenney CC0)
 │   ├── explosion/      20-frame fire strip (PNG)
 │   └── powerups/       Power-up PNGs + CREDITS.md
-├── cosmos-baked/       Pre-baked PNG sprites for Cascade celestial theme
-├── fruits-baked/       Pre-baked PNG sprites for Cascade fruit theme
-├── fruit-icons/        WebP thumbnails for Cascade fruit theme picker
-├── celestial-icons/    WebP thumbnails for Cascade celestial theme picker
-├── cosmos-vertices.json   Polygon hit-box data for celestial theme
-├── fruit-vertices.json    Polygon hit-box data for fruit theme
+├── cosmos-baked/       Pre-baked 512 px palette PNG sprites, Cascade celestial theme (Skia canvas)
+├── fruits-baked/       Pre-baked 512 px palette PNG sprites, Cascade fruit theme (Skia canvas)
+├── fruit-icons/        256 px WebP thumbnails, Cascade fruit theme (FruitGlyph UI)
+├── celestial-icons/    256 px WebP thumbnails, Cascade celestial theme (FruitGlyph UI)
+├── cosmos-vertices.json   Polygon hit-box data for celestial theme (pipeline only, not bundled)
+├── fruit-vertices.json    Polygon hit-box data for fruit theme (pipeline only, not bundled)
+├── svg-sprites/        generate_svg_sprites.py output (not imported, not bundled)
 │
 └── sounds/             All audio (MP3 for BGM, OGG for SFX)
     └── SOUND_CREDITS.md
 ```
 
-Pipeline input directories live at the repo root but are **gitignored** (large source art, not shipped):
+Pipeline input directories live at the repo root. They are **tracked in version control** (force-added past the `.gitignore` entries for `fruit_images/` and `celestial_images/`), as plain files, **not Git LFS** (`.gitattributes` has no `filter=lfs` rule). They are source art for `tools/assets/bake_sprites.py` and are not in the app bundle:
 
-- `fruit_images/` (~77 MB) — high-res PNG sources for the fruit theme
-- `celestial_images/` (~86 MB) — high-res PNG sources for the celestial theme
+- `fruit_images/` (~77 MB, 12 PNGs) — high-res PNG sources for the fruit theme
+- `celestial_images/` (~86 MB, 12 PNGs) — high-res PNG sources for the celestial theme
 
-Originals and the older `source-icons/` bundle are stored in **Google Drive** (`bc-arcade` folder):
+A third input directory holds the **full-resolution processed icons** (background removed, WebP, up to 2048 px), moved out of `frontend/assets/` in #2833 so Metro no longer bundles them:
+
+- `cascade_icon_masters/fruit-icons/`, `cascade_icon_masters/celestial-icons/` (~10.5 MB, 24 WebPs) — input for `bake_sprites.py`, `extract_vertices.py` and `make_icon_thumbnails.py`; output of `remove_backgrounds.py`
+
+Most of the `fruit_images/` and `celestial_images/` PNGs are over 5 MiB, so `scripts/check_large_files.py` (the `Large tracked file guard` step of the CI job `repo-hygiene`, #2967) grandfathers them by exact path with a size cap. Moving them to Git LFS is tracked in #3033; that change removes the grandfathered entries. The older `frontend/assets/source-icons/` bundle stays gitignored; it and the original-resolution art are in **Google Drive** (`bc-arcade` folder):
 https://drive.google.com/drive/folders/1LW97pBFsqfG67bQKvQwkhMlLBswzIVhm
 
 ## Format rules
@@ -44,7 +49,25 @@ https://drive.google.com/drive/folders/1LW97pBFsqfG67bQKvQwkhMlLBswzIVhm
 | MP3       | BGM (background music)                                               |
 | OGG       | SFX (short sound effects)                                            |
 
-**Why two formats per Cascade theme?** `icons` (WebP) are transparent-background images for React Native `<Image>` components. `baked` (PNG) are pre-composited, clipped sprites for single-call Skia `drawImage` — produced by `bake_sprites.py`. They are different assets, not duplicates.
+**Why two formats per Cascade theme?** `icons` (WebP) are transparent-background images for React Native `<Image>` components. `baked` (PNG) are pre-composited, clipped sprites for single-call Skia `drawImage` — produced by `bake_sprites.py`. They are different assets, not duplicates: a baked sprite is padded to its `bakedClipR` circle (the cherry fills about a third of its canvas), so it would draw too small in a `FruitGlyph`.
+
+## Rendered sizes (#2833)
+
+Rule: a runtime image must be at least its largest rendered size in points times the device pixel ratio (3x on phones, 2x on iPads, which have the larger point sizes; take the larger product), plus a margin. Anything much bigger only costs bundle size and decode memory. Measured on the files as of #2833:
+
+| Family                                                              | Files (bundled) | Pixels                     | Drawn by                                                                  | Largest rendered size                                                             | Pixels needed                                                                                                          | Verdict                                                       |
+| ------------------------------------------------------------------- | --------------- | -------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `fruit-icons/`, `celestial-icons/`                                  | 22 (11 + 11)    | 256 px (were 1024–2816 px) | `FruitGlyph` (`<Image resizeMode="contain">`)                             | 22 pt in `NextFruitPreview`; 32 pt in the `__DEV__` tier panel                    | 32 pt × 3 = 96 px                                                                                                      | 256 px, a 2.6x margin. Downscaled from up to 2048 px          |
+| `fruits-baked/`, `cosmos-baked/`                                    | 22 (11 + 11)    | 512 px                     | `PieceRenderer` in `CascadeScreen.tsx`, Skia `<Image>` in a `scale` group | half-size = `radius × bakedClipR` world units; canvas `scale = min(w/400, h/600)` | tier 0: 116 units × ~1.06 × 3 ≈ 370 px (phone), × ~2.0 × 2 ≈ 465 px (iPad Pro 13"); tier 10: 345 units → over 1,000 px | Already at or below need. Not resized, palette-quantized only |
+| `icon.png`                                                          | app.json only   | 1024 px, 8-bit palette     | store/app icon source                                                     | —                                                                                 | 1024 px (App Store)                                                                                                    | Kept; already palette, re-encoding would grow it              |
+| `ios/.../App-Icon-1024x1024@1x.png`                                 | iOS binary      | 1024 px RGB, no alpha      | App Store icon                                                            | —                                                                                 | 1024 px, no alpha                                                                                                      | Lossless re-compress only (−2.4%)                             |
+| `starswarm/`, `mahjong/` (SVG), `logo.png`, splash/adaptive/favicon | all             | small                      | —                                                                         | —                                                                                 | —                                                                                                                      | All under 60 KB; not changed                                  |
+
+The world is 400 × 600 units. The canvas takes the whole game area, so `scale` peaks around 2.0–2.3 on a 13" iPad in portrait (1376 pt tall at most, so `scale` can never pass 1376 / 600 ≈ 2.3) and around 1.06 on a 440 pt-wide phone. Baked sprites should stay at 512 px or more; a bigger bake (`HALF` in `bake_sprites.py`) would sharpen the top tiers on tablets.
+
+`pumpkin` and `milkyway` are future tiers that no `FruitSet` uses. They are not imported in `src/game/cascade/images.ts` (so they do not ship), but their files stay in the asset and master folders for the pipeline.
+
+Vertex JSONs (`*-vertices.json`) and `bakedClipR` are in normalised units (1.0 = physics radius), not pixels, so resizing any image does not change hit-boxes.
 
 ## Size budgets
 
@@ -123,31 +146,45 @@ Adding a new shared image set: add imports + export object to `_shared/images.ts
 
 ## Prebuild optimization
 
-`npm run prebuild` crushes the four PNG app icons using `sharp` before every native build:
+`npm run prebuild` runs `scripts/optimize-assets.js` (`sharp`) before every native build:
 
 ```bash
-cd frontend && npm run prebuild
+cd frontend && npm run prebuild      # or: node scripts/optimize-assets.js
 ```
 
-Icons optimized: `icon.png`, `splash-icon.png`, `adaptive-icon.png`, `favicon.png`. The script is idempotent.
+- Lossless crush of `icon.png`, `splash-icon.png`, `adaptive-icon.png`, `favicon.png`.
+- `fruits-baked/` and `cosmos-baked/`: 256-colour palette PNG with alpha (libimagequant, dithered). A file is replaced only when the result is smaller and visually lossless (PSNR at least 45 dB on premultiplied RGBA; the #2833 set scored 46.6–58.4 dB). Palette files are skipped.
+
+The script is idempotent.
 
 ## Regenerating baked Cascade sprites
 
-Source images are in `fruit_images/` and `celestial_images/` (gitignored — download from Google Drive).
+Source images are in `fruit_images/` and `celestial_images/` at the repo root (tracked as plain files today; see "Directory map" above and #3033).
 
 ```bash
 pip install Pillow
-python frontend/scripts/bake_sprites.py
+python tools/assets/bake_sprites.py
 ```
 
-Writes `fruits-baked/` and `cosmos-baked/`, updates `fruit-vertices.json` / `cosmos-vertices.json`.
+Reads the full-resolution icons in `cascade_icon_masters/`. Writes `fruits-baked/` and `cosmos-baked/` (truecolor PNG), updates `fruit-vertices.json` / `cosmos-vertices.json`. Then run `cd frontend && node scripts/optimize-assets.js` to quantize the new sprites (about 60% smaller), and copy the new `bakedClipR` values into `src/theme/fruitSets.ts`.
+
+## Regenerating the runtime icon thumbnails
+
+```bash
+python tools/assets/make_icon_thumbnails.py            # 256 px, Lanczos, WebP q90, alpha kept
+python tools/assets/make_icon_thumbnails.py --size 384 # if a UI ever draws icons larger than 85 pt
+```
+
+Reads `cascade_icon_masters/*-icons/`, writes `frontend/assets/fruit-icons/` and `frontend/assets/celestial-icons/`. Never put full-resolution art in `frontend/assets/`: every imported file there ships in the app.
 
 ## Converting icon PNGs to WebP
 
 ```bash
-python frontend/scripts/convert_icons_to_webp.py frontend/assets/fruit-icons
-python frontend/scripts/convert_icons_to_webp.py frontend/assets/celestial-icons
+python tools/assets/convert_icons_to_webp.py cascade_icon_masters/fruit-icons
+python tools/assets/convert_icons_to_webp.py cascade_icon_masters/celestial-icons
 ```
+
+Then run `make_icon_thumbnails.py` (above).
 
 Do **not** run on `*-baked/` directories — Skia textures must stay PNG.
 

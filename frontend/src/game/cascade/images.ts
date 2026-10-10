@@ -5,6 +5,12 @@
 //   baked — PNG pre-composited + clipped sprites, for Skia canvas rendering
 //
 // Metro resolves imports at bundle time; asset paths must be static literals.
+//
+// Only pieces that a FruitSet uses are imported: every import here ships in the
+// app bundle. pumpkin (fruit) and milkyway (cosmos) are future tiers; their
+// files stay in assets/ (and the bake pipeline) but are not imported until a
+// set uses them (#2833). The icon WebPs are 256 px thumbnails made by
+// tools/assets/make_icon_thumbnails.py — see docs/ASSETS.md "Rendered sizes".
 
 // --- Fruit icons (UI display) ---
 import _cherryIcon from "../../../assets/fruit-icons/cherry.webp";
@@ -18,8 +24,6 @@ import _coconutIcon from "../../../assets/fruit-icons/coconut.webp";
 import _dragonfruitIcon from "../../../assets/fruit-icons/dragonfruit.webp";
 import _pineappleIcon from "../../../assets/fruit-icons/pineapple.webp";
 import _watermelonIcon from "../../../assets/fruit-icons/watermelon.webp";
-// pumpkin retained — intentional, future game tier
-import _pumpkinIcon from "../../../assets/fruit-icons/pumpkin.webp";
 
 // --- Fruit baked sprites (Skia canvas, WebP sets for runtime rendering) ---
 import _cherryBaked from "../../../assets/fruits-baked/cherry.png";
@@ -33,8 +37,6 @@ import _coconutBaked from "../../../assets/fruits-baked/coconut.png";
 import _dragonfruitBaked from "../../../assets/fruits-baked/dragonfruit.png";
 import _pineappleBaked from "../../../assets/fruits-baked/pineapple.png";
 import _watermelonBaked from "../../../assets/fruits-baked/watermelon.png";
-// pumpkin retained — intentional, future game tier (baked PNG sets for Skia vertex pipeline)
-import _pumpkinBaked from "../../../assets/fruits-baked/pumpkin.png";
 
 // --- Celestial icons (UI display) ---
 import _moonIcon from "../../../assets/celestial-icons/moon.webp";
@@ -48,7 +50,6 @@ import _uranusIcon from "../../../assets/celestial-icons/uranus.webp";
 import _saturnIcon from "../../../assets/celestial-icons/saturn.webp";
 import _jupiterIcon from "../../../assets/celestial-icons/jupiter.webp";
 import _sunIcon from "../../../assets/celestial-icons/sun.webp";
-import _milkyWayIcon from "../../../assets/celestial-icons/milkyway.webp";
 
 // --- Cosmos baked sprites (Skia canvas, baked PNG sets for Skia vertex pipeline) ---
 import _moonBaked from "../../../assets/cosmos-baked/moon.png";
@@ -62,7 +63,6 @@ import _uranusBaked from "../../../assets/cosmos-baked/uranus.png";
 import _saturnBaked from "../../../assets/cosmos-baked/saturn.png";
 import _jupiterBaked from "../../../assets/cosmos-baked/jupiter.png";
 import _sunBaked from "../../../assets/cosmos-baked/sun.png";
-import _milkyWayBaked from "../../../assets/cosmos-baked/milkyway.png";
 
 export const FRUIT_ICONS = {
   cherry: _cherryIcon,
@@ -76,7 +76,6 @@ export const FRUIT_ICONS = {
   dragonfruit: _dragonfruitIcon,
   pineapple: _pineappleIcon,
   watermelon: _watermelonIcon,
-  pumpkin: _pumpkinIcon,
 } as const;
 
 export const FRUIT_BAKED = {
@@ -91,7 +90,6 @@ export const FRUIT_BAKED = {
   dragonfruit: _dragonfruitBaked,
   pineapple: _pineappleBaked,
   watermelon: _watermelonBaked,
-  pumpkin: _pumpkinBaked,
 } as const;
 
 export const COSMOS_ICONS = {
@@ -106,7 +104,6 @@ export const COSMOS_ICONS = {
   saturn: _saturnIcon,
   jupiter: _jupiterIcon,
   sun: _sunIcon,
-  milkyWay: _milkyWayIcon,
 } as const;
 
 export const COSMOS_BAKED = {
@@ -121,5 +118,4 @@ export const COSMOS_BAKED = {
   saturn: _saturnBaked,
   jupiter: _jupiterBaked,
   sun: _sunBaked,
-  milkyWay: _milkyWayBaked,
 } as const;

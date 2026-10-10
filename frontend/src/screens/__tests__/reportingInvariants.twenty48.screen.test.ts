@@ -26,12 +26,6 @@ import type { TileData, Twenty48State } from "../../game/twenty48/types";
 // Twenty48's keyboard handler only listens on web.
 (Platform as { OS: string }).OS = "web";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => children,
-}));
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => children,
-}));
 jest.mock("@react-navigation/native", () => ({
   ...jest.requireActual("@react-navigation/native"),
   useNavigation: () => ({
@@ -42,8 +36,8 @@ jest.mock("@react-navigation/native", () => ({
   }),
 }));
 jest.mock("../../game/twenty48/storage", () => ({
-  saveGame: jest.fn(),
-  clearGame: jest.fn(),
+  saveGame: jest.fn(() => Promise.resolve()),
+  clearGame: jest.fn(() => Promise.resolve()),
   loadGame: jest.fn().mockResolvedValue(null),
   saveBestScore: jest.fn(),
   loadBestScore: jest.fn().mockResolvedValue(0),
@@ -63,7 +57,7 @@ jest.mock("../../game/twenty48/engine", () => {
 import { loadGame as loadTwenty48 } from "../../game/twenty48/storage";
 import { move as twenty48Move } from "../../game/twenty48/engine";
 
-// The result card's rank lookup (sessionBoardAdapter, #2677).
+// The result card's rank lookup (lookupGameRank, #2677).
 const mockGetGameRank = jest.fn();
 jest.mock("../../api/stats", () => ({
   statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },

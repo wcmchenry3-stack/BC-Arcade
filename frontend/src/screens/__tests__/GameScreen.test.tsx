@@ -8,14 +8,9 @@ import { saveGame, clearGame, loadLastMode, saveLastMode } from "../../game/yach
 // GameShell's Stats item (#2635) navigates through useNavigation; these
 // screens take their navigation as a prop, so the hook gets its own mock.
 const mockShellNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ navigate: mockShellNavigate }),
-}));
-
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ navigate: mockShellNavigate }), { actual: true })
+);
 
 // ---------------------------------------------------------------------------
 // Mock yacht storage — no-op persistence
@@ -36,17 +31,14 @@ type CompleteArgs = [string, Record<string, unknown>, Record<string, unknown>];
 const mockStartGame = jest.fn(() => "game-uuid-test");
 const mockEnqueueEvent = jest.fn() as unknown as jest.Mock<undefined, EnqueueArgs>;
 const mockCompleteGame = jest.fn() as unknown as jest.Mock<undefined, CompleteArgs>;
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as jest.Mock)(...args),
-    enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    enqueueEvent: lazy(() => mockEnqueueEvent),
+    completeGame: lazy(() => mockCompleteGame),
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -218,6 +210,58 @@ describe("GameScreen", () => {
       await fireEvent.press(getByText("Stats"));
     });
     expect(mockShellNavigate).toHaveBeenCalledWith("GameStats", { gameType: "yacht" });
+  });
+
+  it("round header clamps to 13 when game_over is true (#3021)", async () => {
+    // Get the i18n instance and spy on its t method
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const i18n = require("../../i18n/i18n").default;
+    const originalT = i18n.t.bind(i18n);
+    const tCalls: unknown[] = [];
+    i18n.t = jest.fn((key: string, options: unknown) => {
+      tCalls.push({ key, options });
+      return originalT(key, options);
+    });
+
+    try {
+      await renderScreen({ round: 14, game_over: true });
+
+      // Verify that t("round.header", { round: 13 }) was called (not round: 14)
+      const roundHeaderCalls = tCalls.filter(
+        (call: unknown) => (call as Record<string, unknown>).key === "round.header"
+      );
+      expect(roundHeaderCalls.length).toBeGreaterThan(0);
+      const lastCall = roundHeaderCalls[roundHeaderCalls.length - 1] as Record<string, unknown>;
+      expect((lastCall.options as Record<string, unknown>).round).toBe(13);
+    } finally {
+      i18n.t = originalT;
+    }
+  });
+
+  it("round header shows unmodified value during mid-game (#3021)", async () => {
+    // Get the i18n instance and spy on its t method
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const i18n = require("../../i18n/i18n").default;
+    const originalT = i18n.t.bind(i18n);
+    const tCalls: unknown[] = [];
+    i18n.t = jest.fn((key: string, options: unknown) => {
+      tCalls.push({ key, options });
+      return originalT(key, options);
+    });
+
+    try {
+      await renderScreen({ round: 5 });
+
+      // Verify that t("round.header", { round: 5 }) was called (not clamped)
+      const roundHeaderCalls = tCalls.filter(
+        (call: unknown) => (call as Record<string, unknown>).key === "round.header"
+      );
+      expect(roundHeaderCalls.length).toBeGreaterThan(0);
+      const lastCall = roundHeaderCalls[roundHeaderCalls.length - 1] as Record<string, unknown>;
+      expect((lastCall.options as Record<string, unknown>).round).toBe(5);
+    } finally {
+      i18n.t = originalT;
+    }
   });
 });
 

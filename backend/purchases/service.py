@@ -40,7 +40,7 @@ import logging
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from sqlalchemy import delete, func, select
@@ -68,12 +68,12 @@ _audit_log = logging.getLogger("audit")
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _utc(dt: datetime) -> datetime:
     """``dt`` as an aware UTC datetime (SQLite hands back naive values)."""
-    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
 
 def _is_stale(purchase: Purchase, event_at: datetime) -> bool:
@@ -256,6 +256,9 @@ async def _premium_slug_for(db: AsyncSession, product_id: str) -> str:
     slug = slug_for_product(product_id)
     if slug is None:
         raise PurchaseError(422, "unknown_product")
+    # Straight from the DB, never the catalog cache (#2966): the store has already
+    # charged the user, so a worker's stale snapshot must not reject a game that
+    # was just made premium. This path is not hot.
     is_premium = (
         await db.execute(select(GameType.is_premium).where(GameType.name == slug))
     ).scalar_one_or_none()
@@ -272,6 +275,22 @@ def _advance_watermark(purchase: Purchase, event_at: datetime) -> bool:
     return False
 
 
+def _set_state(
+    purchase: Purchase, state: str, revoked_at: datetime | None, now: datetime, reason: str | None
+) -> None:
+    """Set ``state`` verified ``now``; the caller owns ``state_changed_at`` (the watermark).
+
+    ``revoked`` stores ``revoked_at``/``reason``, ``owned`` clears them, others keep them."""
+    purchase.state = state
+    purchase.verified_at = now
+    if state == "revoked":
+        purchase.revoked_at = revoked_at
+        purchase.revocation_reason = reason
+    elif state == "owned":
+        purchase.revoked_at = None
+        purchase.revocation_reason = None
+
+
 def _apply_verified(
     purchase: Purchase,
     v: VerifiedPurchase,
@@ -286,8 +305,9 @@ def _apply_verified(
         # A store-pushed event confirming the current state still advances the
         # ordering watermark, so an older opposite event cannot flip it later.
         _advance_watermark(purchase, event_at)
-    purchase.state = v.state
-    purchase.verified_at = now
+    # No revocation time or reason in the answer keeps the recorded ones (else: now).
+    reason = v.revocation_reason or purchase.revocation_reason
+    _set_state(purchase, v.state, v.revoked_at or purchase.revoked_at or now, now, reason)
     purchase.environment = v.environment
     purchase.ownership_type = v.ownership_type
     if v.transaction_id is not None:
@@ -296,12 +316,6 @@ def _apply_verified(
         purchase.account_token = v.account_token
     if v.purchased_at is not None:
         purchase.purchased_at = v.purchased_at
-    if v.state == "revoked":
-        purchase.revoked_at = v.revoked_at or purchase.revoked_at or now
-        purchase.revocation_reason = v.revocation_reason or purchase.revocation_reason
-    elif v.state == "owned":
-        purchase.revoked_at = None
-        purchase.revocation_reason = None
     if v.acknowledged and purchase.acknowledged_at is None:
         purchase.acknowledged_at = now
 
@@ -576,7 +590,7 @@ async def _dedupe_seen(db: AsyncSession, dedupe_key: str) -> bool:
     ).first() is not None
 
 
-async def apply_store_state(
+async def apply_store_state(  # noqa: PLR0913 - keyword-only store-notification fields
     db: AsyncSession,
     *,
     platform: str,
@@ -660,15 +674,8 @@ async def apply_store_state(
                 reason=reason,
             )
         else:
-            purchase.state = state
             purchase.state_changed_at = at
-            purchase.verified_at = now
-            if state == "revoked":
-                purchase.revoked_at = at
-                purchase.revocation_reason = reason
-            elif state == "owned":
-                purchase.revoked_at = None
-                purchase.revocation_reason = None
+            _set_state(purchase, state, at, now, reason)
             _event(
                 db,
                 purchase,

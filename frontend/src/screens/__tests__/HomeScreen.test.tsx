@@ -18,19 +18,11 @@ const mockCanPlay = jest.fn().mockReturnValue(true);
 
 jest.mock("../../entitlements/EntitlementContext", () => ({
   ...jest.requireActual("../../entitlements/EntitlementContext"),
-  useEntitlements: () => ({
+  useEntitlementGate: () => ({
     canPlay: mockCanPlay,
     isLoading: false,
     lastRefreshed: null,
   }),
-}));
-
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 
 const mockPrefetch = jest.fn();
@@ -49,9 +41,9 @@ jest.mock("../../game/yacht/storage", () => ({
 // Mock the stats API — the header's level pill reads /stats/me (#2391)
 // ---------------------------------------------------------------------------
 const mockGetMyStats = jest.fn() as jest.Mock<Promise<StatsResponse>, []>;
-jest.mock("../../api/stats", () => ({
-  statsApi: { getMyStats: () => mockGetMyStats() },
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getMyStats: () => mockGetMyStats() })
+);
 
 function statsAtLevel(level: number, streakDays = 0): StatsResponse {
   return {
@@ -79,11 +71,17 @@ jest.mock("../../game/_shared/syncWorker", () => ({
   syncWorker: { flush: () => mockFlush() },
 }));
 
+// Home warms today's Daily Word metadata (#2925); its own suite covers the cache.
+const mockWarmTodayMeta = jest.fn().mockResolvedValue(undefined);
+jest.mock("../../game/daily_word/todayMeta", () => ({
+  warmTodayMeta: () => mockWarmTodayMeta(),
+}));
+
 // Connectivity — online by default; tests flip `isOnline`.
 const mockNetwork = { isOnline: true, isInitialized: true };
-jest.mock("../../game/_shared/NetworkContext", () => ({
-  useNetwork: () => mockNetwork,
-}));
+jest.mock("../../game/_shared/NetworkContext", () =>
+  mockScreenDeps().mockNetwork({ state: () => mockNetwork })
+);
 
 // ---------------------------------------------------------------------------
 // Mock navigation
@@ -91,24 +89,26 @@ jest.mock("../../game/_shared/NetworkContext", () => ({
 const mockNavigate = jest.fn();
 const mockAddListener = jest.fn((_event: string, _cb: () => void) => jest.fn());
 
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({
-    navigate: mockNavigate,
-    goBack: jest.fn(),
-    dispatch: jest.fn(),
-    reset: jest.fn(),
-    isFocused: jest.fn().mockReturnValue(true),
-    canGoBack: jest.fn().mockReturnValue(false),
-    addListener: (event: string, cb: () => void) => mockAddListener(event, cb),
-    removeListener: jest.fn(),
-    setParams: jest.fn(),
-    getParent: jest.fn(),
-    getState: jest.fn(),
-    setOptions: jest.fn(),
-    getId: jest.fn(),
-  }),
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(
+    () => ({
+      navigate: mockNavigate,
+      goBack: jest.fn(),
+      dispatch: jest.fn(),
+      reset: jest.fn(),
+      isFocused: jest.fn().mockReturnValue(true),
+      canGoBack: jest.fn().mockReturnValue(false),
+      addListener: (event: string, cb: () => void) => mockAddListener(event, cb),
+      removeListener: jest.fn(),
+      setParams: jest.fn(),
+      getParent: jest.fn(),
+      getState: jest.fn(),
+      setOptions: jest.fn(),
+      getId: jest.fn(),
+    }),
+    { actual: true }
+  )
+);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -414,6 +414,23 @@ describe("HomeScreen — Arcade level pill (#2391)", () => {
     mockGetMyStats.mockResolvedValue(statsAtLevel(5));
     const { findByText } = await renderScreen();
     expect(await findByText("Lv 5")).toBeTruthy();
+  });
+
+  it("warms Daily Word's cache once on mount while online, not on focus (#2925)", async () => {
+    await renderScreen();
+    expect(mockWarmTodayMeta).toHaveBeenCalledTimes(1);
+
+    const focusCalls = mockAddListener.mock.calls.filter(([event]) => event === "focus");
+    await act(async () => {
+      focusCalls[focusCalls.length - 1][1]();
+    });
+    expect(mockWarmTodayMeta).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not warm Daily Word's cache while offline (#2925)", async () => {
+    mockNetwork.isOnline = false;
+    await renderScreen();
+    expect(mockWarmTodayMeta).not.toHaveBeenCalled();
   });
 
   it("does not call /stats/me while the device is known to be offline", async () => {

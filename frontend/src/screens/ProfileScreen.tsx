@@ -1,16 +1,26 @@
+/**
+ * ProfileScreen — the player's cross-game stats and leaderboard membership (#2637).
+ *
+ * Concerns:
+ *   1. Top tiles — only figures that mean the same for every game, summed over the games
+ *      visible in this build (#2390); no cross-game score.
+ *   2. Per-game rows from `/stats/me` (remembered for offline, #2635) and recent games.
+ *   3. Leaderboard membership — join, reroll or leave the generated name (#2778).
+ *   Not a game screen: it uses ScreenFrame, not GameShell.
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { EmptyState } from "../components/shared/EmptyState";
+import { StatTileGrid, type StatTile } from "../components/shared/StatTileGrid";
 import { useTheme } from "../theme/ThemeContext";
 import { typography } from "../theme/typography";
-import { AppHeader, APP_HEADER_HEIGHT } from "../components/shared/AppHeader";
-import { ConfirmModal } from "../components/shared/ConfirmModal";
+import { AppHeader } from "../components/shared/AppHeader";
+import { ScreenFrame } from "../components/shared/ScreenFrame";
 import { statsApi } from "../api/stats";
 import { fetchAndRememberMyStats } from "../hooks/useMyStats";
 import type { StatsResponse, GameRow, GameTypeStats } from "../api/types";
@@ -26,27 +36,13 @@ import {
 import type { ProfileStackParamList } from "../types/navigation";
 import { formatDate } from "../utils/formatTimestamp";
 import { withRetry } from "../game/_shared/withRetry";
-import { useDisplayName } from "../game/_shared/displayName";
-import {
-  joinLeaderboards,
-  leaveLeaderboards,
-  refreshDisplayNameFromServer,
-  rerollDisplayName,
-  useLeaderboardSyncPending,
-} from "../game/_shared/displayNameSync";
-import { useNetwork } from "../game/_shared/NetworkContext";
 import { ConnectedOfflineBanner } from "../components/shared/OfflineBanner";
 import LevelProgress from "../components/shared/LevelProgress";
+import LeaderboardMembership from "../components/profile/LeaderboardMembership";
 import { isGameVisible } from "../entitlements/gameVisibility";
 import { GAME_TITLE_NAMESPACES, gameTitle } from "../i18n/gameTitle";
 
 type ProfileNav = NativeStackNavigationProp<ProfileStackParamList, "ProfileHome">;
-
-interface StatsCardData {
-  key: string;
-  label: string;
-  value: string;
-}
 
 interface GameSummaryRow {
   game: string;
@@ -100,7 +96,7 @@ function deriveBentoTiles(
   stats: StatsResponse,
   summaries: GameSummaryRow[],
   t: TFunction
-): StatsCardData[] {
+): StatTile[] {
   const visible = visibleStats(stats);
   const sessions = visible.reduce((sum, [, s]) => sum + sessionsOf(s), 0);
   const hasCompleted = visible.every(([, s]) => completedOf(s) != null);
@@ -131,211 +127,8 @@ function deriveBentoTiles(
   ];
 }
 
-/**
- * Leaderboard participation (#2637, #2778). Players never type a public name:
- * "Join leaderboards" is the explicit opt-in and the server generates the
- * name; "Get a new name" asks it for another; "Leave leaderboards" takes the
- * player off every board.
- *
- * States, in order: a leave still waiting to reach the server; a join still
- * waiting (no name yet; it can be cancelled with "Leave"); on the boards under
- * a name; not on any board.
- */
-function LeaderboardMembership() {
-  const { colors } = useTheme();
-  const { t } = useTranslation("profile");
-  const { isOnline } = useNetwork();
-  const { name, isLoaded } = useDisplayName();
-  const pending = useLeaderboardSyncPending();
-  const [confirmVisible, setConfirmVisible] = useState(false);
-  const [busy, setBusy] = useState<"join" | "reroll" | null>(null);
-  const [error, setError] = useState<"join" | "reroll" | "leave" | null>(null);
-
-  // The server is the source of truth for the name (it replaced typed names
-  // with generated ones): bring this device's copy up to date when online.
-  useEffect(() => {
-    if (isOnline) void refreshDisplayNameFromServer();
-  }, [isOnline]);
-
-  const handleJoin = useCallback(async () => {
-    setError(null);
-    setBusy("join");
-    const ok = await joinLeaderboards();
-    setBusy(null);
-    if (!ok) setError("join");
-  }, []);
-
-  const handleReroll = useCallback(async () => {
-    setError(null);
-    setBusy("reroll");
-    const result = await rerollDisplayName();
-    setBusy(null);
-    // "not_joined": the device now shows the not-on-boards state, which says
-    // it all; it isn't a connection problem.
-    if (result.status === "failed") setError("reroll");
-  }, []);
-
-  const handleLeave = useCallback(async () => {
-    setConfirmVisible(false);
-    setError(null);
-    if (!(await leaveLeaderboards())) setError("leave");
-  }, []);
-
-  if (!isLoaded) return null;
-
-  const link = (
-    label: string,
-    icon: React.ComponentProps<typeof MaterialCommunityIcons>["name"],
-    onPress: () => void,
-    testID: string,
-    disabled = false
-  ) => (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      testID={testID}
-      hitSlop={4}
-      style={({ pressed }) => [styles.linkButton, { opacity: disabled ? 0.4 : pressed ? 0.6 : 1 }]}
-    >
-      <MaterialCommunityIcons name={icon} size={18} color={colors.text} />
-      <Text style={[styles.linkText, { color: colors.text }]}>{label}</Text>
-    </Pressable>
-  );
-
-  let body: React.ReactNode;
-  if (pending === "leave") {
-    body = (
-      <Text
-        accessibilityLiveRegion="polite"
-        testID="profile-name-removing"
-        style={[styles.presenceText, { color: colors.textMuted }]}
-      >
-        {t("boards.leaving")}
-      </Text>
-    );
-  } else if (name == null && pending === "join") {
-    body = (
-      <>
-        <Text
-          accessibilityLiveRegion="polite"
-          testID="profile-joining"
-          style={[styles.presenceText, { color: colors.textMuted }]}
-        >
-          {t(isOnline ? "boards.joiningOnline" : "boards.joining")}
-        </Text>
-        {link(
-          t("boards.leave"),
-          "account-remove-outline",
-          () => {
-            setError(null);
-            setConfirmVisible(true);
-          },
-          "profile-cancel-join"
-        )}
-      </>
-    );
-  } else if (name != null) {
-    body = (
-      <>
-        <Text
-          accessibilityLiveRegion="polite"
-          testID="profile-board-name"
-          style={[styles.presenceName, { color: colors.text }]}
-        >
-          {t("boards.onBoardsAs", { name })}
-        </Text>
-        <Text style={[styles.presenceText, { color: colors.textMuted }]}>
-          {t("boards.generatedHelper")}
-        </Text>
-        {link(
-          t("boards.reroll"),
-          "dice-multiple-outline",
-          () => void handleReroll(),
-          "profile-reroll-name",
-          busy != null || !isOnline
-        )}
-        {link(
-          t("boards.leave"),
-          "account-remove-outline",
-          () => {
-            setError(null);
-            setConfirmVisible(true);
-          },
-          "profile-remove-name"
-        )}
-      </>
-    );
-  } else {
-    body = (
-      <>
-        <Text
-          accessibilityLiveRegion="polite"
-          testID="profile-not-on-boards"
-          style={[styles.presenceText, { color: colors.textMuted }]}
-        >
-          {t("boards.notOnBoards")}
-        </Text>
-        <Pressable
-          onPress={() => void handleJoin()}
-          disabled={busy != null}
-          accessibilityRole="button"
-          accessibilityLabel={t("boards.join")}
-          accessibilityState={{ disabled: busy != null, busy: busy === "join" }}
-          testID="profile-join-boards"
-          style={[
-            styles.joinButton,
-            { backgroundColor: colors.accentBright, opacity: busy != null ? 0.4 : 1 },
-          ]}
-        >
-          <Text style={[styles.joinText, { color: colors.textOnAccent }]}>{t("boards.join")}</Text>
-        </Pressable>
-      </>
-    );
-  }
-
-  const errorKey =
-    error === "join"
-      ? "boards.joinError"
-      : error === "reroll"
-        ? "boards.rerollError"
-        : error === "leave"
-          ? "boards.leaveError"
-          : null;
-
-  return (
-    <View style={styles.presence} testID="profile-display-name">
-      <Text style={[styles.membershipLabel, { color: colors.textMuted }]}>{t("boards.title")}</Text>
-      {body}
-      {errorKey != null && (
-        <Text
-          accessibilityRole="alert"
-          accessibilityLiveRegion="assertive"
-          style={[styles.presenceText, { color: colors.error }]}
-        >
-          {t(errorKey)}
-        </Text>
-      )}
-      <ConfirmModal
-        visible={confirmVisible}
-        title={t("boards.confirm.title")}
-        body={t("boards.confirm.body")}
-        confirmLabel={t("boards.confirm.confirm")}
-        cancelLabel={t("boards.confirm.cancel")}
-        destructive
-        onConfirm={handleLeave}
-        onCancel={() => setConfirmVisible(false)}
-        testID="profile-remove-name-confirm"
-      />
-    </View>
-  );
-}
-
 export default function ProfileScreen() {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const { t } = useTranslation(["profile", ...GAME_TITLE_NAMESPACES]);
   const navigation = useNavigation<ProfileNav>();
 
@@ -459,26 +252,7 @@ export default function ProfileScreen() {
         />
       )}
       {bentoTiles && (
-        <View style={styles.bento}>
-          {bentoTiles.map((tile) => (
-            <View
-              key={tile.key}
-              testID={`profile-tile-${tile.key}`}
-              accessible
-              accessibilityLabel={`${tile.label}: ${tile.value}`}
-              style={[styles.bentoCard, { backgroundColor: colors.surfaceAlt }]}
-            >
-              <Text style={[styles.bentoLabel, { color: colors.textMuted }]}>{tile.label}</Text>
-              <Text
-                style={[styles.bentoValue, { color: colors.text }]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-              >
-                {tile.value}
-              </Text>
-            </View>
-          ))}
-        </View>
+        <StatTileGrid tiles={bentoTiles} testIDPrefix="profile-tile" style={styles.bento} />
       )}
       {gameSummaries && gameSummaries.length > 0 && (
         <View>
@@ -602,16 +376,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: colors.background,
-          paddingTop: APP_HEADER_HEIGHT + insets.top,
-          paddingBottom: Math.max(insets.bottom, 16),
-        },
-      ]}
-    >
+    <ScreenFrame>
       <AppHeader title={t("title")} />
       <ConnectedOfflineBanner style={styles.offlineBannerWrap} />
       <View
@@ -623,12 +388,11 @@ export default function ProfileScreen() {
         <LeaderboardMembership />
       </View>
       {body}
-    </View>
+    </ScreenFrame>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
   offlineBannerWrap: { marginHorizontal: 16, marginTop: 12 },
   displayNameCard: {
     marginHorizontal: 16,
@@ -638,57 +402,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  presence: { gap: 6 },
-  membershipLabel: {
-    fontFamily: typography.label,
-    fontSize: 13,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
-  presenceName: { fontFamily: typography.bodyMedium, fontSize: 16 },
-  presenceText: { fontFamily: typography.body, fontSize: 13 },
-  joinButton: {
-    minHeight: 48,
-    paddingHorizontal: 18,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-  },
-  joinText: { fontFamily: typography.label, fontSize: 15 },
-  linkButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    gap: 6,
-    minHeight: 44,
-  },
-  linkText: {
-    fontFamily: typography.bodyMedium,
-    fontSize: 14,
-    textDecorationLine: "underline",
-  },
-  bento: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    padding: 12,
-    gap: 12,
-  },
-  bentoCard: {
-    flexGrow: 1,
-    flexBasis: "45%",
-    minHeight: 84,
-    padding: 14,
-    borderRadius: 16,
-  },
-  bentoLabel: {
-    fontFamily: typography.label,
-    fontSize: 10,
-    textTransform: "uppercase",
-    letterSpacing: 1.2,
-    marginBottom: 6,
-  },
-  bentoValue: { fontFamily: typography.heading, fontSize: 22 },
+  bento: { padding: 12 },
   sectionTitle: {
     fontFamily: typography.label,
     fontSize: 13,

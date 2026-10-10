@@ -9,46 +9,33 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Text, cast, event, select, text
 from sqlalchemy.dialects import postgresql
 
-from db.base import get_engine, get_session_factory, is_configured
+from db.base import get_engine, get_session_factory
 from db.models import Game, GameType
-from games import service
+from games import sessions, sweep
 from games.filters import not_swept
-from games.service import STALE_GAME_AFTER, sweep_stale_games
+from games.sweep import stale_game_after, sweep_stale_games
+from tests._helpers import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping stale-sweep tests",
 )
 
-_NOW = datetime.now(timezone.utc)
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
+_NOW = datetime.now(UTC)
 
 
 def _utc(ts: datetime | None) -> datetime | None:
     """SQLite hands timestamps back naive; they are UTC."""
     if ts is None or ts.tzinfo is not None:
         return ts
-    return ts.replace(tzinfo=timezone.utc)
+    return ts.replace(tzinfo=UTC)
 
 
 async def _add(
@@ -112,7 +99,7 @@ async def test_a_25_hour_open_row_is_swept_as_abandoned() -> None:
     assert await _sweep(sid) == 1
     g = await _get(gid)
     assert g.outcome == "abandoned"
-    assert _utc(g.completed_at) == _utc(g.started_at) + STALE_GAME_AFTER
+    assert _utc(g.completed_at) == _utc(g.started_at) + stale_game_after()
     assert g.game_metadata == {"player_name": "Ann", "swept": True}
     assert g.duration_ms is None
     assert g.final_score is None
@@ -251,7 +238,14 @@ async def test_stats_me_counts_a_swept_game_as_played_but_it_earns_no_xp(
     baseline = client.get("/stats/me", headers=_headers(sid)).json()
     assert baseline["by_game"]["yacht"]["sessions"] == 1
 
-    await _add(sid, started_ago=timedelta(hours=25))
+    # A long-offline queue flushes a game that is already a day old. Created
+    # through the API, so the sweep gate (#2966) knows to sweep on the next read.
+    r = client.post(
+        "/games",
+        headers=_headers(sid),
+        json={"game_type": "yacht", "started_at": (_NOW - timedelta(hours=25)).isoformat()},
+    )
+    assert r.status_code == 200, r.text
     body = client.get("/stats/me", headers=_headers(sid)).json()
     assert body["total_games"] == 2
     assert body["by_game"]["yacht"]["sessions"] == 2
@@ -384,23 +378,22 @@ def _count_statements(client: TestClient, sid: str) -> list[str]:
     return statements
 
 
-async def test_the_sweep_adds_one_query_to_stats_me(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_stats_me_sweeps_once_then_skips_the_sweep(client: TestClient) -> None:
+    """The sweep is an UPDATE plus the gate's oldest-open lookup, and a read
+    soon after skips both (#2966, games/sweep_gate.py)."""
+    from games import sweep_gate
+
     sid = str(uuid.uuid4())
     await _add(sid, started_ago=timedelta(hours=2), completed_ago=timedelta(hours=1))
     # Warm-up: the first streak read freezes the window's daily templates (an INSERT).
     _count_statements(client, sid)
+    sweep_gate.clear()
     with_sweep = _count_statements(client, sid)
-
-    async def no_sweep(*_args, **_kwargs) -> int:
-        return 0
-
-    monkeypatch.setattr(service, "sweep_stale_games", no_sweep)
     without_sweep = _count_statements(client, sid)
 
-    assert len(with_sweep) - len(without_sweep) == 1, with_sweep
+    assert len(with_sweep) - len(without_sweep) == 2, with_sweep
     assert [s for s in with_sweep if s.lstrip().upper().startswith("UPDATE GAMES")]
+    assert not [s for s in without_sweep if s.lstrip().upper().startswith("UPDATE")]
 
 
 @pytest.mark.parametrize("path", ["/stats/me", "/games/me"])
@@ -436,7 +429,7 @@ async def test_a_failing_sweep_never_breaks_the_read(
             raise
         return 0
 
-    monkeypatch.setattr(service, "sweep_stale_games", broken_sweep)
+    monkeypatch.setattr(sweep, "sweep_stale_games", broken_sweep)
     # INFO and up: what Sentry's default logging integration records (DEBUG
     # driver chatter, e.g. aiosqlite echoing statements, never reaches it).
     with caplog.at_level(logging.INFO):
@@ -556,7 +549,7 @@ async def test_create_game_drops_the_swept_flag() -> None:
     # Defence in depth below the models: create_game never stores the flag.
     sid = str(uuid.uuid4())
     async with get_session_factory()() as db:
-        game = await service.create_game(
+        game = await sessions.create_game(
             db,
             session_id=sid,
             client_id=None,
@@ -594,7 +587,7 @@ async def test_a_sweep_committing_mid_completion_leaves_the_row_unflagged(
     # unflagged, or a later completion could overwrite it.
     sid = str(uuid.uuid4())
     gid = await _add(sid, started_ago=timedelta(hours=25), metadata={"player_name": "Ann"})
-    real_get = service._get_owned_game
+    real_get = sessions._get_owned_game
     swept_mid_completion: list[int] = []
 
     async def get_then_sweep(*args, **kwargs):
@@ -604,9 +597,9 @@ async def test_a_sweep_committing_mid_completion_leaves_the_row_unflagged(
             swept_mid_completion.append(await _sweep(sid))
         return game
 
-    monkeypatch.setattr(service, "_get_owned_game", get_then_sweep)
+    monkeypatch.setattr(sessions, "_get_owned_game", get_then_sweep)
     body = _complete(client, sid, str(gid), 240)
-    monkeypatch.setattr(service, "_get_owned_game", real_get)
+    monkeypatch.setattr(sessions, "_get_owned_game", real_get)
 
     assert swept_mid_completion == [1]
     assert (body["outcome"], body["final_score"]) == ("completed", 240)
@@ -642,7 +635,7 @@ async def test_a_swept_completed_at_is_stored_in_the_orms_sqlite_format() -> Non
     normal = await _add(
         sid,
         started_ago=timedelta(hours=2),
-        completed_ago=_NOW - (started + STALE_GAME_AFTER - timedelta(microseconds=56)),
+        completed_ago=_NOW - (started + stale_game_after() - timedelta(microseconds=56)),
         outcome="completed",
     )
     # A started_at stored without a fraction (SQLite's CURRENT_TIMESTAMP default).
@@ -657,7 +650,7 @@ async def test_a_swept_completed_at_is_stored_in_the_orms_sqlite_format() -> Non
 
     assert await _sweep(sid) == 2
 
-    expected = (started + STALE_GAME_AFTER).strftime("%Y-%m-%d %H:%M:%S.%f")
+    expected = (started + stale_game_after()).strftime("%Y-%m-%d %H:%M:%S.%f")
     assert await _raw_completed_at(stale) == expected
     assert await _raw_completed_at(whole) == "2026-01-03 03:04:05.000000"
     async with factory() as db:

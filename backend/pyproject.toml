@@ -1,9 +1,16 @@
+[project]
+name = "bc-arcade-backend"
+version = "0.0.0"
+# Production runtime is Python 3.11 (render.yaml PYTHON_VERSION; backend/.python-version).
+# 3.13 is also tested locally. Dependencies stay in requirements*.txt.
+requires-python = ">=3.11"
+
 [tool.pytest.ini_options]
 markers = [
     "security: security-focused tests (CORS, headers, injection)",
 ]
 testpaths = ["tests"]
-addopts = "--cov=. --cov-report=term-missing --cov-fail-under=80"
+addopts = "--cov=. --cov-report=term-missing --cov-fail-under=96"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 # A test running past this dumps every thread's traceback into the log (it is
@@ -11,20 +18,52 @@ asyncio_default_fixture_loop_scope = "function"
 faulthandler_timeout = 120
 
 [tool.coverage.run]
-core = "sysmon"
-omit = ["tests/*", "scripts/*", "*/generate_levels.py", "*/verify_levels.py", "perf/*"]
+concurrency = ["greenlet", "thread"]
+omit = ["tests/*", "scripts/*", "perf/*"]
 
 [tool.black]
 line-length = 100
 
 [tool.ruff]
 line-length = 100
+target-version = "py311"  # production runtime (render.yaml); lets UP rules suggest 3.11 idioms
 
 [tool.ruff.lint]
-ignore = [
-    "E402",  # module-level import not at top — intentional in scripts that manipulate sys.path
+# Quality gates for the refactor epic (#2950 / #2951). Families are added at today's
+# numbers; ratchet by lowering max-complexity and re-enabling the families below.
+extend-select = [
+    "B",        # flake8-bugbear
+    "C901",     # mccabe complexity (threshold under [tool.ruff.lint.mccabe])
+    "RUF",      # ruff-specific rules
+    "PLR0912",  # too many branches
+    "PLR0915",  # too many statements
+    "SIM",      # flake8-simplify
+    "UP",       # pyupgrade
+    "ARG",      # unused arguments (#3108)
+    "PLR0913",  # too many arguments (threshold under [tool.ruff.lint.pylint])
 ]
+ignore = [
+    "E402",  # module-level import not at top - intentional in scripts that manipulate sys.path
+    # RUF001-003 flag ambiguous unicode (en/em dashes, arrows) in strings/docstrings/comments.
+    # 29 findings, all stylistic noise rather than defects.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 12
+
+[tool.ruff.lint.pylint]
+# Production code tops out at 7 positional/keyword params in the common case; the few
+# wider signatures (keyword-only store/completion contexts) carry a `noqa: PLR0913`.
+max-args = 7
 
 [tool.ruff.lint.per-file-ignores]
 "perf/locustfile.py" = ["RUF012"]  # Locust requires `tasks` as a plain class attribute, not ClassVar
-"sudoku/router.py" = ["B008"]  # fastapi.Path/Query must be called in the parameter default — that's how FastAPI's DI discovers them
+# One-off seed generators: long search routines, not shipped code (#2951).
+"scripts/**" = ["C901", "PLR0912", "PLR0913", "B905", "RUF005"]
+# Test helpers: tuple concatenation / try-pass are fine for readability here.
+# Tests: pytest fixtures requested only for their side effects, fixed-signature mock/stub
+# callbacks, and wide fixture/builder helpers make ARG and PLR0913 noise (#3108).
+"tests/**" = ["SIM105", "RUF005", "ARG001", "ARG002", "ARG005", "PLR0913"]

@@ -5,20 +5,16 @@ import BlackjackVictoryScreen from "../BlackjackVictoryScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { initialSessionStats } from "../../game/blackjack/sessionStats";
 import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
+import * as unlocks from "../../game/blackjack/unlocks";
 
 // Goal Reached (#2507): its own screen, built from the shared result card.
 
 // GameShell's Stats item (#2635) navigates through useNavigation; these
 // screens take their navigation as a prop, so the hook gets its own mock.
 const mockShellNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ navigate: mockShellNavigate }),
-}));
-
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ navigate: mockShellNavigate }), { actual: true })
+);
 
 jest.mock("../../game/blackjack/storage", () => ({
   loadRuns: jest.fn().mockResolvedValue([]),
@@ -151,5 +147,24 @@ describe("BlackjackVictoryScreen — premium next table (#1129)", () => {
     expect(mockCtx.handleCashOut).not.toHaveBeenCalled();
     expect(mockCtx.handleTableSelect).not.toHaveBeenCalled();
     expect(nav.replace).not.toHaveBeenCalled();
+  });
+});
+
+describe("BlackjackVictoryScreen — cosmetic unlocks (#1911)", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("announces no unlock while the rewards are off", async () => {
+    const save = jest.spyOn(unlocks, "saveUnlocks");
+    atTable(5, 25, 100, 250);
+    await renderScreen();
+    expect(screen.queryByText(/Felt Classic/)).toBeNull();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("announces the beginner reward once they are switched on", async () => {
+    jest.spyOn(unlocks, "cosmeticUnlocksEnabled").mockReturnValue(true);
+    atTable(5, 25, 100, 250);
+    await renderScreen();
+    expect(await screen.findByText(/Felt Classic/)).toBeTruthy();
   });
 });

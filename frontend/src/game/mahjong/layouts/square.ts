@@ -11,34 +11,8 @@
  */
 
 import type { Layout } from "../types";
-
-function range(start: number, stopInclusive: number, step: number): number[] {
-  const out: number[] = [];
-  for (let v = start; v <= stopInclusive; v += step) out.push(v);
-  return out;
-}
-
-function slots(
-  layer: number,
-  cols: number[],
-  rows: number[]
-): { col: number; row: number; layer: number }[] {
-  const out: { col: number; row: number; layer: number }[] = [];
-  for (const row of rows) {
-    for (const col of cols) {
-      out.push({ col, row, layer });
-    }
-  }
-  return out;
-}
+import { cols, grid } from "./build";
 
 const ROWS = [1, 2, 3, 4, 5, 6, 7, 8];
 
-export const SQUARE_LAYOUT: Layout = [
-  ...slots(0, range(4, 22, 2), ROWS),
-  ...slots(1, range(6, 20, 2), ROWS),
-];
-
-if (SQUARE_LAYOUT.length !== 144) {
-  throw new Error(`SQUARE_LAYOUT has ${SQUARE_LAYOUT.length} slots, expected 144`);
-}
+export const SQUARE_LAYOUT: Layout = [...grid(0, cols(4, 22), ROWS), ...grid(1, cols(6, 20), ROWS)];

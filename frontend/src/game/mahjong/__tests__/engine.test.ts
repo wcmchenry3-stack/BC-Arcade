@@ -23,6 +23,7 @@ import {
   setRng,
   shuffleBoard,
   tilesMatch,
+  UNDO_CAP,
   undoMove,
 } from "../engine";
 import type { MahjongState, SlotTile } from "../types";
@@ -421,7 +422,7 @@ describe("selectTile", () => {
     const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
     const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
     const state: MahjongState = {
-      _v: 1,
+      _v: 2,
       tiles: [a, b],
       pairsRemoved: 0,
       score: 0,
@@ -551,6 +552,118 @@ describe("undoMove", () => {
     expect(reverted.startedAt).toBe(7_261_000);
     expect(reverted.accumulatedMs).toBe(60_000);
   });
+
+  // #2961: undo entries are deltas; an undo must still give back exactly the
+  // state before the move, bar the live clock.
+  /** The fields an undo restores (everything but the clock, the history and the one-shot events). */
+  function board(s: MahjongState) {
+    const { startedAt: _s, accumulatedMs: _a, paused: _p, undoStack: _u, events: _e, ...rest } = s;
+    return rest;
+  }
+
+  /** Play `moves` matches (shuffling when stuck), returning each state before a move. */
+  function playMoves(start: MahjongState, moves: number) {
+    const before: MahjongState[] = [];
+    let state = start;
+    for (let i = 0; i < moves; i++) {
+      before.push(state);
+      const pair = getAnyFreePair(state.tiles);
+      state = pair ? selectTile(selectTile(state, pair[0]), pair[1]) : shuffleBoard(state);
+    }
+    return { before, state };
+  }
+
+  it("records a match as the two tiles it removed, not a board snapshot", () => {
+    const state = createGame(TURTLE_LAYOUT);
+    const [a, b] = firstFreePair(state);
+    const matched = selectTile(selectTile(state, a.id), b.id);
+    const entry = matched.undoStack[0]!;
+    expect(entry.kind).toBe("match");
+    expect(entry).not.toHaveProperty("tiles");
+    const removed = entry.kind === "match" ? entry.removedTiles : [];
+    expect(removed.map((r) => r.tile.id).sort()).toEqual([a.id, b.id].sort());
+    for (const r of removed) expect(state.tiles[r.index]).toBe(r.tile);
+    expect(entry).toEqual(
+      expect.objectContaining({
+        scoreBefore: 0,
+        pairsRemovedBefore: 0,
+        shufflesLeftBefore: MAX_SHUFFLES,
+        selectedBefore: null,
+        isCompleteBefore: false,
+        isDeadlockedBefore: false,
+      })
+    );
+  });
+
+  it("puts both tiles back at their old places in the board, with score and pairs", () => {
+    const state = createGame(TURTLE_LAYOUT);
+    const [a, b] = firstFreePair(state);
+    const selected = selectTile(state, a.id);
+    const reverted = undoMove(selectTile(selected, b.id));
+    expect(reverted.tiles).toEqual(state.tiles);
+    expect(board(reverted)).toEqual(board({ ...selected, selected: null }));
+    expect(reverted.undoStack).toEqual([]);
+  });
+
+  it("walks back a long game exactly, move by move", () => {
+    const { before, state: end } = playMoves(createGame(TURTLE_LAYOUT), 40);
+    let state = end;
+    expect(end.undoStack.map((e) => e.kind)).toContain("match");
+    for (let i = before.length - 1; i >= 0; i--) {
+      state = undoMove(state);
+      expect(state.undoStack).toHaveLength(i);
+      expect(board(state)).toEqual(board(before[i]!));
+    }
+    expect(state.undoStack).toEqual([]);
+  });
+
+  it("keeps at most UNDO_CAP moves, dropping the oldest", () => {
+    const { before, state: end } = playMoves(createGame(TURTLE_LAYOUT), UNDO_CAP + 5);
+    expect(end.undoStack).toHaveLength(UNDO_CAP);
+    let state = end;
+    for (let i = 0; i < UNDO_CAP; i++) state = undoMove(state);
+    expect(state.tiles).toEqual(before[5]!.tiles);
+    expect(state.pairsRemoved).toBe(before[5]!.pairsRemoved);
+    expect(undoMove(state)).toBe(state);
+  });
+
+  it("undoes a shuffle: the old board, the shuffle back and the selection kept", () => {
+    const state = createGame(TURTLE_LAYOUT);
+    const free = state.tiles.find((t) => isFreeTile(t, state.tiles))!;
+    const selected = selectTile(state, free.id);
+    const shuffled = shuffleBoard(selected);
+    expect(shuffled.undoStack[0]!.kind).toBe("shuffle");
+    const reverted = undoMove(shuffled);
+    expect(reverted.tiles).toEqual(state.tiles);
+    expect(reverted.shufflesLeft).toBe(MAX_SHUFFLES);
+    expect(reverted.selected).toEqual(free);
+    expect(board(reverted)).toEqual(board(selected));
+  });
+
+  it("undoes a match made after a shuffle, then the shuffle", () => {
+    const start = createGame(TURTLE_LAYOUT);
+    const shuffled = shuffleBoard(start);
+    const [a, b] = firstFreePair(shuffled);
+    const matched = selectTile(selectTile(shuffled, a.id), b.id);
+    expect(matched.undoStack.map((e) => e.kind)).toEqual(["shuffle", "match"]);
+    const oneBack = undoMove(matched);
+    expect(oneBack.tiles).toEqual(shuffled.tiles);
+    expect(board(oneBack)).toEqual(board(shuffled));
+    expect(board(undoMove(oneBack))).toEqual(board(start));
+  });
+
+  it("undoes the match that cleared the board", () => {
+    const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
+    const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
+    const state: MahjongState = { ...createGame(TURTLE_LAYOUT), tiles: [a, b], pairsRemoved: 71 };
+    const done = selectTile(selectTile(state, a.id), b.id);
+    expect(done.isComplete).toBe(true);
+    const reverted = undoMove(done);
+    expect(reverted.isComplete).toBe(false);
+    expect(reverted.tiles).toEqual([a, b]);
+    expect(reverted.score).toBe(state.score);
+    expect(reverted.pairsRemoved).toBe(71);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -638,7 +751,7 @@ describe("shuffleBoard", () => {
     const a: SlotTile = { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 };
     const b: SlotTile = { id: 1, suit: "characters", rank: 1, faceId: 8, col: 2, row: 0, layer: 0 };
     const state: MahjongState = {
-      _v: 1,
+      _v: 2,
       tiles: [a, b],
       pairsRemoved: 71,
       score: 710,
@@ -676,7 +789,7 @@ describe("shuffleBoard", () => {
       { id: 3, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 1 },
     ];
     const state: MahjongState = {
-      _v: 1,
+      _v: 2,
       tiles,
       pairsRemoved: 70,
       score: 700,
@@ -750,7 +863,7 @@ describe("shuffleBoard", () => {
       { id: 11, suit: "dragons", rank: 3, faceId: 3, col: 2, row: 0, layer: 5 },
     ];
     const state: MahjongState = {
-      _v: 1,
+      _v: 2,
       tiles,
       pairsRemoved: 66,
       score: 660,
@@ -792,7 +905,7 @@ describe("shuffleBoard", () => {
       { id: 3, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 3 },
     ];
     const state: MahjongState = {
-      _v: 1,
+      _v: 2,
       tiles,
       pairsRemoved: 70,
       score: 700,
@@ -819,6 +932,25 @@ describe("shuffleBoard", () => {
       // Undo snapshot pushed so user can back out.
       expect(result.undoStack.length).toBe(1);
     }
+  });
+
+  it("shuffling an already-deadlocked board spends no token and returns the same state (#3090)", () => {
+    const tiles: SlotTile[] = [
+      { id: 0, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 0 },
+      { id: 1, suit: "characters", rank: 1, faceId: 8, col: 0, row: 0, layer: 1 },
+      { id: 2, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 2 },
+      { id: 3, suit: "dragons", rank: 1, faceId: 1, col: 0, row: 0, layer: 3 },
+    ];
+    const state: MahjongState = { ...createGame(TURTLE_LAYOUT), tiles, shufflesLeft: 3 };
+    const dead = shuffleBoard(state);
+    expect(dead.isDeadlocked).toBe(true);
+    expect(dead.shufflesLeft).toBe(2);
+    const again = shuffleBoard(dead);
+    expect(again).toBe(dead);
+    expect(again.shufflesLeft).toBe(2);
+    expect(again.events).toBe(dead.events);
+    const flagged: MahjongState = { ...createGame(TURTLE_LAYOUT, 1), isDeadlocked: true };
+    expect(shuffleBoard(flagged)).toBe(flagged);
   });
 
   it("geometric deadlock freezes the clock, and undo resumes it", () => {
@@ -1223,8 +1355,8 @@ describe("device best time (#2747)", () => {
     expect(plausibleBestMs(36_000)).toBe(36_000);
   });
 
-  it("keeps the fastest plausible clear", () => {
-    expect(nextBestTime(0, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: true });
+  it("keeps the fastest plausible clear; a first clear is a best but not a new best (#2977)", () => {
+    expect(nextBestTime(0, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
     expect(nextBestTime(90_000, 60_000)).toEqual({ bestTimeMs: 60_000, isNewBest: true });
     expect(nextBestTime(60_000, 90_000)).toEqual({ bestTimeMs: 60_000, isNewBest: false });
     expect(nextBestTime(60_000, 60_000)).toEqual({ bestTimeMs: 60_000, isNewBest: false });
@@ -1235,7 +1367,7 @@ describe("device best time (#2747)", () => {
     expect(nextBestTime(90_000, 5_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
   });
 
-  it("ignores a stored best under the floor, so a real clear beats it", () => {
-    expect(nextBestTime(4_000, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: true });
+  it("ignores a stored best under the floor: a real clear replaces it but is a first best", () => {
+    expect(nextBestTime(4_000, 90_000)).toEqual({ bestTimeMs: 90_000, isNewBest: false });
   });
 });

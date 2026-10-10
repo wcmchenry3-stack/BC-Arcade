@@ -14,14 +14,14 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import Game
+from tests._helpers import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -29,21 +29,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
 def _sid() -> str:
     return str(uuid.uuid4())
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 def _name(client: TestClient, sid: str) -> str:

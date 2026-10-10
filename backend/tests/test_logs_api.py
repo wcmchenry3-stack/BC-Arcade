@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
 
-from db.base import is_configured
+from tests._helpers import session_headers as _headers
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -18,23 +17,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
-
-
 def _log(level: str = "warn") -> dict:
     return {
         "id": str(uuid.uuid4()),
-        "logged_at": datetime.now(timezone.utc).isoformat(),
+        "logged_at": datetime.now(UTC).isoformat(),
         "level": level,
         "source": "test",
         "message": "something happened",

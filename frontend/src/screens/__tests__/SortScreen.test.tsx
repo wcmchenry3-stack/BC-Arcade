@@ -1,11 +1,14 @@
 import React from "react";
 import { act, fireEvent, render, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AppState } from "react-native";
+import type { AppStateStatus } from "react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import SortScreen from "../SortScreen";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
-import { initState } from "../../game/sort/engine";
+import { applyPour, initState } from "../../game/sort/engine";
 import type { Color } from "../../game/sort/types";
+import type { SortProgress } from "../../game/sort/storage";
 import type { ForegroundClockMock } from "../../game/_shared/__mocks__/foregroundClock";
 
 // ---------------------------------------------------------------------------
@@ -33,8 +36,8 @@ jest.mock("../../game/sort/solver", () => {
   };
 });
 
-jest.mock("../../game/sort/components/SortBoard", () => {
-  const mod = jest.requireActual("../../game/sort/components/SortBoard");
+jest.mock("../../components/sort/SortBoard", () => {
+  const mod = jest.requireActual("../../components/sort/SortBoard");
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const React = require("react");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -50,32 +53,41 @@ jest.mock("../../game/sort/components/SortBoard", () => {
 const mockGoBack = jest.fn();
 const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ goBack: mockGoBack, popToTop: mockPopToTop, navigate: mockNavigate }),
-}));
+// usePauseWhileAway's focus listeners (#3087), live so a test can blur the screen.
+const mockNavListeners = new Map<string, Set<() => void>>();
+const mockAddListener = jest.fn((event: string, cb: () => void) => {
+  const set = mockNavListeners.get(event) ?? new Set();
+  set.add(cb);
+  mockNavListeners.set(event, set);
+  return () => set.delete(cb);
+});
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(
+    () => ({
+      goBack: mockGoBack,
+      popToTop: mockPopToTop,
+      navigate: mockNavigate,
+      addListener: mockAddListener,
+    }),
+    { actual: true }
+  )
+);
 
 // Per-session game sync (#2512): assert start/complete without the real client.
 const mockStartGame = jest.fn(() => "sort-game-id");
 const mockCompleteGame = jest.fn();
 // No killed session to resume unless a test says so (#2654).
 const mockResumeGame = jest.fn((): string | null => null);
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as jest.Mock)(...args),
-    resumeGame: (...args: unknown[]) => (mockResumeGame as jest.Mock)(...args),
-    enqueueEvent: jest.fn(),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    resumeGame: lazy(() => mockResumeGame),
+    completeGame: lazy(() => mockCompleteGame),
+  });
+});
 
-jest.mock("../../game/_shared/NetworkContext", () => ({
-  useNetwork: () => ({ isOnline: true, isInitialized: true }),
-}));
+jest.mock("../../game/_shared/NetworkContext", () => mockScreenDeps().mockNetwork());
 
 jest.mock("../../game/sort/api", () => ({
   sortApi: {
@@ -84,18 +96,14 @@ jest.mock("../../game/sort/api", () => ({
 }));
 
 // The board is the shared leaderboard screen (#2633): Sort never reads it itself.
-jest.mock("../../api/stats", () => ({
-  statsApi: { getLeaderboard: jest.fn() },
-}));
+jest.mock("../../api/stats", () => mockScreenDeps().mockStatsApi({ getLeaderboard: jest.fn() }));
 
-// The card's rank lookup (#2677): the real adapter's HTTP is covered by its own
+// The card's rank lookup (#2677): the real lookup's HTTP is covered by its own
 // tests; here we check Sort hands it the finished game.
 const mockRankSubmit = jest.fn();
-jest.mock("../../game/_shared/sessionBoardAdapter", () => ({
-  sessionBoardAdapter: jest.fn((gameType: string) => ({
-    gameType,
-    submit: (...args: unknown[]) => mockRankSubmit(...args),
-  })),
+jest.mock("../../game/_shared/lookupGameRank", () => ({
+  ...jest.requireActual("../../game/_shared/lookupGameRank"),
+  lookupGameRank: (...args: unknown[]) => mockRankSubmit(...args),
 }));
 
 jest.mock("../../game/sort/storage", () => {
@@ -129,12 +137,6 @@ const { sortApi } = jest.requireMock("../../game/sort/api") as {
 const { statsApi } = jest.requireMock("../../api/stats") as {
   statsApi: { getLeaderboard: jest.Mock };
 };
-
-const { sessionBoardAdapter } = jest.requireMock("../../game/_shared/sessionBoardAdapter") as {
-  sessionBoardAdapter: jest.Mock;
-};
-// SortScreen builds its adapter once, at import (before any clearAllMocks).
-const adapterGameTypes = sessionBoardAdapter.mock.calls.map((call) => call[0]);
 
 const storage = jest.requireMock("../../game/sort/storage") as {
   loadProgress: jest.Mock;
@@ -357,6 +359,79 @@ describe("SortScreen — entering and playing a level", () => {
     });
     const undoBtn = await findByLabelText("Undo");
     expect(undoBtn.props.accessibilityState?.disabled).toBeFalsy();
+  });
+});
+
+describe("SortScreen — save on leaving the app", () => {
+  let appStateListeners: Set<(s: AppStateStatus) => void>;
+  beforeEach(() => {
+    appStateListeners = new Set();
+    jest.spyOn(AppState, "addEventListener").mockImplementation(((
+      _type: string,
+      cb: (s: AppStateStatus) => void
+    ) => {
+      appStateListeners.add(cb);
+      return { remove: () => appStateListeners.delete(cb) };
+    }) as unknown as typeof AppState.addEventListener);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  const setAppState = (s: AppStateStatus) =>
+    act(async () => appStateListeners.forEach((cb) => cb(s)));
+  const blur = () => act(async () => mockNavListeners.get("blur")?.forEach((cb) => cb()));
+
+  it("saves the board in play on each move to inactive or background, and not on a blur", async () => {
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    await r.findByLabelText("Back to levels");
+    storage.saveProgress.mockClear();
+
+    await setAppState("inactive");
+    await setAppState("background");
+    expect(storage.saveProgress).toHaveBeenCalledTimes(2);
+    expect(storage.saveProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ currentLevelId: 1, currentState: expect.any(Object) })
+    );
+
+    await setAppState("active");
+    await blur();
+    expect(storage.saveProgress).toHaveBeenCalledTimes(2);
+  });
+
+  it("saves the latest board: the one after the last pour", async () => {
+    const r = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Level 1"));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText(/^Bottle 1, 2 of/));
+    });
+    await act(async () => {
+      await fireEvent.press(await r.findByLabelText("Bottle 3, empty"));
+    });
+    await act(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (global as any).__sortBoardLastProps?.onPourComplete?.();
+    });
+    expect(await r.findByLabelText(/^Bottle 3, 1 of/)).toBeTruthy();
+    storage.saveProgress.mockClear();
+
+    await setAppState("background");
+    const afterPour = applyPour(initState(MOCK_LEVELS[0]!.bottles as (Color | "")[][]), 0, 2);
+    expect(storage.saveProgress).toHaveBeenCalledTimes(1);
+    expect(storage.saveProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ currentLevelId: 1, currentState: afterPour })
+    );
+  });
+
+  it("saves nothing at the level select", async () => {
+    const r = await renderScreen();
+    await r.findByLabelText("Level 1");
+    storage.saveProgress.mockClear();
+    await setAppState("background");
+    expect(storage.saveProgress).not.toHaveBeenCalled();
   });
 });
 
@@ -708,8 +783,8 @@ describe("SortScreen — result card (#2512)", () => {
     expect(card.getByText("Sort Puzzle · Level 1")).toBeTruthy();
     expect(card.getByText("Moves")).toBeTruthy();
     expect(card.getByText("Undos")).toBeTruthy();
-    // Straight from memory: no wait on storage.
-    expect(card.getByText("New best")).toBeTruthy();
+    // Straight from memory: no wait on storage. A first solve is no new best (#2977).
+    expect(card.queryByText("New best")).toBeNull();
     expect(card.getByText("Best")).toBeTruthy();
     expect(card.getByRole("button", { name: "Next Level" })).toBeTruthy();
     expect(card.getByRole("button", { name: "Change Level" })).toBeTruthy();
@@ -920,7 +995,7 @@ describe("SortScreen — result card (#2512)", () => {
     expect(summary.result).toEqual({ won: true, level: 2, moves: 1, undos: 0, level_reached: 2 });
   });
 
-  it("asks the generic board adapter for the rank of the finished game", async () => {
+  it("asks for the rank of the finished game", async () => {
     await AsyncStorage.setItem("player_display_name", "Riley");
     mockRankSubmit.mockResolvedValue({ kind: "ranked", rank: 2 });
     const r = await renderScreen();
@@ -928,9 +1003,8 @@ describe("SortScreen — result card (#2512)", () => {
     await waitFor(() =>
       expect(card.getByText("Saved as Riley · #2 on the leaderboard")).toBeTruthy()
     );
-    expect(adapterGameTypes).toEqual(["sort"]);
     expect(mockRankSubmit).toHaveBeenCalledTimes(1);
-    expect(mockRankSubmit).toHaveBeenCalledWith("Riley", { gameId: "sort-game-id" });
+    expect(mockRankSubmit).toHaveBeenCalledWith("sort-game-id");
   });
 
   it("shows the best entry's rank when this solve isn't it, and links to the board (#2633)", async () => {
@@ -1005,7 +1079,7 @@ describe("SortScreen — result card (#2512)", () => {
     storage.loadBestMoves.mockResolvedValue(null);
     const r = await renderScreen();
     const card = await solveLevel(r, 1);
-    expect(card.getByText("New best")).toBeTruthy();
+    expect(card.queryByText("New best")).toBeNull();
     expect(completion().summary.result.total_moves).toBe(1);
     await act(async () => {});
     expect(storage.saveBestMoves).not.toHaveBeenCalled();
@@ -1047,11 +1121,42 @@ describe("SortScreen — result card (#2512)", () => {
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
   });
 
+  // useCompletionTransition (#3109): the solve edge keeps the screen's timing.
+  it("handles a solve once, and Change Level after it records nothing new", async () => {
+    await AsyncStorage.setItem("player_display_name", "Riley");
+    mockRankSubmit.mockResolvedValue({ kind: "ranked", rank: 2 });
+    const r = await renderScreen();
+    const card = await solveLevel(r, 1);
+    await waitFor(() =>
+      expect(card.getByText("Saved as Riley · #2 on the leaderboard")).toBeTruthy()
+    );
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockRankSubmit).toHaveBeenCalledTimes(1);
+    // The solved board is never saved as the level in progress.
+    const saved = storage.saveProgress.mock.calls.map((c) => c[0] as SortProgress);
+    expect(saved.at(-1)).toEqual(
+      expect.objectContaining({ unlockedLevel: 2, currentLevelId: null, currentState: null })
+    );
+    expect(saved.some((p) => p.currentState?.isComplete)).toBe(false);
+
+    await act(async () => {
+      await fireEvent.press(card.getByRole("button", { name: "Change Level" }));
+    });
+    expect(await r.findByLabelText("Level 1")).toBeTruthy();
+    // Closing the card over the solved board fires the edge again, as it always
+    // has, but the session is closed and no rank is asked for twice.
+    expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+    expect(mockRankSubmit).toHaveBeenCalledTimes(1);
+    expect(storage.saveProgress.mock.calls.at(-1)![0]).toEqual(
+      expect.objectContaining({ unlockedLevel: 2, currentLevelId: null, currentState: null })
+    );
+  });
+
   it("shows each level's own best on its card", async () => {
     storage.loadBestMoves.mockResolvedValue({ "2": 1 });
     const r = await renderScreen();
     let card = await solveLevel(r, 1);
-    expect(card.getByText("New best")).toBeTruthy();
+    expect(card.queryByText("New best")).toBeNull();
     await act(async () => {
       await fireEvent.press(card.getByRole("button", { name: "Next Level" }));
     });
@@ -1069,6 +1174,21 @@ describe("SortScreen — result card (#2512)", () => {
     expect(card.getByText("Sort Puzzle · Level 2")).toBeTruthy();
     // Level 2's best (1) was already on record: not a new best.
     expect(card.queryByText("New best")).toBeNull();
+  });
+
+  it("flags a solve that beats an earlier best as a new best, and saves it (#2977)", async () => {
+    storage.loadBestMoves.mockResolvedValue({ "1": 5 });
+    const r = await renderScreen();
+    const card = await solveLevel(r, 1); // 1 move, was 5
+    expect(card.getByText("New best")).toBeTruthy();
+    expect(storage.saveBestMoves).toHaveBeenCalledWith({ "1": 1 });
+  });
+
+  it("saves a first solve as the level's best without calling it a new best (#2977)", async () => {
+    const r = await renderScreen();
+    const card = await solveLevel(r, 1);
+    expect(card.queryByText("New best")).toBeNull();
+    expect(storage.saveBestMoves).toHaveBeenCalledWith({ "1": 1 });
   });
 
   it("replays the last level with Play Again", async () => {

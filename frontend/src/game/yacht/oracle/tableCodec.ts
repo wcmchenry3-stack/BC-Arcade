@@ -20,7 +20,7 @@
  * change where two options were already within 0.01 points of each other.
  * The optimal game-start EV moves by < 0.005.
  *
- * Shared by the offline build (scripts/build-yacht-oracle.ts, encode) and
+ * Shared by the offline build (tools/generators/build-yacht-oracle.ts, encode) and
  * the runtime oracle (oracle.ts, decode) so the two can't drift.
  */
 
@@ -31,7 +31,10 @@ import { base64ToBytes, bytesToBase64 } from "../../_shared/base64Bytes";
 export const ORACLE_TABLE_SCALE = 100;
 const MAX_STORED = 0xffff;
 
-/** Encode a value-to-go table (build-time only). */
+/**
+ * Encode a value-to-go table (build-time only).
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function encodeOracleTable(values: ArrayLike<number>): string {
   const n = values.length;
   const planes = new Uint8Array(n * 2);

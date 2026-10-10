@@ -15,7 +15,7 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from functools import cache
 from typing import Any
 from urllib.parse import unquote
@@ -129,7 +129,7 @@ class FakeTokenEndpoint:
 
 
 def rfc3339(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return dt.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def ms(dt: datetime) -> str:
@@ -184,7 +184,7 @@ def play_purchase(
         data["testPurchaseContext"] = {"fopType": "TEST"}
     if state in ("PURCHASED", "CANCELLED") and not never_completed:
         data["purchaseCompletionTime"] = rfc3339(
-            completed or datetime.now(timezone.utc) - timedelta(minutes=5)
+            completed or datetime.now(UTC) - timedelta(minutes=5)
         )
     return data
 
@@ -365,7 +365,7 @@ def developer_notification(
     note: dict[str, Any] = {
         "version": "1.0",
         "packageName": package,
-        "eventTimeMillis": ms(event_at or datetime.now(timezone.utc)),
+        "eventTimeMillis": ms(event_at or datetime.now(UTC)),
     }
     if one_time is not None:
         ntype, token = one_time

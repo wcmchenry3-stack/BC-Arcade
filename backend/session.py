@@ -1,3 +1,10 @@
+"""The ``X-Session-ID`` request header: the pseudonymous player id.
+
+The app generates a UUID once per install and sends it on every request; it is
+the only player identity until accounts (#1047). Routes read it through these
+two helpers so every route answers a missing or malformed header the same way.
+"""
+
 import uuid
 
 from fastapi import HTTPException, Request
@@ -14,8 +21,8 @@ def get_session_id(request: Request) -> str:
         raise HTTPException(status_code=400, detail="X-Session-ID header required.")
     try:
         uuid.UUID(sid)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="X-Session-ID must be a valid UUID.")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="X-Session-ID must be a valid UUID.") from exc
     return sid
 
 

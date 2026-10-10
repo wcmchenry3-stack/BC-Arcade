@@ -6,13 +6,17 @@
  * so chip balance carries across launches.
  *
  * Run history is stored separately under RUNS_KEY and capped at MAX_RUNS.
+ *
+ * The game is one `storageSlot` (#2987): a payload missing the core fields
+ * loads as no game and is left stored; a corrupt one is removed and reported
+ * as a warning (#510).
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import { DEFAULT_RULES, DEFAULT_RUN_CONFIG, EngineState } from "./engine";
+import { createJsonSlot } from "../_shared/storageSlot";
 
-const STORAGE_KEY = "blackjack_game_v2";
 const RUNS_KEY = "blackjack_runs_v1";
 const MAX_RUNS = 50;
 
@@ -87,111 +91,91 @@ export async function loadRuns(): Promise<RunRecord[]> {
   }
 }
 
-export async function saveGame(state: EngineState): Promise<void> {
-  try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "blackjack.storage", op: "save" } });
+/** Fill in the fields older builds didn't save. */
+function backfill(parsed: EngineState): EngineState {
+  // Backfill split-hand arrays for saves created before split was added (#569).
+  if (!Array.isArray(parsed.player_hands)) {
+    parsed.player_hands = [parsed.player_hand];
   }
+  if (!Array.isArray(parsed.hand_bets)) {
+    parsed.hand_bets = [parsed.bet];
+  }
+  if (!Array.isArray(parsed.hand_outcomes)) {
+    parsed.hand_outcomes = [parsed.outcome ?? null];
+  }
+  if (!Array.isArray(parsed.hand_payouts)) {
+    parsed.hand_payouts = [parsed.payout ?? 0];
+  }
+  if (!Array.isArray(parsed.split_from_aces)) {
+    parsed.split_from_aces = [false];
+  }
+  if (typeof parsed.active_hand_index !== "number") {
+    parsed.active_hand_index = 0;
+  }
+  if (typeof parsed.split_count !== "number") {
+    parsed.split_count = 0;
+  }
+  if (typeof parsed.doubled !== "boolean") {
+    parsed.doubled = false;
+  }
+  // Backfill rules for saves created before configurable rules.
+  if (!parsed.rules) {
+    parsed.rules = DEFAULT_RULES;
+  }
+  // Backfill lastWin for saves created before the HUD was added.
+  if (!("lastWin" in (parsed as object))) {
+    (parsed as unknown as Record<string, unknown>).lastWin = null;
+  }
+  // Backfill run-mode fields for saves created before run mode was added.
+  if (typeof parsed.runGoal === "undefined") {
+    parsed.runGoal = DEFAULT_RUN_CONFIG.runGoal;
+  }
+  if (typeof parsed.startingChips !== "number") {
+    parsed.startingChips = DEFAULT_RUN_CONFIG.startingChips;
+  }
+  if (typeof parsed.betMin !== "number") {
+    parsed.betMin = DEFAULT_RUN_CONFIG.betMin;
+  }
+  if (typeof parsed.betMax !== "number") {
+    parsed.betMax = DEFAULT_RUN_CONFIG.betMax;
+  }
+  // Backfill milestone fields for saves created before BJ-5.
+  if (!Array.isArray(parsed.milestones)) {
+    parsed.milestones = [];
+  }
+  if (!Array.isArray(parsed.milestones_reached)) {
+    parsed.milestones_reached = [];
+  }
+  // Backfill emotional-feedback fields for saves created before BJ-7.
+  if (typeof parsed.hitLowChips !== "boolean") {
+    parsed.hitLowChips = false;
+  }
+  if (typeof parsed.comebackEmitted !== "boolean") {
+    parsed.comebackEmitted = false;
+  }
+  return parsed;
 }
 
-export async function loadGame(): Promise<EngineState | null> {
-  let raw: string | null = null;
-  try {
-    raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as EngineState;
-    // Minimum viability check — only discard if the core fields are missing.
-    if (
+export const {
+  save: saveGame,
+  load: loadGame,
+  clear: clearGame,
+} = createJsonSlot<EngineState>({
+  key: "blackjack_game_v2",
+  subsystem: "blackjack.storage",
+  // Minimum viability check — only discard if the core fields are missing.
+  isValid: (p): p is EngineState => {
+    const parsed = p as EngineState;
+    return !(
       typeof parsed.chips !== "number" ||
       typeof parsed.bet !== "number" ||
       typeof parsed.phase !== "string" ||
       !Array.isArray(parsed.deck) ||
       !Array.isArray(parsed.player_hand) ||
       !Array.isArray(parsed.dealer_hand)
-    ) {
-      return null;
-    }
-    // Backfill split-hand arrays for saves created before split was added (#569).
-    if (!Array.isArray(parsed.player_hands)) {
-      parsed.player_hands = [parsed.player_hand];
-    }
-    if (!Array.isArray(parsed.hand_bets)) {
-      parsed.hand_bets = [parsed.bet];
-    }
-    if (!Array.isArray(parsed.hand_outcomes)) {
-      parsed.hand_outcomes = [parsed.outcome ?? null];
-    }
-    if (!Array.isArray(parsed.hand_payouts)) {
-      parsed.hand_payouts = [parsed.payout ?? 0];
-    }
-    if (!Array.isArray(parsed.split_from_aces)) {
-      parsed.split_from_aces = [false];
-    }
-    if (typeof parsed.active_hand_index !== "number") {
-      parsed.active_hand_index = 0;
-    }
-    if (typeof parsed.split_count !== "number") {
-      parsed.split_count = 0;
-    }
-    if (typeof parsed.doubled !== "boolean") {
-      parsed.doubled = false;
-    }
-    // Backfill rules for saves created before configurable rules.
-    if (!parsed.rules) {
-      parsed.rules = DEFAULT_RULES;
-    }
-    // Backfill lastWin for saves created before the HUD was added.
-    if (!("lastWin" in (parsed as object))) {
-      (parsed as unknown as Record<string, unknown>).lastWin = null;
-    }
-    // Backfill run-mode fields for saves created before run mode was added.
-    if (typeof parsed.runGoal === "undefined") {
-      parsed.runGoal = DEFAULT_RUN_CONFIG.runGoal;
-    }
-    if (typeof parsed.startingChips !== "number") {
-      parsed.startingChips = DEFAULT_RUN_CONFIG.startingChips;
-    }
-    if (typeof parsed.betMin !== "number") {
-      parsed.betMin = DEFAULT_RUN_CONFIG.betMin;
-    }
-    if (typeof parsed.betMax !== "number") {
-      parsed.betMax = DEFAULT_RUN_CONFIG.betMax;
-    }
-    // Backfill milestone fields for saves created before BJ-5.
-    if (!Array.isArray(parsed.milestones)) {
-      parsed.milestones = [];
-    }
-    if (!Array.isArray(parsed.milestones_reached)) {
-      parsed.milestones_reached = [];
-    }
-    // Backfill emotional-feedback fields for saves created before BJ-7.
-    if (typeof parsed.hitLowChips !== "boolean") {
-      parsed.hitLowChips = false;
-    }
-    if (typeof parsed.comebackEmitted !== "boolean") {
-      parsed.comebackEmitted = false;
-    }
-    return parsed;
-  } catch (e) {
-    // Corrupt payload: recovery is complete (we remove the bad entry and
-    // return null, so the caller starts a fresh game). This is not an
-    // error — downgrade from captureException to a warning captureMessage
-    // so it doesn't page as a crash in Sentry. See #510.
-    Sentry.captureMessage("blackjack.storage: corrupt game payload, discarding", {
-      level: "warning",
-      tags: { subsystem: "blackjack.storage", op: "load" },
-      extra: { error: String(e), key: STORAGE_KEY, rawPayload: raw?.slice(0, 500) },
-    });
-    await AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
-    return null;
-  }
-}
-
-export async function clearGame(): Promise<void> {
-  try {
-    await AsyncStorage.removeItem(STORAGE_KEY);
-  } catch (e) {
-    Sentry.captureException(e, { tags: { subsystem: "blackjack.storage", op: "clear" } });
-  }
-}
+    );
+  },
+  keepInvalid: true,
+  corruptExtra: "keyAndRaw",
+  onLoad: backfill,
+});

@@ -16,9 +16,11 @@
 
 import { AppState, type AppStateStatus } from "react-native";
 
+import { isAppInterrupted } from "./appInterrupted";
+
 /** Only `background` and `inactive` stop the counter; anything else is foreground. */
 function isForeground(state: unknown): boolean {
-  return state !== "background" && state !== "inactive";
+  return !isAppInterrupted(state);
 }
 
 function monotonicNow(): number {
@@ -68,7 +70,10 @@ export function foregroundNow(): number {
   return banked + running;
 }
 
-/** Test-only: drop the subscription and the running total. */
+/**
+ * Test-only: drop the subscription and the running total.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function __resetForegroundClockForTests(): void {
   try {
     subscription?.remove?.();

@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
-import { AccessibilityInfo, StyleSheet, View } from "react-native";
+import React, { useEffect } from "react";
+import { StyleSheet, View } from "react-native";
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
@@ -10,6 +10,14 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useTranslation } from "react-i18next";
+import { useReduceMotion } from "../shared/useReduceMotion";
+import { playTimedPhases } from "../shared/timedPhases";
+import { useTheme } from "../../theme/ThemeContext";
+import {
+  HEARTS_QUEEN_CARD_FACE,
+  HEARTS_QUEEN_INK,
+  HEARTS_QUEEN_SHADOW,
+} from "../../theme/theme.hearts";
 
 interface Props {
   visible: boolean;
@@ -19,8 +27,8 @@ interface Props {
 
 export function HeartsQueenOfSpadesAnimation({ visible, takerLabel, onAnimationEnd }: Props) {
   const { t } = useTranslation("hearts");
-  const [reduceMotion, setReduceMotion] = useState(false);
-  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const { colors } = useTheme();
+  const reduceMotion = useReduceMotion();
 
   const overlayOpacity = useSharedValue(0);
   const cardScale = useSharedValue(0);
@@ -28,16 +36,14 @@ export function HeartsQueenOfSpadesAnimation({ visible, takerLabel, onAnimationE
   const cardTranslateX = useSharedValue(0);
 
   useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-  }, []);
-
-  useEffect(() => {
-    if (!visible) {
+    if (!visible || reduceMotion) {
+      // Hidden — or reduced motion, which may have just been turned on
+      // mid-sequence: clear every frame so nothing is left frozen.
       overlayOpacity.value = 0;
       cardScale.value = 0;
       cardOpacity.value = 0;
       cardTranslateX.value = 0;
-      return;
+      if (!visible) return;
     }
 
     if (reduceMotion) {
@@ -46,12 +52,7 @@ export function HeartsQueenOfSpadesAnimation({ visible, takerLabel, onAnimationE
         withTiming(0.25, { duration: 100 }),
         withDelay(600, withTiming(0, { duration: 100 }))
       );
-      const t1 = setTimeout(onAnimationEnd, 800);
-      timersRef.current.push(t1);
-      return () => {
-        clearTimeout(t1);
-        timersRef.current = [];
-      };
+      return playTimedPhases({ phases: [], endAt: 800 }, onAnimationEnd);
     }
 
     // Phase 1 (0–200ms): spring card in + overlay fade in
@@ -59,34 +60,43 @@ export function HeartsQueenOfSpadesAnimation({ visible, takerLabel, onAnimationE
     cardOpacity.value = 1;
     cardScale.value = withSpring(1.4, { damping: 12, stiffness: 220 });
 
-    // Phase 2 (200–600ms): 4 shake iterations (translateX ±8 px)
-    const t1 = setTimeout(() => {
-      cardTranslateX.value = withSequence(
-        withTiming(8, { duration: 50 }),
-        withTiming(-8, { duration: 50 }),
-        withTiming(8, { duration: 50 }),
-        withTiming(-8, { duration: 50 }),
-        withTiming(8, { duration: 50 }),
-        withTiming(-8, { duration: 50 }),
-        withTiming(8, { duration: 50 }),
-        withTiming(-8, { duration: 50 }),
-        withTiming(0, { duration: 50 })
-      );
-    }, 200);
-
-    // Phase 3 (700–1000ms): fade card + overlay out
-    const t2 = setTimeout(() => {
-      cardOpacity.value = withTiming(0, { duration: 300 });
-      cardScale.value = withTiming(0, { duration: 300 });
-      overlayOpacity.value = withTiming(0, { duration: 300 });
-    }, 700);
-
-    const t3 = setTimeout(onAnimationEnd, 1000);
-    timersRef.current.push(t1, t2, t3);
+    const cancelPhases = playTimedPhases(
+      {
+        phases: [
+          // Phase 2 (200–600ms): 4 shake iterations (translateX ±8 px)
+          {
+            at: 200,
+            run: () => {
+              cardTranslateX.value = withSequence(
+                withTiming(8, { duration: 50 }),
+                withTiming(-8, { duration: 50 }),
+                withTiming(8, { duration: 50 }),
+                withTiming(-8, { duration: 50 }),
+                withTiming(8, { duration: 50 }),
+                withTiming(-8, { duration: 50 }),
+                withTiming(8, { duration: 50 }),
+                withTiming(-8, { duration: 50 }),
+                withTiming(0, { duration: 50 })
+              );
+            },
+          },
+          // Phase 3 (700–1000ms): fade card + overlay out
+          {
+            at: 700,
+            run: () => {
+              cardOpacity.value = withTiming(0, { duration: 300 });
+              cardScale.value = withTiming(0, { duration: 300 });
+              overlayOpacity.value = withTiming(0, { duration: 300 });
+            },
+          },
+        ],
+        endAt: 1000,
+      },
+      onAnimationEnd
+    );
 
     return () => {
-      timersRef.current.forEach(clearTimeout);
-      timersRef.current = [];
+      cancelPhases();
       cancelAnimation(overlayOpacity);
       cancelAnimation(cardScale);
       cancelAnimation(cardOpacity);
@@ -103,7 +113,14 @@ export function HeartsQueenOfSpadesAnimation({ visible, takerLabel, onAnimationE
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Animated.View style={[StyleSheet.absoluteFill, styles.overlay, overlayStyle]} />
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          styles.overlay,
+          { backgroundColor: colors.error },
+          overlayStyle,
+        ]}
+      />
       <View style={styles.content}>
         <Animated.View
           style={[styles.card, cardStyle]}
@@ -121,7 +138,6 @@ export function HeartsQueenOfSpadesAnimation({ visible, takerLabel, onAnimationE
 
 const styles = StyleSheet.create({
   overlay: {
-    backgroundColor: "#dc2626",
     zIndex: 100,
   },
   content: {
@@ -133,13 +149,13 @@ const styles = StyleSheet.create({
   card: {
     width: 72,
     height: 100,
-    backgroundColor: "#ffffff",
+    backgroundColor: HEARTS_QUEEN_CARD_FACE,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: "#1e1b4b",
+    borderColor: HEARTS_QUEEN_INK,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000000",
+    shadowColor: HEARTS_QUEEN_SHADOW,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
@@ -148,12 +164,12 @@ const styles = StyleSheet.create({
   cardRank: {
     fontSize: 28,
     fontWeight: "800",
-    color: "#1e1b4b",
+    color: HEARTS_QUEEN_INK,
     lineHeight: 32,
   },
   cardSuit: {
     fontSize: 24,
-    color: "#1e1b4b",
+    color: HEARTS_QUEEN_INK,
     lineHeight: 28,
   },
 });

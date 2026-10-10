@@ -1,18 +1,14 @@
 import React from "react";
-import { Pressable, StyleSheet, View, ViewStyle } from "react-native";
 import { useTranslation } from "react-i18next";
+import type { SharedValue } from "react-native-reanimated";
 
-import { useTheme } from "../../theme/ThemeContext";
+import SharedTableauColumn from "../cards/TableauColumn";
 import { rankLabel } from "../../game/_shared/decks/cardId";
-import type { CanonicalSuit } from "../../game/_shared/decks/types";
 import type { Card } from "../../game/freecell/types";
 import { CARD_HEIGHT, CARD_WIDTH } from "./FreeCellSlot";
 import { useCardSize } from "../../game/_shared/CardSizeContext";
 import SelectableCard from "../../game/_shared/SelectableCard";
-import { DraggableCard } from "../../game/_shared/drag/DraggableCard";
-import { DropTarget } from "../../game/_shared/drag/DropTarget";
 import type { DropHandler } from "../../game/_shared/drag/DragContext";
-import type { SharedValue } from "react-native-reanimated";
 
 /** Natural (unscaled) gap between stacked cards when the column fits. */
 export const FACE_UP_OFFSET = 36;
@@ -61,6 +57,7 @@ export interface TableauColumnProps {
   readonly maxHeight?: number;
 }
 
+/** FreeCell's column: the shared tableau (#2983), always face-up, compressing to fit (#1108). */
 export default function TableauColumn({
   pile,
   colIndex,
@@ -74,7 +71,6 @@ export default function TableauColumn({
   onDrop,
   maxHeight,
 }: TableauColumnProps) {
-  const { colors } = useTheme();
   const { t } = useTranslation("freecell");
   const { cardWidth, cardHeight } = useCardSize();
   const scale = cardWidth / CARD_WIDTH;
@@ -86,55 +82,7 @@ export default function TableauColumn({
     MIN_FACE_UP_OFFSET * scale
   );
 
-  const highlightStyle: ViewStyle = { borderColor: colors.accent, borderWidth: 2, borderRadius: 6 };
-  const dimStyle: ViewStyle = { opacity: 0.4 };
-  const hasDrop = dropId !== undefined && onDrop !== undefined;
-
-  if (pile.length === 0) {
-    const empty = (
-      <Pressable
-        onPress={onEmptyPress ? () => onEmptyPress(colIndex) : undefined}
-        style={[
-          styles.empty,
-          {
-            width: cardWidth,
-            height: cardHeight,
-            borderColor: hintDestination ? colors.bonus : colors.border,
-            borderWidth: hintDestination ? 2 : 1,
-            backgroundColor: colors.background,
-          },
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel={t("pile.tableau.empty", { col: colIndex + 1 })}
-      />
-    );
-    if (hasDrop) {
-      return (
-        <DropTarget
-          id={dropId!}
-          testID={dropId}
-          onDrop={onDrop!}
-          highlightStyle={highlightStyle}
-          dimStyle={dimStyle}
-        >
-          {empty}
-        </DropTarget>
-      );
-    }
-    return empty;
-  }
-
-  const offsets: number[] = [];
-  let acc = 0;
-  for (let i = 0; i < pile.length; i++) {
-    offsets.push(acc);
-    acc += faceUpOffset;
-  }
-  const containerHeight = cardHeight + (offsets[pile.length - 1] ?? 0);
-  const containerStyle: ViewStyle = { width: cardWidth, height: containerHeight };
-
-  const cards = pile.map((card, cardIndex) => {
-    const isTop = cardIndex === pile.length - 1;
+  const renderCard = (card: Card, cardIndex: number) => {
     const isSelected = selectedIndex !== undefined && cardIndex >= selectedIndex;
     const isHint = hintIndex !== undefined && cardIndex >= hintIndex;
     const isHintDest = hintDestination && cardIndex === pile.length - 1;
@@ -143,84 +91,38 @@ export default function TableauColumn({
     const label = isSelected
       ? t("card.selected", { rank: rl, suit: suitName })
       : t("card.label", { rank: rl, suit: suitName });
-    const handlePress = onCardPress ? () => onCardPress(colIndex, cardIndex) : undefined;
-
-    const dragCards = pile.slice(cardIndex).map((c) => ({
-      suit: c.suit as CanonicalSuit,
-      rank: c.rank,
-      faceDown: false,
-      width: cardWidth,
-      height: cardHeight,
-    }));
-    const stripeHeight = isTop ? 0 : (offsets[cardIndex + 1] ?? 0) - (offsets[cardIndex] ?? 0);
-    const hitSlop = isTop
-      ? undefined
-      : { top: 0, bottom: Math.min(24, stripeHeight), left: 4, right: 4 };
-
     return (
-      <DraggableCard
-        key={cardIndex}
-        testID={
-          isTop ? `freecell-col-${colIndex}-top` : `freecell-col-${colIndex}-card-${cardIndex}`
-        }
-        style={[styles.cardSlot, { top: offsets[cardIndex] ?? 0 }]}
-        onTap={handlePress}
-        dragCards={dragCards}
-        dragSource={{ game: "freecell", type: "tableau", col: colIndex, fromIndex: cardIndex }}
-        hitSlop={hitSlop}
-      >
-        <SelectableCard
-          suit={card.suit as CanonicalSuit}
-          rank={card.rank}
-          width={cardWidth}
-          height={cardHeight}
-          selected={isSelected}
-          shakeX={isSelected ? shakeX : undefined}
-          hintHighlighted={isHint || isHintDest}
-          accessibilityLabel={label}
-        />
-      </DraggableCard>
+      <SelectableCard
+        suit={card.suit}
+        rank={card.rank}
+        width={cardWidth}
+        height={cardHeight}
+        selected={isSelected}
+        shakeX={isSelected ? shakeX : undefined}
+        hintHighlighted={isHint || isHintDest}
+        accessibilityLabel={label}
+      />
     );
-  });
-
-  if (hasDrop) {
-    return (
-      <DropTarget
-        id={dropId!}
-        testID={dropId}
-        onDrop={onDrop!}
-        style={containerStyle}
-        highlightStyle={highlightStyle}
-        dimStyle={dimStyle}
-      >
-        <View
-          style={StyleSheet.absoluteFill}
-          accessibilityLabel={t("pile.tableau.label", { col: colIndex + 1, count: pile.length })}
-        >
-          {cards}
-        </View>
-      </DropTarget>
-    );
-  }
+  };
 
   return (
-    <View
-      style={containerStyle}
-      accessibilityLabel={t("pile.tableau.label", { col: colIndex + 1, count: pile.length })}
-    >
-      {cards}
-    </View>
+    <SharedTableauColumn
+      game="freecell"
+      ns="freecell"
+      emptyRadius={6}
+      hintBorderWidth={2}
+      faceUpOffset={faceUpOffset}
+      cardTestID={(cardIndex, isTop) =>
+        isTop ? `freecell-col-${colIndex}-top` : `freecell-col-${colIndex}-card-${cardIndex}`
+      }
+      renderCard={renderCard}
+      pile={pile}
+      colIndex={colIndex}
+      hintDestination={hintDestination}
+      onCardPress={onCardPress}
+      onEmptyPress={onEmptyPress}
+      dropId={dropId}
+      onDrop={onDrop}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  empty: {
-    borderRadius: 6,
-    borderWidth: 1,
-    borderStyle: "dashed",
-  },
-  cardSlot: {
-    position: "absolute",
-    left: 0,
-  },
-});

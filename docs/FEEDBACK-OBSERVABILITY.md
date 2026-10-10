@@ -18,10 +18,11 @@ The in-app Feedback widget lets a player submit one of two types:
 - **Feature**
 
 The player supplies:
-- a required title, maximum 120 characters;
+
 - a required description, maximum 2,000 characters.
 
 The form does **not** ask for:
+
 - name;
 - email address;
 - screenshot;
@@ -34,7 +35,8 @@ The feedback category is attached as the Sentry tag `feedback.type`.
 Feedback is sent with `Sentry.captureFeedback()` to **Sentry User Feedback**.
 
 The payload contains:
-- `message`: title + blank line + description;
+
+- `message`: the description alone (there is no title field; Sentry derives the issue title from the message);
 - `source = "in_app_feedback"`;
 - `feedback.type` tag;
 - a `session-logs.txt` attachment when the local session-log buffer is non-empty.
@@ -48,6 +50,7 @@ The old shared Cloudflare-worker/GitHub path is historical and must not be descr
 `SessionLogger` wraps `console.warn` and `console.error` at app startup and keeps an in-memory circular buffer of the latest **200** warning/error entries.
 
 Each entry records:
+
 - ISO timestamp;
 - warn/error level;
 - formatted console message.
@@ -70,6 +73,7 @@ There is no separate server-side BC Arcade feedback rate limit because the submi
 The Sentry SDK owns delivery/retry of the feedback envelope.
 
 The form reports feedback as unavailable when:
+
 - Sentry is not initialized in the current build; or
 - the capture call throws.
 
@@ -78,6 +82,7 @@ Test-hooks builds and Expo Web do not initialize Sentry, so feedback delivery is
 ## 2. Automatic frontend Sentry diagnostics
 
 Sentry is initialized on supported native builds when:
+
 - the build is not a test-hooks build;
 - the platform is not Expo Web;
 - `EXPO_PUBLIC_SENTRY_DSN` is present.
@@ -113,6 +118,7 @@ After Sentry initialization, BC Arcade wraps `console.error`:
 - the original console call still executes.
 
 This wrapper composes with `SessionLogger`, so a console error can both:
+
 - enter the local feedback attachment buffer; and
 - be reported automatically to Sentry.
 
@@ -131,12 +137,54 @@ Current options include:
 - `send_default_pii = False`.
 
 The backend explicitly scrubs:
+
 - `X-Session-ID`;
 - `X-Admin-Token`;
 
 from Sentry events through its event scrubber.
 
 The pseudonymous session id can exist in BC Arcade's own database/logging systems, but it should not be forwarded as a Sentry request header.
+
+### Background-job failures
+
+A failed run of a background job (`backend/jobs/periodic.py`) is reported by one
+helper, `observability.report.report_exception(exc, subsystem=..., fingerprint=...)`:
+one event per failure, tagged `subsystem` and grouped by a fixed fingerprint.
+The jobs log the failure at WARNING, never ERROR, because the Sentry logging
+integration would turn an ERROR record into a second, untagged event.
+
+| Job                    | `subsystem`               | Fingerprint                        |
+| ---------------------- | ------------------------- | ---------------------------------- |
+| Daily Word retention   | `daily_word.retention`    | `daily-word-retention-prune-failed` |
+| App Store replay       | `purchases.apple_replay`  | `apple-notification-replay-failed`  |
+| Google Play jobs       | `purchases.google_jobs`   | `google-play-jobs-failed`           |
+
+### One reporter
+
+Background-job failures and the dropped/rejected-result reports go through
+`backend/observability/report.py`. Two plain one-line messages still call
+`sentry_sdk.capture_message` directly: the missing-`GameModule` report in
+`games/stats.py` and the store-misconfiguration report in
+`purchases/_common.misconfigured`.
+
+- `report_exception(exc, subsystem=..., fingerprint=...)` for a caught exception
+  (the background jobs above);
+- `report_event(message, *, level, fingerprint, tags, context=None, extras=None)`
+  for a message, with an explicit fingerprint, tags and Sentry contexts on a
+  throwaway scope that never leaks onto other events;
+- `Throttle(window_s)` for a reporter that could flood during one outage:
+  `allow()` is True for the first call in a window and False for the rest.
+
+The "dropped/rejected result" reporters are all `report_event` calls. They send
+field paths and error types only, never values or a session id.
+
+| Reporter                                       | Level   | Fingerprint                                                       | Tags                            |
+| ---------------------------------------------- | ------- | ----------------------------------------------------------------- | ------------------------------- |
+| `games.sessions._report_rejected_result` (400) | error   | `games-complete-result-rejected`, game type, reason               | `game_type`                     |
+| `yacht.models._report_dropped_card`            | error   | same as above, game type `yacht`, reason `<field> dropped`        | `game_type`                     |
+| `hearts.models._report_dropped_breakdown`      | warning | `hearts-result-breakdown-dropped`, reason                         | `game_type`                     |
+| `starswarm.models._report_dropped_breakdown`   | warning | `starswarm-result-breakdown-dropped`, reason                      | `game_type`, `reason`           |
+| `daily_word.router._report_degraded_guess`     | warning | `daily-word-guess-state-unavailable` (one event per 600 s window) | `subsystem=daily_word.progress` |
 
 ## 4. Session replay
 
@@ -155,6 +203,7 @@ Game/shared code can call:
 `gameEventClient.reportBug(level, source, message, context?)`
 
 with level:
+
 - `warn`;
 - `error`;
 - `fatal`.
@@ -162,6 +211,7 @@ with level:
 ### Local queue
 
 A bug report is converted into a `bug_log` row containing:
+
 - generated bug UUID;
 - level;
 - source;
@@ -190,6 +240,7 @@ The SyncWorker sends bug-log batches to:
 `POST /logs/bug`
 
 The route:
+
 - is keyed to the current `X-Session-ID`;
 - accepts up to 50 logs per batch;
 - is rate-limited to **30 requests/minute per session**;
@@ -197,6 +248,7 @@ The route:
 - stores accepted rows in Postgres `bug_logs`.
 
 Stored fields include:
+
 - bug id;
 - session id;
 - logged timestamp;
@@ -243,6 +295,7 @@ This separation matters for launch-health metrics: development/test noise must n
 Changes to any channel in this document require a privacy/disclosure review.
 
 At minimum cross-check:
+
 - `docs/privacy-policy.html`;
 - `docs/STORE-PRIVACY-ANSWERS.md`;
 - `docs/LEGAL-REVIEW-NOTES.md`;
@@ -250,6 +303,7 @@ At minimum cross-check:
 - `ATT-AUDIT.md` where tracking implications change.
 
 Examples that require re-review:
+
 - adding screenshots to feedback;
 - asking for email/name in feedback;
 - attaching the session id to Sentry;
@@ -270,9 +324,10 @@ The broader privacy declarations are owned by their dedicated legal/privacy work
 - Console-error forwarding → `utils/sentryConsoleError.ts`.
 - Internal bug logging → `gameEventClient.ts`, `eventStore.ts`, SyncWorker.
 - Backend bug-log API/storage → `backend/logs/`.
-- Backend Sentry initialization/scrubbing → `backend/main.py`.
+- Backend Sentry initialization/scrubbing → `backend/observability/sentry.py` (called from `create_app()` in `backend/main.py`).
 
 When changing one of these flows:
+
 1. update code/tests;
 2. update this document;
 3. re-check privacy/store/legal declarations;

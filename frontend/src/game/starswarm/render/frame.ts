@@ -2,12 +2,16 @@
  * #2564 (epic #2562, phase 2): every "what do we draw for this state" decision for the native
  * canvas, as a pure function returning a flat, ordered display list of primitive draw ops.
  *
- * The ops are plain data — numbers, strings and sprite keys, no Skia objects and no functions —
- * so the list can be replayed on the UI thread (#2565) by `drawFrame.ts`, a worklet that makes no
+ * The ops are plain data — numbers and sprite keys, no Skia objects and no functions — so the
+ * list can be replayed on the UI thread (#2565) by `drawFrame.ts`, a worklet that makes no
  * decisions of its own. Draw order is list order (painter's algorithm), so the order below is the
  * z-order on screen.
  *
- * The web renderer (`GameCanvas.web.tsx`, unmaintained) still derives the same rules itself.
+ * #2963: the background and starfield are not in the list — they are recorded once into their
+ * own Pictures and scrolled on the UI thread (`starfieldPictures.ts`), drawn under this one.
+ * Colours are packed numbers (`color.ts`), and op keys exist only while `setDebugOpKeys` is on.
+ *
+ * The web renderer (`GameCanvas.web.tsx`, secondary platform) still derives the same rules itself.
  */
 import {
   BULLET_C_W,
@@ -19,10 +23,30 @@ import {
 } from "../engine";
 import { buddyOps } from "./buddy";
 import { carrierOps } from "./carrier";
+import { opaque, withAlpha } from "./color";
+import type { PackedColor } from "./color";
 import { flinchWobble } from "./flinch";
+import {
+  ASTEROID_EDGE_RGB,
+  ASTEROID_FLASH_RGB,
+  ASTEROID_RGB,
+  BOMB_RGB,
+  BUDDY_POWERUP_RGB,
+  BUDDY_SHIP_RGB,
+  CHARGE_SHOT,
+  ENEMY_SHOT,
+  EXPLOSION_COOL_RGB,
+  EXPLOSION_HOT_RGB,
+  FLAK_SHOT,
+  HULL_BLUE_RGB,
+  LIGHTNING_RGB,
+  PLAYER_SHOT,
+  TIER_FALLBACK,
+  WHITE_RGB,
+} from "./palette";
+import { debugOpKeys } from "./opKeys";
 import { isUpgradePickup, upgradePickupOps } from "./pickups";
 import type { UpgradePickupType } from "./pickups";
-import type { StarfieldState } from "../starfield";
 import type { EnemyTier, PowerUpType, StarSwarmState } from "../types";
 
 /** Explosion sprite draw size, px. */
@@ -32,7 +56,7 @@ export const INVINCIBLE_BLINK_INTERVAL = 120;
 /** Buddy ship sprite size, px (square, centred on the ship). */
 export const BUDDY_SIZE = 34;
 /** Explosion strip length — the procedural fallback's progress runs over this many frames. */
-export const EXPLOSION_FRAME_COUNT = 20;
+const EXPLOSION_FRAME_COUNT = 20;
 
 /** Sprite names — identical to the `StarSwarmImages` fields they resolve to. */
 export type SpriteKey =
@@ -66,33 +90,37 @@ export type LoadedSprites = Readonly<Record<Exclude<SpriteKey, "explosion">, boo
   readonly explosion: readonly boolean[];
 };
 
-/** A primitive draw op. `key` is stable per entity — tests and debugging use it to find an op. */
+/**
+ * A primitive draw op. Colours are packed `0xAARRGGBB` numbers (#2963, see `color.ts`). `key`
+ * is stable per entity and only present while `setDebugOpKeys(true)` is on — tests and
+ * debugging use it to find an op; the app never builds it.
+ */
 export type DrawOp =
-  | { readonly k: "fill"; readonly key: string; readonly color: string }
+  | { readonly k: "fill"; readonly key?: string; readonly color: PackedColor }
   | {
       readonly k: "rect";
-      readonly key: string;
+      readonly key?: string;
       readonly x: number;
       readonly y: number;
       readonly w: number;
       readonly h: number;
-      readonly color: string;
+      readonly color: PackedColor;
       readonly opacity?: number;
     }
   | {
       readonly k: "circle";
-      readonly key: string;
+      readonly key?: string;
       readonly cx: number;
       readonly cy: number;
       readonly r: number;
-      readonly color: string;
+      readonly color: PackedColor;
       readonly opacity?: number;
       /** Stroke width; absent = filled. */
       readonly stroke?: number;
     }
   | {
       readonly k: "image";
-      readonly key: string;
+      readonly key?: string;
       readonly sprite: SpriteKey;
       /** Explosion frame index (only for `sprite: "explosion"`). */
       readonly frame?: number;
@@ -109,10 +137,10 @@ export type DrawOp =
     }
   | {
       readonly k: "poly";
-      readonly key: string;
+      readonly key?: string;
       /** Closed polygon, flat [x0, y0, x1, y1, …]. */
       readonly points: readonly number[];
-      readonly color: string;
+      readonly color: PackedColor;
       /** Stroke width; absent = filled. */
       readonly stroke?: number;
     };
@@ -124,19 +152,11 @@ export interface FrameOptions {
   readonly height: number;
 }
 
-const BACKGROUND = "#000010";
-
 const TIER_SPRITE: Record<EnemyTier, Exclude<SpriteKey, "explosion">> = {
   Grunt: "enemyGrunt",
   Elite: "enemyElite",
   Guardian: "enemyGuardian",
   Carrier: "enemyCarrier",
-};
-const TIER_FALLBACK: Record<EnemyTier, string> = {
-  Grunt: "#8888ff",
-  Elite: "#ff88ff",
-  Guardian: "#ffff44",
-  Carrier: "#b06cff",
 };
 const POWERUP_SPRITE: Partial<Record<PowerUpType, Exclude<SpriteKey, "explosion">>> = {
   shield: "puShield",
@@ -144,6 +164,17 @@ const POWERUP_SPRITE: Partial<Record<PowerUpType, Exclude<SpriteKey, "explosion"
   buddy: "puBuddy",
   lightning: "puLightning",
 };
+
+/** The shield / armor blue every ring and flash below is drawn in. */
+const SHIELD_RGB = HULL_BLUE_RGB;
+const ARMOR_RING = withAlpha(SHIELD_RGB, 0.45);
+const SHIELD_FILL = withAlpha(SHIELD_RGB, 0.25);
+const SHIELD_RING = withAlpha(SHIELD_RGB, 0.75);
+const LIGHTNING_TINT = withAlpha(LIGHTNING_RGB, 0.45);
+const BUDDY_FALLBACK = withAlpha(BUDDY_SHIP_RGB, 0.8);
+const PU_SHIELD = withAlpha(SHIELD_RGB, 0.9);
+const PU_BOMB = withAlpha(BOMB_RGB, 0.9);
+const PU_BUDDY = withAlpha(BUDDY_POWERUP_RGB, 0.9);
 
 /** Whether the player ship and its overlays are drawn this frame. */
 export function playerVisible(state: StarSwarmState): boolean {
@@ -190,50 +221,39 @@ function asteroidSprite(id: number): (typeof ASTEROID_SPRITES)[number] {
   return ASTEROID_SPRITES[Math.floor(frac * ASTEROID_SPRITES.length)]!;
 }
 
-/** The whole native-canvas scene for one frame, back to front. */
-export function buildFrame(
-  state: StarSwarmState,
-  sf: StarfieldState,
-  opts: FrameOptions
-): DrawOp[] {
+/** The whole native-canvas scene for one frame (above the starfield), back to front. */
+export function buildFrame(state: StarSwarmState, opts: FrameOptions): DrawOp[] {
   const { loaded } = opts;
-  const ops: DrawOp[] = [{ k: "fill", key: "bg", color: BACKGROUND }];
-
-  // Starfield
-  for (const star of sf.stars) {
-    ops.push({
-      k: "circle",
-      key: `star-${star.id}`,
-      cx: star.x,
-      cy: star.y,
-      r: star.r,
-      color: `rgba(255,255,255,${star.opacity})`,
-    });
-  }
+  const dbg = debugOpKeys(); // #2963: keys only for tests and debugging
+  const ops: DrawOp[] = [];
 
   // Enemy bullets — #2487 flak is amber. #2842: every shot in flight is live (none is ever
   // "harmless"), so none is dimmed.
   for (const b of state.enemyBullets) {
     ops.push({
       k: "rect",
-      key: `eb-${b.id}`,
+      key: dbg ? `eb-${b.id}` : undefined,
       x: b.x - b.width / 2,
       y: b.y - b.height / 2,
       w: b.width,
       h: b.height,
-      color: b.flak ? "#ffd27a" : "#ff4422",
+      color: b.flak ? FLAK_SHOT : ENEMY_SHOT,
     });
   }
 
   // Player bullets — charge bullets (wider) as a distinct cyan beam
   for (const b of state.playerBullets) {
-    const rect = { x: b.x - b.width / 2, y: b.y - b.height / 2, w: b.width, h: b.height };
+    const key = dbg ? `pb-${b.id}` : undefined;
+    const x = b.x - b.width / 2;
+    const y = b.y - b.height / 2;
+    const w = b.width;
+    const h = b.height;
     if (b.width >= BULLET_C_W) {
-      ops.push({ k: "rect", key: `pb-${b.id}`, ...rect, color: "#00f0ff" });
+      ops.push({ k: "rect", key, x, y, w, h, color: CHARGE_SHOT });
     } else if (loaded.bulletPlayer) {
-      ops.push({ k: "image", key: `pb-${b.id}`, sprite: "bulletPlayer", ...rect, fit: "fill" });
+      ops.push({ k: "image", key, sprite: "bulletPlayer", x, y, w, h, fit: "fill" });
     } else {
-      ops.push({ k: "rect", key: `pb-${b.id}`, ...rect, color: "#00ffcc" });
+      ops.push({ k: "rect", key, x, y, w, h, color: PLAYER_SHOT });
     }
   }
 
@@ -241,34 +261,27 @@ export function buildFrame(
   const armored = isCarrierArmored(state);
   for (const e of state.enemies) {
     if (!e.isAlive) continue;
+    const key = dbg ? `en-${e.id}` : undefined;
     const wobble = flinchWobble(e.flinchMs); // #2881: reaction cue
-    const rect = {
-      x: e.x - e.width / 2 + wobble.dx,
-      y: e.y - e.height / 2,
-      w: e.width,
-      h: e.height,
-    };
+    const x = e.x - e.width / 2 + wobble.dx;
+    const y = e.y - e.height / 2;
+    const w = e.width;
+    const h = e.height;
     const sprite = TIER_SPRITE[e.tier];
     if (loaded[sprite]) {
-      ops.push({
-        k: "image",
-        key: `en-${e.id}`,
-        sprite,
-        ...rect,
-        fit: "fill",
-        ...(wobble.rotate !== 0 ? { rotate: wobble.rotate } : {}),
-      });
+      const rotate = wobble.rotate !== 0 ? wobble.rotate : undefined;
+      ops.push({ k: "image", key, sprite, x, y, w, h, fit: "fill", rotate });
     } else {
-      ops.push({ k: "rect", key: `en-${e.id}`, ...rect, color: TIER_FALLBACK[e.tier] });
+      ops.push({ k: "rect", key, x, y, w, h, color: TIER_FALLBACK[e.tier] });
     }
     if (e.tier === "Carrier" && armored) {
       ops.push({
         k: "circle",
-        key: `en-${e.id}-ring`,
+        key: dbg ? `${key}-ring` : undefined,
         cx: e.x,
         cy: e.y,
         r: Math.max(e.width, e.height) * 0.62,
-        color: "rgba(0,170,255,0.45)",
+        color: ARMOR_RING,
         stroke: 2,
       });
     }
@@ -276,59 +289,61 @@ export function buildFrame(
       const f = hitFlash(e.width, e.height, e.hitFlashTimer);
       ops.push({
         k: "circle",
-        key: `en-${e.id}-flash`,
+        key: dbg ? `${key}-flash` : undefined,
         cx: e.x,
         cy: e.y,
         r: f.r,
-        color: `rgba(0,170,255,${f.fillAlpha.toFixed(3)})`,
+        color: withAlpha(SHIELD_RGB, f.fillAlpha),
       });
       ops.push({
         k: "circle",
-        key: `en-${e.id}-flash-ring`,
+        key: dbg ? `${key}-flash-ring` : undefined,
         cx: e.x,
         cy: e.y,
         r: f.r,
-        color: `rgba(0,170,255,${f.strokeAlpha.toFixed(3)})`,
+        color: withAlpha(SHIELD_RGB, f.strokeAlpha),
         stroke: 3,
       });
     }
   }
 
   // #2485/#2843 Carrier telegraphs (beam charge, attack-run brace) and released beams
-  ops.push(...carrierOps(state));
+  carrierOps(state, ops);
 
   // Player and its overlays — one visibility rule for all of them
   const { player } = state;
   if (playerVisible(state)) {
-    const rect = {
-      x: player.x - player.width / 2,
-      y: player.y - player.height / 2,
-      w: player.width,
-      h: player.height,
-    };
+    const x = player.x - player.width / 2;
+    const y = player.y - player.height / 2;
+    const w = player.width;
+    const h = player.height;
     if (loaded.playerShip) {
-      ops.push({ k: "image", key: "player", sprite: "playerShip", ...rect, fit: "fill" });
+      ops.push({
+        k: "image",
+        key: dbg ? "player" : undefined,
+        sprite: "playerShip",
+        x,
+        y,
+        w,
+        h,
+        fit: "fill",
+      });
     } else {
-      ops.push({ k: "rect", key: "player", ...rect, color: "#00ffcc" });
+      ops.push({ k: "rect", key: dbg ? "player" : undefined, x, y, w, h, color: PLAYER_SHOT });
     }
     // #1033 shield aura
     if (state.activePowerUp?.type === "shield") {
       const r = player.width * 0.8;
+      const cx = player.x;
+      const cy = player.y;
+      ops.push({ k: "circle", key: dbg ? "shield" : undefined, cx, cy, r, color: SHIELD_FILL });
       ops.push({
         k: "circle",
-        key: "shield",
-        cx: player.x,
-        cy: player.y,
+        key: dbg ? "shield-ring" : undefined,
+        cx,
+        cy,
         r,
-        color: "rgba(0,170,255,0.25)",
-      });
-      ops.push({
-        k: "circle",
-        key: "shield-ring",
-        cx: player.x,
-        cy: player.y,
-        r,
-        color: "rgba(0,170,255,0.75)",
+        color: SHIELD_RING,
         stroke: 2,
       });
     }
@@ -337,41 +352,42 @@ export function buildFrame(
       const t = player.hullFlashTimer;
       ops.push({
         k: "circle",
-        key: "hull-flash",
+        key: dbg ? "hull-flash" : undefined,
         cx: player.x,
         cy: player.y,
         r: player.width * (0.6 + 0.4 * (1 - t / HIT_FLASH_DURATION)),
-        color: `rgba(0,170,255,${((0.75 * t) / HIT_FLASH_DURATION).toFixed(3)})`,
+        color: withAlpha(SHIELD_RGB, (0.75 * t) / HIT_FLASH_DURATION),
         stroke: 3,
       });
     }
     // Lightning super-state tint
     if (state.activePowerUp?.type === "lightning") {
-      ops.push({ k: "rect", key: "lightning", ...rect, color: "rgba(255,238,0,0.45)" });
+      ops.push({
+        k: "rect",
+        key: dbg ? "lightning" : undefined,
+        x,
+        y,
+        w,
+        h,
+        color: LIGHTNING_TINT,
+      });
     }
   }
 
   // #1035 Buddy ships — the sprite faces its direction of travel
   for (const buddy of state.buddyShips) {
-    const rect = {
-      x: buddy.x - BUDDY_SIZE / 2,
-      y: buddy.y - BUDDY_SIZE / 2,
-      w: BUDDY_SIZE,
-      h: BUDDY_SIZE,
-    };
+    const key = dbg ? `buddy-${buddy.id}` : undefined;
+    const x = buddy.x - BUDDY_SIZE / 2;
+    const y = buddy.y - BUDDY_SIZE / 2;
+    const w = BUDDY_SIZE;
+    const h = BUDDY_SIZE;
     if (loaded.buddyShip) {
-      ops.push({
-        k: "image",
-        key: `buddy-${buddy.id}`,
-        sprite: "buddyShip",
-        ...rect,
-        fit: "fill",
-        flipX: !buddy.facingRight,
-      });
+      const flipX = !buddy.facingRight;
+      ops.push({ k: "image", key, sprite: "buddyShip", x, y, w, h, fit: "fill", flipX });
     } else {
-      ops.push({ k: "rect", key: `buddy-${buddy.id}`, ...rect, color: "rgba(0,120,255,0.8)" });
+      ops.push({ k: "rect", key, x, y, w, h, color: BUDDY_FALLBACK });
     }
-    ops.push(...buddyOps(buddy, BUDDY_SIZE)); // #2845 HP bar + hit flash, shared with web
+    buddyOps(buddy, BUDDY_SIZE, ops); // #2845 HP bar + hit flash, shared with web
   }
 
   // Power-ups — sprites with procedural fallbacks; #2488 salvage and hull are procedural
@@ -380,17 +396,17 @@ export function buildFrame(
     const ly = pu.y - pu.height / 2;
     const pw = pu.width;
     const ph = pu.height;
-    const key = `pu-${pu.id}`;
+    const key = dbg ? `pu-${pu.id}` : undefined;
     const sprite = POWERUP_SPRITE[pu.type];
     if (sprite && loaded[sprite]) {
       ops.push({ k: "image", key, sprite, x: lx, y: ly, w: pw, h: ph, fit: "contain" });
     } else if (isUpgradePickup(pu.type)) {
       // #2847: salvage crate / hull plating — shared geometry, halo + glyph
-      ops.push(...upgradePickupOps(pu as typeof pu & { type: UpgradePickupType }));
+      upgradePickupOps(pu as typeof pu & { type: UpgradePickupType }, ops);
     } else if (pu.type === "shield") {
-      ops.push({ k: "circle", key, cx: pu.x, cy: pu.y, r: pw * 0.4, color: "rgba(0,170,255,0.9)" });
+      ops.push({ k: "circle", key, cx: pu.x, cy: pu.y, r: pw * 0.4, color: PU_SHIELD });
     } else if (pu.type === "bomb") {
-      ops.push({ k: "circle", key, cx: pu.x, cy: pu.y, r: pw * 0.4, color: "rgba(255,80,0,0.9)" });
+      ops.push({ k: "circle", key, cx: pu.x, cy: pu.y, r: pw * 0.4, color: PU_BOMB });
     } else if (pu.type === "buddy") {
       ops.push({
         k: "rect",
@@ -399,7 +415,7 @@ export function buildFrame(
         y: ly + ph * 0.2,
         w: pw * 0.6,
         h: ph * 0.6,
-        color: "rgba(0,255,200,0.9)",
+        color: PU_BUDDY,
       });
     } else {
       // lightning bolt
@@ -420,7 +436,7 @@ export function buildFrame(
           lx + pw * 0.542,
           ly + ph * 0.458,
         ],
-        color: "#ffee00",
+        color: opaque(LIGHTNING_RGB),
       });
     }
   }
@@ -428,12 +444,13 @@ export function buildFrame(
   // #2486/#2573 Asteroids — one of 4 Kenney meteor sprites, spun by `rotation`, or the
   // procedural outline (filled then stroked) while sprites load
   for (const a of state.asteroids) {
+    const key = dbg ? `rock-${a.id}` : undefined;
     const sprite = asteroidSprite(a.id);
     if (loaded[sprite]) {
       const size = a.radius * 2;
       ops.push({
         k: "image",
-        key: `rock-${a.id}`,
+        key,
         sprite,
         x: a.x - a.radius,
         y: a.y - a.radius,
@@ -446,33 +463,36 @@ export function buildFrame(
         const f = hitFlash(size, size, a.hitFlashTimer, ASTEROID_HIT_FLASH_MS);
         ops.push({
           k: "circle",
-          key: `rock-${a.id}-flash`,
+          key: dbg ? `${key}-flash` : undefined,
           cx: a.x,
           cy: a.y,
           r: f.r,
-          color: `rgba(255,255,255,${f.strokeAlpha.toFixed(3)})`,
+          color: withAlpha(WHITE_RGB, f.strokeAlpha),
           stroke: 2,
         });
       }
     } else {
       const points = flatRounded(asteroidOutline(a));
+      const color = opaque(a.hitFlashTimer > 0 ? ASTEROID_FLASH_RGB : ASTEROID_RGB);
+      ops.push({ k: "poly", key, points, color });
       ops.push({
         k: "poly",
-        key: `rock-${a.id}`,
+        key: dbg ? `${key}-edge` : undefined,
         points,
-        color: a.hitFlashTimer > 0 ? "#e8d3b8" : "#8b6a47",
+        color: opaque(ASTEROID_EDGE_RGB),
+        stroke: 1.5,
       });
-      ops.push({ k: "poly", key: `rock-${a.id}-edge`, points, color: "#c9a27a", stroke: 1.5 });
     }
   }
 
   // Explosions — sprite strip, or a procedural burst while frames load
   for (const exp of state.explosions) {
+    const key = dbg ? `ex-${exp.id}` : undefined;
     if (loaded.explosion[exp.frame]) {
       const half = EXPLOSION_DRAW_SIZE / 2;
       ops.push({
         k: "image",
-        key: `ex-${exp.id}`,
+        key,
         sprite: "explosion",
         frame: exp.frame,
         x: exp.x - half,
@@ -485,11 +505,11 @@ export function buildFrame(
       const progress = exp.frame / EXPLOSION_FRAME_COUNT;
       ops.push({
         k: "circle",
-        key: `ex-${exp.id}`,
+        key,
         cx: exp.x,
         cy: exp.y,
         r: 6 + progress * 18,
-        color: progress < 0.4 ? "#ffcc00" : "#ff4400",
+        color: opaque(progress < 0.4 ? EXPLOSION_HOT_RGB : EXPLOSION_COOL_RGB),
         opacity: 1 - progress,
       });
     }
@@ -499,12 +519,12 @@ export function buildFrame(
   if (state.bombFlashTimer > 0) {
     ops.push({
       k: "rect",
-      key: "bomb-flash",
+      key: dbg ? "bomb-flash" : undefined,
       x: 0,
       y: 0,
       w: opts.width,
       h: opts.height,
-      color: `rgba(255,255,255,${(state.bombFlashTimer / 300) * 0.75})`,
+      color: withAlpha(WHITE_RGB, (state.bombFlashTimer / 300) * 0.75),
     });
   }
 

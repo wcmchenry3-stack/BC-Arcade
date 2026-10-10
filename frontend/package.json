@@ -8,41 +8,48 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "test": "jest",
+    "test:ci": "jest --coverage",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.tooling.json",
     "format:check": "prettier --check .",
     "translate": "node scripts/translate.js",
     "check-i18n": "node scripts/check-i18n-strings.js",
-    "process-assets": "python scripts/remove_backgrounds.py",
-    "extract-vertices": "python scripts/extract_vertices.py",
+    "check-colors": "node scripts/check-color-literals.mjs",
+    "test:check-colors": "node --test scripts/check-color-literals.test.mjs",
+    "process-assets": "python ../tools/assets/remove_backgrounds.py",
+    "extract-vertices": "python ../tools/assets/extract_vertices.py",
     "bundlesize": "bundlesize",
+    "size-report": "node scripts/size-report.mjs --bundle dist/index.android.bundle --assets dist/assets --sources",
+    "test:size-report": "node --test scripts/size-report.test.mjs",
     "check-build-env": "node scripts/check-build-env.js",
     "prebuild": "node scripts/optimize-assets.js"
   },
   "jest": {
-    "preset": "jest-expo",
-    "setupFiles": [
-      "./jest.setup.ts"
+    "collectCoverageFrom": [
+      "src/**/*.{ts,tsx,js,jsx}",
+      "App.tsx",
+      "!src/**/__tests__/**",
+      "!src/**/__mocks__/**",
+      "!src/**/*.d.ts",
+      "!src/screens/__dev__/**",
+      "!src/i18n/glossary.js",
+      "!src/i18n/localeLoaders.ts",
+      "!**/*.generated.ts"
     ],
-    "setupFilesAfterEnv": [
-      "./jest.setup-after-env.ts"
+    "coverageReporters": [
+      "json",
+      "json-summary",
+      "lcov",
+      "text",
+      "clover"
     ],
     "testTimeout": 15000,
-    "testMatch": [
-      "**/__tests__/**/*.test.ts",
-      "**/__tests__/**/*.test.tsx"
-    ],
-    "testPathIgnorePatterns": [
-      "/node_modules/",
-      "\\.worktrees/"
-    ],
-    "transformIgnorePatterns": [
-      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|react-navigation|@react-navigation/.*|i18next|react-i18next|i18next-resources-to-backend|@formatjs/.*)"
-    ],
     "coverageThreshold": {
       "global": {
-        "lines": 80,
-        "statements": 80
+        "lines": 90,
+        "statements": 90,
+        "branches": 85,
+        "functions": 88
       },
       "./src/game/solitaire/engine.ts": {
         "lines": 80
@@ -54,9 +61,64 @@
         "lines": 80
       }
     },
-    "moduleNameMapper": {
-      "\\.(mp3|ogg)$": "<rootDir>/src/__mocks__/fileMock.js"
-    }
+    "projects": [
+      {
+        "displayName": "app",
+        "preset": "jest-expo",
+        "setupFiles": [
+          "./jest.setup.ts"
+        ],
+        "setupFilesAfterEnv": [
+          "./jest.setup-after-env.ts"
+        ],
+        "transformIgnorePatterns": [
+          "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|react-navigation|@react-navigation/.*|i18next|react-i18next|i18next-resources-to-backend|@formatjs/.*)"
+        ],
+        "moduleNameMapper": {
+          "\\.(mp3|ogg)$": "<rootDir>/src/__mocks__/fileMock.js"
+        },
+        "testMatch": [
+          "**/__tests__/**/*.test.ts",
+          "**/__tests__/**/*.test.tsx"
+        ],
+        "testPathIgnorePatterns": [
+          "/node_modules/",
+          "\\.worktrees/",
+          "<rootDir>/tooling/"
+        ],
+        "coveragePathIgnorePatterns": [
+          "/node_modules/",
+          "<rootDir>/src/test-utils/"
+        ]
+      },
+      {
+        "displayName": "tooling",
+        "preset": "jest-expo",
+        "setupFiles": [
+          "./jest.setup.ts"
+        ],
+        "setupFilesAfterEnv": [
+          "./jest.setup-after-env.ts"
+        ],
+        "transformIgnorePatterns": [
+          "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|react-navigation|@react-navigation/.*|i18next|react-i18next|i18next-resources-to-backend|@formatjs/.*)"
+        ],
+        "moduleNameMapper": {
+          "\\.(mp3|ogg)$": "<rootDir>/src/__mocks__/fileMock.js"
+        },
+        "testMatch": [
+          "<rootDir>/tooling/**/__tests__/**/*.test.ts"
+        ],
+        "testPathIgnorePatterns": [
+          "/node_modules/",
+          "\\.worktrees/"
+        ],
+        "coveragePathIgnorePatterns": [
+          "/node_modules/",
+          "<rootDir>/src/test-utils/"
+        ]
+      }
+    ]
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",
@@ -65,21 +127,20 @@
     "@formatjs/intl-pluralrules": "^6.3.15",
     "@react-native-async-storage/async-storage": "3.1.1",
     "@react-native-community/netinfo": "12.0.1",
-    "@react-navigation/bottom-tabs": "^7.19.2",
-    "@react-navigation/native": "^7.4.1",
-    "@react-navigation/native-stack": "^7.19.2",
+    "@react-navigation/bottom-tabs": "^7.20.0",
+    "@react-navigation/native": "^7.5.0",
+    "@react-navigation/native-stack": "^7.20.0",
     "@sentry/react-native": "~8.27.0",
     "@shopify/react-native-skia": "2.12.0",
-    "expo": "~57.0.24",
+    "expo": "~57.0.26",
     "expo-audio": "~57.0.5",
     "expo-blur": "~57.0.3",
     "expo-dev-client": "~57.0.19",
+    "expo-font": "~57.0.4",
     "expo-haptics": "~57.0.3",
     "expo-linear-gradient": "~57.0.2",
     "expo-localization": "~57.0.2",
     "expo-modules-core": "~57.0.12",
-    "expo-screen-orientation": "~57.0.2",
-    "expo-status-bar": "~57.0.1",
     "fflate": "^0.8.3",
     "i18next": "^26.4.2",
     "i18next-resources-to-backend": "^1.2.3",
@@ -99,8 +160,6 @@
     "react-native-worklets": "0.11.4"
   },
   "devDependencies": {
-    "@eslint/compat": "^2.1.1",
-    "@expo/config-plugins": "~57.0.8",
     "@react-native/jest-preset": "~0.86.3",
     "@testing-library/react-native": "^14.0.1",
     "@types/jest": "29.5.14",
@@ -110,18 +169,22 @@
     "@typescript-eslint/parser": "^8.70.1",
     "bundlesize2": "^0.0.35",
     "eslint": "^9.8.0",
-    "eslint-plugin-import": "^2.32.0",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import-x": "^4.17.1",
     "eslint-plugin-react": "^7.37.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "fast-check": "^4.10.2",
     "globals": "^17.12.0",
     "jest": "^29.7.0",
     "jest-expo": "~57.0.5",
+    "jsdom": "^20.0.3",
+    "knip": "^5.88.1",
     "prettier": "^3.9.8",
     "react-test-renderer": "19.2.8",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "source-map-explorer": "^2.5.3",
     "test-renderer": "^1.3.0",
+    "tsx": "4.23.15",
     "typescript": "~6.0.3"
   },
   "bundlesize": [

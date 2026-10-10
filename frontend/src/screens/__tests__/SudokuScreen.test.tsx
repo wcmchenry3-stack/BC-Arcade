@@ -24,8 +24,8 @@ const mockPopToTop = jest.fn();
 const mockNavigate = jest.fn();
 // Captured so tests can fire `beforeRemove` (back-navigation).
 const mockNavListeners = new Map<string, Array<() => void>>();
-jest.mock("@react-navigation/native", () => ({
-  useNavigation: () => ({
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({
     popToTop: mockPopToTop,
     goBack: jest.fn(),
     navigate: mockNavigate,
@@ -38,8 +38,8 @@ jest.mock("@react-navigation/native", () => ({
         );
       };
     }),
-  }),
-}));
+  }))
+);
 
 const mockStartGame = jest.fn<string, [string, Record<string, unknown>, Record<string, unknown>]>();
 const mockEnqueueEvent = jest.fn();
@@ -47,26 +47,23 @@ const mockCompleteGame = jest.fn();
 const mockMarkStarted = jest.fn();
 const mockDiscardGame = jest.fn();
 const mockResumeGame = jest.fn<string | null, [string, Record<string, unknown> | undefined]>();
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as unknown as jest.Mock)(...args),
-    enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
-    markStarted: (...args: unknown[]) => (mockMarkStarted as unknown as jest.Mock)(...args),
-    discardGame: (...args: unknown[]) => (mockDiscardGame as unknown as jest.Mock)(...args),
-    resumeGame: (...args: unknown[]) => (mockResumeGame as unknown as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    enqueueEvent: lazy(() => mockEnqueueEvent),
+    completeGame: lazy(() => mockCompleteGame),
+    markStarted: lazy(() => mockMarkStarted),
+    discardGame: lazy(() => mockDiscardGame),
+    resumeGame: lazy(() => mockResumeGame),
+  });
+});
 
-// The result card reads the synced game's rank (#2632, sessionBoardAdapter).
+// The result card reads the synced game's rank (#2632, lookupGameRank).
 const mockGetGameRank = jest.fn();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getGameRank: (gameId: string) => mockGetGameRank(gameId) },
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetGameRank(gameId) })
+);
 jest.mock("../../api/players", () => ({
   playersApi: { putMe: jest.fn(() => Promise.resolve({ display_name: "Brave Otter 4821" })) },
 }));
@@ -74,9 +71,21 @@ jest.mock("../../api/players", () => ({
 // The hook's foreground clock (#2684) is held still by the shared mock
 // jest.setup.ts pins (#2710), so the summaries below carry only what the
 // screen sends: its own play timer.
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: jest.fn(() => Promise.resolve()),
-}));
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+
+// Counts the grid's renders (#2964): the real grid, behind a counting wrapper.
+let mockGridRenders = 0;
+jest.mock("../../components/sudoku/SudokuGrid", () => {
+  const actual = jest.requireActual("../../components/sudoku/SudokuGrid");
+  const ReactActual = jest.requireActual("react");
+  return {
+    __esModule: true,
+    default: (props: unknown) => {
+      mockGridRenders += 1;
+      return ReactActual.createElement(actual.default, props);
+    },
+  };
+});
 
 // Import after mocks so the test file gets the jest.fn() flavour.
 
@@ -706,6 +715,29 @@ describe("SudokuScreen — result card (#2511)", () => {
     expect((completed![1] as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(65_000);
   });
 
+  it("records no time, no new best and keeps the real best when the device clock steps back (#2964)", async () => {
+    const stored = JSON.stringify({ classic: { easy: { bestTimeS: 30, gamesSolved: 4 } } });
+    await AsyncStorage.setItem("sudoku_stats_v1", stored);
+    const r = await solvePuzzle({ elapsedMs: -5_000 });
+    const card = within(r.getByTestId("sudoku-result"));
+    // The card shows no time, no "New best", and the real best it already had.
+    expect(card.queryByText("Time")).toBeNull();
+    expect(card.queryByText("New best")).toBeNull();
+    expect(card.getByText("00:30")).toBeTruthy();
+    // The game reports no duration of its own (never a negative one), so sync
+    // falls back to its foreground window.
+    const completed = mockCompleteGame.mock.calls.find(
+      ([, summary]) => (summary as { outcome?: string }).outcome === "completed"
+    );
+    expect(completed).toBeDefined();
+    expect((completed![1] as { durationMs?: number }).durationMs ?? null).toBeNull();
+    // The cached best is untouched: it is not replaced by 0, the "no best" mark.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(await AsyncStorage.getItem("sudoku_stats_v1")).toBe(stored);
+  });
+
   // #2632: the card reads the synced game's rank (GET /games/{id}/rank)
   // instead of PATCH /sudoku/score/{id}.
   it("shows the synced game's rank under the display name automatically", async () => {
@@ -866,5 +898,111 @@ describe("SudokuScreen — load while away (#2750)", () => {
     const abandon = mockCompleteGame.mock.calls.at(-1)!;
     expect(abandon[0]).toBe("orphan-easy");
     expect((abandon[1] as Record<string, unknown>)["durationMs"]).toBe(5_000);
+  });
+});
+
+describe("SudokuScreen — HUD clock (#2964)", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("advances the clock every second without re-rendering the grid", async () => {
+    jest.useFakeTimers();
+    const fresh = loadPuzzle("easy", "classic", () => 0);
+    const open = fresh.grid
+      .flatMap((cells, row) => cells.map((cell, col) => ({ cell, row, col })))
+      .find(({ cell }) => !cell.given)!;
+    await saveGame(fillAllExcept(fresh, open)); // under way: its clock runs on load
+
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    expect(r.getByLabelText("Elapsed time 00:00")).toBeTruthy();
+
+    const rendersBeforeTicks = mockGridRenders;
+    expect(rendersBeforeTicks).toBeGreaterThan(0);
+    for (let second = 1; second <= 5; second++) {
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(r.getByLabelText(`Elapsed time 00:0${second}`)).toBeTruthy();
+    }
+    expect(mockGridRenders).toBe(rendersBeforeTicks);
+  });
+
+  it("holds the clock while paused and resumes on the clock's own second", async () => {
+    jest.useFakeTimers();
+    const fresh = loadPuzzle("easy", "classic", () => 0);
+    const open = fresh.grid
+      .flatMap((cells, row) => cells.map((cell, col) => ({ cell, row, col })))
+      .find(({ cell }) => !cell.given)!;
+    await saveGame(fillAllExcept(fresh, open));
+
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:02")).toBeTruthy();
+
+    const rendersBeforePause = mockGridRenders;
+
+    // Another screen covers the puzzle for five seconds: the HUD does not move.
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:02")).toBeTruthy();
+
+    // Back again: the paused five seconds stay out, and the next second lands
+    // exactly one second after the resume.
+    await act(async () => {
+      mockNavListeners.get("focus")?.forEach((h) => h());
+    });
+    expect(r.getByLabelText("Elapsed time 00:02")).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(999);
+    });
+    expect(r.getByLabelText("Elapsed time 00:02")).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(r.getByLabelText("Elapsed time 00:03")).toBeTruthy();
+    // Pausing and resuming never re-rendered the grid.
+    expect(mockGridRenders).toBe(rendersBeforePause);
+  });
+
+  it("starts the HUD's seconds at the first move, not at mount", async () => {
+    jest.useFakeTimers();
+    const r = await renderAndAwaitLoad();
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: /start/i }));
+    });
+    const emptyCells = r
+      .getAllByRole("button")
+      .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1700); // thinking: no move yet
+    });
+    expect(r.getByLabelText("Elapsed time 00:00")).toBeTruthy();
+
+    const digit = r
+      .getAllByLabelText(/enter digit \d/i)
+      .find((b) => !b.props.accessibilityState?.disabled)!;
+    await act(async () => {
+      await fireEvent.press(digit);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(999);
+    });
+    expect(r.getByLabelText("Elapsed time 00:00")).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(r.getByLabelText("Elapsed time 00:01")).toBeTruthy();
   });
 });

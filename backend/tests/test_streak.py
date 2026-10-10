@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,16 +16,18 @@ from sqlalchemy import event, select
 
 from daily_challenge.definitions import FREE_GOAL_POOL, Template, _at_least
 from daily_challenge.service import slate_for_games
-from daily_challenge.streak import GOALS_TO_QUALIFY, LOOKBACK_DAYS, compute_streak
+from daily_challenge.streak import GOALS_TO_QUALIFY, compute_streak, lookback_days
 from db.base import get_session_factory, is_configured
 from db.models import Game, GameEntitlement, GameType
+from tests._helpers import session_headers as _headers
+from tests._helpers import set_dev_override
 
 needs_db = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping streak tests",
 )
 
-_NOW = datetime(2026, 10, 9, 15, 0, tzinfo=timezone.utc)
+_NOW = datetime(2026, 10, 9, 15, 0, tzinfo=UTC)
 _TODAY = _NOW.date()
 
 _SCORE = FREE_GOAL_POOL["twenty48"][0]  # final_score >= 500
@@ -37,14 +39,14 @@ _TEMPLATE = Template("streak_for_tests", (_SCORE, _LEVEL, _MOVES))
 @pytest.fixture(autouse=True)
 def pinned_template(monkeypatch: pytest.MonkeyPatch) -> None:
     # A shell that exports the dev override must not change what these assert.
-    monkeypatch.delenv("ENTITLEMENT_DEV_OVERRIDE", raising=False)
+    set_dev_override(monkeypatch, "")
     monkeypatch.setattr(
         "daily_challenge.streak.template_for", lambda _day, _slate="free": _TEMPLATE
     )
 
 
 def _at(day: date, hour: int = 12) -> datetime:
-    return datetime(day.year, day.month, day.day, hour, tzinfo=timezone.utc)
+    return datetime(day.year, day.month, day.day, hour, tzinfo=UTC)
 
 
 async def _add(sid: str, game_type: str, when: datetime, **fields) -> None:
@@ -95,7 +97,7 @@ def _ago(days: int) -> date:
 
 def test_the_threshold_is_two_of_three() -> None:
     assert GOALS_TO_QUALIFY == 2 and len(_TEMPLATE.goals) == 3
-    assert LOOKBACK_DAYS == 60
+    assert lookback_days() == 60
 
 
 @needs_db
@@ -192,9 +194,9 @@ async def test_other_sessions_do_not_count() -> None:
 @needs_db
 async def test_the_streak_is_capped_at_the_lookback() -> None:
     sid = str(uuid.uuid4())
-    for n in range(LOOKBACK_DAYS + 10):
+    for n in range(lookback_days() + 10):
         await _qualifying_day(sid, _ago(n))
-    assert await _streak(sid) == LOOKBACK_DAYS
+    assert await _streak(sid) == lookback_days()
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +208,7 @@ async def test_the_streak_is_capped_at_the_lookback() -> None:
 async def test_days_are_the_players_local_days() -> None:
     sid = str(uuid.uuid4())
     # 03:00 UTC on Oct 9 is Oct 8 20:00 in UTC-7 but Oct 9 in UTC.
-    late = datetime(2026, 10, 9, 3, 0, tzinfo=timezone.utc)
+    late = datetime(2026, 10, 9, 3, 0, tzinfo=UTC)
     for when in (late, _at(_ago(1))):  # _ago(1) is Oct 8 12:00 UTC: Oct 8 in both zones
         await _add(sid, "twenty48", when, final_score=600)
         await _add(sid, "sort", when, final_score=12)
@@ -219,7 +221,7 @@ async def test_days_are_the_players_local_days() -> None:
 @needs_db
 async def test_a_game_at_local_midnight_belongs_to_the_new_day() -> None:
     sid = str(uuid.uuid4())
-    midnight = datetime(2026, 10, 8, 7, 0, tzinfo=timezone.utc)  # 00:00 Oct 8 in UTC-7
+    midnight = datetime(2026, 10, 8, 7, 0, tzinfo=UTC)  # 00:00 Oct 8 in UTC-7
     await _add(sid, "twenty48", midnight, final_score=600)
     await _add(sid, "sort", midnight, final_score=12)
     # Oct 8 local is yesterday for a player at UTC-7 whose now is Oct 9 08:00.
@@ -278,7 +280,7 @@ async def test_each_past_day_uses_the_slate_the_session_is_entitled_to(two_slate
 async def test_dev_override_replays_with_the_premium_slate(
     two_slates: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    set_dev_override(monkeypatch, "true")
     sid = str(uuid.uuid4())
     await _qualifying_day(sid, _ago(1))
     assert await _streak(sid) == 0
@@ -314,7 +316,7 @@ async def test_the_lookback_is_one_query_not_one_per_day_while_the_slates_match(
     # Free and premium templates are identical (as until #2458), so only one slate's
     # frozen templates are ever fetched: the window of games, one SELECT for the
     # window's daily_challenge_days rows, and one INSERT freezing the ones that were
-    # missing (every day, on this fresh DB) — fixed regardless of LOOKBACK_DAYS.
+    # missing (every day, on this fresh DB) — fixed regardless of lookback_days().
     assert len(await _statements_for_a_30_day_streak()) == 3
 
 
@@ -324,7 +326,7 @@ async def test_entitlements_are_one_more_query_and_only_when_the_slates_differ(
 ) -> None:
     # Differing slates fetch both slates' frozen templates (SELECT + INSERT each, on
     # this fresh DB) and add the entitlements query: games(1) + free(2) + premium(2)
-    # + entitlements(1) = 6 — still fixed regardless of LOOKBACK_DAYS, just a higher
+    # + entitlements(1) = 6 — still fixed regardless of lookback_days(), just a higher
     # constant than the matching-slates case above.
     statements = await _statements_for_a_30_day_streak()
     assert len(statements) == 6, statements
@@ -341,10 +343,6 @@ def client() -> TestClient:
     from main import app
 
     return TestClient(app)
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 @needs_db

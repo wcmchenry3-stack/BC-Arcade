@@ -37,18 +37,23 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 import unicodedata
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-import sentry_sdk
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from daily_word.progress import MAX_GUESSES, GuessOutcome, may_see_answer, record_guess
 from daily_word.puzzle import get_answer, get_today_meta, is_valid_guess
-from db.base import get_session_factory
+from db.base import DbSession, get_session_factory
 from limiter import _real_ip, limiter
+from observability.report import Throttle, report_event
+from rate_limits import (
+    DAILY_WORD_ANSWER_IP_RATE_LIMIT,
+    DAILY_WORD_GUESS_IP_RATE_LIMIT,
+    DAILY_WORD_GUESS_SESSION_RATE_LIMIT,
+    DAILY_WORD_TODAY_IP_RATE_LIMIT,
+)
 from session import get_session_id
 
 _SUPPORTED_LANGS = frozenset(("en", "hi"))
@@ -60,33 +65,25 @@ _SUPPORTED_LANGS = frozenset(("en", "hi"))
 # 476-event issue, #2430's network-warning window). One Sentry event per window
 # is enough to tell us the cap has stopped applying; every failure is still
 # logged, just without a stack after the first.
-_DEGRADE_REPORT_WINDOW_S = 600.0
-_last_degrade_report: float | None = None
+_degrade_throttle = Throttle(600.0)
 
 
 def _report_degraded_guess(exc: BaseException) -> None:
     """Report that the guess cap is not being enforced — at most once per window."""
-    global _last_degrade_report
-
-    now = time.monotonic()
-    first_in_window = (
-        _last_degrade_report is None or now - _last_degrade_report >= _DEGRADE_REPORT_WINDOW_S
-    )
-    if not first_in_window:
+    if not _degrade_throttle.allow():
         logger.warning("daily_word: guess state still unavailable (%s)", type(exc).__name__)
         return
 
-    _last_degrade_report = now
     # WARNING with the stack, not logger.exception: sentry-sdk's default
     # logging integration turns ERROR records into events, so the capture below
     # was the second event for every window (#2661 review).
     logger.warning("daily_word: guess state unavailable, scoring without the cap", exc_info=exc)
-    with sentry_sdk.new_scope() as scope:
-        scope.set_tag("subsystem", "daily_word.progress")
-        scope.fingerprint = ["daily-word-guess-state-unavailable"]
-        sentry_sdk.capture_message(
-            "daily_word guess state unavailable — cap not enforced", level="warning"
-        )
+    report_event(
+        "daily_word guess state unavailable — cap not enforced",
+        level="warning",
+        fingerprint=["daily-word-guess-state-unavailable"],
+        tags={"subsystem": "daily_word.progress"},
+    )
 
 
 router = APIRouter()
@@ -117,12 +114,12 @@ def _score_guess(answer: str, guess: str) -> list[dict]:
     tiles = [{"letter": c, "status": "absent"} for c in guess]
     answer_chars: list[str | None] = list(answer)
 
-    for i, (g, a) in enumerate(zip(guess, answer)):
+    for i, (g, a) in enumerate(zip(guess, answer, strict=False)):
         if g == a:
             tiles[i]["status"] = "correct"
             answer_chars[i] = None
 
-    for i, tile in enumerate(tiles):
+    for tile in tiles:
         if tile["status"] == "correct":
             continue
         c = tile["letter"]
@@ -169,9 +166,9 @@ class GuessRequest(BaseModel):
 
 
 @router.get("/today")
-@limiter.limit("60/minute")
+@limiter.limit(DAILY_WORD_TODAY_IP_RATE_LIMIT)
 async def get_today(
-    request: Request,
+    request: Request,  # noqa: ARG001 - slowapi resolves `request` by name
     tz_offset_minutes: int = Query(0, ge=-840, le=840),
     lang: str = Query("en"),
 ) -> dict:
@@ -181,7 +178,7 @@ async def get_today(
 
 
 @router.post("/guess")
-@limiter.limit("20/hour", key_func=_guess_key)
+@limiter.limit(DAILY_WORD_GUESS_SESSION_RATE_LIMIT, key_func=_guess_key)
 # An IP-keyed backstop *in addition to* the session key, because the session id
 # is self-asserted: without one, minting a fresh UUID bought another six
 # guesses and unbounded row insertion. Deliberately generous — `_real_ip`
@@ -189,21 +186,21 @@ async def get_today(
 # real players out of a shipping free game is a worse outcome than the abuse it
 # prevents. This is a volume backstop, not a security boundary; it does not
 # stop a determined caller, which needs server-issued sessions (#1047).
-@limiter.limit("1200/hour")
+@limiter.limit(DAILY_WORD_GUESS_IP_RATE_LIMIT)
 async def post_guess(request: Request, response: Response, body: GuessRequest) -> dict:
     sid = get_session_id(request)
 
     try:
         date_str, lang = body.puzzle_id.rsplit(":", 1)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
 
     if lang not in _SUPPORTED_LANGS:
         raise HTTPException(status_code=422, detail="invalid_puzzle_id")
 
     # 1-minute grace so guesses submitted just before midnight aren't rejected by
     # server/client clock drift when the server evaluates them just after midnight.
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.now(UTC)
     local_ts = now_utc + timedelta(minutes=body.tz_offset_minutes)
     grace_ts = local_ts - timedelta(minutes=1)
     if date_str not in {local_ts.strftime("%Y-%m-%d"), grace_ts.strftime("%Y-%m-%d")}:
@@ -211,8 +208,8 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
 
     try:
         answer = get_answer(body.puzzle_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
 
     guess = body.guess.lower()  # no-op for Devanagari; NFC handles Hindi normalisation
     if lang == "hi":
@@ -248,6 +245,8 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
     # a permanent degrade is visible rather than a cap that quietly never
     # applies. `/answer` stays closed: without the record there is nothing to
     # check entitlement against.
+    # The session is opened here, not taken as ``db: DbSession`` (#2993): a
+    # ``get_db`` failure would answer 500 before this degrade-open ``try`` ran.
     outcome: GuessOutcome | None = None
     try:
         factory = get_session_factory()
@@ -283,9 +282,10 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
 
 
 @router.get("/answer")
-@limiter.limit("20/minute")
+@limiter.limit(DAILY_WORD_ANSWER_IP_RATE_LIMIT)
 async def get_answer_route(
     request: Request,
+    db: DbSession,
     puzzle_id: str = Query(...),
 ) -> dict:
     """Return the answer, but only to a session that has earned it (#2197).
@@ -300,13 +300,11 @@ async def get_answer_route(
     # 422 rather than 400, keeping the pre-#2197 contract for that case.
     try:
         answer = get_answer(puzzle_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
 
     sid = get_session_id(request)
-    factory = get_session_factory()
-    async with factory() as db:
-        earned = await may_see_answer(db, session_id=sid, puzzle_id=puzzle_id)
+    earned = await may_see_answer(db, session_id=sid, puzzle_id=puzzle_id)
     if not earned:
         raise HTTPException(status_code=403, detail="guesses_remaining")
     return {"answer": answer}

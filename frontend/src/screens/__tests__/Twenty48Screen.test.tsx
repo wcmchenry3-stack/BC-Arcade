@@ -18,19 +18,14 @@ import type { AppStateStatus } from "react-native";
 // GameShell's Stats item (#2635) navigates through useNavigation; these
 // screens take their navigation as a prop, so the hook gets its own mock.
 const mockShellNavigate = jest.fn();
-jest.mock("@react-navigation/native", () => ({
-  ...jest.requireActual("@react-navigation/native"),
-  useNavigation: () => ({ navigate: mockShellNavigate }),
-}));
-
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
+jest.mock("@react-navigation/native", () =>
+  mockScreenDeps().mockNavigation(() => ({ navigate: mockShellNavigate }), { actual: true })
+);
 
 // Mock storage — no saved game, no-op persistence.
 jest.mock("../../game/twenty48/storage", () => ({
-  saveGame: jest.fn(),
-  clearGame: jest.fn(),
+  saveGame: jest.fn(() => Promise.resolve()),
+  clearGame: jest.fn(() => Promise.resolve()),
   loadGame: jest.fn().mockResolvedValue(null),
   saveBestScore: jest.fn(),
   loadBestScore: jest.fn().mockResolvedValue(0),
@@ -63,43 +58,31 @@ const mockCompleteGame = jest.fn() as unknown as jest.Mock<undefined, CompleteAr
 const mockResumeGame = jest.fn() as unknown as jest.Mock<string | null, [string, unknown?]>;
 const mockMarkStarted = jest.fn() as unknown as jest.Mock<undefined, [string]>;
 const mockDiscardGame = jest.fn() as unknown as jest.Mock<undefined, [string]>;
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as unknown as jest.Mock)(...args),
-    resumeGame: (...args: unknown[]) => (mockResumeGame as unknown as jest.Mock)(...args),
-    markStarted: (...args: unknown[]) => (mockMarkStarted as unknown as jest.Mock)(...args),
-    discardGame: (...args: unknown[]) => (mockDiscardGame as unknown as jest.Mock)(...args),
-    enqueueEvent: (...args: unknown[]) => (mockEnqueueEvent as unknown as jest.Mock)(...args),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as unknown as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    resumeGame: lazy(() => mockResumeGame),
+    markStarted: lazy(() => mockMarkStarted),
+    discardGame: lazy(() => mockDiscardGame),
+    enqueueEvent: lazy(() => mockEnqueueEvent),
+    completeGame: lazy(() => mockCompleteGame),
+  });
+});
 // useGameSync's app-wide foreground clock (#2684) is held still by the shared
 // mock jest.setup.ts pins (#2710): Twenty48 sends its own timer, and where that
 // reads 0 (a fresh board) the hook's window would otherwise fill in real
 // elapsed test time.
 // The result card's rank lookup (#2631, #2677): GET /games/{id}/rank.
 const mockGetRank = jest.fn<Promise<GameRankResponse>, [string]>();
-jest.mock("../../api/stats", () => ({
-  statsApi: { getGameRank: (gameId: string) => mockGetRank(gameId) },
-}));
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: jest.fn(() => Promise.resolve()),
-}));
-jest.mock("../../game/_shared/displayNameSync", () => ({
-  ...jest.requireActual("../../game/_shared/displayNameSync"),
-  flushDisplayNameSync: jest.fn(() => Promise.resolve(true)),
-  // Joining stores the server's generated name at once (#2778).
-  joinLeaderboards: async () => {
-    await jest
-      .requireActual("../../game/_shared/displayName")
-      .storeAssignedDisplayName("Brave Otter 4821");
-    return true;
-  },
-}));
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({ getGameRank: (gameId: string) => mockGetRank(gameId) })
+);
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+// Joining stores the server's generated name at once (#2778).
+jest.mock("../../game/_shared/displayNameSync", () =>
+  mockScreenDeps().mockDisplayNameSync({}, { joinAs: "Brave Otter 4821" })
+);
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { GameRankResponse } from "../../api/types";
 import {
@@ -463,6 +446,112 @@ describe("Twenty48Screen — game-over", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Saved game and the game-over edge (usePersistedGameState,
+// useCompletionTransition, #3109)
+// ---------------------------------------------------------------------------
+
+describe("Twenty48Screen — saved game and game-over edge (#3109)", () => {
+  beforeEach(() => jest.clearAllMocks());
+  afterEach(async () => {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+  });
+
+  const lastSaved = () => (saveGame as jest.Mock).mock.calls.at(-1)?.[0] as Twenty48State;
+
+  async function swipeOnce(result: Twenty48State) {
+    mockedEngineMove.mockImplementationOnce(() => result);
+    await act(() => {
+      dispatchKey("ArrowLeft");
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+  }
+
+  it("restores the board it saved after a remount, with the events stripped", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const first = await mountAndSettle();
+    await act(() => {
+      dispatchKey("ArrowRight");
+    });
+    const saved = lastSaved();
+    expect(saved.board).not.toEqual(NOOP_LEFT_BOARD);
+    expect(saved.events).toBeUndefined();
+    await first.unmount();
+
+    (loadGame as jest.Mock).mockResolvedValueOnce(saved);
+    (saveGame as jest.Mock).mockClear();
+    const second = await mountAndSettle();
+    await waitFor(() => expect(second.getByLabelText("Game board")).toBeTruthy());
+    expect(loadGame).toHaveBeenCalledTimes(2);
+    // The restored board is already stored: nothing is written back.
+    expect(saveGame).not.toHaveBeenCalled();
+    expect(clearGame).not.toHaveBeenCalled();
+    await second.unmount();
+  });
+
+  it("saves the losing move, then clears it once; nothing finished is saved after", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const r = await mountAndSettle();
+    await swipeOnce({ ...GAME_OVER_STATE, events: ["gameOver"] });
+
+    expect(lastSaved().game_over).toBe(true);
+    expect(clearGame).toHaveBeenCalledTimes(1);
+    expect((saveGame as jest.Mock).mock.invocationCallOrder.at(-1)!).toBeLessThan(
+      (clearGame as jest.Mock).mock.invocationCallOrder[0]!
+    );
+    await waitFor(() => expect(r.getByText("Game Over")).toBeTruthy());
+
+    // Leaving and coming back over the finished board writes nothing more.
+    const saves = (saveGame as jest.Mock).mock.calls.length;
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    await act(async () => {
+      mockNavListeners.get("focus")?.forEach((h) => h());
+    });
+    expect((saveGame as jest.Mock).mock.calls.length).toBe(saves);
+    expect(clearGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("a game restored already over clears its save once and records nothing", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(GAME_OVER_STATE);
+    const r = await mountAndSettle();
+    await waitFor(() => expect(r.getByText("Game Over")).toBeTruthy());
+
+    expect(clearGame).toHaveBeenCalledTimes(1);
+    expect(mockStartGame).not.toHaveBeenCalled();
+    expect(mockResumeGame).not.toHaveBeenCalled();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+    expect(mockGetRank).not.toHaveBeenCalled();
+    await r.unmount();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+  });
+
+  it("Play Again replaces the save with the fresh board, and its own game over clears again", async () => {
+    (loadGame as jest.Mock).mockResolvedValueOnce(GAME_OVER_STATE);
+    const r = await mountAndSettle();
+    await waitFor(() => expect(r.getByText("Game Over")).toBeTruthy());
+    expect(clearGame).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
+    });
+    expect(lastSaved()).toEqual(
+      expect.objectContaining({ score: 0, game_over: false, has_won: false })
+    );
+
+    await swipeOnce({ ...GAME_OVER_STATE, events: ["gameOver"] });
+    expect(clearGame).toHaveBeenCalledTimes(2);
+    expect(outcomesOf()).toEqual(["loss"]);
+  });
+
+  const outcomesOf = () => mockCompleteGame.mock.calls.map((c) => c[1].outcome);
+});
+
+// ---------------------------------------------------------------------------
 // Win overlay
 // ---------------------------------------------------------------------------
 
@@ -768,10 +857,6 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
   });
 
   // #2735 code review: a move queued during the MOVE_LOCK_MS lock isn't
-  // gated by screen focus, so its release could otherwise apply the move
-  // mid-blur and restart the paused clock (move() treats a paused
-  // `startedAt: null` the same as "never started").
-  // #2735 code review: a move queued during the MOVE_LOCK_MS lock isn't
   // gated by screen focus on its own, so its release could otherwise apply
   // the move mid-blur and restart the paused clock (move() treats a paused
   // `startedAt: null` the same as "never started"). The guard drops the
@@ -798,33 +883,41 @@ describe("Twenty48Screen — gameEventClient instrumentation (#369)", () => {
     const moveEvents = () =>
       mockEnqueueEvent.mock.calls.map((c) => c[1]).filter((e) => e?.type === "move");
 
-    await act(() => {
-      dispatchKey("ArrowLeft"); // starts the timer, locks the board for MOVE_LOCK_MS
-    });
-    await act(() => {
-      dispatchKey("ArrowDown"); // queued: the lock is still held
-    });
-    expect(moveEvents()).toHaveLength(1); // only "left" has actually applied so far
+    // Fake timers so the MOVE_LOCK_MS release can only fire when the test
+    // advances the clock — with real timers a slow run could release the
+    // lock (and apply the queued move) before the blur below.
+    jest.useFakeTimers();
+    try {
+      await act(() => {
+        dispatchKey("ArrowLeft"); // starts the timer, locks the board for MOVE_LOCK_MS
+      });
+      await act(() => {
+        dispatchKey("ArrowDown"); // queued: the lock is still held
+      });
+      expect(moveEvents()).toHaveLength(1); // only "left" has actually applied so far
 
-    await act(async () => {
-      mockNavListeners.get("blur")?.forEach((h) => h());
-    });
-    // Real time passes so the lock's setTimeout actually fires while blurred.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    });
-    // The queued "down" never reached the engine: still just the one move.
-    expect(moveEvents()).toHaveLength(1);
+      await act(async () => {
+        mockNavListeners.get("blur")?.forEach((h) => h());
+      });
+      // Advance past the lock so its setTimeout fires while blurred.
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+      // The queued "down" never reached the engine: still just the one move.
+      expect(moveEvents()).toHaveLength(1);
 
-    await act(async () => {
-      mockNavListeners.get("focus")?.forEach((h) => h());
-    });
-    await act(() => {
-      // Gameplay resumes normally after focus returns: with at most two
-      // tiles on the board, Down is always a valid move (never a no-op).
-      dispatchKey("ArrowDown");
-    });
-    expect(moveEvents().map((e) => e.data.direction)).toEqual(["left", "down"]);
+      await act(async () => {
+        mockNavListeners.get("focus")?.forEach((h) => h());
+      });
+      await act(() => {
+        // Gameplay resumes normally after focus returns: with at most two
+        // tiles on the board, Down is always a valid move (never a no-op).
+        dispatchKey("ArrowDown");
+      });
+      expect(moveEvents().map((e) => e.data.direction)).toEqual(["left", "down"]);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("does not double-fire game_ended: unmount after completion is a no-op", async () => {
@@ -1493,17 +1586,20 @@ describe("Twenty48Screen — app background and relaunch (#2750)", () => {
       }
     });
     const saves = (saveGame as jest.Mock).mock.calls.map((c) => c[0] as Twenty48State);
-    const moved = saves[savesBefore]!; // the ArrowLeft move's own save
-    // The save written in the background event's own handler, before any
-    // render: if iOS suspends the app right there, this is what relaunches.
-    // It must be the move's board paused, not the board rendered before it.
-    const leaving = saves[savesBefore + 1]!;
-    expect(leaving.board).toEqual(moved.board);
+    const before = saves[savesBefore - 1]!; // the board rendered before the move
+    // The move is saved when it commits (usePersistedGameState, #3109), so
+    // the first save after it is the one written in the background event's
+    // own handler, before any render: if iOS suspends the app right there,
+    // this is what relaunches. It must be the move's board paused, not the
+    // board rendered before it.
+    const leaving = saves[savesBefore]!;
+    expect(leaving.board).not.toEqual(before.board);
     expect(leaving).toEqual(
       expect.objectContaining({ startedAt: null, accumulatedMs: 20_000, paused: true })
     );
-    const paused = saves.at(-1)!; // the committed pause's
-    expect(paused.board).toEqual(moved.board);
+    const paused = saves.at(-1)!; // the committed move, paused
+    expect(saves.length).toBeGreaterThan(savesBefore + 1);
+    expect(paused.board).toEqual(leaving.board);
     expect(paused).toEqual(expect.objectContaining({ startedAt: null, accumulatedMs: 20_000 }));
 
     now += 60 * 60_000;
@@ -1599,6 +1695,7 @@ describe("Twenty48Screen — app background and relaunch (#2750)", () => {
       expect(abandonDuration()).toBe(35_000);
     } finally {
       (saveGame as jest.Mock).mockReset();
+      (saveGame as jest.Mock).mockImplementation(() => Promise.resolve());
       (loadGame as jest.Mock).mockReset();
       (loadGame as jest.Mock).mockResolvedValue(null);
     }

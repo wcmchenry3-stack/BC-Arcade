@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
-import { View, Text, Animated, StyleSheet, AccessibilityInfo } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { View, Text, Animated, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
+import { useReduceMotion } from "../shared/useReduceMotion";
 
 interface Props {
   score: number;
@@ -13,11 +14,7 @@ export default function ScoreDisplay({ score, children }: Props) {
   const { colors } = useTheme();
   const scale = useRef(new Animated.Value(1)).current;
   const prevScore = useRef(score);
-  const [reduceMotion, setReduceMotion] = useState(false);
-
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-  }, []);
+  const reduceMotion = useReduceMotion();
 
   useEffect(() => {
     if (score !== prevScore.current) {

@@ -27,11 +27,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -39,9 +38,9 @@ import anyio
 import google.auth.exceptions
 import google.auth.transport
 import httpx
-import sentry_sdk
 from google.oauth2 import service_account
 
+from ._common import get_settings, misconfigured
 from .verifiers import (
     Environment,
     GoogleEvidence,
@@ -75,7 +74,7 @@ ACK_BACKOFF_S: tuple[float, ...] = (0.5, 2.0)
 # possible event time: it can never be ordered after a real store event, and
 # a completion read later always applies (no clock-skew race with our own
 # request time). See "Event ordering" in IAP.md §7.6.
-PENDING_EVENT_AT = datetime(1970, 1, 1, tzinfo=timezone.utc)
+PENDING_EVENT_AT = datetime(1970, 1, 1, tzinfo=UTC)
 
 # ProductPurchaseV2 enum values (Android Publisher v3 discovery document).
 PURCHASED = "PURCHASED"
@@ -98,21 +97,6 @@ class GoogleConfig:
     service_account_info: dict[str, Any] = field(repr=False)
     rtdn_audience: str
     rtdn_push_service_account: str
-
-
-def _env(name: str) -> str:
-    return (os.environ.get(name) or "").strip()
-
-
-def misconfigured(reason: str) -> None:
-    """Report why Google verification stays dormant: the reason code only.
-
-    Never an exception text or a variable's value (the service-account key).
-    Goes to the audit log and, as a message, to Sentry, so a set-but-broken
-    configuration is not silent (same rule as Apple, IAP.md §6.6).
-    """
-    _log.warning(json.dumps({"event": "google_play_misconfigured", "reason": reason}))
-    sentry_sdk.capture_message(f"google_play_misconfigured: {reason}", level="warning")
 
 
 def _parse_service_account(raw: str) -> dict[str, Any] | None:
@@ -140,31 +124,32 @@ def load_config() -> GoogleConfig | None:
     Unset package name → quietly dormant. Package name set but anything else
     missing or invalid → dormant and reported.
     """
-    package = _env("GOOGLE_PLAY_PACKAGE_NAME")
+    settings = get_settings()
+    package = settings.google_play_package_name
     if not package:
         return None
     if not _PACKAGE_RE.match(package):
-        misconfigured("package_name")
+        misconfigured("google", "package_name")
         return None
     envs = frozenset(e for e in allowed_environments("google") if e in _GOOGLE_ENVIRONMENTS)
     if not envs:
-        misconfigured("environments")
+        misconfigured("google", "environments")
         return None
-    raw_key = _env("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON")
+    raw_key = settings.google_play_service_account_json.get_secret_value()
     if not raw_key:
-        misconfigured("service_account_missing")
+        misconfigured("google", "service_account_missing")
         return None
     info = _parse_service_account(raw_key)
     if info is None:
-        misconfigured("service_account")
+        misconfigured("google", "service_account")
         return None
-    audience = _env("GOOGLE_RTDN_AUDIENCE")
-    push_sa = _env("GOOGLE_RTDN_PUSH_SA")
+    audience = settings.google_rtdn_audience
+    push_sa = settings.google_rtdn_push_sa
     if not audience:
-        misconfigured("rtdn_audience")
+        misconfigured("google", "rtdn_audience")
         return None
     if not _EMAIL_RE.match(push_sa):
-        misconfigured("rtdn_push_sa")
+        misconfigured("google", "rtdn_push_sa")
         return None
     return GoogleConfig(
         package_name=package,
@@ -208,7 +193,7 @@ class HttpxAuthRequest(google.auth.transport.Request):
         self._client = client
 
     def __call__(  # type: ignore[override]
-        self, url, method="GET", body=None, headers=None, timeout=None, **kwargs
+        self, url, method="GET", body=None, headers=None, timeout=None, **_kwargs
     ) -> _AuthResponse:
         try:
             response = self._client.request(
@@ -358,12 +343,12 @@ def parse_rfc3339(value: object) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))  # noqa: FURB162
     except ValueError:
         return None
     if parsed.tzinfo is None:
         return None
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(UTC)
 
 
 def parse_millis(value: object) -> datetime | None:
@@ -377,31 +362,13 @@ def parse_millis(value: object) -> datetime | None:
     if ms <= 0:
         return None
     try:
-        return datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+        return datetime.fromtimestamp(ms / 1000, tz=UTC)
     except (OverflowError, OSError, ValueError):
         return None
 
 
-def to_verified(
-    purchase_token: str,
-    data: dict[str, Any],
-    *,
-    environments: frozenset[str],
-    expected_product_id: str | None = None,
-) -> VerifiedPurchase:
-    """Check a ProductPurchaseV2 and normalize it (IAP.md §7.6 table). Raises PurchaseError.
-
-    * exactly one line item, whose ``productId`` follows the catalog convention
-      (``unknown_product`` otherwise; the service then requires ``is_premium``)
-      and, for a client post, equals the product the client named;
-    * not a rental (``unknown_product``: not lasting access), quantity 1;
-    * **never consumed** (``verification_failed``);
-    * ``purchaseState``: PURCHASED → owned, PENDING → pending, CANCELLED →
-      revoked when the purchase had completed (a refund or chargeback) or
-      cancelled when it never did (a declined pending payment);
-    * ``testPurchaseContext`` present → ``test`` (licence tester), else
-      ``production``; outside ``environments`` → ``environment_not_allowed``.
-    """
+def _line_item(data: dict[str, Any], expected_product_id: str | None) -> str:
+    """The single line item's ``productId``, once the item passes every check. Raises PurchaseError."""
     from .service import slug_for_product  # service imports google → this module
 
     items = data.get("productLineItem")
@@ -424,7 +391,13 @@ def to_verified(
     if offer.get("consumptionState") == CONSUMED:
         # A consumed purchase is not owned any more; we never consume (§3).
         raise PurchaseError(422, "verification_failed")
+    return product_id
 
+
+def _state_and_event_time(
+    data: dict[str, Any],
+) -> tuple[PurchaseState, datetime | None, datetime | None]:
+    """``(state, event_at, completed_at)`` from ``purchaseState``. Raises PurchaseError."""
     raw_state = (data.get("purchaseStateContext") or {}).get("purchaseState")
     completed_at = parse_rfc3339(data.get("purchaseCompletionTime"))
     state: PurchaseState
@@ -441,12 +414,45 @@ def to_verified(
         state, event_at = ("revoked" if completed_at else "cancelled"), None
     else:
         raise PurchaseError(422, "verification_failed")
+    return state, event_at, completed_at
 
+
+def _environment(data: dict[str, Any], environments: frozenset[str]) -> Environment:
+    """``test`` for a licence tester, else ``production``; must be allowed. Raises PurchaseError."""
     environment: Environment = (
         "test" if data.get("testPurchaseContext") is not None else "production"
     )
     if environment not in environments:
         raise PurchaseError(422, "environment_not_allowed")
+    return environment
+
+
+def to_verified(
+    purchase_token: str,
+    data: dict[str, Any],
+    *,
+    environments: frozenset[str],
+    expected_product_id: str | None = None,
+) -> VerifiedPurchase:
+    """Check a ProductPurchaseV2 and normalize it (IAP.md §7.6 table). Raises PurchaseError.
+
+    * exactly one line item, whose ``productId`` follows the catalog convention
+      (``unknown_product`` otherwise; the service then requires ``is_premium``)
+      and, for a client post, equals the product the client named;
+    * not a rental (``unknown_product``: not lasting access), quantity 1;
+    * **never consumed** (``verification_failed``);
+    * ``purchaseState``: PURCHASED → owned, PENDING → pending, CANCELLED →
+      revoked when the purchase had completed (a refund or chargeback) or
+      cancelled when it never did (a declined pending payment);
+    * ``testPurchaseContext`` present → ``test`` (licence tester), else
+      ``production``; outside ``environments`` → ``environment_not_allowed``.
+
+    Checked in that order (:func:`_line_item`, :func:`_state_and_event_time`,
+    :func:`_environment`), so the first failing rule picks the error code.
+    """
+    product_id = _line_item(data, expected_product_id)
+    state, event_at, completed_at = _state_and_event_time(data)
+    environment = _environment(data, environments)
     account = data.get("obfuscatedExternalAccountId")
     order_id = data.get("orderId")
     return VerifiedPurchase(

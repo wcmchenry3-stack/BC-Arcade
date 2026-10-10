@@ -22,8 +22,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from itertools import product
 from typing import Any
 from urllib.parse import urlencode
@@ -32,16 +31,17 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import Game, GameType
 from games.board import BoardDefinition
-from games.leaderboard import SENTINEL_SESSION_SUFFIX, enabled_board
+from games.boards.partitions import enabled_board
+from games.boards.sql import SENTINEL_SESSION_SUFFIX
 from games.registry import get_module
+from tests._helpers import session_headers as _headers
 from tests.test_generic_leaderboard import (
     ENABLED_BOARDS,
     _board,
     _grant_all,
-    _headers,
     _seed,
     _sid,
     completion_body,
@@ -63,15 +63,6 @@ SCORE_ONLY = sorted(
 )
 
 
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
 def test_every_game_type_is_registered() -> None:
     # The lists below come from the registry: a game type without a module
     # would silently drop out of every test in this file.
@@ -80,8 +71,9 @@ def test_every_game_type_is_registered() -> None:
     assert HAS_WINNER and SCORE_ONLY
     # ENABLED_BOARDS (shared with test_generic_leaderboard) is every game type
     # whose module declares an enabled board.
-    assert ENABLED_BOARDS == sorted(
-        name for name, mod in _MODULES.items() if mod is not None and mod.board.enabled
+    assert (
+        sorted(name for name, mod in _MODULES.items() if mod is not None and mod.board.enabled)
+        == ENABLED_BOARDS
     )
     assert len(ENABLED_BOARDS) >= 8, ENABLED_BOARDS
 
@@ -219,7 +211,7 @@ def _names(body: dict) -> list[str]:
     return [e["player_name"] for e in body["entries"]]
 
 
-_RECENT = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(days=1)
+_RECENT = datetime.now(UTC).replace(microsecond=0) - timedelta(days=1)
 
 
 def _recent(minutes: int) -> datetime:
@@ -229,7 +221,7 @@ def _recent(minutes: int) -> datetime:
 
 def _parse(stamp: str) -> datetime:
     at = datetime.fromisoformat(stamp)
-    return at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+    return at if at.tzinfo else at.replace(tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -465,7 +457,7 @@ async def test_abandoned_rows_excluded(
 # Win streaks (/stats/me)
 # ---------------------------------------------------------------------------
 
-_T0 = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+_T0 = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 
 
 async def _add_outcomes(sid: str, game: str, outcomes: list[str]) -> None:

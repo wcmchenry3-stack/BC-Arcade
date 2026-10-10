@@ -84,6 +84,13 @@ voided-purchases / acknowledgement jobs are in
 [IAP.md §7.6 and §16](IAP.md#76-as-built-2787-server-side).
 Never put values in `render.yaml` or the repo.
 
+The backend is moving these reads into one `Settings` object in
+`backend/settings.py` (#2997), one package per PR. Names (case-sensitive, no
+prefix) and defaults stay exactly as listed here. A migrated variable is read
+once, when the app starts, so changing it takes a redeploy (use Save and deploy
+when you edit the variable on Render). Which variables are migrated, their defaults and the code
+that reads them are in [ARCHITECTURE.md §11.1](ARCHITECTURE.md#111-infrastructure-and-external-services).
+
 `ENVIRONMENT` unset means `development` — an API never reports to Sentry's
 `production` environment by accident. `ENVIRONMENT=test` additionally registers
 the `/debug/error` route; never set it on Render.
@@ -286,7 +293,7 @@ hung request. It is rate limited to 30/minute per IP.
   by hand, so `render.yaml` does not apply to them). A value pasted from
   `render.yaml` with its quotes still gets sent, but browsers ignore it. When you
   change a header in `render.yaml`, make the same change in the dashboard,
-  without the quotes. The API sets its own headers in `main.py`.
+  without the quotes. The API sets its own headers in `backend/middleware/headers_and_log.py`.
 - The scan reads the service IDs from two **secrets**, `RENDER_PROD_API_SERVICE_ID`
   and `RENDER_PROD_FRONTEND_SERVICE_ID`, plus `RENDER_API_KEY`.
 - It is `workflow_run`-triggered on purpose: a `push`-triggered job would be one of

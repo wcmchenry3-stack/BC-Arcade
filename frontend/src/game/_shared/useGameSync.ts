@@ -1,105 +1,23 @@
 /**
  * useGameSync — shared hook for game instrumentation lifecycle (#549).
  *
- * Encapsulates the gameEventClient session pattern that was previously
- * duplicated across GameScreen, Twenty48Screen, CascadeScreen, and
- * BlackjackGameContext:
- *   - gameIdRef / completedRef boilerplate
- *   - try/catch isolation on every client call
- *   - abandon-on-unmount cleanup
+ * Wraps the gameEventClient session pattern every game screen needs: the
+ * game id and completed bookkeeping, try/catch isolation on every client call,
+ * and an abandon-on-unmount cleanup. Returns
+ * `{ start, markStarted, resume, enqueue, complete, restart, close, reportBug, ... }`.
  *
- * Usage
- * -----
- *   const { start, enqueue, complete, restart, reportBug } = useGameSync("yacht");
- *
- *   // Begin a session (call once per game, e.g. after loading saved state)
+ *   const { start, markStarted, enqueue, complete } = useGameSync("yacht");
  *   start({ initial_score: 0 });
- *
- *   // Record an event
  *   enqueue({ type: "roll", data: { dice: [1, 2, 3] } });
+ *   complete({ finalScore: 250, outcome: "completed", result: { final_score: 250 } });
  *
- *   // Mark the session complete (prevents the unmount handler from firing).
- *   // `result` is the PATCH result block; the second argument is only the
- *   // analytics `game_ended` event payload.
- *   complete(
- *     { finalScore: 250, outcome: "completed", result: { final_score: 250 } },
- *     { final_score: 250 }
- *   );
- *
- *   // End the current session (abandoned if the player started it, else
- *   // discarded) and immediately start a fresh one
- *   restart({ initial_score: 0 });
- *
- *   // End the current session the same way, without starting a new one
- *   close();
- *
- * The unmount cleanup automatically abandons any open session, so callers
- * only need to call complete() for game-over paths; abandoned paths are
- * handled for free.
- *
- * Abandon data (#2450): an abandoned session would otherwise carry nothing but
- * `{ outcome: "abandoned" }`. A game registers `setProgressSnapshot(getter)` so
- * the hook's own abandon paths (unmount, restart) can attach the per-game
- * result block at that moment. Games that never register a getter keep
- * the old behaviour and send no result. A screen that also abandons explicitly
- * (a "New game" button, `beforeRemove`) builds that abandon's result with the
- * same helper its getter uses, so the two paths cannot drift apart (#2619).
- *
- * Only abandons the player caused count: the unmount, `start()` and
- * `restart()` paths all close an open session the same way — abandoned if
- * `markStarted()` was called for it, otherwise discarded
- * (`gameEventClient.discardGame`), so an untouched session is never left
- * pending on the device.
- *
- * Deferred create (#2654): `markStarted()` also tells gameEventClient, which
- * holds the session on the device until then — a session the player never
- * started never reaches the server.
- *
- * Killed process (#2654): a session left open when the process is killed (no
- * unmount runs) is picked up on the next launch. A screen that restores the
- * game's saved progress calls `resume()` to continue that same session, so
- * one real game stays one row. If the player starts a fresh game of the type
- * instead, or never reopens it within 24 h, gameEventClient abandons it; an
- * unstarted one is discarded at startup.
- *
- * Active-play clock (#2684): a game that does not measure its own active time
- * still reports a duration — the foreground time the window below has counted,
- * with each idle gap capped at `IDLE_GAP_CAP_MS` (10 minutes); a game's own
- * measured duration wins. Foreground time comes from `foregroundNow()`, so time
- * the app spends `background` or `inactive` is not counted. The gaps are the
- * stretches between player-activity pings — `markStarted()`, `enqueue()`,
- * `complete()` — so a screen left awake and idle, or an in-app pause, adds at
- * most the cap. It is never wall-clock start-to-end time (#2619,
- * `resolveDurationMs`).
- *
- * The window is running or paused (#2710):
- *   - It starts running at mount, so the thinking time before the first move
- *     counts (Daily Word's puzzle is on screen from mount), and a game won on
- *     its first action still gets a duration.
- *   - A session ending pauses it at zero: `complete()`, and a close that ended
- *     a session — unmount, `close()`, or `start()` / `restart()` / `resume()`
- *     replacing one — once the abandon has read it. While paused, pings add
- *     nothing, so time on a result card or menu is never counted.
- *   - `start()` / `restart()` resume a paused window from zero at that moment.
- *     A running window is left alone, so a game that opens its session at the
- *     first move keeps the time before it.
- *   - `resume()` restarts it from zero: a session resumed after a killed
- *     process counts from the resume (an undercount, never an overcount).
- *   - `resetPlayWindow()` restarts it from zero, running. It is for a screen
- *     that shows a new puzzle before its session opens (Sort entering a level
- *     or starting it over, FreeCell dealing), so the time on the level grid or
- *     the previous board is not counted. Call it with no session open.
- *
- * Screen focus (#2735): a pushed screen (Stats, Leaderboard, Scoreboard) blurs
- * this one without unmounting it. The window stops banking time while the
- * screen is blurred and resumes counting from the moment it regains focus, so
- * reading stats mid-puzzle doesn't inflate the reported duration. Outside a
- * navigator (and in tests) the screen is always considered focused.
- *
- * `complete()` sends the game's own `summary.durationMs` when it is > 0,
- * otherwise the window. The hook's own abandons send the snapshot's
- * `durationMs` when > 0, otherwise the window; a discarded (never-started)
- * session sends nothing.
+ * Callers only call `complete()` on game-over paths; an unmount, `restart()` or
+ * `start()` over an open session abandons it (or discards it if the player never
+ * called `markStarted()`), and `setProgressSnapshot(getter)` lets those abandons
+ * carry the per-game result block. The session lifecycle (deferred create, the
+ * killed-process sweep and `resume()`), the active-play duration window
+ * (`IDLE_GAP_CAP_MS`, pause on blur/background) and the abandon data rules are
+ * specified in docs/GAME-CONTRACT.md §1.7 and §2.3, not repeated here.
  */
 
 import { useCallback, useEffect, useRef } from "react";

@@ -5,40 +5,28 @@
  *   1. Game logic — dispatches engine functions (selectTile, shuffleBoard,
  *      undoMove) in response to GameCanvas callbacks; engine is pure and
  *      replaces state wholesale on every transition.
- *   2. Persistence — AsyncStorage save/resume on every mutation.
+ *   2. Persistence — AsyncStorage save/resume, debounced (useMahjongPersistence).
  *   3. Instrumentation — useGameSync session started on first tile tap (the
  *      layout played is its metadata), completed as a `win` on a cleared
- *      board, a `loss` when the player leaves a deadlock, abandoned otherwise
- *      (#2627).
+ *      board (`useCompletionTransition`, #3087), a `loss` when the player
+ *      leaves a deadlock, abandoned otherwise (#2627).
  *   4. Result (#2510) — the shared GameResultModal on a win (the finished
  *      game is the leaderboard entry; the card shows its rank through
- *      `sessionBoardAdapter`, #2677) and on a deadlock (a loss, no rank).
+ *      `lookupGameRank`, #2677) and on a deadlock (a loss, no rank).
  *   5. Audio + animations (#914) — SFX on every game event, lo-fi bg music,
- *      MatchBurst / DeadlockShake / ShufflePulse.
+ *      flying pairs, deadlock shake and shuffle pulse: useMahjongFeedback
+ *      (#2981), driven by the engine's events (#3087).
+ *   6. Board zoom/pan — pinch and drag on the board, zoomed back to fit when
+ *      no moves remain: useBoardZoomPan owns the shared values and gestures
+ *      (#2981).
+ *   7. Hints — the hinted pair glows for 2 s; "no hint" is a transient toast
+ *      (useTransientToast, #2981).
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  AccessibilityInfo,
-  Image,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withSpring,
-  withSequence,
-  withDelay,
-  runOnJS,
-  Easing,
-} from "react-native-reanimated";
-import { GestureDetector, Gesture } from "react-native-gesture-handler";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import Animated from "react-native-reanimated";
+import { GestureDetector } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -47,30 +35,33 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "../types/navigation";
 import { loadTileAssets } from "../components/mahjong/tileAssetLoader";
 import { useTheme } from "../theme/ThemeContext";
+import { DEV_ACCENT } from "../theme/theme.constants";
 import {
-  DEV_ACCENT,
   MAHJONG_HINT_COLOR,
   MAHJONG_NO_MOVES_OVERLAY_BG,
   MAHJONG_OVERLAY_BTN_BG,
-} from "../theme/theme.constants";
+  MAHJONG_OVERLAY_DETAIL_TEXT,
+  MAHJONG_OVERLAY_TEXT,
+  MAHJONG_SHUFFLE_COLOR,
+} from "../theme/theme.mahjong";
 import { typography } from "../theme/typography";
 import { GameShell } from "../components/shared/GameShell";
-import { useLeaderboardLink } from "../hooks/useLeaderboardLink";
+import { useGameLeaderboard } from "../game/_shared/useGameLeaderboard";
 import { usePausableClock } from "../hooks/usePausableClock";
 import { PillButton } from "../components/shared/PillButton";
 import { PlayClockText } from "../components/shared/PlayClockText";
 import GameResultModal from "../components/shared/GameResultModal";
+import { toSubmission } from "../components/shared/toSubmission";
 import GameCanvas from "../components/mahjong/GameCanvas";
+import MahjongDevPanel from "../components/mahjong/MahjongDevPanel";
+import FlyingPair from "../components/mahjong/FlyingPair";
 import { useMahjongCamera } from "../game/mahjong/layout";
-import type { BoardCamera } from "../game/mahjong/layout";
 import {
   createGame,
   DEADLOCK_OVERLAY_DELAY_MS,
   elapsedMs,
   nextBestTime,
-  getAllFreePairs,
   getAnyFreePair,
-  hasFreePairs,
   pauseGame,
   resumeGame,
   selectTile,
@@ -78,13 +69,11 @@ import {
   undoMove,
 } from "../game/mahjong/engine";
 import { getLayout, LAYOUTS } from "../game/mahjong/layouts/registry";
-import type { MahjongState, SlotTile } from "../game/mahjong/types";
+import type { MahjongState } from "../game/mahjong/types";
 import {
-  clearGame,
   loadGame,
   loadProgress,
   loadStats,
-  saveGame,
   saveProgress,
   saveStats,
   unlockNextLayout,
@@ -92,210 +81,17 @@ import {
   type MahjongProgress,
   type MahjongStats,
 } from "../game/mahjong/storage";
-import LayoutSelectScreen from "../game/mahjong/LayoutSelectScreen";
-import { useMahjongAudio } from "../game/mahjong/useMahjongAudio";
+import LayoutSelectScreen from "../components/mahjong/LayoutSelectScreen";
+import { useMahjongFeedback } from "../components/mahjong/useMahjongFeedback";
+import { useBoardZoomPan } from "../game/mahjong/useBoardZoomPan";
+import { useMahjongPersistence } from "../game/mahjong/useMahjongPersistence";
+import { freeIdsFor, useFreeTiles } from "../game/mahjong/useFreeTiles";
 import { useGameSync } from "../game/_shared/useGameSync";
-import { useLeaderboardSubmit } from "../game/_shared/useLeaderboardSubmit";
-import { sessionBoardAdapter } from "../game/_shared/sessionBoardAdapter";
+import { useCompletionTransition } from "../game/_shared/useCompletionTransition";
 import { recordedOutcome } from "../game/_shared/recordedOutcome";
 import { formatMs } from "../game/_shared/formatMs";
-import { clamp, computeZoomBounds, computePanBounds } from "../game/mahjong/zoom";
-
-// ---------------------------------------------------------------------------
-// FlyingPair — two matched tiles slide toward each other then burst and fade
-// ---------------------------------------------------------------------------
-
-interface FlyingPairData {
-  id: string;
-  tile1: SlotTile;
-  tile2: SlotTile;
-}
-
-// Colors that match the canvas tile rendering.
-const FP_FACE = "#f5f0e8";
-const FP_BORDER = "#ffd700";
-const FP_SIDE_R = "#a89070";
-const FP_SIDE_B = "#987860";
-// Border inset between the gold frame and the ivory face, in logical pixels.
-const FACE_INSET = 2;
-
-function FlyingTileGlyph({
-  faceWidth: fw,
-  faceHeight: fh,
-  sideWidth: sw,
-  imgUri,
-}: {
-  faceWidth: number;
-  faceHeight: number;
-  sideWidth: number;
-  imgUri: string | null;
-}) {
-  return (
-    // overflow: "visible" is intentional so the 3-D side panels render outside
-    // the face bounds. Note: Android clips overflow in deeply nested Views by
-    // default, so the side shadows won't appear on native until the parent
-    // Animated.View chain also carries overflow: "visible".
-    <View style={{ width: fw, height: fh, overflow: "visible" }}>
-      {/* 3-D right side */}
-      <View
-        style={{
-          position: "absolute",
-          left: fw,
-          top: sw,
-          width: sw,
-          height: fh,
-          backgroundColor: FP_SIDE_R,
-        }}
-      />
-      {/* 3-D bottom side */}
-      <View
-        style={{
-          position: "absolute",
-          left: sw,
-          top: fh,
-          width: fw,
-          height: sw,
-          backgroundColor: FP_SIDE_B,
-        }}
-      />
-      {/* Gold border (selected-tile look) */}
-      <View
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          width: fw,
-          height: fh,
-          backgroundColor: FP_BORDER,
-          borderRadius: 2,
-        }}
-      />
-      {/* Ivory face */}
-      <View
-        style={{
-          position: "absolute",
-          left: FACE_INSET,
-          top: FACE_INSET,
-          width: fw - FACE_INSET * 2,
-          height: fh - FACE_INSET * 2,
-          backgroundColor: FP_FACE,
-          borderRadius: 1,
-          overflow: "hidden",
-        }}
-      >
-        {/* SVG art — only on web where RN Image renders SVG via <img> */}
-        {Platform.OS === "web" && imgUri !== null && (
-          <Image
-            source={{ uri: imgUri }}
-            style={{
-              position: "absolute",
-              left: FACE_INSET,
-              top: FACE_INSET,
-              right: FACE_INSET,
-              bottom: FACE_INSET,
-            }}
-            resizeMode="contain"
-          />
-        )}
-      </View>
-    </View>
-  );
-}
-
-function FlyingPair({
-  tile1,
-  tile2,
-  camera,
-  tileUris,
-  onDone,
-}: FlyingPairData & {
-  camera: BoardCamera;
-  tileUris: readonly (string | null)[];
-  onDone: () => void;
-}) {
-  const { x: x1, y: y1 } = camera.tileToScreen(tile1.col, tile1.row, tile1.layer);
-  const { x: x2, y: y2 } = camera.tileToScreen(tile2.col, tile2.row, tile2.layer);
-  const { faceWidth: fw, faceHeight: fh, sideWidth: sw } = camera;
-
-  // Face-center coords so the overlay aligns exactly with the canvas tile face.
-  const c1x = x1 + fw / 2;
-  const c1y = y1 + fh / 2;
-  const c2x = x2 + fw / 2;
-  const c2y = y2 + fh / 2;
-  const midX = (c1x + c2x) / 2;
-  const midY = (c1y + c2y) / 2;
-  const burstR = Math.round(fw * 0.65);
-
-  const t1cx = useSharedValue(c1x);
-  const t1cy = useSharedValue(c1y);
-  const t2cx = useSharedValue(c2x);
-  const t2cy = useSharedValue(c2y);
-  const pairOpacity = useSharedValue(1);
-  const burstScaleVal = useSharedValue(0);
-  const burstOpacity = useSharedValue(0);
-
-  useEffect(() => {
-    const moveCfg = { duration: 220, easing: Easing.out(Easing.quad) };
-    t1cx.value = withTiming(midX, moveCfg);
-    t1cy.value = withTiming(midY, moveCfg);
-    t2cx.value = withTiming(midX, moveCfg);
-    t2cy.value = withTiming(midY, moveCfg);
-    // Hold fully visible through the slide, then snap-fade after meeting.
-    pairOpacity.value = withSequence(
-      withTiming(1, { duration: 220 }),
-      withTiming(0, { duration: 70 }, (finished) => {
-        if (finished) runOnJS(onDone)();
-      })
-    );
-    burstScaleVal.value = withDelay(220, withSpring(1.8, { damping: 7, stiffness: 100 }));
-    burstOpacity.value = withSequence(
-      withDelay(220, withTiming(0.9, { duration: 25 })),
-      withTiming(0, { duration: 85 })
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const tile1Style = useAnimatedStyle(() => ({
-    position: "absolute",
-    left: t1cx.value - fw / 2,
-    top: t1cy.value - fh / 2,
-    opacity: pairOpacity.value,
-  }));
-
-  const tile2Style = useAnimatedStyle(() => ({
-    position: "absolute",
-    left: t2cx.value - fw / 2,
-    top: t2cy.value - fh / 2,
-    opacity: pairOpacity.value,
-  }));
-
-  const burstStyle = useAnimatedStyle(() => ({
-    position: "absolute",
-    left: midX - burstR,
-    top: midY - burstR,
-    width: burstR * 2,
-    height: burstR * 2,
-    borderRadius: burstR,
-    backgroundColor: FP_BORDER,
-    transform: [{ scale: burstScaleVal.value }],
-    opacity: burstOpacity.value,
-  }));
-
-  const img1 = tileUris[tile1.faceId - 1] ?? null;
-  const img2 = tileUris[tile2.faceId - 1] ?? null;
-
-  return (
-    <>
-      <Animated.View pointerEvents="none" style={tile1Style}>
-        <FlyingTileGlyph faceWidth={fw} faceHeight={fh} sideWidth={sw} imgUri={img1} />
-      </Animated.View>
-      <Animated.View pointerEvents="none" style={tile2Style}>
-        <FlyingTileGlyph faceWidth={fw} faceHeight={fh} sideWidth={sw} imgUri={img2} />
-      </Animated.View>
-      <Animated.View pointerEvents="none" style={burstStyle} />
-    </>
-  );
-}
+import { useReduceMotion } from "../components/shared/useReduceMotion";
+import { useTransientToast } from "../components/shared/useTransientToast";
 
 // ---------------------------------------------------------------------------
 // MahjongScreen
@@ -309,9 +105,6 @@ interface WinSummary {
   readonly isNewBest: boolean;
 }
 
-/** The result card's rank lookup on Mahjong's session board (#2677). */
-const mahjongBoard = sessionBoardAdapter("mahjong");
-
 export default function MahjongScreen() {
   const { t } = useTranslation("mahjong");
   const { t: tResult } = useTranslation("result");
@@ -321,165 +114,57 @@ export default function MahjongScreen() {
   const [view, setView] = useState<"loading" | "select" | "play">("loading");
   const [state, setState] = useState<MahjongState | null>(null);
   const camera = useMahjongCamera(getLayout(state?.currentLayoutId ?? "turtle"));
+  // Pairs on the board = the layout's tile count / 2 (144 tiles -> 72 for every layout).
+  const totalPairs =
+    (LAYOUTS.find((l) => l.id === (state?.currentLayoutId ?? "turtle"))?.tileCount ?? 144) / 2;
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState<MahjongProgress>(DEFAULT_PROGRESS);
   const [hasSavedGame, setHasSavedGame] = useState(false);
   const progressRef = useRef<MahjongProgress>(DEFAULT_PROGRESS);
   const [winSummary, setWinSummary] = useState<WinSummary | null>(null);
-  const leaderboard = useLeaderboardSubmit(mahjongBoard);
-  const { submit: submitRank, reset: resetSubmission } = leaderboard;
-  // The card's "View leaderboard" link and the ⋯ menu item (#2633) open the
-  // board of the layout on screen: each layout has its own (#2747).
-  const openLeaderboard = useLeaderboardLink(navigation, "mahjong", {
+  // The card's rank line, and its "View leaderboard" link and the ⋯ menu item
+  // (#2633), which open the board of the layout on screen: each layout has its
+  // own (#2747).
+  const { leaderboard, openLeaderboard } = useGameLeaderboard("mahjong", navigation, {
     layout: state?.currentLayoutId ?? "turtle",
   });
+  const { lookup: lookupRank, reset: resetSubmission } = leaderboard;
   // The HUD clock's screen-reader label; stable, so the clock's own
   // one-second tick is the only thing that re-renders it.
   const clockA11yLabel = useCallback((time: string) => t("hud.elapsed", { time }), [t]);
-  const [stats, setStats] = useState<MahjongStats>({
-    bestScore: 0,
-    bestTimeMsByLayout: {},
-    gamesPlayed: 0,
-    gamesWon: 0,
-  });
+  const [stats, setStats] = useState<MahjongStats>({ bestTimeMsByLayout: {} });
 
   // Hint state — IDs of the pair currently being highlighted; auto-clears after 2 s.
   const [hintIds, setHintIds] = useState<ReadonlySet<number>>(new Set());
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [noHintVisible, setNoHintVisible] = useState(false);
-  const noHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // "No hint" toast — hides itself 2 s after the last press.
+  const { visible: noHintVisible, show: showNoHint } = useTransientToast(2000);
 
-  // Dev panel state — __DEV__ only; toggled via Shift+D (web) or long-press score (native).
-  const [devPanelOpen, setDevPanelOpen] = useState(false);
+  // Dev panel — __DEV__ only; toggled from the HUD's DEV pill, a long press on the clock, or
+  // Shift+D (web).
+  const [devOpen, setDevOpen] = useState(false);
+  const toggleDev = useCallback(() => setDevOpen((o) => !o), []);
   const [debugShowFree, setDebugShowFree] = useState(false);
-  const freePairs = useMemo<[SlotTile, SlotTile][]>(
-    () => (__DEV__ && devPanelOpen && state ? getAllFreePairs(state.tiles) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [devPanelOpen, state?.tiles]
-  );
+  // The board's free tiles, once per board (#2962): shared by the canvas, overlays and moves.
+  const free = useFreeTiles(state);
 
   // Tile image URIs for the flying-pair overlay (web: loaded via expo-asset; native: stays null[]).
   const [tileUris, setTileUris] = useState<(string | null)[]>(Array(42).fill(null));
 
-  // Animation state
-  const [flyingPairs, setFlyingPairs] = useState<FlyingPairData[]>([]);
-  const [reduceMotion, setReduceMotion] = useState(false);
-  const boardShakeX = useSharedValue(0);
-  const boardOpacity = useSharedValue(1);
-  const boardAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: boardShakeX.value }],
-    opacity: boardOpacity.value,
-  }));
+  // Sound and motion for each move (#2981): flying pairs, shake, pulse.
+  const reduceMotion = useReduceMotion();
+  const { flyingPairs, dismissFlyingPair, boardAnimStyle } = useMahjongFeedback(
+    state,
+    reduceMotion
+  );
 
-  // Gesture zoom/pan shared values.
-  // minZoom = fit-to-screen scale; maxZoom = tile just reaches MIN_READABLE_TILE_PX.
-  const { minZoom: initMin, maxZoom: initMax } = computeZoomBounds(camera.scale, camera.tileWidth);
-  const minZoom = useSharedValue(initMin);
-  const maxZoom = useSharedValue(initMax);
-  const zoomScale = useSharedValue(initMin);
-  const baseScale = useSharedValue(initMin);
-  const translateX = useSharedValue(0);
-  const baseTranslateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const baseTranslateY = useSharedValue(0);
-  // Board/viewport dimensions as shared values so pan-boundary worklets can
-  // read them on the UI thread without capturing stale JS-side camera values.
-  const boardWidthSV = useSharedValue(camera.boardWidth);
-  const boardHeightSV = useSharedValue(camera.boardHeight);
-  const viewportWidthSV = useSharedValue(camera.viewportWidth);
-  const viewportHeightSV = useSharedValue(camera.viewportHeight);
-
-  // Reset gesture state when layout changes (orientation / resize).
-  useEffect(() => {
-    const bounds = computeZoomBounds(camera.scale, camera.tileWidth);
-    minZoom.value = bounds.minZoom;
-    maxZoom.value = bounds.maxZoom;
-    zoomScale.value = bounds.minZoom;
-    baseScale.value = bounds.minZoom;
-    translateX.value = 0;
-    baseTranslateX.value = 0;
-    translateY.value = 0;
-    baseTranslateY.value = 0;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camera.scale, camera.tileWidth]);
-
-  useEffect(() => {
-    boardWidthSV.value = camera.boardWidth;
-    boardHeightSV.value = camera.boardHeight;
-    viewportWidthSV.value = camera.viewportWidth;
-    viewportHeightSV.value = camera.viewportHeight;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [camera.boardWidth, camera.boardHeight, camera.viewportWidth, camera.viewportHeight]);
-
-  const pinchGesture = Gesture.Pinch()
-    .onUpdate((e) => {
-      zoomScale.value = clamp(baseScale.value * e.scale, minZoom.value, maxZoom.value);
-    })
-    .onEnd(() => {
-      baseScale.value = zoomScale.value;
-      // Clamp pan position to the new (smaller) bounds when zooming out.
-      const { maxTranslateX, maxTranslateY } = computePanBounds(
-        boardWidthSV.value,
-        boardHeightSV.value,
-        viewportWidthSV.value,
-        viewportHeightSV.value,
-        zoomScale.value
-      );
-      translateX.value = clamp(translateX.value, -maxTranslateX, maxTranslateX);
-      translateY.value = clamp(translateY.value, -maxTranslateY, maxTranslateY);
-      baseTranslateX.value = translateX.value;
-      baseTranslateY.value = translateY.value;
-    });
-
-  const panGesture = Gesture.Pan()
-    .minPointers(1)
-    .maxPointers(1)
-    // Only activate after an intentional drag so simple taps on overlay buttons
-    // (CTA shuffle, deadlock new-game, win new-game) are not intercepted by the
-    // gesture recognizer before Pressable.onPress can fire.
-    .activeOffsetX([-8, 8])
-    .activeOffsetY([-8, 8])
-    .onUpdate((e) => {
-      const { maxTranslateX, maxTranslateY } = computePanBounds(
-        boardWidthSV.value,
-        boardHeightSV.value,
-        viewportWidthSV.value,
-        viewportHeightSV.value,
-        zoomScale.value
-      );
-      translateX.value = clamp(
-        baseTranslateX.value + e.translationX,
-        -maxTranslateX,
-        maxTranslateX
-      );
-      translateY.value = clamp(
-        baseTranslateY.value + e.translationY,
-        -maxTranslateY,
-        maxTranslateY
-      );
-    })
-    .onEnd(() => {
-      baseTranslateX.value = translateX.value;
-      baseTranslateY.value = translateY.value;
-    });
-
-  const boardGesture = Gesture.Simultaneous(pinchGesture, panGesture);
-
-  const gestureAnimStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { scale: zoomScale.value },
-    ],
-  }));
+  // Pinch-to-zoom and drag-to-pan on the board (#2981).
+  const { boardGesture, gestureAnimStyle, fitToScreen } = useBoardZoomPan(camera);
 
   // Derived display state for no-moves overlays — computed here (not inside
   // GameCanvas) so the overlays render at viewport level and are always visible.
-  const noFreePairs = useMemo(
-    () => state !== null && !state.isComplete && !hasFreePairs(state.tiles),
-    [state]
-  );
-  const showShuffleCTA = noFreePairs && (state?.shufflesLeft ?? 0) > 0;
+  // Not once deadlocked: the overlay is delayed, and the engine ignores shuffles then (#3090).
+  const showShuffleCTA = free.noFreePairs && !state?.isDeadlocked && (state?.shufflesLeft ?? 0) > 0;
 
   const [showDeadlockOverlay, setShowDeadlockOverlay] = useState(false);
   useEffect(() => {
@@ -491,56 +176,19 @@ export default function MahjongScreen() {
     return () => clearTimeout(timer);
   }, [state?.isDeadlocked]);
 
-  // Zoom to fit when no moves remain so the whole board is visible behind the overlay.
+  // Zoom to fit when no moves remain so the whole board is visible behind the overlay —
+  // the shuffle CTA, or the deadlock overlay (a geometric deadlock never shows the CTA).
+  // A boolean, so it fires once per transition into either state.
+  const showNoMoves = showShuffleCTA || !!state?.isDeadlocked;
   useEffect(() => {
-    if (!showShuffleCTA) return;
-    const target = minZoom.value;
-    if (reduceMotion) {
-      zoomScale.value = target;
-      baseScale.value = target;
-      translateX.value = 0;
-      baseTranslateX.value = 0;
-      translateY.value = 0;
-      baseTranslateY.value = 0;
-    } else {
-      const cfg = { duration: 350, easing: Easing.out(Easing.cubic) };
-      // baseScale is updated in the completion callback so a pinch gesture started
-      // during the 350 ms animation doesn't jump from an intermediate position.
-      zoomScale.value = withTiming(target, cfg, (finished) => {
-        "worklet";
-        if (finished) baseScale.value = target;
-      });
-      translateX.value = withTiming(0, cfg, (finished) => {
-        "worklet";
-        if (finished) baseTranslateX.value = 0;
-      });
-      translateY.value = withTiming(0, cfg, (finished) => {
-        "worklet";
-        if (finished) baseTranslateY.value = 0;
-      });
-    }
-    // Shared values (zoomScale, baseScale, etc.) are stable Reanimated refs whose
-    // object identity never changes — adding them to deps is a no-op that only
-    // suppresses future lint warnings. reduceMotion is excluded because accessibility
-    // settings don't change mid-game.
+    if (showNoMoves) fitToScreen(reduceMotion);
+    // reduceMotion is excluded on purpose: it is read when the CTA appears, so
+    // a mid-session toggle applies to the next one. fitToScreen is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showShuffleCTA]);
+  }, [showNoMoves]);
 
   const hasLoadedRef = useRef(false);
   const stateRef = useRef<MahjongState | null>(null);
-  const winRecordedRef = useRef(false);
-  const prevCompleteRef = useRef(false);
-  // Tracks previous state for audio/animation event detection.
-  const prevAudioStateRef = useRef<MahjongState | null>(null);
-  // Stable refs to audio callbacks — avoids re-running the detection effect when
-  // play functions change reference (they're recreated each render by useSound).
-  const audioCallbacksRef = useRef({
-    playTileSelect: () => {},
-    playTileMatch: () => {},
-    playShuffle: () => {},
-    playWin: () => {},
-    playDeadlock: () => {},
-  });
 
   const {
     start: syncStart,
@@ -567,27 +215,6 @@ export default function MahjongScreen() {
     });
   }, [syncSetProgressSnapshot, progressResult]);
 
-  // Audio
-  const musicActive = state !== null && !state.isComplete && !state.isDeadlocked;
-  const { playTileSelect, playTileMatch, playShuffle, playWin, playDeadlock } =
-    useMahjongAudio(musicActive);
-
-  // Keep audio callback refs up-to-date each render.
-  useEffect(() => {
-    audioCallbacksRef.current = {
-      playTileSelect,
-      playTileMatch,
-      playShuffle,
-      playWin,
-      playDeadlock,
-    };
-  });
-
-  // Reduce motion preference.
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-  }, []);
-
   // Load SVG asset URIs for the flying-pair tile overlay (web only — native SVG
   // display requires Skia and can't run inside Animated.View).
   // Reuses the singleton promise from loadTileAssets() so no duplicate
@@ -603,20 +230,13 @@ export default function MahjongScreen() {
     };
   }, []);
 
-  // Dev panel: Shift+D keyboard shortcut on web.
-  useEffect(() => {
-    if (!__DEV__ || Platform.OS !== "web") return;
-    function onKey(e: KeyboardEvent) {
-      if (e.shiftKey && e.key === "D") setDevPanelOpen((o) => !o);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // Saves only when the board, undo history or banked clock change, debounced (#2961).
+  const { saveNow, discardSave, adoptSaved } = useMahjongPersistence(state, hasLoadedRef);
 
   // Another screen covering the game (⋯ → Leaderboard, #2633) or the app
   // going to the background (#2750) stops its clock, so the finish and best
-  // times count only play (usePausableClock). The pause is saved like any
-  // state change, so a kill while backgrounded keeps the play banked.
+  // times count only play (usePausableClock). The pause is saved at once
+  // (saveOnLeave), so a kill while backgrounded keeps the play banked.
   const { adoptLoaded, matchPresence } = usePausableClock({
     navigation,
     state,
@@ -626,12 +246,95 @@ export default function MahjongScreen() {
     // Level Select pauses the clock too: coming back to the app there
     // mustn't start it; CONTINUE does.
     hold: view === "select",
-    saveOnLeave: (paused) => {
-      if (hasLoadedRef.current) saveGame(paused).catch(() => {});
-    },
+    saveOnLeave: saveNow,
   });
 
-  // Mount: restore saved game or show layout select.
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  // Stats as of the win, read by the win lifecycle below.
+  const statsRef = useRef(stats);
+  useEffect(() => {
+    statsRef.current = stats;
+  }, [stats]);
+
+  // Win lifecycle (useCompletionTransition, #3087): complete the sync session
+  // and discard the save on the step to a cleared board, record the win once
+  // per game, and unlock the next layout. A won game restored from storage
+  // (marked by the mount load below) records nothing: its session ended and
+  // its win was counted when it happened. It still unlocks: that is idempotent.
+  const finishGame = (s: MahjongState): string | null => {
+    const outcome = recordedOutcome("win");
+    // Null for a won game restored from storage: its session already ended.
+    const gameId = syncComplete(
+      {
+        finalScore: s.score,
+        outcome,
+        // elapsedMs, not accumulatedMs: the running segment is only banked
+        // on pause, so accumulatedMs alone misses the current play time.
+        durationMs: elapsedMs(s),
+        result: { won: true, pairs: s.pairsRemoved },
+      },
+      { final_score: s.score, outcome, won: true, pairs: s.pairsRemoved }
+    );
+    discardSave();
+    return gameId;
+  };
+  const unlockAfterWin = (s: MahjongState) => {
+    // Unlock the next layout in registry order, then clear the active layout
+    // from progress regardless of whether a new layout was unlocked.
+    const completedId = s.currentLayoutId ?? "turtle";
+    const newUnlocked = unlockNextLayout(completedId, LAYOUTS, progressRef.current.unlockedLayouts);
+    const newProgress: MahjongProgress = {
+      ...progressRef.current,
+      unlockedLayouts: newUnlocked,
+      currentLayoutId: null,
+      currentState: null,
+    };
+    progressRef.current = newProgress;
+    setProgress(newProgress);
+    saveProgress(newProgress).catch(() => {});
+    setHasSavedGame(false);
+  };
+  const { markRestoredComplete, reset: resetCompletion } = useCompletionTransition(
+    state,
+    state?.isComplete ?? false,
+    {
+      onComplete: (s) => {
+        const gameId = finishGame(s);
+        // The play timer, not accumulatedMs: the engine banks the running
+        // segment only on pause, so a board cleared in one sitting has 0 there.
+        const finalMs = elapsedMs(s);
+        // The finished game is the leaderboard entry (#2624): the card only
+        // asks where it ranks. Only a win completed in this session has one.
+        if (gameId) void lookupRank(gameId);
+        // Fastest clear wins, per layout like the boards (#2747), and only a
+        // plausible one counts: an old save resumed with no time banked can
+        // finish under the ranking floor.
+        const layoutId = s.currentLayoutId ?? "turtle";
+        setWinSummary(nextBestTime(statsRef.current.bestTimeMsByLayout[layoutId] ?? 0, finalMs));
+        setStats((prev) => {
+          const best = nextBestTime(prev.bestTimeMsByLayout[layoutId] ?? 0, finalMs).bestTimeMs;
+          const updated: MahjongStats = {
+            ...prev,
+            bestTimeMsByLayout:
+              best > 0 ? { ...prev.bestTimeMsByLayout, [layoutId]: best } : prev.bestTimeMsByLayout,
+          };
+          saveStats(updated).catch(() => {});
+          return updated;
+        });
+        unlockAfterWin(s);
+      },
+      onAlreadyComplete: (s) => {
+        finishGame(s);
+        unlockAfterWin(s);
+      },
+    }
+  );
+
+  // Mount: restore saved game or show layout select. After the win hook, whose
+  // guard it sets for a won game restored from storage.
   useEffect(() => {
     let alive = true;
     Promise.all([loadGame(), loadStats(), loadProgress()]).then(
@@ -641,9 +344,9 @@ export default function MahjongScreen() {
         progressRef.current = savedProgress;
         setProgress(savedProgress);
         if (saved !== null) {
-          setState(adoptLoaded(saved));
+          setState(adoptSaved(adoptLoaded(saved)));
           setHasSavedGame(!saved.isComplete);
-          if (saved.isComplete) winRecordedRef.current = true;
+          if (saved.isComplete) markRestoredComplete();
           // A restored game continues the session a killed app left open (#2654).
           if (!saved.isComplete) syncResume();
           setView("play");
@@ -657,150 +360,7 @@ export default function MahjongScreen() {
     return () => {
       alive = false;
     };
-  }, [syncResume, adoptLoaded]);
-
-  // Persist on every state change after mount load resolves.
-  useEffect(() => {
-    stateRef.current = state;
-    if (!hasLoadedRef.current || state === null) return;
-    saveGame(state).catch(() => {});
-  }, [state]);
-
-  // Audio + animation event detection — compare previous vs current state.
-  useEffect(() => {
-    const prev = prevAudioStateRef.current;
-    prevAudioStateRef.current = state;
-    if (!prev || !state) return;
-
-    const {
-      playTileSelect: pSelect,
-      playTileMatch: pMatch,
-      playShuffle: pShuffle,
-      playWin: pWin,
-      playDeadlock: pDead,
-    } = audioCallbacksRef.current;
-
-    if (state.tiles.length < prev.tiles.length) {
-      pMatch();
-      if (!reduceMotion) {
-        const removed = prev.tiles.filter((t) => !state.tiles.some((nt) => nt.id === t.id));
-        if (removed.length >= 2) {
-          setFlyingPairs((existing) => [
-            ...existing,
-            { id: `${Date.now()}`, tile1: removed[0]!, tile2: removed[1]! },
-          ]);
-        }
-      }
-    } else if (state.selected !== null) {
-      pSelect();
-    }
-
-    if (state.shufflesLeft < prev.shufflesLeft) {
-      pShuffle();
-      if (!reduceMotion) {
-        boardOpacity.value = withSequence(
-          withTiming(0.35, { duration: 180 }),
-          withTiming(1, { duration: 180 })
-        );
-      }
-    }
-
-    if (state.isComplete && !prev.isComplete) {
-      pWin();
-    }
-
-    if (state.isDeadlocked && !prev.isDeadlocked) {
-      pDead();
-      if (!reduceMotion) {
-        boardShakeX.value = withSequence(
-          withTiming(8, { duration: 60 }),
-          withTiming(-8, { duration: 60 }),
-          withTiming(6, { duration: 60 }),
-          withTiming(-6, { duration: 60 }),
-          withTiming(4, { duration: 60 }),
-          withTiming(-4, { duration: 60 }),
-          withTiming(0, { duration: 60 })
-        );
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
-
-  // Stats as of the win, read by the win lifecycle below.
-  const statsRef = useRef(stats);
-  useEffect(() => {
-    statsRef.current = stats;
-  }, [stats]);
-
-  // Win lifecycle: complete sync session, record stats, unlock next layout.
-  useEffect(() => {
-    if (state === null) {
-      prevCompleteRef.current = false;
-      return;
-    }
-    if (state.isComplete && !prevCompleteRef.current) {
-      const outcome = recordedOutcome("win");
-      // Null for a won game restored from storage: its session already ended.
-      const gameId = syncComplete(
-        {
-          finalScore: state.score,
-          outcome,
-          // elapsedMs, not accumulatedMs: the running segment is only banked
-          // on pause, so accumulatedMs alone misses the current play time.
-          durationMs: elapsedMs(state),
-          result: { won: true, pairs: state.pairsRemoved },
-        },
-        { final_score: state.score, outcome, won: true, pairs: state.pairsRemoved }
-      );
-      clearGame().catch(() => {});
-      if (!winRecordedRef.current) {
-        winRecordedRef.current = true;
-        // The play timer, not accumulatedMs: the engine banks the running
-        // segment only on pause, so a board cleared in one sitting has 0 there.
-        const finalMs = elapsedMs(state);
-        const finalScore = state.score;
-        // The finished game is the leaderboard entry (#2624): the card only
-        // asks where it ranks. Only a win completed in this session has one.
-        if (gameId) void submitRank({ gameId });
-        // Fastest clear wins, per layout like the boards (#2747), and only a
-        // plausible one counts: an old save resumed with no time banked can
-        // finish under the ranking floor.
-        const layoutId = state.currentLayoutId ?? "turtle";
-        setWinSummary(nextBestTime(statsRef.current.bestTimeMsByLayout[layoutId] ?? 0, finalMs));
-        setStats((prev) => {
-          const best = nextBestTime(prev.bestTimeMsByLayout[layoutId] ?? 0, finalMs).bestTimeMs;
-          const updated: MahjongStats = {
-            ...prev,
-            gamesWon: prev.gamesWon + 1,
-            bestScore: finalScore > prev.bestScore ? finalScore : prev.bestScore,
-            bestTimeMsByLayout:
-              best > 0 ? { ...prev.bestTimeMsByLayout, [layoutId]: best } : prev.bestTimeMsByLayout,
-          };
-          saveStats(updated).catch(() => {});
-          return updated;
-        });
-      }
-      // Unlock the next layout in registry order, then clear the active layout
-      // from progress regardless of whether a new layout was unlocked.
-      const completedId = state.currentLayoutId ?? "turtle";
-      const newUnlocked = unlockNextLayout(
-        completedId,
-        LAYOUTS,
-        progressRef.current.unlockedLayouts
-      );
-      const newProgress: MahjongProgress = {
-        ...progressRef.current,
-        unlockedLayouts: newUnlocked,
-        currentLayoutId: null,
-        currentState: null,
-      };
-      progressRef.current = newProgress;
-      setProgress(newProgress);
-      saveProgress(newProgress).catch(() => {});
-      setHasSavedGame(false);
-    }
-    prevCompleteRef.current = state.isComplete;
-  }, [state, syncComplete, submitRank]);
+  }, [syncResume, adoptLoaded, adoptSaved, markRestoredComplete]);
 
   // Disable native swipe-back (iOS edge gesture) while the game is open so that
   // a left-pan on the board doesn't accidentally exit to the lobby.
@@ -826,10 +386,10 @@ export default function MahjongScreen() {
       { outcome: "loss", durationMs: elapsedMs(s), result },
       { outcome: "loss", ...result }
     );
-    clearGame().catch(() => {});
+    discardSave();
     setHasSavedGame(false);
     return true;
-  }, [syncGetGameId, syncComplete, progressResult]);
+  }, [syncGetGameId, syncComplete, progressResult, discardSave]);
 
   // Leaving a deadlocked board records the loss. Any other open session is
   // abandoned by useGameSync itself when the screen unmounts, with the
@@ -848,21 +408,23 @@ export default function MahjongScreen() {
       // Event data for the game_started event; metadata for the row (#2627).
       syncStart({ layout }, { layout });
       syncMarkStarted();
-      if (s.pairsRemoved === 0 && !hasLoadedRef.current) return;
     },
     [syncGetGameId, syncStart, syncMarkStarted]
   );
 
+  // Any move drops the hint: an undo or a shuffle can renumber the tiles it names.
+  const clearHint = useCallback(() => {
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    hintTimerRef.current = null;
+    setHintIds((prev) => (prev.size === 0 ? prev : new Set()));
+  }, []);
+
   const handleTilePress = useCallback(
     (tileId: number) => {
-      if (hintTimerRef.current) {
-        clearTimeout(hintTimerRef.current);
-        hintTimerRef.current = null;
-      }
-      setHintIds(new Set());
+      clearHint();
       setState((prev) => {
         if (!prev) return prev;
-        const moved = selectTile(prev, tileId);
+        const moved = selectTile(prev, tileId, freeIdsFor(free, prev.tiles));
         if (moved === prev) return prev;
         // A first tap that lands while the player is away mustn't start the
         // clock running (#2750).
@@ -871,32 +433,30 @@ export default function MahjongScreen() {
         return next;
       });
     },
-    [ensureSyncStarted, matchPresence]
+    [ensureSyncStarted, matchPresence, clearHint, free]
   );
 
   const handleHint = useCallback(() => {
     if (!state) return;
-    const pair = getAnyFreePair(state.tiles);
+    const pair = getAnyFreePair(state.tiles, free.ids);
     if (!pair) {
-      if (noHintTimerRef.current) clearTimeout(noHintTimerRef.current);
-      setNoHintVisible(true);
-      noHintTimerRef.current = setTimeout(() => setNoHintVisible(false), 2000);
+      showNoHint();
       return;
     }
-    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    clearHint();
     setHintIds(new Set(pair));
     hintTimerRef.current = setTimeout(() => setHintIds(new Set()), 2000);
-  }, [state]);
+  }, [state, free, clearHint, showNoHint]);
 
   useEffect(
     () => () => {
       if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
-      if (noHintTimerRef.current) clearTimeout(noHintTimerRef.current);
     },
     []
   );
 
   const handleShuffle = useCallback(() => {
+    clearHint();
     setState((prev) => {
       if (!prev) return prev;
       const shuffled = shuffleBoard(prev);
@@ -905,14 +465,12 @@ export default function MahjongScreen() {
       ensureSyncStarted(next);
       return next;
     });
-  }, [ensureSyncStarted, matchPresence]);
+  }, [ensureSyncStarted, matchPresence, clearHint]);
 
   const handleUndo = useCallback(() => {
-    setState((prev) => {
-      if (!prev) return prev;
-      return matchPresence(undoMove(prev));
-    });
-  }, [matchPresence]);
+    clearHint();
+    setState((prev) => (prev ? matchPresence(undoMove(prev)) : prev));
+  }, [matchPresence, clearHint]);
 
   /**
    * Closes an open session: a loss for a deadlocked board, otherwise the
@@ -924,18 +482,25 @@ export default function MahjongScreen() {
     syncClose();
   }, [recordDeadlockLoss, syncClose]);
 
-  const startNewGame = useCallback(() => {
+  /**
+   * Leaves the board for a new one: closes its session (abandonOpenSession) and
+   * clears its result, so the next game's completion is recorded afresh.
+   */
+  const leaveCurrentGame = useCallback(() => {
     abandonOpenSession();
     setWinSummary(null);
     resetSubmission();
-    winRecordedRef.current = false;
-    prevCompleteRef.current = false;
+    resetCompletion();
+  }, [abandonOpenSession, resetSubmission, resetCompletion]);
+
+  const startNewGame = useCallback(() => {
+    leaveCurrentGame();
     const s = stateRef.current;
     // A deadlocked board left this way is lost (#2517) — nothing to continue.
     setHasSavedGame(s !== null && !s.isComplete && !s.isDeadlocked);
     setState(null);
     setView("select");
-  }, [abandonOpenSession, resetSubmission]);
+  }, [leaveCurrentGame]);
 
   // Navigates directly to level select without an abandon confirmation or server
   // abandon event — the in-progress game is preserved locally so CONTINUE works.
@@ -955,20 +520,11 @@ export default function MahjongScreen() {
       // Level Select keeps the board's session open (so CONTINUE resumes it);
       // a new deal closes it here, so the next tap opens a session with this
       // layout (#2627).
-      abandonOpenSession();
-      setWinSummary(null);
-      resetSubmission();
-      winRecordedRef.current = false;
-      prevCompleteRef.current = false;
+      leaveCurrentGame();
       const fresh = { ...createGame(getLayout(layoutId)), currentLayoutId: layoutId };
       setState(fresh);
       setView("play");
       setHasSavedGame(false);
-      setStats((prev) => {
-        const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
-        saveStats(updated).catch(() => {});
-        return updated;
-      });
       const newProgress: MahjongProgress = {
         ...progressRef.current,
         currentLayoutId: layoutId,
@@ -979,7 +535,7 @@ export default function MahjongScreen() {
       saveProgress(newProgress).catch(() => {});
       // Sync session starts on first tile tap via ensureSyncStarted, not here.
     },
-    [abandonOpenSession, resetSubmission]
+    [leaveCurrentGame]
   );
 
   // Play Again from a result card: a fresh deal of the same layout.
@@ -1006,7 +562,7 @@ export default function MahjongScreen() {
           setHasSavedGame(false);
           return;
         }
-        setState(adoptLoaded(saved));
+        setState(adoptSaved(adoptLoaded(saved)));
         setHasSavedGame(false);
         // A restored game continues the session a killed app left open (#2654).
         if (!saved.isComplete) syncResume();
@@ -1015,7 +571,7 @@ export default function MahjongScreen() {
       .catch(() => {
         setHasSavedGame(false);
       });
-  }, [syncResume, adoptLoaded]);
+  }, [syncResume, adoptLoaded, adoptSaved]);
 
   const undoDisabled = !state || state.undoStack.length === 0 || state.isComplete;
 
@@ -1026,13 +582,8 @@ export default function MahjongScreen() {
         title={t("game.title")}
         requireBack
         loading={false}
-        onBack={() => navigation.popToTop()}
         onOpenLeaderboard={openLeaderboard}
-        style={{
-          paddingBottom: Math.max(insets.bottom, 16),
-          paddingLeft: Math.max(insets.left, 12),
-          paddingRight: Math.max(insets.right, 12),
-        }}
+        style={{ paddingBottom: Math.max(insets.bottom, 16) }}
       >
         <LayoutSelectScreen
           layouts={LAYOUTS}
@@ -1051,12 +602,7 @@ export default function MahjongScreen() {
       title={t("game.title")}
       requireBack
       loading={loading}
-      onBack={() => navigation.popToTop()}
-      style={{
-        paddingBottom: Math.max(insets.bottom, 16),
-        paddingLeft: Math.max(insets.left, 12),
-        paddingRight: Math.max(insets.right, 12),
-      }}
+      style={{ paddingBottom: Math.max(insets.bottom, 16) }}
       onNewGame={startNewGame}
       onLevelSelect={goToLevelSelect}
       // No Scoreboard item (#2627): it led to an untranslated fallback. The
@@ -1090,7 +636,7 @@ export default function MahjongScreen() {
                   playing, the score is 10 per pair, which PAIRS already shows.
                   The score stays on the result card. */}
               {__DEV__ ? (
-                <Pressable onLongPress={() => setDevPanelOpen((o) => !o)} accessibilityRole="none">
+                <Pressable onLongPress={toggleDev} accessibilityRole="none">
                   <PlayClockText
                     startedAt={state.startedAt}
                     accumulatedMs={state.accumulatedMs}
@@ -1111,7 +657,7 @@ export default function MahjongScreen() {
                 />
               )}
               <Text style={[styles.hudText, { color: colors.textMuted }]}>
-                {t("hud.pairs")} {state.pairsRemoved}/72
+                {t("hud.pairs")} {state.pairsRemoved}/{totalPairs}
               </Text>
             </View>
             <View style={styles.hudGroup}>
@@ -1120,7 +666,7 @@ export default function MahjongScreen() {
                 accessibilityLabel={t("action.shuffleLabel")}
                 onPress={handleShuffle}
                 disabled={state.shufflesLeft === 0 || state.isComplete || state.isDeadlocked}
-                color="#ffd700"
+                color={MAHJONG_SHUFFLE_COLOR}
                 testID="mahjong-shuffle-button"
               />
               <Text style={[styles.hudText, styles.dealIdText, { color: colors.textMuted }]}>
@@ -1130,7 +676,7 @@ export default function MahjongScreen() {
                 <PillButton
                   label="DEV"
                   accessibilityLabel="Toggle dev panel"
-                  onPress={() => setDevPanelOpen((o) => !o)}
+                  onPress={toggleDev}
                   color={DEV_ACCENT}
                 />
               )}
@@ -1168,6 +714,7 @@ export default function MahjongScreen() {
                   <GameCanvas
                     state={state}
                     camera={camera}
+                    freeIds={free.ids}
                     hintIds={hintIds}
                     debugShowFree={__DEV__ && debugShowFree}
                     onTilePress={handleTilePress}
@@ -1179,7 +726,7 @@ export default function MahjongScreen() {
                     {...pair}
                     camera={camera}
                     tileUris={tileUris}
-                    onDone={() => setFlyingPairs((prev) => prev.filter((p) => p.id !== pair.id))}
+                    onDone={() => dismissFlyingPair(pair.id)}
                   />
                 ))}
               </Animated.View>
@@ -1210,58 +757,16 @@ export default function MahjongScreen() {
         </View>
       )}
 
-      {__DEV__ && devPanelOpen && state && (
-        <View style={styles.devPanel} pointerEvents="box-none">
-          <Text style={styles.devPanelTitle}>DEV — Mahjong</Text>
-          <Text style={styles.devPanelText}>
-            tiles: {state.tiles.length} / pairs removed: {state.pairsRemoved}
-          </Text>
-          <Text style={styles.devPanelText}>
-            free tiles:{" "}
-            {new Set(freePairs.flatMap(([a, b]: [SlotTile, SlotTile]) => [a.id, b.id])).size} / free
-            pairs: {freePairs.length}
-          </Text>
-          <Text style={styles.devPanelText}>
-            shuffles left: {state.shufflesLeft} / score: {state.score}
-          </Text>
-          <Text style={styles.devPanelText}>
-            deal #{state.dealId} / undo depth: {state.undoStack.length}
-          </Text>
-          <Pressable
-            onPress={() => setDebugShowFree((v) => !v)}
-            style={[styles.devToggleBtn, debugShowFree && styles.devToggleBtnActive]}
-          >
-            <Text style={styles.devToggleText}>
-              {debugShowFree ? "overlay: ON" : "overlay: off"}
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => navigation.navigate("MahjongLayoutInspector")}
-            style={styles.devToggleBtn}
-          >
-            <Text style={styles.devToggleText}>Layout Inspector →</Text>
-          </Pressable>
-          {freePairs.length > 0 && (
-            <>
-              <Text style={[styles.devPanelTitle, { marginTop: 8 }]}>free pairs</Text>
-              <ScrollView style={{ maxHeight: 140 }} showsVerticalScrollIndicator={false}>
-                {freePairs.map(([a, b]: [SlotTile, SlotTile], i: number) => (
-                  <Text key={i} style={styles.devPairText}>
-                    {a.suit[0]}
-                    {a.rank} ↔ {b.suit[0]}
-                    {b.rank} (ids {a.id},{b.id})
-                  </Text>
-                ))}
-              </ScrollView>
-            </>
-          )}
-          {freePairs.length === 0 && (
-            <Text style={[styles.devPanelText, { color: "#ff6644", marginTop: 4 }]}>
-              no free pairs
-            </Text>
-          )}
-        </View>
-      )}
+      <MahjongDevPanel
+        enabled={__DEV__}
+        open={devOpen}
+        onToggle={toggleDev}
+        state={state}
+        free={free}
+        showFree={debugShowFree}
+        onToggleShowFree={() => setDebugShowFree((v) => !v)}
+        onOpenLayoutInspector={() => navigation.navigate("MahjongLayoutInspector")}
+      />
 
       {state !== null ? (
         <GameResultModal
@@ -1307,18 +812,7 @@ export default function MahjongScreen() {
                 ]
               : [{ label: tResult("stat.time"), value: formatMs(elapsedMs(state)) }]
           }
-          submission={
-            state.isComplete
-              ? {
-                  status: leaderboard.status,
-                  rank: leaderboard.rank,
-                  isBest: leaderboard.isBest,
-                  playerName: leaderboard.playerName,
-                  onJoinLeaderboards: leaderboard.joinLeaderboards,
-                  onRetry: leaderboard.retry,
-                }
-              : undefined
-          }
+          submission={state.isComplete ? toSubmission(leaderboard) : undefined}
           onViewLeaderboard={openLeaderboard}
           onPlayAgain={handlePlayAgain}
           secondaryAction={{ label: tResult("action.changeLayout"), onPress: startNewGame }}
@@ -1374,68 +868,6 @@ const styles = StyleSheet.create({
   dealIdText: {
     fontSize: 10,
   },
-  nameInput: {
-    width: "100%",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    fontSize: 15,
-    marginBottom: 12,
-  },
-  submittedText: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 12,
-  },
-  devPanel: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    width: 220,
-    backgroundColor: "rgba(0,0,0,0.82)",
-    borderLeftWidth: 1,
-    borderLeftColor: "rgba(255,128,0,0.5)",
-    padding: 10,
-  },
-  devPanelTitle: {
-    color: "rgba(255,128,0,1)",
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    marginBottom: 4,
-  },
-  devPanelText: {
-    color: "#cccccc",
-    fontSize: 10,
-    lineHeight: 16,
-    fontVariant: ["tabular-nums"],
-  },
-  devPairText: {
-    color: "#aaccaa",
-    fontSize: 10,
-    lineHeight: 15,
-    fontVariant: ["tabular-nums"],
-  },
-  devToggleBtn: {
-    marginTop: 6,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: "rgba(255,128,0,0.5)",
-    alignSelf: "flex-start",
-  },
-  devToggleBtnActive: {
-    backgroundColor: "rgba(255,128,0,0.2)",
-    borderColor: "rgba(255,128,0,1)",
-  },
-  devToggleText: {
-    color: "rgba(255,128,0,1)",
-    fontSize: 10,
-    fontWeight: "700",
-  },
   noMovesOverlay: {
     backgroundColor: MAHJONG_NO_MOVES_OVERLAY_BG,
     alignItems: "center",
@@ -1443,14 +875,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   overlayTitle: {
-    color: "#ffffff",
+    color: MAHJONG_OVERLAY_TEXT,
     fontSize: 24,
     fontWeight: "bold",
     textAlign: "center",
     marginBottom: 8,
   },
   overlayDetail: {
-    color: "#cccccc",
+    color: MAHJONG_OVERLAY_DETAIL_TEXT,
     fontSize: 14,
     textAlign: "center",
     marginBottom: 16,
@@ -1463,7 +895,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   overlayBtnText: {
-    color: "#ffffff",
+    color: MAHJONG_OVERLAY_TEXT,
     fontSize: 15,
     fontWeight: "bold",
     textAlign: "center",

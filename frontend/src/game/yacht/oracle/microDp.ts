@@ -3,7 +3,7 @@
  *
  * Shipped: this is the SAME core computation used both by the offline
  * solver (wrapped in a full retrograde sweep over ~786K states,
- * oracleBuild/solver.ts) and by the runtime oracle (evaluated for one live
+ * tooling/yacht/oracleBuild/solver.ts) and by the runtime oracle (evaluated for one live
  * dice roll at a time, oracle.ts's `optimalHoldEVs`/`optimalCategoryEVs`) —
  * sharing it means both call sites are provably consistent, and a runtime
  * hold-EV query is exactly "the same math the table was built with,
@@ -40,7 +40,7 @@ export function computeArr0(
     }
     // `legal` is only ever empty at a terminal (0-remaining) state, which
     // neither the offline solver nor a live query ever calls this for —
-    // defensive fallback only (see oracleBuild/__tests__/solver.test.ts).
+    // defensive fallback only (see tooling/yacht/oracleBuild/__tests__/solver.test.ts).
     arr0[m] = best === -Infinity ? 0 : best;
   }
 
@@ -75,6 +75,7 @@ export function computeHoldLayer(
  * Full turn value for `key`: expectation over the mandatory first roll (252
  * outcomes) of the best 2-reroll-then-score play. This is VTG(key) — what
  * the offline solver stores in the shipped table for every reachable state.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
  */
 export function solveStateVTG(
   key: number,

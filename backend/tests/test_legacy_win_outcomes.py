@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterator
+from datetime import UTC
 
 import pytest
 from fastapi.testclient import TestClient
 
 from games.legacy_outcomes import might_be_legacy_win
-from tests.test_generic_leaderboard import _grant_all, _headers, _sid
+from tests._helpers import session_headers as _headers
+from tests.test_generic_leaderboard import _grant_all, _sid
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
@@ -26,14 +27,6 @@ pytestmark = pytest.mark.skipif(
 
 _FRESH_BOARD = [2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 _WON_BOARD = [2048, 512, 64, 8, 4, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2]
-
-
-@pytest.fixture()
-def client() -> Iterator[TestClient]:
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 @pytest.fixture()
@@ -219,7 +212,7 @@ def test_only_legacy_outcomes_of_the_three_games_are_checked() -> None:
 async def test_only_the_completed_row_is_rewritten(client: TestClient, sid: str) -> None:
     """The statement is scoped to the game being completed: another stored row
     that matches the rule (the migration's job) is left alone."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from sqlalchemy import select
 
@@ -233,7 +226,7 @@ async def test_only_the_completed_row_is_rewritten(client: TestClient, sid: str)
         stored = Game(
             session_id=str(uuid.uuid4()),
             game_type_id=gt_id,
-            completed_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+            completed_at=datetime(2026, 9, 1, tzinfo=UTC),
             outcome="completed",
             game_metadata={"won": True, "pairs": 72},
         )

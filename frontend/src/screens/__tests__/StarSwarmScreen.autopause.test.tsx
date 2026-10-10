@@ -1,9 +1,11 @@
 import React from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
-import { AppState, AppStateStatus } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import StarSwarmScreen from "../StarSwarmScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
+import { AppState, AppStateStatus } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { audioCalls, canvas, resetHarness } from "./helpers/starSwarmMocks";
+import { renderScreen, startRun } from "./helpers/starSwarmHarness";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import {
   PAUSED_RUN_STORAGE_KEY,
@@ -20,10 +22,6 @@ import type { StarSwarmState } from "../../game/starswarm/types";
 // state, and getState() returns an engine state); Controls is real, so the
 // overlay itself is asserted.
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 const mockPopToTop = jest.fn();
 // Live navigation listeners, so a test can blur the screen (#2633).
 const mockNavListeners = new Map<string, Set<() => void>>();
@@ -38,9 +36,7 @@ const mockNavigation = {
     return () => set.delete(cb);
   }),
 };
-jest.mock("@react-navigation/native", () => ({
-  useNavigation: () => mockNavigation,
-}));
+jest.mock("@react-navigation/native", () => mockScreenDeps().mockNavigation(() => mockNavigation));
 
 async function emitNav(event: "blur" | "focus") {
   await act(async () => {
@@ -48,87 +44,50 @@ async function emitNav(event: "blur" | "focus") {
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let mockCanvasProps: any = null;
-// What the engine holds — the canvas stores game over before React hears of it.
-let mockEnginePhase = "SwoopIn";
-let mockEngineState: StarSwarmState | null = null;
-let mockStateCache: { src: unknown; phase: string; state: unknown } | null = null;
-function mockCurrentState() {
-  if (mockStateCache?.src !== mockEngineState || mockStateCache?.phase !== mockEnginePhase) {
-    mockStateCache = {
-      src: mockEngineState,
-      phase: mockEnginePhase,
-      state: { ...mockEngineState, phase: mockEnginePhase },
-    };
-  }
-  return mockStateCache.state;
-}
-jest.mock("../../components/starswarm/GameCanvas", () => {
+// The canvas and the audio hook are the shared stand-ins (helpers/starSwarmMocks).
+// `canvas.state` is what the engine holds — the canvas stores game over before React
+// hears of it — and, like the real canvas, the same object until the engine changes it.
+jest.mock("../../components/starswarm/GameCanvas", () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const React = require("react");
+  require("./helpers/starSwarmMocks").canvasModule()
+);
+jest.mock("../../hooks/useStarSwarmAudio", () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { View } = require("react-native");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const MockCanvas = React.forwardRef((props: any, ref: any) => {
-    mockCanvasProps = props;
-    // Like the real canvas, the same state object until the engine changes it.
-    React.useImperativeHandle(ref, () => ({ getState: mockCurrentState }));
-    return React.createElement(View, { testID: "starswarm-canvas" });
-  });
-  MockCanvas.displayName = "MockCanvas";
-  return { __esModule: true, default: MockCanvas };
-});
+  require("./helpers/starSwarmMocks").audioModule()
+);
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let mockAudioArgs: any[] = [];
-jest.mock("../../hooks/useStarSwarmAudio", () => {
-  const noop = () => undefined;
-  return {
-    DEFAULT_SFX_VOLUMES: {},
-    useStarSwarmAudio: (...args: unknown[]) => {
-      mockAudioArgs = args;
-      return new Proxy({}, { get: () => noop }) as Record<string, () => void>;
-    },
-  };
-});
+/** The engine moves to `phase`: a new state object, as the engine hands back. */
+function setEnginePhase(phase: string) {
+  canvas.state = { ...canvas.state!, phase } as StarSwarmState;
+}
 
 jest.mock("../../game/starswarm/telemetry", () => ({ reportRunStats: jest.fn() }));
 
 // The result card's rank lookup (#2626) — hermetic, and never left retrying.
-jest.mock("../../api/stats", () => ({
-  statsApi: {
+jest.mock("../../api/stats", () =>
+  mockScreenDeps().mockStatsApi({
     getGameRank: jest.fn(() =>
       Promise.resolve({ rank: null, is_best: null, ranked: false, reason: "not_rankable" })
     ),
-  },
-}));
-jest.mock("../../game/_shared/flushQueuedGames", () => ({
-  flushQueuedGames: jest.fn(() => Promise.resolve()),
-}));
-jest.mock("../../game/_shared/displayNameSync", () => ({
-  ...jest.requireActual("../../game/_shared/displayNameSync"),
-  flushDisplayNameSync: jest.fn(() => Promise.resolve(true)),
-}));
+  })
+);
+jest.mock("../../game/_shared/flushQueuedGames", () => mockScreenDeps().mockFlushQueuedGames());
+jest.mock("../../game/_shared/displayNameSync", () => mockScreenDeps().mockDisplayNameSync());
 
 const mockStartGame = jest.fn(() => "starswarm-game-id");
 const mockCompleteGame = jest.fn();
 // The killed process's session a restore can continue (#2654); none by default.
 const mockResumeGame = jest.fn((): string | null => null);
-jest.mock("../../game/_shared/gameEventClient", () => ({
-  gameEventClient: {
-    startGame: (...args: unknown[]) => (mockStartGame as jest.Mock)(...args),
-    resumeGame: (...args: unknown[]) => (mockResumeGame as jest.Mock)(...args),
+jest.mock("../../game/_shared/gameEventClient", () => {
+  const { lazy, mockGameEventClient } = mockScreenDeps();
+  return mockGameEventClient({
+    startGame: lazy(() => mockStartGame),
+    resumeGame: lazy(() => mockResumeGame),
     markStarted: jest.fn(),
     discardGame: jest.fn(),
-    enqueueEvent: jest.fn(),
-    completeGame: (...args: unknown[]) => (mockCompleteGame as jest.Mock)(...args),
-    init: jest.fn().mockResolvedValue(undefined),
-    reportBug: jest.fn(),
-    getQueueStats: jest.fn(),
-    clearAll: jest.fn().mockResolvedValue(undefined),
-  },
-}));
+    completeGame: lazy(() => mockCompleteGame),
+  });
+});
 
 // Live AppState listeners — the screen re-subscribes when its pause inputs change.
 let appStateListeners: ((state: AppStateStatus) => void)[] = [];
@@ -139,49 +98,28 @@ async function setAppState(state: AppStateStatus) {
   });
 }
 
-async function renderScreen() {
-  const r = await render(
-    <ThemeProvider>
-      <StarSwarmScreen />
-    </ThemeProvider>
-  );
-  // Give the canvas container a size so the canvas mounts. The game mounts once any
-  // run a previous process saved has loaded (#2645).
-  const outer = await r.findByTestId("starswarm-canvas-outer");
-  await act(async () => {
-    await fireEvent(outer, "layout", {
-      nativeEvent: { layout: { width: 400, height: 700 } },
-    });
-  });
-  return r;
-}
-
-async function startRun() {
-  await act(async () => {
-    await fireEvent.press(screen.getByTestId("starswarm-start-game"));
-  });
-}
-
-const musicPaused = () => mockAudioArgs[3] as boolean;
+const musicPaused = () => audioCalls.at(-1)![3] as boolean;
 
 function expectPaused() {
-  expect(mockCanvasProps.isPaused).toBe(true);
+  expect(canvas.props.isPaused).toBe(true);
   expect(screen.getByText("PAUSED")).toBeTruthy();
   expect(musicPaused()).toBe(true);
 }
 
 function expectRunning() {
-  expect(mockCanvasProps.isPaused).toBe(false);
+  expect(canvas.props.isPaused).toBe(false);
   expect(screen.queryByText("PAUSED")).toBeNull();
   expect(musicPaused()).toBe(false);
 }
 
 beforeEach(async () => {
   jest.clearAllMocks();
-  mockCanvasProps = null;
-  mockAudioArgs = [];
-  mockEnginePhase = "SwoopIn";
-  mockEngineState = { ...initStarSwarm(CANVAS_W, CANVAS_H, 3, 7, "Commander"), score: 2500 };
+  resetHarness();
+  canvas.state = {
+    ...initStarSwarm(CANVAS_W, CANVAS_H, 3, 7, "Commander"),
+    score: 2500,
+    phase: "SwoopIn",
+  } as StarSwarmState;
   clearSavedPausedState();
   appStateListeners = [];
   jest.spyOn(AppState, "addEventListener").mockImplementation((_type, listener) => {
@@ -243,21 +181,67 @@ describe("StarSwarmScreen — auto-pause when the app leaves the foreground", ()
     expectPaused();
   });
 
+  it("pauses a live run when the feedback sheet opens over it, and stays paused after (#2944)", async () => {
+    await renderScreen();
+    await startRun();
+    expectRunning();
+
+    // ⋯ → Send Feedback: two native Modals, neither a blur nor an AppState change.
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("nav-menu"));
+    });
+    expectPaused();
+    expect(getSavedPausedState()).not.toBeNull();
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("nav-menu-feedback"));
+    });
+    expectPaused();
+
+    // Closing the sheet leaves the pause overlay up, with a working Resume.
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Close" }));
+    });
+    expectPaused();
+    await act(async () => {
+      await fireEvent.press(screen.getByText("RESUME"));
+    });
+    expectRunning();
+  });
+
   it("does not pause a finished run when the screen is covered", async () => {
     await renderScreen();
     await startRun();
     await act(async () => {
-      mockCanvasProps.onGameOver(4200, 7);
+      canvas.props.onGameOver(4200, 7);
     });
     await emitNav("blur");
-    expect(mockCanvasProps.isPaused).toBe(false);
+    expect(canvas.props.isPaused).toBe(false);
+  });
+
+  it("pauses and saves again on the next leave event, even with no return to active between (#3087)", async () => {
+    // Why the screen acts on every leave event (`onLeave`), not once per absence (`onPause`):
+    // the app never reported "active", so the player still counts as away, but the run they
+    // resumed must be paused and saved again when the app moves on to the background.
+    await renderScreen();
+    await startRun();
+    await setAppState("inactive");
+    expectPaused();
+    await act(async () => {
+      await fireEvent.press(screen.getByText("RESUME"));
+    });
+    expectRunning();
+    expect(getSavedPausedState()).toBeNull();
+
+    await setAppState("background");
+    expectPaused();
+    expect(getSavedPausedState()?.gameState).toBe(canvas.state);
   });
 
   it("pauses mid-wave too — after a wave clear", async () => {
     await renderScreen();
     await startRun();
     await act(async () => {
-      mockCanvasProps.onWaveClear();
+      canvas.props.onWaveClear();
     });
     await setAppState("background");
     expectPaused();
@@ -280,10 +264,10 @@ describe("StarSwarmScreen — auto-pause when the app leaves the foreground", ()
     await renderScreen();
     await startRun();
     await act(async () => {
-      mockCanvasProps.onGameOver(4200, 7);
+      canvas.props.onGameOver(4200, 7);
     });
     await setAppState("background");
-    expect(mockCanvasProps.isPaused).toBe(false);
+    expect(canvas.props.isPaused).toBe(false);
     expect(screen.queryByText("PAUSED")).toBeNull();
     expect(screen.getByTestId("starswarm-result")).toBeTruthy();
   });
@@ -292,14 +276,14 @@ describe("StarSwarmScreen — auto-pause when the app leaves the foreground", ()
     await renderScreen();
     await startRun();
     // The loop stored the GameOver state; the app goes inactive before onGameOver lands.
-    mockEnginePhase = "GameOver";
+    setEnginePhase("GameOver");
     await setAppState("inactive");
     expectRunning();
     // The game over then lands on an unpaused run: the result card, never a paused one.
     await act(async () => {
-      mockCanvasProps.onGameOver(4200, 7);
+      canvas.props.onGameOver(4200, 7);
     });
-    expect(mockCanvasProps.isPaused).toBe(false);
+    expect(canvas.props.isPaused).toBe(false);
   });
 
   it("pauses a run restored from a saved pause again after it's resumed", async () => {
@@ -402,14 +386,14 @@ describe("StarSwarmScreen — a paused run survives the process (#2645)", () => 
     await flush();
     expect(await persisted()).not.toBeNull();
     await act(async () => {
-      mockCanvasProps.onGameOver(4200, 7);
+      canvas.props.onGameOver(4200, 7);
     });
     await flush();
     expect(await persisted()).toBeNull();
   });
 
   async function saveAndKill() {
-    const run = mockEngineState!;
+    const run = canvas.state!;
     savePausedState({
       gameState: run,
       difficulty: "Commander",
@@ -427,8 +411,8 @@ describe("StarSwarmScreen — a paused run survives the process (#2645)", () => 
     await renderScreen();
     expect(screen.queryByTestId("starswarm-start-game")).toBeNull();
     expectPaused();
-    expect(mockCanvasProps.initialState).toEqual(JSON.parse(JSON.stringify(run)));
-    expect(mockCanvasProps.difficulty).toBe("Commander");
+    expect(canvas.props.initialState).toEqual(JSON.parse(JSON.stringify(run)));
+    expect(canvas.props.difficulty).toBe("Commander");
 
     // One run, one session (#2654): the killed process's session goes on — nothing is
     // abandoned and no second session is opened.
@@ -443,7 +427,7 @@ describe("StarSwarmScreen — a paused run survives the process (#2645)", () => 
 
     // Its game over completes that same session.
     await act(async () => {
-      mockCanvasProps.onGameOver(4200, 7);
+      canvas.props.onGameOver(4200, 7);
     });
     expect(mockCompleteGame).toHaveBeenCalledWith(
       "dead-process-game",

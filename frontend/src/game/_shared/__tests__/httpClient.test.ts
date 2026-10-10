@@ -515,16 +515,13 @@ describe("httpClient — Sentry reporting (#513)", () => {
   });
 
   describe("network-failure throttle (#2430)", () => {
-    let WINDOW: number; // NETWORK_FAILURE_REPORT_INTERVAL_MS
-    let MAX_TRACKED: number; // NETWORK_FAILURE_MAX_TRACKED
+    const WINDOW = 10 * 60 * 1000; // httpClient's NETWORK_FAILURE_REPORT_INTERVAL_MS
+    const MAX_TRACKED = 100; // httpClient's NETWORK_FAILURE_MAX_TRACKED
     let now: number;
     let dateSpy: jest.SpyInstance;
     let originalDev: boolean | undefined;
 
     beforeEach(() => {
-      const throttle = require("../httpClient") as typeof import("../httpClient");
-      WINDOW = throttle.NETWORK_FAILURE_REPORT_INTERVAL_MS;
-      MAX_TRACKED = throttle.NETWORK_FAILURE_MAX_TRACKED;
       now = 1_700_000_000_000;
       dateSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
       // The report path only runs outside dev and test-hook builds.

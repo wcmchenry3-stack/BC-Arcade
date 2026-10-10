@@ -13,6 +13,7 @@ from db.base import get_session_factory
 from db.models import GameEntitlement
 from hearts.models import HeartsResult
 from hearts.module import module
+from tests._helpers import session_headers as _headers
 
 # Hand 2 is a moon shot by seat 2 (0 for the shooter, 26 for each opponent).
 HANDS = [[10, 5, 8, 3], [26, 26, 0, 26], [9, 4, 6, 7]]
@@ -93,10 +94,10 @@ def test_a_malformed_breakdown_is_dropped_never_rejected(name: str) -> None:
 
 
 def test_a_dropped_breakdown_is_reported_with_its_reason(caplog, monkeypatch) -> None:
-    import hearts.models as hm
+    from observability import report
 
     sent: list[str] = []
-    monkeypatch.setattr(hm.sentry_sdk, "capture_message", lambda msg, **kw: sent.append(msg))
+    monkeypatch.setattr(report.sentry_sdk, "capture_message", lambda msg, **kw: sent.append(msg))
     with caplog.at_level("WARNING", logger="hearts.models"):
         out = _dump({**GOOD, "final_score": 55.0})
     assert "hand_scores" not in out
@@ -105,10 +106,10 @@ def test_a_dropped_breakdown_is_reported_with_its_reason(caplog, monkeypatch) ->
 
 
 def test_a_kept_breakdown_reports_nothing(caplog, monkeypatch) -> None:
-    import hearts.models as hm
+    from observability import report
 
     sent: list[str] = []
-    monkeypatch.setattr(hm.sentry_sdk, "capture_message", lambda msg, **kw: sent.append(msg))
+    monkeypatch.setattr(report.sentry_sdk, "capture_message", lambda msg, **kw: sent.append(msg))
     with caplog.at_level("WARNING", logger="hearts.models"):
         _dump(GOOD)
         _dump({"final_score": 54, "vs_result": "win"})
@@ -141,18 +142,6 @@ needs_db = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"),
     reason="DATABASE_URL not set — skipping live API tests",
 )
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
-
-
-@pytest.fixture()
-def client():
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
 
 
 async def _entitled_sid() -> str:

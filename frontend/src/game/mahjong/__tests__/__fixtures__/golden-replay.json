@@ -1,0 +1,1136 @@
+{
+  "replays": [
+    {
+      "name": "turtle-42",
+      "checkpoints": [
+        {
+          "step": 0,
+          "tiles": 144,
+          "pairsRemoved": 0,
+          "score": 0,
+          "shufflesLeft": 3,
+          "undo": 0,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "9079dda21f18dfc6f74ed5dec1acf5f6d5787c9078ef4f22627ca4268fae544e"
+        },
+        {
+          "step": 10,
+          "tiles": 130,
+          "pairsRemoved": 7,
+          "score": 70,
+          "shufflesLeft": 2,
+          "undo": 8,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "1a6fe35be874454413016b9c2c345af06fb35c6e4dc29f9cb1d34796b7d956be"
+        },
+        {
+          "step": 20,
+          "tiles": 114,
+          "pairsRemoved": 15,
+          "score": 150,
+          "shufflesLeft": 2,
+          "undo": 16,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "278b33d35671dbd46b02b8044051d6173752db30c55561b1f501dcd5edb0cc6b"
+        },
+        {
+          "step": 30,
+          "tiles": 96,
+          "pairsRemoved": 24,
+          "score": 240,
+          "shufflesLeft": 1,
+          "undo": 26,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "c3f1c007bef06442c05be2829c9e057c82b61d1f4a4ba39ac0ed48d8cc70790a"
+        },
+        {
+          "step": 40,
+          "tiles": 80,
+          "pairsRemoved": 32,
+          "score": 320,
+          "shufflesLeft": 1,
+          "undo": 34,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "58baff99233b3a4de97b8d775d86f23cdd0b78ffb26edce6e90a6dd3eb9be1a9"
+        },
+        {
+          "step": 50,
+          "tiles": 66,
+          "pairsRemoved": 39,
+          "score": 390,
+          "shufflesLeft": 0,
+          "undo": 42,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "0d6da5f66f8f76df8c27037bd4b0618b5e2c99bcb239f40e81fe4a504b5ff078"
+        },
+        {
+          "step": -1,
+          "tiles": 58,
+          "pairsRemoved": 43,
+          "score": 430,
+          "shufflesLeft": 0,
+          "undo": 46,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": true,
+          "chain": "675d22ee8392aa19cfebd13f2666fb809869b63a9d24f5fd550a98ff5299fb0c"
+        }
+      ]
+    },
+    {
+      "name": "double-pyramid-7",
+      "checkpoints": [
+        {
+          "step": 0,
+          "tiles": 144,
+          "pairsRemoved": 0,
+          "score": 0,
+          "shufflesLeft": 3,
+          "undo": 0,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "812f2e31b60290f22c3768da30b84f7a6a4cf43c9e983082f21ec1a5822d923d"
+        },
+        {
+          "step": 10,
+          "tiles": 130,
+          "pairsRemoved": 7,
+          "score": 70,
+          "shufflesLeft": 2,
+          "undo": 8,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "fe39b431abd57b88e9cdba907eedf5470671cd1b2b2521d9bd2f3b685245768a"
+        },
+        {
+          "step": 20,
+          "tiles": 114,
+          "pairsRemoved": 15,
+          "score": 150,
+          "shufflesLeft": 2,
+          "undo": 16,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "5a1c34512ced8272c9a32798f7ebe87af5b244da136c6b839c2e7d42be4ceb51"
+        },
+        {
+          "step": 30,
+          "tiles": 96,
+          "pairsRemoved": 24,
+          "score": 240,
+          "shufflesLeft": 1,
+          "undo": 26,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "2f9428f1a554b1965cb7a130fff9d08d83ccfdbfa4d75a77728736ad4ff86534"
+        },
+        {
+          "step": 40,
+          "tiles": 80,
+          "pairsRemoved": 32,
+          "score": 320,
+          "shufflesLeft": 1,
+          "undo": 34,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "57dfe1abc19df629d67cc21e992738a41f2f35d80e7d122d02e687e55271c27d"
+        },
+        {
+          "step": 50,
+          "tiles": 66,
+          "pairsRemoved": 39,
+          "score": 390,
+          "shufflesLeft": 0,
+          "undo": 42,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "a24ee64799dadedb724175bf3c636f36f550b4988473d424e1ca8c170419cdae"
+        },
+        {
+          "step": -1,
+          "tiles": 60,
+          "pairsRemoved": 42,
+          "score": 420,
+          "shufflesLeft": 0,
+          "undo": 45,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": true,
+          "chain": "6177a07228ac1233cdf363dbf1c6fa4fbd2c7109de3effdbd7dfd7842947524c"
+        }
+      ]
+    },
+    {
+      "name": "four-rivers-3",
+      "checkpoints": [
+        {
+          "step": 0,
+          "tiles": 144,
+          "pairsRemoved": 0,
+          "score": 0,
+          "shufflesLeft": 3,
+          "undo": 0,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "66c002ed5afd35b1c8b612af4e6499be199e6da7fb33df71052c2d3b4fbc7224"
+        },
+        {
+          "step": 10,
+          "tiles": 130,
+          "pairsRemoved": 7,
+          "score": 70,
+          "shufflesLeft": 2,
+          "undo": 8,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "7e48f9badb6cb6e78398360017747672e14e61389c4958931bbe5b5577003b4d"
+        },
+        {
+          "step": 20,
+          "tiles": 114,
+          "pairsRemoved": 15,
+          "score": 150,
+          "shufflesLeft": 2,
+          "undo": 16,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "1bbee76c1491aaae26dfd47ea7a1990ea67e322faef915cc2b1b505c2696da05"
+        },
+        {
+          "step": 30,
+          "tiles": 96,
+          "pairsRemoved": 24,
+          "score": 240,
+          "shufflesLeft": 1,
+          "undo": 26,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "887b5721ce5951d149f31782aae0613aa419daf4a3581632ad2fcd474f741434"
+        },
+        {
+          "step": 40,
+          "tiles": 80,
+          "pairsRemoved": 32,
+          "score": 320,
+          "shufflesLeft": 1,
+          "undo": 34,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "340529257a8b2b3ecc58cbccc92c43b73f0146b5ede6333dfd7ad273eb97f1b3"
+        },
+        {
+          "step": 50,
+          "tiles": 66,
+          "pairsRemoved": 39,
+          "score": 390,
+          "shufflesLeft": 0,
+          "undo": 42,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "a1d808199a9d69a22205e35d8dc636ee3c217cd8956e8e7101af322a4dd41b6f"
+        },
+        {
+          "step": 60,
+          "tiles": 50,
+          "pairsRemoved": 47,
+          "score": 470,
+          "shufflesLeft": 0,
+          "undo": 50,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "c3a37ddd8424c7ed0c88ba0efde31323cef37d46cc8a1244968949d2432f147d"
+        },
+        {
+          "step": 70,
+          "tiles": 30,
+          "pairsRemoved": 57,
+          "score": 570,
+          "shufflesLeft": 0,
+          "undo": 50,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "7921482ab3fa1210b02ab2be5a595eda6253ea82d2e20621dcdf5cf7ca3a5e09"
+        },
+        {
+          "step": 80,
+          "tiles": 14,
+          "pairsRemoved": 65,
+          "score": 650,
+          "shufflesLeft": 0,
+          "undo": 50,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "3703dde9e4858538ea0208f561e4746169788dc33fc9abf65764bd3a23a574c0"
+        },
+        {
+          "step": -1,
+          "tiles": 0,
+          "pairsRemoved": 72,
+          "score": 1220,
+          "shufflesLeft": 0,
+          "undo": 50,
+          "selected": null,
+          "isComplete": true,
+          "isDeadlocked": false,
+          "chain": "add837c7f6818cc540f36b1057cf8083bd1392effe7e9219cf231d98e1590ade"
+        }
+      ]
+    },
+    {
+      "name": "pyramid-11",
+      "checkpoints": [
+        {
+          "step": 0,
+          "tiles": 144,
+          "pairsRemoved": 0,
+          "score": 0,
+          "shufflesLeft": 3,
+          "undo": 0,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "c00f42d433df06cb3d7170fda8eff895264c1284badc761da6b61f167550964a"
+        },
+        {
+          "step": 10,
+          "tiles": 130,
+          "pairsRemoved": 7,
+          "score": 70,
+          "shufflesLeft": 2,
+          "undo": 8,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "748fac0a7e4c6a48389a1dc6eeccc506362298178fa153ff32f9483b96d85672"
+        },
+        {
+          "step": 20,
+          "tiles": 114,
+          "pairsRemoved": 15,
+          "score": 150,
+          "shufflesLeft": 2,
+          "undo": 16,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "2794db597db505ea0804456c8b242d8ce9cac8a68201a330a5c9e107bf92c688"
+        },
+        {
+          "step": 30,
+          "tiles": 98,
+          "pairsRemoved": 23,
+          "score": 230,
+          "shufflesLeft": 0,
+          "undo": 26,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "77b36220c694311f369923eaf720a5de78d8344d40ab5b0b1b564376f200674f"
+        },
+        {
+          "step": 40,
+          "tiles": 82,
+          "pairsRemoved": 31,
+          "score": 310,
+          "shufflesLeft": 0,
+          "undo": 34,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": false,
+          "chain": "b4e12a7135a33b8f7def74fe3c02477f3da5f7d4c3822728cbd3325a548c207f"
+        },
+        {
+          "step": -1,
+          "tiles": 70,
+          "pairsRemoved": 37,
+          "score": 370,
+          "shufflesLeft": 0,
+          "undo": 40,
+          "selected": null,
+          "isComplete": false,
+          "isDeadlocked": true,
+          "chain": "7d6886159ad9d0839ad06948a064bd74bdef36e1b372e75aa17dea024ef900c6"
+        }
+      ]
+    }
+  ],
+  "deals": [
+    {
+      "layout": "turtle",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "3B6E",
+          "tiles": "3b024cd761f8dbc7d03e07c28de1b2a1c34411b17ddbf3fc3df30fd0eebcfc13"
+        },
+        {
+          "seed": 1,
+          "dealId": "6BA2",
+          "tiles": "92610ad0ab608032f4bae745f802bff91c70865cfa4259cf587900794db7fefc"
+        },
+        {
+          "seed": 2,
+          "dealId": "CCD2",
+          "tiles": "b718e864e39ace41a43e40d42c3a6c0d9edb70b8450f7a94a5eaeb81bbe02043"
+        },
+        {
+          "seed": 3,
+          "dealId": "E23D",
+          "tiles": "183d3fe040a6e3f7ce58f36a420cd5ce020e70b10ff8bbc304a10f99d1ab1a4d"
+        },
+        {
+          "seed": 4,
+          "dealId": "8F70",
+          "tiles": "edf700806b8dab96ec7f7b18ef831c38d79f6bd877f59462836fb1af682fa525"
+        }
+      ]
+    },
+    {
+      "layout": "pyramid",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "2C64",
+          "tiles": "cd32ac0f2e959e32af615ce7046631d0f1bbcd9c1f5610d9c0b82461bd04f78f"
+        },
+        {
+          "seed": 1,
+          "dealId": "1C08",
+          "tiles": "2f5f2596a6a54a79c24084074509066eee7883b4a6d9138c18b4ae5b968af6e9"
+        },
+        {
+          "seed": 2,
+          "dealId": "2E2D",
+          "tiles": "d0276ebe9bb7ce2666d5cd139422b993ed24d1c53b92451d460ef4f17d4843ac"
+        },
+        {
+          "seed": 3,
+          "dealId": "E613",
+          "tiles": "e0f5a60c7044248b9e5c04d2f0277c9b4445c4c5715eda2114de6619fbdc746f"
+        },
+        {
+          "seed": 4,
+          "dealId": "BEBD",
+          "tiles": "45fe9f08d556a859b9a7bb0087b7a5d8b929679582b00d3720eaf4cfe7af2d68"
+        }
+      ]
+    },
+    {
+      "layout": "square",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "E91B",
+          "tiles": "c60e9534b57c06d95c76ca719245ded6a2e93b6ddc70c9780ec15ae896d75aee"
+        },
+        {
+          "seed": 1,
+          "dealId": "38EC",
+          "tiles": "78e1fff88a7acea83033ea8c918055f690d796b65a79b4e1800eb766988df4f8"
+        },
+        {
+          "seed": 2,
+          "dealId": "DC54",
+          "tiles": "6b2a2e3f5bff24c158c3837e51e5a23f9b02cd1ee9cac8a43a12fba6d585371e"
+        },
+        {
+          "seed": 3,
+          "dealId": "C0E7",
+          "tiles": "98fb4120ef80f21bbe812efa241b6c065fbfd91fa01cd41ecbfccaf7c98ef12c"
+        },
+        {
+          "seed": 4,
+          "dealId": "1DB6",
+          "tiles": "1ccfc89bd940f6d4b33d3ce56a57c76cd4345fab341f792580356e924aa4fb67"
+        }
+      ]
+    },
+    {
+      "layout": "arena",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "B1BC",
+          "tiles": "d68806eb78f20a66a40c77af938ed57ade3f13b681ca25e4874fb13e13e56485"
+        },
+        {
+          "seed": 1,
+          "dealId": "6E45",
+          "tiles": "39e8aabd27df04ce092a81095786868d05c696cef21a6439827ee44014cdd168"
+        },
+        {
+          "seed": 2,
+          "dealId": "9216",
+          "tiles": "ca9d7ba6a08e6e4fcf9dc132f0317f2db1e8cd2df444e1e2e494639a2e2fb39a"
+        },
+        {
+          "seed": 3,
+          "dealId": "6F4D",
+          "tiles": "a94d0bab036d020dd0d68224ced7a7322740057e0e23b6bf6dcd252c84f9703f"
+        },
+        {
+          "seed": 4,
+          "dealId": "9736",
+          "tiles": "5eb8136d2899fa026132b066b62461a7537a62e566b70508520e5519650a6352"
+        }
+      ]
+    },
+    {
+      "layout": "four_rivers",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "46E2",
+          "tiles": "8fc2f6b2014fc67bc531d64a2dc8214531d82f2fb621944421bbf2d39cc75530"
+        },
+        {
+          "seed": 1,
+          "dealId": "8E54",
+          "tiles": "ea0a1352c79c2fa0d8b078b2ace3ee819ca5a0b8ed991a09d2ed83091b753c8d"
+        },
+        {
+          "seed": 2,
+          "dealId": "071B",
+          "tiles": "c2ab1a4961114f7a0e45ff854bb81a799b88fa0f4a118c3f60fe3747ee98babf"
+        },
+        {
+          "seed": 3,
+          "dealId": "75D0",
+          "tiles": "004500cbb29f7fb091f0daf257787e36947a3a1d5131d4f24827ed222d2e425b"
+        },
+        {
+          "seed": 4,
+          "dealId": "B123",
+          "tiles": "515464552518bf7d894aa20428d9bb71aa5f2df8289aa462cd5449a5759deed7"
+        }
+      ]
+    },
+    {
+      "layout": "butterfly",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "27F5",
+          "tiles": "4058694fc38f7bac18823332118dbf42f1009c54fd9aec2ebfdf89ff3a495339"
+        },
+        {
+          "seed": 1,
+          "dealId": "EDC3",
+          "tiles": "2ae00043222ddae3441690c3fdfc8d1c90cf70715e906ca095d06cf38deb0fc1"
+        },
+        {
+          "seed": 2,
+          "dealId": "1ECB",
+          "tiles": "681eca1e07b474c5138e911b945e96629b34055d25d899a9bdf10e6167ed2e04"
+        },
+        {
+          "seed": 3,
+          "dealId": "5230",
+          "tiles": "81cbebb506e8505783d32b46e5c2070c182745a9c364f1b10fa71cc6dee1a4fe"
+        },
+        {
+          "seed": 4,
+          "dealId": "7585",
+          "tiles": "2fd64d8c48c61f1047d7a91dcf2addaef9846c030957aaf782f2de95eaf54fa7"
+        }
+      ]
+    },
+    {
+      "layout": "fish",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "1953",
+          "tiles": "b2a73938221cf31418f085999e1eb35a8c70d79795c296b5afe6a7765ac6a408"
+        },
+        {
+          "seed": 1,
+          "dealId": "39D9",
+          "tiles": "36544a884606ae97c23a6d7d4cf1713ab485dc3184988fb9d97d4db790c3c3fc"
+        },
+        {
+          "seed": 2,
+          "dealId": "8433",
+          "tiles": "8ccbdd489c916a1717146c81b4c5c9ec853929e597858050b6b065aaeb1db400"
+        },
+        {
+          "seed": 3,
+          "dealId": "5FE2",
+          "tiles": "4a6f19faa59541ffefbcd521667f62107b9f97424e109c9e59fd035af6ceb615"
+        },
+        {
+          "seed": 4,
+          "dealId": "D032",
+          "tiles": "f971fe91020a1b84027546fe2b20ace4885672acbcc512be0cb01183e145fc46"
+        }
+      ]
+    },
+    {
+      "layout": "spider",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "C18D",
+          "tiles": "1d6a22f0c1d42ddff5ebc1503d8d2bfa90315ba8407c4f371a203c87ae90d692"
+        },
+        {
+          "seed": 1,
+          "dealId": "09B9",
+          "tiles": "c2b685a7f965208084e11d37865b95fbff0cba257ba1c0a478d1ee042c57f8a2"
+        },
+        {
+          "seed": 2,
+          "dealId": "D7F3",
+          "tiles": "cf2eb7519b3512fc27bab32ebb53d84dc773e1bc27b20bb5dac86ec30b688828"
+        },
+        {
+          "seed": 3,
+          "dealId": "03AE",
+          "tiles": "34683466d35c3e6372e73143b71282eea078f5126b34e7fe223a607fe06609ba"
+        },
+        {
+          "seed": 4,
+          "dealId": "9554",
+          "tiles": "1c69ae9bf243326f37a870c669d112fea2d5351615d5226a73a629118ed4f219"
+        }
+      ]
+    },
+    {
+      "layout": "cat",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "89BD",
+          "tiles": "7e308651e023340d07a5b05dd94ea5ea948050454e678a976568f0bcf241c2ea"
+        },
+        {
+          "seed": 1,
+          "dealId": "4A5A",
+          "tiles": "5581eeab1b3795f38e4315559d795234dc0e4dd824a77ffe39617da97cf1dbbd"
+        },
+        {
+          "seed": 2,
+          "dealId": "8303",
+          "tiles": "d447432066277512817c9ee82ff2bfb776254741e41fc623512cbbc9957517c3"
+        },
+        {
+          "seed": 3,
+          "dealId": "90ED",
+          "tiles": "3ce1aa718d60f6ea6be813be894290d83deb306b548495d56b21550cac78970a"
+        },
+        {
+          "seed": 4,
+          "dealId": "AD12",
+          "tiles": "3ffcd9685b34f70c611b15bff07b1f7ab660b07ce9eee52c5b01c6e15942969c"
+        }
+      ]
+    },
+    {
+      "layout": "snowflake",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "E2D5",
+          "tiles": "09de2592e55700af7eebc6395125b1b9f16a67a921b0e6904e81b69ddb2850a8"
+        },
+        {
+          "seed": 1,
+          "dealId": "D46B",
+          "tiles": "75bf004debe02d557fe4f596d0731b1089981e1e2c509cb000f876803ed85825"
+        },
+        {
+          "seed": 2,
+          "dealId": "DE80",
+          "tiles": "37272a159d63efbabf5c5801e132a48354af5803e5e891557dedc77052b8400a"
+        },
+        {
+          "seed": 3,
+          "dealId": "006F",
+          "tiles": "53ccc5d05142f7832882d191fdaa602d4b6ad41743c48a8a1a48bfd8e88aa52b"
+        },
+        {
+          "seed": 4,
+          "dealId": "8F52",
+          "tiles": "d8adad8e0a96f4e718db7075d7ea3027a65fa24ea86403f002ea75b548a728ae"
+        }
+      ]
+    },
+    {
+      "layout": "castle",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "5F24",
+          "tiles": "19bd8c0a8f80cf9c14eaa3e9bf7d0c92c5212f53c8475f19d03e622ece7746dc"
+        },
+        {
+          "seed": 1,
+          "dealId": "24A7",
+          "tiles": "4b0cd421fd65d1187cc0b084bce5f189fcf97f53817acf789fc6295a80d8abfb"
+        },
+        {
+          "seed": 2,
+          "dealId": "E28E",
+          "tiles": "dce63bc5cc80d41366f95fef408620f4b7ca7f4bb802b37787bcc63bca87db3a"
+        },
+        {
+          "seed": 3,
+          "dealId": "1817",
+          "tiles": "69dc08621c3caf7a23b3edf15dd89b6e4fd91b217d35c80fb8f5f4be4287556b"
+        },
+        {
+          "seed": 4,
+          "dealId": "B663",
+          "tiles": "a9f366b6c13c5d7ddd7a3c8838154198c81e523e05b6fe1c0407d5c400db406d"
+        }
+      ]
+    },
+    {
+      "layout": "bridge",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "533E",
+          "tiles": "f420545550eabb574bf6b3673073161288130d8574d9fe996a520be0b77e1b4b"
+        },
+        {
+          "seed": 1,
+          "dealId": "A4C5",
+          "tiles": "5d995255fd3f5e08e85c8f9cf9a5101fa2c67146d7af9d3384eba3db801a0b39"
+        },
+        {
+          "seed": 2,
+          "dealId": "49A7",
+          "tiles": "b974c7066f855371f47ac10f9e5211facfa4299df5f67b374b9953fc6cebdce8"
+        },
+        {
+          "seed": 3,
+          "dealId": "7356",
+          "tiles": "465a7544dc703725b8180365abe57fa6116e4a948bb71dc54df53e5a25064d38"
+        },
+        {
+          "seed": 4,
+          "dealId": "F8C1",
+          "tiles": "d202cb6def97e5fc813bca116e2b7c0d8c7de8fc7384e33c58341c6bd0c7eefe"
+        }
+      ]
+    },
+    {
+      "layout": "gate",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "520D",
+          "tiles": "6af15c4c9f84bd39769f3d32f43bc88c0ca068877a7a39eca8b0b97c411317d9"
+        },
+        {
+          "seed": 1,
+          "dealId": "55EB",
+          "tiles": "cc027d3f6fe02dcf6cdc14eae26f8bed5436119e315a87b6501485a6126f8361"
+        },
+        {
+          "seed": 2,
+          "dealId": "70DC",
+          "tiles": "ef573aa6d826f5013477473994d173d5d537a9856cca98b8cb01276e6a6e269b"
+        },
+        {
+          "seed": 3,
+          "dealId": "706A",
+          "tiles": "3b7e7ce51f98b51843ba6915cde2ab8d987d8da18809dc576a25122db4cc0f54"
+        },
+        {
+          "seed": 4,
+          "dealId": "5165",
+          "tiles": "606c36c8a163bb94c87a21b6e14c93ff14d479e0b7622f7c2d7eb4f0560acee1"
+        }
+      ]
+    },
+    {
+      "layout": "double_pyramid",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "1BCB",
+          "tiles": "d4f925f74ed423fe03da61b4e37bc237f0dee5f3c8b24748c4df5662228c465a"
+        },
+        {
+          "seed": 1,
+          "dealId": "8AF6",
+          "tiles": "e7e4649004158041c466e2fb94fcc3977ddd62bc49a0158c1bfeab8ffbe3c6f4"
+        },
+        {
+          "seed": 2,
+          "dealId": "820D",
+          "tiles": "63960388c940acdd422a665cd578244780bd6e61a768cc254b0f1f72db21e5d3"
+        },
+        {
+          "seed": 3,
+          "dealId": "24E1",
+          "tiles": "cf3b08bf4fb943d62dccaad47cd952c2209646a1e6bd755857f325a8d7526322"
+        },
+        {
+          "seed": 4,
+          "dealId": "9773",
+          "tiles": "57cf5f9d273a88c8d12ebdd6e7035369d7daf6ed6a1b8f0017e5cbc04432598d"
+        }
+      ]
+    },
+    {
+      "layout": "anchor",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "719D",
+          "tiles": "4c7dce822904a33f5fe21710a3e99e0f8b7d651df073a8e12a53c71a993f39de"
+        },
+        {
+          "seed": 1,
+          "dealId": "EF66",
+          "tiles": "9c2b6ad0eca157b89ac0407e472691f026ae0c666deb6794040f18f736ef36ff"
+        },
+        {
+          "seed": 2,
+          "dealId": "6090",
+          "tiles": "4da85401bdc12fb3b173ccbb5e2cbb186ecff1f11f1b3da9b79996a20e3eafd7"
+        },
+        {
+          "seed": 3,
+          "dealId": "984B",
+          "tiles": "6787f57287eb14f457a028c3bdef9f80d61b79ac1d9f92d667b3e4d487ccce66"
+        },
+        {
+          "seed": 4,
+          "dealId": "5458",
+          "tiles": "943311ac6f61ef6bcb1e27486481ee74cd121b3879f5d5ce5707c32363a89c79"
+        }
+      ]
+    },
+    {
+      "layout": "crown",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "678A",
+          "tiles": "487c358d6d77ac6ee08c59f6c384023763392e3c1a91458e926ab5ae5581b6d9"
+        },
+        {
+          "seed": 1,
+          "dealId": "586F",
+          "tiles": "275a2cf7f58b6bfbd7ae2365cd2acce942289635904feb1c5232e49ae4b37822"
+        },
+        {
+          "seed": 2,
+          "dealId": "7AE4",
+          "tiles": "97a6b6785563b424e7c538b6a7501104ae1a322d862847b82aee9be8c7a37814"
+        },
+        {
+          "seed": 3,
+          "dealId": "4AB7",
+          "tiles": "81d77b2a4866662235bf8b4b50d91a4ce15995c15e3ba41db1d97206092c0c4d"
+        },
+        {
+          "seed": 4,
+          "dealId": "04F1",
+          "tiles": "4f05b723ff75511769d501366e34e017168c806e931ce8335877feaf5e511433"
+        }
+      ]
+    },
+    {
+      "layout": "shield",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "D65D",
+          "tiles": "bbe7ba390c9dfd4cb8e1e198469984c0756e4d104b949810501e41a01cb3a8a8"
+        },
+        {
+          "seed": 1,
+          "dealId": "E361",
+          "tiles": "dca99cda8d811cbe1d42fac17ac4ac5920f0399612520617ffa70ca022f75d0e"
+        },
+        {
+          "seed": 2,
+          "dealId": "E8E9",
+          "tiles": "f47aef4e95aae187eb83b4ca1c7b4336035cebb1aa02aeae2be302da2d64c732"
+        },
+        {
+          "seed": 3,
+          "dealId": "90CF",
+          "tiles": "d498f8d63b44b0221e035731f8eba99ad77a7f0607e7c82b51fb666d314b0952"
+        },
+        {
+          "seed": 4,
+          "dealId": "2257",
+          "tiles": "4fd43694cca48b94778ffe93b60027b3c89fb2f7b48fc1a316a1585c69a2ed2f"
+        }
+      ]
+    },
+    {
+      "layout": "heart",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "E5A4",
+          "tiles": "a730648204beee71637dc2cdb2ff067eb48227eaae8f02217d66d25a4d01aca2"
+        },
+        {
+          "seed": 1,
+          "dealId": "B07C",
+          "tiles": "c08e66129be4e267b2b379b40faf8e102279d55ab621e07ad472c58101dd4266"
+        },
+        {
+          "seed": 2,
+          "dealId": "9AD9",
+          "tiles": "bbc18acb7c10adb954ff0d51efdc0a9079859ceec377b054d0d797b946d8c652"
+        },
+        {
+          "seed": 3,
+          "dealId": "354D",
+          "tiles": "69b8635f7f94744d5b60b3fd4cd1e7d92c8022fad1af6958be39b2c73a895e3e"
+        },
+        {
+          "seed": 4,
+          "dealId": "9182",
+          "tiles": "684f982e8690f7474732ec8237ff6008f17993c2423cb42d843ae150167b70cd"
+        }
+      ]
+    },
+    {
+      "layout": "hourglass",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "98C6",
+          "tiles": "cc0cbd2cecb6a0e9da73f26ca178c3061e5aa13dd1f054cec1da0b3ccc835fe0"
+        },
+        {
+          "seed": 1,
+          "dealId": "2BB1",
+          "tiles": "9f3958b081f1716257712a744c5273a0f01f41148f72b59e89854f5c38055041"
+        },
+        {
+          "seed": 2,
+          "dealId": "EE28",
+          "tiles": "54be4a5beb6ef6ac9f13920ca7611c455bfa0f8614aad0c5e8d0de7dc428fe44"
+        },
+        {
+          "seed": 3,
+          "dealId": "BD1A",
+          "tiles": "ad02498b9d57e1b8d12dd90d681ecd81b73bae505697233f63d55e1fe8339b03"
+        },
+        {
+          "seed": 4,
+          "dealId": "8BD6",
+          "tiles": "b50f3cb244440c8a34dcefc8ae92f8c5b06dc1ebeb05979f346b39a74c488cbe"
+        }
+      ]
+    },
+    {
+      "layout": "the_key",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "0919",
+          "tiles": "150e766b609a8f1df70aea30d69ac6eca3923f1e4da834c466f63094ada9ba34"
+        },
+        {
+          "seed": 1,
+          "dealId": "2CA3",
+          "tiles": "a9d23d89acf1903b359f7ed7b33274c3197c5c6eb9bef7d1a3ba21e98e51999d"
+        },
+        {
+          "seed": 2,
+          "dealId": "9A2E",
+          "tiles": "d49e2a0635dacf2f085cf5d95427ea85333f6ea6204e04c35518efd2900ef43b"
+        },
+        {
+          "seed": 3,
+          "dealId": "D888",
+          "tiles": "9adf06388397fb1e06a7e97c6befe3d240af48de9802924304c6fa0bf80bac9e"
+        },
+        {
+          "seed": 4,
+          "dealId": "80C6",
+          "tiles": "557469a55b5ea3f793558118bddb2037f3667f24a35f59de719014480f0b6b39"
+        }
+      ]
+    },
+    {
+      "layout": "diamond",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "21F1",
+          "tiles": "d68495e470f0be3b5bbdf3b64ad3af4db522da350867090f411572edfcdf2e9c"
+        },
+        {
+          "seed": 1,
+          "dealId": "6607",
+          "tiles": "589752266d0dc79f38a5cd8ecb589523c86eae15ef7e521df89cd53651943388"
+        },
+        {
+          "seed": 2,
+          "dealId": "BC4A",
+          "tiles": "e798bc5fa1949590b5b4f6c6cfed6ebe5f8f920b352fc37ffaa84225fde27554"
+        },
+        {
+          "seed": 3,
+          "dealId": "3492",
+          "tiles": "98f71f196db4f7a6a3db372a1661cd5590778477a1838b7f43388bb7d1649f05"
+        },
+        {
+          "seed": 4,
+          "dealId": "DC25",
+          "tiles": "e39a1c79eabff35a8caa5631da84aa4d88ba9704d5a959f5761c5381d4e022c5"
+        }
+      ]
+    },
+    {
+      "layout": "x_wing",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "B4D8",
+          "tiles": "e3b4c054bd40b7af016b80d0ea1bb39fb99b63ec079b2a787cb779f57dc9e643"
+        },
+        {
+          "seed": 1,
+          "dealId": "C0FF",
+          "tiles": "0350d3bf9f18d32387ead2fb94cef907028f52a3d253e74e5c9f4e4b4d5a5501"
+        },
+        {
+          "seed": 2,
+          "dealId": "B534",
+          "tiles": "9fb55359a169f85947d467ca7fffaf777d557c7fabe762dcc4e3d17c0a51874f"
+        },
+        {
+          "seed": 3,
+          "dealId": "7B0C",
+          "tiles": "d20879a386ec3deb7d37b78ee49f9a10143b30c17fee4aa8555fe006dfad9bb7"
+        },
+        {
+          "seed": 4,
+          "dealId": "D28D",
+          "tiles": "c6977bd6421527c7ed12ef135adc4e8519117abf9fd86fb64697e257044ee252"
+        }
+      ]
+    },
+    {
+      "layout": "maze",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "CED3",
+          "tiles": "eed8527b436b165775f61e2a3ac4e284d423bd6cba6b95c2e4d75f49a970d9df"
+        },
+        {
+          "seed": 1,
+          "dealId": "567C",
+          "tiles": "ac7d68ab252cc5ac5c206845a430776a1cf3020ecec5306d6899ef54b24e621a"
+        },
+        {
+          "seed": 2,
+          "dealId": "BF1F",
+          "tiles": "6ecbbfa009934e382711319f86f0bb74299311c9c14ae76a61ab70036dd6e452"
+        },
+        {
+          "seed": 3,
+          "dealId": "99A8",
+          "tiles": "7f0e6e40beca12ffb7dfeb5e4bc7092b2928e0c7977796fdd65d97a2fb249ccd"
+        },
+        {
+          "seed": 4,
+          "dealId": "01DD",
+          "tiles": "a62521ba777d9c8f1defa8b4cac5eacba65d74604dbdc1f3d6d77f82490e5369"
+        }
+      ]
+    },
+    {
+      "layout": "zig_zag",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "9936",
+          "tiles": "626ec0c75509775a134475a01d294df8f303dabd674f031527eeead9155950d4"
+        },
+        {
+          "seed": 1,
+          "dealId": "9E7F",
+          "tiles": "dfd0c3250c659006b6c42b9682ab95fe7b37691be1d86782c12497f10173166b"
+        },
+        {
+          "seed": 2,
+          "dealId": "D89A",
+          "tiles": "681068d4ff51ce54548369560edd211d5bd1b30e0a1f8a8b0d96d3f9613ecced"
+        },
+        {
+          "seed": 3,
+          "dealId": "CEBE",
+          "tiles": "ef25e081eb7f4a68bde70fb29f3ca713802bfa17fd730fbcbbe5ab39231820ae"
+        },
+        {
+          "seed": 4,
+          "dealId": "82D5",
+          "tiles": "0236da92707560869f1fc28c44ed4eb0e4a4697d026fdefed6150e61c1c24bae"
+        }
+      ]
+    },
+    {
+      "layout": "concentric_squares",
+      "deals": [
+        {
+          "seed": 0,
+          "dealId": "5E53",
+          "tiles": "37975f32c3f6e3e6f9b12e1e43aea667dbc0e91093d30d2c246ee8be869f13fa"
+        },
+        {
+          "seed": 1,
+          "dealId": "56C8",
+          "tiles": "c217186da5f2d205a92b9c17e5933bd33dc23d851018c850fafd728a66ed315c"
+        },
+        {
+          "seed": 2,
+          "dealId": "1B25",
+          "tiles": "f1566136ea96d1b563fd3f528f408c839aba2bdbc37c029007779aabb187ba5b"
+        },
+        {
+          "seed": 3,
+          "dealId": "0F15",
+          "tiles": "54ace7420a56612dac38b626141c7f5c74c3e482a9d74c332ba19048144f8755"
+        },
+        {
+          "seed": 4,
+          "dealId": "C9F3",
+          "tiles": "3900c7faf7cceee84791ca106239c93351acbc2c6f83a47ebdc07169c1933f3d"
+        }
+      ]
+    }
+  ]
+}

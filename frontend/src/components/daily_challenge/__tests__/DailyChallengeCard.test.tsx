@@ -33,10 +33,6 @@ jest.mock("../../../game/_shared/withRetry", () => ({
   withRetry: <T,>(fn: () => Promise<T>) => fn(),
 }));
 
-jest.mock("expo-linear-gradient", () => ({
-  LinearGradient: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 // A stable object — useNavigation is called on every render.
 const focusListeners = new Set<() => void>();
 const mockNavigation = {
@@ -193,6 +189,7 @@ describe("DailyChallengeCard — goals", () => {
     ["daily_word", ["completed", "won", "won_guesses_used_at_most"]],
     ["twenty48", ["final_score_at_least", "highest_tile_at_least"]],
     ["yacht", ["final_score_at_least"]],
+    ["sudoku", ["solved", "final_score_at_least"]],
     ["solitaire", ["moves_at_least", "won", "won_moves_at_most"]],
     ["mahjong", ["pairs_at_least", "won", "won_duration_ms_at_most"]],
     ["freecell", ["moves_at_least", "won", "won_moves_at_most"]],
@@ -201,6 +198,25 @@ describe("DailyChallengeCard — goals", () => {
     for (const kind of kinds) {
       expect(i18n.exists(`daily_challenge:goal.${slug}.${kind}`, { count: 5 })).toBe(true);
     }
+  });
+
+  it("words the Sudoku goals", async () => {
+    mockGetDailyChallenge.mockResolvedValue({
+      challengeId: "2026-10-08",
+      goals: [
+        { id: "sudoku:solved", gameSlug: "sudoku", kind: "solved", target: null, completed: false },
+        {
+          id: "sudoku:final_score_at_least:180",
+          gameSlug: "sudoku",
+          kind: "final_score_at_least",
+          target: 180,
+          completed: true,
+        },
+      ],
+    });
+    const { findByLabelText } = await renderCard();
+    expect(await findByLabelText("Solve a Sudoku puzzle, not completed yet")).toBeTruthy();
+    expect(await findByLabelText("Score 180+ in Sudoku, completed")).toBeTruthy();
   });
 
   it("uses the singular wording when a target is 1", async () => {

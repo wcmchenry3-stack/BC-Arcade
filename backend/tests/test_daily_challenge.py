@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import uuid
-from collections.abc import Iterator
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
 
@@ -34,9 +34,11 @@ from daily_challenge.definitions import (
     template_for,
 )
 from daily_challenge.service import evaluate_goal
-from db.base import get_session_factory, is_configured
+from db.base import get_session_factory
 from db.models import Game, GameEntitlement, GameType
 from entitlements.service import ALL_PREMIUM_SLUGS
+from tests._helpers import session_headers as _headers
+from tests._helpers import set_dev_override
 
 # ---------------------------------------------------------------------------
 # definitions — no DB
@@ -44,35 +46,35 @@ from entitlements.service import ALL_PREMIUM_SLUGS
 
 
 def test_local_day_at_utc() -> None:
-    now = datetime(2026, 10, 9, 15, 30, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 9, 15, 30, tzinfo=UTC)
     day = local_day(0, now)
     assert day.date == date(2026, 10, 9)
-    assert day.start_utc == datetime(2026, 10, 9, tzinfo=timezone.utc)
-    assert day.end_utc == datetime(2026, 10, 10, tzinfo=timezone.utc)
+    assert day.start_utc == datetime(2026, 10, 9, tzinfo=UTC)
+    assert day.end_utc == datetime(2026, 10, 10, tzinfo=UTC)
 
 
 def test_local_day_west_of_utc_is_still_yesterday() -> None:
     # 03:00 UTC is 20:00 the previous evening in UTC-7.
-    now = datetime(2026, 10, 9, 3, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 9, 3, 0, tzinfo=UTC)
     day = local_day(-420, now)
     assert day.date == date(2026, 10, 8)
-    assert day.start_utc == datetime(2026, 10, 8, 7, 0, tzinfo=timezone.utc)
-    assert day.end_utc == datetime(2026, 10, 9, 7, 0, tzinfo=timezone.utc)
+    assert day.start_utc == datetime(2026, 10, 8, 7, 0, tzinfo=UTC)
+    assert day.end_utc == datetime(2026, 10, 9, 7, 0, tzinfo=UTC)
     assert day.start_utc <= now < day.end_utc
 
 
 def test_local_day_east_of_utc_is_already_tomorrow() -> None:
     # 20:00 UTC is 01:30 the next morning in UTC+5:30.
-    now = datetime(2026, 10, 9, 20, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 9, 20, 0, tzinfo=UTC)
     day = local_day(330, now)
     assert day.date == date(2026, 10, 10)
-    assert day.start_utc == datetime(2026, 10, 9, 18, 30, tzinfo=timezone.utc)
+    assert day.start_utc == datetime(2026, 10, 9, 18, 30, tzinfo=UTC)
     assert day.start_utc <= now < day.end_utc
 
 
 @pytest.mark.parametrize("offset", [-840, -1, 0, 1, 840])
 def test_local_day_window_always_contains_now(offset: int) -> None:
-    now = datetime(2026, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+    now = datetime(2026, 12, 31, 23, 59, 59, tzinfo=UTC)
     day = local_day(offset, now)
     assert day.start_utc <= now < day.end_utc
     assert day.end_utc - day.start_utc == timedelta(days=1)
@@ -90,6 +92,18 @@ def _days(n: int, start: date = _START):
 def test_template_pick_is_deterministic() -> None:
     assert template_for(date(2026, 10, 9)) == template_for(date(2026, 10, 9))
     assert template_for(date(2026, 10, 9), "premium") == template_for(date(2026, 10, 9), "premium")
+
+
+def test_pick_template_is_memoised() -> None:
+    # #2966: the streak asks for ~120 templates per /stats/me. A cached result is
+    # shared, which is safe because Template and Goal are frozen.
+    day = date(2031, 1, 2)
+    first = pick_template(day, "free", 3)
+    hits = pick_template.cache_info().hits
+    assert pick_template(day, "free", 3) is first
+    assert pick_template.cache_info().hits == hits + 1
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        first.goals[0].target = 1  # type: ignore[misc]
 
 
 @pytest.mark.parametrize("slate", _SLATES)
@@ -162,7 +176,7 @@ def test_salt_shifts_and_reshuffles_the_schedule() -> None:
 # ---- the pools ----------------------------------------------------------
 
 
-def test_free_pool_has_the_six_free_games_and_never_a_premium_one() -> None:
+def test_free_pool_has_the_seven_free_games_and_never_a_premium_one() -> None:
     # A store build hides the premium games — a goal there could never be met.
     assert set(FREE_GOAL_POOL) == {
         "daily_word",
@@ -171,6 +185,7 @@ def test_free_pool_has_the_six_free_games_and_never_a_premium_one() -> None:
         "sort",
         "freecell",
         "yacht",
+        "sudoku",
     }
     assert set(FREE_GOAL_POOL).isdisjoint(ALL_PREMIUM_SLUGS)
 
@@ -245,7 +260,7 @@ _LUCK_DEPENDENT = {
     "solitaire:won_moves_at_most:120",
     "freecell:won",
     "freecell:won_moves_at_most:100",
-}
+}  # sudoku:solved is absent: a solve is skill, not luck
 
 
 def test_luck_dependent_flag_is_exactly_the_listed_goals() -> None:
@@ -263,12 +278,30 @@ def test_win_required_goals_need_a_win_and_progress_goals_do_not() -> None:
 
 
 @pytest.mark.parametrize("slate", _SLATES)
-def test_every_neighbouring_pair_occurs_so_the_rotation_length_stays_odd(slate: str) -> None:
-    # Step-of-two pairs only reach every position when the rotation length is odd.
+def test_every_neighbouring_pair_occurs_for_any_rotation_length(slate: str) -> None:
+    # Step-of-two pairs only reach every position when the length is odd; an even
+    # length (Sudoku made it 6, #2949) relies on pick_games' per-lap shift.
     order = rotation(slate, 0)
-    assert len(order) % 2 == 1, "even rotation halves the pairs — revisit pick_games"
     pairs = {frozenset(pick_games(d, slate, 0)) for d in _days(len(order) * 2)}
     assert len(pairs) == len(order)
+
+
+@pytest.mark.parametrize("games", [4, 5, 6, 7, 8, 9])
+def test_rotation_never_repeats_a_game_whatever_the_pool_size(
+    games: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    goals = FREE_GOAL_POOL["yacht"]
+    pool = {ALWAYS_PRESENT: FREE_GOAL_POOL[ALWAYS_PRESENT]} | {f"g{i}": goals for i in range(games)}
+    monkeypatch.setitem(GOAL_POOLS, "free", pool)
+    rotation.cache_clear()
+    try:
+        days = _days(200)
+        for a, b in pairwise(days):
+            assert set(pick_games(a, "free", 0)).isdisjoint(pick_games(b, "free", 0))
+        if games >= 5:
+            assert len({frozenset(pick_games(d, "free", 0)) for d in days}) == games
+    finally:
+        rotation.cache_clear()
 
 
 def test_win_limits_are_above_the_physical_minimum() -> None:
@@ -345,6 +378,15 @@ _EVALUATION_CASES = [
     ("yacht", _MEDIUM, {"final_score": 174}, False),
     ("yacht", _HARD, {"final_score": 250}, True),
     ("yacht", _HARD, {"final_score": 249, "won": True}, False),
+    # sudoku — only solved puzzles are recorded; final_score = base 100/200/300 - 10/error
+    ("sudoku", _EASY, {"won": True, "final_score": 0, "errors": 10}, True),
+    ("sudoku", _EASY, {"won": False, "errors": 0}, False),
+    ("sudoku", _EASY, {"final_score": 300}, False),
+    ("sudoku", _MEDIUM, {"won": True, "final_score": 180, "difficulty": "medium"}, True),
+    ("sudoku", _MEDIUM, {"won": True, "final_score": 179, "difficulty": "medium"}, False),
+    ("sudoku", _MEDIUM, {"won": True, "final_score": 100, "difficulty": "easy"}, False),
+    ("sudoku", _HARD, {"won": True, "final_score": 280, "difficulty": "hard"}, True),
+    ("sudoku", _HARD, {"won": True, "final_score": 279, "difficulty": "hard"}, False),
     # blackjack — premium, pending #2458 (PENDING_PREMIUM_GOALS)
     ("blackjack", _EASY, {"hands_played": 3, "hands_won": 0}, True),
     ("blackjack", _EASY, {"hands_played": 2}, False),
@@ -445,24 +487,11 @@ _FIXED = Template("fixed_for_tests", (_SCORE_2500, _SORT_MEDIUM))
 
 
 @pytest.fixture()
-def client() -> Iterator[TestClient]:
-    assert is_configured()
-    from main import app
-
-    with TestClient(app) as c:
-        yield c
-
-
-@pytest.fixture()
 def fixed_template(monkeypatch: pytest.MonkeyPatch) -> Template:
     """Pin today's template so the tests do not depend on the calendar."""
     monkeypatch.setattr("daily_challenge.service.template_for", lambda _day, _slate="free": _FIXED)
     monkeypatch.setattr("daily_challenge.router.template_for", lambda _day, _slate="free": _FIXED)
     return _FIXED
-
-
-def _headers(sid: str) -> dict[str, str]:
-    return {"X-Session-ID": sid, "Content-Type": "application/json"}
 
 
 def _play(
@@ -522,7 +551,7 @@ def test_today_is_public_and_describes_the_goals(client: TestClient) -> None:
     today = local_day(0)
     assert body["challenge_id"] == today.date.isoformat()
     assert body["template_id"] == template_for(today.date).id
-    assert datetime.fromisoformat(body["resets_at"].replace("Z", "+00:00")) == today.end_utc
+    assert datetime.fromisoformat(body["resets_at"]) == today.end_utc
     assert len(body["goals"]) == GOALS_PER_DAY
     assert body["goals"][0]["game_type"] == ALWAYS_PRESENT
     for goal in body["goals"]:
@@ -722,7 +751,7 @@ def test_other_sessions_and_other_games_do_not_count(
 
 @needs_db
 async def test_only_games_inside_the_local_day_count(fixed_template: Template) -> None:
-    now = datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
     day = local_day(-420, now)  # 07:00 UTC Oct 9 → 07:00 UTC Oct 10
     factory = get_session_factory()
 
@@ -771,7 +800,7 @@ _DAY = date(2026, 10, 9)
 @pytest.fixture()
 def two_slates(monkeypatch: pytest.MonkeyPatch) -> Template:
     # A shell that exports the dev override must not change what these assert.
-    monkeypatch.delenv("ENTITLEMENT_DEV_OVERRIDE", raising=False)
+    set_dev_override(monkeypatch, "")
 
     def pick(_day: date, slate: str = "free") -> Template:
         return _PREMIUM_DAY if slate == "premium" else _FIXED
@@ -826,7 +855,7 @@ async def test_entitlement_to_other_premium_games_does_not_unlock_it(two_slates:
 async def test_dev_override_session_is_always_premium_eligible(
     two_slates: Template, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    set_dev_override(monkeypatch, "true")
     assert await _slate(str(uuid.uuid4())) == "premium"  # no entitlement rows at all
 
 
@@ -855,12 +884,28 @@ async def test_slate_tests_run_against_the_expected_premium_seed() -> None:
 
 
 @needs_db
+async def test_free_pool_matches_the_non_premium_game_types() -> None:
+    """Every game a store build can play has Daily Challenge goals, and no premium
+    game does — so a game going free cannot silently miss the pool again (#2949:
+    Sudoku went free in migration 0023 and was never added)."""
+    factory = get_session_factory()
+    async with factory() as db:
+        rows = (await db.execute(select(GameType.name, GameType.is_premium))).all()
+    free = {name for name, is_premium in rows if not is_premium}
+    assert free, "game_types has no free rows"
+    assert set(FREE_GOAL_POOL) == free, (
+        f"missing goals for free games: {sorted(free - set(FREE_GOAL_POOL))}; "
+        f"goals for non-free games: {sorted(set(FREE_GOAL_POOL) - free)}"
+    )
+
+
+@needs_db
 async def test_override_follows_the_same_rule_as_production(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Real pools: nothing premium is named, so the override changes nothing — dev
     # must not report "premium" while production would say "free".
-    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    set_dev_override(monkeypatch, "true")
     assert await _slate(str(uuid.uuid4())) == "free"
 
 
@@ -874,9 +919,9 @@ async def test_a_differing_premium_template_naming_only_free_games_is_free(
         return only_free if slate == "premium" else _FIXED
 
     monkeypatch.setattr("daily_challenge.service.template_for", pick)
-    monkeypatch.delenv("ENTITLEMENT_DEV_OVERRIDE", raising=False)
+    set_dev_override(monkeypatch, "")
     assert await _slate(str(uuid.uuid4())) == "free"
-    monkeypatch.setenv("ENTITLEMENT_DEV_OVERRIDE", "true")
+    set_dev_override(monkeypatch, "true")
     assert await _slate(str(uuid.uuid4())) == "free"  # the override does not skip the rule
 
 
@@ -932,7 +977,7 @@ async def test_slate_resolution_is_one_statement(two_slates: Template) -> None:
 
 @needs_db
 async def test_status_reports_and_uses_the_resolved_slate(two_slates: Template) -> None:
-    now = datetime(2026, 10, 9, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
     free, entitled = str(uuid.uuid4()), str(uuid.uuid4())
     await _grant(entitled, "yacht", "starswarm")
     factory = get_session_factory()

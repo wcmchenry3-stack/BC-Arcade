@@ -46,7 +46,31 @@ if [ -f "backend/requirements.txt" ]; then
           "cd backend && source .venv/bin/activate && ruff check --fix ."
       fi
     fi
+    # tools/**/*.py share the backend's ruff/black rules (tools/pyproject.toml)
+    if [ -d "tools" ] && command -v black &>/dev/null && command -v ruff &>/dev/null; then
+      if (cd tools && black --check --quiet . && ruff check --no-fix --quiet .) &>/dev/null; then
+        print_ok "tools python"
+      else
+        FAIL=1
+        print_fail "tools python" \
+          "ruff/black issues in tools/" \
+          "cd tools && source ../backend/.venv/bin/activate && ruff check --fix . && black ."
+      fi
+    fi
     deactivate 2>/dev/null || true
+  fi
+fi
+
+# ── Backend file-length gate (#2951) — stdlib-only, same script CI runs ──────
+if [ -f "backend/scripts/check_file_length.py" ] && command -v python3 &>/dev/null; then
+  if OUT=$(cd backend && python3 scripts/check_file_length.py 2>&1); then
+    print_ok "file-length"
+  else
+    FAIL=1
+    echo "$OUT" >&2
+    print_fail "file-length" \
+      "backend .py file(s) over the length limit" \
+      "cd backend && python3 scripts/check_file_length.py"
   fi
 fi
 

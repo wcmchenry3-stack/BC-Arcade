@@ -17,10 +17,6 @@ import BottomTabBar from "../../components/shared/BottomTabBar";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { MAIN_TABS } from "../mainTabs";
 
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
-}));
-
 /** The tab bar as the navigator hands it the registered tabs. */
 function tabBarProps(): BottomTabBarProps {
   const routes = MAIN_TABS.map(({ name }) => ({

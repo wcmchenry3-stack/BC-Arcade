@@ -2,8 +2,7 @@ import React from "react";
 import { Text } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { AppHeader, APP_HEADER_HEIGHT } from "../AppHeader";
-
-jest.mock("@expo/vector-icons/MaterialIcons", () => "MockMaterialIcons");
+import { isAppOverlayOpen, subscribeAppOverlay } from "../../../hooks/appOverlay";
 
 jest.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -27,10 +26,6 @@ jest.mock("react-i18next", () => ({
       return map[key] ?? key;
     },
   }),
-}));
-
-jest.mock("expo-blur", () => ({
-  BlurView: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 
 jest.mock("react-native-safe-area-context", () => ({
@@ -60,8 +55,8 @@ jest.mock("../../../theme/ThemeContext", () => ({
 jest.mock("../../FeedbackWidget/FeedbackWidget", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Text: RNText } = require("react-native");
-  const FeedbackWidgetMock = ({ visible }: { visible: boolean; onClose: () => void }) =>
-    visible ? <RNText>FeedbackWidgetMock</RNText> : null;
+  const FeedbackWidgetMock = ({ visible, onClose }: { visible: boolean; onClose: () => void }) =>
+    visible ? <RNText onPress={onClose}>FeedbackWidgetMock</RNText> : null;
   FeedbackWidgetMock.displayName = "FeedbackWidgetMock";
   return FeedbackWidgetMock;
 });
@@ -339,6 +334,61 @@ describe("AppHeader", () => {
       await fireEvent.press(screen.getByRole("button", { name: "Start New" }));
       expect(onNewGame).toHaveBeenCalledTimes(1);
       expect(screen.queryByText("Abandon current game?")).toBeNull();
+    });
+  });
+
+  // #2944 — the header's own Modals neither blur the screen nor change AppState, so it
+  // reports them as an "app overlay" for game screens and the result card.
+  describe("app overlay signal (#2944)", () => {
+    it("is open while the ⋯ menu is, and closes with it", async () => {
+      await render(<AppHeader title="Star Swarm" onNewGame={jest.fn()} />);
+      expect(isAppOverlayOpen()).toBe(false);
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      expect(isAppOverlayOpen()).toBe(true);
+      // The scrim closes the menu.
+      await fireEvent.press(screen.getAllByLabelText("More options").at(-1)!);
+      expect(screen.queryByText("New Game")).toBeNull();
+      expect(isAppOverlayOpen()).toBe(false);
+    });
+
+    it("stays open from the menu into the feedback sheet, until the sheet closes", async () => {
+      await render(<AppHeader title="Star Swarm" onNewGame={jest.fn()} />);
+      const listener = jest.fn();
+      const off = subscribeAppOverlay(listener);
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      await fireEvent.press(screen.getByText("Send Feedback"));
+      expect(isAppOverlayOpen()).toBe(true);
+      // No flicker closed between the menu and the sheet.
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      await fireEvent.press(screen.getByText("FeedbackWidgetMock"));
+      expect(isAppOverlayOpen()).toBe(false);
+      off();
+    });
+
+    it("is open while the ? button's feedback sheet is", async () => {
+      await render(<AppHeader title="Home" />);
+      await fireEvent.press(screen.getByRole("button", { name: "Send feedback" }));
+      expect(isAppOverlayOpen()).toBe(true);
+      await fireEvent.press(screen.getByText("FeedbackWidgetMock"));
+      expect(isAppOverlayOpen()).toBe(false);
+    });
+
+    it("is open while the New Game confirmation is", async () => {
+      await render(<AppHeader title="2048" onNewGame={jest.fn()} />);
+      await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+      await fireEvent.press(screen.getByText("New Game"));
+      expect(isAppOverlayOpen()).toBe(true);
+      await fireEvent.press(screen.getByRole("button", { name: "Keep Playing" }));
+      expect(isAppOverlayOpen()).toBe(false);
+    });
+
+    it("closes when the header unmounts with a sheet open", async () => {
+      const { unmount } = await render(<AppHeader title="Home" />);
+      await fireEvent.press(screen.getByRole("button", { name: "Send feedback" }));
+      expect(isAppOverlayOpen()).toBe(true);
+      await unmount();
+      expect(isAppOverlayOpen()).toBe(false);
     });
   });
 });

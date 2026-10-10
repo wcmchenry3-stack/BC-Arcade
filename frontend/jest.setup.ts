@@ -63,7 +63,30 @@ jest.mock("react-native-reanimated", () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { View, Text } = require("react-native");
 
-  const sharedValue = (init: unknown) => ({ value: init });
+  // Stable for the component's lifetime, like the real hook: a write from a gesture handler or a
+  // UI-thread callback captured in one render is still there on the next (#2956). Two traps,
+  // because useAnimatedStyle / useDerivedValue below are evaluated inline at render rather than
+  // reacting to writes: (1) a write made in an effect or a handler only shows in an animated
+  // style on the NEXT render, so `rerender` (or act on something that re-renders) before reading
+  // it; (2) the init is read once at mount, so a prop-seeded value (PlayerHand's
+  // `useSharedValue(lifted ? -LIFT_AMOUNT : 0)`) stays frozen at its first value when the prop
+  // changes unless the component writes `.value` itself.
+  // `get()` / `set()` are Reanimated 4's React Compiler-safe accessors for `.value`.
+  const useStableSharedValue = (init: unknown) =>
+    React.useState(() => ({
+      value: init,
+      get() {
+        return this.value;
+      },
+      set(next: unknown) {
+        // As Reanimated's mutables.ts: a function is an updater unless it is an
+        // animation definition (withTiming & co. on the real library).
+        const isUpdater =
+          typeof next === "function" &&
+          !(next as unknown as Record<string, unknown>).__isAnimationDefinition;
+        this.value = isUpdater ? Reflect.apply(next as never, undefined, [this.value]) : next;
+      },
+    }))[0];
   const noopAnim = (v: unknown) => v;
 
   const createAnimatedComponent = (Component: React.ComponentType) => {
@@ -85,7 +108,7 @@ jest.mock("react-native-reanimated", () => {
       createAnimatedComponent,
     },
     // Named exports used directly in AnimatedTile.tsx
-    useSharedValue: sharedValue,
+    useSharedValue: useStableSharedValue,
     useAnimatedStyle: (fn: () => object) => fn(),
     useAnimatedProps: (fn: () => object) => fn(),
     withTiming: noopAnim,
@@ -125,7 +148,9 @@ jest.mock("expo-audio", () => ({
     pause: jest.fn(),
     seekTo: jest.fn(),
     remove: jest.fn(),
+    addListener: jest.fn(() => ({ remove: jest.fn() })),
   })),
+  setIsAudioActiveAsync: jest.fn(() => Promise.resolve()),
   AudioPlayer: jest.fn(),
 }));
 
@@ -156,6 +181,35 @@ jest.mock("react-native-safe-area-context", () => ({
   SafeAreaView: jest.fn(({ children }: { children: unknown }) => children),
   SafeAreaProvider: jest.fn(({ children }: { children: unknown }) => children),
 }));
+
+// expo-blur and expo-linear-gradient — pass-throughs that render only their
+// children (#2954), so no test sees native blur/gradient views. A test that
+// needs another shape mocks the package itself; its jest.mock wins.
+jest.mock("expo-blur", () => {
+  const { createElement, Fragment } = jest.requireActual<typeof import("react")>("react");
+  return {
+    BlurView: ({ children }: { children?: React.ReactNode }) =>
+      createElement(Fragment, null, children),
+  };
+});
+jest.mock("expo-linear-gradient", () => {
+  const { createElement, Fragment } = jest.requireActual<typeof import("react")>("react");
+  return {
+    LinearGradient: ({ children }: { children?: React.ReactNode }) =>
+      createElement(Fragment, null, children),
+  };
+});
+
+// @expo/vector-icons — one shared string mock per icon family (#2954/#3107) instead of
+// per-test copies. Renders as a plain native element so other assertions still work. A
+// test that needs another shape mocks the module itself; its jest.mock wins.
+jest.mock("@expo/vector-icons/MaterialIcons", () => "MockMaterialIcons");
+jest.mock("@expo/vector-icons/MaterialCommunityIcons", () => "MockMaterialCommunityIcons");
+
+// Shared screen-test mock factories (#2954), as a global so hoisted jest.mock
+// factories can call it: babel-plugin-jest-hoist lets a factory reference a
+// name matching /^mock/i. Usage: src/test-utils/mockScreenDeps.ts.
+globalThis.mockScreenDeps = () => jest.requireActual("./src/test-utils/mockScreenDeps");
 
 // Sentry mock — @sentry/react-native ships ESM that Jest can't transform
 jest.mock("@sentry/react-native", () => ({

@@ -1,3 +1,18 @@
+/**
+ * BlackjackTableScreen — the in-hand table (player, dealer, actions) of a Blackjack run.
+ *
+ * Concerns:
+ *   1. Game logic — hit, stand, double and split go through `apply` from `useBlackjackGame`
+ *      (game/blackjack/BlackjackGameContext), which owns the engine state, saving and the
+ *      run's `useGameSync` session (#370, #549, #2628). The screen holds no session itself.
+ *   2. Navigation — redirects to BlackjackBetting or BlackjackVictory when the phase leaves
+ *      the hand; the three screens share the one context.
+ *   3. Events and feedback — `useGameEvents` plays the sounds and drives the bust/win flashes,
+ *      milestone, comeback and all-in banners (Reanimated) and the blackjack celebration.
+ *   4. Result (#2628) — the shared GameResultModal when the chips run out, with the outcome
+ *      the run recorded; no leaderboard (Blackjack has no board).
+ *   5. Layout — `useBlackjackLayout` sizes the hands and controls.
+ */
 import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import Animated, {
@@ -46,7 +61,6 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   const { t: tResult } = useTranslation("result");
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const layout = useBlackjackLayout();
   const { engine, loading, error, apply, clearEvents, handlePlayAgain, sessionStats, runResult } =
     useBlackjackGame();
   const [confirmNewGameVisible, setConfirmNewGameVisible] = useState(false);
@@ -97,6 +111,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
   }));
 
   const state = engine ? toViewState(engine) : null;
+  const layout = useBlackjackLayout(state?.player_hands?.length);
 
   useGameEvents(
     state?.events,
@@ -207,6 +222,7 @@ export default function BlackjackTableScreen({ navigation }: Props) {
       title={t("game.title")}
       requireBack
       onBack={() => navigation.popToTop()}
+      gutter={null}
       onNewGame={handleNewGame}
       loading={!engine && loading}
       style={{ paddingBottom: Math.max(insets.bottom, 16) }}

@@ -9,14 +9,17 @@ puzzle_id format: "YYYY-MM-DD:{lang}"
 
 from __future__ import annotations
 
-import os
 import random
 import unicodedata
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from settings import Settings
+
 # DAILY_WORD_SALT must be set in production; default 0 makes answer order trivially derivable.
-SALT = int(os.environ.get("DAILY_WORD_SALT", "0"))
+# Read when this module is imported, because the shuffle below needs it; an empty
+# or non-integer value raises ValueError here, which stops ``import main`` (#2997).
+SALT = int(Settings().daily_word_salt)
 _WORDS_DIR = Path(__file__).parent / "words"
 
 
@@ -46,7 +49,7 @@ _VALID: dict[str, frozenset[str]] = {"en": _VALID_EN, "hi": _VALID_HI}
 
 def _local_date(tz_offset_minutes: int, utc_now: datetime | None = None) -> datetime:
     if utc_now is None:
-        utc_now = datetime.now(timezone.utc)
+        utc_now = datetime.now(UTC)
     return utc_now + timedelta(minutes=tz_offset_minutes)
 
 
