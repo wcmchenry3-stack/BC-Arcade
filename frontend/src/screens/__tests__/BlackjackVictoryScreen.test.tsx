@@ -5,6 +5,7 @@ import BlackjackVictoryScreen from "../BlackjackVictoryScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { initialSessionStats } from "../../game/blackjack/sessionStats";
 import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
+import * as unlocks from "../../game/blackjack/unlocks";
 
 // Goal Reached (#2507): its own screen, built from the shared result card.
 
@@ -146,5 +147,24 @@ describe("BlackjackVictoryScreen — premium next table (#1129)", () => {
     expect(mockCtx.handleCashOut).not.toHaveBeenCalled();
     expect(mockCtx.handleTableSelect).not.toHaveBeenCalled();
     expect(nav.replace).not.toHaveBeenCalled();
+  });
+});
+
+describe("BlackjackVictoryScreen — cosmetic unlocks (#1911)", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("announces no unlock while the rewards are off", async () => {
+    const save = jest.spyOn(unlocks, "saveUnlocks");
+    atTable(5, 25, 100, 250);
+    await renderScreen();
+    expect(screen.queryByText(/Felt Classic/)).toBeNull();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("announces the beginner reward once they are switched on", async () => {
+    jest.spyOn(unlocks, "cosmeticUnlocksEnabled").mockReturnValue(true);
+    atTable(5, 25, 100, 250);
+    await renderScreen();
+    expect(await screen.findByText(/Felt Classic/)).toBeTruthy();
   });
 });
