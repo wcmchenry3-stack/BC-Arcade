@@ -297,6 +297,54 @@ describe("metric logic on hand-built final hands", () => {
     expect(fires([[], [], [], hearts(2, 3, 4)], [0, 1, 2, 3])).toBe(false);
   });
 
+  /** Plays the given mid-hand positions for seat 1, then a hand that ends with no moon. */
+  const stoppedHand = (
+    subjects: number[],
+    mids: readonly { trick: number; card: Card; won?: Card[][] }[]
+  ) => {
+    const data = emptyBlock();
+    const hooks = gameHooks(label(subjects), data, probe("P1-DUCK"), false, { count: 0 });
+    for (const m of mids) {
+      const state = { ...threatState(1, m.card, m.won), tricksPlayedInHand: m.trick - 1 };
+      hooks.onPlay!(state, 1, m.card);
+    }
+    const { state, last } = finalState(
+      [c("clubs", 7), ...hearts(2, 3), c("hearts", 4)],
+      [[], [], [], []],
+      [0, 0, 0, 0]
+    );
+    hooks.onPlay!(state, 3, last);
+    return data;
+  };
+  const histAt = (trick: number) => Array.from({ length: 13 }, (_, i) => (i === trick - 1 ? 1 : 0));
+
+  it("records the trick of the first recognition, not a later one", () => {
+    const data = stoppedHand(
+      [0, 1, 2],
+      [
+        { trick: 3, card: c("clubs", 7) },
+        { trick: 5, card: c("clubs", 7) },
+      ]
+    );
+    expect(data.cpuTrigger.stopped.hist).toEqual(histAt(3));
+  });
+
+  it("does not fire for a threat by a conservative seat", () => {
+    const data = stoppedHand([0, 1, 2, 3], [{ trick: 3, card: c("clubs", 7) }]);
+    expect(data.cpuTrigger.stopped.hist).toEqual(histAt(0));
+    expect(data.cpuTrigger.moon.hist).toEqual(histAt(0));
+  });
+
+  it("can stop needs a heart that no out heart beats (one higher heart out is not enough)", () => {
+    const won = [[], [], [], hearts(2, 3, 4)];
+    // K♥ in hand, the A♥ still out: beatable.
+    const beatable = stoppedHand([0, 1, 2], [{ trick: 9, card: c("hearts", 13), won }]);
+    expect(beatable.cpuTrigger.stopped).toEqual({ hist: histAt(9), canStop: 0 });
+    // A♥ in hand: nothing beats it.
+    const top = stoppedHand([0, 1, 2], [{ trick: 9, card: c("hearts", 1), won }]);
+    expect(top.cpuTrigger.stopped).toEqual({ hist: histAt(9), canStop: 1 });
+  });
+
   it("credits P7 to the seat that played it", () => {
     const data = emptyBlock();
     // Only seat 1 is conservative; every other seat is an opponent.

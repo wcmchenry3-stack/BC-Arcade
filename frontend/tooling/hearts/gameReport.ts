@@ -104,8 +104,8 @@ export const PLAY_PRINCIPLES: readonly PrincipleId[] = [
 ];
 export const PASS_PRINCIPLES: readonly string[] = ["P4-DANGER", "P5-QUEEN", "P6-DISCARD"];
 
-/** Largest `--games` accepted (about 20 minutes of simulation). */
-export const MAX_GAME_REPORT_GAMES = 20_000;
+/** Largest `--games` accepted (about 10 minutes of simulation). */
+export const MAX_GAME_REPORT_GAMES = 10_000;
 
 /** Strict positive decimal integer up to `MAX_GAME_REPORT_GAMES`; anything else throws (like `parseHandsArg`). */
 export function parseGamesArg(raw: string | undefined, present: boolean): number {

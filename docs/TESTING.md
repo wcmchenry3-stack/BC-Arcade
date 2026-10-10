@@ -789,7 +789,7 @@ stopped) and the table gives the share stopped (Wilson 95% interval), the
 mean and median trick of first recognition (the JSON and the moon-shooter
 histogram give every trick 1-13), and `can stop`: at first recognition, a
 conservative seat held a heart that no out card beats, so P7 had the means to
-stop the moon. (Shares such as "the CPU recognized the threat in every moon"
+stop the moon. `can stop` is an upper bound: holding the top heart does not guarantee P7 could lead or win with it. `stopped` means no non-conservative moon was shot; it may include hands another seat stopped, not only the CPU. (Shares such as "the CPU recognized the threat in every moon"
 or "P7 decided a play in none of them" are true by construction, because any
 moon crosses 10 points alone and any play P7 names wins a point trick, so
 they are not reported.) The JSON also holds `pointsPerHandAdvantage`
@@ -825,7 +825,7 @@ the CPU's trigger also fires on Q♠ plus a few points; it would not give P7
 more time in this bot's hands. That is for the owner decision (#3196), not a
 bug in the report.
 
-`--games` is capped at 20,000 (exit 2 above it).
+`--games` is capped at 10,000 (exit 2 above it).
 
 **CI.** The `game-report` job of `hearts-sim-gate.yml` plays 2,000 games per
 matchup nightly and on manual runs (the `games` input overrides), and 60 games
