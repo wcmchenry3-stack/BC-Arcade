@@ -34,6 +34,8 @@ def _sync_url(raw: str) -> str:
     """
     if raw.startswith("postgresql+asyncpg://"):
         return "postgresql+psycopg2://" + raw[len("postgresql+asyncpg://") :]
+    if raw.startswith("postgresql://"):  # Render's form, and CI's
+        return "postgresql+psycopg2://" + raw[len("postgresql://") :]
     if raw.startswith("sqlite+aiosqlite://"):
         return "sqlite://" + raw[len("sqlite+aiosqlite://") :]
     return raw
