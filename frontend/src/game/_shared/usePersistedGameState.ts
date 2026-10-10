@@ -1,23 +1,47 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 
-/** What a restore hands the screen: the loaded game, or null for a clean slot. */
-export type RestoredHandler<T> = (loaded: T | null) => void;
+/**
+ * What a restore hands the screen: the loaded game, or null for a clean slot,
+ * and the load's `info` when it resolved a `LoadResult` (#3127).
+ */
+export type RestoredHandler<T, I = never> = (loaded: T | null, info: I) => void;
 
-export interface PersistedGameStateOptions<T> {
+/**
+ * A load's game plus what the restore handler needs to know about how it was
+ * read (a failure's reason, whether it resumed a save), for a screen whose
+ * `load` has more to report than the game (Daily Word, #3127). The load only
+ * returns it: acting on it (clearing a stale save, showing an error) is the
+ * handler's job, since the handler runs only for the load that lands.
+ */
+export class LoadResult<T, I> {
+  constructor(
+    readonly loaded: T | null,
+    readonly info: I
+  ) {}
+}
+
+export interface PersistedGameStateOptions<T, I = never> {
   /**
-   * Reads the saved game, resolving null for a clean slot. Called once, on
-   * mount. Anything else the screen reads at the same time (its stats) can
-   * load alongside it here.
+   * Reads the saved game, resolving null for a clean slot. Called on mount
+   * and on each `reload()`. Anything else the screen reads at the same time
+   * (its stats) can load alongside it here. With an `I`, it resolves a
+   * `LoadResult` whose `info` goes to the `useGameRestored` handler.
+   *
+   * It must be side-effect-free (#3127): it returns data and writes nothing,
+   * no storage and no refs. A load that is dropped (unmount, a later
+   * `reload()`, StrictMode's double mount) still runs to the end, so a write
+   * in it could land after a newer load's. Side effects go in the
+   * `useGameRestored` handler, which runs only for the load that lands.
    */
-  load: () => Promise<T | null>;
+  load: () => Promise<[I] extends [never] ? T | null : LoadResult<T, I>>;
   /** Writes the game. Called after every state change once the load has landed. */
   save: (state: T) => Promise<unknown>;
   /** Deletes the save: what the returned `clear` calls. */
   clear?: () => Promise<unknown>;
 }
 
-export interface PersistedGameState<T> {
+export interface PersistedGameState<T, I = never> {
   state: T | null;
   setState: Dispatch<SetStateAction<T | null>>;
   /**
@@ -50,7 +74,7 @@ export interface PersistedGameState<T> {
    * load lands. Screens pass the whole result to `useGameRestored` and never
    * touch this.
    */
-  readonly restoredRef: MutableRefObject<RestoredHandler<T> | null>;
+  readonly restoredRef: MutableRefObject<RestoredHandler<T, I> | null>;
 }
 
 /**
@@ -58,7 +82,9 @@ export interface PersistedGameState<T> {
  * change after that. Its state is the screen's game state.
  *
  * - The load runs once, on mount, and again on each `reload()`. One that
- *   lands after unmount, or after a later `reload()`, sets nothing.
+ *   lands after unmount, or after a later `reload()`, sets nothing. So the
+ *   load must be side-effect-free: its side effects go in the restore
+ *   handler (#3127).
  * - When it lands, `hasLoadedRef` turns true, the state is set to what it
  *   loaded (null for a clean slot), the screen's `useGameRestored` handler
  *   runs with it, and `loading` ends, all in one batch.
@@ -78,9 +104,9 @@ export interface PersistedGameState<T> {
  * Throttling and debouncing stay with the screen: Mahjong's debounced saves
  * keep their own hook (`game/mahjong/useMahjongPersistence.ts`).
  */
-export function usePersistedGameState<T>(
-  options: PersistedGameStateOptions<T>
-): PersistedGameState<T> {
+export function usePersistedGameState<T, I = never>(
+  options: PersistedGameStateOptions<T, I>
+): PersistedGameState<T, I> {
   // The latest callbacks, so the mount-only load and stable `clear` read this
   // render's. A layout effect, so a load landing between a commit and its
   // passive effects still reads that commit's callbacks.
@@ -93,7 +119,7 @@ export function usePersistedGameState<T>(
   const [loading, setLoading] = useState(true);
   const hasLoadedRef = useRef(false);
   const stateRef = useRef<T | null>(null);
-  const restoredRef = useRef<RestoredHandler<T> | null>(null);
+  const restoredRef = useRef<RestoredHandler<T, I> | null>(null);
 
   // Bumped by every load, so only the latest one lands; each load's own
   // `cancelled` drops it after unmount (the alive guard).
@@ -103,11 +129,19 @@ export function usePersistedGameState<T>(
     let cancelled = false;
     const alive = () => !cancelled && loadSeqRef.current === seq;
     optionsRef.current.load().then(
-      (loaded) => {
+      (result) => {
         if (!alive()) return;
         hasLoadedRef.current = true;
-        setState(loaded);
-        restoredRef.current?.(loaded);
+        if (result instanceof LoadResult) {
+          const { loaded, info } = result as LoadResult<T, I>;
+          setState(loaded);
+          restoredRef.current?.(loaded, info);
+        } else {
+          const loaded = result as T | null;
+          setState(loaded);
+          // No `I`: the handler takes the game alone.
+          (restoredRef.current as ((loaded: T | null) => void) | null)?.(loaded);
+        }
         setLoading(false);
       },
       () => {
@@ -156,9 +190,11 @@ export function usePersistedGameState<T>(
 
 /**
  * What the screen does with a restore: called once, when the load lands on a
- * still-mounted screen, with what it loaded (null for a clean slot), just
- * after the state is set to it. The place for the restore's side effects
- * (`syncResume()`, a resumed win's guards, timers) or for a different start:
+ * still-mounted screen, with what it loaded (null for a clean slot) and the
+ * load's `info` (when it resolved a `LoadResult`), just after the state is
+ * set to it. Only the load that lands calls it, never a dropped one, so it is
+ * the place for the restore's side effects (`syncResume()`, a resumed win's
+ * guards, timers, clearing a stale save, #3127) or for a different start:
  * a `setState` here (a fresh deal on a clean slot, a save adjusted by
  * `usePausableClock`'s `adoptLoaded`) replaces the loaded state in the same
  * batch, so only the replacement renders and is saved.
@@ -166,9 +202,9 @@ export function usePersistedGameState<T>(
  * A hook of its own, called after `usePersistedGameState`, so the handler can
  * use what the screen builds on that hook's state (the play clock, a deal).
  */
-export function useGameRestored<T>(
-  game: Pick<PersistedGameState<T>, "restoredRef">,
-  onRestored: RestoredHandler<T>
+export function useGameRestored<T, I = never>(
+  game: Pick<PersistedGameState<T, I>, "restoredRef">,
+  onRestored: RestoredHandler<T, I>
 ): void {
   const { restoredRef } = game;
   // A layout effect, so a load landing before this commit's passive effects

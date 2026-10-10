@@ -47,10 +47,13 @@ from pathlib import Path
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _FRONTEND_DIR = _SCRIPT_DIR.parent.parent / "frontend"
 _ASSETS_DIR = _FRONTEND_DIR / "assets"
+# Full-resolution processed icons (#2833). frontend/assets/*-icons/ hold only
+# 256 px runtime thumbnails made by make_icon_thumbnails.py.
+_MASTERS_DIR = _SCRIPT_DIR.parent.parent / "cascade_icon_masters"
 
 DEFAULT_TARGETS = [
-    (_ASSETS_DIR / "fruit-icons", _ASSETS_DIR / "fruit-vertices.json"),
-    (_ASSETS_DIR / "celestial-icons", _ASSETS_DIR / "cosmos-vertices.json"),
+    (_MASTERS_DIR / "fruit-icons", _ASSETS_DIR / "fruit-vertices.json"),
+    (_MASTERS_DIR / "celestial-icons", _ASSETS_DIR / "cosmos-vertices.json"),
 ]
 
 

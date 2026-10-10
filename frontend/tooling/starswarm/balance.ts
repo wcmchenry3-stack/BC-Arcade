@@ -729,7 +729,7 @@ export function runOne(E: Engine, spec: RunSpec): RunRecord {
   let ps = newPilot(s.player.x);
   let t = 0;
   while (!launchReady(E, s, spec, initialCount)) {
-    if (t > PRE_MAX_MS || s.phase === "Extraction" || s.phase === "GameOver" || carrierDead(s)) {
+    if (t > PRE_MAX_MS || E.isWaveCleared(s) || s.phase === "GameOver" || carrierDead(s)) {
       return emptyRecord(spec, false, false);
     }
     s = simTick(E, s, ps, spec.pilot, true).next;

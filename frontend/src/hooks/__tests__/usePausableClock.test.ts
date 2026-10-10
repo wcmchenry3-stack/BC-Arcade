@@ -5,6 +5,7 @@ import type { AppStateStatus } from "react-native";
 import { pauseClock, resumeClock, type PlayClock } from "../../game/_shared/playClock";
 import { usePausableClock } from "../usePausableClock";
 import type { FocusEventSource } from "../usePauseWhileAway";
+import { useReportAppOverlay } from "../appOverlay";
 
 interface Game extends PlayClock {
   readonly moves: number;
@@ -106,6 +107,25 @@ describe("usePausableClock (#2750)", () => {
     });
     expect(hook.result.current.state).toEqual(
       expect.objectContaining({ startedAt: now, accumulatedMs: 5_000 })
+    );
+  });
+
+  it("counts no time while the ⋯ menu or feedback sheet is open (#2944)", async () => {
+    const { hook } = await setup({ startedAt: now, accumulatedMs: 0, moves: 1, over: false });
+    const sheet = await renderHook(({ open }: { open: boolean }) => useReportAppOverlay(open), {
+      initialProps: { open: false },
+    });
+    now += 4_000;
+    await act(async () => sheet.rerender({ open: true }));
+    expect(hook.result.current.state).toEqual(
+      expect.objectContaining({ startedAt: null, accumulatedMs: 4_000, paused: true })
+    );
+
+    // Ten minutes typing feedback: none of it is play time.
+    now += 10 * 60_000;
+    await act(async () => sheet.rerender({ open: false }));
+    expect(hook.result.current.state).toEqual(
+      expect.objectContaining({ startedAt: now, accumulatedMs: 4_000 })
     );
   });
 

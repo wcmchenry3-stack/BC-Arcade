@@ -60,7 +60,7 @@ def scratch_server_url(raw: str) -> URL:
 
     ``postgres://``, ``postgresql://`` and ``postgresql+asyncpg://`` are
     accepted. The result is also what Alembic loads: ``alembic/env.py`` maps
-    ``postgresql+asyncpg://`` to the sync ``postgresql://`` driver, whereas a
+    ``postgresql+asyncpg://`` to the sync ``postgresql+psycopg2://`` driver, whereas a
     bare ``postgres://`` names no SQLAlchemy dialect. Anything else is
     rejected with a message naming the variable.
     """

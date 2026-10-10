@@ -24,6 +24,7 @@ export interface PremiumProduct {
   productId: string;
 }
 
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export const PRODUCT_ID_PREFIX: string = catalog.productIdPrefix;
 
 // JSON imports widen `gameSlug` to `string`; the unit test pins every entry to
@@ -31,19 +32,8 @@ export const PRODUCT_ID_PREFIX: string = catalog.productIdPrefix;
 export const PREMIUM_PRODUCTS: readonly PremiumProduct[] = catalog.products as PremiumProduct[];
 
 const byGame = new Map<string, string>(PREMIUM_PRODUCTS.map((p) => [p.gameSlug, p.productId]));
-const byProduct = new Map<string, PremiumGameSlug>(
-  PREMIUM_PRODUCTS.map((p) => [p.productId, p.gameSlug])
-);
 
 /** Narrows an arbitrary slug (route param, server payload) to a purchasable game. */
 export function isPremiumGameSlug(s: string): s is PremiumGameSlug {
   return byGame.has(s);
-}
-
-export function productIdForGame(gameSlug: string): string | undefined {
-  return byGame.get(gameSlug);
-}
-
-export function gameForProductId(productId: string): PremiumGameSlug | undefined {
-  return byProduct.get(productId);
 }

@@ -204,13 +204,18 @@ describe("Boss wave (#2490)", () => {
   const ASIDE: StarSwarmInput = { playerX: 40, fire: false };
   /** A boss wave settled into formation: no enemy fire, beam parked, rocks off, player parked
    * left — all applied before the swoop-in so four active Guardians can't end the game first. */
-  function settled(difficulty: DifficultyTier = "LieutenantJG", wave = 5): StarSwarmState {
+  function settled(
+    difficulty: DifficultyTier = "LieutenantJG",
+    wave = 5,
+    diveTimer?: number
+  ): StarSwarmState {
     const init = initStarSwarm(CANVAS_W, CANVAS_H, wave, 42, difficulty);
     const s = advanceMs(
       {
         ...init,
         enemyFireDisabled: true,
         asteroidsDisabled: true,
+        ...(diveTimer === undefined ? {} : { nextDiveTimer: diveTimer }),
         player: { ...init.player, x: 40 },
         enemies: init.enemies.map((e) => (e.tier === "Carrier" ? { ...e, beamTimer: 1e9 } : e)),
       },
@@ -284,7 +289,9 @@ describe("Boss wave (#2490)", () => {
     s = tick(s, 16, ASIDE);
     expect(s.enemies.some((e) => e.tier === "Guardian" && e.phase !== "Formation")).toBe(true);
     // and a Guardian whose shot timer is up fires its burst without waiting for anything
-    let firing = { ...settled(), enemyFireDisabled: false };
+    // (#3139: with all four Guardians now free to dive, the settle phase can leave every one of
+    // them out of formation — park the dive timer so the Guardians are still home to fire)
+    let firing = { ...settled("LieutenantJG", 5, 1e9), enemyFireDisabled: false };
     firing = {
       ...firing,
       enemies: firing.enemies.map((e) => (e.tier === "Guardian" ? { ...e, shootTimer: 1 } : e)),

@@ -20,7 +20,10 @@ import { DIFFICULTIES, type Difficulty } from "./types";
 export type PuzzleBank = Record<Difficulty, readonly string[]>;
 export type PackedPuzzleBank = Record<Difficulty, string>;
 
-/** Pack a bank whose puzzles are all `cells` characters long (build-time only). */
+/**
+ * Pack a bank whose puzzles are all `cells` characters long (build-time only).
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function encodePuzzleBank(bank: PuzzleBank, cells: number): PackedPuzzleBank {
   const out = {} as Record<Difficulty, string>;
   for (const d of DIFFICULTIES) {
@@ -46,7 +49,10 @@ export function decodePuzzles(packed: string, cells: number): string[] {
   return puzzles;
 }
 
-/** Unpack every difficulty of a bank. */
+/**
+ * Unpack every difficulty of a bank.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function decodePuzzleBank(packed: PackedPuzzleBank, cells: number): PuzzleBank {
   const out = {} as Record<Difficulty, string[]>;
   for (const d of DIFFICULTIES) out[d] = decodePuzzles(packed[d], cells);

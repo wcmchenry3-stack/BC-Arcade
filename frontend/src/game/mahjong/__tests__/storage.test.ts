@@ -430,15 +430,12 @@ describe("mahjong stats storage", () => {
 
   it("returns zero defaults when no stats saved", async () => {
     const stats = await loadStats();
-    expect(stats).toEqual({ bestScore: 0, bestTimeMsByLayout: {}, gamesPlayed: 0, gamesWon: 0 });
+    expect(stats).toEqual({ bestTimeMsByLayout: {} });
   });
 
   it("saves and loads stats round-trip", async () => {
     const stats = {
-      bestScore: 1230,
       bestTimeMsByLayout: { turtle: 185000, spider: 240000 },
-      gamesPlayed: 10,
-      gamesWon: 4,
     };
     await saveStats(stats);
     expect(await loadStats()).toEqual(stats);
@@ -447,7 +444,7 @@ describe("mahjong stats storage", () => {
   it("returns zero defaults on corrupt stats payload", async () => {
     await AsyncStorage.setItem("mahjong_stats_v1", "not-json{");
     const stats = await loadStats();
-    expect(stats).toEqual({ bestScore: 0, bestTimeMsByLayout: {}, gamesPlayed: 0, gamesWon: 0 });
+    expect(stats).toEqual({ bestTimeMsByLayout: {} });
   });
 
   // #2747: a best under the ranking floor came from a broken clock (an old
@@ -478,10 +475,22 @@ describe("mahjong stats storage", () => {
     expect(stats).not.toHaveProperty("bestTimeMs");
   });
 
-  it("coerces missing numeric fields to 0 on partial payload", async () => {
-    await AsyncStorage.setItem("mahjong_stats_v1", JSON.stringify({ gamesPlayed: 5 }));
-    const stats = await loadStats();
-    expect(stats).toEqual({ bestScore: 0, bestTimeMsByLayout: {}, gamesPlayed: 5, gamesWon: 0 });
+  it("loads no best times from a payload without them", async () => {
+    await AsyncStorage.setItem("mahjong_stats_v1", JSON.stringify({}));
+    expect(await loadStats()).toEqual({ bestTimeMsByLayout: {} });
+  });
+
+  it("drops the retired score and play counters from an older save", async () => {
+    await AsyncStorage.setItem(
+      "mahjong_stats_v1",
+      JSON.stringify({
+        bestScore: 1220,
+        bestTimeMsByLayout: { turtle: 90_000 },
+        gamesPlayed: 2,
+        gamesWon: 1,
+      })
+    );
+    expect(await loadStats()).toEqual({ bestTimeMsByLayout: { turtle: 90_000 } });
   });
 });
 

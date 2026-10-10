@@ -186,6 +186,14 @@ module.exports = [
     },
   },
 
+  // Metro config helpers are CommonJS, like metro.config.js which loads them.
+  {
+    files: ["metro/**/*.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+
   // The app must not import the CI/script-only simulators in tooling/ (#2969):
   // they would be bundled into the production app.
   {

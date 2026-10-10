@@ -6,8 +6,8 @@ Convert PNG icon assets to WebP in-place.
 
 Usage
 -----
-  python tools/assets/convert_icons_to_webp.py frontend/assets/fruit-icons
-  python tools/assets/convert_icons_to_webp.py frontend/assets/celestial-icons
+  python tools/assets/convert_icons_to_webp.py cascade_icon_masters/fruit-icons
+  python tools/assets/convert_icons_to_webp.py cascade_icon_masters/celestial-icons
 
 The script discovers all *.png files in the target directory (non-recursive),
 converts each one to WebP at quality=90 method=6, deletes the original PNG,

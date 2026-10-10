@@ -8,6 +8,7 @@
  * enemy-bullet list, the beam list and the tier stats are copied only when something fires.
  */
 import type {
+  Asteroid,
   Bullet,
   CarrierBeam,
   CarrierStage,
@@ -18,7 +19,7 @@ import type {
   StarSwarmState,
   TierStats,
 } from "../types";
-import { degradeAim, dodgeOffset } from "./asteroids";
+import { degradeAim, dodgeOffset, onScreenRocks } from "./asteroids";
 import { aimAtBuddy, buddyDivertRoll, buddyTargetFor } from "./buddy";
 import {
   carrierFlakRock,
@@ -50,7 +51,7 @@ import {
   bulletCap,
   diveInterval,
   isBossWave,
-  maxDivers,
+  diveCap,
   type Tuning,
 } from "./tuning";
 
@@ -119,7 +120,7 @@ export function reinforceCap(wave: number): number {
 }
 
 /**
- * #926 dive scheduler: when the dive timer fires, pick up to `maxDivers(wave)` new divers from
+ * #926 dive scheduler: when the dive timer fires, pick up to `diveCap(wave)` new divers from
  * the formation (Guardians only once `guardianThresholdCrossed`) on the seeded rng, adding their
  * roster indices to `diveIndices`. Returns the dive timer; it only runs in combat.
  */
@@ -148,7 +149,7 @@ export function scheduleDives(
       );
     // Only launch enough new divers to reach the cap; Wiggling enemies are NOT counted (#975)
     const currentDivers = roster.filter((e) => e.isAlive && e.phase === "Diving").length;
-    const allowedNew = Math.max(0, maxDivers(state.wave) - currentDivers);
+    const allowedNew = Math.max(0, diveCap(state.wave) - currentDivers);
     for (let k = 0; k < allowedNew && candidates.length > 0; k++) {
       const pick = Math.floor(rng() * candidates.length);
       diveIndices.add(candidates[pick]!.i);
@@ -177,6 +178,13 @@ export function advanceSway(
   return { swayX, swayDir };
 }
 
+/** #3131: the rocks a commit-time path check looks at — live and already on screen. */
+function liveOnScreenRocks(state: StarSwarmState): readonly Asteroid[] {
+  return state.asteroids.length === 0
+    ? state.asteroids
+    : onScreenRocks(state.asteroids, state.canvasW, state.canvasH);
+}
+
 /**
  * #2485/#2843: what the Carrier's tick needs to know this tick — its stage as of the tick's
  * starting roster, the player's position, a rock it would answer with flak (#2844, exposed
@@ -202,6 +210,7 @@ export function buildCarrierCtx(
     canvasH: state.canvasH,
     flakRock: null, // set below once the Carrier's position is known
     buddy: null,
+    rocks: liveOnScreenRocks(state), // #3131: the attack run is vetted against these at commit
   };
   if (carrierNow && stage && stage !== "protected" && !state.flakDisabled) {
     // #2844: an exposed Carrier diverts its twin volley to an approaching rock (never while armored)
@@ -547,7 +556,7 @@ export function tickEnemies(
       )
     : state.enemies;
 
-  // #926 Dive AI: pick up to maxDivers(wave) formation enemies to send diving
+  // #926 Dive AI: pick up to diveCap(wave) formation enemies to send diving
   const diveIndices = new Set<number>();
   const nextDiveTimer = scheduleDives(
     state,
@@ -589,7 +598,8 @@ export function tickEnemies(
       guardianDeepThresholdCrossed,
       _ps,
       carrierCtx,
-      tuning
+      tuning,
+      carrierCtx.rocks // #3131: Elite/Guardian dives are vetted against the same on-screen rocks
     );
     let e = result.enemy;
     if (enemy.isAlive && enemy.phase === "Fleeing" && !e.isAlive) routEscaped++; // #2489
@@ -642,12 +652,18 @@ export function tickEnemies(
 // Derived helpers (useful for renderers)
 // ---------------------------------------------------------------------------
 
-/** True while any enemy is still in the SwoopIn entry animation. */
+/**
+ * True while any enemy is still in the SwoopIn entry animation.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function isSwooping(state: StarSwarmState): boolean {
   return state.enemies.some((e) => e.isAlive && e.phase === "SwoopIn");
 }
 
-/** Number of enemies currently airborne (Diving or Circling). */
+/**
+ * Number of enemies currently airborne (Diving or Circling).
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function diverCount(state: StarSwarmState): number {
   return state.enemies.filter((e) => e.isAlive && (e.phase === "Diving" || e.phase === "Circling"))
     .length;

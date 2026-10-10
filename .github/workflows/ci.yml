@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [dev, main]
   push:
     branches: [dev, main]
@@ -18,14 +19,20 @@ jobs:
   # === Tier 0: Hygiene gates (run immediately, must pass before tier 1) ====
 
   gate-main-source:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-gate-main-source.yml@main
     secrets: inherit
 
   secret-scan:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-secret-scan.yml@main
     secrets: inherit
 
   lint-python:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-lint-python.yml@main
     with:
       working-directory: backend
@@ -38,6 +45,8 @@ jobs:
   # tools/**/*.py (dev tooling, #2974): the same reusable workflow, pointed at tools/.
   # tools/pyproject.toml extends backend's ruff rules (line length 100).
   lint-python-tools:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-lint-python.yml@main
     with:
       working-directory: tools
@@ -46,11 +55,13 @@ jobs:
 
   # Unit tests for the Python asset tools (not collected by the backend suite).
   test-tools:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Test tools (pytest)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           # One Python version for the repo (#2972, #3107): backend/.python-version.
           python-version-file: backend/.python-version
@@ -63,6 +74,8 @@ jobs:
         run: python -m pytest
 
   lint-frontend:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-lint-frontend.yml@main
     with:
       working-directory: frontend
@@ -72,6 +85,8 @@ jobs:
   # large-file-guard jobs, one step each. Each check step runs even if an earlier
   # one failed, so every failure shows under its own step name in a single run.
   repo-hygiene:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Repo hygiene
     runs-on: ubuntu-latest
     steps:
@@ -178,6 +193,11 @@ jobs:
       - name: Unused code (knip)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: npx knip --no-progress
+      # Blocking (#3126): production files only (test-only usage no longer counts).
+      # Exports kept for tests/tooling carry an `@internal` JSDoc tag.
+      - name: Unused code, production (knip --production)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: npx knip --production --no-progress
       - name: i18n completeness check
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: node scripts/check-i18n-strings.js
@@ -421,7 +441,9 @@ jobs:
     continue-on-error: true
     services:
       postgres:
-        image: postgres:16
+        # The official image via the AWS ECR Public mirror: Docker Hub pulls from
+        # Actions runners were timing out at auth.docker.io (2026-10-09).
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -440,7 +462,7 @@ jobs:
       PG_SERVER: postgresql://postgres:postgres@localhost:5432
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version-file: backend/.python-version
           cache: pip
@@ -670,7 +692,16 @@ jobs:
       - uses: ./.github/actions/setup-frontend
         with:
           metro-cache: "true"
-      - name: Create Android JS bundle
+      # Env is set explicitly so this job always builds what the stores ship (#2829):
+      # a STORE bundle (metro/storeBundle.js drops the hidden premium games' screens
+      # and their assets, #2830). EXPO_PUBLIC_API_URL must NOT be the pre-launch
+      # https://dev-games-api.buffingchi.com and EXPO_PUBLIC_TEST_HOOKS must not be "1",
+      # or Metro keeps all twelve games. A gitignored frontend/.env (present on dev
+      # machines, absent in CI) must not be able to change that, so process env wins.
+      - name: Create Android JS bundle (store config)
+        env:
+          EXPO_PUBLIC_API_URL: https://games-api.buffingchi.com
+          EXPO_PUBLIC_TEST_HOOKS: "0"
         run: |
           mkdir -p dist
           ENTRY_FILE=$(node -e "require('expo/scripts/resolveAppEntry')" . android absolute | tail -n 1)
@@ -679,7 +710,7 @@ jobs:
             --dev false \
             --entry-file "$ENTRY_FILE" \
             --bundle-output dist/index.android.bundle \
-            --assets-dest /tmp/assets
+            --assets-dest dist/assets
       - name: Validate bundle
         run: |
           if [ ! -f dist/index.android.bundle ]; then
@@ -691,25 +722,60 @@ jobs:
             echo "::error::index.android.bundle is only ${BUNDLE_SIZE} bytes — likely corrupted"
             exit 1
           fi
-          BUNDLE_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $BUNDLE_SIZE / 1048576}")
-          # Limit history (update this when you raise it so future readers understand the trend):
-          #   4.5 MB — original baseline
-          #   6.0 MB — raised for Expo SDK 56 + game additions (#1977)
-          #   8.0 MB — raised for @sentry/react-native 7→8 (#1965)
-          #            Sentry 8 ships tracing, session replay, and feedback widget code in its
-          #            default CJS build. Metro cannot tree-shake CJS modules, so all of it is
-          #            bundled even though we only use basic crash reporting. This is a Sentry
-          #            packaging limitation — NOT a Sentry/Metro resolver hack on our side.
-          #            If the bundle approaches 8 MB before this is resolved, hold further
-          #            dependency upgrades and investigate Metro ESM tree-shaking first.
-          MAX_BYTES=8388608
-          if [ "$BUNDLE_SIZE" -gt "$MAX_BYTES" ]; then
-            echo "::error::JS bundle exceeds 8.0 MB hard limit: ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE} bytes). See docs/PERFORMANCE.md for how to update the limit."
-            exit 1
-          fi
-          echo "Android JS bundle: ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE} bytes) — within 8.0 MB limit"
-          echo "BUNDLE_SIZE_BYTES=$BUNDLE_SIZE" >> "$GITHUB_ENV"
-          echo "BUNDLE_SIZE_MB=$BUNDLE_SIZE_MB" >> "$GITHUB_ENV"
+      # Budgets (#2829). Measured 2026-10-10 (dev@a19aadc5 + #2830 + #2832), `npm run size-report`:
+      #   store bundle     JS 6,544,825 B (6.24 MiB)   packaged assets 3,403,575 B (3.25 MiB), 52 files
+      #   all 12 games     JS 7,460,309 B (7.11 MiB)   packaged assets 28,744,159 B (27.4 MiB), 205 files
+      #                    (EXPO_PUBLIC_API_URL=https://dev-games-api.buffingchi.com, pre-launch/e2e builds)
+      # JS hard-limit history (update when you change it so future readers understand the trend):
+      #   4.5 MB — original baseline
+      #   6.0 MB — raised for Expo SDK 56 + game additions (#1977)
+      #   8.0 MB — raised for @sentry/react-native 7→8 (#1965); Metro cannot tree-shake its CJS build
+      #   8.0 MiB — KEPT in #2829, now with a different meaning. After #2830 (hidden premium
+      #            screens stubbed in store bundles) and #2832 (Sentry web replay/feedback dropped)
+      #            the store bundle is 6.24 MiB, but the premium release un-hides the games and
+      #            becomes the 7.11 MiB all-games bundle. 8 MiB leaves ~0.9 MiB (12%) of growth
+      #            over that ceiling, so it is the right hard limit for the future premium store
+      #            build. Lowering it now would only fail the premium launch; the guard against
+      #            drift on today's store bundle is the 6.75 MiB warn threshold below, and the
+      #            all-games ceiling is enforced by the next step.
+      # JS warn threshold: 6.75 MiB (7,077,888 B) = ~8% above today's store bundle. Warn only.
+      # Packaged-assets hard limit: 4 MiB (4,194,304 B) = ~23% above today's 3.25 MiB store
+      #   payload (2.7 MB of that is the 14 font files). The all-games assets (27.4 MiB, mostly
+      #   22 MB of BGM) would blow it by design: un-hiding games means re-budgeting, not
+      #   quietly shipping them.
+      - name: Size report script tests
+        run: node --test scripts/size-report.test.mjs
+      - name: Size budgets (JS, packaged assets, hidden-premium guard)
+        run: |
+          set -o pipefail
+          node scripts/size-report.mjs \
+            --bundle dist/index.android.bundle \
+            --assets dist/assets \
+            --max-js 8388608 \
+            --warn-js 7077888 \
+            --max-assets 4194304 \
+            --forbid-hidden-assets \
+            --sources \
+            --github-output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
+        id: size
+      # Premium ceiling: the same entry with the hidden games kept (pre-launch API URL).
+      # Same 8 MiB limit; this is the number that predicts the premium store build.
+      - name: All-games JS ceiling (pre-launch config)
+        env:
+          EXPO_PUBLIC_API_URL: https://dev-games-api.buffingchi.com
+        run: |
+          set -o pipefail
+          ENTRY_FILE=$(node -e "require('expo/scripts/resolveAppEntry')" . android absolute | tail -n 1)
+          npx expo export:embed \
+            --platform android \
+            --dev false \
+            --entry-file "$ENTRY_FILE" \
+            --bundle-output dist/all/index.android.bundle \
+            --assets-dest dist/all/assets
+          node scripts/size-report.mjs \
+            --bundle dist/all/index.android.bundle \
+            --assets dist/all/assets \
+            --max-js 8388608 | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Check bundle size (bundlesize)
         run: npx bundlesize
         continue-on-error: true
@@ -717,22 +783,28 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUNDLE_SIZE_BYTES: ${{ steps.size.outputs.js_bytes }}
+          ASSET_BYTES: ${{ steps.size.outputs.asset_bytes }}
+          ASSET_FILES: ${{ steps.size.outputs.asset_files }}
         run: |
-          BASELINE_BYTES=4718592
+          # Store-bundle JS baseline: 2026-10-10, dev@a19aadc5 + #2830 + #2832 (was 4,718,592 = 4.5 MB, stale).
+          BASELINE_BYTES=6544825
+          BUNDLE_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $BUNDLE_SIZE_BYTES / 1048576}")
+          ASSET_MB=$(awk "BEGIN {printf \"%.2f\", $ASSET_BYTES / 1048576}")
           DELTA_BYTES=$(( BUNDLE_SIZE_BYTES - BASELINE_BYTES ))
           if [ "$DELTA_BYTES" -gt 0 ]; then
             DELTA_STR="+$(awk "BEGIN {printf \"%.0f\", $DELTA_BYTES / 1024}") KB"
           else
             DELTA_STR="$(awk "BEGIN {printf \"%.0f\", $DELTA_BYTES / 1024}") KB"
           fi
-          COMMENT="### Bundle size report
-          | | Size |
-          |---|---|
-          | JS bundle (Hermes, Android) | ${BUNDLE_SIZE_MB} MB |
-          | Delta vs 4.5 MB baseline | ${DELTA_STR} |
-          | Hard limit | 8.0 MB |
+          COMMENT="### Bundle size report (store config)
+          | | Size | Limit |
+          |---|---|---|
+          | JS bundle (minified, pre-Hermes) | ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE_BYTES} B) | 8.0 MiB hard, 6.75 MiB warn |
+          | Delta vs 6.24 MiB store baseline (2026-10-10) | ${DELTA_STR} | |
+          | Packaged assets (${ASSET_FILES} files) | ${ASSET_MB} MB (${ASSET_BYTES} B) | 4.0 MiB hard |
 
-          _Measured from \`dist/index.android.bundle\`, minified JS (pre-Hermes). See [PERFORMANCE.md](../blob/${GITHUB_HEAD_REF}/docs/PERFORMANCE.md#js-bundle-size-guardrail) for details._"
+          _Measured from \`dist/index.android.bundle\` and \`dist/assets\` (\`expo export:embed\`, store config: hidden premium games excluded). Hermes bytecode and native libraries are not included; see [PERFORMANCE.md](../blob/${GITHUB_HEAD_REF}/docs/PERFORMANCE.md#js-bundle-size-guardrail)._"
           gh pr comment "${{ github.event.pull_request.number }}" \
             --body "$COMMENT" \
             --edit-last 2>/dev/null || \
@@ -871,6 +943,45 @@ jobs:
         # only in the release machine's user-level ~/.gradle/gradle.properties
         # (see docs/ANDROID-CI.md); the explicit -P flags keep this step
         # independent of any gradle.properties defaults.
+
+      # Non-blocking size report (#2829). This is the only CI job that produces a release
+      # APK, so it is the cheapest place to see native-inclusive numbers. Caveats: arm64-v8a
+      # only, universal APK (not the Play AAB split), debug-signed. Use it for trends, not for
+      # the Play download size (see the native checklist in docs/PERFORMANCE.md).
+      - name: APK size report (non-blocking)
+        if: steps.changes.outputs.should_run == 'true'
+        continue-on-error: true
+        run: |
+          APK=$(ls android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "::warning::No release APK found under android/app/build/outputs/apk/release; skipping the size report."
+            exit 0
+          fi
+          # This job sets no EXPO_PUBLIC_API_URL / EXPO_PUBLIC_TEST_HOOKS, so the embedded
+          # bundle is a store bundle (hidden premium games excluded, #2830). Say so, so a
+          # future env change here explains a jump in the numbers.
+          CONFIG="store config"
+          if [ "${EXPO_PUBLIC_TEST_HOOKS:-}" = "1" ] || [[ "${EXPO_PUBLIC_API_URL:-}" == https://dev-games-api.buffingchi.com* ]]; then
+            CONFIG="all-games config"
+          fi
+          {
+            echo "### Release APK size (arm64-v8a, universal, debug-signed, ${CONFIG})"
+            echo
+            echo "APK: $(basename "$APK") — $(stat --printf='%s' "$APK") bytes (compressed, on disk)"
+            echo
+            echo "| Entry group | Uncompressed KB | Compressed KB |"
+            echo "|---|---:|---:|"
+            unzip -v "$APK" | awk 'NR>3 && NF>=8 && $1 ~ /^[0-9]+$/ {
+              n=$8; g="other";
+              if (n ~ /^lib\//) g="lib/ (native .so)";
+              else if (n ~ /^classes[0-9]*\.dex$/) g="classes*.dex";
+              else if (n ~ /^assets\/index\.android\.bundle$/) g="assets/index.android.bundle (JS or Hermes bytecode)";
+              else if (n ~ /^res\/raw\//) g="res/raw (sounds, fonts)";
+              else if (n ~ /^res\//) g="res/ (images, layouts)";
+              else if (n ~ /^assets\//) g="assets/ (other)";
+              u[g]+=$1; c[g]+=$3 }
+              END { for (g in u) printf "| %s | %.0f | %.0f |\n", g, u[g]/1024, c[g]/1024 }' | sort -t'|' -k4 -n -r
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
   # --- Phase 9: Sentry CLI auth validation (Linux, fast) --------------------
   # Catches expired or misconfigured Sentry auth tokens before they break

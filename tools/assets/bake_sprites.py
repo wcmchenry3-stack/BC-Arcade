@@ -37,6 +37,9 @@ except ImportError:
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 FRONTEND_DIR = SCRIPT_DIR.parent.parent / "frontend"
 ASSETS_DIR = FRONTEND_DIR / "assets"
+# Bake from the full-resolution processed icons (#2833), not the 256 px runtime
+# thumbnails in frontend/assets/*-icons/.
+MASTERS_DIR = SCRIPT_DIR.parent.parent / "cascade_icon_masters"
 
 # Output canvas: 512×512.  The baked clipR circle fills the entire image.
 # At runtime: ctx.drawImage(baked, cx-clipR, cy-clipR, clipR*2, clipR*2)
@@ -50,13 +53,13 @@ RINGED_PLANETS: frozenset[str] = frozenset({"saturn", "uranus"})
 THEMES = [
     {
         "id": "fruits",
-        "icon_dir": ASSETS_DIR / "fruit-icons",
+        "icon_dir": MASTERS_DIR / "fruit-icons",
         "vertices_json": ASSETS_DIR / "fruit-vertices.json",
         "out_dir": ASSETS_DIR / "fruits-baked",
     },
     {
         "id": "cosmos",
-        "icon_dir": ASSETS_DIR / "celestial-icons",
+        "icon_dir": MASTERS_DIR / "celestial-icons",
         "vertices_json": ASSETS_DIR / "cosmos-vertices.json",
         "out_dir": ASSETS_DIR / "cosmos-baked",
     },

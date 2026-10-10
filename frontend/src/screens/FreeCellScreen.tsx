@@ -76,7 +76,7 @@ export default function FreeCellScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
 
-  const statsRef = useRef<FreeCellStats>({ bestMoves: 0, gamesPlayed: 0, gamesWon: 0 });
+  const statsRef = useRef<FreeCellStats>({ bestMoves: 0 });
   // The saved game (usePersistedGameState, #3087): loaded with the stats on mount, then
   // saved on every change once that load has landed. Called before the win effect, so a
   // winning move is saved before the win clears it. `stateRef` is the latest state, read
@@ -268,11 +268,7 @@ export default function FreeCellScreen() {
         if (gameId) void lookupRank(gameId);
         const { best, isNewBest } = bestOf(curr.bestMoves, finalMoves, true);
         setWinSummary({ best, isNewBest });
-        const updated: FreeCellStats = {
-          ...curr,
-          gamesWon: curr.gamesWon + 1,
-          bestMoves: best,
-        };
+        const updated: FreeCellStats = { ...curr, bestMoves: best };
         statsRef.current = updated;
         saveStats(updated).catch(() => {});
       },
@@ -297,13 +293,6 @@ export default function FreeCellScreen() {
       markRestoredComplete();
       setResumedWin(true);
       setWinSummary({ best: statsRef.current.bestMoves, isNewBest: false });
-    }
-    if (!saved) {
-      // First deal (not a resume) — count as a game started.
-      const loadedStats = statsRef.current;
-      const withPlay = { ...loadedStats, gamesPlayed: loadedStats.gamesPlayed + 1 };
-      statsRef.current = withPlay;
-      saveStats(withPlay).catch(() => {});
     }
     startAutoComplete(initial);
   });
@@ -356,9 +345,6 @@ export default function FreeCellScreen() {
     seenMovesRef.current = 0;
     clearSavedGame();
     setState(dealGame());
-    const updated = { ...statsRef.current, gamesPlayed: statsRef.current.gamesPlayed + 1 };
-    statsRef.current = updated;
-    saveStats(updated).catch(() => {});
     resetCompletion();
     setResumedWin(false);
     setWinSummary(null);

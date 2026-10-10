@@ -8,6 +8,7 @@ native module incompatibility — these tests catch that class of issue.
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 import sentry_sdk
@@ -40,7 +41,10 @@ class TestSentryUnit:
         if not dsn:
             pytest.skip("SENTRY_DSN not set (expected in CI)")
         assert dsn.startswith("https://"), f"DSN should start with https://, got: {dsn[:20]}..."
-        assert ".sentry.io" in dsn or ".ingest." in dsn, "DSN should contain a Sentry ingest domain"
+        host = urlparse(dsn).hostname or ""
+        assert (
+            host.endswith(".sentry.io") or ".ingest." in host
+        ), "DSN host should be a Sentry ingest domain"
 
     def test_sentry_sdk_importable(self):
         """sentry-sdk should be installed and importable."""

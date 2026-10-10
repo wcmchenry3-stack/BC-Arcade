@@ -54,7 +54,7 @@ Readiness Gate" (security requirements this must satisfy).
 The catalog lives in one file:
 [`frontend/src/entitlements/premiumProducts.json`](../frontend/src/entitlements/premiumProducts.json),
 wrapped by `premiumProducts.ts` (`PREMIUM_PRODUCTS`, `PremiumGameSlug`,
-`isPremiumGameSlug`, `productIdForGame`, `gameForProductId`).
+`isPremiumGameSlug`).
 
 | Game       | `game_types.name` (slug) | Product ID                               | Store type (Apple / Google)             |
 | ---------- | ------------------------ | ---------------------------------------- | --------------------------------------- |

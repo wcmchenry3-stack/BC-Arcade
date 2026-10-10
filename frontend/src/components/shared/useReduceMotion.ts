@@ -30,7 +30,10 @@ function subscribe(notify: Subscriber): () => void {
   };
 }
 
-/** Test-only: forget the shared listener and the cached setting. */
+/**
+ * Test-only: forget the shared listener and the cached setting.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function resetReduceMotionForTests(): void {
   subscribers.clear();
   osSubscription = null;

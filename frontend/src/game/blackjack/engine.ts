@@ -173,6 +173,7 @@ function cardsCanSplit(cards: readonly Card[]): boolean {
 // ---------------------------------------------------------------------------
 
 const rngSlot = createRngSlot();
+/** @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126). */
 export const setRng = rngSlot.setRng;
 export { createSeededRng };
 export type { RandomSource };

@@ -102,11 +102,15 @@ export const MISSION_COMPLETE_BANNER_MS = 1200;
 // (dodging) while the surviving hazards resolve, then climbs off the top. The hard transient
 // reset happens once it is off-screen, or at EXTRACTION_MAX_MS whatever happens.
 export const EXTRACTION_HOLD_MIN_MS = 500; // the ship holds the lane at least this long…
-export const EXTRACTION_HOLD_MAX_MS = 2500; // …and climbs by here even if hazards remain (#2945: unless chasing a pickup)
+export const EXTRACTION_HOLD_MAX_MS = 2500; // …and climbs by here even if hazards remain
 export const EXTRACTION_MAX_MS = 6000; // hard cap on the whole extraction
-// #2945: a pickup the last kill left behind is worth holding the lane for — but only until here,
-// leaving the climb enough of the EXTRACTION_MAX_MS cap to clear the top.
-export const EXTRACTION_PICKUP_HOLD_MAX_MS = 4000;
+
+// #3132: a cleared wave with pickups still on screen waits for them (ClearAwaitingPickups), the
+// player flying, before the extraction. Nothing new spawns after the last kill and every pickup
+// leaves by its own despawn timer (never more than powerUpDespawnMs(canvasH)), so the wait ends
+// on its own. The safety cap (`pickupWaitMaxMs` in extraction.ts) is that longest despawn time
+// plus this slack, for a pickup that somehow never leaves.
+export const PICKUP_WAIT_SLACK_MS = 1000;
 export const PILOT_SPEED = 0.3; // px/ms lateral autopilot speed (a brisk drag)
 export const PILOT_CLIMB_ACCEL = 0.0015; // px/ms² climb acceleration
 export const PILOT_CLIMB_MAX = 0.9; // px/ms climb speed cap
@@ -260,6 +264,18 @@ export const ATTACK_RUN: Readonly<
   exposed: { ms: 3400, depth: 0.46 },
   finalStand: { ms: 2800, depth: 0.56 },
 };
+/**
+ * #3131: commit-time path vetting. A Carrier run or an Elite/Guardian dive is checked against
+ * on-screen rocks' straight-line projections before it is committed (see `pathStrikesRock`).
+ */
+export const PATH_CHECK_STEP_MS = 100; // path sample spacing; each segment is swept exactly
+export const PATH_CHECK_MARGIN = 4; // px of slack around the circle enclosing the hitbox (half-diagonal)
+/** Shallower alternative run: this fraction of the stage's ATTACK_RUN depth. */
+export const ATTACK_RUN_SHALLOW_FACTOR = 0.75;
+/** Longest a braced Carrier holds for a clear run before it stands down and re-rolls its timer. */
+export const ATTACK_RUN_HOLD_MAX_MS = 1500;
+/** Longest an Elite/Guardian keeps wiggling for a clear dive before it settles back into formation. */
+export const DIVE_HOLD_MAX_MS = 700;
 
 /** A bounded random interval (or count): uniform in [min, max]. */
 export interface CadenceRange {
@@ -545,6 +561,14 @@ export function maxDivers(wave: number): number {
   if (wave <= 4) return 2;
   if (wave <= 6) return 3;
   return 4;
+}
+
+/** #3139: the boss wave's four Guardians are all active from the first tick, so all four may dive. */
+const BOSS_WAVE_MAX_DIVERS = 4;
+
+/** Concurrent-diver cap for a wave: `maxDivers`, lifted to `BOSS_WAVE_MAX_DIVERS` on a boss wave. */
+export function diveCap(wave: number): number {
+  return isBossWave(wave) ? Math.max(BOSS_WAVE_MAX_DIVERS, maxDivers(wave)) : maxDivers(wave);
 }
 
 // #972: max enemy bullets on screen — 3 at wave 1, +1 every 2 waves; scaled by difficulty

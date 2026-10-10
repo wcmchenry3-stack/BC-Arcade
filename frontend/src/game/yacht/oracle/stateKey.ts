@@ -82,7 +82,10 @@ const UPPER_CAP_SLOTS = UPPER_CAP + 1; // 0..63
 const YACHT_STATUS_SLOTS = 3;
 const MASK_SLOTS = 1 << NON_YACHT_CATEGORIES.length; // 4096
 
-/** Total addressable table size (dense; not all slots are reachable — see solver.ts's pruning during the retrograde sweep). */
+/**
+ * Total addressable table size (dense; not all slots are reachable — see solver.ts's pruning during the retrograde sweep).
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export const TABLE_SIZE = MASK_SLOTS * YACHT_STATUS_SLOTS * UPPER_CAP_SLOTS; // 786,432
 
 export interface DecodedState {
@@ -107,13 +110,19 @@ export function isAllUpperFilled(mask: number): boolean {
   return (mask & UPPER_MASK_ALL) === UPPER_MASK_ALL;
 }
 
-/** True when every category (including yacht) has been scored — no more turns. */
+/**
+ * True when every category (including yacht) has been scored — no more turns.
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export function isTerminalKey(key: number): boolean {
   const { mask, yachtStatus } = decodeKey(key);
   return mask === MASK_SLOTS - 1 && yachtStatus !== YACHT_OPEN;
 }
 
-/** The scorecard-state key at the very start of a game (nothing scored). */
+/**
+ * The scorecard-state key at the very start of a game (nothing scored).
+ * @internal Exported for tests and offline tooling only; no production caller (knip --production, #3126).
+ */
 export const INITIAL_KEY = encodeKey(0, YACHT_OPEN, 0);
 
 /**

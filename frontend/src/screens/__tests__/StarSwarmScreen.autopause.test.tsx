@@ -181,6 +181,33 @@ describe("StarSwarmScreen — auto-pause when the app leaves the foreground", ()
     expectPaused();
   });
 
+  it("pauses a live run when the feedback sheet opens over it, and stays paused after (#2944)", async () => {
+    await renderScreen();
+    await startRun();
+    expectRunning();
+
+    // ⋯ → Send Feedback: two native Modals, neither a blur nor an AppState change.
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("nav-menu"));
+    });
+    expectPaused();
+    expect(getSavedPausedState()).not.toBeNull();
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("nav-menu-feedback"));
+    });
+    expectPaused();
+
+    // Closing the sheet leaves the pause overlay up, with a working Resume.
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Close" }));
+    });
+    expectPaused();
+    await act(async () => {
+      await fireEvent.press(screen.getByText("RESUME"));
+    });
+    expectRunning();
+  });
+
   it("does not pause a finished run when the screen is covered", async () => {
     await renderScreen();
     await startRun();

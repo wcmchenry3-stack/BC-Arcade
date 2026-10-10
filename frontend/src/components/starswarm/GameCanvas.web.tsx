@@ -1185,7 +1185,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       function handleVisibilityChange() {
         if (!document.hidden) {
           lastFrameTimeRef.current = 0;
-        } else if (stateRef.current.phase === "Playing" && !isPausedRef.current) {
+        } else if (
+          // #3132: the pickup wait is player-flown too, so hiding the tab pauses it
+          (stateRef.current.phase === "Playing" ||
+            stateRef.current.phase === "ClearAwaitingPickups") &&
+          !isPausedRef.current
+        ) {
           onPauseRef.current?.();
         }
       }

@@ -29,6 +29,7 @@ import { award, scoreSource, type ScorePoints } from "../scoreLedger";
 import { absorbBulletsIntoRocks, rocksStrikeEnemies, settleRocks } from "./asteroids";
 import { makeBuddy, resolveBuddyHits } from "./buddy";
 import { makePickup, pickPowerUpType, powerUpDespawnMs, spawnExplosion } from "./entities";
+import { arrivalsAllowed } from "./extraction";
 import { aabb, circleCircle, collideCircleAABB } from "./geometry";
 import { nextId, rng } from "./rng";
 import { carrierArmoredIn, mapFilterKeep } from "./roster";
@@ -332,6 +333,9 @@ export function resolveRockContacts(
   if (absorbed.broken > 0)
     w.runStats = bumpRun(w.runStats, { rocksBrokenByPlayer: absorbed.broken }); // #2491
   const struckTiers: EnemyTier[] = [];
+  // PROTECTED FEATURE (#3131): asteroids threaten enemies; enemies shoot at and avoid them;
+  // collisions damage enemies. Do not remove, bypass or soften this call (no immunity, no
+  // deflection) — see rocksStrikeEnemies.
   const struck = rocksStrikeEnemies(
     absorbed.rocks,
     w.enemies,
@@ -407,9 +411,11 @@ export function resolvePickupCollection(
   // ── Power-up drop check (Playing only, max 1 on screen) ────────────────────
   // #2488: salvage crates and plating are upgrade pickups, not power-ups — they don't hold
   // the slot (#2540 review), or frequent rock salvage would starve shields and bombs.
+  // #3132: a top-spawned drop arrives from off-screen — never once the wave is clear (the tick
+  // of the last kill is still combat, so a roll it triggers is allowed)
   const isPowerUpDrop = (p: PowerUp) => p.type !== "salvage" && p.type !== "hull";
   if (
-    state.phase === "Playing" &&
+    arrivalsAllowed(state) &&
     w.killsSinceLastDrop >= w.dropJitterTarget &&
     !w.powerUps.some(isPowerUpDrop)
   ) {
