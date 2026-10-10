@@ -78,6 +78,7 @@ The canonical home for per-game rules, scoring, AI, progression, special mechani
 - [Daily Word](games/daily_word.md)
 - [FreeCell](games/freecell.md)
 - [Hearts](games/hearts.md)
+  - [Conservative Hearts CPU: principles and rulebook](hearts/CONSERVATIVE_AI.md) (spec for the replacement CPU, epic #3156)
 - [Mahjong](games/mahjong.md)
 - [Solitaire](games/solitaire.md)
 - [Bottle Sort](games/sort.md)
