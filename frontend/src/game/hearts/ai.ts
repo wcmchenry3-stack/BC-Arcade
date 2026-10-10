@@ -1,14 +1,25 @@
 /**
  * Hearts AI (#606, #1168).
  *
- * Utility-AI strategy for the 3 computer opponents.
- * Supports Cautious / Schemer / Daring personas via the `difficulty` parameter.
+ * The computer opponents' entry points. `difficulty` "conservative" (the CPU
+ * players see) goes to the principle-based conservative CPU (./conservative/,
+ * docs/hearts/CONSERVATIVE_AI.md, #3159); the legacy Cautious / Schemer /
+ * Daring personas use the utility AI below, unchanged.
  * No React/AsyncStorage.
  */
 
 import { getValidPlays, getRng } from "./engine";
 import { passOffset } from "./types";
-import type { AiPersona, Card, HeartsState, PassDirection, TrickCard } from "./types";
+import type {
+  AiPersona,
+  Card,
+  HeartsState,
+  LegacyPersona,
+  PassDirection,
+  TrickCard,
+} from "./types";
+import { choosePass } from "./conservative/pass";
+import { choosePlay } from "./conservative/play";
 import { buildHeartsInfoSet, buildHeartsPassInfoSet } from "./aiInfoSet";
 import { MOON_HAND_RULES, assessMoonHand } from "./moonHand";
 import {
@@ -33,7 +44,6 @@ import {
   DARING_PASS_WEIGHTS,
   NOISE_RATE,
   MISTAKE_SPREAD,
-  conservativeStandIn,
 } from "./aiWeights";
 import type { PlayWeights } from "./aiWeights";
 
@@ -102,7 +112,7 @@ function passingToSeat0(playerIndex: number, direction: PassDirection): boolean 
 export function selectCardsToPassUtility(
   hand: Card[],
   direction: PassDirection,
-  difficulty: AiPersona,
+  difficulty: LegacyPersona,
   playerIndex: number
 ): Card[] {
   // 2♣–5♣ are never eligible to pass (2♣ opens trick 1; 3♣–5♣ are safe early leads).
@@ -170,11 +180,10 @@ export function selectCardsToPassUtility(
   // ── Normal pass mode ──────────────────────────────────────────────────────
   const passInfoSet = buildHeartsPassInfoSet(hand as readonly Card[], direction, playerIndex);
 
-  const style = conservativeStandIn(difficulty);
   const weights =
-    style === "cautious"
+    difficulty === "cautious"
       ? CAUTIOUS_PASS_WEIGHTS
-      : style === "daring"
+      : difficulty === "daring"
         ? DARING_PASS_WEIGHTS
         : SCHEMER_PASS_WEIGHTS;
 
@@ -250,7 +259,7 @@ export function selectCardToPlayUtility(
   trick: TrickCard[],
   state: HeartsState,
   playerIndex: number,
-  difficulty: AiPersona
+  difficulty: LegacyPersona
 ): Card {
   const valid = getValidPlays(state, playerIndex);
   if (valid.length === 1) return valid[0]!;
@@ -288,9 +297,9 @@ export function selectCardToPlayUtility(
       ? DARING_ENDGAME_PLAY_WEIGHTS
       : isAdversarial
         ? DARING_ADVERSARIAL_PLAY_WEIGHTS
-        : conservativeStandIn(difficulty) === "cautious"
+        : difficulty === "cautious"
           ? CAUTIOUS_PLAY_WEIGHTS
-          : conservativeStandIn(difficulty) === "schemer"
+          : difficulty === "schemer"
             ? SCHEMER_PLAY_WEIGHTS
             : DARING_PLAY_WEIGHTS;
 
@@ -353,6 +362,7 @@ export function selectCardToPlayUtility(
 
 /**
  * Select exactly 3 cards to pass.
+ * "conservative" passes per CONSERVATIVE_AI.md §2.4 (P8); legacy personas use the utility AI.
  * `difficulty` defaults to "schemer" (current behaviour) so existing callers are unchanged.
  * `playerIndex` defaults to 0 (human seat) — seat 0 never passes so the default never
  * triggers adversarial targeting; pass the actual AI seat index (1–3) for Daring targeting.
@@ -363,11 +373,13 @@ export function selectCardsToPass(
   difficulty: AiPersona = "schemer",
   playerIndex = 0
 ): Card[] {
+  if (difficulty === "conservative") return [...choosePass(hand, direction).cards];
   return selectCardsToPassUtility(hand, direction, difficulty, playerIndex);
 }
 
 /**
  * Choose a card to play.
+ * "conservative" reads its hand and trick from `state` (§3), so `hand`/`trick` must match it.
  * `difficulty` defaults to "schemer" (current behaviour) so existing callers are unchanged.
  */
 export function selectCardToPlay(
@@ -377,5 +389,6 @@ export function selectCardToPlay(
   playerIndex: number,
   difficulty: AiPersona = "schemer"
 ): Card {
+  if (difficulty === "conservative") return choosePlay(state, playerIndex).card;
   return selectCardToPlayUtility(hand, trick, state, playerIndex, difficulty);
 }

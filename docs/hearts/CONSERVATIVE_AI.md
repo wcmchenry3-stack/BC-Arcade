@@ -1,6 +1,6 @@
 # Conservative Hearts CPU: principles and rulebook
 
-- **Status:** Specification. Nothing here is built yet (story #3157, epic #3156).
+- **Status:** Implemented (#3159, epic #3156) in [`frontend/src/game/hearts/conservative/`](../../frontend/src/game/hearts/conservative/): `terms.ts` (§2.1 terms, §3 knowledge), `play.ts` (`choosePlay`: §2.4 Leading / Following / Discarding) and `pass.ts` (`choosePass`: §2.4 Passing). Every CPU seat players see plays it (`ai.ts` routes the `conservative` persona there). Spec: story #3157.
 - **Builds on it:** the CPU (#3159), the rulebook tests (#3160) and the independent simulator principle checker (#3161).
 - **Game rules:** [games/hearts.md](../games/hearts.md) and the engine, [`frontend/src/game/hearts/engine.ts`](../../frontend/src/game/hearts/engine.ts). This file does not restate them. Every expected card below is legal under `getValidPlays`.
 
@@ -963,7 +963,7 @@ This CPU deliberately does **not**:
 - **Feed or spare a particular player.** It never picks a card by who is winning the trick. The one exception is the moon guard, which checks whether the threatening player is winning.
 - **Use randomness.** The same position always gives the same card. Varying difficulty or style is a separate decision for #3156.
 - **Create voids on purpose when passing.** Any voids come only from the danger order (R28).
-- **Deliberately flush the queen.** It never leads low spades to draw Q♠ out. It may lead a spade while holding Q♠ when P3 or P9 picks one, even though that thins her cover (an open owner question).
+- **Deliberately flush the queen.** It never leads low spades to draw Q♠ out. It may lead a spade while holding Q♠ when P3 or P9 picks one, even though that thins her cover (owner decision #3177: allowed).
 
 ---
 
