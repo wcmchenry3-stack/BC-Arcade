@@ -12,7 +12,7 @@ Why this exists: the current CPUs (`ai.ts`, `aiConsiderations.ts`, `aiWeights.ts
 
 ## 1. The plan: nullo
 
-The CPU plays "nullo": it tries to win no tricks, or only tricks that cannot hurt it (Hoyle's). Every decision answers one question: _which card here is least likely to give me points, now or later?_ When the CPU can lose a trick, it loses it with the highest card it can afford to lose. When it cannot lose, or the trick is harmless, it wins with its highest card and so gets rid of a card that would be dangerous later. It leads and discards the cards that could later be forced to win, and it gets rid of them early, while that is still safe. It treats Q♠ (13 points) with special care. It does one thing besides nullo: when one opponent has taken every point so far, it keeps a high heart so it can take one trick and stop a moon. It never tries to shoot the moon.
+The CPU plays "nullo": it tries to win no tricks, or only tricks that cannot hurt it (Hoyle's). Every decision answers one question: _which card here is least likely to give me points, now or later?_ When the CPU can lose a trick, it loses it with the highest card it can afford to lose. When it cannot lose, or the trick is harmless, it wins with its highest card and so gets rid of a card that would be dangerous later. When it leads or discards, it picks the card most likely to be forced to win later. It treats Q♠ (13 points) with special care. It does one thing besides nullo: when one opponent has taken every point so far, it keeps a high heart, takes a trick from that player when it safely can, and never hands that player the queen when that would complete a moon. It never tries to shoot the moon.
 
 ---
 
@@ -33,73 +33,89 @@ The definitions below are exact, so two engineers implementing them pick the sam
 | **DANGEROUS**                       | A non-LOW card in a suit that is not GUARDED. ("Middle cards without low cards are very dangerous.")                                                                                                               |
 | **Danger order**                    | Compare cards on these keys in turn, most dangerous first: DANGEROUS before not; then larger below(c); then higher rank value; then the suit tie-break. "The most dangerous card" is the first card in this order. |
 | **HIGH heart**                      | A heart that is not LOW and has above(c) ≤ 3. In a fresh deck that means J♥, Q♥, K♥ and A♥.                                                                                                                        |
-| **Q♠ live**                         | Q♠ has not been played (it may be in the CPU's hand).                                                                                                                                                              |
-| **Q♠ out**                          | Q♠ is live and not in the CPU's hand.                                                                                                                                                                              |
+| **Q♠ live**                         | Q♠ has not been played (it may be in the CPU's hand). Used where the CPU's own queen matters too: lead step 2 and discard step 3.                                                                                  |
+| **Q♠ out**                          | Q♠ is live and not in the CPU's hand. Used where only another player's queen matters: follow step 6.                                                                                                               |
 | **Spades PROTECTED** (passing only) | The CPU holds at least 3 spades ranked below the queen (2♠–J♠).                                                                                                                                                    |
 | **Trick points**                    | Hearts (1 each) plus Q♠ (13) among the cards already in the current trick.                                                                                                                                         |
 | **Players after**                   | The number of players still to play in the current trick after the CPU (0 means the CPU plays last).                                                                                                               |
 | **Winning card W**                  | The highest card of the led suit in the current trick so far. Its player is the current winner.                                                                                                                    |
 | **Moon threat**                     | Points have been taken this hand, every point taken belongs to one opponent X, and X has at least **10** points (`MOON_THRESHOLD`). Points still in the current trick do not count.                                |
 | **Guard heart G**                   | The CPU's highest heart. It matters only while there is a moon threat.                                                                                                                                             |
+| **Moon complete**                   | There is a moon threat by X, the CPU holds Q♠, and X's points plus the hearts in the current trick equal 13. X then has, or is about to have, every heart, so Q♠ landing on X's trick gives X all 26.              |
+| **Candidates**                      | The cards a procedure is still choosing between. They start as the legal cards; some steps remove cards from them.                                                                                                 |
 | **Suit tie-break**                  | Applied last when cards still tie: the card whose suit comes first in **♣, ♦, ♠, ♥**. It never depends on the order of cards in the hand.                                                                          |
 
 ### 2.2 The principles
 
-| ID              | Principle (one sentence)                                                                                                                                                                                                                                                     | Source                                                                              |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `P1-DUCK`       | If you can lose the trick, play the highest card that still loses; if you can't, play your highest card, but never Q♠ while another card is legal.                                                                                                                           | Nullo (Hoyle's)                                                                     |
-| `P2-FREE-TRICK` | A trick that cannot hold points is free, so play your highest card: this covers all of trick 1, and the last seat when the trick has no points.                                                                                                                              | Hoyle's: "only harmless tricks"                                                     |
-| `P3-SHED`       | When you lead, lead your most dangerous non-heart card while you hold one, and shed it before other hands can start discarding on that suit.                                                                                                                                 | Hoyle's: "played early rather than late"; "Q-9-8 should be led each and every time" |
-| `P4-DANGER`     | Danger comes from middle and high cards with no low cards behind them, judged against the cards still out; aces and kings backed by low cards can wait.                                                                                                                      | Hoyle's: "middle cards without low cards are very dangerous"                        |
-| `P5-QUEEN`      | Respect the queen: get rid of Q♠ the first time it cannot win (when you are void, or under A♠/K♠ in the trick); never lead Q♠, or A♠/K♠ while Q♠ is live; never play A♠/K♠ into a spade trick that the queen can still drop onto; pass Q♠/A♠/K♠ unless spades are PROTECTED. | Modern Hearts advice                                                                |
-| `P6-DISCARD`    | When void, discard in this order: Q♠, then A♠/K♠ while Q♠ is live, then your highest HIGH heart, then your most dangerous card.                                                                                                                                              | Combines P3–P5                                                                      |
-| `P7-MOON-GUARD` | While one opponent holds every point taken and has at least 10, keep your highest heart, and use a sure win to take a trick from them.                                                                                                                                       | Hoyle's: "a high-card entry… to interrupt a 'take-all'"                             |
-| `P8-PASS`       | Pass the three cards P5 and P6 would most want to get rid of: an early discard, chosen in the same order.                                                                                                                                                                    | Same principles                                                                     |
-| `P9-EXIT`       | With nothing dangerous to lead, lead the card least likely to win: the lowest card that some out card can still beat.                                                                                                                                                        | Nullo; beginner "lead low"                                                          |
+| ID              | Principle (one sentence)                                                                                                                                                                                                                                                                       | Source                                                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `P1-DUCK`       | If you can lose the trick, play the highest card that still loses; if you can't, play your highest card other than Q♠ (and other than A♠/K♠ while another player could still drop the queen on it, per P5).                                                                                    | Nullo (Hoyle's)                                                                                                                                     |
+| `P2-FREE-TRICK` | A trick that cannot hold points is free: on every trick-1 follow, and as last seat on a trick with no points, play your highest led-suit card other than Q♠.                                                                                                                                   | Hoyle's: "only harmless tricks"                                                                                                                     |
+| `P3-SHED`       | When you lead, lead your most dangerous non-heart card if you hold one.                                                                                                                                                                                                                        | Hoyle's: "High cards that can be forced… should be played early rather than late"; "Q-9-8 should be led each and every time the opportunity offers" |
+| `P4-DANGER`     | Danger comes from middle and high cards with no low cards behind them, judged against the cards still out; aces and kings backed by low cards can wait.                                                                                                                                        | Hoyle's: "middle cards without low cards are very dangerous"                                                                                        |
+| `P5-QUEEN`      | Respect the queen: get rid of Q♠ the first time it cannot win (when you are void, or under A♠/K♠ in the trick); never lead Q♠, or A♠/K♠ while Q♠ is live; never play A♠/K♠ into a spade trick that the queen can still drop onto; pass Q♠/A♠/K♠ unless spades are PROTECTED.                   | Modern Hearts advice                                                                                                                                |
+| `P6-DISCARD`    | When void, discard in this order: Q♠, then A♠/K♠ while Q♠ is live, then your highest HIGH heart, then your most dangerous card.                                                                                                                                                                | Combines P3–P5                                                                                                                                      |
+| `P7-MOON-GUARD` | While one opponent X holds every point taken and has at least 10: keep your highest heart, lead it when nothing out can beat it, take a pointed trick X is winning when you play last or hold a certain winner, and never drop Q♠ on X's trick when X has, or this trick holds, all 13 hearts. | Hoyle's: "a high-card entry… to interrupt a 'take-all'"                                                                                             |
+| `P8-PASS`       | Pass the three cards P5 and P6 would most want to get rid of: an early discard, chosen in the same order.                                                                                                                                                                                      | Same principles                                                                                                                                     |
+| `P9-EXIT`       | With nothing dangerous to lead, lead the card least likely to win: among cards some out card can beat, the one with the fewest out cards below it, then the lowest rank; if every card would win, the lowest non-heart.                                                                        | Nullo; beginner "lead low"                                                                                                                          |
 
 P4 is a definition used by P3, P6 and P8. It never picks a card by itself, so no rulebook position names it.
+
+**§2.4 is normative; the §2.2 sentences are summaries.** Where they seem to differ, implement §2.4.
 
 ### 2.3 Priority when principles disagree
 
 The CPU always plays a legal card first (`getValidPlays`). If only one card is legal, it plays that card. Otherwise principles apply in this order, and the first one that names a card decides:
 
-1. **P5-QUEEN.** Q♠ costs 13, which is half the hand. Ridding yourself of the queen, and not giving it a target, comes before everything else. This includes the moon guard: dropping Q♠ onto a possible moon shooter is still right, because P7 can still stop the moon with a heart.
-2. **P7-MOON-GUARD.** A moon costs 26. When the threat is real, the guard comes before nullo.
-3. **P2-FREE-TRICK.** It comes before the duck: when nothing can go wrong, shed a high card.
-4. **P1-DUCK** (lose with the highest card that loses, or win with the highest card).
-5. **P6-DISCARD / P3-SHED / P9-EXIT.** These choose the card when you are void (discard) or leading. P4 supplies their danger order.
+1. **P7-MOON-GUARD, moon-complete case only.** Never drop Q♠ onto a trick X is winning when X has, or this trick holds, all 13 hearts. That would hand X the moon (26 to everyone else), and with every heart gone nothing could stop it.
+2. **P5-QUEEN.** Q♠ costs 13, which is half the hand. Ridding yourself of the queen, and not giving it a target, comes before everything else. Dropping Q♠ onto a possible moon shooter is still right in every other case, because some heart is still out and P7 can use it to stop the moon.
+3. **P7-MOON-GUARD** (the rest). A moon costs 26. When the threat is real, the guard comes before nullo.
+4. **P2-FREE-TRICK.** It comes before the duck: when nothing can go wrong, shed a high card.
+5. **P1-DUCK** (lose with the highest card that loses, or win with the highest card).
+6. **P6-DISCARD / P3-SHED / P9-EXIT.** These choose the card when you are void (discard) or leading. P4 supplies their danger order.
 
 P8 is the only pass rule, and it is just P5 followed by P6.
 
+**Attribution.** The principle a decision is credited to (the rulebook's `principle` field, and the simulator checker's blame) is **the principle of the step in §2.4 that names the card**. A step that only removes candidates gets no credit, even when the removal changes the answer: lead step 2 (P5), discard steps 1 and 4 (P7), and follow step 6b's filter (P5). A single legal card is credited to no principle.
+
 ### 2.4 Decision procedures
 
-Each step names its principle. Every step either returns exactly one card or passes to the next step. "Highest" and "lowest" mean by rank value, because a set of cards in one suit has no ties.
+Each step names its principle. A step either names exactly one card or passes to the next step; a step marked _filter_ only removes candidates. "Highest" and "lowest" mean by rank value, because a set of cards in one suit has no ties.
 
 #### Leading (trick 2 onward; on trick 1 the engine forces 2♣)
 
-1. **P7.** If there is a moon threat, G is legal and above(G) = 0 (no out heart can beat it), lead G. Winning any heart breaks the moon.
-2. **P5.** Candidates are the legal cards minus Q♠, and minus A♠ and K♠ while Q♠ is live. If that leaves nothing, drop only Q♠. If that still leaves nothing, use all legal cards.
+Candidates start as the legal cards.
+
+1. **P7.** If there is a moon threat, G is legal and above(G) = 0 (no out heart can beat it), lead G. Winning any heart breaks the moon. This step runs before P5 because G is a heart, so it can never clash with P5's spade rules.
+2. **P5 (filter).** Remove Q♠, and remove A♠ and K♠ while Q♠ is **live**. If that leaves nothing, remove only Q♠. (Live, not out: when the CPU holds the queen itself, A♠/K♠ are its cover, and leading them strips it.) Something always remains: if Q♠ were the only legal card, it was played up front.
 3. **P3.** If any candidate is a DANGEROUS non-heart, lead the most dangerous one.
 4. **P9.** Otherwise, among candidates with above(c) ≥ 1, lead the card with the smallest below(c); break ties by lower rank, then the suit tie-break.
 5. **P9.** If every candidate would win for certain (above = 0), lead the lowest non-heart (lowest rank, then suit tie-break), or the lowest heart if only hearts remain.
 
 #### Following (the CPU holds the led suit)
 
-1. **P5.** If spades were led, the CPU holds Q♠ and W is K♠ or A♠, play Q♠.
-2. **P7.** If there is a moon threat, X is the current winner, the trick has points, the CPU plays last, and it holds a led-suit card other than Q♠ that beats W, play its highest led-suit card other than Q♠.
-3. **P2.** If this is trick 1, or the CPU plays last and the trick has no points, play its highest led-suit card other than Q♠ (Q♠ only if it is the only one).
-4. **P1.** If the CPU holds a led-suit card lower than W, play the highest such card. It is certain to lose.
-5. **P1 / P5.** Otherwise the CPU must win unless someone after it overtakes. Candidates are its led-suit cards minus Q♠ (unless Q♠ is the only one). **P5:** if spades were led, someone still plays after, and Q♠ is out, drop A♠ and K♠ from the candidates. If that empties the set, play the lower of A♠/K♠. **P1:** otherwise play the highest candidate.
+W is the winning card and "after" is the number of players after the CPU.
+
+1. **P7.** If spades were led, the CPU holds Q♠, W is K♠ or A♠, the moon is complete for X and X is the current winner, play the CPU's highest spade other than Q♠.
+2. **P5.** If spades were led, the CPU holds Q♠ and W is K♠ or A♠, play Q♠. It cannot win.
+3. **P7.** If there is a moon threat, X is the current winner and the trick has points, let h be the CPU's highest led-suit card other than Q♠. If h beats W, and either the CPU plays last or above(h) = 0 (a certain winner), play h. Taking any point from X breaks the moon.
+4. **P2.** If this is trick 1, or the CPU plays last and the trick has no points, play its highest led-suit card other than Q♠ (Q♠ only if it is the only one).
+5. **P1.** If the CPU holds a led-suit card lower than W, play the highest such card. It is certain to lose.
+6. Otherwise every led-suit card the CPU holds beats W, and it wins unless someone after it overtakes.
+   - a. Candidates are its led-suit cards other than Q♠. This set is never empty here: Q♠ as its only led-suit card would be the only legal card.
+   - b. **P5 (filter).** If spades were led, after ≥ 1 and Q♠ is **out**, remove A♠ and K♠. (Out, not live: the danger is another player dropping the queen on this trick, and nobody can if the CPU holds her.) If that empties the candidates, **P5** names the lower of A♠ and K♠ that the CPU holds.
+   - c. **P1.** Play the highest candidate.
 
 #### Discarding (the CPU is void in the led suit)
 
-The legal set comes from the engine. On trick 1 that excludes hearts and Q♠ unless the hand holds nothing else.
+Candidates start as the legal cards from the engine. On trick 1 that excludes hearts and Q♠ unless the hand holds nothing else.
 
-1. **P5.** Q♠, if legal.
-2. **P5.** A♠, then K♠, if legal and Q♠ is live.
-3. **P7.** If there is a moon threat, remove G from the candidates (unless G is the only legal card).
-4. **P6.** Discard the highest-ranked HIGH heart among the candidates.
-5. **P6 (via P4).** Discard the most dangerous candidate.
+1. **P7 (filter).** If the moon is complete for X and X is the current winner, remove Q♠.
+2. **P5.** Q♠, if it is a candidate.
+3. **P5.** A♠, then K♠, if a candidate and Q♠ is **live**. (Live, not out: a discarded A♠/K♠ can never win, and while the queen is unplayed they are liabilities wherever she is. On trick 1 the CPU may hold Q♠ without being allowed to discard it.)
+4. **P7 (filter).** If there is a moon threat, remove G. This never empties the candidates: a lone legal G was played up front, and after step 1 removes Q♠ the CPU holds no hearts at all, because the moon is complete.
+5. **P6.** Discard the highest-ranked HIGH heart among the candidates.
+6. **P6 (via P4).** Discard the most dangerous candidate.
 
 #### Passing (P8)
 
@@ -143,23 +159,23 @@ There is no separate pass rule set. Passing is an early discard (P8 = P5 then P6
 
 Each position below is one fenced `yaml` block (a mapping). A parser should read every `yaml` block in this section and nothing else. Fields:
 
-| Field                           | Meaning                                                                                                        |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `id`                            | Stable ID (`R01`…).                                                                                            |
-| `decision`                      | `pass`, `lead`, `follow` (holds the led suit) or `discard` (void in the led suit).                             |
-| `seat`                          | The CPU's seat (0–3). Play goes seat → seat + 1 (mod 4), and "left" is seat + 1.                               |
-| `trick_number`                  | 1–13, or `0` for the pass phase.                                                                               |
-| `hand`                          | The CPU's cards. Cards are written rank + suit: `2`–`10`, `J`, `Q`, `K`, `A` with `C` `D` `S` `H`.             |
-| `played`                        | Cards from completed tricks, four per trick in play order.                                                     |
-| `trick`                         | The current trick so far, in play order, with seats.                                                           |
-| `hearts_broken`, `queen_played` | Must match `played` + `trick`.                                                                                 |
-| `points`                        | Points taken this hand per seat `[0, 1, 2, 3]`, from completed tricks only.                                    |
-| `pass_direction`                | Pass positions only.                                                                                           |
-| `expected`                      | The one card to play, or the three cards to pass, in P8 order.                                                 |
-| `principle`                     | The principle that decides this card: the step whose result differs from what the next step would have chosen. |
-| `reason`                        | One plain-English sentence.                                                                                    |
+| Field                           | Meaning                                                                                                                                                |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                            | Stable ID (`R01`…).                                                                                                                                    |
+| `decision`                      | `pass`, `lead`, `follow` (holds the led suit) or `discard` (void in the led suit).                                                                     |
+| `seat`                          | The CPU's seat (0–3). Play goes seat → seat + 1 (mod 4), and "left" is seat + 1.                                                                       |
+| `trick_number`                  | 1–13, or `0` for the pass phase.                                                                                                                       |
+| `hand`                          | The CPU's cards. Cards are written rank + suit: `2`–`10`, `J`, `Q`, `K`, `A` with `C` `D` `S` `H`.                                                     |
+| `played`                        | Completed tricks in order, each `{ lead: seat, cards: [...] }` with the cards in play order. The leader of each trick is the winner of the one before. |
+| `trick`                         | The current trick so far, in play order, with seats.                                                                                                   |
+| `hearts_broken`, `queen_played` | Must match `played` + `trick`.                                                                                                                         |
+| `points`                        | Points taken this hand per seat `[0, 1, 2, 3]`, from completed tricks only.                                                                            |
+| `pass_direction`                | Pass positions only.                                                                                                                                   |
+| `expected`                      | The one card to play, or the three cards to pass, in P8 order.                                                                                         |
+| `principle`                     | The principle of the §2.4 step that names the card (see Attribution in §2.3).                                                                          |
+| `reason`                        | One plain-English sentence.                                                                                                                            |
 
-All positions are internally consistent: there are no duplicate cards, hand size = 14 − trick number, `played` has 4 × (trick number − 1) cards, and `points` adds up to the point cards in `played`. Each expected card is legal under `getValidPlays`. It was checked against a scratch implementation of §2.4, which was not committed.
+All positions are internally consistent. There are no duplicate cards, hand size = 14 − trick number, and `played` has trick number − 1 tricks, each led by the previous winner. `points`, `hearts_broken` and `queen_played` match the history. **The CPU seat's own earlier plays in `played` are exactly what §2.4 picks at that moment**, so a test can replay a history through the CPU. Each expected card is legal under `getValidPlays`. All of this was checked against a scratch implementation of §2.4, which was not committed.
 
 ### Trick 1
 
@@ -251,7 +267,8 @@ decision: follow
 seat: 0
 trick_number: 2
 hand: [3D, 9D, KD, 4C, 8C, 2S, 7S, 10S, 5H, 6H, 9H, QH]
-played: [2C, 3C, 9C, JC]
+played:
+  - { lead: 0, cards: [2C, 3C, 9C, JC] }
 trick: [{ seat: 3, card: 10D }]
 hearts_broken: false
 queen_played: false
@@ -266,8 +283,11 @@ id: R07
 decision: follow
 seat: 2
 trick_number: 4
-hand: [4H, 10H, AH, 6D, JD, 3C, 7C, 6S, 9S, JS]
-played: [2C, 8C, 10C, QC, 3D, 5D, KD, 9D, 7S, 4S, 3H, AS]
+hand: [4H, 10H, AH, 6D, 9D, 3C, 7C, 4S, 9S, JS]
+played:
+  - { lead: 0, cards: [2C, 8C, 10C, QC] }
+  - { lead: 3, cards: [3D, 5D, KD, JD] }
+  - { lead: 1, cards: [7S, 6S, 3H, AS] }
 trick: [{ seat: 0, card: 6H }, { seat: 1, card: JH }]
 hearts_broken: true
 queen_played: false
@@ -282,8 +302,9 @@ id: R08
 decision: follow
 seat: 1
 trick_number: 2
-hand: [7D, QD, 4C, 10C, 2S, 6S, 9S, 3H, 5H, 8H, JH, KH]
-played: [2C, 5C, 8C, AC]
+hand: [7D, QD, 4C, 5C, 2S, 6S, 9S, 3H, 5H, 8H, JH, KH]
+played:
+  - { lead: 0, cards: [2C, 10C, 8C, AC] }
 trick: [{ seat: 3, card: 3D }, { seat: 0, card: 6D }]
 hearts_broken: false
 queen_played: false
@@ -298,8 +319,9 @@ id: R09
 decision: follow
 seat: 2
 trick_number: 2
-hand: [9S, QS, AS, 3C, 7C, 2D, 8D, KD, 4H, 6H, 10H, QH]
-played: [2C, QC, 4C, 9C]
+hand: [9S, QS, AS, 3C, 4C, 2D, 8D, KD, 4H, 6H, 10H, QH]
+played:
+  - { lead: 0, cards: [2C, QC, 7C, 9C] }
 trick: [{ seat: 1, card: 5S }]
 hearts_broken: false
 queen_played: false
@@ -314,15 +336,17 @@ id: R10
 decision: follow
 seat: 1
 trick_number: 3
-hand: [JS, AS, 8C, 10C, 7D, QD, 2H, 4H, 6H, 9H, KH]
-played: [2C, 7C, JC, 3C, 5D, 4D, AD, 6D]
+hand: [JS, AS, 8C, 7C, 7D, 6D, 2H, 4H, 6H, 9H, KH]
+played:
+  - { lead: 0, cards: [2C, 10C, JC, 3C] }
+  - { lead: 2, cards: [5D, 4D, AD, QD] }
 trick: [{ seat: 0, card: 8S }]
 hearts_broken: false
 queen_played: false
 points: [0, 0, 0, 0]
 expected: [JS]
-principle: P5-QUEEN
-reason: "It must win the spade trick, but with the queen still out and two players to come, it plays the jack, not the ace the queen could drop under."
+principle: P1-DUCK
+reason: "It must win the spade trick; with the queen still out and two players to come, P5 removes the ace she could drop under, and P1 plays the highest spade left, the jack."
 ```
 
 ```yaml
@@ -330,8 +354,9 @@ id: R11
 decision: follow
 seat: 3
 trick_number: 2
-hand: [QS, KS, 4S, 3C, 10C, 5D, 8D, JD, 2H, 7H, 9H, AH]
-played: [2C, KC, 5C, 8C]
+hand: [QS, KS, 4S, 3C, 8C, 5D, 8D, JD, 2H, 7H, 9H, AH]
+played:
+  - { lead: 0, cards: [2C, KC, 5C, 10C] }
 trick: [{ seat: 1, card: AS }, { seat: 2, card: 6S }]
 hearts_broken: false
 queen_played: false
@@ -346,8 +371,10 @@ id: R12
 decision: follow
 seat: 0
 trick_number: 3
-hand: [4D, AD, 7C, QC, 6S, 10S, 3H, 5H, 8H, JH, QH]
-played: [2C, 4C, 10C, 6C, 8S, 2S, 4S, JS]
+hand: [4D, AD, 7C, QC, 4S, 10S, 3H, 5H, 8H, JH, QH]
+played:
+  - { lead: 0, cards: [2C, 4C, 10C, 6C] }
+  - { lead: 2, cards: [8S, 2S, 6S, JS] }
 trick: [{ seat: 1, card: 3D }, { seat: 2, card: 6D }, { seat: 3, card: 9D }]
 hearts_broken: false
 queen_played: false
@@ -362,8 +389,10 @@ id: R13
 decision: follow
 seat: 0
 trick_number: 3
-hand: [7C, KC, 5D, JD, 3S, 7S, 10S, 2H, 6H, 9H, AH]
-played: [2C, QC, 4C, 6C, KD, 10D, 2D, 8D]
+hand: [7C, KC, 5D, 8D, 3S, 7S, 10S, 2H, 6H, 9H, AH]
+played:
+  - { lead: 0, cards: [2C, QC, 4C, 6C] }
+  - { lead: 1, cards: [KD, 10D, 2D, JD] }
 trick: [{ seat: 1, card: 5C }, { seat: 2, card: 9C }, { seat: 3, card: 3H }]
 hearts_broken: true
 queen_played: false
@@ -373,6 +402,40 @@ principle: P1-DUCK
 reason: "Last to play, but the trick holds a heart, so it is not free; it ducks with the 7 instead of winning with the king."
 ```
 
+```yaml
+id: R36
+decision: follow
+seat: 2
+trick_number: 2
+hand: [KS, AS, 3C, 5C, 2D, 6D, 9D, JD, 3H, 7H, 10H, QH]
+played:
+  - { lead: 0, cards: [2C, KC, 9C, 4C] }
+trick: [{ seat: 1, card: 6S }]
+hearts_broken: false
+queen_played: false
+points: [0, 0, 0, 0]
+expected: [KS]
+principle: P5-QUEEN
+reason: "It must win the spade trick and only has the ace and king, with the queen out and two players to come, so it plays the lower one, the king."
+```
+
+```yaml
+id: R37
+decision: follow
+seat: 2
+trick_number: 2
+hand: [QS, 4S, 9S, 4C, 6C, 2D, 5D, 10D, 2H, 8H, JH, KH]
+played:
+  - { lead: 0, cards: [2C, AC, 8C, 3C] }
+trick: [{ seat: 1, card: KS }]
+hearts_broken: false
+queen_played: false
+points: [0, 0, 0, 0]
+expected: [QS]
+principle: P5-QUEEN
+reason: "The king of spades is winning, so the queen cannot win even with two players still to come; it drops Q♠ now."
+```
+
 ### Discarding
 
 ```yaml
@@ -380,8 +443,10 @@ id: R14
 decision: discard
 seat: 1
 trick_number: 3
-hand: [QS, 3S, 6S, 8C, JC, QC, 2H, 4H, 9H, JH, AH]
-played: [2C, 7C, AC, 4C, 3D, 9D, KD, 5D]
+hand: [QS, 3S, 6S, 8C, JC, 7C, 2H, 4H, 9H, JH, AH]
+played:
+  - { lead: 0, cards: [2C, QC, AC, 4C] }
+  - { lead: 2, cards: [3D, 9D, KD, 5D] }
 trick: [{ seat: 0, card: 10D }]
 hearts_broken: false
 queen_played: false
@@ -397,7 +462,8 @@ decision: discard
 seat: 0
 trick_number: 2
 hand: [AS, 7S, 4S, 2D, 8D, JD, KD, 3H, 6H, 10H, QH, KH]
-played: [2C, 9C, QC, 3C]
+played:
+  - { lead: 0, cards: [2C, 9C, QC, 3C] }
 trick: [{ seat: 2, card: 5C }, { seat: 3, card: 10C }]
 hearts_broken: false
 queen_played: false
@@ -412,8 +478,10 @@ id: R16
 decision: discard
 seat: 2
 trick_number: 3
-hand: [3C, 10C, 6S, 8S, 2H, 4H, 5H, 7H, 9H, JH, QH]
-played: [2C, 6C, JC, 8C, 4S, 9S, 2S, 7S]
+hand: [4C, 4S, 6S, 8S, 2H, 4H, 5H, 7H, 9H, JH, QH]
+played:
+  - { lead: 0, cards: [2C, 6C, JC, 8C] }
+  - { lead: 2, cards: [3C, KC, 5C, 9C] }
 trick: [{ seat: 3, card: 5D }, { seat: 0, card: 9D }, { seat: 1, card: KD }]
 hearts_broken: false
 queen_played: false
@@ -426,11 +494,12 @@ reason: "With no spade honours to dump, it discards its highest high heart."
 ```yaml
 id: R17
 decision: discard
-seat: 1
+seat: 0
 trick_number: 2
 hand: [AC, 3C, 4C, JD, 10D, 9D, 8D, 6D, 2H, 3H, 4H, 5H]
-played: [2C, 9C, 5C, KC]
-trick: [{ seat: 3, card: 6S }, { seat: 0, card: 10S }]
+played:
+  - { lead: 0, cards: [2C, 9C, 5C, KC] }
+trick: [{ seat: 3, card: 6S }]
 hearts_broken: false
 queen_played: false
 points: [0, 0, 0, 0]
@@ -445,7 +514,10 @@ decision: discard
 seat: 0
 trick_number: 4
 hand: [AS, 6S, QH, 7H, 4H, 3C, 5C, 10C, JC, AC]
-played: [2C, 4C, 9C, KC, KS, QS, 3S, 7S, 6D, 2H, 9D, JD]
+played:
+  - { lead: 0, cards: [2C, 4C, 9C, KC] }
+  - { lead: 3, cards: [KS, QS, 3S, 7S] }
+  - { lead: 3, cards: [6D, 5D, 2H, JD] }
 trick: [{ seat: 2, card: 4D }, { seat: 3, card: 8D }]
 hearts_broken: true
 queen_played: true
@@ -463,7 +535,8 @@ decision: lead
 seat: 2
 trick_number: 2
 hand: [QD, 9D, 8D, 3C, 5C, 2S, 4S, 6S, 3H, 7H, 10H, KH]
-played: [2C, 4C, AC, 6C]
+played:
+  - { lead: 0, cards: [2C, 4C, AC, 6C] }
 trick: []
 hearts_broken: false
 queen_played: false
@@ -479,14 +552,15 @@ decision: lead
 seat: 3
 trick_number: 2
 hand: [AS, 3S, 2D, 3D, 4D, 4C, 5C, 2H, 5H, 9H, JH, KH]
-played: [2C, 8C, QC, AC]
+played:
+  - { lead: 0, cards: [2C, 8C, QC, AC] }
 trick: []
 hearts_broken: false
 queen_played: false
 points: [0, 0, 0, 0]
 expected: [2D]
-principle: P5-QUEEN
-reason: "The ace of spades is its only dangerous non-heart, but it never leads it while the queen is out, so it exits with its lowest safe card."
+principle: P9-EXIT
+reason: "The ace of spades is its only dangerous non-heart, but P5 never leads it while the queen is unplayed, so P9 exits with its lowest safe card."
 ```
 
 ```yaml
@@ -495,7 +569,8 @@ decision: lead
 seat: 2
 trick_number: 2
 hand: [3C, 4C, 2D, 4D, 6D, 2S, 4S, 6S, 7H, 10H, QH, KH]
-played: [2C, 9C, AC, 5C]
+played:
+  - { lead: 0, cards: [2C, 9C, AC, 5C] }
 trick: []
 hearts_broken: false
 queen_played: false
@@ -510,8 +585,11 @@ id: R22
 decision: lead
 seat: 0
 trick_number: 4
-hand: [2H, 9H, 10H, JH, 4C, 6C, 7D, 8D, 5S, 6S]
-played: [2C, 8C, 10C, QC, 3D, 5D, KD, 9D, 7S, 4S, 3H, AS]
+hand: [2H, 9H, 10H, JH, 3C, 4C, 6C, 9C, 7D, 5D]
+played:
+  - { lead: 0, cards: [2C, 8C, 10C, QC] }
+  - { lead: 3, cards: [3D, 8D, KD, 9D] }
+  - { lead: 1, cards: [7S, 4S, 3H, AS] }
 trick: []
 hearts_broken: true
 queen_played: false
@@ -521,6 +599,57 @@ principle: P9-EXIT
 reason: "Hearts are broken and the 2 of hearts is its surest loser, so it leads it and lets someone else take the point."
 ```
 
+```yaml
+id: R33
+decision: lead
+seat: 1
+trick_number: 2
+hand: [QS, AS, 2H, 3H, 4H, 5H, 6H, 7H, 8H, 9H, 10H, JH]
+played:
+  - { lead: 0, cards: [2C, AC, 5C, 9C] }
+trick: []
+hearts_broken: false
+queen_played: false
+points: [0, 0, 0, 0]
+expected: [AS]
+principle: P3-SHED
+reason: "Hearts are not broken, so only Q♠ and A♠ are legal; P5 never leads the queen, so the ace is the only candidate left."
+```
+
+```yaml
+id: R34
+decision: lead
+seat: 2
+trick_number: 2
+hand: [2H, 3H, 4H, 5H, 6H, 7H, 8H, 9H, 10H, JH, QH, AH]
+played:
+  - { lead: 0, cards: [2C, 5C, AC, 9C] }
+trick: []
+hearts_broken: false
+queen_played: false
+points: [0, 0, 0, 0]
+expected: [2H]
+principle: P9-EXIT
+reason: "Its hand is all hearts, so it may lead one before hearts are broken, and it leads its surest loser, the 2."
+```
+
+```yaml
+id: R35
+decision: lead
+seat: 2
+trick_number: 2
+hand: [3D, 4D, 5D, 6D, 7D, 8D, 9D, 10D, JD, QD, KD, AD]
+played:
+  - { lead: 0, cards: [2C, 5C, AC, 9C] }
+trick: []
+hearts_broken: false
+queen_played: false
+points: [0, 0, 0, 0]
+expected: [3D]
+principle: P9-EXIT
+reason: "Only the 2 of diamonds is out, so every card it holds would win; it leads its lowest card."
+```
+
 ### Moon guard
 
 ```yaml
@@ -528,15 +657,18 @@ id: R23
 decision: discard
 seat: 0
 trick_number: 4
-hand: [AH, KH, 7H, 3H, 3C, 10C, JC, 4D, JD, QD]
-played: [2C, 5C, 9C, AC, KS, 8S, QS, 3S, 6D, 9D, 2D, 10D]
+hand: [AH, KH, 7H, 3H, 3C, 10C, JC, 9D, JD, QD]
+played:
+  - { lead: 0, cards: [2C, 5C, 9C, AC] }
+  - { lead: 3, cards: [KS, 8S, QS, 3S] }
+  - { lead: 3, cards: [6D, 4D, 2D, 10D] }
 trick: [{ seat: 2, card: 7S }, { seat: 3, card: JS }]
 hearts_broken: false
 queen_played: true
 points: [0, 0, 0, 13]
 expected: [KH]
-principle: P7-MOON-GUARD
-reason: "Seat 3 holds every point taken (13), so it keeps the ace of hearts as a guard and discards the king instead."
+principle: P6-DISCARD
+reason: "Seat 3 holds every point taken (13), so P7 sets the ace of hearts aside as the guard, and P6 discards the highest high heart left, the king."
 ```
 
 ```yaml
@@ -544,8 +676,12 @@ id: R24
 decision: lead
 seat: 2
 trick_number: 5
-hand: [AH, 9H, 6H, 7D, JD, 10S, 4S, 5C, 6C]
-played: [2C, AC, 4C, 7C, AS, 5S, 6S, QS, KD, 3D, 2H, 9D, 10C, KC, 8C, 3C]
+hand: [AH, 9H, 8H, 6H, 5H, 4H, 2D, 4S, 2S]
+played:
+  - { lead: 0, cards: [2C, AC, KC, 7C] }
+  - { lead: 1, cards: [AS, 5S, 6S, QS] }
+  - { lead: 1, cards: [KD, 3D, 2H, 9D] }
+  - { lead: 1, cards: [10C, QC, 8C, 3C] }
 trick: []
 hearts_broken: true
 queen_played: true
@@ -560,15 +696,80 @@ id: R25
 decision: follow
 seat: 3
 trick_number: 5
-hand: [AD, 4D, 9S, JS, 9C, QC, 3H, 8H, 10H]
-played: [2C, AC, 4C, 7C, AS, 5S, 6S, QS, KD, 3D, 9D, 2H, 10C, 3C, 8C, KC]
+hand: [AD, 3D, 6S, 9S, 7C, 8C, 3H, 8H, 10H]
+played:
+  - { lead: 0, cards: [2C, AC, 4C, QC] }
+  - { lead: 1, cards: [KD, 2H, 4D, 9D] }
+  - { lead: 1, cards: [AS, 5S, JS, QS] }
+  - { lead: 1, cards: [10C, 3C, 9C, KC] }
 trick: [{ seat: 0, card: 6D }, { seat: 1, card: QD }, { seat: 2, card: 7H }]
 hearts_broken: true
 queen_played: true
 points: [0, 14, 0, 0]
 expected: [AD]
 principle: P7-MOON-GUARD
-reason: "The possible moon shooter is winning a trick with a heart in it and it plays last, so it takes the trick with the ace instead of ducking with the 4."
+reason: "The possible moon shooter is winning a trick with a heart in it and it plays last, so it takes the trick with the ace instead of ducking with the 3."
+```
+
+```yaml
+id: R30
+decision: follow
+seat: 3
+trick_number: 6
+hand: [QS, KS, 3S, 10S, JS, 5D, 6D, 5C]
+played:
+  - { lead: 0, cards: [2C, AC, 3C, 9C] }
+  - { lead: 1, cards: [KD, 2H, 7D, 4D] }
+  - { lead: 1, cards: [AH, 3H, JH, 4H] }
+  - { lead: 1, cards: [KH, 5H, 10H, 6H] }
+  - { lead: 1, cards: [QH, 7H, 9H, 8H] }
+trick: [{ seat: 1, card: AS }, { seat: 2, card: 4S }]
+hearts_broken: true
+queen_played: false
+points: [0, 13, 0, 0]
+expected: [KS]
+principle: P7-MOON-GUARD
+reason: "Seat 1 has taken all 13 hearts, so dropping Q♠ on its ace would give it the moon; it plays the king and keeps the queen."
+```
+
+```yaml
+id: R31
+decision: follow
+seat: 2
+trick_number: 5
+hand: [AH, 10H, 9H, 8H, 7H, 6H, 5H, 2S, 2D]
+played:
+  - { lead: 0, cards: [2C, AC, 4C, 7C] }
+  - { lead: 1, cards: [AS, 5S, 6S, QS] }
+  - { lead: 1, cards: [KD, 3D, 2H, 9D] }
+  - { lead: 1, cards: [10C, 3C, 8C, KC] }
+trick: [{ seat: 0, card: 4H }, { seat: 1, card: JH }]
+hearts_broken: true
+queen_played: true
+points: [0, 14, 0, 0]
+expected: [AH]
+principle: P7-MOON-GUARD
+reason: "The possible moon shooter is winning a trick with hearts in it, and the ace of hearts cannot be beaten, so it takes the trick even with a player still to come."
+```
+
+```yaml
+id: R32
+decision: follow
+seat: 2
+trick_number: 5
+hand: [AH, 10H, 9H, 8H, 7H, 6H, 5H, 2S, 2D]
+played:
+  - { lead: 0, cards: [2C, AC, 4C, 7C] }
+  - { lead: 1, cards: [AS, 5S, 6S, QS] }
+  - { lead: 1, cards: [KD, 3D, 2H, 9D] }
+  - { lead: 1, cards: [10C, 3C, 8C, KC] }
+trick: [{ seat: 0, card: JH }, { seat: 1, card: 4H }]
+hearts_broken: true
+queen_played: true
+points: [0, 14, 0, 0]
+expected: [10H]
+principle: P1-DUCK
+reason: "Seat 0, not the possible moon shooter, is winning, so the moon is already stopped and it ducks with the 10."
 ```
 
 ### Passing
@@ -654,6 +855,7 @@ This CPU deliberately does **not**:
 - **Feed or spare a particular player.** It never picks a card by who is winning the trick. The one exception is the moon guard, which checks whether the threatening player is winning.
 - **Use randomness.** The same position always gives the same card. Varying difficulty or style is a separate decision for #3156.
 - **Create voids on purpose when passing.** Any voids come only from the danger order (R28).
+- **Deliberately flush the queen.** It never leads low spades to draw Q♠ out. It may lead a spade while holding Q♠ when P3 or P9 picks one, even though that thins her cover (an open owner question).
 
 ---
 
