@@ -1,8 +1,10 @@
 /**
  * hearts-difficulty-select.spec.ts — GH #1168
  *
- * Difficulty selector: pre-game picker, the result card's Change Difficulty /
- * Play Again (#2506), and difficulty persistence.
+ * Store builds show no opponent picker (#3158; the legacy picker is dev /
+ * pre-launch only): the pre-game screen, the result card's Change Difficulty /
+ * Play Again (#2506), and Play Again after a saved legacy-persona game (unit tests cover the stored
+ * "conservative" value).
  * No running backend is needed: the routes this spec depends on are
  * intercepted with page.route(), and any other call (such as SyncWorker's
  * game sync) fails, which the app handles like being offline.
@@ -44,8 +46,8 @@ const GAME_OVER_STATE = {
   winnerIndex: 1,
 };
 
-test.describe("Hearts — difficulty selector (#1168)", () => {
-  test("pre-game picker shows Cautious / Schemer / Daring radio buttons", async ({
+test.describe("Hearts — difficulty selector, store build (#1168, #3158)", () => {
+  test("store build: no opponent picker is rendered before a game", async ({
     page,
   }) => {
     await installEntitlementsMock(page);
@@ -56,14 +58,16 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
       .getByRole("heading", { name: "Hearts", exact: true })
       .waitFor({ timeout: 10_000 });
 
-    const group = page.getByRole("radiogroup", { name: "Opponent Style" });
-    await expect(group).toBeVisible({ timeout: 5_000 });
-    await expect(group.getByRole("radio", { name: "Cautious" })).toBeVisible();
-    await expect(group.getByRole("radio", { name: "Schemer" })).toBeVisible();
-    await expect(group.getByRole("radio", { name: "Daring" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Start Game" })).toBeVisible({
+      timeout: 5_000,
+    });
+    await expect(
+      page.getByRole("radiogroup", { name: "Opponent Style" }),
+    ).toHaveCount(0);
+    await expect(page.getByRole("radio")).toHaveCount(0);
   });
 
-  test("selecting Cautious and clicking Start Game launches a game", async ({
+  test("store build: Start Game launches a game", async ({
     page,
   }) => {
     await installEntitlementsMock(page);
@@ -74,7 +78,6 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
       .getByRole("heading", { name: "Hearts", exact: true })
       .waitFor({ timeout: 10_000 });
 
-    await page.getByRole("radio", { name: "Cautious" }).click();
     await page.getByRole("button", { name: "Start Game" }).click();
 
     await expect(page.getByLabel("Your hand, 13 cards")).toBeVisible({
@@ -82,26 +85,27 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
     });
   });
 
-  test("selecting Daring and clicking Start Game launches a game", async ({
+  test("store build: a saved legacy-persona game plays on (as conservative) via Play Again", async ({
     page,
   }) => {
-    await installEntitlementsMock(page);
-    await page.goto("/");
-    await page.evaluate(() => localStorage.removeItem("hearts_game"));
+    await injectHeartsState(page, { ...GAME_OVER_STATE, aiDifficulty: "daring" });
     await page.getByRole("button", { name: "Play Hearts" }).click();
     await page
       .getByRole("heading", { name: "Hearts", exact: true })
       .waitFor({ timeout: 10_000 });
-
-    await page.getByRole("radio", { name: "Daring" }).click();
-    await page.getByRole("button", { name: "Start Game" }).click();
-
+    await expect(page.getByTestId("hearts-result")).toBeVisible({
+      timeout: 5_000,
+    });
+    await page
+      .getByTestId("hearts-result")
+      .getByRole("button", { name: "Play Again" })
+      .click();
     await expect(page.getByLabel("Your hand, 13 cards")).toBeVisible({
       timeout: 8_000,
     });
   });
 
-  test("Change Difficulty on the result card returns to the difficulty picker", async ({
+  test("Change Difficulty on the result card returns to the pre-game screen (no picker in store builds)", async ({
     page,
   }) => {
     await injectHeartsState(page, GAME_OVER_STATE);
@@ -117,13 +121,11 @@ test.describe("Hearts — difficulty selector (#1168)", () => {
 
     await card.getByRole("button", { name: "Change Difficulty" }).click();
     await expect(
-      page.getByRole("radiogroup", { name: "Opponent Style" }),
-    ).toBeVisible({
-      timeout: 5_000,
-    });
-    await expect(
       page.getByRole("button", { name: "Start Game" }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.getByRole("radiogroup", { name: "Opponent Style" }),
+    ).toHaveCount(0);
   });
 
   test("Play Again on the result card deals a new game without the picker", async ({

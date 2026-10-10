@@ -118,7 +118,7 @@ test.describe("Hearts — error paths", () => {
   // Corrupted localStorage fallback
   // ---------------------------------------------------------------------------
 
-  test("corrupted hearts_game localStorage — fresh game loads with difficulty picker", async ({
+  test("corrupted hearts_game localStorage — fresh game loads at the pre-game screen", async ({
     page,
   }) => {
     await installEntitlementsMock(page);
@@ -132,9 +132,10 @@ test.describe("Hearts — error paths", () => {
       .getByRole("heading", { name: "Hearts", exact: true })
       .waitFor({ timeout: 10_000 });
 
-    // Corrupted state is discarded — difficulty picker appears for a fresh game
-    await expect(
-      page.getByRole("radiogroup", { name: "Opponent Style" }),
-    ).toBeVisible({ timeout: 5_000 });
+    // Corrupted state is discarded — the pre-game screen appears for a fresh
+    // game (no opponent picker in store builds, #3158)
+    await expect(page.getByRole("button", { name: "Start Game" })).toBeVisible({
+      timeout: 5_000,
+    });
   });
 });

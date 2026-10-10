@@ -1070,12 +1070,12 @@ describe("HeartsScreen — game session (#2629)", () => {
     }
   );
 
-  it("the first card of a conservative game starts the session with ai_difficulty conservative (store build)", async () => {
+  it("a saved legacy-persona game resumes as conservative and starts the session with ai_difficulty conservative (store build)", async () => {
     const g = globalThis as { __DEV__?: boolean };
     const dev = g.__DEV__;
     g.__DEV__ = false;
     try {
-      (loadGame as jest.Mock).mockResolvedValue(humanLastCardState("conservative"));
+      (loadGame as jest.Mock).mockResolvedValue(humanLastCardState("daring"));
       const r = await renderScreen();
       const slot = await r.findByTestId("hearts-hand-card-0");
       await act(async () => {

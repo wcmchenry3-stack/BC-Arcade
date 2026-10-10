@@ -274,7 +274,12 @@ export default function HeartsScreen() {
           });
         }
         // The play time lives in the clock, not in the state (#2629).
-        const { accumulatedMs, ...state } = saved;
+        const { accumulatedMs, ...loaded } = saved;
+        // A legacy persona the flag does not offer plays on as Conservative (#3158).
+        const state = {
+          ...loaded,
+          aiDifficulty: resolveAvailablePreset(loaded.aiDifficulty, legacyPersonas),
+        };
         // A restored game continues the session a killed app left open (#2654).
         const resumed = state.phase !== "game_over" && syncResume();
         // The saved play time belongs to that session: kept only when it is
@@ -302,7 +307,7 @@ export default function HeartsScreen() {
         setDraftNames(names);
       }
     });
-  }, [syncResume, setSelectedDifficulty, lookupRank, updateClock]);
+  }, [syncResume, setSelectedDifficulty, lookupRank, updateClock, legacyPersonas]);
 
   // ─── Sync snapshot to shared rounds context (read by ScorecardScreen) ────
   const { setSnapshot: setRoundsSnapshot } = useHeartsRounds();
