@@ -18,6 +18,14 @@
  * (minus `__DEV__`, which is `!dev` here): a dev bundle, an e2e bundle
  * (`EXPO_PUBLIC_TEST_HOOKS=1`) or a pre-launch-API bundle keeps all twelve
  * games. `storeBundle.test.ts` pins that parity and the screen list.
+ *
+ * The hidden locales get the same treatment (#3150). iOS/Android store builds
+ * offer only `LAUNCH_LOCALE_CODES` (`availableLocales()` in resolveLocale.ts),
+ * but `localeLoaders.ts` has an `import()` for every locale file, so the other
+ * locales' JSON would still be bundled. In an iOS/Android store bundle their
+ * files resolve to `src/i18n/storeBuildExcludedLocale.json` (`{}`), which is
+ * what `loadLocaleNamespace` already returns for a missing file. Web is not a
+ * store platform and keeps every locale.
  */
 const path = require("path");
 
@@ -44,6 +52,27 @@ const EXCLUDED_SCREENS = new Set(Object.values(HIDDEN_GAME_SCREENS).flat());
 // `<Name>.tsx` plus any platform variant Metro may pick (`.ios.tsx`, `.native.tsx`, ...).
 const SCREEN_FILE = /^([A-Za-z0-9]+)(?:\.(?:ios|android|native|web))?\.(?:tsx|ts|jsx|js)$/;
 
+/** Mirrors LAUNCH_LOCALE_CODES (src/i18n/locales.js, an ES module Metro's config cannot require). */
+const LAUNCH_LOCALES = ["en", "fr-CA", "es"];
+
+const LOCALES_DIR = path.join(__dirname, "..", "src", "i18n", "locales");
+const STUB_LOCALE = path.join(LOCALES_DIR, "..", "storeBuildExcludedLocale.json");
+
+/** True for `locales/<code>/<namespace>.json` of a locale that is not a launch locale. */
+function isExcludedLocaleFile(filePath) {
+  if (path.extname(filePath) !== ".json") return false;
+  const localeDir = path.dirname(filePath);
+  if (path.dirname(localeDir) !== LOCALES_DIR) return false;
+  const code = path.basename(localeDir);
+  // `_meta` holds translator notes, not a locale; nothing imports it.
+  return code !== "_meta" && !LAUNCH_LOCALES.includes(code);
+}
+
+/** True for the platforms whose store builds offer only the launch locales. */
+function isStorePlatform(platform) {
+  return platform === "ios" || platform === "android";
+}
+
 /** True for a hidden game's screen module, whichever platform file Metro resolved. */
 function isExcludedScreen(filePath) {
   if (path.dirname(filePath) !== SCREENS_DIR) return false;
@@ -60,7 +89,8 @@ function isStoreBundle(dev, env) {
 
 /**
  * Wraps `resolver.resolveRequest` so a store bundle resolves the hidden games'
- * screens to the stub. Every other resolution is passed through untouched.
+ * screens, and on iOS/Android the hidden locales' files, to their stubs. Every
+ * other resolution is passed through untouched.
  */
 function withStoreBundleExclusions(config, env = process.env) {
   const upstream = config.resolver.resolveRequest;
@@ -68,12 +98,12 @@ function withStoreBundleExclusions(config, env = process.env) {
     const resolution = upstream
       ? upstream(context, moduleName, platform)
       : context.resolveRequest(context, moduleName, platform);
-    if (
-      resolution.type === "sourceFile" &&
-      isExcludedScreen(resolution.filePath) &&
-      isStoreBundle(context.dev, env)
-    ) {
+    if (resolution.type !== "sourceFile" || !isStoreBundle(context.dev, env)) return resolution;
+    if (isExcludedScreen(resolution.filePath)) {
       return { type: "sourceFile", filePath: STUB_SCREEN };
+    }
+    if (isStorePlatform(platform) && isExcludedLocaleFile(resolution.filePath)) {
+      return { type: "sourceFile", filePath: STUB_LOCALE };
     }
     return resolution;
   };
@@ -82,7 +112,10 @@ function withStoreBundleExclusions(config, env = process.env) {
 
 module.exports = {
   HIDDEN_GAME_SCREENS,
+  LAUNCH_LOCALES,
+  STUB_LOCALE,
   STUB_SCREEN,
+  isExcludedLocaleFile,
   isExcludedScreen,
   isStoreBundle,
   withStoreBundleExclusions,

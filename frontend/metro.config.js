@@ -34,7 +34,8 @@ config.cacheVersion = [
   crypto.createHash("sha1").update(publicEnv).digest("hex"),
 ].join(":");
 
-// Store bundles leave the hidden premium games' code and assets out (#2830).
+// Store bundles leave the hidden premium games' code and assets out (#2830), and on
+// iOS/Android the locales store builds do not offer (#3150).
 withStoreBundleExclusions(config);
 
 module.exports = config;
