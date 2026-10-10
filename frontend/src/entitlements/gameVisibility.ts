@@ -59,7 +59,15 @@ export function __forceStoreBuildForTests(on: boolean): void {
   forcedStoreBuild = on;
 }
 
+/**
+ * True in a store build (or under `__forceStoreBuildForTests`). The one gate for
+ * everything held back from store users — hidden games here, unlaunched locales in
+ * `i18n/resolveLocale.ts` — so the two can never disagree about the build flavour.
+ */
+export function isStoreBuild(): boolean {
+  return forcedStoreBuild || !SHOW_HIDDEN_GAMES;
+}
+
 export function isGameVisible(slug: string): boolean {
-  const showHidden = SHOW_HIDDEN_GAMES && !forcedStoreBuild;
-  return showHidden || !HIDDEN_GAMES.has(slug);
+  return !isStoreBuild() || !HIDDEN_GAMES.has(slug);
 }

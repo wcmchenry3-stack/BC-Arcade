@@ -2,12 +2,15 @@
  * metro/storeBundle.js (#2830) keeps the hidden premium games' code and assets
  * out of store bundles. It runs in Metro, not the app, so these tests pin it to
  * the app-side rules it mirrors: SHOW_HIDDEN_GAMES (gameVisibility.ts) and the
- * premium screens lazyScreens.ts imports.
+ * premium screens lazyScreens.ts imports. It does the same for the locales
+ * store builds do not offer (#3150), pinned here to LAUNCH_LOCALE_CODES and
+ * the locale files on disk.
  */
 import fs from "fs";
 import path from "path";
 
 import { isPreLaunchApiBuild, areTestHooksEnabled } from "../../game/_shared/envFlags";
+import { LAUNCH_LOCALE_CODES, LOCALES } from "../../i18n/locales";
 import { HIDDEN_GAMES } from "../gameVisibility";
 import { PREMIUM_ROUTES } from "../premiumRoutes";
 
@@ -18,7 +21,10 @@ type MetroConfigLike = { resolver: { resolveRequest?: Resolver } };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const storeBundle = require("../../../metro/storeBundle") as {
   HIDDEN_GAME_SCREENS: Record<string, string[]>;
+  LAUNCH_LOCALES: string[];
+  STUB_LOCALE: string;
   STUB_SCREEN: string;
+  isExcludedLocaleFile: (filePath: string) => boolean;
   isExcludedScreen: (filePath: string) => boolean;
   isStoreBundle: (dev: boolean, env: Record<string, string | undefined>) => boolean;
   withStoreBundleExclusions: (
@@ -29,6 +35,15 @@ const storeBundle = require("../../../metro/storeBundle") as {
 
 const SCREENS_DIR = path.resolve(__dirname, "../../screens");
 const screenPath = (name: string) => path.join(SCREENS_DIR, `${name}.tsx`);
+
+const LOCALES_DIR = path.resolve(__dirname, "../../i18n/locales");
+/** Every translation file on disk, as [locale, absolute path]. */
+const LOCALE_FILES: Array<[string, string]> = LOCALES.flatMap(({ code }) =>
+  fs
+    .readdirSync(path.join(LOCALES_DIR, code))
+    .filter((file) => file.endsWith(".json"))
+    .map((file): [string, string] => [code, path.join(LOCALES_DIR, code, file)])
+);
 
 const STORE_ENV = { EXPO_PUBLIC_API_URL: "https://games-api.buffingchi.com" };
 
@@ -179,6 +194,92 @@ describe("withStoreBundleExclusions", () => {
     );
     expect(upstream).toHaveBeenCalledTimes(1);
     expect(result.filePath).toBe(storeBundle.STUB_SCREEN);
+  });
+});
+
+describe("LAUNCH_LOCALES", () => {
+  it("mirrors LAUNCH_LOCALE_CODES", () => {
+    expect([...storeBundle.LAUNCH_LOCALES].sort()).toEqual([...LAUNCH_LOCALE_CODES].sort());
+  });
+
+  it("has an empty stub", () => {
+    expect(JSON.parse(fs.readFileSync(storeBundle.STUB_LOCALE, "utf8"))).toEqual({});
+  });
+});
+
+describe("isExcludedLocaleFile", () => {
+  it("matches exactly the non-launch locales' files", () => {
+    expect(LOCALE_FILES.length).toBeGreaterThan(LOCALES.length);
+    for (const [code, file] of LOCALE_FILES) {
+      expect({ file, excluded: storeBundle.isExcludedLocaleFile(file) }).toEqual({
+        file,
+        excluded: !LAUNCH_LOCALE_CODES.has(code),
+      });
+    }
+  });
+
+  it("ignores translator metadata, the stub and lookalikes", () => {
+    for (const file of [
+      path.join(LOCALES_DIR, "_meta", "common.meta.json"),
+      path.join(LOCALES_DIR, "provenance.json"),
+      storeBundle.STUB_LOCALE,
+      path.join(LOCALES_DIR, "de", "common.ts"),
+      path.join(LOCALES_DIR, "de", "nested", "common.json"),
+      path.join(SCREENS_DIR, "locales", "de", "common.json"),
+    ]) {
+      expect(storeBundle.isExcludedLocaleFile(file)).toBe(false);
+    }
+  });
+});
+
+describe("withStoreBundleExclusions: locales (#3150)", () => {
+  type Env = Record<string, string | undefined>;
+  // The locale files a bundle ends up with: what each `import()` target resolves to.
+  function bundledLocaleFiles(env: Env, dev: boolean, platform: string): string[] {
+    const config = storeBundle.withStoreBundleExclusions({ resolver: {} }, env);
+    const context = {
+      dev,
+      resolveRequest: (_ctx: object, moduleName: string) => ({
+        type: "sourceFile",
+        filePath: moduleName,
+      }),
+    };
+    return LOCALE_FILES.map(
+      ([, file]) => config.resolver.resolveRequest!(context, file, platform).filePath!
+    );
+  }
+  const allFiles = LOCALE_FILES.map(([, file]) => file);
+  const launchFiles = LOCALE_FILES.filter(([code]) => LAUNCH_LOCALE_CODES.has(code)).map(
+    ([, file]) => file
+  );
+
+  it.each(["ios", "android"])("%s store bundle has no non-launch locale JSON", (platform) => {
+    const bundled = bundledLocaleFiles(STORE_ENV, false, platform);
+    expect(bundled.filter((file) => file !== storeBundle.STUB_LOCALE)).toEqual(launchFiles);
+    expect(bundled.filter((file) => file === storeBundle.STUB_LOCALE)).toHaveLength(
+      allFiles.length - launchFiles.length
+    );
+  });
+
+  it("web bundles keep every locale, store config included", () => {
+    expect(bundledLocaleFiles(STORE_ENV, false, "web")).toEqual(allFiles);
+  });
+
+  it.each(["ios", "android", "web"])("%s dev bundle keeps every locale", (platform) => {
+    expect(bundledLocaleFiles(STORE_ENV, true, platform)).toEqual(allFiles);
+  });
+
+  it.each(["ios", "android"])("%s e2e and pre-launch bundles keep every locale", (platform) => {
+    expect(
+      bundledLocaleFiles({ ...STORE_ENV, EXPO_PUBLIC_TEST_HOOKS: "1" }, false, platform)
+    ).toEqual(allFiles);
+    expect(
+      bundledLocaleFiles(
+        { EXPO_PUBLIC_API_URL: "https://dev-games-api.buffingchi.com" },
+        false,
+        platform
+      )
+    ).toEqual(allFiles);
   });
 });
 

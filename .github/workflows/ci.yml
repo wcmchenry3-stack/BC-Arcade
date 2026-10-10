@@ -726,6 +726,9 @@ jobs:
       #   store bundle     JS 6,544,825 B (6.24 MiB)   packaged assets 3,403,575 B (3.25 MiB), 52 files
       #   all 12 games     JS 7,460,309 B (7.11 MiB)   packaged assets 28,744,159 B (27.4 MiB), 205 files
       #                    (EXPO_PUBLIC_API_URL=https://dev-games-api.buffingchi.com, pre-launch/e2e builds)
+      # Re-measured 2026-10-10 after #3150 (non-launch locales stubbed in iOS/Android store bundles):
+      #   store bundle     JS 5,818,990 B (5.55 MiB), was 6,544,912 B on the same tree: -725,922 B
+      #   all 12 games     JS 7,458,736 B (7.11 MiB), keeps all 13 locales
       # JS hard-limit history (update when you change it so future readers understand the trend):
       #   4.5 MB — original baseline
       #   6.0 MB — raised for Expo SDK 56 + game additions (#1977)
@@ -736,25 +739,27 @@ jobs:
       #            becomes the 7.11 MiB all-games bundle. 8 MiB leaves ~0.9 MiB (12%) of growth
       #            over that ceiling, so it is the right hard limit for the future premium store
       #            build. Lowering it now would only fail the premium launch; the guard against
-      #            drift on today's store bundle is the 6.75 MiB warn threshold below, and the
+      #            drift on today's store bundle is the warn threshold below, and the
       #            all-games ceiling is enforced by the next step.
-      # JS warn threshold: 6.75 MiB (7,077,888 B) = ~8% above today's store bundle. Warn only.
+      # JS warn threshold: 6.0 MiB (6,291,456 B) = ~8% above today's 5.55 MiB store bundle. Warn
+      #   only. Was 6.75 MiB (~8% above 6.24 MiB) until #3150 dropped the non-launch locales.
       # Packaged-assets hard limit: 4 MiB (4,194,304 B) = ~23% above today's 3.25 MiB store
       #   payload (2.7 MB of that is the 14 font files). The all-games assets (27.4 MiB, mostly
       #   22 MB of BGM) would blow it by design: un-hiding games means re-budgeting, not
       #   quietly shipping them.
       - name: Size report script tests
         run: node --test scripts/size-report.test.mjs
-      - name: Size budgets (JS, packaged assets, hidden-premium guard)
+      - name: Size budgets (JS, packaged assets, hidden-premium and hidden-locale guards)
         run: |
           set -o pipefail
           node scripts/size-report.mjs \
             --bundle dist/index.android.bundle \
             --assets dist/assets \
             --max-js 8388608 \
-            --warn-js 7077888 \
+            --warn-js 6291456 \
             --max-assets 4194304 \
             --forbid-hidden-assets \
+            --forbid-hidden-locales \
             --sources \
             --github-output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
         id: size
@@ -787,8 +792,8 @@ jobs:
           ASSET_BYTES: ${{ steps.size.outputs.asset_bytes }}
           ASSET_FILES: ${{ steps.size.outputs.asset_files }}
         run: |
-          # Store-bundle JS baseline: 2026-10-10, dev@a19aadc5 + #2830 + #2832 (was 4,718,592 = 4.5 MB, stale).
-          BASELINE_BYTES=6544825
+          # Store-bundle JS baseline: 2026-10-10, after #3150 (was 6,544,825 after #2830 + #2832).
+          BASELINE_BYTES=5818990
           BUNDLE_SIZE_MB=$(awk "BEGIN {printf \"%.2f\", $BUNDLE_SIZE_BYTES / 1048576}")
           ASSET_MB=$(awk "BEGIN {printf \"%.2f\", $ASSET_BYTES / 1048576}")
           DELTA_BYTES=$(( BUNDLE_SIZE_BYTES - BASELINE_BYTES ))
@@ -800,11 +805,11 @@ jobs:
           COMMENT="### Bundle size report (store config)
           | | Size | Limit |
           |---|---|---|
-          | JS bundle (minified, pre-Hermes) | ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE_BYTES} B) | 8.0 MiB hard, 6.75 MiB warn |
-          | Delta vs 6.24 MiB store baseline (2026-10-10) | ${DELTA_STR} | |
+          | JS bundle (minified, pre-Hermes) | ${BUNDLE_SIZE_MB} MB (${BUNDLE_SIZE_BYTES} B) | 8.0 MiB hard, 6.0 MiB warn |
+          | Delta vs 5.55 MiB store baseline (2026-10-10) | ${DELTA_STR} | |
           | Packaged assets (${ASSET_FILES} files) | ${ASSET_MB} MB (${ASSET_BYTES} B) | 4.0 MiB hard |
 
-          _Measured from \`dist/index.android.bundle\` and \`dist/assets\` (\`expo export:embed\`, store config: hidden premium games excluded). Hermes bytecode and native libraries are not included; see [PERFORMANCE.md](../blob/${GITHUB_HEAD_REF}/docs/PERFORMANCE.md#js-bundle-size-guardrail)._"
+          _Measured from \`dist/index.android.bundle\` and \`dist/assets\` (\`expo export:embed\`, store config: hidden premium games and non-launch locales excluded). Hermes bytecode and native libraries are not included; see [PERFORMANCE.md](../blob/${GITHUB_HEAD_REF}/docs/PERFORMANCE.md#js-bundle-size-guardrail)._"
           gh pr comment "${{ github.event.pull_request.number }}" \
             --body "$COMMENT" \
             --edit-last 2>/dev/null || \
