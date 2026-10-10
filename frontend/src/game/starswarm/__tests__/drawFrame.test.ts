@@ -43,20 +43,23 @@ jest.mock("@shopify/react-native-skia", () => {
         return { packed };
       },
       XYWHRect: (x: number, y: number, width: number, height: number) => ({ x, y, width, height }),
-      Path: {
+      PathBuilder: {
         Make: () => {
           mockMade.paths++;
           const cmds: (string | number)[][] = [];
-          const p = {
-            cmds,
-            dispose: () => {
-              mockMade.disposed++;
-            },
-            moveTo: (x: number, y: number) => (cmds.push(["M", x, y]), p),
-            lineTo: (x: number, y: number) => (cmds.push(["L", x, y]), p),
-            close: () => (cmds.push(["Z"]), p),
+          const b = {
+            moveTo: (x: number, y: number) => (cmds.push(["M", x, y]), b),
+            lineTo: (x: number, y: number) => (cmds.push(["L", x, y]), b),
+            close: () => (cmds.push(["Z"]), b),
+            detach: () => ({
+              cmds,
+              dispose: () => {
+                mockMade.disposed++;
+              },
+            }),
+            dispose: () => {},
           };
-          return p;
+          return b;
         },
       },
     },

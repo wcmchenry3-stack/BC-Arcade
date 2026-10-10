@@ -172,12 +172,15 @@ export function drawFrame(canvas: SkCanvas, ops: readonly DrawOp[], images: Draw
       case "poly": {
         const pts = op.points;
         if (pts.length < 2) break;
-        const path = Skia.Path.Make();
-        path.moveTo(pts[0]!, pts[1]!);
-        for (let j = 2; j + 1 < pts.length; j += 2) path.lineTo(pts[j]!, pts[j + 1]!);
-        path.close();
+        // Skia 2.14: SkPath is immutable; geometry is built through SkPathBuilder.
+        const builder = Skia.PathBuilder.Make();
+        builder.moveTo(pts[0]!, pts[1]!);
+        for (let j = 2; j + 1 < pts.length; j += 2) builder.lineTo(pts[j]!, pts[j + 1]!);
+        builder.close();
+        const path = builder.detach();
         canvas.drawPath(path, shapePaint(cache, op.color, undefined, op.stroke));
         path.dispose(); // #2963: the Picture holds its own copy; free the native path now
+        builder.dispose();
         break;
       }
     }
