@@ -4,7 +4,8 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { NavigationContext } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react-native";
+import { useReportAppOverlay } from "../../../hooks/appOverlay";
 import {
   dark as darkColors,
   light as lightColors,
@@ -13,6 +14,7 @@ import {
 } from "../../../theme/ThemeContext";
 import GameResultModal, {
   CELEBRATION_MAX_MS,
+  OVERLAY_DISMISS_SETTLE_MS,
   type GameOutcome,
   type GameResultModalProps,
 } from "../GameResultModal";
@@ -573,5 +575,106 @@ describe("GameResultModal — behaviour", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+// #2944 — the header's ⋯ menu and feedback sheet are native Modals: on iOS the card can't
+// present while one is up, and a `visible` that stayed true would never present it later.
+describe("GameResultModal — app overlay (#2944)", () => {
+  /** A stand-in for AppHeader's menu or feedback sheet. */
+  async function overlay(initial: boolean) {
+    return renderHook(({ open }: { open: boolean }) => useReportAppOverlay(open), {
+      initialProps: { open: initial },
+    });
+  }
+
+  it("waits for an open overlay to close, then shows the card and announces it once", async () => {
+    jest.useFakeTimers();
+    try {
+      const sheet = await overlay(true);
+      await renderCard();
+      expect(screen.queryByText("You Win!")).toBeNull();
+      expect(announce).not.toHaveBeenCalled();
+
+      await act(async () => sheet.rerender({ open: false }));
+      // The sheet is still sliding out: presenting now would fail on iOS.
+      expect(screen.queryByText("You Win!")).toBeNull();
+      await act(async () => {
+        jest.advanceTimersByTime(OVERLAY_DISMISS_SETTLE_MS);
+      });
+      expect(screen.getByText("You Win!")).toBeTruthy();
+      expect(announce).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("hides the card the moment an overlay opens, and doesn't announce it again after", async () => {
+    jest.useFakeTimers();
+    try {
+      // The overlay first: `screen` follows the latest render.
+      const sheet = await overlay(false);
+      await renderCard();
+      expect(screen.getByText("You Win!")).toBeTruthy();
+      await act(async () => sheet.rerender({ open: true }));
+      expect(screen.queryByText("You Win!")).toBeNull();
+      await act(async () => sheet.rerender({ open: false }));
+      await act(async () => {
+        jest.advanceTimersByTime(OVERLAY_DISMISS_SETTLE_MS);
+      });
+      expect(screen.getByText("You Win!")).toBeTruthy();
+      expect(announce).toHaveBeenCalledTimes(1);
+      await act(async () => sheet.unmount());
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("holds the announcement for a screen pushed from the menu before the card showed", async () => {
+    // The run ends with the ⋯ menu open and the player picks Stats: the game
+    // blurs before the settle delay ends, so the card never shows until they
+    // come back, and only then is it announced.
+    jest.useFakeTimers();
+    try {
+      const listeners: Record<string, (() => void)[]> = {};
+      let focused = true;
+      const navigation = {
+        isFocused: () => focused,
+        addListener: (event: string, cb: () => void) => {
+          (listeners[event] ??= []).push(cb);
+          return () => undefined;
+        },
+      };
+      const emit = async (event: "focus" | "blur") => {
+        focused = event === "focus";
+        await act(async () => listeners[event]?.forEach((cb) => cb()));
+      };
+      const sheet = await overlay(true);
+      await render(
+        <ThemeProvider>
+          <NavigationContext.Provider value={navigation as never}>
+            <GameResultModal visible outcome="win" onHome={jest.fn()} />
+          </NavigationContext.Provider>
+        </ThemeProvider>
+      );
+      await act(async () => sheet.rerender({ open: false }));
+      await emit("blur");
+      await act(async () => {
+        jest.advanceTimersByTime(OVERLAY_DISMISS_SETTLE_MS);
+      });
+      expect(screen.queryByText("You Win!")).toBeNull();
+      expect(announce).not.toHaveBeenCalled();
+
+      await emit("focus");
+      expect(screen.getByText("You Win!")).toBeTruthy();
+      expect(announce).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("shows the card at once when no overlay was ever open", async () => {
+    await renderCard();
+    expect(screen.getByText("You Win!")).toBeTruthy();
   });
 });

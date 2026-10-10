@@ -4,6 +4,7 @@ import * as Haptics from "expo-haptics";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import { useIsScreenFocused } from "../../hooks/useIsScreenFocused";
+import { useAppOverlayOpen } from "../../hooks/appOverlay";
 import { ResultCard, useResultTitle } from "./ResultCard";
 import {
   formatValue,
@@ -25,6 +26,37 @@ import {
 
 /** Safety net so a celebration that never calls `done` can't hide the card. */
 export const CELEBRATION_MAX_MS = 4000;
+
+/**
+ * How long the card waits after an app overlay closes before it presents
+ * (#2944). On iOS a view controller still animating a Modal's dismissal
+ * (the feedback sheet slides out) can't present another one, so presenting
+ * in the same tick would fail silently, as the overlay did itself.
+ */
+export const OVERLAY_DISMISS_SETTLE_MS = 500;
+
+/**
+ * Whether no app overlay (the header's ⋯ menu, the feedback sheet, #2944) is
+ * open, and the last one has had `OVERLAY_DISMISS_SETTLE_MS` to finish
+ * closing. Turns false in the same render an overlay opens.
+ */
+function useAppOverlayClear(): boolean {
+  const overlayOpen = useAppOverlayOpen();
+  // `settling` turns on in the render where the overlay closes (derived state,
+  // set during render), and off once the settle delay has passed.
+  const [prevOpen, setPrevOpen] = useState(overlayOpen);
+  const [settling, setSettling] = useState(false);
+  if (prevOpen !== overlayOpen) {
+    setPrevOpen(overlayOpen);
+    setSettling(!overlayOpen);
+  }
+  useEffect(() => {
+    if (!settling) return;
+    const timer = setTimeout(() => setSettling(false), OVERLAY_DISMISS_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [settling]);
+  return !overlayOpen && !settling;
+}
 
 /** Best-effort: a haptic that fails (sync or async) must never break the card. */
 function fireHaptic(outcome: GameOutcome) {
@@ -48,12 +80,20 @@ function fireHaptic(outcome: GameOutcome) {
  */
 export function useResultFeedback({
   active,
+  presented = true,
   outcome,
   winnerName,
   subtitle,
   hero,
 }: {
+  /** The result is up; turning false re-arms the feedback for the next one. */
   active: boolean;
+  /**
+   * Whether the card is on screen right now (default true). Feedback waits
+   * for it, and hiding the card again doesn't re-arm it, so a card the player
+   * comes back to isn't announced twice.
+   */
+  presented?: boolean;
   outcome: GameOutcome;
   winnerName?: string;
   subtitle?: string;
@@ -78,14 +118,14 @@ export function useResultFeedback({
       announcedRef.current = false;
       return;
     }
-    if (announcedRef.current) return;
+    if (!presented || announcedRef.current) return;
     announcedRef.current = true;
     fireHaptic(outcome);
     const detailText = [subtitle, heroA11y].filter(Boolean).join(". ");
     AccessibilityInfo.announceForAccessibility(
       detailText ? t("a11y.announce", { title, detail: detailText }) : title
     );
-  }, [active, outcome, subtitle, heroA11y, title, t]);
+  }, [active, presented, outcome, subtitle, heroA11y, title, t]);
 }
 
 /** The one end-of-game result card every game uses, in a modal. */
@@ -119,25 +159,35 @@ export default function GameResultModal({
     return () => clearTimeout(timer);
   }, [phase]);
 
-  // Announce + haptic once per appearance of the card.
+  // An app overlay (#2944) is a native Modal too: on iOS the card can't
+  // present while one is up, and a `visible` that stayed true would never
+  // present it afterwards. So it waits, and appears once the overlay has
+  // closed.
+  const overlayClear = useAppOverlayClear();
+
+  // A native Modal is its own window: hide it while a screen pushed from the
+  // card (the leaderboard, #2633) covers the game, and show it again, without
+  // a second announcement, when the player comes back.
+  const screenFocused = useIsScreenFocused();
+  const cardShown = phase === "card" && screenFocused && overlayClear;
+
+  // Announce + haptic once per result, when the card is first actually shown:
+  // not while an overlay holds it back or another screen covers the game, and
+  // not again when it comes back after one of those.
   useResultFeedback({
     active: phase === "card",
+    presented: cardShown,
     outcome: card.outcome,
     winnerName: card.winnerName,
     subtitle: card.subtitle,
     hero: card.hero,
   });
 
-  // A native Modal is its own window: hide it while a screen pushed from the
-  // card (the leaderboard, #2633) covers the game, and show it again, without
-  // a second announcement, when the player comes back.
-  const screenFocused = useIsScreenFocused();
-
   return (
     <>
       {phase === "celebrating" && celebration?.(() => setPhase("card"))}
       <Modal
-        visible={phase === "card" && screenFocused}
+        visible={cardShown}
         transparent
         animationType="fade"
         statusBarTranslucent

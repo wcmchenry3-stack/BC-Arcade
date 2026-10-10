@@ -503,7 +503,9 @@ function StarSwarmGame() {
   }, [handlePause, savePausedRun]);
 
   // Leaving the screen mid-run (the ⋯ menu's Leaderboard, #2633) pauses it the same way:
-  // the screen stays mounted under the pushed one, so the run would go on unseen.
+  // the screen stays mounted under the pushed one, so the run would go on unseen. So does
+  // opening the ⋯ menu or the feedback sheet over it (an app overlay, #2944): the player
+  // comes back to the pause overlay and resumes from there.
   // Both act on every leave event (`onLeave`), not once per absence (`onPause`): a run resumed
   // while the player still counts as away (the app inactive, say) is paused by the next one.
   usePauseWhileAway(navigation, noop, noop, { onLeave: pauseLiveRun });
