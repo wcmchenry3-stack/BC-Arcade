@@ -3,24 +3,30 @@
  * every matchup, the simulator-only bots play legal cards, the moon-shooter
  * shoots, and the sanity floor passes and fails as documented.
  */
-import { getValidPlays, setRng } from "../../../src/game/hearts/engine";
-import type { Card } from "../../../src/game/hearts/types";
+import { dealGame, getValidPlays, setRng } from "../../../src/game/hearts/engine";
+import type { Card, HeartsState } from "../../../src/game/hearts/types";
 import { moonShooterPolicy, randomLegalPolicy } from "../bots";
 import {
   FIRE_FLAG_SHARE,
   PASS_PRINCIPLES,
+  MAX_GAME_REPORT_GAMES,
   PLAY_PRINCIPLES,
   REPORT_METRICS,
   SANITY_FLOOR_MARGIN,
+  emptyBlock,
   evaluateSanityFloor,
+  exitCodeFor,
   fireFlags,
   formatGameReportMarkdown,
+  gameHooks,
   parseGamesArg,
   parseSeedArg,
   runGameReport,
+  wilson,
+  type Probe,
   type GameReport,
   type MatchupReport,
-  type MetricResult,
+  type PointsAdvantage,
 } from "../gameReport";
 import { fieldMatchup, personaPolicy, playGame, runBlocks, type Policies } from "../harness";
 
@@ -146,22 +152,192 @@ describe("bots", () => {
   });
 });
 
+describe("metric logic on hand-built final hands", () => {
+  const c = (suit: Card["suit"], rank: Card["rank"]): Card => ({ suit, rank });
+  const hearts = (...ranks: Card["rank"][]) => ranks.map((r) => c("hearts", r));
+  const label = (subjects: number[]): Policies => {
+    const mk = (seat: number) => ({
+      ...personaPolicy("conservative"),
+      label: subjects.includes(seat) ? "conservative" : "other",
+    });
+    return [mk(0), mk(1), mk(2), mk(3)];
+  };
+  const probe = (principle: string | null): Probe => ({
+    sink: null,
+    last: { principle },
+    policy: personaPolicy("conservative"),
+  });
+  /** A mid-hand state where `seat` leads its only card and seat 3 alone holds 15 points. */
+  const threatState = (seat: number): HeartsState => ({
+    ...dealGame("schemer"),
+    phase: "playing",
+    tricksPlayedInHand: 8,
+    currentTrick: [],
+    currentLeaderIndex: seat,
+    currentPlayerIndex: seat,
+    heartsBroken: true,
+    playerHands: [0, 1, 2, 3].map((i) => (i === seat ? [c("clubs", 7)] : [])),
+    handScores: [0, 0, 0, 15],
+  });
+  /** The hand's last trick: seat 0 leads, seat 3 plays last. */
+  const finalState = (
+    trick: Card[],
+    wonCards: Card[][],
+    handScores: number[]
+  ): { state: HeartsState; last: Card } => ({
+    state: {
+      ...dealGame("schemer"),
+      phase: "playing",
+      tricksPlayedInHand: 12,
+      currentLeaderIndex: 0,
+      currentPlayerIndex: 3,
+      heartsBroken: true,
+      currentTrick: trick.slice(0, 3).map((card, i) => ({ card, playerIndex: i })),
+      playerHands: [[], [], [], [trick[3]!]],
+      wonCards,
+      handScores,
+    },
+    last: trick[3]!,
+  });
+
+  it("moon by a non-conservative seat: adjusted points, moons allowed (not its own), Q♠, P7 and threat", () => {
+    const data = emptyBlock();
+    const hooks = gameHooks(label([0, 1, 2]), data, probe("P7-MOON-GUARD"), false, { count: 0 });
+    hooks.onPlay!(threatState(1), 1, c("clubs", 7));
+    // Seat 3 holds Q♠ and hearts A, 6-K; the last trick (2, 3, 4, 5 of hearts) is its too.
+    const { state, last } = finalState(
+      hearts(2, 3, 4, 5),
+      [[], [], [], [...hearts(1, 6, 7, 8, 9, 10, 11, 12, 13), c("spades", 12)]],
+      [0, 0, 0, 22]
+    );
+    hooks.onPlay!(state, 3, last);
+
+    expect(data.subject).toMatchObject({
+      hands: 3,
+      handPoints: 78,
+      zeroHands: 0,
+      qsTaken: 0,
+      moonShots: 0,
+      moonsAllowed: 3,
+      p7Hands: 1,
+    });
+    expect(data.opponent).toMatchObject({
+      hands: 1,
+      handPoints: 0,
+      zeroHands: 1,
+      qsTaken: 1,
+      moonShots: 1,
+      moonsAllowed: 0,
+      p7Hands: 0,
+    });
+    expect(data).toMatchObject({
+      opponentMoonHands: 1,
+      opponentMoonThreatSeen: 1,
+      opponentMoonP7Fired: 1,
+      threatHands: 1,
+      threatStopped: 0,
+    });
+  });
+
+  it("a recognized threat with no moon: raw points, Q♠ owner, stopped, no moon allowed", () => {
+    const data = emptyBlock();
+    const hooks = gameHooks(label([0, 1, 2]), data, probe("P1-DUCK"), false, { count: 0 });
+    hooks.onPlay!(threatState(1), 1, c("clubs", 7));
+    // Seat 0 leads 7♣ and wins it with three hearts on it; seat 1 holds Q♠.
+    const { state, last } = finalState(
+      [c("clubs", 7), ...hearts(2, 3), c("hearts", 4)],
+      [[], [c("spades", 12)], [], hearts(1, 6, 7, 8, 9, 10, 11, 12, 13)],
+      [0, 13, 0, 9]
+    );
+    hooks.onPlay!(state, 3, last);
+
+    expect(data.subject).toMatchObject({
+      hands: 3,
+      handPoints: 3 + 13 + 0,
+      zeroHands: 1,
+      qsTaken: 1,
+      moonShots: 0,
+      moonsAllowed: 0,
+      p7Hands: 0,
+    });
+    expect(data.opponent).toMatchObject({ hands: 1, handPoints: 9, qsTaken: 0, moonsAllowed: 0 });
+    expect(data).toMatchObject({
+      opponentMoonHands: 0,
+      opponentMoonP7Fired: 0,
+      threatHands: 1,
+      threatStopped: 1,
+    });
+  });
+
+  it("credits P7 to the seat that played it", () => {
+    const data = emptyBlock();
+    // Only seat 1 is conservative; every other seat is an opponent.
+    const hooks = gameHooks(label([1]), data, probe("P7-MOON-GUARD"), false, { count: 0 });
+    hooks.onPlay!(threatState(1), 1, c("clubs", 7));
+    const { state, last } = finalState(
+      [c("clubs", 7), ...hearts(2, 3), c("hearts", 4)],
+      [[], [], [], []],
+      [0, 0, 0, 0]
+    );
+    hooks.onPlay!(state, 3, last);
+    expect(data.subject).toMatchObject({ hands: 1, p7Hands: 1 });
+    expect(data.opponent).toMatchObject({ hands: 3, p7Hands: 0 });
+  });
+
+  it("per group, summed hand points equal summed final scores, and hands match", () => {
+    const r = runGameReport({ games: 8, seed: 21 });
+    for (const m of r.matchups) {
+      for (const g of [m.subject, m.opponent]) {
+        expect(g["points_per_hand"]!.num).toBe(g["points_per_game"]!.num);
+        // The mirror has no opponents.
+        if (g === m.subject || m.id !== "conservative-mirror") {
+          expect(g["points_per_hand"]!.den).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  it("wilson intervals stay informative at zero", () => {
+    const z = wilson(0, 40);
+    expect(z.rate).toBe(0);
+    expect(z.low).toBe(0);
+    expect(z.high).toBeGreaterThan(0.05);
+    expect(z.high).toBeLessThan(0.15);
+    const half = wilson(20, 40);
+    expect(half.low).toBeLessThan(0.5);
+    expect(half.high).toBeGreaterThan(0.5);
+    expect(wilson(0, 0).high).toBe(1);
+  });
+
+  it("the report carries both operands of the sanity floor", () => {
+    const a = runGameReport({ games: 6, seed: 5 }).matchups[0]!.pointsPerHandAdvantage!;
+    expect(a.conservative.den).toBeGreaterThan(0);
+    expect(a.opponent.den).toBeGreaterThan(0);
+    // Totals are over blocks; the paired mean is close to the difference of the two rates.
+    const diff = a.opponent.num / a.opponent.den - a.conservative.num / a.conservative.den;
+    expect(a.estimate).toBeCloseTo(diff, 6);
+  });
+});
+
 describe("sanity floor", () => {
-  const mr = (estimate: number): MetricResult => ({
+  /** An advantage whose CI lower bound is `low` (the value the floor compares). */
+  const mr = (low: number, estimate = low + 0.1): PointsAdvantage => ({
+    conservative: { num: 1, den: 1 },
+    opponent: { num: 1, den: 1 },
     estimate,
-    ciLow: estimate - 0.1,
+    ciLow: low,
     ciHigh: estimate + 0.1,
-    num: 1,
-    den: 1,
+    blocks: 10,
   });
   const stub = (id: string, extra: Partial<MatchupReport>): MatchupReport =>
     ({ id, ...extra }) as unknown as MatchupReport;
   const make = (
     margin: number | null,
-    violations: number | null
+    violations: number | null,
+    estimate?: number
   ): Pick<GameReport, "matchups"> => ({
     matchups: [
-      stub("random-legal", margin === null ? {} : { pointsPerHandAdvantage: mr(margin) }),
+      stub("random-legal", margin === null ? {} : { pointsPerHandAdvantage: mr(margin, estimate) }),
       stub(
         "moon-shooter",
         violations === null ? {} : { principleCheck: { decisions: 10, violations, examples: [] } }
@@ -180,6 +356,17 @@ describe("sanity floor", () => {
     const f = evaluateSanityFloor(make(SANITY_FLOOR_MARGIN - 0.01, 0));
     expect(f.marginPass).toBe(false);
     expect(f.pass).toBe(false);
+  });
+
+  it("compares the CI lower bound, not the point estimate", () => {
+    const f = evaluateSanityFloor(make(SANITY_FLOOR_MARGIN - 0.5, 0, SANITY_FLOOR_MARGIN + 2));
+    expect(f.marginPass).toBe(false);
+  });
+
+  it("exits 1 when the floor fails and 0 when it holds (the CLI's exit code)", () => {
+    expect(exitCodeFor({ sanityFloor: evaluateSanityFloor(make(10, 0)) })).toBe(0);
+    expect(exitCodeFor({ sanityFloor: evaluateSanityFloor(make(0, 0)) })).toBe(1);
+    expect(exitCodeFor({ sanityFloor: evaluateSanityFloor(make(10, 2)) })).toBe(1);
   });
 
   it("fails on any moon-shooter violation, however large the margin", () => {
@@ -229,7 +416,18 @@ describe("arguments", () => {
   it("parses --games strictly", () => {
     expect(parseGamesArg(undefined, false)).toBeGreaterThan(0);
     expect(parseGamesArg("40", true)).toBe(40);
-    for (const bad of [undefined, "", "0", "-3", "abc", "5abc", "1e3", "2.5"]) {
+    expect(parseGamesArg(String(MAX_GAME_REPORT_GAMES), true)).toBe(MAX_GAME_REPORT_GAMES);
+    for (const bad of [
+      undefined,
+      "",
+      "0",
+      "-3",
+      "abc",
+      "5abc",
+      "1e3",
+      "2.5",
+      String(MAX_GAME_REPORT_GAMES + 1),
+    ]) {
       expect(() => parseGamesArg(bad, true)).toThrow(RangeError);
     }
   });

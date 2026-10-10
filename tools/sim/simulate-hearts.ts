@@ -75,6 +75,7 @@ import {
 import {
   DEFAULT_GAME_REPORT_GAMES,
   SANITY_FLOOR_MARGIN,
+  exitCodeFor,
   formatGameReportMarkdown,
   parseGamesArg,
   parseSeedArg,
@@ -376,7 +377,7 @@ if (argv.includes("--game-report")) {
   const mdPath = argValue(argv, "--md");
   if (mdPath) writeFileSync(mdPath, md);
   if (!report.sanityFloor.pass) console.log("Sanity floor FAILED.");
-  process.exit(report.sanityFloor.pass ? 0 : 1);
+  process.exit(exitCodeFor(report));
 }
 
 if (argv.includes("--update-baseline")) {

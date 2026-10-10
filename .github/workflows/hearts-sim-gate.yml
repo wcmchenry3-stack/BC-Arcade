@@ -100,7 +100,7 @@ jobs:
     name: Whole-game report (conservative)
     runs-on: ubuntu-latest
     # 2,000 games per matchup take about 2 min locally.
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-frontend

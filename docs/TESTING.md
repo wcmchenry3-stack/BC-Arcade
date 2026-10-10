@@ -775,16 +775,27 @@ are reported too). Each is a ratio with its logged numerator and denominator
 in the JSON, and a CI over blocks: `points_per_hand` (moon-adjusted),
 `points_per_game` (final score; a game ends when a seat reaches 100),
 `win_rate` (lowest score; ties split), `qs_taken`, `moon_allowed` (hands where
-another seat shot the moon), `moon_allowed_when_p7` / `_no_p7` (the same,
-split by whether the seat decided a play of that hand with P7, the moon
-guard), `p7_hands`, `zero_hands` and `moon_shot`. It also prints how often
+another seat shot the moon; a seat's own moon is not counted), `p7_hands`
+(hands where the seat decided a play with P7, the moon guard), `zero_hands`
+and `moon_shot`. The **moon guard table** looks at the whole table, over
+hands where a non-conservative seat X shot the moon: the share where any
+conservative seat saw the threat (X alone held 10 or more points, P7's
+condition) during the hand, and the share where any conservative seat's P7
+decided a play; and over hands where a threat was seen, the share where no
+moon was shot (the moon was stopped). These proportions carry Wilson 95%
+intervals, which stay informative at 0 and small counts. (A seat whose own
+P7 fired took a point, so the moon cannot follow for that seat; a per-seat
+split would be 0 by construction.) The JSON also holds `pointsPerHandAdvantage`
+with both operands (`conservative` and `opponent` `{num, den}`) and the paired
+difference with its CI. It also prints how often
 each principle decided a conservative play or pass card (flagging any that
 never fires, or decides more than 60% of the plays), and how many positions
 reach the moon-complete branches of §2.4 (follow step 1, discard step 1).
 
 **Sanity floor (the only pass/fail).** (1) Conservative's points per hand
 must be at least `SANITY_FLOOR_MARGIN` = **4.0** below random-legal's, on the
-same deals (paired by block; the point estimate must reach the margin).
+same deals (paired by block; the **lower bound of the 95% CI** of the
+difference must reach the margin, so noise cannot pass it).
 Observed at the default size: 6.65 [6.58, 6.71] (conservative 1.79, random
 8.44 points per hand), so the floor sits at about 60% of the observed margin;
 a smoke run of 60 games observed about 6.9. (2) The conservative seats in the
@@ -794,10 +805,16 @@ clearly better than chance: look at the principle fire table and the
 `random-legal` row first. A failure of (2) prints the first positions as
 rulebook YAML; fix it as under "Reading a failure" above.
 
-**Reading the numbers.** Moon-shooter hands where the shooter wins the moon
-are about 20% against the conservative CPU: P7 only reacts once a threat has
-10 points (`MOON_THRESHOLD`), which is too late to stop a determined shooter.
-That is a finding to weigh, not a bug in the report.
+**Reading the numbers.** Against the moon-shooter bot, one hand in five is a
+moon (2,724 moons in the default run). The conservative seats recognized the
+threat in every one of them (100%, Wilson [99.9%, 100%]) but P7 decided no
+play in any (0 of 2,724, upper bound 0.1%); of the hands where a threat was
+seen, 75.7% ended without a moon. P7 names a card only in narrow spots (a
+point trick X is winning that the CPU can take for certain, or a Q♠ drop that
+would complete the moon). That is a finding to weigh (#3196), not a bug in
+the report.
+
+`--games` is capped at 20,000 (exit 2 above it).
 
 **CI.** The `game-report` job of `hearts-sim-gate.yml` plays 2,000 games per
 matchup nightly and on manual runs (the `games` input overrides), and 60 games

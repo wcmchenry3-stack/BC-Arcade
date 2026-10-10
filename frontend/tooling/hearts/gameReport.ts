@@ -22,8 +22,12 @@
  * - win_rate: games won; a tie for the lowest score splits the win.
  * - qs_taken: hands in which the seat took Q♠.
  * - moon_allowed: hands in which another seat shot the moon.
- * - moon_allowed_when_p7 / _no_p7: the same, split by whether the seat decided
- *   at least one play of that hand with P7 (moon guard).
+ * Moon guard (table level, hands where a non-conservative seat X shot the moon):
+ * how often any conservative seat recognized the threat (P7's condition: X
+ * alone had taken points, 10 or more) during the hand, how often any
+ * conservative seat's P7 decided a play, and, over hands where the threat was
+ * recognized, how often the moon was stopped. Proportions carry Wilson 95%
+ * intervals, which stay informative at 0 and small counts.
  * - p7_hands: hands in which the seat decided at least one play with P7.
  * - zero_hands: hands in which the seat took 0 points (a shot moon counts for
  *   the shooter).
@@ -35,6 +39,7 @@ import { explainCardToPlay, explainCardsToPass } from "../../src/game/hearts/ai"
 import {
   isSpadeHonour,
   moonComplete,
+  moonThreat,
   viewOf,
   winning,
   xWinsOrCanOvertake,
@@ -97,11 +102,16 @@ export const PLAY_PRINCIPLES: readonly PrincipleId[] = [
 ];
 export const PASS_PRINCIPLES: readonly string[] = ["P4-DANGER", "P5-QUEEN", "P6-DISCARD"];
 
-/** Strict positive decimal integer; anything else throws (like `parseHandsArg`). */
+/** Largest `--games` accepted (about 20 minutes of simulation). */
+export const MAX_GAME_REPORT_GAMES = 20_000;
+
+/** Strict positive decimal integer up to `MAX_GAME_REPORT_GAMES`; anything else throws (like `parseHandsArg`). */
 export function parseGamesArg(raw: string | undefined, present: boolean): number {
   if (!present) return DEFAULT_GAME_REPORT_GAMES;
-  if (raw === undefined || !/^[1-9][0-9]*$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
-    throw new RangeError(`--games must be a positive integer (got ${JSON.stringify(raw ?? "")})`);
+  if (raw === undefined || !/^[1-9][0-9]*$/.test(raw) || Number(raw) > MAX_GAME_REPORT_GAMES) {
+    throw new RangeError(
+      `--games must be a positive integer up to ${MAX_GAME_REPORT_GAMES} (got ${JSON.stringify(raw ?? "")})`
+    );
   }
   return Number(raw);
 }
@@ -132,9 +142,6 @@ interface Tally {
   moonShots: number;
   moonsAllowed: number;
   p7Hands: number;
-  p7MoonsAllowed: number;
-  noP7Hands: number;
-  noP7MoonsAllowed: number;
 }
 
 const TALLY_KEYS: readonly (keyof Tally)[] = [
@@ -148,9 +155,6 @@ const TALLY_KEYS: readonly (keyof Tally)[] = [
   "moonShots",
   "moonsAllowed",
   "p7Hands",
-  "p7MoonsAllowed",
-  "noP7Hands",
-  "noP7MoonsAllowed",
 ];
 
 const emptyTally = (): Tally =>
@@ -202,20 +206,6 @@ export const REPORT_METRICS: readonly MetricSpec[] = [
     percent: true,
   },
   {
-    id: "moon_allowed_when_p7",
-    numerator: "p7MoonsAllowed",
-    denominator: "p7Hands",
-    description: "moons allowed | hands where P7 decided a play",
-    percent: true,
-  },
-  {
-    id: "moon_allowed_when_no_p7",
-    numerator: "noP7MoonsAllowed",
-    denominator: "noP7Hands",
-    description: "moons allowed | hands where P7 decided no play",
-    percent: true,
-  },
-  {
     id: "p7_hands",
     numerator: "p7Hands",
     denominator: "hands",
@@ -254,7 +244,7 @@ export interface ReportMatchup {
 export const LEGACY_PERSONAS = ["cautious", "schemer", "daring"] as const;
 
 /** A conservative policy that also reports the principle behind each decision. */
-interface Probe {
+export interface Probe {
   /** Receives the sink for the block being played. */
   sink: BlockData | null;
   /** The last play's explanation (read by the hooks right after the policy runs). */
@@ -326,7 +316,7 @@ export function buildMatchups(probe: Probe = makeProbe()): ReportMatchup[] {
 // Playing
 // ---------------------------------------------------------------------------
 
-interface BlockData {
+export interface BlockData {
   subject: Tally;
   opponent: Tally;
   playFires: Record<string, number>;
@@ -345,13 +335,23 @@ interface BlockData {
   moonCompleteDiscard: number;
   /** Of those, the plays P7 decided. */
   moonCompleteDecidedByP7: number;
+  /** Hands a non-conservative seat shot the moon. */
+  opponentMoonHands: number;
+  /** Of those, hands a conservative seat saw the threat (P7's condition). */
+  opponentMoonThreatSeen: number;
+  /** Of those, hands a conservative seat's P7 decided a play. */
+  opponentMoonP7Fired: number;
+  /** Hands a conservative seat saw a non-conservative moon threat. */
+  threatHands: number;
+  /** Of those, hands no moon was shot. */
+  threatStopped: number;
   /** Decisions the checker graded (passes + plays) and its violations. */
   checked: number;
   violations: number;
   violationYaml: string[];
 }
 
-const emptyBlock = (): BlockData => ({
+export const emptyBlock = (): BlockData => ({
   subject: emptyTally(),
   opponent: emptyTally(),
   playFires: {},
@@ -361,6 +361,11 @@ const emptyBlock = (): BlockData => ({
   moonCompleteFollow: 0,
   moonCompleteDiscard: 0,
   moonCompleteDecidedByP7: 0,
+  opponentMoonHands: 0,
+  opponentMoonThreatSeen: 0,
+  opponentMoonP7Fired: 0,
+  threatHands: 0,
+  threatStopped: 0,
   checked: 0,
   violations: 0,
   violationYaml: [],
@@ -371,7 +376,7 @@ const bump = (m: Record<string, number>, k: string) => {
 };
 
 /** Hooks for one game: per-hand tallies for each seat, and the optional principle check. */
-function gameHooks(
+export function gameHooks(
   policies: Policies,
   data: BlockData,
   probe: Probe,
@@ -380,6 +385,7 @@ function gameHooks(
 ): PlayOptions {
   let played: CompletedTrick[] = [];
   let p7: boolean[] = [false, false, false, false];
+  let threatSeen = false;
   const isSubject = (seat: number) => policies[seat]!.label === SUBJECT;
 
   const recordViolation = (v: Violation | null) => {
@@ -410,9 +416,12 @@ function gameHooks(
       if (state.tricksPlayedInHand === 0 && trick.length === 0) {
         played = [];
         p7 = [false, false, false, false];
+        threatSeen = false;
       }
       if (isSubject(seat)) {
         const principle = probe.last?.principle ?? null;
+        const threat = moonThreat(viewOf(state, seat));
+        if (threat !== null && !isSubject(threat)) threatSeen = true;
         const legal = getValidPlays(state, seat).length;
         if (legal > 1) {
           data.judgedPlays++;
@@ -469,13 +478,17 @@ function gameHooks(
       if ((end.wonCards[i] ?? []).some(isQueenOfSpades)) t.qsTaken++;
       if (shooter === i) t.moonShots++;
       if (allowed) t.moonsAllowed++;
-      if (p7[i]) {
-        t.p7Hands++;
-        if (allowed) t.p7MoonsAllowed++;
-      } else {
-        t.noP7Hands++;
-        if (allowed) t.noP7MoonsAllowed++;
-      }
+      if (p7[i]) t.p7Hands++;
+    }
+    const opponentMoon = shooter !== null && !isSubject(shooter);
+    if (opponentMoon) {
+      data.opponentMoonHands++;
+      if (threatSeen) data.opponentMoonThreatSeen++;
+      if (p7.some(Boolean)) data.opponentMoonP7Fired++;
+    }
+    if (threatSeen) {
+      data.threatHands++;
+      if (!opponentMoon) data.threatStopped++;
     }
   }
 }
@@ -554,8 +567,54 @@ export interface MatchupReport {
     readonly violations: number;
     readonly examples: readonly string[];
   };
+  /** Moon guard at the table, over hands a non-conservative seat shot (or threatened) the moon. */
+  readonly moonGuard: MoonGuard;
   /** Points per hand: opponents minus conservative, paired by block (random-legal only). */
-  readonly pointsPerHandAdvantage?: MetricResult;
+  readonly pointsPerHandAdvantage?: PointsAdvantage;
+}
+
+/** A proportion k / n with a Wilson 95% interval (informative at 0 and small counts). */
+export interface Proportion {
+  readonly k: number;
+  readonly n: number;
+  readonly rate: number;
+  readonly low: number;
+  readonly high: number;
+}
+
+/** Wilson score interval for k successes in n trials (z = 1.96). n = 0 gives rate 0, [0, 1]. */
+export function wilson(k: number, n: number): Proportion {
+  if (n === 0) return { k, n, rate: 0, low: 0, high: 1 };
+  const z = 1.96;
+  const p = k / n;
+  const d = 1 + (z * z) / n;
+  const centre = (p + (z * z) / (2 * n)) / d;
+  const half = (z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n))) / d;
+  return { k, n, rate: p, low: Math.max(0, centre - half), high: Math.min(1, centre + half) };
+}
+
+export interface MoonGuard {
+  /** Hands a non-conservative seat shot the moon. */
+  readonly opponentMoons: number;
+  /** Of those: a conservative seat saw the threat (X alone held 10+ points) at some play. */
+  readonly threatRecognized: Proportion;
+  /** Of those: a conservative seat's P7 decided a play. */
+  readonly p7Fired: Proportion;
+  /** Hands in which a conservative seat saw a non-conservative moon threat. */
+  readonly threatHands: number;
+  /** Of those: no moon was shot. */
+  readonly stopped: Proportion;
+}
+
+/** The sanity floor's operands: both sides' totals, and the paired difference of their rates. */
+export interface PointsAdvantage {
+  readonly conservative: { readonly num: number; readonly den: number };
+  readonly opponent: { readonly num: number; readonly den: number };
+  /** Opponent minus conservative points per hand, paired by block, with its 95% CI. */
+  readonly estimate: number;
+  readonly ciLow: number;
+  readonly ciHigh: number;
+  readonly blocks: number;
 }
 
 export interface FireFlag {
@@ -570,7 +629,7 @@ export interface SanityFloor {
   /** Required margin: random-legal's minus conservative's points per hand. */
   readonly margin: number;
   /** Observed margin (paired by block), with its CI. */
-  readonly observed: MetricResult | null;
+  readonly observed: PointsAdvantage | null;
   readonly marginPass: boolean;
   /** Principle violations by conservative seats in the moon-shooter matchup. */
   readonly moonShooterViolations: number | null;
@@ -662,6 +721,18 @@ export function runGameReport(options: { games?: number; seed?: number } = {}): 
 
     const subject = metricsOf(blocks, "subject");
     const opponent = metricsOf(blocks, "opponent");
+    const moonGuard: MoonGuard = (() => {
+      const total = (k: keyof BlockData) => blocks.reduce((s, b) => s + (b[k] as number), 0);
+      const moons = total("opponentMoonHands");
+      const threats = total("threatHands");
+      return {
+        opponentMoons: moons,
+        threatRecognized: wilson(total("opponentMoonThreatSeen"), moons),
+        p7Fired: wilson(total("opponentMoonP7Fired"), moons),
+        threatHands: threats,
+        stopped: wilson(total("threatStopped"), threats),
+      };
+    })();
     const ppH = {
       numerator: "handPoints",
       denominator: "hands",
@@ -688,6 +759,7 @@ export function runGameReport(options: { games?: number; seed?: number } = {}): 
       judgedPlays: judged,
       forcedPlays: playCounts["none"] ?? 0,
       passFires: fireRows(passCounts, PASS_PRINCIPLES, passCards),
+      moonGuard,
       moonComplete: {
         positions: sum("moonCompletePositions"),
         follow: sum("moonCompleteFollow"),
@@ -712,13 +784,16 @@ export function runGameReport(options: { games?: number; seed?: number } = {}): 
   return { ...report, sanityFloor: evaluateSanityFloor(report) };
 }
 
-function advantageResult(e: Estimate, blocks: readonly BlockData[]): MetricResult {
+function advantageResult(e: Estimate, blocks: readonly BlockData[]): PointsAdvantage {
+  const total = (g: "subject" | "opponent", k: "handPoints" | "hands") =>
+    blocks.reduce((s, b) => s + b[g][k], 0);
   return {
+    conservative: { num: total("subject", "handPoints"), den: total("subject", "hands") },
+    opponent: { num: total("opponent", "handPoints"), den: total("opponent", "hands") },
     estimate: e.mean,
     ciLow: e.ciLow,
     ciHigh: e.ciHigh,
-    num: blocks.reduce((s, b) => s + b.opponent.handPoints, 0),
-    den: blocks.reduce((s, b) => s + b.opponent.hands, 0),
+    blocks: e.blocks,
   };
 }
 
@@ -771,9 +846,15 @@ export function fireFlags(
   return flags;
 }
 
+/** Process exit code of `--game-report`: 0 when the sanity floor holds, 1 when not. */
+export function exitCodeFor(report: Pick<GameReport, "sanityFloor">): 0 | 1 {
+  return report.sanityFloor.pass ? 0 : 1;
+}
+
 /**
  * The report's only pass/fail: conservative beats random-legal on points per
- * hand by at least `margin` (observed, paired by block), and the conservative
+ * hand by at least `margin` (the lower end of the 95% CI of the paired
+ * difference must reach it), and the conservative
  * seats of the moon-shooter matchup committed no principle violation. A
  * missing matchup fails.
  */
@@ -785,7 +866,7 @@ export function evaluateSanityFloor(
   const shooter = report.matchups.find((m) => m.id === "moon-shooter");
   const observed = random?.pointsPerHandAdvantage ?? null;
   const violations = shooter?.principleCheck?.violations ?? null;
-  const marginPass = observed !== null && observed.estimate >= margin;
+  const marginPass = observed !== null && observed.ciLow >= margin;
   const violationsPass = violations === 0;
   return {
     metric: "points_per_hand",
@@ -823,7 +904,7 @@ export function formatGameReportMarkdown(r: GameReport): string {
   const s = r.sanityFloor;
   out.push("## Sanity floor", "");
   out.push(
-    `- ${s.marginPass ? "PASS" : "FAIL"}: random-legal minus conservative points per hand >= ${s.margin.toFixed(2)}; observed ${s.observed ? fmt(s.observed, false) : "n/a"}`,
+    `- ${s.marginPass ? "PASS" : "FAIL"}: random-legal minus conservative points per hand, CI lower bound >= ${s.margin.toFixed(2)}; observed ${s.observed ? `${s.observed.estimate.toFixed(2)} [${s.observed.ciLow.toFixed(2)}, ${s.observed.ciHigh.toFixed(2)}] (the CI lower bound must reach the margin)` : "n/a"}`,
     `- ${s.violationsPass ? "PASS" : "FAIL"}: principle violations by conservative seats vs moon-shooter = 0; observed ${s.moonShooterViolations ?? "n/a"}`,
     ""
   );
@@ -883,6 +964,23 @@ export function formatGameReportMarkdown(r: GameReport): string {
   if (r.flags.length === 0) out.push("- none");
   for (const f of r.flags) out.push(`- ${f.where} ${f.principle}: ${f.kind} (${f.detail})`);
   out.push("", "## Moon guard (P7)", "");
+  const prop = (p: Proportion) =>
+    p.n === 0
+      ? "n/a"
+      : `${(p.rate * 100).toFixed(1)}% (${p.k}/${p.n}) [${(p.low * 100).toFixed(1)}%, ${(p.high * 100).toFixed(1)}%]`;
+  out.push(
+    "Hands where a non-conservative seat X shot the moon: how often a conservative seat saw the threat (X alone held 10+ points) and how often a conservative P7 decided a play. Hands where a threat was seen: how often no moon was shot. Wilson 95% intervals.",
+    "",
+    "| Matchup | moons by others | threat recognized | P7 fired | hands with threat | moon stopped |",
+    "|---|---|---|---|---|---|"
+  );
+  for (const m of r.matchups) {
+    const g = m.moonGuard;
+    out.push(
+      `| ${m.id} | ${g.opponentMoons} | ${prop(g.threatRecognized)} | ${prop(g.p7Fired)} | ${g.threatHands} | ${prop(g.stopped)} |`
+    );
+  }
+  out.push("");
   out.push(
     "Moon-complete branch (a threat X, Q♠ in hand, X's points plus the trick's hearts make 13, X wins or can overtake): following = follow step 1 (spades led under an A♠/K♠, P7 names a card); discarding = discard step 1 (P7 only filters Q♠ out); the remainder follow another way.",
     "",
