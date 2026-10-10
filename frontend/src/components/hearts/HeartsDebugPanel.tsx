@@ -11,7 +11,12 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../theme/ThemeContext";
-import type { HandDebugLog } from "../../game/hearts/debugLog";
+import type {
+  DebugPlay,
+  DebugTrick,
+  HandDebugLog,
+  LiveDecisions,
+} from "../../game/hearts/debugLog";
 import {
   cardStr,
   formatSessionAsMarkdown,
@@ -30,6 +35,8 @@ interface Props {
   playerLabels: readonly string[];
   aiDifficulty: AiPreset;
   onNotesChange: (handIdx: number, text: string) => void;
+  /** Called while rendering for the hand in progress (#3163); omit when not tracked. */
+  getLive?: () => LiveDecisions | null;
 }
 
 async function copyToClipboard(text: string): Promise<void> {
@@ -113,6 +120,70 @@ function PimcTimingSection({ active }: { active: boolean }) {
   );
 }
 
+/**
+ * Why the conservative CPU played what it did (#3163): the last trick with
+ * each play's principle ID, then a scrollable log of every CPU decision in the
+ * hand. Plays without a principle (the human, legacy personas, older logs)
+ * show no tag, a forced CPU play shows "forced"; with no CPU decisions at all the section is omitted.
+ */
+function CpuDecisionLog({
+  tricks,
+  pending,
+  label,
+  testID,
+}: {
+  tricks: readonly DebugTrick[];
+  pending: readonly DebugPlay[];
+  label: (i: number) => string;
+  testID: string;
+}) {
+  const { colors } = useTheme();
+  const rows: { key: string; trickNo: number; play: DebugPlay }[] = [];
+  tricks.forEach((trick, t) =>
+    trick.plays.forEach((play, p) => {
+      if (play.principle !== undefined) rows.push({ key: `${t}-${p}`, trickNo: t + 1, play });
+    })
+  );
+  pending.forEach((play, p) => {
+    if (play.principle !== undefined) {
+      rows.push({ key: `p-${p}`, trickNo: tricks.length + 1, play });
+    }
+  });
+  if (rows.length === 0) return null;
+  const last = tricks[tricks.length - 1];
+  return (
+    <View testID={testID}>
+      <Text style={[styles.sectionHeader, { color: colors.text }]}>CPU principles</Text>
+      {last && (
+        <Text style={[styles.trickRow, { color: colors.textMuted }]}>
+          <Text style={{ color: colors.text }}>Last trick (T{tricks.length}) </Text>
+          {last.plays
+            .map(
+              (play) =>
+                `${label(play.playerIndex)}:${cardStr(play.card)}${play.principle === undefined ? "" : ` ${play.principle ?? "forced"}`}`
+            )
+            .join("  ")}
+        </Text>
+      )}
+      <ScrollView
+        style={[styles.decisionScroll, { borderColor: colors.border }]}
+        nestedScrollEnabled
+        accessibilityLabel="CPU decision log"
+      >
+        {rows.map(({ key, trickNo, play }) => (
+          <Text key={key} style={[styles.trickRow, { color: colors.textMuted }]}>
+            <Text style={{ color: colors.text }}>
+              T{trickNo} {label(play.playerIndex)} {cardStr(play.card)}{" "}
+            </Text>
+            <Text style={{ color: colors.accent }}>{play.principle ?? "forced"}</Text>
+            {play.reason ? ` ${play.reason}` : ""}
+          </Text>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
 interface HandSectionProps {
   log: HandDebugLog;
   handIdx: number;
@@ -151,7 +222,12 @@ function HandSection({ log, handIdx, note, playerLabels, onNotesChange }: HandSe
                 <Text style={{ color: colors.text }}>
                   {label(from)} → {label(to)}:{" "}
                 </Text>
-                {sel.map(cardStr).join(" ") || "—"}
+                {sel
+                  .map((card, k) => {
+                    const principle = log.passDecisions?.[from]?.[k]?.principle;
+                    return principle ? `${cardStr(card)} (${principle})` : cardStr(card);
+                  })
+                  .join(" ") || "—"}
               </Text>
             );
           })}
@@ -187,6 +263,13 @@ function HandSection({ log, handIdx, note, playerLabels, onNotesChange }: HandSe
         </Text>
       ))}
 
+      <CpuDecisionLog
+        tricks={log.tricks}
+        pending={[]}
+        label={label}
+        testID={`cpu-principles-${handIdx}`}
+      />
+
       <Text style={[styles.sectionHeader, { color: colors.text }]}>Scores</Text>
       <Text style={[styles.handRow, { color: colors.textMuted }]}>
         {[0, 1, 2, 3].map((i) => `${label(i)} +${log.scoreDeltas[i] ?? 0}`).join("  ")}
@@ -221,8 +304,10 @@ export default function HeartsDebugPanel({
   playerLabels,
   aiDifficulty,
   onNotesChange,
+  getLive,
 }: Props) {
   const { colors } = useTheme();
+  const live = visible && getLive ? getLive() : null;
   const insets = useSafeAreaInsets();
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -234,7 +319,13 @@ export default function HeartsDebugPanel({
   }, []);
 
   async function handleCopy() {
-    const text = formatSessionAsMarkdown(logs, notes, playerLabels, aiDifficulty);
+    const text = formatSessionAsMarkdown(
+      logs,
+      notes,
+      playerLabels,
+      aiDifficulty,
+      getLive?.() ?? null
+    );
     try {
       await copyToClipboard(text);
       if (copiedTimerRef.current !== null) clearTimeout(copiedTimerRef.current);
@@ -315,6 +406,19 @@ export default function HeartsDebugPanel({
           keyboardShouldPersistTaps="handled"
         >
           <PimcTimingSection active={visible} />
+          {live && (live.tricks.length > 0 || live.pending.length > 0) && (
+            <View style={[styles.handSection, { borderColor: colors.border }]}>
+              <Text style={[styles.handTitle, { color: colors.accent }]}>
+                Hand {live.handNumber} — in progress
+              </Text>
+              <CpuDecisionLog
+                tricks={live.tricks}
+                pending={live.pending}
+                label={(i) => playerLabels[i] ?? `P${i}`}
+                testID="cpu-principles-live"
+              />
+            </View>
+          )}
           {logs.length === 0 ? (
             <Text style={[styles.emptyText, { color: colors.textMuted }]}>
               No hands logged yet. Play a hand to see debug data here.
@@ -423,6 +527,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
     flexWrap: "wrap",
+  },
+  decisionScroll: {
+    maxHeight: 160,
+    borderWidth: 1,
+    borderRadius: 6,
+    padding: 6,
+    marginTop: 4,
   },
   noteInput: {
     borderWidth: 1,

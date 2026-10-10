@@ -20,6 +20,7 @@ import type {
 } from "./types";
 import { choosePass } from "./conservative/pass";
 import { choosePlay } from "./conservative/play";
+import type { PrincipleId } from "./conservative/terms";
 import { buildHeartsInfoSet, buildHeartsPassInfoSet } from "./aiInfoSet";
 import { MOON_HAND_RULES, assessMoonHand } from "./moonHand";
 import {
@@ -373,8 +374,41 @@ export function selectCardsToPass(
   difficulty: AiPersona = "schemer",
   playerIndex = 0
 ): Card[] {
-  if (difficulty === "conservative") return [...choosePass(hand, direction).cards];
-  return selectCardsToPassUtility(hand, direction, difficulty, playerIndex);
+  return explainCardsToPass(hand, direction, difficulty, playerIndex).map((d) => d.card);
+}
+
+/** One CPU decision with the rulebook principle behind it (debug panel, #3163). */
+export interface CardExplanation {
+  readonly card: Card;
+  /** The CONSERVATIVE_AI.md §2.4 step that named the card; null for legacy personas and forced plays. */
+  readonly principle: PrincipleId | null;
+  /** One developer-facing sentence; empty for legacy personas. */
+  readonly reason: string;
+}
+
+/**
+ * `selectCardsToPass` plus the principle and reason for each card, from one call
+ * to the CPU (no second decision). Legacy personas have no principles.
+ */
+export function explainCardsToPass(
+  hand: Card[],
+  direction: PassDirection,
+  difficulty: AiPersona = "schemer",
+  playerIndex = 0
+): CardExplanation[] {
+  if (difficulty === "conservative") {
+    const d = choosePass(hand, direction);
+    return d.cards.map((card, i) => ({
+      card,
+      principle: d.principles[i] ?? null,
+      reason: d.reasons[i] ?? "",
+    }));
+  }
+  return selectCardsToPassUtility(hand, direction, difficulty, playerIndex).map((card) => ({
+    card,
+    principle: null,
+    reason: "",
+  }));
 }
 
 /**
@@ -389,6 +423,24 @@ export function selectCardToPlay(
   playerIndex: number,
   difficulty: AiPersona = "schemer"
 ): Card {
-  if (difficulty === "conservative") return choosePlay(state, playerIndex).card;
-  return selectCardToPlayUtility(hand, trick, state, playerIndex, difficulty);
+  return explainCardToPlay(hand, trick, state, playerIndex, difficulty).card;
+}
+
+/**
+ * `selectCardToPlay` plus the principle and reason behind the card, from one
+ * call to the CPU. Legacy personas have no principles.
+ */
+export function explainCardToPlay(
+  hand: Card[],
+  trick: TrickCard[],
+  state: HeartsState,
+  playerIndex: number,
+  difficulty: AiPersona = "schemer"
+): CardExplanation {
+  if (difficulty === "conservative") return choosePlay(state, playerIndex);
+  return {
+    card: selectCardToPlayUtility(hand, trick, state, playerIndex, difficulty),
+    principle: null,
+    reason: "",
+  };
 }
