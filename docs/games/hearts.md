@@ -371,10 +371,10 @@ Premium entitlement behavior is a platform concern; see [ARCHITECTURE.md §10](.
 
 ## Debug panel: why the CPU played a card
 
-In development and pre-launch builds only (the same gating as the panel itself; release builds are unchanged), the Hearts debugger shows the principle behind each conservative-CPU decision (#3163):
+In development and pre-launch (internal test) builds only — recording and display use the same condition as the panel, `__DEV__ || isPreLaunchApiBuild()`; store builds record and show nothing. The Hearts debugger shows the principle behind each conservative-CPU decision (#3163):
 
-- **CPU principles** in each logged hand, and in the hand in progress: the last trick's plays with each play's principle ID (`P2-FREE-TRICK`, ... or `—` for a forced play), and a scrollable log of every CPU play with its one-sentence reason. CPU pass cards show their principle in Pass Selections.
-- **Copy** (web) exports each CPU play and pass as a `yaml` block in the [rulebook format](../hearts/CONSERVATIVE_AI.md#5-rulebook) (hand, trick, trick number, hearts broken, Q♠ played, points so far, expected card, principle, reason), so a suspicious play can be pasted into an issue or the rulebook. Ids are `DBG-h<hand>-t<trick>-s<seat>`.
+- **CPU principles** in each logged hand, and in the hand in progress: the last trick's plays with each play's principle ID (`P2-FREE-TRICK`, ...; a forced CPU play shows `forced`, and the human play has no tag), and a scrollable log of every CPU play with its one-sentence reason. CPU pass cards show their principle in Pass Selections.
+- **Copy** (web) exports each CPU play and pass as a `yaml` block in the [rulebook format](../hearts/CONSERVATIVE_AI.md#5-rulebook) (hand, trick, trick number, hearts broken, Q♠ played, points so far, expected card, principle, reason), the export includes the hand in progress under "Hand N — in progress". A game resumed mid-hand has no earlier tricks logged, so its plays keep the principle but say "position incomplete (resumed mid-hand)" instead of a yaml block. Each complete block can be pasted into an issue or the rulebook. Ids are `DBG-h<hand>-t<trick>-s<seat>`.
 - Legacy personas have no principles; their plays show nothing extra. Logs are in memory only (not persisted), and older entries without the fields render as before.
 
 Data: `frontend/src/game/hearts/debugLog.ts` (`DebugPlay`, `DebugPassCard`, `HandDebugLog.passDecisions`). The screen gets decisions from `explainCardToPlay` / `explainCardsToPass` in `ai.ts`, which return the same card as `selectCardToPlay` / `selectCardsToPass` plus the principle and reason.

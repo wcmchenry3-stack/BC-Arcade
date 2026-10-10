@@ -110,6 +110,15 @@ function loadHeartsDebugPanel(): HeartsDebugPanelType {
     .default;
 }
 
+/**
+ * Dev bundles and internal test (pre-launch API) builds, never store builds: the
+ * debug panel opens, and the hand log and CPU principles are recorded, only here.
+ * Read at each use so a test can flip the build flags.
+ */
+function debugEnabled(): boolean {
+  return __DEV__ || isPreLaunchApiBuild();
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -178,9 +187,9 @@ export default function HeartsScreen() {
   // ── Debug mode (__DEV__ only) ──────────────────────────────────────────────
   const debugMode = __DEV__;
   // The debug panel also opens in internal test builds (never store builds),
-  // for its on-device PIMC timing (#2587); card reveals and hand logs stay
-  // __DEV__-only.
-  const showDebugPanel = __DEV__ || isPreLaunchApiBuild();
+  // for its on-device PIMC timing (#2587), and the hand logs and CPU principles
+  // are recorded there too (#3163); card reveals stay __DEV__-only.
+  const showDebugPanel = debugEnabled();
   const [DebugPanel] = useState(() => (showDebugPanel ? loadHeartsDebugPanel() : null));
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [handNotes, setHandNotes] = useState<string[]>([]);
@@ -315,7 +324,7 @@ export default function HeartsScreen() {
         updateClock(state);
         setGameState(state);
         setSelectedDifficulty(state.aiDifficulty);
-        if (__DEV__ && (saved.phase === "playing" || saved.phase === "passing")) {
+        if (debugEnabled() && (saved.phase === "playing" || saved.phase === "passing")) {
           // Best-effort: saved state doesn't preserve the original deal, so
           // playerHands approximates both initial and final hands for resumed games.
           dealSnapshotRef.current = {
@@ -351,7 +360,7 @@ export default function HeartsScreen() {
 
   // ─── Commit hand log entry when a hand ends ───────────────────────────────
   useEffect(() => {
-    if (!__DEV__ || !debugMode) return;
+    if (!debugEnabled()) return;
     if (!gameState) return;
     if (gameState.phase !== "dealing" && gameState.phase !== "game_over") return;
     const snapshot = dealSnapshotRef.current;
@@ -468,7 +477,7 @@ export default function HeartsScreen() {
             persona
           );
           const card = decision.card;
-          if (__DEV__ && persona === "conservative") {
+          if (debugEnabled() && persona === "conservative") {
             cpuPlayNotesRef.current.push({
               playerIndex,
               card,
@@ -493,7 +502,7 @@ export default function HeartsScreen() {
           if (completedTrick) {
             setLastTrick({ trick: completedTrick, winnerIndex: s.currentLeaderIndex });
             void persist(s);
-            if (__DEV__) {
+            if (debugEnabled()) {
               trickLogBufferRef.current.push(
                 buildDebugTrick(completedTrick, s.currentLeaderIndex, cpuPlayNotesRef.current)
               );
@@ -601,7 +610,7 @@ export default function HeartsScreen() {
     const newState = playCard(gameState, HUMAN, card);
 
     if (completedTrick) {
-      if (__DEV__ && debugMode) {
+      if (debugEnabled()) {
         trickLogBufferRef.current.push(
           buildDebugTrick(completedTrick, newState.currentLeaderIndex, cpuPlayNotesRef.current)
         );
@@ -657,7 +666,7 @@ export default function HeartsScreen() {
       }
     }
     const committed = commitPass(s);
-    if (__DEV__ && debugMode && dealSnapshotRef.current) {
+    if (debugEnabled() && dealSnapshotRef.current) {
       dealSnapshotRef.current = {
         ...dealSnapshotRef.current,
         passDecisions,
@@ -676,7 +685,7 @@ export default function HeartsScreen() {
     setShowHeartsBroken(false);
     setShowQueenOfSpades(false);
     const next = dealNextHand(gameState);
-    if (__DEV__ && debugMode) {
+    if (debugEnabled()) {
       dealSnapshotRef.current = {
         initialHands: next.playerHands,
         passSelections: [[], [], [], []],
@@ -707,7 +716,7 @@ export default function HeartsScreen() {
     loopActiveRef.current = false;
     gameOverFiredRef.current = false;
     clearGame().catch(() => {});
-    if (__DEV__) {
+    if (debugEnabled()) {
       setHandLogs([]);
       trickLogBufferRef.current = [];
       cpuPlayNotesRef.current = [];
@@ -722,7 +731,7 @@ export default function HeartsScreen() {
     const difficulty = rememberDifficulty(resolveAvailablePreset(requested, legacyPersonas));
     leaveCurrentGame();
     const fresh = dealGame(difficulty);
-    if (__DEV__ && debugMode) {
+    if (debugEnabled()) {
       dealSnapshotRef.current = {
         initialHands: fresh.playerHands,
         passSelections: [[], [], [], []],
@@ -990,6 +999,9 @@ export default function HeartsScreen() {
           notes={handNotes}
           playerLabels={playerLabels}
           aiDifficulty={gameState.aiDifficulty}
+          // Reads the log refs during render, which is only safe because the panel calls
+          // this while visible and HeartsScreen re-renders on every setGameState (each
+          // CPU play), so the refs are never stale for long.
           getLive={() =>
             ({
               handNumber: gameState.handNumber,

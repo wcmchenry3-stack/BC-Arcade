@@ -108,13 +108,24 @@ export function cpuDecisions(log: HandDebugLog): CpuDecision[] {
 }
 
 /**
+ * True when the log holds the whole history behind a recorded position: every
+ * earlier trick, in full. A game resumed mid-hand starts with an empty trick
+ * buffer, so its positions are incomplete and would rebuild a wrong rulebook entry.
+ */
+export function isPositionComplete(log: HandDebugLog, d: CpuDecision): boolean {
+  const pos = d.play.position;
+  if (!pos || pos.trickNumber !== d.trickIndex + 1) return false;
+  return log.tricks.slice(0, d.trickIndex).every((t) => t.plays.length === 4);
+}
+
+/**
  * One CPU play as a CONSERVATIVE_AI.md §5 rulebook block (yaml), so a
  * suspicious play can be pasted straight into an issue or the rulebook.
  * Returns null when the play has no recorded position (older logs).
  */
 export function formatPlayAsRulebookYaml(log: HandDebugLog, d: CpuDecision): string | null {
   const pos = d.play.position;
-  if (!pos) return null;
+  if (!pos || !isPositionComplete(log, d)) return null;
   const seat = d.play.playerIndex;
   const led = pos.trickSoFar[0]?.card.suit;
   const decision =
@@ -200,11 +211,72 @@ export function passOffset(dir: PassDirection): number {
   return enginePassOffset(dir) ?? 0;
 }
 
+/**
+ * The "CPU decisions" section of a hand: the pass blocks (when `withPass`) and
+ * one rulebook yaml block per CPU play. A play whose earlier tricks were not
+ * logged (a game resumed mid-hand) gets a one-line note, not an inconsistent block.
+ */
+function cpuDecisionLines(
+  log: HandDebugLog,
+  label: (i: number) => string,
+  withPass: boolean
+): string[] {
+  const blocks: string[] = [];
+  const notes: string[] = [];
+  for (let seat = 0; withPass && seat < 4; seat++) {
+    const y = formatPassAsRulebookYaml(log, seat);
+    if (y) blocks.push(y);
+  }
+  for (const d of cpuDecisions(log)) {
+    const y = formatPlayAsRulebookYaml(log, d);
+    if (y) blocks.push(y);
+    else if (d.play.position) {
+      notes.push(
+        `- T${d.trickIndex + 1} ${label(d.play.playerIndex)} ${cardStr(d.play.card)} ` +
+          `${d.play.principle ?? "forced"}: position incomplete (resumed mid-hand)`
+      );
+    }
+  }
+  if (blocks.length === 0 && notes.length === 0) return [];
+  const out = ["", "### CPU decisions (rulebook format, docs/hearts/CONSERVATIVE_AI.md §5)"];
+  for (const y of blocks) out.push("", "```yaml", y, "```");
+  if (notes.length > 0) out.push("", ...notes);
+  return out;
+}
+
+/** The in-progress hand as Markdown for the copy export, labelled as such. */
+function liveHandLines(live: LiveDecisions, label: (i: number) => string): string[] {
+  const tricks: DebugTrick[] = [...live.tricks];
+  if (live.pending.length > 0) tricks.push({ plays: live.pending, winnerIndex: -1, pointsWon: 0 });
+  const log: HandDebugLog = {
+    handNumber: live.handNumber,
+    passDirection: "none",
+    initialHands: [],
+    passSelections: [],
+    finalHands: [],
+    tricks,
+    scoreDeltas: [],
+    cumulativeScoresAfter: [],
+  };
+  const decisions = cpuDecisions(log);
+  if (decisions.length === 0) return [];
+  const out = ["", "---", "", `## Hand ${live.handNumber} — in progress`, "", "### CPU plays"];
+  for (const d of decisions) {
+    out.push(
+      `- T${d.trickIndex + 1} ${label(d.play.playerIndex)} ${cardStr(d.play.card)} ` +
+        `${d.play.principle ?? "forced"}${d.play.reason ? ` — ${d.play.reason}` : ""}`
+    );
+  }
+  out.push(...cpuDecisionLines(log, label, false));
+  return out;
+}
+
 export function formatSessionAsMarkdown(
   logs: readonly HandDebugLog[],
   notes: readonly string[],
   playerLabels: readonly string[],
-  aiDifficulty: string
+  aiDifficulty: string,
+  live: LiveDecisions | null = null
 ): string {
   const label = (i: number) => playerLabels[i] ?? `P${i}`;
   const lines: string[] = [];
@@ -255,7 +327,11 @@ export function formatSessionAsMarkdown(
         .map((play) => {
           const s = cardStr(play.card);
           const cell = play.playerIndex === trick.winnerIndex ? `**${s}**` : s;
-          const tag = play.principle ? ` (${play.principle})` : "";
+          const tag = play.principle
+            ? ` (${play.principle})`
+            : play.principle === null
+              ? " (forced)"
+              : "";
           return `${label(play.playerIndex)}:${cell}${tag}`;
         })
         .join("  ");
@@ -263,25 +339,7 @@ export function formatSessionAsMarkdown(
       lines.push(`T${t + 1} ${plays}  → ${label(trick.winnerIndex)}${pts}`);
     }
 
-    const yamlBlocks: string[] = [];
-    for (let seat = 0; seat < 4; seat++) {
-      const y = formatPassAsRulebookYaml(log, seat);
-      if (y) yamlBlocks.push(y);
-    }
-    for (const d of cpuDecisions(log)) {
-      const y = formatPlayAsRulebookYaml(log, d);
-      if (y) yamlBlocks.push(y);
-    }
-    if (yamlBlocks.length > 0) {
-      lines.push("");
-      lines.push("### CPU decisions (rulebook format, docs/hearts/CONSERVATIVE_AI.md §5)");
-      for (const y of yamlBlocks) {
-        lines.push("");
-        lines.push("```yaml");
-        lines.push(y);
-        lines.push("```");
-      }
-    }
+    lines.push(...cpuDecisionLines(log, label, true));
 
     lines.push("");
     const deltaStr = [0, 1, 2, 3].map((i) => `${label(i)} +${log.scoreDeltas[i] ?? 0}`).join(", ");
@@ -296,6 +354,8 @@ export function formatSessionAsMarkdown(
       lines.push(`> Note: ${note.trim()}`);
     }
   }
+
+  if (live) lines.push(...liveHandLines(live, label));
 
   return lines.join("\n");
 }

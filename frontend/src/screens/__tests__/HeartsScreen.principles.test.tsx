@@ -73,7 +73,21 @@ describe("HeartsScreen debug panel: CPU principles", () => {
     (loadGame as jest.Mock).mockResolvedValue(trick12());
   });
 
-  it("records the principle of each conservative AI play, shown in the panel", async () => {
+  const g = globalThis as { __DEV__?: boolean };
+  const realDev = g.__DEV__;
+  const realUrl = process.env.EXPO_PUBLIC_API_URL;
+
+  afterEach(() => {
+    g.__DEV__ = realDev;
+    if (realUrl === undefined) delete process.env.EXPO_PUBLIC_API_URL;
+    else process.env.EXPO_PUBLIC_API_URL = realUrl;
+  });
+
+  /** Sets the build flags (envFlags.test.ts pattern), plays trick 12's AI turns. */
+  async function playTrick(dev: boolean, url?: string) {
+    g.__DEV__ = dev;
+    if (url === undefined) delete process.env.EXPO_PUBLIC_API_URL;
+    else process.env.EXPO_PUBLIC_API_URL = url;
     const api = await render(
       <ThemeProvider>
         <HeartsRoundsProvider>
@@ -90,14 +104,37 @@ describe("HeartsScreen debug panel: CPU principles", () => {
         jest.advanceTimersByTime(400);
       });
     }
-    await act(async () => {
+    return api;
+  }
+
+  const open = (api: Awaited<ReturnType<typeof playTrick>>) =>
+    act(async () => {
       await fireEvent.press(api.getByLabelText("Toggle Hearts debugger panel"));
     });
-    const live = api.getByTestId("cpu-principles-live", { includeHiddenElements: true });
-    expect(live).toBeTruthy();
+
+  const principleIds = (api: Awaited<ReturnType<typeof playTrick>>) =>
+    within(api.getByTestId("cpu-principles-live", { includeHiddenElements: true })).getAllByText(
+      /^P\d+-[A-Z-]+$/,
+      { includeHiddenElements: true }
+    );
+
+  it("records the principle of each conservative AI play, shown in the panel", async () => {
+    const api = await playTrick(true);
+    await open(api);
     // The three AI seats each played in the trick; every play lists a rulebook principle ID.
-    expect(
-      within(live).getAllByText(/^P\d+-[A-Z-]+$/, { includeHiddenElements: true }).length
-    ).toBeGreaterThanOrEqual(3);
+    expect(principleIds(api).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("records and shows principles in a pre-launch build (not __DEV__, dev API)", async () => {
+    const api = await playTrick(false, "https://dev-games-api.buffingchi.com");
+    await open(api);
+    expect(principleIds(api).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("records and shows nothing in a store build", async () => {
+    const api = await playTrick(false, "https://games-api.buffingchi.com");
+    expect(api.queryByLabelText("Toggle Hearts debugger panel")).toBeNull();
+    expect(api.queryByTestId("cpu-principles-live", { includeHiddenElements: true })).toBeNull();
+    expect(api.queryByText(/Hearts Debugger/, { includeHiddenElements: true })).toBeNull();
   });
 });

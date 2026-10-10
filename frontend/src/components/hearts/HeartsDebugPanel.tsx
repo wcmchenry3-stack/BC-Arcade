@@ -124,7 +124,7 @@ function PimcTimingSection({ active }: { active: boolean }) {
  * Why the conservative CPU played what it did (#3163): the last trick with
  * each play's principle ID, then a scrollable log of every CPU decision in the
  * hand. Plays without a principle (the human, legacy personas, older logs)
- * show "—"; with no CPU decisions at all the section is omitted.
+ * show no tag, a forced CPU play shows "forced"; with no CPU decisions at all the section is omitted.
  */
 function CpuDecisionLog({
   tricks,
@@ -159,7 +159,8 @@ function CpuDecisionLog({
           <Text style={{ color: colors.text }}>Last trick (T{tricks.length}) </Text>
           {last.plays
             .map(
-              (play) => `${label(play.playerIndex)}:${cardStr(play.card)} ${play.principle ?? "—"}`
+              (play) =>
+                `${label(play.playerIndex)}:${cardStr(play.card)}${play.principle === undefined ? "" : ` ${play.principle ?? "forced"}`}`
             )
             .join("  ")}
         </Text>
@@ -174,7 +175,7 @@ function CpuDecisionLog({
             <Text style={{ color: colors.text }}>
               T{trickNo} {label(play.playerIndex)} {cardStr(play.card)}{" "}
             </Text>
-            <Text style={{ color: colors.accent }}>{play.principle ?? "—"}</Text>
+            <Text style={{ color: colors.accent }}>{play.principle ?? "forced"}</Text>
             {play.reason ? ` ${play.reason}` : ""}
           </Text>
         ))}
@@ -318,7 +319,13 @@ export default function HeartsDebugPanel({
   }, []);
 
   async function handleCopy() {
-    const text = formatSessionAsMarkdown(logs, notes, playerLabels, aiDifficulty);
+    const text = formatSessionAsMarkdown(
+      logs,
+      notes,
+      playerLabels,
+      aiDifficulty,
+      getLive?.() ?? null
+    );
     try {
       await copyToClipboard(text);
       if (copiedTimerRef.current !== null) clearTimeout(copiedTimerRef.current);

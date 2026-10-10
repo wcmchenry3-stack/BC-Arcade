@@ -1,6 +1,7 @@
 /** The debug panel's CPU principle display (#3163). */
 import React from "react";
-import { render, screen } from "@testing-library/react-native";
+import { Platform } from "react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import HeartsDebugPanel from "../HeartsDebugPanel";
 import type { HandDebugLog, LiveDecisions } from "../../../game/hearts/debugLog";
@@ -62,11 +63,11 @@ describe("HeartsDebugPanel CPU principles", () => {
     const section = screen.getByTestId("cpu-principles-0");
     expect(section).toBeTruthy();
     expect(section).toHaveTextContent(
-      /Last trick \(T1\) You:10♥ —\s+Ann:J♥ P3-DUCK\s+Bo:K♥ —\s+Cy:2♥ —/
+      /Last trick \(T1\) You:10♥\s+Ann:J♥ P3-DUCK\s+Bo:K♥ forced\s+Cy:2♥/
     );
     expect(screen.getByText("P3-DUCK")).toBeTruthy();
     expect(screen.getByText(/J♥: stays under the lead\./)).toBeTruthy();
-    // A forced play has no principle: shown as a dash, still listed.
+    // A forced CPU play is tagged "forced"; the human play has no tag.
     expect(screen.getByText(/T1 Bo K♥/)).toBeTruthy();
     expect(screen.getByLabelText("CPU decision log")).toBeTruthy();
   });
@@ -101,6 +102,53 @@ describe("HeartsDebugPanel CPU principles", () => {
     expect(screen.getByText("Hand 3 — in progress")).toBeTruthy();
     expect(screen.getByTestId("cpu-principles-live")).toBeTruthy();
     expect(screen.getByText("P5-QUEEN")).toBeTruthy();
+  });
+
+  it("copies the hand in progress, labelled, even with no finished hand", async () => {
+    jest.replaceProperty(Platform, "OS", "web");
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    const nav = globalThis as { navigator?: unknown };
+    const hadNavigator = nav.navigator !== undefined;
+    if (!hadNavigator)
+      Object.defineProperty(globalThis, "navigator", {
+        value: {},
+        configurable: true,
+        writable: true,
+      });
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    try {
+      const live: LiveDecisions = {
+        handNumber: 3,
+        tricks: [],
+        pending: [
+          {
+            playerIndex: 2,
+            card: { suit: "spades", rank: 12 },
+            principle: "P5-QUEEN",
+            reason: "Q♠: first discard.",
+            position: {
+              trickNumber: 1,
+              hand: [{ suit: "spades", rank: 12 }],
+              trickSoFar: [],
+              heartsBroken: false,
+              points: [0, 0, 0, 0],
+            },
+          },
+        ],
+      };
+      await render(panel({ logs: [], notes: [], getLive: () => live }));
+      await fireEvent.press(screen.getByRole("button", { name: "Copy session to clipboard" }));
+      const text = writeText.mock.calls[0]![0] as string;
+      expect(text).toContain("## Hand 3 — in progress");
+      expect(text).toContain("- T1 Bo Q♠ P5-QUEEN — Q♠: first discard.");
+      expect(text).toContain("id: DBG-h3-t1-s2");
+    } finally {
+      delete (globalThis.navigator as { clipboard?: unknown }).clipboard;
+      if (!hadNavigator) delete nav.navigator;
+    }
   });
 
   it("does not read the live hand while closed", async () => {

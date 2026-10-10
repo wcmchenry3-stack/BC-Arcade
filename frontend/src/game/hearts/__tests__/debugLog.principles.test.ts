@@ -5,6 +5,7 @@ import {
   formatSessionAsMarkdown,
   rulebookCard,
   type HandDebugLog,
+  type LiveDecisions,
 } from "../debugLog";
 import type { Card, Rank, Suit } from "../types";
 import { PLAYER_LABELS, handLog } from "./helpers/debugLogFixtures";
@@ -136,6 +137,49 @@ describe("CPU principles in the export", () => {
     expect(yaml([{ playerIndex: 0, card: c("hearts", 3) }], [c("clubs", 5)])).toContain(
       "decision: discard"
     );
+  });
+});
+
+describe("a game resumed mid-hand (incomplete history)", () => {
+  it("keeps the principle but emits a note instead of an inconsistent yaml block", () => {
+    const log = principled();
+    // The buffer was empty at the resume: trick 2's play is the first one logged.
+    const resumed: HandDebugLog = { ...log, passDecisions: undefined, tricks: [log.tricks[1]!] };
+    const text = format(resumed);
+    expect(text).toContain("(P2-FREE-TRICK)");
+    expect(text).not.toContain("id: DBG-h1-t2-s1");
+    expect(text).toContain("position incomplete (resumed mid-hand)");
+    expect(text).toContain("- T1 Ann K♣ P2-FREE-TRICK: position incomplete");
+  });
+
+  it("still emits the block when every earlier trick is logged", () => {
+    expect(format(principled())).toContain("id: DBG-h1-t2-s1");
+    expect(format(principled())).not.toContain("position incomplete");
+  });
+});
+
+describe("the hand in progress in the export", () => {
+  const live = (): LiveDecisions => ({
+    handNumber: 2,
+    tricks: [],
+    pending: [principled().tricks[1]!.plays[1]!],
+  });
+
+  it("is added after the finished hands, labelled in progress, with its decisions", () => {
+    const text = formatSessionAsMarkdown([], [], PLAYER_LABELS, "conservative", live());
+    expect(text).toContain("## Hand 2 — in progress");
+    expect(text).toContain("- T1 Ann K♣ P2-FREE-TRICK — K♣: no points can fall.");
+    // trickNumber 2 recorded but no trick logged before it: incomplete.
+    expect(text).toContain("position incomplete (resumed mid-hand)");
+  });
+
+  it("is omitted when it has no CPU decisions", () => {
+    const text = formatSessionAsMarkdown([], [], PLAYER_LABELS, "conservative", {
+      handNumber: 2,
+      tricks: [],
+      pending: [],
+    });
+    expect(text).not.toContain("in progress");
   });
 });
 
