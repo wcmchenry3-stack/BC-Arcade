@@ -19,6 +19,7 @@ import {
   fireFlags,
   formatGameReportMarkdown,
   gameHooks,
+  histogramMedian,
   parseGamesArg,
   parseSeedArg,
   runGameReport,
@@ -536,5 +537,24 @@ describe("arguments", () => {
     for (const bad of [undefined, "", "-1", "x", "1e3", "007", "4294967296"]) {
       expect(() => parseSeedArg(bad, true)).toThrow(RangeError);
     }
+  });
+});
+
+describe("histogramMedian", () => {
+  const hist = (entries: Record<number, number>): number[] =>
+    Array.from({ length: 13 }, (_, i) => entries[i + 1] ?? 0);
+
+  it("averages the two central tricks for an even count", () => {
+    expect(histogramMedian(hist({ 3: 1, 5: 1 }))).toBe(4);
+    expect(histogramMedian(hist({ 2: 2, 6: 2 }))).toBe(4);
+  });
+
+  it("takes the central trick for an odd count", () => {
+    expect(histogramMedian(hist({ 3: 1, 5: 1, 9: 1 }))).toBe(5);
+    expect(histogramMedian(hist({ 4: 3 }))).toBe(4);
+  });
+
+  it("is NaN for an empty histogram", () => {
+    expect(histogramMedian(hist({}))).toBeNaN();
   });
 });

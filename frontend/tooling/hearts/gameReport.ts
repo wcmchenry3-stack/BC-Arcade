@@ -753,18 +753,33 @@ function outcomeStats(tallies: readonly OutcomeTally[]): OutcomeStats {
   }
   const hands = histogram.reduce((a, b) => a + b, 0);
   const meanTrick = hands === 0 ? NaN : histogram.reduce((s, n, i) => s + n * (i + 1), 0) / hands;
-  let median = NaN;
-  if (hands > 0) {
+  return {
+    hands,
+    meanTrick,
+    medianTrick: histogramMedian(histogram),
+    histogram,
+    canStop: wilson(canStop, hands),
+  };
+}
+
+/**
+ * Median trick (1-based) of a per-trick histogram; NaN when empty. With an
+ * even count it averages the two central observations.
+ * @internal Exported for tests only.
+ */
+export function histogramMedian(histogram: readonly number[]): number {
+  const total = histogram.reduce((a, b) => a + b, 0);
+  if (total === 0) return NaN;
+  // Trick (1-based) of the observation at 0-based rank k in sorted order.
+  const at = (k: number): number => {
     let seen = 0;
-    for (let i = 0; i < 13; i++) {
+    for (let i = 0; i < histogram.length; i++) {
       seen += histogram[i]!;
-      if (seen * 2 >= hands) {
-        median = i + 1;
-        break;
-      }
+      if (seen > k) return i + 1;
     }
-  }
-  return { hands, meanTrick, medianTrick: median, histogram, canStop: wilson(canStop, hands) };
+    return histogram.length;
+  };
+  return total % 2 === 1 ? at((total - 1) / 2) : (at(total / 2 - 1) + at(total / 2)) / 2;
 }
 
 function triggerStats(tallies: readonly TriggerTally[]): TriggerStats {
