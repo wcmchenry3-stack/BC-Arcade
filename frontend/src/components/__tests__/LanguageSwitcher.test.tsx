@@ -1,6 +1,7 @@
 import React from "react";
 import { render, fireEvent } from "@testing-library/react-native";
 import LanguageSwitcher from "../LanguageSwitcher";
+import { __forceStoreBuildForTests } from "../../entitlements/gameVisibility";
 
 jest.mock("../../theme/ThemeContext", () => ({
   useTheme: () => ({
@@ -17,17 +18,20 @@ jest.mock("../../theme/ThemeContext", () => ({
   }),
 }));
 
+let mockLanguage = "en";
 jest.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: jest.fn() },
+    i18n: { language: mockLanguage, changeLanguage: jest.fn() },
   }),
 }));
 
 jest.mock("../../i18n/locales", () => {
   const LOCALES = [
     { code: "en", label: "English", nativeLabel: "English", flag: "🇺🇸", dir: "ltr" },
+    { code: "fr-CA", label: "French (Canadian)", nativeLabel: "Français", flag: "🇨🇦", dir: "ltr" },
     { code: "es", label: "Spanish", nativeLabel: "Español", flag: "🇪🇸", dir: "ltr" },
+    { code: "de", label: "German", nativeLabel: "Deutsch", flag: "🇩🇪", dir: "ltr" },
     { code: "ar", label: "Arabic", nativeLabel: "العربية", flag: "🇸🇦", dir: "rtl" },
   ];
   return {
@@ -69,5 +73,37 @@ describe("LanguageSwitcher", () => {
 
     expect(getByLabelText("English — English")).toBeTruthy();
     expect(queryByLabelText("العربية — Arabic")).toBeNull();
+  });
+
+  describe("store build (#3150)", () => {
+    afterEach(() => {
+      __forceStoreBuildForTests(false);
+      mockLanguage = "en";
+    });
+
+    it("offers only the launch locales", async () => {
+      __forceStoreBuildForTests(true);
+      const { getByLabelText, queryByLabelText } = await render(<LanguageSwitcher />);
+      await fireEvent.press(getByLabelText("lang.switcherLabel"));
+
+      expect(getByLabelText("English — English")).toBeTruthy();
+      expect(getByLabelText("Français — French (Canadian)")).toBeTruthy();
+      expect(getByLabelText("Español — Spanish")).toBeTruthy();
+      expect(queryByLabelText("Deutsch — German")).toBeNull();
+    });
+
+    it("never labels the trigger with a hidden locale", async () => {
+      __forceStoreBuildForTests(true);
+      mockLanguage = "de";
+      const { getByText, queryByText } = await render(<LanguageSwitcher />);
+      expect(getByText("🇺🇸 English")).toBeTruthy();
+      expect(queryByText("🇩🇪 Deutsch")).toBeNull();
+    });
+
+    it("dev and test builds still offer unlaunched locales", async () => {
+      const { getByLabelText } = await render(<LanguageSwitcher />);
+      await fireEvent.press(getByLabelText("lang.switcherLabel"));
+      expect(getByLabelText("Deutsch — German")).toBeTruthy();
+    });
   });
 });
