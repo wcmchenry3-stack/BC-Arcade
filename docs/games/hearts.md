@@ -111,7 +111,7 @@ Players see **one** computer opponent: **Conservative** (the default preset, `co
 
 The legacy personas (**Cautious**, **Schemer**, **Daring**) and the **Mixed** table stay in the code, unchanged, behind the `HEARTS_LEGACY_PERSONAS` flag (#3158, epic #3156) so comparison runs can still use them. The flag is `areLegacyHeartsPersonasEnabled()` in `frontend/src/game/_shared/envFlags.ts`: on only for dev bundles (`__DEV__`) and pre-launch builds (`isPreLaunchApiBuild()`). With it on, the picker shows Conservative first and the four legacy presets. A legacy preset saved by an earlier build loads as Conservative when the flag is off, and is kept when it is on. The sim tooling (`tools/sim/`, `frontend/tooling/hearts/`) always runs the legacy personas, whatever the flag.
 
-Until #3159 lands, Conservative is a stand-in: the legacy Cautious weights with no noise (`conservativeStandIn` in `aiWeights.ts`, `NOISE_RATE.conservative = 0`). #3159 replaces it in that one place.
+Conservative is a principle-based CPU (#3159), not a set of utility weights: it plays plain, careful Hearts from the short list of principles in [hearts/CONSERVATIVE_AI.md](../hearts/CONSERVATIVE_AI.md) (code: `frontend/src/game/hearts/conservative/`). It never uses randomness, so the same position always gets the same card, and each decision carries the principle that chose it. `selectCardToPlay` / `selectCardsToPass` in `ai.ts` send the `conservative` persona there; the legacy personas use the utility AI below, unchanged.
 
 For a non-Mixed preset, all three AI seats use that persona.
 
@@ -125,9 +125,9 @@ Mixed uses a fixed canonical assignment:
 
 The selected preset (`ai_difficulty`: `conservative` in store builds) is recorded in game metadata but does **not** partition the public leaderboard.
 
-## Current AI architecture
+## Legacy persona AI architecture
 
-The current production AI is a **utility-scoring engine**, not a search/lookahead engine.
+The legacy personas (Cautious, Schemer, Daring; behind the flag) use a **utility-scoring engine**, not a search/lookahead engine. The Conservative CPU does not use any of this section; see [hearts/CONSERVATIVE_AI.md](../hearts/CONSERVATIVE_AI.md).
 
 For each legal action, the AI scores considerations and chooses among them using persona-specific weights. Current play considerations include:
 
@@ -373,13 +373,13 @@ Premium entitlement behavior is a platform concern; see [ARCHITECTURE.md §10](.
 
 - Rules engine: `frontend/src/game/hearts/engine.ts`
 - Screen: [`frontend/src/screens/HeartsScreen.tsx`](../../frontend/src/screens/HeartsScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
-- Current AI: `frontend/src/game/hearts/ai.ts`
+- AI entry points: `frontend/src/game/hearts/ai.ts`
+- Conservative CPU: `frontend/src/game/hearts/conservative/` (spec: [hearts/CONSERVATIVE_AI.md](../hearts/CONSERVATIVE_AI.md))
 - Utility considerations: `frontend/src/game/hearts/aiConsiderations.ts`
 - Persona weights/noise: `frontend/src/game/hearts/aiWeights.ts`
 - Information set/pass memory: `frontend/src/game/hearts/aiInfoSet.ts`
 - Moon hand quality: `frontend/src/game/hearts/moonHand.ts`
 - PIMC research record: [HEARTS_PIMC_SPIKE.md](../research/HEARTS_PIMC_SPIKE.md)
-- Conservative CPU spec (planned replacement, epic #3156): [hearts/CONSERVATIVE_AI.md](../hearts/CONSERVATIVE_AI.md)
 
 ## Open AI dependency
 

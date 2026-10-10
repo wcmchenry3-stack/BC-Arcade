@@ -2,6 +2,8 @@
  * The Conservative CPU and the legacy-persona flag's pure helpers (#3158).
  */
 import { selectCardToPlay, selectCardsToPass } from "../ai";
+import { choosePass } from "../conservative/pass";
+import { choosePlay } from "../conservative/play";
 import { dealGame, setRng } from "../engine";
 import {
   AI_PRESETS,
@@ -50,7 +52,7 @@ describe("presets (#3158)", () => {
   });
 });
 
-describe("conservative CPU stand-in (#3158, TODO #3159)", () => {
+describe("conservative CPU (#3158, #3159)", () => {
   const hand: Card[] = [c("clubs", 6), c("clubs", 8), c("clubs", 11), c("clubs", 13)];
   const trick: TrickCard[] = [{ card: c("clubs", 9), playerIndex: 0 }];
   const state = mkState({
@@ -75,12 +77,14 @@ describe("conservative CPU stand-in (#3158, TODO #3159)", () => {
     c("hearts", 12),
   ];
 
-  it("plays the legacy cautious choice (noise-free)", () => {
+  it("plays and passes as the principle-based conservative CPU (#3159)", () => {
     setRng(() => 0.99);
-    const cautious = selectCardToPlay(hand, trick, state, 1, "cautious");
-    expect(selectCardToPlay(hand, trick, state, 1, "conservative")).toEqual(cautious);
-    const pass = selectCardsToPass(passHand, "left", "cautious", 1);
-    expect(selectCardsToPass(passHand, "left", "conservative", 1)).toEqual(pass);
+    expect(selectCardToPlay(hand, trick, state, 1, "conservative")).toEqual(
+      choosePlay(state, 1).card
+    );
+    expect(selectCardsToPass(passHand, "left", "conservative", 1)).toEqual(
+      choosePass(passHand, "left").cards
+    );
   });
 
   it("plays the same card whatever the RNG says, and never draws from it", () => {
@@ -104,6 +108,8 @@ describe("conservative CPU stand-in (#3158, TODO #3159)", () => {
     const best = selectCardToPlay(hand, trick, state, 1, "cautious");
     expect(noisy).not.toEqual(best);
     setRng(() => 0);
-    expect(selectCardToPlay(hand, trick, state, 1, "conservative")).toEqual(best);
+    expect(selectCardToPlay(hand, trick, state, 1, "conservative")).toEqual(
+      choosePlay(state, 1).card
+    );
   });
 });

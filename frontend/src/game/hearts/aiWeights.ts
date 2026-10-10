@@ -25,7 +25,7 @@
  */
 
 import type { WeightMap } from "../_shared/utilityAi/types";
-import type { AiPersona, LegacyPersona } from "./types";
+import type { LegacyPersona } from "./types";
 
 // ─── Key types ────────────────────────────────────────────────────────────────
 
@@ -134,11 +134,10 @@ export const DARING_PASS_WEIGHTS: PassWeights = {
  * How often each persona makes a mistake: the chance, per decision with an
  * alternative, of not playing (or passing) its best-scoring choice.
  */
-export const NOISE_RATE: Readonly<Record<AiPersona, number>> = {
+export const NOISE_RATE: Readonly<Record<LegacyPersona, number>> = {
   cautious: 0.55,
   schemer: 0.19,
   daring: 0.0,
-  conservative: 0, // never errs: see conservativeStandIn
 };
 
 /**
@@ -147,21 +146,8 @@ export const NOISE_RATE: Readonly<Record<AiPersona, number>> = {
  * near-best cards are likely and clear blunders rare — the slips of a weaker
  * player, not a random card. Infinity would be the old uniform noise.
  */
-export const MISTAKE_SPREAD: Readonly<Record<AiPersona, number>> = {
+export const MISTAKE_SPREAD: Readonly<Record<LegacyPersona, number>> = {
   cautious: 0.1,
   schemer: 0.1,
   daring: 0.1,
-  conservative: 0.1, // unused while its NOISE_RATE is 0
 };
-
-// ─── Conservative CPU (#3158) ──────────────────────────────────────────────────
-
-/**
- * The legacy persona whose weights "conservative" plays with, and the only
- * place that says so. NOISE_RATE.conservative is 0 above, so it never errs.
- * TODO(#3159): replace with the conservative CPU (and drop this + the two
- * `conservative` table entries).
- */
-export function conservativeStandIn(persona: AiPersona): LegacyPersona {
-  return persona === "conservative" ? "cautious" : persona;
-}

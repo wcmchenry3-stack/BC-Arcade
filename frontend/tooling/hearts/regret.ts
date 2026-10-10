@@ -106,7 +106,8 @@ export interface RegretOptions {
  * The draws pass straight through: the game is unchanged.
  */
 function tagNoise(policy: HeartsPolicy, onTag: (noise: boolean) => void): HeartsPolicy {
-  const rate = policy.persona ? NOISE_RATE[policy.persona] : 0;
+  // The conservative CPU never draws from the RNG (#3159).
+  const rate = policy.persona && policy.persona !== "conservative" ? NOISE_RATE[policy.persona] : 0;
   if (rate <= 0) return policy;
   return {
     ...policy,
