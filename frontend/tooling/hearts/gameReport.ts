@@ -22,21 +22,23 @@
  * - win_rate: games won; a tie for the lowest score splits the win.
  * - qs_taken: hands in which the seat took Q♠.
  * - moon_allowed: hands in which another seat shot the moon.
- * Moon guard (table level, hands where a non-conservative seat X shot the moon):
- * how often any conservative seat recognized the threat (P7's condition: X
- * alone had taken points, 10 or more) during the hand, how often any
- * conservative seat's P7 decided a play, and, over hands where the threat was
- * recognized, how often the moon was stopped. Proportions carry Wilson 95%
- * intervals, which stay informative at 0 and small counts.
- * - p7_hands: hands in which the seat decided at least one play with P7.
- * - zero_hands: hands in which the seat took 0 points (a shot moon counts for
- *   the shooter).
- * - moon_shot: hands in which the seat shot the moon.
+ * Moon guard (table level, over hands where a non-conservative seat X shot the
+ * moon or a trigger fired): a trigger fires at the first conservative play
+ * where it holds. The CPU's trigger is P7's condition (X alone has taken
+ * points, 10 or more); the hypothetical hearts trigger (not in the CPU) is one
+ * non-conservative seat holding every heart taken so far, at least 3, Q♠ or
+ * not. For each, per outcome (moon shot by a non-conservative seat, or
+ * stopped): the trick of first recognition (mean, median, histogram), and
+ * whether a conservative seat then held a heart no out card beats (P7 had the
+ * means). Proportions carry Wilson 95% intervals, which stay informative at 0
+ * and small counts.
  */
 
 import { detectMoon, getValidPlays, isQueenOfSpades, playCard } from "../../src/game/hearts/engine";
 import { explainCardToPlay, explainCardsToPass } from "../../src/game/hearts/ai";
 import {
+  above,
+  guardHeart,
   isSpadeHonour,
   moonComplete,
   moonThreat,
@@ -316,6 +318,20 @@ export function buildMatchups(probe: Probe = makeProbe()): ReportMatchup[] {
 // Playing
 // ---------------------------------------------------------------------------
 
+/** Hands where a trigger fired, by outcome: the trick it first fired and whether P7 had the means. */
+export interface OutcomeTally {
+  /** Hands per trick of first recognition (index 0 = trick 1). */
+  hist: number[];
+  /** Hands where, at first recognition, a conservative seat held a heart no out card beats. */
+  canStop: number;
+}
+export interface TriggerTally {
+  moon: OutcomeTally;
+  stopped: OutcomeTally;
+}
+const emptyOutcome = (): OutcomeTally => ({ hist: Array(13).fill(0) as number[], canStop: 0 });
+const emptyTriggerTally = (): TriggerTally => ({ moon: emptyOutcome(), stopped: emptyOutcome() });
+
 export interface BlockData {
   subject: Tally;
   opponent: Tally;
@@ -337,14 +353,10 @@ export interface BlockData {
   moonCompleteDecidedByP7: number;
   /** Hands a non-conservative seat shot the moon. */
   opponentMoonHands: number;
-  /** Of those, hands a conservative seat saw the threat (P7's condition). */
-  opponentMoonThreatSeen: number;
-  /** Of those, hands a conservative seat's P7 decided a play. */
-  opponentMoonP7Fired: number;
-  /** Hands a conservative seat saw a non-conservative moon threat. */
-  threatHands: number;
-  /** Of those, hands no moon was shot. */
-  threatStopped: number;
+  /** The CPU's own trigger (X alone holds 10+ points): first-recognition tallies. */
+  cpuTrigger: TriggerTally;
+  /** The hypothetical hearts-based trigger, observed on the same hands. */
+  heartsTrigger: TriggerTally;
   /** Decisions the checker graded (passes + plays) and its violations. */
   checked: number;
   violations: number;
@@ -362,10 +374,8 @@ export const emptyBlock = (): BlockData => ({
   moonCompleteDiscard: 0,
   moonCompleteDecidedByP7: 0,
   opponentMoonHands: 0,
-  opponentMoonThreatSeen: 0,
-  opponentMoonP7Fired: 0,
-  threatHands: 0,
-  threatStopped: 0,
+  cpuTrigger: emptyTriggerTally(),
+  heartsTrigger: emptyTriggerTally(),
   checked: 0,
   violations: 0,
   violationYaml: [],
@@ -385,7 +395,9 @@ export function gameHooks(
 ): PlayOptions {
   let played: CompletedTrick[] = [];
   let p7: boolean[] = [false, false, false, false];
-  let threatSeen = false;
+  type First = { trick: number; canStop: boolean };
+  let cpuFirst: First | null = null;
+  let heartsFirst: First | null = null;
   const isSubject = (seat: number) => policies[seat]!.label === SUBJECT;
 
   const recordViolation = (v: Violation | null) => {
@@ -416,12 +428,18 @@ export function gameHooks(
       if (state.tricksPlayedInHand === 0 && trick.length === 0) {
         played = [];
         p7 = [false, false, false, false];
-        threatSeen = false;
+        cpuFirst = null;
+        heartsFirst = null;
       }
       if (isSubject(seat)) {
         const principle = probe.last?.principle ?? null;
         const threat = moonThreat(viewOf(state, seat));
-        if (threat !== null && !isSubject(threat)) threatSeen = true;
+        if (threat !== null && !isSubject(threat) && cpuFirst === null) {
+          cpuFirst = { trick: state.tricksPlayedInHand + 1, canStop: canStopMoon(state) };
+        }
+        if (heartsFirst === null && heartsTriggerFires(state)) {
+          heartsFirst = { trick: state.tricksPlayedInHand + 1, canStop: canStopMoon(state) };
+        }
         const legal = getValidPlays(state, seat).length;
         if (legal > 1) {
           data.judgedPlays++;
@@ -464,6 +482,23 @@ export function gameHooks(
     },
   };
 
+  /** A conservative seat holds a heart that no out card can beat: P7 can stop the moon. */
+  function canStopMoon(state: Parameters<typeof playCard>[0]): boolean {
+    return [0, 1, 2, 3].some((s) => {
+      if (!isSubject(s)) return false;
+      const v = viewOf(state, s);
+      const g = guardHeart(v);
+      return g !== undefined && above(v, g) === 0;
+    });
+  }
+
+  /** Hypothetical trigger: one non-conservative seat took every heart so far, and at least 3. */
+  function heartsTriggerFires(state: Parameters<typeof playCard>[0]): boolean {
+    const counts = state.wonCards.map((w) => w.filter((c) => c.suit === "hearts").length);
+    const total = counts.reduce((a, b) => a + b, 0);
+    return total >= 3 && counts.some((n, i) => n === total && !isSubject(i));
+  }
+
   /** The hand's last card: apply it on a copy to read the hand's result. */
   function finishHand(state: Parameters<typeof playCard>[0], seat: number, card: Card): void {
     const end = playCard(state, seat, card);
@@ -483,12 +518,15 @@ export function gameHooks(
     const opponentMoon = shooter !== null && !isSubject(shooter);
     if (opponentMoon) {
       data.opponentMoonHands++;
-      if (threatSeen) data.opponentMoonThreatSeen++;
-      if (p7.some(Boolean)) data.opponentMoonP7Fired++;
     }
-    if (threatSeen) {
-      data.threatHands++;
-      if (!opponentMoon) data.threatStopped++;
+    for (const [first, tally] of [
+      [cpuFirst as First | null, data.cpuTrigger],
+      [heartsFirst as First | null, data.heartsTrigger],
+    ] as const) {
+      if (first === null) continue;
+      const o = opponentMoon ? tally.moon : tally.stopped;
+      o.hist[first.trick - 1]!++;
+      if (first.canStop) o.canStop++;
     }
   }
 }
@@ -593,17 +631,34 @@ export function wilson(k: number, n: number): Proportion {
   return { k, n, rate: p, low: Math.max(0, centre - half), high: Math.min(1, centre + half) };
 }
 
+/** Hands where a trigger fired, with one outcome (moon shot by a non-conservative seat, or stopped). */
+export interface OutcomeStats {
+  readonly hands: number;
+  /** Trick of first recognition: mean and median (NaN when no hands). */
+  readonly meanTrick: number;
+  readonly medianTrick: number;
+  /** Hands per trick of first recognition (index 0 = trick 1). */
+  readonly histogram: readonly number[];
+  /** At first recognition, a conservative seat held a heart that no out card beats. */
+  readonly canStop: Proportion;
+}
+
+export interface TriggerStats {
+  /** Hands in which the trigger fired. */
+  readonly hands: number;
+  /** Of those: no moon was shot. */
+  readonly stopped: Proportion;
+  readonly moon: OutcomeStats;
+  readonly stoppedHands: OutcomeStats;
+}
+
 export interface MoonGuard {
   /** Hands a non-conservative seat shot the moon. */
   readonly opponentMoons: number;
-  /** Of those: a conservative seat saw the threat (X alone held 10+ points) at some play. */
-  readonly threatRecognized: Proportion;
-  /** Of those: a conservative seat's P7 decided a play. */
-  readonly p7Fired: Proportion;
-  /** Hands in which a conservative seat saw a non-conservative moon threat. */
-  readonly threatHands: number;
-  /** Of those: no moon was shot. */
-  readonly stopped: Proportion;
+  /** The CPU's trigger: X alone holds 10 or more points (P7's condition). */
+  readonly cpu: TriggerStats;
+  /** Hypothetical: one non-conservative seat holds every heart taken so far, 3 or more, Q♠ or not. */
+  readonly heartsTrigger: TriggerStats;
 }
 
 /** The sanity floor's operands: both sides' totals, and the paired difference of their rates. */
@@ -689,6 +744,36 @@ function fireRows(
   }));
 }
 
+function outcomeStats(tallies: readonly OutcomeTally[]): OutcomeStats {
+  const histogram = Array(13).fill(0) as number[];
+  let canStop = 0;
+  for (const t of tallies) {
+    t.hist.forEach((n, i) => (histogram[i] = histogram[i]! + n));
+    canStop += t.canStop;
+  }
+  const hands = histogram.reduce((a, b) => a + b, 0);
+  const meanTrick = hands === 0 ? NaN : histogram.reduce((s, n, i) => s + n * (i + 1), 0) / hands;
+  let median = NaN;
+  if (hands > 0) {
+    let seen = 0;
+    for (let i = 0; i < 13; i++) {
+      seen += histogram[i]!;
+      if (seen * 2 >= hands) {
+        median = i + 1;
+        break;
+      }
+    }
+  }
+  return { hands, meanTrick, medianTrick: median, histogram, canStop: wilson(canStop, hands) };
+}
+
+function triggerStats(tallies: readonly TriggerTally[]): TriggerStats {
+  const moon = outcomeStats(tallies.map((t) => t.moon));
+  const stoppedHands = outcomeStats(tallies.map((t) => t.stopped));
+  const hands = moon.hands + stoppedHands.hands;
+  return { hands, stopped: wilson(stoppedHands.hands, hands), moon, stoppedHands };
+}
+
 /** Plays the whole report: `games` games per matchup (rounded up to whole blocks). */
 export function runGameReport(options: { games?: number; seed?: number } = {}): GameReport {
   const games = options.games ?? DEFAULT_GAME_REPORT_GAMES;
@@ -721,18 +806,11 @@ export function runGameReport(options: { games?: number; seed?: number } = {}): 
 
     const subject = metricsOf(blocks, "subject");
     const opponent = metricsOf(blocks, "opponent");
-    const moonGuard: MoonGuard = (() => {
-      const total = (k: keyof BlockData) => blocks.reduce((s, b) => s + (b[k] as number), 0);
-      const moons = total("opponentMoonHands");
-      const threats = total("threatHands");
-      return {
-        opponentMoons: moons,
-        threatRecognized: wilson(total("opponentMoonThreatSeen"), moons),
-        p7Fired: wilson(total("opponentMoonP7Fired"), moons),
-        threatHands: threats,
-        stopped: wilson(total("threatStopped"), threats),
-      };
-    })();
+    const moonGuard: MoonGuard = {
+      opponentMoons: blocks.reduce((s, b) => s + b.opponentMoonHands, 0),
+      cpu: triggerStats(blocks.map((b) => b.cpuTrigger)),
+      heartsTrigger: triggerStats(blocks.map((b) => b.heartsTrigger)),
+    };
     const ppH = {
       numerator: "handPoints",
       denominator: "hands",
@@ -969,16 +1047,38 @@ export function formatGameReportMarkdown(r: GameReport): string {
       ? "n/a"
       : `${(p.rate * 100).toFixed(1)}% (${p.k}/${p.n}) [${(p.low * 100).toFixed(1)}%, ${(p.high * 100).toFixed(1)}%]`;
   out.push(
-    "Hands where a non-conservative seat X shot the moon: how often a conservative seat saw the threat (X alone held 10+ points) and how often a conservative P7 decided a play. Hands where a threat was seen: how often no moon was shot. Wilson 95% intervals.",
+    "A trigger fires in a hand when it first holds at a conservative seat's play. The CPU's trigger (P7's condition): a non-conservative seat X alone has taken points and holds 10 or more. The hypothetical hearts trigger (not in the CPU; observed on the same games): one non-conservative seat holds every heart taken so far, at least 3, whether or not Q♠ is among its cards. Outcome: moon = a non-conservative seat shot the moon; stopped = no moon. `can stop` = at first recognition, a conservative seat held a heart that no out card beats (P7 had the means). Wilson 95% intervals.",
     "",
-    "| Matchup | moons by others | threat recognized | P7 fired | hands with threat | moon stopped |",
-    "|---|---|---|---|---|---|"
+    "| Matchup | Trigger | hands | stopped | moon: mean / median trick | moon: can stop | stopped: mean / median trick | stopped: can stop |",
+    "|---|---|---|---|---|---|---|---|"
   );
+  const num = (x: number) => (Number.isNaN(x) ? "n/a" : x.toFixed(1));
   for (const m of r.matchups) {
-    const g = m.moonGuard;
+    for (const [name, t] of [
+      ["CPU (X >= 10 points)", m.moonGuard.cpu],
+      ["hearts (>= 3, one taker)", m.moonGuard.heartsTrigger],
+    ] as const) {
+      out.push(
+        `| ${m.id} | ${name} | ${t.hands} | ${prop(t.stopped)} | ${num(t.moon.meanTrick)} / ${num(t.moon.medianTrick)} (${t.moon.hands} hands) | ${prop(t.moon.canStop)} | ${num(t.stoppedHands.meanTrick)} / ${num(t.stoppedHands.medianTrick)} (${t.stoppedHands.hands} hands) | ${prop(t.stoppedHands.canStop)} |`
+      );
+    }
+  }
+  const ms = r.matchups.find((m) => m.id === "moon-shooter");
+  if (ms) {
     out.push(
-      `| ${m.id} | ${g.opponentMoons} | ${prop(g.threatRecognized)} | ${prop(g.p7Fired)} | ${g.threatHands} | ${prop(g.stopped)} |`
+      "",
+      `Moon-shooter matchup: hands by trick of first recognition (${ms.moonGuard.opponentMoons} moons by the shooter).`,
+      "",
+      "| Trigger | Outcome | " + Array.from({ length: 13 }, (_, i) => i + 1).join(" | ") + " |",
+      "|---|---|" + Array(13).fill("---").join("|") + "|"
     );
+    for (const [name, t] of [
+      ["CPU", ms.moonGuard.cpu],
+      ["hearts", ms.moonGuard.heartsTrigger],
+    ] as const) {
+      out.push(`| ${name} | moon | ${t.moon.histogram.join(" | ")} |`);
+      out.push(`| ${name} | stopped | ${t.stoppedHands.histogram.join(" | ")} |`);
+    }
   }
   out.push("");
   out.push(

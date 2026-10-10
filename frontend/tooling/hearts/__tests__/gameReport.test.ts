@@ -168,7 +168,11 @@ describe("metric logic on hand-built final hands", () => {
     policy: personaPolicy("conservative"),
   });
   /** A mid-hand state where `seat` leads its only card and seat 3 alone holds 15 points. */
-  const threatState = (seat: number): HeartsState => ({
+  const threatState = (
+    seat: number,
+    card: Card = c("clubs", 7),
+    won: Card[][] = [[], [], [], []]
+  ): HeartsState => ({
     ...dealGame("schemer"),
     phase: "playing",
     tricksPlayedInHand: 8,
@@ -176,7 +180,8 @@ describe("metric logic on hand-built final hands", () => {
     currentLeaderIndex: seat,
     currentPlayerIndex: seat,
     heartsBroken: true,
-    playerHands: [0, 1, 2, 3].map((i) => (i === seat ? [c("clubs", 7)] : [])),
+    playerHands: [0, 1, 2, 3].map((i) => (i === seat ? [card] : [])),
+    wonCards: won,
     handScores: [0, 0, 0, 15],
   });
   /** The hand's last trick: seat 0 leads, seat 3 plays last. */
@@ -203,7 +208,8 @@ describe("metric logic on hand-built final hands", () => {
   it("moon by a non-conservative seat: adjusted points, moons allowed (not its own), Q♠, P7 and threat", () => {
     const data = emptyBlock();
     const hooks = gameHooks(label([0, 1, 2]), data, probe("P7-MOON-GUARD"), false, { count: 0 });
-    hooks.onPlay!(threatState(1), 1, c("clubs", 7));
+    // At trick 9 seat 3 alone holds 15 points and 3 hearts; seat 1 holds the A♥, which no heart beats.
+    hooks.onPlay!(threatState(1, c("hearts", 1), [[], [], [], hearts(2, 3, 4)]), 1, c("hearts", 1));
     // Seat 3 holds Q♠ and hearts A, 6-K; the last trick (2, 3, 4, 5 of hearts) is its too.
     const { state, last } = finalState(
       hearts(2, 3, 4, 5),
@@ -230,13 +236,13 @@ describe("metric logic on hand-built final hands", () => {
       moonsAllowed: 0,
       p7Hands: 0,
     });
-    expect(data).toMatchObject({
-      opponentMoonHands: 1,
-      opponentMoonThreatSeen: 1,
-      opponentMoonP7Fired: 1,
-      threatHands: 1,
-      threatStopped: 0,
-    });
+    const at9 = (n: number) => Array.from({ length: 13 }, (_, i) => (i === 8 ? n : 0));
+    expect(data.opponentMoonHands).toBe(1);
+    // Both triggers first fire at trick 9, in a hand that ends in a moon, with the means to stop it.
+    for (const t of [data.cpuTrigger, data.heartsTrigger]) {
+      expect(t.moon).toEqual({ hist: at9(1), canStop: 1 });
+      expect(t.stopped).toEqual({ hist: at9(0), canStop: 0 });
+    }
   });
 
   it("a recognized threat with no moon: raw points, Q♠ owner, stopped, no moon allowed", () => {
@@ -261,12 +267,34 @@ describe("metric logic on hand-built final hands", () => {
       p7Hands: 0,
     });
     expect(data.opponent).toMatchObject({ hands: 1, handPoints: 9, qsTaken: 0, moonsAllowed: 0 });
-    expect(data).toMatchObject({
-      opponentMoonHands: 0,
-      opponentMoonP7Fired: 0,
-      threatHands: 1,
-      threatStopped: 1,
-    });
+    const at9 = Array.from({ length: 13 }, (_, i) => (i === 8 ? 1 : 0));
+    expect(data.opponentMoonHands).toBe(0);
+    // Only the CPU's trigger fires (no hearts taken yet); no heart in hand, so no means to stop it.
+    expect(data.cpuTrigger.stopped).toEqual({ hist: at9, canStop: 0 });
+    expect(data.cpuTrigger.moon.hist.every((n) => n === 0)).toBe(true);
+    expect(data.heartsTrigger.stopped.hist.every((n) => n === 0)).toBe(true);
+  });
+
+  it("the hearts trigger needs 3 hearts, all by one non-conservative seat", () => {
+    const fires = (won: Card[][], subjects: number[]) => {
+      const data = emptyBlock();
+      const hooks = gameHooks(label(subjects), data, probe("P1-DUCK"), false, { count: 0 });
+      hooks.onPlay!(threatState(1, c("clubs", 7), won), 1, c("clubs", 7));
+      // The hand never finishes here, so the trigger is not tallied; read the first play's effect via a full hand.
+      const { state, last } = finalState(
+        [c("clubs", 7), ...hearts(2, 3), c("hearts", 4)],
+        [[], [], [], []],
+        [0, 0, 0, 0]
+      );
+      hooks.onPlay!(state, 3, last);
+      return [...data.heartsTrigger.moon.hist, ...data.heartsTrigger.stopped.hist].some(
+        (n) => n > 0
+      );
+    };
+    expect(fires([[], [], [], hearts(2, 3, 4)], [0, 1, 2])).toBe(true);
+    expect(fires([[], [], [], hearts(2, 3)], [0, 1, 2])).toBe(false);
+    expect(fires([[], [], hearts(5), hearts(2, 3)], [0, 1, 2])).toBe(false);
+    expect(fires([[], [], [], hearts(2, 3, 4)], [0, 1, 2, 3])).toBe(false);
   });
 
   it("credits P7 to the seat that played it", () => {
@@ -294,6 +322,27 @@ describe("metric logic on hand-built final hands", () => {
           expect(g["points_per_hand"]!.den).toBeGreaterThan(0);
         }
       }
+    }
+  });
+
+  it("trigger stats are consistent in a real run", () => {
+    const r = runGameReport({ games: 12, seed: 8 });
+    for (const m of r.matchups) {
+      for (const t of [m.moonGuard.cpu, m.moonGuard.heartsTrigger]) {
+        expect(t.hands).toBe(t.moon.hands + t.stoppedHands.hands);
+        expect(t.moon.histogram).toHaveLength(13);
+        expect(t.moon.histogram.reduce((a, b) => a + b, 0)).toBe(t.moon.hands);
+        expect(t.stopped.k).toBe(t.stoppedHands.hands);
+        for (const o of [t.moon, t.stoppedHands]) {
+          if (o.hands > 0) {
+            expect(o.meanTrick).toBeGreaterThanOrEqual(1);
+            expect(o.meanTrick).toBeLessThanOrEqual(13);
+            expect(o.medianTrick).toBeGreaterThanOrEqual(1);
+          }
+          expect(o.canStop.k).toBeLessThanOrEqual(o.hands);
+        }
+      }
+      expect(m.moonGuard.cpu.moon.hands).toBeLessThanOrEqual(m.moonGuard.opponentMoons);
     }
   });
 

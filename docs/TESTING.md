@@ -777,15 +777,22 @@ in the JSON, and a CI over blocks: `points_per_hand` (moon-adjusted),
 `win_rate` (lowest score; ties split), `qs_taken`, `moon_allowed` (hands where
 another seat shot the moon; a seat's own moon is not counted), `p7_hands`
 (hands where the seat decided a play with P7, the moon guard), `zero_hands`
-and `moon_shot`. The **moon guard table** looks at the whole table, over
-hands where a non-conservative seat X shot the moon: the share where any
-conservative seat saw the threat (X alone held 10 or more points, P7's
-condition) during the hand, and the share where any conservative seat's P7
-decided a play; and over hands where a threat was seen, the share where no
-moon was shot (the moon was stopped). These proportions carry Wilson 95%
-intervals, which stay informative at 0 and small counts. (A seat whose own
-P7 fired took a point, so the moon cannot follow for that seat; a per-seat
-split would be 0 by construction.) The JSON also holds `pointsPerHandAdvantage`
+and `moon_shot`. The **moon guard table** looks at the whole table, for
+hands where a non-conservative seat X is a moon threat, and answers _when_ the
+CPU notices and _whether it could then stop it_. A trigger fires at the first
+conservative play where it holds. Two triggers are compared on the same games
+(no CPU change): the CPU's own (P7's condition: X alone has taken points and
+holds 10 or more) and a hypothetical hearts trigger (one non-conservative
+seat holds every heart taken so far, at least 3, Q♠ or not). For each, the
+hands split by outcome (a non-conservative seat shot the moon, or it was
+stopped) and the table gives the share stopped (Wilson 95% interval), the
+mean and median trick of first recognition (the JSON and the moon-shooter
+histogram give every trick 1-13), and `can stop`: at first recognition, a
+conservative seat held a heart that no out card beats, so P7 had the means to
+stop the moon. (Shares such as "the CPU recognized the threat in every moon"
+or "P7 decided a play in none of them" are true by construction, because any
+moon crosses 10 points alone and any play P7 names wins a point trick, so
+they are not reported.) The JSON also holds `pointsPerHandAdvantage`
 with both operands (`conservative` and `opponent` `{num, den}`) and the paired
 difference with its CI. It also prints how often
 each principle decided a conservative play or pass card (flagging any that
@@ -805,14 +812,18 @@ clearly better than chance: look at the principle fire table and the
 `random-legal` row first. A failure of (2) prints the first positions as
 rulebook YAML; fix it as under "Reading a failure" above.
 
-**Reading the numbers.** Against the moon-shooter bot, one hand in five is a
-moon (2,724 moons in the default run). The conservative seats recognized the
-threat in every one of them (100%, Wilson [99.9%, 100%]) but P7 decided no
-play in any (0 of 2,724, upper bound 0.1%); of the hands where a threat was
-seen, 75.7% ended without a moon. P7 names a card only in narrow spots (a
-point trick X is winning that the CPU can take for certain, or a Q♠ drop that
-would complete the moon). That is a finding to weigh (#3196), not a bug in
-the report.
+**Reading the numbers (default run, moon-shooter matchup).** One hand in
+five is a moon (2,724). The CPU's trigger first fires at trick 5.7 on average
+(median 5) in hands that end in a moon and at 4.8 (median 4) in hands that are
+stopped; 75.7% of the hands where it fired end without a moon [74.9%, 76.5%].
+At first recognition a conservative seat held an unbeatable heart in 14.5% of
+the moon hands but 70.6% of the stopped ones: moons mostly happen where P7
+lacked the means by the time it noticed. The hypothetical hearts trigger fires
+_later_ (mean trick 7.3 in moon hands, 7.1 in stopped hands) and in fewer
+hands (5,755 vs 11,197), because it needs three hearts held by one seat while
+the CPU's trigger also fires on Q♠ plus a few points; it would not give P7
+more time in this bot's hands. That is for the owner decision (#3196), not a
+bug in the report.
 
 `--games` is capped at 20,000 (exit 2 above it).
 
