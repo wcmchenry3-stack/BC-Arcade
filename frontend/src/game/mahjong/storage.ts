@@ -36,7 +36,6 @@ import { createJsonSlot, createRecord } from "../_shared/storageSlot";
 const SUBSYSTEM = "mahjong.storage";
 
 export interface MahjongStats {
-  bestScore: number;
   /**
    * The fastest clear on this device, per layout id (#2747): each layout has
    * its own board, so a fast clear on an easy layout is no best on a hard
@@ -46,8 +45,6 @@ export interface MahjongStats {
    * show as a false best on some layout).
    */
   bestTimeMsByLayout: Readonly<Record<string, number>>;
-  gamesPlayed: number;
-  gamesWon: number;
 }
 
 /** The stored per-layout bests: plausible numbers only (see `plausibleBestMs`). */
@@ -158,16 +155,13 @@ export const { load: loadStats, save: saveStats } = createRecord<MahjongStats>({
   key: "mahjong_stats_v1",
   subsystem: SUBSYSTEM,
   ops: { load: "loadStats", save: "saveStats" },
-  fallback: () => ({ bestScore: 0, bestTimeMsByLayout: {}, gamesPlayed: 0, gamesWon: 0 }),
+  fallback: () => ({ bestTimeMsByLayout: {} }),
   read: (raw) => {
     const parsed = JSON.parse(raw);
     return {
-      bestScore: typeof parsed.bestScore === "number" ? parsed.bestScore : 0,
       // Per layout (#2747); a best under the ranking floor is a broken clock
       // and is dropped, and the old cross-layout `bestTimeMs` is ignored.
       bestTimeMsByLayout: loadBestTimes(parsed.bestTimeMsByLayout),
-      gamesPlayed: typeof parsed.gamesPlayed === "number" ? parsed.gamesPlayed : 0,
-      gamesWon: typeof parsed.gamesWon === "number" ? parsed.gamesWon : 0,
     };
   },
   write: (stats) => JSON.stringify(stats),

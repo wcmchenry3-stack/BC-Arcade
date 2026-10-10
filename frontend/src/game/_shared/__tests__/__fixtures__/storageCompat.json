@@ -743,33 +743,33 @@
     "sentry": "[]"
   },
   "freecell: stats": {
-    "result": "{\"bestMoves\":80,\"gamesPlayed\":3,\"gamesWon\":2}",
+    "result": "{\"bestMoves\":80}",
     "storage": {
-      "freecell_stats_v1": "{\"bestMoves\":80,\"gamesPlayed\":3,\"gamesWon\":2}"
+      "freecell_stats_v1": "{\"bestMoves\":80}"
     },
     "sentry": "[]"
   },
   "freecell: stats partial": {
-    "result": "{\"bestMoves\":0,\"gamesPlayed\":0,\"gamesWon\":4}",
+    "result": "{\"bestMoves\":0}",
     "storage": {
       "freecell_stats_v1": "{\"gamesWon\":4,\"bestMoves\":\"x\"}"
     },
     "sentry": "[]"
   },
   "freecell: stats none": {
-    "result": "{\"bestMoves\":0,\"gamesPlayed\":0,\"gamesWon\":0}",
+    "result": "{\"bestMoves\":0}",
     "storage": {},
     "sentry": "[]"
   },
   "freecell: stats corrupt": {
-    "result": "{\"bestMoves\":0,\"gamesPlayed\":0,\"gamesWon\":0}",
+    "result": "{\"bestMoves\":0}",
     "storage": {
       "freecell_stats_v1": "{x"
     },
     "sentry": "[[\"captureException\",{\"__error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\"},{\"tags\":{\"subsystem\":\"freecell.storage\",\"op\":\"loadStats\"}}]]"
   },
   "freecell: stats null": {
-    "result": "{\"bestMoves\":0,\"gamesPlayed\":0,\"gamesWon\":0}",
+    "result": "{\"bestMoves\":0}",
     "storage": {
       "freecell_stats_v1": "null"
     },
@@ -833,26 +833,26 @@
     "sentry": "[]"
   },
   "mahjong: stats": {
-    "result": "{\"bestScore\":300,\"bestTimeMsByLayout\":{\"turtle\":300000},\"gamesPlayed\":4,\"gamesWon\":1}",
+    "result": "{\"bestTimeMsByLayout\":{\"turtle\":300000}}",
     "storage": {
-      "mahjong_stats_v1": "{\"bestScore\":300,\"bestTimeMsByLayout\":{\"turtle\":300000},\"gamesPlayed\":4,\"gamesWon\":1}"
+      "mahjong_stats_v1": "{\"bestTimeMsByLayout\":{\"turtle\":300000}}"
     },
     "sentry": "[]"
   },
   "mahjong: stats pre-#2747": {
-    "result": "{\"bestScore\":5,\"bestTimeMsByLayout\":{\"pyramid\":400000},\"gamesPlayed\":0,\"gamesWon\":0}",
+    "result": "{\"bestTimeMsByLayout\":{\"pyramid\":400000}}",
     "storage": {
       "mahjong_stats_v1": "{\"bestScore\":5,\"bestTimeMs\":1000,\"bestTimeMsByLayout\":{\"turtle\":1,\"fort\":\"x\",\"pyramid\":400000}}"
     },
     "sentry": "[]"
   },
   "mahjong: stats none": {
-    "result": "{\"bestScore\":0,\"bestTimeMsByLayout\":{},\"gamesPlayed\":0,\"gamesWon\":0}",
+    "result": "{\"bestTimeMsByLayout\":{}}",
     "storage": {},
     "sentry": "[]"
   },
   "mahjong: stats corrupt": {
-    "result": "{\"bestScore\":0,\"bestTimeMsByLayout\":{},\"gamesPlayed\":0,\"gamesWon\":0}",
+    "result": "{\"bestTimeMsByLayout\":{}}",
     "storage": {
       "mahjong_stats_v1": "{x"
     },

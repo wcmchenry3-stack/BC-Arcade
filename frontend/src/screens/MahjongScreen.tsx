@@ -132,12 +132,7 @@ export default function MahjongScreen() {
   // The HUD clock's screen-reader label; stable, so the clock's own
   // one-second tick is the only thing that re-renders it.
   const clockA11yLabel = useCallback((time: string) => t("hud.elapsed", { time }), [t]);
-  const [stats, setStats] = useState<MahjongStats>({
-    bestScore: 0,
-    bestTimeMsByLayout: {},
-    gamesPlayed: 0,
-    gamesWon: 0,
-  });
+  const [stats, setStats] = useState<MahjongStats>({ bestTimeMsByLayout: {} });
 
   // Hint state — IDs of the pair currently being highlighted; auto-clears after 2 s.
   const [hintIds, setHintIds] = useState<ReadonlySet<number>>(new Set());
@@ -311,7 +306,6 @@ export default function MahjongScreen() {
         // The play timer, not accumulatedMs: the engine banks the running
         // segment only on pause, so a board cleared in one sitting has 0 there.
         const finalMs = elapsedMs(s);
-        const finalScore = s.score;
         // The finished game is the leaderboard entry (#2624): the card only
         // asks where it ranks. Only a win completed in this session has one.
         if (gameId) void lookupRank(gameId);
@@ -324,8 +318,6 @@ export default function MahjongScreen() {
           const best = nextBestTime(prev.bestTimeMsByLayout[layoutId] ?? 0, finalMs).bestTimeMs;
           const updated: MahjongStats = {
             ...prev,
-            gamesWon: prev.gamesWon + 1,
-            bestScore: finalScore > prev.bestScore ? finalScore : prev.bestScore,
             bestTimeMsByLayout:
               best > 0 ? { ...prev.bestTimeMsByLayout, [layoutId]: best } : prev.bestTimeMsByLayout,
           };
@@ -533,11 +525,6 @@ export default function MahjongScreen() {
       setState(fresh);
       setView("play");
       setHasSavedGame(false);
-      setStats((prev) => {
-        const updated = { ...prev, gamesPlayed: prev.gamesPlayed + 1 };
-        saveStats(updated).catch(() => {});
-        return updated;
-      });
       const newProgress: MahjongProgress = {
         ...progressRef.current,
         currentLayoutId: layoutId,

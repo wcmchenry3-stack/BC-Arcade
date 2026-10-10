@@ -38,7 +38,7 @@ jest.mock("../../game/freecell/storage", () => ({
   loadGame: jest.fn().mockResolvedValue(null),
   saveGame: jest.fn().mockResolvedValue(undefined),
   clearGame: jest.fn().mockResolvedValue(undefined),
-  loadStats: jest.fn().mockResolvedValue({ bestMoves: 0, gamesPlayed: 0, gamesWon: 0 }),
+  loadStats: jest.fn().mockResolvedValue({ bestMoves: 0 }),
   saveStats: jest.fn().mockResolvedValue(undefined),
 }));
 
@@ -469,7 +469,7 @@ describe("FreeCellScreen — result card (#2508)", () => {
     });
     reduceMotion.mockRestore();
     (loadGame as jest.Mock).mockResolvedValue(null);
-    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 0, gamesPlayed: 0, gamesWon: 0 });
+    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 0 });
   });
 
   /** Loads a game one auto-complete step from winning and plays that step. */
@@ -528,7 +528,7 @@ describe("FreeCellScreen — result card (#2508)", () => {
   });
 
   it("marks a new best and shows it", async () => {
-    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 90, gamesPlayed: 4, gamesWon: 2 });
+    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 90 });
     const r = await winInOneMove();
     const card = within(await r.findByTestId("freecell-result"));
     expect(card.getByText("New best")).toBeTruthy();
@@ -536,17 +536,17 @@ describe("FreeCellScreen — result card (#2508)", () => {
   });
 
   it("does not mark a first win as a new best, but still records it as the best (#2977)", async () => {
-    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 0, gamesPlayed: 0, gamesWon: 0 });
+    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 0 });
     (saveStats as jest.Mock).mockClear();
     const r = await winInOneMove();
     const card = within(await r.findByTestId("freecell-result"));
     expect(card.queryByText("New best")).toBeNull();
     expect(card.getByText("Best")).toBeTruthy();
-    expect(saveStats).toHaveBeenCalledWith(expect.objectContaining({ bestMoves: 1, gamesWon: 1 }));
+    expect(saveStats).toHaveBeenCalledWith(expect.objectContaining({ bestMoves: 1 }));
   });
 
   it("does not mark a win that fails to beat the best as a new best", async () => {
-    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 1, gamesPlayed: 4, gamesWon: 2 });
+    (loadStats as jest.Mock).mockResolvedValue({ bestMoves: 1 });
     const r = await winInOneMove();
     const card = within(await r.findByTestId("freecell-result"));
     expect(card.queryByText("New best")).toBeNull();

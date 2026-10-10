@@ -89,24 +89,31 @@ describe("freecell stats storage", () => {
 
   it("returns zero defaults when no stats saved", async () => {
     const stats = await loadStats();
-    expect(stats).toEqual({ bestMoves: 0, gamesPlayed: 0, gamesWon: 0 });
+    expect(stats).toEqual({ bestMoves: 0 });
   });
 
   it("saves and loads stats round-trip", async () => {
-    await saveStats({ bestMoves: 42, gamesPlayed: 7, gamesWon: 3 });
+    await saveStats({ bestMoves: 42 });
     const loaded = await loadStats();
-    expect(loaded).toEqual({ bestMoves: 42, gamesPlayed: 7, gamesWon: 3 });
+    expect(loaded).toEqual({ bestMoves: 42 });
   });
 
   it("returns zero defaults on corrupt stats payload", async () => {
     await AsyncStorage.setItem("freecell_stats_v1", "not-json{");
     const stats = await loadStats();
-    expect(stats).toEqual({ bestMoves: 0, gamesPlayed: 0, gamesWon: 0 });
+    expect(stats).toEqual({ bestMoves: 0 });
   });
 
-  it("coerces missing numeric fields to 0 on partial payload", async () => {
-    await AsyncStorage.setItem("freecell_stats_v1", JSON.stringify({ gamesPlayed: 5 }));
-    const stats = await loadStats();
-    expect(stats).toEqual({ bestMoves: 0, gamesPlayed: 5, gamesWon: 0 });
+  it("coerces a missing best to 0 on partial payload", async () => {
+    await AsyncStorage.setItem("freecell_stats_v1", JSON.stringify({}));
+    expect(await loadStats()).toEqual({ bestMoves: 0 });
+  });
+
+  it("drops the retired play and win counters from an older save", async () => {
+    await AsyncStorage.setItem(
+      "freecell_stats_v1",
+      JSON.stringify({ bestMoves: 60, gamesPlayed: 5, gamesWon: 2 })
+    );
+    expect(await loadStats()).toEqual({ bestMoves: 60 });
   });
 });
