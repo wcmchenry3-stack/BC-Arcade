@@ -1007,6 +1007,16 @@ export default function HeartsScreen() {
               handNumber: gameState.handNumber,
               tricks: trickLogBufferRef.current,
               pending: cpuPlayNotesRef.current,
+              ...(dealSnapshotRef.current
+                ? {
+                    pass: {
+                      passDirection: gameState.passDirection,
+                      initialHands: dealSnapshotRef.current.initialHands,
+                      passSelections: dealSnapshotRef.current.passSelections,
+                      passDecisions: dealSnapshotRef.current.passDecisions,
+                    },
+                  }
+                : {}),
             }) satisfies LiveDecisions
           }
           onNotesChange={(idx, text) =>

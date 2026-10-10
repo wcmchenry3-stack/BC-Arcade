@@ -173,6 +173,25 @@ describe("the hand in progress in the export", () => {
     expect(text).toContain("position incomplete (resumed mid-hand)");
   });
 
+  it("includes a confirmed CPU pass before any play, with the live pass direction", () => {
+    const passed = principled();
+    const text = formatSessionAsMarkdown([], [], PLAYER_LABELS, "conservative", {
+      handNumber: 2,
+      tricks: [],
+      pending: [],
+      pass: {
+        passDirection: "right",
+        initialHands: passed.initialHands,
+        passSelections: passed.passSelections,
+        ...(passed.passDecisions ? { passDecisions: passed.passDecisions } : {}),
+      },
+    });
+    expect(text).toContain("## Hand 2 — in progress");
+    expect(text).toContain("id: DBG-h2-pass-s1\ndecision: pass\nseat: 1\ntrick_number: 0\n");
+    expect(text).toContain("pass_direction: right\nexpected: [QS, AH, 2C]\nprinciple: P8-PASS");
+    expect(text).not.toContain("### CPU plays");
+  });
+
   it("is omitted when it has no CPU decisions", () => {
     const text = formatSessionAsMarkdown([], [], PLAYER_LABELS, "conservative", {
       handNumber: 2,

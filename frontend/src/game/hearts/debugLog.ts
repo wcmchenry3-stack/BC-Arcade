@@ -65,6 +65,13 @@ export interface LiveDecisions {
   readonly tricks: readonly DebugTrick[];
   /** Plays in the trick being played now, in play order. */
   readonly pending: readonly DebugPlay[];
+  /** The hand's pass snapshot, so a CPU pass can be copied mid-hand; absent when not tracked. */
+  readonly pass?: {
+    readonly passDirection: PassDirection;
+    readonly initialHands: readonly (readonly Card[])[];
+    readonly passSelections: readonly (readonly Card[])[];
+    readonly passDecisions?: readonly (readonly DebugPassCard[])[];
+  };
 }
 
 export function cardStr(card: Card): string {
@@ -250,24 +257,27 @@ function liveHandLines(live: LiveDecisions, label: (i: number) => string): strin
   if (live.pending.length > 0) tricks.push({ plays: live.pending, winnerIndex: -1, pointsWon: 0 });
   const log: HandDebugLog = {
     handNumber: live.handNumber,
-    passDirection: "none",
-    initialHands: [],
-    passSelections: [],
+    passDirection: live.pass?.passDirection ?? "none",
+    initialHands: live.pass?.initialHands ?? [],
+    passSelections: live.pass?.passSelections ?? [],
+    ...(live.pass?.passDecisions ? { passDecisions: live.pass.passDecisions } : {}),
     finalHands: [],
     tricks,
     scoreDeltas: [],
     cumulativeScoresAfter: [],
   };
   const decisions = cpuDecisions(log);
-  if (decisions.length === 0) return [];
-  const out = ["", "---", "", `## Hand ${live.handNumber} — in progress`, "", "### CPU plays"];
+  const decisionLines = cpuDecisionLines(log, label, true);
+  if (decisions.length === 0 && decisionLines.length === 0) return [];
+  const out = ["", "---", "", `## Hand ${live.handNumber} — in progress`];
+  if (decisions.length > 0) out.push("", "### CPU plays");
   for (const d of decisions) {
     out.push(
       `- T${d.trickIndex + 1} ${label(d.play.playerIndex)} ${cardStr(d.play.card)} ` +
         `${d.play.principle ?? "forced"}${d.play.reason ? ` — ${d.play.reason}` : ""}`
     );
   }
-  out.push(...cpuDecisionLines(log, label, false));
+  out.push(...decisionLines);
   return out;
 }
 
