@@ -755,6 +755,49 @@ reason: "Seat 1 has taken all 13 hearts and still plays to this trick, so it cou
 ```
 
 ```yaml
+id: R39
+decision: discard
+seat: 3
+trick_number: 7
+hand: [QS, 8S, 3S, 10S, JS, 5D, 6D]
+played:
+  - { lead: 0, cards: [2C, AC, 3C, 9C] }
+  - { lead: 1, cards: [KD, 2H, 7D, 4D] }
+  - { lead: 1, cards: [AH, 3H, JH, 4H] }
+  - { lead: 1, cards: [KH, 5H, 10H, 6H] }
+  - { lead: 1, cards: [QH, 7H, 9H, 8H] }
+  - { lead: 1, cards: [4C, QC, 5C, 6C] }
+trick: [{ seat: 2, card: JC }]
+hearts_broken: true
+queen_played: false
+points: [0, 13, 0, 0]
+expected: [JS]
+principle: P6-DISCARD
+reason: "Seat 1 has taken all 13 hearts and still plays to this club trick, so the CPU will not discard Q♠ where it could be overtaken; P6 discards its most dangerous other card, the jack of spades."
+```
+
+```yaml
+id: R40
+decision: follow
+seat: 3
+trick_number: 6
+hand: [AS, 2S, AD, 6D, 5D, 3D, 5C, 4C]
+played:
+  - { lead: 0, cards: [2C, AC, 3C, 9C] }
+  - { lead: 1, cards: [KD, 2H, 7D, 4D] }
+  - { lead: 1, cards: [AH, 3H, JH, 4H] }
+  - { lead: 1, cards: [KH, 5H, 10H, 6H] }
+  - { lead: 1, cards: [QH, 7H, 9H, 8C] }
+trick: [{ seat: 1, card: 9S }, { seat: 2, card: 8H }]
+hearts_broken: true
+queen_played: false
+points: [0, 12, 0, 0]
+expected: [2S]
+principle: P1-DUCK
+reason: "Seat 1 has every point (12) and is winning a trick with a heart in it, but with the queen out and seat 0 still to play, the moon guard may not use the ace of spades as its winner, so the CPU ducks with the 2."
+```
+
+```yaml
 id: R31
 decision: follow
 seat: 2
