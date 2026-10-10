@@ -18,7 +18,7 @@ on:
         default: ""
   # PRs that change the AI, the engine, or the gate itself.
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - "frontend/src/game/hearts/ai*.ts"
       - "frontend/src/game/hearts/engine.ts"

@@ -60,17 +60,28 @@ Codex: no comments yet (opened 6 min ago).
 
 ## Codex
 
-- Right after opening the draft, comment `@codex review` (it may not review
-  drafts on its own). Note the time.
+How the Codex app is triggered here: opening a PR for review, marking a
+draft ready, or a `@codex review` / `@codex security review` comment. It does
+**not** review a draft on its own. It reacts 👀 while running, posts comments
+only when it has findings, and reacts 👍 when a review finishes with none.
+
+- Right after opening the draft, comment `@codex review`. Note the time.
 - Give Codex up to **10 minutes** from when the draft was opened. Don't idle
-  waiting — the first code-review round runs during that window. If Codex
-  hasn't answered by the time our loop converges and 10 minutes have passed,
-  proceed to ready without it.
+  waiting — the first code-review round runs during that window. A 👍
+  reaction counts as "responded, no findings". If Codex hasn't answered by
+  the time our loop converges and 10 minutes have passed, proceed to ready
+  without it.
+- Marking the PR ready triggers a **second** Codex review automatically.
+  Treat it like any late review: triage and answer before merge.
 - Codex findings are triaged exactly like a round's findings and answered in
   the next response comment (prefix their numbers `C1`, `C2`...). Reply on
   each Codex inline thread with the disposition and resolve it.
-- Codex comments that arrive after the PR is ready are handled the same way,
-  before merge.
+- Codex sometimes posts a "Summary" comment describing a fix it made in its
+  own environment ("Committed the changes as …"). Nothing was pushed to the
+  branch. Treat the summary as a finding: apply the parts that hold up, say
+  which parts you didn't take and why.
+- When the PR needs a security review, also comment `@codex security review`
+  alongside running our own (below).
 
 ## Security review
 
