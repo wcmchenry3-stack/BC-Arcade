@@ -527,7 +527,9 @@ Every released shot is its own entity, so these trades are valid:
 ### Extraction and reset
 
 On the wave's last kill every Buddy switches to Leaving, through the pickup wait (#3132) and the
-extraction. `weaponsFree` is false, so it fires nothing new. `hazardsLive` is true, so shots already in flight can still damage it. The extraction
+extraction. `weaponsFree` is false, so it fires nothing new. `hazardsLive` is true, so shots
+already in flight can still damage it. A Buddy pickup collected during the wait launches and
+stands down at once, as one collected during the extraction always has. The extraction
 autopilot dodges shots aimed at Buddy (they are ordinary enemy shots), and Buddy and its shots are
 never hazards to the player. `clearTransientCombat` removes every Buddy and every shot either side
 fired, and `saveShape` persists Buddy's full state.
