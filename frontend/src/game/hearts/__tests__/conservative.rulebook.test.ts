@@ -16,6 +16,7 @@
  */
 import { selectCardToPlay, selectCardsToPass } from "../ai";
 import { choosePass } from "../conservative/pass";
+import { getValidPlays } from "../engine";
 import { choosePlay } from "../conservative/play";
 import { card, name } from "./helpers/conservativeFixtures";
 import {
@@ -23,6 +24,7 @@ import {
   derive,
   handOrderings,
   loadRulebook,
+  parseRulebook,
   parseBlock,
   rotate,
   toPosition,
@@ -90,6 +92,46 @@ describe("rulebook loading (§5 is the single source)", () => {
     expect(() => toPosition({ ...VALID_BLOCK, hand: ["1X"] })).toThrow(/bad card/);
   });
 
+  it("rejects duplicate keys inside a flow mapping", () => {
+    expect(() => parseBlock("played:\n  - { lead: 0, lead: 1, cards: [2C] }")).toThrow(/duplicate/);
+  });
+
+  describe("fence and id accounting", () => {
+    const block = (id: string, fence = "```yaml") =>
+      [
+        fence,
+        `id: ${id}`,
+        ...Object.entries(VALID_BLOCK)
+          .filter(([k]) => k !== "id")
+          .map(([k, v]) => `${k}: ${JSON.stringify(v)}`),
+        "```",
+      ].join("\n");
+    const doc = (...parts: string[]) =>
+      `# t\n\n## 5. Rulebook\n\n${parts.join("\n\n")}\n\n## 6. Next\n`;
+
+    it("accepts a well-formed section", () => {
+      expect(parseRulebook(doc(block("R01"), block("R02"))).positions).toHaveLength(2);
+    });
+    it("rejects a ```yml fence", () => {
+      expect(() => parseRulebook(doc(block("R01"), block("R02", "```yml")))).toThrow(
+        /plain yaml opener/
+      );
+    });
+    it("rejects an unclosed fence", () => {
+      expect(() => parseRulebook(doc(block("R01"), "```yaml\nid: R02\nseat: 0"))).toThrow(
+        /unclosed|malformed/
+      );
+    });
+    it("rejects a malformed 43rd block", () => {
+      expect(() => parseRulebook(doc(block("R01"), "```yaml\nid: R02\nnot a field\n```"))).toThrow(
+        /unparseable/
+      );
+    });
+    it("rejects an id: line outside any yaml block", () => {
+      expect(() => parseRulebook(doc(block("R01"), "id: R02"))).toThrow(/id: lines/);
+    });
+  });
+
   it("parses the doc's block shapes", () => {
     const b = parseBlock(
       [
@@ -122,6 +164,14 @@ describe.each(positions.map((p) => [p.id, p] as const))("%s", (_id, p) => {
 
   it("plays the expected card(s) as the game calls the CPU", () => {
     expect(shipped(p, p.hand)).toEqual(p.expected);
+  });
+
+  it("expects cards from the CPU's hand that are legal under getValidPlays", () => {
+    expect(p.expected.every((c) => p.hand.includes(c))).toBe(true);
+    if (p.decision !== "pass") {
+      const legal = getValidPlays(buildState(p, p.hand.map(card)), p.seat).map(name);
+      expect(legal).toEqual(expect.arrayContaining([...p.expected]));
+    }
   });
 
   it("credits the expected principle", () => {

@@ -51,6 +51,7 @@ function parseFlow(s: string, start: number): [Value, number] {
       if (!m || s[i + m[0].length] !== ":") throw new Error(`bad map key at ${i} in: ${s}`);
       i += m[0].length + 1;
       const [v, j] = parseFlow(s, i);
+      if (m[0] in out) throw new Error(`duplicate key ${m[0]} in mapping: ${s}`);
       out[m[0]] = v;
       i = j;
       ws();
@@ -216,15 +217,41 @@ export function toPosition(raw: Record<string, Value>): RulebookPosition {
   };
 }
 
-/** Every yaml block of §5, parsed. Throws if the section or any block cannot be loaded. */
-export function loadRulebook(): { positions: RulebookPosition[]; blocks: number } {
-  const md = fs.readFileSync(RULEBOOK_PATH, "utf8");
+/**
+ * Every yaml block of the §5 text, parsed. Throws if the section is missing, if any fence in it is
+ * not a well-formed closed ```yaml block, if the number of blocks differs from the number of `id:`
+ * lines counted independently of the fences, or if any block fails to parse.
+ */
+export function parseRulebook(md: string): { positions: RulebookPosition[]; blocks: number } {
   const start = md.indexOf("\n## 5. Rulebook");
   if (start < 0) throw new Error("§5 Rulebook heading not found");
   const next = md.indexOf("\n## ", start + 1);
   const section = md.slice(start, next < 0 ? undefined : next);
-  const blocks = [...section.matchAll(/^```yaml\n([\s\S]*?)\n```$/gm)].map((m) => m[1]!);
+  const blocks: string[] = [];
+  let open: string[] | null = null;
+  for (const line of section.split("\n")) {
+    if (open === null) {
+      if (line.trimStart().startsWith("```")) {
+        if (line !== "```yaml") throw new Error(`§5 fence is not a plain yaml opener: ${line}`);
+        open = [];
+      }
+    } else if (line.trimStart().startsWith("```")) {
+      if (line !== "```") throw new Error(`§5 fence closer is malformed: ${line}`);
+      blocks.push(open.join("\n"));
+      open = null;
+    } else {
+      open.push(line);
+    }
+  }
+  if (open !== null) throw new Error("§5 has an unclosed code fence");
+  const ids = section.match(/^id: R\d+\s*$/gm) ?? [];
+  if (ids.length !== blocks.length)
+    throw new Error(`§5 has ${ids.length} id: lines but ${blocks.length} yaml blocks`);
   return { positions: blocks.map((b) => toPosition(parseBlock(b))), blocks: blocks.length };
+}
+
+export function loadRulebook(): { positions: RulebookPosition[]; blocks: number } {
+  return parseRulebook(fs.readFileSync(RULEBOOK_PATH, "utf8"));
 }
 
 /** Rotates every seat number by `k` (CPU seat, history leaders, trick seats, points). */
@@ -279,7 +306,26 @@ export function derive(p: RulebookPosition): Derived {
     seen.add(c);
   };
 
+  // Follow-suit in the replayed history: a seat that played off the led suit is void in it.
+  const voidIn = new Set<string>();
+  const checkFollow = (seat: number, c: Card, led: Card["suit"], where: string) => {
+    if (voidIn.has(`${seat}${c.suit}`))
+      problems.push(`${where}: seat ${seat} played ${c.suit} after showing void`);
+    if (c.suit !== led) voidIn.add(`${seat}${led}`);
+  };
+
+  // Trick 1 opens with the 2♣ (led by the seat that holds it).
+  const first = p.played[0]?.cards[0] ?? p.trick[0]?.card;
+  if (p.trickNumber >= 1) {
+    if (first !== undefined && first !== "2C") problems.push(`trick 1 opens with ${first}, not 2C`);
+    if (first === undefined && p.trickNumber === 1 && !p.hand.includes("2C"))
+      problems.push("CPU leads trick 1 without the 2C");
+  }
+
   p.played.forEach((t, n) => {
+    t.cards.forEach((cn, i) =>
+      checkFollow((t.lead + i) % 4, card(cn), card(t.cards[0]!).suit, `trick ${n + 1}`)
+    );
     if (t.lead !== leader) problems.push(`trick ${n + 1} led by ${t.lead}, expected ${leader}`);
     if (t.cards.length !== 4) problems.push(`trick ${n + 1} has ${t.cards.length} cards`);
     const cs = t.cards.map(card);
@@ -297,12 +343,15 @@ export function derive(p: RulebookPosition): Derived {
   p.trick.forEach((t, i) => {
     see(t.card);
     const c = card(t.card);
+    checkFollow(t.seat, c, card(p.trick[0]!.card).suit, "current trick");
     if (c.suit === "hearts") heartsBroken = true;
     if (pts(c) === 13) queenPlayed = true;
     if (t.seat !== (leader + i) % 4) problems.push(`trick card ${i} from seat ${t.seat}`);
   });
   if (p.trickNumber > 0 && p.seat !== (leader + p.trick.length) % 4)
     problems.push(`seat ${p.seat} is not the next to play`);
+  for (const h of p.hand)
+    if (voidIn.has(`${p.seat}${card(h).suit}`)) problems.push(`CPU holds ${h} after showing void`);
   const expectedHand = p.trickNumber === 0 ? 13 : 14 - p.trickNumber;
   if (p.hand.length !== expectedHand) problems.push(`hand has ${p.hand.length} cards`);
   if (p.played.length !== Math.max(p.trickNumber - 1, 0))
