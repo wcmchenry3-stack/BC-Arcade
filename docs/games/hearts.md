@@ -369,6 +369,16 @@ Hearts is one of the games hidden from the v1.0 store build. It remains visible 
 
 Premium entitlement behavior is a platform concern; see [ARCHITECTURE.md §10](../ARCHITECTURE.md#10-premium-entitlements).
 
+## Debug panel: why the CPU played a card
+
+In development and pre-launch builds only (the same gating as the panel itself; release builds are unchanged), the Hearts debugger shows the principle behind each conservative-CPU decision (#3163):
+
+- **CPU principles** in each logged hand, and in the hand in progress: the last trick's plays with each play's principle ID (`P2-FREE-TRICK`, ... or `—` for a forced play), and a scrollable log of every CPU play with its one-sentence reason. CPU pass cards show their principle in Pass Selections.
+- **Copy** (web) exports each CPU play and pass as a `yaml` block in the [rulebook format](../hearts/CONSERVATIVE_AI.md#5-rulebook) (hand, trick, trick number, hearts broken, Q♠ played, points so far, expected card, principle, reason), so a suspicious play can be pasted into an issue or the rulebook. Ids are `DBG-h<hand>-t<trick>-s<seat>`.
+- Legacy personas have no principles; their plays show nothing extra. Logs are in memory only (not persisted), and older entries without the fields render as before.
+
+Data: `frontend/src/game/hearts/debugLog.ts` (`DebugPlay`, `DebugPassCard`, `HandDebugLog.passDecisions`). The screen gets decisions from `explainCardToPlay` / `explainCardsToPass` in `ai.ts`, which return the same card as `selectCardToPlay` / `selectCardsToPass` plus the principle and reason.
+
 ## Key files
 
 - Rules engine: `frontend/src/game/hearts/engine.ts`

@@ -43,7 +43,7 @@ import {
   playCard,
   selectPassCard,
 } from "../game/hearts/engine";
-import { selectCardToPlay, selectCardsToPass } from "../game/hearts/ai";
+import { explainCardToPlay, explainCardsToPass } from "../game/hearts/ai";
 import HeartsAiDifficultySelector from "../components/hearts/HeartsAiDifficultySelector";
 import {
   clearGame,
@@ -89,7 +89,13 @@ import {
   selectablePresets,
 } from "../game/hearts/types";
 import { areLegacyHeartsPersonasEnabled } from "../game/_shared/envFlags";
-import type { HandDebugLog, DebugTrick } from "../game/hearts/debugLog";
+import type {
+  HandDebugLog,
+  DebugTrick,
+  DebugPlay,
+  DebugPassCard,
+  LiveDecisions,
+} from "../game/hearts/debugLog";
 type HeartsDebugPanelType = typeof import("../components/hearts/HeartsDebugPanel").default;
 import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
 
@@ -108,7 +114,21 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function buildDebugTrick(plays: readonly TrickCard[], winnerIndex: number): DebugTrick {
+/** A completed trick for the debug log, each play carrying its CPU note (#3163) when it has one. */
+function buildDebugTrick(
+  rawPlays: readonly TrickCard[],
+  winnerIndex: number,
+  notes: readonly DebugPlay[] = []
+): DebugTrick {
+  const plays: DebugPlay[] = rawPlays.map(
+    (p) =>
+      notes.find(
+        (n) =>
+          n.playerIndex === p.playerIndex &&
+          n.card.suit === p.card.suit &&
+          n.card.rank === p.card.rank
+      ) ?? p
+  );
   const pointsWon = plays.reduce((sum, tc) => {
     if (tc.card.suit === "hearts") return sum + 1;
     if (isQueenOfSpades(tc.card)) return sum + 13;
@@ -169,8 +189,11 @@ export default function HeartsScreen() {
     initialHands: readonly (readonly Card[])[];
     passSelections: readonly (readonly Card[])[];
     finalHands: readonly (readonly Card[])[];
+    passDecisions?: readonly (readonly DebugPassCard[])[];
   } | null>(null);
   const trickLogBufferRef = useRef<DebugTrick[]>([]);
+  // Conservative-CPU plays of the trick in progress, with the principle behind each (#3163).
+  const cpuPlayNotesRef = useRef<DebugPlay[]>([]);
 
   const unmountedRef = useRef(false);
   const loopActiveRef = useRef(false);
@@ -340,6 +363,7 @@ export default function HeartsScreen() {
       passDirection: gameState.passDirection,
       initialHands: snapshot.initialHands,
       passSelections: snapshot.passSelections,
+      ...(snapshot.passDecisions ? { passDecisions: snapshot.passDecisions } : {}),
       finalHands: snapshot.finalHands,
       tricks: [...trickLogBufferRef.current],
       scoreDeltas: gameState.scoreHistory[histLen - 1] ?? [],
@@ -348,6 +372,7 @@ export default function HeartsScreen() {
     setHandLogs((prev) => [...prev, entry]);
     setHandNotes((prev) => [...prev, ""]);
     trickLogBufferRef.current = [];
+    cpuPlayNotesRef.current = [];
     dealSnapshotRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState?.phase]);
@@ -434,13 +459,30 @@ export default function HeartsScreen() {
           if (!latestState || latestState.currentPlayerIndex !== s.currentPlayerIndex) return;
 
           const playerIndex = s.currentPlayerIndex;
-          const card = selectCardToPlay(
+          const persona = resolvePersona(s.aiDifficulty, playerIndex);
+          const decision = explainCardToPlay(
             s.playerHands[playerIndex] as Card[],
             s.currentTrick as TrickCard[],
             s,
             playerIndex,
-            resolvePersona(s.aiDifficulty, playerIndex)
+            persona
           );
+          const card = decision.card;
+          if (__DEV__ && persona === "conservative") {
+            cpuPlayNotesRef.current.push({
+              playerIndex,
+              card,
+              principle: decision.principle,
+              reason: decision.reason,
+              position: {
+                trickNumber: s.tricksPlayedInHand + 1,
+                hand: s.playerHands[playerIndex] ?? [],
+                trickSoFar: s.currentTrick,
+                heartsBroken: s.heartsBroken,
+                points: s.handScores,
+              },
+            });
+          }
           const completedTrick: readonly TrickCard[] | null = willComplete
             ? [...s.currentTrick, { card, playerIndex }]
             : null;
@@ -452,7 +494,10 @@ export default function HeartsScreen() {
             setLastTrick({ trick: completedTrick, winnerIndex: s.currentLeaderIndex });
             void persist(s);
             if (__DEV__) {
-              trickLogBufferRef.current.push(buildDebugTrick(completedTrick, s.currentLeaderIndex));
+              trickLogBufferRef.current.push(
+                buildDebugTrick(completedTrick, s.currentLeaderIndex, cpuPlayNotesRef.current)
+              );
+              cpuPlayNotesRef.current = [];
             }
           }
           // Apply the card play on top of the latest React state, with events
@@ -558,8 +603,9 @@ export default function HeartsScreen() {
     if (completedTrick) {
       if (__DEV__ && debugMode) {
         trickLogBufferRef.current.push(
-          buildDebugTrick(completedTrick, newState.currentLeaderIndex)
+          buildDebugTrick(completedTrick, newState.currentLeaderIndex, cpuPlayNotesRef.current)
         );
+        cpuPlayNotesRef.current = [];
       }
       void persist(newState);
       if (newState.phase === "playing") {
@@ -596,21 +642,25 @@ export default function HeartsScreen() {
   function handlePassConfirm() {
     if (!gameState) return;
     let s = gameState;
+    const passDecisions: DebugPassCard[][] = [[], [], [], []];
     for (let i = 1; i <= 3; i++) {
-      const aiCards = selectCardsToPass(
+      const persona = resolvePersona(s.aiDifficulty, i);
+      const aiCards = explainCardsToPass(
         [...(s.playerHands[i] ?? [])],
         s.passDirection,
-        resolvePersona(s.aiDifficulty, i),
+        persona,
         i
       );
-      for (const c of aiCards) {
-        s = selectPassCard(s, i, c);
+      for (const { card, principle, reason } of aiCards) {
+        s = selectPassCard(s, i, card);
+        if (persona === "conservative") passDecisions[i]!.push({ card, principle, reason });
       }
     }
     const committed = commitPass(s);
     if (__DEV__ && debugMode && dealSnapshotRef.current) {
       dealSnapshotRef.current = {
         ...dealSnapshotRef.current,
+        passDecisions,
         passSelections: s.passSelections,
         finalHands: committed.playerHands,
       };
@@ -633,6 +683,7 @@ export default function HeartsScreen() {
         finalHands: next.playerHands,
       };
       trickLogBufferRef.current = [];
+      cpuPlayNotesRef.current = [];
     }
     setGameState(next);
     void persist(next);
@@ -659,6 +710,7 @@ export default function HeartsScreen() {
     if (__DEV__) {
       setHandLogs([]);
       trickLogBufferRef.current = [];
+      cpuPlayNotesRef.current = [];
       dealSnapshotRef.current = null;
       setHandNotes([]);
     }
@@ -938,6 +990,13 @@ export default function HeartsScreen() {
           notes={handNotes}
           playerLabels={playerLabels}
           aiDifficulty={gameState.aiDifficulty}
+          getLive={() =>
+            ({
+              handNumber: gameState.handNumber,
+              tricks: trickLogBufferRef.current,
+              pending: cpuPlayNotesRef.current,
+            }) satisfies LiveDecisions
+          }
           onNotesChange={(idx, text) =>
             setHandNotes((prev) => {
               const next = [...prev];
