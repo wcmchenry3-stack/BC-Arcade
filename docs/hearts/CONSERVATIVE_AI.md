@@ -1,7 +1,7 @@
 # Conservative Hearts CPU: principles and rulebook
 
 - **Status:** Implemented (#3159, epic #3156) in [`frontend/src/game/hearts/conservative/`](../../frontend/src/game/hearts/conservative/): `terms.ts` (§2.1 terms, §3 knowledge), `play.ts` (`choosePlay`: §2.4 Leading / Following / Discarding) and `pass.ts` (`choosePass`: §2.4 Passing). Every CPU seat players see plays it (`ai.ts` routes the `conservative` persona there). Spec: story #3157.
-- **Builds on it:** the CPU (#3159), the rulebook tests (#3160) and the independent simulator principle checker (#3161).
+- **Builds on it:** the CPU (#3159), the rulebook tests (#3160, `frontend/src/game/hearts/__tests__/conservative.rulebook.test.ts`, which reads §5 at test time) and the independent simulator principle checker (#3161).
 - **Game rules:** [games/hearts.md](../games/hearts.md) and the engine, [`frontend/src/game/hearts/engine.ts`](../../frontend/src/game/hearts/engine.ts). This file does not restate them. Every expected card below is legal under `getValidPlays`.
 
 This spec defines one CPU that plays plain, careful Hearts from a short list of principles. It does not code each scenario. **When the principles handle a hand badly, the fix is to change a principle, not to add a special case.**
@@ -177,6 +177,8 @@ Each position below is one fenced `yaml` block (a mapping). A parser should read
 | `reason`                        | One plain-English sentence.                                                                                                                            |
 
 All positions are internally consistent. There are no duplicate cards, hand size = 14 − trick number, and `played` has trick number − 1 tricks, each led by the previous winner. `points`, `hearts_broken` and `queen_played` match the history. **The CPU seat's own earlier plays in `played` are exactly what §2.4 picks at that moment**, so a test can replay a history through the CPU. Each expected card is legal under `getValidPlays`. All of this was checked against a scratch implementation of §2.4, which was not committed.
+
+**Tested from this section (#3160).** `conservative.rulebook.test.ts` reads every `yaml` block below at test time and fails if one cannot be parsed, if two share an `id`, or if there are fewer than 42. Each position is re-derived from its own history (points, flags, leaders, hand size), run through `selectCardToPlay` / `selectCardsToPass` with the `conservative` persona and through `choosePlay` / `choosePass` for the principle, then repeated with the hand in five orders and with the whole position rotated to each seat. So a new position needs only a block here, and a block that breaks the block format fails the suite. Keep to the field list above.
 
 ### Trick 1
 
