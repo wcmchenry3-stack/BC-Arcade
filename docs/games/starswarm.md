@@ -268,6 +268,8 @@ are enemy shots and are listed like any other.
 Boss waves are **5, 9, 13, …** and contain only 1 Carrier + 4 Guardian escorts.
 
 - Guardian escalation is active from the first tick.
+- All four Guardians may dive at once: the concurrent-diver cap is lifted to 4 on a boss wave
+  (`diveCap`, #3139). Ordinary waves keep the `maxDivers` caps.
 - Carrier beam cadence is 1.5× faster in every stage (still never below its floor).
 - No Carrier reinforcements: the wave has no original Grunts to refill.
 - When the last Guardian dies, the lone Carrier goes straight from protected to **final stand**

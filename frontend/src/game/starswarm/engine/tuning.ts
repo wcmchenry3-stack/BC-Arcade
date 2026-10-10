@@ -563,6 +563,14 @@ export function maxDivers(wave: number): number {
   return 4;
 }
 
+/** #3139: the boss wave's four Guardians are all active from the first tick, so all four may dive. */
+export const BOSS_WAVE_MAX_DIVERS = 4;
+
+/** Concurrent-diver cap for a wave: `maxDivers`, lifted to `BOSS_WAVE_MAX_DIVERS` on a boss wave. */
+export function diveCap(wave: number): number {
+  return isBossWave(wave) ? Math.max(BOSS_WAVE_MAX_DIVERS, maxDivers(wave)) : maxDivers(wave);
+}
+
 // #972: max enemy bullets on screen — 3 at wave 1, +1 every 2 waves; scaled by difficulty
 export function bulletCap(wave: number, paramScale = 1): number {
   return Math.min(24, Math.round((3 + Math.floor((wave - 1) / 2)) * paramScale));
