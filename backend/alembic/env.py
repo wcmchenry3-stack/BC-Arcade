@@ -27,9 +27,15 @@ if config.config_file_name is not None:
 
 
 def _sync_url(raw: str) -> str:
-    """Strip any async driver qualifier — alembic uses sync drivers."""
+    """Swap any async driver for its sync twin — alembic uses sync drivers.
+
+    Name psycopg2 explicitly: SQLAlchemy 2.1 made a bare ``postgresql://`` default to
+    psycopg (v3), which isn't installed.
+    """
     if raw.startswith("postgresql+asyncpg://"):
-        return "postgresql://" + raw[len("postgresql+asyncpg://") :]
+        return "postgresql+psycopg2://" + raw[len("postgresql+asyncpg://") :]
+    if raw.startswith("postgresql://"):  # Render's form, and CI's
+        return "postgresql+psycopg2://" + raw[len("postgresql://") :]
     if raw.startswith("sqlite+aiosqlite://"):
         return "sqlite://" + raw[len("sqlite+aiosqlite://") :]
     return raw
