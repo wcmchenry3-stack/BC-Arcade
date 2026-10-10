@@ -31,3 +31,13 @@ const PRE_LAUNCH_API = /^https:\/\/dev-games-api\.buffingchi\.com(?:[/:?#]|$)/;
 export function isPreLaunchApiBuild(): boolean {
   return PRE_LAUNCH_API.test(process.env.EXPO_PUBLIC_API_URL ?? "");
 }
+
+/**
+ * `HEARTS_LEGACY_PERSONAS` (#3158): the Cautious / Schemer / Daring / Mixed
+ * Hearts CPUs (and PIMC) stay in the code for comparison runs, but players only
+ * get them in dev builds and pre-launch (internal TestFlight / Play test)
+ * builds. Store builds seat every CPU as Conservative with no picker.
+ */
+export function areLegacyHeartsPersonasEnabled(): boolean {
+  return (typeof __DEV__ !== "undefined" && __DEV__) || isPreLaunchApiBuild();
+}

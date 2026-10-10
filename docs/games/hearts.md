@@ -15,6 +15,7 @@ Shared session, offline, result-card, leaderboard and Stats behavior lives in [G
 Hearts is a penalty-point trick-taking game. The goal is to finish the game with the **lowest cumulative score**.
 
 Per hand:
+
 - each heart taken is 1 point;
 - Queen of Spades is 13 points;
 - there are 26 penalty points available in an ordinary hand.
@@ -33,6 +34,7 @@ Before play, each player normally selects 3 cards to pass. Pass direction rotate
 Then the cycle repeats.
 
 The engine records pass memory for each player:
+
 - cards they passed away;
 - who received them;
 - cards they received;
@@ -49,6 +51,7 @@ Players must follow the led suit when possible. If they cannot follow, they may 
 ### First trick restrictions
 
 On the first trick:
+
 - the leader must play 2♣;
 - followers who hold clubs must follow clubs;
 - a player void in clubs may not discard a heart or Q♠ unless their entire remaining hand consists only of hearts/Q♠.
@@ -56,6 +59,7 @@ On the first trick:
 ### Hearts broken
 
 After the first trick:
+
 - hearts cannot be led until hearts have been broken;
 - hearts become broken when a heart is played off-suit;
 - if a player's hand contains only hearts, they may lead hearts even before the normal break condition.
@@ -73,6 +77,7 @@ Only cards in the led suit compete for the trick.
 The highest rank in that suit wins; Ace is high.
 
 The winner:
+
 - takes all four cards and their penalty points;
 - leads the next trick.
 
@@ -81,12 +86,14 @@ The engine also tracks when players demonstrate they are void in a suit by playi
 ## Shooting the Moon
 
 A player shoots the moon by taking:
+
 - all 13 hearts; and
 - Q♠
 
 in the same hand.
 
 BC Arcade applies:
+
 - shooter: 0 points for the hand;
 - every other player: 26 points.
 
@@ -101,30 +108,30 @@ The game ends once at least one player has reached **100 or more** cumulative po
 The player with the lowest cumulative score wins.
 
 For the human player's server result:
+
 - sole lowest score → `win`;
 - tied for lowest → `push`;
 - otherwise → `loss`.
 
 ## Current computer-player presets
 
-The UI exposes four opponent presets:
+Players see **one** computer opponent: **Conservative** (the default preset, `conservative`). Store builds show no opponent picker and every CPU seat plays Conservative.
 
-- **Cautious**
-- **Schemer**
-- **Daring**
-- **Mixed**
+The legacy personas (**Cautious**, **Schemer**, **Daring**) and the **Mixed** table stay in the code, unchanged, behind the `HEARTS_LEGACY_PERSONAS` flag (#3158, epic #3156) so comparison runs can still use them. The flag is `areLegacyHeartsPersonasEnabled()` in `frontend/src/game/_shared/envFlags.ts`: on only for dev bundles (`__DEV__`) and pre-launch builds (`isPreLaunchApiBuild()`). With it on, the picker shows Conservative first and the four legacy presets. A legacy preset saved by an earlier build loads as Conservative when the flag is off, and is kept when it is on. The sim tooling (`tools/sim/`, `frontend/tooling/hearts/`) always runs the legacy personas, whatever the flag.
+
+Until #3159 lands, Conservative is a stand-in: the legacy Cautious weights with no noise (`conservativeStandIn` in `aiWeights.ts`, `NOISE_RATE.conservative = 0`). #3159 replaces it in that one place.
 
 For a non-Mixed preset, all three AI seats use that persona.
 
 Mixed uses a fixed canonical assignment:
 
-| Seat | Position | Persona |
-| ---: | --- | --- |
-| 1 | left AI | Cautious |
-| 2 | top AI | Schemer |
-| 3 | right AI | Daring |
+| Seat | Position | Persona  |
+| ---: | -------- | -------- |
+|    1 | left AI  | Cautious |
+|    2 | top AI   | Schemer  |
+|    3 | right AI | Daring   |
 
-The selected preset is recorded in game metadata but does **not** partition the public leaderboard.
+The selected preset (`ai_difficulty`: `conservative` in store builds) is recorded in game metadata but does **not** partition the public leaderboard.
 
 ## Current AI architecture
 
@@ -139,6 +146,7 @@ For each legal action, the AI scores considerations and chooses among them using
 - tactical play such as ducking with the highest safe card, winning high when a win is forced/useful, and spade flushing.
 
 Pass selection uses:
+
 - danger/passing quality;
 - suit-voiding utility;
 - Daring-specific moon-control logic when a hand qualifies.
@@ -168,18 +176,21 @@ The AI does not inspect hidden opponents' exact hands.
 ### Cautious
 
 Primary character:
+
 - strongest emphasis on minimizing immediate points;
 - strong Q♠ avoidance;
 - relatively little pass-phase suit-voiding pressure;
 - never initiates a moon attempt.
 
 Current play weights:
+
 - minimize points: 3.0
 - Q♠ risk: 2.0
 - moon threat: 1.0
 - tactics: 1.0
 
 Pass weighting:
+
 - passing quality: 1.0
 - suit voiding: 0.2
 
@@ -190,17 +201,20 @@ Despite the high frequency, mistakes are no longer uniform-random cards; see Pla
 ### Schemer
 
 Primary character:
+
 - more balanced self-protection and moon defense;
 - stronger suit-void creation during passing than Cautious;
 - does not intentionally shoot the moon.
 
 Current play weights:
+
 - minimize points: 2.0
 - Q♠ risk: 1.5
 - moon threat: 1.5
 - tactics: 1.0
 
 Pass weighting:
+
 - passing quality: 1.0
 - suit voiding: 0.8
 
@@ -209,6 +223,7 @@ Current mistake/noise rate: **19%**.
 ### Daring
 
 Primary character:
+
 - zero ordinary decision noise;
 - strongest Q♠ manipulation;
 - strongest suit-void pressure in passing;
@@ -216,12 +231,14 @@ Primary character:
 - has special endgame/adversarial weighting modes.
 
 Standard play weights:
+
 - minimize points: 1.5
 - Q♠ risk: 3.0
 - moon threat: 1.0
 - tactics: 1.0
 
 Pass weighting:
+
 - passing quality: 1.0
 - suit voiding: 2.5
 
@@ -251,6 +268,7 @@ The core assessment considers:
 Daring is currently the only persona that acts on this moon assessment.
 
 During the pass phase, a viable Daring hand tries to retain:
+
 - hearts;
 - Q♠ / relevant spade control;
 - Aces;
@@ -282,6 +300,7 @@ The exact strength of that defense remains part of the current utility model and
 ## Endgame / adversarial modes
 
 Daring has special non-moon modes for situations such as:
+
 - late-game score pressure;
 - opportunities to dump Q♠ or high hearts onto the human/score leader.
 
@@ -320,6 +339,7 @@ Until #2587 lands, this document's **Current AI architecture** sections describe
 ## Persistence and timing
 
 Hearts state persists locally, including:
+
 - cumulative scores;
 - hand/score history;
 - pass direction/state;
@@ -330,6 +350,7 @@ Hearts state persists locally, including:
 Hearts uses its own active-play clock.
 
 The clock pauses when:
+
 - another screen covers Hearts;
 - the app is backgrounded/inactive.
 
@@ -340,6 +361,7 @@ Saved elapsed play time survives a relaunch.
 Backend module: `backend/hearts/module.py`.
 
 Public board:
+
 - `final_score = max(0, 100 - human penalty points)`;
 - higher is better;
 - max value 100;
@@ -386,6 +408,7 @@ Premium entitlement behavior is a platform concern; see [ARCHITECTURE.md §10](.
 Current rules and reporting can be considered documented now.
 
 The AI section remains explicitly provisional while:
+
 - #2587 — production PIMC strong engine;
 - #2283 — unified one-engine difficulty epic;
 - #2233 — remaining Hearts AI robustness work

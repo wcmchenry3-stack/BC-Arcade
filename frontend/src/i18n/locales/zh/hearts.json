@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}}收全红心！",
   "events.queenOfSpades": "{{name}}拿走了黑桃Q！",
   "difficulty.groupLabel": "难度选择",
+  "difficulty.conservative": "保守型",
+  "difficulty.conservative.desc": "稳妥出牌，避免吃分",
   "difficulty.cautious": "谨慎型",
   "difficulty.cautious.desc": "打法保守，避免吃分",
   "difficulty.schemer": "谋略型",

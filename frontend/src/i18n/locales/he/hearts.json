@@ -47,6 +47,8 @@
   "events.moonShot": "{{name}} לקח את הכל!",
   "events.queenOfSpades": "{{name}} לקח את מלכת הספייד!",
   "difficulty.groupLabel": "סגנון יריב",
+  "difficulty.conservative": "שמרני",
+  "difficulty.conservative.desc": "משחק בבטחה, נמנע מלקחת נקודות",
   "difficulty.cautious": "זהיר",
   "difficulty.cautious.desc": "משחק בזהירות, נמנע מלקחת נקודות",
   "difficulty.schemer": "מתכנן",

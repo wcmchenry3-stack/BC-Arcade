@@ -431,6 +431,24 @@
     "doNotTranslate": [],
     "notes": null
   },
+  "difficulty.conservative": {
+    "component": "HeartsAiDifficultySelector",
+    "description": "Label for the 'Conservative' AI opponent-style option, the default CPU (the picker is dev / pre-launch only).",
+    "tone": "functional, concise",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "difficulty.conservative.desc": {
+    "component": "HeartsAiDifficultySelector",
+    "description": "One-line description of the 'Conservative' AI opponent style.",
+    "tone": "functional",
+    "characterLimit": 46,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
   "difficulty.cautious": {
     "component": "HeartsAiDifficultySelector",
     "description": "Label for the 'Cautious' AI opponent-style option.",

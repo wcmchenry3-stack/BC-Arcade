@@ -203,6 +203,58 @@ describe("HeartsScreen — pre-game persona selector (#1654)", () => {
   });
 });
 
+describe("HeartsScreen — legacy persona flag (#3158)", () => {
+  const g = globalThis as { __DEV__?: boolean };
+  const realDev = g.__DEV__;
+  const realUrl = process.env.EXPO_PUBLIC_API_URL;
+
+  beforeEach(async () => {
+    (loadGame as jest.Mock).mockResolvedValue(null);
+    resetSyncMocks();
+    await AsyncStorage.removeItem("hearts.difficulty");
+  });
+
+  afterEach(() => {
+    g.__DEV__ = realDev;
+    if (realUrl === undefined) delete process.env.EXPO_PUBLIC_API_URL;
+    else process.env.EXPO_PUBLIC_API_URL = realUrl;
+    return AsyncStorage.removeItem("hearts.difficulty");
+  });
+
+  function storeBuild() {
+    g.__DEV__ = false;
+    delete process.env.EXPO_PUBLIC_API_URL;
+  }
+
+  it("shows Conservative first, plus the legacy styles, with the flag on", async () => {
+    const { getAllByRole, getByTestId } = await renderScreen();
+    await waitFor(() => getByTestId("hearts-difficulty-conservative"));
+    expect(getAllByRole("radio")[0]!.props.testID).toBe("hearts-difficulty-conservative");
+    expect(getByTestId("hearts-difficulty-conservative").props.accessibilityState.checked).toBe(
+      true
+    );
+    expect(getByTestId("hearts-difficulty-daring")).toBeTruthy();
+  });
+
+  it("hides the picker in a store build and deals every CPU seat as conservative", async () => {
+    storeBuild();
+    // A legacy style remembered by an earlier build must not come back.
+    await AsyncStorage.setItem("hearts.difficulty", "daring");
+    const dealGame = jest.spyOn(engine, "dealGame");
+    try {
+      const { queryByTestId, queryAllByRole, getByTestId } = await renderScreen();
+      await waitFor(() => getByTestId("hearts-start-game"));
+      expect(queryAllByRole("radio")).toEqual([]);
+      expect(queryByTestId("hearts-difficulty-conservative")).toBeNull();
+      await fireEvent.press(getByTestId("hearts-start-game"));
+      expect(dealGame).toHaveBeenLastCalledWith("conservative");
+      expect(await AsyncStorage.getItem("hearts.difficulty")).toBe("conservative");
+    } finally {
+      dealGame.mockRestore();
+    }
+  });
+});
+
 describe("HeartsScreen — passing phase (inline banner)", () => {
   beforeEach(() => {
     setRng(createSeededRng(42));
@@ -923,8 +975,8 @@ describe("HeartsScreen — result card (#2506, #2629)", () => {
       await act(async () => {
         await fireEvent.press(r.getByRole("button", { name: "Play Again" }));
       });
-      expect(dealGame).toHaveBeenLastCalledWith("schemer");
-      expect(await AsyncStorage.getItem("hearts.difficulty")).toBe("schemer");
+      expect(dealGame).toHaveBeenLastCalledWith("conservative");
+      expect(await AsyncStorage.getItem("hearts.difficulty")).toBe("conservative");
     } finally {
       dealGame.mockRestore();
       __setPremiumLevelsForTests(null);
@@ -1017,6 +1069,26 @@ describe("HeartsScreen — game session (#2629)", () => {
       expect(mockSyncMarkStarted).toHaveBeenCalled();
     }
   );
+
+  it("the first card of a conservative game starts the session with ai_difficulty conservative (store build)", async () => {
+    const g = globalThis as { __DEV__?: boolean };
+    const dev = g.__DEV__;
+    g.__DEV__ = false;
+    try {
+      (loadGame as jest.Mock).mockResolvedValue(humanLastCardState("conservative"));
+      const r = await renderScreen();
+      const slot = await r.findByTestId("hearts-hand-card-0");
+      await act(async () => {
+        fireEvent.press(within(slot).getByRole("button"));
+      });
+    } finally {
+      g.__DEV__ = dev;
+    }
+    expect(mockSyncStart).toHaveBeenCalledWith(
+      { initial_score: 0 },
+      { ai_difficulty: "conservative" }
+    );
+  });
 
   it("leaves abandons to the hook: no beforeRemove listener", async () => {
     (loadGame as jest.Mock).mockResolvedValue(humanLastCardState("schemer"));
