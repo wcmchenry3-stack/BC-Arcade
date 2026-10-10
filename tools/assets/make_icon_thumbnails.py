@@ -74,7 +74,16 @@ def make_directory(src_dir: Path, dst_dir: Path, max_size: int = MAX_SIZE) -> in
         print(f"error: '{src_dir}' is not a directory", file=sys.stderr)
         sys.exit(1)
 
-    sources = sorted(p for p in src_dir.iterdir() if p.suffix.lower() in (".webp", ".png"))
+    # One source per icon. When a stem has both, the PNG wins: it is what
+    # remove_backgrounds.py just wrote, and the WebP may be a stale conversion.
+    by_stem: dict[str, Path] = {}
+    for p in sorted(src_dir.iterdir()):
+        suffix = p.suffix.lower()
+        if suffix not in (".webp", ".png"):
+            continue
+        if p.stem not in by_stem or suffix == ".png":
+            by_stem[p.stem] = p
+    sources = [by_stem[stem] for stem in sorted(by_stem)]
     for src in sources:
         dst = dst_dir / f"{src.stem}.webp"
         w, h = make_thumbnail(src, dst, max_size)

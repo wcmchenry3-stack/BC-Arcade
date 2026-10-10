@@ -61,6 +61,17 @@ def test_directory_writes_webp_per_source(tmp_path):
     assert sorted(p.name for p in dst_dir.iterdir()) == ["a.webp", "b.webp"]
 
 
+def test_png_master_wins_over_webp_with_same_stem(tmp_path):
+    src_dir = tmp_path / "masters"
+    src_dir.mkdir()
+    _make_icon(src_dir / "apple.png", (512, 256))  # fresh remove_backgrounds.py output
+    _make_icon(src_dir / "apple.webp", (256, 256))  # stale conversion
+    dst_dir = tmp_path / "fruit-icons"
+    assert make_directory(src_dir, dst_dir, max_size=64) == 1
+    with Image.open(dst_dir / "apple.webp") as out:
+        assert out.size == (64, 32)
+
+
 def test_refuses_baked_output_dir(tmp_path):
     src_dir = tmp_path / "masters"
     src_dir.mkdir()

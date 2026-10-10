@@ -78,12 +78,54 @@ export function bucketPackagedAsset(rel) {
   return "other";
 }
 
+/** Metro's packaged name for a file under assets/: `sounds/hearts-broken.mp3` -> `assets_sounds_heartsbroken.mp3`. */
+export function metroAssetName(relToAssets) {
+  const parts = relToAssets.split("/");
+  const file = parts.pop();
+  const dot = file.lastIndexOf(".");
+  const flat = (seg) => seg.toLowerCase().replace(/[^a-z0-9_]/g, "");
+  return (
+    ["assets", ...parts.map(flat), flat(file.slice(0, dot))].join("_") +
+    file.slice(dot).toLowerCase()
+  );
+}
+
+/**
+ * Sounds only the hidden premium games use (#2830): required by a hidden game's
+ * `src/game/<slug>/sounds.ts` and by no other game's. Derived from the sound maps
+ * and HIDDEN_GAMES (src/entitlements/gameVisibility.ts) so a new premium SFX is
+ * covered without editing this script. Returns Metro packaged names.
+ */
+export function hiddenOnlySoundNames(rootDir = root) {
+  const visibility = fs.readFileSync(
+    path.join(rootDir, "src/entitlements/gameVisibility.ts"),
+    "utf8"
+  );
+  const setBody = visibility.match(/HIDDEN_GAMES[^=]*=\s*new Set\(\[([^\]]*)\]/)?.[1];
+  if (!setBody) throw new Error("size-report: could not read HIDDEN_GAMES from gameVisibility.ts");
+  const hiddenGames = new Set([...setBody.matchAll(/"([^"]+)"/g)].map((m) => m[1]));
+  const gameDir = path.join(rootDir, "src/game");
+  const hiddenUse = new Set();
+  const freeUse = new Set();
+  for (const slug of fs.readdirSync(gameDir)) {
+    const map = path.join(gameDir, slug, "sounds.ts");
+    if (!fs.existsSync(map)) continue;
+    const text = fs.readFileSync(map, "utf8");
+    for (const m of text.matchAll(/require\("(?:\.\.\/)+assets\/([^"]+)"\)/g)) {
+      (hiddenGames.has(slug) ? hiddenUse : freeUse).add(metroAssetName(m[1]));
+    }
+  }
+  return new Set([...hiddenUse].filter((name) => !freeUse.has(name)));
+}
+
 /** Returns [{file, bytes, pattern}] for packaged files that only hidden premium games use. */
-export function findHiddenPremiumAssets(files) {
+export function findHiddenPremiumAssets(files, hiddenSounds = new Set()) {
   const hits = [];
   for (const f of files) {
     const base = path.posix.basename(f.file.split(path.sep).join("/")).toLowerCase();
-    const pattern = HIDDEN_PREMIUM_PATTERNS.find((p) => p.re.test(base));
+    const pattern = hiddenSounds.has(base)
+      ? { name: "hidden-game-only sound" }
+      : HIDDEN_PREMIUM_PATTERNS.find((p) => p.re.test(base));
     if (pattern) hits.push({ file: f.file, bytes: f.bytes, pattern: pattern.name });
   }
   return hits;
@@ -229,7 +271,7 @@ function main() {
   const jsBytes = fs.statSync(o.bundle).size;
   const files = o.assets ? walkFiles(o.assets) : [];
   const assetBytes = o.assets ? files.reduce((n, f) => n + f.bytes, 0) : undefined;
-  const hidden = o.assets ? findHiddenPremiumAssets(files) : [];
+  const hidden = o.assets ? findHiddenPremiumAssets(files, hiddenOnlySoundNames()) : [];
   const buckets = o.assets ? summarize(files) : {};
   const { failures, warnings } = evaluate({ jsBytes, assetBytes, hidden }, o.limits);
   const sources = o.flags.has("sources") ? sourceReport() : undefined;

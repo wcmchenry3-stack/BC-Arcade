@@ -40,11 +40,16 @@ const HIDDEN_GAME_SCREENS = {
 
 const SCREENS_DIR = path.join(__dirname, "..", "src", "screens");
 const STUB_SCREEN = path.join(SCREENS_DIR, "StoreBuildExcludedScreen.tsx");
-const EXCLUDED_PATHS = new Set(
-  Object.values(HIDDEN_GAME_SCREENS)
-    .flat()
-    .map((name) => path.join(SCREENS_DIR, `${name}.tsx`))
-);
+const EXCLUDED_SCREENS = new Set(Object.values(HIDDEN_GAME_SCREENS).flat());
+// `<Name>.tsx` plus any platform variant Metro may pick (`.ios.tsx`, `.native.tsx`, ...).
+const SCREEN_FILE = /^([A-Za-z0-9]+)(?:\.(?:ios|android|native|web))?\.(?:tsx|ts|jsx|js)$/;
+
+/** True for a hidden game's screen module, whichever platform file Metro resolved. */
+function isExcludedScreen(filePath) {
+  if (path.dirname(filePath) !== SCREENS_DIR) return false;
+  const match = SCREEN_FILE.exec(path.basename(filePath));
+  return match !== null && EXCLUDED_SCREENS.has(match[1]);
+}
 
 /** True when a bundle hides the premium games, i.e. SHOW_HIDDEN_GAMES is false. */
 function isStoreBundle(dev, env) {
@@ -65,7 +70,7 @@ function withStoreBundleExclusions(config, env = process.env) {
       : context.resolveRequest(context, moduleName, platform);
     if (
       resolution.type === "sourceFile" &&
-      EXCLUDED_PATHS.has(resolution.filePath) &&
+      isExcludedScreen(resolution.filePath) &&
       isStoreBundle(context.dev, env)
     ) {
       return { type: "sourceFile", filePath: STUB_SCREEN };
@@ -78,6 +83,7 @@ function withStoreBundleExclusions(config, env = process.env) {
 module.exports = {
   HIDDEN_GAME_SCREENS,
   STUB_SCREEN,
+  isExcludedScreen,
   isStoreBundle,
   withStoreBundleExclusions,
 };

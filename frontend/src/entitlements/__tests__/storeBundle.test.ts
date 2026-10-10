@@ -19,6 +19,7 @@ type MetroConfigLike = { resolver: { resolveRequest?: Resolver } };
 const storeBundle = require("../../../metro/storeBundle") as {
   HIDDEN_GAME_SCREENS: Record<string, string[]>;
   STUB_SCREEN: string;
+  isExcludedScreen: (filePath: string) => boolean;
   isStoreBundle: (dev: boolean, env: Record<string, string | undefined>) => boolean;
   withStoreBundleExclusions: (
     config: MetroConfigLike,
@@ -88,6 +89,30 @@ describe("HIDDEN_GAME_SCREENS", () => {
       );
       expect(match).not.toBeNull();
       expect(storeBundle.HIDDEN_GAME_SCREENS[slug]).toContain(match![1]);
+    }
+  });
+});
+
+describe("isExcludedScreen", () => {
+  it("matches a hidden screen and its platform variants", () => {
+    for (const file of [
+      "MahjongScreen.tsx",
+      "MahjongScreen.ios.tsx",
+      "MahjongScreen.native.tsx",
+      "StarSwarmScreen.android.tsx",
+    ]) {
+      expect(storeBundle.isExcludedScreen(path.join(SCREENS_DIR, file))).toBe(true);
+    }
+  });
+
+  it("ignores free screens, lookalikes and other directories", () => {
+    for (const file of [
+      path.join(SCREENS_DIR, "SudokuScreen.tsx"),
+      path.join(SCREENS_DIR, "MahjongScreenHeader.tsx"),
+      path.join(SCREENS_DIR, "__tests__", "MahjongScreen.tsx"),
+      path.join(SCREENS_DIR, "..", "components", "MahjongScreen.tsx"),
+    ]) {
+      expect(storeBundle.isExcludedScreen(file)).toBe(false);
     }
   });
 });

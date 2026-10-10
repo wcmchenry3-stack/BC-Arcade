@@ -728,6 +728,8 @@ jobs:
       #   payload (2.7 MB of that is the 14 font files). The all-games assets (27.4 MiB, mostly
       #   22 MB of BGM) would blow it by design: un-hiding games means re-budgeting, not
       #   quietly shipping them.
+      - name: Size report script tests
+        run: node --test scripts/size-report.test.mjs
       - name: Size budgets (JS, packaged assets, hidden-premium guard)
         run: |
           set -o pipefail
@@ -741,8 +743,6 @@ jobs:
             --sources \
             --github-output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
         id: size
-      - name: Size report script tests
-        run: node --test scripts/size-report.test.mjs
       # Premium ceiling: the same entry with the hidden games kept (pre-launch API URL).
       # Same 8 MiB limit; this is the number that predicts the premium store build.
       - name: All-games JS ceiling (pre-launch config)
@@ -937,9 +937,20 @@ jobs:
         if: steps.changes.outputs.should_run == 'true'
         continue-on-error: true
         run: |
-          APK=$(ls android/app/build/outputs/apk/release/*.apk | head -n 1)
+          APK=$(ls android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "::warning::No release APK found under android/app/build/outputs/apk/release; skipping the size report."
+            exit 0
+          fi
+          # This job sets no EXPO_PUBLIC_API_URL / EXPO_PUBLIC_TEST_HOOKS, so the embedded
+          # bundle is a store bundle (hidden premium games excluded, #2830). Say so, so a
+          # future env change here explains a jump in the numbers.
+          CONFIG="store config"
+          if [ "${EXPO_PUBLIC_TEST_HOOKS:-}" = "1" ] || [[ "${EXPO_PUBLIC_API_URL:-}" == https://dev-games-api.buffingchi.com* ]]; then
+            CONFIG="all-games config"
+          fi
           {
-            echo "### Release APK size (arm64-v8a, universal, debug-signed)"
+            echo "### Release APK size (arm64-v8a, universal, debug-signed, ${CONFIG})"
             echo
             echo "APK: $(basename "$APK") — $(stat --printf='%s' "$APK") bytes (compressed, on disk)"
             echo
