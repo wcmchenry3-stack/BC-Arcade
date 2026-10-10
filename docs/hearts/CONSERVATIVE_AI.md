@@ -47,17 +47,17 @@ The definitions below are exact, so two engineers implementing them pick the sam
 
 ### 2.2 The principles
 
-| ID              | Principle (one sentence)                                                                                                                                                                                                                                                                       | Source                                                                                                                                              |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `P1-DUCK`       | If you can lose the trick, play the highest card that still loses; if you can't, play your highest card other than Q♠ (and other than A♠/K♠ while another player could still drop the queen on it, per P5).                                                                                    | Nullo (Hoyle's)                                                                                                                                     |
-| `P2-FREE-TRICK` | A trick that cannot hold points is free: on every trick-1 follow, and as last seat on a trick with no points, play your highest led-suit card other than Q♠.                                                                                                                                   | Hoyle's: "only harmless tricks"                                                                                                                     |
-| `P3-SHED`       | When you lead, lead your most dangerous non-heart card if you hold one.                                                                                                                                                                                                                        | Hoyle's: "High cards that can be forced… should be played early rather than late"; "Q-9-8 should be led each and every time the opportunity offers" |
-| `P4-DANGER`     | Danger comes from middle and high cards with no low cards behind them, judged against the cards still out; aces and kings backed by low cards can wait.                                                                                                                                        | Hoyle's: "middle cards without low cards are very dangerous"                                                                                        |
-| `P5-QUEEN`      | Respect the queen: get rid of Q♠ the first time it cannot win (when you are void, or under A♠/K♠ in the trick); never lead Q♠, or A♠/K♠ while Q♠ is live; never play A♠/K♠ into a spade trick that the queen can still drop onto; pass Q♠/A♠/K♠ unless spades are PROTECTED.                   | Modern Hearts advice                                                                                                                                |
-| `P6-DISCARD`    | When void, discard in this order: Q♠, then A♠/K♠ while Q♠ is live, then your highest HIGH heart, then your most dangerous card.                                                                                                                                                                | Combines P3–P5                                                                                                                                      |
-| `P7-MOON-GUARD` | While one opponent X holds every point taken and has at least 10: keep your highest heart, lead it when nothing out can beat it, take a pointed trick X is winning when you play last or hold a certain winner, and never drop Q♠ on X's trick when X has, or this trick holds, all 13 hearts. | Hoyle's: "a high-card entry… to interrupt a 'take-all'"                                                                                             |
-| `P8-PASS`       | Pass the three cards P5 and P6 would most want to get rid of: an early discard, chosen in the same order.                                                                                                                                                                                      | Same principles                                                                                                                                     |
-| `P9-EXIT`       | With nothing dangerous to lead, lead the card least likely to win: among cards some out card can beat, the one with the fewest out cards below it, then the lowest rank; if every card would win, the lowest non-heart.                                                                        | Nullo; beginner "lead low"                                                                                                                          |
+| ID              | Principle (one sentence)                                                                                                                                                                                                                                                                                                               | Source                                                                                                                                              |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `P1-DUCK`       | If you can lose the trick, play the highest card that still loses; if you can't, play your highest card other than Q♠ (and other than A♠/K♠ while another player could still drop the queen on it, per P5).                                                                                                                            | Nullo (Hoyle's)                                                                                                                                     |
+| `P2-FREE-TRICK` | A trick that cannot hold points is free: on every trick-1 follow, and as last seat on a trick with no points, play your highest led-suit card other than Q♠.                                                                                                                                                                           | Hoyle's: "only harmless tricks"                                                                                                                     |
+| `P3-SHED`       | When you lead, lead your most dangerous non-heart card if you hold one.                                                                                                                                                                                                                                                                | Hoyle's: "High cards that can be forced… should be played early rather than late"; "Q-9-8 should be led each and every time the opportunity offers" |
+| `P4-DANGER`     | Danger comes from middle and high cards with no low cards behind them, judged against the cards still out; aces and kings backed by low cards can wait.                                                                                                                                                                                | Hoyle's: "middle cards without low cards are very dangerous"                                                                                        |
+| `P5-QUEEN`      | Respect the queen: get rid of Q♠ the first time it cannot win (when you are void, or under A♠/K♠ in the trick); never lead Q♠, or A♠/K♠ while Q♠ is live; never play A♠/K♠ into a spade trick that the queen can still drop onto; pass Q♠/A♠/K♠ unless spades are PROTECTED.                                                           | Modern Hearts advice                                                                                                                                |
+| `P6-DISCARD`    | When void, discard in this order: Q♠, then A♠/K♠ while Q♠ is live, then your highest HIGH heart, then your most dangerous card.                                                                                                                                                                                                        | Combines P3–P5                                                                                                                                      |
+| `P7-MOON-GUARD` | While one opponent X holds every point taken and has at least 10: keep your highest heart, lead it when nothing out can beat it, take a pointed trick X is winning when you play last or hold a certain winner, and never drop Q♠ on a trick X is winning or can still overtake when X's hearts plus the hearts in this trick make 13. | Hoyle's: "a high-card entry… to interrupt a 'take-all'"                                                                                             |
+| `P8-PASS`       | Pass the three cards P5 and P6 would most want to get rid of: an early discard, chosen in the same order.                                                                                                                                                                                                                              | Same principles                                                                                                                                     |
+| `P9-EXIT`       | With nothing dangerous to lead, lead the card least likely to win: among cards some out card can beat, the one with the fewest out cards below it, then the lowest rank; if every card would win, the lowest non-heart.                                                                                                                | Nullo; beginner "lead low"                                                                                                                          |
 
 P4 is a definition used by P3, P6 and P8. It never picks a card by itself, so no rulebook position names it.
 
@@ -67,8 +67,8 @@ P4 is a definition used by P3, P6 and P8. It never picks a card by itself, so no
 
 The CPU always plays a legal card first (`getValidPlays`). If only one card is legal, it plays that card. Otherwise principles apply in this order, and the first one that names a card decides:
 
-1. **P7-MOON-GUARD, moon-complete case only.** Never drop Q♠ onto a trick X is winning when X has, or this trick holds, all 13 hearts. That would hand X the moon (26 to everyone else), and with every heart gone nothing could stop it.
-2. **P5-QUEEN.** Q♠ costs 13, which is half the hand. Ridding yourself of the queen, and not giving it a target, comes before everything else. Dropping Q♠ onto a possible moon shooter is still right in every other case, because some heart is still out and P7 can use it to stop the moon.
+1. **P7-MOON-GUARD, moon-complete case only.** Never drop Q♠ onto a trick that X is winning or still plays to, when X's hearts plus the hearts in this trick make 13. That could hand X the moon (26 to everyone else), and with every heart gone nothing could stop it.
+2. **P5-QUEEN.** Q♠ costs 13, which is half the hand. Ridding yourself of the queen, and not giving it a target, comes before everything else. Dropping Q♠ onto a possible moon shooter is still right in every other case, because some heart is still out, so X cannot yet take all 26 from this trick.
 3. **P7-MOON-GUARD** (the rest). A moon costs 26. When the threat is real, the guard comes before nullo.
 4. **P2-FREE-TRICK.** It comes before the duck: when nothing can go wrong, shed a high card.
 5. **P1-DUCK** (lose with the highest card that loses, or win with the highest card).
@@ -96,9 +96,9 @@ Candidates start as the legal cards.
 
 W is the winning card and "after" is the number of players after the CPU.
 
-1. **P7.** If spades were led, the CPU holds Q♠, W is K♠ or A♠, the moon is complete for X and X is the current winner, play the CPU's highest spade other than Q♠.
+1. **P7.** If spades were led, the CPU holds Q♠, W is K♠ or A♠, the moon is complete for X, and X is the current winner or plays after the CPU in this trick (so X could still overtake), play the CPU's highest spade other than Q♠.
 2. **P5.** If spades were led, the CPU holds Q♠ and W is K♠ or A♠, play Q♠. It cannot win.
-3. **P7.** If there is a moon threat, X is the current winner and the trick has points, let h be the CPU's highest led-suit card other than Q♠. If h beats W, and either the CPU plays last or above(h) = 0 (a certain winner), play h. Taking any point from X breaks the moon.
+3. **P7.** If there is a moon threat, X is the current winner and the trick has points, let h be the CPU's highest led-suit card other than Q♠, and also other than A♠/K♠ when spades were led, Q♠ is out and someone plays after the CPU (P5 outranks P7, so this step never offers the queen a target; with no such card, go on to step 4). If h beats W, and either the CPU plays last or above(h) = 0 (a certain winner), play h. Taking any point from X breaks the moon.
 4. **P2.** If this is trick 1, or the CPU plays last and the trick has no points, play its highest led-suit card other than Q♠ (Q♠ only if it is the only one).
 5. **P1.** If the CPU holds a led-suit card lower than W, play the highest such card. It is certain to lose.
 6. Otherwise every led-suit card the CPU holds beats W, and it wins unless someone after it overtakes.
@@ -110,7 +110,7 @@ W is the winning card and "after" is the number of players after the CPU.
 
 Candidates start as the legal cards from the engine. On trick 1 that excludes hearts and Q♠ unless the hand holds nothing else.
 
-1. **P7 (filter).** If the moon is complete for X and X is the current winner, remove Q♠.
+1. **P7 (filter).** If the moon is complete for X, and X is the current winner or plays after the CPU in this trick, remove Q♠.
 2. **P5.** Q♠, if it is a candidate.
 3. **P5.** A♠, then K♠, if a candidate and Q♠ is **live**. (Live, not out: a discarded A♠/K♠ can never win, and while the queen is unplayed they are liabilities wherever she is. On trick 1 the CPU may hold Q♠ without being allowed to discard it.)
 4. **P7 (filter).** If there is a moon threat, remove G. This never empties the candidates: a lone legal G was played up front, and after step 1 removes Q♠ the CPU holds no hearts at all, because the moon is complete.
@@ -730,6 +730,28 @@ points: [0, 13, 0, 0]
 expected: [KS]
 principle: P7-MOON-GUARD
 reason: "Seat 1 has taken all 13 hearts, so dropping Q♠ on its ace would give it the moon; it plays the king and keeps the queen."
+```
+
+```yaml
+id: R38
+decision: follow
+seat: 3
+trick_number: 7
+hand: [QS, 8S, 3S, 10S, JS, 5D, 6D]
+played:
+  - { lead: 0, cards: [2C, AC, 3C, 9C] }
+  - { lead: 1, cards: [KD, 2H, 7D, 4D] }
+  - { lead: 1, cards: [AH, 3H, JH, 4H] }
+  - { lead: 1, cards: [KH, 5H, 10H, 6H] }
+  - { lead: 1, cards: [QH, 7H, 9H, 8H] }
+  - { lead: 1, cards: [4C, QC, 5C, 6C] }
+trick: [{ seat: 2, card: KS }]
+hearts_broken: true
+queen_played: false
+points: [0, 13, 0, 0]
+expected: [JS]
+principle: P7-MOON-GUARD
+reason: "Seat 1 has taken all 13 hearts and still plays to this trick, so it could overtake the king with the ace; the CPU keeps the queen and plays its highest other spade."
 ```
 
 ```yaml
