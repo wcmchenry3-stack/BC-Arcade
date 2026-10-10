@@ -9,6 +9,7 @@
 **Web (Expo Web) is a supported secondary platform used for testing and the free games; it is not a revenue platform. iOS and Android are primary.** Do NOT default to investigating or fixing issues on web. **If a bug or feature request does not specify a platform, ask which platform is affected before doing any investigation.**
 
 Release toolchain — Expo is used as the development framework only:
+
 - iOS releases → **Xcode Cloud** (never `eas build` / Expo Go)
 - Android releases → **Gradle → Play Console** (never `eas build` / `eas submit`)
 
@@ -59,3 +60,8 @@ Project subagents in `.claude/agents/`, invoked via the `Agent` tool. Prefer the
 | lint-review       | `lint-review`       | Auto-fix lint issues after a lint-gate hook failure                                                                           |
 | plan-issues       | `plan-issues`       | Break a feature/bug/initiative into scoped GitHub issues — investigates code, drafts for confirmation, then `gh issue create` |
 | policy-compliance | `policy-compliance` | Check and fix policy violations after a policy-gate hook failure                                                              |
+| story-implementer | `story-implementer` | Implement one planned story on a branch (dispatched by the `ship-story` skill with a per-story model)                         |
+
+## Skills
+
+- **`ship-story`** (`.claude/skills/ship-story/`) — "work on story #N" / "work the epic #N": plan, pick agent + cheapest capable model, draft PR, review loops (code, Codex, security) documented on the PR, CI green, merge, close issues. Owner decisions go in `blocked:owner-decision` issues, never only in chat.

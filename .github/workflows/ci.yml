@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [dev, main]
   push:
     branches: [dev, main]
@@ -18,14 +19,20 @@ jobs:
   # === Tier 0: Hygiene gates (run immediately, must pass before tier 1) ====
 
   gate-main-source:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-gate-main-source.yml@main
     secrets: inherit
 
   secret-scan:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-secret-scan.yml@main
     secrets: inherit
 
   lint-python:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-lint-python.yml@main
     with:
       working-directory: backend
@@ -38,6 +45,8 @@ jobs:
   # tools/**/*.py (dev tooling, #2974): the same reusable workflow, pointed at tools/.
   # tools/pyproject.toml extends backend's ruff rules (line length 100).
   lint-python-tools:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-lint-python.yml@main
     with:
       working-directory: tools
@@ -46,6 +55,8 @@ jobs:
 
   # Unit tests for the Python asset tools (not collected by the backend suite).
   test-tools:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Test tools (pytest)
     runs-on: ubuntu-latest
     steps:
@@ -63,6 +74,8 @@ jobs:
         run: python -m pytest
 
   lint-frontend:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     uses: wcmchenry3-stack/.github/.github/workflows/called-lint-frontend.yml@main
     with:
       working-directory: frontend
@@ -72,6 +85,8 @@ jobs:
   # large-file-guard jobs, one step each. Each check step runs even if an earlier
   # one failed, so every failure shows under its own step name in a single run.
   repo-hygiene:
+    # Skip while the PR is a draft; ready_for_review starts the run (ship-story skill).
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Repo hygiene
     runs-on: ubuntu-latest
     steps:
