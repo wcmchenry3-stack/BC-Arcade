@@ -564,7 +564,7 @@ export function maxDivers(wave: number): number {
 }
 
 /** #3139: the boss wave's four Guardians are all active from the first tick, so all four may dive. */
-export const BOSS_WAVE_MAX_DIVERS = 4;
+const BOSS_WAVE_MAX_DIVERS = 4;
 
 /** Concurrent-diver cap for a wave: `maxDivers`, lifted to `BOSS_WAVE_MAX_DIVERS` on a boss wave. */
 export function diveCap(wave: number): number {
