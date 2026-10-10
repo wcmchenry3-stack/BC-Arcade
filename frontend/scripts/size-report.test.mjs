@@ -9,7 +9,9 @@ import { fileURLToPath } from "node:url";
 import {
   bucketPackagedAsset,
   evaluate,
+  findHiddenLocaleStrings,
   findHiddenPremiumAssets,
+  hiddenLocaleMarkers,
   hiddenOnlySoundNames,
   metroAssetName,
   summarize,
@@ -74,6 +76,10 @@ test("evaluate: hard limit fails, warn threshold warns, boundaries are inclusive
   const h = [{ file: "x", bytes: 1, pattern: "p" }];
   assert.equal(evaluate({ jsBytes: 1, hidden: h }, { forbidHidden: true }).failures.length, 1);
   assert.equal(evaluate({ jsBytes: 1, hidden: h }, {}).failures.length, 0);
+  const l = [{ locale: "de", ns: "common", key: "k", value: "v" }];
+  const forbidden = evaluate({ jsBytes: 1, hiddenLocales: l }, { forbidHiddenLocales: true });
+  assert.match(forbidden.failures[0], /1 non-launch locale string.*\(de\).*de\/common:k/);
+  assert.equal(evaluate({ jsBytes: 1, hiddenLocales: l }, {}).failures.length, 0);
 });
 
 test("CLI exit codes and JSON output", () => {
@@ -153,4 +159,67 @@ test("hiddenOnlySoundNames: premium-only sounds, not ones a free game shares", (
     hits.map((h) => h.file),
     ["raw/assets_sounds_heartsbroken.mp3"]
   );
+});
+
+test("hiddenLocaleMarkers: strings only the non-launch locales hold (#3150)", () => {
+  const markers = hiddenLocaleMarkers();
+  const locales = new Set(markers.map((m) => m.locale));
+  assert.deepEqual([...locales].sort(), [
+    "ar",
+    "de",
+    "he",
+    "hi",
+    "ja",
+    "ko",
+    "nl",
+    "pt",
+    "ru",
+    "zh",
+  ]);
+  // Every hidden locale is well covered, so one leaked file cannot slip through.
+  for (const code of locales)
+    assert.ok(markers.filter((m) => m.locale === code).length > 100, code);
+});
+
+test("findHiddenLocaleStrings reads through the minifier's escapes", () => {
+  const markers = [
+    { locale: "de", ns: "common", key: "a", value: "Zurück zur Übersicht" },
+    { locale: "ja", ns: "common", key: "b", value: "ゲームを続けますか" },
+    { locale: "ru", ns: "common", key: "c", value: "Продолжить игру" },
+  ];
+  const escape = (v) =>
+    [...v]
+      .map((ch) => {
+        const code = ch.charCodeAt(0);
+        if (code < 0x80) return ch;
+        return code < 0x100
+          ? `\\x${code.toString(16)}`
+          : `\\u${code.toString(16).padStart(4, "0").toUpperCase()}`;
+      })
+      .join("");
+  const bundle = `__d(function(){m.exports={a:"${escape(markers[0].value)}",b:"${escape(markers[1].value)}"}})`;
+  assert.deepEqual(
+    findHiddenLocaleStrings(bundle, markers).map((m) => m.key),
+    ["a", "b"]
+  );
+  assert.deepEqual(findHiddenLocaleStrings(`m.exports={a:"Back to overview"}`, markers), []);
+});
+
+test("CLI: --forbid-hidden-locales fails a bundle that holds a hidden locale's strings", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "size-report-locales-"));
+  const run = (text) => {
+    const bundle = path.join(dir, "index.android.bundle");
+    fs.writeFileSync(bundle, text);
+    return spawnSync(process.execPath, [script, "--bundle", bundle, "--forbid-hidden-locales"], {
+      encoding: "utf8",
+    });
+  };
+  try {
+    const leaked = run(`m.exports={k:${JSON.stringify(hiddenLocaleMarkers()[0].value)}}`);
+    assert.equal(leaked.status, 1);
+    assert.match(leaked.stdout, /Non-launch locale strings in the JS bundle: 1/);
+    assert.equal(run(`m.exports={k:"Play again"}`).status, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

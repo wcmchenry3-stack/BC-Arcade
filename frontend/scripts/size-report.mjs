@@ -29,6 +29,8 @@
  *   --max-assets <bytes>     fail if packaged assets are larger
  *   --forbid-hidden-assets   fail if any hidden-premium-only asset is packaged
  *                            (store bundles must not ship them, #2830)
+ *   --forbid-hidden-locales  fail if the JS bundle holds a non-launch locale's translations
+ *                            (iOS/Android store bundles must not ship them, #3150)
  *   --sources                also report checked-in assets/ and generated payload sizes
  *   --json                   machine-readable output (default: Markdown tables)
  *   --github-output <file>   append js_bytes / asset_bytes / asset_files / status lines
@@ -131,6 +133,50 @@ export function findHiddenPremiumAssets(files, hiddenSounds = new Set()) {
   return hits;
 }
 
+/**
+ * Strings that only a non-launch locale's translation files hold (#3150): long enough
+ * to be distinctive, free of characters a minifier re-quotes, and not part of any
+ * launch locale's text. Launch locales come from LAUNCH_LOCALE_CODES
+ * (src/i18n/locales.js). Returns [{locale, ns, key, value}].
+ */
+export function hiddenLocaleMarkers(rootDir = root) {
+  const locales = fs.readFileSync(path.join(rootDir, "src/i18n/locales.js"), "utf8");
+  const setBody = locales.match(/LAUNCH_LOCALE_CODES\s*=\s*new Set\(\[([^\]]*)\]/)?.[1];
+  if (!setBody) throw new Error("size-report: could not read LAUNCH_LOCALE_CODES from locales.js");
+  const launch = new Set([...setBody.matchAll(/"([^"]+)"/g)].map((m) => m[1]));
+  const dir = path.join(rootDir, "src/i18n/locales");
+  const hidden = [];
+  let launchText = "";
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!e.isDirectory() || e.name === "_meta") continue;
+    for (const file of fs.readdirSync(path.join(dir, e.name))) {
+      if (!file.endsWith(".json")) continue;
+      const entries = Object.entries(
+        JSON.parse(fs.readFileSync(path.join(dir, e.name, file), "utf8"))
+      );
+      if (launch.has(e.name)) launchText += entries.map(([, v]) => v).join("\n") + "\n";
+      else
+        for (const [key, value] of entries)
+          hidden.push({ locale: e.name, ns: file.slice(0, -".json".length), key, value });
+    }
+  }
+  return hidden.filter(
+    (m) =>
+      typeof m.value === "string" &&
+      m.value.length >= 12 &&
+      !/["'`\\\n\r$]/.test(m.value) &&
+      !launchText.includes(m.value)
+  );
+}
+
+/** Markers found in a minified bundle. The minifier writes non-ASCII as `\xHH` / `\uHHHH`. */
+export function findHiddenLocaleStrings(bundleText, markers) {
+  const text = bundleText.replace(/\\(?:u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2}))/g, (_, u, x) =>
+    String.fromCharCode(parseInt(u ?? x, 16))
+  );
+  return markers.filter((m) => text.includes(m.value));
+}
+
 /** Sum files into buckets: {bucket: {files, bytes}} sorted by bytes desc. */
 export function summarize(files, bucketOf = bucketPackagedAsset) {
   const buckets = {};
@@ -152,7 +198,7 @@ export function walkFiles(dir, base = dir, out = []) {
 }
 
 /** Decide pass/warn/fail from measurements and thresholds (all optional). */
-export function evaluate({ jsBytes, assetBytes, hidden = [] }, limits = {}) {
+export function evaluate({ jsBytes, assetBytes, hidden = [], hiddenLocales = [] }, limits = {}) {
   const failures = [];
   const warnings = [];
   if (limits.maxJs != null && jsBytes > limits.maxJs)
@@ -170,6 +216,13 @@ export function evaluate({ jsBytes, assetBytes, hidden = [] }, limits = {}) {
           .join(", ") +
         (hidden.length > 8 ? `, and ${hidden.length - 8} more` : "")
     );
+  if (limits.forbidHiddenLocales && hiddenLocales.length) {
+    const codes = [...new Set(hiddenLocales.map((h) => h.locale))].sort();
+    failures.push(
+      `${hiddenLocales.length} non-launch locale string(s) bundled in a store bundle ` +
+        `(${codes.join(", ")}), e.g. ${hiddenLocales[0].locale}/${hiddenLocales[0].ns}:${hiddenLocales[0].key}`
+    );
+  }
   return { failures, warnings };
 }
 
@@ -231,7 +284,8 @@ function parseArgs(argv) {
     if (valued.has(k)) {
       if (argv[i + 1] == null) throw new Error(`--${k} needs a value`);
       o[k] = argv[++i];
-    } else if (["forbid-hidden-assets", "sources", "json"].includes(k)) o.flags.add(k);
+    } else if (["forbid-hidden-assets", "forbid-hidden-locales", "sources", "json"].includes(k))
+      o.flags.add(k);
     else throw new Error(`Unknown flag: ${a}`);
   }
   const num = (k) => {
@@ -245,6 +299,7 @@ function parseArgs(argv) {
     warnJs: num("warn-js"),
     maxAssets: num("max-assets"),
     forbidHidden: o.flags.has("forbid-hidden-assets"),
+    forbidHiddenLocales: o.flags.has("forbid-hidden-locales"),
   };
   return o;
 }
@@ -273,7 +328,11 @@ function main() {
   const assetBytes = o.assets ? files.reduce((n, f) => n + f.bytes, 0) : undefined;
   const hidden = o.assets ? findHiddenPremiumAssets(files, hiddenOnlySoundNames()) : [];
   const buckets = o.assets ? summarize(files) : {};
-  const { failures, warnings } = evaluate({ jsBytes, assetBytes, hidden }, o.limits);
+  const hiddenLocales = findHiddenLocaleStrings(
+    fs.readFileSync(o.bundle, "utf8"),
+    hiddenLocaleMarkers()
+  );
+  const { failures, warnings } = evaluate({ jsBytes, assetBytes, hidden, hiddenLocales }, o.limits);
   const sources = o.flags.has("sources") ? sourceReport() : undefined;
 
   if (o.flags.has("json")) {
@@ -285,6 +344,7 @@ function main() {
           assetFiles: files.length,
           buckets,
           hidden,
+          hiddenLocaleStrings: hiddenLocales.length,
           sources,
           limits: o.limits,
           failures,
@@ -309,6 +369,7 @@ function main() {
       console.log(`\nHidden-premium assets packaged: ${hidden.length}`);
       for (const h of hidden) console.log(`- ${h.file} (${h.bytes} B, ${h.pattern})`);
     }
+    console.log(`\nNon-launch locale strings in the JS bundle: ${hiddenLocales.length}`);
     if (sources) {
       console.log(
         `\n#### Checked-in assets/ (source, not necessarily packaged)\n\n| Path | Files | KB |\n|---|---:|---:|`
@@ -331,6 +392,7 @@ function main() {
       `asset_bytes=${assetBytes ?? ""}`,
       `asset_files=${o.assets ? files.length : ""}`,
       `hidden_assets=${hidden.length}`,
+      `hidden_locale_strings=${hiddenLocales.length}`,
       `status=${failures.length ? "fail" : warnings.length ? "warn" : "ok"}`,
     ];
     fs.appendFileSync(o["github-output"], lines.join("\n") + "\n");
