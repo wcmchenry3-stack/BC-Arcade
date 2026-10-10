@@ -21,7 +21,7 @@ export function advanceMs(state: StarSwarmState, ms: number, input = NO_INPUT): 
 export function runExtraction(state: StarSwarmState, input = NO_INPUT): StarSwarmState {
   let s = state;
   const wave = s.wave;
-  for (let i = 0; i < 1000 && s.wave === wave && s.phase !== "GameOver"; i++) {
+  for (let i = 0; i < 2000 && s.wave === wave && s.phase !== "GameOver"; i++) {
     s = tick(s, 16, input);
   }
   return s;

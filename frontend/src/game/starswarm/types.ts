@@ -57,13 +57,17 @@ export type EnemyPhase =
 
 /**
  * #2842: the wave lifecycle. SwoopIn is safe setup time (nothing fires, nothing takes damage);
- * Playing is combat; Extraction is the live wind-down after the last kill (already-fired shots
- * and rocks stay real while the AI flies the ship out), ended by the hard transient reset
- * (`clearTransientCombat` in `engine/extraction.ts`) just before the next wave is built.
+ * Playing is combat; ClearAwaitingPickups (#3132) holds the cleared wave, under the player's
+ * control, until every pickup still on screen is collected or gone; Extraction is the live
+ * wind-down after that (already-fired shots and rocks stay real while the AI flies the ship
+ * out), ended by the hard transient reset (`clearTransientCombat` in `engine/extraction.ts`)
+ * just before the next wave is built.
  */
 export type GamePhase =
   | "SwoopIn" // wave intro — enemies filling the grid; every actor invulnerable, nobody fires
   | "Playing" // normal combat
+  // #3132: last enemy down, pickups still on screen — the player keeps the ship until they're gone
+  | "ClearAwaitingPickups"
   | "Extraction" // #2842: last enemy down — the AI flies the ship out through surviving hazards
   | "GameOver";
 
@@ -418,7 +422,10 @@ export interface StarSwarmState {
   readonly dodgeDisabled: boolean;
   /** Dev (#2491): enemies never fire flak at a rock. */
   readonly flakDisabled: boolean;
-  /** General-purpose phase timer (reserved; no phase uses it today). */
+  /**
+   * General-purpose phase timer: ms spent in the current phase, for phases that need one.
+   * #3132: ClearAwaitingPickups counts its wait here (the safety cap); 0 in every other phase.
+   */
   readonly phaseTimer: number;
   /** #2842: the AI extraction in progress; non-null exactly while phase is "Extraction". */
   readonly extraction: Extraction | null;

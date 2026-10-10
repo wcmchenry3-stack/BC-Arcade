@@ -19,11 +19,13 @@
  *                               with the tick's awards committed to the ledger (#2837)
  *  10. `tickBonusLives`         a threshold crossed this tick (can revert a same-tick GameOver)
  *  11. `tickExplosions`
- *  12. `checkPhaseTransitions`  the phase machine, last
+ *  12. `tickPickupWait`         #3132: the pickup wait's clock (its safety cap)
+ *  13. `checkPhaseTransitions`  the phase machine, last
  *
- * Phase machine: SwoopIn ──all arrived──▶ Playing ──last kill──▶ Extraction ──ship out──▶
- * clearTransientCombat ──▶ buildWaveState(wave + 1) ──▶ SwoopIn. GameOver is terminal: `tick`
- * returns the state untouched. The screen's pre-wave countdown runs with the engine frozen.
+ * Phase machine: SwoopIn ──all arrived──▶ Playing ──last kill──▶ [ClearAwaitingPickups, while
+ * a pickup is on screen (#3132)] ──▶ Extraction ──ship out──▶ clearTransientCombat ──▶
+ * buildWaveState(wave + 1) ──▶ SwoopIn. GameOver is terminal: `tick` returns the state
+ * untouched. The screen's pre-wave countdown runs with the engine frozen.
  *
  * Counters: the seeded rng and the id counters live in `rng.ts`, outside the state. A run
  * restored after a cold start must call `restoreEngineCounters(save.counters)` before its first
@@ -52,11 +54,16 @@ import { tickEnemies } from "./enemies";
 import { makeEnemy } from "./enemyPhases";
 import { tickExplosions } from "./entities";
 import {
-  beginExtraction,
+  beginWaveClear,
   clearTransientCombat,
+  endPickupWait,
   extractionComplete,
+  extractionYieldsToPickup,
   hazardsLive,
+  pickupWaitOver,
+  resumePickupWait,
   tickExtractionPilot,
+  tickPickupWait,
   weaponsFree,
 } from "./extraction";
 import { bossWaveSlots, waveSlots } from "./geometry";
@@ -287,6 +294,7 @@ export function tick(
   }
   s = tickBonusLives(state, s); // #1078: after score updated; un-GameOvers if bonus life rescues player
   s = tickExplosions(s, scaledDt);
+  s = tickPickupWait(s, scaledDt, state.powerUps); // #3132
   s = checkPhaseTransitions(s, tuning);
   return s;
 }
@@ -393,14 +401,21 @@ function checkPhaseTransitions(state: StarSwarmState, tuning: Tuning): StarSwarm
     return state;
   }
 
-  // Playing → Extraction on the last kill (#2842)
+  // Playing → (ClearAwaitingPickups →) Extraction on the last kill (#2842, #3132)
   if (state.phase === "Playing") {
-    return liveEnemies.length === 0 ? beginExtraction(state) : state;
+    return liveEnemies.length === 0 ? beginWaveClear(state) : state;
+  }
+
+  // #3132: the player has collected (or lost) every pickup on screen — now the extraction
+  if (state.phase === "ClearAwaitingPickups") {
+    return pickupWaitOver(state) ? endPickupWait(state) : state;
   }
 
   // Extraction → hard reset → wave N+1, once the ship is out
   if (state.phase === "Extraction") {
-    return extractionComplete(state) ? startNextWave(clearTransientCombat(state), tuning) : state;
+    if (extractionComplete(state)) return startNextWave(clearTransientCombat(state), tuning);
+    // #3132: salvage from a rock an in-flight shot broke — back to the player while on station
+    return extractionYieldsToPickup(state) ? resumePickupWait(state) : state;
   }
 
   return state;
