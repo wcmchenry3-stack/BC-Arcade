@@ -276,13 +276,11 @@ describe("MahjongScreen — undo affordance", () => {
 // ---------------------------------------------------------------------------
 
 describe("MahjongScreen — save/resume lifecycle", () => {
-  it("resumes a saved game without re-incrementing gamesPlayed", async () => {
+  it("resumes a saved game without writing stats", async () => {
     const saved: MahjongState = makeWinState({ isComplete: false, pairsRemoved: 4, score: 200 });
     await AsyncStorage.setItem("mahjong_game", JSON.stringify(saved));
     await mount();
-    const raw = await AsyncStorage.getItem("mahjong_stats_v1");
-    const gamesPlayed = raw ? JSON.parse(raw).gamesPlayed : 0;
-    expect(gamesPlayed).toBe(0);
+    expect(await AsyncStorage.getItem("mahjong_stats_v1")).toBeNull();
   });
 });
 
@@ -405,7 +403,6 @@ describe("MahjongScreen — win result card (#2510)", () => {
     await api.findByTestId("mahjong-result");
     await waitFor(async () => {
       const stats = JSON.parse((await AsyncStorage.getItem("mahjong_stats_v1")) ?? "{}");
-      expect(stats.gamesWon).toBe(1);
       // Per layout (#2747): the last-pair board is a Pyramid deal.
       expect(stats.bestTimeMsByLayout.pyramid).toBeGreaterThanOrEqual(90_000);
       expect(stats.bestTimeMsByLayout.pyramid).toBeLessThan(100_000);
@@ -443,7 +440,6 @@ describe("MahjongScreen — win result card (#2510)", () => {
     expect(card.queryByText("Best")).toBeNull();
     await waitFor(async () => {
       const stats = JSON.parse((await AsyncStorage.getItem("mahjong_stats_v1")) ?? "{}");
-      expect(stats.gamesWon).toBe(1);
       expect(stats.bestTimeMsByLayout).toEqual({});
     });
   });
@@ -605,27 +601,20 @@ describe("MahjongScreen — win result card (#2510)", () => {
 // ---------------------------------------------------------------------------
 
 describe("MahjongScreen — stats tracking", () => {
-  it("increments gamesPlayed on a fresh deal", async () => {
+  it("writes no play counters on a fresh deal", async () => {
     await mount();
-    await waitFor(async () => {
-      const raw = await AsyncStorage.getItem("mahjong_stats_v1");
-      expect(raw).not.toBeNull();
-      expect(JSON.parse(raw!).gamesPlayed).toBe(1);
-    });
+    expect(await AsyncStorage.getItem("mahjong_stats_v1")).toBeNull();
   });
 
-  it("does not double-count gamesWon when resuming an already-complete game", async () => {
+  it("keeps the stored best times when resuming an already-complete game", async () => {
     await AsyncStorage.setItem(
       "mahjong_stats_v1",
-      JSON.stringify({ bestScore: 3600, bestTimeMs: 180000, gamesPlayed: 1, gamesWon: 1 })
+      JSON.stringify({ bestTimeMsByLayout: { turtle: 180000 } })
     );
     await AsyncStorage.setItem("mahjong_game", JSON.stringify(makeWinState()));
     await mount();
-    await waitFor(async () => {
-      const raw = await AsyncStorage.getItem("mahjong_stats_v1");
-      const stats = raw ? JSON.parse(raw) : { gamesWon: 1 };
-      expect(stats.gamesWon).toBe(1);
-    });
+    const raw = await AsyncStorage.getItem("mahjong_stats_v1");
+    expect(JSON.parse(raw!)).toEqual({ bestTimeMsByLayout: { turtle: 180000 } });
   });
 });
 

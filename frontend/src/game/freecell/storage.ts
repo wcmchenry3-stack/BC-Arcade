@@ -3,10 +3,13 @@ import { createJsonSlot, createRecord } from "../_shared/storageSlot";
 
 const SUBSYSTEM = "freecell.storage";
 
+/**
+ * The fewest moves in a win on this device, for the "new best" badge. The play and win counters
+ * this record once held were never shown (the Stats screen reads the server, #2636): they are
+ * dropped on the next save, as Solitaire's and Sudoku's were.
+ */
 export interface FreeCellStats {
   bestMoves: number;
-  gamesPlayed: number;
-  gamesWon: number;
 }
 
 function stripNestedUndo(state: FreeCellState): FreeCellState {
@@ -47,13 +50,11 @@ export const { load: loadStats, save: saveStats } = createRecord<FreeCellStats>(
   key: "freecell_stats_v1",
   subsystem: SUBSYSTEM,
   ops: { load: "loadStats", save: "saveStats" },
-  fallback: () => ({ bestMoves: 0, gamesPlayed: 0, gamesWon: 0 }),
+  fallback: () => ({ bestMoves: 0 }),
   read: (raw) => {
     const parsed = JSON.parse(raw);
     return {
       bestMoves: typeof parsed.bestMoves === "number" ? parsed.bestMoves : 0,
-      gamesPlayed: typeof parsed.gamesPlayed === "number" ? parsed.gamesPlayed : 0,
-      gamesWon: typeof parsed.gamesWon === "number" ? parsed.gamesWon : 0,
     };
   },
   write: (stats) => JSON.stringify(stats),

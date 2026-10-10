@@ -14,6 +14,10 @@
  * error unreported): for those only the returned value is compared here, and
  * the new reporting is tested in `sort/__tests__/storage.test.ts`.
  *
+ * FreeCell's and Mahjong's stats scenarios are the other intended change (#3140): the retired
+ * play, win and score counters are no longer kept, so those nine recorded results were edited
+ * by hand to drop those fields (nothing else in them moved).
+ *
  * Do not re-record the fixture from the current modules: it is the record of
  * the old behaviour.
  */
@@ -316,7 +320,7 @@ Object.assign(scenarios, {
   },
   "freecell: stats": {
     run: async () => {
-      await freecell.saveStats({ bestMoves: 80, gamesPlayed: 3, gamesWon: 2 });
+      await freecell.saveStats({ bestMoves: 80 });
       return freecell.loadStats();
     },
   },
@@ -329,7 +333,7 @@ Object.assign(scenarios, {
   "freecell: stats null": { seed: { freecell_stats_v1: "null" }, run: freecell.loadStats },
   "freecell: stats write fails": {
     fail: ["setItem"],
-    run: () => freecell.saveStats({ bestMoves: 1, gamesPlayed: 1, gamesWon: 1 }),
+    run: () => freecell.saveStats({ bestMoves: 1 }),
   },
   "hearts: v2 save with an old persona": {
     seed: {
@@ -384,12 +388,7 @@ Object.assign(scenarios, {
   },
   "mahjong: stats": {
     run: async () => {
-      await mahjong.saveStats({
-        bestScore: 300,
-        bestTimeMsByLayout: { turtle: 300_000 },
-        gamesPlayed: 4,
-        gamesWon: 1,
-      });
+      await mahjong.saveStats({ bestTimeMsByLayout: { turtle: 300_000 } });
       return mahjong.loadStats();
     },
   },
@@ -404,8 +403,7 @@ Object.assign(scenarios, {
   "mahjong: stats corrupt": { seed: { mahjong_stats_v1: "{x" }, run: mahjong.loadStats },
   "mahjong: stats write fails": {
     fail: ["setItem"],
-    run: () =>
-      mahjong.saveStats({ bestScore: 0, bestTimeMsByLayout: {}, gamesPlayed: 0, gamesWon: 0 }),
+    run: () => mahjong.saveStats({ bestTimeMsByLayout: {} }),
   },
   "mahjong: progress": {
     run: async () => {
