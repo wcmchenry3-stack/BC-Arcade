@@ -92,6 +92,25 @@ describe("rulebook loading (§5 is the single source)", () => {
     expect(() => toPosition({ ...VALID_BLOCK, hand: ["1X"] })).toThrow(/bad card/);
   });
 
+  it("rejects unknown keys in nested played / trick mappings", () => {
+    const base = { ...VALID_BLOCK, trick_number: 2 };
+    expect(() => toPosition({ ...base, played: [{ lead: 0, cards: ["2C"], winner: 3 }] })).toThrow(
+      /exactly/
+    );
+    expect(() => toPosition({ ...base, trick: [{ seat: 0, card: "2C", extra: 1 }] })).toThrow(
+      /exactly/
+    );
+  });
+
+  it("flags a mislabelled decision (lead / follow / discard)", () => {
+    const follow = positions.find((q) => q.id === "R01")!;
+    expect(derive(follow).problems).toEqual([]);
+    expect(derive({ ...follow, decision: "lead" }).problems.join()).toMatch(/labelled lead/);
+    expect(derive({ ...follow, decision: "discard" }).problems.join()).toMatch(/labelled discard/);
+    const discard = positions.find((q) => q.id === "R04")!;
+    expect(derive({ ...discard, decision: "follow" }).problems.join()).toMatch(/labelled follow/);
+  });
+
   it("rejects duplicate keys inside a flow mapping", () => {
     expect(() => parseBlock("played:\n  - { lead: 0, lead: 1, cards: [2C] }")).toThrow(/duplicate/);
   });

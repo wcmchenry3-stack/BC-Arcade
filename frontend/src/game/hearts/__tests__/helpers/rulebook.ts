@@ -169,8 +169,11 @@ function cardName(v: Value, what: string): string {
   if (!CARD.test(s)) throw new Error(`${what}: bad card "${s}"`);
   return s;
 }
-function map(v: Value, what: string): { [k: string]: Value } {
+function map(v: Value, what: string, keys: readonly string[]): { [k: string]: Value } {
   if (typeof v !== "object" || Array.isArray(v)) throw new Error(`${what} must be a map`);
+  const got = Object.keys(v).sort().join(",");
+  if (got !== [...keys].sort().join(","))
+    throw new Error(`${what} must have exactly {${keys}}, got {${got}}`);
   return v;
 }
 
@@ -197,14 +200,14 @@ export function toPosition(raw: Record<string, Value>): RulebookPosition {
     trickNumber: int(raw.trick_number!, `${id}.trick_number`),
     hand: list(raw.hand!, `${id}.hand`).map((c) => cardName(c, `${id}.hand`)),
     played: list(raw.played!, `${id}.played`).map((t) => {
-      const m = map(t, `${id}.played`);
+      const m = map(t, `${id}.played`, ["lead", "cards"]);
       return {
         lead: int(m.lead!, `${id}.played.lead`),
         cards: list(m.cards!, `${id}.played.cards`).map((c) => cardName(c, `${id}.played`)),
       };
     }),
     trick: list(raw.trick!, `${id}.trick`).map((t) => {
-      const m = map(t, `${id}.trick`);
+      const m = map(t, `${id}.trick`, ["seat", "card"]);
       return { seat: int(m.seat!, `${id}.trick.seat`), card: cardName(m.card!, `${id}.trick`) };
     }),
     heartsBroken: bool(raw.hearts_broken!, `${id}.hearts_broken`),
@@ -352,6 +355,12 @@ export function derive(p: RulebookPosition): Derived {
     problems.push(`seat ${p.seat} is not the next to play`);
   for (const h of p.hand)
     if (voidIn.has(`${p.seat}${card(h).suit}`)) problems.push(`CPU holds ${h} after showing void`);
+  if (p.decision !== "pass") {
+    const led = p.trick[0] ? card(p.trick[0].card).suit : undefined;
+    const holdsLed = led !== undefined && p.hand.some((h) => card(h).suit === led);
+    const actual = led === undefined ? "lead" : holdsLed ? "follow" : "discard";
+    if (p.decision !== actual) problems.push(`labelled ${p.decision} but the state is ${actual}`);
+  }
   const expectedHand = p.trickNumber === 0 ? 13 : 14 - p.trickNumber;
   if (p.hand.length !== expectedHand) problems.push(`hand has ${p.hand.length} cards`);
   if (p.played.length !== Math.max(p.trickNumber - 1, 0))
