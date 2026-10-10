@@ -19,6 +19,7 @@ import type {
   Enemy,
   StarSwarmState,
 } from "../types";
+import { firstClearPath, type RockLike } from "./asteroids";
 import { aimAtBuddy, buddyDivertRoll } from "./buddy";
 import { aimVelocity, evalCubic } from "./geometry";
 import { nextId, peekNextId, rng } from "./rng";
@@ -27,6 +28,8 @@ import {
   ATTACK_RUN,
   ATTACK_RUN_BRACE_LIFT,
   ATTACK_RUN_BRACE_MS,
+  ATTACK_RUN_HOLD_MAX_MS,
+  ATTACK_RUN_SHALLOW_FACTOR,
   BEAM_CHARGE_MS,
   BEAM_HALF_WIDTH,
   BEAM_LENGTH,
@@ -127,6 +130,11 @@ export interface CarrierCtx {
    * not reached); null while armored or with no Buddy to shoot at.
    */
   buddy: BuddyShip | null;
+  /**
+   * #3131: live rocks already on screen, which the attack run is vetted against when it commits
+   * (`carrierRunCandidates` / `firstClearPath`). Empty with no rocks in play.
+   */
+  rocks: readonly RockLike[];
 }
 export const NO_CARRIER_CTX: CarrierCtx = {
   playing: false,
@@ -139,6 +147,7 @@ export const NO_CARRIER_CTX: CarrierCtx = {
   canvasH: CANVAS_H,
   flakRock: null,
   buddy: null,
+  rocks: [],
 };
 
 /** #2844: the part of a rock the Carrier's flak choice needs. */
@@ -288,16 +297,37 @@ export function carrierRunPath(
   c: Enemy,
   targetX: number,
   canvasH: number,
-  stage: Exclude<CarrierStage, "protected">
+  stage: Exclude<CarrierStage, "protected">,
+  variant: { readonly mirror?: boolean; readonly shallow?: boolean } = {}
 ): CubicBezier {
-  const depthY = canvasH * ATTACK_RUN[stage].depth;
-  const lean = c.formationX < targetX ? -1 : 1; // swing out away from the target first
+  const depth = ATTACK_RUN[stage].depth * (variant.shallow ? ATTACK_RUN_SHALLOW_FACTOR : 1);
+  const depthY = canvasH * depth;
+  const planned = c.formationX < targetX ? -1 : 1; // swing out away from the target first
+  const lean = variant.mirror ? -planned : planned;
   return {
     p0: { x: c.x, y: c.y },
     p1: { x: targetX + lean * 70, y: depthY },
     p2: { x: targetX - lean * 70, y: depthY },
     p3: { x: c.formationX, y: c.formationY },
   };
+}
+
+/**
+ * #3131: the attack-run candidates, in the fixed order they are tried: the planned run, the
+ * mirrored lean, then the shallower depth (planned lean, then mirrored). Rng-free.
+ */
+export function carrierRunCandidates(
+  c: Enemy,
+  targetX: number,
+  canvasH: number,
+  stage: Exclude<CarrierStage, "protected">
+): CubicBezier[] {
+  return [
+    carrierRunPath(c, targetX, canvasH, stage),
+    carrierRunPath(c, targetX, canvasH, stage, { mirror: true }),
+    carrierRunPath(c, targetX, canvasH, stage, { shallow: true }),
+    carrierRunPath(c, targetX, canvasH, stage, { mirror: true, shallow: true }),
+  ];
 }
 
 /**
@@ -308,6 +338,10 @@ export function carrierRunPath(
  *   CarrierBeam; the Carrier goes straight back to idle.
  * - Twin lasers (exposed / final stand only): a pair of aimed shots per roll.
  * - Attack run (exposed / final stand only): brace (ATTACK_RUN_BRACE_MS telegraph) → run.
+ *   #3131: at the commit the run is vetted against on-screen rocks (`carrierRunCandidates`,
+ *   first one that does not fly into a rock holding station would miss). With none clear the
+ *   Carrier stays braced on station and re-checks each tick; after ATTACK_RUN_HOLD_MAX_MS it
+ *   stands down and re-rolls its run timer. The hold is tracked as `runTimer` below zero.
  *
  * Telegraphs never overlap: a charge never starts during a brace, nor a brace during a charge.
  * While exposed the beam also holds during the run; in the final stand beam, direct fire and
@@ -398,18 +432,32 @@ export function tickCarrier(
     }
   } else if (bracing) {
     const runTimer = e.runTimer - dtMs;
-    if (runTimer <= 0 && armedStage) {
-      const start = { ...next, y: e.formationY };
+    const runStage = stage as "exposed" | "finalStand";
+    const start = { ...next, y: e.formationY };
+    const path =
+      runTimer <= 0 && armedStage
+        ? firstClearPath(
+            carrierRunCandidates(start, e.diveTargetX, ctx.canvasH, runStage),
+            ATTACK_RUN[runStage].ms,
+            start,
+            ctx.rocks
+          )
+        : null;
+    if (path) {
       next = {
         ...start,
         phase: "AttackRun",
         runPhase: "idle",
         runTimer: 0,
-        path: carrierRunPath(start, e.diveTargetX, ctx.canvasH, stage as "exposed" | "finalStand"),
+        path,
         pathT: 0,
-        pathDuration: ATTACK_RUN[stage as "exposed" | "finalStand"].ms,
+        pathDuration: ATTACK_RUN[runStage].ms,
       };
+    } else if (runTimer <= 0 && armedStage && runTimer <= -ATTACK_RUN_HOLD_MAX_MS) {
+      // #3131: no clear run for the whole hold — stand down on station and roll a fresh timer
+      next = { ...start, runPhase: "idle", runTimer: roll("attackRun") };
     } else {
+      // (#3131: a run blocked by a rock holds here, settled on station, runTimer below zero)
       // rear back: a slow lift and settle, the run's telegraph
       const p = 1 - Math.max(0, runTimer) / ATTACK_RUN_BRACE_MS;
       next = {
