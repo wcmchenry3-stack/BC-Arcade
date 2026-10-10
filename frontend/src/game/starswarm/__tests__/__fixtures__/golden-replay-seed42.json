@@ -533,12 +533,12 @@
         "buddies": 0,
         "powerUps": 1,
         "carrierStage": "protected",
-        "sha256": "76956be2e353f180adc3dda82ef8fe3190c30c540ea6f2eca6eb538e67007b48"
+        "sha256": "255912ad49e2bd68f08bb7e32ea4e04a27822791c3e3d0ded680decd6394a50e"
       }
     ],
     "counters": {
-      "nextId": 691,
-      "seed": 3089412091,
+      "nextId": 692,
+      "seed": 3950907891,
       "buddyNextId": 1000000000
     }
   },
