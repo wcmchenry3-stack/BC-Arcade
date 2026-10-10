@@ -71,7 +71,9 @@ export function WordKeyboard({
         accessibilityRole="button"
         accessibilityLabel={label}
       >
-        <Text style={[keyStyles.keyText, { color: DAILYWORD_LETTER_TEXT }]}>{label}</Text>
+        <Text numberOfLines={1} style={[keyStyles.keyText, { color: DAILYWORD_LETTER_TEXT }]}>
+          {label}
+        </Text>
       </Pressable>
     );
   }
