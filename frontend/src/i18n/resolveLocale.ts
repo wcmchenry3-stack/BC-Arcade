@@ -1,4 +1,5 @@
-import { LOCALES, NATIVE_LOCALES } from "./locales";
+import { isStoreBuild } from "../game/_shared/buildFlavour";
+import { LAUNCH_LOCALE_CODES, LOCALES, NATIVE_LOCALES } from "./locales";
 
 export interface DeviceLocale {
   languageTag: string;
@@ -7,10 +8,15 @@ export interface DeviceLocale {
 
 /**
  * Locales offered on the given platform. Native has no RTL layout support, so ar/he are
- * excluded there (#2212); web keeps them via the DOM `dir` attribute.
+ * excluded there (#2212); web keeps them via the DOM `dir` attribute. Native store
+ * builds offer only `LAUNCH_LOCALE_CODES` (#3150); web is not a store platform (free
+ * games + testing) and, like dev, e2e and pre-launch builds, keeps every locale.
  */
 export function availableLocales(os: string) {
-  return os === "web" ? LOCALES : NATIVE_LOCALES;
+  if (os === "web") return LOCALES;
+  return isStoreBuild()
+    ? NATIVE_LOCALES.filter((l) => LAUNCH_LOCALE_CODES.has(l.code))
+    : NATIVE_LOCALES;
 }
 
 /** Resolve the best supported locale from the device's preference list. */

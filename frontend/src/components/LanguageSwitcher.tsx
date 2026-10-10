@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { View, Text, Pressable, Modal, FlatList, StyleSheet } from "react-native";
+import { View, Text, Pressable, Modal, FlatList, Platform, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
-import { LOCALES, NATIVE_LOCALES } from "../i18n/locales";
+import { availableLocales } from "../i18n/resolveLocale";
 import { useTheme } from "../theme/ThemeContext";
 
 export default function LanguageSwitcher() {
@@ -9,7 +9,10 @@ export default function LanguageSwitcher() {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
 
-  const current = LOCALES.find((l) => l.code === i18n.language) ?? LOCALES[0];
+  // Read each render (a tiny filter) so the sheet always matches the store-build gate.
+  const locales = availableLocales(Platform.OS);
+  // Label from the offered list, so the trigger never names a locale the sheet hides.
+  const current = locales.find((l) => l.code === i18n.language) ?? locales[0];
   if (current === undefined) return null;
 
   function select(code: string) {
@@ -46,7 +49,7 @@ export default function LanguageSwitcher() {
             style={[styles.sheet, { backgroundColor: colors.modalBg, borderColor: colors.border }]}
           >
             <FlatList
-              data={NATIVE_LOCALES}
+              data={locales}
               keyExtractor={(item) => item.code}
               renderItem={({ item }) => {
                 const active = item.code === i18n.language;
