@@ -963,6 +963,23 @@ fast smoke preset runs with the normal jest suite. The full runs use the CLI
 override tuning in the sim only:
 [starswarm.md → Balance simulation](games/starswarm.md#balance-simulation-2880).
 
+### Hearts: conservative CPU rulebook suite (#3160)
+
+`frontend/src/game/hearts/__tests__/conservative.rulebook.test.ts` (loader and state builder in
+`__tests__/helpers/rulebook.ts`) is the executable form of the `yaml` positions in
+[`hearts/CONSERVATIVE_AI.md` §5](hearts/CONSERVATIVE_AI.md#5-rulebook). The doc is read at test
+time, so adding a position means adding a block there; nothing is transcribed into test code. The suite
+fails if any fence in §5 is not a closed plain `yaml` block, if the number of blocks differs from the
+number of `id:` lines, if a block cannot be parsed (unknown or missing fields, bad cards, duplicate keys,
+including inside `{...}` mappings), if ids repeat, or if fewer than 42 positions load. Per position it
+re-derives the history (points, flags, leaders, hand size, duplicate cards, trick 1 opening with 2C,
+follow-suit), checks the expected cards are in the hand and legal under `getValidPlays`, then runs the
+shipped path (`selectCardToPlay` / `selectCardsToPass` with `"conservative"`, no RNG pinning, no mocks)
+for the card, `choosePlay` / `choosePass` for the principle ID, five hand orders (ascending, descending,
+three seeded shuffles) and the position rotated to each of the four seats. It runs in the normal
+`frontend` jest job (`**/__tests__/**/*.test.ts`). The YAML is parsed by a small strict parser because no YAML library is
+a declared dependency.
+
 ## Manual repros
 
 ### Hearts: tab-switch state preservation (#745)
