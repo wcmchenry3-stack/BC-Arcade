@@ -1440,3 +1440,15 @@ await expect(
 await injectEngineState(page, playerPhaseState());
 await expect(page.getByText("Hit")).toBeVisible();
 ```
+
+## i18n overflow check
+
+`e2e/tests/i18n-overflow.spec.ts` (project `cross`, GH #3152) fails when text is clipped, line-clamped or spills out of its container in `en` (control), `es` and `fr-CA` at 375x667. Screens: the three tabs plus the main screen of every store-visible game (HIDDEN_GAMES are excluded even though the e2e build shows them). See `docs/I18N.md` for what it flags and how to fix a failure.
+
+```bash
+cd frontend && EXPO_PUBLIC_API_URL=http://localhost:8000 EXPO_PUBLIC_TEST_HOOKS=1 EXPO_PUBLIC_SENTRY_DSN= npx expo export --platform web
+cd ../e2e && npm ci && npx playwright install chromium
+npx playwright test --project=cross i18n-overflow
+```
+
+Adding a game or screen: extend `STORE_GAMES` (or the tabs test) in the spec. Wait for the screen to finish loading before measuring (the game screens wait for the `nav-menu` testID); measuring early gives false passes because header controls mount late.
