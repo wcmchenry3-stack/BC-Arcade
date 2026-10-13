@@ -205,6 +205,16 @@ export default function SudokuScreen() {
   }, [syncClockActivity]);
   const awayRef = usePauseWhileAway(navigation, pauseTimer, resumeTimer);
 
+  // The clock starts on the first interaction (#2942): the first cell
+  // selection or digit, whichever comes first. A first interaction that lands
+  // while the player is away starts paused, like a load (#2750).
+  const ensureClockStarted = useCallback(() => {
+    if (startMsRef.current !== null) return;
+    startMsRef.current = Date.now();
+    if (awayRef.current) pausedAtRef.current = startMsRef.current;
+    syncClockActivity();
+  }, [awayRef, syncClockActivity]);
+
   // The mount load's restore — restores a saved game silently; on a clean
   // slot the pre-game picker shows.
   useGameRestored(game, (saved) => {
@@ -398,9 +408,12 @@ export default function SudokuScreen() {
 
   const handleCellPress = useCallback(
     (row: number, col: number) => {
+      // Selecting a cell starts the clock but not the sync session: a puzzle
+      // that was only looked at is discarded, not abandoned (#2942).
+      ensureClockStarted();
       setState((s) => (s ? selectCell(s, row, col) : s));
     },
-    [setState]
+    [ensureClockStarted, setState]
   );
 
   const handleDigit = useCallback(
@@ -410,15 +423,15 @@ export default function SudokuScreen() {
         const next = enterDigit(s, digit);
         if (next === s) return s;
 
-        // Timer + session start on the first input that actually
-        // changes state.
-        if (startMsRef.current === null) startMsRef.current = Date.now();
+        // The session starts on the first input that actually changes
+        // state; the clock may already be running from a cell selection.
+        ensureClockStarted();
         ensureSyncStarted(next);
 
         return next;
       });
     },
-    [ensureSyncStarted, setState]
+    [ensureClockStarted, ensureSyncStarted, setState]
   );
 
   const handleErase = useCallback(() => {
@@ -454,11 +467,11 @@ export default function SudokuScreen() {
       const { size } = variantConfig(s.variant);
       const idx = s.selectedRow * size + s.selectedCol;
       const hintDigit = (s.solution.charCodeAt(idx) - 48) as CellValue;
-      if (startMsRef.current === null) startMsRef.current = Date.now();
+      ensureClockStarted();
       ensureSyncStarted(s);
       return enterDigit(s, hintDigit);
     });
-  }, [ensureSyncStarted, setState]);
+  }, [ensureClockStarted, ensureSyncStarted, setState]);
 
   const headerRight = useMemo(() => {
     if (!state) return null;
