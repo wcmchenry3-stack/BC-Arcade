@@ -160,6 +160,38 @@ Lists live in `backend/daily_word/words/`. English is regenerated, not hand-edit
 - `answers_en.txt` (daily answers): common words from SCOWL 2020.12.07 (`english`/`american` word lists at size levels 10, 20, 35; no proper nouns, abbreviations or variants) that are also in ENABLE, minus inflected forms (plurals `-s`/`-es`/`-ies`, past tense `-ed`/`-ied`, `-ing`, and comparatives `-er`/`-ier`/`-est`, detected when stripping the suffix leaves an ENABLE word; ENABLE has no part of speech, so an explicit `INFLECTION_KEEP` list in the script rescues real standalone words such as pants, water, thing, greed) and the words in `answers_blocklist_en.txt` (offensive, bodily, crime/drug and proper-noun-like words; still accepted as guesses). Every answer is also a valid guess.
 - Hindi lists: see `scripts/gen_hindi_valid_words.py`.
 
+### French and Spanish word lists (#3239)
+
+`answers_fr.txt`, `valid_fr.txt`, `answers_es.txt` and `valid_es.txt` are generated, not hand-edited, by:
+
+```sh
+python backend/scripts/gen_romance_words.py            # both languages
+python backend/scripts/gen_romance_words.py --lang fr  # one language
+```
+
+Run it from the repo root; it needs network. Every source is pinned by URL and SHA-256 and the script exits on a mismatch. Sources were decided in #3198 (option 1):
+
+- **French lemmas:** Littré headwords from Debian `stardict-xmlittre` 1:1.0-2 (public domain).
+- **Spanish lemmas:** Debian `wspanish` 1.0.30 (public domain).
+- **Ranking and attestation:** the full Google Books Ngram v3 (20200217) French and Spanish 1-gram shards (CC BY 3.0), counted over 1950-2019.
+
+The Debian source tarballs are fetched from the `archive.ubuntu.com` pool, whose files match the Checksums-Sha256 in Debian's `.dsc` (signature not verified); `deb.debian.org` is not reachable from the build container. The Ngram shards are about 8 GB. They are streamed and hashed, and reduced to a small table of 5-letter words, which is cached outside the repo in `~/.cache/bc-arcade/ngram` (`--cache-dir`, or `--no-cache` to always stream). The local cache is trusted and not re-verified: it is only written after a verified download, so delete it if in doubt. Nothing is downloaded into the repo. The output is deterministic.
+
+**File format (the contract for #3240 and #3241).** One word per line in its display form: lowercase NFC, with accents and `ñ` kept (`était`, `árbol`, `niño`). The generator imports the runtime's own `fold(word, lang)` from `backend/daily_word/normalize.py` (see above), so the lists and the game cannot disagree on a key. Every key is exactly 5 letters of `a`–`z`, plus `ñ` for `es`. Keys are unique in each file, and the files are sorted by key. Every answer is in the valid list with the same display form.
+
+- **Valid guesses:** every 5-letter Littré or wspanish lemma, plus inflections that Ngram attests (at least `MIN_ATTEST` lowercase occurrences, written in lowercase more often than not, and not tagged mostly as foreign). The inflections are made by the script's own rules: plurals, French feminines (from Littré's `FRÉQUENT, ENTE` headwords or by rule), regular conjugations, the conjugations Littré's verb articles list, and a short table of Spanish irregular verbs.
+- **Collisions:** when display forms share a key (`pêche`/`péché`), the one Ngram counts more often wins. Ties go to the form with more accents, then to code-point order. French also lets the later spelling of a Littré word compete, so `poème` beats Littré's `poëme`, and `cœur` beats `coeur`. `--show-collisions` prints every resolved collision.
+- **Answers:** lemmas whose key is in the Ngram top 5,000 keys for the language, minus:
+  - inflected forms (participles, plurals and feminines of another lemma, and verb forms that Ngram tags mostly as verbs);
+  - proper-noun-like words (capitalized in most Ngram occurrences);
+  - foreign words (tagged mostly `X` by Ngram);
+  - archaisms that Littré labels;
+  - the hand-curated quality exclusions in `backend/scripts/_romance_curation.py`;
+  - the blocklists `answers_blocklist_fr.txt` and `answers_blocklist_es.txt`.
+- **Blocklists:** hand-written folded keys, covering profanity and slurs, sexual and bodily words, drugs and alcohol, crime and violence, religion, and words that read as proper nouns. The generator reads them but never writes them. Blocklisted words stay valid guesses.
+
+Sizes at #3239: French 1,254 answers and 5,532 valid guesses; Spanish 1,486 answers and 7,739 valid guesses. The French guesses are the tighter list, because Littré predates modern loanwords such as `radio`, `photo` and `vidéo`. The native-speaker review in #3201 checks both answer lists and both blocklists. The game serves them since #3240.
+
 Licences and notices: [`ATTRIBUTION.md`](../../ATTRIBUTION.md). Changing `answers_en.txt` reshuffles every date's answer, so bump the English list version (see the puzzle id above) in the same change.
 
 ## Guess validation and server-side progress
