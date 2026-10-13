@@ -105,5 +105,7 @@
   "locked.heading": "لعبة مميزة",
   "locked.body": "تتطلب هذه اللعبة اشتراكًا في BC Arcade.",
   "locked.back": "العودة إلى الردهة",
-  "locked.back_label": "العودة إلى الردهة"
+  "locked.back_label": "العودة إلى الردهة",
+  "offline.windowExhausted": "مرّت 3 أيام منذ آخر اتصال لك. اتصل بالإنترنت للحصول على أحدث لغز.",
+  "offline.windowExhaustedStreak": "اتصل بالإنترنت لتواصل سلسلتك."
 }

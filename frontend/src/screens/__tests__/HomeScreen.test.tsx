@@ -139,8 +139,10 @@ async function renderScreen(windowWidth = 390) {
 // Tests
 // ---------------------------------------------------------------------------
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.clearAllMocks();
+  // The last-known streak (#3226) persists; start each test without one.
+  await AsyncStorage.clear();
   mockCanPlay.mockReturnValue(true);
   mockGetMyStats.mockResolvedValue(statsAtLevel(1));
   mockNetwork.isOnline = true;
@@ -502,6 +504,23 @@ describe("HomeScreen — streak badge (#2457)", () => {
     expect(queryByText(/🔥/)).toBeNull();
     expect(queryByLabelText(/^Current streak/)).toBeNull();
     expect(getByLabelText("Play Daily Word")).toBeTruthy();
+  });
+
+  it("shows the remembered streak while offline, without calling /stats/me (#3226)", async () => {
+    await AsyncStorage.setItem("last_known_streak_v1", "6");
+    mockNetwork.isOnline = false;
+    const { findByText } = await renderScreen();
+    expect(await findByText("🔥 6")).toBeTruthy();
+    expect(mockGetMyStats).not.toHaveBeenCalled();
+  });
+
+  it("replaces the remembered streak with the server's and saves it (#3226)", async () => {
+    await AsyncStorage.setItem("last_known_streak_v1", "6");
+    mockGetMyStats.mockResolvedValue(statsAtLevel(2, 9));
+    const { findByText, queryByText } = await renderScreen();
+    expect(await findByText("🔥 9")).toBeTruthy();
+    expect(queryByText("🔥 6")).toBeNull();
+    await waitFor(async () => expect(await AsyncStorage.getItem("last_known_streak_v1")).toBe("9"));
   });
 
   it("renders no badge before /stats/me answers", async () => {

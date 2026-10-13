@@ -101,5 +101,7 @@
   "locked.heading": "Premium-Spiel",
   "locked.body": "Dieses Spiel erfordert ein BC-Arcade-Abonnement.",
   "locked.back": "Zurück zur Lobby",
-  "locked.back_label": "Zurück zur Lobby"
+  "locked.back_label": "Zurück zur Lobby",
+  "offline.windowExhausted": "Du warst seit 3 Tagen nicht online. Verbinde dich mit dem Internet, um das neueste Rätsel zu erhalten.",
+  "offline.windowExhaustedStreak": "Verbinde dich, um deine Serie fortzusetzen."
 }

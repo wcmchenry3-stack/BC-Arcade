@@ -735,3 +735,54 @@ describe("httpClient — Sentry reporting (#513)", () => {
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 });
+
+describe("httpClient — last connected (#3226)", () => {
+  const mockFetch = jest.fn();
+
+  beforeEach(() => {
+    jest.resetModules();
+    global.fetch = mockFetch;
+    mockFetch.mockReset();
+  });
+
+  function load() {
+    const { createGameClient } = require("../httpClient") as typeof import("../httpClient");
+    const lastConnected = require("../lastConnected") as typeof import("../lastConnected");
+    return { request: createGameClient({ apiTag: "test" }), lastConnected };
+  }
+
+  it("records the time on a 2xx response", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    const { request, lastConnected } = load();
+    await lastConnected.clearLastConnected();
+    const before = Date.now();
+    await request("/x");
+    await new Promise((r) => setImmediate(r));
+    expect(await lastConnected.getLastConnected()).toBeGreaterThanOrEqual(before);
+  });
+
+  it("records the time on a 204", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
+    const { request, lastConnected } = load();
+    await lastConnected.clearLastConnected();
+    await request("/x", { method: "DELETE" });
+    await new Promise((r) => setImmediate(r));
+    expect(await lastConnected.getLastConnected()).not.toBeNull();
+  });
+
+  it("does not record on a non-2xx response or a network failure", async () => {
+    const { request, lastConnected } = load();
+    await lastConnected.clearLastConnected();
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      statusText: "err",
+      json: () => Promise.resolve({ detail: "boom" }),
+    });
+    await expect(request("/x")).rejects.toThrow();
+    mockFetch.mockRejectedValueOnce(new TypeError("Network request failed"));
+    await expect(request("/x")).rejects.toThrow();
+    await new Promise((r) => setImmediate(r));
+    expect(await lastConnected.getLastConnected()).toBeNull();
+  });
+});

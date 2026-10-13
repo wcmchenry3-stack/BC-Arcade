@@ -102,5 +102,7 @@
   "locked.heading": "Juego premium",
   "locked.body": "Este juego requiere una suscripción a BC Arcade.",
   "locked.back": "Volver a la sala",
-  "locked.back_label": "Volver a la sala"
+  "locked.back_label": "Volver a la sala",
+  "offline.windowExhausted": "Han pasado 3 días desde tu última conexión. Conéctate a internet para obtener el último acertijo.",
+  "offline.windowExhaustedStreak": "Conéctate para mantener tu racha."
 }

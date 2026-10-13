@@ -43,6 +43,7 @@ import { withRetry } from "../game/_shared/withRetry";
 import { warmTodayMeta } from "../game/daily_word/todayMeta";
 import { useNetwork } from "../game/_shared/NetworkContext";
 import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
+import { getLastKnownStreak } from "../game/_shared/lastKnownStreak";
 import { fetchAndRememberMyStats } from "../hooks/useMyStats";
 
 /** Below this viewport width the grid collapses to a single column. */
@@ -123,6 +124,8 @@ export default function HomeScreen() {
   const [streakDays, setStreakDays] = useState<number>(0);
   const statsFetchInFlight = useRef(false);
   const mounted = useRef(true);
+  // Set once a server answer lands, so the remembered streak never overwrites it.
+  const streakFromServer = useRef(false);
   const refreshStats = useCallback(() => {
     if (!isOnline || statsFetchInFlight.current) return;
     statsFetchInFlight.current = true;
@@ -136,6 +139,7 @@ export default function HomeScreen() {
         if (!mounted.current) return;
         setArcadeLevel(stats.arcade_level);
         // A server that predates the streak omits the field: treat it as no streak.
+        streakFromServer.current = true;
         setStreakDays(typeof stats.streak_days === "number" ? stats.streak_days : 0);
       })
       .catch(() => {
@@ -151,6 +155,14 @@ export default function HomeScreen() {
     return () => {
       mounted.current = false;
     };
+  }, []);
+
+  // The last streak the server reported, shown until a fresh one lands, so an
+  // offline launch isn't empty (#3226).
+  useEffect(() => {
+    void getLastKnownStreak().then((days) => {
+      if (days !== null && mounted.current && !streakFromServer.current) setStreakDays(days);
+    });
   }, []);
 
   // On mount, and again whenever connectivity returns.
@@ -414,7 +426,7 @@ export default function HomeScreen() {
       <AppHeader
         title={t("common:app.title")}
         rightSlot={
-          arcadeLevel != null ? (
+          arcadeLevel != null || streakDays > 0 ? (
             <View style={styles.headerBadges}>
               {streakDays > 0 ? (
                 <Text
@@ -427,16 +439,18 @@ export default function HomeScreen() {
                   {t("common:streak.pill", { count: streakDays })}
                 </Text>
               ) : null}
-              <View
-                style={[styles.levelPill, { backgroundColor: colors.accent }]}
-                accessible
-                accessibilityRole="text"
-                accessibilityLabel={t("common:level.pillA11y", { level: arcadeLevel })}
-              >
-                <Text style={[styles.levelPillText, { color: colors.textOnAccent }]}>
-                  {t("common:level.pill", { level: arcadeLevel })}
-                </Text>
-              </View>
+              {arcadeLevel != null ? (
+                <View
+                  style={[styles.levelPill, { backgroundColor: colors.accent }]}
+                  accessible
+                  accessibilityRole="text"
+                  accessibilityLabel={t("common:level.pillA11y", { level: arcadeLevel })}
+                >
+                  <Text style={[styles.levelPillText, { color: colors.textOnAccent }]}>
+                    {t("common:level.pill", { level: arcadeLevel })}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           ) : null
         }
