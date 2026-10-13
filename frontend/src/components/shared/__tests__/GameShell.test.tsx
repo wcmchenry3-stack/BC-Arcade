@@ -291,3 +291,22 @@ describe("GameShell", () => {
     });
   });
 });
+
+describe("GameShell menuToggle (#2943)", () => {
+  it("passes menuToggle through to the ⋯ menu", async () => {
+    const onToggle = jest.fn();
+    await render(
+      <GameShell
+        gameType={null}
+        title="Sudoku"
+        onBack={noop}
+        menuToggle={{ label: "Show mistakes", value: false, onToggle, testID: "menu-toggle" }}
+      >
+        <Text>x</Text>
+      </GameShell>
+    );
+    await fireEvent.press(screen.getByTestId("nav-menu"));
+    await fireEvent.press(screen.getByTestId("menu-toggle"));
+    expect(onToggle).toHaveBeenCalledWith(true);
+  });
+});

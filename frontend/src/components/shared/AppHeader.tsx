@@ -69,6 +69,8 @@ export interface MenuToggleSpec {
 }
 
 interface MenuItemSpec {
+  /** Stable React key: a checkable item's icon changes, its identity does not. */
+  id: string;
   icon: React.ComponentProps<typeof MaterialIcons>["name"];
   /** Defaults to `colors.accent`. */
   iconColor?: string;
@@ -193,40 +195,47 @@ export function AppHeader({
   // Rendered in this order; an item is shown only when its handler is set.
   const menuItems: (MenuItemSpec | false)[] = [
     !!onOpenScorecard && {
+      id: "scorecard",
       icon: "scoreboard",
       label: t("common:overflow.menu.scorecard"),
       testID: "nav-menu-scorecard",
       onPress: closeThen(onOpenScorecard),
     },
     !!onOpenStats && {
+      id: "stats",
       icon: "insights",
       label: t("common:overflow.menu.stats"),
       testID: "nav-menu-stats",
       onPress: closeThen(onOpenStats),
     },
     !!onOpenLeaderboard && {
+      id: "leaderboard",
       icon: "emoji-events",
       label: t("common:overflow.menu.leaderboard"),
       testID: "nav-menu-leaderboard",
       onPress: closeThen(onOpenLeaderboard),
     },
     !!onNewGame && {
+      id: "newGame",
       icon: "refresh",
       iconColor: colors.secondary,
       label: t("common:overflow.menu.newGame"),
       onPress: closeThen(() => setAbandonVisible(true)),
     },
     !!onLevelSelect && {
+      id: "levelSelect",
       icon: "grid-view",
       label: t("common:overflow.menu.levelSelect"),
       onPress: closeThen(onLevelSelect),
     },
     !!onEditPlayerNames && {
+      id: "editNames",
       icon: "edit",
       label: t("common:overflow.menu.editNames"),
       onPress: closeThen(onEditPlayerNames),
     },
     !!menuToggle && {
+      id: "toggle",
       icon: menuToggle.value ? "check-box" : "check-box-outline-blank",
       label: menuToggle.label,
       testID: menuToggle.testID,
@@ -239,6 +248,7 @@ export function AppHeader({
     // send feedback. Reuses the widget the "?" opens, and `feedback:title`
     // rather than a new key, so no locale needs a new string.
     {
+      id: "feedback",
       icon: "feedback",
       label: t("title"),
       testID: "nav-menu-feedback",
@@ -388,7 +398,7 @@ export function AppHeader({
             },
           ]}
         >
-          {menuItems.map((item) => item && <MenuItem key={item.icon} {...item} colors={colors} />)}
+          {menuItems.map((item) => item && <MenuItem key={item.id} {...item} colors={colors} />)}
         </View>
       </Modal>
 

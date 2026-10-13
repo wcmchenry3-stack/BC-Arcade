@@ -90,7 +90,7 @@ Undo restores the previous error count, so undoing an illegal placement removes 
 
 ### Full grid that is not the solution
 
-When every cell is filled but the grid is not the solution, a message says that something is off, with a **Hint** button. It overlays the HUD row (it adds no height, so the number pad is never pushed off a short screen) and is announced to screen readers. That Hint selects a wrong cell (the selected one if it is wrong, otherwise the first in reading order) and corrects it with the solution digit, with no error and no penalty. If it was the only wrong cell the puzzle completes.
+When every cell is filled but the grid is not the solution, a message says that something is off and points to the **Hint** button. It replaces the number pad's digit row (every digit is used up by then, so the row is disabled anyway), so the layout keeps its height; the pad's own **Hint** button (Erase, Notes, Hint row) stays in place and is the action. The message is announced to screen readers (live region on Android, an announcement on iOS). That Hint selects a wrong cell (the selected one if it is wrong, otherwise the first in reading order) and corrects it with the solution digit, with no error and no penalty. If it was the only wrong cell the puzzle completes.
 
 ### Show mistakes
 

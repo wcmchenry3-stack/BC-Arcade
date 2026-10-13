@@ -392,3 +392,45 @@ describe("AppHeader", () => {
     });
   });
 });
+
+describe("AppHeader menuToggle (#2943)", () => {
+  const toggle = (value: boolean, onToggle = jest.fn()) => ({
+    label: "Show mistakes",
+    value,
+    onToggle,
+    testID: "menu-toggle",
+  });
+
+  it("shows the ⋯ menu when only menuToggle is set", async () => {
+    await render(<AppHeader title="Sudoku" menuToggle={toggle(false)} />);
+    expect(screen.getByRole("button", { name: "More options" })).toBeTruthy();
+  });
+
+  it("renders a menu item that carries its checked state", async () => {
+    await render(<AppHeader title="Sudoku" menuToggle={toggle(true)} />);
+    await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+    const item = screen.getByTestId("menu-toggle");
+    expect(item.props.accessibilityRole).toBe("menuitem");
+    expect(item.props.accessibilityState).toEqual({ checked: true });
+    expect(screen.getByText("Show mistakes")).toBeTruthy();
+  });
+
+  it("calls onToggle with the opposite value and leaves the menu open", async () => {
+    const onToggle = jest.fn();
+    await render(<AppHeader title="Sudoku" menuToggle={toggle(false, onToggle)} />);
+    await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+    await fireEvent.press(screen.getByTestId("menu-toggle"));
+    expect(onToggle).toHaveBeenCalledWith(true);
+    expect(screen.getByTestId("menu-toggle")).toBeTruthy();
+    expect(screen.getByText("Send Feedback")).toBeTruthy();
+  });
+
+  it("leaves the menu unchanged without menuToggle", async () => {
+    await render(<AppHeader title="Sudoku" onNewGame={jest.fn()} />);
+    await fireEvent.press(screen.getByRole("button", { name: "More options" }));
+    expect(screen.getByText("New Game")).toBeTruthy();
+    expect(screen.getByText("Send Feedback")).toBeTruthy();
+    expect(screen.queryByTestId("menu-toggle")).toBeNull();
+    expect(screen.queryByText("Show mistakes")).toBeNull();
+  });
+});

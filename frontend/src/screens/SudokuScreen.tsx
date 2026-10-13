@@ -18,7 +18,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AccessibilityInfo, Animated, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, Animated, Platform, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -514,7 +514,10 @@ export default function SudokuScreen() {
 
   // Say it aloud when the banner appears (iOS has no live regions).
   useEffect(() => {
-    if (fullButWrong) AccessibilityInfo.announceForAccessibility(t("fullWrong.message"));
+    // Android announces the pad message through its live region instead.
+    if (fullButWrong && Platform.OS === "ios") {
+      AccessibilityInfo.announceForAccessibility(t("fullWrong.message"));
+    }
   }, [fullButWrong, t]);
 
   const headerRight = useMemo(() => {
@@ -559,58 +562,36 @@ export default function SudokuScreen() {
         />
       ) : (
         <View style={styles.body}>
-          <View>
-            <HudStatRow
-              style={styles.hudTight}
-              stats={[
-                { key: "difficulty", text: t(`difficulty.${state.difficulty}`) },
-                {
-                  key: "errors",
-                  text:
-                    state.errorCount === 1
-                      ? t("hud.errorsOne")
-                      : t("hud.errors", { count: state.errorCount }),
-                  muted: true,
-                },
-                {
-                  key: "elapsed",
-                  muted: true,
-                  render: (textStyle) => (
-                    <ElapsedText
-                      getElapsedMs={playedMs}
-                      running={!isComplete}
-                      activity={clockActivity}
-                      frozenS={result?.elapsedS ?? null}
-                      resetKey={clockEpoch}
-                      format={formatElapsed}
-                      accessibilityLabel={elapsedA11yLabel}
-                      style={textStyle}
-                    />
-                  ),
-                },
-              ]}
-            />
-            {fullButWrong ? (
-              <View
-                style={[
-                  styles.fullWrong,
-                  { borderColor: colors.error, backgroundColor: colors.background },
-                ]}
-                testID="sudoku-full-wrong"
-                accessibilityRole="alert"
-                accessibilityLiveRegion="polite"
-              >
-                <Text style={[styles.fullWrongText, { color: colors.text }]} numberOfLines={3}>
-                  {t("fullWrong.message")}
-                </Text>
-                <PillButton
-                  label={t("action.hint")}
-                  onPress={handleHint}
-                  testID="sudoku-full-wrong-hint"
-                />
-              </View>
-            ) : null}
-          </View>
+          <HudStatRow
+            style={styles.hudTight}
+            stats={[
+              { key: "difficulty", text: t(`difficulty.${state.difficulty}`) },
+              {
+                key: "errors",
+                text:
+                  state.errorCount === 1
+                    ? t("hud.errorsOne")
+                    : t("hud.errors", { count: state.errorCount }),
+                muted: true,
+              },
+              {
+                key: "elapsed",
+                muted: true,
+                render: (textStyle) => (
+                  <ElapsedText
+                    getElapsedMs={playedMs}
+                    running={!isComplete}
+                    activity={clockActivity}
+                    frozenS={result?.elapsedS ?? null}
+                    resetKey={clockEpoch}
+                    format={formatElapsed}
+                    accessibilityLabel={elapsedA11yLabel}
+                    style={textStyle}
+                  />
+                ),
+              },
+            ]}
+          />
 
           <View style={styles.gridWrap}>
             <SudokuGrid
@@ -639,6 +620,7 @@ export default function SudokuScreen() {
               onErase={handleErase}
               onToggleNotes={handleToggleNotes}
               onHint={handleHint}
+              message={fullButWrong ? t("fullWrong.message") : undefined}
             />
           </View>
 
@@ -727,26 +709,6 @@ const styles = StyleSheet.create({
   },
   gridWrap: {
     alignSelf: "stretch",
-  },
-  // Overlays the HUD row (absolute), so the banner adds no height and cannot
-  // push the number pad off a short phone screen.
-  fullWrong: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  fullWrongText: {
-    flex: 1,
-    fontSize: 14,
   },
   gridPadDivider: {
     alignSelf: "stretch",

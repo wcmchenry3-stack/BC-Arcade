@@ -1428,14 +1428,16 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
       const r = await resume(fullButWrong().state);
       expect(r.getByTestId("sudoku-full-wrong")).toBeTruthy();
       expect(r.getByText(/something is off/i)).toBeTruthy();
-      expect(r.getByTestId("sudoku-full-wrong-hint")).toBeTruthy();
+      expect(r.getByTestId("sudoku-hint")).toBeTruthy();
+      // The message takes the digit row's place; the tool row (with Hint) stays.
+      expect(r.queryByTestId("sudoku-digit-1")).toBeNull();
     });
 
     it("the Hint action corrects a wrong cell, which completes the puzzle", async () => {
       const f = fullButWrong();
       const r = await resume(f.state);
       await act(async () => {
-        await fireEvent.press(r.getByTestId("sudoku-full-wrong-hint"));
+        await fireEvent.press(r.getByTestId("sudoku-hint"));
       });
       await waitFor(() => expect(mockCompleteGame).toHaveBeenCalledTimes(1));
       expect(r.queryByTestId("sudoku-full-wrong")).toBeNull();
