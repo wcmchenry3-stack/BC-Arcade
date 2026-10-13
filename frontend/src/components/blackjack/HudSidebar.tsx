@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
+import { formatNumber } from "../../api/statsDisplay";
 import { BLACKJACK_CHIPS_LOW } from "../../theme/theme.constants";
 import { typography } from "../../theme/typography";
 
@@ -60,13 +61,13 @@ export default function HudSidebar({
             style={[styles.chipsText, { color: hudColor, fontFamily: typography.heading }]}
             accessibilityLabel={t("hud.goalProgressAccessibilityLabel", { chips, goal: runGoal })}
           >
-            {chips.toLocaleString()}
+            {formatNumber(t, chips)}
           </Text>
           <Text
             style={[styles.goalText, { color: colors.textMuted, fontFamily: typography.label }]}
           >
             {" / "}
-            {runGoal.toLocaleString()}
+            {formatNumber(t, runGoal)}
           </Text>
         </View>
 

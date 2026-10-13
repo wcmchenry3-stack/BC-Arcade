@@ -1,5 +1,6 @@
 import React from "react";
 import { render, screen, fireEvent, act } from "@testing-library/react-native";
+import i18n from "i18next";
 import BlackjackStatsScreen from "../BlackjackStatsScreen";
 import { BlackjackGameProvider } from "../../game/blackjack/BlackjackGameContext";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -296,5 +297,24 @@ describe("BlackjackStatsScreen — navigation", () => {
       await fireEvent.press(screen.getByLabelText("Go back to home screen"));
     });
     expect(nav.goBack).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// App language (#2767)
+// ---------------------------------------------------------------------------
+
+describe("BlackjackStatsScreen — number format follows the app language (#2767)", () => {
+  afterEach(async () => {
+    await i18n.changeLanguage("en");
+  });
+
+  it("groups chips with German separators while the device locale is en-US", async () => {
+    expect((1234567).toLocaleString()).toBe("1,234,567");
+    await i18n.changeLanguage("de");
+    (loadRuns as jest.Mock).mockResolvedValueOnce([makeRun({ finalChips: 1200 })]);
+    await renderScreen();
+    await screen.findAllByText(/1\.200/);
+    expect(screen.queryAllByText(/1,200/)).toHaveLength(0);
   });
 });

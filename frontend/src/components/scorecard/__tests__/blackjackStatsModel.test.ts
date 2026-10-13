@@ -1,6 +1,7 @@
 import { formatPL, plColor, winRatePct } from "../blackjackStatsModel";
 import { initialSessionStats } from "../../../game/blackjack/sessionStats";
 
+const en = (n: number) => n.toLocaleString("en-US");
 const colors = { bonus: "BONUS", error: "ERROR", text: "TEXT" };
 
 describe("plColor", () => {
@@ -13,17 +14,17 @@ describe("plColor", () => {
 
 describe("formatPL", () => {
   it("renders zero without a sign", () => {
-    expect(formatPL(0)).toBe("0");
+    expect(formatPL(0, en)).toBe("0");
   });
 
   it("prefixes a positive number with + and uses thousands separators", () => {
-    expect(formatPL(1240)).toBe("+1,240");
-    expect(formatPL(50)).toBe("+50");
+    expect(formatPL(1240, en)).toBe("+1,240");
+    expect(formatPL(50, en)).toBe("+50");
   });
 
   it("prefixes a negative number with the proper minus sign and abs value", () => {
-    expect(formatPL(-320)).toBe("−320");
-    expect(formatPL(-1500)).toBe("−1,500");
+    expect(formatPL(-320, en)).toBe("−320");
+    expect(formatPL(-1500, en)).toBe("−1,500");
   });
 });
 

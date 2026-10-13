@@ -24,6 +24,7 @@ import {
   type ResultHero,
 } from "../components/shared/GameResultModal";
 import { formatPL, winRatePct } from "../components/scorecard/blackjackStatsModel";
+import { formatNumber } from "../api/statsDisplay";
 import {
   Unlock,
   cosmeticUnlocksEnabled,
@@ -134,7 +135,7 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
   const hero: ResultHero = {
     kind: "score",
     label: t("blackjack:victory.goalLine", {
-      goal: engine?.runGoal?.toLocaleString() ?? "—",
+      goal: engine?.runGoal != null ? formatNumber(t, engine.runGoal) : "—",
     }),
     value: engine?.chips ?? 0,
   };
@@ -163,7 +164,7 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
             { label: tResult("stat.hands"), value: sessionStats.handsPlayed },
             { label: tResult("stat.winRate"), value: `${winRatePct(sessionStats) ?? 0}%` },
             { label: tResult("stat.biggestWin"), value: `+${sessionStats.biggestWin}` },
-            { label: tResult("stat.netPL"), value: formatPL(netPL) },
+            { label: tResult("stat.netPL"), value: formatPL(netPL, (n) => formatNumber(t, n)) },
           ]}
           detail={
             newUnlocks.length > 0 ? (
