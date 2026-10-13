@@ -1041,3 +1041,87 @@ async def test_goal_pools_agree_with_the_games_table() -> None:
             (await db.execute(select(GameType.name).where(GameType.is_premium.is_(True)))).scalars()
         )
     assert set(FREE_GOAL_POOL).isdisjoint(premium)
+
+
+# ---------------------------------------------------------------------------
+# /upcoming (#3227)
+# ---------------------------------------------------------------------------
+
+
+def _distinct_templates(monkeypatch: pytest.MonkeyPatch) -> list[date]:
+    """Make every fresh computation differ, so only freezing can make reads agree."""
+    calls: list[date] = []
+
+    def fake(day: date, _slate: str = "free") -> Template:
+        calls.append(day)
+        return dataclasses.replace(_FIXED, id=f"t-{day.isoformat()}-{len(calls)}")
+
+    monkeypatch.setattr("daily_challenge.router.template_for", fake)
+    return calls
+
+
+@needs_db
+def test_upcoming_returns_three_consecutive_days(client: TestClient) -> None:
+    r = client.get("/daily-challenge/upcoming")
+    assert r.status_code == 200, r.text
+    days = r.json()["days"]
+    today = local_day(0).date
+    assert [d["challenge_id"] for d in days] == [
+        (today + timedelta(days=i)).isoformat() for i in range(3)
+    ]
+    for d in days:
+        assert len(d["goals"]) == GOALS_PER_DAY
+        assert set(d["goals"][0]) == {"id", "game_type", "kind", "target"}
+    ends = [datetime.fromisoformat(d["resets_at"]) for d in days]
+    assert ends[1] - ends[0] == ends[2] - ends[1] == timedelta(days=1)
+
+
+@needs_db
+def test_upcoming_freezes_goals_on_a_second_read(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _distinct_templates(monkeypatch)
+    first = client.get("/daily-challenge/upcoming", params={"tz_offset_minutes": 123}).json()
+    second = client.get("/daily-challenge/upcoming", params={"tz_offset_minutes": 123}).json()
+    assert first == second
+    assert len({d["template_id"] for d in first["days"]}) == 3
+
+
+@needs_db
+def test_today_after_upcoming_matches(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    _distinct_templates(monkeypatch)
+    up = client.get("/daily-challenge/upcoming", params={"tz_offset_minutes": 60}).json()
+    today = client.get("/daily-challenge/today", params={"tz_offset_minutes": 60}).json()
+    assert today == up["days"][0]
+
+
+@needs_db
+@pytest.mark.parametrize("offset", [-840, -1, 0, 1, 840])
+def test_upcoming_tz_edges_follow_the_local_calendar(client: TestClient, offset: int) -> None:
+    body = client.get("/daily-challenge/upcoming", params={"tz_offset_minutes": offset}).json()
+    start = local_day(offset)
+    assert body["days"][0]["challenge_id"] == start.date.isoformat()
+    assert datetime.fromisoformat(body["days"][0]["resets_at"]) == start.end_utc
+    assert body["days"][2]["challenge_id"] == (start.date + timedelta(days=2)).isoformat()
+
+
+@needs_db
+def test_upcoming_overlapping_offsets_share_frozen_days(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _distinct_templates(monkeypatch)
+    east = client.get("/daily-challenge/upcoming", params={"tz_offset_minutes": 840}).json()
+    west = client.get("/daily-challenge/upcoming", params={"tz_offset_minutes": -840}).json()
+    by_date = {d["challenge_id"]: d for d in east["days"]}
+    shared = [d for d in west["days"] if d["challenge_id"] in by_date]
+    assert shared  # the 28h gap leaves overlapping calendar days
+    for d in shared:
+        assert d["template_id"] == by_date[d["challenge_id"]]["template_id"]
+        assert d["goals"] == by_date[d["challenge_id"]]["goals"]
+
+
+@needs_db
+@pytest.mark.parametrize("offset", [-841, 841])
+def test_upcoming_rejects_out_of_range_timezone(client: TestClient, offset: int) -> None:
+    r = client.get("/daily-challenge/upcoming", params={"tz_offset_minutes": offset})
+    assert r.status_code == 422

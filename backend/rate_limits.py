@@ -94,6 +94,8 @@ DAILY_WORD_ANSWER_IP_RATE_LIMIT = "20/minute"
 # --- Daily Challenge --------------------------------------------------------------
 # GET /daily-challenge/today (public, IP-keyed).
 DAILY_CHALLENGE_TODAY_IP_RATE_LIMIT = "60/minute"
+# GET /daily-challenge/upcoming (public, IP-keyed).
+DAILY_CHALLENGE_UPCOMING_IP_RATE_LIMIT = "60/minute"
 # GET /daily-challenge/status (session-keyed).
 DAILY_CHALLENGE_STATUS_SESSION_RATE_LIMIT = "60/minute"
 
@@ -168,6 +170,7 @@ ROUTE_LIMITS: dict[str, tuple[Rule, ...]] = {
     ),
     "daily_word.router.get_answer_route": (Rule(DAILY_WORD_ANSWER_IP_RATE_LIMIT, IP),),
     "daily_challenge.router.get_today": (Rule(DAILY_CHALLENGE_TODAY_IP_RATE_LIMIT, IP),),
+    "daily_challenge.router.get_upcoming": (Rule(DAILY_CHALLENGE_UPCOMING_IP_RATE_LIMIT, IP),),
     "daily_challenge.router.get_status": (
         Rule(DAILY_CHALLENGE_STATUS_SESSION_RATE_LIMIT, SESSION),
     ),

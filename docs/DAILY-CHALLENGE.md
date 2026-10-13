@@ -130,7 +130,10 @@ Today the two live pools are identical, so the slate distinction does not change
 | Route | Scope | Purpose | Limit |
 | --- | --- | --- | ---: |
 | `GET /daily-challenge/today` | public / IP-keyed | Free slate for the local day, without player progress | 60/min |
+| `GET /daily-challenge/upcoming` | public / IP-keyed | Free slate for today, today+1 and today+2 (`{"days": [...]}`, each shaped like `/today`) | 60/min |
 | `GET /daily-challenge/status` | `X-Session-ID` | This session's resolved slate plus completion/progress | 60/min |
+
+`/upcoming` takes the same `tz_offset_minutes` (-840..840) as the other routes and resolves each day from the client's local calendar. Reading a day freezes it through `get_or_create_templates`, so a second read, another device, and a later `/today` all return the same goals. Scoring is unchanged: a completion is still checked against its own local day when it syncs.
 
 The Home card treats `/status` as authoritative because a future premium session's goal list can differ from `/today`, not merely its completion flags.
 
