@@ -11,7 +11,7 @@ class DailyWordMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     puzzle_id: str
-    language: Literal["en", "hi"] = "en"
+    language: Literal["en", "hi", "fr", "es"] = "en"
 
 
 class DailyWordResult(BaseModel):

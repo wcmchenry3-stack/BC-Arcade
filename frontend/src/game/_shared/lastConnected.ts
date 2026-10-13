@@ -69,7 +69,8 @@ export async function daysOffline(now: number = Date.now()): Promise<number | nu
 /**
  * True once the puzzles fetched ahead have run out: `OFFLINE_WINDOW_DAYS`
  * local days since the last connection. False when never connected (a fresh
- * install has no window to run out of).
+ * install has no window to run out of). Read by Daily Word's offline play
+ * (`resolveOfflinePuzzle`, #3230) and the Daily Challenge card (#3228).
  */
 export async function offlineWindowExhausted(now: number = Date.now()): Promise<boolean> {
   const d = await daysOffline(now);
