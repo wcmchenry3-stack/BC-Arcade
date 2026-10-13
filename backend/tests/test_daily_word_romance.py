@@ -64,7 +64,8 @@ def test_fold_keeps_tilde_on_other_letters_out_in_spanish() -> None:
 def test_fold_handles_decomposed_input() -> None:
     assert fold("était", "fr") == "etait"
     assert fold("niño", "es") == "niño"
-    assert fold("niño", "es") == fold("niño", "es")
+    # decomposed n + U+0303 and precomposed U+00F1 fold to the same key
+    assert fold("nin\u0303o", "es") == fold("ni\u00f1o", "es") == "ni\u00f1o"
 
 
 def test_fold_is_idempotent() -> None:
@@ -416,3 +417,14 @@ def test_upcoming_romance_entries_carry_scrambled_display(
 def test_upcoming_en_hi_entries_have_no_display_blob(client: TestClient, lang: str) -> None:
     for e in client.get(f"/daily-word/upcoming?lang={lang}").json():
         assert set(e) == {"puzzle_id", "word_length", "answer_blob"}
+
+
+def test_oversized_guess_is_rejected_before_folding(client: TestClient) -> None:
+    """A huge guess is refused by request validation, never folded (#3242 review)."""
+    from daily_word.router import GUESS_MAX_CHARS
+
+    # Under the 1 KB body cap, so this exercises the field limit, not the middleware.
+    flood = "a" * (GUESS_MAX_CHARS + 1)
+    r = _guess(client, _today("en"), flood)
+    assert r.status_code == 422
+    assert r.json()["detail"] != "wrong_guess_length"  # rejected by validation, not after folding

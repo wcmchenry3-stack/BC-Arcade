@@ -13,7 +13,7 @@ export interface UpcomingPuzzle {
   readonly puzzle_id: string;
   readonly word_length: number;
   readonly answer_blob: string;
-  /** Scrambled accented display form (fr/es only), decoded like `answer_blob` (#3241). */
+  /** Scrambled accented display form (fr/es only), decoded like `answer_blob` (#3240). */
   readonly display_blob?: string;
 }
 

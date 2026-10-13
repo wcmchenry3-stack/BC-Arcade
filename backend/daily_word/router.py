@@ -179,9 +179,15 @@ def _normalize_guess(raw: str, lang: str) -> str:
     return raw.lower()
 
 
+# A 5-tile Hindi guess is the longest legitimate input (a few code points per
+# grapheme cluster). The cap bounds the per-character fold/NFC work even when a
+# chunked body skips MaxBodySizeMiddleware's Content-Length check (#3242 review).
+GUESS_MAX_CHARS = 64
+
+
 class GuessRequest(BaseModel):
-    puzzle_id: str
-    guess: str
+    puzzle_id: str = Field(max_length=64)
+    guess: str = Field(max_length=GUESS_MAX_CHARS)
     tz_offset_minutes: int = Field(0, ge=-840, le=840)
 
 
