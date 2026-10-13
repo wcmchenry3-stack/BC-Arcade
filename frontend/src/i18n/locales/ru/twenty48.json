@@ -14,5 +14,10 @@
   "win.body": "Вы достигли 2048! Можете продолжить игру для более высокого счёта.",
   "controls.keyboardHint": "Или используйте клавиши со стрелками",
   "stats.highestTile": "Макс. плитка",
-  "stats.timePlayed": "Время игры"
+  "stats.timePlayed": "Время игры",
+  "a11y.board": "Игровое поле",
+  "a11y.emptyCell": "пусто",
+  "a11y.merged": "Объединено: {{values}}",
+  "a11y.highestTile": "Наибольшая плитка: {{value}}",
+  "a11y.timePlayed": "Время игры: {{time}}"
 }

@@ -26,5 +26,6 @@
   "hud.errorsOne": "1 ошибка",
   "hud.elapsed": "Прошло времени: {{time}}",
   "action.quickRestart": "Быстрый перезапуск",
-  "newGame.title": "Новая игра"
+  "newGame.title": "Новая игра",
+  "a11y.board": "Поле судоку"
 }

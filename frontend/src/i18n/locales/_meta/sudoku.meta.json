@@ -250,5 +250,14 @@
     "placeholders": ["{{time}}"],
     "doNotTranslate": [],
     "notes": "`{{time}}` is a formatted duration like 02:13 or 1:04:27."
+  },
+  "a11y.board": {
+    "component": "SudokuGrid (accessibility)",
+    "description": "Screen-reader label for the Sudoku grid.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": ""
   }
 }

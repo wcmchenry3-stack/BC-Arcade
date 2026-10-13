@@ -11,7 +11,8 @@ import type * as StorageModule from "../../game/twenty48/storage";
 import { Twenty48State } from "../../game/twenty48/types";
 
 // Force web platform so the keyboard-listener useEffect runs.
-import { AppState, Platform } from "react-native";
+import { AccessibilityInfo, AppState, Platform } from "react-native";
+import i18n from "i18next";
 import type { AppStateStatus } from "react-native";
 (Platform as { OS: string }).OS = "web";
 
@@ -1699,5 +1700,95 @@ describe("Twenty48Screen — app background and relaunch (#2750)", () => {
       (loadGame as jest.Mock).mockReset();
       (loadGame as jest.Mock).mockResolvedValue(null);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2222 — merge live-region announcement
+// ---------------------------------------------------------------------------
+
+describe("Twenty48Screen — merge announcement (#2222)", () => {
+  const MERGE_BOARD = [
+    [2, 2, 0, 0],
+    [4, 4, 0, 0],
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
+  ];
+  const MERGE_STATE: Twenty48State = {
+    ...NOOP_LEFT_STATE,
+    board: MERGE_BOARD,
+    tiles: tilesFor(MERGE_BOARD),
+  };
+
+  async function swipe(key: string) {
+    await act(() => {
+      dispatchKey(key);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+  }
+
+  beforeEach(() => {
+    (loadGame as jest.Mock).mockReset();
+    (loadGame as jest.Mock).mockResolvedValue(null);
+  });
+
+  afterEach(async () => {
+    announceSpy?.mockRestore();
+    await i18n.changeLanguage("en");
+  });
+
+  let announceSpy: jest.SpyInstance | undefined;
+  function spyAnnounce() {
+    announceSpy = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
+    return announceSpy;
+  }
+
+  it("announces the merged tile values once per move", async () => {
+    const announce = spyAnnounce();
+    (loadGame as jest.Mock).mockResolvedValueOnce(MERGE_STATE);
+    const r = await mountAndSettle();
+    expect(announce).not.toHaveBeenCalled();
+    await swipe("ArrowLeft");
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledWith("Merged: 4, 8");
+    await r.unmount();
+  });
+
+  it("does not announce a move that merges nothing", async () => {
+    const announce = spyAnnounce();
+    (loadGame as jest.Mock).mockResolvedValueOnce(NOOP_LEFT_STATE);
+    const r = await mountAndSettle();
+    await swipe("ArrowRight");
+    expect(announce).not.toHaveBeenCalled();
+    await r.unmount();
+  });
+
+  it("does not announce a restored game whose saved tiles still carry isMerge", async () => {
+    const announce = spyAnnounce();
+    const stale: Twenty48State = {
+      ...MERGE_STATE,
+      tiles: MERGE_STATE.tiles.map((tile) => ({ ...tile, isMerge: true })),
+    };
+    (loadGame as jest.Mock).mockResolvedValueOnce(stale);
+    const r = await mountAndSettle();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    expect(announce).not.toHaveBeenCalled();
+    await r.unmount();
+  });
+
+  it("announces in the active language", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    i18n.addResourceBundle("es", "twenty48", require("../../i18n/locales/es/twenty48.json"));
+    await i18n.changeLanguage("es");
+    const announce = spyAnnounce();
+    (loadGame as jest.Mock).mockResolvedValueOnce(MERGE_STATE);
+    const r = await mountAndSettle();
+    await swipe("ArrowLeft");
+    expect(announce).toHaveBeenCalledWith("Fusionadas: 4, 8");
+    await r.unmount();
   });
 });

@@ -22,5 +22,11 @@
   "keyboard.enter": "Ввод",
   "result.countdown": "Слово через {{time}}",
   "result.share": "Поделиться",
-  "result.copied": "Скопировано!"
+  "result.copied": "Скопировано!",
+  "a11y.board": "Поле «Слово дня»",
+  "a11y.tile": "Строка {{row}}, столбец {{col}}, буква {{letter}}",
+  "a11y.tileStatus": "Строка {{row}}, столбец {{col}}, буква {{letter}}, {{status}}",
+  "a11y.status.correct": "верно",
+  "a11y.status.present": "не на месте",
+  "a11y.status.absent": "нет в слове"
 }

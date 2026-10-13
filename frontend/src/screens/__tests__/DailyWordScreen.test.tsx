@@ -11,6 +11,7 @@
 import React, { StrictMode } from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import { Share } from "react-native";
+import i18n from "i18next";
 import { CodedError } from "expo-modules-core";
 import * as ThemeModule from "../../theme/ThemeContext";
 import { ThemeProvider } from "../../theme/ThemeContext";
@@ -209,6 +210,19 @@ describe("DailyWordScreen — loading", () => {
   it("renders a fresh grid after loading with no saved state", async () => {
     const { findByTestId } = await renderScreen();
     await expect(findByTestId("tile-0-0")).resolves.toBeTruthy();
+  });
+
+  it("labels the board from the active language (#2222)", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    i18n.addResourceBundle("es", "daily_word", require("../../i18n/locales/es/daily_word.json"));
+    await i18n.changeLanguage("es");
+    try {
+      const { findByLabelText, queryByLabelText } = await renderScreen();
+      await expect(findByLabelText("Tablero de Palabra Diaria")).resolves.toBeTruthy();
+      expect(queryByLabelText("Daily Word board")).toBeNull();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 });
 

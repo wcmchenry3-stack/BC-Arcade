@@ -148,5 +148,8 @@
   "tableSelect.tagline": "在游戏中生存。",
   "tableSelect.taglineSub": "每张牌桔都是一段完整旅程——初始筹码、达成目标、干净结束。",
   "tableSelect.viewHistory": "查看轮次记录",
-  "tableSelect.lastPlayed": "上次游玩"
+  "tableSelect.lastPlayed": "上次游玩",
+  "a11y.dealerScore": "庄家点数 {{score}}",
+  "a11y.dealerScoreHidden": "庄家点数已隐藏",
+  "a11y.playerScore": "玩家点数 {{score}}"
 }

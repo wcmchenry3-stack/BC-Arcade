@@ -17,5 +17,6 @@
   "pile.freecell.empty": "الخلية الحرة {{cell}} فارغة",
   "a11y.boardRegion": "لوحة FreeCell",
   "score.moves": "الحركات: {{moves}}",
-  "error.supermoveRejected": "لا توجد مساحات فارغة كافية لنقل هذه الكومة"
+  "error.supermoveRejected": "لا توجد مساحات فارغة كافية لنقل هذه الكومة",
+  "a11y.foundationComplete": "اكتمل الأساس"
 }

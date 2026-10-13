@@ -14,5 +14,10 @@
   "controls.keyboardHint": "Or use arrow keys",
   "win.body": "You reached 2048! You can keep playing for a higher score.",
   "stats.highestTile": "Highest Tile",
-  "stats.timePlayed": "Time Played"
+  "stats.timePlayed": "Time Played",
+  "a11y.board": "Game board",
+  "a11y.emptyCell": "empty",
+  "a11y.merged": "Merged: {{values}}",
+  "a11y.highestTile": "Highest tile: {{value}}",
+  "a11y.timePlayed": "Time played: {{time}}"
 }
