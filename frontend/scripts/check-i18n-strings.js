@@ -29,6 +29,13 @@
  *     Devanagari vowel signs don't count extra. A plural form only some locales
  *     have (ru _few, ar _many) is held to English's _other entry.
  *
+ *   - the same placeholders as English (#3152): `{{name}}` interpolations, Trans
+ *     tags (`<0>`..`</0>`) and `$t()` nests, reordering allowed. A dropped or
+ *     renamed one shows raw `{{count}}` or loses a number. `{{count}}` may be
+ *     omitted in `_zero`/`_one`/`_two` forms; rules in i18n-placeholders.js.
+ *     Other intentional differences are listed, with a reason, in
+ *     i18n-placeholder-exceptions.json (an entry no longer needed fails);
+ *
  * And per namespace, that _meta has an entry for every English key, under that
  * exact key (translate.js looks entries up by it), and none for keys English
  * no longer has (#2681).
@@ -43,11 +50,14 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { LOCALES } from "../src/i18n/locales.js";
 import { doNotTranslateTerms } from "../src/i18n/glossary.js";
+import { placeholderMismatches } from "./i18n-placeholders.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCALES_DIR = join(__dirname, "../src/i18n/locales");
 const META_DIR = join(LOCALES_DIR, "_meta");
 const COPIES_PATH = join(__dirname, "i18n-english-copies.json");
+// Keys exempt from the placeholder check, with a reason each (#3152).
+const PLACEHOLDER_EXCEPTIONS_PATH = join(__dirname, "i18n-placeholder-exceptions.json");
 // Every namespace English has (#2194): a hand-kept list here drifted and missed
 // six games. A namespace in NOT_ALL_LOCALES may lack a file in some locales
 // (English is shown there); the files it does have are still checked. Add a
@@ -190,6 +200,7 @@ function main() {
   const namespaces = filterNs ? [filterNs] : NAMESPACES;
   const copies = loadJson(COPIES_PATH) ?? { accepted: {}, pending: {} };
   const foundPending = {};
+  const placeholderExceptions = loadJson(PLACEHOLDER_EXCEPTIONS_PATH) ?? {};
 
   let totalIssues = 0;
   let totalPending = 0;
@@ -277,6 +288,31 @@ function main() {
         totalPending += pending.length;
       }
 
+      const exempt = new Set(Object.keys(placeholderExceptions[ns]?.[code] ?? {}));
+      const badPlaceholders = placeholderMismatches(enStrings, targetStrings, exempt);
+      // An exemption that is no longer needed must go, so the list only shrinks.
+      const needed = new Set(placeholderMismatches(enStrings, targetStrings).map((m) => m.key));
+      const staleExempt = [...exempt].filter((k) => !needed.has(k));
+      if (staleExempt.length > 0) {
+        console.log(
+          `✗ [${code}/${ns}.json] Listed in i18n-placeholder-exceptions.json but the placeholders match (${staleExempt.length}); remove:`
+        );
+        staleExempt.forEach((k) => console.log(`    ✓ ${k}`));
+        totalIssues += staleExempt.length;
+      }
+      if (badPlaceholders.length > 0) {
+        console.log(
+          `✗ [${code}/${ns}.json] Placeholders differ from English (${badPlaceholders.length}):`
+        );
+        badPlaceholders.forEach(({ key, missing, extra }) => {
+          const parts = [];
+          if (missing.length > 0) parts.push(`missing ${missing.join(" ")}`);
+          if (extra.length > 0) parts.push(`unexpected ${extra.join(" ")}`);
+          console.log(`    ! ${key}: ${parts.join("; ")} ${JSON.stringify(targetStrings[key])}`);
+        });
+        totalIssues += badPlaceholders.length;
+      }
+
       const over = overLimit(targetStrings, meta);
       totalIssues += reportOverLimit(`${code}/${ns}.json`, over, meta);
 
@@ -315,6 +351,8 @@ function main() {
         missing.length === 0 &&
         pluralGaps.length === 0 &&
         extra.length === 0 &&
+        badPlaceholders.length === 0 &&
+        staleExempt.length === 0 &&
         over.length === 0
       ) {
         const pendingNote = pending.length > 0 ? ` (${pending.length} still need translation)` : "";

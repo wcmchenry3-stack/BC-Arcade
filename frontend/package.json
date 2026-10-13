@@ -16,6 +16,7 @@
     "check-i18n": "node scripts/check-i18n-strings.js",
     "check-colors": "node scripts/check-color-literals.mjs",
     "test:check-colors": "node --test scripts/check-color-literals.test.mjs",
+    "test:check-i18n": "node --test scripts/i18n-placeholders.test.mjs",
     "process-assets": "python ../tools/assets/remove_backgrounds.py",
     "extract-vertices": "python ../tools/assets/extract_vertices.py",
     "bundlesize": "bundlesize",

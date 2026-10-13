@@ -1,0 +1,21 @@
+{
+  "_about": "Locale values that may differ from English in their placeholders (check-i18n-strings.js, #3152). Namespace -> locale -> key -> reason. Prefer fixing the translation; an entry that no longer needs the exemption fails the check.",
+  "stats": {
+    "ar": {
+      "metric.score_one": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted",
+      "metric.score_two": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted",
+      "metric.moves_one": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted",
+      "metric.moves_two": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted",
+      "metric.guesses_one": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted",
+      "metric.guesses_two": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted",
+      "metric.chips_one": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted",
+      "metric.chips_two": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted"
+    },
+    "he": {
+      "metric.score_one": "Hebrew singular form is a complete word with the number built in ('מהלך אחד' = one move); the {{value}} number is correctly omitted",
+      "metric.moves_one": "Hebrew singular form is a complete word with the number built in ('מהלך אחד' = one move); the {{value}} number is correctly omitted",
+      "metric.guesses_one": "Hebrew singular form is a complete word with the number built in ('מהלך אחד' = one move); the {{value}} number is correctly omitted",
+      "metric.chips_one": "Hebrew singular form is a complete word with the number built in ('מהלך אחד' = one move); the {{value}} number is correctly omitted"
+    }
+  }
+}
