@@ -39,7 +39,11 @@ export interface SudokuCell {
   readonly given: boolean;
   /** Digits the player has pencilled in. Empty when `value !== 0` in practice. */
   readonly notes: ReadonlySet<NoteDigit>;
-  /** True when `value !== 0` and `value !== solution[row*size+col]`. */
+  /**
+   * True when a player-entered `value` duplicates a digit in its row, column
+   * or box (an illegal move, #2943). Derived from the board, so it clears when
+   * the conflicting peer changes. Says nothing about the solution.
+   */
   readonly isError: boolean;
 }
 

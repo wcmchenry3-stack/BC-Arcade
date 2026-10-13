@@ -33,4 +33,5 @@ class SudokuResult(BaseModel):
     """
 
     won: bool
+    # Illegal moves (row/column/box duplicates), counted by the client (#2943).
     errors: int = Field(ge=0)

@@ -19,7 +19,9 @@ class SudokuModule(GameModuleBase):
     result_model = SudokuResult
     has_winner = False
     # One board per (difficulty, variant). A game scores its difficulty's base
-    # (DIFFICULTY_BASE in SudokuScreen.tsx: 100/200/300) minus 10 per error, so
+    # (DIFFICULTY_BASE in SudokuScreen.tsx: 100/200/300) minus 10 per error (an
+    # illegal move: a digit duplicating one in its row, column or box, #2943;
+    # the client counts them and sends ``errors``), so
     # each difficulty has its own cap and 300 is the overall one (recomputed in
     # tests/test_board_definitions.py). Rows from before #748 carry no
     # ``variant`` and belong to ``classic`` (``partition_defaults``).

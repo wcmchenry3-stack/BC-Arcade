@@ -314,8 +314,11 @@ function isBoxComplete(
  * Normal mode (`notesMode === false`):
  *   - Sets `cell.value = digit`
  *   - Clears the cell's pencil notes
- *   - Flags `isError` when the placed digit disagrees with the solution;
- *     increments `errorCount` in that case
+ *   - A digit that duplicates one in its row, column or box (an illegal
+ *     move) increments `errorCount` and emits `errorEntered`. A legal digit
+ *     that merely disagrees with the solution is NOT an error (#2943): no
+ *     count, no event. `isError` on every cell is then recomputed from the
+ *     board (`recomputeConflicts`), so it tracks the current duplicates
  *   - Pushes the previous state to the undo stack (capped at
  *     UNDO_STACK_LIMIT)
  *   - Checks for completion
@@ -335,7 +338,6 @@ export function enterDigit(state: SudokuState, digit: CellValue): SudokuState {
   if (digit === 0) return state;
 
   const cfg = variantConfig(state.variant);
-  const size = cfg.size;
 
   if (state.notesMode) {
     const d = digit as NoteDigit;
@@ -358,22 +360,40 @@ export function enterDigit(state: SudokuState, digit: CellValue): SudokuState {
   }
 
   // Normal mode.
+  return placeDigit(state, row, col, digit, true);
+}
+
+/**
+ * Put `digit` in (`row`, `col`) and work out the consequences. `countErrors`
+ * is false for a hint, whose solution digit must never cost the player a
+ * penalty even when a wrong peer makes it a duplicate.
+ */
+function placeDigit(
+  state: SudokuState,
+  row: number,
+  col: number,
+  digit: CellValue,
+  countErrors: boolean
+): SudokuState {
+  const cfg = variantConfig(state.variant);
+  const size = cfg.size;
   const undoStack = pushUndo(state);
-  const expected = state.solution.charCodeAt(row * size + col) - 48;
-  const isError = digit !== expected;
-  const nextGrid = replaceCell(state.grid, row, col, (c) => ({
+  // Illegal = the digit already stands in the cell's row, column or box.
+  const illegal = getConflicts(state.grid, row, col, digit, cfg).length > 0;
+  const placed = replaceCell(state.grid, row, col, (c) => ({
     ...c,
     value: digit,
     notes: new Set<NoteDigit>(),
-    isError,
   }));
-  const nextErrorCount = isError ? state.errorCount + 1 : state.errorCount;
+  const nextGrid = recomputeConflicts(placed, cfg);
+  const countsAsError = illegal && countErrors;
+  const nextErrorCount = countsAsError ? state.errorCount + 1 : state.errorCount;
   const complete = isGridComplete(nextGrid, state.solution);
 
   const events: GameEvent[] = [{ type: "digitPlace" }];
-  if (isError) {
+  if (countsAsError) {
     events.push({ type: "errorEntered" });
-  } else {
+  } else if (!illegal) {
     const { boxRows, boxCols } = cfg;
     if (isRowComplete(nextGrid, row, size))
       events.push({ type: "unitComplete", unit: "row", index: row });
@@ -383,8 +403,8 @@ export function enterDigit(state: SudokuState, digit: CellValue): SudokuState {
     const boxCol = Math.floor(col / boxCols) * boxCols;
     if (isBoxComplete(nextGrid, boxRow, boxCol, boxRows, boxCols))
       events.push({ type: "unitComplete", unit: "box", index: boxRow * size + boxCol });
-    if (complete) events.push({ type: "puzzleComplete" });
   }
+  if (complete) events.push({ type: "puzzleComplete" });
 
   return {
     ...state,
@@ -393,6 +413,60 @@ export function enterDigit(state: SudokuState, digit: CellValue): SudokuState {
     isComplete: complete,
     undoStack,
     events,
+  };
+}
+
+/**
+ * Whether every cell is filled but the grid is not the solution (#2943):
+ * with legal-but-wrong digits no longer flagged, this is how the player
+ * learns something is off.
+ */
+export function isFullButWrong(state: SudokuState): boolean {
+  if (state.isComplete) return false;
+  return state.grid.every((row) => row.every((c) => c.value !== 0));
+}
+
+/**
+ * The Hint action. On a selected empty cell it fills in the solution digit.
+ * On a full-but-wrong grid (nothing is empty) it picks a wrong cell (the
+ * selected one if it is wrong, else the first), selects it and corrects it.
+ * Returns the same state when there is nothing to do. Never costs an error.
+ */
+export function applyHint(state: SudokuState): SudokuState {
+  const { size } = variantConfig(state.variant);
+  const solutionAt = (r: number, c: number) =>
+    (state.solution.charCodeAt(r * size + c) - 48) as CellValue;
+  const { selectedRow, selectedCol } = state;
+  if (selectedRow !== null && selectedCol !== null) {
+    const sel = cellAt(state.grid, selectedRow, selectedCol);
+    if (!sel.given && sel.value === 0) {
+      return placeDigit(
+        state,
+        selectedRow,
+        selectedCol,
+        solutionAt(selectedRow, selectedCol),
+        false
+      );
+    }
+  }
+  if (!isFullButWrong(state)) return state;
+  const isWrong = (r: number, c: number) => {
+    const cell = cellAt(state.grid, r, c);
+    return !cell.given && cell.value !== solutionAt(r, c);
+  };
+  let target: [number, number] | null = null;
+  if (selectedRow !== null && selectedCol !== null && isWrong(selectedRow, selectedCol)) {
+    target = [selectedRow, selectedCol];
+  }
+  for (let r = 0; r < size && !target; r++) {
+    for (let c = 0; c < size && !target; c++) if (isWrong(r, c)) target = [r, c];
+  }
+  if (!target) return state;
+  const [tr, tc] = target;
+  return {
+    ...placeDigit(state, tr, tc, solutionAt(tr, tc), false),
+    selectedRow: tr,
+    selectedCol: tc,
   };
 }
 
@@ -406,12 +480,15 @@ export function eraseCell(state: SudokuState): SudokuState {
   if (cell.given) return state;
   if (cell.value === 0 && cell.notes.size === 0) return state;
   const undoStack = pushUndo(state);
-  const nextGrid = replaceCell(state.grid, row, col, (c) => ({
-    ...c,
-    value: 0,
-    notes: new Set<NoteDigit>(),
-    isError: false,
-  }));
+  const nextGrid = recomputeConflicts(
+    replaceCell(state.grid, row, col, (c) => ({
+      ...c,
+      value: 0,
+      notes: new Set<NoteDigit>(),
+      isError: false,
+    })),
+    variantConfig(state.variant)
+  );
   return {
     ...state,
     grid: nextGrid,
@@ -450,7 +527,6 @@ export function peers(r1: number, c1: number, r2: number, c2: number, cfg: GridC
  * Return the coordinates of all cells that already hold `value` in the
  * same row, column, or box as (`row`, `col`). Pure conflict-detection
  * helper (exercised by the engine test suite).
- * @internal No production caller yet; planned for the illegal-move indicator (Sentry BC_GAMES-5J)
  */
 export function getConflicts(
   grid: Grid,
@@ -471,4 +547,23 @@ export function getConflicts(
     }
   }
   return out;
+}
+
+/**
+ * Set `isError` on every non-given filled cell that duplicates a digit in its
+ * row, column or box (#2943). `isError` means "currently illegal", so it is
+ * derived from the board: it follows a peer being erased or changed, and old
+ * saves (whose flags meant "differs from the solution") are normalised on load.
+ * Returns the same grid when no flag changes.
+ */
+export function recomputeConflicts(grid: Grid, cfg: GridConfig): Grid {
+  let changed = false;
+  const next = mapGrid(grid, (cell, r, c) => {
+    const isError =
+      !cell.given && cell.value !== 0 && getConflicts(grid, r, c, cell.value, cfg).length > 0;
+    if (isError === cell.isError) return cell;
+    changed = true;
+    return { ...cell, isError };
+  });
+  return changed ? next : grid;
 }

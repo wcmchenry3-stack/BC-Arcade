@@ -25,6 +25,8 @@
   "hud.errors": "{{count}} ошибок",
   "hud.errorsOne": "1 ошибка",
   "hud.elapsed": "Прошло времени: {{time}}",
+  "settings.showMistakes": "Показывать ошибки",
+  "fullWrong.message": "Все клетки заполнены, но что-то не так. Нажмите «Подсказка», чтобы найти ошибку.",
   "action.quickRestart": "Быстрый перезапуск",
   "newGame.title": "Новая игра",
   "a11y.board": "Поле судоку"

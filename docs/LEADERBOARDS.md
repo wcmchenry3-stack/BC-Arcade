@@ -110,7 +110,7 @@ This table summarizes the generated board configuration on `dev`. Per-game docs 
 | Cascade | Yes | final score | Higher | No natural cap declared |
 | Solitaire | Yes | final score | Higher | Max 1245 |
 | Hearts | Yes | final score | Higher | Max 100 |
-| Sudoku | Yes | final score | Higher | difficulty + variant; effective caps 100/200/300 by difficulty |
+| Sudoku | Yes | final score (base − 10 × illegal moves) | Higher | difficulty + variant; effective caps 100/200/300 by difficulty |
 | Mahjong | Yes | clear time (`duration_ms`), wins only | **Lower** | One board per layout (no default: rows without a layout rank nowhere); clears under 36 s ignored (#2747) |
 | Star Swarm | Yes | final score | Higher | difficulty-tier partitions |
 | FreeCell | Yes | moves / final score | **Lower** | Fewest moves wins |
