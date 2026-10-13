@@ -60,7 +60,7 @@ Validation, scoring, the stored guess record and the tile letters all use folded
 
 - `POST /guess` adds `"display"` (the list's display form of the guessed word, not what the user typed) for `fr` and `es` only.
 - `GET /answer` returns `{"answer": "<folded>", "display": "<accented>"}` for every language. For `en` and `hi`, `display` equals `answer`.
-- `GET /upcoming` still scrambles the folded answer; the client has no display form for offline play yet (#3241).
+- `GET /upcoming` entries for `fr` and `es` add `display_blob`: the accented display form, scrambled exactly like `answer_blob` (same key, so the client decodes both the same way). `en` and `hi` entries have no `display_blob`.
 
 If a language's list files are missing, it is not loaded and is unsupported: `/today` and `/upcoming` answer 422 `unsupported_language`, and `/guess` and `/answer` answer 422 `invalid_puzzle_id`. Import never fails. Bump `_LIST_VERSION[lang]` in `puzzle.py` whenever a list changes.
 
@@ -102,7 +102,7 @@ On mount the screen fetches today's puzzle metadata and loads any saved board.
 
 ### Upcoming puzzles for offline play (#3229)
 
-`GET /daily-word/upcoming?lang=en|hi&tz_offset_minutes=<-840..840>` (no auth, 30/minute per IP) returns a JSON array of three entries for the device's local today, +1 and +2 days, using the same offset and `lang` rules as `/today` (an unsupported `lang` is a 422 `unsupported_language`): `[{"puzzle_id", "word_length", "answer_blob"}]`.
+`GET /daily-word/upcoming?lang=en|hi|fr|es&tz_offset_minutes=<-840..840>` (no auth, 30/minute per IP) returns a JSON array of three entries for the device's local today, +1 and +2 days, using the same offset and `lang` rules as `/today` (an unsupported `lang` is a 422 `unsupported_language`): `[{"puzzle_id", "word_length", "answer_blob"}]`; `fr`/`es` entries also carry `"display_blob"`.
 
 `answer_blob` is a light scramble so the answer is not plaintext in the response. It stops casual spoilers only; it is **not security** (anyone who knows this scheme can decode it, which #3022 accepted). Decode (`scramble_answer` in `backend/daily_word/puzzle.py`):
 

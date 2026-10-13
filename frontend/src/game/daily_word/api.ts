@@ -38,6 +38,15 @@ export interface AnswerResponse {
   readonly display?: string;
 }
 
+/** One `GET /daily-word/upcoming` entry. Not consumed yet (#3241). */
+export interface UpcomingEntry {
+  readonly puzzle_id: string;
+  readonly word_length: number;
+  readonly answer_blob: string;
+  /** Scrambled accented display form (fr/es only), decoded like `answer_blob`. */
+  readonly display_blob?: string;
+}
+
 export const dailyWordApi = {
   getToday: (tz_offset_minutes: number, lang: string) =>
     request<TodayResponse>(

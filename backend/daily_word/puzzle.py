@@ -206,19 +206,20 @@ def scramble_answer(puzzle_id: str, answer: str) -> str:
 def get_upcoming(
     tz_offset_minutes: int, lang: str = "en", _utc_now: datetime | None = None
 ) -> list[dict]:
-    """Return today and the next two local days: puzzle_id, word_length, answer_blob."""
+    """Return today and the next two local days: puzzle_id, word_length, answer_blob (+ display_blob for fr/es)."""
     start = _local_date(tz_offset_minutes, _utc_now)
     out: list[dict] = []
     for offset in range(UPCOMING_DAYS):
         puzzle_id = make_puzzle_id((start + timedelta(days=offset)).strftime("%Y-%m-%d"), lang)
         answer = get_answer(puzzle_id)
-        out.append(
-            {
-                "puzzle_id": puzzle_id,
-                "word_length": len(answer),
-                "answer_blob": scramble_answer(puzzle_id, answer),
-            }
-        )
+        entry = {
+            "puzzle_id": puzzle_id,
+            "word_length": len(answer),
+            "answer_blob": scramble_answer(puzzle_id, answer),
+        }
+        if lang in _DISPLAY:  # fr/es only; en/hi payloads are unchanged (#3240)
+            entry["display_blob"] = scramble_answer(puzzle_id, get_display(answer, lang))
+        out.append(entry)
     return out
 
 

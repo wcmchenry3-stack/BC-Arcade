@@ -381,3 +381,38 @@ def test_romance_lists_do_not_share_the_english_index(monkeypatch: pytest.Monkey
             for d in range(1, 29)
         )
         assert same == 0
+
+
+# ---------------------------------------------------------------------------
+# /upcoming display_blob
+# ---------------------------------------------------------------------------
+
+
+def _decode(puzzle_id: str, blob: str) -> str:
+    import base64
+    import hashlib
+
+    key = hashlib.sha256(puzzle_id.encode("utf-8")).digest()
+    data = base64.b64decode(blob)
+    return bytes(b ^ key[i % 32] for i, b in enumerate(data)).decode("utf-8")
+
+
+@pytest.mark.parametrize("lang", ["fr", "es"])
+def test_upcoming_romance_entries_carry_scrambled_display(
+    client: TestClient, fr_es: None, lang: str
+) -> None:
+    entries = client.get(f"/daily-word/upcoming?lang={lang}").json()
+    assert len(entries) == 3
+    for e in entries:
+        folded = get_answer(e["puzzle_id"])
+        display = puzzle_mod.get_display(folded, lang)
+        assert _decode(e["puzzle_id"], e["answer_blob"]) == folded
+        assert _decode(e["puzzle_id"], e["display_blob"]) == display
+        assert display not in e["display_blob"]
+        assert e["word_length"] == 5
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_upcoming_en_hi_entries_have_no_display_blob(client: TestClient, lang: str) -> None:
+    for e in client.get(f"/daily-word/upcoming?lang={lang}").json():
+        assert set(e) == {"puzzle_id", "word_length", "answer_blob"}
