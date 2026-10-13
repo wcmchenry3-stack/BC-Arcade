@@ -50,9 +50,9 @@ Hindi input is NFC-normalized and uses Devanagari grapheme clusters for visible 
 | `en` | English  |
 | `hi` | Hindi    |
 
-The puzzle language follows the app language through one function, `getLanguage()` (`todayMeta.ts`): the app language's base code if this build offers a puzzle in it, else `en`. Store builds (#3150, `buildFlavour.ts`) offer only the launched languages (`en` for now), so `hi` falls back to the English puzzle and QWERTY keyboard; dev, e2e and pre-launch builds also offer `hi` (#3153). The backend still accepts `hi`. A launched language is added by listing it in `LAUNCHED_DAILY_WORD_LANGUAGES`.
+The puzzle language follows the app language through one function, `getLanguage()` (`todayMeta.ts`): the app language's base code if this build offers a puzzle in it, else `en`. Native (iOS/Android) store builds (#3150, `buildFlavour.ts`) offer only the launched languages (`en` for now), so `hi` falls back to the English puzzle and QWERTY keyboard; web, dev, e2e and pre-launch builds also offer `hi` (#3153), mirroring `availableLocales`. The backend still accepts `hi`. A launched language is added by listing it in `LAUNCHED_DAILY_WORD_LANGUAGES`.
 
-A store-build player with a leftover Hindi save (`puzzle_id` ending `:hi`) is not stranded: the id no longer matches today's English puzzle, so the stale save is cleared and a fresh English board starts (see Loading / resume). Server-side stats are keyed by puzzle and are untouched.
+When a native store build falls back to English, any saved Hindi board (in progress or finished, even from the same day) is discarded: its `puzzle_id` ends `:hi`, no longer matches today's English puzzle, so the stale save is cleared (`staleSave` -> `clearState`) and a fresh English board starts. This is the chosen "migrate to `en`" option; finishing the Hindi game is not supported. Server-side stats are keyed by puzzle and are untouched.
 
 ## Scoring (Persistence)
 

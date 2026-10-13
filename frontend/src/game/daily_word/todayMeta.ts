@@ -6,6 +6,7 @@
  * screen can open offline later the same day.
  */
 import i18n from "i18next";
+import { Platform } from "react-native";
 import { isStoreBuild } from "../_shared/buildFlavour";
 import { dailyWordApi } from "./api";
 import { loadTodayMeta, saveTodayMeta } from "./storage";
@@ -17,27 +18,33 @@ export function getTimezoneOffset(): number {
 /** Puzzle languages every build ships. Add launched languages (es, fr) here. */
 const LAUNCHED_DAILY_WORD_LANGUAGES: readonly string[] = ["en"];
 
-/** Puzzle languages held back from store builds until launch-ready (#3153). */
+/** Puzzle languages held back from native store builds until launch-ready (#3153). */
 const UNLAUNCHED_DAILY_WORD_LANGUAGES: readonly string[] = ["hi"];
 
+const ALL_DAILY_WORD_LANGUAGES: readonly string[] = [
+  ...LAUNCHED_DAILY_WORD_LANGUAGES,
+  ...UNLAUNCHED_DAILY_WORD_LANGUAGES,
+];
+
 /**
- * Puzzle languages playable in this build. Store builds get only the launched
- * ones; dev, e2e and pre-launch builds also get the unlaunched ones. A function
- * (not a constant) so the `__forceStoreBuildForTests` seam applies.
+ * Puzzle languages playable on the given platform. Mirrors `availableLocales`
+ * (`i18n/resolveLocale.ts`): native store builds get only the launched ones;
+ * web (free games + testing, not a store platform), dev, e2e and pre-launch
+ * builds get every language. A function so the `__forceStoreBuildForTests`
+ * seam applies.
  */
-export function dailyWordLanguages(): readonly string[] {
-  return isStoreBuild()
-    ? LAUNCHED_DAILY_WORD_LANGUAGES
-    : [...LAUNCHED_DAILY_WORD_LANGUAGES, ...UNLAUNCHED_DAILY_WORD_LANGUAGES];
+export function dailyWordLanguages(os: string = Platform.OS): readonly string[] {
+  return os !== "web" && isStoreBuild() ? LAUNCHED_DAILY_WORD_LANGUAGES : ALL_DAILY_WORD_LANGUAGES;
 }
 
 /**
  * The puzzle language: the app language's base code when this build offers a
  * puzzle in it, else "en". The one place puzzle and keyboard language is chosen.
+ * (`languageOf` needs a `t`, which this non-React helper doesn't have.)
  */
-export function getLanguage(): string {
+export function getLanguage(os: string = Platform.OS): string {
   const base = (i18n.language ?? "").split("-")[0] ?? "";
-  return dailyWordLanguages().includes(base) ? base : "en";
+  return dailyWordLanguages(os).includes(base) ? base : "en";
 }
 
 export function localDateKey(tzOffsetMinutes: number, lang: string): string {

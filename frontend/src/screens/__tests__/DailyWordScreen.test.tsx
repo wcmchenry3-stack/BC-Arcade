@@ -225,7 +225,7 @@ describe("DailyWordScreen — stale state", () => {
 
   it("store build: a saved Hindi game does not strand the player (#3153)", async () => {
     const original = i18n.language;
-    Object.defineProperty(i18n, "language", { value: "hi", configurable: true, writable: true });
+    await i18n.changeLanguage("hi");
     __forceStoreBuildForTests(true);
     try {
       storage.loadState.mockResolvedValue({
@@ -241,11 +241,7 @@ describe("DailyWordScreen — stale state", () => {
       expect(storage.clearState).toHaveBeenCalledTimes(1);
     } finally {
       __forceStoreBuildForTests(false);
-      Object.defineProperty(i18n, "language", {
-        value: original,
-        configurable: true,
-        writable: true,
-      });
+      await i18n.changeLanguage(original);
     }
   });
 

@@ -45,37 +45,41 @@ describe("warmTodayMeta (#2925)", () => {
 
 describe("getLanguage (#3153)", () => {
   const original = i18n.language;
-  const setLang = (lng: string) => {
-    Object.defineProperty(i18n, "language", { value: lng, configurable: true, writable: true });
-  };
 
-  afterEach(() => {
+  afterEach(async () => {
     __forceStoreBuildForTests(false);
-    setLang(original);
+    await i18n.changeLanguage(original);
   });
 
-  it("maps hi to en in a store build", () => {
+  it("native store build: maps hi to en", async () => {
     __forceStoreBuildForTests(true);
-    setLang("hi");
-    expect(getLanguage()).toBe("en");
-    expect(dailyWordLanguages()).toEqual(["en"]);
+    await i18n.changeLanguage("hi");
+    expect(getLanguage("ios")).toBe("en");
+    expect(getLanguage("android")).toBe("en");
+    expect(dailyWordLanguages("ios")).toEqual(["en"]);
   });
 
-  it("maps hi to hi in an internal build", () => {
-    setLang("hi");
-    expect(getLanguage()).toBe("hi");
-  });
-
-  it("falls back to en for languages without a puzzle", () => {
-    setLang("de");
-    expect(getLanguage()).toBe("en");
-    setLang("fr-CA");
-    expect(getLanguage()).toBe("en");
-  });
-
-  it("keeps en as en in a store build", () => {
+  it("web keeps hi even when the build is a store build", async () => {
     __forceStoreBuildForTests(true);
-    setLang("en");
-    expect(getLanguage()).toBe("en");
+    await i18n.changeLanguage("hi");
+    expect(getLanguage("web")).toBe("hi");
+  });
+
+  it("internal build: maps hi to hi on native", async () => {
+    await i18n.changeLanguage("hi");
+    expect(getLanguage("ios")).toBe("hi");
+  });
+
+  it("falls back to en for languages without a puzzle", async () => {
+    await i18n.changeLanguage("de");
+    expect(getLanguage("ios")).toBe("en");
+    await i18n.changeLanguage("fr-CA");
+    expect(getLanguage("ios")).toBe("en");
+  });
+
+  it("keeps en as en in a store build", async () => {
+    __forceStoreBuildForTests(true);
+    await i18n.changeLanguage("en");
+    expect(getLanguage("ios")).toBe("en");
   });
 });
