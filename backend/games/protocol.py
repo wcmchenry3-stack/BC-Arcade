@@ -25,7 +25,7 @@ Adding a new game
 6. Override a hook only when the game needs it:
    ``stats_shape`` (Blackjack's chips), ``derive_final_score`` (Blackjack's
    closing chips, #2745) or ``reconcile_result`` (Daily Word's guess record,
-   #2541).
+   #2541) or ``validate_event`` (Star Swarm's ``wave_completed``, #3250).
 """
 
 from __future__ import annotations
@@ -109,6 +109,13 @@ class GameModule(Protocol):
         Awaited after ``result_model`` validation to correct the result block
         against server-side state before it is stored. The base default
         returns ``result`` unchanged.
+
+    validate_event(name, data):
+        Called by ``append_events`` for each event of a known type (#3250).
+        Returns the ``data`` to store (possibly normalized) or ``None`` to
+        drop the event: the module logs/reports it, the rest of the batch is
+        stored and the request still succeeds (the client sees a 2xx and
+        drains its queue row). The base default returns ``data`` unchanged.
     """
 
     game_type: GameType
@@ -126,6 +133,8 @@ class GameModule(Protocol):
     async def reconcile_result(
         self, session: AsyncSession, game: Game, result: dict[str, Any]
     ) -> dict[str, Any]: ...
+
+    def validate_event(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None: ...
 
 
 def default_stats_shape(raw_stats: dict) -> dict:

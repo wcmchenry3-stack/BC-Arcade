@@ -160,8 +160,14 @@ Every registered game exposes a `GameModule` that tells the shared backend:
 Each module is a declarative subclass of `GameModuleBase`
 (`backend/games/module_base.py`, #2995). The base supplies the optional hooks
 with defaults that change nothing (`stats_shape`, `derive_final_score`,
-`reconcile_result`), so a game overrides only what it needs and the shared
-code calls every hook on every module, with no `getattr` lookups. The modules
+`reconcile_result`, `validate_event`), so a game overrides only what it needs
+and the shared code calls every hook on every module, with no `getattr`
+lookups. `validate_event(name, data)` runs in `append_events` for each event of
+a known type: it returns the `data` to store (default: as sent) or `None` to
+drop that event. A dropped event is logged and reported by the module, the rest
+of the batch is stored and the request still returns 2xx, so the client's queue
+row drains (`SyncWorker` deletes a row after any 2xx and never reads
+`rejected`). Today only Star Swarm overrides it, for `wave_completed` (#3250). The modules
 are listed once, in the `_MODULES` tuple in `backend/games/registry.py`.
 Field types shared by the metadata models (the legacy `player_name`, 64
 characters in every game) live in `backend/games/metadata.py`.

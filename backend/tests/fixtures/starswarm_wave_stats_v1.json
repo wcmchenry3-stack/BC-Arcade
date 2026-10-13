@@ -1,0 +1,216 @@
+{
+  "v": 1,
+  "wave": 7,
+  "difficulty": "Commander",
+  "outcome": "died",
+  "dev": false,
+  "pacing": {
+    "durationMs": 41250,
+    "start": {
+      "lives": 3,
+      "guns": 2
+    },
+    "end": {
+      "lives": 2,
+      "guns": 3,
+      "hull": 1
+    },
+    "bonusLives": 1
+  },
+  "score": {
+    "total": 4200,
+    "runningTotal": 29800,
+    "pts": {
+      "Grunt": 1800,
+      "Elite": 500,
+      "Elite:dive": 700,
+      "Guardian": 400,
+      "Carrier": 300,
+      "Grunt:rout": 200,
+      "clear": 300
+    }
+  },
+  "powerUps": {
+    "spawned": {
+      "lightning": {
+        "kill": 2,
+        "rock": 1
+      },
+      "shield": {
+        "kill": 1,
+        "dev": 1
+      },
+      "buddy": {
+        "carrier": 1
+      },
+      "bomb": {
+        "kill": 1
+      },
+      "salvage": {
+        "rock": 1
+      },
+      "hull": {
+        "kill": 1
+      }
+    },
+    "collected": {
+      "lightning": 2,
+      "shield": 1,
+      "buddy": 1,
+      "bomb": 1,
+      "salvage": 1,
+      "hull": 1
+    },
+    "missed": {
+      "lightning": 1
+    },
+    "leftover": {
+      "shield": 1
+    },
+    "expired": {
+      "lightning": 2
+    },
+    "activeMs": {
+      "lightning": 18000,
+      "shield": 6000
+    },
+    "shieldAbsorbed": 2
+  },
+  "rocks": {
+    "spawned": {
+      "large": 4,
+      "small": 9
+    },
+    "devSpawned": 1,
+    "broken": {
+      "player": 5,
+      "enemy": 2,
+      "bomb": 3,
+      "contact": 1
+    },
+    "enemiesStruck": {
+      "Grunt": 2,
+      "Elite": 1,
+      "Guardian": 1,
+      "Carrier": 1
+    },
+    "enemiesDestroyed": {
+      "Grunt": 1,
+      "Elite": 1,
+      "Guardian": 1
+    },
+    "playerHits": {
+      "life": 1,
+      "plating": 1,
+      "shield": 2
+    },
+    "buddyHits": 2,
+    "buddyDestroyed": 1,
+    "dodge": {
+      "Grunt": {
+        "rolls": 12,
+        "dodged": 5,
+        "pathRolls": 7,
+        "pathDodged": 3,
+        "flak": 2
+      },
+      "Elite": {
+        "rolls": 4,
+        "dodged": 3
+      },
+      "Guardian": {
+        "rolls": 2
+      },
+      "Carrier": {
+        "flak": 1
+      }
+    }
+  },
+  "buddy": {
+    "launched": 1,
+    "hits": {
+      "bullet": 3,
+      "beam": 1,
+      "rock": 2
+    },
+    "destroyed": {
+      "bullet": 1
+    },
+    "shotsDrawn": 14,
+    "kills": {
+      "Grunt": 4,
+      "Elite": 1
+    }
+  },
+  "carrier": {
+    "gruntsLaunched": 6,
+    "armorDeflects": 11,
+    "beamsFired": 3,
+    "beamHits": 1,
+    "attackRuns": 2,
+    "stageReachedMs": {
+      "protected": 120,
+      "exposed": 18400,
+      "finalStand": 30100
+    }
+  },
+  "rout": {
+    "triggered": true,
+    "atMs": 31000,
+    "grunts": 9,
+    "caught": 4,
+    "escaped": 5
+  },
+  "combat": {
+    "spawned": {
+      "Grunt": 24,
+      "Elite": 4,
+      "Guardian": 1,
+      "Carrier": 1
+    },
+    "kills": {
+      "Grunt": {
+        "shot": 14,
+        "dive": 2,
+        "rout": 4,
+        "bomb": 3,
+        "ram": 1,
+        "rock": 2,
+        "buddy": 4
+      },
+      "Elite": {
+        "shot": 2,
+        "dive": 1,
+        "bomb": 1
+      },
+      "Guardian": {
+        "shot": 1
+      },
+      "Carrier": {
+        "shot": 1
+      }
+    },
+    "shotsFired": 310,
+    "shotsHit": 187,
+    "shotsOnRocks": 22
+  },
+  "damage": {
+    "hits": {
+      "bullet": {
+        "life": 1,
+        "plating": 2,
+        "shield": 1
+      },
+      "rock": {
+        "plating": 1
+      },
+      "beam": {
+        "life": 1
+      },
+      "ram": {
+        "shield": 1
+      }
+    },
+    "deathCause": "beam"
+  }
+}

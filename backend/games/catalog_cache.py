@@ -134,3 +134,11 @@ async def get_game_type(db: AsyncSession, name: str) -> GameTypeRow | None:
 async def event_type_ids(db: AsyncSession, game_type_id: int) -> Mapping[str, int]:
     """``{event_name: event_type_id}`` for the game type's non-deprecated event types."""
     return (await _current(db)).event_type_ids.get(game_type_id, _EMPTY_EVENT_MAP)
+
+
+async def game_type_name(db: AsyncSession, game_type_id: int) -> str | None:
+    """The name of the game type with *game_type_id*; None if there is none."""
+    for row in (await _current(db)).game_types.values():
+        if row.id == game_type_id:
+            return row.name
+    return None
