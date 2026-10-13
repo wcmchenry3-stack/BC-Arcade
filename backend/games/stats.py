@@ -152,62 +152,38 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
         else {}
     )
 
-    # --- pre-fetch the latest row per game type --------------------------
-    # Used by modules (e.g. Blackjack) that need the most-recent score or
-    # metadata. Score and metadata come from *different* latest rows on
-    # purpose:
-    #
-    #   score    — skips abandons (#2468). Blackjack reads current_chips
-    #              through it, so an abandoned table must not become the
-    #              player's live chip balance.
-    #   metadata — takes the latest row whatever its outcome, latest by
-    #              *start*, ordered by started_at so a swept row (#2621) stays
-    #              in its place (its completed_at is a synthetic
-    #              started_at + 24 h that can postdate newer games). No module
-    #              reads it now that Blackjack's run aggregates are gone
-    #              (#3140); it stays available to ``stats_shape()``.
-    #
-    # Ties (SQLite's server-default started_at has one-second resolution) fall
-    # back to completed_at, then id, so exactly one row per game type wins.
-    # Both rankings run in one query (#2966): the score one partitions the
-    # abandoned rows apart, and only its non-abandoned rank 1 supplies a score.
-    abandoned = case((not_abandoned(), 0), else_=1)
+    # --- pre-fetch the latest score per game type -------------------------
+    # Used by modules (e.g. Blackjack) that need the most-recent score. It
+    # skips abandons (#2468): Blackjack reads current_chips through it, so an
+    # abandoned table must not become the player's live chip balance. Ties
+    # (SQLite's server-default completed_at has one-second resolution) fall
+    # back to id, so exactly one row per game type wins.
     ranked = (
         select(
             Game.id,
-            abandoned.label("abandoned"),
-            func.row_number()
-            .over(
-                partition_by=(Game.game_type_id, abandoned),
-                order_by=(Game.completed_at.desc(), Game.id.desc()),
-            )
-            .label("score_rn"),
             func.row_number()
             .over(
                 partition_by=Game.game_type_id,
-                order_by=(Game.started_at.desc(), Game.completed_at.desc(), Game.id.desc()),
+                order_by=(Game.completed_at.desc(), Game.id.desc()),
             )
-            .label("meta_rn"),
+            .label("score_rn"),
         )
-        .where(Game.session_id == session_id, Game.completed_at.is_not(None))
+        .where(
+            Game.session_id == session_id,
+            Game.completed_at.is_not(None),
+            not_abandoned(),
+        )
         .subquery()
     )
-    is_score_row = (ranked.c.score_rn == 1) & (ranked.c.abandoned == 0)
     latest_rows = (
         await session.execute(
-            select(GameType.name, Game.final_score, Game.game_metadata, ranked.c.meta_rn == 1)
+            select(GameType.name, Game.final_score)
             .join(GameType, Game.game_type_id == GameType.id)
-            .join(ranked, (Game.id == ranked.c.id) & (is_score_row | (ranked.c.meta_rn == 1)))
-            .add_columns(is_score_row)
+            .join(ranked, (Game.id == ranked.c.id) & (ranked.c.score_rn == 1))
         )
     ).all()
     latest_score_by_name: dict[str, int | None] = {
-        name: (int(score) if score is not None else None)
-        for name, score, _, _, score_row in latest_rows
-        if score_row
-    }
-    latest_meta_by_name: dict[str, dict] = {
-        name: (meta or {}) for name, _, meta, meta_row, _ in latest_rows if meta_row
+        name: (int(score) if score is not None else None) for name, score in latest_rows
     }
 
     # --- build per-game stats via module dispatch -------------------------
@@ -233,7 +209,6 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
             "best": int(row.best) if row.best is not None else None,
             "last_played_at": row.last_played_at,
             "latest_score": latest_score_by_name.get(name),
-            "metadata": latest_meta_by_name.get(name, {}),
         }
 
         shaped = game_module.stats_shape(raw)

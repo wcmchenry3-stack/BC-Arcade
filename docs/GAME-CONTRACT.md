@@ -325,12 +325,11 @@ There is no game-specific logic in `games/stats.py`.
 
 **`raw_stats` keys passed to every `stats_shape` call:**
 
-| Key              | Type               | Description                                                                                                                                                                 |
-| ---------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `best`           | `int \| None`      | highest non-abandoned `final_score` (Blackjack's `best_chips`; `best_value` reads Blackjack's `final_chips`, #2745)                                                         |
-| `last_played_at` | `datetime \| None` | most recent `completed_at`, ignoring rows the stale-session sweep closed (§1.7)                                                                                             |
-| `latest_score`   | `int \| None`      | `final_score` of the most recently completed non-abandoned game                                                                                                             |
-| `metadata`       | `dict`             | `games.metadata` of the most recently started **finished** row (`completed_at` set), whatever its outcome, abandons included (Blackjack writes its run aggregates at start) |
+| Key              | Type               | Description                                                                                                         |
+| ---------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `best`           | `int \| None`      | highest non-abandoned `final_score` (Blackjack's `best_chips`; `best_value` reads Blackjack's `final_chips`, #2745) |
+| `last_played_at` | `datetime \| None` | most recent `completed_at`, ignoring rows the stale-session sweep closed (§1.7)                                     |
+| `latest_score`   | `int \| None`      | `final_score` of the most recently completed non-abandoned game                                                     |
 
 **Return value:** a dict with `last_played_at` and, optionally, `extras`, a dict of game-specific figures. Omitted keys default to `None` (`{}` for `extras`).
 

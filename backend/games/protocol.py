@@ -92,7 +92,6 @@ class GameModule(Protocol):
             best           int | None   (highest ``final_score``, abandons excluded)
             last_played_at datetime | None
             latest_score   int | None   (``final_score`` of most-recent game)
-            metadata       dict         (``games.metadata`` of the latest row)
 
         Return a dict with ``last_played_at`` and, optionally, ``extras`` (a
         dict of game-specific figures, e.g. Blackjack's chips). Omitted keys
@@ -133,7 +132,7 @@ def default_stats_shape(raw_stats: dict) -> dict:
     """The ``stats_shape`` of a game with no game-specific figures.
 
     Passes ``last_played_at`` through. The other raw fields (``best``,
-    ``latest_score``, ``metadata``) are inputs for games that shape them
+    ``latest_score``) are inputs for games that shape them
     (Blackjack's chips), not API fields.
     """
     return {"last_played_at": raw_stats.get("last_played_at")}

@@ -249,20 +249,6 @@ def test_blackjack_stats_shape_has_only_the_chip_extras() -> None:
     assert set(shaped["extras"]) == {"best_chips", "current_chips"}
 
 
-def test_blackjack_stats_shape_ignores_run_fields_in_metadata() -> None:
-    raw = {
-        **_RAW_BJ,
-        "metadata": {
-            "best_run_chips": 3000,
-            "total_runs": 12,
-            "runs_completed": 4,
-            "current_table": "intermediate",
-        },
-    }
-    shaped = blackjack_module.stats_shape(raw)
-    assert set(shaped["extras"]) == {"best_chips", "current_chips"}
-
-
 # ---------------------------------------------------------------------------
 # default_stats_shape — the one shared pass-through
 # ---------------------------------------------------------------------------
@@ -271,12 +257,11 @@ _RAW = {
     "best": 9500,
     "last_played_at": None,
     "latest_score": 8000,
-    "metadata": {"k": 1},
 }
 
 
 def test_default_stats_shape_passes_last_played_at_only() -> None:
-    """``best``, ``latest_score`` and ``metadata`` are inputs, not API fields;
+    """``best`` and ``latest_score`` are inputs, not API fields;
     the deprecated ``played`` / ``best`` / ``avg`` aliases are gone (#2644)."""
     shaped = default_stats_shape(dict(_RAW))
     assert shaped == {"last_played_at": None}
