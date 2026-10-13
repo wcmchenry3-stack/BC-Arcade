@@ -14,6 +14,8 @@ import { Share } from "react-native";
 import { CodedError } from "expo-modules-core";
 import * as ThemeModule from "../../theme/ThemeContext";
 import { ThemeProvider } from "../../theme/ThemeContext";
+import i18n from "i18next";
+import { __forceStoreBuildForTests } from "../../game/_shared/buildFlavour";
 import DailyWordScreen from "../DailyWordScreen";
 import { ApiError } from "../../game/_shared/httpClient";
 import type { DailyWordState } from "../../game/daily_word/types";
@@ -219,6 +221,28 @@ describe("DailyWordScreen — stale state", () => {
     await findByTestId("tile-0-0");
 
     expect(storage.clearState).toHaveBeenCalledTimes(1);
+  });
+
+  it("store build: a saved Hindi game does not strand the player (#3153)", async () => {
+    const original = i18n.language;
+    await i18n.changeLanguage("hi");
+    __forceStoreBuildForTests(true);
+    try {
+      storage.loadState.mockResolvedValue({
+        ...STALE_STATE,
+        puzzle_id: "2026-05-03:hi",
+        language: "hi",
+      });
+
+      const { findByTestId } = await renderScreen();
+      await findByTestId("tile-0-0");
+
+      expect(dailyWordApi.getToday).toHaveBeenCalledWith(expect.any(Number), "en");
+      expect(storage.clearState).toHaveBeenCalledTimes(1);
+    } finally {
+      __forceStoreBuildForTests(false);
+      await i18n.changeLanguage(original);
+    }
   });
 
   it("preserves saved state when puzzle_id matches today's", async () => {
