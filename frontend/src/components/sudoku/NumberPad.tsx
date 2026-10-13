@@ -15,8 +15,9 @@ interface Props {
   onToggleNotes: () => void;
   onHint: () => void;
   /**
-   * Shown in place of the digit row (#2943): on a full-but-wrong grid every
-   * digit is used up, so the row is disabled anyway. Keeps the pad's height.
+   * Shown in place of the digit row (#2943) on a full-but-wrong grid: no empty
+   * cell is left to type into, so the player fixes a cell with Hint, or with
+   * Erase and then a digit (the row comes back once the grid isn't full).
    */
   message?: string;
 }
@@ -176,7 +177,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textAlign: "center",
   },
-  // Same footprint as the digit row (a digit button is 0.85 as wide as tall);
+  // About the digit row's footprint (a digit button is 0.85 as wide as tall);
   // the text wraps freely and is small enough for the longest locale.
   message: {
     width: "100%",
