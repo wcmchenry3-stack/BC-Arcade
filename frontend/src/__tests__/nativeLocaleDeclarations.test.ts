@@ -62,7 +62,12 @@ describe("native locale declarations match LAUNCH_LOCALE_CODES", () => {
 
   it("android res/xml/locales_config.xml", () => {
     const xml = read("android/app/src/main/res/xml/locales_config.xml");
-    const body = xml.replace(/<!--[\s\S]*?-->/g, "");
+    // Strip comments until none remain, so a commented-out <locale> never counts.
+    let body = xml;
+    for (let prev = ""; prev !== body;) {
+      prev = body;
+      body = body.replace(/<!--[\s\S]*?-->/g, "");
+    }
     const codes = [...body.matchAll(/<locale\s+android:name="([^"]+)"\s*\/>/g)].map(
       (m) => m[1] ?? ""
     );
