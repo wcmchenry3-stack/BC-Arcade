@@ -55,7 +55,11 @@ describe("fr-CA typography (#3152)", () => {
 
   it("uses Québec vocabulary", () => {
     expect(offenders(/\be-?mail\b|\bmail\b|week-?end|\bparking\b|\bshopping\b/i)).toEqual([]);
-    expect(offenders(/\bscores?\b/i).filter((s) => !s.includes("{{"))).toEqual([]);
+    // Placeholder names like {{score}} are code, not copy: strip them, then check.
+    const scoreInCopy = entries
+      .filter(([, v]) => /\bscores?\b/i.test(v.replace(/\{\{[^}]*\}\}/g, "")))
+      .map(([k, v]) => `${k}: ${JSON.stringify(v)}`);
+    expect(scoreInCopy).toEqual([]);
   });
 });
 
