@@ -409,15 +409,38 @@ def test_a_hostile_key_in_an_error_path_is_not_logged_or_reported(
     assert "<key>" in caplog.text
 
 
-def test_error_paths_are_deduplicated_and_capped(sentry_messages) -> None:
+def test_hostile_keys_collapse_to_one_path(sentry_messages) -> None:
     data = _fixture()
     for i in range(30):
         data["rocks"]["broken"][f"k{i}"] = -1
-    data["rocks"]["spawned"] = {f"s{i}": "x" for i in range(30)}
     assert validate_wave_completed(data) is None
     _, kw = sentry_messages[0]
-    paths = [p for p in kw["extras"]["fields"].split(", ") if p]
-    assert len(paths) == len(set(paths)) <= 10
+    assert kw["extras"]["fields"] == "rocks.broken.<key>"
+
+
+def test_more_than_ten_real_paths_are_capped_at_ten(sentry_messages) -> None:
+    data = _fixture()
+    for section, field in (
+        ("combat", "shotsFired"),
+        ("combat", "shotsHit"),
+        ("combat", "shotsOnRocks"),
+        ("rocks", "devSpawned"),
+        ("rocks", "buddyHits"),
+        ("rocks", "buddyDestroyed"),
+        ("buddy", "launched"),
+        ("buddy", "shotsDrawn"),
+        ("carrier", "gruntsLaunched"),
+        ("carrier", "armorDeflects"),
+        ("carrier", "beamsFired"),
+        ("carrier", "beamHits"),
+        ("carrier", "attackRuns"),
+    ):
+        data[section][field] = -1
+    assert validate_wave_completed(data) is None
+    _, kw = sentry_messages[0]
+    paths = kw["extras"]["fields"].split(", ")
+    assert len(paths) == 10
+    assert len(set(paths)) == 10
 
 
 def test_unknown_table_keys_are_capped_truncated_and_escaped(
@@ -435,3 +458,23 @@ def test_unknown_table_keys_are_capped_truncated_and_escaped(
     assert message.count("new") == 5
     assert message.endswith("...")
     assert "8 unregistered" in message
+
+
+async def test_a_refused_batch_validates_and_reports_nothing(
+    sentry_messages, caplog: pytest.LogCaptureFixture
+) -> None:
+    gid = _new_game("starswarm")
+    bad = _fixture()
+    bad["wave"] = 0
+    with caplog.at_level(logging.WARNING):
+        r = _post(
+            gid,
+            [
+                {"event_index": 0, "event_type": "wave_completed", "data": bad},
+                {"event_index": 1, "event_type": "bogus", "data": {}},
+            ],
+        )
+    assert r.status_code == 400
+    assert sentry_messages == []
+    assert "wave_completed" not in caplog.text
+    assert await _stored(gid) == []

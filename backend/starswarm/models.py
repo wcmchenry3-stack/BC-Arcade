@@ -10,6 +10,7 @@ from before #2626 send a score-less session row, which never ranks.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 from typing import Annotated, Any, Literal, get_args
@@ -477,6 +478,7 @@ _MAX_LOGGED_KEY = 32
 _MAX_REPORTED_PATHS = 10
 
 
+@functools.cache
 def _known_segments() -> frozenset[str]:
     """Every field name and registry value: the only strings safe to log as a path."""
     names: set[str] = set()
