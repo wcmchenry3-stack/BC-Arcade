@@ -49,11 +49,39 @@ describe("useDeviceLocaleSync", () => {
   });
 
   it("resolves an unsupported OS language to English", async () => {
+    mockLocales = [{ languageTag: "fr-CA", languageCode: "fr" }];
     const { rerender } = await renderHook(() => useDeviceLocaleSync());
 
     mockLocales = [{ languageTag: "sw-KE", languageCode: "sw" }];
     await rerender({});
 
     expect(mockChangeLanguage).toHaveBeenCalledWith("en");
+  });
+
+  it("does not switch when only an unsupported first language changes", async () => {
+    const { rerender } = await renderHook(() => useDeviceLocaleSync());
+
+    // en-US -> sw-KE still resolves to English: nothing to do.
+    mockLocales = [{ languageTag: "sw-KE", languageCode: "sw" }];
+    await rerender({});
+
+    expect(mockChangeLanguage).not.toHaveBeenCalled();
+  });
+
+  it("follows a supported fallback behind an unsupported first language", async () => {
+    mockLocales = [
+      { languageTag: "sw-KE", languageCode: "sw" },
+      { languageTag: "en-US", languageCode: "en" },
+    ];
+    const { rerender } = await renderHook(() => useDeviceLocaleSync());
+
+    mockLocales = [
+      { languageTag: "sw-KE", languageCode: "sw" },
+      { languageTag: "fr-CA", languageCode: "fr" },
+    ];
+    await rerender({});
+
+    expect(mockChangeLanguage).toHaveBeenCalledTimes(1);
+    expect(mockChangeLanguage).toHaveBeenCalledWith("fr-CA");
   });
 });

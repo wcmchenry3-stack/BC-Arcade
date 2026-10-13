@@ -11,23 +11,23 @@ import { resolveLocale } from "./resolveLocale";
  * (initialised once from `getLocales()`) would otherwise keep the old language
  * until a cold start.
  *
- * Only a change of the device's first language tag triggers a switch, so an
- * in-app pick from LanguageSwitcher is not overwritten on re-render or when
- * the app returns to the foreground with the same OS language.
+ * Only a change in the locale the OS preference list resolves to triggers a
+ * switch, so an in-app pick from LanguageSwitcher is not overwritten on
+ * re-render or when the app returns to the foreground with the same OS
+ * languages. Keying on the resolved locale (not the first tag) also catches a
+ * change to a supported fallback behind an unsupported first language.
  *
  * Call once in a component that mounts after `src/i18n/i18n` is initialised (e.g. App).
  */
 export function useDeviceLocaleSync() {
   const { i18n } = useTranslation();
   const locales = useLocales();
-  const tag = locales[0]?.languageTag;
-  const lastTag = useRef(tag);
+  const resolved = resolveLocale(locales, Platform.OS);
+  const lastResolved = useRef(resolved);
 
   useEffect(() => {
-    if (tag === lastTag.current) return;
-    lastTag.current = tag;
-    void i18n.changeLanguage(resolveLocale(locales, Platform.OS));
-    // `locales` is a new array on each OS change; the tag is the trigger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tag, i18n]);
+    if (resolved === lastResolved.current) return;
+    lastResolved.current = resolved;
+    void i18n.changeLanguage(resolved);
+  }, [resolved, i18n]);
 }
