@@ -31,13 +31,7 @@ import type {
   Vec2,
 } from "./types";
 import type { EarlierScore, ScoreLedger, WaveScore } from "./scoreLedger";
-import {
-  WAVE_STATS_VERSION,
-  emptyWaveStats,
-  isWaveStats,
-  loadoutOf,
-  type WaveStatsSnapshot,
-} from "./engine/waveStats";
+import { emptyWaveStats, isWaveStats, loadoutOf } from "./engine/waveStats";
 
 type KeySpec<T> = {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -393,15 +387,12 @@ export function fitsSaveShape(v: unknown): v is SavedStarSwarmState {
   );
 }
 
-/** #3245: enough of a closed-wave snapshot to keep; anything else restores as null. */
-function isSnapshot(v: unknown): v is WaveStatsSnapshot {
-  return isObject(v) && v.v === WAVE_STATS_VERSION && typeof v.wave === "number";
-}
-
 /**
  * #3245: the engine state for a save that passed `fitsSaveShape`. An older save (or one from a
- * build whose registries differ) gets fresh wave stats, seeded from the restored ship, and no
- * closed wave; the wave's stats then count from the restore on.
+ * build whose registries differ) gets fresh wave stats, seeded from the restored ship; the
+ * wave's stats then count from the restore on. `lastClosedWave` always restores as null,
+ * whatever the save holds: it only marks a close for `waveJustClosed`, and a restored run has
+ * nothing to compare it with, so a saved one is ignored rather than validated.
  */
 export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
   return {
@@ -409,6 +400,6 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
     waveStats: isWaveStats(saved.waveStats)
       ? saved.waveStats
       : emptyWaveStats(loadoutOf(saved.player)),
-    lastClosedWave: isSnapshot(saved.lastClosedWave) ? saved.lastClosedWave : null,
+    lastClosedWave: null,
   };
 }

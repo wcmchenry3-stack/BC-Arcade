@@ -12,6 +12,7 @@ import {
   restoreEngineCounters,
   throwAsteroid,
   tick,
+  waveJustClosed,
 } from "../engine";
 import {
   HYDRATE_TIMEOUT_MS,
@@ -303,8 +304,9 @@ describe("per-wave stats in a save (#3245)", () => {
     };
   }
 
-  it("round-trips the wave's counts and its last closed wave", async () => {
+  it("round-trips the wave's counts; the last closed wave always restores as null", async () => {
     const state = counted();
+    expect(state.lastClosedWave).not.toBeNull();
     savePausedState({ gameState: state, difficulty: "Commander", counters: COUNTERS });
     await flush();
     _resetPauseStoreForTests();
@@ -314,7 +316,11 @@ describe("per-wave stats in a save (#3245)", () => {
     expect(restored?.waveStats).toEqual(state.waveStats);
     expect(restored?.waveStats.combat.kills.Elite.dive).toBe(3);
     expect(restored?.waveStats.pacing.durationMs).toBe(4321);
-    expect(restored?.lastClosedWave).toEqual(state.lastClosedWave);
+    expect(restored?.lastClosedWave).toBeNull();
+    // ... so nothing reads as a fresh close on the first tick after the restore
+    expect(
+      waveJustClosed(restored!, tick(restored!, 16, { playerX: 100, fire: false }))
+    ).toBeNull();
   });
 
   it("restores an older save without them, with fresh stats from the restored ship", async () => {
@@ -349,10 +355,10 @@ describe("per-wave stats in a save (#3245)", () => {
     expect(restored?.lastClosedWave).toBeNull();
   });
 
-  it("restoreSavedState keeps stats that fit", () => {
+  it("restoreSavedState keeps stats that fit and drops the closed wave", () => {
     const state = JSON.parse(JSON.stringify(counted())) as StarSwarmState;
     expect(fitsSaveShape(state)).toBe(true);
-    expect(restoreSavedState(state)).toEqual(state);
+    expect(restoreSavedState(state)).toEqual({ ...state, lastClosedWave: null });
   });
 
   it("are outside the save fingerprint, so adding them kept every existing save", () => {

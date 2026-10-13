@@ -977,8 +977,11 @@ them.
 **Model.** `state.waveStats` (`engine/waveStats.ts`) is the current wave's accumulator, in
 sections that match the `wave_completed` v1 schema pinned on epic #3244: `pacing`, `powerUps`,
 `rocks`, `buddy`, `carrier`, `rout`, `combat` and `damage`, plus a `dev` flag. Every keyed table is
-dense — every registry key present, 0 until counted — and built by `emptyWaveStats()` from the
-registries, so a table that misses a key is a type error. Counters change through
+dense by construction — `emptyWaveStats()` builds it from the registries, so every key is present,
+0 until counted. That also means a new registry value compiles without complaint and simply
+counts 0: the guard that forces a real counter is the contract test (below), not the compiler.
+(The compiler does hold a hand-written `Record` keyed by a registry type to list every value.)
+Counters change through
 `bumpWave(stats, path, n)`, copy-on-write like `bumpRun`: `path` is a typed tuple such as
 `["combat", "kills", "Grunt", "shot"]` (a path that isn't a counter doesn't compile), and `n === 0`
 returns the same object. #3245 fills `pacing`; `powerUps` (#3246), `rocks` (#3247),
@@ -1045,13 +1048,16 @@ registries differ — restores with fresh stats seeded from the restored ship an
 
 Adding a power-up, enemy tier, hit cause or any other registry value:
 
-1. **Registry entry** — add the value to its array in `engine/registries.ts`. The compiler then
-   flags every `Record` keyed by that type that misses it.
+1. **Registry entry** — add the value to its array in `engine/registries.ts`. The stats tables pick
+   it up on their own (at 0), so the build passes; only hand-written `Record`s keyed by that type
+   fail to compile until they list it.
 2. **Counter bump** — count it where it happens with `bumpWave` (on a hot path, hoist the path as
    a `const` tuple).
-3. **Contract row** — `__tests__/waveStats.contract.test.ts` fails, naming the row file
-   (`__tests__/waveStatsContract/<section>.ts`) that needs a row proving the new value is counted.
-   A new section field needs a row too.
+3. **Contract row** — this is the guard. `__tests__/waveStats.contract.test.ts` fails, naming the
+   row file (`__tests__/waveStatsContract/<section>.ts`) that needs a row proving the new value is
+   counted. A section's `pending` list spells out today's values one by one (it is never derived
+   from the registries), so a value added later is never silently pending. A new section field
+   needs a row too.
 4. **Backend enum** — add the value to the backend's `StarSwarmWaveStats` mirror (#3250), or the
    server logs it as unknown.
 5. **Bump the fixture** — re-record the golden replay fixture if the change alters play, and say so

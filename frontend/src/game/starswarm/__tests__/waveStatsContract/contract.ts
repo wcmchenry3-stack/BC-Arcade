@@ -33,10 +33,13 @@ export interface ContractRow {
 export interface SectionContract<S extends ContractSection = ContractSection> {
   readonly section: S;
   readonly rows: readonly ContractRow[];
-  /** Covers still to come, and the stories that bring them. `"all"`: the whole section. */
+  /**
+   * Covers still to come, and the stories that bring them — spelled out one by one, never
+   * derived from the registries, so a value added later is neither covered nor pending and fails.
+   */
   readonly pending: {
     readonly stories: readonly string[];
-    readonly covers: "all" | readonly Cover[];
+    readonly covers: readonly Cover[];
   } | null;
 }
 

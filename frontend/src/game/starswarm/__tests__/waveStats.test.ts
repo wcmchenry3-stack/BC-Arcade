@@ -83,9 +83,11 @@ describe("registries", () => {
     });
   });
 
-  it("a table keyed by a registry type that misses a key does not compile", () => {
+  it("a hand-written Record keyed by a registry type must list every value; paths are typed", () => {
     // Type-checks a small virtual file with the real compiler. Each `@ts-expect-error` must be
     // used: if the line under it compiled, the directive itself would be an error (TS2578).
+    // (The stats tables are built from the registries, so this is not what catches a new
+    // registry value — the contract test is.)
     const engineDir = path.resolve(__dirname, "../engine");
     const source = `
       import type { EnemyTier, PowerUpType } from ${JSON.stringify(`${engineDir}/registries`)};

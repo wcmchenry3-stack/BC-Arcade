@@ -3,9 +3,12 @@
  *
  * Every list of known things the per-wave stats are keyed by: power-ups, enemy tiers, rock
  * kinds, hit causes and so on. Each is an `as const` array, and the union type of its values is
- * derived from it, so the list and the type can't drift: add a power-up here and the compiler
- * points at every dense stats table (`emptyWaveStats` in `waveStats.ts`) and the contract test
- * (`__tests__/waveStats.contract.test.ts`) fails until it has a counter row.
+ * derived from it, so the list and the type can't drift. The per-wave stats tables are built from
+ * these arrays (`emptyWaveStats` in `waveStats.ts`), so they are dense by construction: a new
+ * value gets a 0 counter everywhere and the compiler has nothing to complain about. The guard that
+ * forces a real counter is the contract test (`__tests__/waveStats.contract.test.ts`), which fails
+ * until the new value has a contract row. (A hand-written `Record` keyed by one of these types
+ * must still list every value — that part the compiler does check.)
  *
  * The values are the `wave_completed` v1 wire vocabulary (epic #3244); the backend mirrors them
  * as `Literal` sets (`StarSwarmWaveStats`, #3250). Renaming a value is a schema change.

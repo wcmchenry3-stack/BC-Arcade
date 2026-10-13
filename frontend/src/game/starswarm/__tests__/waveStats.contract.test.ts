@@ -53,10 +53,17 @@ interface Required {
   readonly label: string;
 }
 
-function requiredCovers(section: ContractSection, snap: WaveStatsSnapshot): Required[] {
+/** The registry lists the harness checks against — the real ones, or a test's variant. */
+type Registries = Readonly<Record<RegistryName, readonly string[]>>;
+
+function requiredCovers(
+  section: ContractSection,
+  snap: WaveStatsSnapshot,
+  registries: Registries
+): Required[] {
   const out: Required[] = [];
   for (const registry of SECTION_REGISTRIES[section]) {
-    for (const value of REGISTRIES[registry]) {
+    for (const value of registries[registry]) {
       out.push({ cover: `${registry}:${value}`, label: `${REGISTRY_LABEL[registry]} "${value}"` });
     }
   }
@@ -67,12 +74,16 @@ function requiredCovers(section: ContractSection, snap: WaveStatsSnapshot): Requ
 }
 
 /** Every way the contracts fall short, as messages naming the file to fix. */
-function contractGaps(contracts: Contracts, snap: WaveStatsSnapshot): string[] {
+function contractGaps(
+  contracts: Contracts,
+  snap: WaveStatsSnapshot,
+  registries: Registries = REGISTRIES
+): string[] {
   const gaps: string[] = [];
   const sections = Object.keys(SECTION_REGISTRIES) as ContractSection[];
 
   const owned = new Set(sections.flatMap((s) => SECTION_REGISTRIES[s]));
-  for (const registry of Object.keys(REGISTRIES) as RegistryName[]) {
+  for (const registry of Object.keys(registries) as RegistryName[]) {
     if (!owned.has(registry)) {
       gaps.push(
         `registry ${registry} isn't owned by any section — add it to SECTION_REGISTRIES in ` +
@@ -84,18 +95,14 @@ function contractGaps(contracts: Contracts, snap: WaveStatsSnapshot): string[] {
   for (const section of sections) {
     const c = contracts[section] as SectionContract;
     const file = `${ROW_DIR}/${section}.ts`;
-    const required = requiredCovers(section, snap);
+    const required = requiredCovers(section, snap, registries);
     const known = new Set(required.map((r) => r.cover));
     const covered = new Set(c.rows.flatMap((r) => r.covers));
-    const pendingAll = c.pending?.covers === "all";
-    const pendingList = new Set(c.pending && c.pending.covers !== "all" ? c.pending.covers : []);
+    const pendingList = new Set(c.pending?.covers ?? []);
 
     if (c.section !== section) gaps.push(`${file} declares section "${c.section}"`);
-    if (pendingAll && c.rows.length > 0) {
-      gaps.push(
-        `${file} has rows but its pending is "all" — list only the covers still to come, or ` +
-          `set pending to null`
-      );
+    if (c.pending && c.pending.covers.length === 0) {
+      gaps.push(`${file} has an empty pending list — set pending to null`);
     }
     for (const r of required) {
       if (covered.has(r.cover)) {
@@ -104,7 +111,7 @@ function contractGaps(contracts: Contracts, snap: WaveStatsSnapshot): string[] {
             `${r.label} has a row in ${file} but is still pending — remove it from pending`
           );
         }
-      } else if (!pendingAll && !pendingList.has(r.cover)) {
+      } else if (!pendingList.has(r.cover)) {
         gaps.push(`${r.label} has no wave-stats contract row — add one in ${file} (see ${DOCS})`);
       }
     }
@@ -139,6 +146,38 @@ describe("wave-stats contract (#3245)", () => {
     );
   });
 
+  it("fails on a registry value added later: pending lists today's values, not the registry", () => {
+    const snap = emptySnapshot();
+    const grown: Registries = {
+      ...REGISTRIES,
+      POWERUP_TYPES: [...REGISTRIES.POWERUP_TYPES, "magnet"],
+      HIT_CAUSES: [...REGISTRIES.HIT_CAUSES, "laser"],
+    };
+    expect(contractGaps(CONTRACTS, snap, grown)).toEqual([
+      `power-up "magnet" has no wave-stats contract row — add one in ` +
+        `__tests__/waveStatsContract/powerUps.ts (see docs/games/starswarm.md#adding-content)`,
+      `hit cause "laser" has no wave-stats contract row — add one in ` +
+        `__tests__/waveStatsContract/damage.ts (see docs/games/starswarm.md#adding-content)`,
+    ]);
+  });
+
+  it("fails on a section field added later", () => {
+    const snap = emptySnapshot();
+    const grown = { ...snap, rout: { ...snap.rout, rallied: 0 } } as WaveStatsSnapshot;
+    expect(contractGaps(CONTRACTS, grown)).toEqual([
+      `field "rout.rallied" has no wave-stats contract row — add one in ` +
+        `__tests__/waveStatsContract/rout.ts (see docs/games/starswarm.md#adding-content)`,
+    ]);
+  });
+
+  it("flags a registry no section owns", () => {
+    const grown = { ...REGISTRIES, LOOT_TABLES: ["a"] } as unknown as Registries;
+    expect(contractGaps(CONTRACTS, emptySnapshot(), grown)).toEqual([
+      `registry LOOT_TABLES isn't owned by any section — add it to SECTION_REGISTRIES in ` +
+        `__tests__/waveStatsContract/contract.ts (see docs/games/starswarm.md#adding-content)`,
+    ]);
+  });
+
   it("flags a pending entry that a row already covers, and a cover that names nothing", () => {
     const snap = emptySnapshot();
     const stale = {
@@ -163,6 +202,13 @@ describe("wave-stats contract (#3245)", () => {
     for (const c of Object.values(CONTRACTS) as SectionContract[]) {
       if (c.pending) expect(c.pending.stories.length).toBeGreaterThan(0);
     }
+  });
+
+  it("flags an empty pending list", () => {
+    const empty = { ...CONTRACTS, pacing: { ...pacing, pending: { stories: ["#0"], covers: [] } } };
+    expect(contractGaps(empty, emptySnapshot())).toEqual([
+      `__tests__/waveStatsContract/pacing.ts has an empty pending list — set pending to null`,
+    ]);
   });
 });
 

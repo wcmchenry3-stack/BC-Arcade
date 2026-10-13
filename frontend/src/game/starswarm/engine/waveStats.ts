@@ -9,8 +9,9 @@
  * `waveJustClosed(prev, next)` and sends `toWirePayload(snapshot)` as the `wave_completed`
  * event (#3251).
  *
- * Every keyed table is dense: `emptyWaveStats` builds it from the registries
- * (`registries.ts`), so every key is present at 0 and a table missing a key is a type error.
+ * Every keyed table is dense by construction: `emptyWaveStats` builds it from the registries
+ * (`registries.ts`), so every key is present at 0 — a new registry value included, which is why
+ * the contract test (not the compiler) is what forces it to get a real counter.
  * On the wire, zero counters and then-empty objects are left out (`toWirePayload`).
  *
  * Coverage: #3245 fills `pacing` (and `score`, derived from the ledger at close). The other
