@@ -16,7 +16,7 @@
  * i.e. ScrollView) are exempt: overflowing there is the point.
  *
  * English is the control: an English failure is a pre-existing layout bug,
- * not a translation one. Known false positives go in ALLOWLIST with a reason.
+ * not a translation one. Known issues go in ALLOWLIST with a reason (see there).
  *
  * Store-visible games only: HIDDEN_GAMES (gameVisibility.ts) are hidden in
  * store builds, but the e2e build is an internal build that shows them, so
@@ -43,13 +43,60 @@ const STORE_GAMES = [
 ] as const;
 
 /**
- * Confirmed false positives only — one entry per element, with the reason.
- * `text` is matched as a substring of the flagged element's text.
+ * Known, tracked overflows (and confirmed false positives), keyed by screen,
+ * locale and exact element text so nothing else is masked.
+ *
+ * The #3211 entries are real bugs, not false positives: the game header title
+ * is squeezed by the fixed-width back button, pills and menu button. REMOVE
+ * THEM WHEN #3211 LANDS. An entry that no longer overflows fails the test
+ * (stale entry), so this list can only shrink.
  */
-const ALLOWLIST: { screen: string; text: string; reason: string }[] = [];
+const ALLOWLIST: {
+  screen: string;
+  locale: Locale;
+  text: string;
+  reason: string;
+}[] = [
+  {
+    screen: "solitaire",
+    locale: "es",
+    text: "Solitario",
+    reason: "header title squeezed by fixed-width header items — #3211",
+  },
+  {
+    screen: "solitaire",
+    locale: "fr-CA",
+    text: "Solitaire",
+    reason: "header title squeezed by fixed-width header items — #3211",
+  },
+  {
+    screen: "freecell",
+    locale: "es",
+    text: "FreeCell",
+    reason: "header title squeezed by fixed-width header items — #3211",
+  },
+  {
+    screen: "freecell",
+    locale: "fr-CA",
+    text: "FreeCell",
+    reason: "header title squeezed by fixed-width header items — #3211",
+  },
+  {
+    screen: "sort",
+    locale: "es",
+    text: "Puzle de Colores",
+    reason: "header title squeezed by fixed-width header items — #3211",
+  },
+  {
+    screen: "sort",
+    locale: "fr-CA",
+    text: "Tri des couleurs",
+    reason: "header title squeezed by fixed-width header items — #3211",
+  },
+];
 
 interface Finding {
-  kind: "clip" | "clamp" | "spill";
+  kind: "clip" | "clamp" | "spill" | "stale-allowlist-entry";
   text: string;
   path: string;
   scrollWidth: number;
@@ -164,13 +211,29 @@ async function settle(page: Page): Promise<void> {
   await page.evaluate(() => document.fonts.ready);
 }
 
-async function measure(page: Page, screen: string): Promise<Finding[]> {
+async function measure(
+  page: Page,
+  screen: string,
+  locale: Locale,
+): Promise<Finding[]> {
   await settle(page);
   const all = await page.evaluate(findTextOverflow);
-  return all.filter(
-    (f) =>
-      !ALLOWLIST.some((a) => a.screen === screen && f.text.includes(a.text)),
+  const entries = ALLOWLIST.filter(
+    (a) => a.screen === screen && a.locale === locale,
   );
+  const unexpected = all.filter((f) => !entries.some((a) => f.text === a.text));
+  const stale = entries
+    .filter((a) => !all.some((f) => f.text === a.text))
+    .map((a) => ({
+      kind: "stale-allowlist-entry" as const,
+      text: a.text,
+      path: `ALLOWLIST (${a.reason}): no longer overflows, remove it`,
+      scrollWidth: 0,
+      clientWidth: 0,
+      scrollHeight: 0,
+      clientHeight: 0,
+    }));
+  return [...unexpected, ...stale];
 }
 
 async function openLobby(page: Page, locale: Locale): Promise<void> {
@@ -203,16 +266,16 @@ for (const locale of LOCALES) {
       await openLobby(page, locale);
       const problems: Record<string, Finding[]> = {};
 
-      problems.lobby = await measure(page, "lobby");
+      problems.lobby = await measure(page, "lobby", locale);
 
       const tabs = page.getByRole("tab");
       await tabs.nth(1).click();
       await page.waitForLoadState("networkidle");
-      problems.profile = await measure(page, "profile");
+      problems.profile = await measure(page, "profile", locale);
 
       await tabs.nth(2).click();
       await expect(page.getByTestId("lang-switcher-select")).toBeVisible();
-      problems.settings = await measure(page, "settings");
+      problems.settings = await measure(page, "settings", locale);
 
       const bad = Object.fromEntries(
         Object.entries(problems).filter(([, v]) => v.length),
@@ -232,7 +295,7 @@ for (const locale of LOCALES) {
         // then the header has no right slot, so the title would be measured
         // wider than it ends up.
         await expect(page.getByTestId("nav-menu")).toBeVisible();
-        const found = await measure(page, slug);
+        const found = await measure(page, slug, locale);
         expect(found, JSON.stringify(found, null, 2)).toEqual([]);
       });
     }

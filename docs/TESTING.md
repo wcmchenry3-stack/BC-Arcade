@@ -1452,3 +1452,5 @@ npx playwright test --project=cross i18n-overflow
 ```
 
 Adding a game or screen: extend `STORE_GAMES` (or the tabs test) in the spec. Wait for the screen to finish loading before measuring (the game screens wait for the `nav-menu` testID); measuring early gives false passes because header controls mount late.
+
+The spec's `ALLOWLIST` (screen + locale + exact text + reason) holds the six game-header-title overflows tracked in #3211 (solitaire, freecell, sort in es and fr-CA). Remove the entries when #3211 lands; a stale entry that no longer overflows fails the test.
