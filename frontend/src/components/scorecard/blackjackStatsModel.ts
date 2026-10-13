@@ -16,10 +16,14 @@ export function plColor(plChips: number, colors: PLColors): string {
   return colors.text;
 }
 
-/** Signed thousands-separated chip delta. "+1,240" / "−320" / "0". */
-export function formatPL(plChips: number): string {
+/**
+ * Signed thousands-separated chip delta. "+1,240" / "−320" / "0". The caller
+ * supplies the number formatter (`formatNumber(t, n)`) so the grouping follows
+ * the app language (#2767) and this model stays free of i18n.
+ */
+export function formatPL(plChips: number, formatAbs: (n: number) => string): string {
   if (plChips === 0) return "0";
-  const abs = Math.abs(plChips).toLocaleString("en-US");
+  const abs = formatAbs(Math.abs(plChips));
   return plChips > 0 ? `+${abs}` : `−${abs}`;
 }
 

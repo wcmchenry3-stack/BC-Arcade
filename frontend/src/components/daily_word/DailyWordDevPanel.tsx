@@ -147,7 +147,7 @@ function DailyWordDevPanelBody({ open, onOpen, onClose, state, onReset }: DailyW
                 {entry.method} {entry.path.split("?")[0]}
               </Text>
               <Text style={[styles.infoText, muted, styles.logTime]}>
-                {new Date(entry.ts).toLocaleTimeString()}
+                {new Date(entry.ts).toLocaleTimeString("en-US")}
               </Text>
             </View>
             {expandedIndex === idx && (
