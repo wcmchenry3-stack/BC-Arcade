@@ -320,11 +320,8 @@ async def test_abandoned_session_still_supplies_blackjack_run_metadata(
     )
 
     bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
-    assert (
-        bj["extras"]["total_runs"] == 2
-    ), "run history must come from the newest row, abandoned or not"
-    assert bj["extras"]["runs_completed"] == 1
-    assert bj["extras"]["best_run_chips"] == 2400
+    # The run aggregates older clients send are no longer reported (#3140).
+    assert {"total_runs", "runs_completed", "best_run_chips"}.isdisjoint(bj["extras"])
     # ...while the live chip balance still ignores the abandoned table.
     assert bj["extras"]["current_chips"] == 2400
 

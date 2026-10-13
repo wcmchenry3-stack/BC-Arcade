@@ -31,7 +31,9 @@ def test_blackjack_metadata_rejects_unknown_field() -> None:
         BlackjackMetadata.model_validate({"deck_count": 6})
 
 
-def test_blackjack_metadata_run_fields_accepted() -> None:
+def test_blackjack_metadata_retired_run_fields_accepted_and_ignored() -> None:
+    # Older clients still send the run aggregates at session start (#3140): they
+    # validate, and are dropped rather than kept on the model.
     m = BlackjackMetadata.model_validate(
         {
             "best_run_chips": 2500,
@@ -40,35 +42,17 @@ def test_blackjack_metadata_run_fields_accepted() -> None:
             "current_table": "intermediate",
         }
     )
-    assert m.best_run_chips == 2500
-    assert m.total_runs == 10
-    assert m.runs_completed == 3
-    assert m.current_table == "intermediate"
+    assert m.model_dump() == {}
 
 
-def test_blackjack_metadata_run_fields_default_to_none() -> None:
-    m = BlackjackMetadata.model_validate({})
-    assert m.best_run_chips is None
-    assert m.total_runs is None
-    assert m.runs_completed is None
-    assert m.current_table is None
+def test_blackjack_metadata_retired_run_fields_not_type_checked() -> None:
+    # They are discarded before validation, so a malformed old value is no 400.
+    BlackjackMetadata.model_validate({"current_table": "hacker_table", "total_runs": "x"})
 
 
-def test_blackjack_metadata_partial_run_fields_accepted() -> None:
-    m = BlackjackMetadata.model_validate({"total_runs": 5})
-    assert m.total_runs == 5
-    assert m.best_run_chips is None
-
-
-def test_blackjack_metadata_all_table_tiers_accepted() -> None:
-    for tier in ("beginner", "intermediate", "high_roller"):
-        m = BlackjackMetadata.model_validate({"current_table": tier})
-        assert m.current_table == tier
-
-
-def test_blackjack_metadata_invalid_current_table_rejected() -> None:
+def test_blackjack_metadata_still_rejects_other_unknown_fields_beside_retired_ones() -> None:
     with pytest.raises(ValidationError):
-        BlackjackMetadata.model_validate({"current_table": "hacker_table"})
+        BlackjackMetadata.model_validate({"total_runs": 5, "deck_count": 6})
 
 
 # ---------------------------------------------------------------------------

@@ -186,8 +186,7 @@ class GameTypeStatsResponse(BaseModel):
       the board's ``label_key`` (``"score"``, ``"moves"``, …) saying what the
       number is. ``null`` value when no qualifying row carries the metric.
     - ``extras``: game-specific figures from ``stats_shape()``, e.g.
-      Blackjack's ``best_chips``, ``current_chips``, ``best_run_chips``,
-      ``total_runs``, ``runs_completed``, ``current_table``.
+      Blackjack's ``best_chips`` and ``current_chips``.
 
     The deprecated aliases (``played``, ``best``, ``avg`` and the top-level
     Blackjack fields) were removed in #2644.

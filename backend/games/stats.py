@@ -161,16 +161,11 @@ async def get_stats_for_session(session: AsyncSession, *, session_id: str) -> St
     #              through it, so an abandoned table must not become the
     #              player's live chip balance.
     #   metadata — takes the latest row whatever its outcome, latest by
-    #              *start*. Blackjack writes its cumulative run aggregates
-    #              (best_run_chips, total_runs, runs_completed, current_table)
-    #              at session start, so the newest session always holds the
-    #              freshest figures even when it was later abandoned — and "New
-    #              Game" and unmount are both abandon paths, so filtering here
-    #              would blank the run history for anyone who has not just
-    #              cashed out or busted. Ordering by started_at also keeps a
-    #              swept row (#2621) in its place: its completed_at is a
-    #              synthetic started_at + 24 h that can postdate newer games,
-    #              while it still wins when it really is the newest session.
+    #              *start*, ordered by started_at so a swept row (#2621) stays
+    #              in its place (its completed_at is a synthetic
+    #              started_at + 24 h that can postdate newer games). No module
+    #              reads it now that Blackjack's run aggregates are gone
+    #              (#3140); it stays available to ``stats_shape()``.
     #
     # Ties (SQLite's server-default started_at has one-second resolution) fall
     # back to completed_at, then id, so exactly one row per game type wins.

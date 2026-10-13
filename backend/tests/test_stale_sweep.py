@@ -264,39 +264,9 @@ async def test_games_me_lists_a_swept_game_as_abandoned(client: TestClient) -> N
     assert items[0]["duration_ms"] is None
 
 
-async def test_a_swept_older_session_never_supplies_the_latest_metadata(
+async def test_a_swept_newest_session_does_not_become_the_live_chip_balance(
     client: TestClient,
 ) -> None:
-    # Blackjack reads its run aggregates from the latest row's metadata. A swept
-    # row's completed_at (started_at + 24 h) can postdate newer games; since the
-    # latest row is picked by started_at, its older aggregates do not win.
-    sid = str(uuid.uuid4())
-    await _add(
-        sid,
-        game_type="blackjack",
-        started_ago=timedelta(hours=3),
-        completed_ago=timedelta(hours=2),
-        outcome="win",
-        final_score=1200,
-        metadata={"total_runs": 5, "current_table": "high"},
-    )
-    await _add(
-        sid,
-        game_type="blackjack",
-        started_ago=timedelta(hours=25),  # swept to completed_at = now − 1 h
-        metadata={"total_runs": 4, "current_table": "low"},
-    )
-    bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
-    assert bj["sessions"] == 2
-    assert (bj["extras"]["total_runs"], bj["extras"]["current_table"]) == (5, "high")
-
-
-async def test_a_swept_newest_session_still_supplies_the_latest_metadata(
-    client: TestClient,
-) -> None:
-    # Blackjack writes its run aggregates when a session *starts*. When the swept
-    # session is the newest one it holds the freshest figures, so excluding it
-    # would roll the Profile back to an older run.
     sid = str(uuid.uuid4())
     await _add(
         sid,
@@ -315,8 +285,9 @@ async def test_a_swept_newest_session_still_supplies_the_latest_metadata(
     )
     bj = client.get("/stats/me", headers=_headers(sid)).json()["by_game"]["blackjack"]
     assert bj["sessions"] == 2
-    assert (bj["extras"]["total_runs"], bj["extras"]["current_table"]) == (4, "high")
-    # ...while the live chip balance still skips the swept (abandoned) table.
+    # The run aggregates are no longer reported (#3140); the live chip balance
+    # skips the swept (abandoned) table.
+    assert {"total_runs", "current_table"}.isdisjoint(bj["extras"])
     assert bj["extras"]["current_chips"] == 1200
 
 

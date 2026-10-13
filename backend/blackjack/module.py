@@ -80,16 +80,11 @@ class BlackjackModule(GameModuleBase):
         return final_score
 
     def stats_shape(self, raw_stats: dict) -> dict:
-        meta: dict = raw_stats.get("metadata") or {}
         return {
             "last_played_at": raw_stats["last_played_at"],
             "extras": {
                 "best_chips": raw_stats["best"],
                 "current_chips": raw_stats["latest_score"],
-                "best_run_chips": meta.get("best_run_chips"),
-                "total_runs": meta.get("total_runs"),
-                "runs_completed": meta.get("runs_completed"),
-                "current_table": meta.get("current_table"),
             },
         }
 

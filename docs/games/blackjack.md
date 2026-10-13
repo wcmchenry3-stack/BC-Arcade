@@ -203,12 +203,7 @@ Backend module: `backend/blackjack/module.py`.
 
 A server game row represents one Blackjack run/session.
 
-Creation metadata can include:
-
-- best run chips from local history;
-- total runs;
-- completed runs;
-- current table.
+Creation metadata is empty. The run aggregates older builds sent (`best_run_chips`, `total_runs`, `runs_completed`, `current_table`) were read by nothing and were dropped (#3140); the backend still accepts and ignores them from older clients. Run history stays on the device.
 
 Result data includes:
 
