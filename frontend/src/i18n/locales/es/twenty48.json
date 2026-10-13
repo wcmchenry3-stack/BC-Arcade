@@ -17,5 +17,7 @@
   "stats.timePlayed": "Tiempo Jugado",
   "a11y.board": "Tablero de juego",
   "a11y.emptyCell": "vacía",
-  "a11y.merged": "Fusionadas: {{values}}"
+  "a11y.merged": "Fusionadas: {{values}}",
+  "a11y.highestTile": "Ficha más alta: {{value}}",
+  "a11y.timePlayed": "Tiempo jugado: {{time}}"
 }

@@ -17,5 +17,7 @@
   "stats.timePlayed": "Spielzeit",
   "a11y.board": "Spielfeld",
   "a11y.emptyCell": "leer",
-  "a11y.merged": "Verschmolzen: {{values}}"
+  "a11y.merged": "Verschmolzen: {{values}}",
+  "a11y.highestTile": "Höchste Kachel: {{value}}",
+  "a11y.timePlayed": "Spielzeit: {{time}}"
 }

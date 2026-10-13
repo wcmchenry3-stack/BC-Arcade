@@ -17,5 +17,7 @@
   "stats.timePlayed": "Speeltijd",
   "a11y.board": "Speelveld",
   "a11y.emptyCell": "leeg",
-  "a11y.merged": "Samengevoegd: {{values}}"
+  "a11y.merged": "Samengevoegd: {{values}}",
+  "a11y.highestTile": "Hoogste tegel: {{value}}",
+  "a11y.timePlayed": "Speeltijd: {{time}}"
 }

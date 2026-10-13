@@ -17,5 +17,7 @@
   "stats.timePlayed": "זמן משחק",
   "a11y.board": "לוח המשחק",
   "a11y.emptyCell": "ריק",
-  "a11y.merged": "מוזגו: {{values}}"
+  "a11y.merged": "מוזגו: {{values}}",
+  "a11y.highestTile": "האריח הגבוה ביותר: {{value}}",
+  "a11y.timePlayed": "זמן משחק: {{time}}"
 }

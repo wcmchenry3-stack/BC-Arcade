@@ -17,5 +17,7 @@
   "stats.timePlayed": "وقت اللعب",
   "a11y.board": "لوحة اللعبة",
   "a11y.emptyCell": "فارغة",
-  "a11y.merged": "تم الدمج: {{values}}"
+  "a11y.merged": "تم الدمج: {{values}}",
+  "a11y.highestTile": "أعلى بلاطة: {{value}}",
+  "a11y.timePlayed": "وقت اللعب: {{time}}"
 }

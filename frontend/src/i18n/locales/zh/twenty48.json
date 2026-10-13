@@ -17,5 +17,7 @@
   "stats.timePlayed": "游戏时长",
   "a11y.board": "游戏面板",
   "a11y.emptyCell": "空",
-  "a11y.merged": "已合并：{{values}}"
+  "a11y.merged": "已合并：{{values}}",
+  "a11y.highestTile": "最大方块：{{value}}",
+  "a11y.timePlayed": "游戏时长：{{time}}"
 }

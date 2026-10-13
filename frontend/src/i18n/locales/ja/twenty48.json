@@ -17,5 +17,7 @@
   "stats.timePlayed": "プレイ時間",
   "a11y.board": "ゲーム盤面",
   "a11y.emptyCell": "空",
-  "a11y.merged": "結合: {{values}}"
+  "a11y.merged": "結合: {{values}}",
+  "a11y.highestTile": "最大のタイル: {{value}}",
+  "a11y.timePlayed": "プレイ時間: {{time}}"
 }

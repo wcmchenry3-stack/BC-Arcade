@@ -1765,6 +1765,21 @@ describe("Twenty48Screen — merge announcement (#2222)", () => {
     await r.unmount();
   });
 
+  it("does not announce a restored game whose saved tiles still carry isMerge", async () => {
+    const announce = spyAnnounce();
+    const stale: Twenty48State = {
+      ...MERGE_STATE,
+      tiles: MERGE_STATE.tiles.map((tile) => ({ ...tile, isMerge: true })),
+    };
+    (loadGame as jest.Mock).mockResolvedValueOnce(stale);
+    const r = await mountAndSettle();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    });
+    expect(announce).not.toHaveBeenCalled();
+    await r.unmount();
+  });
+
   it("announces in the active language", async () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     i18n.addResourceBundle("es", "twenty48", require("../../i18n/locales/es/twenty48.json"));

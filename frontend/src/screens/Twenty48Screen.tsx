@@ -280,10 +280,12 @@ export default function Twenty48Screen({ navigation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.tiles]);
 
+  const lastMoveTilesRef = useRef<Twenty48State["tiles"] | null>(null);
+
   // Announce merges to screen readers: the merged tile values only (not every
   // slide or spawn), so a swipe produces one short message.
   useEffect(() => {
-    if (!state) return;
+    if (!state || state.tiles !== lastMoveTilesRef.current) return;
     const values = state.tiles.filter((tile) => tile.isMerge).map((tile) => tile.value);
     if (values.length === 0) return;
     AccessibilityInfo.announceForAccessibility(
@@ -315,6 +317,9 @@ export default function Twenty48Screen({ navigation }: Props) {
         return;
       }
       setState(next);
+      // Only tiles produced by a move made in this session are announced; a
+      // restored or resumed board keeps stale isMerge flags (#2222).
+      lastMoveTilesRef.current = next.tiles;
       moveCountRef.current += 1;
       syncMarkStarted();
       // The first win per session finishes it.

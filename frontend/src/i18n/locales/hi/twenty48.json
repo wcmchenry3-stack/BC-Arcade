@@ -17,5 +17,7 @@
   "stats.timePlayed": "खेलने का समय",
   "a11y.board": "गेम बोर्ड",
   "a11y.emptyCell": "खाली",
-  "a11y.merged": "मर्ज हुए: {{values}}"
+  "a11y.merged": "मर्ज हुए: {{values}}",
+  "a11y.highestTile": "सबसे बड़ी टाइल: {{value}}",
+  "a11y.timePlayed": "खेलने का समय: {{time}}"
 }
