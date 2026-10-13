@@ -63,7 +63,7 @@ def test_get_today_hindi(client: TestClient) -> None:
 
 
 def test_get_today_unsupported_lang_returns_422(client: TestClient) -> None:
-    r = client.get("/daily-word/today?lang=fr")
+    r = client.get("/daily-word/today?lang=de")
     assert r.status_code == 422
     assert r.json()["detail"] == "unsupported_language"
 
