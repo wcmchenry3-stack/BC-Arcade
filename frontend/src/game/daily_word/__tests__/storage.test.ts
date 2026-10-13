@@ -58,6 +58,15 @@ describe("daily_word storage", () => {
 });
 
 describe("looksValid", () => {
+  it("accepts a versioned English puzzle id (#3155)", () => {
+    expect(looksValid(initialState("2026-05-03:en:2", 5, "en"))).toBe(true);
+  });
+
+  it("rejects a malformed version suffix", () => {
+    expect(looksValid(initialState("2026-05-03:en:x", 5, "en"))).toBe(false);
+    expect(looksValid(initialState("2026-05-03:en:2:3", 5, "en"))).toBe(false);
+  });
+
   it("accepts a valid initial state", () => {
     expect(looksValid(initialState("2026-05-03:en", 5, "en"))).toBe(true);
   });

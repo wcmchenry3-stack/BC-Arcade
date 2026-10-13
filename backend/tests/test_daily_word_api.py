@@ -27,7 +27,9 @@ from fastapi.testclient import TestClient
 
 def _today_puzzle_id(tz_offset_minutes: int = 0, lang: str = "en") -> str:
     local_ts = datetime.now(UTC) + timedelta(minutes=tz_offset_minutes)
-    return f"{local_ts.strftime('%Y-%m-%d')}:{lang}"
+    from daily_word.puzzle import make_puzzle_id
+
+    return make_puzzle_id(local_ts.strftime("%Y-%m-%d"), lang)
 
 
 def _sid_headers(sid: str | None = None) -> dict[str, str]:
@@ -46,7 +48,7 @@ def test_get_today_returns_puzzle_id_and_word_length(client: TestClient) -> None
     assert "puzzle_id" in data
     assert "word_length" in data
     assert data["word_length"] == 5
-    assert data["puzzle_id"].endswith(":en")
+    assert data["puzzle_id"].endswith(":en:2")
 
 
 def test_get_today_no_auth_required(client: TestClient) -> None:
@@ -169,9 +171,32 @@ def test_grace_window_accepts_yesterday_puzzle_id(client: TestClient) -> None:
         r = client.post(
             "/daily-word/guess",
             headers=headers,
-            json={"puzzle_id": "2024-01-01:en", "guess": "crane", "tz_offset_minutes": 0},
+            json={"puzzle_id": "2024-01-01:en:2", "guess": "crane", "tz_offset_minutes": 0},
         )
     assert r.status_code == 200
+
+
+def test_unversioned_english_puzzle_id_is_stale(client: TestClient) -> None:
+    """A pre-#3155 id ("YYYY-MM-DD:en") names an answer from the replaced list.
+
+    It is refused as stale — even for today's date — so the client reloads today's
+    puzzle instead of scoring against a different answer.
+    """
+    today = _today_puzzle_id().rsplit(":", 1)[0]
+    r = client.post(
+        "/daily-word/guess",
+        headers=_sid_headers(),
+        json={"puzzle_id": today, "guess": "crane", "tz_offset_minutes": 0},
+    )
+    assert r.status_code == 422
+    assert r.json()["detail"] == "stale_puzzle_id"
+
+
+def test_unversioned_english_puzzle_id_has_no_answer(client: TestClient) -> None:
+    today = _today_puzzle_id().rsplit(":", 1)[0]
+    r = client.get("/daily-word/answer", headers=_sid_headers(), params={"puzzle_id": today})
+    assert r.status_code == 422
+    assert r.json()["detail"] == "invalid_puzzle_id"
 
 
 def test_grace_window_rejects_two_days_ago_puzzle_id(client: TestClient) -> None:
@@ -315,9 +340,9 @@ def _guess(client: TestClient, headers: dict, puzzle_id: str, word: str):
 # already_solved, and four of the tests below would fail. A calendar-dependent
 # failure is the worst kind to debug, so the invariant is asserted rather than
 # assumed (test_guess_words_are_never_answers).
-_SIX_WRONG = ["nymph", "crwth", "phlox", "xylem", "squib", "kudzu"]
+_SIX_WRONG = ["qophs", "crwth", "phlox", "xylem", "squib", "kudzu"]
 # A seventh, for testing the guess past the cap.
-_SEVENTH = "vozhd"
+_SEVENTH = "zymes"
 
 
 def test_guess_degrades_open_when_the_record_is_unreachable(

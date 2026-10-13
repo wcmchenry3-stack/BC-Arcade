@@ -1,0 +1,39 @@
+# English words that must never be the daily Daily Word answer (#3155).
+#
+# Read by backend/scripts/gen_english_words.py when it regenerates answers_en.txt.
+# The words stay valid GUESSES if ENABLE lists them; they are only kept off the
+# answer schedule. This is a hand-reviewed list: slurs and slur-adjacent words,
+# sexual and bodily words, crude insults, violence. One lowercase word per line;
+# "#" starts a comment. A word that is not a SCOWL/ENABLE 5-letter answer
+# candidate is harmless here, so err on the side of adding.
+asses
+bawdy
+bitch
+booby
+booty
+chink
+coked
+fagot
+feces
+horny
+idiot
+kinky
+lynch
+moron
+nappy
+paddy
+pansy
+penis
+puked
+pussy
+queer
+raped
+retch
+semen
+sexed
+sexes
+sissy
+spunk
+sperm
+tramp
+whore
