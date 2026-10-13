@@ -1,6 +1,6 @@
 {
   "game.title": "Puzle de Colores",
-  "game.description": "Vierte colores de botella en botella y ordénalos para ganar.",
+  "game.description": "Vierte colores entre botellas y ordénalos.",
   "game.playLabel": "Jugar Puzle de Colores",
   "hud.level": "Nivel {{level}}",
   "hud.moves": "Mov.: {{moves}}",
