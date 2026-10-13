@@ -10,12 +10,11 @@ Sources (each pinned by URL + SHA-256; the script refuses to run on a mismatch):
      -> answers_en.txt: common American/English words (size levels 10, 20, 35,
      files ``final/english-words.*`` and ``final/american-words.*``; the proper-noun,
      abbreviation, contraction and variant lists are never read), 5 letters a-z,
-     also present in ENABLE, minus simple plurals and the blocklist.
+     also present in ENABLE, minus inflected forms and the blocklist.
 
 Answer filtering (Wordle convention):
-  - drop a word ending in "s" whose 4-letter stem is an ENABLE word ("cats");
-  - drop a word ending in "ed" when word[:-1] or word[:-2] is an ENABLE word
-    ("freed", "acted"), except the explicit ED_KEEP list ("greed", "tired", ...);
+  - drop inflected forms (plurals, past tense, -ing, comparatives; see
+    inflection_rule) except the explicit INFLECTION_KEEP list;
   - drop anything in daily_word/words/answers_blocklist_en.txt.
 Blocklisted words stay valid *guesses* when ENABLE has them; they are only never
 the daily answer.
@@ -55,14 +54,52 @@ SCOWL_FILES = tuple(
 )
 
 WORD_RE = re.compile(r"^[a-z]{5}$")
-STEM_RE = re.compile(r"^[a-z]{3,4}$")
+STEM_RE = re.compile(r"^[a-z]{2,4}$")
 
-# Past-tense "-ed" words are dropped (Wordle convention: "acted", "freed") when
-# stripping "d" or "ed" leaves an ENABLE word, except these, which are also
-# common standalone adjectives or nouns.
-ED_KEEP = frozenset(
-    {"armed", "bored", "breed", "famed", "fixed", "greed", "jaded", "mixed", "tired", "tweed"}
+# Inflected forms are dropped from the answers (Wordle convention): a word is an
+# inflection when stripping a suffix leaves an ENABLE word (ENABLE has no part
+# of speech, so the rules over-match and INFLECTION_KEEP rescues real standalone
+# words). Rules, with the 2-4 letter stem set:
+#   -s     word[:-1]             (cats)         -es   word[:-2]                  (boxes)
+#   -ies   word[:-3] + "y"       (cries)        -ied  word[:-3] + "y"            (fried)
+#   -ed    word[:-1] / word[:-2] (freed, acted) -ing  word[:-3] / word[:-3] + "e" (cuing, eking)
+#   -er    word[:-2] / word[:-1] (wider, wryer) -ier  word[:-3] + "y"            (icier)
+#   -est   word[:-3] / word[:-3] + "e" / word[:-2]
+INFLECTION_KEEP = frozenset(
+    # -s: plural-only or non-plural words
+    "abyss amass amiss brass chaos dregs genus jeans kudos lungs mumps pants tongs yours "  # noqa: SIM905
+    # -ed: also common standalone adjectives or nouns
+    "armed bored breed famed fixed greed jaded mixed tired tweed "
+    # -ing
+    "being icing thing "
+    # -er: standalone nouns and adjectives
+    "after alter baker boxer buyer caper cater cover cower dryer diner diver elder ether "
+    "fewer fiber foyer hover inner joker lager laser later layer lever liner liter liver "
+    "loser lover lower maker meter miner miser mixer never offer outer owner pager paper "
+    "peter poker power racer refer rider river ruler saber sewer sheer sober super timer "
+    "tower tuner under voter wager water waver wiper".split()
 )
+
+
+def inflection_rule(w: str, stems: frozenset[str]) -> str | None:
+    """Name of the inflection rule that matches ``w``, else None (before INFLECTION_KEEP)."""
+    if w.endswith("s") and w[:-1] in stems:
+        return "s"
+    if w.endswith(("ies", "ied")) and w[:-3] + "y" in stems:
+        return w[-3:]
+    if w.endswith("es") and w[:-2] in stems:
+        return "es"
+    if w.endswith("ed") and (w[:-1] in stems or w[:-2] in stems):
+        return "ed"
+    if w.endswith("ing") and (w[:-3] in stems or w[:-3] + "e" in stems):
+        return "ing"
+    if w.endswith("er") and (w[:-2] in stems or w[:-1] in stems):
+        return "er"
+    if w.endswith("ier") and w[:-3] + "y" in stems:
+        return "ier"
+    if w.endswith("est") and (w[:-3] in stems or w[:-3] + "e" in stems or w[:-2] in stems):
+        return "est"
+    return None
 
 
 def fetch_verified(url: str, sha256: str) -> bytes:
@@ -77,7 +114,7 @@ def fetch_verified(url: str, sha256: str) -> bytes:
 
 
 def parse_enable(text: str) -> tuple[frozenset[str], frozenset[str]]:
-    """Return (5-letter words, 3- and 4-letter words) of an ENABLE listing."""
+    """Return (5-letter words, 2- to 4-letter words) of an ENABLE listing."""
     words = {w.strip() for w in text.splitlines()}
     return (
         frozenset(w for w in words if WORD_RE.match(w)),
@@ -106,10 +143,8 @@ def build_answers(
     for w in candidates:
         if not WORD_RE.match(w) or w not in enable5:
             continue
-        if w.endswith("s") and w[:-1] in stems:
-            continue  # simple plural of a 4-letter word
-        if w.endswith("ed") and w not in ED_KEEP and (w[:-1] in stems or w[:-2] in stems):
-            continue  # simple past tense
+        if inflection_rule(w, stems) and w not in INFLECTION_KEEP:
+            continue
         if w in blocklist:
             continue
         answers.add(w)

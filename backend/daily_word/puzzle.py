@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import random
 import unicodedata
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from settings import Settings
@@ -69,18 +69,32 @@ def make_puzzle_id(date_str: str, lang: str) -> str:
     return f"{date_str}:{lang}:{version}" if version else f"{date_str}:{lang}"
 
 
+class StalePuzzleId(ValueError):
+    """A well-formed id whose list version is not current (e.g. a pre-#3155 ``YYYY-MM-DD:en``)."""
+
+
 def parse_puzzle_id(puzzle_id: str) -> tuple[str, str]:
     """Split a puzzle_id into (date_str, lang).
 
-    Raises ValueError if the shape is wrong or the list version is not the current
-    one for that language (an id from before a list replacement is stale, not valid).
+    Raises ``ValueError`` if it is malformed: wrong shape, a date that is not a real
+    ASCII ``YYYY-MM-DD`` calendar date, or an unsupported language. Raises
+    ``StalePuzzleId`` (a ``ValueError``) if it is well formed but carries a list
+    version other than the current one for that language.
     """
     parts = puzzle_id.split(":")
     if len(parts) not in (2, 3):
         raise ValueError("invalid_puzzle_id")
     date_str, lang = parts[0], parts[1]
-    if make_puzzle_id(date_str, lang) != puzzle_id:
+    if lang not in _ANSWERS:
         raise ValueError("invalid_puzzle_id")
+    if not (date_str.isascii() and len(date_str) == 10):
+        raise ValueError("invalid_puzzle_id")
+    try:
+        date.fromisoformat(date_str)
+    except ValueError as exc:
+        raise ValueError("invalid_puzzle_id") from exc
+    if make_puzzle_id(date_str, lang) != puzzle_id:
+        raise StalePuzzleId("stale_puzzle_id")
     return date_str, lang
 
 

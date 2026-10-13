@@ -192,9 +192,26 @@ def test_unversioned_english_puzzle_id_is_stale(client: TestClient) -> None:
     assert r.json()["detail"] == "stale_puzzle_id"
 
 
-def test_unversioned_english_puzzle_id_has_no_answer(client: TestClient) -> None:
+def test_unversioned_english_puzzle_id_answer_is_stale(client: TestClient) -> None:
+    """/answer agrees with /guess: a well-formed old-version id is stale, not malformed."""
     today = _today_puzzle_id().rsplit(":", 1)[0]
     r = client.get("/daily-word/answer", headers=_sid_headers(), params={"puzzle_id": today})
+    assert r.status_code == 422
+    assert r.json()["detail"] == "stale_puzzle_id"
+
+
+@pytest.mark.parametrize(
+    "bad", ["garbage", "2026-13-01:en:2", "2026-02-30:en:2", "2026-10-13:fr", "2026-10-13:en:2:x"]
+)
+def test_malformed_puzzle_id_is_invalid_on_guess_and_answer(client: TestClient, bad: str) -> None:
+    r = client.get("/daily-word/answer", headers=_sid_headers(), params={"puzzle_id": bad})
+    assert r.status_code == 422
+    assert r.json()["detail"] == "invalid_puzzle_id"
+    r = client.post(
+        "/daily-word/guess",
+        headers=_sid_headers(),
+        json={"puzzle_id": bad, "guess": "crane", "tz_offset_minutes": 0},
+    )
     assert r.status_code == 422
     assert r.json()["detail"] == "invalid_puzzle_id"
 

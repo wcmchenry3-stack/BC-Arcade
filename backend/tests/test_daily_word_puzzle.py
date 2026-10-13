@@ -256,7 +256,7 @@ def test_gen_build_answers_drops_past_tense_but_keeps_listed_words():
     # acted (act+ed) and freed (free+d) are dropped; greed and tired are in ED_KEEP;
     # naked has no word stem; tweed is kept by ED_KEEP.
     assert out == ["greed", "naked", "seeds", "tired", "tweed"]
-    assert {"greed", "tired", "tweed", "bored", "breed"} <= gen.ED_KEEP
+    assert {"greed", "tired", "tweed", "bored", "breed"} <= gen.INFLECTION_KEEP
 
 
 def test_english_answers_have_no_dropped_past_tense():
@@ -305,3 +305,97 @@ def test_get_answer_rejects_unversioned_english_id():
         get_answer("2026-05-02:en:1")
     assert get_answer("2026-05-02:en:2")
     assert get_answer("2026-05-02:hi")
+
+
+def test_parse_puzzle_id_accepts_current_ids():
+    from daily_word.puzzle import parse_puzzle_id
+
+    assert parse_puzzle_id("2026-05-02:en:2") == ("2026-05-02", "en")
+    assert parse_puzzle_id("2026-05-02:hi") == ("2026-05-02", "hi")
+
+
+def test_parse_puzzle_id_rejects_malformed():
+    import pytest
+
+    from daily_word.puzzle import StalePuzzleId, parse_puzzle_id
+
+    for bad in (
+        "2026-13-01:en:2",  # bad month
+        "2026-02-30:en:2",  # bad day
+        "2026-5-2:en:2",  # not zero-padded
+        "\u0662\u0660\u0662\u0666-\u0660\u0665-\u0660\u0662:en:2",  # Arabic-Indic digits
+        "2026-05-02:fr",  # unknown language
+        "2026-05-02:xx:2",
+        "2026-05-02",
+        "2026-05-02:en:2:3",
+        "",
+    ):
+        with pytest.raises(ValueError) as exc:
+            parse_puzzle_id(bad)
+        assert not isinstance(exc.value, StalePuzzleId), bad
+
+
+def test_parse_puzzle_id_flags_old_versions_as_stale():
+    import pytest
+
+    from daily_word.puzzle import StalePuzzleId, parse_puzzle_id
+
+    for old in ("2026-05-02:en", "2026-05-02:en:1", "2026-05-02:en:3", "2026-05-02:hi:2"):
+        with pytest.raises(StalePuzzleId):
+            parse_puzzle_id(old)
+
+
+# ---------------------------------------------------------------------------
+# Inflection filters (#3155)
+# ---------------------------------------------------------------------------
+
+
+def _rule(word, stems):
+    return gen.inflection_rule(word, frozenset(stems))
+
+
+def test_inflection_rule_each_suffix():
+    stems = {"cat", "cry", "fry", "box", "cue", "wry", "icy", "wide", "act", "free", "ski"}
+    assert _rule("wides", {"wide"}) == "s"
+    assert _rule("cries", stems) == "ies"
+    assert _rule("fried", stems) == "ied"
+    assert _rule("boxes", stems) == "es"
+    assert _rule("acted", stems) == "ed"
+    assert _rule("freed", stems) == "ed"
+    assert _rule("cuing", stems) == "ing"
+    assert _rule("eking", {"eke"}) == "ing"
+    assert _rule("wryer", stems) == "er"
+    assert _rule("wider", stems) == "er"
+    assert _rule("icier", stems) == "ier"
+    assert _rule("wrest", {"wr"}) == "est"
+    assert _rule("crane", stems) is None
+
+
+def test_build_answers_applies_inflection_rules_and_keep_list():
+    five = {
+        "cries",
+        "fried",
+        "boxes",
+        "cuing",
+        "wryer",
+        "icier",
+        "pants",
+        "thing",
+        "water",
+        "tired",
+    }
+    stems = frozenset(
+        {"cry", "fry", "box", "cue", "wry", "icy", "pant", "thin", "wat", "tire", "tir"}
+    )
+    out = gen.build_answers(five, frozenset(five), stems, frozenset())
+    # pants, thing, water, tired are in INFLECTION_KEEP; the rest are inflections.
+    assert out == ["pants", "thing", "tired", "water"]
+    assert {"pants", "thing", "water", "tired", "bored", "never"} <= gen.INFLECTION_KEEP
+
+
+def test_committed_answers_have_no_common_inflections():
+    from daily_word.puzzle import _ANSWERS_EN
+
+    answers = set(_ANSWERS_EN)
+    assert not {"cries", "fried", "boxes", "taxes", "cuing", "wryer", "icier", "acted"} & answers
+    assert {"pants", "thing", "water", "never", "greed"} <= answers

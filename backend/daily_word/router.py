@@ -45,7 +45,13 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from daily_word.progress import MAX_GUESSES, GuessOutcome, may_see_answer, record_guess
-from daily_word.puzzle import get_answer, get_today_meta, is_valid_guess, make_puzzle_id
+from daily_word.puzzle import (
+    StalePuzzleId,
+    get_answer,
+    get_today_meta,
+    is_valid_guess,
+    parse_puzzle_id,
+)
 from db.base import DbSession, get_session_factory
 from limiter import _real_ip, limiter
 from observability.report import Throttle, report_event
@@ -191,17 +197,16 @@ async def get_today(
 async def post_guess(request: Request, response: Response, body: GuessRequest) -> dict:
     sid = get_session_id(request)
 
-    parts = body.puzzle_id.split(":")
-    if len(parts) not in (2, 3) or parts[1] not in _SUPPORTED_LANGS:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id")
-    date_str, lang = parts[0], parts[1]
-
     # An id from before the answers list was replaced (#3155, e.g. a bare
     # "YYYY-MM-DD:en") names a different answer than today's list would score
     # it against. Refuse it as stale so the client reloads today's puzzle,
     # exactly as it does for a previous day.
-    if make_puzzle_id(date_str, lang) != body.puzzle_id:
-        raise HTTPException(status_code=422, detail="stale_puzzle_id")
+    try:
+        date_str, lang = parse_puzzle_id(body.puzzle_id)
+    except StalePuzzleId as exc:
+        raise HTTPException(status_code=422, detail="stale_puzzle_id") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
 
     # 1-minute grace so guesses submitted just before midnight aren't rejected by
     # server/client clock drift when the server evaluates them just after midnight.
@@ -211,10 +216,7 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
     if date_str not in {local_ts.strftime("%Y-%m-%d"), grace_ts.strftime("%Y-%m-%d")}:
         raise HTTPException(status_code=422, detail="stale_puzzle_id")
 
-    try:
-        answer = get_answer(body.puzzle_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
+    answer = get_answer(body.puzzle_id)
 
     guess = body.guess.lower()  # no-op for Devanagari; NFC handles Hindi normalisation
     if lang == "hi":
@@ -305,6 +307,8 @@ async def get_answer_route(
     # 422 rather than 400, keeping the pre-#2197 contract for that case.
     try:
         answer = get_answer(puzzle_id)
+    except StalePuzzleId as exc:
+        raise HTTPException(status_code=422, detail="stale_puzzle_id") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
 

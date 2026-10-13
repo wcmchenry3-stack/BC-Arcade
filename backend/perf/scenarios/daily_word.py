@@ -16,6 +16,8 @@ from datetime import UTC, datetime
 
 from locust import TaskSet, task
 
+from daily_word.puzzle import make_puzzle_id
+
 
 class DailyWordTasks(TaskSet):
     def on_start(self) -> None:
@@ -33,7 +35,7 @@ class DailyWordTasks(TaskSet):
             self._puzzle_id = resp.json().get("puzzle_id", "")
         else:
             local_date = datetime.now(UTC).strftime("%Y-%m-%d")
-            self._puzzle_id = f"{local_date}:en"
+            self._puzzle_id = make_puzzle_id(local_date, "en")
 
     @task(3)
     def post_guess(self) -> None:
