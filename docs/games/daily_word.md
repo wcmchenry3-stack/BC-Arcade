@@ -45,10 +45,26 @@ Hindi input is NFC-normalized and uses Devanagari grapheme clusters for visible 
 
 ### Languages
 
-| Code | Language |
-| ---- | -------- |
-| `en` | English  |
-| `hi` | Hindi    |
+| Code | Language | Puzzle id         | Notes                                            |
+| ---- | -------- | ----------------- | ------------------------------------------------ |
+| `en` | English  | `YYYY-MM-DD:en:2` |                                                  |
+| `hi` | Hindi    | `YYYY-MM-DD:hi`   |                                                  |
+| `fr` | French   | `YYYY-MM-DD:fr:1` | Backend only until #3241; lists come from #3239. |
+| `es` | Spanish  | `YYYY-MM-DD:es:1` | Backend only until #3241; lists come from #3239. |
+
+### French and Spanish: accent folding and `display` (#3240)
+
+The `fr` and `es` word files (`words/answers_<lang>.txt`, `valid_<lang>.txt`) hold one **display-form** word per line (`était`, `niño`), each with a unique fold key. `fold(word, lang)` (`backend/daily_word/normalize.py`) is applied both when the lists are loaded and to every guess: NFC, lowercase, strip combining marks, map `œ`->`oe` and `æ`->`ae`. In `es` the tilde on `n` is kept, so `ñ` is a distinct letter (`niño` is not `nino`). `en` is unaffected on `a-z` input, and Hindi is never folded (NFC only).
+
+Validation, scoring, the stored guess record and the tile letters all use folded keys, so `ÉTAIT`, `était` and `etait` are the same accepted guess and score identically; the tile array is always 5 long. Responses add the list's own spelling:
+
+- `POST /guess` adds `"display"` (the list's display form of the guessed word, not what the user typed) for `fr` and `es` only.
+- `GET /answer` returns `{"answer": "<folded>", "display": "<accented>"}` for every language. For `en` and `hi`, `display` equals `answer`.
+- `GET /upcoming` entries for `fr` and `es` add `display_blob`: the accented display form, scrambled exactly like `answer_blob` (same key, so the client decodes both the same way). `en` and `hi` entries have no `display_blob`.
+
+If a language's list files are missing, it is not loaded and is unsupported: `/today` and `/upcoming` answer 422 `unsupported_language`, and `/guess` and `/answer` answer 422 `invalid_puzzle_id`. Import never fails. Bump `_LIST_VERSION[lang]` in `puzzle.py` whenever a list changes.
+
+**Day offset.** The answer index is `(YYYYMMDD + SALT + _DAY_OFFSET[lang]) % len(answers)`. `en` and `hi` have offset 0, so their answers for existing dates are unchanged (pinned in `tests/test_daily_word_romance.py`); `fr` and `es` have their own offsets so the languages don't share an index pattern.
 
 The puzzle language follows the app language through one function, `getLanguage()` (`todayMeta.ts`): the app language's base code if this build offers a puzzle in it, else `en`. Native (iOS/Android) store builds (#3150, `buildFlavour.ts`) offer only the launched languages (`en` for now), so `hi` falls back to the English puzzle and QWERTY keyboard; web, dev, e2e and pre-launch builds also offer `hi` (#3153), mirroring `availableLocales`. The backend still accepts `hi`. A launched language is added by listing it in `LAUNCHED_DAILY_WORD_LANGUAGES`.
 
@@ -61,7 +77,7 @@ Daily Word has **no leaderboard**. Its board is declared disabled (`enabled=Fals
 - **Metric and direction:** `guesses_used` (a result key in `games.metadata`), lower is better, labelled `guesses`, counting **wins only** (`qualifying_outcomes=("win",)`) (`board` in `backend/daily_word/module.py`; `BOARDS.daily_word` in `frontend/src/api/vocab.ts`). A loss uses every guess and is never a best.
 - **Tie-break:** none; the board is disabled.
 - **Partitions:** none.
-- **Recorded, not partitioned:** creation metadata (`DailyWordMetadata`): `puzzle_id` and `language` (`en` | `hi`). Result (`DailyWordResult`): `is_complete`, `won`, `guesses_used`. The server raises a reported `guesses_used` to its own guess count for the puzzle, never lowers it (`reconcile_result`, #2541).
+- **Recorded, not partitioned:** creation metadata (`DailyWordMetadata`): `puzzle_id` and `language` (`en` | `hi` | `fr` | `es`). Result (`DailyWordResult`): `is_complete`, `won`, `guesses_used`. The server raises a reported `guesses_used` to its own guess count for the puzzle, never lowers it (`reconcile_result`, #2541).
 - **Max value:** none (`max_value` unset; `guesses_used` has no upper bound on purpose).
 - **Outcomes:** `has_winner = True`. A solved puzzle records `win`, and running out of guesses records `loss`. An abandon (`abandoned`) is a started puzzle left unfinished: leaving the screen (`useGameSync`'s unmount abandon), or the old puzzle's session closed when a new day's puzzle loads (`resetToToday`). It carries the guesses made so far.
 - **Duration:** `useGameSync`'s active-play window; Daily Word sends no duration of its own. The window runs from mount, so thinking time before the first guess counts.
@@ -98,7 +114,7 @@ Owner decisions: #3022 (answers may sit on the device if lightly scrambled) and 
 
 ### Upcoming puzzles for offline play (#3229)
 
-`GET /daily-word/upcoming?lang=en|hi&tz_offset_minutes=<-840..840>` (no auth, 30/minute per IP) returns a JSON array of three entries for the device's local today, +1 and +2 days, using the same offset and `lang` rules as `/today` (an unsupported `lang` is a 422 `unsupported_language`): `[{"puzzle_id", "word_length", "answer_blob"}]`.
+`GET /daily-word/upcoming?lang=en|hi|fr|es&tz_offset_minutes=<-840..840>` (no auth, 30/minute per IP) returns a JSON array of three entries for the device's local today, +1 and +2 days, using the same offset and `lang` rules as `/today` (an unsupported `lang` is a 422 `unsupported_language`): `[{"puzzle_id", "word_length", "answer_blob"}]`; `fr`/`es` entries also carry `"display_blob"`.
 
 `answer_blob` is a light scramble so the answer is not plaintext in the response. It stops casual spoilers only; it is **not security** (anyone who knows this scheme can decode it, which #3022 accepted). Decode (`scramble_answer` in `backend/daily_word/puzzle.py`):
 
