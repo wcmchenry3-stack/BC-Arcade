@@ -35,7 +35,7 @@
   "detail.unreconciled": "Es posible que este desglose no explique del todo la puntuación final.",
   "detail.factsTitle": "Datos de la partida",
   "detail.cellA11y": "{{label}}: {{value}}",
-  "detail.fact.opponentScore": "Puntuación de la computadora",
+  "detail.fact.opponentScore": "Puntuación de la CPU",
   "detail.fact.handsPlayed": "Manos jugadas",
   "detail.fact.handsWon": "Manos ganadas",
   "detail.fact.waveReached": "Ola alcanzada",
