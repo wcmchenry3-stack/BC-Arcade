@@ -77,7 +77,8 @@ COLUMN_METRICS = frozenset({SCORE_METRIC, DURATION_METRIC})
 FINAL_TIEBREAK: tuple[str, Direction] = ("received_at", "asc")
 """Breaks the last tie on every board: the entry the server received first
 ranks higher. ``games.received_at`` is the server's clock, not the device's
-``completed_at`` (#2765); boards read ``coalesce(received_at, completed_at)``."""
+``completed_at`` (#2765). A row without one (a deploy-window completion) ranks
+after every row with one, then by ``completed_at`` (#3225)."""
 
 MAX_BOARD_VALUE = 2**31 - 1
 """Upper bound for any metric or tie-break value (the ``games.final_score``

@@ -3,7 +3,7 @@
 ``completed_at`` is reported by the device and accepted anywhere in
 [now - 1 year, now + 24 h], so a slow clock or a forged request used to win
 every tie. Ties now go to the completion the server received first
-(``games.received_at``), falling back to ``completed_at`` for a row without one.
+(``games.received_at``); a row without one ranks last, then by ``completed_at`` (#3225).
 """
 
 from __future__ import annotations
@@ -202,3 +202,73 @@ async def test_me_rank_and_game_rank_agree_with_the_list(client: TestClient) -> 
     r = client.get(f"/games/{late_game}/rank", headers=_headers(late))
     assert r.status_code == 200, r.text
     assert r.json()["rank"] == listed["Rcv Rank Late"]
+
+
+async def test_row_without_received_at_ranks_after_a_received_row(client: TestClient) -> None:
+    """A deploy-window row (no receipt time) never wins a tie, whatever its
+    device-supplied completed_at says (#3225)."""
+    legacy, honest = _sid(), _sid()
+    await _grant_all(legacy)
+    await _grant_all(honest)
+    await _set_name(legacy, "Rcv Null Forger")
+    await _set_name(honest, "Rcv Null Honest")
+    legacy_game = await _insert(
+        legacy, score=SCORE, completed_at=NOW - timedelta(days=360), received_at=None
+    )
+    honest_game = await _insert(honest, score=SCORE, completed_at=NOW, received_at=NOW)
+    body = _board(client, "solitaire?limit=100", legacy)
+    assert _order(body, "Rcv Null Forger", "Rcv Null Honest") == [
+        "Rcv Null Honest",
+        "Rcv Null Forger",
+    ]
+    listed = {e["player_name"]: e["rank"] for e in body["entries"]}
+    assert listed["Rcv Null Honest"] < listed["Rcv Null Forger"]
+    for sid, game, name in (
+        (legacy, legacy_game, "Rcv Null Forger"),
+        (honest, honest_game, "Rcv Null Honest"),
+    ):
+        r = client.get(f"/games/{game}/rank", headers=_headers(sid))
+        assert r.status_code == 200, r.text
+        assert r.json()["rank"] == listed[name]
+
+
+async def test_rows_without_received_at_order_by_completed_at_and_agree(
+    client: TestClient,
+) -> None:
+    early, late = _sid(), _sid()
+    await _grant_all(early)
+    await _grant_all(late)
+    await _set_name(early, "Rcv Null Early")
+    await _set_name(late, "Rcv Null Late")
+    t = NOW - timedelta(days=30)
+    late_game = await _insert(
+        late, score=SCORE, completed_at=t + timedelta(hours=1), received_at=None
+    )
+    early_game = await _insert(early, score=SCORE, completed_at=t, received_at=None)
+    body = _board(client, "solitaire?limit=100", late)
+    assert _order(body, "Rcv Null Early", "Rcv Null Late") == ["Rcv Null Early", "Rcv Null Late"]
+    listed = {e["player_name"]: e["rank"] for e in body["entries"]}
+    assert listed["Rcv Null Early"] < listed["Rcv Null Late"]
+    for sid, game, name in (
+        (early, early_game, "Rcv Null Early"),
+        (late, late_game, "Rcv Null Late"),
+    ):
+        r = client.get(f"/games/{game}/rank", headers=_headers(sid))
+        assert r.status_code == 200, r.text
+        assert r.json()["rank"] == listed[name]
+
+
+async def test_players_best_row_prefers_a_received_row_over_a_null_one(
+    client: TestClient,
+) -> None:
+    me = _sid()
+    await _grant_all(me)
+    await _set_name(me, "Rcv Null Best")
+    base = NOW - timedelta(hours=5)
+    # The null-receipt row claims a far older completion.
+    await _insert(me, score=SCORE, completed_at=base - timedelta(days=300), received_at=None)
+    await _insert(me, score=SCORE, completed_at=base, received_at=base)
+    body = _board(client, "solitaire?limit=100", me)
+    mine = [e for e in body["entries"] if e["player_name"] == "Rcv Null Best"]
+    assert len(mine) == 1
+    assert mine[0]["completed_at"][:10] == base.date().isoformat()
