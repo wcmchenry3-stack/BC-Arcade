@@ -51,7 +51,7 @@ const STORE_GAMES = [
 const READY_TESTID: Record<(typeof STORE_GAMES)[number], string> = {
   yacht: "yacht-mode-card",
   twenty48: "twenty48-board",
-  solitaire: "solitaire-hint-button",
+  solitaire: "solitaire-stock-pile",
   freecell: "freecell-board",
   sudoku: "sudoku-pregame-start",
   sort: "sort-level-1",
@@ -430,6 +430,10 @@ for (const locale of LOCALES) {
         await page.getByTestId(`game-tile-${slug}`).click();
         // The lobby tile leaves the viewport once the game screen is pushed.
         await expect(page.getByTestId(`game-tile-${slug}`)).toBeHidden();
+        if (slug === "solitaire") {
+          // Deal Draw 1 so the board, not the draw-mode modal, is measured.
+          await page.getByTestId("solitaire-draw-1").click();
+        }
         await expect(page.getByTestId(READY_TESTID[slug])).toBeVisible();
         // The ⋯ menu only renders once the game has finished loading. Until
         // then the header has no right slot, so the title would be measured

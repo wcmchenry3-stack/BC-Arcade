@@ -1453,4 +1453,4 @@ npx playwright test --project=cross i18n-overflow
 
 Adding a game or screen: extend `STORE_GAMES` (or the tabs test) in the spec. Wait for the screen to finish loading before measuring (the game screens wait for the `nav-menu` testID); measuring early gives false passes because header controls mount late.
 
-The spec's `ALLOWLIST` (screen + locale + exact text + reason) holds the six game-header-title overflows tracked in #3211 (solitaire, freecell, sort in es and fr-CA). Remove the entries when #3211 lands; a stale entry that no longer overflows fails the test.
+The spec's `ALLOWLIST` entries are keyed by screen, locale, overflow kind, a selector-path substring and exact text, each with a reason. They hold the six game-header-title overflows tracked in #3211 (solitaire, freecell, sort in es and fr-CA) and one web-only false positive: the es Profile `profile-tile-favorite` value, which `adjustsFontSizeToFit` shrinks on iOS/Android but react-native-web ignores. Remove the #3211 entries when #3211 lands. A stale entry that no longer overflows fails the test, so the list can only shrink.
