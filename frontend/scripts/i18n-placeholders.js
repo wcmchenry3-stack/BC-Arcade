@@ -25,7 +25,11 @@ const COUNT_OPTIONAL = new Set(["zero", "one", "two"]);
 /** Tokens of one string: interpolations, Trans tags, `$t()` nests. */
 export function placeholderTokens(value) {
   const tokens = [];
-  for (const m of value.matchAll(/\{\{\s*-?\s*([^,}\s]+)[^}]*\}\}/g)) tokens.push(`{{${m[1]}}}`);
+  // The whole name up to an optional `, format` suffix: i18next treats `{{count bogus}}`
+  // as the variable "count bogus", so it must not collapse to `{{count}}`.
+  for (const m of value.matchAll(/\{\{\s*(?:-\s*)?([^,}]*?)\s*(?:,[^}]*)?\}\}/g)) {
+    tokens.push(`{{${m[1]}}}`);
+  }
   for (const m of value.matchAll(/<(\/?)\s*([A-Za-z0-9_-]+)\s*(\/?)>/g)) {
     tokens.push(`<${m[1]}${m[2]}${m[3]}>`);
   }

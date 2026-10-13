@@ -130,3 +130,10 @@ test("a key is a plural form only when English has the _other sibling", () => {
   assert.equal(run(en, { "g.moves_at_least_one": "un mouvement" }).length, 1);
   assert.equal(referenceKey("g.moves_at_least_many", en), null);
 });
+
+test("text inside a placeholder is part of its name", () => {
+  assert.deepEqual(placeholderTokens("{{count bogus}} {{ count }}"), [
+    "{{count bogus}}",
+    "{{count}}",
+  ]);
+});
