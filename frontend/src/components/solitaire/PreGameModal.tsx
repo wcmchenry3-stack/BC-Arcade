@@ -23,8 +23,13 @@ export default function PreGameModal({
   return (
     <ModalCard visible title={t("drawMode.title")} body={t("drawMode.body")}>
       <ModalActions>
-        <ModalPrimaryButton label={t("drawMode.one")} onPress={() => onChoose(1)} />
+        <ModalPrimaryButton
+          testID="solitaire-draw-1"
+          label={t("drawMode.one")}
+          onPress={() => onChoose(1)}
+        />
         <ModalSecondaryButton
+          testID="solitaire-draw-3"
           tone="accent"
           label={t("drawMode.three")}
           onPress={() => onChoose(3)}

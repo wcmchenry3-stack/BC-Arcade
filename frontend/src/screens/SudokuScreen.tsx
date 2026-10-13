@@ -205,6 +205,17 @@ export default function SudokuScreen() {
   }, [syncClockActivity]);
   const awayRef = usePauseWhileAway(navigation, pauseTimer, resumeTimer);
 
+  // The clock starts on the first interaction (#2942): the first cell
+  // selection or digit, whichever comes first. A first interaction that lands
+  // while the player is away starts paused, like a load (#2750).
+  // Ref-only, so it is safe inside a state updater; the [state] effect tells
+  // the HUD afterwards.
+  const startClockRef = useCallback(() => {
+    if (startMsRef.current !== null) return;
+    startMsRef.current = Date.now();
+    if (awayRef.current) pausedAtRef.current = startMsRef.current;
+  }, [awayRef]);
+
   // The mount load's restore — restores a saved game silently; on a clean
   // slot the pre-game picker shows.
   useGameRestored(game, (saved) => {
@@ -398,27 +409,34 @@ export default function SudokuScreen() {
 
   const handleCellPress = useCallback(
     (row: number, col: number) => {
+      // Selecting a cell starts the clock but not the sync session: a puzzle
+      // that was only looked at is discarded, not abandoned (#2942).
+      startClockRef();
+      syncClockActivity(); // an event handler: tell the HUD directly
       setState((s) => (s ? selectCell(s, row, col) : s));
     },
-    [setState]
+    [startClockRef, syncClockActivity, setState]
   );
 
   const handleDigit = useCallback(
     (digit: CellValue) => {
+      // Any number pad press is a first interaction, even one that changes
+      // nothing (no cell selected): it starts the clock. Done here, not in the
+      // updater, because a no-op leaves the state (and the [state] effect) alone.
+      startClockRef();
+      syncClockActivity();
       setState((s) => {
         if (!s) return s;
         const next = enterDigit(s, digit);
         if (next === s) return s;
 
-        // Timer + session start on the first input that actually
-        // changes state.
-        if (startMsRef.current === null) startMsRef.current = Date.now();
+        // The session starts only on an input that actually changes state.
         ensureSyncStarted(next);
 
         return next;
       });
     },
-    [ensureSyncStarted, setState]
+    [startClockRef, syncClockActivity, ensureSyncStarted, setState]
   );
 
   const handleErase = useCallback(() => {
@@ -447,6 +465,11 @@ export default function SudokuScreen() {
   }, [resetScore, syncClose, clearSavedGame, setState]);
 
   const handleHint = useCallback(() => {
+    // Like a number pad press, a hint press is a first interaction even when
+    // it does nothing (no cell selected): it starts the clock, here and not in
+    // the updater because a no-op leaves the state alone.
+    startClockRef();
+    syncClockActivity();
     setState((s) => {
       if (!s || s.selectedRow === null || s.selectedCol === null) return s;
       const cell = s.grid[s.selectedRow]?.[s.selectedCol];
@@ -454,11 +477,10 @@ export default function SudokuScreen() {
       const { size } = variantConfig(s.variant);
       const idx = s.selectedRow * size + s.selectedCol;
       const hintDigit = (s.solution.charCodeAt(idx) - 48) as CellValue;
-      if (startMsRef.current === null) startMsRef.current = Date.now();
       ensureSyncStarted(s);
       return enterDigit(s, hintDigit);
     });
-  }, [ensureSyncStarted, setState]);
+  }, [startClockRef, syncClockActivity, ensureSyncStarted, setState]);
 
   const headerRight = useMemo(() => {
     if (!state) return null;
