@@ -18,5 +18,6 @@
   "a11y.boardRegion": "FreeCell board",
   "score.moves": "Moves: {{moves}}",
   "error.supermoveRejected": "Not enough free spaces to move this stack",
+  "slot.free": "free",
   "a11y.foundationComplete": "Foundation complete"
 }

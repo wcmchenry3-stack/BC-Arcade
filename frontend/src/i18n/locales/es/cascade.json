@@ -12,5 +12,6 @@
   "theme.groupLabel": "Tema de frutas",
   "theme.optionLabel": "Tema {{label}}",
   "event.merged": "¡Unido! {{fruit}} creado.",
+  "score.high": "Récord",
   "a11y.board": "Tablero de Cascade"
 }

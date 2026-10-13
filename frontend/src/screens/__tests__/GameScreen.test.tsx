@@ -1,5 +1,8 @@
 import React from "react";
 import { render, fireEvent, act, waitFor } from "@testing-library/react-native";
+import i18n from "i18next";
+import DeYacht from "../../i18n/locales/de/yacht.json";
+import * as engineModule from "../../game/yacht/engine";
 import GameScreen from "../GameScreen";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import { YachtScorecardProvider } from "../../game/yacht/ScorecardContext";
@@ -799,5 +802,46 @@ describe("GameScreen — scorecard visual reset (GH #263)", () => {
     expect(addBreadcrumb).toHaveBeenCalledWith(
       expect.objectContaining({ message: expect.stringMatching(/reset complete/) })
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2221: engine errors reach the banner as translated text
+// ---------------------------------------------------------------------------
+describe("GameScreen engine error banner (#2221)", () => {
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await i18n.changeLanguage("en");
+  });
+
+  async function triggerRollError(error: unknown) {
+    jest.spyOn(engineModule, "roll").mockImplementation(() => {
+      throw error;
+    });
+    const api = await renderScreen();
+    await act(async () => {
+      await fireEvent.press(api.getByRole("button", { name: /roll dice|würfeln/i }));
+    });
+    return api;
+  }
+
+  it("maps a rule violation to its translated message", async () => {
+    await i18n.changeLanguage("de");
+    i18n.addResourceBundle("de", "yacht", DeYacht);
+    const api = await triggerRollError(
+      new engineModule.YachtEngineError("noRolls", "No rolls remaining this turn.")
+    );
+    expect(api.getByRole("alert")).toHaveTextContent("In diesem Zug sind keine Würfe mehr übrig.");
+    expect(api.queryByText("No rolls remaining this turn.")).toBeNull();
+  });
+
+  it("shows a translated generic message for an unexpected error", async () => {
+    await i18n.changeLanguage("de");
+    i18n.addResourceBundle("de", "yacht", DeYacht);
+    const api = await triggerRollError(new Error("kaboom internal detail"));
+    expect(api.getByRole("alert")).toHaveTextContent(
+      "Etwas ist schiefgelaufen. Bitte versuche es erneut."
+    );
+    expect(api.queryByText(/kaboom/)).toBeNull();
   });
 });

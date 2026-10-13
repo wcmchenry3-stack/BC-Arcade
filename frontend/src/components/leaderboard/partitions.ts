@@ -11,8 +11,6 @@
 import type { TFunction } from "i18next";
 import type { BoardDefinition, GameType } from "../../api/vocab";
 import { DIFFICULTIES, VARIANTS } from "../../game/sudoku/types";
-import { difficultyLabel } from "../../game/starswarm/engine";
-import type { DifficultyTier } from "../../game/starswarm/types";
 import type { Partition } from "../../game/_shared/boardPartition";
 
 export type { Partition };
@@ -50,8 +48,8 @@ const PARTITION_META: Partial<Record<GameType, Readonly<Record<string, Partition
   starswarm: {
     difficulty_tier: {
       groupLabel: (t) => t("leaderboard:partition.tier"),
-      // The tier names are the game's own and are not translated in-game either.
-      valueLabel: (_t, v) => difficultyLabel(v as DifficultyTier) ?? v,
+      // The partition id stays the tier key; only the displayed rank is translated.
+      valueLabel: (t, v) => t(`starswarm:tier.${v}`, { defaultValue: v }),
     },
   },
 };

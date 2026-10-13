@@ -70,5 +70,14 @@
   "vsMode.upperSubtotal": "上段小計",
   "vsMode.lowerSubtotal": "下段小計",
   "vsMode.bonusProgress": "ボーナス · あと{{n}}で63",
-  "vsMode.bonusUnlocked": "ボーナス ✓ 獲得"
+  "vsMode.bonusUnlocked": "ボーナス ✓ 獲得",
+  "error.noRolls": "このターンの残りロール回数はありません。",
+  "error.gameOver": "ゲームは終了しました。",
+  "error.badHeld": "キープしているサイコロを読み取れませんでした。もう一度お試しください。",
+  "error.unknownCategory": "不明な得点カテゴリです。",
+  "error.categoryScored": "このカテゴリはすでに得点済みです。",
+  "error.rollFirst": "得点する前に少なくとも1回サイコロを振ってください。",
+  "error.jokerUpper": "ジョーカールール：対応する上段のカテゴリに得点する必要があります。",
+  "error.jokerLower": "ジョーカールール：下段の空いているカテゴリに得点する必要があります。",
+  "error.generic": "問題が発生しました。もう一度お試しください。"
 }

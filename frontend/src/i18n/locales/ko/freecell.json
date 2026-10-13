@@ -18,5 +18,6 @@
   "a11y.boardRegion": "FreeCell 보드",
   "score.moves": "이동: {{moves}}",
   "error.supermoveRejected": "이 더미를 옮길 빈칸이 부족합니다",
+  "slot.free": "비어 있음",
   "a11y.foundationComplete": "파운데이션 완료"
 }

@@ -12,5 +12,6 @@
   "theme.groupLabel": "Frucht-Set Thema",
   "theme.optionLabel": "{{label}} Thema",
   "event.merged": "Fusion! {{fruit}} erstellt.",
+  "score.high": "Rekord",
   "a11y.board": "Cascade-Spielfeld"
 }

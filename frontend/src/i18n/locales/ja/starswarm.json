@@ -39,5 +39,15 @@
   "hud.cueHull": "装甲 +1",
   "hud.cueHullMax": "装甲 MAX",
   "result.reachedWave": "ウェーブ{{wave}}に到達",
-  "result.wave": "ウェーブ"
+  "result.wave": "ウェーブ",
+  "tier.Ensign": "少尉候補",
+  "tier.LieutenantJG": "海軍中尉",
+  "tier.Lieutenant": "大尉",
+  "tier.LieutenantCommander": "少佐",
+  "tier.Commander": "中佐",
+  "tier.Captain": "大佐",
+  "tier.RearAdmiral": "少将",
+  "tier.ViceAdmiral": "中将",
+  "tier.Admiral": "大将",
+  "tier.FleetAdmiral": "元帥"
 }

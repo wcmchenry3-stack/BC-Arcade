@@ -68,5 +68,9 @@
   "difficulty.daring.desc": "Swings for moon shots, targets you with the Queen",
   "difficulty.mixed": "Mixed Table",
   "difficulty.mixed.desc": "One of each: Cautious left, Schemer across, Daring right",
-  "game.startGame": "Start Game"
+  "game.startGame": "Start Game",
+  "seat.0": "You",
+  "seat.1": "West",
+  "seat.2": "North",
+  "seat.3": "East"
 }

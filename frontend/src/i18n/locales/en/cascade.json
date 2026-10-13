@@ -12,5 +12,6 @@
   "theme.groupLabel": "Fruit set theme",
   "theme.optionLabel": "{{label}} theme",
   "event.merged": "Merged! {{fruit}} created.",
+  "score.high": "High",
   "a11y.board": "Cascade game board"
 }

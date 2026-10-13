@@ -45,7 +45,7 @@ export default function ScoreDisplay({ score, children }: Props) {
       </View>
       {children ? <View style={styles.center}>{children}</View> : null}
       <View style={styles.scoreSection}>
-        <Text style={[styles.label, { color: colors.textMuted }]}>HIGH</Text>
+        <Text style={[styles.label, { color: colors.textMuted }]}>{t("score.high")}</Text>
         <Text style={[styles.score, { color: colors.textMuted }]}>0</Text>
       </View>
     </View>

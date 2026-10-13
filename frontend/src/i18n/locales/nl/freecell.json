@@ -18,5 +18,6 @@
   "a11y.boardRegion": "FreeCell-speelveld",
   "score.moves": "Zetten: {{moves}}",
   "error.supermoveRejected": "Niet genoeg vrije plekken om deze stapel te verplaatsen",
+  "slot.free": "vrij",
   "a11y.foundationComplete": "Basisstapel voltooid"
 }

@@ -39,5 +39,15 @@
   "hud.cueHull": "ROMP +1",
   "hud.cueHullMax": "ROMP MAX",
   "result.reachedWave": "Golf {{wave}} bereikt",
-  "result.wave": "Golf"
+  "result.wave": "Golf",
+  "tier.Ensign": "Vaandrig",
+  "tier.LieutenantJG": "Luitenant (J.G.)",
+  "tier.Lieutenant": "Luitenant",
+  "tier.LieutenantCommander": "Kapitein-luitenant",
+  "tier.Commander": "Commandant",
+  "tier.Captain": "Kapitein",
+  "tier.RearAdmiral": "Schout-bij-nacht",
+  "tier.ViceAdmiral": "Viceadmiraal",
+  "tier.Admiral": "Admiraal",
+  "tier.FleetAdmiral": "Vlootadmiraal"
 }

@@ -57,5 +57,9 @@
   "difficulty.daring.desc": "Va a por la luna y te apunta con la reina",
   "difficulty.mixed": "Mesa mixta",
   "difficulty.mixed.desc": "Uno de cada: Prudente a la izquierda, Estratega enfrente, Atrevido a la derecha",
-  "game.startGame": "Iniciar juego"
+  "game.startGame": "Iniciar juego",
+  "seat.0": "Tú",
+  "seat.1": "Oeste",
+  "seat.2": "Norte",
+  "seat.3": "Este"
 }

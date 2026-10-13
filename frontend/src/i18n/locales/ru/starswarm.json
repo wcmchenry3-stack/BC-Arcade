@@ -39,5 +39,15 @@
   "hud.cueHull": "КОРПУС +1",
   "hud.cueHullMax": "КОРПУС МАКС",
   "result.reachedWave": "Достигнута волна {{wave}}",
-  "result.wave": "Волна"
+  "result.wave": "Волна",
+  "tier.Ensign": "Энсин",
+  "tier.LieutenantJG": "Мл. лейтенант",
+  "tier.Lieutenant": "Лейтенант",
+  "tier.LieutenantCommander": "Капитан-лейтенант",
+  "tier.Commander": "Коммандер",
+  "tier.Captain": "Капитан",
+  "tier.RearAdmiral": "Контр-адмирал",
+  "tier.ViceAdmiral": "Вице-адмирал",
+  "tier.Admiral": "Адмирал",
+  "tier.FleetAdmiral": "Адмирал флота"
 }
