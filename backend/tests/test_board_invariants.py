@@ -278,7 +278,7 @@ async def test_a_session_with_several_games_appears_once_with_its_best(
         "mid": _play(client, sid, game, _better(board, 0), completed_at=_recent(1)),
         # Equal best values: the tie-break decides (the later one has the better
         # tie-break); without one, the earlier receipt is the best
-        # (these seeds set only completed_at, so the coalesce fallback applies).
+        # (these seeds set only completed_at, so the null-receipt order by completed_at applies).
         "best_early": _play(
             client,
             sid,

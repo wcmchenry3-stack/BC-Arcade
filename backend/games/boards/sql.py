@@ -36,7 +36,7 @@ from games.board import (
 )
 from games.boards.partitions import metric_cap
 from games.filters import not_abandoned
-from games.ranking import receipt_expr
+from games.ranking import receipt_order
 from players.names import has_display_name
 
 SENTINEL_SESSION_SUFFIX = "-anon"
@@ -192,7 +192,7 @@ def best_rows(
     order = [_ordered(metric, board.direction)]
     if tiebreak is not None and board.tiebreak is not None:
         order.append(_ordered(tiebreak, board.tiebreak[1]))
-    order += [_ordered(receipt_expr(), FINAL_TIEBREAK[1]), Game.id.asc()]
+    order += [*receipt_order(Game.received_at, Game.completed_at, FINAL_TIEBREAK[1]), Game.id.asc()]
     tiebreak_col = tiebreak if tiebreak is not None else literal(None)
     return (
         select(
@@ -201,7 +201,7 @@ def best_rows(
             metric.label("value"),
             tiebreak_col.label("tiebreak"),
             Game.completed_at.label("completed_at"),
-            receipt_expr().label("received_at"),
+            Game.received_at.label("received_at"),
             func.row_number().over(partition_by=Game.session_id, order_by=order).label("rn"),
         )
         .where(*filters)
@@ -214,5 +214,8 @@ def board_order(board: BoardDefinition, sub: Subquery) -> list[ColumnElement]:
     order = [_ordered(sub.c.value, board.direction)]
     if board.tiebreak is not None:
         order.append(_ordered(sub.c.tiebreak, board.tiebreak[1]))
-    order += [_ordered(sub.c.received_at, FINAL_TIEBREAK[1]), sub.c.game_id.asc()]
+    order += [
+        *receipt_order(sub.c.received_at, sub.c.completed_at, FINAL_TIEBREAK[1]),
+        sub.c.game_id.asc(),
+    ]
     return order

@@ -45,11 +45,11 @@ async def _rank_sql() -> str:
 
 async def test_rank_counts_earlier_completions_for_the_current_ascending_tiebreak() -> None:
     assert ranking.FINAL_TIEBREAK == ("received_at", "asc")
-    assert "coalesce(games.received_at, games.completed_at) <" in await _rank_sql()
+    assert "games.received_at IS NOT NULL AND games.received_at <" in await _rank_sql()
 
 
 async def test_rank_follows_the_final_tiebreak_direction(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ranking, "FINAL_TIEBREAK", ("received_at", "desc"))
     sql = await _rank_sql()
-    assert "coalesce(games.received_at, games.completed_at) >" in sql
-    assert "coalesce(games.received_at, games.completed_at) <" not in sql
+    assert "games.received_at IS NOT NULL AND games.received_at >" in sql
+    assert "games.received_at <" not in sql
