@@ -24,7 +24,7 @@
       },
       "metric.guesses_two": {
         "waive": ["{{value}}"],
-        "reason": "Arabic dual for two guesss is a complete word with the number built in (تخمينان); the numeral is not repeated"
+        "reason": "Arabic dual for two guesses is a complete word with the number built in (تخمينان); the numeral is not repeated"
       },
       "metric.chips_one": {
         "waive": ["{{value}}"],
