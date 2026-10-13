@@ -18,7 +18,10 @@ const SPAIN_ONLY = [
   /\bsois\b/i,
   /\b(hab|ten|pod|quer)[ée]is\b/i,
   /\bIntro\b/,
-  /\bhan sido\b/i,
+  /\bcoger\b|\bcoge\b/i,
+  /\bpuls(a|ar|ad)\b/i,
+  /[a-zñ]+[áé]is\b/i, // vosotros present tense (estáis, hacéis)
+  /(?<!\p{L})os(?!\p{L})/iu, // vosotros object pronoun (\b treats í as a boundary)
 ];
 
 const entries: Array<[string, string]> = [];
