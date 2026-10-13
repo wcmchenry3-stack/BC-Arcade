@@ -52,9 +52,6 @@ def security_headers(is_production: bool = False) -> tuple[tuple[str, str], ...]
     )
 
 
-SECURITY_HEADERS: tuple[tuple[str, str], ...] = security_headers(False)
-
-
 def _event_for(status: int) -> str | None:
     if status == 429:
         return "rate_limit_exceeded"

@@ -288,17 +288,19 @@ def test_init_sentry_runs_once_and_only_with_a_dsn(monkeypatch: pytest.MonkeyPat
 # ---------------------------------------------------------------------------
 
 DEV_HOSTS = ("https://dev-games-api.buffingchi.com", "https://dev-games.buffingchi.com")
-PROD_HOSTS = ("https://games-api.buffingchi.com", "https://games.buffingchi.com")
 
 
-def _headers_for(environment: str) -> httpx.Headers:
+def _headers_for(monkeypatch: pytest.MonkeyPatch, environment: str | None) -> httpx.Headers:
+    # create_app reconfigures proxy trust; restore the module globals afterwards.
+    monkeypatch.setattr(limiter_module, "_TRUST", limiter_module._TRUST)
+    monkeypatch.setattr(limiter_module, "_LOG_PROXY_HEADERS", limiter_module._LOG_PROXY_HEADERS)
     limiter.reset()
     app = main.create_app(Settings(ENVIRONMENT=environment))
     return TestClient(app).get("/health").headers
 
 
-def test_production_csp_uses_prod_hosts_only() -> None:
-    headers = _headers_for("production")
+def test_production_csp_uses_prod_hosts_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    headers = _headers_for(monkeypatch, "production")
     csp = headers["content-security-policy"]
     assert csp == (
         "default-src 'none'; "
@@ -309,8 +311,11 @@ def test_production_csp_uses_prod_hosts_only() -> None:
     assert headers["strict-transport-security"] == "max-age=31536000; includeSubDomains"
 
 
-def test_development_csp_keeps_dev_hosts() -> None:
-    headers = _headers_for("development")
+@pytest.mark.parametrize("environment", ["development", None])
+def test_non_production_csp_keeps_dev_hosts(
+    monkeypatch: pytest.MonkeyPatch, environment: str | None
+) -> None:
+    headers = _headers_for(monkeypatch, environment)
     assert (
         headers["content-security-policy"] == EXPECTED_SECURITY_HEADERS["content-security-policy"]
     )
