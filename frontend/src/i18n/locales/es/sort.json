@@ -1,7 +1,7 @@
 {
-  "game.title": "Puzle de Colores",
+  "game.title": "Puzzle de Colores",
   "game.description": "Vierte colores entre botellas y ordénalos.",
-  "game.playLabel": "Jugar Puzle de Colores",
+  "game.playLabel": "Jugar Puzzle de Colores",
   "hud.level": "Nivel {{level}}",
   "hud.moves": "Mov.: {{moves}}",
   "hud.undos": "Deshacer: {{undos}}",
@@ -23,7 +23,7 @@
   "color.maroon": "Granate",
   "color.gold": "Dorado",
   "color.indigo": "Índigo",
-  "a11y.boardRegion": "Tablero de Puzle de Colores",
+  "a11y.boardRegion": "Tablero de Puzzle de Colores",
   "a11y.bottle": "Botella {{index}}, {{count}} de {{depth}} llena",
   "a11y.bottleSelected": "Botella {{index}} seleccionada — toca otra botella para verter",
   "a11y.bottleEmpty": "Botella {{index}}, vacía",

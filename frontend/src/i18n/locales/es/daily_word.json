@@ -18,7 +18,7 @@
   "error.wrongLength": "El intento no tiene la longitud correcta",
   "error.rateLimited": "Demasiados intentos — inténtalo más tarde",
   "keyboard.delete": "Borrar",
-  "keyboard.enter": "Intro",
+  "keyboard.enter": "Enviar",
   "result.countdown": "Próx. palabra: {{time}}",
   "result.share": "Compartir",
   "result.copied": "¡Copiado!",
