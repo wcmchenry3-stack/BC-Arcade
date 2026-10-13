@@ -1271,6 +1271,18 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
     });
   }
 
+  /** Opens the ⋯ menu and returns the Show mistakes item. */
+  async function showMistakesItem(rendered: Awaited<ReturnType<typeof resume>>) {
+    if (!rendered.queryByTestId("sudoku-show-mistakes")) {
+      await act(async () => {
+        await fireEvent.press(rendered.getByLabelText("More options"));
+      });
+    }
+    return rendered.getByTestId("sudoku-show-mistakes");
+  }
+  const isChecked = (item: { props: { accessibilityState?: { checked?: boolean } } }) =>
+    item.props.accessibilityState?.checked;
+
   let timing: jest.SpyInstance;
   beforeEach(() => {
     timing = jest.spyOn(Animated, "timing");
@@ -1309,7 +1321,7 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
       ["hard", false],
     ] as const) {
       const r = await resume(scenario(difficulty).state);
-      expect(r.getByTestId("sudoku-show-mistakes").props.value).toBe(expected);
+      expect(isChecked(await showMistakesItem(r))).toBe(expected);
       await r.unmount();
     }
   });
@@ -1325,7 +1337,7 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
     expect(r.getByText("0 errors")).toBeTruthy();
   });
 
-  it("the switch turns the colouring on and off, and the choice is kept", async () => {
+  it("the menu item turns the colouring on and off, and the choice is kept", async () => {
     const s = scenario("medium");
     const r = await resume(s.state);
     await play(r, s.legalWrong, s.other);
@@ -1333,14 +1345,16 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
       within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.legalWrong));
     expect(digitText()).toHaveStyle({ color: darkColors.accent });
 
+    const item = await showMistakesItem(r);
     await act(async () => {
-      await fireEvent(r.getByTestId("sudoku-show-mistakes"), "valueChange", true);
+      await fireEvent.press(item);
     });
     expect(digitText()).toHaveStyle({ color: darkColors.error });
     expect(await AsyncStorage.getItem(SHOW_MISTAKES_KEY)).toBe("1");
 
+    const item2 = await showMistakesItem(r);
     await act(async () => {
-      await fireEvent(r.getByTestId("sudoku-show-mistakes"), "valueChange", false);
+      await fireEvent.press(item2);
     });
     expect(digitText()).toHaveStyle({ color: darkColors.accent });
     expect(await AsyncStorage.getItem(SHOW_MISTAKES_KEY)).toBe("0");
@@ -1349,12 +1363,12 @@ describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
   it("a stored choice overrides the difficulty default on a later visit", async () => {
     await AsyncStorage.setItem(SHOW_MISTAKES_KEY, "0");
     const r = await resume(scenario("easy").state);
-    await waitFor(() => expect(r.getByTestId("sudoku-show-mistakes").props.value).toBe(false));
+    await waitFor(async () => expect(isChecked(await showMistakesItem(r))).toBe(false));
 
     await r.unmount();
     await AsyncStorage.setItem(SHOW_MISTAKES_KEY, "1");
     const r2 = await resume(scenario("hard").state);
-    await waitFor(() => expect(r2.getByTestId("sudoku-show-mistakes").props.value).toBe(true));
+    await waitFor(async () => expect(isChecked(await showMistakesItem(r2))).toBe(true));
   });
 
   it("an old save's flags follow the new rule: a legal-wrong flag is dropped, a duplicate is shown", async () => {

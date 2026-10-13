@@ -53,7 +53,7 @@ The game randomly selects a puzzle from the chosen local bank. The last **diffic
 - **Notes** toggles pencil-mark mode.
 - **Undo** restores the previous placement/erase snapshot; the history is capped at 50 entries.
 - **Hint** fills the selected empty editable cell with its correct solution digit (or, on a full grid that is not the solution, corrects a wrong cell; see Errors and completion).
-- **Show mistakes** switch under the grid (see Errors and completion).
+- **Show mistakes** is a checkable item in the ⋯ header menu (see Errors and completion).
 
 ### Notes
 
@@ -90,11 +90,11 @@ Undo restores the previous error count, so undoing an illegal placement removes 
 
 ### Full grid that is not the solution
 
-When every cell is filled but the grid is not the solution, a message under the grid says that something is off, with a **Hint** button. That Hint selects a wrong cell (the selected one if it is wrong, otherwise the first in reading order) and corrects it with the solution digit, with no error and no penalty. If it was the only wrong cell the puzzle completes.
+When every cell is filled but the grid is not the solution, a message says that something is off, with a **Hint** button. It overlays the HUD row (it adds no height, so the number pad is never pushed off a short screen) and is announced to screen readers. That Hint selects a wrong cell (the selected one if it is wrong, otherwise the first in reading order) and corrects it with the solution digit, with no error and no penalty. If it was the only wrong cell the puzzle completes.
 
 ### Show mistakes
 
-A switch under the grid colours legal-but-incorrect digits as mistakes. It is visual only: no count, no flash, no score effect. Illegal digits are always highlighted regardless of it. The default is **on for Easy, off for Medium and Hard**; once the player flips it, that choice is stored on the device (`sudoku_show_mistakes`) and applies to every puzzle, whatever its difficulty.
+A checkable item in the ⋯ header menu (it adds no height to the play layout) colours legal-but-incorrect digits as mistakes. It is visual only: no count, no flash, no score effect. Illegal digits are always highlighted regardless of it. The default is **on for Easy, off for Medium and Hard**; once the player flips it, that choice is stored on the device (`sudoku_show_mistakes`) and applies to every puzzle, whatever its difficulty.
 
 ### Old saves
 
