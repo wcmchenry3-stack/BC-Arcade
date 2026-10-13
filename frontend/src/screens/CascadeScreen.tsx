@@ -204,6 +204,7 @@ function PieceRenderer({
 }) {
   // Freeze the rendered position of sleeping pieces to prevent sub-pixel physics
   // drift from causing visible jitter on settled pieces.
+  const { t } = useTranslation("cascade");
   const frozenPositions = useRef<Map<number, { x: number; y: number }>>(new Map());
 
   // Evict stale entries when pieces are removed (merge, game-over reset).
@@ -218,7 +219,7 @@ function PieceRenderer({
     <Canvas
       style={{ width: WORLD_WIDTH * scale, height: WORLD_HEIGHT * scale }}
       accessibilityRole="image"
-      accessibilityLabel="Cascade game board"
+      accessibilityLabel={t("a11y.board")}
     >
       <Group transform={[{ scale }]}>
         {/* Overflow danger line */}

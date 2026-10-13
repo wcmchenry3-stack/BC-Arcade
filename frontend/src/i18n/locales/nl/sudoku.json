@@ -26,5 +26,6 @@
   "hud.errorsOne": "1 fout",
   "hud.elapsed": "Verstreken tijd {{time}}",
   "action.quickRestart": "Snel herstarten",
-  "newGame.title": "Nieuw spel"
+  "newGame.title": "Nieuw spel",
+  "a11y.board": "Sudoku-speelveld"
 }

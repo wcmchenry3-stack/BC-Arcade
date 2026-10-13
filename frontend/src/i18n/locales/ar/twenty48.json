@@ -14,5 +14,8 @@
   "win.body": "وصلت إلى 2048! يمكنك الاستمرار للحصول على نتيجة أعلى.",
   "controls.keyboardHint": "أو استخدم مفاتيح الأسهم",
   "stats.highestTile": "أعلى بلاطة",
-  "stats.timePlayed": "وقت اللعب"
+  "stats.timePlayed": "وقت اللعب",
+  "a11y.board": "لوحة اللعبة",
+  "a11y.emptyCell": "فارغة",
+  "a11y.merged": "تم الدمج: {{values}}"
 }

@@ -24,5 +24,11 @@
   "keyboard.enter": "إدخال",
   "result.countdown": "القادمة خلال {{time}}",
   "result.share": "مشاركة",
-  "result.copied": "تم النسخ!"
+  "result.copied": "تم النسخ!",
+  "a11y.board": "لوحة الكلمة اليومية",
+  "a11y.tile": "الصف {{row}}، العمود {{col}}، الحرف {{letter}}",
+  "a11y.tileStatus": "الصف {{row}}، العمود {{col}}، الحرف {{letter}}، {{status}}",
+  "a11y.status.correct": "صحيح",
+  "a11y.status.present": "في مكان خاطئ",
+  "a11y.status.absent": "غير موجود في الكلمة"
 }

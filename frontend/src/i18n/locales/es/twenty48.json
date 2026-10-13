@@ -14,5 +14,8 @@
   "win.body": "¡Llegaste a 2048! Puedes seguir jugando para una puntuación más alta.",
   "controls.keyboardHint": "O usa las flechas del teclado",
   "stats.highestTile": "Ficha Más Alta",
-  "stats.timePlayed": "Tiempo Jugado"
+  "stats.timePlayed": "Tiempo Jugado",
+  "a11y.board": "Tablero de juego",
+  "a11y.emptyCell": "vacía",
+  "a11y.merged": "Fusionadas: {{values}}"
 }

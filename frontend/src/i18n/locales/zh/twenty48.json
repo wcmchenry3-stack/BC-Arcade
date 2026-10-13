@@ -14,5 +14,8 @@
   "win.body": "你达到了2048！你可以继续游戏以获得更高分数。",
   "controls.keyboardHint": "或使用方向键",
   "stats.highestTile": "最高方块",
-  "stats.timePlayed": "游戏时长"
+  "stats.timePlayed": "游戏时长",
+  "a11y.board": "游戏面板",
+  "a11y.emptyCell": "空",
+  "a11y.merged": "已合并：{{values}}"
 }

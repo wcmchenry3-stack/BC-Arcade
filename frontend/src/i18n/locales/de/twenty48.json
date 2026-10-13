@@ -14,5 +14,8 @@
   "win.body": "Du hast 2048 erreicht! Du kannst weiterspielen für einen höheren Punktestand.",
   "controls.keyboardHint": "Oder nutze die Pfeiltasten",
   "stats.highestTile": "Höchste Kachel",
-  "stats.timePlayed": "Spielzeit"
+  "stats.timePlayed": "Spielzeit",
+  "a11y.board": "Spielfeld",
+  "a11y.emptyCell": "leer",
+  "a11y.merged": "Verschmolzen: {{values}}"
 }

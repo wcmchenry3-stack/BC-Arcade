@@ -14,5 +14,8 @@
   "win.body": "Vous avez atteint 2048 ! Vous pouvez continuer pour un meilleur score.",
   "controls.keyboardHint": "Ou utilise les touches fléchées",
   "stats.highestTile": "Tuile max.",
-  "stats.timePlayed": "Temps de jeu"
+  "stats.timePlayed": "Temps de jeu",
+  "a11y.board": "Plateau de jeu",
+  "a11y.emptyCell": "vide",
+  "a11y.merged": "Fusion : {{values}}"
 }

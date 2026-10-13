@@ -142,5 +142,32 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "a11y.board": {
+    "component": "Grid (accessibility)",
+    "description": "Screen-reader label for the 2048 board.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": ""
+  },
+  "a11y.emptyCell": {
+    "component": "Grid (accessibility)",
+    "description": "Screen-reader label for a board cell with no tile.",
+    "tone": "functional",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": ""
+  },
+  "a11y.merged": {
+    "component": "Twenty48Screen (accessibility)",
+    "description": "Live announcement after a move merges tiles; lists the resulting tile values.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["{{values}}"],
+    "doNotTranslate": [],
+    "notes": "`{{values}}` is a comma-separated list of numbers, e.g. '4, 16'."
   }
 }

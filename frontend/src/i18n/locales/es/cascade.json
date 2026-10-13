@@ -11,5 +11,6 @@
   "preview.comingUp": "Viene: {{name}}",
   "theme.groupLabel": "Tema de frutas",
   "theme.optionLabel": "Tema {{label}}",
-  "event.merged": "¡Unido! {{fruit}} creado."
+  "event.merged": "¡Unido! {{fruit}} creado.",
+  "a11y.board": "Tablero de Cascade"
 }

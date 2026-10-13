@@ -14,5 +14,8 @@
   "win.body": "2048に到達しました！さらに高いスコアを目指して続けられます。",
   "controls.keyboardHint": "または矢印キーを使用",
   "stats.highestTile": "最高タイル",
-  "stats.timePlayed": "プレイ時間"
+  "stats.timePlayed": "プレイ時間",
+  "a11y.board": "ゲーム盤面",
+  "a11y.emptyCell": "空",
+  "a11y.merged": "結合: {{values}}"
 }

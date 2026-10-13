@@ -196,5 +196,59 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "a11y.board": {
+    "component": "DailyWordScreen (accessibility)",
+    "description": "Screen-reader label for the grid of guess tiles.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": ""
+  },
+  "a11y.tile": {
+    "component": "WordTile (accessibility)",
+    "description": "Screen-reader label for a guessed letter that is not yet scored, with its position on the board.",
+    "tone": "functional",
+    "characterLimit": 60,
+    "placeholders": ["{{row}}", "{{col}}", "{{letter}}"],
+    "doNotTranslate": [],
+    "notes": ""
+  },
+  "a11y.tileStatus": {
+    "component": "WordTile (accessibility)",
+    "description": "Screen-reader label for a scored letter with its position and result.",
+    "tone": "functional",
+    "characterLimit": 80,
+    "placeholders": ["{{row}}", "{{col}}", "{{letter}}", "{{status}}"],
+    "doNotTranslate": [],
+    "notes": "`{{status}}` is one of the a11y.status.* strings."
+  },
+  "a11y.status.correct": {
+    "component": "WordTile (accessibility)",
+    "description": "Spoken result for a letter in the right spot.",
+    "tone": "functional",
+    "characterLimit": 20,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": ""
+  },
+  "a11y.status.present": {
+    "component": "WordTile (accessibility)",
+    "description": "Spoken result for a letter that is in the word but in the wrong spot.",
+    "tone": "functional",
+    "characterLimit": 25,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": ""
+  },
+  "a11y.status.absent": {
+    "component": "WordTile (accessibility)",
+    "description": "Spoken result for a letter that is not in the word.",
+    "tone": "functional",
+    "characterLimit": 25,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": ""
   }
 }

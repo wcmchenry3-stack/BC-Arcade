@@ -26,5 +26,6 @@
   "hud.errorsOne": "1 erro",
   "hud.elapsed": "Tempo decorrido {{time}}",
   "action.quickRestart": "Reiniciar rápido",
-  "newGame.title": "Novo jogo"
+  "newGame.title": "Novo jogo",
+  "a11y.board": "Tabuleiro de Sudoku"
 }

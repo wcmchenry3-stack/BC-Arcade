@@ -11,5 +11,6 @@
   "preview.comingUp": "Komt eraan: {{name}}",
   "theme.groupLabel": "Fruitset thema",
   "theme.optionLabel": "{{label}} thema",
-  "event.merged": "Versmolten! {{fruit}} gemaakt."
+  "event.merged": "Versmolten! {{fruit}} gemaakt.",
+  "a11y.board": "Cascade-speelveld"
 }

@@ -26,5 +26,6 @@
   "hud.errorsOne": "1 गलती",
   "hud.elapsed": "समय बीता {{time}}",
   "action.quickRestart": "त्वरित पुनः आरंभ",
-  "newGame.title": "नया खेल"
+  "newGame.title": "नया खेल",
+  "a11y.board": "सुडोकू बोर्ड"
 }

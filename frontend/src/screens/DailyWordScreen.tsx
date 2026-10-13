@@ -522,7 +522,7 @@ export default function DailyWordScreen() {
 
         {/* Tile grid */}
         {state !== null && (
-          <View style={styles.grid} accessibilityLabel="Daily Word board">
+          <View style={styles.grid} accessibilityLabel={t("a11y.board")}>
             {state.rows.map((_, rowIndex) => (
               <TileRow
                 key={rowIndex}

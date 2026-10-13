@@ -16,7 +16,7 @@
  *   6. Audio — engine events play the 2048 and game-over sounds.
  */
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
+import { View, Text, Pressable, StyleSheet, Platform, AccessibilityInfo } from "react-native";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -277,6 +277,18 @@ export default function Twenty48Screen({ navigation }: Props) {
     const hasSpawn = state.tiles.some((t) => t.isNew && !t.isMerge);
     if (hasMerge) playTileMerge();
     if (hasSpawn) playTileSpawn();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.tiles]);
+
+  // Announce merges to screen readers: the merged tile values only (not every
+  // slide or spawn), so a swipe produces one short message.
+  useEffect(() => {
+    if (!state) return;
+    const values = state.tiles.filter((tile) => tile.isMerge).map((tile) => tile.value);
+    if (values.length === 0) return;
+    AccessibilityInfo.announceForAccessibility(
+      t("twenty48:a11y.merged", { values: values.join(", ") })
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.tiles]);
 
