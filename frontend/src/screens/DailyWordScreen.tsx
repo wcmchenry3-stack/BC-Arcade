@@ -78,6 +78,7 @@ import {
 } from "../game/daily_word/storage";
 import {
   offlineAnswerFor,
+  offlineDisplayFor,
   resolveOfflinePuzzle,
   type OfflinePuzzle,
 } from "../game/daily_word/offlinePuzzles";
@@ -524,6 +525,11 @@ export default function DailyWordScreen() {
     if (offline?.puzzle_id === puzzleId) return offline.answer;
     return offlineAnswerFor(puzzleId);
   }, []);
+  const deviceDisplay = useCallback(async (puzzleId: string): Promise<string | null> => {
+    const offline = offlinePuzzleRef.current;
+    if (offline?.puzzle_id === puzzleId) return offline.display ?? null;
+    return offlineDisplayFor(puzzleId);
+  }, []);
 
   const { submit: onSubmit, submitting } = useDailyWordSubmit(
     stateRef,
@@ -545,6 +551,7 @@ export default function DailyWordScreen() {
       resetToToday,
       scoresOnDevice,
       deviceAnswer,
+      deviceDisplay,
     }
   );
 

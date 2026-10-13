@@ -2,7 +2,7 @@ import React from "react";
 import { StyleSheet } from "react-native";
 import { fireEvent, render, screen, within } from "@testing-library/react-native";
 
-import { WordKeyboard, keyboardRows } from "../WordKeyboard";
+import { WordKeyboard, actionLabelStyle, keyboardRows } from "../WordKeyboard";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 
 async function renderKeyboard(
@@ -96,5 +96,53 @@ describe("WordKeyboard layouts (#3241)", () => {
     await renderKeyboard("es");
     const enter = screen.getByTestId("daily-word-key-enter");
     expect(within(enter).getByText("Enter")).toBeTruthy();
+  });
+});
+
+describe("WordKeyboard key text", () => {
+  const textStyle = (id: string, label: string) =>
+    StyleSheet.flatten(within(screen.getByTestId(id)).getByText(label).props.style);
+
+  it.each(["en", "es"])(
+    "%s: Enter and Delete (en labels) keep 13 px with letterSpacing 0.5",
+    async (language) => {
+      await renderKeyboard(language);
+      if (language === "en") {
+        for (const [id, label] of [
+          ["daily-word-key-enter", "Enter"],
+          ["daily-word-key-delete", "Delete"],
+        ] as const) {
+          const style = textStyle(id, label);
+          expect(style.fontSize).toBe(13);
+          expect(style.letterSpacing).toBe(0.5);
+        }
+      }
+      // Letter keys are 13 px for every language.
+      expect(textStyle("daily-word-key-a", "A").fontSize).toBe(13);
+    }
+  );
+
+  it("keeps Hindi action labels at 13 px", async () => {
+    await renderKeyboard("hi");
+    const style = textStyle("daily-word-key-enter", "Enter");
+    expect(style.fontSize).toBe(13);
+    expect(style.letterSpacing).toBe(0.5);
+  });
+
+  it("only action keys fit their text to the key", async () => {
+    await renderKeyboard("en");
+    const fits = (id: string, label: string) =>
+      within(screen.getByTestId(id)).getByText(label).props.adjustsFontSizeToFit;
+    expect(fits("daily-word-key-enter", "Enter")).toBe(true);
+    expect(fits("daily-word-key-delete", "Delete")).toBe(true);
+    expect(fits("daily-word-key-a", "A")).toBeFalsy();
+    expect(fits("daily-word-key-q", "Q")).toBeFalsy();
+  });
+
+  it("shrinks only fr and es labels, the long ones more", () => {
+    expect(actionLabelStyle("en", "Delete")).toBeNull();
+    expect(actionLabelStyle("hi", "दर्ज करें")).toBeNull();
+    expect(actionLabelStyle("es", "Enviar")).toMatchObject({ fontSize: 11 });
+    expect(actionLabelStyle("fr", "Effacer")).toMatchObject({ fontSize: 10 });
   });
 });

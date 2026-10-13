@@ -79,6 +79,8 @@ export interface DailyWordSubmitHandlers {
   scoresOnDevice?: (puzzleId: string) => boolean;
   /** The puzzle's answer when it was fetched ahead, else null (#3230). */
   deviceAnswer?: (puzzleId: string) => Promise<string | null>;
+  /** The accented spelling of the fetched-ahead answer, when it has one (#3241). */
+  deviceDisplay?: (puzzleId: string) => Promise<string | null>;
 }
 
 export interface DailyWordSubmit {
@@ -231,7 +233,9 @@ function applyAccepted(
   s: DailyWordState,
   result: GuessResponse,
   /** The answer when the guess was scored on the device (#3230): no fetch. */
-  knownAnswer?: string
+  knownAnswer?: string,
+  /** The answer's accented spelling, with `knownAnswer` (fr/es, #3241). */
+  knownDisplay?: string
 ): ReturnType<typeof setTimeout> {
   // fr/es (#3241): the row shows the list's accented spelling; the tiles keep
   // the folded letters the colours and the keyboard are computed on.
@@ -270,7 +274,7 @@ function applyAccepted(
     if (finalState.won) {
       ctx.playWin();
     } else if (knownAnswer !== undefined) {
-      ctx.setAnswer(knownAnswer.toUpperCase());
+      ctx.setAnswer((knownDisplay ?? knownAnswer).toUpperCase());
     } else {
       try {
         const answerData = await dailyWordApi.getAnswer(s.puzzle_id);
@@ -374,7 +378,7 @@ export function useDailyWordSubmit(
   const { tzOffset, showToast, resetToToday } = handlers;
   const { setState, setFlippingRowIndex, setRevealPending } = handlers;
   const { setAnswer, startCountdown, playWin } = handlers;
-  const { scoresOnDevice, deviceAnswer } = handlers;
+  const { scoresOnDevice, deviceAnswer, deviceDisplay } = handlers;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -440,10 +444,12 @@ export function useDailyWordSubmit(
         return true;
       }
       if (!mountedRef.current) return true;
-      flipTimerRef.current = applyAccepted(ctx, s, scored.response, answer);
+      const display = deviceDisplay ? await deviceDisplay(s.puzzle_id) : null;
+      if (!mountedRef.current) return true;
+      flipTimerRef.current = applyAccepted(ctx, s, scored.response, answer, display ?? undefined);
       return true;
     },
-    [deviceAnswer, showToast, t, ctx]
+    [deviceAnswer, deviceDisplay, showToast, t, ctx]
   );
 
   const submit = useCallback(async () => {

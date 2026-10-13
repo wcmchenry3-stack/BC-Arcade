@@ -50,6 +50,12 @@ export const KEYBOARD_LAYOUTS: Readonly<Record<string, KeyRows>> = {
   hi: DEVANAGARI_ROWS,
 };
 
+/** The label style override for an Enter/Delete key; null keeps the 13 px default. */
+export function actionLabelStyle(language: string, label: string) {
+  if (language !== "fr" && language !== "es") return null;
+  return Array.from(label).length > 6 ? keyStyles.actionTextLong : keyStyles.actionText;
+}
+
 export function keyboardRows(language: string): KeyRows {
   return KEYBOARD_LAYOUTS[language] ?? QWERTY_ROWS;
 }
@@ -91,8 +97,9 @@ export function WordKeyboard({
     const bg = isAction ? colors.surfaceHigh : (KEY_BG[letterStatus] ?? KEY_BG.unused);
     const label =
       key === "Enter" ? t("keyboard.enter") : key === "Delete" ? t("keyboard.delete") : key;
-    // A long label ("Effacer") must still fit its key at 320 px.
-    const longLabel = isAction && Array.from(label).length > 6;
+    // French and Spanish labels ("Effacer", "Entrée") need a smaller size to fit
+    // their key at 320 px; English and Hindi keep the 13 px labels they always had.
+    const labelStyle = isAction ? actionLabelStyle(language, label) : null;
 
     return (
       <Pressable
@@ -105,13 +112,8 @@ export function WordKeyboard({
       >
         <Text
           numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.6}
-          style={[
-            keyStyles.keyText,
-            isAction && (longLabel ? keyStyles.actionTextLong : keyStyles.actionText),
-            { color: DAILYWORD_LETTER_TEXT },
-          ]}
+          {...(isAction ? { adjustsFontSizeToFit: true, minimumFontScale: 0.6 } : {})}
+          style={[keyStyles.keyText, labelStyle, { color: DAILYWORD_LETTER_TEXT }]}
         >
           {label}
         </Text>
@@ -143,7 +145,7 @@ const keyStyles = StyleSheet.create({
   },
   keyRow: {
     flexDirection: "row",
-    gap: 4,
+    gap: 5,
     justifyContent: "center",
   },
   key: {
