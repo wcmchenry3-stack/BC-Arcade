@@ -13,6 +13,8 @@ export interface UpcomingPuzzle {
   readonly puzzle_id: string;
   readonly word_length: number;
   readonly answer_blob: string;
+  /** Scrambled accented display form (fr/es only), decoded like `answer_blob` (#3240). */
+  readonly display_blob?: string;
 }
 
 export interface TileResult {
@@ -43,15 +45,6 @@ export interface AnswerResponse {
   readonly answer: string;
   /** Display form with accents (fr/es); equals `answer` for en/hi. Not used yet (#3241). */
   readonly display?: string;
-}
-
-/** One `GET /daily-word/upcoming` entry. Not consumed yet (#3241). */
-export interface UpcomingEntry {
-  readonly puzzle_id: string;
-  readonly word_length: number;
-  readonly answer_blob: string;
-  /** Scrambled accented display form (fr/es only), decoded like `answer_blob`. */
-  readonly display_blob?: string;
 }
 
 export const dailyWordApi = {
