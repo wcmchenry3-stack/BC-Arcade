@@ -16,7 +16,7 @@
   "pile.foundation.empty": "Fondation {{suit}} vide",
   "pile.freecell.empty": "Cellule libre {{cell}} vide",
   "a11y.boardRegion": "Plateau de FreeCell",
-  "score.moves": "Coups : {{moves}}",
+  "score.moves": "Coups : {{moves}}",
   "error.supermoveRejected": "Pas assez de cases libres pour déplacer cette pile",
   "slot.free": "libre",
   "a11y.foundationComplete": "Fondation complète"
