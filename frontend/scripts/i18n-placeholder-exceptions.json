@@ -1,21 +1,57 @@
 {
-  "_about": "Locale values that may differ from English in their placeholders (check-i18n-strings.js, #3152). Namespace -> locale -> key -> reason. Prefer fixing the translation; an entry that no longer needs the exemption fails the check.",
+  "_about": "Intentional placeholder differences (check-i18n-strings.js, #3152). Namespace -> locale -> key -> { waive: tokens the translation may omit, reason }. Prefer fixing the translation. Only the listed tokens are waived; an entry whose tokens are no longer missing fails.",
   "stats": {
     "ar": {
-      "metric.score_one": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted",
-      "metric.score_two": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted",
-      "metric.moves_one": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted",
-      "metric.moves_two": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted",
-      "metric.guesses_one": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted",
-      "metric.guesses_two": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted",
-      "metric.chips_one": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted",
-      "metric.chips_two": "Arabic singular/dual form is a complete word with the number built in (dual 'نقطتان' = two points); the {{value}} number is correctly omitted"
+      "metric.score_one": {
+        "waive": ["{{value}}"],
+        "reason": "Arabic singular for one point is a complete phrase with the number built in (نقطة واحدة); the numeral is not repeated"
+      },
+      "metric.score_two": {
+        "waive": ["{{value}}"],
+        "reason": "Arabic dual for two points is a complete word with the number built in (نقطتان); the numeral is not repeated"
+      },
+      "metric.moves_one": {
+        "waive": ["{{value}}"],
+        "reason": "Arabic singular for one move is a complete phrase with the number built in (حركة واحدة); the numeral is not repeated"
+      },
+      "metric.moves_two": {
+        "waive": ["{{value}}"],
+        "reason": "Arabic dual for two moves is a complete word with the number built in (حركتان); the numeral is not repeated"
+      },
+      "metric.guesses_one": {
+        "waive": ["{{value}}"],
+        "reason": "Arabic singular for one guess is a complete phrase with the number built in (تخمين واحد); the numeral is not repeated"
+      },
+      "metric.guesses_two": {
+        "waive": ["{{value}}"],
+        "reason": "Arabic dual for two guesss is a complete word with the number built in (تخمينان); the numeral is not repeated"
+      },
+      "metric.chips_one": {
+        "waive": ["{{value}}"],
+        "reason": "Arabic singular for one chip is a complete phrase with the number built in (رقاقة واحدة); the numeral is not repeated"
+      },
+      "metric.chips_two": {
+        "waive": ["{{value}}"],
+        "reason": "Arabic dual for two chips is a complete word with the number built in (رقاقتان); the numeral is not repeated"
+      }
     },
     "he": {
-      "metric.score_one": "Hebrew singular form is a complete word with the number built in ('מהלך אחד' = one move); the {{value}} number is correctly omitted",
-      "metric.moves_one": "Hebrew singular form is a complete word with the number built in ('מהלך אחד' = one move); the {{value}} number is correctly omitted",
-      "metric.guesses_one": "Hebrew singular form is a complete word with the number built in ('מהלך אחד' = one move); the {{value}} number is correctly omitted",
-      "metric.chips_one": "Hebrew singular form is a complete word with the number built in ('מהלך אחד' = one move); the {{value}} number is correctly omitted"
+      "metric.score_one": {
+        "waive": ["{{value}}"],
+        "reason": "Hebrew singular for one point is a complete phrase with the number built in (נקודה אחת); the numeral is not repeated"
+      },
+      "metric.moves_one": {
+        "waive": ["{{value}}"],
+        "reason": "Hebrew singular for one move is a complete phrase with the number built in (מהלך אחד); the numeral is not repeated"
+      },
+      "metric.guesses_one": {
+        "waive": ["{{value}}"],
+        "reason": "Hebrew singular for one guess is a complete phrase with the number built in (ניחוש אחד); the numeral is not repeated"
+      },
+      "metric.chips_one": {
+        "waive": ["{{value}}"],
+        "reason": "Hebrew singular for one chip is a complete phrase with the number built in (אסימון אחד); the numeral is not repeated"
+      }
     }
   }
 }

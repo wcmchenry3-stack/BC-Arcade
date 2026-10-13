@@ -3,7 +3,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { placeholderMismatches, placeholderTokens, referenceKey } from "./i18n-placeholders.js";
 
-const run = (en, target, allowed) => placeholderMismatches(en, target, allowed);
+const runAll = (en, target, waivers) => placeholderMismatches(en, target, waivers);
+// Just the placeholder mismatches, as { key, missing, extra }.
+const run = (en, target, waivers) =>
+  runAll(en, target, waivers)
+    .filter((i) => i.kind === "mismatch")
+    .map(({ key, missing, extra }) => ({ key, missing, extra }));
 
 test("tokens: formats and escape flag reduce to the name; tags and nests are kept", () => {
   assert.deepEqual(placeholderTokens("{{ n, number }} {{- x}} {{y}}"), ["{{n}}", "{{x}}", "{{y}}"]);
@@ -78,8 +83,50 @@ test("a locale-only plural form is compared with English _other", () => {
   ]);
 });
 
-test("_meta, non-strings, unknown keys and allowlisted keys are skipped", () => {
+test("_meta and unknown keys are skipped", () => {
   const en = { a: "{{x}}" };
-  assert.deepEqual(run(en, { _meta: { b: "{{y}}" }, n: 3, unknown: "{{z}}" }), []);
-  assert.deepEqual(run(en, { a: "oops" }, new Set(["a"])), []);
+  assert.deepEqual(runAll(en, { _meta: { b: "{{y}}" }, unknown: "{{z}}" }), []);
+});
+
+test("a nested (non-string) value is reported, not silently skipped", () => {
+  const issues = runAll({ a: "x" }, { a: { b: "{{y}}" }, c: ["z"] });
+  assert.deepEqual(
+    issues.map((i) => [i.kind, i.key]),
+    [
+      ["nested", "a"],
+      ["nested", "c"],
+    ]
+  );
+});
+
+const waiver = (waive) => ({ a_one: { waive, reason: "r" } });
+const enPlural = { a_one: "{{value}} pt", a_other: "{{value}} pts" };
+
+test("a waived token may be missing; the rest still passes", () => {
+  assert.deepEqual(runAll(enPlural, { a_one: "one point" }, waiver(["{{value}}"])), []);
+});
+
+test("an unrelated extra token on a waived key still fails", () => {
+  assert.deepEqual(runAll(enPlural, { a_one: "one {{bogus}}" }, waiver(["{{value}}"])), [
+    { kind: "mismatch", key: "a_one", missing: [], extra: ["{{bogus}}"], waive: [] },
+  ]);
+});
+
+test("another missing token on a waived key still fails", () => {
+  const en = { a_one: "{{value}} {{unit}}", a_other: "x" };
+  assert.equal(run(en, { a_one: "one" }, waiver(["{{value}}"]))[0].missing[0], "{{unit}}");
+});
+
+test("a stale waiver fails: token not missing, or key gone", () => {
+  assert.deepEqual(runAll(enPlural, { a_one: "{{value}} pt" }, waiver(["{{value}}"])), [
+    { kind: "stale", key: "a_one", missing: [], extra: [], waive: ["{{value}}"] },
+  ]);
+  assert.equal(runAll(enPlural, {}, waiver(["{{value}}"]))[0].kind, "stale");
+});
+
+test("a key is a plural form only when English has the _other sibling", () => {
+  const en = { "g.moves_at_least_one": "{{count}} moves" };
+  // Not a plural: {{count}} is required, and there is no _other to compare _many with.
+  assert.equal(run(en, { "g.moves_at_least_one": "un mouvement" }).length, 1);
+  assert.equal(referenceKey("g.moves_at_least_many", en), null);
 });

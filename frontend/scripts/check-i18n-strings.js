@@ -288,27 +288,26 @@ function main() {
         totalPending += pending.length;
       }
 
-      const exempt = new Set(Object.keys(placeholderExceptions[ns]?.[code] ?? {}));
-      const badPlaceholders = placeholderMismatches(enStrings, targetStrings, exempt);
-      // An exemption that is no longer needed must go, so the list only shrinks.
-      const needed = new Set(placeholderMismatches(enStrings, targetStrings).map((m) => m.key));
-      const staleExempt = [...exempt].filter((k) => !needed.has(k));
-      if (staleExempt.length > 0) {
-        console.log(
-          `✗ [${code}/${ns}.json] Listed in i18n-placeholder-exceptions.json but the placeholders match (${staleExempt.length}); remove:`
-        );
-        staleExempt.forEach((k) => console.log(`    ✓ ${k}`));
-        totalIssues += staleExempt.length;
-      }
+      const badPlaceholders = placeholderMismatches(
+        enStrings,
+        targetStrings,
+        placeholderExceptions[ns]?.[code]
+      );
       if (badPlaceholders.length > 0) {
-        console.log(
-          `✗ [${code}/${ns}.json] Placeholders differ from English (${badPlaceholders.length}):`
-        );
-        badPlaceholders.forEach(({ key, missing, extra }) => {
-          const parts = [];
-          if (missing.length > 0) parts.push(`missing ${missing.join(" ")}`);
-          if (extra.length > 0) parts.push(`unexpected ${extra.join(" ")}`);
-          console.log(`    ! ${key}: ${parts.join("; ")} ${JSON.stringify(targetStrings[key])}`);
+        console.log(`✗ [${code}/${ns}.json] Placeholder problems (${badPlaceholders.length}):`);
+        badPlaceholders.forEach(({ kind, key, missing, extra, waive }) => {
+          if (kind === "nested") {
+            console.log(`    ! ${key}: nested value not checked; use a flat string`);
+          } else if (kind === "stale") {
+            console.log(
+              `    ✓ ${key}: i18n-placeholder-exceptions.json waives ${waive.join(" ")} but it is not missing; remove`
+            );
+          } else {
+            const parts = [];
+            if (missing.length > 0) parts.push(`missing ${missing.join(" ")}`);
+            if (extra.length > 0) parts.push(`unexpected ${extra.join(" ")}`);
+            console.log(`    ! ${key}: ${parts.join("; ")} ${JSON.stringify(targetStrings[key])}`);
+          }
         });
         totalIssues += badPlaceholders.length;
       }
@@ -352,7 +351,6 @@ function main() {
         pluralGaps.length === 0 &&
         extra.length === 0 &&
         badPlaceholders.length === 0 &&
-        staleExempt.length === 0 &&
         over.length === 0
       ) {
         const pendingNote = pending.length > 0 ? ` (${pending.length} still need translation)` : "";
