@@ -44,21 +44,21 @@ def test_every_line_is_a_lowercase_nfc_display_word_with_a_5_letter_key(lang, ki
     for w in _lines(f"{kind}_{lang}.txt"):
         assert w == unicodedata.normalize("NFC", w), f"{w!r} is not NFC"
         assert w == w.lower() and w == w.strip() and w.isalpha(), w
-        assert is_key(fold(w), lang), f"{w!r} folds to {fold(w)!r}"
+        assert is_key(fold(w, lang), lang), f"{w!r} folds to {fold(w, lang)!r}"
 
 
 @pytest.mark.parametrize("lang", LANGS)
 @pytest.mark.parametrize("kind", ("answers", "valid"))
 def test_fold_keys_are_unique_and_sorted(lang, kind):
     words = _lines(f"{kind}_{lang}.txt")
-    keys = [fold(w) for w in words]
+    keys = [fold(w, lang) for w in words]
     assert len(keys) == len(set(keys)), "two display forms share a fold key"
     assert keys == sorted(keys)
 
 
 def test_french_keys_never_contain_n_tilde_and_spanish_keep_it():
-    assert not any("ñ" in fold(w) for w in _lines("valid_fr.txt"))
-    assert any("ñ" in fold(w) for w in _lines("valid_es.txt"))
+    assert not any("ñ" in fold(w, "fr") for w in _lines("valid_fr.txt"))
+    assert any("ñ" in fold(w, "es") for w in _lines("valid_es.txt"))
     assert any("ñ" in w for w in _lines("answers_es.txt"))
 
 
@@ -71,8 +71,8 @@ def test_every_answer_is_in_valid_with_the_same_display(lang):
 
 @pytest.mark.parametrize("lang", LANGS)
 def test_no_blocklisted_or_excluded_word_is_an_answer(lang):
-    blocked = parse_blocklist((WORDS / f"answers_blocklist_{lang}.txt").read_text("utf-8"))
-    answers = {fold(w) for w in _lines(f"answers_{lang}.txt")}
+    blocked = parse_blocklist((WORDS / f"answers_blocklist_{lang}.txt").read_text("utf-8"), lang)
+    answers = {fold(w, lang) for w in _lines(f"answers_{lang}.txt")}
     assert not answers & blocked
     assert not answers & ANSWER_EXCLUDE[lang]
 
@@ -82,14 +82,14 @@ def test_blocklist_lines_are_folded_5_letter_keys(lang):
     lines = _blocklist_lines(lang)
     assert len(lines) >= 100
     for line in lines:
-        assert line == fold(line) and is_key(line, lang), line
+        assert line == fold(line, lang) and is_key(line, lang), line
     assert len(lines) == len(set(lines)), "duplicate blocklist entry"
 
 
 @pytest.mark.parametrize("lang", LANGS)
 def test_exclusions_are_folded_5_letter_keys(lang):
     for key in ANSWER_EXCLUDE[lang]:
-        assert key == fold(key) and is_key(key, lang), key
+        assert key == fold(key, lang) and is_key(key, lang), key
 
 
 @pytest.mark.parametrize("lang", LANGS)
@@ -115,3 +115,18 @@ def test_accented_display_forms_are_kept(lang, words):
 def test_blocklisted_words_stay_valid_guesses():
     assert "merde" in _lines("valid_fr.txt")
     assert "matar" in _lines("valid_es.txt")
+
+
+@pytest.mark.parametrize("lang", LANGS)
+@pytest.mark.parametrize("kind", ("answers", "valid"))
+def test_generator_and_runtime_folds_agree_on_every_line(lang, kind):
+    """Drift guard: the keys the lists were built on are the keys the game computes."""
+    from daily_word import normalize
+
+    for w in _lines(f"{kind}_{lang}.txt"):
+        assert fold(w, lang) == normalize.fold(w, lang), w
+
+
+def test_guion_uses_the_2010_rae_spelling():
+    assert "guion" in _lines("valid_es.txt")
+    assert "guión" not in _lines("valid_es.txt")

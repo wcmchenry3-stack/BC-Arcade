@@ -90,11 +90,11 @@ def feminine_from_suffix(word: str, suffix: str) -> str | None:
     """
     if not suffix.isalpha():
         return None
-    if fold(suffix[:2]) == fold(word[:2]):
+    if fold(suffix[:2], "fr") == fold(word[:2], "fr"):
         return suffix
-    first = fold(suffix[0])
+    first = fold(suffix[0], "fr")
     for i in range(len(word) - 1, -1, -1):
-        if fold(word[i]) == first:
+        if fold(word[i], "fr") == first:
             return word[:i] + suffix
     return None
 
@@ -160,10 +160,10 @@ def parse_littre(idx: bytes, dict_dz: bytes) -> list[Entry]:
             if not word.isalpha():
                 continue
             fem = feminine_from_suffix(word, suffix) if suffix else None
-            prev = best.get(fold(word))
+            prev = best.get(fold(word, "fr"))
             rank = (accent_count(word), word, fem or "")
             if prev is None or rank > (accent_count(prev[0]), prev[0], prev[1] or ""):
-                best[fold(word)] = (word, fem)
+                best[fold(word, "fr")] = (word, fem)
         for word, fem in best.values():
             e = replace(info, word=word, feminine=fem)
             out.setdefault((word, e.pos, e.forms, e.model, e.xref, e.archaic, fem), e)

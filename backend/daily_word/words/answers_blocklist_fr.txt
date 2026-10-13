@@ -24,9 +24,11 @@ fiote
 folle
 garce
 gogol
+gosse
 idiot
 merde
 mongo
+moule
 nabot
 negre
 negro
@@ -34,11 +36,14 @@ niais
 nique
 obese
 pedes
+pines
 putes
+queue
 raton
 rital
 salop
 sotte
+tante
 # --- sexual and bodily ---
 anale
 anaux
@@ -50,8 +55,8 @@ coits
 colon
 cuite
 etron
-feces
 fecal
+feces
 fesse
 gland
 harem
@@ -85,7 +90,9 @@ vomis
 vulve
 zizis
 # --- drugs and alcohol ---
+biere
 cames
+cidre
 cokes
 crack
 gnole
@@ -100,6 +107,7 @@ speed
 vodka
 # --- crime, violence, weapons ---
 bombe
+dague
 fusil
 gibet
 mafia
@@ -107,6 +115,7 @@ nazie
 nazis
 otage
 pendu
+sabre
 taule
 tuant
 tueur
@@ -115,13 +124,17 @@ viols
 # --- religion ---
 allah
 bible
+bonze
+cheik
 coran
+djinn
 imams
 islam
 jesus
 juifs
 juive
 satan
+soufi
 torah
 # --- proper-noun-like: names, places, peoples, nationalities, languages ---
 agnes

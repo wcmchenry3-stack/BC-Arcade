@@ -16,6 +16,7 @@
 # --- profanity, insults, slurs ---
 bobas
 bobos
+bollo
 cabro
 cagar
 cagon
@@ -27,6 +28,7 @@ culon
 culos
 enana
 enano
+facha
 gañan
 golfa
 jodas
@@ -36,6 +38,8 @@ lerdo
 mamon
 necia
 necio
+obesa
+obeso
 patan
 perra
 putas
@@ -45,8 +49,6 @@ tonto
 zafio
 zonzo
 zorra
-obeso
-obesa
 # --- sexual and bodily ---
 babas
 bicho
@@ -56,30 +58,34 @@ coito
 enema
 fecal
 flema
-haren
 folla
+haren
 heces
 himen
+ingle
 mamar
-minga
 meada
 meado
+minga
 mocos
 mojon
 nalga
 ojete
 orgia
 orina
+ovulo
 pajas
-pedos
 peder
+pedos
 penes
+pezon
 picha
 pinga
 polla
 porno
 pubis
 semen
+senos
 sexos
 tetas
 utero
@@ -89,27 +95,35 @@ vulva
 beoda
 beodo
 cocas
+coñac
 crack
 curda
 droga
 ebria
 ebrio
 guaro
+jerez
+licor
+pisco
 porro
+sidra
 vodka
 # --- crime, violence, weapons ---
 armas
 balas
 bomba
 coima
+dagas
 fusil
 horca
 matan
 matar
 maton
 nazis
+puñal
 rehen
 rifle
+sable
 tiros
 viola
 # --- religion ---

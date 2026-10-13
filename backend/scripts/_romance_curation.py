@@ -31,7 +31,10 @@ ANSWER_EXCLUDE: dict[str, frozenset[str]] = {
         "mules nages racle rayee juree tapee rotie velue serve vires runes cense usite "
         "strie lisme liure lette tende recta ordon plano prote raire ramas surle sique "
         "naire panis baile basal autan garou appli velle loess razon stupa reaux ceste grenu "
-        "puine tafia ceans palpe ovine vesce nitre",
+        "puine tafia ceans palpe ovine vesce nitre "
+        # Review round 1 (#3253): inflected or foreign forms, and feminine adjective forms
+        # (answers are base forms).
+        "taxis vieil value belle douce molle nulle basse noire bonne breve brune celle seche",
     ),
     "es": _keys(
         # Obscure, technical or learned.
@@ -50,6 +53,16 @@ ANSWER_EXCLUDE: dict[str, frozenset[str]] = {
         # Inflected forms (participles, feminine and plural forms, verb forms).
         "afino amado atado izado usado fiado roido ovado arada mucha misma tanta ambas "
         "bella chata chula zurda hueca manca corva trina dimes rever seudo testa labra parla "
-        "pingo cuasi",
+        "pingo cuasi "
+        # Review round 1 (#3253): archaic or doubtful as daily answers.
+        "troje jayan joyel feble dador aleve folia solio cauda bajel sayon levar verba "
+        "recua laque",
     ),
+}
+
+# Display spellings forced over the Ngram choice, by fold key. ``guion`` is the 2010 RAE
+# spelling (no accent); Ngram's 1950-2019 counts still favour the older ``guión``.
+DISPLAY_OVERRIDES: dict[str, dict[str, str]] = {
+    "fr": {},
+    "es": {"guion": "guion"},
 }

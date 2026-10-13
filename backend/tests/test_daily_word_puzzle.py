@@ -326,7 +326,7 @@ def test_parse_puzzle_id_rejects_malformed():
         "2026-W05-1:en:2",  # ISO week date (fromisoformat accepts it on 3.11+)
         "20260502:en:2",  # basic format
         "\u0662\u0660\u0662\u0666-\u0660\u0665-\u0660\u0662:en:2",  # Arabic-Indic digits
-        "2026-05-02:fr",  # unknown language
+        "2026-05-02:de",  # unknown language
         "2026-05-02:xx:2",
         "2026-05-02",
         "2026-05-02:en:2:3",

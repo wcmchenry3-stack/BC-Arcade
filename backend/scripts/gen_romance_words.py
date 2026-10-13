@@ -5,9 +5,9 @@ Sources (each pinned by URL + SHA-256; the script exits on a mismatch). Sources 
 in #3198 (option 1); see ATTRIBUTION.md and docs/games/daily_word.md.
   1. French lemmas: Littré headwords, Debian ``stardict-xmlittre`` 1:1.0-2 (public
      domain; XMLittré markup by François Gannaz). The Debian source tarball, fetched
-     from the archive.ubuntu.com pool (a byte-identical copy of Debian's: same file
-     and SHA-256 as Debian's signed .dsc), because deb.debian.org is not reachable from
-     the build container.
+     from the archive.ubuntu.com pool (its SHA-256 matches the Checksums-Sha256 in
+     Debian's .dsc; signature not verified), because deb.debian.org is not reachable
+     from the build container.
   2. Spanish lemmas: Debian ``wspanish`` 1.0.30 (``words.spanish.latin1``, "Word list
      license: Public Domain."). Debian native source tarball, same pool.
   3. Google Books Ngram v3 (20200217) French and Spanish 1-grams, the full shards
@@ -15,7 +15,7 @@ in #3198 (option 1); see ATTRIBUTION.md and docs/games/daily_word.md.
      _ngram.py).
 
 File format (contract for #3240 / #3241): one display word per line, lowercase NFC,
-accents and ñ kept; every line folds (``_wordfold.fold``) to exactly 5 letters of the
+accents and ñ kept; every line folds (``daily_word.normalize.fold``) to exactly 5 letters of the
 language's alphabet; fold keys are unique per file; every answer is in the valid list
 with the same display form. Output is sorted by fold key, then display form.
 
@@ -37,7 +37,8 @@ labels), the hand-curated ANSWER_EXCLUDE list, and the language's blocklist
 
 Downloads are streamed and never written to the repo. The Ngram shards (~8 GB) reduce
 to a small table that is cached outside the repo (default ~/.cache/bc-arcade/ngram,
-keyed by shard SHA-256) unless --no-cache is given.
+keyed by shard SHA-256) unless --no-cache is given. The cache is trusted: it is only
+written after a verified download and is not re-hashed when read.
 
 Usage (run from repo root):
     python backend/scripts/gen_romance_words.py            # both languages
@@ -61,7 +62,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import _romance_es as es
 import _romance_fr as fr
 from _ngram import NGRAM_BASE, Counts, load_counts
-from _romance_curation import ANSWER_EXCLUDE
+from _romance_curation import ANSWER_EXCLUDE, DISPLAY_OVERRIDES
 from _wordfold import accent_count, fold, is_key
 
 WORDS_DIR = Path(__file__).parents[1] / "daily_word" / "words"
@@ -131,13 +132,13 @@ def tar_member(archive: bytes, name: str) -> bytes:
         return member.read()
 
 
-def parse_blocklist(text: str) -> frozenset[str]:
+def parse_blocklist(text: str, lang: str) -> frozenset[str]:
     """Folded keys, one per line; blank lines and ``#`` comments are ignored."""
     out = set()
     for line in text.splitlines():
         line = line.split("#", 1)[0].strip()
         if line:
-            out.add(fold(line))
+            out.add(fold(line, lang))
     return frozenset(out)
 
 
@@ -179,32 +180,33 @@ def build_valid(
     """
     groups: dict[str, set[str]] = {}
     for w in lemmas:
-        if is_key(fold(w), lang):
-            groups.setdefault(fold(w), set()).add(w)
+        if is_key(fold(w, lang), lang):
+            groups.setdefault(fold(w, lang), set()).add(w)
     for w in inflections:
-        if is_key(fold(w), lang) and attested(w, counts):
-            groups.setdefault(fold(w), set()).add(w)
+        if is_key(fold(w, lang), lang) and attested(w, counts):
+            groups.setdefault(fold(w, lang), set()).add(w)
     for forms in groups.values():
         forms |= {v for w in list(forms) for v in variants(w) if attested(v, counts)}
-    return {k: pick_display(v, counts) for k, v in sorted(groups.items())}
+    overrides = DISPLAY_OVERRIDES.get(lang, {})
+    return {k: overrides.get(k) or pick_display(v, counts) for k, v in sorted(groups.items())}
 
 
 def top_keys(counts: Counts, lang: str, n: int) -> frozenset[str]:
     """The ``n`` most frequent fold keys (lowercase counts summed over display forms)."""
     totals: dict[str, int] = {}
     for w, c in counts.lower.items():
-        k = fold(w)
+        k = fold(w, lang)
         if is_key(k, lang):
             totals[k] = totals.get(k, 0) + c
     ranked = sorted(totals, key=lambda k: (-totals[k], k))
     return frozenset(ranked[:n])
 
 
-def collisions(valid: dict[str, str], candidates: Iterable[str]) -> list[str]:
+def collisions(valid: dict[str, str], candidates: Iterable[str], lang: str) -> list[str]:
     """Human-readable ``key: kept (dropped, ...)`` lines for the run summary."""
     by_key: dict[str, set[str]] = {}
     for w in candidates:
-        k = fold(w)
+        k = fold(w, lang)
         if k in valid:
             by_key.setdefault(k, set()).add(w)
     lines = []
@@ -220,6 +222,7 @@ def finish_answers(
     valid: dict[str, str],
     blocklist: frozenset[str],
     exclude: frozenset[str],
+    lang: str,
     variants: Callable[[str], set[str]] = no_variants,
 ) -> list[str]:
     """Answers in their valid display, minus the blocklist and the exclusions.
@@ -230,13 +233,13 @@ def finish_answers(
     """
     out = set()
     for w in candidates:
-        k = fold(w)
+        k = fold(w, lang)
         display = valid.get(k)
         if display is None or k in blocklist or k in exclude:
             continue
-        if display == w or display in variants(w):
+        if display in (w, DISPLAY_OVERRIDES.get(lang, {}).get(k)) or display in variants(w):
             out.add(display)
-    return sorted(out, key=lambda w: (fold(w), w))
+    return sorted(out, key=lambda w: (fold(w, lang), w))
 
 
 # --- French ------------------------------------------------------------------------------
@@ -292,7 +295,7 @@ def fr_answer_ok(
     is_inflection: Callable[[str], bool],
 ) -> bool:
     """Every answer rule except the display, blocklist and exclusion checks."""
-    if fold(word) not in top:
+    if fold(word, "fr") not in top:
         return False
     if any(e.archaic for e in entries) or not any(e.pos for e in entries):
         return False
@@ -307,7 +310,7 @@ def build_fr(littre_tar: bytes, counts: Counts, blocklist: frozenset[str]):
     entries = fr.parse_littre(idx, dz)
     by_word: dict[str, list[fr.Entry]] = {}
     for e in entries:
-        if is_key(fold(e.word), "fr"):
+        if is_key(fold(e.word, "fr"), "fr"):
             by_word.setdefault(e.word, []).append(e)
     verbs, nominal = fr_inflection_sources(entries)
     inflections = verbs | nominal
@@ -328,8 +331,8 @@ def build_fr(littre_tar: bytes, counts: Counts, blocklist: frozenset[str]):
         return fr_is_inflection(w, by_word[w], w in verbs, w in nominal, counts)
 
     cands = [w for w in by_word if fr_answer_ok(w, by_word[w], top, counts, is_infl)]
-    answers = finish_answers(cands, valid, blocklist, ANSWER_EXCLUDE["fr"], variants)
-    return valid, answers, collisions(valid, set(by_word) | inflections)
+    answers = finish_answers(cands, valid, blocklist, ANSWER_EXCLUDE["fr"], "fr", variants)
+    return valid, answers, collisions(valid, set(by_word) | inflections, "fr")
 
 
 # --- Spanish -----------------------------------------------------------------------------
@@ -365,13 +368,13 @@ def build_es(wspanish_tar: bytes, counts: Counts, blocklist: frozenset[str]):
     cands = [
         w
         for w in lemmas5
-        if fold(w) in top
+        if fold(w, "es") in top
         and counts.lower_share(w) >= MIN_LOWER_SHARE
         and counts.top_pos(w) != "X"
         and not es_is_inflection(w, every, counts)
     ]
-    answers = finish_answers(cands, valid, blocklist, ANSWER_EXCLUDE["es"])
-    return valid, answers, collisions(valid, set(lemmas5) | infl)
+    answers = finish_answers(cands, valid, blocklist, ANSWER_EXCLUDE["es"], "es")
+    return valid, answers, collisions(valid, set(lemmas5) | infl, "es")
 
 
 # --- main --------------------------------------------------------------------------------
@@ -399,7 +402,7 @@ def main(argv: list[str] | None = None) -> None:
     for lang in args.lang or ("fr", "es"):
         counts = load_counts(NGRAM_SHARDS[lang], cache, args.workers)
         blocklist = parse_blocklist(
-            (WORDS_DIR / f"answers_blocklist_{lang}.txt").read_text(encoding="utf-8")
+            (WORDS_DIR / f"answers_blocklist_{lang}.txt").read_text(encoding="utf-8"), lang
         )
         if lang == "fr":
             src = fetch_verified(LITTRE_URL, LITTRE_SHA256)

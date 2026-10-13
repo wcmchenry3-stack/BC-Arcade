@@ -94,7 +94,7 @@ class Counts:
 
 def wanted(base: str) -> bool:
     """Keep a token whose lowercase fold is 5 letters (either language's alphabet)."""
-    key = fold(base)
+    key = fold(base, "es")  # keeps ñ: a superset of both alphabets
     return len(key) == 5 and all(ch in ALPHABETS["es"] for ch in key)
 
 
@@ -150,6 +150,40 @@ class _HashingReader:
             pass
 
 
+# The longest real line (a common word with ~550 years of counts) is ~20 KB; anything
+# far longer is not an Ngram line and is skipped without being held in memory.
+MAX_LINE = 1 << 20
+_CHUNK = 1 << 16
+
+
+def bounded_lines(stream, max_len: int = MAX_LINE):
+    """Yield the newline-terminated lines of ``stream``, at most ``max_len`` bytes each.
+
+    Reads ``_CHUNK`` bytes at a time with ``readline(n)``, so a stream with no newline
+    never buffers more than ``max_len``; an over-long line is drained and dropped.
+    """
+    while True:
+        last = stream.readline(_CHUNK)
+        if not last:
+            return
+        parts, size = [last], len(last)
+        while not last.endswith(b"\n"):
+            last = stream.readline(_CHUNK)
+            if not last:
+                break
+            size += len(last)
+            if size <= max_len:
+                parts.append(last)
+            else:
+                parts = []  # too long: keep draining, hold nothing
+        if size <= max_len:
+            yield b"".join(parts)
+
+
+class ChecksumMismatch(Exception):
+    """A downloaded shard does not match its pinned SHA-256."""
+
+
 def extract_shard(url: str) -> tuple[str, Counts]:
     """Stream one shard; return (sha256 of the gzip bytes, its 5-letter counts)."""
     counts = Counts()
@@ -157,7 +191,7 @@ def extract_shard(url: str) -> tuple[str, Counts]:
     with urllib.request.urlopen(req, timeout=300) as resp:
         reader = _HashingReader(resp)
         with gzip.GzipFile(fileobj=reader) as gz:
-            for raw in gz:
+            for raw in bounded_lines(gz):
                 tab = raw.find(b"\t")
                 # A wanted token is <= 5 chars (<= 10 UTF-8 bytes) plus an optional _TAG.
                 if tab < 4 or tab > 16:
@@ -172,7 +206,12 @@ def _cache_path(cache_dir: Path, sha256: str) -> Path:
 
 
 def load_shard(shard: Shard, cache_dir: Path | None) -> Counts:
-    """Counts for one pinned shard, from the cache when present, else streamed + verified."""
+    """Counts for one pinned shard, from the cache when present, else streamed + verified.
+
+    The cache is trusted as is: it is only ever written after a verified download, and
+    it is not re-hashed when read. Raises ChecksumMismatch (a plain Exception, so it
+    crosses a multiprocessing Pool cleanly) when the download differs from the pin.
+    """
     url, sha256 = shard
     if cache_dir is not None:
         path = _cache_path(cache_dir, sha256)
@@ -180,7 +219,9 @@ def load_shard(shard: Shard, cache_dir: Path | None) -> Counts:
             return Counts.from_json(json.loads(gzip.decompress(path.read_bytes())))
     digest, counts = extract_shard(url)
     if digest != sha256:
-        sys.exit(f"checksum mismatch for {url}\n  expected {sha256}\n  got      {digest}")
+        raise ChecksumMismatch(
+            f"checksum mismatch for {url}\n  expected {sha256}\n  got      {digest}"
+        )
     if cache_dir is not None:
         cache_dir.mkdir(parents=True, exist_ok=True)
         blob = json.dumps(counts.to_json(), sort_keys=True).encode("utf-8")
@@ -193,15 +234,21 @@ def _load_shard_star(args: tuple[Shard, Path | None]) -> Counts:
 
 
 def load_counts(shards: tuple[Shard, ...], cache_dir: Path | None, workers: int) -> Counts:
-    """Merge every shard's counts (shards run in parallel; merge order is fixed)."""
+    """Merge every shard's counts (shards run in parallel; merge order is fixed).
+
+    Exits non-zero, in the parent process, when any shard fails its checksum.
+    """
     from multiprocessing import Pool
 
     jobs = [(s, cache_dir) for s in shards]
-    if workers <= 1:
-        parts = [_load_shard_star(j) for j in jobs]
-    else:
-        with Pool(min(workers, len(jobs))) as pool:
-            parts = pool.map(_load_shard_star, jobs)
+    try:
+        if workers <= 1:
+            parts = [_load_shard_star(j) for j in jobs]
+        else:
+            with Pool(min(workers, len(jobs))) as pool:
+                parts = pool.map(_load_shard_star, jobs)
+    except ChecksumMismatch as exc:
+        sys.exit(str(exc))
     total = Counts()
     for p in parts:
         total.merge(p)

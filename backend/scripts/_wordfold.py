@@ -1,38 +1,26 @@
-"""Accent folding for the French and Spanish Daily Word lists (#3239, contract for #3240).
+"""Fold keys for the French and Spanish Daily Word generator (#3239).
 
-``fold`` turns a display word (``était``, ``árbol``, ``cœur``, ``niño``) into its gameplay
-key (``etait``, ``arbol``, ``coeur``, ``niño``). It is a pure function with no I/O so the
-runtime helper in #3240 can share or mirror it exactly.
+``fold`` is the runtime's own ``daily_word.normalize.fold`` (#3240), imported rather than
+copied so the generated lists and the game can never disagree on a key: ``était`` ->
+``etait``, ``cœur`` -> ``coeur``, ``niño`` -> ``niño`` in ``es`` (``nino`` in ``fr``).
 """
 
 from __future__ import annotations
 
+import sys
 import unicodedata
+from pathlib import Path
 
-_TILDE = "\u0303"  # COMBINING TILDE (n + this = ñ)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from daily_word.normalize import fold
+
+__all__ = ["ALPHABETS", "accent_count", "fold", "is_key", "words"]
 
 ALPHABETS = {
     "fr": frozenset("abcdefghijklmnopqrstuvwxyz"),
     "es": frozenset("abcdefghijklmnopqrstuvwxyzñ"),
 }
-
-
-def fold(word: str) -> str:
-    """Gameplay key for a display word.
-
-    Lowercase, NFD-decompose, drop every combining mark except the tilde on ``n`` (so
-    ``ñ`` survives), recompose to NFC, then map ``œ``->``oe`` and ``æ``->``ae``.
-    Language-independent; ``is_key`` applies each language's alphabet.
-    """
-    out: list[str] = []
-    for ch in unicodedata.normalize("NFD", word.lower()):
-        if unicodedata.combining(ch):
-            if ch == _TILDE and out and out[-1] == "n":
-                out.append(ch)
-            continue
-        out.append(ch)
-    s = unicodedata.normalize("NFC", "".join(out))
-    return s.replace("œ", "oe").replace("æ", "ae")
 
 
 def is_key(key: str, lang: str) -> bool:

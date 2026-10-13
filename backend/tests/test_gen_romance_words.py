@@ -49,12 +49,20 @@ from _wordfold import accent_count, fold, is_key, words
     ],
 )
 def test_fold(word, key):
-    assert fold(word) == key
+    assert fold(word, "es") == key
+    assert fold(word, "fr") == key.replace("ñ", "n")
+
+
+def test_fold_is_the_runtime_fold():
+    from daily_word import normalize
+
+    assert fold is normalize.fold
 
 
 def test_fold_is_idempotent_and_keeps_n_tilde_as_one_code_point():
-    assert fold(fold("Niño")) == "niño"
-    assert len(fold("niño")) == 4
+    assert fold(fold("Niño", "es"), "es") == "niño"
+    assert len(fold("niño", "es")) == 4
+    assert fold("niño", "fr") == "nino"
 
 
 def test_is_key_applies_each_language_alphabet():
@@ -165,8 +173,58 @@ def test_load_shard_exits_on_checksum_mismatch(monkeypatch):
     monkeypatch.setattr(
         ng.urllib.request, "urlopen", lambda *a, **k: _FakeResponse(_gz("table\t2000,1,1\n"))
     )
-    with pytest.raises(SystemExit, match="checksum mismatch"):
+    with pytest.raises(ng.ChecksumMismatch, match="checksum mismatch"):
         ng.load_shard(("https://example.invalid/s.gz", "0" * 64), None)
+    with pytest.raises(SystemExit, match="checksum mismatch"):
+        ng.load_counts((("https://example.invalid/s.gz", "0" * 64),), None, workers=1)
+
+
+_POOL_MISMATCH = """
+import gzip, io, sys
+sys.path.insert(0, sys.argv[1])
+import _ngram as ng
+
+class R(io.BytesIO):
+    def __enter__(self):
+        return self
+    def __exit__(self, *exc):
+        return False
+
+blob = gzip.compress(b"table\\t2000,5,1\\n", mtime=0)
+ng.urllib.request.urlopen = lambda *a, **k: R(blob)
+bad = ("https://example.invalid/s.gz", "0" * 64)
+ng.load_counts((bad, bad, bad), None, workers=2)
+"""
+
+
+def test_load_counts_exits_cleanly_when_a_pool_worker_hits_a_bad_checksum():
+    """A mismatch inside a Pool worker must end the run, not hang pool.map (#3253)."""
+    import subprocess
+
+    proc = subprocess.run(
+        [sys.executable, "-c", _POOL_MISMATCH, str(_BACKEND / "scripts")],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert proc.returncode != 0
+    assert "checksum mismatch" in proc.stderr
+
+
+def test_bounded_lines_skips_over_long_lines_without_buffering_them():
+    stream = io.BytesIO(b"ok\n" + b"x" * 300 + b"\nend\n" + b"y" * 300)
+    assert list(ng.bounded_lines(stream, max_len=100)) == [b"ok\n", b"end\n"]
+    stream = io.BytesIO(b"a" * 50 + b"\n" + b"b" * 20)
+    assert list(ng.bounded_lines(stream, max_len=100)) == [b"a" * 50 + b"\n", b"b" * 20]
+
+
+def test_extract_shard_survives_a_stream_with_no_newline(monkeypatch):
+    blob = _gz(_line("table", (2000, 5)) + "z" * (ng.MAX_LINE + 10))
+    monkeypatch.setattr(ng.urllib.request, "urlopen", lambda *a, **k: _FakeResponse(blob))
+    sha, counts = ng.extract_shard("https://example.invalid/shard.gz")
+    assert sha == hashlib.sha256(blob).hexdigest()
+    assert counts.total == {"table": 5}
 
 
 def test_fetch_verified_exits_on_checksum_mismatch(monkeypatch):
@@ -229,7 +287,7 @@ def test_build_valid_lets_a_respelling_win_the_display(monkeypatch):
 
 def test_top_keys_sums_display_forms_and_breaks_ties_by_key():
     c = _counts({"pêche": 3, "péché": 3, "table": 5, "chose": 5, "niños": 9})
-    assert gen.top_keys(c, "fr", 2) == {"peche", "chose"}
+    assert gen.top_keys(c, "fr", 3) == {"ninos", "peche", "chose"}  # ñ folds to n in fr
     assert gen.top_keys(c, "es", 1) == {"niños"}
 
 
@@ -240,19 +298,29 @@ def test_finish_answers_uses_the_valid_display_and_drops_blocked():
         valid,
         blocklist=frozenset({"merde"}),
         exclude=frozenset(),
+        lang="fr",
         variants=fr.spelling_variants,
     )
     assert out == ["pêche", "poème"]
-    assert gen.finish_answers(["pêche"], valid, frozenset(), frozenset({"peche"})) == []
+    assert gen.finish_answers(["pêche"], valid, frozenset(), frozenset({"peche"}), "fr") == []
+
+
+def test_display_override_beats_ngram_and_keeps_the_answer():
+    c = _counts({"guión": 50, "guion": 1})
+    valid = gen.build_valid(["guión"], [], c, "es")
+    assert valid == {"guion": "guion"}
+    assert gen.finish_answers(["guión"], valid, frozenset(), frozenset(), "es") == ["guion"]
 
 
 def test_collisions_lists_the_dropped_forms():
-    lines = gen.collisions({"peche": "pêche"}, ["pêche", "péché", "pèche", "autre"])
+    lines = gen.collisions({"peche": "pêche"}, ["pêche", "péché", "pèche", "autre"], "fr")
     assert lines == ["peche: pêche (pèche, péché)"]
 
 
 def test_parse_blocklist_folds_and_ignores_comments():
-    assert gen.parse_blocklist("# header\n\nPéter  # note\n  niño \n") == {"peter", "niño"}
+    text = "# header\n\nPéter  # note\n  niño \n"
+    assert gen.parse_blocklist(text, "es") == {"peter", "niño"}
+    assert gen.parse_blocklist(text, "fr") == {"peter", "nino"}
 
 
 def test_tar_member_reads_and_exits_on_missing():

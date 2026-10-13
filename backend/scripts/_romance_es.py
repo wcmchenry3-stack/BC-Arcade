@@ -22,7 +22,7 @@ def parse_wspanish(data: bytes) -> list[str]:
     out = set()
     for line in data.decode("latin-1").splitlines():
         w = unicodedata.normalize("NFC", line.strip().lower())
-        if w.isalpha() and is_key(fold(w), "es"):
+        if w.isalpha() and is_key(fold(w, "es"), "es"):
             out.add(w)
     return sorted(out)
 

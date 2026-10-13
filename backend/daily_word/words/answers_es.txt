@@ -38,7 +38,6 @@ aldea
 alear
 alero
 aleta
-aleve
 alfil
 algún
 alias
@@ -136,7 +135,6 @@ bache
 bagre
 baile
 bajar
-bajel
 bajón
 balde
 balón
@@ -178,7 +176,6 @@ bocio
 bogar
 bohío
 boina
-bollo
 bolsa
 bolso
 bombo
@@ -273,7 +270,6 @@ casto
 catar
 catre
 cauce
-cauda
 causa
 cauto
 cavar
@@ -367,7 +363,6 @@ corvo
 coser
 coste
 costo
-coñac
 crear
 credo
 creer
@@ -397,7 +392,6 @@ curva
 curvo
 cutis
 cutre
-dador
 danta
 danza
 dardo
@@ -481,7 +475,6 @@ etilo
 éxito
 éxodo
 extra
-facha
 fácil
 facón
 faena
@@ -505,7 +498,6 @@ fatuo
 fauna
 fauno
 favor
-feble
 fecha
 feliz
 felpa
@@ -543,7 +535,6 @@ flúor
 fobia
 focal
 fogón
-folía
 folio
 fonda
 fondo
@@ -627,7 +618,7 @@ guano
 guapo
 guasa
 guiar
-guión
+guion
 güiro
 guisa
 guiso
@@ -687,7 +678,6 @@ iluso
 impar
 impío
 inane
-ingle
 jabón
 jadeo
 jalar
@@ -702,12 +692,10 @@ jarra
 jarro
 jaspe
 jaula
-jayán
 jeque
 jerga
 jirón
 joven
-joyel
 jubón
 juego
 jugar
@@ -731,7 +719,6 @@ lance
 lanza
 lápiz
 lapso
-laque
 largo
 larva
 lasca
@@ -752,11 +739,9 @@ lento
 lepra
 letal
 letra
-levar
 libra
 libre
 libro
-licor
 ligar
 limar
 limbo
@@ -952,7 +937,6 @@ otoño
 oveja
 overo
 ovino
-óvulo
 óxido
 ozono
 pacer
@@ -1012,7 +996,6 @@ perro
 pesar
 pesca
 peste
-pezón
 piano
 piara
 picar
@@ -1086,7 +1069,6 @@ pulso
 punta
 punto
 purga
-puñal
 queja
 quema
 quena
@@ -1117,7 +1099,6 @@ reata
 recio
 recta
 recto
-recua
 redil
 regar
 regio
@@ -1180,7 +1161,6 @@ rumor
 rural
 saber
 sabio
-sable
 sabor
 sacar
 sacro
@@ -1205,7 +1185,6 @@ sauce
 saúco
 savia
 sayal
-sayón
 sazón
 secar
 secta
@@ -1223,7 +1202,6 @@ sesgo
 sexto
 señal
 señor
-sidra
 siega
 sifón
 sigla
@@ -1244,7 +1222,6 @@ solar
 solaz
 soleá
 solfa
-solio
 sonar
 sonda
 soplo
@@ -1382,7 +1359,6 @@ tribu
 trigo
 trino
 tripa
-troje
 trono
 tropa
 tropo
@@ -1430,7 +1406,6 @@ venda
 venir
 venta
 veraz
-verba
 verbo
 verde
 verja

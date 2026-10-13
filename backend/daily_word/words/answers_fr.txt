@@ -102,7 +102,6 @@ baril
 baron
 barre
 baser
-basse
 bâtir
 bâton
 batte
@@ -112,7 +111,6 @@ bazar
 béant
 bêche
 beige
-belle
 bémol
 bénir
 benne
@@ -125,7 +123,6 @@ biais
 biche
 bidet
 bidon
-bière
 bijou
 bilan
 bille
@@ -140,9 +137,7 @@ bœuf
 bogue
 boire
 boîte
-bonne
 bonté
-bonze
 borax
 borne
 bosse
@@ -155,14 +150,12 @@ bouse
 boxer
 boyau
 brave
-brève
 bribe
 bride
 brise
 brome
 bruit
 brume
-brune
 brute
 bûche
 bulbe
@@ -205,7 +198,6 @@ caste
 cause
 céder
 cèdre
-celle
 cesse
 chair
 châle
@@ -215,7 +207,6 @@ chaos
 chape
 chaud
 chaux
-cheik
 chêne
 chien
 choir
@@ -224,7 +215,6 @@ chope
 chose
 chute
 cible
-cidre
 ciguë
 cirer
 citer
@@ -289,7 +279,6 @@ cuvée
 cuver
 cycle
 cygne
-dague
 dalle
 damer
 dandy
@@ -329,7 +318,6 @@ dinde
 dîner
 divan
 divin
-djinn
 docte
 dogme
 dogue
@@ -337,7 +325,6 @@ doigt
 dorer
 doser
 doter
-douce
 doute
 douve
 douze
@@ -533,7 +520,6 @@ golfe
 gombo
 gomme
 gorge
-gosse
 goule
 grâce
 grade
@@ -748,7 +734,6 @@ modal
 moine
 moire
 moite
-molle
 momie
 monde
 moral
@@ -756,7 +741,6 @@ morne
 morue
 motet
 motif
-moule
 moyen
 moyeu
 mufle
@@ -790,7 +774,6 @@ nièce
 nimbe
 noble
 nœud
-noire
 nonce
 nonne
 noria
@@ -802,7 +785,6 @@ noyau
 noyer
 nuage
 nuire
-nulle
 nuque
 oasis
 obéir
@@ -955,7 +937,6 @@ purin
 quart
 quasi
 quête
-queue
 rabot
 radis
 radon
@@ -1030,7 +1011,6 @@ ruser
 sabir
 sable
 sabot
-sabre
 saler
 salin
 salir
@@ -1051,7 +1031,6 @@ sceau
 scène
 scier
 séant
-sèche
 secte
 seize
 selle
@@ -1086,7 +1065,6 @@ sorte
 sosie
 souci
 soude
-soufi
 soupe
 sourd
 soute
@@ -1115,7 +1093,6 @@ talon
 talus
 tamis
 tanin
-tante
 taper
 tapir
 tapis
@@ -1128,7 +1105,6 @@ tasse
 tâter
 taupe
 taxer
-taxis
 teint
 tempe
 temps
@@ -1197,7 +1173,6 @@ vache
 vague
 valet
 valse
-value
 valve
 vanne
 vaste
@@ -1218,7 +1193,6 @@ vêtir
 veule
 vexer
 vider
-vieil
 vieux
 vigie
 vigne
