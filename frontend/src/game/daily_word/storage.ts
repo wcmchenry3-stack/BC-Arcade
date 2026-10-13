@@ -9,8 +9,8 @@ import { createJsonSlot } from "../_shared/storageSlot";
 // stale save from a previous day is never presented to the player. The
 // screen does that in its restore handler, not in its load (#3127).
 
-// puzzle_id format: "YYYY-MM-DD:lang"
-const PUZZLE_ID_RE = /^\d{4}-\d{2}-\d{2}:[a-z]{2}$/;
+// puzzle_id format: "YYYY-MM-DD:lang" (Hindi) or "YYYY-MM-DD:lang:version" (English, #3155)
+const PUZZLE_ID_RE = /^\d{4}-\d{2}-\d{2}:[a-z]{2}(:\d+)?$/;
 
 export function looksValid(v: unknown): v is DailyWordState {
   if (v === null || typeof v !== "object") return false;

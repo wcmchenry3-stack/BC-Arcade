@@ -70,7 +70,7 @@ Daily Word has **no leaderboard**. Its board is declared disabled (`enabled=Fals
 
 ## Daily lifecycle and rollover
 
-The puzzle id is `YYYY-MM-DD:<language>`, derived from the player's current UTC offset.
+The puzzle id is `YYYY-MM-DD:hi` for Hindi and `YYYY-MM-DD:en:<list version>` for English (currently `:en:2`), derived from the player's current UTC offset. The English id carries the answers-list version: replacing the list changes every date's answer, so the id changes with it (#3155). A client holding a board under the old `YYYY-MM-DD:en` id has it discarded as a stale save, and a guess sent with the old id is refused with `stale_puzzle_id`, which makes the client load today's puzzle. Old progress rows stay in `daily_word_progress` until retention prunes them; they are only read by id, so reconciling a game finished under the old id still works. Bump `_LIST_VERSION["en"]` in `puzzle.py` whenever `answers_en.txt` changes.
 
 ### Loading / resume
 
@@ -89,6 +89,7 @@ On mount the screen fetches today's puzzle metadata and loads any saved board.
 The backend rejects a guess for an old puzzle id (with a one-minute clock-drift grace around midnight). When the client receives `stale_puzzle_id`, it tries to replace the board with today's puzzle.
 
 **The replacement is fetch-first and atomic from the player's perspective:**
+
 1. fetch today's puzzle;
 2. if that succeeds, clear the old local state;
 3. abandon the old open session if necessary;
@@ -97,6 +98,7 @@ The backend rejects a guess for an old puzzle id (with a one-minute clock-drift 
 If the fetch fails, the old saved board and its open session are left intact. This fixes the data-loss scenario formerly tracked by #2473.
 
 For a completed puzzle, the result card counts down to the next local midnight. When it reaches zero, the primary action becomes Play Again:
+
 - if the server still serves the same puzzle (for example device/server clock skew), the completed result remains and the client retries after a short countdown;
 - if loading the new puzzle fails, the finished board remains saved and Play Again stays retryable;
 - only a successfully fetched different puzzle replaces it.
@@ -108,6 +110,16 @@ Daily Word currently sends `tz_offset_minutes`, not an IANA timezone id. The cur
 - Location: `frontend/src/game/daily_word/engine.ts`
 - Key exports: guess validation, tile color computation, win/loss detection
 - Puzzle generation: `backend/daily_word/puzzle.py` generates daily puzzles server-side
+
+## Word lists and provenance
+
+Lists live in `backend/daily_word/words/`. English is regenerated, not hand-edited, by `python backend/scripts/gen_english_words.py` (run from the repo root; needs network; sources are pinned by URL and SHA-256 and the script exits on a mismatch):
+
+- `valid_en.txt` (accepted guesses): the 5-letter words of the public-domain ENABLE list.
+- `answers_en.txt` (daily answers): common words from SCOWL 2020.12.07 (`english`/`american` word lists at size levels 10, 20, 35; no proper nouns, abbreviations or variants) that are also in ENABLE, minus inflected forms (plurals `-s`/`-es`/`-ies`, past tense `-ed`/`-ied`, `-ing`, and comparatives `-er`/`-ier`/`-est`, detected when stripping the suffix leaves an ENABLE word; ENABLE has no part of speech, so an explicit `INFLECTION_KEEP` list in the script rescues real standalone words such as pants, water, thing, greed) and the words in `answers_blocklist_en.txt` (offensive, bodily, crime/drug and proper-noun-like words; still accepted as guesses). Every answer is also a valid guess.
+- Hindi lists: see `scripts/gen_hindi_valid_words.py`.
+
+Licences and notices: [`ATTRIBUTION.md`](../../ATTRIBUTION.md). Changing `answers_en.txt` reshuffles every date's answer, so bump the English list version (see the puzzle id above) in the same change.
 
 ## Guess validation and server-side progress
 
@@ -129,6 +141,7 @@ The answer is deterministic, but scored-guess state is also tracked server-side 
 ## Sharing
 
 After a win/loss:
+
 - iOS/Android use the native system share sheet;
 - web copies the generated share text to the clipboard when available;
 - the share text includes the emoji result grid and Daily Word deep link.

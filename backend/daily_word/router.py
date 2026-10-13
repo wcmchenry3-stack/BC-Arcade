@@ -1,7 +1,8 @@
 """Daily Word REST endpoints — GET /today, POST /guess, GET /answer (#1190).
 
 Guess state is server-side (#2197, ``daily_word.progress``). It has to be: the
-puzzle is deterministic and ``puzzle_id`` is just ``YYYY-MM-DD:{lang}``, so
+puzzle is deterministic and ``puzzle_id`` is just ``YYYY-MM-DD:{lang}`` (English
+adds the list version, ``:en:2``, #3155), so
 nothing about the request itself can prove the caller has played. The rate
 limits below throttle volume only — they were never an integrity control, and
 before #2197 they were the *only* thing standing between a caller and both
@@ -44,7 +45,13 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from daily_word.progress import MAX_GUESSES, GuessOutcome, may_see_answer, record_guess
-from daily_word.puzzle import get_answer, get_today_meta, is_valid_guess
+from daily_word.puzzle import (
+    StalePuzzleId,
+    get_answer,
+    get_today_meta,
+    is_valid_guess,
+    parse_puzzle_id,
+)
 from db.base import DbSession, get_session_factory
 from limiter import _real_ip, limiter
 from observability.report import Throttle, report_event
@@ -190,13 +197,16 @@ async def get_today(
 async def post_guess(request: Request, response: Response, body: GuessRequest) -> dict:
     sid = get_session_id(request)
 
+    # An id from before the answers list was replaced (#3155, e.g. a bare
+    # "YYYY-MM-DD:en") names a different answer than today's list would score
+    # it against. Refuse it as stale so the client reloads today's puzzle,
+    # exactly as it does for a previous day.
     try:
-        date_str, lang = body.puzzle_id.rsplit(":", 1)
+        date_str, lang = parse_puzzle_id(body.puzzle_id)
+    except StalePuzzleId as exc:
+        raise HTTPException(status_code=422, detail="stale_puzzle_id") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
-
-    if lang not in _SUPPORTED_LANGS:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id")
 
     # 1-minute grace so guesses submitted just before midnight aren't rejected by
     # server/client clock drift when the server evaluates them just after midnight.
@@ -206,10 +216,7 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
     if date_str not in {local_ts.strftime("%Y-%m-%d"), grace_ts.strftime("%Y-%m-%d")}:
         raise HTTPException(status_code=422, detail="stale_puzzle_id")
 
-    try:
-        answer = get_answer(body.puzzle_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
+    answer = get_answer(body.puzzle_id)
 
     guess = body.guess.lower()  # no-op for Devanagari; NFC handles Hindi normalisation
     if lang == "hi":
@@ -290,7 +297,7 @@ async def get_answer_route(
 ) -> dict:
     """Return the answer, but only to a session that has earned it (#2197).
 
-    ``puzzle_id`` is ``YYYY-MM-DD:{lang}`` and needs no discovery, so this used
+    ``puzzle_id`` is ``YYYY-MM-DD:{lang}[:version]`` and needs no discovery, so this used
     to hand today's word to anyone who asked before making a single guess. The
     gate is the caller's own guess record: solved, or all
     ``MAX_GUESSES`` spent. A session that never played gets 403, which also
@@ -300,6 +307,8 @@ async def get_answer_route(
     # 422 rather than 400, keeping the pre-#2197 contract for that case.
     try:
         answer = get_answer(puzzle_id)
+    except StalePuzzleId as exc:
+        raise HTTPException(status_code=422, detail="stale_puzzle_id") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="invalid_puzzle_id") from exc
 

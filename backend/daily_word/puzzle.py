@@ -4,14 +4,22 @@ Seeding: answers list is shuffled once at load time with random.Random(SALT),
 then index = (int(date.strftime("%Y%m%d")) + SALT) % len(answers).
 SALT comes from the DAILY_WORD_SALT env var (int, default 0).
 Changing SALT shifts the entire future word schedule.
-puzzle_id format: "YYYY-MM-DD:{lang}"
+puzzle_id format: "YYYY-MM-DD:{lang}" for Hindi, "YYYY-MM-DD:en:{version}" for English.
+
+The English id carries the answers-list version (``_LIST_VERSION["en"]``). When the
+English lists were replaced with clearly licensed sources (#3155) every date's answer
+changed, so the id changed with it: a client holding an in-progress board or a guess
+record under the old ``YYYY-MM-DD:en`` id cannot be validated against a different
+answer. Old ids are refused as stale (clients then load the current puzzle) and
+their stored progress rows are left to age out under ``retention``. Bump the
+version whenever the answers list changes.
 """
 
 from __future__ import annotations
 
 import random
 import unicodedata
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from settings import Settings
@@ -43,6 +51,9 @@ _VALID_HI: frozenset[str] = frozenset(
 random.Random(SALT).shuffle(_ANSWERS_EN)
 random.Random(SALT).shuffle(_ANSWERS_HI)
 
+# Per-language answers-list version, appended to the puzzle_id when non-zero.
+_LIST_VERSION: dict[str, int] = {"en": 2, "hi": 0}
+
 _ANSWERS: dict[str, list[str]] = {"en": _ANSWERS_EN, "hi": _ANSWERS_HI}
 _VALID: dict[str, frozenset[str]] = {"en": _VALID_EN, "hi": _VALID_HI}
 
@@ -51,6 +62,41 @@ def _local_date(tz_offset_minutes: int, utc_now: datetime | None = None) -> date
     if utc_now is None:
         utc_now = datetime.now(UTC)
     return utc_now + timedelta(minutes=tz_offset_minutes)
+
+
+def make_puzzle_id(date_str: str, lang: str) -> str:
+    version = _LIST_VERSION.get(lang, 0)
+    return f"{date_str}:{lang}:{version}" if version else f"{date_str}:{lang}"
+
+
+class StalePuzzleId(ValueError):
+    """A well-formed id whose list version is not current (e.g. a pre-#3155 ``YYYY-MM-DD:en``)."""
+
+
+def parse_puzzle_id(puzzle_id: str) -> tuple[str, str]:
+    """Split a puzzle_id into (date_str, lang).
+
+    Raises ``ValueError`` if it is malformed: wrong shape, a date that is not a real
+    ASCII ``YYYY-MM-DD`` calendar date, or an unsupported language. Raises
+    ``StalePuzzleId`` (a ``ValueError``) if it is well formed but carries a list
+    version other than the current one for that language.
+    """
+    parts = puzzle_id.split(":")
+    if len(parts) not in (2, 3):
+        raise ValueError("invalid_puzzle_id")
+    date_str, lang = parts[0], parts[1]
+    if lang not in _ANSWERS:
+        raise ValueError("invalid_puzzle_id")
+    try:
+        # Round-trip: rejects week dates (2026-W05-1) and non-ASCII digits that
+        # fromisoformat would otherwise accept.
+        if date.fromisoformat(date_str).isoformat() != date_str:
+            raise ValueError("invalid_puzzle_id")
+    except ValueError as exc:
+        raise ValueError("invalid_puzzle_id") from exc
+    if make_puzzle_id(date_str, lang) != puzzle_id:
+        raise StalePuzzleId("stale_puzzle_id")
+    return date_str, lang
 
 
 def get_today_meta(
@@ -63,14 +109,14 @@ def get_today_meta(
     date_int = int(local_ts.strftime("%Y%m%d"))
     index = (date_int + SALT) % len(answers)
     return {
-        "puzzle_id": f"{date_str}:{lang}",
+        "puzzle_id": make_puzzle_id(date_str, lang),
         "word_length": len(answers[index]),
     }
 
 
 def get_answer(puzzle_id: str) -> str:
     """Derive the answer for a puzzle_id — used server-side only, never returned."""
-    date_str, lang = puzzle_id.rsplit(":", 1)
+    date_str, lang = parse_puzzle_id(puzzle_id)
     answers = _ANSWERS.get(lang, _ANSWERS_EN)
     date_int = int(date_str.replace("-", ""))
     index = (date_int + SALT) % len(answers)
