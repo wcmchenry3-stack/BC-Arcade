@@ -273,12 +273,13 @@ describe("SudokuScreen — in-game input", () => {
     const emptyCells = getAllByRole("button").filter((n) =>
       /empty/.test(String(n.props.accessibilityLabel ?? ""))
     );
-    await act(async () => {
-      await fireEvent.press(emptyCells[0]!);
-    });
+    // The clock starts at the cell selection (#2942), so freeze Date.now first.
     let now = Date.now();
     const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
     try {
+      await act(async () => {
+        await fireEvent.press(emptyCells[0]!);
+      });
       await act(async () => {
         await fireEvent.press(enabledDigitButton(rendered)); // the puzzle's timer starts
       });
@@ -308,12 +309,13 @@ describe("SudokuScreen — in-game input", () => {
     const emptyCells = getAllByRole("button").filter((n) =>
       /empty/.test(String(n.props.accessibilityLabel ?? ""))
     );
-    await act(async () => {
-      await fireEvent.press(emptyCells[0]!);
-    });
+    // The clock starts at the cell selection (#2942), so freeze Date.now first.
     let now = Date.now();
     const nowSpy = jest.spyOn(Date, "now").mockImplementation(() => now);
     try {
+      await act(async () => {
+        await fireEvent.press(emptyCells[0]!);
+      });
       await act(async () => {
         await fireEvent.press(enabledDigitButton(rendered)); // the puzzle's timer starts
       });
@@ -973,20 +975,171 @@ describe("SudokuScreen — HUD clock (#2964)", () => {
     expect(mockGridRenders).toBe(rendersBeforePause);
   });
 
-  it("starts the HUD's seconds at the first move, not at mount", async () => {
-    jest.useFakeTimers();
-    const r = await renderAndAwaitLoad();
+  async function startAndGetEmptyCells(r: Awaited<ReturnType<typeof renderAndAwaitLoad>>) {
     await act(async () => {
       await fireEvent.press(r.getByRole("button", { name: /start/i }));
     });
-    const emptyCells = r
+    return r
       .getAllByRole("button")
       .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
+  }
+
+  it("holds the clock at 0:00 before any interaction, however long the player waits (#2942)", async () => {
+    jest.useFakeTimers();
+    const r = await renderAndAwaitLoad();
+    await startAndGetEmptyCells(r);
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:00")).toBeTruthy();
+  });
+
+  it("starts the clock on the first cell selection, before any digit (#2942)", async () => {
+    jest.useFakeTimers();
+    const r = await renderAndAwaitLoad();
+    const emptyCells = await startAndGetEmptyCells(r);
     await act(async () => {
       await fireEvent.press(emptyCells[0]!);
     });
     await act(async () => {
-      jest.advanceTimersByTime(1700); // thinking: no move yet
+      jest.advanceTimersByTime(999);
+    });
+    expect(r.getByLabelText("Elapsed time 00:00")).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(r.getByLabelText("Elapsed time 00:01")).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:03")).toBeTruthy();
+  });
+
+  it("a digit after the selection does not restart the clock (#2942)", async () => {
+    jest.useFakeTimers();
+    const r = await renderAndAwaitLoad();
+    const emptyCells = await startAndGetEmptyCells(r);
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+    const digit = r
+      .getAllByLabelText(/enter digit \d/i)
+      .find((b) => !b.props.accessibilityState?.disabled)!;
+    await act(async () => {
+      await fireEvent.press(digit);
+    });
+    expect(r.getByLabelText("Elapsed time 00:02")).toBeTruthy();
+  });
+
+  it("holds a selection-started clock while away and resumes it on return (#2942)", async () => {
+    jest.useFakeTimers();
+    const r = await renderAndAwaitLoad();
+    const emptyCells = await startAndGetEmptyCells(r);
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:02")).toBeTruthy();
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:02")).toBeTruthy();
+    await act(async () => {
+      mockNavListeners.get("focus")?.forEach((h) => h());
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:03")).toBeTruthy();
+  });
+
+  it("selecting a cell alone starts no sync session and abandons nothing on leave (#2942)", async () => {
+    const r = await renderAndAwaitLoad();
+    const emptyCells = await startAndGetEmptyCells(r);
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    expect(mockMarkStarted).not.toHaveBeenCalled();
+    mockCompleteGame.mockClear();
+    await r.unmount();
+    expect(mockCompleteGame).not.toHaveBeenCalled();
+  });
+
+  it("a number pad press with no cell selected starts the clock but no session (#2942)", async () => {
+    jest.useFakeTimers();
+    const r = await renderAndAwaitLoad();
+    await startAndGetEmptyCells(r);
+    const digit = r
+      .getAllByLabelText(/enter digit \d/i)
+      .find((b) => !b.props.accessibilityState?.disabled)!;
+    await act(async () => {
+      await fireEvent.press(digit);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:02")).toBeTruthy();
+    expect(mockMarkStarted).not.toHaveBeenCalled();
+  });
+
+  it("a hint pressed first, from a restored select-only save, starts the clock and the session (#2942)", async () => {
+    jest.useFakeTimers();
+    const fresh = loadPuzzle("easy", "classic", () => 0);
+    const open = fresh.grid
+      .flatMap((cells, row) => cells.map((cell, col) => ({ cell, row, col })))
+      .find(({ cell }) => !cell.given)!;
+    await saveGame(selectCell(fresh, open.row, open.col));
+
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:00")).toBeTruthy();
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Hint"));
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:01")).toBeTruthy();
+    expect(mockMarkStarted).toHaveBeenCalledTimes(1);
+  });
+
+  it("a hint pressed with no cell selected starts the clock but no session (#2942)", async () => {
+    jest.useFakeTimers();
+    const r = await renderAndAwaitLoad();
+    await startAndGetEmptyCells(r);
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Hint"));
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:02")).toBeTruthy();
+    expect(mockMarkStarted).not.toHaveBeenCalled();
+  });
+
+  it("a restored save with a selection but no moves does not run the clock until the first digit (#2942)", async () => {
+    jest.useFakeTimers();
+    const fresh = loadPuzzle("easy", "classic", () => 0);
+    const open = fresh.grid
+      .flatMap((cells, row) => cells.map((cell, col) => ({ cell, row, col })))
+      .find(({ cell }) => !cell.given)!;
+    await saveGame(selectCell(fresh, open.row, open.col));
+
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
     });
     expect(r.getByLabelText("Elapsed time 00:00")).toBeTruthy();
 
@@ -997,11 +1150,71 @@ describe("SudokuScreen — HUD clock (#2964)", () => {
       await fireEvent.press(digit);
     });
     await act(async () => {
-      jest.advanceTimersByTime(999);
+      jest.advanceTimersByTime(1000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:01")).toBeTruthy();
+  });
+
+  it("a first cell press while away starts the clock paused; it advances only after return (#2942)", async () => {
+    jest.useFakeTimers();
+    const r = await renderAndAwaitLoad();
+    const emptyCells = await startAndGetEmptyCells(r);
+    await act(async () => {
+      mockNavListeners.get("blur")?.forEach((h) => h());
+    });
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
     });
     expect(r.getByLabelText("Elapsed time 00:00")).toBeTruthy();
     await act(async () => {
-      jest.advanceTimersByTime(1);
+      mockNavListeners.get("focus")?.forEach((h) => h());
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:01")).toBeTruthy();
+  });
+
+  it("New Game after a select-only start resets the HUD to 00:00 until the next interaction (#2942)", async () => {
+    jest.useFakeTimers();
+    const r = await renderAndAwaitLoad();
+    const emptyCells = await startAndGetEmptyCells(r);
+    await act(async () => {
+      await fireEvent.press(emptyCells[0]!);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:03")).toBeTruthy();
+
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("More options"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByText("New Game"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Start New"));
+    });
+    await act(async () => {
+      await fireEvent.press(r.getByText("Quick Restart"));
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:00")).toBeTruthy();
+
+    const fresh = r
+      .getAllByRole("button")
+      .filter((n) => /empty/.test(String(n.props.accessibilityLabel ?? "")));
+    await act(async () => {
+      await fireEvent.press(fresh[0]!);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
     });
     expect(r.getByLabelText("Elapsed time 00:01")).toBeTruthy();
   });
