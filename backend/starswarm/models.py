@@ -416,7 +416,8 @@ class StarSwarmWaveStats(_WaveBlock):
     are kept (logged by ``validate_wave_completed``).
     """
 
-    v: Literal[1]
+    # StrictInt, not Literal[1]: a Literal accepts True and 1.0 as 1 (Codex, #3254)
+    v: StrictInt = Field(ge=WAVE_STATS_VERSION, le=WAVE_STATS_VERSION)
     wave: StrictInt = Field(ge=1, le=MAX_COUNTER)
     difficulty: str = Field(min_length=1, max_length=32)
     outcome: Literal["cleared", "died"]

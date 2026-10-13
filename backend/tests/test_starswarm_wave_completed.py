@@ -150,6 +150,8 @@ _INVALID = {
     "missing v": lambda d: d.pop("v"),
     "v is 2": lambda d: d.__setitem__("v", 2),
     "v is a string": lambda d: d.__setitem__("v", "1"),
+    "v is true": lambda d: d.__setitem__("v", True),
+    "v is a float": lambda d: d.__setitem__("v", 1.0),
     "wave 0": lambda d: d.__setitem__("wave", 0),
     "missing wave": lambda d: d.pop("wave"),
     "bad outcome": lambda d: d.__setitem__("outcome", "won"),
