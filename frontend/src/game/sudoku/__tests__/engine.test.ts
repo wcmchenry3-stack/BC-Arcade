@@ -726,6 +726,17 @@ describe("game events", () => {
 // ---------------------------------------------------------------------------
 
 describe("isFullButWrong / applyHint", () => {
+  it("in notes mode places the solution digit (not a note), snapshots undo, keeps notesMode", () => {
+    const s0 = toggleNotesMode(loadPuzzle("easy", "classic", rng0));
+    const { row, col } = findEmpty(s0);
+    const s1 = applyHint(selectCell(s0, row, col));
+    const placed = s1.grid[row]![col]!;
+    expect(placed.value).toBe(s0.solution.charCodeAt(row * 9 + col) - 48);
+    expect(placed.notes.size).toBe(0);
+    expect(s1.undoStack.length).toBe(1);
+    expect(s1.notesMode).toBe(true);
+  });
+
   it("is false for an unfinished grid and for the solved one", () => {
     const s0 = loadPuzzle("easy", "classic", rng0);
     expect(isFullButWrong(s0)).toBe(false);

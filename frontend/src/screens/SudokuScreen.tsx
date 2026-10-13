@@ -129,11 +129,16 @@ export default function SudokuScreen() {
   // The player's explicit "Show mistakes" choice (#2943), null until they make
   // one: the default is then by difficulty (on for easy only).
   const [showMistakesPref, setShowMistakesPref] = useState<boolean | null>(null);
+  // False until the stored choice has been read: until then nothing is
+  // coloured, so a stored "off" never flashes the easy default.
+  const [showMistakesLoaded, setShowMistakesLoaded] = useState(false);
   const prefChosenRef = useRef(false);
   useEffect(() => {
     let alive = true;
     void loadShowMistakes().then((stored) => {
-      if (alive && !prefChosenRef.current) setShowMistakesPref(stored);
+      if (!alive) return;
+      if (!prefChosenRef.current) setShowMistakesPref(stored);
+      setShowMistakesLoaded(true);
     });
     return () => {
       alive = false;
@@ -142,6 +147,7 @@ export default function SudokuScreen() {
   const handleToggleShowMistakes = useCallback((value: boolean) => {
     prefChosenRef.current = true;
     setShowMistakesPref(value);
+    setShowMistakesLoaded(true);
     void saveShowMistakes(value);
   }, []);
   // Whether the clock is advancing (started, not paused). It lives outside
@@ -503,7 +509,7 @@ export default function SudokuScreen() {
     });
   }, [startClockRef, syncClockActivity, ensureSyncStarted, setState]);
 
-  const showMistakes = showMistakesPref ?? state?.difficulty === "easy";
+  const showMistakes = showMistakesLoaded && (showMistakesPref ?? state?.difficulty === "easy");
   const fullButWrong = state !== null && isFullButWrong(state);
 
   const headerRight = useMemo(() => {
@@ -582,7 +588,11 @@ export default function SudokuScreen() {
           </View>
 
           <View style={styles.optionsRow}>
-            <Text style={[styles.optionLabel, { color: colors.textMuted }]}>
+            <Text
+              style={[styles.optionLabel, { color: colors.textMuted }]}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            >
               {t("settings.showMistakes")}
             </Text>
             <Switch

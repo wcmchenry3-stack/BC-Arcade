@@ -83,13 +83,11 @@ describe("sudoku storage", () => {
     const { row, col } = findFirstEmpty(s);
     const correct = s.solution.charCodeAt(row * 9 + col) - 48;
     // An illegal digit (a peer already holds it): only those are errors (#2943).
-    let wrong: CellValue = 1;
-    for (let d = 1; d <= 9; d++) {
-      if (d !== correct && getConflicts(s.grid, row, col, d).length > 0) {
-        wrong = d as CellValue;
-        break;
-      }
+    let wrong: CellValue | null = null;
+    for (let d = 1; d <= 9 && wrong === null; d++) {
+      if (d !== correct && getConflicts(s.grid, row, col, d).length > 0) wrong = d as CellValue;
     }
+    if (wrong === null) throw new Error("no illegal digit for this cell");
     s = selectCell(s, row, col);
     s = enterDigit(s, wrong);
     s = toggleNotesMode(s);

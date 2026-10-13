@@ -73,6 +73,7 @@ A hint:
 - enters the correct solution digit through the normal placement logic;
 - starts the puzzle clock (if not already running) on any press, even one that does nothing such as no cell selected, and starts the sync session only when it actually places a digit;
 - creates a normal undo snapshot;
+- places the digit even in Notes mode (it never toggles a pencil mark, and Notes mode stays on);
 - does **not** add an error or carry a separate score penalty.
 
 ## Errors and completion
