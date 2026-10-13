@@ -180,6 +180,13 @@ export default function HeartsScreen() {
   const [showRename, setShowRename] = useState(false);
   const [playerNames, setPlayerNames] = useState<string[]>([...DEFAULT_NAMES]);
   const [draftNames, setDraftNames] = useState<string[]>([...DEFAULT_NAMES]);
+  // What the rename form was seeded with, per seat: whether the stored name was the
+  // English default, and the label shown. A seat goes back to the stored default only if
+  // it was one and is still exactly that label (#2221).
+  const draftSeedRef = useRef<{ wasDefault: boolean[]; labels: string[] }>({
+    wasDefault: [],
+    labels: [],
+  });
   // Stored names keep the English defaults (persisted + compared); the default
   // seats are translated at render time, custom names are shown as typed (#2221).
   const seatDefaults = useMemo(() => DEFAULT_NAMES.map((_, i) => t(`seat.${i}`)), [t]);
@@ -755,15 +762,21 @@ export default function HeartsScreen() {
   }
 
   function handleOpenRename() {
+    draftSeedRef.current = {
+      wasDefault: playerNames.map((n, i) => n === DEFAULT_NAMES[i]),
+      labels: [...playerLabels],
+    };
     setDraftNames([...playerLabels]);
     setShowRename(true);
   }
 
   function handleSaveNames() {
+    const seed = draftSeedRef.current;
     const validated = playerNames.map((def, i) => {
-      const name = validateName(draftNames[i] ?? "", seatDefaults[i] ?? def);
-      // A translated default (or an empty field) goes back to the stored English default.
-      return name === seatDefaults[i] ? (DEFAULT_NAMES[i] ?? def) : name;
+      const draft = draftNames[i] ?? "";
+      const stored = DEFAULT_NAMES[i] ?? def;
+      if (seed.wasDefault[i] && draft === seed.labels[i]) return stored;
+      return validateName(draft, stored);
     });
     setPlayerNames(validated);
     savePlayerNames(validated).catch(() => {});

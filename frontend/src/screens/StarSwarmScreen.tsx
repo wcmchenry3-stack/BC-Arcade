@@ -14,7 +14,7 @@
  *   5. Audio and screen-reader cues (#2484–#2490) — `useStarSwarmAudio` and spoken events.
  *   6. Dev panel (#2567) — StarSwarmDevPanel, dev and internal pre-launch builds only.
  */
-import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -42,7 +42,6 @@ import {
   CANVAS_W,
   CANVAS_H,
   DIFFICULTY_TIERS,
-  difficultyLabel,
   difficultyMultiplier,
   engineCounters,
 } from "../game/starswarm/engine";
@@ -98,15 +97,6 @@ const DEV_TOOLS = __DEV__ || isPreLaunchApiBuild();
 /** The run stays paused on return until the player resumes it: nothing to do then. */
 const noop = () => {};
 
-// Each tier on its own row, its score multiplier underneath (#2982).
-const tierOptions: readonly DifficultyOption<DifficultyTier>[] = DIFFICULTY_TIERS.map((tier) => ({
-  value: tier,
-  label: difficultyLabel(tier),
-  description: `×${difficultyMultiplier(tier)}`,
-  accessibilityLabel: `${difficultyLabel(tier)} ×${difficultyMultiplier(tier)}`,
-  fullWidth: true,
-}));
-
 /**
  * Star Swarm: the canvas, its touch controls, the difficulty picker, the result card and the
  * dev panel. The game itself is the engine in game/starswarm; this screen owns the run's
@@ -146,6 +136,19 @@ export default function StarSwarmScreen() {
 function StarSwarmGame() {
   const { t } = useTranslation("starswarm");
   const { t: tResult } = useTranslation("result");
+  // Each tier on its own row, its score multiplier underneath (#2982); the rank is
+  // translated here, the tier id stays the key (#2221).
+  const tierOptions = useMemo<readonly DifficultyOption<DifficultyTier>[]>(
+    () =>
+      DIFFICULTY_TIERS.map((tier) => ({
+        value: tier,
+        label: t(`tier.${tier}`),
+        description: `×${difficultyMultiplier(tier)}`,
+        accessibilityLabel: `${t(`tier.${tier}`)} ×${difficultyMultiplier(tier)}`,
+        fullWidth: true,
+      })),
+    [t]
+  );
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList, "StarSwarm">>();
@@ -634,7 +637,7 @@ function StarSwarmGame() {
         <GameResultModal
           visible={result !== null && !showDifficultyPicker}
           outcome="ended"
-          eyebrow={`${t("game.title")} · ${difficultyLabel(result?.tier ?? difficulty)}`}
+          eyebrow={`${t("game.title")} · ${t(`tier.${result?.tier ?? difficulty}`)}`}
           subtitle={result ? t("result.reachedWave", { wave: result.wave }) : undefined}
           hero={{ kind: "score", label: tResult("stat.score"), value: result?.score ?? 0 }}
           isNewBest={result?.isNewBest ?? false}

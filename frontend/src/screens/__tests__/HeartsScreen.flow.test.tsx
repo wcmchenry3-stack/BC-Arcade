@@ -17,6 +17,8 @@ import { loadGame, saveGame } from "../../game/hearts/storage";
 import { loadPlayerNames, savePlayerNames } from "../../game/hearts/playerNames";
 import i18n from "i18next";
 import EsHearts from "../../i18n/locales/es/hearts.json";
+import FrCaHearts from "../../i18n/locales/fr-CA/hearts.json";
+import FrCaCommon from "../../i18n/locales/fr-CA/common.json";
 import EsCommon from "../../i18n/locales/es/common.json";
 import type { HeartsState } from "../../game/hearts/types";
 import { playedCount } from "../../test-utils/mockScreenDeps";
@@ -438,6 +440,51 @@ describe("player names", () => {
       });
       await press(api, "Guardar");
       expect(savePlayerNames).toHaveBeenCalledWith(["You", "West", "Zed", "East"]);
+    });
+
+    it("stores a translated default typed into a previously custom seat as typed", async () => {
+      (loadPlayerNames as jest.Mock).mockResolvedValue(["You", "West", "Zed", "East"]);
+      const api = await mountOn(inGame());
+      await press(api, "Más opciones");
+      await act(async () => {
+        await fireEvent.press(api.getByText("Editar nombres"));
+      });
+      await act(async () => {
+        await fireEvent.changeText(
+          api.getByLabelText("Jugador 3 (predeterminado: Norte)"),
+          "Norte"
+        );
+      });
+      await press(api, "Guardar");
+      expect(savePlayerNames).toHaveBeenCalledWith(["You", "West", "Norte", "East"]);
+    });
+  });
+
+  describe("an existing custom name that equals a translated default (#2221)", () => {
+    beforeEach(async () => {
+      i18n.addResourceBundle("fr-CA", "hearts", FrCaHearts);
+      i18n.addResourceBundle("fr-CA", "common", FrCaCommon);
+      await i18n.changeLanguage("fr-CA");
+    });
+    afterEach(async () => {
+      await i18n.changeLanguage("en");
+      (loadPlayerNames as jest.Mock).mockResolvedValue(["You", "West", "North", "East"]);
+    });
+
+    it("stays custom in storage while another seat is edited", async () => {
+      (loadPlayerNames as jest.Mock).mockResolvedValue(["You", "Ouest", "North", "East"]);
+      const api = await mountOn(inGame());
+      await act(async () => {
+        await fireEvent.press(api.getByTestId("nav-menu"));
+      });
+      await act(async () => {
+        await fireEvent.press(api.getByText(FrCaHearts["settings.rename"]));
+      });
+      await act(async () => {
+        await fireEvent.changeText(api.getByLabelText("Joueur 4 (par défaut : Est)"), "Zed");
+      });
+      await press(api, FrCaHearts["settings.save"]);
+      expect(savePlayerNames).toHaveBeenCalledWith(["You", "Ouest", "North", "Zed"]);
     });
   });
 
