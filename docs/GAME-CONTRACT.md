@@ -279,7 +279,9 @@ module = MyGameModule()
 
 Each game's `games.metadata` JSONB column is validated on write by a Pydantic model attached to the `GameModule`. The `CreateGameRequest` validator calls `mod.metadata_model.model_validate(metadata)` and returns a 422 if it fails.
 
-All metadata models use `extra="forbid"` to prevent arbitrary data from being silently stored.
+All metadata models use `extra="forbid"` to prevent arbitrary data from being silently stored: a key a game's model doesn't declare is a 422 on `POST /games`, for every game (#3221). `tests/test_metadata_forbid_extra.py` checks this for every registered game, and that each game's model accepts the metadata the current app sends (the audited key sets are hardcoded there, with the frontend source beside each); a new game must be added to that table.
+
+This rule covers creation-time metadata only. The `result_model` blocks are separate (see "Completion merge" below): Hearts' and Yacht's keep `extra="allow"` on purpose, because a 400 on `/complete` is dead-lettered by the app's sync worker and would lose the score.
 
 | Game        | Model               | Fields                                                                                                                                                                                                                                                           |
 | ----------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
