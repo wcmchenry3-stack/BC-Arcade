@@ -1,4 +1,4 @@
-"""Daily Word REST endpoints — GET /today, POST /guess, GET /answer (#1190).
+"""Daily Word REST endpoints — GET /today, GET /upcoming, POST /guess, GET /answer (#1190).
 
 Guess state is server-side (#2197, ``daily_word.progress``). It has to be: the
 puzzle is deterministic and ``puzzle_id`` is just ``YYYY-MM-DD:{lang}`` (English
@@ -10,6 +10,7 @@ today's answer and an unlimited supply of scored guesses.
 
 Rate limits:
   GET /today   — 60/minute (IP-keyed, no auth)
+  GET /upcoming — 30/minute (IP-keyed, no auth)
   POST /guess  — 20/hour keyed by f"{session_id}:{puzzle_id}" (compound key
                  isolates by puzzle so the limit resets naturally each new day;
                  20/hour leaves room for invalid-word attempts and network
@@ -49,6 +50,7 @@ from daily_word.puzzle import (
     StalePuzzleId,
     get_answer,
     get_today_meta,
+    get_upcoming,
     is_valid_guess,
     parse_puzzle_id,
 )
@@ -60,6 +62,7 @@ from rate_limits import (
     DAILY_WORD_GUESS_IP_RATE_LIMIT,
     DAILY_WORD_GUESS_SESSION_RATE_LIMIT,
     DAILY_WORD_TODAY_IP_RATE_LIMIT,
+    DAILY_WORD_UPCOMING_IP_RATE_LIMIT,
 )
 from session import get_session_id
 
@@ -182,6 +185,24 @@ async def get_today(
     if lang not in _SUPPORTED_LANGS:
         raise HTTPException(status_code=422, detail="unsupported_language")
     return get_today_meta(tz_offset_minutes, lang)
+
+
+@router.get("/upcoming")
+@limiter.limit(DAILY_WORD_UPCOMING_IP_RATE_LIMIT)
+async def get_upcoming_route(
+    request: Request,  # noqa: ARG001 - slowapi resolves `request` by name
+    tz_offset_minutes: int = Query(0, ge=-840, le=840),
+    lang: str = Query("en"),
+) -> list[dict]:
+    """Today + the next two local days, each with a scrambled answer (#3229).
+
+    For offline play (#3022). ``answer_blob`` is XOR + base64 (see
+    ``puzzle.scramble_answer``): it stops casual spoilers only and is not a
+    security control. Same ``lang`` / ``tz_offset_minutes`` rules as ``/today``.
+    """
+    if lang not in _SUPPORTED_LANGS:
+        raise HTTPException(status_code=422, detail="unsupported_language")
+    return get_upcoming(tz_offset_minutes, lang)
 
 
 @router.post("/guess")

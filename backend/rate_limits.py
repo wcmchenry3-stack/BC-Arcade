@@ -82,6 +82,8 @@ GOOGLE_NOTIFICATION_IP_RATE_LIMIT = "300/minute"
 # --- Daily Word (free game, IP-keyed unless noted) --------------------------------
 # GET /daily-word/today.
 DAILY_WORD_TODAY_IP_RATE_LIMIT = "60/minute"
+# GET /daily-word/upcoming (offline prefetch; a few calls per day per device).
+DAILY_WORD_UPCOMING_IP_RATE_LIMIT = "30/minute"
 # POST /daily-word/guess per session (_guess_key).
 DAILY_WORD_GUESS_SESSION_RATE_LIMIT = "20/hour"
 # POST /daily-word/guess per IP: a deliberately generous volume backstop, because
@@ -162,6 +164,7 @@ ROUTE_LIMITS: dict[str, tuple[Rule, ...]] = {
     "purchases.router.post_apple_notification": (Rule(APPLE_NOTIFICATION_IP_RATE_LIMIT, IP),),
     "purchases.router.post_google_notification": (Rule(GOOGLE_NOTIFICATION_IP_RATE_LIMIT, IP),),
     "daily_word.router.get_today": (Rule(DAILY_WORD_TODAY_IP_RATE_LIMIT, IP),),
+    "daily_word.router.get_upcoming_route": (Rule(DAILY_WORD_UPCOMING_IP_RATE_LIMIT, IP),),
     "daily_word.router.post_guess": (
         Rule(DAILY_WORD_GUESS_SESSION_RATE_LIMIT, GUESS),
         Rule(DAILY_WORD_GUESS_IP_RATE_LIMIT, IP),
