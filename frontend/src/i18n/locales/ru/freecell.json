@@ -18,5 +18,6 @@
   "a11y.boardRegion": "Поле FreeCell",
   "score.moves": "Ходы: {{moves}}",
   "error.supermoveRejected": "Недостаточно свободных ячеек, чтобы переместить эту стопку",
+  "slot.free": "свободно",
   "a11y.foundationComplete": "База заполнена"
 }

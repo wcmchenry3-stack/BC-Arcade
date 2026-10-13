@@ -10,7 +10,6 @@ import {
   POWERUP_DURATION,
   HIT_FLASH_DURATION,
   BULLET_C_W,
-  difficultyLabel,
   difficultyMultiplier,
   MISSION_COMPLETE_FADE_MS,
   decayMissionCompleteTimer,
@@ -919,7 +918,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
       ctx.textAlign = "center";
       ctx.fillStyle = C.hudDiff;
       ctx.fillText(
-        `${difficultyLabel(state.difficulty)} ×${difficultyMultiplier(state.difficulty)}`,
+        `${t(`tier.${state.difficulty}`)} ×${difficultyMultiplier(state.difficulty)}`,
         width / 2,
         26
       );

@@ -41,6 +41,7 @@ import {
   possibleScores as enginePossibleScores,
   isInProgress,
   Category,
+  YachtEngineError,
 } from "../game/yacht/engine";
 import { isAiTurnPending } from "../game/yacht/vsTurn";
 import { saveGame, clearGame } from "../game/yacht/storage";
@@ -317,7 +318,7 @@ export default function GameScreen({ navigation, route }: Props) {
         },
       });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(yachtErrorMessage(e));
     }
   }
 
@@ -369,11 +370,18 @@ export default function GameScreen({ navigation, route }: Props) {
         startAiTurn();
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(yachtErrorMessage(e));
     }
   }
 
   const [error, setError] = useState<string | null>(null);
+
+  // Engine rule violations carry a code; show the translated text, and a
+  // generic translated fallback for anything unexpected (#2221).
+  function yachtErrorMessage(e: unknown): string {
+    if (e instanceof YachtEngineError) return t(`yacht:error.${e.code}`);
+    return t("yacht:error.generic");
+  }
 
   const resetGame = useCallback(
     async (keepMode: boolean) => {

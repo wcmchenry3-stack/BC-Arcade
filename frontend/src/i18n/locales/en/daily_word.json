@@ -1,6 +1,6 @@
 {
   "game.title": "Daily Word",
-  "game.description": "One five-letter word. Six guesses. A new puzzle every day.",
+  "game.description": "Guess the five-letter word in six tries.",
   "game.playLabel": "Play Daily Word",
   "hud.guessesLeft_one": "{{count}} guess left",
   "hud.guessesLeft_other": "{{count}} guesses left",

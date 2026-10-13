@@ -57,5 +57,9 @@
   "difficulty.daring.desc": "Tenta fazer a limpa e mira você com a dama",
   "difficulty.mixed": "Mesa mista",
   "difficulty.mixed.desc": "Um de cada: Cauteloso à esquerda, Estrategista à frente, Ousado à direita",
-  "game.startGame": "Iniciar jogo"
+  "game.startGame": "Iniciar jogo",
+  "seat.0": "Você",
+  "seat.1": "Oeste",
+  "seat.2": "Norte",
+  "seat.3": "Leste"
 }

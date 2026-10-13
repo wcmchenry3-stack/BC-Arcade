@@ -39,5 +39,15 @@
   "hud.cueHull": "船体 +1",
   "hud.cueHullMax": "船体 满级",
   "result.reachedWave": "到达第 {{wave}} 波",
-  "result.wave": "波次"
+  "result.wave": "波次",
+  "tier.Ensign": "海军少尉",
+  "tier.LieutenantJG": "海军中尉",
+  "tier.Lieutenant": "海军上尉",
+  "tier.LieutenantCommander": "海军少校",
+  "tier.Commander": "海军中校",
+  "tier.Captain": "海军上校",
+  "tier.RearAdmiral": "海军少将",
+  "tier.ViceAdmiral": "海军中将",
+  "tier.Admiral": "海军上将",
+  "tier.FleetAdmiral": "海军元帅"
 }

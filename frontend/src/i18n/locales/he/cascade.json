@@ -12,5 +12,6 @@
   "theme.groupLabel": "ערכת פירות",
   "theme.optionLabel": "ערכת {{label}}",
   "event.merged": "התמזגו! נוצר {{fruit}}.",
+  "score.high": "שיא",
   "a11y.board": "לוח המשחק Cascade"
 }

@@ -39,5 +39,15 @@
   "hud.cueHull": "CASCO +1",
   "hud.cueHullMax": "CASCO MÁX",
   "result.reachedWave": "Alcançou a onda {{wave}}",
-  "result.wave": "Onda"
+  "result.wave": "Onda",
+  "tier.Ensign": "Guarda-marinha",
+  "tier.LieutenantJG": "Segundo-tenente",
+  "tier.Lieutenant": "Tenente",
+  "tier.LieutenantCommander": "Capitão-tenente",
+  "tier.Commander": "Comandante",
+  "tier.Captain": "Capitão",
+  "tier.RearAdmiral": "Contra-almirante",
+  "tier.ViceAdmiral": "Vice-almirante",
+  "tier.Admiral": "Almirante",
+  "tier.FleetAdmiral": "Almirante da frota"
 }

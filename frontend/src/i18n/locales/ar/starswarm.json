@@ -39,5 +39,15 @@
   "hud.cueHull": "الهيكل +1",
   "hud.cueHullMax": "الهيكل الأقصى",
   "result.reachedWave": "وصلت إلى الموجة {{wave}}",
-  "result.wave": "الموجة"
+  "result.wave": "الموجة",
+  "tier.Ensign": "ملازم بحري",
+  "tier.LieutenantJG": "ملازم ثانٍ",
+  "tier.Lieutenant": "ملازم أول",
+  "tier.LieutenantCommander": "نقيب بحري",
+  "tier.Commander": "قائد",
+  "tier.Captain": "كابتن",
+  "tier.RearAdmiral": "عميد بحري",
+  "tier.ViceAdmiral": "نائب أدميرال",
+  "tier.Admiral": "أدميرال",
+  "tier.FleetAdmiral": "أدميرال الأسطول"
 }

@@ -890,3 +890,22 @@ describe("roll opts.dice", () => {
     expect(after2.dice[1]).toBe(1); // override applied
   });
 });
+
+describe("engine rule errors carry a code for the UI (#2221)", () => {
+  const codeOf = (fn: () => unknown) => {
+    try {
+      fn();
+    } catch (e) {
+      return (e as { code?: string }).code;
+    }
+    return undefined;
+  };
+
+  it("tags roll and score violations with stable codes", () => {
+    expect(codeOf(() => score(newGame(), "ones"))).toBe("rollFirst");
+    expect(codeOf(() => score(newGame(), "nope" as never))).toBe("unknownCategory");
+    expect(
+      codeOf(() => roll({ ...newGame(), rolls_used: 3 }, [false, false, false, false, false]))
+    ).toBe("noRolls");
+  });
+});

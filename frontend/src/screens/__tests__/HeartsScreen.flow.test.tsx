@@ -14,7 +14,12 @@ import { ThemeProvider } from "../../theme/ThemeContext";
 import { HeartsRoundsProvider } from "../../game/hearts/RoundsContext";
 import { createSeededRng, dealGame, setRng } from "../../game/hearts/engine";
 import { loadGame, saveGame } from "../../game/hearts/storage";
-import { savePlayerNames } from "../../game/hearts/playerNames";
+import { loadPlayerNames, savePlayerNames } from "../../game/hearts/playerNames";
+import i18n from "i18next";
+import EsHearts from "../../i18n/locales/es/hearts.json";
+import FrCaHearts from "../../i18n/locales/fr-CA/hearts.json";
+import FrCaCommon from "../../i18n/locales/fr-CA/common.json";
+import EsCommon from "../../i18n/locales/es/common.json";
 import type { HeartsState } from "../../game/hearts/types";
 import { playedCount } from "../../test-utils/mockScreenDeps";
 import { heartsCard, heartsDealing, heartsPlay, moonHaul } from "./helpers/heartsFixtures";
@@ -392,6 +397,95 @@ describe("player names", () => {
     expect(savePlayerNames).toHaveBeenCalledWith(["You", "Zed", "North", "East"]);
     expect(api.queryByText("Player Names")).toBeNull();
     expect(api.getByText("Zed")).toBeTruthy();
+  });
+
+  describe("default seat names follow the app language (#2221)", () => {
+    beforeEach(async () => {
+      await i18n.changeLanguage("es");
+      i18n.addResourceBundle("es", "hearts", EsHearts);
+      i18n.addResourceBundle("es", "common", EsCommon);
+    });
+    afterEach(async () => {
+      await i18n.changeLanguage("en");
+      (loadPlayerNames as jest.Mock).mockResolvedValue(["You", "West", "North", "East"]);
+    });
+
+    it("renders a persisted English default seat name translated", async () => {
+      // The stored value is the English default; the label shown is Spanish.
+      const api = await mountOn(inGame());
+      expect(api.queryAllByText("Oeste").length).toBeGreaterThan(0);
+      expect(api.queryAllByText("Norte").length).toBeGreaterThan(0);
+      expect(api.queryByText("West")).toBeNull();
+      expect(api.queryByText("North")).toBeNull();
+    });
+
+    it("leaves a custom name untouched", async () => {
+      (loadPlayerNames as jest.Mock).mockResolvedValue(["You", "West", "Zed", "East"]);
+      const api = await mountOn(inGame());
+      expect(api.getByText("Zed")).toBeTruthy();
+      expect(api.queryByText("Norte")).toBeNull();
+      expect(api.queryAllByText("Oeste").length).toBeGreaterThan(0);
+    });
+
+    it("saves the English defaults back when the translated defaults are left as they are", async () => {
+      const api = await mountOn(inGame());
+      await press(api, "Más opciones");
+      await act(async () => {
+        await fireEvent.press(api.getByText("Editar nombres"));
+      });
+      // The form is seeded with the translated defaults; only seat 3 is renamed.
+      expect(api.getByLabelText("Jugador 2 (predeterminado: Oeste)")).toHaveDisplayValue("Oeste");
+      await act(async () => {
+        await fireEvent.changeText(api.getByLabelText("Jugador 3 (predeterminado: Norte)"), "Zed");
+      });
+      await press(api, "Guardar");
+      expect(savePlayerNames).toHaveBeenCalledWith(["You", "West", "Zed", "East"]);
+    });
+
+    it("stores a translated default typed into a previously custom seat as typed", async () => {
+      (loadPlayerNames as jest.Mock).mockResolvedValue(["You", "West", "Zed", "East"]);
+      const api = await mountOn(inGame());
+      await press(api, "Más opciones");
+      await act(async () => {
+        await fireEvent.press(api.getByText("Editar nombres"));
+      });
+      await act(async () => {
+        await fireEvent.changeText(
+          api.getByLabelText("Jugador 3 (predeterminado: Norte)"),
+          "Norte"
+        );
+      });
+      await press(api, "Guardar");
+      expect(savePlayerNames).toHaveBeenCalledWith(["You", "West", "Norte", "East"]);
+    });
+  });
+
+  describe("an existing custom name that equals a translated default (#2221)", () => {
+    beforeEach(async () => {
+      i18n.addResourceBundle("fr-CA", "hearts", FrCaHearts);
+      i18n.addResourceBundle("fr-CA", "common", FrCaCommon);
+      await i18n.changeLanguage("fr-CA");
+    });
+    afterEach(async () => {
+      await i18n.changeLanguage("en");
+      (loadPlayerNames as jest.Mock).mockResolvedValue(["You", "West", "North", "East"]);
+    });
+
+    it("stays custom in storage while another seat is edited", async () => {
+      (loadPlayerNames as jest.Mock).mockResolvedValue(["You", "Ouest", "North", "East"]);
+      const api = await mountOn(inGame());
+      await act(async () => {
+        await fireEvent.press(api.getByTestId("nav-menu"));
+      });
+      await act(async () => {
+        await fireEvent.press(api.getByText(FrCaHearts["settings.rename"]));
+      });
+      await act(async () => {
+        await fireEvent.changeText(api.getByLabelText("Joueur 4 (par défaut : Est)"), "Zed");
+      });
+      await press(api, FrCaHearts["settings.save"]);
+      expect(savePlayerNames).toHaveBeenCalledWith(["You", "Ouest", "North", "Zed"]);
+    });
   });
 
   it("keeps the old names when the edit is cancelled", async () => {

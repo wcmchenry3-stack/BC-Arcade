@@ -57,5 +57,9 @@
   "difficulty.daring.desc": "冲击收全红心，用皇后针对你",
   "difficulty.mixed": "混合牌桌",
   "difficulty.mixed.desc": "各一位：左边谨慎型，对面谋略型，右边激进型",
-  "game.startGame": "开始游戏"
+  "game.startGame": "开始游戏",
+  "seat.0": "你",
+  "seat.1": "西",
+  "seat.2": "北",
+  "seat.3": "东"
 }

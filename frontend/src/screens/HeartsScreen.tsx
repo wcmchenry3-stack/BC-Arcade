@@ -180,6 +180,20 @@ export default function HeartsScreen() {
   const [showRename, setShowRename] = useState(false);
   const [playerNames, setPlayerNames] = useState<string[]>([...DEFAULT_NAMES]);
   const [draftNames, setDraftNames] = useState<string[]>([...DEFAULT_NAMES]);
+  // What the rename form was seeded with, per seat: whether the stored name was the
+  // English default, and the label shown. A seat goes back to the stored default only if
+  // it was one and is still exactly that label (#2221).
+  const draftSeedRef = useRef<{ wasDefault: boolean[]; labels: string[] }>({
+    wasDefault: [],
+    labels: [],
+  });
+  // Stored names keep the English defaults (persisted + compared); the default
+  // seats are translated at render time, custom names are shown as typed (#2221).
+  const seatDefaults = useMemo(() => DEFAULT_NAMES.map((_, i) => t(`seat.${i}`)), [t]);
+  const playerLabels = useMemo(
+    () => playerNames.map((n, i) => (n === DEFAULT_NAMES[i] ? (seatDefaults[i] ?? n) : n)),
+    [playerNames, seatDefaults]
+  );
 
   // scoreHistory now lives on HeartsState (engine-authoritative, persisted).
   const scoreHistory = useMemo(() => gameState?.scoreHistory ?? [], [gameState?.scoreHistory]);
@@ -349,9 +363,9 @@ export default function HeartsScreen() {
     setRoundsSnapshot({
       cumulativeScores: gameState?.cumulativeScores ?? [0, 0, 0, 0],
       scoreHistory,
-      playerLabels: playerNames,
+      playerLabels,
     });
-  }, [gameState?.cumulativeScores, scoreHistory, playerNames, setRoundsSnapshot]);
+  }, [gameState?.cumulativeScores, scoreHistory, playerLabels, setRoundsSnapshot]);
 
   // ─── Run integrity validators (Sentry-warns on impossible state) ──────────
   useEffect(() => {
@@ -418,7 +432,7 @@ export default function HeartsScreen() {
       },
       moonShot: (event) => {
         if (event.shooter === HUMAN) playMoonShot();
-        setMoonShotLabel(playerNames[event.shooter] ?? "");
+        setMoonShotLabel(playerLabels[event.shooter] ?? "");
         setShowMoonShot(true);
       },
       queenOfSpadesPlayed: () => {
@@ -429,14 +443,12 @@ export default function HeartsScreen() {
         playQueenOfSpades();
       },
       queenOfSpades: (event) => {
-        setQueenOfSpadesLabel(playerNames[event.takerSeat] ?? "");
+        setQueenOfSpadesLabel(playerLabels[event.takerSeat] ?? "");
         setShowQueenOfSpades(true);
       },
     },
     () => setGameState((prev) => (prev ? { ...prev, events: [] as HeartsState["events"] } : null))
   );
-
-  const playerLabels = playerNames;
 
   // ─── Start sync on first card play ────────────────────────────────────────
   function ensureSyncStarted(aiDifficulty: AiPreset) {
@@ -750,14 +762,22 @@ export default function HeartsScreen() {
   }
 
   function handleOpenRename() {
-    setDraftNames([...playerNames]);
+    draftSeedRef.current = {
+      wasDefault: playerNames.map((n, i) => n === DEFAULT_NAMES[i]),
+      labels: [...playerLabels],
+    };
+    setDraftNames([...playerLabels]);
     setShowRename(true);
   }
 
   function handleSaveNames() {
-    const validated = playerNames.map((def, i) =>
-      validateName(draftNames[i] ?? "", DEFAULT_NAMES[i] ?? def)
-    );
+    const seed = draftSeedRef.current;
+    const validated = playerNames.map((def, i) => {
+      const draft = draftNames[i] ?? "";
+      const stored = DEFAULT_NAMES[i] ?? def;
+      if (seed.wasDefault[i] && draft.trim() === seed.labels[i]) return stored;
+      return validateName(draft, stored);
+    });
     setPlayerNames(validated);
     savePlayerNames(validated).catch(() => {});
     setShowRename(false);
@@ -1038,7 +1058,7 @@ export default function HeartsScreen() {
         title={t("settings.rename_title")}
       >
         <ScrollView style={styles.renameScroll} contentContainerStyle={styles.renameContent}>
-          {DEFAULT_NAMES.map((def, i) => (
+          {seatDefaults.map((def, i) => (
             <View key={i} style={styles.renameRow}>
               <Text style={[styles.renameLabel, { color: colors.textMuted }]}>
                 {t("settings.player_label", { n: i + 1, default: def })}

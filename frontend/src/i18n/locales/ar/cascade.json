@@ -12,5 +12,6 @@
   "theme.groupLabel": "موضوع مجموعة الفواكه",
   "theme.optionLabel": "موضوع {{label}}",
   "event.merged": "تم الدمج! تم إنشاء {{fruit}}.",
+  "score.high": "الأعلى",
   "a11y.board": "لوحة لعبة Cascade"
 }

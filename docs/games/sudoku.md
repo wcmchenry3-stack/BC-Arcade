@@ -70,7 +70,7 @@ Normal digit placement clears that cell's pencil marks.
 A hint:
 - works only on a selected, empty, non-given cell;
 - enters the correct solution digit through the normal placement logic;
-- starts the puzzle timer/session if this is the first real input;
+- starts the puzzle clock (if not already running) on any press, even one that does nothing such as no cell selected, and starts the sync session only when it actually places a digit;
 - creates a normal undo snapshot;
 - does **not** add an error or carry a separate score penalty.
 
@@ -116,7 +116,7 @@ Equal scores use the shared final tie rule: earlier completion ranks first.
 
 ## Timer
 
-The on-screen timer starts on the first state-changing input, including a valid hint.
+The on-screen timer starts on the **first interaction** (#2942): the first cell press, number pad press or hint press, whichever comes first, even one that changes nothing (for example, a digit with no cell selected). It does not start when the grid renders, so the HUD shows 0:00 until the player touches the board. The sync session still starts only on the first state-changing move, so a puzzle where the player only selected cells is discarded, not abandoned (see Session outcomes). A first interaction that lands while the player is away starts the clock paused.
 
 It pauses while:
 - the app is backgrounded; or
@@ -146,7 +146,7 @@ Sudoku has no competitive winner concept.
 
 - Solving the puzzle records `completed` with the computed score and result `{ won: true, errors }`.
 - Leaving/changing/restarting after play records `abandoned` with `{ won: false, errors }` and no ranked score.
-- An untouched puzzle can be discarded without creating a meaningful played result.
+- An untouched puzzle (including one where only cells were selected) can be discarded without creating a meaningful played result.
 
 Per-game creation metadata is:
 - `difficulty`;

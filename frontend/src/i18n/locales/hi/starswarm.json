@@ -39,5 +39,15 @@
   "hud.cueHull": "हल +1",
   "hud.cueHullMax": "हल MAX",
   "result.reachedWave": "वेव {{wave}} तक पहुंचे",
-  "result.wave": "वेव"
+  "result.wave": "वेव",
+  "tier.Ensign": "एनसाइन",
+  "tier.LieutenantJG": "लेफ्टिनेंट (जे.जी.)",
+  "tier.Lieutenant": "लेफ्टिनेंट",
+  "tier.LieutenantCommander": "लेफ्टिनेंट कमांडर",
+  "tier.Commander": "कमांडर",
+  "tier.Captain": "कैप्टन",
+  "tier.RearAdmiral": "रियर एडमिरल",
+  "tier.ViceAdmiral": "वाइस एडमिरल",
+  "tier.Admiral": "एडमिरल",
+  "tier.FleetAdmiral": "फ्लीट एडमिरल"
 }

@@ -70,5 +70,14 @@
   "vsMode.upperSubtotal": "Subtotaal boven",
   "vsMode.lowerSubtotal": "Subtotaal onder",
   "vsMode.bonusProgress": "Bonus · {{n}} tot 63",
-  "vsMode.bonusUnlocked": "Bonus ✓ behaald"
+  "vsMode.bonusUnlocked": "Bonus ✓ behaald",
+  "error.noRolls": "Je hebt geen worpen meer in deze beurt.",
+  "error.gameOver": "Het spel is afgelopen.",
+  "error.badHeld": "Kon niet bepalen welke dobbelstenen vastgehouden worden. Probeer het opnieuw.",
+  "error.unknownCategory": "Onbekende scorecategorie.",
+  "error.categoryScored": "Deze categorie is al gescoord.",
+  "error.rollFirst": "Gooi minstens één keer voordat je scoort.",
+  "error.jokerUpper": "Jokerregel: je moet in de bijbehorende bovenste categorie scoren.",
+  "error.jokerLower": "Jokerregel: je moet in een vrije categorie van het onderste deel scoren.",
+  "error.generic": "Er ging iets mis. Probeer het opnieuw."
 }

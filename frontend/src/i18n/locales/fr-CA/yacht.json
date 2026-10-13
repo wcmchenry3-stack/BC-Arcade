@@ -71,5 +71,14 @@
   "vsMode.upperSubtotal": "Sous-total sup.",
   "vsMode.lowerSubtotal": "Sous-total inf.",
   "vsMode.bonusProgress": "Bonus · {{n}} pour 63",
-  "vsMode.bonusUnlocked": "Bonus ✓ débloqué"
+  "vsMode.bonusUnlocked": "Bonus ✓ débloqué",
+  "error.noRolls": "Il ne reste plus de lancers pour ce tour.",
+  "error.gameOver": "La partie est terminée.",
+  "error.badHeld": "Impossible de lire quels dés sont gardés. Veuillez réessayer.",
+  "error.unknownCategory": "Catégorie de pointage inconnue.",
+  "error.categoryScored": "Cette catégorie a déjà été utilisée.",
+  "error.rollFirst": "Lancez les dés au moins une fois avant de marquer.",
+  "error.jokerUpper": "Règle du joker : vous devez marquer dans la catégorie supérieure correspondante.",
+  "error.jokerLower": "Règle du joker : vous devez marquer dans une catégorie libre de la section inférieure.",
+  "error.generic": "Une erreur s'est produite. Veuillez réessayer."
 }
