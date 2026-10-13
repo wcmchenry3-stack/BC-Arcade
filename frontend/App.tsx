@@ -25,6 +25,7 @@ import ProfileScreen from "./src/screens/ProfileScreen";
 import BottomTabBar from "./src/components/shared/BottomTabBar";
 import { ThemeProvider } from "./src/theme/ThemeContext";
 import { useHtmlAttributes } from "./src/i18n/useHtmlAttributes";
+import { useDeviceLocaleSync } from "./src/i18n/useDeviceLocaleSync";
 import { NetworkProvider } from "./src/game/_shared/NetworkContext";
 import { EntitlementProvider, useEntitlementGate } from "./src/entitlements/EntitlementContext";
 import {
@@ -299,6 +300,7 @@ function AppCrashFallback({ resetError }: { resetError: () => void }) {
 
 function AppInner() {
   useHtmlAttributes();
+  useDeviceLocaleSync();
   return (
     <NetworkProvider>
       <EntitlementProvider>

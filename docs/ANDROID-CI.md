@@ -38,6 +38,15 @@ other language's resources from all libraries. A normal `expo prebuild` keeps
 both files; after `prebuild --clean`, restore them (the test will fail until
 you do).
 
+`app.json` → `expo.locales` exists for the iOS `.lproj` stubs. Its entries have
+keys under `ios` only, so on Android a prebuild writes empty
+`res/values-b+<code>/strings.xml` files. These are harmless and don't need to be
+committed.
+
+The activity handles the `locale` config change, so changing the language in
+Settings does not restart it. `useDeviceLocaleSync` (in `App.tsx`) switches
+i18next live.
+
 ## Signing configuration
 
 - **Debug**: uses `app/debug.keystore` (standard Android debug key, gitignored)

@@ -29,7 +29,11 @@ Xcode Cloud replaces `CFBundleVersion` with its own auto-incrementing build numb
 
 ## Declared languages
 
-`CFBundleLocalizations` in `Info.plist` (`en`, `es`, `fr-CA`) tells iOS and App Store Connect which languages the app supports: the App Store listing's Languages row and the per-app Language setting come from it. It is set in `app.json` → `ios.infoPlist`, so a prebuild writes the same list, and must match `LAUNCH_LOCALE_CODES` in `frontend/src/i18n/locales.js`. `frontend/src/__tests__/nativeLocaleDeclarations.test.ts` fails if they drift. `en` covers `en-CA`. See [I18N.md](I18N.md#languages-declared-to-the-os-and-the-stores-3151).
+App Store Connect builds the listing's Languages row from the `.lproj` folders in the app bundle, not from `Info.plist`. The app's strings are in JS (i18next), so each launch language (`en`, `es`, `fr-CA`) has a stub `frontend/ios/GamingApp/Supporting/<code>.lproj/InfoPlist.strings` that only sets `CFBundleDisplayName = "BC Arcade"`. Each one is a resource in the GamingApp target's Copy Bundle Resources phase, and its `.lproj` parent folder decides where Xcode copies it in the bundle. `knownRegions` in `project.pbxproj` lists each language.
+
+These files are what `expo prebuild` generates from `app.json` → `expo.locales` (`frontend/locales/ios/<code>.json`, with keys under `ios` so prebuild does not also write them into Android `strings.xml`). Running prebuild again leaves them unchanged. `CFBundleLocalizations` in `Info.plist` (set through `app.json` → `ios.infoPlist`) supplements them and feeds the per-app Language setting.
+
+All of these must match `LAUNCH_LOCALE_CODES` in `frontend/src/i18n/locales.js`. `frontend/src/__tests__/nativeLocaleDeclarations.test.ts` fails if they drift. `en` covers `en-CA`. See [I18N.md](I18N.md#languages-declared-to-the-os-and-the-stores-3151).
 
 ## EAS status
 
