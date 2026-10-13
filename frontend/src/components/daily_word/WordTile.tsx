@@ -18,6 +18,7 @@ import {
 } from "../../theme/theme.dailyword";
 import { typography } from "../../theme/typography";
 import type { DailyWordState, TileStatus } from "../../game/daily_word/types";
+import { tileDisplayLetter } from "../../game/daily_word/engine";
 
 export const FLIP_HALF_MS = 150;
 export const TILE_STAGGER_MS = 100;
@@ -177,7 +178,7 @@ export function TileRow({
       {row.tiles.map((tile, tileIndex) => (
         <WordTile
           key={tileIndex}
-          letter={tile.letter}
+          letter={tileDisplayLetter(tile)}
           status={tile.status}
           isFlipping={isFlipping}
           flipDelay={tileIndex * TILE_STAGGER_MS}

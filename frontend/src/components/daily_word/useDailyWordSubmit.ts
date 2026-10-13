@@ -32,7 +32,9 @@ import { useTranslation } from "react-i18next";
 import {
   applyServerResult,
   markComplete,
+  revealWord,
   sessionResult,
+  tilesWithDisplay,
   withServerGuessCount,
 } from "../../game/daily_word/engine";
 import type { DailyWordState } from "../../game/daily_word/types";
@@ -231,7 +233,9 @@ function applyAccepted(
   /** The answer when the guess was scored on the device (#3230): no fetch. */
   knownAnswer?: string
 ): ReturnType<typeof setTimeout> {
-  const tileStates = result.tiles.map((tile) => ({ letter: tile.letter, status: tile.status }));
+  // fr/es (#3241): the row shows the list's accented spelling; the tiles keep
+  // the folded letters the colours and the keyboard are computed on.
+  const tileStates = tilesWithDisplay(result.tiles, result.display);
 
   // #2541 — keep the server's count on the state; `guessCount` reads it.
   const afterApply = withServerGuessCount(applyServerResult(s, tileStates), result.guesses_used);
@@ -270,7 +274,7 @@ function applyAccepted(
     } else {
       try {
         const answerData = await dailyWordApi.getAnswer(s.puzzle_id);
-        ctx.setAnswer(answerData.answer.toUpperCase());
+        ctx.setAnswer(revealWord(answerData));
       } catch {
         // show modal without answer
       }
@@ -340,7 +344,7 @@ async function closeOutFromServer(
   } else {
     try {
       const answerData = await dailyWordApi.getAnswer(finished.puzzle_id);
-      if (ctx.isMounted()) ctx.setAnswer(answerData.answer.toUpperCase());
+      if (ctx.isMounted()) ctx.setAnswer(revealWord(answerData));
     } catch {
       // Modal still opens; it just won't reveal the word.
     }

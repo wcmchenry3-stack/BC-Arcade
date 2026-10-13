@@ -54,6 +54,7 @@ import {
   setCurrentRowLetter,
   deleteLastLetter,
   buildShareText,
+  revealWord,
   guessCount as countGuesses,
   sessionResult,
 } from "../game/daily_word/engine";
@@ -475,12 +476,12 @@ export default function DailyWordScreen() {
       restoredFinishedRef.current = gameState;
       if (!gameState.won && info.offline) {
         // Offline (#3230): the answer fetched ahead.
-        setAnswer(info.offline.answer.toUpperCase());
+        setAnswer((info.offline.display ?? info.offline.answer).toUpperCase());
       } else if (!gameState.won) {
         dailyWordApi
           .getAnswer(gameState.puzzle_id)
           .then((r) => {
-            if (mountedRef.current) setAnswer(r.answer.toUpperCase());
+            if (mountedRef.current) setAnswer(revealWord(r));
           })
           .catch(() => {});
       }
@@ -569,7 +570,11 @@ export default function DailyWordScreen() {
   async function handleShare() {
     if (!state) return;
     try {
-      const outcome = await shareResult(buildShareText(state, DEEP_LINK));
+      // The emoji grid has no letters; fr/es (#3241) translate the header's
+      // game name. Other languages keep the English header.
+      const title =
+        state.language === "fr" || state.language === "es" ? t("game.title") : undefined;
+      const outcome = await shareResult(buildShareText(state, DEEP_LINK, title));
       if (outcome !== "copied" || !mountedRef.current) return;
       copiedToast.show();
     } catch {
@@ -633,7 +638,7 @@ export default function DailyWordScreen() {
             hidden via opacity + pointerEvents once game is complete */}
         {state !== null && (
           <View
-            style={{ opacity: state.is_complete ? 0 : 1 }}
+            style={{ alignSelf: "stretch", opacity: state.is_complete ? 0 : 1 }}
             pointerEvents={state.is_complete ? "none" : "auto"}
           >
             <WordKeyboard

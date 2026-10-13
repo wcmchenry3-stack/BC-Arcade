@@ -12,19 +12,47 @@ import {
 import { typography } from "../../theme/typography";
 import type { DailyWordState } from "../../game/daily_word/types";
 
-const QWERTY_ROWS = [
+/** Half-a-key gap that centres a nine-letter row under a ten-letter one. */
+const SPACER = "spacer";
+
+type KeyRows = ReadonlyArray<ReadonlyArray<string>>;
+
+const QWERTY_ROWS: KeyRows = [
   ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
-  ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+  [SPACER, "A", "S", "D", "F", "G", "H", "J", "K", "L", SPACER],
   ["Enter", "Z", "X", "C", "V", "B", "N", "M", "Delete"],
-] as const;
+];
+
+// Spanish (#3241): QWERTY plus Ñ after L. There are no accent keys: players
+// type plain letters and the server folds the accents (docs/games/daily_word.md).
+const SPANISH_ROWS: KeyRows = [
+  ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+  ["A", "S", "D", "F", "G", "H", "J", "K", "L", "Ñ"],
+  ["Enter", "Z", "X", "C", "V", "B", "N", "M", "Delete"],
+];
 
 // Devanagari consonants + matras in Varnamala order
-const DEVANAGARI_ROWS = [
+const DEVANAGARI_ROWS: KeyRows = [
   ["क", "ख", "ग", "घ", "च", "छ", "ज", "झ", "ट", "ठ"],
   ["ड", "ढ", "त", "थ", "द", "ध", "न", "प", "फ", "ब"],
   ["Enter", "भ", "म", "य", "र", "ल", "व", "श", "स", "Delete"],
   ["ह", "ा", "ि", "ी", "ु", "ू", "े", "ै", "ो", "ौ"],
-] as const;
+];
+
+/**
+ * The keyboard layout for each puzzle language (#3241). French is QWERTY too:
+ * players in Canada use it. A language without an entry gets QWERTY.
+ */
+export const KEYBOARD_LAYOUTS: Readonly<Record<string, KeyRows>> = {
+  en: QWERTY_ROWS,
+  fr: QWERTY_ROWS,
+  es: SPANISH_ROWS,
+  hi: DEVANAGARI_ROWS,
+};
+
+export function keyboardRows(language: string): KeyRows {
+  return KEYBOARD_LAYOUTS[language] ?? QWERTY_ROWS;
+}
 
 // ---------------------------------------------------------------------------
 // Keyboard
@@ -42,7 +70,7 @@ export function WordKeyboard({
   const { t } = useTranslation("daily_word");
   const { colors } = useTheme();
 
-  const rows = language === "hi" ? DEVANAGARI_ROWS : QWERTY_ROWS;
+  const rows = keyboardRows(language);
 
   // Memoized rather than hoisted: the "unused" key colour follows the theme.
   const KEY_BG = useMemo<Record<string, string>>(
@@ -56,11 +84,15 @@ export function WordKeyboard({
   );
 
   function renderKey(key: string, idx: number) {
+    if (key === SPACER) return <View key={`${key}-${idx}`} style={keyStyles.spacer} />;
+
     const isAction = key === "Enter" || key === "Delete";
     const letterStatus = keyboardState[key.toLowerCase()] ?? keyboardState[key] ?? "unused";
     const bg = isAction ? colors.surfaceHigh : (KEY_BG[letterStatus] ?? KEY_BG.unused);
     const label =
       key === "Enter" ? t("keyboard.enter") : key === "Delete" ? t("keyboard.delete") : key;
+    // A long label ("Effacer") must still fit its key at 320 px.
+    const longLabel = isAction && Array.from(label).length > 6;
 
     return (
       <Pressable
@@ -71,7 +103,16 @@ export function WordKeyboard({
         accessibilityRole="button"
         accessibilityLabel={label}
       >
-        <Text numberOfLines={1} style={[keyStyles.keyText, { color: DAILYWORD_LETTER_TEXT }]}>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.6}
+          style={[
+            keyStyles.keyText,
+            isAction && (longLabel ? keyStyles.actionTextLong : keyStyles.actionText),
+            { color: DAILYWORD_LETTER_TEXT },
+          ]}
+        >
           {label}
         </Text>
       </Pressable>
@@ -80,7 +121,7 @@ export function WordKeyboard({
 
   return (
     <View style={keyStyles.keyboard}>
-      {(rows as ReadonlyArray<ReadonlyArray<string>>).map((row, rowIdx) => (
+      {rows.map((row, rowIdx) => (
         <View key={rowIdx} style={keyStyles.keyRow}>
           {row.map((key, keyIdx) => renderKey(key, keyIdx))}
         </View>
@@ -89,26 +130,38 @@ export function WordKeyboard({
   );
 }
 
+// Keys share the row's width by flex weight instead of a fixed size, so a row
+// of ten (Q-P, and Spanish's A-Ñ) fits at 320 px. Letters weigh 2, action keys
+// 3.8, and a nine-letter row has a half-key spacer (1) at each end.
 const keyStyles = StyleSheet.create({
   keyboard: {
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 520,
     gap: 6,
     paddingHorizontal: 4,
   },
   keyRow: {
     flexDirection: "row",
-    gap: 5,
+    gap: 4,
     justifyContent: "center",
   },
   key: {
-    minWidth: 30,
+    flex: 2,
+    flexBasis: 0,
+    minWidth: 0,
     height: 56,
-    paddingHorizontal: 6,
+    paddingHorizontal: 1,
     borderRadius: 6,
     alignItems: "center",
     justifyContent: "center",
   },
   actionKey: {
-    minWidth: 52,
+    flex: 3.8,
+  },
+  spacer: {
+    flex: 1,
+    flexBasis: 0,
   },
   keyText: {
     fontFamily: typography.label,
@@ -116,5 +169,13 @@ const keyStyles = StyleSheet.create({
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.5,
+  },
+  actionText: {
+    fontSize: 11,
+    letterSpacing: 0,
+  },
+  actionTextLong: {
+    fontSize: 10,
+    letterSpacing: 0,
   },
 });

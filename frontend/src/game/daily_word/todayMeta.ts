@@ -20,8 +20,13 @@ export function getTimezoneOffset(): number {
 /** Puzzle languages every build ships. Add launched languages (es, fr) here. */
 const LAUNCHED_DAILY_WORD_LANGUAGES: readonly string[] = ["en"];
 
-/** Puzzle languages held back from native store builds until launch-ready (#3153). */
-const UNLAUNCHED_DAILY_WORD_LANGUAGES: readonly string[] = ["hi"];
+/**
+ * Puzzle languages held back from native store builds until launch-ready
+ * (#3153). French and Spanish (#3241) wait for native sign-off (#3201): the
+ * `fr-CA` app language plays the `fr` puzzle and `es` the `es` one, on
+ * internal and web builds only.
+ */
+const UNLAUNCHED_DAILY_WORD_LANGUAGES: readonly string[] = ["hi", "fr", "es"];
 
 const ALL_DAILY_WORD_LANGUAGES: readonly string[] = [
   ...LAUNCHED_DAILY_WORD_LANGUAGES,

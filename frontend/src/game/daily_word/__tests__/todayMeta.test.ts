@@ -91,8 +91,41 @@ describe("getLanguage (#3153)", () => {
   it("falls back to en for languages without a puzzle", async () => {
     await i18n.changeLanguage("de");
     expect(getLanguage("ios")).toBe("en");
+    await i18n.changeLanguage("ja");
+    expect(getLanguage("ios")).toBe("en");
+  });
+
+  // #3241 — fr-CA and es have puzzles, held back from store builds until #3201.
+  it("internal build: maps fr-CA to fr and es to es on native", async () => {
+    await i18n.changeLanguage("fr-CA");
+    expect(getLanguage("ios")).toBe("fr");
+    expect(getLanguage("android")).toBe("fr");
+    await i18n.changeLanguage("es");
+    expect(getLanguage("ios")).toBe("es");
+    expect(getLanguage("android")).toBe("es");
+  });
+
+  it("web plays fr and es even in a store build", async () => {
+    __forceStoreBuildForTests(true);
+    await i18n.changeLanguage("fr-CA");
+    expect(getLanguage("web")).toBe("fr");
+    await i18n.changeLanguage("es");
+    expect(getLanguage("web")).toBe("es");
+  });
+
+  it("native store build: fr-CA and es still get the English puzzle", async () => {
+    __forceStoreBuildForTests(true);
     await i18n.changeLanguage("fr-CA");
     expect(getLanguage("ios")).toBe("en");
+    expect(getLanguage("android")).toBe("en");
+    await i18n.changeLanguage("es");
+    expect(getLanguage("ios")).toBe("en");
+    expect(getLanguage("android")).toBe("en");
+    expect(dailyWordLanguages("ios")).toEqual(["en"]);
+  });
+
+  it("knows fr and es as Daily Word languages off the store", () => {
+    expect(dailyWordLanguages("web")).toEqual(expect.arrayContaining(["en", "hi", "fr", "es"]));
   });
 
   it("keeps en as en in a store build", async () => {

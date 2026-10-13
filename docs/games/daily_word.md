@@ -45,12 +45,12 @@ Hindi input is NFC-normalized and uses Devanagari grapheme clusters for visible 
 
 ### Languages
 
-| Code | Language | Puzzle id         | Notes                                            |
-| ---- | -------- | ----------------- | ------------------------------------------------ |
-| `en` | English  | `YYYY-MM-DD:en:2` |                                                  |
-| `hi` | Hindi    | `YYYY-MM-DD:hi`   |                                                  |
-| `fr` | French   | `YYYY-MM-DD:fr:1` | Backend only until #3241; lists come from #3239. |
-| `es` | Spanish  | `YYYY-MM-DD:es:1` | Backend only until #3241; lists come from #3239. |
+| Code | Language | Puzzle id         | Notes                                                                                            |
+| ---- | -------- | ----------------- | ------------------------------------------------------------------------------------------------ |
+| `en` | English  | `YYYY-MM-DD:en:2` |                                                                                                  |
+| `hi` | Hindi    | `YYYY-MM-DD:hi`   |                                                                                                  |
+| `fr` | French   | `YYYY-MM-DD:fr:1` | Backend only until #3241; lists come from #3239.                                                 |
+| `es` | Spanish  | `YYYY-MM-DD:es:1` | Playable in the app since #3241 (internal and web builds; see "Keyboards and accented display"). |
 
 ### French and Spanish: accent folding and `display` (#3240)
 
@@ -66,7 +66,23 @@ If a language's list files are missing, it is not loaded and is unsupported: `/t
 
 **Day offset.** The answer index is `(YYYYMMDD + SALT + _DAY_OFFSET[lang]) % len(answers)`. `en` and `hi` have offset 0, so their answers for existing dates are unchanged (pinned in `tests/test_daily_word_romance.py`); `fr` and `es` have their own offsets so the languages don't share an index pattern.
 
-The puzzle language follows the app language through one function, `getLanguage()` (`todayMeta.ts`): the app language's base code if this build offers a puzzle in it, else `en`. Native (iOS/Android) store builds (#3150, `buildFlavour.ts`) offer only the launched languages (`en` for now), so `hi` falls back to the English puzzle and QWERTY keyboard; web, dev, e2e and pre-launch builds also offer `hi` (#3153), mirroring `availableLocales`. The backend still accepts `hi`. A launched language is added by listing it in `LAUNCHED_DAILY_WORD_LANGUAGES`.
+### Keyboards and accented display (#3241)
+
+The puzzle language follows the app language through one function, `getLanguage()` (`todayMeta.ts`): the app language's base code if this build offers a puzzle in it, else `en`. So the `fr-CA` app language plays the `fr` puzzle and `es` plays `es`. Native (iOS/Android) store builds (#3150, `buildFlavour.ts`) offer only the launched languages (`en` for now), so `hi`, `fr` and `es` fall back to the English puzzle and QWERTY keyboard there; web, dev, e2e and pre-launch builds also offer them (#3153, #3241), mirroring `availableLocales`. `fr` and `es` stay out of `LAUNCHED_DAILY_WORD_LANGUAGES` until native sign-off (#3201).
+
+**Keyboards** (`WordKeyboard.tsx`, `KEYBOARD_LAYOUTS`, one layout per puzzle language):
+
+| Language   | Layout                                                                          |
+| ---------- | ------------------------------------------------------------------------------- |
+| `en`, `fr` | QWERTY (players in Canada use QWERTY, so French has no AZERTY)                  |
+| `es`       | QWERTY plus an **Ñ** key after L on the middle row (ten keys, like the top row) |
+| `hi`       | Devanagari, unchanged                                                           |
+
+There are no accent keys and no long-press: players type plain letters (`a`-`z`, plus `ñ` for `es`) and the server folds the accents, so `etait` is a valid guess for `était`. Keys share a row's width by flex weight rather than a fixed size, so a ten-key row fits a 320 px phone; Enter/Delete use smaller type and shrink to fit on iOS/Android. The keyboard colours keys on the folded letter (`keyboard_state` keys are the server's tile letters), so scoring `é` as correct colours the `E` key.
+
+**Accented display.** The tile array from `/guess` is folded, and the tile colours come from it. After a guess is accepted, `tilesWithDisplay` (`engine.ts`) stores the response's `display` letter by letter on each tile as `TileState.display` (kept only when it differs from `letter`), and the row renders `É T A I T`. `letter` stays the folded form, so the "already guessed" check, the keyboard, scoring and the share grid are unaffected. If `display` does not have one letter per tile (a ligature such as `œ` folds to two letters), the row shows the folded letters. Saved boards store `display` with each tile, so a restored board shows accents (a board saved before #3241 has none and shows folded letters; `looksValid` does not inspect tiles). The loss card ("Le mot était ÉTAIT") reveals `display` from `GET /answer` (`revealWord`), upper-cased, falling back to `answer`. The share text is a letter-free emoji grid, so only its header changes: fr and es use the translated game title (`game.title`: "Mot du jour", "Palabra Diaria"); other languages keep "Daily Word". French and Spanish are not offline-playable (`OFFLINE_LANGUAGES` is `en`), but the offline cache already decodes `display_blob` like `answer_blob` (`offlinePuzzles.ts`: `display` on `OfflinePuzzle`, `offlineDisplayFor`) so the reveal is accented once they are.
+
+Existing notes on language selection: The backend still accepts `hi`. A launched language is added by listing it in `LAUNCHED_DAILY_WORD_LANGUAGES`.
 
 When a native store build falls back to English, any saved Hindi board (in progress or finished, even from the same day) is discarded: its `puzzle_id` ends `:hi`, no longer matches today's English puzzle, so a fresh English board starts and the Hindi board is pruned (`pruneStates`, #3230). This is the chosen "migrate to `en`" option; finishing the Hindi game is not supported. Server-side stats are keyed by puzzle and are untouched.
 
@@ -185,7 +201,7 @@ After a win/loss:
 
 - iOS/Android use the native system share sheet;
 - web copies the generated share text to the clipboard when available;
-- the share text includes the emoji result grid and Daily Word deep link.
+- the share text includes the emoji result grid and Daily Word deep link; its header is "Daily Word #n — x/6", with the translated game title for fr and es (#3241). The grid has no letters, so no answer or accent appears in it.
 
 The UI only says "Copied" when a clipboard copy actually happened.
 
