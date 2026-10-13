@@ -27,6 +27,7 @@ import { useSoundSettings } from "../game/_shared/SoundContext";
 import { clearSession } from "../game/_shared/session";
 import { clearLastConnected } from "../game/_shared/lastConnected";
 import { clearLastKnownStreak } from "../game/_shared/lastKnownStreak";
+import { clearDailyChallengeCache } from "../game/daily_challenge/offlineCache";
 import { clearLegacyScoreQueue } from "../game/_shared/legacyScoreQueue";
 import { pendingGamesStore } from "../game/_shared/pendingGamesStore";
 import { eventStore } from "../game/_shared/eventStore";
@@ -97,6 +98,7 @@ export default function SettingsScreen() {
         clearLegacyScoreQueue(),
         clearLastConnected(),
         clearLastKnownStreak(),
+        clearDailyChallengeCache(),
       ]);
       deleteSuccessToast.show();
     } catch (e) {
