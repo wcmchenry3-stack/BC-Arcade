@@ -56,6 +56,11 @@ class CreateGameRequest(BaseModel):
         mod = get_module(self.game_type)
         if mod is not None:
             mod.metadata_model.model_validate(self.metadata)
+            # A metadata model may retire keys older clients still send: they
+            # validate, but must not be stored unvalidated on the game row.
+            retired: frozenset[str] = getattr(mod.metadata_model, "retired_keys", frozenset())
+            if retired & self.metadata.keys():
+                self.metadata = {k: v for k, v in self.metadata.items() if k not in retired}
         return self
 
 
@@ -186,8 +191,7 @@ class GameTypeStatsResponse(BaseModel):
       the board's ``label_key`` (``"score"``, ``"moves"``, …) saying what the
       number is. ``null`` value when no qualifying row carries the metric.
     - ``extras``: game-specific figures from ``stats_shape()``, e.g.
-      Blackjack's ``best_chips``, ``current_chips``, ``best_run_chips``,
-      ``total_runs``, ``runs_completed``, ``current_table``.
+      Blackjack's ``best_chips`` and ``current_chips``.
 
     The deprecated aliases (``played``, ``best``, ``avg`` and the top-level
     Blackjack fields) were removed in #2644.

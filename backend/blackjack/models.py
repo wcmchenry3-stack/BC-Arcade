@@ -1,34 +1,44 @@
-"""Blackjack metadata and result models: the run aggregates written at a
-session's start and the closing balance sent on completion (#539, #2745)."""
+"""Blackjack metadata and result models: the (empty) metadata a session starts
+with and the closing balance sent on completion (#539, #2745)."""
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validator
 from pydantic_core import PydanticCustomError
 
 from games.board import MAX_BOARD_VALUE
 
-TableTier = Literal["beginner", "intermediate", "high_roller"]
+# Run aggregates older builds sent when starting a session (#539). Nothing read
+# them, so current builds send none (#3140); they are still accepted and stripped
+# (``CreateGameRequest`` removes them before the row is stored) so an older
+# client is never rejected and nothing unvalidated is persisted.
+RETIRED_METADATA_KEYS = frozenset(
+    {"best_run_chips", "total_runs", "runs_completed", "current_table"}
+)
 
 
 class BlackjackMetadata(BaseModel):
     """Validated metadata shape for Blackjack game rows (#539, BJ-4).
 
-    Run-aggregate fields (best_run_chips, total_runs, runs_completed,
-    current_table) are written by the frontend when starting a new game
-    session after a run completes. They represent the player's cumulative
-    run history and are used by stats_shape() to populate the scoreboard.
-    ``extra="forbid"`` rejects unexpected keys.
+    A Blackjack session has no metadata of its own. The four run aggregates
+    older builds wrote at session start (``RETIRED_METADATA_KEYS``) are
+    accepted and stripped before storage (#3140); ``extra="forbid"`` still rejects any other
+    unexpected key.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    best_run_chips: int | None = None
-    total_runs: int | None = None
-    runs_completed: int | None = None
-    current_table: TableTier | None = None
+    # Read by ``CreateGameRequest``, which also strips them before the row is stored.
+    retired_keys: ClassVar[frozenset[str]] = RETIRED_METADATA_KEYS
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_retired_keys(cls, data: object) -> object:
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if k not in RETIRED_METADATA_KEYS}
+        return data
 
 
 class BlackjackResult(BaseModel):

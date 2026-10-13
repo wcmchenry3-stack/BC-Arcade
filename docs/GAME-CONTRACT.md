@@ -281,20 +281,20 @@ Each game's `games.metadata` JSONB column is validated on write by a Pydantic mo
 
 All metadata models use `extra="forbid"` to prevent arbitrary data from being silently stored.
 
-| Game        | Model               | Fields                                                                                                                                                                                    |
-| ----------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Blackjack   | `BlackjackMetadata` | `best_run_chips: int \| None`, `total_runs: int \| None`, `runs_completed: int \| None`, `current_table: Literal["beginner","intermediate","high_roller"] \| None`                        |
-| Cascade     | `CascadeMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                                                    |
-| Daily Word  | `DailyWordMetadata` | `puzzle_id: str` (required), `language: Literal["en","hi"] = "en"`                                                                                                                        |
-| FreeCell    | `FreeCellMetadata`  | None (empty model). Since #2632 a win carries its move count as `final_score`                                                                                                             |
-| Hearts      | `HeartsMetadata`    | `player_name: str = ""` (max 64 chars), `ai_difficulty: str \| None` (≤ 32 chars): the opponent style, recorded and not ranked on (`conservative`, the only value store builds send; dev / pre-launch builds also send `cautious`, `schemer`, `daring`, `mixed`)              |
-| Mahjong     | `MahjongMetadata`   | `player_name: str = ""` (max 64 chars), `layout: str \| None` (layout id, `^[a-z0-9_]+$`, ≤ 32 chars; sent since #2627)                                                                   |
-| Solitaire   | `SolitaireMetadata` | `player_name: str = ""` (max 64 chars), `draw_mode: Literal[1, 3] \| None` (#2632; recorded, not a partition: both modes share one board)                                                 |
-| Bottle Sort | `SortMetadata`      | `player_name: str = ""` (max 64 chars; 32 before #2995)                                                                                                                                   |
-| Starswarm   | `StarSwarmMetadata` | `difficulty_tier: str \| None` (≤ 32 chars); only the app's ten tiers (`DIFFICULTY_TIERS`) rank                                                                                           |
-| Sudoku      | `SudokuMetadata`    | `player_name: str = ""` (max 64 chars), `difficulty: Literal["easy","medium","hard"]` (required), `variant: Literal["classic","mini"] = "classic"`                                        |
-| Twenty48    | `Twenty48Metadata`  | None (empty model). The opening board is `game_started` event data                                                                                                                        |
-| Yacht       | `YachtMetadata`     | `mode: Literal["solo","vs"] \| None`, `difficulty: Literal["easy","medium","hard"] \| None` (the computer's: required for `vs`, forbidden for `solo`; builds before #2630 send no `mode`) |
+| Game        | Model               | Fields                                                                                                                                                                                                                                                           |
+| ----------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Blackjack   | `BlackjackMetadata` | none. The retired run aggregates (`best_run_chips`, `total_runs`, `runs_completed`, `current_table`) are still accepted from older clients, then stripped before the row is stored (#3140)                                                                       |
+| Cascade     | `CascadeMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                                                                                                                           |
+| Daily Word  | `DailyWordMetadata` | `puzzle_id: str` (required), `language: Literal["en","hi"] = "en"`                                                                                                                                                                                               |
+| FreeCell    | `FreeCellMetadata`  | None (empty model). Since #2632 a win carries its move count as `final_score`                                                                                                                                                                                    |
+| Hearts      | `HeartsMetadata`    | `player_name: str = ""` (max 64 chars), `ai_difficulty: str \| None` (≤ 32 chars): the opponent style, recorded and not ranked on (`conservative`, the only value store builds send; dev / pre-launch builds also send `cautious`, `schemer`, `daring`, `mixed`) |
+| Mahjong     | `MahjongMetadata`   | `player_name: str = ""` (max 64 chars), `layout: str \| None` (layout id, `^[a-z0-9_]+$`, ≤ 32 chars; sent since #2627)                                                                                                                                          |
+| Solitaire   | `SolitaireMetadata` | `player_name: str = ""` (max 64 chars), `draw_mode: Literal[1, 3] \| None` (#2632; recorded, not a partition: both modes share one board)                                                                                                                        |
+| Bottle Sort | `SortMetadata`      | `player_name: str = ""` (max 64 chars; 32 before #2995)                                                                                                                                                                                                          |
+| Starswarm   | `StarSwarmMetadata` | `difficulty_tier: str \| None` (≤ 32 chars); only the app's ten tiers (`DIFFICULTY_TIERS`) rank                                                                                                                                                                  |
+| Sudoku      | `SudokuMetadata`    | `player_name: str = ""` (max 64 chars), `difficulty: Literal["easy","medium","hard"]` (required), `variant: Literal["classic","mini"] = "classic"`                                                                                                               |
+| Twenty48    | `Twenty48Metadata`  | None (empty model). The opening board is `game_started` event data                                                                                                                                                                                               |
+| Yacht       | `YachtMetadata`     | `mode: Literal["solo","vs"] \| None`, `difficulty: Literal["easy","medium","hard"] \| None` (the computer's: required for `vs`, forbidden for `solo`; builds before #2630 send no `mode`)                                                                        |
 
 **Legacy `player_name`:** the six models that accept it declare it as `player_name: LegacyPlayerName = ""` (`backend/games/metadata.py`), one limit for every game: `LEGACY_PLAYER_NAME_MAX_LENGTH = 64` (#2995; Sort allowed 32 before). It is validation-only JSON metadata that plays no part in ranking (§1.3 "Leaderboard routes"), so changing the limit needs no migration. `tests/test_game_module_base.py` checks that 64 characters pass and 65 fail for every game with the field.
 
@@ -325,12 +325,11 @@ There is no game-specific logic in `games/stats.py`.
 
 **`raw_stats` keys passed to every `stats_shape` call:**
 
-| Key              | Type               | Description                                                                                                                                                                 |
-| ---------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `best`           | `int \| None`      | highest non-abandoned `final_score` (Blackjack's `best_chips`; `best_value` reads Blackjack's `final_chips`, #2745)                                                         |
-| `last_played_at` | `datetime \| None` | most recent `completed_at`, ignoring rows the stale-session sweep closed (§1.7)                                                                                             |
-| `latest_score`   | `int \| None`      | `final_score` of the most recently completed non-abandoned game                                                                                                             |
-| `metadata`       | `dict`             | `games.metadata` of the most recently started **finished** row (`completed_at` set), whatever its outcome, abandons included (Blackjack writes its run aggregates at start) |
+| Key              | Type               | Description                                                                                                         |
+| ---------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `best`           | `int \| None`      | highest non-abandoned `final_score` (Blackjack's `best_chips`; `best_value` reads Blackjack's `final_chips`, #2745) |
+| `last_played_at` | `datetime \| None` | most recent `completed_at`, ignoring rows the stale-session sweep closed (§1.7)                                     |
+| `latest_score`   | `int \| None`      | `final_score` of the most recently completed non-abandoned game                                                     |
 
 **Return value:** a dict with `last_played_at` and, optionally, `extras`, a dict of game-specific figures. Omitted keys default to `None` (`{}` for `extras`).
 
@@ -368,20 +367,15 @@ def stats_shape(self, raw_stats: dict) -> dict:
     return default_stats_shape(raw_stats)
 ```
 
-**Blackjack implementation** — moves `best` and `latest_score` into `extras` as chips and adds the run aggregates from the latest metadata:
+**Blackjack implementation** — moves `best` and `latest_score` into `extras` as chips and nothing else (the run aggregates it once added were unread and were removed, #3140):
 
 ```python
 def stats_shape(self, raw_stats: dict) -> dict:
-    meta = raw_stats.get("metadata") or {}
     return {
         "last_played_at": raw_stats["last_played_at"],
         "extras": {
             "best_chips": raw_stats["best"],
             "current_chips": raw_stats["latest_score"],
-            "best_run_chips": meta.get("best_run_chips"),
-            "total_runs": meta.get("total_runs"),
-            "runs_completed": meta.get("runs_completed"),
-            "current_table": meta.get("current_table"),
         },
     }
 ```
@@ -430,14 +424,14 @@ The app side of a game: how it opens and closes its `games` row, what outcome an
 | Result card outcome → `games.outcome`                                                                                 | `frontend/src/game/_shared/recordedOutcome.ts`                                                                        |
 | Outcome guard                                                                                                         | `frontend/src/game/_shared/outcomeGuard.ts`                                                                           |
 | Result card                                                                                                           | `frontend/src/components/shared/GameResultModal.tsx`                                                                  |
-| Rank lookup for the card                                                                                              | `useGameLeaderboard.ts` (wraps `useGameRank.ts`, `lookupGameRank.ts`) in `frontend/src/game/_shared/`   |
+| Rank lookup for the card                                                                                              | `useGameLeaderboard.ts` (wraps `useGameRank.ts`, `lookupGameRank.ts`) in `frontend/src/game/_shared/`                 |
 | Hook state → card's `submission`                                                                                      | `frontend/src/components/shared/toSubmission.ts`                                                                      |
 | Display name                                                                                                          | `displayName.ts`, `displayNameSync.ts` in `frontend/src/game/_shared/`                                                |
 | Leaderboard link / availability                                                                                       | `frontend/src/hooks/useLeaderboardLink.ts`, `frontend/src/game/_shared/leaderboardAvailability.ts`                    |
 | Screen wrapper                                                                                                        | `frontend/src/components/shared/GameShell.tsx` (game screens), `ScreenFrame.tsx` (other screens)                      |
 | Shared screens                                                                                                        | `LeaderboardScreen.tsx`, `GameStatsScreen.tsx`, `ScorecardScreen.tsx`, `ProfileScreen.tsx` in `frontend/src/screens/` |
 
-`frontend/src/game/_shared/types.ts` also declares `GameSession<TState, TAction>` and `Player`. Only Yacht, Twenty48, Blackjack and Cascade alias `GameSession` in their `types.ts`, and nothing else reads those aliases: they are optional, not part of the contract.
+`frontend/src/game/_shared/types.ts` holds the shared `GameType` re-export only; the unused `GameSession` and `Player` types were removed earlier.
 
 ### 2.2 GameShell
 
@@ -642,7 +636,7 @@ Use this checklist when adding a new game. Each item links to the file to create
 ### Frontend
 
 - [ ] **`frontend/src/api/vocab.ts`** — the committed generated file includes the new `GameType`, its `HAS_WINNER` flag and its `BOARDS` entry
-- [ ] **Engine** — game logic in `frontend/src/game/mygame/engine.ts` (no imports from `components/` or `screens/`, §2.7), seeded or behind `setRng`, with any module-level counter restored on load (§2.9). A `GameSession<TState>` alias in `types.ts` is optional (§2.1)
+- [ ] **Engine** — game logic in `frontend/src/game/mygame/engine.ts` (no imports from `components/` or `screens/`, §2.7), seeded or behind `setRng`, with any module-level counter restored on load (§2.9).
 - [ ] **Route and Home tile** — a screen in `frontend/src/screens/`, typed in `frontend/src/types/navigation.ts`. A free game is registered as a plain `HomeStack.Screen` in `frontend/App.tsx`. A premium game is **not**: add its route to `PREMIUM_ROUTES` (`frontend/src/entitlements/premiumRoutes.ts`) and its unguarded screen to `PREMIUM_SCREEN_BASES` in `App.tsx`; `LobbyStack` registers it wrapped in `makePremiumScreen` (the entitlement gate, `LockedGameScreen` when not entitled) and only when it is visible in the build (`visiblePremiumRoutes()`). Add the slug to `PREMIUM_GAMES` (`EntitlementContext.tsx`) and, while v1.0 hides premium games, to `HIDDEN_GAMES` (`frontend/src/entitlements/gameVisibility.ts`); the `gameVisibility` / `premiumRoutes` tests fail if these sets drift. This mirrors [`docs/ARCHITECTURE.md` §10.6](ARCHITECTURE.md#106-adding-a-premium-game), step 5. Add a tile in `HomeScreen.tsx` and an i18n namespace (`frontend/src/i18n/localeLoaders.ts`) with `game.title`
 - [ ] **`GameShell`** with `gameType="mygame"` (required, §2.2): the ⋯ menu then gets Stats (and Scorecard, if the game is in `SCORECARD_GAMES`) with no further wiring. `gameType={null}` is only for screens that are not one game's play screen (a live scorecard, a run history, a dev tool)
 - [ ] **`useGameSync`** (§2.3) — `start()` with the metadata, `markStarted()` on the first real action, `complete()` with an explicit `result` block, `setProgressSnapshot()` so the hook's abandons carry it; `resume()` if the screen restores saved progress; no `beforeRemove` abandon handler

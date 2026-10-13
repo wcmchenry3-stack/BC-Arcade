@@ -31,7 +31,9 @@ def test_blackjack_metadata_rejects_unknown_field() -> None:
         BlackjackMetadata.model_validate({"deck_count": 6})
 
 
-def test_blackjack_metadata_run_fields_accepted() -> None:
+def test_blackjack_metadata_retired_run_fields_accepted_and_ignored() -> None:
+    # Older clients still send the run aggregates at session start (#3140): they
+    # validate, and are dropped rather than kept on the model.
     m = BlackjackMetadata.model_validate(
         {
             "best_run_chips": 2500,
@@ -40,35 +42,17 @@ def test_blackjack_metadata_run_fields_accepted() -> None:
             "current_table": "intermediate",
         }
     )
-    assert m.best_run_chips == 2500
-    assert m.total_runs == 10
-    assert m.runs_completed == 3
-    assert m.current_table == "intermediate"
+    assert m.model_dump() == {}
 
 
-def test_blackjack_metadata_run_fields_default_to_none() -> None:
-    m = BlackjackMetadata.model_validate({})
-    assert m.best_run_chips is None
-    assert m.total_runs is None
-    assert m.runs_completed is None
-    assert m.current_table is None
+def test_blackjack_metadata_retired_run_fields_not_type_checked() -> None:
+    # They are discarded before validation, so a malformed old value is no 400.
+    BlackjackMetadata.model_validate({"current_table": "hacker_table", "total_runs": "x"})
 
 
-def test_blackjack_metadata_partial_run_fields_accepted() -> None:
-    m = BlackjackMetadata.model_validate({"total_runs": 5})
-    assert m.total_runs == 5
-    assert m.best_run_chips is None
-
-
-def test_blackjack_metadata_all_table_tiers_accepted() -> None:
-    for tier in ("beginner", "intermediate", "high_roller"):
-        m = BlackjackMetadata.model_validate({"current_table": tier})
-        assert m.current_table == tier
-
-
-def test_blackjack_metadata_invalid_current_table_rejected() -> None:
+def test_blackjack_metadata_still_rejects_other_unknown_fields_beside_retired_ones() -> None:
     with pytest.raises(ValidationError):
-        BlackjackMetadata.model_validate({"current_table": "hacker_table"})
+        BlackjackMetadata.model_validate({"total_runs": 5, "deck_count": 6})
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +319,44 @@ async def test_post_games_valid_cascade_metadata_accepted(client) -> None:
         json={"game_type": "cascade", "metadata": {"player_name": "Eve"}},
     )
     assert r.status_code == 200
+
+
+@pytest.mark.skipif(
+    not os.environ.get("DATABASE_URL"),
+    reason="DATABASE_URL not set — skipping live API tests",
+)
+async def test_post_games_does_not_store_retired_blackjack_keys(client) -> None:
+    """An older client's run aggregates are accepted but never persisted (#3140)."""
+    from sqlalchemy import select
+
+    from db.base import get_session_factory
+    from db.models import Game, GameEntitlement
+
+    sid = str(uuid.uuid4())
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(GameEntitlement(session_id=sid, game_slug="blackjack"))
+        await db.commit()
+    r = client.post(
+        "/games",
+        headers=_headers(sid),
+        json={
+            "game_type": "blackjack",
+            "metadata": {
+                "best_run_chips": 2500,
+                "total_runs": "not-a-number",
+                "runs_completed": 3,
+                "current_table": "hacker_table",
+            },
+        },
+    )
+    assert r.status_code == 200
+    async with factory() as db:
+        stored = (
+            await db.execute(select(Game.game_metadata).where(Game.session_id == sid))
+        ).scalar_one()
+    for key in ("best_run_chips", "total_runs", "runs_completed", "current_table"):
+        assert key not in (stored or {})
 
 
 # ---------------------------------------------------------------------------
