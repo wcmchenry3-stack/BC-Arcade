@@ -1348,5 +1348,32 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Short past-tense label, e.g. 'Last played'."
+  },
+  "a11y.dealerScore": {
+    "component": "ScorePill (accessibility)",
+    "description": "Screen-reader label for the dealer's visible hand total.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["{{score}}"],
+    "doNotTranslate": [],
+    "notes": ""
+  },
+  "a11y.dealerScoreHidden": {
+    "component": "ScorePill (accessibility)",
+    "description": "Screen-reader label for the dealer's total while the hole card is face down.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": ""
+  },
+  "a11y.playerScore": {
+    "component": "ScorePill (accessibility)",
+    "description": "Screen-reader label for the player's hand total.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["{{score}}"],
+    "doNotTranslate": [],
+    "notes": ""
   }
 }

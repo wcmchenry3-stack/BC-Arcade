@@ -26,5 +26,6 @@
   "hud.errorsOne": "טעות אחת",
   "hud.elapsed": "זמן שחלף {{time}}",
   "action.quickRestart": "הפעלה מחדש מהירה",
-  "newGame.title": "משחק חדש"
+  "newGame.title": "משחק חדש",
+  "a11y.board": "לוח סודוקו"
 }

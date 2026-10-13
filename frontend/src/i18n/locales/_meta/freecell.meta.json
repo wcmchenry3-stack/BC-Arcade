@@ -178,5 +178,14 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Shown uppercase via styling; keep to one short word."
+  },
+  "a11y.foundationComplete": {
+    "component": "FreeCellFoundationAnimation (accessibility)",
+    "description": "Live-region announcement when a foundation pile is completed.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": ""
   }
 }

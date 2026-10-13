@@ -12,5 +12,6 @@
   "theme.groupLabel": "과일 테마",
   "theme.optionLabel": "{{label}} 테마",
   "event.merged": "합쳐졌어요! {{fruit}} 생성.",
-  "score.high": "최고"
+  "score.high": "최고",
+  "a11y.board": "Cascade 게임 보드"
 }

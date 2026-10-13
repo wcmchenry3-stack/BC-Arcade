@@ -12,5 +12,6 @@
   "theme.groupLabel": "फलों का थीम सेट",
   "theme.optionLabel": "{{label}} थीम",
   "event.merged": "मर्ज हो गया! {{fruit}} बना।",
-  "score.high": "सर्वोच्च"
+  "score.high": "सर्वोच्च",
+  "a11y.board": "Cascade गेम बोर्ड"
 }

@@ -18,5 +18,6 @@
   "a11y.boardRegion": "FreeCell 牌桌",
   "score.moves": "步数：{{moves}}",
   "error.supermoveRejected": "空位不足，无法移动这叠牌",
-  "slot.free": "空位"
+  "slot.free": "空位",
+  "a11y.foundationComplete": "收牌区已完成"
 }

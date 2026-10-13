@@ -1,5 +1,6 @@
 import React from "react";
 import { PixelRatio, StyleSheet, View } from "react-native";
+import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import type { Grid, Variant } from "../../game/sudoku/types";
 import { variantConfig } from "../../game/sudoku/types";
@@ -23,6 +24,7 @@ export default function SudokuGrid({
   variant,
   onCellPress,
 }: Props) {
+  const { t } = useTranslation("sudoku");
   const { colors } = useTheme();
   const { size, boxRows, boxCols } = variantConfig(variant);
   const strongColor = colors.boxBorder;
@@ -41,7 +43,7 @@ export default function SudokuGrid({
 
   return (
     <View
-      accessibilityLabel="Sudoku board"
+      accessibilityLabel={t("a11y.board")}
       style={[
         styles.grid,
         { borderWidth: 2, borderColor: strongColor, borderRadius: 4, overflow: "hidden" },

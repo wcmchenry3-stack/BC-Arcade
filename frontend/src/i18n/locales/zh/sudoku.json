@@ -26,5 +26,6 @@
   "hud.errorsOne": "1 次错误",
   "hud.elapsed": "已用时间 {{time}}",
   "action.quickRestart": "快速重玩",
-  "newGame.title": "新游戏"
+  "newGame.title": "新游戏",
+  "a11y.board": "数独棋盘"
 }

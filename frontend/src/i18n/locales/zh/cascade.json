@@ -12,5 +12,6 @@
   "theme.groupLabel": "水果主题",
   "theme.optionLabel": "{{label}} 主题",
   "event.merged": "合并成功！生成{{fruit}}。",
-  "score.high": "最高分"
+  "score.high": "最高分",
+  "a11y.board": "Cascade 游戏面板"
 }

@@ -148,5 +148,8 @@
   "tableSelect.tagline": "שרוד את הריצה.",
   "tableSelect.taglineSub": "כל שולחן הוא קשת שלמה — יתרת פתיחה, יעד להגיע אליו ויציאה נקייה.",
   "tableSelect.viewHistory": "הצג היסטוריית סיבובים",
-  "tableSelect.lastPlayed": "שוחק לאחרונה"
+  "tableSelect.lastPlayed": "שוחק לאחרונה",
+  "a11y.dealerScore": "ניקוד הדילר {{score}}",
+  "a11y.dealerScoreHidden": "ניקוד הדילר מוסתר",
+  "a11y.playerScore": "ניקוד השחקן {{score}}"
 }

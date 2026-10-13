@@ -6,6 +6,11 @@
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "locales": {
+      "en": "./locales/ios/en.json",
+      "es": "./locales/ios/es.json",
+      "fr-CA": "./locales/ios/fr-CA.json"
+    },
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -19,6 +24,7 @@
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
+        "CFBundleLocalizations": ["en", "es", "fr-CA"],
         "ITSAppUsesNonExemptEncryption": false
       },
       "privacyManifests": {

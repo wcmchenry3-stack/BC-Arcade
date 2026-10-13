@@ -18,5 +18,6 @@
   "a11y.boardRegion": "Tabuleiro de FreeCell",
   "score.moves": "Jogadas: {{moves}}",
   "error.supermoveRejected": "Não há espaços livres suficientes para mover esta pilha",
-  "slot.free": "livre"
+  "slot.free": "livre",
+  "a11y.foundationComplete": "Fundação completa"
 }

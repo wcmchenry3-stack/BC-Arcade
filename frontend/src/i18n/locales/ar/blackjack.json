@@ -148,5 +148,8 @@
   "tableSelect.tagline": "اصمد في الجلسة.",
   "tableSelect.taglineSub": "كل طاولة قوس كامل — رصيد بداية، وهدف للوصول، ونهاية نظيفة.",
   "tableSelect.viewHistory": "عرض سجل الجلسات",
-  "tableSelect.lastPlayed": "آخر لعب"
+  "tableSelect.lastPlayed": "آخر لعب",
+  "a11y.dealerScore": "نقاط الموزع {{score}}",
+  "a11y.dealerScoreHidden": "نقاط الموزع مخفية",
+  "a11y.playerScore": "نقاط اللاعب {{score}}"
 }

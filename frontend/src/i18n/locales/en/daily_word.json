@@ -20,5 +20,11 @@
   "keyboard.enter": "Enter",
   "result.countdown": "Next word in {{time}}",
   "result.share": "Share",
-  "result.copied": "Copied!"
+  "result.copied": "Copied!",
+  "a11y.board": "Daily Word board",
+  "a11y.tile": "Row {{row}}, column {{col}}, letter {{letter}}",
+  "a11y.tileStatus": "Row {{row}}, column {{col}}, letter {{letter}}, {{status}}",
+  "a11y.status.correct": "correct",
+  "a11y.status.present": "wrong spot",
+  "a11y.status.absent": "not in the word"
 }

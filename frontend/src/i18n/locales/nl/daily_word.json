@@ -20,5 +20,11 @@
   "keyboard.enter": "Enter",
   "result.countdown": "Nieuw woord in {{time}}",
   "result.share": "Delen",
-  "result.copied": "Gekopieerd!"
+  "result.copied": "Gekopieerd!",
+  "a11y.board": "Speelveld Woord van de dag",
+  "a11y.tile": "Rij {{row}}, kolom {{col}}, letter {{letter}}",
+  "a11y.tileStatus": "Rij {{row}}, kolom {{col}}, letter {{letter}}, {{status}}",
+  "a11y.status.correct": "juist",
+  "a11y.status.present": "verkeerde plek",
+  "a11y.status.absent": "niet in het woord"
 }

@@ -12,5 +12,6 @@
   "theme.groupLabel": "Fruitset thema",
   "theme.optionLabel": "{{label}} thema",
   "event.merged": "Versmolten! {{fruit}} gemaakt.",
-  "score.high": "Record"
+  "score.high": "Record",
+  "a11y.board": "Cascade-speelveld"
 }

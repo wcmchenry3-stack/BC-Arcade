@@ -18,5 +18,6 @@
   "a11y.boardRegion": "FreeCellの盤面",
   "score.moves": "手数：{{moves}}",
   "error.supermoveRejected": "この列を移動するための空きマスが足りません",
-  "slot.free": "空き"
+  "slot.free": "空き",
+  "a11y.foundationComplete": "組札が完成"
 }

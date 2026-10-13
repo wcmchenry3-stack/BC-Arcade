@@ -148,5 +148,8 @@
   "tableSelect.tagline": "Survivez à la série.",
   "tableSelect.taglineSub": "Chaque table est un arc complet — un solde de départ, un objectif à atteindre et une sortie nette.",
   "tableSelect.viewHistory": "Voir l'historique",
-  "tableSelect.lastPlayed": "Dernière partie"
+  "tableSelect.lastPlayed": "Dernière partie",
+  "a11y.dealerScore": "Score du croupier : {{score}}",
+  "a11y.dealerScoreHidden": "Score du croupier masqué",
+  "a11y.playerScore": "Score du joueur : {{score}}"
 }

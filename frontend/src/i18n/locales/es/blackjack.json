@@ -148,5 +148,8 @@
   "tableSelect.tagline": "Sobrevive la racha.",
   "tableSelect.taglineSub": "Cada mesa es un arco completo — un saldo inicial, una meta y un cierre limpio.",
   "tableSelect.viewHistory": "Ver historial de rachas",
-  "tableSelect.lastPlayed": "Última partida"
+  "tableSelect.lastPlayed": "Última partida",
+  "a11y.dealerScore": "Puntuación del crupier: {{score}}",
+  "a11y.dealerScoreHidden": "Puntuación del crupier oculta",
+  "a11y.playerScore": "Puntuación del jugador: {{score}}"
 }

@@ -1,5 +1,6 @@
 import React from "react";
 import { View, StyleSheet, Platform, useWindowDimensions } from "react-native";
+import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 import {
   TWENTY48_BOARD_SHADOW_COLOR,
@@ -29,6 +30,7 @@ const BOARD_SHADOW =
       } as object);
 
 export default function Grid({ tiles }: GridProps) {
+  const { t } = useTranslation("twenty48");
   const { width } = useWindowDimensions();
   const { colors } = useTheme();
   const boardWidth = Math.min(width - 32, MAX_BOARD);
@@ -57,7 +59,7 @@ export default function Grid({ tiles }: GridProps) {
             },
           ]}
           accessibilityRole={isEmpty ? "image" : undefined}
-          accessibilityLabel={isEmpty ? "empty" : undefined}
+          accessibilityLabel={isEmpty ? t("a11y.emptyCell") : undefined}
         />
       );
     }
@@ -71,7 +73,7 @@ export default function Grid({ tiles }: GridProps) {
         BOARD_SHADOW,
       ]}
       accessible={true}
-      accessibilityLabel="Game board"
+      accessibilityLabel={t("a11y.board")}
     >
       {slots}
       {tiles.map((tile) => (

@@ -18,5 +18,6 @@
   "a11y.boardRegion": "لوحة FreeCell",
   "score.moves": "الحركات: {{moves}}",
   "error.supermoveRejected": "لا توجد مساحات فارغة كافية لنقل هذه الكومة",
-  "slot.free": "حرة"
+  "slot.free": "حرة",
+  "a11y.foundationComplete": "اكتمل الأساس"
 }
