@@ -31,22 +31,28 @@ from limiter import client_ip, proxy_header_debug
 
 _audit_log = logging.getLogger("audit")
 
-SECURITY_HEADERS: tuple[tuple[str, str], ...] = (
-    ("X-Content-Type-Options", "nosniff"),
-    ("X-Frame-Options", "DENY"),
-    ("Referrer-Policy", "strict-origin-when-cross-origin"),
-    # HTTPS-only for a year. Browsers ignore it on plain-HTTP responses, so local
-    # dev is unaffected. No `preload`: that is a hard-to-undo list submission.
-    ("Strict-Transport-Security", "max-age=31536000; includeSubDomains"),
-    (
-        "Content-Security-Policy",
+_DEV_CONNECT_HOSTS = ("https://dev-games-api.buffingchi.com", "https://dev-games.buffingchi.com")
+_PROD_CONNECT_HOSTS = ("https://games-api.buffingchi.com", "https://games.buffingchi.com")
+
+
+def security_headers(is_production: bool = False) -> tuple[tuple[str, str], ...]:
+    """The security headers for an environment; only the CSP ``connect-src`` hosts differ."""
+    hosts = " ".join(_PROD_CONNECT_HOSTS if is_production else _DEV_CONNECT_HOSTS)
+    return (
+        ("X-Content-Type-Options", "nosniff"),
+        ("X-Frame-Options", "DENY"),
+        ("Referrer-Policy", "strict-origin-when-cross-origin"),
+        # HTTPS-only for a year. Browsers ignore it on plain-HTTP responses, so local
+        # dev is unaffected. No `preload`: that is a hard-to-undo list submission.
+        ("Strict-Transport-Security", "max-age=31536000; includeSubDomains"),
         (
-            "default-src 'none'; "
-            "connect-src 'self' https://dev-games-api.buffingchi.com https://dev-games.buffingchi.com; "
-            "frame-ancestors 'none'"
+            "Content-Security-Policy",
+            f"default-src 'none'; connect-src 'self' {hosts}; frame-ancestors 'none'",
         ),
-    ),
-)
+    )
+
+
+SECURITY_HEADERS: tuple[tuple[str, str], ...] = security_headers(False)
 
 
 def _event_for(status: int) -> str | None:
@@ -62,8 +68,9 @@ def _event_for(status: int) -> str | None:
 class SecurityHeadersAndLogMiddleware:
     """Outermost middleware — adds security headers and logs every request, including 429s."""
 
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, is_production: bool = False) -> None:
         self.app = app
+        self._headers = security_headers(is_production)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -75,7 +82,7 @@ class SecurityHeadersAndLogMiddleware:
             if message["type"] == "http.response.start":
                 message.setdefault("headers", [])
                 headers = MutableHeaders(scope=message)
-                for name, value in SECURITY_HEADERS:
+                for name, value in self._headers:
                     headers[name] = value
                 if "server" in headers:
                     del headers["server"]
