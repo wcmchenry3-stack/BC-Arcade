@@ -70,6 +70,7 @@ AsyncStorage keys (`grep KEY frontend/src`): `game_session_id`; per-game saves a
 `blackjack_runs_v1`, `twenty48_best_score_v1`, `cascade_best_score`, `starswarm.*`, `yacht_*`, `daily_word_*`); offline
 queues `pending_games_v1` and the event store (sent to the API by `SyncWorker`; the old `pending_score_queue_v1` queue was removed in #2644 — only cleared now, by `legacyScoreQueue.ts`);
 `last_connected_at_v1` (epoch ms of the last 2xx API response, `lastConnected.ts`, #3226: drives the 3-day offline message) and `last_known_streak_v1` (last streak from `/stats/me`, `lastKnownStreak.ts`, #3226: shown on Home when offline); both local only;
+Daily Word offline play (#3230): `daily_word_upcoming_<lang>` (today's and the next two days' puzzle ids, word lengths and lightly scrambled answers from `GET /daily-word/upcoming`, `offlinePuzzles.ts`; English only; no personal data) and `daily_word_board_<puzzle_id>` (one saved board per puzzle, the guesses typed; replaces `daily_word_state_v1`, which is migrated on first load and removed; boards of other puzzles are pruned); both local only — offline results reach the server only through the existing `pending_games_v1` queue;
 `player_display_name*` (generated name cache and pending join/leave intent); `entitlement_token` / `entitlement_cached_at`
 (RS256 entitlement JWT from `GET /entitlements`, 24 h TTL / 7 day grace); preferences (`settings.soundMuted`, theme, language,
 `card_deck_id`, `gaming_app_fruit_set`); Hearts seat labels (`hearts_player_names`, typed by the player for the AI seats;

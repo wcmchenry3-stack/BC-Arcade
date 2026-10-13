@@ -5,15 +5,17 @@ import i18n from "i18next";
 import { __forceStoreBuildForTests } from "../../_shared/buildFlavour";
 import { dailyWordLanguages, getLanguage, localDateKey, warmTodayMeta } from "../todayMeta";
 
-jest.mock("../api", () => ({ dailyWordApi: { getToday: jest.fn() } }));
+jest.mock("../api", () => ({ dailyWordApi: { getToday: jest.fn(), getUpcoming: jest.fn() } }));
 
 const getToday = dailyWordApi.getToday as jest.Mock;
+const getUpcoming = dailyWordApi.getUpcoming as jest.Mock;
 const META = { puzzle_id: "2026-05-03:en", word_length: 5 };
 
 describe("warmTodayMeta (#2925)", () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     getToday.mockReset();
+    getUpcoming.mockReset();
     // Freeze the clock so the written and asserted keys can't straddle midnight.
     jest.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 4, 3, 12));
   });
@@ -36,8 +38,24 @@ describe("warmTodayMeta (#2925)", () => {
     expect(getToday).toHaveBeenCalledTimes(1);
   });
 
+  it("also stores the puzzles ahead for offline play (#3230)", async () => {
+    getToday.mockResolvedValue(META);
+    const ahead = [{ puzzle_id: "2026-05-05:en:2", word_length: 5, answer_blob: "AAAAAAA=" }];
+    getUpcoming.mockResolvedValue(ahead);
+    await warmTodayMeta(0, "en");
+    expect(getUpcoming).toHaveBeenCalledWith(0, "en");
+    expect(JSON.parse((await AsyncStorage.getItem("daily_word_upcoming_en"))!)).toEqual(ahead);
+  });
+
+  it("does not fetch puzzles ahead for an online-only language", async () => {
+    getToday.mockResolvedValue({ puzzle_id: "2026-05-03:hi", word_length: 4 });
+    await warmTodayMeta(0, "hi");
+    expect(getUpcoming).not.toHaveBeenCalled();
+  });
+
   it("swallows errors and caches nothing", async () => {
     getToday.mockRejectedValue(new TypeError("Network request failed"));
+    getUpcoming.mockRejectedValue(new TypeError("Network request failed"));
     await expect(warmTodayMeta(0, "en")).resolves.toBeUndefined();
     expect(await loadTodayMeta(localDateKey(0, "en"))).toBeNull();
   });
