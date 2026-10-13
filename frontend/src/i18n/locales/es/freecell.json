@@ -17,5 +17,6 @@
   "pile.freecell.empty": "Celda libre {{cell}} vacía",
   "a11y.boardRegion": "Tablero de FreeCell",
   "score.moves": "Movimientos: {{moves}}",
-  "error.supermoveRejected": "No hay suficientes espacios libres para mover esta pila"
+  "error.supermoveRejected": "No hay suficientes espacios libres para mover esta pila",
+  "slot.free": "libre"
 }

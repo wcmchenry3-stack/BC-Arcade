@@ -22,7 +22,6 @@ import {
   initStarSwarm,
   tick,
   applyPowerUp,
-  difficultyLabel,
   difficultyMultiplier,
   decayMissionCompleteTimer,
   isBossWave,
@@ -761,7 +760,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
           </View>
           <View style={styles.hudDifficulty}>
             <Text style={styles.hudDifficultyText}>
-              {`${difficultyLabel(hud.difficulty)} ×${difficultyMultiplier(hud.difficulty)}`}
+              {`${t(`tier.${hud.difficulty}`)} ×${difficultyMultiplier(hud.difficulty)}`}
             </Text>
             {/* #2488 upgrade ladders */}
             <Text style={styles.hudDifficultyText}>

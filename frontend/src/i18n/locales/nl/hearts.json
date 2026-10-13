@@ -57,5 +57,9 @@
   "difficulty.daring.desc": "Gaat voor de volle maan en speelt de vrouw naar jou",
   "difficulty.mixed": "Gemengde tafel",
   "difficulty.mixed.desc": "Eén van elk: Voorzichtig links, Tacticus tegenover, Waaghals rechts",
-  "game.startGame": "Spel starten"
+  "game.startGame": "Spel starten",
+  "seat.0": "Jij",
+  "seat.1": "West",
+  "seat.2": "Noord",
+  "seat.3": "Oost"
 }

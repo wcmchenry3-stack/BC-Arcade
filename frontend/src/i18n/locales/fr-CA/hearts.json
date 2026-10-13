@@ -57,5 +57,9 @@
   "difficulty.daring.desc": "Tente de rafler la mise et vous vise avec la dame",
   "difficulty.mixed": "Table mixte",
   "difficulty.mixed.desc": "Un de chaque : Prudent à gauche, Stratège en face, Audacieux à droite",
-  "game.startGame": "Commencer"
+  "game.startGame": "Commencer",
+  "seat.0": "Vous",
+  "seat.1": "Ouest",
+  "seat.2": "Nord",
+  "seat.3": "Est"
 }

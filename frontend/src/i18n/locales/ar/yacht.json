@@ -74,5 +74,14 @@
   "vsMode.upperSubtotal": "المجموع الفرعي العلوي",
   "vsMode.lowerSubtotal": "المجموع الفرعي السفلي",
   "vsMode.bonusProgress": "مكافأة · {{n}} إلى 63",
-  "vsMode.bonusUnlocked": "مكافأة ✓ مفتوحة"
+  "vsMode.bonusUnlocked": "مكافأة ✓ مفتوحة",
+  "error.noRolls": "لا توجد رميات متبقية في هذا الدور.",
+  "error.gameOver": "انتهت اللعبة.",
+  "error.badHeld": "تعذّر تحديد النرد المحتفظ به. حاول مرة أخرى.",
+  "error.unknownCategory": "فئة تسجيل غير معروفة.",
+  "error.categoryScored": "تم تسجيل هذه الفئة بالفعل.",
+  "error.rollFirst": "ارمِ النرد مرة واحدة على الأقل قبل التسجيل.",
+  "error.jokerUpper": "قاعدة الجوكر: يجب التسجيل في الفئة العلوية المطابقة.",
+  "error.jokerLower": "قاعدة الجوكر: يجب التسجيل في فئة مفتوحة من القسم السفلي.",
+  "error.generic": "حدث خطأ ما. حاول مرة أخرى."
 }

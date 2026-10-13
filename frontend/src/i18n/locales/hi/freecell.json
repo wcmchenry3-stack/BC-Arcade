@@ -17,5 +17,6 @@
   "pile.freecell.empty": "खाली फ्री सेल {{cell}}",
   "a11y.boardRegion": "FreeCell बोर्ड",
   "score.moves": "चालें: {{moves}}",
-  "error.supermoveRejected": "इस ढेर को हिलाने के लिए पर्याप्त खाली जगह नहीं है"
+  "error.supermoveRejected": "इस ढेर को हिलाने के लिए पर्याप्त खाली जगह नहीं है",
+  "slot.free": "खाली"
 }

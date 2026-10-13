@@ -39,5 +39,15 @@
   "hud.cueHull": "COQUE +1",
   "hud.cueHullMax": "COQUE MAX",
   "result.reachedWave": "Vague {{wave}} atteinte",
-  "result.wave": "Vague"
+  "result.wave": "Vague",
+  "tier.Ensign": "Enseigne",
+  "tier.LieutenantJG": "Enseigne de vaisseau",
+  "tier.Lieutenant": "Lieutenant de vaisseau",
+  "tier.LieutenantCommander": "Capitaine de corvette",
+  "tier.Commander": "Commandant",
+  "tier.Captain": "Capitaine de vaisseau",
+  "tier.RearAdmiral": "Contre-amiral",
+  "tier.ViceAdmiral": "Vice-amiral",
+  "tier.Admiral": "Amiral",
+  "tier.FleetAdmiral": "Amiral de la flotte"
 }

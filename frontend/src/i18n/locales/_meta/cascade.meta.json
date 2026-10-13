@@ -115,5 +115,14 @@
     "placeholders": ["{{fruit}}"],
     "doNotTranslate": [],
     "notes": "{{fruit}} is a fruit name — do not translate it."
+  },
+  "score.high": {
+    "component": "ScoreDisplay",
+    "description": "Small uppercase label above the best score (HIGH).",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown uppercase via styling; keep short."
   }
 }

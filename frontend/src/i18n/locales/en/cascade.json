@@ -11,5 +11,6 @@
   "preview.comingUp": "Coming up: {{name}}",
   "theme.groupLabel": "Fruit set theme",
   "theme.optionLabel": "{{label}} theme",
-  "event.merged": "Merged! {{fruit}} created."
+  "event.merged": "Merged! {{fruit}} created.",
+  "score.high": "High"
 }

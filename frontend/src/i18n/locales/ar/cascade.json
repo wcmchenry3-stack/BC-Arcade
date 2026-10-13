@@ -11,5 +11,6 @@
   "preview.comingUp": "القادم: {{name}}",
   "theme.groupLabel": "موضوع مجموعة الفواكه",
   "theme.optionLabel": "موضوع {{label}}",
-  "event.merged": "تم الدمج! تم إنشاء {{fruit}}."
+  "event.merged": "تم الدمج! تم إنشاء {{fruit}}.",
+  "score.high": "الأعلى"
 }

@@ -57,5 +57,9 @@
   "difficulty.daring.desc": "Geht auf den Mond und zielt mit der Dame auf dich",
   "difficulty.mixed": "Gemischter Tisch",
   "difficulty.mixed.desc": "Je einer: Vorsichtig links, Taktiker gegenüber, Wagemutig rechts",
-  "game.startGame": "Spiel starten"
+  "game.startGame": "Spiel starten",
+  "seat.0": "Du",
+  "seat.1": "Westen",
+  "seat.2": "Norden",
+  "seat.3": "Osten"
 }

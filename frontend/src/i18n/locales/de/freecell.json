@@ -17,5 +17,6 @@
   "pile.freecell.empty": "Freie Zelle {{cell}} leer",
   "a11y.boardRegion": "FreeCell-Spielfeld",
   "score.moves": "Züge: {{moves}}",
-  "error.supermoveRejected": "Nicht genug freie Felder, um diesen Stapel zu verschieben"
+  "error.supermoveRejected": "Nicht genug freie Felder, um diesen Stapel zu verschieben",
+  "slot.free": "frei"
 }

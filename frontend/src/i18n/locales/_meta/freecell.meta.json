@@ -169,5 +169,14 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Currently unused in the app; the engine silently blocks the move today. Reserved for a future toast or error surfaced by FreeCellBoard."
+  },
+  "slot.free": {
+    "component": "FreeCellSlot",
+    "description": "Tiny watermark inside an empty free cell.",
+    "tone": "functional",
+    "characterLimit": 10,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Shown uppercase via styling; keep to one short word."
   }
 }
