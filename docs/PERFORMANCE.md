@@ -163,16 +163,17 @@ The source of truth is the `android-bundle-check` job in `.github/workflows/ci.y
 | Budget                     | Value                              | Measured on                                       | Enforced by                                                      | Effect                                                |
 | -------------------------- | ---------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------- |
 | JS hard limit              | 8,388,608 B (8 MiB)                | Store bundle, `dist/index.android.bundle`         | `--max-js 8388608` in step "Size budgets"                        | CI fails                                              |
-| JS warn threshold          | 7,077,888 B (6.75 MiB)             | Store bundle                                      | `--warn-js 7077888`                                              | `::warning`, CI passes                                |
+| JS warn threshold          | 6,291,456 B (6.0 MiB)              | Store bundle                                      | `--warn-js 6291456`                                              | `::warning`, CI passes                                |
 | Packaged assets hard limit | 4,194,304 B (4 MiB)                | Store `dist/assets`                               | `--max-assets 4194304`                                           | CI fails                                              |
 | Hidden-premium asset guard | 0 files                            | Store `dist/assets`                               | `--forbid-hidden-assets`                                         | CI fails                                              |
 | All-games JS ceiling       | 8,388,608 B (8 MiB)                | All-games bundle, `dist/all/index.android.bundle` | Step "All-games JS ceiling (pre-launch config)"                  | CI fails                                              |
 | `bundlesize`               | `"8 mB"` (= 8 MiB), no compression | `dist/index.android.bundle` (store)               | `npx bundlesize`, `"bundlesize"` in `frontend/package.json`      | Informational: the step has `continue-on-error: true` |
-| PR comment baseline        | 6,544,825 B                        | Store bundle                                      | `BASELINE_BYTES` in the PR-comment step                          | Delta shown, no gate                                  |
+| Hidden-locale guard        | 0 strings                          | Store bundle JS                                   | `--forbid-hidden-locales`                                        | CI fails                                              |
+| PR comment baseline        | 5,818,990 B                        | Store bundle                                      | `BASELINE_BYTES` in the PR-comment step                          | Delta shown, no gate                                  |
 | Release APK size report    | none                               | `android-release-smoke` universal arm64 APK       | Step "APK size report (non-blocking)"                            | Step summary only                                     |
 | New game JS delta          | ≤ 200 KB                           | Reviewer check                                    | [`GAME-CONTRACT.md` — Size Budget](GAME-CONTRACT.md#size-budget) | Review                                                |
 
-Why 8 MiB stays the JS limit (decided in #2829): the store bundle is 6.24 MiB today, but the premium release un-hides the games and becomes the 7.11 MiB all-games bundle. 8 MiB leaves about 0.89 MiB (12%) of growth over that ceiling. Lowering the limit now would only fail the premium launch. Drift on today's store bundle is caught by the 6.75 MiB warning (about 8% over 6.24 MiB). The all-games ceiling is checked now, not at launch. The assets limit (4 MiB, about 23% over the 3.25 MiB store payload) will fail by design when games are un-hidden: that needs a deliberate re-budget, not a quiet increase.
+Why 8 MiB stays the JS limit (decided in #2829): the store bundle was 6.24 MiB then (5.55 MiB since #3150), but the premium release un-hides the games and becomes the 7.11 MiB all-games bundle. 8 MiB leaves about 0.89 MiB (12%) of growth over that ceiling. Lowering the limit now would only fail the premium launch. Drift on today's store bundle is caught by the 6.0 MiB warning (about 8% over 5.55 MiB; it was 6.75 MiB before #3150). The all-games ceiling is checked now, not at launch. The assets limit (4 MiB, about 23% over the 3.25 MiB store payload) will fail by design when games are un-hidden: that needs a deliberate re-budget, not a quiet increase.
 
 CI builds the store bundle with the env set explicitly. A gitignored `frontend/.env` on a dev machine points at the pre-launch API and would otherwise make a bundle with all 12 games, because Expo loads `.env` before Metro runs.
 
@@ -193,14 +194,15 @@ For the all-games numbers use `EXPO_PUBLIC_API_URL=https://dev-games-api.buffing
 
 ### Measurements (2026-10-10)
 
-| Config                                               | JS (minified, pre-Hermes)  | Packaged assets             | Files |
-| ---------------------------------------------------- | -------------------------- | --------------------------- | ----: |
-| Before the epic (`dev` a19aadc5, store)              | 7,651,589 B (7.30 MiB)     | about 38 MB                 |   206 |
-| After #2830 (hidden screens stubbed)                 | 6,736,164 B (6.42 MiB)     | about 3.5 MB                |    53 |
-| **After #2830 + #2832, store (current)**             | **6,544,825 B (6.24 MiB)** | **3,403,575 B (3.25 MiB)**  |    52 |
-| **After #2830 + #2832, all games (premium ceiling)** | **7,460,309 B (7.11 MiB)** | **28,744,159 B (27.4 MiB)** |   205 |
+| Config                                                       | JS (minified, pre-Hermes)  | Packaged assets             | Files |
+| ------------------------------------------------------------ | -------------------------- | --------------------------- | ----: |
+| Before the epic (`dev` a19aadc5, store)                      | 7,651,589 B (7.30 MiB)     | about 38 MB                 |   206 |
+| After #2830 (hidden screens stubbed)                         | 6,736,164 B (6.42 MiB)     | about 3.5 MB                |    53 |
+| After #2830 + #2832, store                                   | 6,544,825 B (6.24 MiB)     | 3,403,575 B (3.25 MiB)      |    52 |
+| **After #3150, store (current): non-launch locales stubbed** | **5,818,990 B (5.55 MiB)** | **3,403,575 B (3.25 MiB)**  |    52 |
+| **After #2830 + #2832, all games (premium ceiling)**         | **7,460,309 B (7.11 MiB)** | **28,744,159 B (27.4 MiB)** |   205 |
 
-Notes: the first two rows are from the #2830 comparison runs; the last two were re-measured with `size-report.mjs` and re-checked for the store row on the final tree. Asset byte counts are exact; Metro's "Copying N asset files" log line says 53 and 206 because it counts a directory entry, `size-report.mjs` counts files. Adding `--sourcemap-output` appends 95 bytes to the bundle (6,544,920 B). The stale PR-comment baseline before this epic was 4,718,592 B (4.5 MB, 2026-04).
+Notes: the #3150 row was measured against 6,544,912 B for the same tree without the locale stub, so dropping the ten non-launch locales saves 725,922 B (0.69 MiB, 11.1%) of Android store JS; the iOS store bundle is 5,816,474 B, and the all-games bundle keeps all 13 locales (7,458,736 B). The first two rows are from the #2830 comparison runs; the last two were re-measured with `size-report.mjs` and re-checked for the store row on the final tree. Asset byte counts are exact; Metro's "Copying N asset files" log line says 53 and 206 because it counts a directory entry, `size-report.mjs` counts files. Adding `--sourcemap-output` appends 95 bytes to the bundle (6,544,920 B). The stale PR-comment baseline before this epic was 4,718,592 B (4.5 MB, 2026-04).
 
 ### Android artifact inputs
 
@@ -589,7 +591,7 @@ These were looked at for #2869 and left alone, either because they wouldn't redu
 
 - **Inlining Sentry's attribute-name constants at build time** (341 KB). Sentry imports about 25 string constants from `@sentry/conventions/attributes`, a 340 KB module that Metro can't tree-shake. A Babel plugin that replaced them with their values was built and measured for #2869, then dropped: it couples the build to a transitive Sentry package, and the owner declined it.
 - **Lazy-loading game screens and engines.** Native Metro doesn't split bundles: a lazy `require` or `React.lazy` still puts the module in `index.android.bundle`. It only defers evaluation. The screens are already lazy for startup (see _Lazy Loading Decision_ above).
-- **Keeping non-active translations out of the bundle.** Every locale is reachable through `import()` in `src/i18n/localeLoaders.ts`, and native Metro bundles every `import()` target. Moving translations out would mean downloading them (breaks offline play) or shipping them as native assets read at runtime (new native-asset code path). Not worth it while there's headroom.
+- **Keeping non-active translations out of the bundle.** Every offered locale is reachable through `import()` in `src/i18n/localeLoaders.ts`, and native Metro bundles every `import()` target. (The locales a store build does not offer at all are a different case and are stubbed out at bundle time, #3150: see `frontend/metro/storeBundle.js`.) Moving translations out would mean downloading them (breaks offline play) or shipping them as native assets read at runtime (new native-asset code path). Not worth it while there's headroom.
 - **Minifier `ascii_only: false`.** Would cut ~240 KB from the measured file by writing translations as UTF-8 instead of `\uXXXX` escapes. It doesn't change the Hermes bytecode, so it would only move the metric. If we do it, it should come with measuring real bytecode instead (below).
 - **Measure Hermes bytecode in CI** (`expo export:embed --bytecode`, or the `.hbc` from the Gradle build) so the guardrail tracks what ships. The limit would need re-basing (see "Real bytecode" above), which is an owner decision.
 - **Icon glyph-map subset** (225 KB). `createIconSet` with only the glyphs we use. Needs every icon name to be static, which is not yet true everywhere.
@@ -609,7 +611,7 @@ Record the owner's approval and the reason in the history list above. Un-hiding 
 
 ### PR comment
 
-Every pull request receives an automated comment from `android-bundle-check` with the store-config JS bundle size, packaged-asset size and file count, each with its limit, and the JS delta vs the 6.24 MiB store baseline (`BASELINE_BYTES=6544825`, 2026-10-10; it was a stale 4.5 MB before #2829). No action is needed unless the delta is large or a hard limit is breached.
+Every pull request receives an automated comment from `android-bundle-check` with the store-config JS bundle size, packaged-asset size and file count, each with its limit, and the JS delta vs the 5.55 MiB store baseline (`BASELINE_BYTES=6544825`, 2026-10-10; it was a stale 4.5 MB before #2829). No action is needed unless the delta is large or a hard limit is breached.
 
 For new game additions specifically, the reviewer checklist in [`docs/GAME-CONTRACT.md` — Size Budget](GAME-CONTRACT.md#size-budget) requires the delta to stay ≤ 200 KB.
 
