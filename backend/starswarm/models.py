@@ -472,6 +472,40 @@ def _consistency_flags(stats: dict[str, Any]) -> list[str]:
     return flags
 
 
+_MAX_LOGGED_KEYS = 5
+_MAX_LOGGED_KEY = 32
+_MAX_REPORTED_PATHS = 10
+
+
+def _known_segments() -> frozenset[str]:
+    """Every field name and registry value: the only strings safe to log as a path."""
+    names: set[str] = set()
+    for cls in (StarSwarmWaveStats, *_WaveBlock.__subclasses__()):
+        names.update(cls.model_fields)
+    for outer, inner in _KEYED_TABLES.values():
+        names.update(outer)
+        names.update(inner or ())
+    return frozenset(names)
+
+
+def _safe_paths(locs: Any) -> list[str]:
+    """Error locations as dotted paths that are safe to log and report.
+
+    A pydantic ``loc`` carries the client's own dict keys. A string that is not
+    a field name or registry value becomes ``<key>``; ints stay. Deduplicated
+    and capped at ``_MAX_REPORTED_PATHS``.
+    """
+    known = _known_segments()
+    paths: list[str] = []
+    for loc in locs:
+        path = ".".join(str(p) if isinstance(p, int) or p in known else "<key>" for p in loc)
+        if path not in paths:
+            paths.append(path)
+        if len(paths) >= _MAX_REPORTED_PATHS:
+            break
+    return paths
+
+
 def validate_wave_completed(data: dict[str, Any]) -> dict[str, Any] | None:
     """The ``wave_completed`` ``data`` to store, or ``None`` to drop the event.
 
@@ -496,19 +530,25 @@ def validate_wave_completed(data: dict[str, Any]) -> dict[str, Any] | None:
     try:
         stats = StarSwarmWaveStats.model_validate(data)
     except ValidationError as e:
-        errors = e.errors()[:5]
-        fields = [".".join(str(p) for p in err["loc"]) for err in errors]
-        types = sorted({err["type"] for err in errors})
+        errors = e.errors()
+        fields = _safe_paths(err["loc"] for err in errors)
+        types = sorted({err["type"] for err in errors})[:10]
         logger.warning(
-            "starswarm: dropped an invalid wave_completed (%s)",
-            ", ".join(f"{f} [{err['type']}]" for f, err in zip(fields, errors, strict=True)),
+            "starswarm: dropped an invalid wave_completed (%s) [%s]",
+            ", ".join(fields),
+            ", ".join(types),
         )
         _report_dropped_wave("invalid", fields=fields, error_types=types)
         return None
     stored = stats.model_dump(mode="json", exclude_unset=True)
     unknown = _unknown_table_keys(stored)
     if unknown:
-        logger.warning("starswarm: wave_completed has unregistered keys: %s", ", ".join(unknown))
+        logger.warning(
+            "starswarm: wave_completed has %d unregistered keys: %s%s",
+            len(unknown),
+            ", ".join(repr(k[:_MAX_LOGGED_KEY]) for k in unknown[:_MAX_LOGGED_KEYS]),
+            " ..." if len(unknown) > _MAX_LOGGED_KEYS else "",
+        )
     flags = _consistency_flags(stored)
     if flags:
         logger.warning("starswarm: wave_completed is inconsistent: %s", ", ".join(flags))

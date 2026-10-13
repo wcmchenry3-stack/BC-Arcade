@@ -382,3 +382,56 @@ def test_the_migration_adds_and_removes_only_the_wave_event(
     assert _event_names(migration_db_path) == before
     with sqlite3.connect(migration_db_path) as conn:
         assert conn.execute("SELECT event_index FROM game_events").fetchall() == [(1,)]
+
+
+# ---------------------------------------------------------------------------
+# client-controlled keys never reach the log or Sentry
+# ---------------------------------------------------------------------------
+
+_NASTY = "evil\n" + "x" * 300
+
+
+def test_a_hostile_key_in_an_error_path_is_not_logged_or_reported(
+    sentry_messages, caplog: pytest.LogCaptureFixture
+) -> None:
+    data = _fixture()
+    data["combat"]["kills"][_NASTY] = {"shot": -1}
+    data["combat"]["spawned"][_NASTY] = "nope"
+    with caplog.at_level(logging.WARNING, logger="starswarm.models"):
+        assert validate_wave_completed(data) is None
+    assert "evil" not in caplog.text
+    assert "xxxx" not in caplog.text
+    _, kw = sentry_messages[0]
+    assert "evil" not in repr(kw)
+    assert "xxxx" not in repr(kw)
+    fields = kw["extras"]["fields"] if "extras" in kw else repr(kw)
+    assert "combat.kills.<key>.shot" in fields
+    assert "<key>" in caplog.text
+
+
+def test_error_paths_are_deduplicated_and_capped(sentry_messages) -> None:
+    data = _fixture()
+    for i in range(30):
+        data["rocks"]["broken"][f"k{i}"] = -1
+    data["rocks"]["spawned"] = {f"s{i}": "x" for i in range(30)}
+    assert validate_wave_completed(data) is None
+    _, kw = sentry_messages[0]
+    paths = [p for p in kw["extras"]["fields"].split(", ") if p]
+    assert len(paths) == len(set(paths)) <= 10
+
+
+def test_unknown_table_keys_are_capped_truncated_and_escaped(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    data = _fixture()
+    for i in range(8):
+        data["powerUps"]["collected"][f"new{i}\n" + "y" * 20] = 1
+    with caplog.at_level(logging.WARNING, logger="starswarm.models"):
+        assert validate_wave_completed(data) is not None
+    (record,) = [r for r in caplog.records if "unregistered" in r.getMessage()]
+    message = record.getMessage()
+    assert "\n" not in message
+    assert "new5" not in message
+    assert message.count("new") == 5
+    assert message.endswith("...")
+    assert "8 unregistered" in message
