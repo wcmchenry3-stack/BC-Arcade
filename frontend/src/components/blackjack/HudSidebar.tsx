@@ -59,7 +59,10 @@ export default function HudSidebar({
         <View style={styles.chipBlock}>
           <Text
             style={[styles.chipsText, { color: hudColor, fontFamily: typography.heading }]}
-            accessibilityLabel={t("hud.goalProgressAccessibilityLabel", { chips, goal: runGoal })}
+            accessibilityLabel={t("hud.goalProgressAccessibilityLabel", {
+              chips: formatNumber(t, chips),
+              goal: formatNumber(t, runGoal),
+            })}
           >
             {formatNumber(t, chips)}
           </Text>

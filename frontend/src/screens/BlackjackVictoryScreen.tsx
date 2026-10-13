@@ -163,7 +163,10 @@ export default function BlackjackVictoryScreen({ navigation }: Props) {
           stats={[
             { label: tResult("stat.hands"), value: sessionStats.handsPlayed },
             { label: tResult("stat.winRate"), value: `${winRatePct(sessionStats) ?? 0}%` },
-            { label: tResult("stat.biggestWin"), value: `+${sessionStats.biggestWin}` },
+            {
+              label: tResult("stat.biggestWin"),
+              value: `+${formatNumber(t, sessionStats.biggestWin)}`,
+            },
             { label: tResult("stat.netPL"), value: formatPL(netPL, (n) => formatNumber(t, n)) },
           ]}
           detail={
