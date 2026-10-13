@@ -465,6 +465,11 @@ export default function SudokuScreen() {
   }, [resetScore, syncClose, clearSavedGame, setState]);
 
   const handleHint = useCallback(() => {
+    // Like a number pad press, a hint press is a first interaction even when
+    // it does nothing (no cell selected): it starts the clock, here and not in
+    // the updater because a no-op leaves the state alone.
+    startClockRef();
+    syncClockActivity();
     setState((s) => {
       if (!s || s.selectedRow === null || s.selectedCol === null) return s;
       const cell = s.grid[s.selectedRow]?.[s.selectedCol];
@@ -472,11 +477,10 @@ export default function SudokuScreen() {
       const { size } = variantConfig(s.variant);
       const idx = s.selectedRow * size + s.selectedCol;
       const hintDigit = (s.solution.charCodeAt(idx) - 48) as CellValue;
-      startClockRef();
       ensureSyncStarted(s);
       return enterDigit(s, hintDigit);
     });
-  }, [startClockRef, ensureSyncStarted, setState]);
+  }, [startClockRef, syncClockActivity, ensureSyncStarted, setState]);
 
   const headerRight = useMemo(() => {
     if (!state) return null;

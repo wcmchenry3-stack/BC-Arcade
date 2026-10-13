@@ -1090,17 +1090,20 @@ describe("SudokuScreen — HUD clock (#2964)", () => {
     expect(mockMarkStarted).not.toHaveBeenCalled();
   });
 
-  it("a hint as the first interaction starts the clock (#2942)", async () => {
+  it("a hint pressed first, from a restored select-only save, starts the clock and the session (#2942)", async () => {
     jest.useFakeTimers();
-    const r = await renderAndAwaitLoad();
-    const emptyCells = await startAndGetEmptyCells(r);
+    const fresh = loadPuzzle("easy", "classic", () => 0);
+    const open = fresh.grid
+      .flatMap((cells, row) => cells.map((cell, col) => ({ cell, row, col })))
+      .find(({ cell }) => !cell.given)!;
+    await saveGame(selectCell(fresh, open.row, open.col));
+
+    const r = await renderScreen();
+    await waitFor(() => expect(r.queryByLabelText(/^start$/i)).toBeNull());
     await act(async () => {
       jest.advanceTimersByTime(3000);
     });
     expect(r.getByLabelText("Elapsed time 00:00")).toBeTruthy();
-    await act(async () => {
-      await fireEvent.press(emptyCells[0]!);
-    });
     await act(async () => {
       await fireEvent.press(r.getByLabelText("Hint"));
     });
@@ -1109,6 +1112,20 @@ describe("SudokuScreen — HUD clock (#2964)", () => {
     });
     expect(r.getByLabelText("Elapsed time 00:01")).toBeTruthy();
     expect(mockMarkStarted).toHaveBeenCalledTimes(1);
+  });
+
+  it("a hint pressed with no cell selected starts the clock but no session (#2942)", async () => {
+    jest.useFakeTimers();
+    const r = await renderAndAwaitLoad();
+    await startAndGetEmptyCells(r);
+    await act(async () => {
+      await fireEvent.press(r.getByLabelText("Hint"));
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+    expect(r.getByLabelText("Elapsed time 00:02")).toBeTruthy();
+    expect(mockMarkStarted).not.toHaveBeenCalled();
   });
 
   it("a restored save with a selection but no moves does not run the clock until the first digit (#2942)", async () => {

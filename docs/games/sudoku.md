@@ -70,7 +70,7 @@ Normal digit placement clears that cell's pencil marks.
 A hint:
 - works only on a selected, empty, non-given cell;
 - enters the correct solution digit through the normal placement logic;
-- starts the puzzle clock (if a cell selection has not already) and the sync session if this is the first real input;
+- starts the puzzle clock (if not already running) on any press, even one that does nothing such as no cell selected, and starts the sync session only when it actually places a digit;
 - creates a normal undo snapshot;
 - does **not** add an error or carry a separate score penalty.
 
