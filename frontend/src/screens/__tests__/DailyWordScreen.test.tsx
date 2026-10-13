@@ -48,6 +48,7 @@ jest.mock("../../game/daily_word/storage", () => ({
   loadState: jest.fn(),
   saveState: jest.fn(),
   clearState: jest.fn(),
+  pruneStates: jest.fn(),
   saveTodayMeta: jest.fn().mockResolvedValue(undefined),
   loadTodayMeta: jest.fn().mockResolvedValue(null),
 }));
@@ -92,6 +93,7 @@ const storage = jest.requireMock("../../game/daily_word/storage") as {
   loadState: jest.Mock;
   saveState: jest.Mock;
   clearState: jest.Mock;
+  pruneStates: jest.Mock;
   saveTodayMeta: jest.Mock;
   loadTodayMeta: jest.Mock;
 };
@@ -196,6 +198,7 @@ beforeEach(() => {
   storage.loadState.mockResolvedValue(null);
   storage.saveState.mockResolvedValue(undefined);
   storage.clearState.mockResolvedValue(undefined);
+  storage.pruneStates.mockResolvedValue(undefined);
   storage.saveTodayMeta.mockResolvedValue(undefined);
   storage.loadTodayMeta.mockResolvedValue(null); // cold cache by default
   mockStartGame.mockReturnValue("game-1");
@@ -233,7 +236,11 @@ describe("DailyWordScreen — stale state", () => {
     // Wait for load to complete (grid renders)
     await findByTestId("tile-0-0");
 
-    expect(storage.clearState).toHaveBeenCalledTimes(1);
+    // Boards are per puzzle (#3230): today's is loaded by its id, and every
+    // other puzzle's board is pruned.
+    expect(storage.loadState).toHaveBeenCalledWith(TODAY_META.puzzle_id);
+    expect(storage.pruneStates).toHaveBeenCalledTimes(1);
+    expect(storage.pruneStates).toHaveBeenCalledWith(TODAY_META.puzzle_id);
   });
 
   it("store build: a saved Hindi game does not strand the player (#3153)", async () => {
@@ -251,7 +258,8 @@ describe("DailyWordScreen — stale state", () => {
       await findByTestId("tile-0-0");
 
       expect(dailyWordApi.getToday).toHaveBeenCalledWith(expect.any(Number), "en");
-      expect(storage.clearState).toHaveBeenCalledTimes(1);
+      expect(storage.pruneStates).toHaveBeenCalledTimes(1);
+      expect(storage.pruneStates).toHaveBeenCalledWith(TODAY_META.puzzle_id);
     } finally {
       __forceStoreBuildForTests(false);
       await i18n.changeLanguage(original);
@@ -270,7 +278,7 @@ describe("DailyWordScreen — stale state", () => {
 });
 
 describe("DailyWordScreen — saved game (usePersistedGameState, #3109)", () => {
-  /** The last board written to `daily_word_state_v1`. */
+  /** The last board written (`daily_word_board_<puzzle_id>`, #3230). */
   function lastSaved(): DailyWordState {
     const calls = storage.saveState.mock.calls;
     return calls[calls.length - 1]![0] as DailyWordState;
@@ -313,46 +321,43 @@ describe("DailyWordScreen — saved game (usePersistedGameState, #3109)", () => 
     expect(storage.clearState).not.toHaveBeenCalled();
   });
 
-  it("clears another day's save before today's fresh board is saved", async () => {
+  it("prunes another day's board and saves today's fresh board", async () => {
     storage.loadState.mockResolvedValue(STALE_STATE);
     const api = await renderScreen();
     await api.findByTestId("tile-0-0");
 
-    expect(storage.clearState).toHaveBeenCalledTimes(1);
+    expect(storage.pruneStates).toHaveBeenCalledTimes(1);
+    expect(storage.pruneStates).toHaveBeenCalledWith(TODAY_META.puzzle_id);
+    expect(storage.clearState).not.toHaveBeenCalled();
     expect(storage.saveState).toHaveBeenCalledTimes(1);
     expect(lastSaved().puzzle_id).toBe(TODAY_META.puzzle_id);
     expect(lastSaved().rows.every((r) => !r.submitted)).toBe(true);
-    expect(storage.clearState.mock.invocationCallOrder[0]).toBeLessThan(
-      storage.saveState.mock.invocationCallOrder[0]!
-    );
   });
 
-  it("saves today's fresh board only once another day's save has been cleared (#3127)", async () => {
+  it("saves today's fresh board without waiting for the prune (boards are per puzzle, #3230)", async () => {
     storage.loadState.mockResolvedValue(STALE_STATE);
-    const clearing = deferred<void>();
-    storage.clearState.mockReturnValue(clearing.promise);
+    const pruning = deferred<void>();
+    storage.pruneStates.mockReturnValue(pruning.promise);
     const api = await renderScreen();
     await api.findByTestId("tile-0-0");
 
-    // The restore handler started the clear; the save effect has run but waits.
-    expect(storage.clearState).toHaveBeenCalledTimes(1);
-    expect(storage.saveState).not.toHaveBeenCalled();
-
-    await act(async () => clearing.resolve());
+    // The prune keeps today's board's key, so the save need not wait for it.
+    expect(storage.pruneStates).toHaveBeenCalledTimes(1);
     expect(storage.saveState).toHaveBeenCalledTimes(1);
     expect(lastSaved().puzzle_id).toBe(TODAY_META.puzzle_id);
+    await act(async () => pruning.resolve());
   });
 
-  it("still saves today's board, and later changes, when clearing another day's save fails", async () => {
+  it("still saves today's board, and later changes, when pruning other boards fails", async () => {
     storage.loadState.mockResolvedValue(STALE_STATE);
-    storage.clearState.mockRejectedValue(new Error("removeItem failed"));
+    storage.pruneStates.mockRejectedValue(new Error("removeMany failed"));
     const api = await renderScreen();
     await api.findByTestId("tile-0-0");
     await act(async () => {
       await Promise.resolve();
     });
 
-    expect(storage.clearState).toHaveBeenCalledTimes(1);
+    expect(storage.pruneStates).toHaveBeenCalledTimes(1);
     expect(storage.saveState).toHaveBeenCalledTimes(1);
     expect(lastSaved().puzzle_id).toBe(TODAY_META.puzzle_id);
 
@@ -388,23 +393,21 @@ describe("DailyWordScreen — saved game (usePersistedGameState, #3109)", () => 
       );
       expect(todays).toHaveLength(2);
 
-      // The newer load lands: another day's save is cleared, then today's
+      // The newer load lands: other puzzles' boards are pruned, and today's
       // fresh board is saved.
       await act(async () => todays[1]!.resolve(TODAY_META));
       await api.findByTestId("tile-0-0");
-      expect(storage.clearState).toHaveBeenCalledTimes(1);
+      expect(storage.pruneStates).toHaveBeenCalledTimes(1);
       expect(storage.saveState).toHaveBeenCalledTimes(1);
       expect(lastSaved().puzzle_id).toBe(TODAY_META.puzzle_id);
-      expect(storage.clearState.mock.invocationCallOrder[0]).toBeLessThan(
-        storage.saveState.mock.invocationCallOrder[0]!
-      );
 
-      // The older load lands last: nothing more is cleared, saved or shown.
+      // The older load lands last: nothing more is pruned, saved or shown.
       await act(async () => settleOlder(todays[0]!));
       await act(async () => {
         await Promise.resolve();
       });
-      expect(storage.clearState).toHaveBeenCalledTimes(1);
+      expect(storage.pruneStates).toHaveBeenCalledTimes(1);
+      expect(storage.clearState).not.toHaveBeenCalled();
       expect(storage.saveState).toHaveBeenCalledTimes(1);
       expect(api.queryByText("Retry")).toBeNull();
       expect(api.getByTestId("tile-0-0")).toBeTruthy();
