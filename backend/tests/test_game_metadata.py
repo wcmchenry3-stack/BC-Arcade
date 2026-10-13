@@ -209,7 +209,13 @@ def test_daily_word_metadata_default_language_is_en() -> None:
 
 def test_daily_word_metadata_rejects_invalid_language() -> None:
     with pytest.raises(ValidationError):
-        DailyWordMetadata.model_validate({"puzzle_id": "2026-05-02:en", "language": "fr"})
+        DailyWordMetadata.model_validate({"puzzle_id": "2026-05-02:en", "language": "de"})
+
+
+@pytest.mark.parametrize("lang", ["fr", "es"])
+def test_daily_word_metadata_valid_romance_languages(lang: str) -> None:
+    m = DailyWordMetadata.model_validate({"puzzle_id": f"2026-05-02:{lang}:1", "language": lang})
+    assert m.language == lang
 
 
 def test_daily_word_metadata_rejects_unknown_field() -> None:
