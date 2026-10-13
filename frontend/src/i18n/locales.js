@@ -5,7 +5,7 @@
 export const LOCALES = [
   { code: "en", label: "English", nativeLabel: "English", flag: "🇺🇸", dir: "ltr" },
   { code: "fr-CA", label: "French (Canadian)", nativeLabel: "Français", flag: "🇨🇦", dir: "ltr" },
-  { code: "es", label: "Spanish", nativeLabel: "Español", flag: "🇪🇸", dir: "ltr" },
+  { code: "es", label: "Spanish", nativeLabel: "Español", flag: "🌎", dir: "ltr" },
   { code: "hi", label: "Hindi", nativeLabel: "हिन्दी", flag: "🇮🇳", dir: "ltr" },
   { code: "ar", label: "Arabic", nativeLabel: "العربية", flag: "🇸🇦", dir: "rtl" },
   { code: "zh", label: "Chinese (Mandarin)", nativeLabel: "中文", flag: "🇨🇳", dir: "ltr" },

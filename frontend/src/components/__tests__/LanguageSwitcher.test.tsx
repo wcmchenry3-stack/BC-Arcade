@@ -30,7 +30,7 @@ jest.mock("../../i18n/locales", () => {
   const LOCALES = [
     { code: "en", label: "English", nativeLabel: "English", flag: "🇺🇸", dir: "ltr" },
     { code: "fr-CA", label: "French (Canadian)", nativeLabel: "Français", flag: "🇨🇦", dir: "ltr" },
-    { code: "es", label: "Spanish", nativeLabel: "Español", flag: "🇪🇸", dir: "ltr" },
+    { code: "es", label: "Spanish", nativeLabel: "Español", flag: "🌎", dir: "ltr" },
     { code: "de", label: "German", nativeLabel: "Deutsch", flag: "🇩🇪", dir: "ltr" },
     { code: "ar", label: "Arabic", nativeLabel: "العربية", flag: "🇸🇦", dir: "rtl" },
   ];
