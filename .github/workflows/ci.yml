@@ -201,6 +201,9 @@ jobs:
       - name: i18n completeness check
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: node scripts/check-i18n-strings.js
+      - name: i18n placeholder parity tests (#3152)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: node --test scripts/i18n-placeholders.test.mjs
       - name: Colour literals (per-game palettes, #2989)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: node scripts/check-color-literals.mjs
