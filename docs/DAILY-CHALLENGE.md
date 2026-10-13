@@ -130,7 +130,10 @@ Today the two live pools are identical, so the slate distinction does not change
 | Route | Scope | Purpose | Limit |
 | --- | --- | --- | ---: |
 | `GET /daily-challenge/today` | public / IP-keyed | Free slate for the local day, without player progress | 60/min |
+| `GET /daily-challenge/upcoming` | public / IP-keyed | Free slate for today, today+1 and today+2 (`{"days": [...]}`, each shaped like `/today`) | 60/min |
 | `GET /daily-challenge/status` | `X-Session-ID` | This session's resolved slate plus completion/progress | 60/min |
+
+`/upcoming` takes the same `tz_offset_minutes` (-840..840) as the other routes and resolves each day from the client's local calendar. Reading a day freezes it through `get_or_create_templates`, so a second read, another device, and a later `/today` all return the same goals. Scoring is unchanged: a completion is still checked against its own local day when it syncs.
 
 The Home card treats `/status` as authoritative because a future premium session's goal list can differ from `/today`, not merely its completion flags.
 
@@ -148,12 +151,32 @@ The card:
 - shows a completion note when all visible goals are done;
 - filters out goals for games hidden in the current build;
 - renders nothing for a non-network server-side unavailable state the player cannot act on;
-- shows a retryable offline message when the device/network is the actionable problem;
+- shows a retryable offline message when the device/network is the actionable problem and no goals are cached for today (the shared 3-day message once the cached goals have run out);
 - holds a loading footprint while fetching so the game grid does not jump.
 
-The card holds a challenge only for the local day it was fetched for. The hook re-checks the local day on foreground, screen focus and just after local midnight; once the day has changed, yesterday's challenge is never shown as today's. Online it refetches; offline it drops to the retryable offline message (#2924).
+The card holds a challenge only for the local day it was fetched for. The hook re-checks the local day on foreground, screen focus and just after local midnight; once the day has changed, yesterday's challenge is never shown as today's. Online it refetches; offline it shows that day's cached goals (below), or the retryable offline message when it has none (#2924).
 
 Offline game completions can count later after the shared game-session queue uploads them.
+
+### Offline play (#3228, #3043)
+
+While online, the hook (`useDailyChallenge.ts`) saves goals on the device (`offlineCache.ts`), so an offline player still gets each day's goals for up to 3 days:
+
+- **`daily_challenge_upcoming_v1`**: the `/upcoming` answer (the free goals for today, today+1 and today+2), read at most once per local day, after the server answers a refresh.
+- **`daily_challenge_status_v1`**: the last `/status` answer of the day: this session's slate (free or premium) with the goals already met. A premium player's goals for today come from here; days 2 and 3 fall back to the free `/upcoming` goals. The server re-checks every completion when it syncs, so a goal from the "wrong" slate can never be credited.
+
+Offline (or after a network failure), for the device's current local date:
+
+- **Goals:** today's cached `/status` (or the in-memory one fetched earlier today), else that date's `/upcoming` entry. Days are keyed by their date; the server freezes each date's goals, so changing time zone only changes which date is "today".
+- **Progress:** goals already met in the cached `/status`, plus any goal met by a game still in the device's queue (`pendingGamesStore`) that finished on that local date by the device's current UTC offset (the same offset `/status` is asked with). `localProgress.ts` builds each game's facts like the server does (result block, non-null creation metadata, `final_score`, `duration_ms`), skips abandoned games, and mirrors the per-kind checks in `definitions.py`. A kind it does not know is never met locally.
+- **Sync:** the queued games upload through `SyncWorker` as usual and are scored by the server against the local day of their device `completed_at`, so a day played offline on that day counts toward the streak once it syncs.
+- **Back online:** the local progress stays on the card until the first `/status` answer, which then replaces it. Online, the cache is never shown.
+- **Run out:** when the 3-day window is exhausted (`offlineWindowExhausted`, `lastConnected.ts`), or goals were cached but none cover today, the card shows the shared message (`common:offline.windowExhausted`), plus `common:offline.windowExhaustedStreak` when the last known streak is above 0. A device that never cached anything keeps the plain offline message.
+- **No catch-up:** only today's entry is ever used; a past day's goals are never shown or completed.
+
+Known gap: a game that synced after the last `/status` read and before the device went offline is in neither the cached `/status` nor the queue, so it shows as not done until the device reconnects. The hook reads `/status` on every Home focus (after flushing the queue), so in practice this is the game finished just before losing the connection without returning to Home.
+
+Delete My Data clears both keys.
 
 ## 10. Streak
 

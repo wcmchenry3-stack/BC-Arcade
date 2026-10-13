@@ -7,6 +7,14 @@ import { flushQueuedGames } from "../_shared/flushQueuedGames";
 import { withRetry } from "../_shared/withRetry";
 import { dailyChallengeApi, type DailyChallenge } from "./api";
 import { localDayKey, msUntilLocalMidnight, tzOffsetMinutes } from "./localDay";
+import { withLocalProgress } from "./localProgress";
+import {
+  loadOfflineDay,
+  saveStatus,
+  saveUpcoming,
+  upcomingFetchedOn,
+  type OfflineDay,
+} from "./offlineCache";
 
 /**
  * - `loading`: first fetch in flight, nothing to show yet.
@@ -19,6 +27,12 @@ export type DailyChallengePhase = "loading" | "ready" | "offline" | "unavailable
 export interface DailyChallengeResult {
   readonly phase: DailyChallengePhase;
   readonly challenge: DailyChallenge | null;
+  /**
+   * Offline with no goals for today because the goals fetched ahead ran out
+   * (#3228): the card shows the shared "connect to get the latest puzzle"
+   * message instead of its plain offline one. Only ever true with `offline`.
+   */
+  readonly windowExhausted: boolean;
   readonly refresh: () => void;
 }
 
@@ -28,6 +42,24 @@ const MAX_TICK_MS = 60_000;
 interface HeldChallenge {
   readonly challenge: DailyChallenge;
   readonly day: string;
+}
+
+/**
+ * Save `/upcoming` for offline play (#3228), at most once per local day. Best
+ * effort and silent: the card never shows these goals online, so a failure
+ * here only means an older cache stays.
+ */
+function cacheUpcoming(day: string): void {
+  upcomingFetchedOn()
+    .then(async (fetchedOn) => {
+      if (fetchedOn === day) return;
+      const days = await dailyChallengeApi.getUpcoming(tzOffsetMinutes());
+      // A read that spanned local midnight is for the wrong "today": skip it.
+      if (localDayKey() === day && days.some((c) => c.challengeId === day)) {
+        await saveUpcoming(day, days);
+      }
+    })
+    .catch(() => undefined);
 }
 
 /**
@@ -43,6 +75,15 @@ interface HeldChallenge {
  * on foreground, focus and at local midnight) the held challenge is yesterday's:
  * it is never presented as today's, so offline the card drops to its retry state
  * and online it refetches.
+ *
+ * Offline play (#3228): every online answer is also saved on the device
+ * (`offlineCache.ts`): today's `/status`, and `/upcoming`'s goals for today and
+ * the next 2 days. Offline (or after a network failure), the card shows the
+ * cached goals for the device's local day, with the games still queued on the
+ * device that day counted locally (`localProgress.ts`). Those games upload
+ * through `SyncWorker` as usual; once a `/status` answers again it replaces the
+ * local progress. Past the cached days it reports `windowExhausted`. Online,
+ * nothing here changes what is shown.
  */
 export function useDailyChallenge(): DailyChallengeResult {
   const navigation = useNavigation();
@@ -53,6 +94,12 @@ export function useDailyChallenge(): DailyChallengeResult {
   const [retryTick, setRetryTick] = useState(0);
   const [timerTick, setTimerTick] = useState(0);
   const [failure, setFailure] = useState<"network" | "server" | null>(null);
+  // The cached goals and queued games for a local day, read while offline.
+  const [offlineDay, setOfflineDay] = useState<OfflineDay | null>(null);
+  const [offlineTick, setOfflineTick] = useState(0);
+  // Set while offline; cleared only once the server answers again, so on
+  // reconnecting the local progress stays up until `/status` replaces it.
+  const [localView, setLocalView] = useState(false);
   const inFlight = useRef(false);
   const mounted = useRef(true);
 
@@ -88,10 +135,16 @@ export function useDailyChallenge(): DailyChallengeResult {
             : { challenge: next, day: requestDay }
         );
         setFailure(null);
+        setLocalView(false);
+        if (!next.isFallback) void saveStatus(requestDay, next);
+        cacheUpcoming(requestDay);
       })
       .catch((e: unknown) => {
         // httpClient already reports what is worth reporting.
-        if (mounted.current) setFailure(isNetworkError(e) ? "network" : "server");
+        if (!mounted.current) return;
+        const network = isNetworkError(e);
+        setFailure(network ? "network" : "server");
+        if (!network) setLocalView(false);
       })
       .finally(() => {
         inFlight.current = false;
@@ -106,6 +159,7 @@ export function useDailyChallenge(): DailyChallengeResult {
   // from yesterday stops reading as ready.
   const syncDay = useCallback(() => {
     setToday(localDayKey());
+    setOfflineTick((n) => n + 1); // re-read the queue: a game may have just ended
     refresh();
   }, [refresh]);
 
@@ -142,7 +196,32 @@ export function useDailyChallenge(): DailyChallengeResult {
     return () => clearTimeout(id);
   }, [today, timerTick, syncDay]);
 
-  const challenge = held && held.day === today ? held.challenge : null;
+  const offline = !isOnline || failure === "network";
+  const useLocal = offline || localView;
+
+  // Adjusted during render (not in an effect), so the flag is set in the same pass.
+  if (offline && !localView) setLocalView(true);
+
+  // Offline only: read the cached goals and the day's queued games. Re-read on
+  // every day change, focus and foreground (`offlineTick`).
+  useEffect(() => {
+    if (!useLocal) return;
+    const day = today;
+    loadOfflineDay(day, tzOffsetMinutes())
+      .then((loaded) => {
+        if (mounted.current) setOfflineDay(loaded);
+      })
+      .catch(() => undefined);
+  }, [useLocal, today, offlineTick]);
+
+  const heldToday = held && held.day === today ? held.challenge : null;
+  const offlineToday = useLocal && offlineDay?.day === today ? offlineDay : null;
+  let challenge = heldToday;
+  if (offlineToday) {
+    // Today's own `/status` beats the cache; either way the queued games count.
+    const base = heldToday ?? offlineToday.base;
+    challenge = base ? withLocalProgress(base, offlineToday.ended) : null;
+  }
 
   let phase: DailyChallengePhase;
   if (challenge) phase = "ready";
@@ -152,5 +231,7 @@ export function useDailyChallenge(): DailyChallengeResult {
   else if (failure === "server") phase = "unavailable";
   else phase = "loading";
 
-  return { phase, challenge, refresh };
+  const windowExhausted = phase === "offline" && offlineToday?.windowExhausted === true;
+
+  return { phase, challenge, windowExhausted, refresh };
 }

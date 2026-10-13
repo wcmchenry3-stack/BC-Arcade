@@ -29,6 +29,11 @@ class ChallengeResponse(BaseModel):
     resets_at: datetime
 
 
+class UpcomingChallengeResponse(BaseModel):
+    # Today, today+1, today+2 in the player's local calendar, in that order.
+    days: list[ChallengeResponse]
+
+
 class GoalStatusResponse(GoalResponse):
     completed: bool
     # Best final_score today for ``final_score_at_least`` goals (null until a game
