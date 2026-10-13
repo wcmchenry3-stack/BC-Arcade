@@ -1,5 +1,5 @@
 {
-  "title": "Statistiques : {{game}}",
+  "title": "Statistiques : {{game}}",
   "a11y.back": "Retour à {{game}}",
   "tile.sessions": "Parties",
   "tile.completed": "Terminées",

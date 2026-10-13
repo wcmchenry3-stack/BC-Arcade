@@ -19,7 +19,7 @@
   "error.rateLimited": "Trop d'essais — réessayez plus tard",
   "keyboard.delete": "Effacer",
   "keyboard.enter": "Entrée",
-  "result.countdown": "Prochain mot : {{time}}",
+  "result.countdown": "Prochain mot : {{time}}",
   "result.share": "Partager",
   "result.copied": "Copié!",
   "a11y.board": "Grille de Mot du jour",

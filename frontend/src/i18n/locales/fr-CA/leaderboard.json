@@ -19,6 +19,6 @@
   "unavailable": "Ce jeu n'a pas de classement.",
   "a11y.row": "Rang {{rank}}, {{name}}, {{metric}} {{value}}, {{date}}",
   "a11y.rowYou": "Rang {{rank}}, {{name}}, vous, {{metric}} {{value}}, {{date}}",
-  "a11y.yourBest": "Votre record : rang {{rank}}, {{metric}} {{value}}, {{date}}",
+  "a11y.yourBest": "Votre record : rang {{rank}}, {{metric}} {{value}}, {{date}}",
   "a11y.back": "Retour à {{game}}"
 }
