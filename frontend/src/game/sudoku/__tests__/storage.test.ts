@@ -8,8 +8,10 @@ import {
   loadStats,
   saveStats,
   EMPTY_SUDOKU_STATS,
+  loadShowMistakes,
+  saveShowMistakes,
 } from "../storage";
-import { enterDigit, loadPuzzle, selectCell, toggleNotesMode } from "../engine";
+import { enterDigit, getConflicts, loadPuzzle, selectCell, toggleNotesMode } from "../engine";
 import type { CellValue, NoteDigit, SudokuState } from "../types";
 
 const GAME_KEY = "sudoku_game";
@@ -80,7 +82,14 @@ describe("sudoku storage", () => {
     let s = loadPuzzle("hard", "classic", rng0);
     const { row, col } = findFirstEmpty(s);
     const correct = s.solution.charCodeAt(row * 9 + col) - 48;
-    const wrong = ((correct % 9) + 1) as CellValue;
+    // An illegal digit (a peer already holds it): only those are errors (#2943).
+    let wrong: CellValue = 1;
+    for (let d = 1; d <= 9; d++) {
+      if (d !== correct && getConflicts(s.grid, row, col, d).length > 0) {
+        wrong = d as CellValue;
+        break;
+      }
+    }
     s = selectCell(s, row, col);
     s = enterDigit(s, wrong);
     s = toggleNotesMode(s);
@@ -321,5 +330,60 @@ describe("sudoku stats storage", () => {
     } finally {
       (AsyncStorage as unknown as { setItem: typeof orig }).setItem = orig;
     }
+  });
+});
+
+describe("sudoku save compat (#2943)", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it("re-derives isError on load: an old 'differs from solution' flag on a legal digit is dropped, a duplicate is flagged", async () => {
+    let s = loadPuzzle("easy", "classic", rng0);
+    const { row, col } = findFirstEmpty(s);
+    s = selectCell(s, row, col);
+    await saveGame(s);
+    const raw = JSON.parse((await AsyncStorage.getItem(GAME_KEY))!);
+    // Old build: a legal-but-wrong digit was flagged. Pick a digit no peer holds.
+    let legal = 0;
+    for (let d = 1; d <= 9 && legal === 0; d++) {
+      if (
+        d !== s.solution.charCodeAt(row * 9 + col) - 48 &&
+        getConflicts(s.grid, row, col, d).length === 0
+      )
+        legal = d;
+    }
+    raw.grid[row][col].value = legal;
+    raw.grid[row][col].isError = true;
+    // And an unflagged duplicate of a given in the same row.
+    const other = raw.grid[row].findIndex(
+      (c: { given: boolean; value: number }, ci: number) => ci !== col && !c.given && c.value === 0
+    );
+    const givenInRow = raw.grid[row].find((c: { given: boolean }) => c.given);
+    raw.grid[row][other].value = givenInRow.value;
+    raw.grid[row][other].isError = false;
+    await AsyncStorage.setItem(GAME_KEY, JSON.stringify(raw));
+
+    const loaded = await loadGame();
+    expect(loaded!.grid[row]![col]!.value).toBe(legal);
+    expect(loaded!.grid[row]![col]!.isError).toBe(false);
+    expect(loaded!.grid[row]![other]!.isError).toBe(true);
+  });
+});
+
+describe("show mistakes preference (#2943)", () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it("is null until the player chooses", async () => {
+    expect(await loadShowMistakes()).toBeNull();
+  });
+
+  it("round-trips an explicit on and off", async () => {
+    await saveShowMistakes(true);
+    expect(await loadShowMistakes()).toBe(true);
+    await saveShowMistakes(false);
+    expect(await loadShowMistakes()).toBe(false);
   });
 });

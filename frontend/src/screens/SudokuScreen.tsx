@@ -18,7 +18,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, StyleSheet, View } from "react-native";
+import { Animated, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
@@ -41,15 +41,17 @@ import NumberPad from "../components/sudoku/NumberPad";
 import PreGame from "../components/sudoku/PreGame";
 import NewGameModal from "../components/sudoku/NewGameModal";
 import {
+  applyHint,
   enterDigit,
   eraseCell,
+  isFullButWrong,
   loadPuzzle,
   selectCell,
   toggleNotesMode,
   undo,
 } from "../game/sudoku/engine";
 import type { CellValue, Difficulty, SudokuState, Variant } from "../game/sudoku/types";
-import { DIFFICULTIES, variantConfig } from "../game/sudoku/types";
+import { DIFFICULTIES } from "../game/sudoku/types";
 import { useSound } from "../game/_shared/useSound";
 import { SUDOKU_SOUNDS } from "../game/sudoku/sounds";
 import {
@@ -58,6 +60,8 @@ import {
   saveGame,
   loadStats,
   saveStats,
+  loadShowMistakes,
+  saveShowMistakes,
   EMPTY_SUDOKU_STATS,
   type SudokuStats,
 } from "../game/sudoku/storage";
@@ -122,6 +126,24 @@ export default function SudokuScreen() {
   const { state, setState, stateRef, loading, clear: clearSavedGame } = game;
   // Bumped when a puzzle starts over, so the HUD clock shows 00:00 at once.
   const [clockEpoch, setClockEpoch] = useState(0);
+  // The player's explicit "Show mistakes" choice (#2943), null until they make
+  // one: the default is then by difficulty (on for easy only).
+  const [showMistakesPref, setShowMistakesPref] = useState<boolean | null>(null);
+  const prefChosenRef = useRef(false);
+  useEffect(() => {
+    let alive = true;
+    void loadShowMistakes().then((stored) => {
+      if (alive && !prefChosenRef.current) setShowMistakesPref(stored);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const handleToggleShowMistakes = useCallback((value: boolean) => {
+    prefChosenRef.current = true;
+    setShowMistakesPref(value);
+    void saveShowMistakes(value);
+  }, []);
   // Whether the clock is advancing (started, not paused). It lives outside
   // React state: the first move, a pause and a resume reach the HUD's
   // `ElapsedText` without re-rendering the screen, grid and pad (#2964).
@@ -471,16 +493,18 @@ export default function SudokuScreen() {
     startClockRef();
     syncClockActivity();
     setState((s) => {
-      if (!s || s.selectedRow === null || s.selectedCol === null) return s;
-      const cell = s.grid[s.selectedRow]?.[s.selectedCol];
-      if (!cell || cell.given || cell.value !== 0) return s;
-      const { size } = variantConfig(s.variant);
-      const idx = s.selectedRow * size + s.selectedCol;
-      const hintDigit = (s.solution.charCodeAt(idx) - 48) as CellValue;
+      if (!s) return s;
+      // A selected empty cell is filled; on a full-but-wrong grid (#2943) a
+      // wrong cell is selected and corrected. Anything else is a no-op.
+      const next = applyHint(s);
+      if (next === s) return s;
       ensureSyncStarted(s);
-      return enterDigit(s, hintDigit);
+      return next;
     });
   }, [startClockRef, syncClockActivity, ensureSyncStarted, setState]);
+
+  const showMistakes = showMistakesPref ?? state?.difficulty === "easy";
+  const fullButWrong = state !== null && isFullButWrong(state);
 
   const headerRight = useMemo(() => {
     if (!state) return null;
@@ -551,9 +575,42 @@ export default function SudokuScreen() {
               selectedRow={state.selectedRow}
               selectedCol={state.selectedCol}
               variant={state.variant}
+              solution={state.solution}
+              showMistakes={showMistakes}
               onCellPress={handleCellPress}
             />
           </View>
+
+          <View style={styles.optionsRow}>
+            <Text style={[styles.optionLabel, { color: colors.textMuted }]}>
+              {t("settings.showMistakes")}
+            </Text>
+            <Switch
+              testID="sudoku-show-mistakes"
+              value={showMistakes}
+              onValueChange={handleToggleShowMistakes}
+              accessibilityLabel={t("settings.showMistakes")}
+              trackColor={{ false: colors.border, true: colors.accent }}
+              thumbColor={colors.surface}
+            />
+          </View>
+
+          {fullButWrong ? (
+            <View
+              style={[styles.fullWrong, { borderColor: colors.error }]}
+              testID="sudoku-full-wrong"
+              accessibilityRole="alert"
+            >
+              <Text style={[styles.fullWrongText, { color: colors.text }]}>
+                {t("fullWrong.message")}
+              </Text>
+              <PillButton
+                label={t("action.hint")}
+                onPress={handleHint}
+                testID="sudoku-full-wrong-hint"
+              />
+            </View>
+          ) : null}
 
           <View
             style={[styles.gridPadDivider, { backgroundColor: colors.border }]}
@@ -658,6 +715,28 @@ const styles = StyleSheet.create({
   },
   gridWrap: {
     alignSelf: "stretch",
+  },
+  optionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  optionLabel: {
+    fontSize: 13,
+  },
+  fullWrong: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  fullWrongText: {
+    flex: 1,
+    fontSize: 14,
   },
   gridPadDivider: {
     alignSelf: "stretch",

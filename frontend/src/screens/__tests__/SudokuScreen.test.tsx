@@ -10,11 +10,11 @@
 import React from "react";
 import { render, fireEvent, act, waitFor, within } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AppState } from "react-native";
+import { Animated, AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
 
 import SudokuScreen from "../SudokuScreen";
-import { ThemeProvider } from "../../theme/ThemeContext";
+import { dark as darkColors, ThemeProvider } from "../../theme/ThemeContext";
 import * as sudokuEngine from "../../game/sudoku/engine";
 import { enterDigit, loadPuzzle, selectCell } from "../../game/sudoku/engine";
 import { saveGame, saveStats, EMPTY_SUDOKU_STATS } from "../../game/sudoku/storage";
@@ -1217,5 +1217,216 @@ describe("SudokuScreen — HUD clock (#2964)", () => {
       jest.advanceTimersByTime(1000);
     });
     expect(r.getByLabelText("Elapsed time 00:01")).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2943 — only rule conflicts are errors; "Show mistakes"; full-but-wrong grid
+// ---------------------------------------------------------------------------
+
+describe("SudokuScreen — illegal vs incorrect digits (#2943)", () => {
+  const SHOW_MISTAKES_KEY = "sudoku_show_mistakes";
+
+  /** An empty cell of `difficulty`'s first puzzle, with a legal-wrong and an illegal digit for it. */
+  function scenario(difficulty: "easy" | "medium" | "hard") {
+    const base = loadPuzzle(difficulty, "classic", () => 0);
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        if (base.grid[r]![c]!.given) continue;
+        const correct = base.solution.charCodeAt(r * 9 + c) - 48;
+        let legalWrong = 0;
+        let illegal = 0;
+        for (let d = 1; d <= 9; d++) {
+          if (d === correct) continue;
+          const conflicts = sudokuEngine.getConflicts(base.grid, r, c, d).length;
+          if (conflicts === 0 && legalWrong === 0) legalWrong = d;
+          if (conflicts > 0 && illegal === 0) illegal = d;
+        }
+        if (legalWrong !== 0 && illegal !== 0) {
+          // A cell in another row and column, pressed to deselect this one.
+          const other = r === 0 ? 1 : 0;
+          return { state: selectCell(base, r, c), row: r, col: c, legalWrong, illegal, other };
+        }
+      }
+    }
+    throw new Error("no suitable cell");
+  }
+
+  const cellLabel = (r: number, c: number) => new RegExp(`^Cell row ${r + 1}, column ${c + 1},`);
+
+  async function resume(state: SudokuState) {
+    await saveGame(state);
+    const rendered = await renderScreen();
+    await waitFor(() => expect(rendered.queryByLabelText(/^start$/i)).toBeNull());
+    return rendered;
+  }
+
+  async function play(rendered: Awaited<ReturnType<typeof resume>>, digit: number, other: number) {
+    await act(async () => {
+      await fireEvent.press(rendered.getByLabelText(new RegExp(`enter digit ${digit}`, "i")));
+    });
+    // Deselect the cell: a selected cell uses the on-accent colours.
+    await act(async () => {
+      await fireEvent.press(rendered.getByLabelText(cellLabel(other, 8)));
+    });
+  }
+
+  let timing: jest.SpyInstance;
+  beforeEach(() => {
+    timing = jest.spyOn(Animated, "timing");
+  });
+  afterEach(() => {
+    timing.mockRestore();
+  });
+  const errorFlashes = () => timing.mock.calls.filter(([, cfg]) => cfg.toValue === 0.3).length;
+
+  it("a legal but wrong digit: no flash, no error count, no colour (Show mistakes off)", async () => {
+    const s = scenario("medium");
+    const r = await resume(s.state);
+    await play(r, s.legalWrong, s.other);
+    expect(errorFlashes()).toBe(0);
+    expect(r.getByText("0 errors")).toBeTruthy();
+    expect(
+      within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.legalWrong))
+    ).toHaveStyle({ color: darkColors.accent });
+  });
+
+  it("an illegal digit: flashes, counts the error and is always coloured", async () => {
+    const s = scenario("medium");
+    const r = await resume(s.state);
+    await play(r, s.illegal, s.other);
+    expect(errorFlashes()).toBe(1);
+    expect(r.getByText("1 error")).toBeTruthy();
+    expect(
+      within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.illegal))
+    ).toHaveStyle({ color: darkColors.error });
+  });
+
+  it("Show mistakes defaults to on for easy and off for medium and hard", async () => {
+    for (const [difficulty, expected] of [
+      ["easy", true],
+      ["medium", false],
+      ["hard", false],
+    ] as const) {
+      const r = await resume(scenario(difficulty).state);
+      expect(r.getByTestId("sudoku-show-mistakes").props.value).toBe(expected);
+      await r.unmount();
+    }
+  });
+
+  it("colours a legal but wrong digit when Show mistakes is on, with no flash and no count", async () => {
+    const s = scenario("easy");
+    const r = await resume(s.state);
+    await play(r, s.legalWrong, s.other);
+    expect(
+      within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.legalWrong))
+    ).toHaveStyle({ color: darkColors.error });
+    expect(errorFlashes()).toBe(0);
+    expect(r.getByText("0 errors")).toBeTruthy();
+  });
+
+  it("the switch turns the colouring on and off, and the choice is kept", async () => {
+    const s = scenario("medium");
+    const r = await resume(s.state);
+    await play(r, s.legalWrong, s.other);
+    const digitText = () =>
+      within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.legalWrong));
+    expect(digitText()).toHaveStyle({ color: darkColors.accent });
+
+    await act(async () => {
+      await fireEvent(r.getByTestId("sudoku-show-mistakes"), "valueChange", true);
+    });
+    expect(digitText()).toHaveStyle({ color: darkColors.error });
+    expect(await AsyncStorage.getItem(SHOW_MISTAKES_KEY)).toBe("1");
+
+    await act(async () => {
+      await fireEvent(r.getByTestId("sudoku-show-mistakes"), "valueChange", false);
+    });
+    expect(digitText()).toHaveStyle({ color: darkColors.accent });
+    expect(await AsyncStorage.getItem(SHOW_MISTAKES_KEY)).toBe("0");
+  });
+
+  it("a stored choice overrides the difficulty default on a later visit", async () => {
+    await AsyncStorage.setItem(SHOW_MISTAKES_KEY, "0");
+    const r = await resume(scenario("easy").state);
+    await waitFor(() => expect(r.getByTestId("sudoku-show-mistakes").props.value).toBe(false));
+
+    await r.unmount();
+    await AsyncStorage.setItem(SHOW_MISTAKES_KEY, "1");
+    const r2 = await resume(scenario("hard").state);
+    await waitFor(() => expect(r2.getByTestId("sudoku-show-mistakes").props.value).toBe(true));
+  });
+
+  it("an old save's flags follow the new rule: a legal-wrong flag is dropped, a duplicate is shown", async () => {
+    const s = scenario("medium");
+    const withDigit = (d: number, isError: boolean): SudokuState["grid"] =>
+      s.state.grid.map((rowCells, r) =>
+        rowCells.map((cell, c) =>
+          r === s.row && c === s.col ? { ...cell, value: d as CellValue, isError } : cell
+        )
+      );
+    // The old rule flagged the legal-but-wrong digit.
+    const oldLegalWrong: SudokuState = {
+      ...s.state,
+      grid: withDigit(s.legalWrong, true),
+      errorCount: 1,
+      selectedRow: null,
+      selectedCol: null,
+    };
+    const r = await resume(oldLegalWrong);
+    expect(
+      within(r.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.legalWrong))
+    ).toHaveStyle({ color: darkColors.accent });
+    await r.unmount();
+
+    // The old rule did not flag a duplicate that happened to match the solution... or not.
+    const oldDuplicate: SudokuState = {
+      ...s.state,
+      grid: withDigit(s.illegal, false),
+      selectedRow: null,
+      selectedCol: null,
+    };
+    const r2 = await resume(oldDuplicate);
+    expect(
+      within(r2.getByLabelText(cellLabel(s.row, s.col))).getByText(String(s.illegal))
+    ).toHaveStyle({ color: darkColors.error });
+  });
+
+  describe("a full grid that is not the solution", () => {
+    function fullButWrong() {
+      const s = scenario("medium");
+      const grid = s.state.grid.map((rowCells, r) =>
+        rowCells.map((cell, c) => {
+          if (cell.given) return cell;
+          const correct = s.state.solution.charCodeAt(r * 9 + c) - 48;
+          const value = r === s.row && c === s.col ? s.legalWrong : correct;
+          return { ...cell, value: value as CellValue };
+        })
+      );
+      return { ...s, state: { ...s.state, grid, selectedRow: null, selectedCol: null } };
+    }
+
+    it("shows the message with a Hint action, and not before it is full", async () => {
+      const r0 = await resume(scenario("medium").state);
+      expect(r0.queryByTestId("sudoku-full-wrong")).toBeNull();
+      await r0.unmount();
+
+      const r = await resume(fullButWrong().state);
+      expect(r.getByTestId("sudoku-full-wrong")).toBeTruthy();
+      expect(r.getByText(/something is off/i)).toBeTruthy();
+      expect(r.getByTestId("sudoku-full-wrong-hint")).toBeTruthy();
+    });
+
+    it("the Hint action corrects a wrong cell, which completes the puzzle", async () => {
+      const f = fullButWrong();
+      const r = await resume(f.state);
+      await act(async () => {
+        await fireEvent.press(r.getByTestId("sudoku-full-wrong-hint"));
+      });
+      await waitFor(() => expect(mockCompleteGame).toHaveBeenCalledTimes(1));
+      expect(r.queryByTestId("sudoku-full-wrong")).toBeNull();
+      const summary = mockCompleteGame.mock.calls[0]![1] as Record<string, unknown>;
+      expect(summary["result"]).toEqual({ won: true, errors: 0 });
+    });
   });
 });

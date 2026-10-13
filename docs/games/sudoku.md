@@ -52,7 +52,8 @@ The game randomly selects a puzzle from the chosen local bank. The last **diffic
 - **Erase** clears the selected editable cell's value and notes.
 - **Notes** toggles pencil-mark mode.
 - **Undo** restores the previous placement/erase snapshot; the history is capped at 50 entries.
-- **Hint** fills the selected empty editable cell with its correct solution digit.
+- **Hint** fills the selected empty editable cell with its correct solution digit (or, on a full grid that is not the solution, corrects a wrong cell; see Errors and completion).
+- **Show mistakes** switch under the grid (see Errors and completion).
 
 ### Notes
 
@@ -76,14 +77,27 @@ A hint:
 
 ## Errors and completion
 
-A normal digit entry is compared with the solved puzzle:
+Only **illegal moves** are errors (#2943). A digit is illegal when it duplicates a digit already in its row, column or box (givens included). The check is against the board, not the stored solution:
 
-- a wrong digit remains on the board marked as an error;
-- each wrong placement increments `errorCount`;
-- a correct placement can trigger row/column/box completion feedback;
-- the puzzle finishes only when every cell matches the solution.
+- an illegal digit stays on the board, is coloured as an error, increments `errorCount` and flashes the screen;
+- a **legal but incorrect** digit (one that breaks no rule but is not the solution digit) is not an error: it is not counted, does not flash, costs no score and is not coloured, unless Show mistakes is on (below);
+- the error colour follows the current board: erasing or changing the conflicting digit clears the highlight, and both cells of a conflict between two player digits are highlighted. `errorCount` counts illegal **entries** made, so removing the duplicate afterwards does not refund the error (undo does);
+- a legal placement can trigger row/column/box completion feedback;
+- the puzzle finishes only when every cell matches the solution (completion stays solution-based).
 
-Undo restores the previous error count, so undoing a wrong placement removes that error from the eventual score.
+Undo restores the previous error count, so undoing an illegal placement removes that error from the eventual score.
+
+### Full grid that is not the solution
+
+When every cell is filled but the grid is not the solution, a message under the grid says that something is off, with a **Hint** button. That Hint selects a wrong cell (the selected one if it is wrong, otherwise the first in reading order) and corrects it with the solution digit, with no error and no penalty. If it was the only wrong cell the puzzle completes.
+
+### Show mistakes
+
+A switch under the grid colours legal-but-incorrect digits as mistakes. It is visual only: no count, no flash, no score effect. Illegal digits are always highlighted regardless of it. The default is **on for Easy, off for Medium and Hard**; once the player flips it, that choice is stored on the device (`sudoku_show_mistakes`) and applies to every puzzle, whatever its difficulty.
+
+### Old saves
+
+Cell `isError` is persisted, but its meaning is "currently illegal" and it is re-derived from the board when a save loads, so saves written under the old rule (flag = differs from the solution) load and render by the new rules. The saved `errorCount` is kept as is.
 
 ## Scoring
 
@@ -97,7 +111,7 @@ Sudoku ranks by a simple accuracy score; elapsed time does **not** affect leader
 | Medium | 200 |
 | Hard | 300 |
 
-Hints have no direct penalty because they enter a correct digit.
+`errors` is the number of illegal moves (rule conflicts), not the number of digits that differ from the solution. Hints have no direct penalty because they enter a correct digit, even when it duplicates a wrong digit the player left in a peer cell.
 
 ### Leaderboard partitions
 

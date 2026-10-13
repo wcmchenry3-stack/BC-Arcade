@@ -11,6 +11,9 @@ interface Props {
   selectedRow: number | null;
   selectedCol: number | null;
   variant: Variant;
+  /** Solution string; with `showMistakes`, legal-but-wrong digits are coloured (#2943). */
+  solution?: string;
+  showMistakes?: boolean;
   onCellPress: (row: number, col: number) => void;
 }
 
@@ -22,6 +25,8 @@ export default function SudokuGrid({
   selectedRow,
   selectedCol,
   variant,
+  solution,
+  showMistakes = false,
   onCellPress,
 }: Props) {
   const { t } = useTranslation("sudoku");
@@ -89,6 +94,13 @@ export default function SudokuGrid({
                     !(r === selectedRow && c === selectedCol)
                   }
                   peer={isPeer(r, c)}
+                  mistake={
+                    showMistakes &&
+                    solution !== undefined &&
+                    !cell.given &&
+                    cell.value !== 0 &&
+                    cell.value !== solution.charCodeAt(r * size + c) - 48
+                  }
                   onPress={() => onCellPress(r, c)}
                 />
               </View>

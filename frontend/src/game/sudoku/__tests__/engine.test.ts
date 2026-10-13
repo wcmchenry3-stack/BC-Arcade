@@ -4,7 +4,8 @@
  * Covers the checklist in the issue:
  *   - solvePuzzle: known puzzles + impossible input
  *   - loadPuzzle: given count per difficulty; givens marked immutable
- *   - enterDigit (normal): correct → no error; wrong → isError; errorCount;
+ *   - enterDigit (normal): correct → no error; illegal (row/col/box duplicate)
+ *     → isError + errorCount; legal-but-wrong → neither (#2943);
  *     undo stack grows; given cells immutable
  *   - enterDigit (notes): toggle; peer-note cleanup invariant
  *   - eraseCell: clears value + notes; no-op on givens
@@ -14,18 +15,21 @@
  */
 
 import {
+  applyHint,
   enterDigit,
   eraseCell,
   getConflicts,
   isComplete,
+  isFullButWrong,
   loadPuzzle,
+  recomputeConflicts,
   selectCell,
   solvePuzzle,
   toggleNotesMode,
   undo,
 } from "../engine";
 import type { CellValue, GameEvent, Grid, NoteDigit, SudokuCell, SudokuState } from "../types";
-import { UNDO_STACK_LIMIT } from "../types";
+import { CLASSIC_CONFIG, UNDO_STACK_LIMIT } from "../types";
 
 // ---------------------------------------------------------------------------
 // Known-good puzzles for solver
@@ -192,6 +196,47 @@ function findGiven(state: SudokuState): { row: number; col: number } {
   throw new Error("no given cell");
 }
 
+/** A digit that is not the solution and duplicates a peer: an illegal move. */
+function illegalDigit(state: SudokuState, row: number, col: number): CellValue {
+  const correct = state.solution.charCodeAt(row * 9 + col) - 48;
+  for (let d = 1; d <= 9; d++) {
+    if (d !== correct && getConflicts(state.grid, row, col, d).length > 0) return d as CellValue;
+  }
+  throw new Error("no illegal digit for this cell");
+}
+
+/** An empty cell with a digit that is wrong but breaks no row/column/box rule. */
+function findLegalWrong(state: SudokuState): { row: number; col: number; digit: CellValue } {
+  for (let r = 0; r < 9; r++) {
+    for (let c = 0; c < 9; c++) {
+      if (state.grid[r]![c]!.given) continue;
+      const correct = state.solution.charCodeAt(r * 9 + c) - 48;
+      for (let d = 1; d <= 9; d++) {
+        if (d !== correct && getConflicts(state.grid, r, c, d).length === 0) {
+          return { row: r, col: c, digit: d as CellValue };
+        }
+      }
+    }
+  }
+  throw new Error("no legal-but-wrong move");
+}
+
+/** The state with every non-given cell holding its solution digit, except `wrong` cells. */
+function filled(
+  state: SudokuState,
+  wrong: ReadonlyArray<readonly [number, number, CellValue]> = []
+): SudokuState {
+  const grid = state.grid.map((rowCells, r) =>
+    rowCells.map((cell, c) => {
+      if (cell.given) return cell;
+      const w = wrong.find(([wr, wc]) => wr === r && wc === c);
+      const value = w ? w[2] : ((state.solution.charCodeAt(r * 9 + c) - 48) as CellValue);
+      return { ...cell, value, notes: new Set<NoteDigit>(), isError: false };
+    })
+  );
+  return { ...state, grid: recomputeConflicts(grid, CLASSIC_CONFIG) };
+}
+
 // ---------------------------------------------------------------------------
 // enterDigit — normal mode
 // ---------------------------------------------------------------------------
@@ -208,16 +253,72 @@ describe("enterDigit (normal mode)", () => {
     expect(s1.errorCount).toBe(0);
   });
 
-  it("flags isError and increments errorCount on wrong digit", () => {
+  it("flags isError and increments errorCount on an illegal digit (#2943)", () => {
     const s0 = loadPuzzle("easy", "classic", rng0);
     const { row, col } = findEmpty(s0);
-    const correct = s0.solution.charCodeAt(row * 9 + col) - 48;
-    const wrong = ((correct % 9) + 1) as CellValue;
-    const s1 = enterDigit(selectCell(s0, row, col), wrong);
+    const bad = illegalDigit(s0, row, col);
+    const s1 = enterDigit(selectCell(s0, row, col), bad);
     const cell = s1.grid[row]![col]!;
-    expect(cell.value).toBe(wrong);
+    expect(cell.value).toBe(bad);
     expect(cell.isError).toBe(true);
     expect(s1.errorCount).toBe(1);
+  });
+
+  it("does not flag or count a legal digit that is not the solution (#2943)", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const { row, col, digit } = findLegalWrong(s0);
+    const s1 = enterDigit(selectCell(s0, row, col), digit);
+    const cell = s1.grid[row]![col]!;
+    expect(cell.value).toBe(digit);
+    expect(cell.isError).toBe(false);
+    expect(s1.errorCount).toBe(0);
+    expect(s1.events?.some((e) => e.type === "errorEntered")).toBe(false);
+    expect(s1.isComplete).toBe(false);
+  });
+
+  it("flags the conflicting player peer too, and clears both when one is erased (#2943)", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const { row, col, digit } = findLegalWrong(s0);
+    const s1 = enterDigit(selectCell(s0, row, col), digit);
+    // Another empty cell in the same row that is not the solution digit there.
+    let peerCol = -1;
+    for (let c = 0; c < 9; c++) {
+      if (c !== col && !s1.grid[row]![c]!.given && s1.grid[row]![c]!.value === 0) {
+        peerCol = c;
+        break;
+      }
+    }
+    expect(peerCol).toBeGreaterThanOrEqual(0);
+    const s2 = enterDigit(selectCell(s1, row, peerCol), digit);
+    expect(s2.errorCount).toBe(1);
+    expect(s2.grid[row]![peerCol]!.isError).toBe(true);
+    expect(s2.grid[row]![col]!.isError).toBe(true);
+    const s3 = eraseCell(s2);
+    expect(s3.grid[row]![peerCol]!.isError).toBe(false);
+    expect(s3.grid[row]![col]!.isError).toBe(false);
+    // The entry stays counted: errorCount counts illegal entries made.
+    expect(s3.errorCount).toBe(1);
+  });
+
+  it("clears the highlight when the player overwrites the conflicting digit (#2943)", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const { row, col } = findEmpty(s0);
+    const bad = illegalDigit(s0, row, col);
+    const s1 = enterDigit(selectCell(s0, row, col), bad);
+    expect(s1.grid[row]![col]!.isError).toBe(true);
+    const correct = s0.solution.charCodeAt(row * 9 + col) - 48;
+    const s2 = enterDigit(s1, correct as CellValue);
+    expect(s2.grid[row]![col]!.isError).toBe(false);
+    expect(s2.errorCount).toBe(1);
+  });
+
+  it("stays solution-based for completion (#2943)", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const full = filled(s0);
+    expect(isComplete(full.grid, full.solution)).toBe(true);
+    const { row, col, digit } = findLegalWrong(s0);
+    const wrongFull = filled(s0, [[row, col, digit]]);
+    expect(isComplete(wrongFull.grid, wrongFull.solution)).toBe(false);
   });
 
   it("is a no-op on given cells", () => {
@@ -364,8 +465,7 @@ describe("undo", () => {
   it("restores errorCount when undoing a wrong placement", () => {
     const s0 = loadPuzzle("easy", "classic", rng0);
     const { row, col } = findEmpty(s0);
-    const correct = s0.solution.charCodeAt(row * 9 + col) - 48;
-    const wrong = ((correct % 9) + 1) as CellValue;
+    const wrong = illegalDigit(s0, row, col);
     const s1 = enterDigit(selectCell(s0, row, col), wrong);
     expect(s1.errorCount).toBe(1);
     const s2 = undo(s1);
@@ -510,15 +610,22 @@ describe("game events", () => {
     expect(s1.events?.some((e) => e.type === "errorEntered")).toBe(false);
   });
 
-  it("emits digitPlace and errorEntered on a wrong digit", () => {
+  it("emits digitPlace and errorEntered on an illegal digit", () => {
     const s0 = loadPuzzle("easy", "classic", rng0);
     const { row, col } = findEmpty(s0);
-    const correct = s0.solution.charCodeAt(row * 9 + col) - 48;
-    const wrong = ((correct % 9) + 1) as CellValue;
+    const wrong = illegalDigit(s0, row, col);
     const s1 = enterDigit(selectCell(s0, row, col), wrong);
     expect(s1.events).toContainEqual({ type: "digitPlace" } satisfies GameEvent);
     expect(s1.events).toContainEqual({ type: "errorEntered" } satisfies GameEvent);
     expect(s1.events?.some((e) => e.type === "unitComplete")).toBe(false);
+  });
+
+  it("emits only digitPlace for a legal-but-wrong digit (#2943)", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const { row, col, digit } = findLegalWrong(s0);
+    const s1 = enterDigit(selectCell(s0, row, col), digit);
+    expect(s1.events).toContainEqual({ type: "digitPlace" } satisfies GameEvent);
+    expect(s1.events?.some((e) => e.type === "errorEntered")).toBe(false);
   });
 
   it("does not emit events in notes mode", () => {
@@ -611,5 +718,92 @@ describe("game events", () => {
     expect(
       final.events?.some((e) => e.type === "unitComplete" && e.unit === "row" && e.index === 0)
     ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// full-but-wrong grid + hint (#2943)
+// ---------------------------------------------------------------------------
+
+describe("isFullButWrong / applyHint", () => {
+  it("is false for an unfinished grid and for the solved one", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    expect(isFullButWrong(s0)).toBe(false);
+    expect(isFullButWrong({ ...filled(s0), isComplete: true })).toBe(false);
+  });
+
+  it("is true when every cell is filled but one digit is wrong", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const { row, col, digit } = findLegalWrong(s0);
+    expect(isFullButWrong(filled(s0, [[row, col, digit]]))).toBe(true);
+  });
+
+  it("fills the selected empty cell with the solution digit, at no cost", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const { row, col } = findEmpty(s0);
+    const s1 = applyHint(selectCell(s0, row, col));
+    expect(s1.grid[row]![col]!.value).toBe(s0.solution.charCodeAt(row * 9 + col) - 48);
+    expect(s1.errorCount).toBe(0);
+  });
+
+  it("is a no-op with nothing selected on an unfinished grid", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    expect(applyHint(s0)).toBe(s0);
+  });
+
+  it("on a full-but-wrong grid selects and corrects a wrong cell", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const { row, col, digit } = findLegalWrong(s0);
+    const full = filled(s0, [[row, col, digit]]);
+    const s1 = applyHint(full);
+    expect(s1.selectedRow).toBe(row);
+    expect(s1.selectedCol).toBe(col);
+    expect(s1.grid[row]![col]!.value).toBe(s0.solution.charCodeAt(row * 9 + col) - 48);
+    expect(s1.isComplete).toBe(true);
+    expect(s1.errorCount).toBe(0);
+  });
+
+  it("prefers the selected cell when it is the wrong one", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const first = findLegalWrong(s0);
+    // A second wrong cell later in reading order than the first.
+    let second: { row: number; col: number; digit: CellValue } | null = null;
+    for (let r = 8; r >= 0 && !second; r--) {
+      for (let c = 8; c >= 0 && !second; c--) {
+        if (s0.grid[r]![c]!.given || (r === first.row && c === first.col)) continue;
+        const correct = s0.solution.charCodeAt(r * 9 + c) - 48;
+        second = { row: r, col: c, digit: ((correct % 9) + 1) as CellValue };
+      }
+    }
+    const full = selectCell(
+      filled(s0, [
+        [first.row, first.col, first.digit],
+        [second!.row, second!.col, second!.digit],
+      ]),
+      second!.row,
+      second!.col
+    );
+    const s1 = applyHint(full);
+    expect(s1.selectedRow).toBe(second!.row);
+    expect(s1.grid[second!.row]![second!.col]!.value).toBe(
+      s0.solution.charCodeAt(second!.row * 9 + second!.col) - 48
+    );
+    expect(s1.grid[first.row]![first.col]!.value).toBe(first.digit);
+  });
+});
+
+describe("recomputeConflicts", () => {
+  it("normalises old-rule flags: a legal-wrong cell loses isError, a duplicate gains it", () => {
+    const s0 = loadPuzzle("easy", "classic", rng0);
+    const { row, col, digit } = findLegalWrong(s0);
+    const oldFlagged = {
+      ...s0.grid[row]![col]!,
+      value: digit,
+      isError: true,
+    };
+    const grid = s0.grid.map((rc, r) =>
+      rc.map((cell, c) => (r === row && c === col ? oldFlagged : cell))
+    );
+    expect(recomputeConflicts(grid, CLASSIC_CONFIG)[row]![col]!.isError).toBe(false);
   });
 });

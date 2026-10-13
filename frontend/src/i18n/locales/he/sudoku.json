@@ -25,6 +25,8 @@
   "hud.errors": "{{count}} טעויות",
   "hud.errorsOne": "טעות אחת",
   "hud.elapsed": "זמן שחלף {{time}}",
+  "settings.showMistakes": "הצג טעויות",
+  "fullWrong.message": "כל התאים מלאים, אבל משהו לא נכון. הקש על רמז כדי למצוא טעות.",
   "action.quickRestart": "הפעלה מחדש מהירה",
   "newGame.title": "משחק חדש",
   "a11y.board": "לוח סודוקו"

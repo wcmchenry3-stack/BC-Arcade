@@ -14,10 +14,13 @@
  * `loadGame` enforces `_v: 1` so future schema bumps reject
  * incompatible payloads rather than corrupting state. The `variant`
  * field was added in #748; saves without it are migrated to "classic".
+ * Cells' `isError` flags are re-derived on load (#2943).
  */
 
 import type { Grid, NoteDigit, SudokuCell, SudokuState, Variant } from "./types";
 import { createJsonSlot, createRecord } from "../_shared/storageSlot";
+import { recomputeConflicts } from "./engine";
+import { variantConfig } from "./types";
 
 const SUBSYSTEM = "sudoku.storage";
 
@@ -103,7 +106,9 @@ function restoreSnapshot(p: Omit<SerializedState, "undoStack">): Omit<SudokuStat
     difficulty: p.difficulty as SudokuState["difficulty"],
     puzzle: p.puzzle,
     solution: p.solution,
-    grid: restoreGrid(p.grid),
+    // `isError` means "currently illegal" (#2943); saves from the old rule
+    // (differs from the solution) are re-derived from the board.
+    grid: recomputeConflicts(restoreGrid(p.grid), variantConfig(variant)),
     selectedRow: p.selectedRow,
     selectedCol: p.selectedCol,
     notesMode: p.notesMode,
@@ -248,4 +253,22 @@ export const { load: loadStats, save: saveStats } = createRecord<SudokuStats>({
     };
   },
   write: (stats) => JSON.stringify(stats),
+});
+
+// ---------------------------------------------------------------------------
+// "Show mistakes" preference (#2943)
+// ---------------------------------------------------------------------------
+
+/**
+ * The player's explicit "Show mistakes" choice, or null while they have not
+ * made one (the screen then defaults by difficulty: on for easy only). Once
+ * set it applies to every puzzle.
+ */
+export const { load: loadShowMistakes, save: saveShowMistakes } = createRecord<boolean | null>({
+  key: "sudoku_show_mistakes",
+  subsystem: SUBSYSTEM,
+  ops: { load: "loadShowMistakes", save: "saveShowMistakes" },
+  fallback: () => null,
+  read: (raw) => (raw === "1" ? true : raw === "0" ? false : null),
+  write: (value) => (value === null ? "" : value ? "1" : "0"),
 });

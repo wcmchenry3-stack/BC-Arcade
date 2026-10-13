@@ -731,3 +731,69 @@ describe("DifficultySelector", () => {
     expect(getByText("Easy")).toHaveStyle({ color: darkColors.text });
   });
 });
+
+describe("SudokuCell mistake colouring (#2943)", () => {
+  const props = {
+    size: 9,
+    row: 0,
+    col: 0,
+    selected: false,
+    highlighted: false,
+    peer: false,
+    onPress: () => {},
+  };
+
+  it("colours a legal-but-wrong digit as an error only when flagged as a mistake", async () => {
+    const off = await wrap(<SudokuCell {...props} cell={cell({ value: 5 })} />);
+    expect(off.getByText("5")).toHaveStyle({ color: darkColors.accent });
+    await off.unmount();
+    const on = await wrap(<SudokuCell {...props} cell={cell({ value: 5 })} mistake />);
+    expect(on.getByText("5")).toHaveStyle({ color: darkColors.error });
+  });
+
+  it("uses the on-accent error colour for a selected mistake", async () => {
+    const { getByText } = await wrap(
+      <SudokuCell {...props} selected cell={cell({ value: 5 })} mistake />
+    );
+    expect(getByText("5")).toHaveStyle({ color: darkColors.errorOnAccent });
+  });
+});
+
+describe("SudokuGrid showMistakes (#2943)", () => {
+  const solution = "1".repeat(81);
+  const g = emptyGrid();
+  g[0]![0] = cell({ value: 2 }); // wrong vs the solution
+  g[0]![1] = cell({ value: 1 }); // matches it
+  g[0]![2] = cell({ value: 2, given: true }); // a given is never a mistake
+  const grid = asGrid(g);
+
+  it("colours only non-given digits that differ from the solution, and only when on", async () => {
+    const off = await wrap(
+      <SudokuGrid
+        grid={grid}
+        selectedRow={null}
+        selectedCol={null}
+        variant="classic"
+        solution={solution}
+        onCellPress={() => {}}
+      />
+    );
+    expect(off.getAllByText("2")[0]).toHaveStyle({ color: darkColors.accent });
+    await off.unmount();
+    const on = await wrap(
+      <SudokuGrid
+        grid={grid}
+        selectedRow={null}
+        selectedCol={null}
+        variant="classic"
+        solution={solution}
+        showMistakes
+        onCellPress={() => {}}
+      />
+    );
+    const twos = on.getAllByText("2");
+    expect(twos[0]).toHaveStyle({ color: darkColors.error }); // the player's wrong digit
+    expect(twos[1]).toHaveStyle({ color: darkColors.text }); // the given
+    expect(on.getByText("1")).toHaveStyle({ color: darkColors.accent }); // correct digit
+  });
+});

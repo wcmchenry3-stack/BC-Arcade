@@ -27,5 +27,7 @@
   "hud.errors": "{{count}} errors",
   "hud.errorsOne": "1 error",
   "hud.elapsed": "Elapsed time {{time}}",
+  "settings.showMistakes": "Show mistakes",
+  "fullWrong.message": "Every cell is filled, but something is off. Tap Hint to find a mistake.",
   "a11y.board": "Sudoku board"
 }
