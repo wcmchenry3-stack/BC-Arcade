@@ -1,5 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { LEGACY_SCORE_QUEUE_KEY, clearLegacyScoreQueue } from "../legacyScoreQueue";
+import {
+  LEGACY_SCORE_QUEUE_KEY,
+  ORPHANED_DEVICE_KEYS,
+  clearLegacyScoreQueue,
+} from "../legacyScoreQueue";
 
 beforeEach(async () => {
   await AsyncStorage.clear();
@@ -15,6 +19,28 @@ describe("clearLegacyScoreQueue (#2644)", () => {
 
     expect(await AsyncStorage.getItem(LEGACY_SCORE_QUEUE_KEY)).toBeNull();
     expect(await AsyncStorage.getItem("other_key")).toBe("kept");
+  });
+
+  it("removes the orphaned 2048 stats and Hearts owed-score keys (#3140), idempotently", async () => {
+    await AsyncStorage.setItem("twenty48_stats_v1", '{"bestTile":2048,"gamesPlayed":3}');
+    await AsyncStorage.setItem("hearts_pending_submission", "{}");
+    await AsyncStorage.setItem("twenty48_best_score", "100");
+
+    await clearLegacyScoreQueue();
+    await clearLegacyScoreQueue();
+
+    for (const key of ORPHANED_DEVICE_KEYS) expect(await AsyncStorage.getItem(key)).toBeNull();
+    expect(await AsyncStorage.getItem("twenty48_best_score")).toBe("100");
+  });
+
+  it("keeps removing the other keys when one removal fails", async () => {
+    await AsyncStorage.setItem("hearts_pending_submission", "{}");
+    const removeItem = jest
+      .spyOn(AsyncStorage, "removeItem")
+      .mockRejectedValueOnce(new Error("disk"));
+    await clearLegacyScoreQueue();
+    removeItem.mockRestore();
+    expect(await AsyncStorage.getItem("hearts_pending_submission")).toBeNull();
   });
 
   it("is a no-op when there is nothing to clear", async () => {
