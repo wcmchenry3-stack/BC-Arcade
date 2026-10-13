@@ -15,7 +15,7 @@
  *
  * The old `twenty48_stats_v1` counters (best tile, games played, games won)
  * are no longer read or written (#2636): the Stats screen reads the server.
- * What a device already stored there is left alone.
+ * It is removed once at launch (`clearLegacyScoreQueue`, #3140).
  */
 
 import { Twenty48State } from "./types";

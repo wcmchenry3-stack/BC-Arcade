@@ -9,7 +9,7 @@ import {
   Card,
 } from "./engine";
 import { GameRules } from "./types";
-import { saveGame, loadGame, clearGame, saveRun, loadRuns, RunRecord } from "./storage";
+import { saveGame, loadGame, clearGame, saveRun, RunRecord } from "./storage";
 import {
   SessionStats,
   initialSessionStats,
@@ -166,7 +166,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
   }, [syncSetProgressSnapshot, sessionResult]);
 
   const startSession = useCallback(
-    async (startingChips: number, resuming = false, tableId?: string, goalReached = false) => {
+    async (startingChips: number, resuming = false, goalReached = false) => {
       sessionStartedAtRef.current = Date.now();
       totalHandsRef.current = 0;
       handsWonRef.current = 0;
@@ -184,27 +184,8 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         resumedRef.current = true;
         return;
       }
-      // Load run history to compute aggregate metadata for the backend game row.
-      // Runs saved in the *previous* endSession call are included because saveRun
-      // is awaited before startSession is invoked from handleTableSelect, and because
-      // the initial-load path never has a preceding saveRun. The minor race that
-      // can occur if endSession fires saveRun fire-and-forget (chips=0 path) means
-      // the newly-completed run may not yet appear — off by one, self-corrects next
-      // session start.
-      const runs = await loadRuns();
-      const totalRuns = runs.length;
-      const runsCompleted = runs.filter((r) => r.completed).length;
-      const bestRunChips =
-        runs.length > 0 ? runs.reduce((m, r) => Math.max(m, r.finalChips), 0) : null;
-      syncStart(
-        { starting_chips: startingChips },
-        {
-          best_run_chips: bestRunChips,
-          total_runs: totalRuns,
-          runs_completed: runsCompleted,
-          current_table: (tableId ?? "beginner") as "beginner" | "intermediate" | "high_roller",
-        }
-      );
+      // No run aggregates on the game row (#3140): nothing read them.
+      syncStart({ starting_chips: startingChips });
       // Mark the session as already started when resuming a mid-game save.
       // Must come after syncStart so the game ID exists.
       if (resuming) syncMarkStarted();
@@ -302,7 +283,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
         // A saved run that already reached its goal (victory, or Keep Playing)
         // stays a win when it ends (#2628).
         if (!tableSelectPending && !(next.chips === 0 && next.phase === "result")) {
-          void startSession(next.chips, !!saved, tableIdFor(next), hasReachedGoal(next));
+          void startSession(next.chips, !!saved, hasReachedGoal(next));
         }
       })
       .finally(() => {
@@ -553,7 +534,7 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       // closes it and starts the window over itself, so the window is only
       // reset when none is.
       if (!syncGetGameId()) syncResetPlayWindow();
-      void startSession(fresh.chips, false, config.id);
+      void startSession(fresh.chips, false);
     },
     [engine, startSession, syncGetGameId, syncResetPlayWindow]
   );
