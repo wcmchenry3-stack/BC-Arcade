@@ -244,35 +244,9 @@ def test_blackjack_stats_shape_none_latest_score() -> None:
     assert shaped["extras"]["current_chips"] is None
 
 
-def test_blackjack_stats_shape_no_metadata_key_returns_none_run_fields() -> None:
+def test_blackjack_stats_shape_has_only_the_chip_extras() -> None:
     shaped = blackjack_module.stats_shape(_RAW_BJ)
-    assert shaped["extras"].get("best_run_chips") is None
-    assert shaped["extras"].get("total_runs") is None
-    assert shaped["extras"].get("runs_completed") is None
-    assert shaped["extras"].get("current_table") is None
-
-
-def test_blackjack_stats_shape_reads_run_fields_from_metadata() -> None:
-    raw = {
-        **_RAW_BJ,
-        "metadata": {
-            "best_run_chips": 3000,
-            "total_runs": 12,
-            "runs_completed": 4,
-            "current_table": "intermediate",
-        },
-    }
-    shaped = blackjack_module.stats_shape(raw)
-    assert shaped["extras"]["best_run_chips"] == 3000
-    assert shaped["extras"]["total_runs"] == 12
-    assert shaped["extras"]["runs_completed"] == 4
-    assert shaped["extras"]["current_table"] == "intermediate"
-
-
-def test_blackjack_stats_shape_empty_metadata_returns_none_run_fields() -> None:
-    shaped = blackjack_module.stats_shape({**_RAW_BJ, "metadata": {}})
-    assert shaped["extras"].get("best_run_chips") is None
-    assert shaped["extras"].get("current_table") is None
+    assert set(shaped["extras"]) == {"best_chips", "current_chips"}
 
 
 # ---------------------------------------------------------------------------
@@ -283,12 +257,11 @@ _RAW = {
     "best": 9500,
     "last_played_at": None,
     "latest_score": 8000,
-    "metadata": {"k": 1},
 }
 
 
 def test_default_stats_shape_passes_last_played_at_only() -> None:
-    """``best``, ``latest_score`` and ``metadata`` are inputs, not API fields;
+    """``best`` and ``latest_score`` are inputs, not API fields;
     the deprecated ``played`` / ``best`` / ``avg`` aliases are gone (#2644)."""
     shaped = default_stats_shape(dict(_RAW))
     assert shaped == {"last_played_at": None}

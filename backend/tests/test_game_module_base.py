@@ -45,7 +45,7 @@ def test_declaration_defaults() -> None:
 
 
 def test_default_stats_shape_passes_last_played_at_only() -> None:
-    raw = {"best": 1, "last_played_at": "t", "latest_score": 2, "metadata": {"k": 1}}
+    raw = {"best": 1, "last_played_at": "t", "latest_score": 2}
     assert _Minimal().stats_shape(raw) == {"last_played_at": "t"}
 
 
