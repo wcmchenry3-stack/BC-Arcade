@@ -6,6 +6,7 @@
  * screen can open offline later the same day.
  */
 import i18n from "i18next";
+import { isStoreBuild } from "../_shared/buildFlavour";
 import { dailyWordApi } from "./api";
 import { loadTodayMeta, saveTodayMeta } from "./storage";
 
@@ -13,8 +14,30 @@ export function getTimezoneOffset(): number {
   return -new Date().getTimezoneOffset();
 }
 
+/** Puzzle languages every build ships. Add launched languages (es, fr) here. */
+const LAUNCHED_DAILY_WORD_LANGUAGES: readonly string[] = ["en"];
+
+/** Puzzle languages held back from store builds until launch-ready (#3153). */
+const UNLAUNCHED_DAILY_WORD_LANGUAGES: readonly string[] = ["hi"];
+
+/**
+ * Puzzle languages playable in this build. Store builds get only the launched
+ * ones; dev, e2e and pre-launch builds also get the unlaunched ones. A function
+ * (not a constant) so the `__forceStoreBuildForTests` seam applies.
+ */
+export function dailyWordLanguages(): readonly string[] {
+  return isStoreBuild()
+    ? LAUNCHED_DAILY_WORD_LANGUAGES
+    : [...LAUNCHED_DAILY_WORD_LANGUAGES, ...UNLAUNCHED_DAILY_WORD_LANGUAGES];
+}
+
+/**
+ * The puzzle language: the app language's base code when this build offers a
+ * puzzle in it, else "en". The one place puzzle and keyboard language is chosen.
+ */
 export function getLanguage(): string {
-  return i18n.language?.startsWith("hi") ? "hi" : "en";
+  const base = (i18n.language ?? "").split("-")[0] ?? "";
+  return dailyWordLanguages().includes(base) ? base : "en";
 }
 
 export function localDateKey(tzOffsetMinutes: number, lang: string): string {

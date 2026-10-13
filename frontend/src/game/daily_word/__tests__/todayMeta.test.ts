@@ -1,7 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { dailyWordApi } from "../api";
 import { loadTodayMeta } from "../storage";
-import { localDateKey, warmTodayMeta } from "../todayMeta";
+import i18n from "i18next";
+import { __forceStoreBuildForTests } from "../../_shared/buildFlavour";
+import { dailyWordLanguages, getLanguage, localDateKey, warmTodayMeta } from "../todayMeta";
 
 jest.mock("../api", () => ({ dailyWordApi: { getToday: jest.fn() } }));
 
@@ -38,5 +40,42 @@ describe("warmTodayMeta (#2925)", () => {
     getToday.mockRejectedValue(new TypeError("Network request failed"));
     await expect(warmTodayMeta(0, "en")).resolves.toBeUndefined();
     expect(await loadTodayMeta(localDateKey(0, "en"))).toBeNull();
+  });
+});
+
+describe("getLanguage (#3153)", () => {
+  const original = i18n.language;
+  const setLang = (lng: string) => {
+    Object.defineProperty(i18n, "language", { value: lng, configurable: true, writable: true });
+  };
+
+  afterEach(() => {
+    __forceStoreBuildForTests(false);
+    setLang(original);
+  });
+
+  it("maps hi to en in a store build", () => {
+    __forceStoreBuildForTests(true);
+    setLang("hi");
+    expect(getLanguage()).toBe("en");
+    expect(dailyWordLanguages()).toEqual(["en"]);
+  });
+
+  it("maps hi to hi in an internal build", () => {
+    setLang("hi");
+    expect(getLanguage()).toBe("hi");
+  });
+
+  it("falls back to en for languages without a puzzle", () => {
+    setLang("de");
+    expect(getLanguage()).toBe("en");
+    setLang("fr-CA");
+    expect(getLanguage()).toBe("en");
+  });
+
+  it("keeps en as en in a store build", () => {
+    __forceStoreBuildForTests(true);
+    setLang("en");
+    expect(getLanguage()).toBe("en");
   });
 });
