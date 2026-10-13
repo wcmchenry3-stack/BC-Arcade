@@ -3,12 +3,14 @@
  *
  * The screen reads cached metadata under `localDateKey(...)` when it opens
  * offline; `warmTodayMeta` writes that same key while the app is online so the
- * screen can open offline later the same day.
+ * screen can open offline later the same day. It also stores the puzzles
+ * fetched ahead for offline play (`warmUpcoming`, #3230).
  */
 import i18n from "i18next";
 import { Platform } from "react-native";
 import { isStoreBuild } from "../_shared/buildFlavour";
 import { dailyWordApi } from "./api";
+import { warmUpcoming } from "./offlinePuzzles";
 import { loadTodayMeta, saveTodayMeta } from "./storage";
 
 export function getTimezoneOffset(): number {
@@ -58,13 +60,19 @@ export function localDateKey(tzOffsetMinutes: number, lang: string): string {
 }
 
 /**
- * Fetch and cache today's puzzle metadata unless already cached. Best-effort:
- * every failure is swallowed (httpClient reports what is worth reporting).
+ * Fetch and cache today's puzzle metadata unless already cached, and the
+ * puzzles ahead for offline play (`warmUpcoming`, #3230: offline-playable
+ * languages only, skipped once fetched today). Best-effort: every failure is
+ * swallowed (httpClient reports what is worth reporting).
  */
 export async function warmTodayMeta(
   tzOffset: number = getTimezoneOffset(),
   lang: string = getLanguage()
 ): Promise<void> {
+  await Promise.all([warmTodayMetaOnly(tzOffset, lang), warmUpcoming(tzOffset, lang)]);
+}
+
+async function warmTodayMetaOnly(tzOffset: number, lang: string): Promise<void> {
   try {
     const dateKey = localDateKey(tzOffset, lang);
     if (await loadTodayMeta(dateKey)) return;

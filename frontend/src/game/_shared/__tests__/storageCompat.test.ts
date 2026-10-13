@@ -18,6 +18,12 @@
  * play, win and score counters are no longer kept, so those nine recorded results were edited
  * by hand to drop those fields (nothing else in them moved).
  *
+ * Daily Word's board moved from the one `daily_word_state_v1` slot to one key
+ * per puzzle (#3230): its recorded scenarios were edited by hand to the new
+ * key, `daily_word_board_2026-10-07:en` (the bytes, results and reports are
+ * unchanged). "read fails" keeps the old key, because the first read is now
+ * the migration's read of the old slot, and "bad puzzle id" seeds the old slot.
+ *
  * Do not re-record the fixture from the current modules: it is the record of
  * the old behaviour.
  */
@@ -197,11 +203,12 @@ const GAME_MODULES: Record<string, GameModule> = {
     load: () => cascade.loadGame(),
     clear: () => cascade.clearGame(),
   },
+  // One board per puzzle since #3230: the same bytes under the puzzle's key.
   daily_word: {
-    key: "daily_word_state_v1",
+    key: "daily_word_board_2026-10-07:en",
     save: () => dailyWord.saveState(dailyWordInitial("2026-10-07:en", 5, "en")),
-    load: () => dailyWord.loadState(),
-    clear: () => dailyWord.clearState(),
+    load: () => dailyWord.loadState("2026-10-07:en"),
+    clear: () => dailyWord.clearState("2026-10-07:en"),
   },
   freecell: {
     key: "freecell_game",
@@ -316,7 +323,7 @@ Object.assign(scenarios, {
   "cascade: best score write fails": { fail: ["setItem"], run: () => cascade.saveBestScore(5) },
   "daily_word: bad puzzle id": {
     seed: { daily_word_state_v1: JSON.stringify({ _v: 1, puzzle_id: "today", rows: [] }) },
-    run: dailyWord.loadState,
+    run: () => dailyWord.loadState("2026-10-07:en"),
   },
   "freecell: stats": {
     run: async () => {

@@ -30,6 +30,7 @@ jest.mock("../../game/daily_word/storage", () => ({
   loadState: jest.fn(),
   saveState: jest.fn(),
   clearState: jest.fn(),
+  pruneStates: jest.fn(),
   saveTodayMeta: jest.fn().mockResolvedValue(undefined),
   loadTodayMeta: jest.fn().mockResolvedValue(null),
 }));
@@ -55,6 +56,7 @@ const storage = jest.requireMock("../../game/daily_word/storage") as {
   loadState: jest.Mock;
   saveState: jest.Mock;
   clearState: jest.Mock;
+  pruneStates: jest.Mock;
 };
 
 const PUZZLE = { puzzle_id: "2026-05-03:en", word_length: 5 };
@@ -140,6 +142,7 @@ beforeEach(() => {
   storage.loadState.mockResolvedValue(null);
   storage.saveState.mockResolvedValue(undefined);
   storage.clearState.mockResolvedValue(undefined);
+  storage.pruneStates.mockResolvedValue(undefined);
 });
 
 afterEach(() => {

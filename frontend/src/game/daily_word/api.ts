@@ -8,6 +8,13 @@ export interface TodayResponse {
   readonly word_length: number;
 }
 
+/** One day from `GET /daily-word/upcoming` (#3229): the answer is scrambled, see offlinePuzzles.ts. */
+export interface UpcomingPuzzle {
+  readonly puzzle_id: string;
+  readonly word_length: number;
+  readonly answer_blob: string;
+}
+
 export interface TileResult {
   readonly letter: string;
   readonly status: TileStatus;
@@ -51,6 +58,10 @@ export const dailyWordApi = {
   getToday: (tz_offset_minutes: number, lang: string) =>
     request<TodayResponse>(
       `/daily-word/today?tz_offset_minutes=${tz_offset_minutes}&lang=${encodeURIComponent(lang)}`
+    ),
+  getUpcoming: (tz_offset_minutes: number, lang: string) =>
+    request<UpcomingPuzzle[]>(
+      `/daily-word/upcoming?tz_offset_minutes=${tz_offset_minutes}&lang=${encodeURIComponent(lang)}`
     ),
   submitGuess: (puzzle_id: string, guess: string, tz_offset_minutes: number) =>
     request<GuessResponse>("/daily-word/guess", {

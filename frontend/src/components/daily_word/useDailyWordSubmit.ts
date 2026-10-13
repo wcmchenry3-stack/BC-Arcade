@@ -11,6 +11,13 @@
  *   - 403 `no_guesses_remaining` / `already_solved` → trust the server and
  *     close the board out as a loss / win (#2197)
  *
+ * Offline (#3230), a guess is scored on the device instead, against the
+ * answer fetched ahead (`localScoring.ts`): every guess on a puzzle the
+ * screen loaded offline (`scoresOnDevice`), and a guess whose request fails
+ * for want of a connection when its puzzle was fetched ahead. Its outcome is
+ * applied exactly like a 200, so a finish closes the session the same way and
+ * SyncWorker sends it when the device is back online.
+ *
  * The screen keeps the board, the flipping row and the result card; it hands
  * the hook setters for them. `setRevealPending` holds the card back while a
  * finished board is still flipping or fetching its answer, since the card's
@@ -32,7 +39,8 @@ import type { DailyWordState } from "../../game/daily_word/types";
 import { dailyWordApi, type GuessResponse } from "../../game/daily_word/api";
 import { saveState } from "../../game/daily_word/storage";
 import { devLog } from "../../game/daily_word/devLog";
-import { ApiError } from "../../game/_shared/httpClient";
+import { ApiError, isNetworkError } from "../../game/_shared/httpClient";
+import { isValidEnglishGuess, scoreGuess } from "../../game/daily_word/localScoring";
 import { recordedOutcome } from "../../game/_shared/recordedOutcome";
 import type { UseGameSyncReturn } from "../../game/_shared/useGameSync";
 import { FLIP_HALF_MS, TILE_STAGGER_MS } from "./WordTile";
@@ -64,7 +72,11 @@ export interface DailyWordSubmitHandlers {
   /** The win fanfare. */
   playWin: () => void;
   /** Load today's puzzle in place of the current one (stale_puzzle_id). */
-  resetToToday: () => Promise<"ok" | "same" | "failed">;
+  resetToToday: () => Promise<"ok" | "same" | "failed" | "exhausted">;
+  /** The puzzle was loaded offline: score its guesses on the device (#3230). */
+  scoresOnDevice?: (puzzleId: string) => boolean;
+  /** The puzzle's answer when it was fetched ahead, else null (#3230). */
+  deviceAnswer?: (puzzleId: string) => Promise<string | null>;
 }
 
 export interface DailyWordSubmit {
@@ -125,6 +137,24 @@ function checkGuess(s: DailyWordState): { guess: string } | { refusal: string } 
     .some((r) => r.submitted && rowWord(r) === guess);
   if (alreadyGuessed) return { refusal: "error.alreadyGuessed" };
   return { guess };
+}
+
+/**
+ * A guess scored on the device (#3230): the server's checks after the
+ * board's own, then its tiles. Refusals are the toasts the server's 422s map
+ * to. English only (the one offline language).
+ */
+function scoreOnDevice(
+  s: DailyWordState,
+  guess: string,
+  answer: string
+): { response: GuessResponse } | { refusal: string } {
+  const word = guess.toLowerCase();
+  if (Array.from(word).length !== Array.from(answer).length) {
+    return { refusal: "error.wrongLength" };
+  }
+  if (s.language !== "en" || !isValidEnglishGuess(word)) return { refusal: "error.notAWord" };
+  return { response: { tiles: scoreGuess(answer, word) } };
 }
 
 /** A 403 saying the server has this puzzle finished (#2197). */
@@ -197,7 +227,9 @@ interface OutcomeContext {
 function applyAccepted(
   ctx: OutcomeContext,
   s: DailyWordState,
-  result: GuessResponse
+  result: GuessResponse,
+  /** The answer when the guess was scored on the device (#3230): no fetch. */
+  knownAnswer?: string
 ): ReturnType<typeof setTimeout> {
   const tileStates = result.tiles.map((tile) => ({ letter: tile.letter, status: tile.status }));
 
@@ -233,6 +265,8 @@ function applyAccepted(
     if (!finalState.is_complete) return;
     if (finalState.won) {
       ctx.playWin();
+    } else if (knownAnswer !== undefined) {
+      ctx.setAnswer(knownAnswer.toUpperCase());
     } else {
       try {
         const answerData = await dailyWordApi.getAnswer(s.puzzle_id);
@@ -279,7 +313,7 @@ async function closeOutFromServer(
   // is returned for *any* guess on a puzzle this session finished at
   // any earlier time, and the board can be missing independently of
   // the session id — they are separate AsyncStorage keys
-  // (`daily_word_state_v1` vs `game_session_id`), and loadState drops
+  // (`daily_word_board_<puzzle_id>` vs `game_session_id`), and loadState drops
   // only the board on a corrupt payload. Without this guard, opening a
   // wiped board and typing one word would fabricate a completed game
   // for a puzzle finished hours ago, with a guesses_used taken from an
@@ -336,6 +370,7 @@ export function useDailyWordSubmit(
   const { tzOffset, showToast, resetToToday } = handlers;
   const { setState, setFlippingRowIndex, setRevealPending } = handlers;
   const { setAnswer, startCountdown, playWin } = handlers;
+  const { scoresOnDevice, deviceAnswer } = handlers;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -386,6 +421,27 @@ export function useDailyWordSubmit(
     [resetToToday, showToast, t, ctx, stateRef]
   );
 
+  /**
+   * Score `guess` on the device (#3230). False when the puzzle's answer was
+   * not fetched ahead, so the caller falls back to its server handling.
+   */
+  const submitOnDevice = useCallback(
+    async (s: DailyWordState, guess: string): Promise<boolean> => {
+      const answer = deviceAnswer ? await deviceAnswer(s.puzzle_id) : null;
+      if (answer === null) return false;
+      const scored = scoreOnDevice(s, guess, answer);
+      if ("refusal" in scored) {
+        showToast(t(scored.refusal));
+        await heavyHaptic();
+        return true;
+      }
+      if (!mountedRef.current) return true;
+      flipTimerRef.current = applyAccepted(ctx, s, scored.response, answer);
+      return true;
+    },
+    [deviceAnswer, showToast, t, ctx]
+  );
+
   const submit = useCallback(async () => {
     const s = stateRef.current;
     if (!s || submitting || s.is_complete) return;
@@ -412,6 +468,7 @@ export function useDailyWordSubmit(
 
     setSubmitting(true);
     try {
+      if (scoresOnDevice?.(s.puzzle_id) && (await submitOnDevice(s, guess))) return;
       const result = await dailyWordApi.submitGuess(s.puzzle_id, guess, tzOffset);
       logGuess(devTs, devBody, { response: result });
       // The player left while the guess was in flight. useGameSync's unmount
@@ -421,11 +478,13 @@ export function useDailyWordSubmit(
       flipTimerRef.current = applyAccepted(ctx, s, result);
     } catch (err) {
       logGuess(devTs, devBody, { err });
+      // Lost the connection mid-puzzle: score it on the device if it can be (#3230).
+      if (isNetworkError(err) && (await submitOnDevice(s, guess))) return;
       await recover(err);
     } finally {
       setSubmitting(false);
     }
-  }, [stateRef, submitting, showToast, t, tzOffset, ctx, recover]);
+  }, [stateRef, submitting, showToast, t, tzOffset, ctx, recover, scoresOnDevice, submitOnDevice]);
 
   return { submit, submitting };
 }

@@ -68,7 +68,7 @@ If a language's list files are missing, it is not loaded and is unsupported: `/t
 
 The puzzle language follows the app language through one function, `getLanguage()` (`todayMeta.ts`): the app language's base code if this build offers a puzzle in it, else `en`. Native (iOS/Android) store builds (#3150, `buildFlavour.ts`) offer only the launched languages (`en` for now), so `hi` falls back to the English puzzle and QWERTY keyboard; web, dev, e2e and pre-launch builds also offer `hi` (#3153), mirroring `availableLocales`. The backend still accepts `hi`. A launched language is added by listing it in `LAUNCHED_DAILY_WORD_LANGUAGES`.
 
-When a native store build falls back to English, any saved Hindi board (in progress or finished, even from the same day) is discarded: its `puzzle_id` ends `:hi`, no longer matches today's English puzzle, so the stale save is cleared (`staleSave` -> `clearState`) and a fresh English board starts. This is the chosen "migrate to `en`" option; finishing the Hindi game is not supported. Server-side stats are keyed by puzzle and are untouched.
+When a native store build falls back to English, any saved Hindi board (in progress or finished, even from the same day) is discarded: its `puzzle_id` ends `:hi`, no longer matches today's English puzzle, so a fresh English board starts and the Hindi board is pruned (`pruneStates`, #3230). This is the chosen "migrate to `en`" option; finishing the Hindi game is not supported. Server-side stats are keyed by puzzle and are untouched.
 
 ## Scoring (Persistence)
 
@@ -93,12 +93,24 @@ The puzzle id is `YYYY-MM-DD:hi` for Hindi and `YYYY-MM-DD:en:<list version>` fo
 On mount the screen fetches today's puzzle metadata and loads any saved board.
 
 - If the saved `puzzle_id` matches today, that board resumes.
-- If it belongs to another day/language, the stale save is cleared and a fresh board is created.
+- Otherwise a fresh board is created, and boards saved for other days/languages are pruned (one board per puzzle since #3230).
 - For network failures while loading, cached "today" metadata may be used when available. HTTP errors are not bypassed by cache fallback.
 - **Offline with a cold cache (#2925):** a network failure with no cached metadata shows "Daily Word needs a connection" with a Retry button. Retry runs the same single load path as mount. Any other failure (HTTP error, unexpected exception) keeps the generic "Could not load today's puzzle" banner and never falls back to cache.
-- **Cache warming (#2925):** Home calls `warmTodayMeta()` (`game/daily_word/todayMeta.ts`) once on mount, when connectivity returns, and when the app returns to the foreground, while online. It stores today's metadata under the same `localDateKey` the screen reads and skips the fetch when already cached, so the screen can open offline later the same day.
-- **Decision:** Daily Word stays online-only. Showing a clear message and warming the cache is the whole scope; offline play and local scoring are tracked separately in #3022.
+- **Cache warming (#2925):** Home calls `warmTodayMeta()` (`game/daily_word/todayMeta.ts`) once on mount, when connectivity returns, and when the app returns to the foreground, while online. It stores today's metadata under the same `localDateKey` the screen reads and skips the fetch when already cached, so the screen can open offline later the same day. The same call also stores the puzzles fetched ahead (`warmUpcoming`, see [Offline play](#offline-play-3230)).
+- **Decision (superseded by #3230):** Daily Word was online-only until #3022 / #3230; English is now playable offline for up to 3 days (below). Hindi stays online-only.
 - An unfinished restored board resumes the corresponding shared game session.
+- **Saved boards (#3230):** one board per puzzle, under `daily_word_board_<puzzle_id>` (`storage.ts`; same payload as before). The load reads today's puzzle's board; the restore handler prunes every other puzzle's board (`pruneStates`), so another day's or another language's board never resumes. A board saved by an older build in the single `daily_word_state_v1` slot is moved to its puzzle's key on the first load and the old slot removed.
+
+### Offline play (#3230)
+
+Owner decisions: #3022 (answers may sit on the device if lightly scrambled) and #3043 (up to 3 days offline, no catch-up of past days, a day solved offline on that day counts toward the streak, the shared reconnect message after 3 days).
+
+- **Fetch ahead.** While online, `warmTodayMeta` → `warmUpcoming` (`game/daily_word/offlinePuzzles.ts`) stores `GET /daily-word/upcoming` (today, +1, +2) under `daily_word_upcoming_<lang>`, skipping the fetch once the cache already reaches two days ahead. Only offline-playable languages are fetched (`OFFLINE_LANGUAGES` in `localScoring.ts`: `en`). The answers stay scrambled in storage and are decoded (`decodeAnswerBlob`, the scheme below; SHA-256 is plain TypeScript in `sha256.ts`, no native package) only for the puzzle being played.
+- **Which puzzle.** When `/today` fails with a network error, the screen asks `resolveOfflinePuzzle` for the cached puzzle whose date is the device's local day. There is no catch-up: a past day's puzzle is never offered. If none is cached for today, or `offlineWindowExhausted()` (3 local days since the last 2xx, `lastConnected.ts`), the screen shows the shared message `common:offline.windowExhausted`, plus `common:offline.windowExhaustedStreak` when the last known streak (`lastKnownStreak.ts`) is above 0, with a Retry button. If nothing was ever fetched ahead and the window is not used up, the earlier behaviour applies (cached today metadata, else "Daily Word needs a connection"). HTTP errors never fall back to the cache.
+- **Scoring on the device.** Every guess on a puzzle loaded offline is checked and scored in `useDailyWordSubmit` against the decoded answer: the same length and dictionary checks as `/guess` (the 422 toasts), then `scoreGuess` (`localScoring.ts`), which mirrors the server's `_score_guess` exactly, duplicate letters included. Valid guesses come from `validWordsEn.generated.ts`, the server's `valid_en.txt` ∪ `answers_en.txt` packed into one sorted string and binary-searched (about 43 KB of source; regenerate with `npx --prefix frontend tsx tools/generators/pack-daily-word-valid-en.ts`, and `__tests__/parity.test.ts` fails until you do). Hindi's list is 434 KB, so Hindi stays online-only. When online, guesses are still scored on the server; a guess whose request fails for want of a connection is scored on the device if its puzzle was fetched ahead, so a dropped connection mid-puzzle does not stall the board. A loss shows the decoded answer; `/answer` is not called.
+- **Parity.** `backend/tests/fixtures/daily_word_parity.json` holds scoring cases (duplicate letters, a Hindi code-point case) and answer blobs. `backend/tests/test_daily_word_parity.py` checks the server's `_score_guess` and `scramble_answer` against it; `frontend/src/game/daily_word/__tests__/parity.test.ts` checks `scoreGuess` and `decodeAnswerBlob`.
+- **Results and streaks.** An offline finish closes the `useGameSync("daily_word")` session exactly as an online one does (`win` / `loss` with `is_complete`, `won`, `guesses_used`), so it sits in `pending_games_v1` until `SyncWorker` sends it. The server has no guess record for an offline puzzle, so `reconcile_result` keeps the reported `guesses_used`. Streaks place a game on the local day of its device `completed_at` (`backend/daily_challenge/streak.py`), so a puzzle solved offline on its own day counts once it syncs (within the 7-day sync queue).
+- **Rollover.** Play Again at local midnight takes the next day's cached puzzle when `/today` fails with a network error, or shows the reconnect message once the window is used up. Back online, Retry and Play Again load from the server as before.
 
 ### Upcoming puzzles for offline play (#3229)
 
@@ -120,7 +132,7 @@ The backend rejects a guess for an old puzzle id (with a one-minute clock-drift 
 **The replacement is fetch-first and atomic from the player's perspective:**
 
 1. fetch today's puzzle;
-2. if that succeeds, clear the old local state;
+2. if that succeeds, clear the old puzzle's saved board;
 3. abandon the old open session if necessary;
 4. install the fresh board.
 
@@ -180,6 +192,7 @@ The UI only says "Copied" when a clipboard copy actually happened.
 ## Client
 
 - Engine: `frontend/src/game/daily_word/engine.ts`
+- Offline play (#3230): `offlinePuzzles.ts` (fetch-ahead cache, blob decoding, today's offline puzzle), `localScoring.ts` (`scoreGuess`, the bundled English list), `sha256.ts`, `validWordsEn.generated.ts`
 - Screen: [`frontend/src/screens/DailyWordScreen.tsx`](../../frontend/src/screens/DailyWordScreen.tsx) (its header lists the screen's concerns; see [GAMEPLAY_STANDARDS §8](../GAMEPLAY_STANDARDS.md#8-screen-layer))
 
 ## Backend
