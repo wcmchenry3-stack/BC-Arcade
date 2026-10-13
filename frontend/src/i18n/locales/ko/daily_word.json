@@ -20,5 +20,11 @@
   "keyboard.enter": "입력",
   "result.countdown": "다음 단어까지 {{time}}",
   "result.share": "공유",
-  "result.copied": "복사됨!"
+  "result.copied": "복사됨!",
+  "a11y.board": "데일리 워드 보드",
+  "a11y.tile": "{{row}}행 {{col}}열, 글자 {{letter}}",
+  "a11y.tileStatus": "{{row}}행 {{col}}열, 글자 {{letter}}, {{status}}",
+  "a11y.status.correct": "정답",
+  "a11y.status.present": "위치가 다름",
+  "a11y.status.absent": "단어에 없음"
 }

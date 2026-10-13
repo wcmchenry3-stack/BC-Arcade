@@ -11,5 +11,6 @@
   "preview.comingUp": "即将出现：{{name}}",
   "theme.groupLabel": "水果主题",
   "theme.optionLabel": "{{label}} 主题",
-  "event.merged": "合并成功！生成{{fruit}}。"
+  "event.merged": "合并成功！生成{{fruit}}。",
+  "a11y.board": "Cascade 游戏面板"
 }

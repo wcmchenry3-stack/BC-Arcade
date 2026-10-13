@@ -115,5 +115,14 @@
     "placeholders": ["{{fruit}}"],
     "doNotTranslate": [],
     "notes": "{{fruit}} is a fruit name — do not translate it."
+  },
+  "a11y.board": {
+    "component": "CascadeScreen (accessibility)",
+    "description": "Screen-reader label for the Cascade game canvas.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": [],
+    "doNotTranslate": ["Cascade"],
+    "notes": "Do not translate the game name."
   }
 }

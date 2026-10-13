@@ -11,5 +11,6 @@
   "preview.comingUp": "Kommt: {{name}}",
   "theme.groupLabel": "Frucht-Set Thema",
   "theme.optionLabel": "{{label}} Thema",
-  "event.merged": "Fusion! {{fruit}} erstellt."
+  "event.merged": "Fusion! {{fruit}} erstellt.",
+  "a11y.board": "Cascade-Spielfeld"
 }

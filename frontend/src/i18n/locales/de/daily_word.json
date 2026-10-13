@@ -20,5 +20,11 @@
   "keyboard.enter": "Enter",
   "result.countdown": "Neues Wort in {{time}}",
   "result.share": "Teilen",
-  "result.copied": "Kopiert!"
+  "result.copied": "Kopiert!",
+  "a11y.board": "Wort-des-Tages-Spielfeld",
+  "a11y.tile": "Reihe {{row}}, Spalte {{col}}, Buchstabe {{letter}}",
+  "a11y.tileStatus": "Reihe {{row}}, Spalte {{col}}, Buchstabe {{letter}}, {{status}}",
+  "a11y.status.correct": "richtig",
+  "a11y.status.present": "falsche Stelle",
+  "a11y.status.absent": "nicht im Wort"
 }

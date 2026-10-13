@@ -1,5 +1,6 @@
 import React from "react";
-import { render } from "@testing-library/react-native";
+import { act, render } from "@testing-library/react-native";
+import i18n from "i18next";
 import StatsBento, { formatTime, highestTile } from "../StatsBento";
 import { ThemeProvider } from "../../../theme/ThemeContext";
 import { Twenty48State } from "../../../game/twenty48/types";
@@ -123,5 +124,21 @@ describe("StatsBento — rendering", () => {
     const state = makeState({ accumulatedMs: 61_000, startedAt: null });
     const { getByLabelText } = await renderBento(state);
     expect(getByLabelText("Time played: 01:01")).toBeTruthy();
+  });
+
+  it("localizes both a11y labels (#2222)", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    i18n.addResourceBundle("es", "twenty48", require("../../../i18n/locales/es/twenty48.json"));
+    await i18n.changeLanguage("es");
+    try {
+      const { getByLabelText, queryByLabelText } = await renderBento(makeState());
+      expect(getByLabelText("Ficha más alta: 4")).toBeTruthy();
+      expect(getByLabelText("Tiempo jugado: 00:00")).toBeTruthy();
+      expect(queryByLabelText("Highest tile: 4")).toBeNull();
+    } finally {
+      await act(async () => {
+        await i18n.changeLanguage("en");
+      });
+    }
   });
 });

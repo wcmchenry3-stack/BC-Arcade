@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { StyleSheet, View } from "react-native";
+import { useTranslation } from "react-i18next";
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export function FreeCellFoundationAnimation({ visible, onAnimationEnd }: Props) {
+  const { t } = useTranslation("freecell");
   const reduceMotion = useReduceMotion();
   const rays = useParticleGroup();
 
@@ -128,7 +130,7 @@ export function FreeCellFoundationAnimation({ visible, onAnimationEnd }: Props) 
         ))}
         <Animated.Text
           style={[styles.sparkleIcon, iconStyle]}
-          accessibilityLabel="Foundation complete"
+          accessibilityLabel={t("a11y.foundationComplete")}
           accessibilityRole="text"
           accessibilityLiveRegion="polite"
         >

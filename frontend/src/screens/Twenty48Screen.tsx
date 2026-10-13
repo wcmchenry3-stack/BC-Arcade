@@ -16,7 +16,7 @@
  *   6. Audio — engine events play the 2048 and game-over sounds.
  */
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
+import { View, Text, Pressable, StyleSheet, Platform, AccessibilityInfo } from "react-native";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -280,6 +280,20 @@ export default function Twenty48Screen({ navigation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state?.tiles]);
 
+  const lastMoveTilesRef = useRef<Twenty48State["tiles"] | null>(null);
+
+  // Announce merges to screen readers: the merged tile values only (not every
+  // slide or spawn), so a swipe produces one short message.
+  useEffect(() => {
+    if (!state || state.tiles !== lastMoveTilesRef.current) return;
+    const values = state.tiles.filter((tile) => tile.isMerge).map((tile) => tile.value);
+    if (values.length === 0) return;
+    AccessibilityInfo.announceForAccessibility(
+      t("twenty48:a11y.merged", { values: values.join(", ") })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.tiles]);
+
   // Fire one-shot event sounds from engine events. The engine emits a new
   // array (win2048 before gameOver) on the move that caused them, and every
   // save and load strips them, so they are left in state rather than cleared.
@@ -303,6 +317,9 @@ export default function Twenty48Screen({ navigation }: Props) {
         return;
       }
       setState(next);
+      // Only tiles produced by a move made in this session are announced; a
+      // restored or resumed board keeps stale isMerge flags (#2222).
+      lastMoveTilesRef.current = next.tiles;
       moveCountRef.current += 1;
       syncMarkStarted();
       // The first win per session finishes it.
@@ -364,6 +381,7 @@ export default function Twenty48Screen({ navigation }: Props) {
 
   const resetGame = useCallback(() => {
     movingRef.current = false;
+    lastMoveTilesRef.current = null;
     pendingMove.current = null;
     winRecordedRef.current = false;
     resetGameOver();

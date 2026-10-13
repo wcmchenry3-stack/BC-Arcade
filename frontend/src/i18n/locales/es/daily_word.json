@@ -21,5 +21,11 @@
   "keyboard.enter": "Intro",
   "result.countdown": "Próx. palabra: {{time}}",
   "result.share": "Compartir",
-  "result.copied": "¡Copiado!"
+  "result.copied": "¡Copiado!",
+  "a11y.board": "Tablero de Palabra Diaria",
+  "a11y.tile": "Fila {{row}}, columna {{col}}, letra {{letter}}",
+  "a11y.tileStatus": "Fila {{row}}, columna {{col}}, letra {{letter}}, {{status}}",
+  "a11y.status.correct": "correcta",
+  "a11y.status.present": "en otra posición",
+  "a11y.status.absent": "no está en la palabra"
 }

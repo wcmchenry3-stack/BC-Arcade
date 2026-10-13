@@ -14,5 +14,10 @@
   "win.body": "2048에 도달했습니다! 더 높은 점수를 위해 계속 플레이할 수 있습니다.",
   "controls.keyboardHint": "또는 방향키 사용",
   "stats.highestTile": "최고 타일",
-  "stats.timePlayed": "플레이 시간"
+  "stats.timePlayed": "플레이 시간",
+  "a11y.board": "게임 보드",
+  "a11y.emptyCell": "비어 있음",
+  "a11y.merged": "병합됨: {{values}}",
+  "a11y.highestTile": "가장 큰 타일: {{value}}",
+  "a11y.timePlayed": "플레이 시간: {{time}}"
 }

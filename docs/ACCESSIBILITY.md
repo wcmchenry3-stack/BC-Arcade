@@ -53,6 +53,7 @@ This requirement is already enforced at Layer 4 of the gameplay architecture —
 - Decorative images must use `accessible={false}` so screen readers skip them.
 - Score updates and turn changes must use `accessibilityLiveRegion="polite"` so VoiceOver / TalkBack announces them without interrupting the user.
 - Group related elements with `accessibilityViewIsModal` or `accessible={true}` + `accessibilityLabel` on the container where appropriate.
+- Accessibility labels and announcements are user-facing strings: they go through `t()` (conventionally an `a11y.*` key in the game's namespace, with `{{row}}` / `{{col}}` / `{{value}}` interpolation) and are translated in every locale. Never hardcode English in `accessibilityLabel` or `announceForAccessibility` (#2222).
 
 ### Canvas-based games (Cascade, Starswarm, Mahjong on native)
 
@@ -121,11 +122,11 @@ Run this before shipping any new game or screen.
 | Solitaire   | No                 | Pile positions and card labels required                               |
 | Sudoku      | No                 | Cell coordinates + value in labels (e.g. "Row 3, Column 5, empty")    |
 | Cascade     | Yes (Skia)         | Score + game state must have native text overlay; keyboard alt TBD    |
-| 2048        | No                 | Grid cell values must be announced on merge                           |
+| 2048        | No                 | Done (#2222): merge announced on iOS/Android only (web pending)       |
 | FreeCell    | No                 | Same card label convention as Solitaire                               |
 | Mahjong     | Yes (Skia, native) | Same overlay requirement as Cascade                                   |
 | Bottle Sort | No                 | Bottle contents must be labeled by color sequence                     |
-| Daily Word  | No                 | Letter input cells need row/column position labels                    |
+| Daily Word  | No                 | Done (#2222): tile labels give row, column, letter and result (i18n)  |
 | Starswarm   | Yes (Skia)         | Score + state overlay required; no keyboard equivalent yet            |
 
 ---

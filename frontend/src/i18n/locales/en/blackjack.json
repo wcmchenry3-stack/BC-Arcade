@@ -148,5 +148,8 @@
   "stats.viewStats": "Run Stats",
   "stats.viewStatsLabel": "View run statistics",
   "stats.runAccessibilityLabel": "{{table}}, {{date}}, {{chips}}, {{outcome}}",
-  "tableSelect.lastPlayed": "Last played"
+  "tableSelect.lastPlayed": "Last played",
+  "a11y.dealerScore": "Dealer score {{score}}",
+  "a11y.dealerScoreHidden": "Dealer score hidden",
+  "a11y.playerScore": "Player score {{score}}"
 }

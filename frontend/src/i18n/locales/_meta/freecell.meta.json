@@ -169,5 +169,14 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Currently unused in the app; the engine silently blocks the move today. Reserved for a future toast or error surfaced by FreeCellBoard."
+  },
+  "a11y.foundationComplete": {
+    "component": "FreeCellFoundationAnimation (accessibility)",
+    "description": "Live-region announcement when a foundation pile is completed.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": ""
   }
 }

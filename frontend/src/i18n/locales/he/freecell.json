@@ -17,5 +17,6 @@
   "pile.freecell.empty": "תא פנוי {{cell}} ריק",
   "a11y.boardRegion": "לוח FreeCell",
   "score.moves": "מהלכים: {{moves}}",
-  "error.supermoveRejected": "אין מספיק משבצות פנויות כדי להזיז את הערימה"
+  "error.supermoveRejected": "אין מספיק משבצות פנויות כדי להזיז את הערימה",
+  "a11y.foundationComplete": "הבסיס הושלם"
 }

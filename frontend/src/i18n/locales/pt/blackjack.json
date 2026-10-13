@@ -148,5 +148,8 @@
   "tableSelect.tagline": "Sobreviva à partida.",
   "tableSelect.taglineSub": "Cada mesa é um arco completo — saldo inicial, uma meta a alcançar e um final limpo.",
   "tableSelect.viewHistory": "Ver histórico de partidas",
-  "tableSelect.lastPlayed": "Mais recente"
+  "tableSelect.lastPlayed": "Mais recente",
+  "a11y.dealerScore": "Pontuação do dealer: {{score}}",
+  "a11y.dealerScoreHidden": "Pontuação do dealer oculta",
+  "a11y.playerScore": "Pontuação do jogador: {{score}}"
 }

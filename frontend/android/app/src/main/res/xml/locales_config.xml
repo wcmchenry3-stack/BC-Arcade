@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Per-app language list (Android 13+ Settings > App languages), referenced by
+  android:localeConfig in AndroidManifest.xml. Must match LAUNCH_LOCALE_CODES in
+  src/i18n/locales.js; src/__tests__/nativeLocaleDeclarations.test.ts fails if
+  they drift (#3151). "en" also covers en-CA.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+  <locale android:name="en"/>
+  <locale android:name="es"/>
+  <locale android:name="fr-CA"/>
+</locale-config>

@@ -148,5 +148,8 @@
   "tableSelect.tagline": "Überlebe den Run.",
   "tableSelect.taglineSub": "Jeder Tisch ist ein vollständiger Bogen — ein Startguthaben, ein Ziel und ein sauberes Ende.",
   "tableSelect.viewHistory": "Spielverlauf anzeigen",
-  "tableSelect.lastPlayed": "Zuletzt gespielt"
+  "tableSelect.lastPlayed": "Zuletzt gespielt",
+  "a11y.dealerScore": "Punktestand des Dealers: {{score}}",
+  "a11y.dealerScoreHidden": "Punktestand des Dealers verdeckt",
+  "a11y.playerScore": "Punktestand des Spielers: {{score}}"
 }

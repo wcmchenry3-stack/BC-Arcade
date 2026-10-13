@@ -11,9 +11,11 @@
 import React, { StrictMode } from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import { Share } from "react-native";
+import i18n from "i18next";
 import { CodedError } from "expo-modules-core";
 import * as ThemeModule from "../../theme/ThemeContext";
 import { ThemeProvider } from "../../theme/ThemeContext";
+import { __forceStoreBuildForTests } from "../../game/_shared/buildFlavour";
 import DailyWordScreen from "../DailyWordScreen";
 import { ApiError } from "../../game/_shared/httpClient";
 import type { DailyWordState } from "../../game/daily_word/types";
@@ -208,6 +210,19 @@ describe("DailyWordScreen — loading", () => {
     const { findByTestId } = await renderScreen();
     await expect(findByTestId("tile-0-0")).resolves.toBeTruthy();
   });
+
+  it("labels the board from the active language (#2222)", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    i18n.addResourceBundle("es", "daily_word", require("../../i18n/locales/es/daily_word.json"));
+    await i18n.changeLanguage("es");
+    try {
+      const { findByLabelText, queryByLabelText } = await renderScreen();
+      await expect(findByLabelText("Tablero de Palabra Diaria")).resolves.toBeTruthy();
+      expect(queryByLabelText("Daily Word board")).toBeNull();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
 });
 
 describe("DailyWordScreen — stale state", () => {
@@ -219,6 +234,28 @@ describe("DailyWordScreen — stale state", () => {
     await findByTestId("tile-0-0");
 
     expect(storage.clearState).toHaveBeenCalledTimes(1);
+  });
+
+  it("store build: a saved Hindi game does not strand the player (#3153)", async () => {
+    const original = i18n.language;
+    await i18n.changeLanguage("hi");
+    __forceStoreBuildForTests(true);
+    try {
+      storage.loadState.mockResolvedValue({
+        ...STALE_STATE,
+        puzzle_id: "2026-05-03:hi",
+        language: "hi",
+      });
+
+      const { findByTestId } = await renderScreen();
+      await findByTestId("tile-0-0");
+
+      expect(dailyWordApi.getToday).toHaveBeenCalledWith(expect.any(Number), "en");
+      expect(storage.clearState).toHaveBeenCalledTimes(1);
+    } finally {
+      __forceStoreBuildForTests(false);
+      await i18n.changeLanguage(original);
+    }
   });
 
   it("preserves saved state when puzzle_id matches today's", async () => {

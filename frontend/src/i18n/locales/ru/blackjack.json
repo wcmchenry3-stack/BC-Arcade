@@ -148,5 +148,8 @@
   "tableSelect.tagline": "Выживи в забеге.",
   "tableSelect.taglineSub": "Каждый стол — это полная история: начальный баланс, цель и чистый финал.",
   "tableSelect.viewHistory": "Просмотр истории раундов",
-  "tableSelect.lastPlayed": "Последняя игра"
+  "tableSelect.lastPlayed": "Последняя игра",
+  "a11y.dealerScore": "Очки дилера: {{score}}",
+  "a11y.dealerScoreHidden": "Очки дилера скрыты",
+  "a11y.playerScore": "Очки игрока: {{score}}"
 }

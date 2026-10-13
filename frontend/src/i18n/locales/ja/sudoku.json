@@ -26,5 +26,6 @@
   "hud.errorsOne": "ミス 1 回",
   "hud.elapsed": "経過時間 {{time}}",
   "action.quickRestart": "クイック再スタート",
-  "newGame.title": "新しいゲーム"
+  "newGame.title": "新しいゲーム",
+  "a11y.board": "数独の盤面"
 }
