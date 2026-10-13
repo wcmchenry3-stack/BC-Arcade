@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "@testing-library/react-native";
+import { act, render } from "@testing-library/react-native";
 import i18n from "i18next";
 import StatsBento, { formatTime, highestTile } from "../StatsBento";
 import { ThemeProvider } from "../../../theme/ThemeContext";
@@ -136,7 +136,9 @@ describe("StatsBento — rendering", () => {
       expect(getByLabelText("Tiempo jugado: 00:00")).toBeTruthy();
       expect(queryByLabelText("Highest tile: 4")).toBeNull();
     } finally {
-      await i18n.changeLanguage("en");
+      await act(async () => {
+        await i18n.changeLanguage("en");
+      });
     }
   });
 });

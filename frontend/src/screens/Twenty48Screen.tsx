@@ -381,6 +381,7 @@ export default function Twenty48Screen({ navigation }: Props) {
 
   const resetGame = useCallback(() => {
     movingRef.current = false;
+    lastMoveTilesRef.current = null;
     pendingMove.current = null;
     winRecordedRef.current = false;
     resetGameOver();
