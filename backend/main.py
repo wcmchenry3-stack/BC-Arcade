@@ -231,7 +231,7 @@ def _add_middleware(app: FastAPI, settings: Settings) -> None:
         expose_headers=CORS_EXPOSE_HEADERS,
         allow_headers=CORS_ALLOW_HEADERS,
     )
-    app.add_middleware(SecurityHeadersAndLogMiddleware)
+    app.add_middleware(SecurityHeadersAndLogMiddleware, is_production=settings.is_production)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
