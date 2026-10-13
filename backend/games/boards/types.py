@@ -72,6 +72,7 @@ class BestRow:
     value: Any
     tiebreak: Any
     completed_at: datetime
+    received_at: datetime
     player_name: str | None = None
 
 

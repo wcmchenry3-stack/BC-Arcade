@@ -11,7 +11,7 @@ Rules every board follows
 - **One entry per player** (#2519 decision 12): rows are grouped by
   ``session_id`` and only each session's best row is listed. "Best" is the
   board's metric in its direction, then its tie-break, then the earliest
-  ``completed_at``. The same key orders the board and drives the rank, so a
+  ``received_at`` (server receipt time, #2765). The same key orders the board and drives the rank, so a
   replay that doesn't beat a player's best never shows up.
 - **Only named players rank** (#2624, #2519 decisions 17-18): a session ranks
   only if its player has a display name (a ``players`` row), and then **every**

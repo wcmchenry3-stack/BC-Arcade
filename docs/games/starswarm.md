@@ -1042,7 +1042,7 @@ restores with a `"Boss"` tier id.
 ## Leaderboard and Run Reporting
 
 - **Metric and direction:** `final_score`, higher is better, labelled `score` (`board` in `backend/starswarm/module.py`; `BOARDS.starswarm` in `frontend/src/api/vocab.ts`). It is the points at game over.
-- **Tie-break:** none declared. Equal scores go to the earlier `completed_at`, the last tie-break on every board.
+- **Tie-break:** none declared. Equal scores go to the entry the server received first (`received_at`), the last tie-break on every board.
 - **Partitions:** `difficulty_tier`: each of the ten tiers in `DIFFICULTY_TIERS` (`backend/starswarm/models.py`) is its own board, and only those tiers have one (`partition_values`). A row with no tier counts as `LieutenantJG` (`partition_defaults`). A row with any other tier is stored but never ranks.
 - **Recorded, not partitioned:** result (`StarSwarmResult`): `outcome`, `wave_reached` and `score_breakdown` (#2837, [above](#per-wave-score-breakdown-2837)) (`difficulty_tier` is repeated there too). The owner reads them back in `metadata` from `GET /games/{id}`.
 - **Max value:** none (#2519 decision 14).

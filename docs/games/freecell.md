@@ -78,7 +78,7 @@ Moving a card **from foundation back to tableau costs 2 moves** as a progress pe
 
 Undo restores the earlier move count.
 
-There is one global FreeCell board with no partition and no declared maximum. Equal move totals use the shared final tie rule: earlier completion ranks first.
+There is one global FreeCell board with no partition and no declared maximum. Equal move totals use the shared final tie rule: the completion the server received first (`received_at`) ranks first.
 
 ## Hint
 

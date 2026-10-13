@@ -96,7 +96,7 @@ The public board ranks by `final_score`, higher is better.
 
 - One global board; no difficulty/ruleset partitions.
 - No natural maximum is declared.
-- Equal scores use the shared final tie rule: earlier completion ranks first.
+- Equal scores use the shared final tie rule: the completion the server received first (`received_at`) ranks first.
 
 The result block also records:
 - `final_score`;

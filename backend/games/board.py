@@ -25,7 +25,7 @@ Ordering a board
    better).
 2. ``tiebreak``, when set, e.g. ``("total_moves", "asc")``. No board sets one
    today: Sort's was dropped because its levels are random per request (#2746).
-3. ``FINAL_TIEBREAK``: ``completed_at asc`` (the earlier entry wins). It is
+3. ``FINAL_TIEBREAK``: ``received_at asc`` (the entry the server got first wins). It is
    always applied last and is never declared on a board.
 
 Where values live
@@ -74,8 +74,10 @@ column metrics is a metadata key."""
 COLUMN_METRICS = frozenset({SCORE_METRIC, DURATION_METRIC})
 """Metrics read from a ``games`` column rather than ``games.metadata``."""
 
-FINAL_TIEBREAK: tuple[str, Direction] = ("completed_at", "asc")
-"""Breaks the last tie on every board: the earlier entry ranks higher."""
+FINAL_TIEBREAK: tuple[str, Direction] = ("received_at", "asc")
+"""Breaks the last tie on every board: the entry the server received first
+ranks higher. ``games.received_at`` is the server's clock, not the device's
+``completed_at`` (#2765); boards read ``coalesce(received_at, completed_at)``."""
 
 MAX_BOARD_VALUE = 2**31 - 1
 """Upper bound for any metric or tie-break value (the ``games.final_score``

@@ -136,7 +136,7 @@ There is **no time bonus**.
 
 The backend's declared maximum rankable score is **1245**.
 
-Equal scores use the shared final tie rule: earlier completion ranks first.
+Equal scores use the shared final tie rule: the completion the server received first (`received_at`) ranks first.
 
 ## Timer and save/resume
 

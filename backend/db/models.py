@@ -150,6 +150,9 @@ class Game(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Server time the completion arrived (#2765): the leaderboards' last
+    # tie-break, since ``completed_at`` is device-reported. NULL while in progress.
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     final_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)

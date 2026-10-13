@@ -91,7 +91,7 @@ async def top_entries(
     prev_key: tuple | None = None
     rank = 0
     for i, row in enumerate(rows):
-        key = (row.value, row.tiebreak, row.completed_at)
+        key = (row.value, row.tiebreak, row.received_at)
         # Players with identical keys share a rank, as compute_rank reports it.
         if key != prev_key:
             rank = i + 1
@@ -175,6 +175,7 @@ async def _session_best(
         value=row.value,
         tiebreak=row.tiebreak,
         completed_at=row.completed_at,
+        received_at=row.received_at,
         player_name=row.player_name if with_name else None,
     )
 
@@ -276,7 +277,7 @@ async def _best_row_rank(
         metric=metric,
         direction=board.direction,
         value=best.value,
-        completed_at=best.completed_at,
+        received_at=best.received_at,
         tiebreak=tiebreak_arg,
         filters=filters,
         game_label=game_type,
