@@ -15,7 +15,6 @@ import i18n from "i18next";
 import { CodedError } from "expo-modules-core";
 import * as ThemeModule from "../../theme/ThemeContext";
 import { ThemeProvider } from "../../theme/ThemeContext";
-import i18n from "i18next";
 import { __forceStoreBuildForTests } from "../../game/_shared/buildFlavour";
 import DailyWordScreen from "../DailyWordScreen";
 import { ApiError } from "../../game/_shared/httpClient";
