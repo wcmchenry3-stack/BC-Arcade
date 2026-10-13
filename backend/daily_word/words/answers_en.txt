@@ -476,6 +476,7 @@ dizzy
 dodge
 dogma
 doily
+doing
 dolly
 donor
 doubt
@@ -524,7 +525,9 @@ early
 earth
 easel
 eaten
+eater
 ebony
+edger
 edict
 eerie
 eight
@@ -615,6 +618,7 @@ final
 finch
 first
 fishy
+fiver
 fixed
 fizzy
 flail
@@ -630,6 +634,7 @@ fleck
 fleet
 flesh
 flick
+flier
 fling
 flint
 flirt
@@ -694,6 +699,7 @@ fussy
 fuzzy
 gable
 gaily
+gamer
 gamma
 gamut
 gaudy
@@ -733,6 +739,8 @@ gnarl
 gnash
 gnome
 godly
+going
+goner
 goody
 gooey
 goofy
@@ -813,6 +821,7 @@ hefty
 hello
 hence
 heron
+hiker
 hilly
 hinge
 hippy
@@ -844,6 +853,7 @@ hyena
 icing
 ideal
 idiom
+idler
 igloo
 image
 impel
@@ -1052,7 +1062,9 @@ mourn
 mouse
 mousy
 mouth
+mover
 movie
+mower
 muddy
 muggy
 mulch
@@ -1146,6 +1158,7 @@ patch
 patio
 patty
 pause
+payer
 peace
 peach
 pearl
@@ -1321,6 +1334,7 @@ rigor
 rinse
 ripen
 risen
+riser
 risky
 rival
 river
@@ -1363,6 +1377,7 @@ satin
 sauce
 saucy
 sauna
+saver
 savor
 savvy
 scald
@@ -1674,9 +1689,11 @@ tacit
 tacky
 taint
 taken
+taker
 tally
 talon
 tango
+taper
 tardy
 tarry
 taste

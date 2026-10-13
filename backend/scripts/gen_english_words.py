@@ -71,12 +71,12 @@ INFLECTION_KEEP = frozenset(
     # -ed: also common standalone adjectives or nouns
     "armed bored breed famed fixed greed jaded mixed tired tweed "
     # -ing
-    "being icing thing "
+    "being doing going icing thing "
     # -er: standalone nouns and adjectives
-    "after alter baker boxer buyer caper cater cover cower dryer diner diver elder ether "
-    "fewer fiber foyer hover inner joker lager laser later layer lever liner liter liver "
-    "loser lover lower maker meter miner miser mixer never offer outer owner pager paper "
-    "peter poker power racer refer rider river ruler saber sewer sheer sober super timer "
+    "after alter baker boxer buyer caper cater cover cower dryer diner diver eater edger elder ether "
+    "fewer fiber fiver flier foyer gamer goner hiker hover idler inner joker lager laser later layer lever liner liter liver "
+    "loser lover lower maker meter miner miser mixer mover mower never offer outer owner pager paper payer "
+    "peter poker power racer refer rider riser river ruler saber saver sewer sheer sober super taker taper timer "
     "tower tuner under voter wager water waver wiper".split()
 )
 

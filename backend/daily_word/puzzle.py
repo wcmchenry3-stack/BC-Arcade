@@ -87,10 +87,11 @@ def parse_puzzle_id(puzzle_id: str) -> tuple[str, str]:
     date_str, lang = parts[0], parts[1]
     if lang not in _ANSWERS:
         raise ValueError("invalid_puzzle_id")
-    if not (date_str.isascii() and len(date_str) == 10):
-        raise ValueError("invalid_puzzle_id")
     try:
-        date.fromisoformat(date_str)
+        # Round-trip: rejects week dates (2026-W05-1) and non-ASCII digits that
+        # fromisoformat would otherwise accept.
+        if date.fromisoformat(date_str).isoformat() != date_str:
+            raise ValueError("invalid_puzzle_id")
     except ValueError as exc:
         raise ValueError("invalid_puzzle_id") from exc
     if make_puzzle_id(date_str, lang) != puzzle_id:
