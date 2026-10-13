@@ -15,7 +15,7 @@ import { resolveLocale } from "./resolveLocale";
  * in-app pick from LanguageSwitcher is not overwritten on re-render or when
  * the app returns to the foreground with the same OS language.
  *
- * Call once in a component mounted inside I18nextProvider (e.g. App).
+ * Call once in a component that mounts after `src/i18n/i18n` is initialised (e.g. App).
  */
 export function useDeviceLocaleSync() {
   const { i18n } = useTranslation();
