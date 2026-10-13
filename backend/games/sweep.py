@@ -71,6 +71,7 @@ async def sweep_stale_games(
         .values(
             outcome=GameOutcome.ABANDONED.value,
             completed_at=plus_hours(Game.started_at, hours),
+            received_at=plus_hours(Game.started_at, hours),
             game_metadata=json_set_true(Game.game_metadata, SWEPT_KEY),
         )
         .execution_options(synchronize_session=False)

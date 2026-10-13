@@ -127,7 +127,7 @@ There are six separate boards:
 
 Rows from older builds without a variant are treated as Classic.
 
-Equal scores use the shared final tie rule: earlier completion ranks first.
+Equal scores use the shared final tie rule: the completion the server received first (`received_at`) ranks first.
 
 ## Timer
 

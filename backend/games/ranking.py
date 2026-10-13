@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import ColumnElement, and_, func, or_, select
+from sqlalchemy import ColumnElement, DateTime, and_, func, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +21,12 @@ from db.models import Game
 from games.board import FINAL_TIEBREAK, Direction
 
 logger = logging.getLogger(__name__)
+
+
+def receipt_expr() -> ColumnElement:
+    """The final tie key (``FINAL_TIEBREAK``): the server's receipt time of the
+    completion, falling back to ``completed_at`` for a row without one (#2765)."""
+    return func.coalesce(Game.received_at, Game.completed_at, type_=DateTime(timezone=True))
 
 
 def beats(expr: ColumnElement, value: Any, direction: Direction) -> ColumnElement[bool]:
@@ -34,7 +40,7 @@ async def compute_rank(  # noqa: PLR0913 - keyword-only args describing one rank
     metric: ColumnElement,
     direction: Direction,
     value: Any,
-    completed_at: datetime,
+    received_at: datetime,
     tiebreak: tuple[ColumnElement, Direction, Any] | None = None,
     filters: Sequence[ColumnElement] = (),
     game_label: str,
@@ -44,7 +50,7 @@ async def compute_rank(  # noqa: PLR0913 - keyword-only args describing one rank
     Counts the distinct sessions with at least one row (within ``filters``)
     that beats the entry: a better ``metric`` in ``direction``; on a tie, a
     better ``tiebreak`` ``(expr, direction, entry's value)``; on a further tie,
-    an earlier ``completed_at``. A session has a row that beats the entry
+    an earlier ``receipt_expr()`` (server receipt time). A session has a row that beats the entry
     exactly when its best row does, so this is the number of players ranked
     above, plus one. There is no "outside the top 10" sentinel.
 
@@ -52,8 +58,8 @@ async def compute_rank(  # noqa: PLR0913 - keyword-only args describing one rank
     any NULL coalescing), so the rank always agrees with the listed order.
     Raises a clean 500 on a DB error.
     """
-    # Same direction the board orders ``completed_at`` by (``FINAL_TIEBREAK``).
-    earlier = beats(Game.completed_at, completed_at, FINAL_TIEBREAK[1])
+    # Same key and direction the board orders by (``FINAL_TIEBREAK``).
+    earlier = beats(receipt_expr(), received_at, FINAL_TIEBREAK[1])
     last_tie = and_(metric == value, earlier)
     if tiebreak is not None:
         tb_expr, tb_dir, tb_value = tiebreak

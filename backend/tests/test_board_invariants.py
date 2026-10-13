@@ -11,7 +11,7 @@ module registry, not a hand-written list: registering a game with an enabled
   direction and tie-break; ``GET /games/{id}/rank`` (#2677) and the board's
   ``me`` / ``is_me`` (#2633) report that entry's rank.
 - Entries rank in the declared direction, then the tie-break, then the
-  earliest completion.
+  earliest server receipt (``received_at``, #2765).
 - No board lists an unnamed player or a sentinel ``*-anon`` session, and no
   board, in any partition, lists an abandoned game (#2468).
 - ``/stats/me`` win streaks (#2620): ``push`` and ``abandoned`` neither extend
@@ -277,7 +277,8 @@ async def test_a_session_with_several_games_appears_once_with_its_best(
     games = {
         "mid": _play(client, sid, game, _better(board, 0), completed_at=_recent(1)),
         # Equal best values: the tie-break decides (the later one has the better
-        # tie-break); without one, the earlier completion is the best.
+        # tie-break); without one, the earlier receipt is the best
+        # (these seeds set only completed_at, so the coalesce fallback applies).
         "best_early": _play(
             client,
             sid,
@@ -340,7 +341,7 @@ async def test_entries_rank_in_the_declared_direction_then_the_tiebreak(
             ("NoTieBreak", 3, None, 0),
         ]
     expected += [
-        # Equal metric and tie-break: the earlier completion wins.
+        # Equal metric and tie-break: the earlier receipt wins (completed_at fallback).
         ("Earlier", 0, poor_tb, 2),
         ("Later", 0, poor_tb, 7),
         ("Last", -6, None, 0),

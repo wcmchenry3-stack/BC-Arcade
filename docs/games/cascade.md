@@ -78,7 +78,7 @@ A `cascadeCombo` event is emitted when ≥3 merges occur within `COMBO_WINDOW_TI
 ## Scoring (Persistence)
 
 - **Metric and direction:** `final_score`, higher is better, labelled `score` (`board` in `backend/cascade/module.py`; `BOARDS.cascade` in `frontend/src/api/vocab.ts`). It is the points at game over: for each merge the engine (`engine2.ts`) adds the new piece's `scoreValue` from `pieceDefs.ts`.
-- **Tie-break:** none declared. Equal scores go to the earlier `completed_at`, the last tie-break on every board.
+- **Tie-break:** none declared. Equal scores go to the entry the server received first (`received_at`), the last tie-break on every board.
 - **Partitions:** none: one board.
 - **Recorded, not partitioned:** the result block from `progressResult` in `frontend/src/screens/CascadeScreen.tsx`: `final_score`, `duration_ms`, `theme`, `total_drops`, `total_merges`, and `outcome` on a finish. The fruit set is in the `game_started` event (`fruit_set`, `theme`), not in metadata.
 - **Max value:** none (#2519 decision 14). Any integer up to 2³¹−1 is accepted.

@@ -83,8 +83,8 @@ def test_min_value_must_be_non_negative_and_within_the_caps() -> None:
         )
 
 
-def test_final_tiebreak_is_earliest_completion() -> None:
-    assert FINAL_TIEBREAK == ("completed_at", "asc")
+def test_final_tiebreak_is_earliest_receipt() -> None:
+    assert FINAL_TIEBREAK == ("received_at", "asc")
 
 
 _PARTITIONED = {"partitions": ("difficulty", "variant"), "max_value": 300}

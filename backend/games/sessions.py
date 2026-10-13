@@ -298,6 +298,8 @@ async def complete_game(  # noqa: PLR0913 - keyword-only fields of one completio
     now = datetime.now(UTC)
     valid_completed_at = _validate_client_timestamp(completed_at, now) if completed_at else None
     game.completed_at = valid_completed_at if valid_completed_at is not None else now
+    # Server time, never the device's: orders ties on the boards (#2765).
+    game.received_at = now
     game.final_score = final_score
     game.outcome = outcome
     game.duration_ms = duration_ms

@@ -79,7 +79,7 @@ Boards use one ordering rule everywhere: top list, exact rank, and "is this my b
 
 1. Primary `metric`, in the board's direction.
 2. Optional declared `tiebreak`, if a board has one.
-3. Final tie-break: **earlier `completed_at` ranks first**.
+3. Final tie-break: **earlier `received_at` ranks first**: the server time the completion arrived (`games.received_at`, falling back to `completed_at` for a row without one), not the device-reported `completed_at`, which a slow clock or a forged request could set to win every tie (#2765).
 
 No board currently declares a game-specific secondary tie-break. If that changes, the `BoardDefinition` is the single place to add it.
 

@@ -489,7 +489,7 @@ async def test_a_rank_query_db_error_is_a_clean_500_and_logged_safely(
             metric=Game.final_score,
             direction="desc",
             value=100,
-            completed_at=datetime.now(UTC),
+            received_at=datetime.now(UTC),
             game_label="solitaire",
         )
     assert info.value.status_code == 500

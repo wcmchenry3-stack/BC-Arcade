@@ -151,7 +151,7 @@ Public board:
 - no partitions;
 - no Yacht-specific tie-break.
 
-Equal scores use the shared final tie-break: earlier `completed_at` ranks first.
+Equal scores use the shared final tie-break: the entry the server received first (`received_at`) ranks first.
 
 ### Saved final scorecard (#2839)
 

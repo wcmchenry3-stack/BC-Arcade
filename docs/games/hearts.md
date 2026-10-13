@@ -345,7 +345,7 @@ Public board:
 - no partitions;
 - no game-specific tie-break.
 
-Equal values use the shared final tie-break: earlier `completed_at` ranks first.
+Equal values use the shared final tie-break: the entry the server received first (`received_at`) ranks first.
 
 All completed `win`, `loss` and `push` results can rank. Abandoned games do not.
 
