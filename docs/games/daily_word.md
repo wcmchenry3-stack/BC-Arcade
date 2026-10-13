@@ -112,7 +112,7 @@ Daily Word currently sends `tz_offset_minutes`, not an IANA timezone id. The cur
 Lists live in `backend/daily_word/words/`. English is regenerated, not hand-edited, by `python backend/scripts/gen_english_words.py` (run from the repo root; needs network; sources are pinned by URL and SHA-256 and the script exits on a mismatch):
 
 - `valid_en.txt` (accepted guesses): the 5-letter words of the public-domain ENABLE list.
-- `answers_en.txt` (daily answers): common words from SCOWL 2020.12.07 (`english`/`american` word lists at size levels 10, 20, 35; no proper nouns, abbreviations or variants) that are also in ENABLE, minus simple plurals of 4-letter words and the words in `answers_blocklist_en.txt`. Every answer is also a valid guess.
+- `answers_en.txt` (daily answers): common words from SCOWL 2020.12.07 (`english`/`american` word lists at size levels 10, 20, 35; no proper nouns, abbreviations or variants) that are also in ENABLE, minus simple plurals of 4-letter words, simple past-tense "-ed" words (except a small keep-list in the script) and the words in `answers_blocklist_en.txt`. Every answer is also a valid guess.
 - Hindi lists: see `scripts/gen_hindi_valid_words.py`.
 
 Licences and notices: [`ATTRIBUTION.md`](../../ATTRIBUTION.md). Changing `answers_en.txt` reshuffles every date's answer, so bump the English list version (see the puzzle id above) in the same change.

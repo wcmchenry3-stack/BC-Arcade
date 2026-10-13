@@ -249,6 +249,23 @@ def test_gen_build_answers_filters():
     assert out == ["alias", "boxes", "catty", "crane"]
 
 
+def test_gen_build_answers_drops_past_tense_but_keeps_listed_words():
+    enable5 = frozenset({"acted", "freed", "greed", "tired", "tweed", "seeds", "naked"})
+    stems = frozenset({"act", "free", "gree", "tire", "twee"})
+    out = gen.build_answers(set(enable5), enable5, stems, frozenset())
+    # acted (act+ed) and freed (free+d) are dropped; greed and tired are in ED_KEEP;
+    # naked has no word stem; tweed is kept by ED_KEEP.
+    assert out == ["greed", "naked", "seeds", "tired", "tweed"]
+    assert {"greed", "tired", "tweed", "bored", "breed"} <= gen.ED_KEEP
+
+
+def test_english_answers_have_no_dropped_past_tense():
+    from daily_word.puzzle import _ANSWERS_EN
+
+    assert not {"acted", "freed", "baked", "moved"} & set(_ANSWERS_EN)
+    assert {"greed", "tired", "bored"} <= set(_ANSWERS_EN)
+
+
 def test_gen_parse_blocklist_ignores_comments_and_blanks():
     assert gen.parse_blocklist("# header\n\nBitch  # note\n  rude \n") == {"bitch", "rude"}
 
@@ -256,7 +273,7 @@ def test_gen_parse_blocklist_ignores_comments_and_blanks():
 def test_gen_parse_enable_splits_by_length():
     five, four = gen.parse_enable("cat\ncats\ncrane\nplanet\nCrane\n")
     assert five == {"crane"}
-    assert four == {"cats"}
+    assert four == {"cat", "cats"}
 
 
 def test_gen_output_is_sorted_and_scowl_pinned():

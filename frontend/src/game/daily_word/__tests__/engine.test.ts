@@ -340,6 +340,11 @@ describe("guessCount (#2541)", () => {
     const s = markComplete({ ...boardWithRows(4), guesses_used: 5 }, true);
     expect(buildShareText(s, "https://bcarcade.com/daily-word")).toContain("Daily Word #1 — 5/6");
   });
+
+  it("numbers the puzzle from a versioned English puzzle id (#3155)", () => {
+    const s = markComplete({ ...boardWithRows(4), puzzle_id: "2026-05-04:en:2" }, true);
+    expect(buildShareText(s, "https://bcarcade.com/daily-word")).toContain("Daily Word #2");
+  });
 });
 
 describe("parseGuessCount (#2541)", () => {

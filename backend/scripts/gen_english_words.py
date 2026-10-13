@@ -14,6 +14,8 @@ Sources (each pinned by URL + SHA-256; the script refuses to run on a mismatch):
 
 Answer filtering (Wordle convention):
   - drop a word ending in "s" whose 4-letter stem is an ENABLE word ("cats");
+  - drop a word ending in "ed" when word[:-1] or word[:-2] is an ENABLE word
+    ("freed", "acted"), except the explicit ED_KEEP list ("greed", "tired", ...);
   - drop anything in daily_word/words/answers_blocklist_en.txt.
 Blocklisted words stay valid *guesses* when ENABLE has them; they are only never
 the daily answer.
@@ -53,7 +55,14 @@ SCOWL_FILES = tuple(
 )
 
 WORD_RE = re.compile(r"^[a-z]{5}$")
-STEM_RE = re.compile(r"^[a-z]{4}$")
+STEM_RE = re.compile(r"^[a-z]{3,4}$")
+
+# Past-tense "-ed" words are dropped (Wordle convention: "acted", "freed") when
+# stripping "d" or "ed" leaves an ENABLE word, except these, which are also
+# common standalone adjectives or nouns.
+ED_KEEP = frozenset(
+    {"armed", "bored", "breed", "famed", "fixed", "greed", "jaded", "mixed", "tired", "tweed"}
+)
 
 
 def fetch_verified(url: str, sha256: str) -> bytes:
@@ -68,7 +77,7 @@ def fetch_verified(url: str, sha256: str) -> bytes:
 
 
 def parse_enable(text: str) -> tuple[frozenset[str], frozenset[str]]:
-    """Return (5-letter words, 4-letter words) of an ENABLE listing."""
+    """Return (5-letter words, 3- and 4-letter words) of an ENABLE listing."""
     words = {w.strip() for w in text.splitlines()}
     return (
         frozenset(w for w in words if WORD_RE.match(w)),
@@ -89,7 +98,7 @@ def parse_blocklist(text: str) -> frozenset[str]:
 def build_answers(
     candidates: set[str] | frozenset[str],
     enable5: frozenset[str],
-    enable4: frozenset[str],
+    stems: frozenset[str],
     blocklist: frozenset[str],
 ) -> list[str]:
     """Filter SCOWL candidates down to the sorted answers list."""
@@ -97,8 +106,10 @@ def build_answers(
     for w in candidates:
         if not WORD_RE.match(w) or w not in enable5:
             continue
-        if w.endswith("s") and w[:-1] in enable4:
+        if w.endswith("s") and w[:-1] in stems:
             continue  # simple plural of a 4-letter word
+        if w.endswith("ed") and w not in ED_KEEP and (w[:-1] in stems or w[:-2] in stems):
+            continue  # simple past tense
         if w in blocklist:
             continue
         answers.add(w)
@@ -123,10 +134,10 @@ def read_scowl(archive: bytes) -> set[str]:
 def main() -> None:
     enable_text = fetch_verified(ENABLE_URL, ENABLE_SHA256).decode("ascii")
     scowl = fetch_verified(SCOWL_URL, SCOWL_SHA256)
-    enable5, enable4 = parse_enable(enable_text)
+    enable5, stems = parse_enable(enable_text)
     blocklist = parse_blocklist(BLOCKLIST_FILE.read_text(encoding="utf-8"))
     candidates = read_scowl(scowl)
-    answers = build_answers(candidates, enable5, enable4, blocklist)
+    answers = build_answers(candidates, enable5, stems, blocklist)
 
     VALID_FILE.write_text("\n".join(sorted(enable5)) + "\n", encoding="utf-8")
     ANSWERS_FILE.write_text("\n".join(answers) + "\n", encoding="utf-8")
