@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -821,3 +821,67 @@ def test_hindi_cluster_length_match_accepted(client: TestClient) -> None:
         puzzle_mod._VALID["hi"] = orig_valid
 
     assert r.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# GET /daily-word/upcoming (#3229)
+# ---------------------------------------------------------------------------
+
+
+def _decode_blob(puzzle_id: str, blob: str) -> str:
+    """Independent decoder following docs/games/daily_word.md."""
+    import base64
+    import hashlib
+
+    key = hashlib.sha256(puzzle_id.encode("utf-8")).digest()
+    data = base64.b64decode(blob)
+    return bytes(b ^ key[i % 32] for i, b in enumerate(data)).decode("utf-8")
+
+
+@pytest.mark.parametrize("lang", ["en", "hi"])
+def test_upcoming_blob_decodes_to_answer(client: TestClient, lang: str) -> None:
+    from daily_word.puzzle import get_answer
+
+    r = client.get(f"/daily-word/upcoming?lang={lang}&tz_offset_minutes=0")
+    assert r.status_code == 200
+    for entry in r.json():
+        answer = get_answer(entry["puzzle_id"])
+        assert _decode_blob(entry["puzzle_id"], entry["answer_blob"]) == answer
+        assert entry["word_length"] == len(answer)
+        assert answer not in entry["answer_blob"]
+
+
+def test_upcoming_returns_three_consecutive_days(client: TestClient) -> None:
+    r = client.get("/daily-word/upcoming?lang=en&tz_offset_minutes=0")
+    entries = r.json()
+    assert len(entries) == 3
+    dates = [date.fromisoformat(e["puzzle_id"].split(":")[0]) for e in entries]
+    assert [(d - dates[0]).days for d in dates] == [0, 1, 2]
+    assert entries[0]["puzzle_id"] == _today_puzzle_id()
+
+
+@pytest.mark.parametrize(
+    ("utc_now", "offset", "first_date"),
+    [
+        (datetime(2026, 1, 1, 23, 30, tzinfo=UTC), 840, "2026-01-02"),  # UTC+14 is already tomorrow
+        (datetime(2026, 1, 1, 0, 30, tzinfo=UTC), -840, "2025-12-31"),  # UTC-14 is still yesterday
+        (datetime(2026, 12, 30, 12, 0, tzinfo=UTC), 0, "2026-12-30"),  # spans a year boundary
+    ],
+)
+def test_get_upcoming_tz_edges(utc_now: datetime, offset: int, first_date: str) -> None:
+    from daily_word.puzzle import get_upcoming
+
+    entries = get_upcoming(offset, "en", _utc_now=utc_now)
+    first = date.fromisoformat(first_date)
+    expected = [(first + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(3)]
+    assert [e["puzzle_id"].split(":")[0] for e in entries] == expected
+
+
+def test_upcoming_rejects_out_of_range_offset(client: TestClient) -> None:
+    assert client.get("/daily-word/upcoming?tz_offset_minutes=841").status_code == 422
+
+
+def test_upcoming_unsupported_lang_returns_422(client: TestClient) -> None:
+    r = client.get("/daily-word/upcoming?lang=fr&tz_offset_minutes=0")
+    assert r.status_code == 422
+    assert r.json()["detail"] == "unsupported_language"

@@ -84,6 +84,19 @@ On mount the screen fetches today's puzzle metadata and loads any saved board.
 - **Decision:** Daily Word stays online-only. Showing a clear message and warming the cache is the whole scope; offline play and local scoring are tracked separately in #3022.
 - An unfinished restored board resumes the corresponding shared game session.
 
+### Upcoming puzzles for offline play (#3229)
+
+`GET /daily-word/upcoming?lang=en|hi&tz_offset_minutes=<-840..840>` (no auth, 30/minute per IP) returns a JSON array of three entries for the device's local today, +1 and +2 days, using the same offset and `lang` rules as `/today` (an unsupported `lang` is a 422 `unsupported_language`): `[{"puzzle_id", "word_length", "answer_blob"}]`.
+
+`answer_blob` is a light scramble so the answer is not plaintext in the response. It stops casual spoilers only; it is **not security** (anyone who knows this scheme can decode it, which #3022 accepted). Decode (`scramble_answer` in `backend/daily_word/puzzle.py`):
+
+1. `key = SHA-256(UTF-8 bytes of puzzle_id)` (32 bytes), using the full id, e.g. `2026-10-13:en:2`.
+2. `data = base64-decode(answer_blob)` (standard alphabet, padded).
+3. `answer_bytes[i] = data[i] XOR key[i % 32]`.
+4. `answer = UTF-8 decode(answer_bytes)` (Hindi answers are multi-byte; NFC already).
+
+`word_length` is the answer's code-point count, as in `/today`. `/guess` and `/answer` are unchanged.
+
 ### Midnight / stale-puzzle recovery
 
 The backend rejects a guess for an old puzzle id (with a one-minute clock-drift grace around midnight). When the client receives `stale_puzzle_id`, it tries to replace the board with today's puzzle.

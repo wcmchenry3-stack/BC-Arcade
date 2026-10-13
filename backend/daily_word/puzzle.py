@@ -17,6 +17,8 @@ version whenever the answers list changes.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import random
 import unicodedata
 from datetime import UTC, date, datetime, timedelta
@@ -112,6 +114,42 @@ def get_today_meta(
         "puzzle_id": make_puzzle_id(date_str, lang),
         "word_length": len(answers[index]),
     }
+
+
+UPCOMING_DAYS = 3  # today + 2
+
+
+def scramble_answer(puzzle_id: str, answer: str) -> str:
+    """Obfuscate ``answer`` for the offline /upcoming payload (#3229).
+
+    XOR the UTF-8 answer with SHA-256(puzzle_id as UTF-8), repeated cyclically
+    (the digest is 32 bytes; the key index is ``i % 32``), then standard base64.
+    This only stops casual spoilers (a glance at the network tab): anyone who
+    knows this scheme can decode it. It is NOT security (#3022 accepted that).
+    Decoding is the same XOR, so the client reverses it with the same key.
+    """
+    key = hashlib.sha256(puzzle_id.encode("utf-8")).digest()
+    raw = answer.encode("utf-8")
+    return base64.b64encode(bytes(b ^ key[i % len(key)] for i, b in enumerate(raw))).decode("ascii")
+
+
+def get_upcoming(
+    tz_offset_minutes: int, lang: str = "en", _utc_now: datetime | None = None
+) -> list[dict]:
+    """Return today and the next two local days: puzzle_id, word_length, answer_blob."""
+    start = _local_date(tz_offset_minutes, _utc_now)
+    out: list[dict] = []
+    for offset in range(UPCOMING_DAYS):
+        puzzle_id = make_puzzle_id((start + timedelta(days=offset)).strftime("%Y-%m-%d"), lang)
+        answer = get_answer(puzzle_id)
+        out.append(
+            {
+                "puzzle_id": puzzle_id,
+                "word_length": len(answer),
+                "answer_blob": scramble_answer(puzzle_id, answer),
+            }
+        )
+    return out
 
 
 def get_answer(puzzle_id: str) -> str:
