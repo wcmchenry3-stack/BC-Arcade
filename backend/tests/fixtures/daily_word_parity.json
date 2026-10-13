@@ -1,0 +1,217 @@
+{
+  "_comment": "Daily Word parity fixtures (#3230). backend/tests/test_daily_word_parity.py checks the server's _score_guess and scramble_answer against them; frontend/src/game/daily_word/__tests__/parity.test.ts checks the app's scoreGuess and decodeAnswerBlob. Add cases by hand; do not regenerate them from the code.",
+  "scoring": [
+    {
+      "answer": "crane",
+      "guess": "crane",
+      "note": "every letter in place",
+      "tiles": [
+        "correct",
+        "correct",
+        "correct",
+        "correct",
+        "correct"
+      ]
+    },
+    {
+      "answer": "crane",
+      "guess": "fluff",
+      "note": "no letter in the answer",
+      "tiles": [
+        "absent",
+        "absent",
+        "absent",
+        "absent",
+        "absent"
+      ]
+    },
+    {
+      "answer": "crane",
+      "guess": "nacre",
+      "note": "every letter present, none in place",
+      "tiles": [
+        "present",
+        "present",
+        "present",
+        "present",
+        "correct"
+      ]
+    },
+    {
+      "answer": "abbey",
+      "guess": "kebab",
+      "note": "a duplicate guess letter: one in place, one present",
+      "tiles": [
+        "absent",
+        "present",
+        "correct",
+        "present",
+        "present"
+      ]
+    },
+    {
+      "answer": "spool",
+      "guess": "loops",
+      "note": "duplicate o, both present",
+      "tiles": [
+        "present",
+        "present",
+        "correct",
+        "present",
+        "present"
+      ]
+    },
+    {
+      "answer": "eerie",
+      "guess": "geese",
+      "note": "three guess e's against three answer e's",
+      "tiles": [
+        "absent",
+        "correct",
+        "present",
+        "absent",
+        "correct"
+      ]
+    },
+    {
+      "answer": "speed",
+      "guess": "eerie",
+      "note": "three guess e's, two answer e's: the third is absent",
+      "tiles": [
+        "present",
+        "present",
+        "absent",
+        "absent",
+        "absent"
+      ]
+    },
+    {
+      "answer": "label",
+      "guess": "llama",
+      "note": "duplicate l: one in place, one present",
+      "tiles": [
+        "correct",
+        "present",
+        "present",
+        "absent",
+        "absent"
+      ]
+    },
+    {
+      "answer": "apple",
+      "guess": "papal",
+      "note": "duplicate p and a, mixed",
+      "tiles": [
+        "present",
+        "present",
+        "correct",
+        "absent",
+        "present"
+      ]
+    },
+    {
+      "answer": "robot",
+      "guess": "motto",
+      "note": "duplicate t and o against single t, double o",
+      "tiles": [
+        "absent",
+        "correct",
+        "present",
+        "absent",
+        "present"
+      ]
+    },
+    {
+      "answer": "sassy",
+      "guess": "asses",
+      "note": "triple s against triple s",
+      "tiles": [
+        "present",
+        "present",
+        "correct",
+        "absent",
+        "present"
+      ]
+    },
+    {
+      "answer": "cigar",
+      "guess": "aaaaa",
+      "note": "five a's, one answer a: the one in place wins",
+      "tiles": [
+        "absent",
+        "absent",
+        "absent",
+        "correct",
+        "absent"
+      ]
+    },
+    {
+      "answer": "level",
+      "guess": "eeeee",
+      "note": "five e's, two answer e's, both in place",
+      "tiles": [
+        "absent",
+        "correct",
+        "absent",
+        "correct",
+        "absent"
+      ]
+    },
+    {
+      "answer": "hello",
+      "guess": "llama",
+      "note": "two guess l's, two answer l's, none in place",
+      "tiles": [
+        "present",
+        "present",
+        "absent",
+        "absent",
+        "absent"
+      ]
+    },
+    {
+      "answer": "those",
+      "guess": "geese",
+      "note": "present letters are used up left to right",
+      "tiles": [
+        "absent",
+        "absent",
+        "absent",
+        "correct",
+        "correct"
+      ]
+    },
+    {
+      "answer": "कमल",
+      "guess": "कलम",
+      "note": "Hindi: tiles are per code point",
+      "tiles": [
+        "correct",
+        "present",
+        "present"
+      ]
+    }
+  ],
+  "answer_blobs": [
+    {
+      "puzzle_id": "2026-10-13:en:2",
+      "answer": "crane",
+      "answer_blob": "ZdrhUeI="
+    },
+    {
+      "puzzle_id": "2026-10-14:en:2",
+      "answer": "abbey",
+      "answer_blob": "rM+SfQE="
+    },
+    {
+      "puzzle_id": "2026-10-15:en:2",
+      "answer": "zesty",
+      "answer_blob": "oPc4a/w="
+    },
+    {
+      "puzzle_id": "2026-10-13:hi",
+      "answer": "कमल",
+      "answer_blob": "3qCWXbcvJQ0a"
+    }
+  ]
+}

@@ -142,14 +142,14 @@
   "daily_word: save writes": {
     "result": "\"__undefined\"",
     "storage": {
-      "daily_word_state_v1": "{\"_v\":1,\"puzzle_id\":\"2026-10-07:en\",\"word_length\":5,\"language\":\"en\",\"rows\":[{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false}],\"current_row\":0,\"keyboard_state\":{},\"is_complete\":false,\"won\":false,\"completed_at\":null}"
+      "daily_word_board_2026-10-07:en": "{\"_v\":1,\"puzzle_id\":\"2026-10-07:en\",\"word_length\":5,\"language\":\"en\",\"rows\":[{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false}],\"current_row\":0,\"keyboard_state\":{},\"is_complete\":false,\"won\":false,\"completed_at\":null}"
     },
     "sentry": "[]"
   },
   "daily_word: save then load": {
     "result": "{\"_v\":1,\"puzzle_id\":\"2026-10-07:en\",\"word_length\":5,\"language\":\"en\",\"rows\":[{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false}],\"current_row\":0,\"keyboard_state\":{},\"is_complete\":false,\"won\":false,\"completed_at\":null}",
     "storage": {
-      "daily_word_state_v1": "{\"_v\":1,\"puzzle_id\":\"2026-10-07:en\",\"word_length\":5,\"language\":\"en\",\"rows\":[{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false}],\"current_row\":0,\"keyboard_state\":{},\"is_complete\":false,\"won\":false,\"completed_at\":null}"
+      "daily_word_board_2026-10-07:en": "{\"_v\":1,\"puzzle_id\":\"2026-10-07:en\",\"word_length\":5,\"language\":\"en\",\"rows\":[{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false},{\"tiles\":[{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"},{\"letter\":\"\",\"status\":\"empty\"}],\"submitted\":false}],\"current_row\":0,\"keyboard_state\":{},\"is_complete\":false,\"won\":false,\"completed_at\":null}"
     },
     "sentry": "[]"
   },
@@ -161,33 +161,33 @@
   "daily_word: empty string stored": {
     "result": "null",
     "storage": {
-      "daily_word_state_v1": ""
+      "daily_word_board_2026-10-07:en": ""
     },
     "sentry": "[]"
   },
   "daily_word: corrupt json": {
     "result": "null",
     "storage": {},
-    "sentry": "[[\"captureMessage\",\"daily_word.storage: corrupt payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"daily_word.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\",\"key\":\"daily_word_state_v1\"}}]]"
+    "sentry": "[[\"captureMessage\",\"daily_word.storage: corrupt payload, discarding\",{\"level\":\"warning\",\"tags\":{\"subsystem\":\"daily_word.storage\",\"op\":\"load\"},\"extra\":{\"error\":\"SyntaxError: Expected property name or '}' in JSON at position 1\",\"key\":\"daily_word_board_2026-10-07:en\"}}]]"
   },
   "daily_word: json null": {
     "result": "null",
     "storage": {
-      "daily_word_state_v1": "null"
+      "daily_word_board_2026-10-07:en": "null"
     },
     "sentry": "[]"
   },
   "daily_word: json number": {
     "result": "null",
     "storage": {
-      "daily_word_state_v1": "5"
+      "daily_word_board_2026-10-07:en": "5"
     },
     "sentry": "[]"
   },
   "daily_word: wrong shape": {
     "result": "null",
     "storage": {
-      "daily_word_state_v1": "{\"_v\":99}"
+      "daily_word_board_2026-10-07:en": "{\"_v\":99}"
     },
     "sentry": "[]"
   },
@@ -209,7 +209,7 @@
   "daily_word: clear fails": {
     "result": "\"__undefined\"",
     "storage": {
-      "daily_word_state_v1": "{}"
+      "daily_word_board_2026-10-07:en": "{}"
     },
     "sentry": "[[\"captureException\",{\"__error\":\"Error: removeItem failed\"},{\"tags\":{\"subsystem\":\"daily_word.storage\",\"op\":\"clear\"}}]]"
   },
