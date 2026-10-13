@@ -3,6 +3,9 @@ import {
   CANVAS_H,
   CANVAS_W,
   applyPowerUp,
+  bumpWave,
+  closeWave,
+  emptyWaveStats,
   engineCounters,
   initStarSwarm,
   isEngineCounters,
@@ -20,7 +23,7 @@ import {
   isPausedStateHydrated,
   savePausedState,
 } from "../pauseStore";
-import { SAVE_FINGERPRINT, fitsSaveShape } from "../saveShape";
+import { SAVE_FINGERPRINT, fitsSaveShape, restoreSavedState } from "../saveShape";
 import type { StarSwarmState } from "../types";
 
 // A paused run survives the process (#2645). `_resetPauseStoreForTests` stands in for a
@@ -272,5 +275,93 @@ describe("engine — counters", () => {
     expect(isEngineCounters({ nextId: 1.5, seed: 0 })).toBe(false);
     expect(isEngineCounters({ nextId: 1, seed: -1 })).toBe(false);
     expect(isEngineCounters({ nextId: 1, seed: 0xffffffff })).toBe(true);
+  });
+});
+
+describe("per-wave stats in a save (#3245)", () => {
+  /** A run partway through wave 4, with counts on the wave and a closed wave behind it. */
+  function counted(): StarSwarmState {
+    const s = run();
+    let waveStats = bumpWave(s.waveStats, ["combat", "kills", "Elite", "dive"], 3);
+    waveStats = bumpWave(waveStats, ["pacing", "durationMs"], 4321);
+    return { ...s, waveStats, lastClosedWave: closeWave(run(), "cleared") };
+  }
+
+  /** A save as a build before #3245 wrote it: no waveStats, no lastClosedWave. */
+  function olderSave(state: StarSwarmState) {
+    const {
+      waveStats: _w,
+      lastClosedWave: _l,
+      ...older
+    } = JSON.parse(JSON.stringify(state)) as Record<string, unknown>;
+    return {
+      v: 1,
+      fp: SAVE_FINGERPRINT,
+      gameState: older,
+      difficulty: "Commander",
+      counters: COUNTERS,
+    };
+  }
+
+  it("round-trips the wave's counts and its last closed wave", async () => {
+    const state = counted();
+    savePausedState({ gameState: state, difficulty: "Commander", counters: COUNTERS });
+    await flush();
+    _resetPauseStoreForTests();
+
+    await hydratePausedState();
+    const restored = getSavedPausedState()?.gameState;
+    expect(restored?.waveStats).toEqual(state.waveStats);
+    expect(restored?.waveStats.combat.kills.Elite.dive).toBe(3);
+    expect(restored?.waveStats.pacing.durationMs).toBe(4321);
+    expect(restored?.lastClosedWave).toEqual(state.lastClosedWave);
+  });
+
+  it("restores an older save without them, with fresh stats from the restored ship", async () => {
+    const s = run();
+    await writeRaw(olderSave({ ...s, player: { ...s.player, lives: 2, guns: 2, hull: 1 } }));
+    await hydratePausedState();
+
+    const restored = getSavedPausedState()?.gameState;
+    if (!restored) throw new Error("the older save wasn't restored");
+    expect(restored.waveStats).toEqual(emptyWaveStats({ lives: 2, guns: 2, hull: 1 }));
+    expect(restored.lastClosedWave).toBeNull();
+    expect(restored.score).toBe(1234);
+    // and it plays on
+    expect(tick(restored, 16, { playerX: 100, fire: true }).waveStats.pacing.durationMs).toBe(16);
+  });
+
+  it("restores a save whose stats don't fit this build's registries, stats started over", async () => {
+    const save = olderSave(counted());
+    const stale = counted().waveStats;
+    const { hull: _gone, ...collected } = stale.powerUps.collected; // a power-up it didn't know
+    const gameState = {
+      ...save.gameState,
+      waveStats: { ...stale, powerUps: { ...stale.powerUps, collected } },
+      lastClosedWave: { not: "a snapshot" },
+    };
+    await writeRaw({ ...save, gameState });
+    await hydratePausedState();
+
+    const restored = getSavedPausedState()?.gameState;
+    expect(restored?.waveStats.combat.kills.Elite.dive).toBe(0);
+    expect(restored?.waveStats.powerUps.collected.hull).toBe(0);
+    expect(restored?.lastClosedWave).toBeNull();
+  });
+
+  it("restoreSavedState keeps stats that fit", () => {
+    const state = JSON.parse(JSON.stringify(counted())) as StarSwarmState;
+    expect(fitsSaveShape(state)).toBe(true);
+    expect(restoreSavedState(state)).toEqual(state);
+  });
+
+  it("are outside the save fingerprint, so adding them kept every existing save", () => {
+    expect(SAVE_FINGERPRINT).not.toContain("waveStats");
+    expect(SAVE_FINGERPRINT).not.toContain("lastClosedWave");
+  });
+
+  it("a state with a top-level key this build doesn't know still doesn't fit", () => {
+    const s = JSON.parse(JSON.stringify(run())) as Record<string, unknown>;
+    expect(fitsSaveShape({ ...s, waveStatz: {} })).toBe(false);
   });
 });

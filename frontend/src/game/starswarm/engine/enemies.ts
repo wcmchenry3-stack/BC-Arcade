@@ -34,6 +34,7 @@ import { aimVelocity, slotToWorld, waveSlots, type SlotDef } from "./geometry";
 import { rng } from "./rng";
 import { STAGE_RANK, carrierStageIn, carrierStageOf, mapKeep, type TickCtx } from "./roster";
 import { bumpRun } from "./stats";
+import { markWaveDev } from "./waveStats";
 import {
   BEAM_CHARGE_MS,
   BEAM_WIGGLE_AMPLITUDE,
@@ -79,7 +80,7 @@ export function killEscorts(state: StarSwarmState): StarSwarmState {
     explosions.push(spawnExplosion(e.x, e.y));
     return { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
   });
-  return { ...state, enemies, explosions };
+  return markWaveDev({ ...state, enemies, explosions }); // #3245
 }
 
 /** #2489: true on the tick the wave's grunts break and run. */

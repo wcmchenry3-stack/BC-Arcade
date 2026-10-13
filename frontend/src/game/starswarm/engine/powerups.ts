@@ -21,6 +21,7 @@ import { applyBombBlast } from "./collisions";
 import { spawnExplosion } from "./entities";
 import { nextId } from "./rng";
 import { mapFilterKeep } from "./roster";
+import { markWaveDev } from "./waveStats";
 import {
   BOMB_FLASH_DURATION,
   BULLET_C_H,
@@ -136,6 +137,11 @@ export function applyPowerUp(
   type: PowerUpType,
   tuning: Tuning = DEFAULT_TUNING
 ): StarSwarmState {
+  const next = injectPowerUp(state, type, tuning);
+  return next === state ? state : markWaveDev(next); // #3245: a dev-panel action touched the wave
+}
+
+function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning): StarSwarmState {
   if (state.phase !== "Playing") return state;
 
   // #2488: dev-panel upgrades apply straight to the ladders

@@ -117,6 +117,21 @@ export function recordScore(
   return foldOldest(next, waves.length - LEDGER_DETAIL_WAVES);
 }
 
+const NO_POINTS: Readonly<ScorePoints> = Object.freeze({});
+
+/**
+ * #3245: one wave's points by source, read-only (the per-wave stats snapshot's `score.pts`).
+ * `{}` when the wave scored nothing — or was folded into `earlier`, which the current wave
+ * never is (it is always the newest entry).
+ */
+export function waveScorePoints(ledger: ScoreLedger, wave: number): Readonly<ScorePoints> {
+  for (let i = ledger.waves.length - 1; i >= 0; i--) {
+    const w = ledger.waves[i];
+    if (w && w.wave === wave) return w.pts;
+  }
+  return NO_POINTS;
+}
+
 /** Commits a tick's collected awards to the state's ledger (score is already updated). */
 export function commitAwards(state: StarSwarmState, awards: Readonly<ScorePoints>): StarSwarmState {
   const scoreLedger = recordScore(state.scoreLedger, state.wave, awards);

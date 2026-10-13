@@ -6,6 +6,7 @@
  * carry across waves and reset on a new game.
  */
 import type { EnemyTier, RunStats, StarSwarmState, TierStats } from "../types";
+import { ENEMY_TIERS } from "./registries";
 import { DODGE_BASE, DODGE_CAP, difficultyParamScale } from "./tuning";
 
 // ---------------------------------------------------------------------------
@@ -78,7 +79,8 @@ export function dodgeChance(tier: EnemyTier, paramScale: number): number {
   return Math.min(DODGE_CAP, DODGE_BASE[tier] * paramScale);
 }
 
-export const TIER_ORDER: readonly EnemyTier[] = ["Grunt", "Elite", "Guardian", "Carrier"];
+/** Tiers, lightest to heaviest — #3245: the registry list itself (`ENEMY_TIERS`). */
+export const TIER_ORDER: readonly EnemyTier[] = ENEMY_TIERS;
 
 /** #2491: one dev-panel row per tier — the configured dodge odds next to what actually happened. */
 export interface TierDodgeRow {

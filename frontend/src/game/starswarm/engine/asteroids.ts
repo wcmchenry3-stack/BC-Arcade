@@ -33,6 +33,7 @@ import {
 import { nextId, rng } from "./rng";
 import { mapFilterKeep, mapKeep, type TickCtx } from "./roster";
 import { bumpRun, bumpStat, dodgeChance } from "./stats";
+import { markWaveDev } from "./waveStats";
 import {
   ASTEROID_ATTENTION,
   ASTEROID_ENTRY_ATTEMPTS,
@@ -520,11 +521,12 @@ export function throwAsteroid(state: StarSwarmState, kind?: AsteroidKind): StarS
   if (!weaponsFree(state) || state.asteroids.length >= MAX_ASTEROIDS) return state;
   const rock = spawnAsteroid(state, kind);
   if (!rock) return state;
-  return {
+  // #3245: a dev-panel action touched the wave
+  return markWaveDev({
     ...state,
     asteroids: [...state.asteroids, rock],
     runStats: bumpRun(state.runStats, { rocksSpawned: 1 }), // #2491
-  };
+  });
 }
 
 export function tickAsteroids(state: StarSwarmState, dtMs: number): StarSwarmState {
