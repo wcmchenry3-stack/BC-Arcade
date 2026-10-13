@@ -775,7 +775,7 @@ export default function HeartsScreen() {
     const validated = playerNames.map((def, i) => {
       const draft = draftNames[i] ?? "";
       const stored = DEFAULT_NAMES[i] ?? def;
-      if (seed.wasDefault[i] && draft === seed.labels[i]) return stored;
+      if (seed.wasDefault[i] && draft.trim() === seed.labels[i]) return stored;
       return validateName(draft, stored);
     });
     setPlayerNames(validated);
