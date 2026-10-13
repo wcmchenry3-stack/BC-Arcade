@@ -1,0 +1,185 @@
+# Spanish words that must never be the daily Daily Word answer (#3239).
+#
+# Read by backend/scripts/gen_romance_words.py when it regenerates answers_es.txt.
+# The words stay valid GUESSES when valid_es.txt has them; they are only kept off the
+# answer schedule. Each line is a FOLDED 5-letter key (lowercase, accents removed, ñ
+# kept), so one line covers every accented spelling (judio = judío). "#" starts a
+# comment. A word that is not an answer candidate is harmless here, so err on the
+# side of adding. Hand-reviewed; the native-speaker review in #3201 checks it again.
+# Words that are vulgar in only some Spanish-speaking countries (coger, polla, concha
+# senses) are blocked too: the list ships to every Spanish-speaking audience.
+#
+# Categories: profanity, insults and slurs; sexual and bodily words; drugs and
+# alcohol; crime, violence and weapons; religion; and words that read as proper nouns
+# (names, places, peoples, nationalities and languages).
+
+# --- profanity, insults, slurs ---
+bobas
+bobos
+cabro
+cagar
+cagon
+chola
+cholo
+chulo
+coños
+culon
+culos
+enana
+enano
+gañan
+golfa
+jodas
+joder
+jotos
+lerdo
+mamon
+necia
+necio
+patan
+perra
+putas
+putos
+tonta
+tonto
+zafio
+zonzo
+zorra
+obeso
+obesa
+# --- sexual and bodily ---
+babas
+bicho
+cacas
+coger
+coito
+enema
+fecal
+flema
+haren
+folla
+heces
+himen
+mamar
+minga
+meada
+meado
+mocos
+mojon
+nalga
+ojete
+orgia
+orina
+pajas
+pedos
+peder
+penes
+picha
+pinga
+polla
+porno
+pubis
+semen
+sexos
+tetas
+utero
+verga
+vulva
+# --- drugs and alcohol ---
+beoda
+beodo
+cocas
+crack
+curda
+droga
+ebria
+ebrio
+guaro
+porro
+vodka
+# --- crime, violence, weapons ---
+armas
+balas
+bomba
+coima
+fusil
+horca
+matan
+matar
+maton
+nazis
+rehen
+rifle
+tiros
+viola
+# --- religion ---
+coran
+islam
+jesus
+judas
+judia
+judio
+mason
+satan
+# --- proper-noun-like: names, places, peoples, nationalities, languages ---
+andes
+anglo
+arabe
+astur
+avila
+belga
+cadiz
+celta
+checo
+chile
+china
+chino
+congo
+danes
+diego
+duero
+elena
+gales
+godos
+ibero
+incas
+india
+indio
+italo
+jaime
+japon
+jorge
+juana
+julia
+latin
+laura
+libio
+lucia
+maria
+mario
+marta
+mayas
+moros
+nahua
+nepal
+nipon
+omeya
+otomi
+pablo
+pedro
+persa
+quito
+ramon
+rusos
+sajon
+sardo
+simon
+sirio
+sofia
+sueco
+suizo
+taino
+texas
+tomas
+turco
+zambo
