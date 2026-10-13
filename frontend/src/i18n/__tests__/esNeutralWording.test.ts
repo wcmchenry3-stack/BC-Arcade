@@ -13,7 +13,6 @@ const SPAIN_ONLY = [
   /\bm[oó]vil(es)?\b/i,
   /\bcoche/i,
   /\bzumo\b/i,
-  /\bpuzle/i,
   /\bvosotros\b/i,
   /\bvuestr[oa]s?\b/i,
   /\bsois\b/i,
