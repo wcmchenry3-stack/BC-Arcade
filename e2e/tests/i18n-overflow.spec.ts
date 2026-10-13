@@ -26,6 +26,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { installEntitlementsMock } from "./helpers/api-mock";
 import { mockSortApi } from "./helpers/sort";
+import { mockDailyWordApi } from "./helpers/daily_word";
 
 const VIEWPORT = { width: 375, height: 667 };
 const LOCALES = ["en", "es", "fr-CA"] as const;
@@ -43,8 +44,36 @@ const STORE_GAMES = [
 ] as const;
 
 /**
+ * An element that only exists once the game's real first screen has appeared
+ * (not the loading, error or offline state). Measuring before it is visible
+ * would test the wrong screen.
+ */
+const READY_TESTID: Record<(typeof STORE_GAMES)[number], string> = {
+  yacht: "yacht-mode-card",
+  twenty48: "twenty48-board",
+  solitaire: "solitaire-hint-button",
+  freecell: "freecell-board",
+  sudoku: "sudoku-pregame-start",
+  sort: "sort-level-1",
+  daily_word: "daily-word-row-0",
+};
+
+/**
+ * Games hidden in store builds (HIDDEN_GAMES in gameVisibility.ts). The e2e
+ * build shows them, so they appear on the lobby but are not checked here.
+ * Keep in sync with HIDDEN_GAMES.
+ */
+const HIDDEN_IN_STORE = [
+  "blackjack",
+  "cascade",
+  "hearts",
+  "starswarm",
+  "mahjong",
+] as const;
+
+/**
  * Known, tracked overflows (and confirmed false positives), keyed by screen,
- * locale and exact element text so nothing else is masked.
+ * locale, overflow kind, element path and exact element text so nothing else is masked.
  *
  * The #3211 entries are real bugs, not false positives: the game header title
  * is squeezed by the fixed-width back button, pills and menu button. REMOVE
@@ -54,42 +83,66 @@ const STORE_GAMES = [
 const ALLOWLIST: {
   screen: string;
   locale: Locale;
+  kind: Finding["kind"];
+  /** Substring of the finding's selector path, to pin the element. */
+  pathIncludes: string;
   text: string;
   reason: string;
 }[] = [
   {
+    screen: "profile",
+    locale: "es",
+    kind: "clip",
+    pathIncludes: "profile-tile-favorite",
+    text: "Palabra Diaria",
+    reason:
+      "false positive on native: StatTileGrid uses adjustsFontSizeToFit, which shrinks the value on iOS/Android but RN-web ignores it",
+  },
+  {
     screen: "solitaire",
     locale: "es",
+    kind: "clip",
+    pathIncludes: "h1 > div > h1",
     text: "Solitario",
     reason: "header title squeezed by fixed-width header items — #3211",
   },
   {
     screen: "solitaire",
     locale: "fr-CA",
+    kind: "clip",
+    pathIncludes: "h1 > div > h1",
     text: "Solitaire",
     reason: "header title squeezed by fixed-width header items — #3211",
   },
   {
     screen: "freecell",
     locale: "es",
+    kind: "clip",
+    pathIncludes: "h1 > div > h1",
     text: "FreeCell",
     reason: "header title squeezed by fixed-width header items — #3211",
   },
   {
     screen: "freecell",
     locale: "fr-CA",
+    kind: "clip",
+    pathIncludes: "h1 > div > h1",
     text: "FreeCell",
     reason: "header title squeezed by fixed-width header items — #3211",
   },
   {
     screen: "sort",
     locale: "es",
+    kind: "clip",
+    pathIncludes: "h1 > div > h1",
     text: "Puzle de Colores",
     reason: "header title squeezed by fixed-width header items — #3211",
   },
   {
     screen: "sort",
     locale: "fr-CA",
+    kind: "clip",
+    pathIncludes: "h1 > div > h1",
     text: "Tri des couleurs",
     reason: "header title squeezed by fixed-width header items — #3211",
   },
@@ -206,9 +259,82 @@ function findTextOverflow(): Finding[] {
   return found;
 }
 
-async function settle(page: Page): Promise<void> {
-  // Fonts shift text metrics; layout must be final before measuring.
+/** Same entry means same screen, locale, kind, element path and text. */
+function matches(
+  a: (typeof ALLOWLIST)[number],
+  f: Pick<Finding, "kind" | "path" | "text">,
+): boolean {
+  return (
+    a.kind === f.kind && f.path.includes(a.pathIncludes) && a.text === f.text
+  );
+}
+
+/** A populated Profile: per-game rows for every store game, no history. */
+async function mockProfileApi(page: Page): Promise<void> {
+  const game = (n: number) => ({
+    last_played_at: "2026-10-01T12:00:00Z",
+    sessions: n,
+    completed: n,
+    won: n - 2,
+    lost: 2,
+    tied: 0,
+    current_win_streak: 3,
+    best_win_streak: 5,
+    time_played_ms: n * 60_000,
+    best_value: 1200,
+    best_label_key: "score",
+  });
+  await page.route("**/stats/me*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        total_games: 70,
+        by_game: Object.fromEntries(STORE_GAMES.map((g) => [g, game(10)])),
+        favorite_game: "yacht",
+        arcade_xp: 1250,
+        arcade_level: 4,
+        xp_into_level: 150,
+        xp_for_next_level: 400,
+        streak_days: 3,
+      }),
+    }),
+  );
+  await page.route("**/games/me*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], next_cursor: null }),
+    }),
+  );
+}
+
+async function detectSettled(page: Page): Promise<Finding[]> {
+  // Late fonts change text metrics, and slide-in transforms move boxes:
+  // wait for fonts, then two animation frames, then require two identical
+  // detector runs before trusting the result.
   await page.evaluate(() => document.fonts.ready);
+  const frames = () =>
+    page.evaluate(async () => {
+      await new Promise<void>((r) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => r())),
+      );
+    });
+  await frames();
+  let prev = JSON.stringify(await page.evaluate(findTextOverflow));
+  await expect
+    .poll(
+      async () => {
+        await frames();
+        const cur = JSON.stringify(await page.evaluate(findTextOverflow));
+        const same = cur === prev;
+        prev = cur;
+        return same;
+      },
+      { message: "text overflow measurement never stabilised" },
+    )
+    .toBe(true);
+  return JSON.parse(prev) as Finding[];
 }
 
 async function measure(
@@ -216,14 +342,13 @@ async function measure(
   screen: string,
   locale: Locale,
 ): Promise<Finding[]> {
-  await settle(page);
-  const all = await page.evaluate(findTextOverflow);
+  const all = await detectSettled(page);
   const entries = ALLOWLIST.filter(
     (a) => a.screen === screen && a.locale === locale,
   );
-  const unexpected = all.filter((f) => !entries.some((a) => f.text === a.text));
+  const unexpected = all.filter((f) => !entries.some((a) => matches(a, f)));
   const stale = entries
-    .filter((a) => !all.some((f) => f.text === a.text))
+    .filter((a) => !all.some((f) => matches(a, f)))
     .map((a) => ({
       kind: "stale-allowlist-entry" as const,
       text: a.text,
@@ -260,17 +385,31 @@ for (const locale of LOCALES) {
       // Sort fetches its levels from the API; without them it shows a retry
       // state instead of the level-select screen a player sees.
       await mockSortApi(page);
+      // Daily Word fetches today's puzzle; without it the board never shows.
+      await mockDailyWordApi(page);
+      await mockProfileApi(page);
     });
 
     test("main tabs have no clipped or spilling text", async ({ page }) => {
       await openLobby(page, locale);
       const problems: Record<string, Finding[]> = {};
 
+      const tileSlugs = await page
+        .locator("[data-testid^='game-tile-']")
+        .evaluateAll((els) =>
+          els.map((e) => e.getAttribute("data-testid")!.slice(10)),
+        );
+      const known: string[] = [...STORE_GAMES, ...HIDDEN_IN_STORE];
+      expect(
+        tileSlugs.filter((slug) => !known.includes(slug)),
+        "New lobby game(s): add to STORE_GAMES or HIDDEN_IN_STORE",
+      ).toEqual([]);
+
       problems.lobby = await measure(page, "lobby", locale);
 
       const tabs = page.getByRole("tab");
       await tabs.nth(1).click();
-      await page.waitForLoadState("networkidle");
+      await expect(page.getByTestId("profile-list")).toBeVisible();
       problems.profile = await measure(page, "profile", locale);
 
       await tabs.nth(2).click();
@@ -291,6 +430,7 @@ for (const locale of LOCALES) {
         await page.getByTestId(`game-tile-${slug}`).click();
         // The lobby tile leaves the viewport once the game screen is pushed.
         await expect(page.getByTestId(`game-tile-${slug}`)).toBeHidden();
+        await expect(page.getByTestId(READY_TESTID[slug])).toBeVisible();
         // The ⋯ menu only renders once the game has finished loading. Until
         // then the header has no right slot, so the title would be measured
         // wider than it ends up.
