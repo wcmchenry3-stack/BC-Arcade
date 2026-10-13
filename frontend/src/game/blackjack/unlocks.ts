@@ -15,8 +15,8 @@ export function comebackLow(r: RunRecord): number {
 
 /**
  * True when the run reached its goal after falling to at most a quarter of its
- * starting chips. The one rule for the comeback unlock, the run-history badge
- * and the biggest comeback (#2628); a bust after Keep Playing does not count.
+ * starting chips. The one rule for the run-history badge and the biggest
+ * comeback (#2628); a bust after Keep Playing does not count.
  */
 export function isComebackRun(r: RunRecord): boolean {
   return r.completed && comebackLow(r) <= r.startingChips * COMEBACK_FRACTION;
@@ -39,7 +39,7 @@ export interface Unlock {
   id: string;
   name: string;
   type: "table_theme" | "card_back" | "chip_style";
-  conditionType: "complete_table" | "run_count" | "comeback";
+  conditionType: "complete_table";
   conditionValue: string | number | null;
   unlocked: boolean;
   unlockedAt?: string;
@@ -88,10 +88,6 @@ export function evaluateUnlocks(runHistory: RunRecord[], existingUnlocks: Unlock
 
     if (unlock.conditionType === "complete_table") {
       triggered = runHistory.some((r) => r.table === unlock.conditionValue && r.completed);
-    } else if (unlock.conditionType === "run_count") {
-      triggered = runHistory.length >= Number(unlock.conditionValue);
-    } else if (unlock.conditionType === "comeback") {
-      triggered = runHistory.some(isComebackRun);
     }
 
     if (triggered) {

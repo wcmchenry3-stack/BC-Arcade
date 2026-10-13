@@ -1,6 +1,6 @@
 {
   "game.title": "FreeCell",
-  "game.description": "Move all cards to the foundations — plan every move.",
+  "game.description": "Move every card to the foundations.",
   "game.playLabel": "Play FreeCell",
   "action.undo": "Undo",
   "action.hint": "Hint",
@@ -17,5 +17,7 @@
   "pile.freecell.empty": "Empty free cell {{cell}}",
   "a11y.boardRegion": "FreeCell board",
   "score.moves": "Moves: {{moves}}",
-  "error.supermoveRejected": "Not enough free spaces to move this stack"
+  "error.supermoveRejected": "Not enough free spaces to move this stack",
+  "slot.free": "free",
+  "a11y.foundationComplete": "Foundation complete"
 }

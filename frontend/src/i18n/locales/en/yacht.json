@@ -70,5 +70,14 @@
   "vsMode.upperSubtotal": "Upper subtotal",
   "vsMode.lowerSubtotal": "Lower subtotal",
   "vsMode.bonusProgress": "Bonus · {{n}} to 63",
-  "vsMode.bonusUnlocked": "Bonus ✓ unlocked"
+  "vsMode.bonusUnlocked": "Bonus ✓ unlocked",
+  "error.noRolls": "No rolls remaining this turn.",
+  "error.gameOver": "Game is over.",
+  "error.badHeld": "Couldn't read which dice are held. Please try again.",
+  "error.unknownCategory": "Unknown scoring category.",
+  "error.categoryScored": "Category already scored.",
+  "error.rollFirst": "Roll the dice at least once before scoring.",
+  "error.jokerUpper": "Joker rule: you must score in the matching upper category.",
+  "error.jokerLower": "Joker rule: you must score in an open lower-section category.",
+  "error.generic": "Something went wrong. Please try again."
 }

@@ -11,6 +11,7 @@
 
 import React, { useEffect } from "react";
 import { Text, StyleSheet } from "react-native";
+import { useTranslation } from "react-i18next";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -36,6 +37,7 @@ interface AnimatedTileProps {
 
 export default function AnimatedTile({ tile, tileSize, gap }: AnimatedTileProps) {
   const { id, value, row, col, prevRow, prevCol, isNew, isMerge } = tile;
+  const { t } = useTranslation("twenty48");
   const { colors } = useTheme();
   const visual = getTileVisual(value, colors);
 
@@ -90,7 +92,7 @@ export default function AnimatedTile({ tile, tileSize, gap }: AnimatedTileProps)
     return (
       <Animated.View
         style={[styles.tile, { width: tileSize, height: tileSize }, animStyle]}
-        accessibilityLabel="empty"
+        accessibilityLabel={t("a11y.emptyCell")}
         accessibilityRole="image"
       />
     );

@@ -39,5 +39,15 @@
   "hud.cueHull": "HULL +1",
   "hud.cueHullMax": "HULL MAX",
   "result.reachedWave": "Reached wave {{wave}}",
-  "result.wave": "Wave"
+  "result.wave": "Wave",
+  "tier.Ensign": "Ensign",
+  "tier.LieutenantJG": "Lieutenant J.G.",
+  "tier.Lieutenant": "Lieutenant",
+  "tier.LieutenantCommander": "Lieutenant Cmdr",
+  "tier.Commander": "Commander",
+  "tier.Captain": "Captain",
+  "tier.RearAdmiral": "Rear Admiral",
+  "tier.ViceAdmiral": "Vice Admiral",
+  "tier.Admiral": "Admiral",
+  "tier.FleetAdmiral": "Fleet Admiral"
 }

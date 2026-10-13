@@ -386,12 +386,11 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     if (startCall === undefined) throw new Error("Expected startGame call");
     const [gameType, meta, eventData] = startCall;
     expect(gameType).toBe("blackjack");
-    expect(meta).toEqual({
-      best_run_chips: null,
-      total_runs: 0,
-      runs_completed: 0,
-      current_table: "beginner",
-    });
+    // #3140: the unread run aggregates are no longer sent on the game row.
+    expect(meta).toEqual({});
+    for (const key of ["best_run_chips", "total_runs", "runs_completed", "current_table"]) {
+      expect(meta).not.toHaveProperty(key);
+    }
     expect(eventData).toEqual({ starting_chips: 1000 });
     for (const key of RESERVED_KEYS) {
       expect(eventData).not.toHaveProperty(key);
@@ -821,11 +820,7 @@ describe("BlackjackGameContext — gameEventClient instrumentation (#370)", () =
     });
 
     await waitFor(() => {
-      expect(mockStartGame).toHaveBeenCalledWith(
-        "blackjack",
-        { best_run_chips: null, total_runs: 0, runs_completed: 0, current_table: "beginner" },
-        { starting_chips: 1000 }
-      );
+      expect(mockStartGame).toHaveBeenCalledWith("blackjack", {}, { starting_chips: 1000 });
     });
   });
 
@@ -1145,7 +1140,7 @@ describe("BlackjackGameContext — run outcome (#2628)", () => {
 
   // --- relaunch --------------------------------------------------------------
 
-  it("a relaunch that cannot continue its session records the save's table", async () => {
+  it("a relaunch that cannot continue its session starts a session without the retired table figure (#3140)", async () => {
     const table = TABLE_CONFIGS[2]!;
     await renderWithConsumer(
       losingHand(
@@ -1158,9 +1153,7 @@ describe("BlackjackGameContext — run outcome (#2628)", () => {
       )
     );
     await waitFor(() => expect(mockStartGame).toHaveBeenCalledTimes(1));
-    expect(mockStartGame.mock.calls[0]?.[1]).toEqual(
-      expect.objectContaining({ current_table: "high_roller" })
-    );
+    expect(mockStartGame.mock.calls[0]?.[1]).toEqual({});
   });
 
   // --- sessions with no hand played record no result ----------------------

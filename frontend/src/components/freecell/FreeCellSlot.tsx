@@ -115,7 +115,9 @@ export default function FreeCellSlot({
     },
   ];
 
-  const freeLabel = <Text style={[styles.freeLabel, { color: colors.textFilled }]}>free</Text>;
+  const freeLabel = (
+    <Text style={[styles.freeLabel, { color: colors.textFilled }]}>{t("slot.free")}</Text>
+  );
 
   const emptyEl = handlePress ? (
     <Pressable

@@ -70,5 +70,14 @@
   "vsMode.upperSubtotal": "Zwischenst. oben",
   "vsMode.lowerSubtotal": "Zwischenst. unten",
   "vsMode.bonusProgress": "Bonus · {{n}} bis 63",
-  "vsMode.bonusUnlocked": "Bonus ✓ erreicht"
+  "vsMode.bonusUnlocked": "Bonus ✓ erreicht",
+  "error.noRolls": "In diesem Zug sind keine Würfe mehr übrig.",
+  "error.gameOver": "Das Spiel ist vorbei.",
+  "error.badHeld": "Die gehaltenen Würfel konnten nicht gelesen werden. Bitte versuche es erneut.",
+  "error.unknownCategory": "Unbekannte Wertungskategorie.",
+  "error.categoryScored": "Diese Kategorie ist bereits gewertet.",
+  "error.rollFirst": "Würfle mindestens einmal, bevor du wertest.",
+  "error.jokerUpper": "Joker-Regel: Du musst in der passenden oberen Kategorie werten.",
+  "error.jokerLower": "Joker-Regel: Du musst in einer freien Kategorie des unteren Bereichs werten.",
+  "error.generic": "Etwas ist schiefgelaufen. Bitte versuche es erneut."
 }

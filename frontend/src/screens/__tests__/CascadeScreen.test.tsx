@@ -11,6 +11,7 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
 import CascadeScreen from "../CascadeScreen";
+import i18n from "i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState } from "react-native";
 import type { AppStateStatus } from "react-native";
@@ -72,8 +73,14 @@ jest.mock("@shopify/react-native-skia", () => {
   const React = require("react");
   return {
     useImage: jest.fn().mockReturnValue({ width: 1, height: 1 }),
-    Canvas: ({ children }: { children?: React.ReactNode }) =>
-      React.createElement(React.Fragment, {}, children),
+    // Forwards accessibilityLabel (#2222) so the board label is observable.
+    Canvas: ({
+      children,
+      accessibilityLabel,
+    }: {
+      children?: React.ReactNode;
+      accessibilityLabel?: string;
+    }) => React.createElement("View", { accessibilityLabel }, children),
     Group: ({ children }: { children?: React.ReactNode }) =>
       React.createElement(React.Fragment, {}, children),
     Image: () => null,
@@ -256,6 +263,31 @@ async function triggerTap(renderer: ReturnType<typeof create>, worldX = 150) {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+describe("CascadeGame board label (#2222)", () => {
+  const labels = (renderer: ReturnType<typeof create>) =>
+    renderer.root
+      .findAll((n) => Boolean(n.props.accessibilityLabel))
+      .map((n) => n.props.accessibilityLabel as string);
+
+  it("is the English label by default", async () => {
+    const renderer = await renderScreen();
+    expect(labels(renderer)).toContain("Cascade game board");
+  });
+
+  it("comes from the active language", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    i18n.addResourceBundle("es", "cascade", require("../../i18n/locales/es/cascade.json"));
+    await i18n.changeLanguage("es");
+    try {
+      const renderer = await renderScreen();
+      expect(labels(renderer)).toContain("Tablero de Cascade");
+      expect(labels(renderer)).not.toContain("Cascade game board");
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+});
 
 describe("CascadeGame", () => {
   it("score starts at 0", async () => {

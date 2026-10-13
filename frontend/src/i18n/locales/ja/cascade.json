@@ -11,5 +11,7 @@
   "preview.comingUp": "次に来る: {{name}}",
   "theme.groupLabel": "フルーツテーマ",
   "theme.optionLabel": "{{label}}テーマ",
-  "event.merged": "合体！{{fruit}}ができた！"
+  "event.merged": "合体！{{fruit}}ができた！",
+  "score.high": "ハイ",
+  "a11y.board": "Cascadeのゲーム盤面"
 }

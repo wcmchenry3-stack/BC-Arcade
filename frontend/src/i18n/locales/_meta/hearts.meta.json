@@ -529,5 +529,41 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "seat.0": {
+    "component": "HeartsScreen / scoreboard",
+    "description": "The human player's default seat name. Custom names the player typed are never translated.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Short seat label; compass direction or 'you'."
+  },
+  "seat.1": {
+    "component": "HeartsScreen / scoreboard",
+    "description": "Default name of the west seat. Custom names the player typed are never translated.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Short seat label; compass direction or 'you'."
+  },
+  "seat.2": {
+    "component": "HeartsScreen / scoreboard",
+    "description": "Default name of the north seat. Custom names the player typed are never translated.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Short seat label; compass direction or 'you'."
+  },
+  "seat.3": {
+    "component": "HeartsScreen / scoreboard",
+    "description": "Default name of the east seat. Custom names the player typed are never translated.",
+    "tone": "neutral",
+    "characterLimit": 12,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Short seat label; compass direction or 'you'."
   }
 }

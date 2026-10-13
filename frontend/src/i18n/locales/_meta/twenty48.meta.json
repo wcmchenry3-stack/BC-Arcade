@@ -142,5 +142,50 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": null
+  },
+  "a11y.board": {
+    "component": "Grid (accessibility)",
+    "description": "Screen-reader label for the 2048 board.",
+    "tone": "functional",
+    "characterLimit": 30,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": ""
+  },
+  "a11y.emptyCell": {
+    "component": "Grid (accessibility)",
+    "description": "Screen-reader label for a board cell with no tile.",
+    "tone": "functional",
+    "characterLimit": 15,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": ""
+  },
+  "a11y.merged": {
+    "component": "Twenty48Screen (accessibility)",
+    "description": "Live announcement after a move merges tiles; lists the resulting tile values.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["{{values}}"],
+    "doNotTranslate": [],
+    "notes": "`{{values}}` is a comma-separated list of numbers, e.g. '4, 16'."
+  },
+  "a11y.highestTile": {
+    "component": "StatsBento (accessibility)",
+    "description": "Screen-reader label for the highest tile value on the board.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["{{value}}"],
+    "doNotTranslate": [],
+    "notes": ""
+  },
+  "a11y.timePlayed": {
+    "component": "StatsBento (accessibility)",
+    "description": "Screen-reader label for elapsed play time, e.g. 01:01.",
+    "tone": "functional",
+    "characterLimit": 40,
+    "placeholders": ["{{time}}"],
+    "doNotTranslate": [],
+    "notes": "`{{time}}` is a mm:ss clock."
   }
 }

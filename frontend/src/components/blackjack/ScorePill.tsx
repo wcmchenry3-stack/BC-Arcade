@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
+import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
 
 interface Props {
@@ -22,6 +23,7 @@ export default function ScorePill({
   variant,
   fontSize,
 }: Props) {
+  const { t } = useTranslation("blackjack");
   const { colors } = useTheme();
   const label = concealed ? "?" : soft ? `${value}*` : String(value);
 
@@ -29,7 +31,9 @@ export default function ScorePill({
     return (
       <View
         style={[styles.dealerBadge, { backgroundColor: colors.text, borderColor: colors.text }]}
-        accessibilityLabel={concealed ? "Dealer score hidden" : `Dealer score ${label}`}
+        accessibilityLabel={
+          concealed ? t("a11y.dealerScoreHidden") : t("a11y.dealerScore", { score: label })
+        }
       >
         <Text style={[styles.dealerText, { color: colors.surface }]}>{label}</Text>
       </View>
@@ -40,7 +44,7 @@ export default function ScorePill({
   return (
     <View
       style={[styles.playerGlow, { shadowColor: colors.accent }]}
-      accessibilityLabel={`Player score ${label}`}
+      accessibilityLabel={t("a11y.playerScore", { score: label })}
     >
       {/* Gradient ring approximated with a cyan-tinted outer view */}
       <View style={[styles.playerRing, { backgroundColor: colors.accent }]}>

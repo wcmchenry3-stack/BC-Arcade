@@ -1,6 +1,6 @@
 {
   "game.title": "Mot du jour",
-  "game.description": "Un mot de cinq lettres. Six essais. Un nouveau chaque jour.",
+  "game.description": "Un mot de cinq lettres, six essais, chaque jour.",
   "game.playLabel": "Jouer au Mot du jour",
   "hud.guessesLeft_one": "{{count}} essai restant",
   "hud.guessesLeft_many": "{{count}} essais restants",
@@ -21,5 +21,11 @@
   "keyboard.enter": "Entrée",
   "result.countdown": "Prochain mot : {{time}}",
   "result.share": "Partager",
-  "result.copied": "Copié!"
+  "result.copied": "Copié!",
+  "a11y.board": "Grille de Mot du jour",
+  "a11y.tile": "Rangée {{row}}, colonne {{col}}, lettre {{letter}}",
+  "a11y.tileStatus": "Rangée {{row}}, colonne {{col}}, lettre {{letter}}, {{status}}",
+  "a11y.status.correct": "bonne place",
+  "a11y.status.present": "mal placée",
+  "a11y.status.absent": "absente du mot"
 }

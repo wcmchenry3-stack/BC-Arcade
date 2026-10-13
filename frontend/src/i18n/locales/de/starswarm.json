@@ -39,5 +39,15 @@
   "hud.cueHull": "RUMPF +1",
   "hud.cueHullMax": "RUMPF MAX",
   "result.reachedWave": "Welle {{wave}} erreicht",
-  "result.wave": "Welle"
+  "result.wave": "Welle",
+  "tier.Ensign": "Fähnrich",
+  "tier.LieutenantJG": "Leutnant z. S.",
+  "tier.Lieutenant": "Kapitänleutnant",
+  "tier.LieutenantCommander": "Korvettenkapitän",
+  "tier.Commander": "Fregattenkapitän",
+  "tier.Captain": "Kapitän zur See",
+  "tier.RearAdmiral": "Konteradmiral",
+  "tier.ViceAdmiral": "Vizeadmiral",
+  "tier.Admiral": "Admiral",
+  "tier.FleetAdmiral": "Flottenadmiral"
 }

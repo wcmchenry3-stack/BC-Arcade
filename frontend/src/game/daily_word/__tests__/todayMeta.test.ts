@@ -1,7 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { dailyWordApi } from "../api";
 import { loadTodayMeta } from "../storage";
-import { localDateKey, warmTodayMeta } from "../todayMeta";
+import i18n from "i18next";
+import { __forceStoreBuildForTests } from "../../_shared/buildFlavour";
+import { dailyWordLanguages, getLanguage, localDateKey, warmTodayMeta } from "../todayMeta";
 
 jest.mock("../api", () => ({ dailyWordApi: { getToday: jest.fn() } }));
 
@@ -38,5 +40,46 @@ describe("warmTodayMeta (#2925)", () => {
     getToday.mockRejectedValue(new TypeError("Network request failed"));
     await expect(warmTodayMeta(0, "en")).resolves.toBeUndefined();
     expect(await loadTodayMeta(localDateKey(0, "en"))).toBeNull();
+  });
+});
+
+describe("getLanguage (#3153)", () => {
+  const original = i18n.language;
+
+  afterEach(async () => {
+    __forceStoreBuildForTests(false);
+    await i18n.changeLanguage(original);
+  });
+
+  it("native store build: maps hi to en", async () => {
+    __forceStoreBuildForTests(true);
+    await i18n.changeLanguage("hi");
+    expect(getLanguage("ios")).toBe("en");
+    expect(getLanguage("android")).toBe("en");
+    expect(dailyWordLanguages("ios")).toEqual(["en"]);
+  });
+
+  it("web keeps hi even when the build is a store build", async () => {
+    __forceStoreBuildForTests(true);
+    await i18n.changeLanguage("hi");
+    expect(getLanguage("web")).toBe("hi");
+  });
+
+  it("internal build: maps hi to hi on native", async () => {
+    await i18n.changeLanguage("hi");
+    expect(getLanguage("ios")).toBe("hi");
+  });
+
+  it("falls back to en for languages without a puzzle", async () => {
+    await i18n.changeLanguage("de");
+    expect(getLanguage("ios")).toBe("en");
+    await i18n.changeLanguage("fr-CA");
+    expect(getLanguage("ios")).toBe("en");
+  });
+
+  it("keeps en as en in a store build", async () => {
+    __forceStoreBuildForTests(true);
+    await i18n.changeLanguage("en");
+    expect(getLanguage("ios")).toBe("en");
   });
 });

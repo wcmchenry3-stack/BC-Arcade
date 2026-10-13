@@ -646,5 +646,86 @@
     "placeholders": [],
     "doNotTranslate": [],
     "notes": "Keep the ✓ checkmark."
+  },
+  "error.noRolls": {
+    "component": "GameScreen error banner",
+    "description": "Error banner text shown when a Yacht move is not allowed.",
+    "tone": "functional, clear",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.gameOver": {
+    "component": "GameScreen error banner",
+    "description": "Error banner text shown when a Yacht move is not allowed.",
+    "tone": "functional, clear",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.badHeld": {
+    "component": "GameScreen error banner",
+    "description": "Error banner text shown when a Yacht move is not allowed.",
+    "tone": "functional, clear",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.unknownCategory": {
+    "component": "GameScreen error banner",
+    "description": "Error banner text shown when a Yacht move is not allowed.",
+    "tone": "functional, clear",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.categoryScored": {
+    "component": "GameScreen error banner",
+    "description": "Error banner text shown when a Yacht move is not allowed.",
+    "tone": "functional, clear",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.rollFirst": {
+    "component": "GameScreen error banner",
+    "description": "Error banner text shown when a Yacht move is not allowed.",
+    "tone": "functional, clear",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
+  },
+  "error.jokerUpper": {
+    "component": "GameScreen error banner",
+    "description": "Error banner text shown when a Yacht move is not allowed.",
+    "tone": "functional, clear",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Joker rule messages explain Yacht's joker scoring rule."
+  },
+  "error.jokerLower": {
+    "component": "GameScreen error banner",
+    "description": "Error banner text shown when a Yacht move is not allowed.",
+    "tone": "functional, clear",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": "Joker rule messages explain Yacht's joker scoring rule."
+  },
+  "error.generic": {
+    "component": "GameScreen error banner",
+    "description": "Error banner text shown when a Yacht move is not allowed.",
+    "tone": "functional, clear",
+    "characterLimit": 100,
+    "placeholders": [],
+    "doNotTranslate": [],
+    "notes": null
   }
 }

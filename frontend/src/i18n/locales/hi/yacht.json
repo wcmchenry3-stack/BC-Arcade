@@ -70,5 +70,14 @@
   "vsMode.upperSubtotal": "ऊपरी उप-योग",
   "vsMode.lowerSubtotal": "निचला उप-योग",
   "vsMode.bonusProgress": "बोनस · {{n}} से 63",
-  "vsMode.bonusUnlocked": "बोनस ✓ मिला"
+  "vsMode.bonusUnlocked": "बोनस ✓ मिला",
+  "error.noRolls": "इस टर्न में कोई रोल नहीं बचा है।",
+  "error.gameOver": "खेल समाप्त हो चुका है।",
+  "error.badHeld": "यह पढ़ा नहीं जा सका कि कौन से पासे रखे गए हैं। कृपया फिर से कोशिश करें।",
+  "error.unknownCategory": "अज्ञात स्कोरिंग श्रेणी।",
+  "error.categoryScored": "इस श्रेणी में पहले ही स्कोर दर्ज है।",
+  "error.rollFirst": "स्कोर करने से पहले कम से कम एक बार पासे फेंकें।",
+  "error.jokerUpper": "जोकर नियम: आपको संबंधित ऊपरी श्रेणी में स्कोर करना होगा।",
+  "error.jokerLower": "जोकर नियम: आपको निचले भाग की किसी खाली श्रेणी में स्कोर करना होगा।",
+  "error.generic": "कुछ गड़बड़ हो गई। कृपया फिर से कोशिश करें।"
 }

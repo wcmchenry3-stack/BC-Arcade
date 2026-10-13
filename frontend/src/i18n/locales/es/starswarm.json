@@ -39,5 +39,15 @@
   "hud.cueHull": "CASCO +1",
   "hud.cueHullMax": "CASCO MÁX",
   "result.reachedWave": "Llegaste a la ola {{wave}}",
-  "result.wave": "Ola"
+  "result.wave": "Ola",
+  "tier.Ensign": "Alférez",
+  "tier.LieutenantJG": "Alférez de navío",
+  "tier.Lieutenant": "Teniente",
+  "tier.LieutenantCommander": "Teniente comandante",
+  "tier.Commander": "Comandante",
+  "tier.Captain": "Capitán",
+  "tier.RearAdmiral": "Contraalmirante",
+  "tier.ViceAdmiral": "Vicealmirante",
+  "tier.Admiral": "Almirante",
+  "tier.FleetAdmiral": "Almirante de la flota"
 }

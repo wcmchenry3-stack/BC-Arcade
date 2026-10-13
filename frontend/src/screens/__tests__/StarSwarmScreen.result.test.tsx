@@ -1,4 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react-native";
+import i18n from "i18next";
+import EsStarswarm from "../../i18n/locales/es/starswarm.json";
+import { difficultyMultiplier } from "../../game/starswarm/engine";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import { __setPremiumLevelsForTests } from "../../entitlements/premiumLevels";
@@ -290,6 +293,33 @@ describe("StarSwarmScreen — result card (#2516)", () => {
     expect(card.queryByText("Star Swarm · Commander")).toBeNull();
     const [, summary] = mockCompleteGame.mock.calls[0]!;
     expect(summary.result.difficulty_tier).toBe("Captain");
+  });
+
+  describe("rank names follow the app language (#2221)", () => {
+    beforeEach(async () => {
+      i18n.addResourceBundle("es", "starswarm", EsStarswarm);
+      await i18n.changeLanguage("es");
+    });
+    afterEach(async () => {
+      await i18n.changeLanguage("en");
+    });
+
+    it("the picker shows the translated rank", async () => {
+      await renderScreen();
+      const mult = difficultyMultiplier("Commander");
+      expect(screen.getByLabelText(`Comandante ×${mult}`)).toBeTruthy();
+      expect(screen.queryByLabelText(`Commander ×${mult}`)).toBeNull();
+    });
+
+    it("the result eyebrow shows the translated rank of the tier played", async () => {
+      await renderScreen();
+      await startRun();
+      setEngineState({ difficulty: "Captain" });
+      await endRun(4200, 7);
+      const card = within(screen.getByTestId("starswarm-result"));
+      expect(card.getByText(`${EsStarswarm["game.title"]} · Capitán`)).toBeTruthy();
+      expect(card.queryByText(/Captain/)).toBeNull();
+    });
   });
 
   it("View leaderboard opens the board of the tier the run was played at (#2633)", async () => {

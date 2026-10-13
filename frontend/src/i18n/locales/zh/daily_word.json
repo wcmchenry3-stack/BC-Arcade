@@ -20,5 +20,11 @@
   "keyboard.enter": "回车",
   "result.countdown": "下一词：{{time}}",
   "result.share": "分享",
-  "result.copied": "已复制！"
+  "result.copied": "已复制！",
+  "a11y.board": "每日猜词棋盘",
+  "a11y.tile": "第 {{row}} 行，第 {{col}} 列，字母 {{letter}}",
+  "a11y.tileStatus": "第 {{row}} 行，第 {{col}} 列，字母 {{letter}}，{{status}}",
+  "a11y.status.correct": "正确",
+  "a11y.status.present": "位置错误",
+  "a11y.status.absent": "不在单词中"
 }

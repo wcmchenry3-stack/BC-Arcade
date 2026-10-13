@@ -11,5 +11,7 @@
   "preview.comingUp": "Впереди: {{name}}",
   "theme.groupLabel": "Тема фруктов",
   "theme.optionLabel": "Тема {{label}}",
-  "event.merged": "Объединено! Создан {{fruit}}."
+  "event.merged": "Объединено! Создан {{fruit}}.",
+  "score.high": "Рекорд",
+  "a11y.board": "Игровое поле Cascade"
 }

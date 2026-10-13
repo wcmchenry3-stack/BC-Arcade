@@ -26,5 +26,6 @@
   "preGame.body": "Elige una dificultad para empezar.",
   "hud.errors": "{{count}} errores",
   "hud.errorsOne": "1 error",
-  "hud.elapsed": "Tiempo transcurrido {{time}}"
+  "hud.elapsed": "Tiempo transcurrido {{time}}",
+  "a11y.board": "Tablero de Sudoku"
 }

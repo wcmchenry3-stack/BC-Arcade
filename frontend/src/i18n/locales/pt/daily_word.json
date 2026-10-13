@@ -21,5 +21,11 @@
   "keyboard.enter": "Enviar",
   "result.countdown": "Próxima em {{time}}",
   "result.share": "Compartilhar",
-  "result.copied": "Copiado!"
+  "result.copied": "Copiado!",
+  "a11y.board": "Tabuleiro de Palavra do Dia",
+  "a11y.tile": "Linha {{row}}, coluna {{col}}, letra {{letter}}",
+  "a11y.tileStatus": "Linha {{row}}, coluna {{col}}, letra {{letter}}, {{status}}",
+  "a11y.status.correct": "correta",
+  "a11y.status.present": "posição errada",
+  "a11y.status.absent": "não está na palavra"
 }

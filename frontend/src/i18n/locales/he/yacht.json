@@ -71,5 +71,14 @@
   "vsMode.upperSubtotal": "סיכום עליון",
   "vsMode.lowerSubtotal": "סיכום תחתון",
   "vsMode.bonusProgress": "בונוס · {{n}} ל-63",
-  "vsMode.bonusUnlocked": "בונוס ✓ הושג"
+  "vsMode.bonusUnlocked": "בונוס ✓ הושג",
+  "error.noRolls": "לא נותרו הטלות בתור הזה.",
+  "error.gameOver": "המשחק הסתיים.",
+  "error.badHeld": "לא ניתן לזהות אילו קוביות נשמרו. נסו שוב.",
+  "error.unknownCategory": "קטגוריית ניקוד לא מוכרת.",
+  "error.categoryScored": "הקטגוריה כבר נוקדה.",
+  "error.rollFirst": "הטילו את הקוביות לפחות פעם אחת לפני הניקוד.",
+  "error.jokerUpper": "כלל הג'וקר: יש לנקד בקטגוריה העליונה המתאימה.",
+  "error.jokerLower": "כלל הג'וקר: יש לנקד בקטגוריה פנויה בחלק התחתון.",
+  "error.generic": "משהו השתבש. נסו שוב."
 }
