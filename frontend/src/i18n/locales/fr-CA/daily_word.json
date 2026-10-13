@@ -1,6 +1,6 @@
 {
   "game.title": "Mot du jour",
-  "game.description": "Un mot de cinq lettres. Six essais. Un nouveau chaque jour.",
+  "game.description": "Un mot de cinq lettres, six essais, chaque jour.",
   "game.playLabel": "Jouer au Mot du jour",
   "hud.guessesLeft_one": "{{count}} essai restant",
   "hud.guessesLeft_many": "{{count}} essais restants",

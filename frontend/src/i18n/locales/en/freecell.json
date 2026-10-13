@@ -1,6 +1,6 @@
 {
   "game.title": "FreeCell",
-  "game.description": "Move all cards to the foundations — plan every move.",
+  "game.description": "Move every card to the foundations.",
   "game.playLabel": "Play FreeCell",
   "action.undo": "Undo",
   "action.hint": "Hint",
