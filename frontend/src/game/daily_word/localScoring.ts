@@ -5,7 +5,7 @@
  * exactly: exact-position matches first, then the answer's remaining letters
  * are used up left to right for wrong-position matches, so a duplicate letter
  * in the guess is "present" only while the answer has an unmatched copy left.
- * Both sides are checked against backend/tests/fixtures/daily_word_scoring.json.
+ * Both sides are checked against backend/tests/fixtures/daily_word_parity.json.
  *
  * English only: Hindi stays online-only (its word list is 434 KB), so there is
  * no grapheme handling here.
