@@ -27,6 +27,10 @@ The `frontend/ios/` directory must exist in the repo. If it is missing:
 
 Xcode Cloud replaces `CFBundleVersion` with its own auto-incrementing build number, so store builds never carry the pbxproj value (10009, 10100, …). **Do not upload a locally archived build to App Store Connect**: it would carry that large number, and every later Xcode Cloud upload in the same version train would be rejected as lower until the Xcode Cloud next-build-number is raised past it.
 
+## Declared languages
+
+`CFBundleLocalizations` in `Info.plist` (`en`, `es`, `fr-CA`) tells iOS and App Store Connect which languages the app supports: the App Store listing's Languages row and the per-app Language setting come from it. It is set in `app.json` → `ios.infoPlist`, so a prebuild writes the same list, and must match `LAUNCH_LOCALE_CODES` in `frontend/src/i18n/locales.js`. `frontend/src/__tests__/nativeLocaleDeclarations.test.ts` fails if they drift. `en` covers `en-CA`. See [I18N.md](I18N.md#languages-declared-to-the-os-and-the-stores-3151).
+
 ## EAS status
 
 EAS Build and `eas submit` are **not used** for this project — neither now nor planned. `eas.json` has been removed.

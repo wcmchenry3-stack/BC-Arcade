@@ -19,6 +19,7 @@
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
+        "CFBundleLocalizations": ["en", "es", "fr-CA"],
         "ITSAppUsesNonExemptEncryption": false
       },
       "privacyManifests": {
