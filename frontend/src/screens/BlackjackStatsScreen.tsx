@@ -13,6 +13,7 @@ import { TABLE_CONFIGS } from "../game/blackjack/tables";
 import { GameShell } from "../components/shared/GameShell";
 import { StatList, type StatListItem } from "../components/shared/StatRow";
 import { formatDate } from "../utils/formatTimestamp";
+import { formatNumber } from "../api/statsDisplay";
 
 type Props = {
   navigation: NativeStackNavigationProp<HomeStackParamList, "BlackjackStats">;
@@ -74,7 +75,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
     allTimeBest.push({
       key: "bestRun",
       label: t("stats.allTimeBestRun"),
-      value: t("stats.chips", { chips: bestRun.finalChips.toLocaleString() }),
+      value: t("stats.chips", { chips: formatNumber(t, bestRun.finalChips) }),
     });
   }
   if (mostHandsRun) {
@@ -89,7 +90,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
       key: "biggestComeback",
       label: t("stats.allTimeBiggestComeback"),
       value: t("stats.comebackLow", {
-        chips: comebackLow(biggestComebackRun).toLocaleString(),
+        chips: formatNumber(t, comebackLow(biggestComebackRun)),
       }),
       valueColor: colors.accent,
     });
@@ -134,7 +135,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
                 {
                   key: "chips",
                   label: t("stats.chipsLabel"),
-                  value: t("stats.chips", { chips: sessionStats.chips.toLocaleString() }),
+                  value: t("stats.chips", { chips: formatNumber(t, sessionStats.chips) }),
                 },
                 {
                   key: "hands",
@@ -200,7 +201,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
                     accessibilityLabel={t("stats.runAccessibilityLabel", {
                       table: tableLabel(run.table),
                       date,
-                      chips: t("stats.chips", { chips: run.finalChips.toLocaleString() }),
+                      chips: t("stats.chips", { chips: formatNumber(t, run.finalChips) }),
                       outcome: t(`stats.runOutcome.${outcome}` as Parameters<typeof t>[0]),
                     })}
                   >
@@ -213,7 +214,7 @@ export default function BlackjackStatsScreen({ navigation }: Props) {
                     <View style={styles.runRight}>
                       <Text style={[styles.runChips, { color: colors.text }]}>
                         {t("stats.chips", {
-                          chips: run.finalChips.toLocaleString(),
+                          chips: formatNumber(t, run.finalChips),
                         })}
                       </Text>
                       <View

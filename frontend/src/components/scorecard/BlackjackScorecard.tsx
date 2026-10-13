@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
+import { formatNumber } from "../../api/statsDisplay";
 import type { SessionStats } from "../../game/blackjack/sessionStats";
 import { formatPL, plColor, winRatePct } from "./blackjackStatsModel";
 
@@ -13,7 +14,7 @@ export default function BlackjackScorecard({ stats }: Props) {
   const { t } = useTranslation(["blackjack", "common"]);
   const { colors } = useTheme();
 
-  const plDisplay = formatPL(stats.plChips);
+  const plDisplay = formatPL(stats.plChips, (n) => formatNumber(t, n));
   const plTextColor = plColor(stats.plChips, colors);
   const wrPct = winRatePct(stats);
   const subLine =
@@ -25,13 +26,13 @@ export default function BlackjackScorecard({ stats }: Props) {
     {
       key: "chipBalance",
       label: t("blackjack:score.chipBalance"),
-      value: stats.chips.toLocaleString("en-US"),
+      value: formatNumber(t, stats.chips),
       accent: true,
     },
     {
       key: "biggestWin",
       label: t("blackjack:score.biggestWin"),
-      value: stats.biggestWin > 0 ? `+${stats.biggestWin.toLocaleString("en-US")}` : "—",
+      value: stats.biggestWin > 0 ? `+${formatNumber(t, stats.biggestWin)}` : "—",
     },
     {
       key: "handsWon",

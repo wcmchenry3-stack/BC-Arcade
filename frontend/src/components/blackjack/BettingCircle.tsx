@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { Animated, StyleSheet, Text } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../../theme/ThemeContext";
+import { formatNumber } from "../../api/statsDisplay";
 import { typography } from "../../theme/typography";
 
 interface BettingCircleProps {
@@ -56,9 +57,9 @@ export default function BettingCircle({ bet, accentColor }: BettingCircleProps) 
             fontFamily: typography.heading,
           },
         ]}
-        accessibilityLabel={t("bet.accessibilityLabel", { amount: bet })}
+        accessibilityLabel={t("bet.accessibilityLabel", { amount: formatNumber(t, bet) })}
       >
-        {bet === 0 ? "0" : bet.toLocaleString()}
+        {bet === 0 ? "0" : formatNumber(t, bet)}
       </Text>
       <Text style={[styles.hint, { color: colors.textMuted, fontFamily: typography.label }]}>
         {bet === 0 ? t("betting.tapToAdd") : t("bet.label")}

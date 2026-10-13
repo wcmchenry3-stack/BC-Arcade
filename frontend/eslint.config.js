@@ -142,6 +142,25 @@ module.exports = [
     },
   },
 
+  // Numbers and times shown to the player follow the app language, not the
+  // device's (#2767). A bare toLocale*String() call uses the device locale; use
+  // formatNumber / formatDate / formatTimestamp (t-based) instead.
+  {
+    files: ["src/**/*.ts", "src/**/*.tsx"],
+    ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[arguments.length=0][callee.property.name=/^toLocale(String|DateString|TimeString)$/]",
+          message:
+            "A bare toLocale*String() follows the device language. Use formatNumber/formatDate/formatTimestamp(t, ...) (see docs/I18N.md).",
+        },
+      ],
+    },
+  },
+
   // The 6 files over 800 effective lines (blanks/comments skipped) when the gate landed:
   // warn only, so current PRs still pass. Remove each entry as its split lands
   // (#2951, epic #2950). Do NOT add new files here.
