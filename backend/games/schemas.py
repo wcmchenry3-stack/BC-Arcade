@@ -56,6 +56,11 @@ class CreateGameRequest(BaseModel):
         mod = get_module(self.game_type)
         if mod is not None:
             mod.metadata_model.model_validate(self.metadata)
+            # A metadata model may retire keys older clients still send: they
+            # validate, but must not be stored unvalidated on the game row.
+            retired: frozenset[str] = getattr(mod.metadata_model, "retired_keys", frozenset())
+            if retired & self.metadata.keys():
+                self.metadata = {k: v for k, v in self.metadata.items() if k not in retired}
         return self
 
 

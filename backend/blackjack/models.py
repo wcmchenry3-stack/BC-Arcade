@@ -3,14 +3,17 @@ with and the closing balance sent on completion (#539, #2745)."""
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, model_validator
 from pydantic_core import PydanticCustomError
 
 from games.board import MAX_BOARD_VALUE
 
 # Run aggregates older builds sent when starting a session (#539). Nothing read
-# them, so current builds send none (#3140); they are still accepted and dropped
-# so an older client is never rejected.
+# them, so current builds send none (#3140); they are still accepted and stripped
+# (``CreateGameRequest`` removes them before the row is stored) so an older
+# client is never rejected and nothing unvalidated is persisted.
 RETIRED_METADATA_KEYS = frozenset(
     {"best_run_chips", "total_runs", "runs_completed", "current_table"}
 )
@@ -21,11 +24,14 @@ class BlackjackMetadata(BaseModel):
 
     A Blackjack session has no metadata of its own. The four run aggregates
     older builds wrote at session start (``RETIRED_METADATA_KEYS``) are
-    accepted and ignored (#3140); ``extra="forbid"`` still rejects any other
+    accepted and stripped before storage (#3140); ``extra="forbid"`` still rejects any other
     unexpected key.
     """
 
     model_config = ConfigDict(extra="forbid")
+
+    # Read by ``CreateGameRequest``, which also strips them before the row is stored.
+    retired_keys: ClassVar[frozenset[str]] = RETIRED_METADATA_KEYS
 
     @model_validator(mode="before")
     @classmethod

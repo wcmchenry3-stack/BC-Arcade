@@ -283,7 +283,7 @@ All metadata models use `extra="forbid"` to prevent arbitrary data from being si
 
 | Game        | Model               | Fields                                                                                                                                                                                                                                                           |
 | ----------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Blackjack   | `BlackjackMetadata` | none. The retired run aggregates (`best_run_chips`, `total_runs`, `runs_completed`, `current_table`) are still accepted from older clients and ignored (#3140)                                                                                                   |
+| Blackjack   | `BlackjackMetadata` | none. The retired run aggregates (`best_run_chips`, `total_runs`, `runs_completed`, `current_table`) are still accepted from older clients, then stripped before the row is stored (#3140)                                                                       |
 | Cascade     | `CascadeMetadata`   | `player_name: str = ""` (max 64 chars)                                                                                                                                                                                                                           |
 | Daily Word  | `DailyWordMetadata` | `puzzle_id: str` (required), `language: Literal["en","hi"] = "en"`                                                                                                                                                                                               |
 | FreeCell    | `FreeCellMetadata`  | None (empty model). Since #2632 a win carries its move count as `final_score`                                                                                                                                                                                    |
@@ -431,7 +431,7 @@ The app side of a game: how it opens and closes its `games` row, what outcome an
 | Screen wrapper                                                                                                        | `frontend/src/components/shared/GameShell.tsx` (game screens), `ScreenFrame.tsx` (other screens)                      |
 | Shared screens                                                                                                        | `LeaderboardScreen.tsx`, `GameStatsScreen.tsx`, `ScorecardScreen.tsx`, `ProfileScreen.tsx` in `frontend/src/screens/` |
 
-`frontend/src/game/_shared/types.ts` holds the shared `GameType` re-export only; the unused `GameSession` and `Player` types were removed (#3140).
+`frontend/src/game/_shared/types.ts` holds the shared `GameType` re-export only; the unused `GameSession` and `Player` types were removed earlier.
 
 ### 2.2 GameShell
 

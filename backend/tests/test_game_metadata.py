@@ -321,6 +321,44 @@ async def test_post_games_valid_cascade_metadata_accepted(client) -> None:
     assert r.status_code == 200
 
 
+@pytest.mark.skipif(
+    not os.environ.get("DATABASE_URL"),
+    reason="DATABASE_URL not set — skipping live API tests",
+)
+async def test_post_games_does_not_store_retired_blackjack_keys(client) -> None:
+    """An older client's run aggregates are accepted but never persisted (#3140)."""
+    from sqlalchemy import select
+
+    from db.base import get_session_factory
+    from db.models import Game, GameEntitlement
+
+    sid = str(uuid.uuid4())
+    factory = get_session_factory()
+    async with factory() as db:
+        db.add(GameEntitlement(session_id=sid, game_slug="blackjack"))
+        await db.commit()
+    r = client.post(
+        "/games",
+        headers=_headers(sid),
+        json={
+            "game_type": "blackjack",
+            "metadata": {
+                "best_run_chips": 2500,
+                "total_runs": "not-a-number",
+                "runs_completed": 3,
+                "current_table": "hacker_table",
+            },
+        },
+    )
+    assert r.status_code == 200
+    async with factory() as db:
+        stored = (
+            await db.execute(select(Game.game_metadata).where(Game.session_id == sid))
+        ).scalar_one()
+    for key in ("best_run_chips", "total_runs", "runs_completed", "current_table"):
+        assert key not in (stored or {})
+
+
 # ---------------------------------------------------------------------------
 # _validate_client_timestamp unit tests (#659)
 # ---------------------------------------------------------------------------
