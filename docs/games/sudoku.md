@@ -116,7 +116,7 @@ Equal scores use the shared final tie rule: earlier completion ranks first.
 
 ## Timer
 
-The on-screen timer starts on the **first interaction** (#2942): the first cell selection or the first digit (or hint), whichever comes first. It does not start when the grid renders, so the HUD shows 0:00 until the player touches the board. The sync session still starts only on the first state-changing move, so a puzzle where the player only selected cells is discarded, not abandoned (see Session outcomes). A first interaction that lands while the player is away starts the clock paused.
+The on-screen timer starts on the **first interaction** (#2942): the first cell press, number pad press or hint press, whichever comes first, even one that changes nothing (for example, a digit with no cell selected). It does not start when the grid renders, so the HUD shows 0:00 until the player touches the board. The sync session still starts only on the first state-changing move, so a puzzle where the player only selected cells is discarded, not abandoned (see Session outcomes). A first interaction that lands while the player is away starts the clock paused.
 
 It pauses while:
 - the app is backgrounded; or
