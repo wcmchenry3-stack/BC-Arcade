@@ -4,6 +4,8 @@ import * as Sentry from "@sentry/react-native";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react-native";
 import { ThemeProvider } from "../../theme/ThemeContext";
 import SettingsScreen from "../SettingsScreen";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { STATUS_KEY, UPCOMING_KEY } from "../../game/daily_challenge/offlineCache";
 
 const mockClearAll = jest.fn().mockResolvedValue(undefined);
 jest.mock("../../game/_shared/gameEventClient", () => ({
@@ -220,6 +222,16 @@ describe("SettingsScreen", () => {
     );
     expect(mockCalls).not.toContain("forgetSyncedDisplayName");
     expect(mockCalls).not.toContain("clearSession");
+  });
+
+  it("Delete my data clears the Daily Challenge goals cached for offline play (#3228)", async () => {
+    await AsyncStorage.setItem(UPCOMING_KEY, "{}");
+    await AsyncStorage.setItem(STATUS_KEY, "{}");
+    await renderScreen();
+    await fireEvent.press(screen.getByTestId("delete-data-button"));
+    await fireEvent.press(screen.getByTestId("delete-data-confirm"));
+    await waitFor(async () => expect(await AsyncStorage.getItem(UPCOMING_KEY)).toBeNull());
+    expect(await AsyncStorage.getItem(STATUS_KEY)).toBeNull();
   });
 
   it("Delete my data forgets the stats screen's remembered /stats/me (#2635)", async () => {

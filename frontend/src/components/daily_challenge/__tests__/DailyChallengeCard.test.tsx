@@ -1,6 +1,7 @@
 import React from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import i18n from "i18next";
 import mahjong from "../../../i18n/locales/en/mahjong.json";
 import DailyChallengeCard from "../DailyChallengeCard";
@@ -105,7 +106,9 @@ afterEach(() => {
   __forceStoreBuildForTests(false);
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  // The hook now saves goals for offline play (#3228): start each test with none.
+  await AsyncStorage.clear();
   jest.clearAllMocks();
   focusListeners.clear();
   appStateListener = undefined;
@@ -527,5 +530,42 @@ describe("DailyChallengeCard — refetching", () => {
     expect(focusListeners.size).toBeGreaterThan(0);
     await unmount();
     expect(focusListeners.size).toBe(0);
+  });
+});
+
+describe("DailyChallengeCard — offline past the cached days (#3228)", () => {
+  const DAY_MS = 86_400_000;
+
+  // Goals were cached 4 days ago and the device has not connected since.
+  async function seedExhaustedCache() {
+    await AsyncStorage.setItem(
+      "daily_challenge_upcoming_v1",
+      JSON.stringify({
+        fetchedOn: "2000-01-01",
+        days: [{ ...challenge(), challengeId: "2000-01-01" }],
+      })
+    );
+    await AsyncStorage.setItem("last_connected_at_v1", String(Date.now() - 4 * DAY_MS));
+  }
+
+  it("shows the shared connect message instead of the plain offline one", async () => {
+    await seedExhaustedCache();
+    mockNetwork.isOnline = false;
+    const { findByTestId, queryByTestId, queryByText } = await renderCard();
+    expect(await findByTestId("daily-challenge-window-exhausted")).toHaveTextContent(
+      "It's been 3 days since you connected. Connect to the internet to get the latest puzzle."
+    );
+    expect(queryByText("Check your connection")).toBeNull();
+    expect(queryByTestId("daily-challenge-window-exhausted-streak")).toBeNull();
+  });
+
+  it("adds the streak line when the player has a streak", async () => {
+    await seedExhaustedCache();
+    await AsyncStorage.setItem("last_known_streak_v1", "5");
+    mockNetwork.isOnline = false;
+    const { findByTestId } = await renderCard();
+    expect(await findByTestId("daily-challenge-window-exhausted-streak")).toHaveTextContent(
+      "Connect to keep your streak going."
+    );
   });
 });

@@ -12,6 +12,8 @@
  *  - `GET /daily-challenge/today` — public, no session, always the FREE slate.
  *    Only a fallback for when `/status` fails, so the card can still name the
  *    day's goals (without progress).
+ *  - `GET /daily-challenge/upcoming` — public, the FREE slate for today and the
+ *    next 2 local days (#3227). Only read to cache goals for offline play (#3228).
  * A premium session's two responses can describe different goals, so the goal
  * list is never built from one and its completion read from the other.
  */
@@ -74,6 +76,10 @@ interface WireToday {
   readonly goals: readonly WireGoal[];
 }
 
+interface WireUpcoming {
+  readonly days: readonly WireToday[];
+}
+
 interface WireStatus {
   readonly challenge_id: string;
   readonly goals: readonly WireGoalStatus[];
@@ -88,6 +94,16 @@ function toGoal(goal: WireGoal, completed: boolean): ChallengeGoal {
       ? Math.round((goal.target / MS_PER_MINUTE) * 100) / 100
       : (goal.target ?? null);
   return { id: goal.id, gameSlug: goal.game_type, kind: goal.kind, target, completed };
+}
+
+/**
+ * A goal's `target` in the wire's units: the inverse of `toGoal`'s conversion
+ * (minutes back to milliseconds for `*duration_ms*` kinds). The offline progress
+ * check (#3228) compares it with a game's own measures, which are in wire units.
+ */
+export function wireTarget(goal: ChallengeGoal): number | null {
+  if (goal.target === null) return null;
+  return goal.kind.includes("duration_ms") ? Math.round(goal.target * MS_PER_MINUTE) : goal.target;
 }
 
 /** Throws on a body that is not the `/status` contract, so the caller can degrade to `/today`. */
@@ -112,6 +128,13 @@ function fromToday(today: WireToday): DailyChallenge {
   };
 }
 
+function fromUpcomingDay(day: WireToday): DailyChallenge {
+  if (typeof day?.challenge_id !== "string" || !Array.isArray(day.goals)) {
+    throw new Error("daily-challenge /upcoming day is not a challenge");
+  }
+  return { challengeId: day.challenge_id, goals: day.goals.map((goal) => toGoal(goal, false)) };
+}
+
 export const dailyChallengeApi = {
   /**
    * Today's challenge with the caller's progress, for the local day
@@ -131,5 +154,18 @@ export const dailyChallengeApi = {
       if (isNetworkError(e)) throw e;
       return fromToday(await request<WireToday>(`/daily-challenge/today${query}`));
     }
+  },
+
+  /**
+   * The free slate for today and the next 2 local days (#3227), every goal not
+   * done, in day order. Read only to cache goals for offline play (#3228); the
+   * card never shows these online. Throws on any failure or unexpected body.
+   */
+  getUpcoming: async (tzOffsetMinutes: number): Promise<DailyChallenge[]> => {
+    const body = await request<WireUpcoming>(
+      `/daily-challenge/upcoming?tz_offset_minutes=${tzOffsetMinutes}`
+    );
+    if (!Array.isArray(body?.days)) throw new Error("daily-challenge /upcoming has no days");
+    return body.days.map(fromUpcomingDay);
   },
 };

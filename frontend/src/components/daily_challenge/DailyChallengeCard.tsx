@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { LinearGradient } from "expo-linear-gradient";
@@ -8,6 +8,7 @@ import { GAME_TITLE_NAMESPACES, gameTitle } from "../../i18n/gameTitle";
 import { isGameVisible } from "../../entitlements/gameVisibility";
 import type { ChallengeGoal } from "../../game/daily_challenge/api";
 import { useDailyChallenge } from "../../game/daily_challenge/useDailyChallenge";
+import { getLastKnownStreak } from "../../game/_shared/lastKnownStreak";
 
 /**
  * Today's cross-game challenge, shown at the top of Home (#2392).
@@ -15,12 +16,51 @@ import { useDailyChallenge } from "../../game/daily_challenge/useDailyChallenge"
  * A decorative-adjacent surface: while loading it holds its space so the grid
  * doesn't jump, and a server-side failure renders nothing rather than an error
  * the player can't act on. Only being offline gets a message, because that one
- * they can fix.
+ * they can fix. Once the goals fetched ahead for offline play have run out
+ * (#3228), that message is the shared "connect to get the latest puzzle" one,
+ * plus a streak line when the player has a streak.
  */
+/** The shared 3-day offline message (#3226), plus the streak line when there is a streak. */
+function WindowExhaustedMessage() {
+  const { t } = useTranslation("common");
+  const { colors } = useTheme();
+  const [streakDays, setStreakDays] = useState(0);
+
+  // The remembered streak: the card is offline here, so /stats/me can't answer.
+  useEffect(() => {
+    let live = true;
+    void getLastKnownStreak().then((days) => {
+      if (live) setStreakDays(days ?? 0);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  return (
+    <>
+      <Text
+        style={[styles.note, styles.exhausted, { color: colors.text }]}
+        testID="daily-challenge-window-exhausted"
+      >
+        {t("common:offline.windowExhausted")}
+      </Text>
+      {streakDays > 0 ? (
+        <Text
+          style={[styles.note, { color: colors.textMuted }]}
+          testID="daily-challenge-window-exhausted-streak"
+        >
+          {t("common:offline.windowExhaustedStreak")}
+        </Text>
+      ) : null}
+    </>
+  );
+}
+
 export default function DailyChallengeCard() {
   const { t, i18n } = useTranslation(["daily_challenge", ...GAME_TITLE_NAMESPACES]);
   const { colors } = useTheme();
-  const { phase, challenge, refresh } = useDailyChallenge();
+  const { phase, challenge, windowExhausted, refresh } = useDailyChallenge();
 
   const gradient: [string, string] = [colors.tertiary, colors.secondary];
 
@@ -129,12 +169,18 @@ export default function DailyChallengeCard() {
           testID="daily-challenge-offline"
         >
           <Text style={[styles.title, { color: colors.text }]}>{t("daily_challenge:title")}</Text>
-          <Text style={[styles.offlineTitle, { color: colors.text }]}>
-            {t("daily_challenge:offline.title")}
-          </Text>
-          <Text style={[styles.note, { color: colors.textMuted }]}>
-            {t("daily_challenge:offline.body")}
-          </Text>
+          {windowExhausted ? (
+            <WindowExhaustedMessage />
+          ) : (
+            <>
+              <Text style={[styles.offlineTitle, { color: colors.text }]}>
+                {t("daily_challenge:offline.title")}
+              </Text>
+              <Text style={[styles.note, { color: colors.textMuted }]}>
+                {t("daily_challenge:offline.body")}
+              </Text>
+            </>
+          )}
         </Pressable>
       );
     }
@@ -235,6 +281,9 @@ const styles = StyleSheet.create({
     fontFamily: typography.body,
     fontSize: 12,
     lineHeight: 16,
+  },
+  exhausted: {
+    marginTop: 8,
   },
   offlineTitle: {
     fontFamily: typography.label,

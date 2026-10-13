@@ -70,11 +70,12 @@ AsyncStorage keys (`grep KEY frontend/src`): `game_session_id`; per-game saves a
 `blackjack_runs_v1`, `twenty48_best_score_v1`, `cascade_best_score`, `starswarm.*`, `yacht_*`, `daily_word_*`); offline
 queues `pending_games_v1` and the event store (sent to the API by `SyncWorker`; the old `pending_score_queue_v1` queue was removed in #2644 — only cleared now, by `legacyScoreQueue.ts`);
 `last_connected_at_v1` (epoch ms of the last 2xx API response, `lastConnected.ts`, #3226: drives the 3-day offline message) and `last_known_streak_v1` (last streak from `/stats/me`, `lastKnownStreak.ts`, #3226: shown on Home when offline); both local only;
+`daily_challenge_upcoming_v1` and `daily_challenge_status_v1` (Daily Challenge goals for today and the next 2 days from `/upcoming`, and today's `/status` goals with the goals already met, `daily_challenge/offlineCache.ts`, #3228: shown offline; local only, no personal data beyond which goals were met);
 `player_display_name*` (generated name cache and pending join/leave intent); `entitlement_token` / `entitlement_cached_at`
 (RS256 entitlement JWT from `GET /entitlements`, 24 h TTL / 7 day grace); preferences (`settings.soundMuted`, theme, language,
 `card_deck_id`, `gaming_app_fruit_set`); Hearts seat labels (`hearts_player_names`, typed by the player for the AI seats;
 local only, never sent). The in-memory feedback log buffer (last 200 `console.warn`/`console.error`, `SessionLogger.ts`).
-**Delete My Data** clears the install ID, pending games, the event store, the legacy score queue, the last-connected time, the last-known streak and the local leaderboard
+**Delete My Data** clears the install ID, pending games, the event store, the legacy score queue, the last-connected time, the last-known streak, the cached Daily Challenge goals and the local leaderboard
 name (`SettingsScreen.tsx:53-77`); local save files, stats and preferences stay until uninstall. Uninstalling removes all of it.
 
 ## 4. Diagnostics: Sentry (third-party processor)
