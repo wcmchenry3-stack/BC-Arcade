@@ -166,7 +166,7 @@ async def test_best_row_per_player_uses_the_receipt_key(client: TestClient) -> N
         completed_at=base + timedelta(hours=1),
         received_at=base + timedelta(hours=1),
     )
-    keep = await _insert(
+    await _insert(
         me,
         score=SCORE,
         completed_at=base - timedelta(days=300),
@@ -176,9 +176,9 @@ async def test_best_row_per_player_uses_the_receipt_key(client: TestClient) -> N
     assert _order(body, "Rcv Me", "Rcv Rival") == ["Rcv Me", "Rcv Rival"]
     mine = [e for e in body["entries"] if e["player_name"] == "Rcv Me"]
     assert len(mine) == 1
-    # The kept row is the earliest received, not the one with the oldest completed_at.
-    assert not mine[0]["completed_at"].startswith(str((base - timedelta(days=300)).year) + "-")
-    assert keep is not None
+    # The kept row is the earliest received (completed 9 days back), not the
+    # one with the oldest completed_at (300 days back).
+    assert mine[0]["completed_at"][:10] == (base - timedelta(days=9)).date().isoformat()
 
 
 async def test_me_rank_and_game_rank_agree_with_the_list(client: TestClient) -> None:
