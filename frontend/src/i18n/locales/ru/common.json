@@ -103,5 +103,7 @@
   "locked.heading": "Премиум-игра",
   "locked.body": "Для этой игры нужна подписка BC Arcade.",
   "locked.back": "Назад в лобби",
-  "locked.back_label": "Вернуться в лобби"
+  "locked.back_label": "Вернуться в лобби",
+  "offline.windowExhausted": "Вы не подключались уже 3 дня. Подключитесь к интернету, чтобы получить новую головоломку.",
+  "offline.windowExhaustedStreak": "Подключитесь, чтобы не прервать серию."
 }

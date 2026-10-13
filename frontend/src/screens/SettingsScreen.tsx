@@ -25,6 +25,8 @@ import { gameEventClient } from "../game/_shared/gameEventClient";
 import { useDeck } from "../game/_shared/decks/CardDeckContext";
 import { useSoundSettings } from "../game/_shared/SoundContext";
 import { clearSession } from "../game/_shared/session";
+import { clearLastConnected } from "../game/_shared/lastConnected";
+import { clearLastKnownStreak } from "../game/_shared/lastKnownStreak";
 import { clearLegacyScoreQueue } from "../game/_shared/legacyScoreQueue";
 import { pendingGamesStore } from "../game/_shared/pendingGamesStore";
 import { eventStore } from "../game/_shared/eventStore";
@@ -93,6 +95,8 @@ export default function SettingsScreen() {
         pendingGamesStore.clearAll(),
         eventStore.clearAll(),
         clearLegacyScoreQueue(),
+        clearLastConnected(),
+        clearLastKnownStreak(),
       ]);
       deleteSuccessToast.show();
     } catch (e) {

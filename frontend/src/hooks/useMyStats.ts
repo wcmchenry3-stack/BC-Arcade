@@ -3,6 +3,7 @@ import * as Sentry from "@sentry/react-native";
 import { statsApi, type StatsResponse } from "../api/stats";
 import { flushQueuedGames } from "../game/_shared/flushQueuedGames";
 import { ApiError, isNetworkError } from "../game/_shared/httpClient";
+import { saveLastKnownStreak } from "../game/_shared/lastKnownStreak";
 import { useNetwork } from "../game/_shared/NetworkContext";
 import { getOrCreateSessionId, getSessionIdIfAny } from "../game/_shared/session";
 import { withRetry } from "../game/_shared/withRetry";
@@ -82,6 +83,11 @@ export async function rememberMyStats(response: StatsResponse, token: MyStatsTok
     const [then, now] = await Promise.all([token.sessionId, getSessionIdIfAny()]);
     if (then != null && then === now && token.generation === generation) {
       cache = { sessionId: now, response };
+      // Kept across launches for Home's streak badge when offline (#3226). A
+      // server that predates the streak omits the field: nothing to keep.
+      if (typeof response.streak_days === "number") {
+        await saveLastKnownStreak(response.streak_days);
+      }
     }
   } catch {
     // Nothing remembered: the stats screen fetches for itself.

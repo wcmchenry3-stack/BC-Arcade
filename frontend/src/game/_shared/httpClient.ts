@@ -12,6 +12,7 @@
 import * as Sentry from "@sentry/react-native";
 import { CodedError } from "expo-modules-core";
 import { Platform } from "react-native";
+import { recordConnected } from "./lastConnected";
 import { getOrCreateSessionId } from "./session";
 
 /** Error subclass that preserves the HTTP status code from the API response. */
@@ -269,6 +270,8 @@ export function createGameClient(options: HttpClientOptions) {
         }
         throw new ApiError(String(msg), res.status, body);
       }
+      // Any 2xx proves the device reached the API (#3226).
+      void recordConnected();
       if (res.status === 204) {
         return undefined as unknown as T;
       }

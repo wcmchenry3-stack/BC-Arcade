@@ -101,5 +101,7 @@
   "locked.heading": "高级游戏",
   "locked.body": "此游戏需要 BC Arcade 订阅。",
   "locked.back": "返回大厅",
-  "locked.back_label": "返回大厅"
+  "locked.back_label": "返回大厅",
+  "offline.windowExhausted": "您已经3天没有联网了。请连接互联网以获取最新谜题。",
+  "offline.windowExhaustedStreak": "请联网以保持连续记录。"
 }
