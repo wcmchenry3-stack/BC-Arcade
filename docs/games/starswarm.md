@@ -1157,3 +1157,25 @@ survival-time data (`runStats.buddyLost` against `buddyLaunched`, and `buddyShot
 [balance simulation](#balance-simulation-2880) (#2880).
 
 Other active bugs/tuning work belongs in GitHub rather than a duplicated Known Issues list.
+
+## wave_completed event (backend)
+
+Star Swarm sends one `wave_completed` gameplay event per wave (epic #3244; event type seeded by
+migration `0034`). The backend validates it through the module's `validate_event` hook
+(`backend/starswarm/models.py`, `StarSwarmWaveStats`); the shared fixture is
+`backend/tests/fixtures/starswarm_wave_stats_v1.json`.
+
+- **Schema version.** `v` must be `1`. A breaking change to the shape bumps `v` and the backend
+  must learn the new version in the same release; an unknown `v` is dropped.
+- **Sparse wire form.** Zero counters are omitted; a missing key means 0. The stored `data` is the
+  wire form as sent (nothing is densified).
+- **Unknown keys.** Inside a keyed table (a new power-up type, say) they are kept and logged.
+  Unknown top-level or section keys are dropped.
+- **Size cap.** 4096 bytes of compact JSON (`json.dumps(data, separators=(",", ":"))`).
+- **Drop.** An oversize payload or a schema violation (wrong type, negative or oversized counter,
+  missing `v`/`wave`/required section, `wave` < 1, bad `outcome`) drops that event only. It is
+  logged and sent to Sentry (field paths and error types, never values); the rest of the batch is
+  stored and the response is 2xx, so the client's queue drains.
+- **Flag.** An inconsistent but well-formed event is kept with a top-level `_flags` list:
+  `score_mismatch` (`score.total` != sum of `score.pts`) or `powerup_collected_exceeds_spawned`.
+  A client-sent `_flags` is discarded. Readers that ignore unknown keys are unaffected.

@@ -5,13 +5,17 @@ A ``GameModuleBase`` subclass (``games/module_base.py``).
 
 from __future__ import annotations
 
+from typing import Any
+
 from games.board import SCORE_METRIC, BoardDefinition
 from games.module_base import GameModuleBase
 from starswarm.models import (
     DEFAULT_DIFFICULTY_TIER,
     DIFFICULTY_TIERS,
+    WAVE_COMPLETED,
     StarSwarmMetadata,
     StarSwarmResult,
+    validate_wave_completed,
 )
 from vocab import GameType
 
@@ -35,6 +39,13 @@ class StarSwarmModule(GameModuleBase):
     )
     # A run ends when the ship is lost: there is no win.
     has_winner = False
+
+    def validate_event(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        """``wave_completed`` is checked against the v1 schema (#3250); the
+        lifecycle events pass through."""
+        if name == WAVE_COMPLETED:
+            return validate_wave_completed(data)
+        return data
 
 
 module = StarSwarmModule()

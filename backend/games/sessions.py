@@ -190,6 +190,9 @@ async def append_events(
     valid_indices: list[int] = []
     rejected: set[str] = set()
     seen_indices: set[int] = set()
+    candidates: list[tuple[str, int, dict[str, Any]]] = []
+    type_name = await catalog_cache.game_type_name(session, game.game_type_id)
+    module = get_module(type_name) if type_name else None
 
     for ev in events:
         name = ev["event_type"]
@@ -201,20 +204,30 @@ async def append_events(
             # duplicate within the same batch → ignore second occurrence
             continue
         seen_indices.add(idx)
+        candidates.append((name, idx, ev["data"]))
+
+    if rejected:
+        raise GameServiceError(
+            400,
+            {"error": "unknown_event_type", "rejected": sorted(rejected)},
+        )
+
+    for name, idx, data in candidates:
+        if module is not None:
+            # The game's own check (#3250): None drops this event, not the batch.
+            # The client still gets a 2xx, so its queue row drains. Runs after
+            # the 400 above, so a refused batch reports nothing.
+            data = module.validate_event(name, data)
+            if data is None:
+                continue
         valid_indices.append(idx)
         valid_rows.append(
             {
                 "game_id": game.id,
                 "event_index": idx,
                 "event_type_id": event_type_map[name],
-                "data": ev["data"],
+                "data": data,
             }
-        )
-
-    if rejected:
-        raise GameServiceError(
-            400,
-            {"error": "unknown_event_type", "rejected": sorted(rejected)},
         )
 
     duplicates = 0
