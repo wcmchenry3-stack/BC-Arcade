@@ -1040,6 +1040,10 @@ and its type can't drift. `stats.ts`'s `TIER_ORDER` is `ENEMY_TIERS` itself.
 The values are wire vocabulary: the backend mirrors them (`StarSwarmWaveStats`, #3250), so renaming
 one is a schema change.
 
+Every number in a snapshot, and so on the wire, is an integer: `closeWave` rounds all ms and counter
+values once at close (the live accumulator keeps the fractional dt), because the backend takes
+`StrictInt` and drops the whole event otherwise.
+
 **Close points.** A wave closes exactly once, into a frozen snapshot (`closeWave(state, outcome)`)
 kept on `state.lastClosedWave`:
 

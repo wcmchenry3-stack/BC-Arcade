@@ -374,8 +374,13 @@ export function markWaveDev(state: StarSwarmState): StarSwarmState {
 // Closing
 // ---------------------------------------------------------------------------
 
-/** A deep copy, frozen all the way down. */
+/**
+ * A deep copy, frozen all the way down, with every number rounded to an integer: the engine's dt
+ * is fractional in the real frame loop, and the backend takes `StrictInt` (a fractional ms would
+ * drop the whole event). Null and booleans pass through.
+ */
 function frozenCopy<T>(v: T): T {
+  if (typeof v === "number") return Math.round(v) as T;
   if (v === null || typeof v !== "object") return v;
   const out: Record<string, unknown> = {};
   for (const [k, x] of Object.entries(v)) out[k] = frozenCopy(x);
@@ -399,7 +404,7 @@ export function closeWave(state: StarSwarmState, outcome: WaveOutcome): WaveStat
     outcome,
     dev: ws.dev,
     pacing: {
-      durationMs: Math.round(ws.pacing.durationMs),
+      durationMs: ws.pacing.durationMs,
       start: ws.pacing.start,
       end: loadoutOf(state.player),
       bonusLives: ws.pacing.bonusLives,
