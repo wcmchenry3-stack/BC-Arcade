@@ -182,6 +182,8 @@ Production, dev and local/CI data are separate:
 
 Alembic is the schema source of truth.
 
+The API's database role is meant to be DML-only (#3302): `backend/scripts/create_app_role.sql` creates `bc_app` with `SELECT`/`INSERT`/`UPDATE`/`DELETE` on the `public` tables and nothing else (no DDL, `TRUNCATE`, `REFERENCES` or `TRIGGER`, no writes to `alembic_version`), and Alembic migrates as the privileged role through `MIGRATION_DATABASE_URL`. Until the owner runs the cut-over in `docs/RENDER.md` ("App database role"), both still connect as the privileged role. Every new API connection sets a 5 s `statement_timeout` (as a startup parameter and again with an explicit `SET`, since the Supabase pooler may not forward startup parameters), and the app role carries the same value as a role-level default, so one slow query cannot hold the pool.
+
 Production safeguards include tests that reject:
 - wiring a `main` service to the Render dev database;
 - setting the entitlement dev override on production.
@@ -193,7 +195,7 @@ Operational topology is documented in `docs/RENDER.md` and `docs/ARCHITECTURE.md
 Current cross-cutting controls include:
 - Pydantic/FastAPI request validation;
 - SQLAlchemy query construction rather than string-built SQL;
-- request-body size caps;
+- request-body size caps (enforced for all framings, with or without `Content-Length`);
 - route rate limits (session-keyed and/or IP-keyed depending on the surface);
 - explicit CORS allowlists for browser access;
 - environment-held secrets;

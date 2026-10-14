@@ -496,6 +496,12 @@ jobs:
         run: >-
           python -m pytest tests/test_leaderboard_query_plans.py
           tests/test_leaderboard_indexes_migration.py -v -rs --no-cov
+      - name: Query timeouts and the DML-only app role (Postgres)
+        # Same scratch server: each test creates and drops its own database, and the
+        # role test its own uniquely named role (#3302).
+        env:
+          LEADERBOARD_EXPLAIN_PG_URL: ${{ env.PG_SERVER }}/postgres
+        run: python -m pytest tests/test_db_postgres_role.py -v -rs --no-cov
       - name: Create and migrate the suite database
         env:
           DATABASE_URL: ${{ env.PG_SERVER }}/bcarcade_test

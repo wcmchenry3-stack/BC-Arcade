@@ -39,6 +39,7 @@ import {
   isPlainRecord,
 } from "./pendingGamesStore";
 import { generateUUID } from "./uuid";
+import { onSentryThrottleReset } from "./sentryThrottle";
 import { assertOutcomeAllowed } from "./outcomeGuard";
 
 export interface EnqueueEventInput {
@@ -75,6 +76,14 @@ export interface GameEventClient {
    */
   markStarted(gameId: string): void;
   enqueueEvent(gameId: string, event: EnqueueEventInput): void;
+  /**
+   * Queue several events at once (#3274): they take contiguous `event_index`
+   * values, in the order given, and cost one eventStore write per priority
+   * tier they touch (`EventStore.enqueueMany`). GameRecorder saves a closed
+   * unit through this. Dropped, like `enqueueEvent`, for an unknown or
+   * completed game.
+   */
+  enqueueEvents(gameId: string, events: readonly EnqueueEventInput[]): void;
   /**
    * Record the outcome override a killed-process sweep should use for this
    * game in place of `abandoned` (#2682), from the game's registered progress
@@ -113,6 +122,13 @@ export interface GameEventClient {
   getQueueStats(): Promise<QueueStats>;
   clearAll(): Promise<void>;
 }
+
+// One breadcrumb per unknown game id per session (#3293); cleared with the Sentry throttle.
+const unknownGameBreadcrumbed = new Set<string>();
+// Hard cap: a long session that keeps hitting new unknown ids must not grow this Set
+// without bound. Once full, new ids are no longer breadcrumbed (breadcrumbs are best-effort).
+const UNKNOWN_GAME_BREADCRUMB_MAX = 500;
+onSentryThrottleReset(() => unknownGameBreadcrumbed.clear());
 
 export class GameEventClientImpl implements GameEventClient {
   /**
@@ -169,6 +185,50 @@ export class GameEventClientImpl implements GameEventClient {
 
   enqueueEvent(gameId: string, event: EnqueueEventInput): void {
     this.enqueueEventInternal(gameId, event);
+  }
+
+  enqueueEvents(gameId: string, events: readonly EnqueueEventInput[]): void {
+    if (events.length === 0) return;
+    // Reserved synchronously, one after another, so nothing can take an index
+    // between two of them: the batch's indexes are contiguous.
+    // `batch` runs its callback synchronously and writes the counter once.
+    const rows: Parameters<EventStore["enqueueMany"]>[0][number][] = [];
+    let known = true;
+    const counted = this.games.batch(() => {
+      for (const event of events) {
+        const idx = this.games.nextEventIndex(gameId);
+        if (idx === null) {
+          // Unknown or completed game: the first reservation already fails,
+          // so nothing was taken.
+          known = false;
+          return;
+        }
+        rows.push({
+          game_id: gameId,
+          event_index: idx,
+          event_type: event.type,
+          payload: event.data ?? {},
+        });
+      }
+    });
+    this.fireAndForget(counted, "enqueueEvents.counter");
+    if (!known) {
+      // As enqueueEvent: one breadcrumb per unknown game id per session (#3293).
+      if (
+        !unknownGameBreadcrumbed.has(gameId) &&
+        unknownGameBreadcrumbed.size < UNKNOWN_GAME_BREADCRUMB_MAX
+      ) {
+        unknownGameBreadcrumbed.add(gameId);
+        Sentry.addBreadcrumb({
+          category: "gameEventClient.dropped",
+          message: "enqueueEvents on unknown game",
+          data: { gameId },
+          level: "warning",
+        });
+      }
+      return;
+    }
+    this.fireAndForget(this.store.enqueueMany(rows), "enqueueEvents");
   }
 
   setProgressOutcome(
@@ -355,11 +415,18 @@ export class GameEventClientImpl implements GameEventClient {
       // Game not registered (or already completed) — treat as a drop and
       // breadcrumb for visibility. Not a bug log; bug logs are reserved for
       // caller-reported issues.
-      Sentry.addBreadcrumb({
-        category: "gameEventClient.dropped",
-        message: `enqueueEvent on unknown game ${gameId}`,
-        level: "warning",
-      });
+      if (
+        !unknownGameBreadcrumbed.has(gameId) &&
+        unknownGameBreadcrumbed.size < UNKNOWN_GAME_BREADCRUMB_MAX
+      ) {
+        unknownGameBreadcrumbed.add(gameId);
+        Sentry.addBreadcrumb({
+          category: "gameEventClient.dropped",
+          message: "enqueueEvent on unknown game",
+          data: { gameId },
+          level: "warning",
+        });
+      }
       return;
     }
     this.fireAndForget(

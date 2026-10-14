@@ -1171,7 +1171,9 @@ Details:
   today.
 - **Caps.** One wave's payload is at most `WAVE_STATS_MAX_BYTES` (4096, the backend's cap; the
   event queue's own per-row cap, `MAX_EVENT_PAYLOAD_BYTES`, is 8 KB), and a run's waves together
-  at most `WAVE_STATS_RUN_MAX_BYTES` (64 KB, the sum of their `JSON.stringify` lengths). A wave
+  at most `WAVE_STATS_RUN_MAX_BYTES` (64 KB, the sum of their `JSON.stringify` lengths). Both
+  are defined with the other recording caps in `game/_shared/eventQueueConfig.ts` (#3274; the
+  engine re-exports them). A wave
   over the per-wave cap is never sent; the rest go oldest first until the next one would pass the
   run cap, and no later wave is sent after that. The engine already keeps the list within these
   caps (`collectClosedWave`), so memory and the pause save stay bounded however long the run: a

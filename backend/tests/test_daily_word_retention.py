@@ -110,6 +110,34 @@ async def test_prune_is_a_no_op_on_an_empty_or_current_table() -> None:
     assert await _remaining() == ["today"]
 
 
+@pytest.mark.parametrize(("stale", "deletes"), [(7, 3), (6, 3), (2, 1)])
+async def test_prune_drains_the_backlog_in_bounded_batches(
+    monkeypatch: pytest.MonkeyPatch, stale: int, deletes: int
+) -> None:
+    """Each DELETE removes at most ``batch_size`` rows and the prune loops until a
+    short batch, so a large backlog never becomes one long statement (#3302)."""
+    for i in range(stale):
+        await _add(f"stale-{i}", NOW - RETENTION - timedelta(hours=i + 1))
+    await _add("fresh", NOW)
+
+    async with get_session_factory()() as db:
+        sizes: list[int] = []
+        real_execute = db.execute
+
+        async def counting_execute(statement, *args, **kwargs):
+            result = await real_execute(statement, *args, **kwargs)
+            sizes.append(result.rowcount)
+            return result
+
+        monkeypatch.setattr(db, "execute", counting_execute)
+        pruned = await prune_expired_progress(db, now=NOW, batch_size=3)
+
+    assert pruned == stale
+    assert len(sizes) == deletes
+    assert all(n <= 3 for n in sizes)
+    assert await _remaining() == ["fresh"]
+
+
 # Upper bound on a loop task ending once cancelled. asyncio.wait, not
 # wait_for: on timeout wait_for cancels the task again and waits for *that*,
 # so a task stuck under the cancel would still hang the run (#2667).

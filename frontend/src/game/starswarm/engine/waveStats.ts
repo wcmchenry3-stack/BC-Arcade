@@ -29,6 +29,7 @@ import type {
   StarSwarmState,
 } from "../types";
 import { waveScorePoints } from "../scoreLedger";
+import { WAVE_STATS_MAX_BYTES } from "../../_shared/eventQueueConfig";
 import {
   ASTEROID_KINDS,
   BUDDY_HIT_CAUSES,
@@ -55,9 +56,10 @@ import {
 /** The `wave_completed` schema version. */
 export const WAVE_STATS_VERSION = 1;
 /**
- * Serialized size cap for one `toWirePayload` (the backend drops anything larger).
+ * Serialized size cap for one `toWirePayload` (the backend drops anything larger). Defined
+ * with the other recording caps in `_shared/eventQueueConfig.ts` (#3274).
  */
-export const WAVE_STATS_MAX_BYTES = 4096;
+export { WAVE_STATS_MAX_BYTES };
 
 // ---------------------------------------------------------------------------
 // Types
