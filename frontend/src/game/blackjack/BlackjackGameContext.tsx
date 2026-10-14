@@ -21,6 +21,7 @@ import type { GameOutcome } from "../../api/vocab";
 import { TABLE_CONFIGS, TableConfig, tableForBetLimits } from "./tables";
 import { saveLastDifficulty } from "../_shared/lastDifficulty";
 import { isPremiumLevel } from "../../entitlements/premiumLevels";
+import { isGameVisible } from "../../entitlements/gameVisibility";
 
 /** Hint passed to apply() so the context can emit a typed player_action. */
 export type PlayerActionHint = "hit" | "stand" | "double" | "split" | null;
@@ -179,6 +180,11 @@ export function BlackjackGameProvider({ children }: { children: React.ReactNode 
       sessionEndedRef.current = false;
       setRecordedResult(null);
       setSessionStats(initialSessionStats(startingChips));
+      // The provider is mounted at the app root, so it runs in store builds
+      // where Blackjack is hidden and premium: the server would answer
+      // POST /games with 403 not_entitled on every launch (#3328). No hidden
+      // game opens a session; old orphans are closed by the startup sweep.
+      if (!isGameVisible("blackjack")) return;
       // A saved mid-game continues the session a killed app left open (#2654).
       if (resuming && syncResume()) {
         resumedRef.current = true;

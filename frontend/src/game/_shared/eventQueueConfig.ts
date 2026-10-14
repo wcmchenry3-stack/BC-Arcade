@@ -171,8 +171,8 @@ export const GAMEPLAY_HOLD_MAX_MS = 5 * 60 * 1000;
 // (`backend/games/replay_caps.py`) measure raw UTF-8. Recorded payloads should
 // therefore be ASCII (compact codes).
 //
-// This is the minimal shape the recorder reads; the per-game event registry
-// (#3278) and priority from it (#3276) build on it.
+// This is the shape the recorder reads. It is derived from the per-game event
+// registry (#3278, below); priority from the registry follows in #3276.
 
 /**
  * The `timeout` the recorder's idle save passes to React Native's
@@ -237,14 +237,198 @@ export const DEFAULT_RECORDING_CONFIG: GameRecordingConfig = {
   events: {},
 };
 
-/** Per-game recording caps. A game without an entry gets `DEFAULT_RECORDING_CONFIG`. */
-export const gameRecordingConfigs: Readonly<Partial<Record<GameType, GameRecordingConfig>>> = {
+// ---------------------------------------------------------------------------
+// Game event registry (#3278, epic #3273)
+// ---------------------------------------------------------------------------
+//
+// THE one table of every gameplay event type each game sends: its priority
+// tier, byte cap and whether it may be chunked. Three things read it:
+//
+//  - `gameRecordingConfigs` / `recordingConfigFor` (below) derive the
+//    recorder's caps from it. There is no second table.
+//  - the backend contract test (backend/tests/test_event_registry_contract.py)
+//    PARSES THIS FILE as text, so keep the literal shape: a game key, an
+//    `events` object, then `name: { tier: Priority.X, ... }` per type. Every
+//    registered type must be seeded in `event_types` (an Alembic migration)
+//    and be covered by the game module's `validate_event` or listed there as
+//    "stored as sent"; every seeded type must be registered here.
+//  - `tier` is each type's tier today. `logConfig.priorityForEvent` still
+//    reads the LIFECYCLE_EVENTS / MID_EVENTS sets above (#3276 moves it onto
+//    this table); the registry test holds the two equal until then.
+//
+// Adding an event type: docs/GAME-CONTRACT.md#adding-an-event-type.
+
+/** How one event type of a game is sent. */
+export interface EventTypeSpec {
+  /** Queue priority tier (see `Priority`). */
+  readonly tier: Priority;
+  /** Cap (JSON length) for one event; unset: the game's `defaultEventMaxBytes`. */
+  readonly maxBytes?: number;
+  /** Set when the type may be split: the array field spread across parts. Unset: never chunked. */
+  readonly chunkField?: string;
+  /** Schema version written as the envelope's `v`. Defaults to 1. */
+  readonly v?: number;
+}
+
+/** One game's event types, plus any override of the default recording caps. */
+export interface GameEventRegistryEntry {
+  /** Unset: `DEFAULT_RECORDING_CONFIG.sessionMaxBytes`. */
+  readonly sessionMaxBytes?: number;
+  /** Unset: `DEFAULT_RECORDING_CONFIG.defaultEventMaxBytes`. */
+  readonly defaultEventMaxBytes?: number;
+  readonly events: Readonly<Record<string, EventTypeSpec>>;
+}
+
+/** Every game's event types. Keyed by `GameType`, so a new game cannot ship without an entry. */
+export const gameEventRegistry = {
+  yacht: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      roll: { tier: Priority.GRANULAR },
+      score: { tier: Priority.MID },
+    },
+  },
+  twenty48: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      move: { tier: Priority.GRANULAR },
+    },
+  },
+  blackjack: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      bet_placed: { tier: Priority.MID },
+      hand_dealt: { tier: Priority.MID },
+      player_action: { tier: Priority.GRANULAR },
+      hand_resolved: { tier: Priority.LIFECYCLE },
+    },
+  },
+  cascade: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      drop: { tier: Priority.GRANULAR },
+      merge: { tier: Priority.MID },
+    },
+  },
+  solitaire: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+    },
+  },
+  hearts: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+    },
+  },
+  sudoku: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+    },
+  },
+  mahjong: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+    },
+  },
   starswarm: {
     sessionMaxBytes: WAVE_STATS_RUN_MAX_BYTES,
-    defaultEventMaxBytes: DEFAULT_RECORDING_CONFIG.defaultEventMaxBytes,
-    events: { wave_completed: { maxBytes: WAVE_STATS_MAX_BYTES } },
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+      wave_completed: { tier: Priority.GRANULAR, maxBytes: WAVE_STATS_MAX_BYTES },
+    },
   },
-};
+  freecell: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+    },
+  },
+  sort: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+    },
+  },
+  daily_word: {
+    events: {
+      game_started: { tier: Priority.LIFECYCLE },
+      game_ended: { tier: Priority.LIFECYCLE },
+    },
+  },
+} as const satisfies Readonly<Record<GameType, GameEventRegistryEntry>>;
+
+/**
+ * The event names `G` registers. Distributes over a union, so `EventTypeOf<GameType>`
+ * is every game's names. A call typed with it (`useGameSync(G).enqueue`,
+ * `GameRecorder<G>.record`) rejects a name the game does not register, which the
+ * backend would refuse as `unknown_event_type`.
+ */
+export type EventTypeOf<G extends GameType = GameType> = G extends GameType
+  ? Extract<keyof (typeof gameEventRegistry)[G]["events"], string>
+  : never;
+
+/**
+ * Every event name some game registers: for the layers that do not know the game.
+ * @internal Only the GameRecorder and type tests use it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
+ */
+export type RegisteredEventType = EventTypeOf;
+
+/**
+ * The recorder's caps for one registry entry, or undefined when it overrides
+ * nothing (the game then gets `DEFAULT_RECORDING_CONFIG` itself).
+ */
+function recordingConfigOf(entry: GameEventRegistryEntry): GameRecordingConfig | undefined {
+  const defaultEventMaxBytes =
+    entry.defaultEventMaxBytes ?? DEFAULT_RECORDING_CONFIG.defaultEventMaxBytes;
+  const events: Record<string, RecordedEventConfig> = {};
+  for (const [name, spec] of Object.entries(entry.events)) {
+    if (spec.maxBytes === undefined && spec.chunkField === undefined && spec.v === undefined) {
+      continue;
+    }
+    events[name] = {
+      maxBytes: spec.maxBytes ?? defaultEventMaxBytes,
+      ...(spec.chunkField !== undefined && { chunkField: spec.chunkField }),
+      ...(spec.v !== undefined && { v: spec.v }),
+    };
+  }
+  if (
+    entry.sessionMaxBytes === undefined &&
+    entry.defaultEventMaxBytes === undefined &&
+    Object.keys(events).length === 0
+  ) {
+    return undefined;
+  }
+  return {
+    sessionMaxBytes: entry.sessionMaxBytes ?? DEFAULT_RECORDING_CONFIG.sessionMaxBytes,
+    defaultEventMaxBytes,
+    events,
+  };
+}
+
+function deriveRecordingConfigs(): Partial<Record<GameType, GameRecordingConfig>> {
+  const out: Partial<Record<GameType, GameRecordingConfig>> = {};
+  for (const game of Object.keys(gameEventRegistry) as GameType[]) {
+    const config = recordingConfigOf(gameEventRegistry[game]);
+    if (config) out[game] = config;
+  }
+  return out;
+}
+
+/**
+ * Per-game recording caps, derived from `gameEventRegistry` (not a second
+ * table). A game that overrides nothing gets `DEFAULT_RECORDING_CONFIG`.
+ */
+export const gameRecordingConfigs: Readonly<Partial<Record<GameType, GameRecordingConfig>>> =
+  deriveRecordingConfigs();
 
 /**
  * @internal Only the GameRecorder uses it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).

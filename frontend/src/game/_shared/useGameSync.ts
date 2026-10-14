@@ -76,7 +76,7 @@ function cappedGap(from: number): number {
   return Math.min(Math.max(0, foregroundNow() - from), IDLE_GAP_CAP_MS);
 }
 
-export interface UseGameSyncReturn {
+export interface UseGameSyncReturn<G extends GameType = GameType> {
   /**
    * Start a new instrumented session. Call once after the game state is ready.
    * An open session it replaces is closed like `restart()` closes it.
@@ -102,7 +102,7 @@ export interface UseGameSyncReturn {
    */
   markStarted: () => void;
   /** Enqueue a gameplay event. No-ops if no session is open. */
-  enqueue: (event: EnqueueEventInput) => void;
+  enqueue: (event: EnqueueEventInput<G>) => void;
   /**
    * Enqueue several events with contiguous `event_index` values and one
    * storage write per priority tier (#3274) — how GameRecorder saves a unit.
@@ -112,7 +112,7 @@ export interface UseGameSyncReturn {
    * the recorder saves off the interaction path, so a save says nothing about
    * play.
    */
-  enqueueMany: (events: readonly EnqueueEventInput[]) => boolean;
+  enqueueMany: (events: readonly EnqueueEventInput<G>[]) => boolean;
   /**
    * Mark the session as complete. Prevents the unmount handler from firing
    * an abandoned event. Safe to call multiple times — only the first fires.
@@ -175,7 +175,7 @@ export interface UseGameSyncReturn {
   setProgressSnapshot: (getSnapshot: () => ProgressSnapshot) => void;
 }
 
-export function useGameSync(gameType: GameType): UseGameSyncReturn {
+export function useGameSync<G extends GameType>(gameType: G): UseGameSyncReturn<G> {
   const gameIdRef = useRef<string | null>(null);
   const completedRef = useRef(false);
   const startedRef = useRef(false);
@@ -381,7 +381,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
   }, [ping]);
 
   const enqueue = useCallback(
-    (event: EnqueueEventInput) => {
+    (event: EnqueueEventInput<G>) => {
       ping();
       const gid = gameIdRef.current;
       if (!gid || completedRef.current) return;
@@ -394,7 +394,7 @@ export function useGameSync(gameType: GameType): UseGameSyncReturn {
     [ping]
   );
 
-  const enqueueMany = useCallback((events: readonly EnqueueEventInput[]): boolean => {
+  const enqueueMany = useCallback((events: readonly EnqueueEventInput<G>[]): boolean => {
     const gid = gameIdRef.current;
     if (!gid || completedRef.current) return false;
     try {
