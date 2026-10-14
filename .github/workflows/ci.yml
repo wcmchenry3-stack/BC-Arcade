@@ -506,7 +506,7 @@ jobs:
           LEADERBOARD_EXPLAIN_PG_URL: ${{ env.PG_SERVER }}/postgres
         run: >-
           python -m pytest tests/test_leaderboard_query_plans.py
-          tests/test_leaderboard_indexes_migration.py -v -rs --no-cov
+          tests/test_leaderboard_indexes_migration.py tests/test_session_lock.py -v -rs --no-cov
       - name: Rate-limit counters on a shared store (Redis)
         # Only this step sets RATE_LIMIT_STORAGE_URL: it would otherwise point every
         # test's process-wide limiter at the shared store.

@@ -416,6 +416,20 @@ TUNABLES = (
     ("entitlement_token_ttl_hours", "ENTITLEMENT_TOKEN_TTL_HOURS", 24, "48", 48),
     ("stale_game_after_hours", "STALE_GAME_AFTER_HOURS", 24, "36", 36),
     ("max_result_bytes", "MAX_RESULT_BYTES", 8192, "16384", 16384),
+    ("max_event_data_bytes", "MAX_EVENT_DATA_BYTES", 8192, "4096", 4096),
+    ("max_game_metadata_bytes", "MAX_GAME_METADATA_BYTES", 16384, "4096", 4096),
+    ("max_bug_log_context_bytes", "MAX_BUG_LOG_CONTEXT_BYTES", 16384, "32768", 32768),
+    ("max_events_per_game", "MAX_EVENTS_PER_GAME", 5000, "100", 100),
+    ("max_event_bytes_per_game", "MAX_EVENT_BYTES_PER_GAME", 1_048_576, "2097152", 2097152),
+    ("max_bug_logs_per_session", "MAX_BUG_LOGS_PER_SESSION", 500, "10", 10),
+    (
+        "max_event_bytes_per_session_day",
+        "MAX_EVENT_BYTES_PER_SESSION_DAY",
+        16_777_216,
+        "33554432",
+        33554432,
+    ),
+    ("bug_log_retention_days", "BUG_LOG_RETENTION_DAYS", 90, "30", 30),
     ("streak_lookback_days", "STREAK_LOOKBACK_DAYS", 60, "30", 30),
     ("apple_replay_window_hours", "APPLE_REPLAY_WINDOW_HOURS", 48, "72", 72),
     ("db_ping_timeout_seconds", "DB_PING_TIMEOUT_SECONDS", 5.0, "2.5", 2.5),
@@ -425,10 +439,31 @@ TUNABLE_BOUNDS = (
     ("ENTITLEMENT_TOKEN_TTL_HOURS", "0", "169"),
     ("STALE_GAME_AFTER_HOURS", "0", "721"),
     ("MAX_RESULT_BYTES", "1023", "131073"),
+    ("MAX_EVENT_DATA_BYTES", "1023", "131073"),
+    ("MAX_BUG_LOG_CONTEXT_BYTES", "16383", "131073"),
+    ("MAX_GAME_METADATA_BYTES", "1023", "131073"),
+    ("MAX_EVENTS_PER_GAME", "0", "1000001"),
+    ("MAX_EVENT_BYTES_PER_GAME", "1023", "1073741825"),
+    ("MAX_EVENT_BYTES_PER_SESSION_DAY", "1023", "2147483648"),
+    ("MAX_BUG_LOGS_PER_SESSION", "0", "1000001"),
+    ("BUG_LOG_RETENTION_DAYS", "0", "3651"),
     ("STREAK_LOOKBACK_DAYS", "0", "366"),
     ("APPLE_REPLAY_WINDOW_HOURS", "0", "721"),
     ("DB_PING_TIMEOUT_SECONDS", "0", "60.5"),
 )
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"MAX_EVENT_DATA_BYTES": 4096, "MAX_EVENT_BYTES_PER_GAME": 2048},
+        {"MAX_EVENT_BYTES_PER_GAME": 2_000_000, "MAX_EVENT_BYTES_PER_SESSION_DAY": 1_000_000},
+    ],
+)
+def test_event_byte_caps_must_nest(values: dict) -> None:
+    """event data <= per game <= per session day (#3298)."""
+    with pytest.raises(ValueError, match="MAX_EVENT_DATA_BYTES <="):
+        Settings.isolated(**values)
 
 
 @pytest.mark.parametrize(("field", "env", "default", "_raw", "_value"), TUNABLES)

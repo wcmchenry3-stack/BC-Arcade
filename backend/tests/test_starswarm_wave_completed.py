@@ -294,7 +294,7 @@ async def test_a_mixed_batch_stores_the_valid_events_and_drops_the_bad_one(
         )
     assert r.status_code == 200, r.text
     # The dropped event is not counted as stored; the client still gets a 2xx.
-    assert r.json() == {"accepted": 2, "duplicates": 0, "rejected": []}
+    assert r.json() == {"accepted": 2, "duplicates": 0, "rejected": [], "dropped": 0}
     rows = await _stored(gid)
     assert [e.event_index for e in rows] == [0, 2]
     assert rows[0].data == _fixture()
