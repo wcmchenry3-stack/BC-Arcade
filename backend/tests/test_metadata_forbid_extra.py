@@ -25,7 +25,7 @@ APP_SENT: dict[str, list[dict]] = {
     "cascade": [{}],
     # useDailyWordSubmit.ts
     "daily_word": [{"puzzle_id": "2026-10-13", "language": "en"}],
-    # FreeCellScreen.tsx: syncStart() with no arguments.
+    # FreeCellScreen.tsx: syncStart(dealEventData(..)) is event data; no metadata.
     "freecell": [{}],
     # HeartsScreen.tsx
     "hearts": [{"ai_difficulty": "conservative"}],

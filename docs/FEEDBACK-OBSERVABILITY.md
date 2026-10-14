@@ -262,6 +262,67 @@ These logs are therefore **session-linked diagnostic data**, unlike player feedb
 
 For queue capacity, TTL, retry, and eviction rules, see [ARCHITECTURE.md](ARCHITECTURE.md) and `eventStore.ts`; do not duplicate that full queue contract here.
 
+## 5a. Sentry volume guardrails (#3293, epic #3273)
+
+Sentry quota is a cost (CLAUDE.md priority order). Recording and any outage
+around it must never flood Sentry or bury real errors.
+
+### Client
+
+- `frontend/src/game/_shared/sentryThrottle.ts` is the one client throttle.
+  `captureThrottledMessage(key, message, {level, tags, extra})` sends at most
+  one event per `key` per app session and at most 10 in any rolling hour
+  (`DEFAULT_MAX_PER_HOUR`; a sliding window of send timestamps). `error`/`fatal`
+  have their own 10/hour budget, so warnings cannot starve a new error. A drop bumps a counter, never an event; the count
+  rides as `extra.sentryThrottleDropped` on the next event that gets through;
+  it is lost if no event follows.
+  State is in memory only (no storage writes), so "per device per hour" means
+  per app session per hour; a relaunch resets it.
+- The `key` is also the fixed Sentry fingerprint (`[key]`). Message text is
+  fixed: **no game id, session id or other interpolated id**. Ids go in
+  `tags` (low cardinality) or `extra`. A source-scan test
+  (`sentryThrottle.test.ts`) fails if a `captureMessage` template
+  interpolates an id.
+- `SyncWorker` routes every `captureMessage` through it. Its keys are
+  `syncWorker.{post_games|events|complete|logs_bug}.<status>` (plus
+  `events.unknown_event_type`, `events.413_single`, `events.404`).
+  `syncWorker.logs_bug.<status>` is the bug-log upload path. `reportBug`
+  itself only adds the `reportBug.dropped` breadcrumb, which has no id; it is
+  left as is (breadcrumbs carry no quota cost).
+- Future work: the recorder (#3274) adopting `captureThrottledMessage`, and
+  session tags set once (#3277).
+- No Sentry event or breadcrumb per gameplay event. The unknown-game drop
+  breadcrumb in `gameEventClient` is fixed text, with the id in `data`, once per
+  game id per session.
+- Worst case from SyncWorker: two budgets (error/fatal and warning/info) x 10
+  = 20 events/hour/session, roughly 10 KB each, so about 200 KB/hour/session at
+  most (an estimate), bounded regardless of games played. The in-app cap only
+  bounds a single session; it is not a fleet-wide limit. The server-side dial
+  is Sentry's per-key rate limit and spike protection (#3311, see the owner
+  checklist below), which turn volume down without an app release.
+
+### Backend
+
+- `observability.report.report_rejected_result` (the replay-adjacent
+  completion-rejection report) is throttled per (game type, reason) to one
+  event per 300 s per process, with its existing fixed fingerprint. The next
+  event sent carries `suppressed: n`, the count held back since the last one. The
+  events-append path (`POST /games/{id}/events`) reports nothing to Sentry
+  (`unknown_event_type` is a 400 response only).
+
+### Sentry project settings (to be applied by the owner)
+
+Not changeable from code. Recommended settings for the frontend and backend
+Sentry projects (Project Settings):
+
+- [ ] Spike protection: on (Settings, Quotas / Spike Protection).
+- [ ] Per-project rate limit on the client keys (Client Keys, Configure):
+      start at 60 events/hour per key; tune after a week of data.
+- [ ] Quota alerts: notify at 50%, 80% and 100% of the monthly error quota
+      (Org Settings, Subscription / Quota notifications), to the owner email.
+- [ ] Verify afterwards: one issue per `syncWorker.*` fingerprint, none with a
+      game id in the title.
+
 ## 6. Triage distinction
 
 BC Arcade should not treat these channels as equivalent signals.
