@@ -602,6 +602,39 @@ describe("SolitaireScreen — sessions across games (#2690)", () => {
     await waitFor(() => expect(mockGetGameRank).toHaveBeenCalledWith(newId));
   });
 
+  // #3281: each deal's game_started seed is the one that board was dealt from.
+  it("each deal's game_started seed rebuilds the board that deal produced", async () => {
+    dealSpy = jest.spyOn(solitaireEngine, "dealGame"); // calls through
+    const api = await mount();
+    await chooseDraw1(api);
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("Draw 1 from stock, 24 cards remaining"));
+    });
+    await newGameFromMenu(api);
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("Draw 3"));
+    });
+    await act(async () => {
+      await fireEvent.press(api.getByLabelText("Draw 3 from stock, 24 cards remaining"));
+    });
+    expect(mockStartGame).toHaveBeenCalledTimes(2);
+    const dealt = dealSpy.mock.calls.map((args, i) => ({
+      args,
+      state: dealSpy!.mock.results[i]!.value as ReturnType<typeof solitaireEngine.dealGame>,
+    }));
+    expect(dealt).toHaveLength(2);
+    dealSpy.mockRestore();
+    for (const [call, drawMode] of [
+      [0, 1],
+      [1, 3],
+    ] as const) {
+      const data = mockStartGame.mock.calls[call]![2] as { seed: number; draw_mode: number };
+      expect(data.draw_mode).toBe(drawMode);
+      expect(dealt[call]!.args).toEqual([drawMode, data.seed]);
+      expect(solitaireEngine.dealGame(drawMode, data.seed)).toEqual(dealt[call]!.state);
+    }
+  });
+
   it("New Game before any move discards the untouched session", async () => {
     const api = await mount();
     await chooseDraw1(api); // game-1, never played

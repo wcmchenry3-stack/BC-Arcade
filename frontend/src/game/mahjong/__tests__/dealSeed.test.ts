@@ -9,7 +9,7 @@ import { createSeededRng } from "../../_shared/seededRng";
 afterEach(() => setRng(Math.random));
 
 describe("mahjong deal seed", () => {
-  const layoutIds = LAYOUTS.slice(0, 3).map((l) => l.id);
+  const layoutIds = LAYOUTS.map((l) => l.id);
 
   it.each(layoutIds)("re-deals the identical %s opening from the recorded event data", (id) => {
     setRng(createSeededRng(4321));
