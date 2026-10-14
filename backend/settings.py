@@ -46,7 +46,8 @@ not affect them: ``ENTITLEMENT_TOKEN_TTL_HOURS`` (``entitlements.service``),
 (``purchases.apple_notifications``, via ``purchases._common``) and
 ``DB_PING_TIMEOUT_SECONDS`` (``routes.health``). The replay-storage tunables (#3292)
 ``REPLAY_RETENTION_DAYS``, ``REPLAY_STORAGE_BUDGET_MB``, ``REPLAY_JOB_HOUR_UTC`` and
-``DATABASE_PLAN_MB`` are read the same way, by ``games.replay_storage``.
+``DATABASE_PLAN_MB`` are read the same way, by ``games.replay_storage``, and
+``REPLAY_RECORDING_ENABLED`` by ``games.sessions``.
 
 Secrets (``ADMIN_API_TOKEN``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
 ``GOOGLE_PLAY_SERVICE_ACCOUNT_JSON``) are ``SecretStr``, so a
@@ -177,8 +178,12 @@ class Settings(BaseSettings):
     # The database plan's size limit, in MB (Supabase Free: 500). The same job
     # reports the whole database against it, at the same thresholds.
     database_plan_mb: int = Field(default=500, alias="DATABASE_PLAN_MB", ge=1, le=10_000)
-    # The UTC hour (off peak) from which the daily prune and budget check run.
-    replay_job_hour_utc: int = Field(default=9, alias="REPLAY_JOB_HOUR_UTC", ge=0, le=23)
+    # The daily prune and budget check run off peak, in a 3-hour window starting at
+    # this UTC hour; at most 21, so the window never runs past midnight.
+    replay_job_hour_utc: int = Field(default=9, alias="REPLAY_JOB_HOUR_UTC", ge=0, le=21)
+    # The replay kill switch (games.sessions): false drops every replay event on
+    # write; lifecycle events are still stored. The no-release dial until #3279.
+    replay_recording_enabled: bool = Field(default=True, alias="REPLAY_RECORDING_ENABLED")
 
     @field_validator(
         "apple_bundle_id",

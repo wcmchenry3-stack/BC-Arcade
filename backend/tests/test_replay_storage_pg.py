@@ -179,3 +179,47 @@ async def test_append_events_caps_and_flags_on_postgres(
         assert game is not None
         assert game.game_metadata == {REPLAY_CAPPED_KEY: True}
     assert await _names(gid) == ["game_started", "roll", "roll"]
+
+
+_MOVE = {
+    "direction": "right",
+    "score_delta": 1024,
+    "score_after": 123_456,
+    "highest_tile_after": 2048,
+    "is_game_over": False,
+    "has_won": False,
+}
+
+
+async def test_the_estimate_matches_the_jsonb_text_length(games) -> None:
+    data = [_MOVE, {"name": "é", "n": [1, 2.5, None, True]}]
+    gid = await _game(games, "twenty48", [("move", d) for d in data])
+    async with get_session_factory()() as db:
+        stored = (
+            await db.execute(
+                select(func.octet_length(text("data::text")))
+                .where(GameEvent.game_id == gid)
+                .order_by(GameEvent.event_index)
+            )
+        ).scalars()
+        assert list(stored) == [replay_caps.json_bytes(d) for d in data]
+
+
+async def test_a_2000_move_2048_game_fits_across_ten_batches_on_postgres(games) -> None:
+    gid = await _game(games, "twenty48", [])
+    async with get_session_factory()() as db:
+        game = await db.get(Game, gid)
+        assert game is not None
+        sid = game.session_id
+    for batch in range(10):
+        events = [
+            {"event_index": i, "event_type": "move", "data": _MOVE}
+            for i in range(batch * 200, batch * 200 + 200)
+        ]
+        async with get_session_factory()() as db:
+            r = await sessions.append_events(db, game_id=gid, session_id=sid, events=events)
+        assert r.accepted == 200, batch
+    async with get_session_factory()() as db:
+        totals = await sessions.stored_event_totals(db, gid)
+    assert totals.replay_events == 2_000
+    assert totals.replay_bytes <= replay_caps.TWENTY48_CAP.max_bytes

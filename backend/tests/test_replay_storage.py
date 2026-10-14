@@ -67,7 +67,7 @@ def test_settings_defaults_and_bounds(monkeypatch: pytest.MonkeyPatch) -> None:
         ("REPLAY_RETENTION_DAYS", 0),
         ("REPLAY_STORAGE_BUDGET_MB", 0),
         ("REPLAY_STORAGE_BUDGET_MB", 501),
-        ("REPLAY_JOB_HOUR_UTC", 24),
+        ("REPLAY_JOB_HOUR_UTC", 22),
         ("DATABASE_PLAN_MB", 0),
         ("DATABASE_PLAN_MB", 10_001),
     ):
@@ -75,6 +75,8 @@ def test_settings_defaults_and_bounds(monkeypatch: pytest.MonkeyPatch) -> None:
             Settings.isolated(**{env: bad})
     assert Settings.isolated(REPLAY_STORAGE_BUDGET_MB=500).replay_storage_budget_mb == 500
     assert Settings.isolated(DATABASE_PLAN_MB=10_000).database_plan_mb == 10_000
+    # 21 + the 3-hour window ends at midnight; 22 would run past it.
+    assert Settings.isolated(REPLAY_JOB_HOUR_UTC=21).replay_job_hour_utc == 21
     monkeypatch.setenv("REPLAY_RETENTION_DAYS", "7")
     assert Settings().replay_retention_days == 7
 

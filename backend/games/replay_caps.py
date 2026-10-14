@@ -53,20 +53,38 @@ class ReplayCap:
 
 
 # 500 events of ~130 B JSON + 200 B overhead ≈ 160 KB. A 13-round Yacht game
-# (≤ 39 rolls + 13 scores) is ~16 KB; a long Cascade game (a few hundred
-# merges) fits too.
+# (≤ 39 rolls + 13 scores) is ~16 KB.
 DEFAULT_CAP = ReplayCap(max_events=500, max_bytes=160 * 1024)
 
 # Star Swarm: one ``wave_completed`` per wave, a run of ≤ 200 waves, at most
 # 64 KB of JSON per run on the device (#3251), plus 200 × 200 B overhead.
 STARSWARM_CAP = ReplayCap(max_events=200, max_bytes=64 * 1024 + 200 * ROW_OVERHEAD_BYTES)
 
+# The byte figures below are measured from the app's emitters, in the form the
+# database stores (``jsonb::text``: ", " and ": " separators, UTF-8), with
+# realistic worst-case values, plus ROW_OVERHEAD_BYTES per row.
+
 # owner decision #3317: 2048 sends one ``move`` per swipe; 2,000 events, and
-# bytes sized so 2,000 moves fit with ROW_OVERHEAD_BYTES: ~130 B JSON + 200 B
-# overhead = 2,000 × 330 B = 660,000 B. Lower it again once #3286 compacts moves.
-TWENTY48_CAP = ReplayCap(max_events=2_000, max_bytes=2_000 * 330)
+# bytes sized so 2,000 moves fit with ROW_OVERHEAD_BYTES. A move measures
+# <= 135 B (Twenty48Screen.tsx: direction, score_delta, score_after,
+# highest_tile_after, is_game_over, has_won) + 200 B overhead = 335 B; 345 B
+# leaves 10 B of margin for longer numbers: 2,000 x 345 B = 690,000 B.
+# Lower it again once #3286 compacts moves.
+TWENTY48_CAP = ReplayCap(max_events=2_000, max_bytes=2_000 * 345)
+
+# Blackjack (BlackjackGameContext.tsx), per hand: ``bet_placed`` <= 43 B,
+# ``hand_dealt`` <= 173 B (two cards and the dealer's up card), 1-3
+# ``player_action`` <= 61 B each (``hand_resolved`` is lifecycle). Worst case
+# 43 + 173 + 3 x 61 + 5 x 200 B overhead = 1,399 B and 5 events per hand; a
+# long session of 400 hands is 2,000 events and 400 x 1,400 B = 560,000 B.
+BLACKJACK_CAP = ReplayCap(max_events=2_000, max_bytes=400 * 1_400)
+
+# Cascade: provisional until the Cascade refactor (not measured; owner, #3318).
+CASCADE_CAP = ReplayCap(max_events=3_000, max_bytes=1_000 * 900)
 
 CAPS_BY_GAME_TYPE: dict[str, ReplayCap] = {
+    "blackjack": BLACKJACK_CAP,
+    "cascade": CASCADE_CAP,
     "starswarm": STARSWARM_CAP,
     "twenty48": TWENTY48_CAP,
 }
@@ -111,12 +129,13 @@ def cap_for(game_type: str | None) -> ReplayCap:
 
 
 def json_bytes(data: Any) -> int:
-    """Compact UTF-8 JSON size of ``data``: a cheap estimate of the stored JSON.
+    """UTF-8 JSON size of ``data`` with the default ``", "`` / ``": "`` separators.
 
-    Postgres' ``jsonb::text`` (what ``stored_event_totals`` measures) adds a
-    space after each separator, so stored rows read slightly larger.
+    That is the form Postgres' ``jsonb::text`` takes (what ``stored_event_totals``
+    measures with ``octet_length``), so a new event's estimate and the stored
+    row's size agree; jsonb reorders keys, which does not change the length.
     """
-    return len(json.dumps(data, ensure_ascii=False, separators=(",", ":"), default=str).encode())
+    return len(json.dumps(data, ensure_ascii=False, default=str).encode())
 
 
 def event_bytes(data: Any) -> int:

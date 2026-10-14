@@ -18,6 +18,8 @@ from db.models import EventType, Game, GameEntitlement, GameEvent
 from games import replay_caps, sessions
 from games.filters import REPLAY_CAPPED_KEY, SWEPT_KEY, without_server_flags
 from games.replay_caps import (
+    BLACKJACK_CAP,
+    CASCADE_CAP,
     DEFAULT_CAP,
     LIFECYCLE_CAP,
     LIFECYCLE_EVENT_NAMES,
@@ -34,6 +36,7 @@ from games.replay_caps import (
     json_bytes,
 )
 from observability import report
+from settings import Settings
 from tests._helpers import session_headers as _headers
 
 _EVENT_QUEUE_CONFIG = (
@@ -70,17 +73,18 @@ def test_lifecycle_events_are_not_replay_events() -> None:
 
 def test_cap_for_uses_the_override_or_the_default() -> None:
     assert cap_for("starswarm") == STARSWARM_CAP
-    assert cap_for("twenty48") == TWENTY48_CAP == ReplayCap(2_000, 660_000)
+    assert cap_for("twenty48") == TWENTY48_CAP == ReplayCap(2_000, 690_000)
+    assert cap_for("blackjack") == BLACKJACK_CAP == ReplayCap(2_000, 560_000)
+    assert cap_for("cascade") == CASCADE_CAP == ReplayCap(3_000, 900_000)
     assert cap_for("yacht") == DEFAULT_CAP
     assert cap_for(None) == DEFAULT_CAP
 
 
-def test_json_bytes_is_compact_utf8_json() -> None:
+def test_json_bytes_matches_the_jsonb_text_form() -> None:
+    """Default separators and raw UTF-8, as Postgres' ``jsonb::text`` prints it."""
     data = {"dice": [1, 2, 3], "name": "é"}
-    assert json_bytes(data) == len('{"dice":[1,2,3],"name":"é"}'.encode())
-    assert json_bytes(data) == len(
-        json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode()
-    )
+    assert json_bytes(data) == len('{"dice": [1, 2, 3], "name": "é"}'.encode())
+    assert json_bytes(data) == len(json.dumps(data, ensure_ascii=False).encode())
     assert json_bytes({}) == 2
 
 
@@ -115,7 +119,7 @@ def test_apply_cap_on_a_full_game_drops_the_whole_batch() -> None:
 
 
 def _wave(i: int) -> dict:
-    """~323 B: 200 of them stay inside the device's 64 KB per run."""
+    """~325 B: 200 of them stay inside the device's 64 KB per run."""
     return {"wave": i, "stats": "x" * 300}
 
 
@@ -123,53 +127,56 @@ def test_the_star_swarm_sample_run_is_inside_the_device_cap() -> None:
     assert sum(json_bytes(_wave(i)) for i in range(200)) <= 64 * 1024
 
 
+# 2048 (Twenty48Screen.tsx): one move per swipe.
+_MOVE = {
+    "direction": "right",
+    "score_delta": 1024,
+    "score_after": 123_456,
+    "highest_tile_after": 2048,
+    "is_game_over": False,
+    "has_won": False,
+}
+# Blackjack (BlackjackGameContext.tsx), worst case per hand: bet, deal, three actions.
+_CARD = {"suit": "♦", "rank": "10"}
+_HAND = [
+    {"amount": 1000, "chips_remaining": 123_456},
+    {"player_hand": [_CARD, _CARD], "dealer_up_card": _CARD, "is_player_blackjack": False},
+] + [{"action": "double", "hand_index": 0, "hand_value_after": 21}] * 3
+# Yacht (GameScreen.tsx): up to 3 rolls and one score per round.
+_ROUND = [
+    {"held": [True, False, True, False, True], "dice": [6, 6, 6, 2, 1], "rolls_used_after": 3}
+] * 3 + [
+    {
+        "category": "three_of_a_kind",
+        "value": 21,
+        "is_joker": False,
+        "available_alternatives": {k: 10 for k in ("ones", "twos", "chance", "yacht")},
+    }
+]
+
+
 @pytest.mark.parametrize(
     ("cap", "payloads"),
     [
-        # A 13-round Yacht game: up to 3 rolls and one score per round.
-        (
-            DEFAULT_CAP,
-            [
-                {
-                    "held": [True, False, True, False, True],
-                    "dice": [6, 6, 6, 2, 1],
-                    "rolls_used_after": 3,
-                }
-            ]
-            * 39
-            + [
-                {
-                    "category": "three_of_a_kind",
-                    "value": 21,
-                    "is_joker": False,
-                    "available_alternatives": {k: 10 for k in ("ones", "twos", "chance", "yacht")},
-                }
-            ]
-            * 13,
-        ),
-        # A Star Swarm run of 200 waves at the device's 64 KB per run.
+        (DEFAULT_CAP, _ROUND * 13),
         (STARSWARM_CAP, [_wave(i) for i in range(200)]),
-        # 2,000 2048 moves.
-        (
-            TWENTY48_CAP,
-            [
-                {
-                    "direction": "left",
-                    "score_delta": 1024,
-                    "score_after": 123_456,
-                    "highest_tile_after": 2048,
-                    "is_game_over": False,
-                    "has_won": False,
-                }
-            ]
-            * 2_000,
-        ),
+        (TWENTY48_CAP, [_MOVE] * 2_000),
+        (BLACKJACK_CAP, _HAND * 400),
     ],
-    ids=["yacht-13-rounds", "starswarm-200-waves", "twenty48-2000-moves"],
+    ids=[
+        "yacht-13-rounds",
+        "starswarm-200-waves",
+        "twenty48-2000-moves",
+        "blackjack-400-hands",
+    ],
 )
 def test_todays_normal_games_fit_their_caps(cap: ReplayCap, payloads: list[dict]) -> None:
     d = apply_cap(cap, 0, 0, [event_bytes(p) for p in payloads])
     assert d.dropped == 0, d
+
+
+def test_the_twenty48_figure_has_margin_over_a_measured_move() -> None:
+    assert json_bytes(_MOVE) + ROW_OVERHEAD_BYTES <= TWENTY48_CAP.max_bytes // 2_000 - 10
 
 
 def test_lifecycle_cap_counts_per_name_and_keeps_later_rows() -> None:
@@ -495,3 +502,84 @@ async def test_fail_safe_an_exhausted_cap_never_blocks_play_or_the_boards(
     r = client.get("/games/leaderboard/yacht?limit=100", headers=_headers(session_id))
     assert r.status_code == 200, r.text
     assert r.json()["me"]["value"] == 1_234
+
+
+async def test_a_2000_move_2048_game_fits_across_ten_batches(
+    client: TestClient, session_id: str, sent
+) -> None:
+    """New events are sized as stored rows are measured, so batches add up exactly."""
+    async with get_session_factory()() as db:
+        db.add(GameEntitlement(session_id=session_id, game_slug="twenty48"))
+        await db.commit()
+    r = client.post("/games", headers=_headers(session_id), json={"game_type": "twenty48"})
+    assert r.status_code == 200, r.text
+    gid = r.json()["id"]
+    for batch in range(10):
+        events = [
+            {"event_index": i, "event_type": "move", "data": _MOVE}
+            for i in range(batch * 200 + 1, batch * 200 + 201)
+        ]
+        assert _post(client, session_id, gid, events)["accepted"] == 200, batch
+    assert len(await _stored(gid)) == 2_000
+    assert sent == []
+    assert REPLAY_CAPPED_KEY not in await _metadata(gid)
+
+
+def _count_totals(monkeypatch: pytest.MonkeyPatch) -> list[uuid.UUID]:
+    calls: list[uuid.UUID] = []
+    real = sessions.stored_event_totals
+
+    async def spy(session, game_id):
+        calls.append(game_id)
+        return await real(session, game_id)
+
+    monkeypatch.setattr(sessions, "stored_event_totals", spy)
+    return calls
+
+
+async def test_a_capped_game_skips_the_totals_query_for_replay_only_batches(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
+) -> None:
+    _cap_yacht(monkeypatch, ReplayCap(max_events=1, max_bytes=1_000_000))
+    gid = _new_game(client, session_id)
+    _post(client, session_id, gid, [_roll(1), _roll(2)])  # flags the game
+    calls = _count_totals(monkeypatch)
+    assert _post(client, session_id, gid, [_roll(3)])["accepted"] == 0
+    assert calls == []
+    # A lifecycle row needs the totals for its own cap.
+    end = {"event_index": 4, "event_type": "game_ended", "data": {}}
+    assert _post(client, session_id, gid, [_roll(5), end])["accepted"] == 1
+    assert len(calls) == 1
+
+
+async def test_the_kill_switch_drops_replay_and_keeps_lifecycle(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
+) -> None:
+    monkeypatch.setattr(sessions, "_settings", Settings.isolated(REPLAY_RECORDING_ENABLED=False))
+    calls = _count_totals(monkeypatch)
+    gid = _new_game(client, session_id)
+    assert _post(client, session_id, gid, [_roll(1), _roll(2)]) == {
+        "accepted": 0,
+        "duplicates": 0,
+        "rejected": [],
+    }
+    assert calls == []  # nothing in the batch needed the totals
+    start = {"event_index": 0, "event_type": "game_started", "data": {}}
+    assert _post(client, session_id, gid, [start, _roll(3)])["accepted"] == 1
+    assert await _stored(gid) == [(0, "game_started")]
+    # Not a cap: nothing reported, the game not flagged.
+    assert sent == []
+    assert REPLAY_CAPPED_KEY not in await _metadata(gid)
+
+    # Switched back on, the same game records again.
+    monkeypatch.setattr(sessions, "_settings", Settings.isolated(REPLAY_RECORDING_ENABLED=True))
+    assert _post(client, session_id, gid, [_roll(4)])["accepted"] == 1
+    assert [n for _, n in await _stored(gid)] == ["game_started", "roll"]
+
+
+def test_the_kill_switch_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert Settings.isolated().replay_recording_enabled is True
+    monkeypatch.setenv("REPLAY_RECORDING_ENABLED", "false")
+    assert Settings().replay_recording_enabled is False
+    monkeypatch.setattr(sessions, "_settings", None)
+    assert sessions._replay_recording_enabled() is False

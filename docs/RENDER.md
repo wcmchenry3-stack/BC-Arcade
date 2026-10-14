@@ -73,7 +73,8 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `REPLAY_RETENTION_DAYS`    | optional; default `30` (days a replay event row is kept, #3292) | optional                                                  | Dashboard           |
 | `REPLAY_STORAGE_BUDGET_MB` | optional; default `250`, at most `500` (budget for `game_events`; the Supabase Free plan is 500 MB in all) | optional         | Dashboard           |
 | `DATABASE_PLAN_MB`         | optional; default `500` (the Supabase plan's database limit; raise it with the plan) | optional                              | Dashboard           |
-| `REPLAY_JOB_HOUR_UTC`      | optional; default `9` (start of the 3-hour off-peak UTC window for the daily prune and budget check) | optional             | Dashboard           |
+| `REPLAY_JOB_HOUR_UTC`      | optional; default `9`, 0–21 (start of the 3-hour off-peak UTC window for the daily prune and budget check) | optional       | Dashboard           |
+| `REPLAY_RECORDING_ENABLED` | optional; default `true`. **Set `false` to stop storing replay events at once** (lifecycle events, games and boards unaffected) | optional | Dashboard |
 
 The `APPLE_*` variables are **unset by default**: Apple verification stays
 dormant and `POST /purchases/apple` and `POST /purchases/apple/notifications`
@@ -88,7 +89,8 @@ voided-purchases / acknowledgement jobs are in
 [IAP.md §7.6 and §16](IAP.md#76-as-built-2787-server-side).
 Never put values in `render.yaml` or the repo.
 The `REPLAY_*` variables and `DATABASE_PLAN_MB` tune the replay-storage bounds (cost, availability):
-see [DATA-INVENTORY.md §2a](DATA-INVENTORY.md#2a-replay-storage-budget). Lowering
+see [DATA-INVENTORY.md §2a](DATA-INVENTORY.md#2a-replay-storage-budget). `REPLAY_RECORDING_ENABLED=false` is the kill switch: it stops new
+replay rows without an app release (the dial until #3279). Lowering
 `REPLAY_RETENTION_DAYS` is the quickest way to free space without an app release
 (it takes effect on the next daily run after a redeploy).
 

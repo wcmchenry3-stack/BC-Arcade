@@ -78,6 +78,8 @@ summaries, owner decision #3317) and `games` rows are never pruned.
 **Bytes per game: an estimate.** About **40 KB** stored for a fully recorded game (the issue's figure; #3275 will replace
 it with measured numbers). Each row costs more than its JSON: tuple header, the other columns and two index entries,
 measured on PG16 at about 230 B per row. The caps charge `ROW_OVERHEAD_BYTES` = 200 B per row on top of the JSON.
+A new event's JSON is sized as `jsonb::text` prints it (`", "` / `": "` separators, UTF-8), which on PG16 matches the
+stored row's `octet_length` byte for byte, so batches add up exactly.
 
 | Figure                                         | Value                                                                                       |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
@@ -85,9 +87,11 @@ measured on PG16 at about 230 B per row. The caps charge `ROW_OVERHEAD_BYTES` = 
 | Replay budget (`REPLAY_STORAGE_BUDGET_MB`)     | 250 MB ≈ 6,400 games at 40 KB                                                               |
 | Per-game replay cap (`DEFAULT_CAP`)            | 500 events or 160 KB (JSON + overhead). A 13-round Yacht game is ~16 KB                     |
 | Star Swarm (`STARSWARM_CAP`)                   | 200 events or 104 KB (the device's 64 KB per run + 200 × 200 B)                             |
-| 2048 (`TWENTY48_CAP`, owner decision #3317)    | 2,000 events or 660 KB (2,000 moves × ~330 B); to drop once #3286 compacts moves            |
+| 2048 (`TWENTY48_CAP`, owner decision #3317)    | 2,000 events or 690 KB (2,000 moves × 345 B: ≤ 135 B JSON + 200 B + margin); to drop once #3286 compacts moves |
+| Blackjack (`BLACKJACK_CAP`)                    | 2,000 events or 560 KB (400 hands × ≤ 1,400 B: bet, deal, 1–3 actions, with overhead)        |
+| Cascade (`CASCADE_CAP`)                        | 3,000 events or 900 KB, provisional until the Cascade refactor                              |
 | Lifecycle (`LIFECYCLE_CAP`)                    | ≤ 4 `game_started`, ≤ 4 `game_ended`, ≤ 1,000 `hand_resolved`, ≤ 384 KB per game           |
-| Steady state with 30-day retention             | games/day × 30 × 40 KB: the 250 MB budget holds ~210 fully recorded games/day (~50/day if every game hit the 160 KB cap; ~13/day of 2048 games at their cap) |
+| Steady state with 30-day retention             | games/day × 30 × 40 KB: the 250 MB budget holds ~210 fully recorded games/day (~50/day if every game hit the 160 KB cap; ~12/day of 2048 games, ~15/day of Blackjack games at their caps) |
 | Days of headroom (no retention)                | budget ÷ (games/day × 40 KB): 100 games/day = 4 MB/day → ~62 days to 250 MB                 |
 
 Keep-list and lifecycle rows are never pruned, so they grow with play; they are bounded per game by the caps above and in
@@ -127,8 +131,10 @@ run: one exception per attempt, at most hourly.
 
 **Dials without an app release** (env vars, take effect on redeploy; see [`RENDER.md`](RENDER.md)):
 `REPLAY_RETENTION_DAYS` (lower it to free space for new rows at the next run), `REPLAY_STORAGE_BUDGET_MB` (at most 500),
-`DATABASE_PLAN_MB`, `REPLAY_JOB_HOUR_UTC`. The per-game caps are code constants (a backend deploy). The server-side kill
-switch / sample rate arrives with #3279.
+`DATABASE_PLAN_MB`, `REPLAY_JOB_HOUR_UTC` (0–21, so the window ends by midnight), and the kill switch
+`REPLAY_RECORDING_ENABLED` (default `true`; `false` drops every replay event on write and still stores lifecycle
+events, with 2xx, no flag and no report). The kill switch is the no-release dial until the per-game-type
+`replay_enabled` / `replay_sample_rate` of #3279. The per-game caps are code constants (a backend deploy).
 
 ## 3. On-device data (never leaves the phone unless stated)
 

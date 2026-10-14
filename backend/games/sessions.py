@@ -65,6 +65,14 @@ def _max_result_bytes() -> int:
     return _settings.max_result_bytes
 
 
+def _replay_recording_enabled() -> bool:
+    """``REPLAY_RECORDING_ENABLED`` (settings.py), read lazily: the replay kill switch."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings.replay_recording_enabled
+
+
 _TS_WINDOW_LOW = timedelta(days=365)
 _TS_WINDOW_HIGH = timedelta(hours=24)
 
@@ -291,9 +299,10 @@ async def _within_caps(
     Replay rows past ``replay_caps.cap_for(type_name)`` are dropped, and the
     first drop flags the game (``REPLAY_CAPPED_KEY``) so every later replay
     row is dropped too. Lifecycle rows past ``LIFECYCLE_CAP`` are dropped
-    without flagging. Costs one aggregate query over the game's stored rows
-    (``stored_event_totals``), only when the batch has a new row. Drops are
-    reported, throttled per game type.
+    without flagging. With ``REPLAY_RECORDING_ENABLED`` false every replay row
+    is dropped (lifecycle rows still land). Costs one aggregate query over the
+    game's stored rows (``stored_event_totals``), only when a row in the batch
+    needs it. Cap drops are reported, throttled per game type.
     """
     if not rows:
         return rows, False
@@ -301,14 +310,26 @@ async def _within_caps(
     replay_pos = [
         p for p, r in enumerate(rows) if replay_caps.is_replay_event(names[r["event_type_id"]])
     ]
-    life_pos = [p for p in range(len(rows)) if p not in set(replay_pos)]
-    totals = await stored_event_totals(session, game.id)
+    replay_set = set(replay_pos)
+    life_pos = [p for p in range(len(rows)) if p not in replay_set]
     dropped: set[int] = set()
     flagged = False
+    recording = _replay_recording_enabled()
+    capped = is_replay_capped(game.game_metadata)
 
-    if replay_pos:
+    # Replay rows the kill switch or an earlier cut drops need no totals; skip
+    # the query when nothing else in the batch needs them either.
+    totals = replay_caps.StoredTotals()
+    if life_pos or (replay_pos and recording and not capped):
+        totals = await stored_event_totals(session, game.id)
+
+    if replay_pos and not recording:
+        # REPLAY_RECORDING_ENABLED=false: the no-release kill switch (until
+        # #3279). Not a cap: the game is not flagged, and nothing is reported.
+        dropped |= replay_set
+    elif replay_pos:
         cap = replay_caps.cap_for(type_name)
-        if is_replay_capped(game.game_metadata):
+        if capped:
             decision = replay_caps.truncated(len(replay_pos))
         else:
             decision = replay_caps.apply_cap(
@@ -318,9 +339,9 @@ async def _within_caps(
                 (replay_caps.event_bytes(rows[p]["data"]) for p in replay_pos),
             )
         if decision.dropped:
-            dropped |= set(replay_pos) - {replay_pos[k] for k in decision.kept}
+            dropped |= replay_set - {replay_pos[k] for k in decision.kept}
             replay_caps.report_cap_reached(game_type, decision, cap)
-            if not is_replay_capped(game.game_metadata):
+            if not capped:
                 # Reassign (the JSONB column is not a MutableDict). The row is
                 # held FOR UPDATE, so no concurrent batch or completion races it.
                 game.game_metadata = {**(game.game_metadata or {}), REPLAY_CAPPED_KEY: True}
