@@ -147,7 +147,9 @@ just stop being used.
   Redis-compatible store (for example a Render Key Value instance). Set it in the
   dashboard, not `render.yaml`, since it can hold a password. When set, counters
   survive restarts and are shared by every instance. Unset or blank keeps
-  in-memory counters. No store is provisioned today.
+  in-memory counters. No store is provisioned today. **Before setting it, land
+  #3329**: the purchase routes' per-store-account limit calls the limiter directly
+  and does not yet fall back to memory, so a store outage would 500 those routes.
 - **Store down.** The limiter never fails a request because of the store. While
   it is unreachable (1 s connect/read timeout) limits are enforced in memory, and
   it switches back once the store answers. Counters restart empty at each switch.
