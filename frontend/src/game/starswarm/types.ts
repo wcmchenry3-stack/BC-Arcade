@@ -6,6 +6,7 @@ import type {
   POWERUP_TYPES,
 } from "./engine/registries";
 import type { WaveStats, WaveStatsSnapshot, WaveStatsWire } from "./engine/waveStats";
+import type { ClosedWavesOverflow } from "./engine/closedWaves";
 
 /**
  * Enemy tiers, lightest to heaviest: Grunt → Elite → Guardian → Carrier. #2843: the escort tier
@@ -504,6 +505,8 @@ export interface StarSwarmState {
    * `wave_completed` events at game over.
    */
   readonly closedWaves: readonly WaveStatsWire[];
+  /** #3251: the closed waves left off `closedWaves` by its caps (see engine/closedWaves.ts). */
+  readonly closedWavesOverflow: ClosedWavesOverflow;
 }
 
 /** Input snapshot consumed by each `tick` call. */

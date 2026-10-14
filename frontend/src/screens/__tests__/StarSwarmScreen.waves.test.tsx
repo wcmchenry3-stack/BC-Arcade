@@ -1,7 +1,8 @@
 /**
  * #3251: at game over the screen sends the run's closed waves (`state.closedWaves`, collected by
  * the engine and kept by the paused-run save) as `wave_completed` events — once per run, in wave
- * order, ahead of `game_ended`, within the payload caps. Nothing is sent during play. The canvas
+ * order, ahead of `game_ended`, within the payload caps — or, for a run abandoned for a new one,
+ * ahead of the abandon, on the old run's session. Nothing is sent during play. The canvas
  * is the shared stand-in (helpers/starSwarmMocks): `canvas.state` is what its getState() returns.
  */
 import { act, fireEvent, screen } from "@testing-library/react-native";
@@ -21,7 +22,7 @@ import {
   clearSavedPausedState,
   savePausedState,
 } from "../../game/starswarm/pauseStore";
-import { WAVE_STATS_RUN_MAX_BYTES } from "../../game/starswarm/waveEvents";
+import { WAVE_STATS_RUN_MAX_BYTES } from "../../game/starswarm/engine/closedWaves";
 import type { StarSwarmState } from "../../game/starswarm/types";
 import { resetDisplayNameCacheForTests } from "../../game/_shared/displayName";
 import { canvas, resetHarness } from "./helpers/starSwarmMocks";
@@ -43,12 +44,7 @@ jest.mock("../../hooks/useStarSwarmAudio", () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require("./helpers/starSwarmMocks").audioModule()
 );
-jest.mock("../../components/starswarm/Controls", () => ({
-  __esModule: true,
-  default: () => null,
-  hapticPlayerHit: jest.fn(),
-  hapticWaveClear: jest.fn(),
-}));
+// Controls is real: the pause overlay's NEW GAME is one of the ways a run is abandoned.
 jest.mock("../../game/starswarm/telemetry", () => ({ reportRunStats: jest.fn() }));
 jest.mock("../../api/stats", () =>
   mockScreenDeps().mockStatsApi({
@@ -225,6 +221,95 @@ describe("StarSwarmScreen — wave_completed events (#3251)", () => {
     });
     // the run is still recorded
     expect(mockCompleteGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts the waves the engine already left off in the report", async () => {
+    await renderRun();
+    canvas.state = {
+      ...engineWith([closed(1), closed(2, "died")]),
+      closedWavesOverflow: { waves: 3, bytes: 9000, largestBytes: 3500, full: true },
+    };
+    await gameOver();
+    expect(sentWaves()).toHaveLength(2);
+    const both = JSON.stringify(closed(1)).length + JSON.stringify(closed(2, "died")).length;
+    expect(captureMessage).toHaveBeenCalledTimes(1);
+    expect(captureMessage.mock.calls[0]![1].extra).toEqual({
+      collected: 5,
+      sent: 2,
+      dropped: 3,
+      totalBytes: 9000 + both,
+      sentBytes: both,
+      largestWaveBytes: 3500,
+    });
+  });
+
+  it("a failure while sending never blocks recording the run", async () => {
+    await renderRun();
+    const broken = engineWith([closed(1)]);
+    Object.defineProperty(broken, "closedWaves", {
+      get: () => {
+        throw new Error("state broke");
+      },
+    });
+    canvas.state = broken;
+    await gameOver();
+    expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      tags: { subsystem: "starswarm.waveStats" },
+    });
+    expect(mockCompleteGame).toHaveBeenCalledWith(
+      "run-1",
+      expect.objectContaining({ outcome: "completed" }),
+      expect.anything()
+    );
+  });
+
+  it("a run abandoned for a new one sends its closed waves on its own session, before the abandon", async () => {
+    await renderRun();
+    canvas.state = engineWith([closed(1), closed(2)], false);
+    mockStartGame.mockReturnValue("run-2");
+    // pause → NEW GAME → the picker's Start: the new run abandons the old
+    await act(async () => {
+      await fireEvent.press(screen.getByRole("button", { name: "Pause game" }));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByText("NEW GAME"));
+    });
+    expect(sentWaves()).toEqual([]); // the picker alone ends nothing
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId("starswarm-start-game"));
+    });
+
+    expect(sentWaves()).toEqual([
+      ["run-1", 1, "cleared"],
+      ["run-1", 2, "cleared"],
+    ]);
+    const abandon = mockCompleteGame.mock.calls.findIndex(
+      ([gid, summary]) => gid === "run-1" && summary.outcome === "abandoned"
+    );
+    expect(abandon).toBeGreaterThanOrEqual(0);
+    const lastEnqueue = Math.max(...mockEnqueueEvent.mock.invocationCallOrder);
+    expect(lastEnqueue).toBeLessThan(mockCompleteGame.mock.invocationCallOrder[abandon]!);
+
+    // the new run sends its own at its end, and the old ones aren't sent again
+    canvas.state = engineWith([closed(1, "died")]);
+    await gameOver();
+    expect(sentWaves()).toEqual([
+      ["run-1", 1, "cleared"],
+      ["run-1", 2, "cleared"],
+      ["run-2", 1, "died"],
+    ]);
+  });
+
+  it("a run that already ended doesn't send again when the next one starts", async () => {
+    await renderRun();
+    canvas.state = engineWith([closed(1), closed(2, "died")]);
+    await gameOver();
+    expect(sentWaves()).toHaveLength(2);
+    mockStartGame.mockReturnValue("run-2");
+    await act(async () => {
+      await fireEvent.press(screen.getByText("Play Again"));
+    });
+    expect(sentWaves()).toHaveLength(2);
   });
 
   it("drops a wave over the per-wave cap, sends the others, and reports it", async () => {

@@ -1,9 +1,10 @@
 /**
  * Star Swarm — sending a run's closed waves as `wave_completed` game events (#3251, epic #3244).
  *
- * The engine collects every closed wave on `state.closedWaves`, in wire form (engine/wave.ts),
- * and the paused-run save keeps them (saveShape.ts). Nothing goes out during play: at game over
- * the screen queues them all at once, in wave order, ahead of `game_ended`, so SyncWorker sends
+ * The engine collects every closed wave on `state.closedWaves`, in wire form
+ * (engine/closedWaves.ts), and the paused-run save keeps them (saveShape.ts). Nothing goes out
+ * during play: when the run ends — game over, ahead of `game_ended`, or abandoned for a new run,
+ * ahead of the abandon — the screen queues them all at once, in wave order, so SyncWorker sends
  * them with the run's other events in one batch. This module holds the pure pieces:
  *
  *  - `devRevert` — the dev panel's infinite lives undoes a lost life (and the GameOver it
@@ -11,20 +12,24 @@
  *    the rest of the wave (its later `cleared` close), are flagged `dev`: sent, but filterable.
  *  - `planWaveEvents` — which waves fit the caps: none over `WAVE_STATS_MAX_BYTES` (the backend
  *    drops those), and the run's total within `WAVE_STATS_RUN_MAX_BYTES`, sent oldest first.
- *    What doesn't fit is dropped and reported, by counts and sizes only.
+ *    What doesn't fit (here, or already in the engine's overflow count) is reported, by counts
+ *    and sizes only.
  *
  * See docs/games/starswarm.md#sending-wave_completed.
  */
 import { WAVE_STATS_MAX_BYTES, markWaveDev, type WaveStatsWire } from "./engine/waveStats";
+import {
+  NO_OVERFLOW,
+  WAVE_STATS_RUN_MAX_BYTES,
+  wireBytes,
+  type ClosedWavesOverflow,
+} from "./engine/closedWaves";
 import { logConfig } from "../_shared/eventQueueConfig";
 import type { EnqueueEventInput } from "../_shared/gameEventClient";
 import type { StarSwarmState } from "./types";
 
 /** The game event type the backend accepts for a closed wave (#3250). */
 export const WAVE_COMPLETED_EVENT = "wave_completed";
-
-/** The most a run's `wave_completed` payloads add up to (the sum of their JSON lengths). */
-export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
 
 /**
  * `reverted` is `next` with the canvas's infinite-lives revert applied. Flags the current wave
@@ -63,17 +68,24 @@ export interface WaveEventPlan {
   readonly report: WaveDropReport | null;
 }
 
-/** The `wave_completed` events for a run's closed waves, within the per-wave and run caps. */
-export function planWaveEvents(waves: readonly WaveStatsWire[]): WaveEventPlan {
-  // the wire payload is ASCII (keys and registry values), so characters are bytes
+/**
+ * The `wave_completed` events for a run's closed waves, within the per-wave and run caps. The
+ * engine already keeps the list within them (engine/closedWaves.ts) and counts what it left off
+ * in `overflow`; this applies the caps again (with the event queue's own per-row cap too) and
+ * reports both together.
+ */
+export function planWaveEvents(
+  waves: readonly WaveStatsWire[],
+  overflow: ClosedWavesOverflow = NO_OVERFLOW
+): WaveEventPlan {
   const waveCap = Math.min(WAVE_STATS_MAX_BYTES, logConfig.MAX_EVENT_PAYLOAD_BYTES);
   const events: EnqueueEventInput[] = [];
   let sentBytes = 0;
-  let totalBytes = 0;
-  let largestWaveBytes = 0;
+  let totalBytes = overflow.bytes;
+  let largestWaveBytes = overflow.largestBytes;
   let full = false;
   for (const wave of waves) {
-    const bytes = JSON.stringify(wave).length;
+    const bytes = wireBytes(wave);
     totalBytes += bytes;
     largestWaveBytes = Math.max(largestWaveBytes, bytes);
     if (full || bytes > waveCap) continue;
@@ -85,12 +97,13 @@ export function planWaveEvents(waves: readonly WaveStatsWire[]): WaveEventPlan {
     sentBytes += bytes;
     events.push({ type: WAVE_COMPLETED_EVENT, data: wave as unknown as Record<string, unknown> });
   }
-  const dropped = waves.length - events.length;
+  const collected = waves.length + overflow.waves;
+  const dropped = collected - events.length;
   const report =
     dropped === 0
       ? null
       : {
-          collected: waves.length,
+          collected,
           sent: events.length,
           dropped,
           totalBytes,

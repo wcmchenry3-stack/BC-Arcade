@@ -11,12 +11,8 @@ import {
   toWirePayload,
 } from "../engine";
 import type { WaveStatsSnapshot, WaveStatsWire } from "../engine";
-import {
-  WAVE_COMPLETED_EVENT,
-  WAVE_STATS_RUN_MAX_BYTES,
-  devRevert,
-  planWaveEvents,
-} from "../waveEvents";
+import { WAVE_COMPLETED_EVENT, devRevert, planWaveEvents } from "../waveEvents";
+import { WAVE_STATS_RUN_MAX_BYTES } from "../engine/closedWaves";
 import type { StarSwarmState } from "../types";
 import { killShip, untilPlaying } from "./helpers/engineFixtures";
 
@@ -137,6 +133,26 @@ describe("planWaveEvents (payload caps)", () => {
     const { events, report } = planWaveEvents(waves);
     expect(events).toHaveLength(fit);
     expect(report).toMatchObject({ sent: fit, dropped: 2 });
+  });
+
+  it("adds the waves the engine left off to the report", () => {
+    const waves = [wave(5, 1), wave(5, 2)];
+    const sent = bytesOf(waves[0]!) + bytesOf(waves[1]!);
+    const { events, report } = planWaveEvents(waves, {
+      waves: 4,
+      bytes: 12_000,
+      largestBytes: 3_900,
+      full: true,
+    });
+    expect(events).toHaveLength(2);
+    expect(report).toEqual({
+      collected: 6,
+      sent: 2,
+      dropped: 4,
+      totalBytes: 12_000 + sent,
+      sentBytes: sent,
+      largestWaveBytes: 3_900,
+    });
   });
 
   it("never sends a wave over the per-wave cap, and reports it", () => {

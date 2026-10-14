@@ -9,8 +9,8 @@
  *      its engine counters (`pauseStore`); a saved run restores before the game mounts.
  *   3. Instrumentation — `useGameSync("starswarm")`, one session per run; a restored run
  *      resumes the killed process's session (#2654); the run is the leaderboard entry (#2626);
- *      at game over the run's closed waves go out as `wave_completed` events, ahead of
- *      `game_ended` (#3251).
+ *      when a run ends (game over, or abandoned for a new run) its closed waves go out as
+ *      `wave_completed` events, ahead of `game_ended` or the abandon (#3251).
  *   4. Result + leaderboard (#2516, #2633) — the shared GameResultModal, ranked on the tier
  *      board via `useGameLeaderboard`.
  *   5. Audio and screen-reader cues (#2484–#2490) — `useStarSwarmAudio` and spoken events.
@@ -266,23 +266,29 @@ function StarSwarmGame() {
 
   /**
    * #3251: queues the run's closed waves (the engine collected them, the paused-run save kept
-   * them) as `wave_completed` events, oldest first, within the payload caps. Nothing is sent
-   * during play. Waves left out are reported once, by counts and sizes.
+   * them) as `wave_completed` events on the run's session, oldest first, within the payload caps
+   * — once per run, when it ends: at game over, or when a new run abandons it. Nothing is sent
+   * during play, and the wave in progress (never closed) isn't sent. Waves left out are reported
+   * once, by counts and sizes. Isolated: a failure here never blocks recording the run.
    */
   const sendClosedWaves = useCallback(() => {
-    if (wavesSentRef.current) return;
-    const state = canvasRef.current?.getState();
-    if (!state) return;
-    wavesSentRef.current = true;
-    // `?? []`: never trust the shape of what the canvas hands back for an I/O path
-    const { events, report } = planWaveEvents(state.closedWaves ?? []);
-    for (const event of events) syncEnqueue(event);
-    if (report) {
-      Sentry.captureMessage("starswarm: wave_completed events over the payload caps not sent", {
-        level: "warning",
-        tags: { subsystem: "starswarm.waveStats" },
-        extra: { ...report },
-      });
+    try {
+      if (wavesSentRef.current) return;
+      const state = canvasRef.current?.getState();
+      if (!state) return;
+      wavesSentRef.current = true;
+      // `?? []`: never trust the shape of what the canvas hands back for an I/O path
+      const { events, report } = planWaveEvents(state.closedWaves ?? [], state.closedWavesOverflow);
+      for (const event of events) syncEnqueue(event);
+      if (report) {
+        Sentry.captureMessage("starswarm: wave_completed events over the payload caps not sent", {
+          level: "warning",
+          tags: { subsystem: "starswarm.waveStats" },
+          extra: { ...report },
+        });
+      }
+    } catch (e) {
+      Sentry.captureException(e, { tags: { subsystem: "starswarm.waveStats" } });
     }
   }, [syncEnqueue]);
 
@@ -470,13 +476,16 @@ function StarSwarmGame() {
       // with the panel's own New Game, now that internal testers can reach it. A picker or Play
       // Again start (no devOpts) clears the last panel opts.
       lastDevOptsRef.current = DEV_TOOLS ? devOpts : undefined;
+      // #3251: a run this abandons sends its closed waves on its own session, before the
+      // restart abandons that session (a run that already ended has sent them: a no-op)
+      sendClosedWaves();
       clearSavedPausedState();
       savedPauseRef.current = null;
       openRunSession(tier);
       scoreRef.current = 0;
       dispatchRun({ type: "START" });
     },
-    [openRunSession]
+    [openRunSession, sendClosedWaves]
   );
 
   // The picker's Start and the card's Play Again: same tier, a clean run.

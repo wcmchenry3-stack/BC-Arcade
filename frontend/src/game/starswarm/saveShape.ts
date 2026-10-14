@@ -36,9 +36,12 @@ import {
   emptyWaveStats,
   isWaveStats,
   loadoutOf,
+  type WaveRout,
   type WaveStatsWire,
 } from "./engine/waveStats";
 import { DIFFICULTY_TIERS } from "./engine/tuning";
+import { HIT_CAUSES } from "./engine/registries";
+import { NO_OVERFLOW, type ClosedWavesOverflow } from "./engine/closedWaves";
 
 type KeySpec<T> = {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -245,11 +248,12 @@ const EARLIER_SCORE: KeySpec<EarlierScore> = {
  * #3245: StarSwarmState fields added after saves existed — observations, not play state. Not in
  * the fingerprint (adding one keeps every existing save) and optional in a save; see the header.
  */
-type AddedStateKey = "waveStats" | "lastClosedWave" | "closedWaves";
+type AddedStateKey = "waveStats" | "lastClosedWave" | "closedWaves" | "closedWavesOverflow";
 const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   waveStats: "optional",
   lastClosedWave: "optional",
   closedWaves: "optional", // #3251
+  closedWavesOverflow: "optional", // #3251
 };
 
 /** A saved state as read back: the ADDED_STATE fields may be missing or from another build. */
@@ -414,10 +418,44 @@ const WIRE: KeySpec<WaveStatsWire> = {
 };
 const WIRE_SECTIONS = ["pacing", "score", "powerUps", "rocks", "buddy", "carrier", "combat"];
 
-/** Every leaf under `v` is a non-negative finite number (or, where `extra` allows it, more). */
-function countsOnly(v: unknown, extra: (leaf: unknown) => boolean = () => false): boolean {
-  if (isObject(v)) return Object.values(v).every((x) => countsOnly(x, extra));
-  return (typeof v === "number" && Number.isFinite(v) && v >= 0) || extra(v);
+const ROUT: KeySpec<WaveRout> = {
+  triggered: "required",
+  atMs: "required",
+  grunts: "required",
+  caught: "required",
+  escaped: "required",
+};
+const OVERFLOW: KeySpec<ClosedWavesOverflow> = {
+  waves: "required",
+  bytes: "required",
+  largestBytes: "required",
+  full: "required",
+};
+
+const isCount = (v: unknown): boolean => typeof v === "number" && Number.isFinite(v) && v >= 0;
+const isIntCount = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0;
+
+/** Every leaf under `v` passes `leaf` (a non-negative finite number by default). */
+function countsOnly(v: unknown, leaf: (x: unknown) => boolean = isCount): boolean {
+  if (isObject(v)) return Object.values(v).every((x) => countsOnly(x, leaf));
+  return leaf(v);
+}
+
+/** `rout`, sent whole: a boolean, a start time or null, and three counts. */
+const fitsRout = (v: unknown): boolean =>
+  fits(v, ROUT as AnySpec) &&
+  typeof v.triggered === "boolean" &&
+  (v.atMs === null || isIntCount(v.atMs)) &&
+  [v.grunts, v.caught, v.escaped].every(isIntCount);
+
+/** `damage`: a death cause (null or a HIT_CAUSES value) and otherwise only counts. */
+function fitsDamage(v: unknown): boolean {
+  if (!isObject(v) || !("deathCause" in v)) return false;
+  const { deathCause, ...counts } = v;
+  return (
+    (deathCause === null || (HIT_CAUSES as readonly unknown[]).includes(deathCause)) &&
+    countsOnly(counts, isIntCount)
+  );
 }
 
 /**
@@ -435,12 +473,16 @@ function fitsWire(v: unknown): v is WaveStatsWire {
     (v.outcome === "cleared" || v.outcome === "died") &&
     typeof v.dev === "boolean" &&
     WIRE_SECTIONS.every((k) => isObject(v[k]) && countsOnly(v[k])) &&
-    isObject(rout) &&
-    countsOnly(rout, (x) => x === null || typeof x === "boolean") &&
-    isObject(damage) &&
-    countsOnly(damage, (x) => x === null || typeof x === "string")
+    fitsRout(rout) &&
+    fitsDamage(damage)
   );
 }
+
+/** #3251: a saved overflow count: three counts and the list-closed flag. */
+const isOverflow = (v: unknown): v is ClosedWavesOverflow =>
+  fits(v, OVERFLOW as AnySpec) &&
+  [v.waves, v.bytes, v.largestBytes].every(isIntCount) &&
+  typeof v.full === "boolean";
 
 /** #3251: a saved `closedWaves` — closed waves in wave order (a dev revert can repeat one). */
 function isClosedWaves(v: unknown): v is readonly WaveStatsWire[] {
@@ -458,6 +500,7 @@ function isClosedWaves(v: unknown): v is readonly WaveStatsWire[] {
  * nothing to compare it with, so a saved one is ignored rather than validated.
  * #3251: `closedWaves` restores as saved when it fits, else as `[]` (an older save, or one that
  * doesn't fit): the waves closed before the save are then not sent, and nothing invalid is.
+ * `closedWavesOverflow` restores as saved when it fits, else as `NO_OVERFLOW`.
  */
 export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
   return {
@@ -467,5 +510,8 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
       : emptyWaveStats(loadoutOf(saved.player)),
     lastClosedWave: null,
     closedWaves: isClosedWaves(saved.closedWaves) ? saved.closedWaves : [],
+    closedWavesOverflow: isOverflow(saved.closedWavesOverflow)
+      ? saved.closedWavesOverflow
+      : NO_OVERFLOW,
   };
 }

@@ -76,14 +76,8 @@ import { playerVolley, tickPowerUps } from "./powerups";
 import { rng, seedRng } from "./rng";
 import { carrierStageIn, isLeaderTier, tickCtx } from "./roster";
 import { emptyRunStats, emptyTierStats } from "./stats";
-import {
-  bumpWave,
-  closeWave,
-  emptyWaveStats,
-  loadoutOf,
-  markWaveDev,
-  toWirePayload,
-} from "./waveStats";
+import { bumpWave, closeWave, emptyWaveStats, loadoutOf, markWaveDev } from "./waveStats";
+import { NO_OVERFLOW, collectClosedWave } from "./closedWaves";
 import {
   BONUS_LIFE_INVINCIBLE_MS,
   BONUS_LIFE_SLOW_MO_DURATION,
@@ -272,6 +266,7 @@ function buildWaveState(
     waveStats: emptyWaveStats(loadoutOf(wavePlayer)), // #3245
     lastClosedWave: null, // #3245: startNextWave sets the wave it just closed
     closedWaves: [], // #3251: startNextWave carries the run's closed waves over
+    closedWavesOverflow: NO_OVERFLOW, // #3251
   };
 }
 
@@ -322,7 +317,7 @@ export function tick(
   // revert a same-tick GameOver — and GameOver is terminal, so this closes the wave exactly once.
   if (s.phase === "GameOver") {
     const died = closeWave(s, "died");
-    s = { ...s, lastClosedWave: died, closedWaves: [...s.closedWaves, toWirePayload(died)] };
+    s = collectClosedWave({ ...s, lastClosedWave: died }, died); // #3251
   }
   return s;
 }
@@ -484,11 +479,16 @@ function startNextWave(state: StarSwarmState, tuning: Tuning): StarSwarmState {
   );
   // the cosmetic banner raised on the last kill finishes its own fade;
   // #2837: the ledger carries across waves
-  return {
-    ...next,
-    missionCompleteTimer: state.missionCompleteTimer,
-    scoreLedger: state.scoreLedger,
-    lastClosedWave: closed,
-    closedWaves: [...state.closedWaves, toWirePayload(closed)], // #3251
-  };
+  // #3251: the run's closed waves carry over, this one added
+  return collectClosedWave(
+    {
+      ...next,
+      missionCompleteTimer: state.missionCompleteTimer,
+      scoreLedger: state.scoreLedger,
+      lastClosedWave: closed,
+      closedWaves: state.closedWaves,
+      closedWavesOverflow: state.closedWavesOverflow,
+    },
+    closed
+  );
 }

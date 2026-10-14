@@ -139,6 +139,7 @@ function sha(state: StarSwarmState): string {
     waveStats: _waveStats,
     lastClosedWave: _lastClosedWave,
     closedWaves: _closedWaves,
+    closedWavesOverflow: _closedWavesOverflow,
     ...played
   } = state;
   return createHash("sha256")
