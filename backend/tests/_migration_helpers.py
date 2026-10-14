@@ -39,6 +39,9 @@ def run_alembic_url(url: str, *args: str, check: bool = True) -> subprocess.Comp
     """``run_alembic`` against any database URL (the Postgres EXPLAIN gate, #2965)."""
     env = os.environ.copy()
     env["DATABASE_URL"] = url
+    # alembic/env.py prefers MIGRATION_DATABASE_URL (#3302); one in the developer's
+    # shell must not send these runs to another database.
+    env.pop("MIGRATION_DATABASE_URL", None)
     result = subprocess.run(
         [sys.executable, "-m", "alembic", *args],
         cwd=BACKEND,
