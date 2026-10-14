@@ -59,7 +59,9 @@ let _hydrating: Promise<void> | null = null;
 function writeToDisk(state: SavedPauseState): void {
   let raw: string;
   try {
-    const persisted: PersistedPauseState = { ...state, v: SAVE_VERSION, fp: SAVE_FINGERPRINT };
+    // #3245: the closed-wave snapshot isn't written — a restore always drops it (restoreSavedState)
+    const { lastClosedWave: _dropped, ...gameState } = state.gameState;
+    const persisted = { ...state, gameState, v: SAVE_VERSION, fp: SAVE_FINGERPRINT };
     raw = JSON.stringify(persisted);
   } catch (e) {
     Sentry.captureException(e, { tags: { subsystem: "starswarm.pauseStore", op: "save" } });

@@ -462,19 +462,35 @@ export function toWirePayload(snap: WaveStatsSnapshot): WaveStatsWire {
 // Restore (saveShape.ts)
 // ---------------------------------------------------------------------------
 
-/** `v` has exactly `template`'s shape: same keys all the way down, numbers where it has them. */
-function sameShape(template: unknown, v: unknown): boolean {
-  if (template === null) {
-    return v === null || typeof v === "string" || (typeof v === "number" && Number.isFinite(v));
-  }
-  if (typeof template === "number") return typeof v === "number" && Number.isFinite(v) && v >= 0;
+const isCount = (v: unknown): boolean => typeof v === "number" && Number.isFinite(v) && v >= 0;
+const isIntIn = (v: unknown, lo: number, hi: number): boolean =>
+  Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi;
+
+/** Leaves whose valid values the template can't express, by dotted path. */
+const LEAF_CHECKS: Readonly<Record<string, (v: unknown) => boolean>> = {
+  "damage.deathCause": (v) => v === null || (HIT_CAUSES as readonly unknown[]).includes(v),
+  "pacing.start.guns": (v) => isIntIn(v, 1, 3),
+  "pacing.start.hull": (v) => isIntIn(v, 0, 2),
+  "pacing.start.lives": (v) => Number.isInteger(v) && (v as number) >= 0,
+};
+
+/**
+ * `v` has exactly `template`'s shape: same keys all the way down, a non-negative finite number
+ * where the template has a number, null or such a number where it has null (`rout.atMs`,
+ * `carrier.stageReachedMs.*`), and LEAF_CHECKS where they apply.
+ */
+function sameShape(template: unknown, v: unknown, at: string): boolean {
+  const check = LEAF_CHECKS[at];
+  if (check) return check(v);
+  if (template === null) return v === null || isCount(v);
+  if (typeof template === "number") return isCount(v);
   if (typeof template !== "object") return typeof v === typeof template;
   if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
   const t = template as Record<string, unknown>;
   const o = v as Record<string, unknown>;
   const keys = Object.keys(t);
   if (Object.keys(o).length !== keys.length) return false;
-  return keys.every((k) => k in o && sameShape(t[k], o[k]));
+  return keys.every((k) => k in o && sameShape(t[k], o[k], at ? `${at}.${k}` : k));
 }
 
 /**
@@ -482,5 +498,5 @@ function sameShape(template: unknown, v: unknown): boolean {
  * another registry (a power-up added since) doesn't, and the restore starts the wave's stats over.
  */
 export function isWaveStats(v: unknown): v is WaveStats {
-  return sameShape(emptyWaveStats({ lives: 0, guns: 1, hull: 0 }), v);
+  return sameShape(emptyWaveStats({ lives: 0, guns: 1, hull: 0 }), v, "");
 }

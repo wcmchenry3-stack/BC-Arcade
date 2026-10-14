@@ -1038,11 +1038,14 @@ whole. `carrier.stageReachedMs` holds times, not counters: a stage never reached
 one reached at 0 ms is sent. A payload is at most `WAVE_STATS_MAX_BYTES` (4096) serialized; the
 worst case — every counter at 99999, every score source on the wave — measures about 3.7 KB.
 
-**Saves.** `waveStats` and `lastClosedWave` are saved with a paused run, but they are
-observations, so they are kept out of `SAVE_FINGERPRINT` (`ADDED_STATE` in `saveShape.ts`): adding
-them didn't discard paused runs. A save without them — or with stats from a build whose
-registries differ — restores with fresh stats seeded from the restored ship and no closed wave
-(`restoreSavedState`).
+**Saves.** `waveStats` is saved with a paused run; `lastClosedWave` is not written to disk, and a
+restore always sets it to null (`restoreSavedState`), whatever an older save holds — a restored
+run has nothing to compare it with, so no close is reported after a restore. Both are
+observations, so they are kept out of `SAVE_FINGERPRINT` (`ADDED_STATE` in `saveShape.ts`):
+adding them didn't discard paused runs. A save without `waveStats` — or with stats that don't fit
+this build (a registry key missing or extra, a negative or non-numeric counter or time, a death
+cause outside `HIT_CAUSES`, guns outside 1–3 or hull outside 0–2) — restores with fresh stats
+seeded from the restored ship.
 
 ### Adding content
 
@@ -1050,7 +1053,8 @@ Adding a power-up, enemy tier, hit cause or any other registry value:
 
 1. **Registry entry** — add the value to its array in `engine/registries.ts`. The stats tables pick
    it up on their own (at 0), so the build passes; only hand-written `Record`s keyed by that type
-   fail to compile until they list it.
+   fail to compile until they list it. The values are wire vocabulary, pinned by the "hold the v1
+   schema's values" test in `__tests__/waveStats.test.ts`: update it in the same change.
 2. **Counter bump** — count it where it happens with `bumpWave` (on a hot path, hoist the path as
    a `const` tuple).
 3. **Contract row** — this is the guard. `__tests__/waveStats.contract.test.ts` fails, naming the

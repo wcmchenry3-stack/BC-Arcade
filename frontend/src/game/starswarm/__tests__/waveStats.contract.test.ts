@@ -132,81 +132,118 @@ describe("wave-stats contract (#3245)", () => {
     if (gaps.length > 0) throw new Error(`\n${gaps.join("\n")}`);
   });
 
-  it("names the row file a missing row belongs in", () => {
-    const snap = emptySnapshot();
-    const noPowerUps = { ...CONTRACTS, powerUps: { ...powerUps, pending: null } };
-    expect(contractGaps(noPowerUps, snap)).toContain(
-      `power-up "lightning" has no wave-stats contract row — add one in ` +
-        `__tests__/waveStatsContract/powerUps.ts (see docs/games/starswarm.md#adding-content)`
-    );
-    const noPacingRows = { ...CONTRACTS, pacing: { ...pacing, rows: [] } };
-    expect(contractGaps(noPacingRows, snap)).toContain(
-      `field "pacing.durationMs" has no wave-stats contract row — add one in ` +
-        `__tests__/waveStatsContract/pacing.ts (see docs/games/starswarm.md#adding-content)`
-    );
-  });
-
-  it("fails on a registry value added later: pending lists today's values, not the registry", () => {
-    const snap = emptySnapshot();
-    const grown: Registries = {
-      ...REGISTRIES,
-      POWERUP_TYPES: [...REGISTRIES.POWERUP_TYPES, "magnet"],
-      HIT_CAUSES: [...REGISTRIES.HIT_CAUSES, "laser"],
-    };
-    expect(contractGaps(CONTRACTS, snap, grown)).toEqual([
-      `power-up "magnet" has no wave-stats contract row — add one in ` +
-        `__tests__/waveStatsContract/powerUps.ts (see docs/games/starswarm.md#adding-content)`,
-      `hit cause "laser" has no wave-stats contract row — add one in ` +
-        `__tests__/waveStatsContract/damage.ts (see docs/games/starswarm.md#adding-content)`,
-    ]);
-  });
-
-  it("fails on a section field added later", () => {
-    const snap = emptySnapshot();
-    const grown = { ...snap, rout: { ...snap.rout, rallied: 0 } } as WaveStatsSnapshot;
-    expect(contractGaps(CONTRACTS, grown)).toEqual([
-      `field "rout.rallied" has no wave-stats contract row — add one in ` +
-        `__tests__/waveStatsContract/rout.ts (see docs/games/starswarm.md#adding-content)`,
-    ]);
-  });
-
-  it("flags a registry no section owns", () => {
-    const grown = { ...REGISTRIES, LOOT_TABLES: ["a"] } as unknown as Registries;
-    expect(contractGaps(CONTRACTS, emptySnapshot(), grown)).toEqual([
-      `registry LOOT_TABLES isn't owned by any section — add it to SECTION_REGISTRIES in ` +
-        `__tests__/waveStatsContract/contract.ts (see docs/games/starswarm.md#adding-content)`,
-    ]);
-  });
-
-  it("flags a pending entry that a row already covers, and a cover that names nothing", () => {
-    const snap = emptySnapshot();
-    const stale = {
-      ...CONTRACTS,
-      pacing: {
-        ...pacing,
-        pending: { stories: ["#0"], covers: ["field:durationMs", "field:nope"] as Cover[] },
-      },
-    };
-    const gaps = contractGaps(stale, snap);
-    expect(gaps).toContain(
-      `field "pacing.durationMs" has a row in __tests__/waveStatsContract/pacing.ts but is ` +
-        `still pending — remove it from pending`
-    );
-    expect(gaps).toContain(
-      `__tests__/waveStatsContract/pacing.ts covers "field:nope", which isn't a pacing registry ` +
-        `value or field`
-    );
-  });
-
   it("pending entries name the stories that fill them", () => {
     for (const c of Object.values(CONTRACTS) as SectionContract[]) {
       if (c.pending) expect(c.pending.stories.length).toBeGreaterThan(0);
     }
   });
+});
+
+/**
+ * The harness checking itself, against a fixed registries fixture and contracts built to cover it
+ * exactly — never the real registries or row files, so adding a real power-up fails only the
+ * real check above.
+ */
+describe("wave-stats contract harness (self-test, fixture registries)", () => {
+  const FIXTURE: Registries = {
+    POWERUP_TYPES: ["pA", "pB"],
+    POWERUP_SOURCES: ["srcA"],
+    ENEMY_TIERS: ["tierA"],
+    ASTEROID_KINDS: ["kindA"],
+    ROCK_BREAKERS: ["breakerA"],
+    HIT_CAUSES: ["causeA"],
+    BUDDY_HIT_CAUSES: ["buddyCauseA"],
+    HIT_RESULTS: ["resultA"],
+    KILL_METHODS: ["methodA"],
+    CARRIER_STAGES: ["stageA"],
+  };
+  const SECTIONS = Object.keys(SECTION_REGISTRIES) as ContractSection[];
+  const ADDING = "(see docs/games/starswarm.md#adding-content)";
+
+  /** Every section fully pending against FIXTURE; pacing instead fully covered by one row. */
+  function fixtureContracts(snap: WaveStatsSnapshot): Contracts {
+    const out: Partial<Record<ContractSection, SectionContract>> = {};
+    for (const section of SECTIONS) {
+      const covers = requiredCovers(section, snap, FIXTURE).map((r) => r.cover);
+      out[section] =
+        section === "pacing"
+          ? {
+              section,
+              pending: null,
+              rows: [{ id: "all of pacing", covers, scenario: () => snap, expect: () => {} }],
+            }
+          : { section, rows: [], pending: { stories: ["#0"], covers } };
+    }
+    return out as Contracts;
+  }
+
+  const snap = emptySnapshot();
+  const base = fixtureContracts(snap);
+
+  it("the fixture contracts cover the fixture registries exactly", () => {
+    expect(contractGaps(base, snap, FIXTURE)).toEqual([]);
+  });
+
+  it("fails on a registry value added later: pending lists the values it had", () => {
+    const grown: Registries = {
+      ...FIXTURE,
+      POWERUP_TYPES: [...FIXTURE.POWERUP_TYPES, "magnet"],
+      HIT_CAUSES: [...FIXTURE.HIT_CAUSES, "laser"],
+    };
+    expect(contractGaps(base, snap, grown)).toEqual([
+      `power-up "magnet" has no wave-stats contract row — add one in ` +
+        `__tests__/waveStatsContract/powerUps.ts ${ADDING}`,
+      `hit cause "laser" has no wave-stats contract row — add one in ` +
+        `__tests__/waveStatsContract/damage.ts ${ADDING}`,
+    ]);
+  });
+
+  it("fails on a section field added later", () => {
+    const grown = { ...snap, rout: { ...snap.rout, rallied: 0 } } as WaveStatsSnapshot;
+    expect(contractGaps(base, grown, FIXTURE)).toEqual([
+      `field "rout.rallied" has no wave-stats contract row — add one in ` +
+        `__tests__/waveStatsContract/rout.ts ${ADDING}`,
+    ]);
+  });
+
+  it("names the row file a missing row belongs in", () => {
+    const noRows = { ...base, pacing: { ...base.pacing, rows: [] } };
+    expect(contractGaps(noRows, snap, FIXTURE)).toEqual(
+      Object.keys(snap.pacing).map(
+        (f) =>
+          `field "pacing.${f}" has no wave-stats contract row — add one in ` +
+          `__tests__/waveStatsContract/pacing.ts ${ADDING}`
+      )
+    );
+  });
+
+  it("flags a registry no section owns", () => {
+    const grown = { ...FIXTURE, LOOT_TABLES: ["a"] } as unknown as Registries;
+    expect(contractGaps(base, snap, grown)).toEqual([
+      `registry LOOT_TABLES isn't owned by any section — add it to SECTION_REGISTRIES in ` +
+        `__tests__/waveStatsContract/contract.ts ${ADDING}`,
+    ]);
+  });
+
+  it("flags a pending entry that a row already covers, and a cover that names nothing", () => {
+    const stale = {
+      ...base,
+      pacing: {
+        ...base.pacing,
+        pending: { stories: ["#0"], covers: ["field:durationMs", "field:nope"] as Cover[] },
+      },
+    };
+    expect(contractGaps(stale, snap, FIXTURE)).toEqual([
+      `field "pacing.durationMs" has a row in __tests__/waveStatsContract/pacing.ts but is ` +
+        `still pending — remove it from pending`,
+      `__tests__/waveStatsContract/pacing.ts covers "field:nope", which isn't a pacing registry ` +
+        `value or field`,
+    ]);
+  });
 
   it("flags an empty pending list", () => {
-    const empty = { ...CONTRACTS, pacing: { ...pacing, pending: { stories: ["#0"], covers: [] } } };
-    expect(contractGaps(empty, emptySnapshot())).toEqual([
+    const empty = { ...base, pacing: { ...base.pacing, pending: { stories: ["#0"], covers: [] } } };
+    expect(contractGaps(empty, snap, FIXTURE)).toEqual([
       `__tests__/waveStatsContract/pacing.ts has an empty pending list — set pending to null`,
     ]);
   });

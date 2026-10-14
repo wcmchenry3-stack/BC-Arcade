@@ -93,8 +93,6 @@ describe("registries", () => {
       import type { EnemyTier, PowerUpType } from ${JSON.stringify(`${engineDir}/registries`)};
       import { bumpWave, emptyWaveStats } from ${JSON.stringify(`${engineDir}/waveStats`)};
 
-      export const full: Record<PowerUpType, number> =
-        { lightning: 0, shield: 0, buddy: 0, bomb: 0, salvage: 0, hull: 0 };
       // @ts-expect-error -- "hull" is missing
       export const noHull: Record<PowerUpType, number> =
         { lightning: 0, shield: 0, buddy: 0, bomb: 0, salvage: 0 };

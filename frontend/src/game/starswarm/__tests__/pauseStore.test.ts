@@ -25,6 +25,7 @@ import {
   savePausedState,
 } from "../pauseStore";
 import { SAVE_FINGERPRINT, fitsSaveShape, restoreSavedState } from "../saveShape";
+import { loadoutOf } from "../engine/waveStats";
 import type { StarSwarmState } from "../types";
 
 // A paused run survives the process (#2645). `_resetPauseStoreForTests` stands in for a
@@ -309,6 +310,10 @@ describe("per-wave stats in a save (#3245)", () => {
     expect(state.lastClosedWave).not.toBeNull();
     savePausedState({ gameState: state, difficulty: "Commander", counters: COUNTERS });
     await flush();
+    // the snapshot isn't written to disk at all
+    const onDisk = (await persisted())?.gameState as Record<string, unknown>;
+    expect(onDisk.waveStats).toEqual(state.waveStats);
+    expect("lastClosedWave" in onDisk).toBe(false);
     _resetPauseStoreForTests();
 
     await hydratePausedState();
@@ -353,6 +358,71 @@ describe("per-wave stats in a save (#3245)", () => {
     expect(restored?.waveStats.combat.kills.Elite.dive).toBe(0);
     expect(restored?.waveStats.powerUps.collected.hull).toBe(0);
     expect(restored?.lastClosedWave).toBeNull();
+  });
+
+  describe("a saved waveStats with an invalid leaf restores fresh stats", () => {
+    const fresh = () => {
+      const s = JSON.parse(JSON.stringify(counted())) as StarSwarmState;
+      return { s, ws: s.waveStats };
+    };
+    type WS = StarSwarmState["waveStats"];
+    const withStart = (ws: WS, start: Record<string, unknown>) =>
+      ({ ...ws, pacing: { ...ws.pacing, start: { ...ws.pacing.start, ...start } } }) as unknown;
+    const cases: [string, (ws: WS) => unknown][] = [
+      [
+        "a stage time that is a string",
+        (ws) => ({
+          ...ws,
+          carrier: {
+            ...ws.carrier,
+            stageReachedMs: { ...ws.carrier.stageReachedMs, exposed: "1" },
+          },
+        }),
+      ],
+      [
+        "a negative stage time",
+        (ws) => ({
+          ...ws,
+          carrier: { ...ws.carrier, stageReachedMs: { ...ws.carrier.stageReachedMs, exposed: -5 } },
+        }),
+      ],
+      ["a rout time that is a string", (ws) => ({ ...ws, rout: { ...ws.rout, atMs: "soon" } })],
+      ["a negative rout time", (ws) => ({ ...ws, rout: { ...ws.rout, atMs: -1 } })],
+      [
+        "a death cause outside HIT_CAUSES",
+        (ws) => ({
+          ...ws,
+          damage: { ...ws.damage, deathCause: "laser" },
+        }),
+      ],
+      ["guns 0", (ws) => withStart(ws, { guns: 0 })],
+      ["guns 4", (ws) => withStart(ws, { guns: 4 })],
+      ["guns 1.5", (ws) => withStart(ws, { guns: 1.5 })],
+      ["hull 3", (ws) => withStart(ws, { hull: 3 })],
+      ["hull -1", (ws) => withStart(ws, { hull: -1 })],
+      ["a negative counter", (ws) => ({ ...ws, combat: { ...ws.combat, shotsFired: -1 } })],
+    ];
+
+    it.each(cases)("%s", (_label, spoil) => {
+      const { s, ws } = fresh();
+      const restored = restoreSavedState({ ...s, waveStats: spoil(ws) });
+      expect(restored.waveStats).toEqual(emptyWaveStats(loadoutOf(s.player)));
+    });
+
+    it("while valid values of those leaves are kept", () => {
+      const { s, ws } = fresh();
+      const valid = {
+        ...ws,
+        pacing: { ...ws.pacing, start: { lives: 2, guns: 3, hull: 2 } },
+        carrier: {
+          ...ws.carrier,
+          stageReachedMs: { protected: 0, exposed: 1200.5, finalStand: null },
+        },
+        rout: { ...ws.rout, triggered: true, atMs: 900 },
+        damage: { ...ws.damage, deathCause: "beam" },
+      } as WS;
+      expect(restoreSavedState({ ...s, waveStats: valid }).waveStats).toEqual(valid);
+    });
   });
 
   it("restoreSavedState keeps stats that fit and drops the closed wave", () => {
