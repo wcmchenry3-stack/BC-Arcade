@@ -40,7 +40,13 @@ export function devRevert(prev: StarSwarmState, reverted: StarSwarmState): StarS
   const waves = s.closedWaves;
   const last = waves[waves.length - 1];
   if (waves.length > prev.closedWaves.length && last && !last.dev) {
-    s = { ...s, closedWaves: [...waves.slice(0, -1), { ...last, dev: true }] };
+    const flagged = { ...last, dev: true };
+    s = {
+      ...s,
+      closedWaves: [...waves.slice(0, -1), flagged],
+      // `dev: true` serializes shorter than `dev: false`; keep the running total exact
+      closedWavesBytes: s.closedWavesBytes - wireBytes(last) + wireBytes(flagged),
+    };
   }
   const closed = s.lastClosedWave;
   if (closed && closed !== prev.lastClosedWave && !closed.dev) {

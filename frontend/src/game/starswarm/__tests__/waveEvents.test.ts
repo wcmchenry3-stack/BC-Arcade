@@ -12,7 +12,7 @@ import {
 } from "../engine";
 import type { WaveStatsSnapshot, WaveStatsWire } from "../engine";
 import { WAVE_COMPLETED_EVENT, devRevert, planWaveEvents } from "../waveEvents";
-import { WAVE_STATS_RUN_MAX_BYTES } from "../engine/closedWaves";
+import { WAVE_STATS_RUN_MAX_BYTES, wavesBytes } from "../engine/closedWaves";
 import type { StarSwarmState } from "../types";
 import { killShip, untilPlaying } from "./helpers/engineFixtures";
 
@@ -70,6 +70,20 @@ describe("devRevert (the dev panel's infinite lives)", () => {
     // the engine's own values are never mutated
     expect(over.closedWaves[0]!.dev).toBe(false);
     expect(over.lastClosedWave!.dev).toBe(false);
+  });
+
+  it("keeps closedWavesBytes equal to the list's serialized size after flagging", () => {
+    const prev = untilPlaying(run());
+    const over = killShip(prev);
+    expect(over.closedWavesBytes).toBe(wavesBytes(over.closedWaves));
+    const reverted = devRevert(prev, {
+      ...over,
+      phase: prev.phase,
+      player: { ...over.player, lives: prev.player.lives },
+    });
+    // `dev: true` is one byte shorter than `dev: false`
+    expect(reverted.closedWavesBytes).toBe(wavesBytes(reverted.closedWaves));
+    expect(reverted.closedWavesBytes).toBe(over.closedWavesBytes - 1);
   });
 
   it("leaves waves closed on an earlier tick alone", () => {
