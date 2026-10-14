@@ -302,6 +302,30 @@ describe("useGameRecorder", () => {
     }
   });
 
+  it("a new gameType counts the old recorder's unmeasured open unit against the shared session cap", async () => {
+    // Default caps: 2 KB per event, 64 KB per session. 37 events of ~1.7 KB
+    // fit; a 38th does not.
+    const big = () => ({ p: "x".repeat(1700) });
+    const { result, rerender } = await renderHook(
+      ({ type }: { type: "hearts" | "yacht" }) =>
+        useGameRecorder(type, { policy: "on_session_end" }),
+      { initialProps: { type: "hearts" } }
+    );
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(1);
+      for (let i = 0; i < 37; i += 1) result.current.record("e", big()); // open, unmeasured
+    });
+    await act(async () => rerender({ type: "yacht" }));
+    expect(mockSaved).toHaveLength(37);
+    await act(() => {
+      result.current.record("late", big()); // over the session's cap
+      result.current.complete({ outcome: "completed" });
+    });
+    expect(mockSaved.map((e) => e[1])).not.toContain("late");
+  });
+
   it("a new gameType with no game open starts the new recorder fresh", async () => {
     const { result, rerender } = await renderHook(
       ({ type }: { type: "hearts" | "yacht" }) => useGameRecorder(type),

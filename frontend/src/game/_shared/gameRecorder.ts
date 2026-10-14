@@ -366,8 +366,12 @@ export class GameRecorder {
     if (this.t0 === null) this.ended = false;
   }
 
-  /** The session's clock and numbering, for a recorder taking it over; null with no session. */
-  handoff(): RecorderHandoff | null {
+  /**
+   * The session's clock, numbering and cap usage, for a recorder taking it
+   * over; null with no session. Only `endSession()` takes it, after measuring
+   * and saving what was pending, so the counts include every event.
+   */
+  private handoff(): RecorderHandoff | null {
     if (this.t0 === null) return null;
     return {
       t0: this.t0,
@@ -506,16 +510,23 @@ export class GameRecorder {
    * in one call, and report what the caps dropped (once, if anything). Call
    * before the session completes or closes, so its events precede
    * `game_ended`. Recording is refused until the next `startSession()`.
+   *
+   * Returns where the session stood once everything pending was measured and
+   * saved (null with no session), for a recorder that takes it over
+   * (`continueFrom`).
    */
-  endSession(): void {
+  endSession(): RecorderHandoff | null {
+    let handoff: RecorderHandoff | null = null;
     if (this.t0 !== null) {
       this.closeUnit();
       this.measure();
       this.send(true);
       this.reportDrops();
+      handoff = this.handoff();
     }
     this.resetSession();
     this.ended = true;
+    return handoff;
   }
 
   private ensureSession(): void {

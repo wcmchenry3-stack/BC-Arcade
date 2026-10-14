@@ -81,8 +81,9 @@ export function useGameRecorder(
     // the remount records like a fresh mount.
     recorder.rearm();
     return () => {
-      handoffRef.current = recorder.handoff();
-      recorder.endSession();
+      // Taken after the pending events are measured and saved, so the
+      // replacing recorder's cap usage includes them.
+      handoffRef.current = recorder.endSession();
     };
   }, [recorder]);
 

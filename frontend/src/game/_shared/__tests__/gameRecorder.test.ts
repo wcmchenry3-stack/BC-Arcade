@@ -788,9 +788,8 @@ describe("GameRecorder review fixes, round 3 (#3315)", () => {
     a.recorder.record("big", { p: "x".repeat(120) });
     a.recorder.closeUnit();
     a.runIdle(); // measured and saved: ~145 of 200 used
-    const handoff = a.recorder.handoff();
+    const handoff = a.recorder.endSession();
     expect(handoff?.sessionBytes).toBeGreaterThan(100);
-    a.recorder.endSession();
 
     const b = harness({ config });
     if (handoff) b.recorder.continueFrom(handoff);
@@ -798,6 +797,28 @@ describe("GameRecorder review fixes, round 3 (#3315)", () => {
     b.recorder.endSession();
     expect(b.saves).toHaveLength(0);
     expect(b.reports[0]).toMatchObject({ saved: 0, dropped_session_cap: 1 });
+  });
+
+  it("endSession's handoff counts the open unit it measured on the way out", () => {
+    const config: GameRecordingConfig = {
+      sessionMaxBytes: 200,
+      defaultEventMaxBytes: 200,
+      events: {},
+    };
+    const a = harness({ config });
+    a.recorder.beginUnit(3);
+    a.recorder.record("big", { p: "x".repeat(120) }); // open, never measured at idle
+    const handoff = a.recorder.endSession();
+    expect(all(a.saves).map((e) => e.type)).toEqual(["big"]);
+    expect(handoff).toMatchObject({ lastUnit: 3, taken: 1 });
+    expect(handoff?.sessionBytes).toBeGreaterThan(100);
+
+    const b = harness({ config });
+    if (handoff) b.recorder.continueFrom(handoff);
+    b.recorder.record("more", { p: "y".repeat(80) }); // would exceed the shared cap
+    b.recorder.endSession();
+    expect(b.saves).toHaveLength(0);
+    expect(b.reports[0]).toMatchObject({ dropped_session_cap: 1 });
   });
 
   it("a handoff carries a full session and the events taken", () => {
