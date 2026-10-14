@@ -273,3 +273,25 @@ describe("saves", () => {
     expect(restoreSavedState(saved).powerUps[0]!.source).toBe("carrier");
   });
 });
+
+describe("wire integers (#3258)", () => {
+  it("every numeric leaf of a closed snapshot from a fractional-dt run is an integer", () => {
+    // EXPECTED TO FAIL until #3258 (closeWave rounds every numeric leaf) lands: activeMs is fractional
+    let s: StarSwarmState = {
+      ...playingWave(),
+      activePowerUp: { type: "lightning", remainingMs: 1e9, shieldAbsorbed: 0 },
+    };
+    for (let i = 0; i < 41; i++) s = tick(s, 16.7, NO_INPUT);
+    const snap = clearedSnapshot(s);
+    const bad: string[] = [];
+    const walk = (v: unknown, path: string) => {
+      if (typeof v === "number") {
+        if (!Number.isInteger(v)) bad.push(`${path}=${v}`);
+      } else if (v && typeof v === "object") {
+        for (const [k, x] of Object.entries(v)) walk(x, `${path}.${k}`);
+      }
+    };
+    walk(snap, "snap");
+    expect(bad).toEqual([]);
+  });
+});
