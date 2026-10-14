@@ -77,19 +77,42 @@ def test_the_backend_literals_equal_the_app_registries(name: str) -> None:
     )
 
 
-def test_an_app_only_value_fails_naming_the_literal_to_edit() -> None:
-    shared = _registries()
+# The check checking itself, on frozen in-test registries — never the live fixture or the real
+# Literals, so a real mismatch fails only the real checks above.
+_FROZEN_BACKEND: dict[str, tuple[str, ...]] = {
+    "POWERUP_TYPES": ("pA", "pB"),
+    "HIT_CAUSES": ("causeA",),
+}
+
+
+def _frozen_shared() -> dict[str, list[str]]:
+    return {k: list(v) for k, v in _FROZEN_BACKEND.items()}
+
+
+def test_self_test_matching_registries_pass() -> None:
+    assert _missing(_FROZEN_BACKEND, _frozen_shared()) == []
+
+
+def test_self_test_an_app_only_value_fails_naming_the_literal_to_edit() -> None:
+    shared = _frozen_shared()
     shared["POWERUP_TYPES"] = [*shared["POWERUP_TYPES"], "magnet"]
-    gaps = _missing(_BACKEND, shared)
+    gaps = _missing(_FROZEN_BACKEND, shared)
     assert len(gaps) == 1
     assert gaps[0].startswith("POWERUP_TYPES lacks ['magnet']")
     assert "backend/starswarm/models.py" in gaps[0]
 
 
-def test_an_app_only_registry_fails() -> None:
-    shared = {**_registries(), "LOOT_TABLES": ["a"]}
+def test_self_test_an_app_only_registry_fails() -> None:
+    shared = {**_frozen_shared(), "LOOT_TABLES": ["a"]}
     expected = (
         f"LOOT_TABLES is in {_FIXTURE_NAME} but has no Literal in backend/starswarm/models.py "
         "— add one (and to _BACKEND in this test)"
     )
-    assert _missing(_BACKEND, shared) == [expected]
+    assert _missing(_FROZEN_BACKEND, shared) == [expected]
+
+
+def test_self_test_a_backend_only_registry_fails() -> None:
+    backend = {**_FROZEN_BACKEND, "LOOT_TABLES": ("a",)}
+    assert _missing(backend, _frozen_shared()) == [
+        f"LOOT_TABLES is in backend/starswarm/models.py but not in {_FIXTURE_NAME}"
+    ]

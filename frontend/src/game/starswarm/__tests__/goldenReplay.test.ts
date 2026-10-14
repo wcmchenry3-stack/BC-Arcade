@@ -52,6 +52,7 @@ import {
 } from "../engine";
 import { summarizeScoreLedger } from "../scoreLedger";
 import type { DifficultyTier, StarSwarmState } from "../types";
+import { expectClosedWave, expectRunTotals, fromWire } from "./helpers/waveInvariants";
 
 const FIXTURE = path.join(__dirname, "__fixtures__", "golden-replay-seed42.json");
 const WAVES_FIXTURE = path.join(__dirname, "__fixtures__", "golden-replay-seed42.waves.json");
@@ -282,7 +283,8 @@ describe("Star Swarm golden seeded replay (seed 42)", () => {
     (name, i) => {
       if (UPDATE) return;
       const { recorded: run, end } = replayOnce(i);
-      // the main fixture's last checkpoint predates epic #3244
+      // the main fixture's last checkpoint predates epic #3244 (these three lines restate part of
+      // the byte-identical check above, so a failure there is named as the epic's here)
       const before = golden[i]!.checkpoints.at(-1)!;
       const after = run.checkpoints.at(-1)!;
       expect(after.sha256).toBe(before.sha256);
@@ -296,6 +298,21 @@ describe("Star Swarm golden seeded replay (seed 42)", () => {
       for (const w of closedWaves) {
         expect(w.score.total).toBe(b.waves.find((x) => x.wave === w.wave)?.total ?? 0);
       }
+    }
+  );
+
+  // #3252: the per-wave invariants (helpers/waveInvariants.ts, run over seeded runs in
+  // waveStats.invariants.test.ts) over the replay's own waves — wave3-lieutenant-actions has a
+  // rout and Buddy kills. Not the lives check: the replay tops the lives up to PILOT_LIVES
+  // outside the engine, after wave 1's stats recorded the 3 it opened with.
+  it.each(SCENARIOS.map((sc, i) => [sc.name, i] as const))(
+    "%s: its closed waves hold the per-wave invariants (#3252)",
+    (_name, i) => {
+      const { end } = replayOnce(i);
+      const closed = end.closedWaves.map(fromWire);
+      expect(closed.length).toBeGreaterThan(0);
+      for (const w of closed) expectClosedWave(w, { lives: false });
+      expectRunTotals([...closed, end.waveStats], end);
     }
   );
 });

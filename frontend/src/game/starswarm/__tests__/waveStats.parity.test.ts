@@ -11,7 +11,7 @@
 // resolveJsonModule is enabled via expo/tsconfig.base.
 // Path: 5 levels up from __tests__/ to the repo root, then into backend/tests/fixtures/.
 import fixture from "../../../../../backend/tests/fixtures/starswarm_wave_stats_v1_registries.json";
-import { REGISTRIES, WAVE_STATS_VERSION, type RegistryName } from "../engine";
+import { REGISTRIES, WAVE_STATS_VERSION } from "../engine";
 
 const FIXTURE_FILE = "backend/tests/fixtures/starswarm_wave_stats_v1_registries.json";
 const REGISTRY_FILE = "frontend/src/game/starswarm/engine/registries.ts";
@@ -48,21 +48,40 @@ describe("wave-stats registry parity with the backend (#3252)", () => {
     const gaps = mismatches(REGISTRIES, fixture.registries);
     if (gaps.length > 0) throw new Error(`\n${gaps.join("\n")}`);
   });
+});
+
+/**
+ * The check checking itself, on frozen in-test registries — never the live fixture or
+ * `registries.ts`, so a real mismatch fails only the real check above.
+ */
+describe("wave-stats registry parity check (self-test, frozen registries)", () => {
+  const FROZEN: Readonly<Record<string, readonly string[]>> = Object.freeze({
+    POWERUP_TYPES: Object.freeze(["pA", "pB"]),
+    HIT_CAUSES: Object.freeze(["causeA"]),
+  });
+
+  it("matching registries pass", () => {
+    expect(mismatches(FROZEN, { ...FROZEN })).toEqual([]);
+  });
 
   it("a value added on the app side only fails, naming the fixture file", () => {
-    const grown: Record<RegistryName, readonly string[]> = {
-      ...REGISTRIES,
-      POWERUP_TYPES: [...REGISTRIES.POWERUP_TYPES, "magnet"],
-    };
-    const gaps = mismatches(grown, fixture.registries);
+    const grown = { ...FROZEN, POWERUP_TYPES: [...FROZEN.POWERUP_TYPES!, "magnet"] };
+    const gaps = mismatches(grown, FROZEN);
     expect(gaps).toHaveLength(1);
     expect(gaps[0]).toMatch(/^POWERUP_TYPES differs .*"magnet"/);
     expect(gaps[0]).toContain(`update ${FIXTURE_FILE}`);
   });
 
+  it("a reordered registry fails (the fixture lists the app's order)", () => {
+    const reordered = { ...FROZEN, POWERUP_TYPES: ["pB", "pA"] };
+    expect(mismatches(reordered, FROZEN)).toEqual([
+      expect.stringMatching(/^POWERUP_TYPES differs /),
+    ]);
+  });
+
   it("a registry on one side only fails too", () => {
-    const shared = { ...fixture.registries, LOOT_TABLES: ["a"] };
-    expect(mismatches(REGISTRIES, shared)).toEqual([
+    const shared = { ...FROZEN, LOOT_TABLES: ["a"] };
+    expect(mismatches(FROZEN, shared)).toEqual([
       expect.stringMatching(/^LOOT_TABLES differs .* \(null\) and .* \(\["a"\]\)/),
     ]);
   });
