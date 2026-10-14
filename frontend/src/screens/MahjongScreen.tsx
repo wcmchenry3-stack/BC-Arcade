@@ -59,6 +59,8 @@ import { useMahjongCamera } from "../game/mahjong/layout";
 import {
   createGame,
   DEADLOCK_OVERLAY_DELAY_MS,
+  dealEventData,
+  drawDealSeed,
   elapsedMs,
   nextBestTime,
   getAnyFreePair,
@@ -137,6 +139,8 @@ export default function MahjongScreen() {
   // Hint state — IDs of the pair currently being highlighted; auto-clears after 2 s.
   const [hintIds, setHintIds] = useState<ReadonlySet<number>>(new Set());
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Seed of the deal in play, for its `game_started` event (#3281); null for a restored save.
+  const dealSeedRef = useRef<number | null>(null);
   // "No hint" toast — hides itself 2 s after the last press.
   const { visible: noHintVisible, show: showNoHint } = useTransientToast(2000);
 
@@ -406,7 +410,7 @@ export default function MahjongScreen() {
       if (syncGetGameId()) return;
       const layout = s.currentLayoutId ?? "turtle";
       // Event data for the game_started event; metadata for the row (#2627).
-      syncStart({ layout }, { layout });
+      syncStart(dealEventData(layout, dealSeedRef.current ?? undefined), { layout });
       syncMarkStarted();
     },
     [syncGetGameId, syncStart, syncMarkStarted]
@@ -521,7 +525,10 @@ export default function MahjongScreen() {
       // a new deal closes it here, so the next tap opens a session with this
       // layout (#2627).
       leaveCurrentGame();
-      const fresh = { ...createGame(getLayout(layoutId)), currentLayoutId: layoutId };
+      // The seed is kept for the session's `game_started` event (#3281).
+      const seed = drawDealSeed();
+      dealSeedRef.current = seed;
+      const fresh = { ...createGame(getLayout(layoutId), seed), currentLayoutId: layoutId };
       setState(fresh);
       setView("play");
       setHasSavedGame(false);
@@ -562,6 +569,7 @@ export default function MahjongScreen() {
           setHasSavedGame(false);
           return;
         }
+        dealSeedRef.current = null; // a save does not store its deal's seed
         setState(adoptSaved(adoptLoaded(saved)));
         setHasSavedGame(false);
         // A restored game continues the session a killed app left open (#2654).

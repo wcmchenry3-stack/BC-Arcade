@@ -35,3 +35,13 @@ beforeEach(() => {
     .requireActual<typeof import("./src/hooks/appOverlay")>("./src/hooks/appOverlay")
     .__resetAppOverlayForTests();
 });
+
+// The Sentry throttle (#3293) is module state: one test report must not
+// suppress the next test report.
+beforeEach(() => {
+  jest
+    .requireActual<typeof import("./src/game/_shared/sentryThrottle")>(
+      "./src/game/_shared/sentryThrottle"
+    )
+    .resetSentryThrottle();
+});
