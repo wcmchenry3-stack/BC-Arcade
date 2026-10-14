@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 
+from db import locks
 from db.base import get_session_factory
 from db.models import BugLog, Game, GameEntitlement, GameEvent
 from games import sessions as game_sessions
@@ -113,14 +114,15 @@ async def test_game_past_event_count_ceiling_stops_growing(
 async def test_game_past_byte_ceiling_stops_growing(
     client: TestClient, session_id: str, game: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _use(monkeypatch, game_sessions, MAX_EVENT_BYTES_PER_GAME=1024, MAX_EVENT_DATA_BYTES=2048)
+    _use(monkeypatch, game_sessions, MAX_EVENT_BYTES_PER_GAME=1500, MAX_EVENT_DATA_BYTES=1024)
     r1 = client.post(
-        f"/games/{game}/events", headers=_headers(session_id), json=_events(0, 1, _blob(1500))
+        f"/games/{game}/events", headers=_headers(session_id), json=_events(0, 2, _blob(1000))
     )
-    assert r1.json()["accepted"] == 1
-    r2 = client.post(f"/games/{game}/events", headers=_headers(session_id), json=_events(1, 1))
+    # the ceiling is checked before each event: the second ends the game over it
+    assert (r1.json()["accepted"], r1.json()["dropped"]) == (2, 0)
+    r2 = client.post(f"/games/{game}/events", headers=_headers(session_id), json=_events(5, 1))
     assert (r2.json()["accepted"], r2.json()["dropped"]) == (0, 1)
-    assert await _count(GameEvent, GameEvent.game_id == uuid.UUID(game)) == 1
+    assert await _count(GameEvent, GameEvent.game_id == uuid.UUID(game)) == 2
 
 
 # --- bug log context cap and per-session ceiling ----------------------------
@@ -129,12 +131,12 @@ async def test_game_past_byte_ceiling_stops_growing(
 def test_bug_context_at_cap_stored_over_cap_dropped(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _use(monkeypatch, log_service, MAX_BUG_LOG_CONTEXT_BYTES=1024)
+    _use(monkeypatch, log_service, MAX_BUG_LOG_CONTEXT_BYTES=16384)
     sid = str(uuid.uuid4())
     r = client.post(
         "/logs/bug",
         headers=_headers(sid),
-        json={"logs": [_log(_blob(1024)), _log(_blob(1025)), _log()]},
+        json={"logs": [_log(_blob(16384)), _log(_blob(16385)), _log()]},
     )
     assert r.status_code == 200, r.text
     assert r.json() == {"accepted": 2, "duplicates": 0, "dropped": 1}
@@ -218,6 +220,75 @@ def test_bug_log_retention_job_is_registered(monkeypatch: pytest.MonkeyPatch) ->
     names = [j.name for j in jobs_lifespan.configured_jobs()]
     assert "bug_logs_retention" in names
     assert bug_retention.retention_job(lambda: None).reraise_on_crash is True  # type: ignore[arg-type,return-value]
+
+
+# --- POST /games metadata + players cap -------------------------------------
+
+
+def test_game_metadata_at_cap_is_created_over_cap_is_413(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from payload_size import json_bytes
+
+    _use(monkeypatch, game_sessions, MAX_GAME_METADATA_BYTES=1024)
+    h = _headers(session_id)
+
+    # Registered games' metadata models forbid extra keys (tiny: Yacht's is < 100 B), so
+    # the size is carried by ``players`` (player ids, 128 chars at most each).
+    def body(total: int) -> dict:
+        for k in range(total // 100):
+            for n in range(1, 129):
+                players = [{"player_id": "p" * 100}] * k + [{"player_id": "p" * n}]
+                if json_bytes([{}, players]) == total:
+                    return {"game_type": "yacht", "metadata": {}, "players": players}
+        raise AssertionError("no player list of that size")
+
+    at_cap = body(1024)
+    assert json_bytes([at_cap["metadata"], at_cap["players"]]) == 1024
+    assert client.post("/games", headers=h, json=at_cap).status_code == 200
+    over = body(1025)
+    r = client.post("/games", headers=h, json=over)
+    assert r.status_code == 413
+    assert "too large" in r.json()["detail"]
+
+
+# --- lock timeout, early release, 503 ---------------------------------------
+
+
+async def test_lock_session_sets_a_lock_timeout_before_locking() -> None:
+    from tests.test_session_lock import _FakeSession
+
+    db = _FakeSession("postgresql")
+    await locks.lock_session(db, "sid", locks.EVENTS_NAMESPACE)  # type: ignore[arg-type]
+    assert "SET LOCAL lock_timeout" in db.executed[0][0]
+    assert "pg_advisory_xact_lock" in db.executed[1][0]
+
+
+def test_a_lock_timeout_is_a_retryable_503(
+    client: TestClient, session_id: str, game: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def busy(*_a, **_k):
+        raise locks.SessionBusy("sid")
+
+    monkeypatch.setattr(game_sessions, "lock_session", busy)
+    r = client.post(f"/games/{game}/events", headers=_headers(session_id), json=_events(0, 1))
+    assert r.status_code == 503
+    assert r.headers["retry-after"] == "1"
+
+
+async def test_lock_session_maps_sqlstate_55p03_to_session_busy() -> None:
+    from sqlalchemy.exc import DBAPIError
+
+    class _Orig(Exception):
+        sqlstate = "55P03"
+
+    class _Db(__import__("tests.test_session_lock", fromlist=["x"])._FakeSession):
+        async def execute(self, stmt, params=None):
+            if "pg_advisory" in str(stmt):
+                raise DBAPIError("stmt", {}, _Orig())
+
+    with pytest.raises(locks.SessionBusy):
+        await locks.lock_session(_Db("postgresql"), "sid", 1)  # type: ignore[arg-type]
 
 
 # --- batches that cross a ceiling, re-sends, byte measurement ---------------
@@ -324,6 +395,7 @@ async def test_session_past_daily_event_ceiling_stops_growing(
         monkeypatch,
         game_sessions,
         MAX_EVENT_BYTES_PER_SESSION_DAY=2048,
+        MAX_EVENT_BYTES_PER_GAME=2048,
         MAX_EVENT_DATA_BYTES=1024,
     )
     g1, g2, g3 = (_new_game(client, sid) for _ in range(3))

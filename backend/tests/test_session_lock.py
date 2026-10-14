@@ -30,7 +30,9 @@ async def test_lock_is_a_no_op_on_sqlite() -> None:
 async def test_lock_issues_a_transaction_scoped_advisory_lock_on_postgres() -> None:
     db = _FakeSession("postgresql")
     await locks.lock_session(db, "sid", locks.BUG_LOGS_NAMESPACE)  # type: ignore[arg-type]
-    [(sql, params)] = db.executed
+    timeout, lock = db.executed
+    assert "SET LOCAL lock_timeout" in timeout[0]
+    sql, params = lock
     assert "pg_advisory_xact_lock" in sql and "hashtextextended" in sql
     assert params == {"sid": "sid", "ns": locks.BUG_LOGS_NAMESPACE}
 

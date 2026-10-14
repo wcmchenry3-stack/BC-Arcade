@@ -118,6 +118,9 @@ async def create_game(
     players: list[dict[str, Any]],
     started_at: datetime | None = None,
 ) -> Game:
+    # 413, not 422: a terminal 4xx the client dead-letters, so it never retries (#3298).
+    if json_bytes([metadata, players]) > _get_settings().max_game_metadata_bytes:
+        raise GameServiceError(413, "Game metadata and players are too large.")
     gt = await _resolve_game_type(session, game_type_name)
 
     if client_id is not None:
@@ -335,7 +338,8 @@ async def append_events(
     # totals on ``games`` (no scan of ``game_events``) and advanced per event, so a
     # batch stops at the ceiling. The per-session advisory lock (Postgres) makes
     # concurrent appends for one session take turns: the totals are read after the
-    # lock and the insert commits in the same transaction, so they cannot overshoot.
+    # lock and the insert commits in the same transaction. A ceiling is checked before each
+    # event is added, so a game or session ends at most one event over it.
     # Dropped with a 2xx, not an error: the client dead-letters any 4xx, while a 2xx
     # drains the row.
     await lock_session(session, session_id, EVENTS_NAMESPACE)
@@ -351,6 +355,9 @@ async def append_events(
     )
     if rows:
         await _store_events(session, game.id, rows, row_bytes)
+    else:
+        # Nothing to write: end the transaction now, releasing the session lock early.
+        await session.rollback()
 
     return AppendResult(
         accepted=len(rows),

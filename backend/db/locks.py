@@ -11,12 +11,15 @@ released by the transaction ending, so a pooled connection cannot leak it. That
 also works behind Supabase's session-mode pooler, and would behind a
 transaction-mode one, because the lock lives and dies inside one transaction.
 
+A wait longer than 2 s raises ``SessionBusy`` (SQLSTATE 55P03; ``main`` answers 503).
+
 SQLite (the test database) serialises writers itself, so there it does nothing.
 """
 
 from __future__ import annotations
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.dialect import dialect_name
@@ -25,6 +28,14 @@ from db.dialect import dialect_name
 # do not block each other.
 EVENTS_NAMESPACE = 3298_01
 BUG_LOGS_NAMESPACE = 3298_02
+
+LOCK_TIMEOUT_SQL = "SET LOCAL lock_timeout = '2s'"
+_LOCK_NOT_AVAILABLE = "55P03"
+
+
+class SessionBusy(Exception):
+    """Another request holds this session's lock past the timeout: answer 503, retry."""
+
 
 LOCK_SQL = "SELECT pg_advisory_xact_lock(hashtextextended(:sid, :ns))"
 
@@ -37,4 +48,21 @@ async def lock_session(db: AsyncSession, session_id: str, namespace: int) -> Non
     """
     if dialect_name(db) == "sqlite":
         return
-    await db.execute(text(LOCK_SQL), {"sid": session_id, "ns": namespace})
+    # A bounded wait: a waiter must not sit on a pool connection behind a stuck holder.
+    await db.execute(text(LOCK_TIMEOUT_SQL))
+    try:
+        await db.execute(text(LOCK_SQL), {"sid": session_id, "ns": namespace})
+    except DBAPIError as exc:
+        if _sqlstate(exc) == _LOCK_NOT_AVAILABLE:
+            raise SessionBusy(session_id) from exc
+        raise
+
+
+def _sqlstate(exc: DBAPIError) -> str | None:
+    """The SQLSTATE of a driver error (asyncpg ``sqlstate``, psycopg ``pgcode``)."""
+    orig = exc.orig
+    for candidate in (orig, getattr(orig, "__cause__", None)):
+        code = getattr(candidate, "sqlstate", None) or getattr(candidate, "pgcode", None)
+        if code:
+            return str(code)
+    return None

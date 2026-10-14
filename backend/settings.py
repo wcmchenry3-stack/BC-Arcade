@@ -60,7 +60,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 # CORS origins when ALLOWED_ORIGINS is unset or empty: the local Expo dev servers.
@@ -166,7 +166,12 @@ class Settings(BaseSettings):
     # MUST be >= the client's MAX_BUG_CONTEXT_BYTES (frontend eventQueueConfig.ts, 16 KB;
     # eventStore truncates to it), or honest contexts are silently dropped.
     max_bug_log_context_bytes: int = Field(
-        default=16_384, alias="MAX_BUG_LOG_CONTEXT_BYTES", ge=1024, le=131_072
+        default=16_384, alias="MAX_BUG_LOG_CONTEXT_BYTES", ge=16_384, le=131_072
+    )
+    # Largest accepted ``POST /games`` ``metadata`` + ``players`` (games.sessions), as
+    # json_bytes. Real metadata is a handful of scalars per game (<1 KB); over it is a 413.
+    max_game_metadata_bytes: int = Field(
+        default=16_384, alias="MAX_GAME_METADATA_BYTES", ge=1024, le=131_072
     )
     # Per-game ceilings on stored events (games.sessions). The client queue holds 5000
     # rows, so a game never legitimately stores more; 1 MiB bounds its bytes. The
@@ -200,6 +205,20 @@ class Settings(BaseSettings):
     db_ping_timeout_seconds: float = Field(
         default=5.0, alias="DB_PING_TIMEOUT_SECONDS", gt=0, le=60
     )
+
+    @model_validator(mode="after")
+    def _event_byte_caps_nest(self) -> Settings:
+        """One event must fit its game, and one game its session's daily ceiling."""
+        if not (
+            self.max_event_data_bytes
+            <= self.max_event_bytes_per_game
+            <= self.max_event_bytes_per_session_day
+        ):
+            raise ValueError(
+                "MAX_EVENT_DATA_BYTES <= MAX_EVENT_BYTES_PER_GAME <= "
+                "MAX_EVENT_BYTES_PER_SESSION_DAY must hold"
+            )
+        return self
 
     @field_validator(
         "apple_bundle_id",

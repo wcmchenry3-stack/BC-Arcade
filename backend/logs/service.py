@@ -50,7 +50,7 @@ async def append_bug_logs(
     """
     cfg = _get_settings()
     # Serialise this session's appends (Postgres) so the count below is current and the
-    # insert commits in the same transaction: concurrent batches cannot overshoot.
+    # insert commits in the same transaction: a session ends at most one log over its ceiling.
     await lock_session(session, session_id, BUG_LOGS_NAMESPACE)
     kept = [
         log for log in logs if json_bytes(log.get("context") or {}) <= cfg.max_bug_log_context_bytes
@@ -98,6 +98,9 @@ async def append_bug_logs(
     if rows:
         await session.execute(_upsert_ignore(session, BugLog.__table__, rows))
         await session.commit()
+    else:
+        # Nothing to write: end the transaction now, releasing the session lock early.
+        await session.rollback()
 
     duplicates = sum(1 for i in ids if i in existing_set)
     return BugLogResult(

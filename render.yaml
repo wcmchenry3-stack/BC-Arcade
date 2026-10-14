@@ -64,6 +64,7 @@ services:
       # - key: ENTITLEMENT_TOKEN_TTL_HOURS   # 24
       # - key: STALE_GAME_AFTER_HOURS        # 24
       # - key: MAX_RESULT_BYTES              # 8192
+      # - key: MAX_GAME_METADATA_BYTES      # 16384
       # - key: MAX_EVENT_DATA_BYTES          # 8192
       # - key: MAX_BUG_LOG_CONTEXT_BYTES     # 16384
       # - key: MAX_EVENTS_PER_GAME           # 5000
@@ -158,6 +159,7 @@ services:
       # - key: ENTITLEMENT_TOKEN_TTL_HOURS   # 24
       # - key: STALE_GAME_AFTER_HOURS        # 24
       # - key: MAX_RESULT_BYTES              # 8192
+      # - key: MAX_GAME_METADATA_BYTES      # 16384
       # - key: MAX_EVENT_DATA_BYTES          # 8192
       # - key: MAX_BUG_LOG_CONTEXT_BYTES     # 16384
       # - key: MAX_EVENTS_PER_GAME           # 5000

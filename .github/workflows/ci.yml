@@ -495,7 +495,7 @@ jobs:
           LEADERBOARD_EXPLAIN_PG_URL: ${{ env.PG_SERVER }}/postgres
         run: >-
           python -m pytest tests/test_leaderboard_query_plans.py
-          tests/test_leaderboard_indexes_migration.py -v -rs --no-cov
+          tests/test_leaderboard_indexes_migration.py tests/test_session_lock.py -v -rs --no-cov
       - name: Create and migrate the suite database
         env:
           DATABASE_URL: ${{ env.PG_SERVER }}/bcarcade_test
