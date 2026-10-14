@@ -344,6 +344,7 @@ async def append_events(
         accepted=result.accepted,
         duplicates=result.duplicates,
         rejected=result.rejected,
+        dropped=result.dropped,
     )
 
 

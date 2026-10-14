@@ -104,6 +104,9 @@ class AppendEventsResponse(BaseModel):
     accepted: int
     duplicates: int
     rejected: list[str] = Field(default_factory=list)
+    # Events dropped on a 2xx so the client queue drains (#3298): data over
+    # MAX_EVENT_DATA_BYTES, or the game past its stored-event ceiling.
+    dropped: int = 0
 
 
 class GameStateResponse(BaseModel):

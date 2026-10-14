@@ -102,6 +102,8 @@ class Game(Base):
     __table_args__ = (
         CheckConstraint(_OUTCOME_CHECK, name="ck_games_outcome"),
         Index("games_session_id_started_at_idx", "session_id", "started_at"),
+        # Per-session 24 h event-bytes sum (#3298, alembic 0035).
+        Index("games_session_created_idx", "session_id", "created_at"),
         Index(
             "games_user_id_started_at_idx",
             "user_id",
@@ -153,6 +155,15 @@ class Game(Base):
     # Server time the completion arrived (#2765): the leaderboards' last
     # tie-break, since ``completed_at`` is device-reported. NULL while in progress.
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Server insert time (#3298): unlike ``started_at`` a client cannot backdate it,
+    # so it bounds the per-session 24 h event-bytes ceiling.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    # Running totals of this game's stored events (#3298), bumped in the append's own
+    # transaction: the ceilings read them instead of scanning ``game_events``.
+    event_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    event_bytes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     final_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -396,6 +407,8 @@ class BugLog(Base):
         Index("bug_logs_session_logged_idx", "session_id", "logged_at"),
         Index("bug_logs_level_logged_idx", "level", "logged_at"),
         Index("bug_logs_source_idx", "source"),
+        # The retention delete (#3298, alembic 0035).
+        Index("bug_logs_received_at_idx", "received_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)

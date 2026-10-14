@@ -1056,3 +1056,84 @@ unchanged (`mapKeep` / `mapFilterKeep` live in `engine/roster.ts`). An interleav
 same benchmark (three rounds, `dev`'s `engine.ts` swapped in and out on the same loaded
 container) measured 929–1022 µs/tick before the split and 824–892 µs/tick after it, with the GC
 pass count unchanged (179 vs 179–180); on the idle container `dev` measured 632–721 µs/tick.
+
+## Replay recording (#3275)
+
+Epic #3273 records far more of each game (the gameplay recorder, [GAME-CONTRACT §2.10](GAME-CONTRACT.md#210-recording-gameplay)). This section covers the guardrails that keep the app as smooth and as light on battery as before.
+
+### Guardrails
+
+- **No gameplay uploads mid-game.** `SyncWorker` uploads only the lifecycle events (`game_started`, `hand_resolved`, `game_ended`) of a session that is open in the foreground. Its gameplay events wait until the session completes, the app goes to the background, or the oldest of them is `GAMEPLAY_HOLD_MAX_MS` (5 min, `eventQueueConfig.ts`) old. Each upload wakes the radio, and the radio then stays in a high-power state for several seconds, so a few large batches cost much less battery than one batch every 30 s. Details are in [ARCHITECTURE.md](ARCHITECTURE.md) ("SyncWorker"). Tests: `syncWorker.hold.test.ts`, `syncWorker.appState.test.ts`.
+- **Saves off the interaction path.** The recorder's `record()` only appends to an array. Measuring and saving run in `requestIdleCallback` (2 s deadline), never in a gesture handler, an animation callback or Star Swarm's tick. Star Swarm (`on_session_end`) saves once, when the run ends. Test: `gameRecorder.interactionPath.test.ts`.
+- **CI budgets.** `replay.bench.test.ts` runs in the normal jest job (`test-frontend` in `ci.yml`), so a game that goes over a budget fails CI.
+
+### Benchmarks and CI budgets
+
+`replay.bench.test.ts` plays three games through the real pipeline (recorder → `gameEventClient` → `eventStore` → `SyncWorker`, using the in-memory AsyncStorage mock and a mocked API). Each game runs against a queue of 4,900 rows (98% of `MAX_ROWS`), so its rows push the queue over the cap and saves evict the oldest rows. The bench checks that no row of the session being held is evicted: every `event_index` it reserved reaches the server. After every unit the bench runs the idle save and a foreground sync pass, which is the worst case: a 30 s tick after every unit. The fixtures are:
+
+- **Hearts:** a full game of 7 hands, with one unit for the pass and one per trick (98 units, 490 events).
+- **Solitaire:** 300 moves, one unit per move.
+- **Yacht:** 13 rounds against the CPU, one unit per round (13 units, 104 events).
+
+The count budgets are hard, because the fixture is deterministic. Time has only a generous ceiling, a mean of 40 ms per save, because CI runners are shared and run jest with coverage.
+
+Measured on 2026-10-14 (Node under jest, this container, not a device):
+
+| Game      | Saves (evicting) | Queue writes / save: no eviction (budget) / evicting (budget) | Session rows evicted | Reads | Recorded bytes (budget) | Bytes written to storage (budget) | Save time, mean / max (ceiling) | `POST …/events` per game (budget) | Gameplay POSTs while open |
+| --------- | ---------------- | ------------------------------------------------------------- | -------------------- | ----- | ----------------------- | --------------------------------- | ------------------------------- | --------------------------------- | ------------------------- |
+| Hearts    | 98 (78)          | ≤ 2 (2) / ≤ 4 (4)                                             | 0                    | 0     | 43,105 (50,000)         | 96.3 MB (111 MB)                  | 3.9 / 7 ms (40 ms mean)         | 11 (11)                           | 0                         |
+| Solitaire | 300 (200)        | 1 (1) / ≤ 2 (4)                                               | 0                    | 0     | 17,281 (20,000)         | 164.0 MB (189 MB)                 | 2.2 / 5 ms (40 ms mean)         | 3 (3)                             | 0                         |
+| Yacht     | 13 (1)           | ≤ 2 (2) / ≤ 3 (4)                                             | 0                    | 0     | 11,162 (13,000)         | 9.8 MB (11.3 MB)                  | 3.1 / 4 ms (40 ms mean)         | 2 (2)                             | 0                         |
+
+Each save also makes one `pending_games_v1` write, for the `event_index` counter (budget: 1). A save that evicts nothing never writes more queue keys than the tiers its events touch. A save that evicts also rewrites the tiers it evicted from, up to all four. The POST counts are structural: one for `game_started`, one for each lifecycle row recorded while the game is open (Hearts' 7 `hand_resolved`), and `ceil(rows / 200)` at the end. Bytes written to storage are high against a queue at its cap because each save rewrites its whole tier, and an evicting save rewrites the tiers it evicted from as well. That is the AsyncStorage on-disk format (#2959). It is listed here so the budget file (#3294) can track it.
+
+Run the bench with `cd frontend && npx jest src/game/_shared/__tests__/replay.bench.test.ts`. It prints one `[bench #3275]` line per game.
+
+### Device check (to be run by the owner)
+
+**Owner action, required before epic #3273 closes.** The jest numbers above come from a container, not a phone. This check measures frame timing and battery on real hardware, with a build from before the epic and a build from after it.
+
+**Builds.** Use release builds against the pre-launch API ([ANDROID-CI.md](ANDROID-CI.md#api-url-store-vs-pre-launch-builds)): a Play test build through Gradle and a TestFlight build through Xcode Cloud. Dev builds are not representative.
+
+- _Before:_ the last build from `dev` before the first game adopted the recorder (#3280).
+- _After:_ a build that includes every #3273 story that has landed.
+
+Install them on the same two phones: a **mid-range Android** (for example a Pixel 6a or Galaxy A54) and an **iPhone** (an iPhone 12 or older).
+
+**1. Star Swarm frame timing.** Follow [Star Swarm native renderer → How to measure](#how-to-measure) steps 2–3 (the dev panel's _Frame readout_, about 10 s per scenario) for Wave 1 idle, Wave 5 boss and Wave 9 lightning. Do this on both builds and both phones.
+
+**2. 30-minute mixed-games battery run.** Run each build on each phone:
+
+1. Charge to 100%, unplug, and wait until the phone shows 95%.
+2. Set brightness to 50% with auto-brightness off, turn Low Power / Battery Saver off, and stay on Wi-Fi only (cellular off) in the same room for every run.
+3. Close all other apps. On Android, reset the stats over USB with `adb shell dumpsys batterystats --reset`, then unplug.
+4. Play for 30 minutes without stopping:
+   - 10 min of Hearts against the CPU;
+   - 5 min of Solitaire;
+   - 5 min of Yacht against the CPU;
+   - 10 min of Star Swarm.
+
+   Send the app to the background once during the run, at the 15-minute mark, for 30 s.
+
+5. Record the battery % at the end.
+   - Android: reconnect and run `adb shell dumpsys batterystats --charged com.buffingchi.games`. Note the app's estimated power use and its "Wifi" / "Mobile radio active" time.
+   - iPhone: open Settings → Battery and note the app's share for the last hour and its on-screen / background time.
+6. Count `POST /games/{id}/events` in the pre-launch API's Render logs for the run window. Use a quiet time, when only this device uses the API.
+7. Let the phone cool to room temperature before the next run.
+
+**Results** (to be filled in by the owner):
+
+| Phone              | Build  | Star Swarm W1 / W5 / W9 (avg / p95 ms) | Battery used in 30 min (%) | App power / radio-active time | `POST …/events` in 30 min | Notes |
+| ------------------ | ------ | -------------------------------------- | -------------------------- | ----------------------------- | ------------------------- | ----- |
+| Mid-range Android: | Before | TODO                                   | TODO                       | TODO                          | TODO                      |       |
+| Mid-range Android: | After  | TODO                                   | TODO                       | TODO                          | TODO                      |       |
+| iPhone:            | Before | TODO                                   | TODO                       | TODO                          | TODO                      |       |
+| iPhone:            | After  | TODO                                   | TODO                       | TODO                          | TODO                      |       |
+
+**Pass criteria.** The "after" build passes when:
+
+- Star Swarm's p95 frame time is within 1 ms of the "before" build in every scenario;
+- battery use is within 1 percentage point of "before" over the 30 minutes;
+- there are fewer `POST …/events` than "before" (the uploads are fewer and larger).
+
+Anything worse blocks closing the epic. If that happens, open an issue with these numbers.
