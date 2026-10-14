@@ -353,13 +353,20 @@ export const gameEventRegistry = {
 } as const satisfies Readonly<Record<GameType, GameEventRegistryEntry>>;
 
 /**
- * Every event name some game registers. `EnqueueEventInput.type` and
- * `GameRecorder.record` take it, so an event sent without a registry entry
- * (and so without a seed or validation decision) does not compile.
+ * The event names `G` registers. Distributes over a union, so `EventTypeOf<GameType>`
+ * is every game's names. A call typed with it (`useGameSync(G).enqueue`,
+ * `GameRecorder<G>.record`) rejects a name the game does not register, which the
+ * backend would refuse as `unknown_event_type`.
  */
-export type RegisteredEventType = {
-  [G in GameType]: Extract<keyof (typeof gameEventRegistry)[G]["events"], string>;
-}[GameType];
+export type EventTypeOf<G extends GameType = GameType> = G extends GameType
+  ? Extract<keyof (typeof gameEventRegistry)[G]["events"], string>
+  : never;
+
+/**
+ * Every event name some game registers: for the layers that do not know the game.
+ * @internal Only the GameRecorder and type tests use it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
+ */
+export type RegisteredEventType = EventTypeOf;
 
 /**
  * The recorder's caps for one registry entry, or undefined when it overrides

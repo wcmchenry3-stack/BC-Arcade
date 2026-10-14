@@ -71,6 +71,7 @@ import {
   isRecordingEnabled,
   recordingConfigFor,
   recordingEventCap,
+  type EventTypeOf,
   type RegisteredEventType,
   type GameRecordingConfig,
 } from "./eventQueueConfig";
@@ -137,8 +138,8 @@ export interface RecorderHandoff {
   readonly full: boolean;
 }
 
-export interface GameRecorderOptions {
-  readonly gameType: GameType;
+export interface GameRecorderOptions<G extends GameType = GameType> {
+  readonly gameType: G;
   readonly policy?: SendPolicy;
   readonly sink?: RecorderSink;
   /** Defaults to the game's entry in eventQueueConfig. */
@@ -300,8 +301,8 @@ function freshCounters(): Counters {
   };
 }
 
-export class GameRecorder {
-  readonly gameType: GameType;
+export class GameRecorder<G extends GameType = GameType> {
+  readonly gameType: G;
   readonly policy: SendPolicy;
   private sink: RecorderSink | null;
   private readonly config: GameRecordingConfig;
@@ -330,7 +331,7 @@ export class GameRecorder {
   private taskScheduled = false;
   private c: Counters = freshCounters();
 
-  constructor(options: GameRecorderOptions) {
+  constructor(options: GameRecorderOptions<G>) {
     this.gameType = options.gameType;
     this.policy = options.policy ?? "on_unit_close";
     this.sink = options.sink ?? null;
@@ -440,7 +441,7 @@ export class GameRecorder {
    * unmeasured events are held — past that, events are dropped until idle
    * measures the backlog.
    */
-  record(type: RegisteredEventType, data?: Record<string, unknown>, actor?: RecordActor): void {
+  record(type: EventTypeOf<G>, data?: Record<string, unknown>, actor?: RecordActor): void {
     if (data && isDev()) Object.freeze(data);
     if (this.ended) return;
     this.ensureSession();

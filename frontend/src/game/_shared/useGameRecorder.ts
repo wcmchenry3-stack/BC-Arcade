@@ -44,7 +44,7 @@ import {
   type RecorderHandoff,
   type SendPolicy,
 } from "./gameRecorder";
-import type { RegisteredEventType } from "./eventQueueConfig";
+import type { EventTypeOf } from "./eventQueueConfig";
 import type { CompleteSummary } from "./pendingGamesStore";
 import { useGameSync, type UseGameSyncReturn } from "./useGameSync";
 import type { GameType } from "./types";
@@ -54,24 +54,24 @@ export interface UseGameRecorderOptions {
   readonly policy?: SendPolicy;
 }
 
-export interface UseGameRecorderReturn extends UseGameSyncReturn {
+export interface UseGameRecorderReturn<G extends GameType = GameType> extends UseGameSyncReturn<G> {
   /** Begin a unit (round / hand / trick / chunk); `n` defaults to the last one's plus one. */
   beginUnit: (n?: number) => number;
   /**
    * Record one event in memory. Cheap: call it from gameplay handlers. `data`
    * is taken by ownership — a fresh compact object, never changed afterwards.
    */
-  record: (type: RegisteredEventType, data?: Record<string, unknown>, actor?: RecordActor) => void;
+  record: (type: EventTypeOf<G>, data?: Record<string, unknown>, actor?: RecordActor) => void;
   /** Close the open unit; under `on_unit_close` it is saved at the next idle moment. */
   closeUnit: () => void;
 }
 
-export function useGameRecorder(
-  gameType: GameType,
+export function useGameRecorder<G extends GameType>(
+  gameType: G,
   options: UseGameRecorderOptions = {}
-): UseGameRecorderReturn {
+): UseGameRecorderReturn<G> {
   const { policy } = options;
-  const recorder = useMemo(() => new GameRecorder({ gameType, policy }), [gameType, policy]);
+  const recorder = useMemo(() => new GameRecorder<G>({ gameType, policy }), [gameType, policy]);
   // Declared before useGameSync's own effect, so on unmount this cleanup runs
   // first: the recorder saves while the session is still open, ahead of the
   // abandon's game_ended. It also ends a replaced recorder's session, after
@@ -154,7 +154,7 @@ export function useGameRecorder(
 
   const beginUnit = useCallback((n?: number) => recorder.beginUnit(n), [recorder]);
   const record = useCallback(
-    (type: RegisteredEventType, data?: Record<string, unknown>, actor?: RecordActor) =>
+    (type: EventTypeOf<G>, data?: Record<string, unknown>, actor?: RecordActor) =>
       recorder.record(type, data, actor),
     [recorder]
   );
