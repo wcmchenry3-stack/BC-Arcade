@@ -61,6 +61,7 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `RENDER_GIT_COMMIT`        | injected by Render — becomes the Sentry `release`               | ←                                                                       | Render (automatic)  |
 | `TRUSTED_PROXY_MODE`       | `cloudflare` (the default; set explicitly)                      | `cloudflare`                                                            | `render.yaml`       |
 | `TRUSTED_PROXY_HOPS`       | leave unset (`1`: Render's proxy)                               | ←                                                                       | —                   |
+| `RATE_LIMIT_STORAGE_URL`   | optional; unset = in-memory counters (see [Rate-limit storage](#rate-limit-storage-and-the-process-model)) | ← | Dashboard secret (optional) |
 | `LOG_PROXY_HEADERS`        | **must not exist** (ignored when `ENVIRONMENT=production`)      | `1` only while running the owner checks below, then remove it           | Dashboard, dev only |
 | `APPLE_BUNDLE_ID`          | set when Apple purchases go live (#2786)                        | set on the purchase-testing backend                                     | Dashboard secret    |
 | `APPLE_APP_ID`             | set with `APPLE_BUNDLE_ID` (required while Production is allowed) | ←                                                                     | Dashboard secret    |
@@ -141,8 +142,45 @@ If the mode is not `cloudflare` and a request arrives carrying
 `CF-Connecting-IP`, it logs `client_ip_cf_header_ignored` once per process:
 the mode is probably wrong for that host and callers may be sharing buckets.
 
-Changing the mode moves every per-IP bucket; the limiter's storage is
-in-memory, so counters simply start again (as on every deploy).
+Changing the mode moves every per-IP bucket; with the default in-memory
+storage, counters simply start again (as on every deploy). With
+`RATE_LIMIT_STORAGE_URL` set they live in the shared store, so the old buckets
+just stop being used.
+
+#### Rate-limit storage and the process model
+
+- **Process model.** Each service runs one `uvicorn` process, with no
+  request-count recycling. `--limit-max-requests` was removed (#3301): uvicorn
+  counts every request, 429s included, and exits at the limit, so ordinary
+  traffic (or a burst of blocked requests) restarted the only process, causing
+  downtime, an `alembic upgrade head` re-run and reset counters.
+  `backend/tests/test_limiter_storage.py` fails if it comes back.
+- **Counters** are in process memory by default, so they reset on every restart
+  and deploy. That is fine for one process.
+- **`RATE_LIMIT_STORAGE_URL`** (optional) is a `redis://` or `rediss://` URL of a
+  Redis-compatible store (for example a Render Key Value instance). Set it in the
+  dashboard, not `render.yaml`, since it can hold a password. When set, counters
+  survive restarts and are shared by every instance. Unset or blank keeps
+  in-memory counters. No store is provisioned today. **Before setting it, land
+  #3329**: the purchase routes' per-store-account limit calls the limiter directly
+  and does not yet fall back to memory, so a store outage would 500 those routes.
+- **Store down.** The limiter never fails a request because of the store. While
+  it is unreachable (1 s connect/read timeout) limits are enforced in memory, and
+  it switches back once the store answers. Counters restart empty at each switch.
+  The Redis calls are synchronous on the event loop, so a blackholed store (no
+  refusal, just silence) can stall requests up to the 1 s timeout during each
+  recovery probe. At startup the API logs `{"event": "rate_limit_storage",
+  "shared": …}` (never the URL) and, if the store does not answer, sends one
+  Sentry warning.
+- **Network.** A store outside Render's private network must use `rediss://`
+  (TLS); `redis://` is for the internal URL only.
+- **Workers.** Both start commands pass `--workers 1` explicitly: uvicorn reads
+  `WEB_CONCURRENCY`, which Render sets on multi-CPU plans, and would otherwise
+  start several processes with split in-memory counters. The config guard test
+  requires `--workers 1` (or `-w 1`). To run more, set `RATE_LIMIT_STORAGE_URL`
+  first, then change the test.
+- **CI.** The Redis test runs in the advisory `test-postgres` job, so a red run
+  does not block merge; read the job result before merging.
 
 Two operational traps:
 

@@ -1221,6 +1221,7 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `TRUSTED_PROXY_MODE`   | `cloudflare`                                      | `limiter.py`                                            |
 | `TRUSTED_PROXY_HOPS`   | `1` (1–10)                                        | `limiter.py`                                            |
 | `LOG_PROXY_HEADERS`    | unset (off; ignored in production)                | `limiter.py`                                            |
+| `RATE_LIMIT_STORAGE_URL` | unset or blank (in-memory counters); `redis://` / `rediss://` shares them | `limiter.py` (`build_limiter`) |
 | `DATABASE_URL`         | unset or blank (no database; the API still boots) | `db/base.py` (on first use), `alembic/env.py` (when `MIGRATION_DATABASE_URL` is unset) |
 | `MIGRATION_DATABASE_URL` | unset or blank (Alembic uses `DATABASE_URL`)    | `alembic/env.py` only — the privileged role; the app role is DML-only (#3302, [RENDER.md](RENDER.md#app-database-role-least-privilege)) |
 | `DAILY_WORD_SALT`      | `0` (empty or non-integer fails the import)       | `daily_word/puzzle.py` (at import)                      |

@@ -53,7 +53,13 @@ from entitlements.service import is_dev_override_active
 from games.router import router as games_router
 from games.sessions import GameServiceError
 from jobs.lifespan import configured_jobs, start_jobs
-from limiter import client_ip, configure_proxy_trust, limiter, log_proxy_trust
+from limiter import (
+    client_ip,
+    configure_proxy_trust,
+    limiter,
+    log_proxy_trust,
+    log_rate_limit_storage,
+)
 from logs.router import router as logs_router
 from me.router import router as me_router
 from middleware.body_size import DEFAULT_MAX_BODY_BYTES, MaxBodySizeMiddleware
@@ -296,6 +302,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_proxy_trust(settings.proxy_environ())
     log_proxy_trust(settings.log_proxy_headers_requested)
     init_sentry(settings)
+    log_rate_limit_storage()
 
     # The interactive docs (/docs, /redoc) and raw spec (/openapi.json) expose the
     # whole API surface publicly; a consumer game backend doesn't need them live in
