@@ -340,10 +340,11 @@ export class GameEventClientImpl implements GameEventClient {
     // them too (#3325 review). And a failure between the two leaves only
     // events with no game, never a game that still syncs.
     await this.games.clearAll();
+    // The tagged game was just deleted: untag it now, before the fallible
+    // event-store clear below (#3277).
+    forceClearSessionTags();
     await this.store.clearAll();
     this.limiter.reset();
-    // The tagged game was just deleted.
-    forceClearSessionTags();
   }
 
   // -------------------------------------------------------------------------

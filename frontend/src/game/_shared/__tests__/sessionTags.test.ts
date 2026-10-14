@@ -194,6 +194,18 @@ describe("Sentry session tags (#3277)", () => {
     expect(liveTags()).toEqual({});
   });
 
+  it("clearAll clears the tags even when the event-store clear fails", async () => {
+    client.startGame("yacht", { mode: "vs", difficulty: "hard" });
+    const spy = jest.spyOn(store, "clearAll").mockRejectedValueOnce(new Error("disk"));
+    try {
+      await expect(client.clearAll()).rejects.toThrow("disk");
+    } finally {
+      spy.mockRestore();
+    }
+    expect(taggedSessionGameId()).toBeNull();
+    expect(liveTags()).toEqual({});
+  });
+
   it("forceClearSessionTags clears whatever is tagged, and is a no-op when nothing is", () => {
     forceClearSessionTags();
     expect(setTag).not.toHaveBeenCalled();
