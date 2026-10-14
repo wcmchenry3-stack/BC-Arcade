@@ -421,6 +421,13 @@ TUNABLES = (
     ("max_events_per_game", "MAX_EVENTS_PER_GAME", 5000, "100", 100),
     ("max_event_bytes_per_game", "MAX_EVENT_BYTES_PER_GAME", 1_048_576, "2048", 2048),
     ("max_bug_logs_per_session", "MAX_BUG_LOGS_PER_SESSION", 500, "10", 10),
+    (
+        "max_event_bytes_per_session_day",
+        "MAX_EVENT_BYTES_PER_SESSION_DAY",
+        16_777_216,
+        "4096",
+        4096,
+    ),
     ("bug_log_retention_days", "BUG_LOG_RETENTION_DAYS", 90, "30", 30),
     ("streak_lookback_days", "STREAK_LOOKBACK_DAYS", 60, "30", 30),
     ("apple_replay_window_hours", "APPLE_REPLAY_WINDOW_HOURS", 48, "72", 72),

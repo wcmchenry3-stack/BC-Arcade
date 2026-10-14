@@ -38,13 +38,17 @@ and kept for the process); and the ``APPLE_*`` / ``GOOGLE_*`` store config
 ``APPLE_IAP_ENVIRONMENTS`` / ``GOOGLE_PLAY_ENVIRONMENTS`` are no longer re-read on
 every ``allowed_environments()`` call).
 
-The six operational tunables (#3110) are read lazily through the owning module's
+The operational tunables (#3110, #3298) are read lazily through the owning module's
 own ``_settings``, like the ``ENTITLEMENT_*`` fields, so ``create_app(settings)`` does
 not affect them: ``ENTITLEMENT_TOKEN_TTL_HOURS`` (``entitlements.service``),
 ``STALE_GAME_AFTER_HOURS`` (``games.sweep``), ``MAX_RESULT_BYTES`` (``games.sessions``),
 ``STREAK_LOOKBACK_DAYS`` (``daily_challenge.streak``), ``APPLE_REPLAY_WINDOW_HOURS``
 (``purchases.apple_notifications``, via ``purchases._common``) and
-``DB_PING_TIMEOUT_SECONDS`` (``routes.health``).
+``DB_PING_TIMEOUT_SECONDS`` (``routes.health``), plus the payload caps and retention of #3298:
+``MAX_EVENT_DATA_BYTES``, ``MAX_EVENTS_PER_GAME``, ``MAX_EVENT_BYTES_PER_GAME``,
+``MAX_EVENT_BYTES_PER_SESSION_DAY`` (``games.sessions``), ``MAX_BUG_LOG_CONTEXT_BYTES``,
+``MAX_BUG_LOGS_PER_SESSION`` (``logs.service``) and ``BUG_LOG_RETENTION_DAYS``
+(``logs.retention``).
 
 Secrets (``ADMIN_API_TOKEN``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
 ``GOOGLE_PLAY_SERVICE_ACCOUNT_JSON``) are ``SecretStr``, so a
@@ -167,6 +171,11 @@ class Settings(BaseSettings):
     max_events_per_game: int = Field(default=5000, alias="MAX_EVENTS_PER_GAME", ge=1)
     max_event_bytes_per_game: int = Field(
         default=1_048_576, alias="MAX_EVENT_BYTES_PER_GAME", ge=1024
+    )
+    # Rolling-24 h stored event bytes per session, summed over its games (games.sessions).
+    # Honest fully recorded games are ~40 KB; 16 MiB bounds a session to a few hundred MB/month.
+    max_event_bytes_per_session_day: int = Field(
+        default=16_777_216, alias="MAX_EVENT_BYTES_PER_SESSION_DAY", ge=1024
     )
     # Per-session ceiling on stored bug logs (logs.service); BUG_LOG_RETENTION_DAYS
     # frees room as rows age out (logs.retention).

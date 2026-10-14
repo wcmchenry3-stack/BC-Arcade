@@ -1215,6 +1215,7 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `MAX_EVENT_DATA_BYTES` | `8192` (1024–131072; per event `data`, over-size dropped) | `games/sessions.py` (lazy)                      |
 | `MAX_EVENTS_PER_GAME` / `MAX_EVENT_BYTES_PER_GAME` | `5000` / `1048576` (events and stored bytes per game; excess dropped) | `games/sessions.py` (lazy) |
 | `MAX_BUG_LOG_CONTEXT_BYTES` | `4096` (1024–131072; over-size log dropped)  | `logs/service.py` (lazy)                                |
+| `MAX_EVENT_BYTES_PER_SESSION_DAY` | `16777216` (rolling 24 h, all of a session's games; excess dropped) | `games/sessions.py` (lazy) |
 | `MAX_BUG_LOGS_PER_SESSION` | `500` (stored bug logs per session; excess dropped) | `logs/service.py` (lazy)                         |
 | `BUG_LOG_RETENTION_DAYS` | `90` (1–3650)                                   | `logs/retention.py` (lazy)                              |
 | `STREAK_LOOKBACK_DAYS` | `60` (1–365; also the largest streak reported)    | `daily_challenge/streak.py` (lazy)                      |

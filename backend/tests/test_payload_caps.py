@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from db.base import get_session_factory
-from db.models import BugLog, GameEntitlement, GameEvent
+from db.models import BugLog, Game, GameEntitlement, GameEvent
 from games import sessions as game_sessions
 from jobs import lifespan as jobs_lifespan
 from logs import retention as bug_retention
@@ -217,3 +218,71 @@ def test_bug_log_retention_job_is_registered(monkeypatch: pytest.MonkeyPatch) ->
     names = [j.name for j in jobs_lifespan.configured_jobs()]
     assert "bug_logs_retention" in names
     assert bug_retention.retention_job(lambda: None).reraise_on_crash is True  # type: ignore[arg-type,return-value]
+
+
+# --- running counters and the per-session rolling-24 h ceiling --------------
+
+
+async def _game_row(game_id: str) -> Game:
+    async with get_session_factory()() as db:
+        return (await db.execute(select(Game).where(Game.id == uuid.UUID(game_id)))).scalar_one()
+
+
+def _new_game(client: TestClient, sid: str) -> str:
+    r = client.post("/games", headers=_headers(sid), json={"game_type": "yacht"})
+    assert r.status_code == 200, r.text
+    return r.json()["id"]
+
+
+async def test_counters_match_stored_events_and_skip_dropped_and_duplicates(
+    client: TestClient, session_id: str, game: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _use(monkeypatch, game_sessions, MAX_EVENT_DATA_BYTES=1024)
+    body = _events(0, 3)
+    body["events"][2]["data"] = _blob(1025)  # dropped
+    client.post(f"/games/{game}/events", headers=_headers(session_id), json=body)
+    client.post(f"/games/{game}/events", headers=_headers(session_id), json=body)  # resend
+    row = await _game_row(game)
+    async with get_session_factory()() as db:
+        stored = (
+            (await db.execute(select(GameEvent).where(GameEvent.game_id == row.id))).scalars().all()
+        )
+    assert row.event_count == len(stored) == 2
+    assert row.event_bytes == sum(len(json.dumps(e.data, separators=(",", ":"))) for e in stored)
+
+
+async def test_session_past_daily_event_ceiling_stops_growing(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sid = str(uuid.uuid4())
+    other = str(uuid.uuid4())
+    for s in (sid, other):
+        async with get_session_factory()() as db:
+            db.add(GameEntitlement(session_id=s, game_slug="yacht"))
+            await db.commit()
+    _use(
+        monkeypatch,
+        game_sessions,
+        MAX_EVENT_BYTES_PER_SESSION_DAY=2048,
+        MAX_EVENT_DATA_BYTES=1024,
+    )
+    g1, g2, g3 = (_new_game(client, sid) for _ in range(3))
+    h = _headers(sid)
+    r1 = client.post(f"/games/{g1}/events", headers=h, json=_events(0, 2, _blob(1024)))
+    assert r1.json()["accepted"] == 2
+    r2 = client.post(f"/games/{g2}/events", headers=h, json=_events(0, 1))
+    assert (r2.json()["accepted"], r2.json()["dropped"]) == (0, 1)
+    # another session is unaffected
+    og = _new_game(client, other)
+    ro = client.post(f"/games/{og}/events", headers=_headers(other), json=_events(0, 1))
+    assert ro.json()["accepted"] == 1
+    # games older than 24 h no longer count
+    async with get_session_factory()() as db:
+        await db.execute(
+            update(Game)
+            .where(Game.id == uuid.UUID(g1))
+            .values(created_at=datetime.now(UTC) - timedelta(hours=25))
+        )
+        await db.commit()
+    r3 = client.post(f"/games/{g3}/events", headers=h, json=_events(0, 1))
+    assert r3.json()["accepted"] == 1
