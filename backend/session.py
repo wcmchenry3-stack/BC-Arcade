@@ -10,19 +10,35 @@ import uuid
 from fastapi import HTTPException, Request
 
 
+def parse_session_id(raw: str | None) -> str | None:
+    """``raw`` stripped if it parses as a UUID, else ``None``.
+
+    The single definition of a valid session id: :func:`get_session_id` (which
+    answers 400) and the rate limiters' key functions (``limiter.session_key``,
+    ``daily_word.router._guess_key``) all use it, so they cannot disagree.
+    """
+    sid = (raw or "").strip()
+    if not sid:
+        return None
+    try:
+        uuid.UUID(sid)
+    except ValueError:
+        return None
+    return sid
+
+
 def get_session_id(request: Request) -> str:
     """Extract and validate the X-Session-ID header.
 
     Returns the session UUID string if valid.
     Raises HTTPException 400 if missing or not a valid UUID4.
     """
-    sid = request.headers.get("X-Session-ID", "").strip()
-    if not sid:
+    raw = request.headers.get("X-Session-ID", "").strip()
+    if not raw:
         raise HTTPException(status_code=400, detail="X-Session-ID header required.")
-    try:
-        uuid.UUID(sid)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="X-Session-ID must be a valid UUID.") from exc
+    sid = parse_session_id(raw)
+    if sid is None:
+        raise HTTPException(status_code=400, detail="X-Session-ID must be a valid UUID.")
     return sid
 
 

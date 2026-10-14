@@ -122,6 +122,12 @@ Rate-limit buckets are per IPv4 address and per IPv6 **/64** (one
 subscriber's usual allocation, so rotating addresses inside it does not buy
 fresh buckets). The request log's `"ip"` keeps the full address.
 
+Session-keyed routes (`backend/rate_limits.py`) also carry a looser per-IP limit
+(#3300), since the session id is client-supplied; carrier NAT puts many players
+behind one address, so these are backstops sized well above one player's use.
+`session_key` keys on `X-Session-ID` only when it is a valid UUID; anything
+else shares the caller's IP bucket and the handler answers 400.
+
 At startup the API logs `{"event": "client_ip_trust", "mode": …, "hops": …}`.
 If the mode is not `cloudflare` and a request arrives carrying
 `CF-Connecting-IP`, it logs `client_ip_cf_header_ignored` once per process:

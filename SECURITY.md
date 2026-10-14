@@ -194,7 +194,7 @@ Current cross-cutting controls include:
 - Pydantic/FastAPI request validation;
 - SQLAlchemy query construction rather than string-built SQL;
 - request-body size caps;
-- route rate limits (session-keyed and/or IP-keyed depending on the surface);
+- route rate limits (session-keyed and/or IP-keyed depending on the surface; session-keyed routes also carry a looser per-IP limit, and an `X-Session-ID` that is not a UUID is never used as a limiter key);
 - explicit CORS allowlists for browser access;
 - environment-held secrets;
 - Gitleaks/secret scanning in repository workflows;

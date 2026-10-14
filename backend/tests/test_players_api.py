@@ -390,7 +390,8 @@ async def test_replaying_complete_on_a_finished_row_changes_nothing(client: Test
 )
 def test_player_routes_are_rate_limited_by_session(handler: str) -> None:
     limits = limiter._route_limits[f"players.router.{handler}"]
-    assert limits and all(lim.key_func is session_key for lim in limits)
+    # Session-keyed, with an IP backstop stacked on top (#3300).
+    assert any(lim.key_func is session_key for lim in limits)
 
 
 def test_put_rate_limit_is_enforced(client: TestClient) -> None:
@@ -409,7 +410,11 @@ def test_reroll_has_its_own_tighter_rate_limit(client: TestClient) -> None:
     allowed = int(PLAYER_REROLL_RATE_LIMIT.split("/")[0])
     assert PLAYER_REROLL_RATE_LIMIT.endswith("/hour")
     assert allowed < int(PLAYER_WRITE_RATE_LIMIT.split("/")[0])
-    limits = [str(lim.limit) for lim in limiter._route_limits["players.router.reroll_my_player"]]
+    limits = [
+        str(lim.limit)
+        for lim in limiter._route_limits["players.router.reroll_my_player"]
+        if lim.key_func is session_key
+    ]
     assert len(limits) == 2
     sid = _sid()
     _join_name(client, sid)

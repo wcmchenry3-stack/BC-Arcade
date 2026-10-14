@@ -23,10 +23,15 @@ from limiter import limiter, session_key
 from rate_limits import (
     CATALOG_ADMIN_SESSION_RATE_LIMIT,
     CATALOG_RATE_LIMIT,
+    GAMES_COMPLETE_IP_RATE_LIMIT,
     GAMES_COMPLETE_SESSION_RATE_LIMIT,
+    GAMES_CREATE_IP_RATE_LIMIT,
     GAMES_CREATE_SESSION_RATE_LIMIT,
+    GAMES_DETAIL_IP_RATE_LIMIT,
     GAMES_DETAIL_SESSION_RATE_LIMIT,
+    GAMES_EVENTS_IP_RATE_LIMIT,
     GAMES_EVENTS_SESSION_RATE_LIMIT,
+    GAMES_LIST_IP_RATE_LIMIT,
     GAMES_LIST_SESSION_RATE_LIMIT,
     LEADERBOARD_IP_RATE_LIMIT,
     LEADERBOARD_SESSION_RATE_LIMIT,
@@ -149,6 +154,7 @@ def _to_row(g) -> GameRowResponse:
 
 
 @router.get("/me", response_model=GameHistoryResponse)
+@limiter.limit(GAMES_LIST_IP_RATE_LIMIT)
 @limiter.limit(GAMES_LIST_SESSION_RATE_LIMIT, key_func=session_key)
 async def list_my_games(
     request: Request,
@@ -286,6 +292,7 @@ async def _load_owned_game(db: AsyncSession, game_id: uuid.UUID, sid: str) -> Ga
 
 
 @router.get("/{game_id}", response_model=GameDetailResponse)
+@limiter.limit(GAMES_DETAIL_IP_RATE_LIMIT)
 @limiter.limit(GAMES_DETAIL_SESSION_RATE_LIMIT, key_func=session_key)
 async def get_game_detail(
     request: Request,
@@ -324,6 +331,7 @@ async def get_game_detail(
 
 
 @router.post("", response_model=CreateGameResponse)
+@limiter.limit(GAMES_CREATE_IP_RATE_LIMIT)
 @limiter.limit(GAMES_CREATE_SESSION_RATE_LIMIT, key_func=session_key)
 async def create_game(
     request: Request, body: CreateGameRequest, db: DbSession
@@ -347,6 +355,7 @@ async def create_game(
 
 
 @router.post("/{game_id}/events", response_model=AppendEventsResponse)
+@limiter.limit(GAMES_EVENTS_IP_RATE_LIMIT)
 @limiter.limit(GAMES_EVENTS_SESSION_RATE_LIMIT, key_func=session_key)
 async def append_events(
     request: Request, game_id: uuid.UUID, body: AppendEventsRequest, db: DbSession
@@ -366,6 +375,7 @@ async def append_events(
 
 
 @router.patch("/{game_id}/complete", response_model=GameStateResponse)
+@limiter.limit(GAMES_COMPLETE_IP_RATE_LIMIT)
 @limiter.limit(GAMES_COMPLETE_SESSION_RATE_LIMIT, key_func=session_key)
 async def complete_game(
     request: Request, game_id: uuid.UUID, body: CompleteGameRequest, db: DbSession

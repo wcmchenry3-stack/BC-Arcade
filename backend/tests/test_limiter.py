@@ -314,7 +314,15 @@ def test_forging_a_victims_ip_does_not_land_in_the_victims_bucket() -> None:
 
 
 def test_session_key_with_session_id() -> None:
-    assert session_key(make_request([("X-Session-ID", "abc-123")])) == "abc-123"
+    sid = str(uuid.uuid4())
+    assert session_key(make_request([("X-Session-ID", sid)])) == sid
+
+
+@pytest.mark.parametrize("raw", ["abc-123", "", "   ", "x" * 5000, "not-a-uuid", "../../etc"])
+def test_session_key_ignores_a_header_that_is_not_a_uuid(raw: str) -> None:
+    # #3300: junk shares the caller's IP bucket instead of minting one per value.
+    req = make_request([("X-Session-ID", raw)])
+    assert session_key(req) == _real_ip(req)
 
 
 def test_session_key_without_session_id_falls_back_to_client_ip(
@@ -557,3 +565,119 @@ def test_importing_the_app_with_bad_config_raises(env: dict[str, str]) -> None:
     assert result.returncode != 0
     assert "ValueError" in result.stderr
     assert next(iter(env)) in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# #3300: IP backstops on the session-keyed routes; malformed ids mint no buckets
+# ---------------------------------------------------------------------------
+
+
+def _create_body() -> dict[str, str]:
+    # An unregistered game type skips metadata validation, which (like all body
+    # validation) runs before the limiter.
+    return {"game_type": "unregistered-game", "id": str(uuid.uuid4())}
+
+
+def _bug_body() -> dict[str, object]:
+    return {
+        "logs": [
+            {
+                "id": str(uuid.uuid4()),
+                "logged_at": "2026-01-01T00:00:00Z",
+                "level": "error",
+                "source": "test",
+                "message": "boom",
+            }
+        ]
+    }
+
+
+def _fresh_session() -> dict[str, str]:
+    return {"X-Session-ID": str(uuid.uuid4()), "Content-Type": "application/json"}
+
+
+def test_rotating_sessions_hit_the_games_create_ip_limit(
+    proxied: TestClient, trust: ProxyTrust
+) -> None:
+    from rate_limits import GAMES_CREATE_IP_RATE_LIMIT
+
+    _hammer(
+        proxied,
+        trust,
+        "POST",
+        "/games",
+        _first_limit(GAMES_CREATE_IP_RATE_LIMIT),
+        extra=_fresh_session,
+        json_body=_create_body,
+    )
+
+
+def test_rotating_sessions_hit_the_bug_log_ip_limit(proxied: TestClient, trust: ProxyTrust) -> None:
+    from rate_limits import LOGS_IP_RATE_LIMIT
+
+    _hammer(
+        proxied,
+        trust,
+        "POST",
+        "/logs/bug",
+        _first_limit(LOGS_IP_RATE_LIMIT),
+        extra=_fresh_session,
+        json_body=_bug_body,
+    )
+
+
+def test_rotating_sessions_hit_the_account_delete_ip_limit(
+    proxied: TestClient, trust: ProxyTrust
+) -> None:
+    from rate_limits import ME_DELETE_IP_RATE_LIMIT
+
+    _hammer(
+        proxied,
+        trust,
+        "DELETE",
+        "/me",
+        _first_limit(ME_DELETE_IP_RATE_LIMIT),
+        extra=_fresh_session,
+    )
+
+
+def _limiter_keys() -> list[str]:
+    from limiter import limiter
+
+    store = limiter._storage
+    return [*map(str, store.storage), *map(str, store.events)]
+
+
+@pytest.mark.parametrize("raw", ["abc-123", "x" * 5000, "../../etc", "   "])
+def test_malformed_session_id_is_400_and_mints_no_limiter_entry(
+    proxied: TestClient, raw: str
+) -> None:
+    for method, path in (("GET", "/stats/me"), ("POST", "/games"), ("POST", "/logs/bug")):
+        body = {"POST /games": _create_body(), "POST /logs/bug": _bug_body()}.get(
+            f"{method} {path}"
+        )
+        r = proxied.request(method, path, headers={"X-Session-ID": raw}, json=body)
+        assert r.status_code == 400, (path, r.status_code)
+    needle = raw.strip()
+    if needle:
+        assert not [k for k in _limiter_keys() if needle in k]
+    # The only entries are keyed on the caller's IP bucket.
+    assert _limiter_keys()
+
+
+def test_valid_uuid_sessions_get_their_own_buckets(proxied: TestClient) -> None:
+    a, b = str(uuid.uuid4()), str(uuid.uuid4())
+    proxied.get("/stats/me", headers={"X-Session-ID": a})
+    proxied.get("/stats/me", headers={"X-Session-ID": b})
+    keys = _limiter_keys()
+    assert [k for k in keys if a in k]
+    assert [k for k in keys if b in k]
+
+
+def test_guess_key_ignores_a_session_header_that_is_not_a_uuid() -> None:
+    from daily_word.router import _guess_key
+
+    junk = make_request([("X-Session-ID", "junk-" + "x" * 200)])
+    assert "junk" not in _guess_key(junk)
+    sid = str(uuid.uuid4())
+    assert _guess_key(make_request([("X-Session-ID", sid)])).startswith(sid)
