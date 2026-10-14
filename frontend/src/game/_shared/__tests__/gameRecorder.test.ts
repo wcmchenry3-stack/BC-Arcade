@@ -8,6 +8,7 @@ import * as Sentry from "@sentry/react-native";
 import type { EnqueueEventInput } from "../gameEventClient";
 import {
   DEFAULT_RECORDING_CONFIG,
+  RECORDER_IDLE_TIMEOUT_MS,
   WAVE_STATS_MAX_BYTES,
   WAVE_STATS_RUN_MAX_BYTES,
   logConfig,
@@ -18,6 +19,7 @@ import {
 } from "../eventQueueConfig";
 import {
   GameRecorder,
+  memoryEventCeiling,
   scheduleIdle,
   type GameRecorderOptions,
   type RecordingDropReport,
@@ -41,7 +43,10 @@ function harness(overrides: Partial<GameRecorderOptions> = {}): Harness {
   const clock = { t: 1000 };
   const recorder = new GameRecorder({
     gameType: "hearts",
-    sink: (events) => saves.push([...events]),
+    sink: (events) => {
+      saves.push([...events]);
+      return true;
+    },
     now: () => clock.t,
     schedule: (task) => tasks.push(task),
     report: (r) => reports.push(r),
@@ -285,6 +290,7 @@ describe("GameRecorder", () => {
           parts: 0,
           dropped_oversize: 1,
           dropped_session_cap: 0,
+          dropped_invalid: 0,
           saved_bytes: expect.any(Number),
           largest_bytes: expect.any(Number),
         },
@@ -372,7 +378,7 @@ describe("GameRecorder", () => {
       log.mockRestore();
     });
 
-    it("schedules saves without timers when requestIdleCallback is missing", async () => {
+    it("falls back to setTimeout(task, 0) when requestIdleCallback is missing", () => {
       const g = globalThis as { requestIdleCallback?: unknown };
       const saved = g.requestIdleCallback;
       delete g.requestIdleCallback;
@@ -380,21 +386,23 @@ describe("GameRecorder", () => {
       const task = jest.fn();
       scheduleIdle(task);
       expect(task).not.toHaveBeenCalled();
-      await Promise.resolve();
-      expect(task).toHaveBeenCalledTimes(1);
-      expect(timeout).not.toHaveBeenCalled();
+      expect(timeout).toHaveBeenCalledWith(task, 0);
       timeout.mockRestore();
       if (saved !== undefined) g.requestIdleCallback = saved;
     });
 
-    it("uses requestIdleCallback when the runtime has it", () => {
+    it("uses requestIdleCallback with RN's own timeout deadline when the runtime has it", () => {
       const g = globalThis as { requestIdleCallback?: unknown };
       const saved = g.requestIdleCallback;
       const ric = jest.fn();
       g.requestIdleCallback = ric;
+      const timeout = jest.spyOn(global, "setTimeout");
       const task = jest.fn();
       scheduleIdle(task);
-      expect(ric).toHaveBeenCalledWith(task);
+      expect(ric).toHaveBeenCalledWith(task, { timeout: RECORDER_IDLE_TIMEOUT_MS });
+      expect(RECORDER_IDLE_TIMEOUT_MS).toBe(2000);
+      expect(timeout).not.toHaveBeenCalled();
+      timeout.mockRestore();
       if (saved === undefined) delete g.requestIdleCallback;
       else g.requestIdleCallback = saved;
     });
@@ -421,7 +429,10 @@ describe("GameRecorder", () => {
       h.recorder.record("a");
       h.recorder.closeUnit();
       h.runIdle();
-      h.recorder.setSink((events) => saves.push([...events]));
+      h.recorder.setSink((events) => {
+        saves.push([...events]);
+        return true;
+      });
       h.recorder.endSession();
       expect(saves).toEqual([[{ type: "a", data: { v: 1, unit: 1, t_ms: 0 } }]]);
     });
@@ -450,5 +461,141 @@ describe("recording caps config", () => {
 
   it("gives a game without an entry the defaults", () => {
     expect(recordingConfigFor("yacht")).toBe(DEFAULT_RECORDING_CONFIG);
+  });
+});
+
+describe("GameRecorder review fixes (#3315)", () => {
+  afterEach(() => {
+    resetLogConfig();
+    jest.clearAllMocks();
+  });
+
+  it("drops an event that cannot be serialised as invalid, and saves the rest", () => {
+    const h = harness();
+    const cycle: Record<string, unknown> = { k: 1 };
+    cycle.self = cycle;
+    h.recorder.record("ok", { a: 1 });
+    h.recorder.record("big", { n: BigInt(1) });
+    h.recorder.record("loop", cycle);
+    h.recorder.record("ok", { a: 2 });
+    expect(() => h.recorder.endSession()).not.toThrow();
+    expect(all(h.saves).map((e) => e.data?.a)).toEqual([1, 2]);
+    expect(h.reports).toHaveLength(1);
+    expect(h.reports[0]).toMatchObject({ recorded: 4, saved: 2, dropped_invalid: 2 });
+  });
+
+  it("keeps the units waiting, counted as nothing, when the sink refuses them", () => {
+    let open = false;
+    const saves: EnqueueEventInput[][] = [];
+    const h = harness({
+      sink: (events) => {
+        if (!open) return false;
+        saves.push([...events]);
+        return true;
+      },
+    });
+    h.recorder.beginUnit();
+    h.recorder.record("a");
+    h.recorder.closeUnit();
+    h.runIdle(); // refused
+    h.recorder.beginUnit();
+    h.recorder.record("b");
+    h.recorder.closeUnit();
+    h.runIdle(); // refused again
+    open = true;
+    h.recorder.endSession();
+    expect(saves).toEqual([
+      [
+        { type: "a", data: { v: 1, unit: 1, t_ms: 0 } },
+        { type: "b", data: { v: 1, unit: 2, t_ms: 0 } },
+      ],
+    ]);
+    expect(h.reports).toHaveLength(0);
+  });
+
+  it("flush saves what is waiting and keeps the session: numbering and t_ms carry on", () => {
+    const h = harness({ policy: "on_session_end" });
+    h.recorder.startSession();
+    h.recorder.beginUnit(3);
+    h.clock.t = 1100;
+    h.recorder.record("a");
+    h.recorder.flush();
+    expect(h.saves).toEqual([[{ type: "a", data: { v: 1, unit: 3, t_ms: 100 } }]]);
+    h.clock.t = 1200;
+    h.recorder.record("b"); // same unit, still open
+    h.recorder.beginUnit();
+    h.recorder.record("c");
+    h.recorder.endSession();
+    expect(h.saves[1]).toEqual([
+      { type: "b", data: { v: 1, unit: 3, t_ms: 200 } },
+      { type: "c", data: { v: 1, unit: 4, t_ms: 200 } },
+    ]);
+  });
+
+  it("shallow-freezes data in development, so a later change throws there", () => {
+    expect(__DEV__).toBe(true);
+    const h = harness();
+    const data: Record<string, unknown> = { a: 1, nested: { b: 2 } };
+    h.recorder.record("move", data);
+    expect(Object.isFrozen(data)).toBe(true);
+    // App modules are strict, where this assignment throws; the test file may
+    // run sloppy, where it is ignored. Either way the recorded value stands.
+    try {
+      data.a = 2;
+    } catch (e) {
+      expect(e).toBeInstanceOf(TypeError);
+    }
+    expect(data.a).toBe(1);
+    // shallow only: no deep clone or deep freeze
+    expect(Object.isFrozen(data.nested)).toBe(false);
+  });
+
+  it("stops keeping events in memory past the ceiling derived from the session cap", () => {
+    const config: GameRecordingConfig = { ...DEFAULT_RECORDING_CONFIG, sessionMaxBytes: 320 };
+    expect(memoryEventCeiling(config)).toBe(20);
+    const h = harness({ config, policy: "on_session_end" });
+    for (let i = 0; i < 1000; i += 1) h.recorder.record("e", { i });
+    const spy = jest.spyOn(JSON, "stringify");
+    h.recorder.endSession();
+    // only the kept events (at most 20) were measured, not the dropped ones
+    expect(spy.mock.calls.length).toBeLessThanOrEqual(20);
+    spy.mockRestore();
+    const r = h.reports[0];
+    expect(r?.recorded).toBe(1000);
+    expect((r?.saved ?? 0) + (r?.dropped_session_cap ?? 0)).toBe(1000);
+    expect(r?.dropped_session_cap).toBeGreaterThanOrEqual(980);
+  });
+
+  it("measures nothing more once a save has filled the session", () => {
+    const config: GameRecordingConfig = { ...DEFAULT_RECORDING_CONFIG, sessionMaxBytes: 100 };
+    const h = harness({ config });
+    for (let i = 0; i < 5; i += 1) h.recorder.record("e", { pad: "p".repeat(20) });
+    h.recorder.closeUnit();
+    h.runIdle(); // fills the session
+    const spy = jest.spyOn(JSON, "stringify");
+    h.recorder.record("e", { pad: "p".repeat(500) }); // dropped in record: never kept
+    h.recorder.beginUnit();
+    h.recorder.endSession();
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+    // largest_bytes stays at the most seen before the session filled
+    expect(h.reports[0]?.largest_bytes).toBeLessThan(100);
+    expect(h.reports[0]?.dropped_session_cap).toBeGreaterThanOrEqual(2);
+  });
+
+  it("a save scheduled in an earlier session does nothing in the current one", () => {
+    const h = harness();
+    h.recorder.startSession();
+    h.recorder.record("old");
+    h.recorder.closeUnit(); // task 1 scheduled
+    h.recorder.endSession(); // saves "old" now
+    h.recorder.startSession();
+    h.recorder.record("new");
+    h.recorder.closeUnit(); // task 2: the reset cleared saveScheduled
+    expect(h.tasks).toHaveLength(2);
+    h.tasks.shift()?.(); // the stale task
+    expect(h.saves.map((s) => s.map((e) => e.type))).toEqual([["old"]]);
+    h.tasks.shift()?.();
+    expect(h.saves.map((s) => s.map((e) => e.type))).toEqual([["old"], ["new"]]);
   });
 });

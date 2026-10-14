@@ -183,25 +183,35 @@ export class GameEventClientImpl implements GameEventClient {
     if (events.length === 0) return;
     // Reserved synchronously, one after another, so nothing can take an index
     // between two of them: the batch's indexes are contiguous.
+    // `batch` runs its callback synchronously and writes the counter once.
     const rows: Parameters<EventStore["enqueueMany"]>[0][number][] = [];
-    for (const event of events) {
-      const idx = this.games.nextEventIndex(gameId);
-      if (idx === null) {
-        // Unknown or completed game: the first reservation already fails, so
-        // nothing was taken. One breadcrumb for the batch, as enqueueEvent.
-        Sentry.addBreadcrumb({
-          category: "gameEventClient.dropped",
-          message: `enqueueEvents on unknown game ${gameId}`,
-          level: "warning",
+    let known = true;
+    const counted = this.games.batch(() => {
+      for (const event of events) {
+        const idx = this.games.nextEventIndex(gameId);
+        if (idx === null) {
+          // Unknown or completed game: the first reservation already fails,
+          // so nothing was taken.
+          known = false;
+          return;
+        }
+        rows.push({
+          game_id: gameId,
+          event_index: idx,
+          event_type: event.type,
+          payload: event.data ?? {},
         });
-        return;
       }
-      rows.push({
-        game_id: gameId,
-        event_index: idx,
-        event_type: event.type,
-        payload: event.data ?? {},
+    });
+    this.fireAndForget(counted, "enqueueEvents.counter");
+    if (!known) {
+      // One breadcrumb for the batch, as enqueueEvent.
+      Sentry.addBreadcrumb({
+        category: "gameEventClient.dropped",
+        message: `enqueueEvents on unknown game ${gameId}`,
+        level: "warning",
       });
+      return;
     }
     this.fireAndForget(this.store.enqueueMany(rows), "enqueueEvents");
   }

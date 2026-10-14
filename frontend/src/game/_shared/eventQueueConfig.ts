@@ -151,14 +151,25 @@ export function resetLogConfig(): void {
 // reaches eventStore's `{_truncated: true}` stub: the recorder chunks it (when
 // its type is chunkable) or drops and reports it first, and every per-event
 // cap is held under `logConfig.MAX_EVENT_PAYLOAD_BYTES` (`recordingEventCap`).
-// Sizes are `JSON.stringify(data).length`, the measure eventStore caps by.
+// Every size here is a JSON length (UTF-16 code units),
+// `JSON.stringify(data).length` — the measure eventStore caps by. For ASCII
+// payloads that is the byte count; the backend measures `ensure_ascii` bytes,
+// so a non-ASCII character counts more there (one `\uXXXX` escape is 6).
+// Recorded payloads should therefore be ASCII (compact codes).
 //
 // This is the minimal shape the recorder reads; the per-game event registry
 // (#3278) and priority from it (#3276) build on it.
 
+/**
+ * The `timeout` the recorder's idle save passes to React Native's
+ * `requestIdleCallback` (`scheduleIdle`): RN runs the save by then even when
+ * the JS thread never idles. RN's own deadline — the recorder keeps no timer.
+ */
+export const RECORDER_IDLE_TIMEOUT_MS = 2000;
+
 /** How one recorded event type is capped. */
 export interface RecordedEventConfig {
-  /** Most bytes one event's `data` (envelope included) may serialize to. */
+  /** Most JSON length (UTF-16 code units) one event's `data`, envelope included, may have. */
   readonly maxBytes: number;
   /**
    * Set when the type may be split: the name of the array field in `data`
@@ -173,9 +184,9 @@ export interface RecordedEventConfig {
 
 /** One game's recording caps. */
 export interface GameRecordingConfig {
-  /** Most bytes one session's recorded events add up to (the sum of their sizes). */
+  /** Most JSON length (UTF-16 code units) one session's recorded events add up to. */
   readonly sessionMaxBytes: number;
-  /** Per-event cap for a type with no entry in `events`. */
+  /** Per-event cap (JSON length, UTF-16 code units) for a type with no entry in `events`. */
   readonly defaultEventMaxBytes: number;
   readonly events: Readonly<Record<string, RecordedEventConfig>>;
 }

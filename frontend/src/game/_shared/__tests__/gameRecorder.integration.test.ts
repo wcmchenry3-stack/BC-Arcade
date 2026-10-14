@@ -42,7 +42,10 @@ function recorderFor(p: Process, gameId: string, policy: SendPolicy) {
   const recorder = new GameRecorder({
     gameType: "hearts",
     policy,
-    sink: (events) => p.client.enqueueEvents(gameId, events),
+    sink: (events) => {
+      p.client.enqueueEvents(gameId, events);
+      return true;
+    },
     schedule: (task) => tasks.push(task),
     report: () => undefined,
   });
@@ -172,6 +175,25 @@ describe("GameRecorder end to end", () => {
       expect((await second.store.peek(100)).length).toBe(0);
     }
   );
+
+  it("reserves a unit's event_index values in one pending-games batch: one counter write", async () => {
+    const p = await launch();
+    const gid = p.client.startGame("hearts", {});
+    p.client.markStarted(gid);
+    await flushMicro();
+    setItem.mockClear();
+    const batch = jest.spyOn(p.games, "batch");
+    p.client.enqueueEvents(
+      gid,
+      Array.from({ length: 20 }, (_, i) => ({ type: "card_played", data: { i } }))
+    );
+    expect(batch).toHaveBeenCalledTimes(1);
+    await flushMicro();
+    const counterWrites = setItem.mock.calls.filter((c) => c[0] === "pending_games_v1");
+    expect(counterWrites).toHaveLength(1);
+    expect(queueWrites()).toBe(1);
+    expect(p.games.get(gid)?.nextEventIndex).toBe(21);
+  });
 
   it("drops a unit saved for a completed game, as enqueueEvent does", async () => {
     const p = await launch();

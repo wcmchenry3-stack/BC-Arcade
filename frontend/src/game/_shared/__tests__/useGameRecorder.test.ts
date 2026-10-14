@@ -155,4 +155,90 @@ describe("useGameRecorder", () => {
     await idle();
     expect(mockCalls.filter((c) => c[0] === "enqueueEvents")).toEqual([]);
   });
+
+  /** The units of everything saved, per game id, in order. */
+  function savedUnits(): [string, unknown][] {
+    return mockCalls
+      .filter((c) => c[0] === "enqueueEvents")
+      .flatMap((c) => (c[2] as [string, unknown][]).map(([, unit]) => [c[1], unit]));
+  }
+
+  it("a failed resume saves what is waiting and keeps the numbering and clock", async () => {
+    const { result } = await renderHook(() =>
+      useGameRecorder("hearts", { policy: "on_session_end" })
+    );
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(1);
+      result.current.record("card_played");
+      expect(result.current.resume()).toBe(false); // the mock resumes nothing
+      result.current.record("card_played"); // still unit 1
+      result.current.beginUnit();
+      result.current.record("card_played");
+      result.current.complete({ outcome: "completed" });
+    });
+    expect(savedUnits()).toEqual([
+      ["g1", 1],
+      ["g1", 1],
+      ["g1", 2],
+    ]);
+    // saved before the resume call, and the rest at complete
+    expect(mockCalls.filter((c) => c[0] === "enqueueEvents")).toHaveLength(2);
+  });
+
+  it("units recorded before start() are saved under the new game, numbering continuous", async () => {
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      result.current.beginUnit();
+      result.current.record("card_played");
+      result.current.closeUnit();
+    });
+    await idle(); // no game yet: the save is refused, the unit waits
+    expect(savedUnits()).toEqual([]);
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+    });
+    await idle(); // start() asks for a save of what waited
+    await act(() => {
+      result.current.record("card_played"); // unit 2
+      result.current.complete({ outcome: "completed" });
+    });
+    expect(savedUnits()).toEqual([
+      ["g1", 1],
+      ["g1", 2],
+    ]);
+    expect(mockCalls.map((c) => c[0])).toEqual([
+      "startGame",
+      "markStarted",
+      "enqueueEvents",
+      "enqueueEvents",
+      "completeGame",
+    ]);
+  });
+
+  it("a new gameType ends the old recorder's session and records with a new one", async () => {
+    const { result, rerender } = await renderHook(
+      ({ type }: { type: "hearts" | "yacht" }) =>
+        useGameRecorder(type, { policy: "on_session_end" }),
+      { initialProps: { type: "hearts" } }
+    );
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(5);
+      result.current.record("card_played");
+    });
+    await act(async () => rerender({ type: "yacht" }));
+    expect(savedUnits()).toEqual([["g1", 5]]); // the old recorder's session ended
+    await act(() => {
+      result.current.record("roll"); // the new recorder: unit 1
+      result.current.complete({ outcome: "completed" });
+    });
+    expect(savedUnits()).toEqual([
+      ["g1", 5],
+      ["g1", 1],
+    ]);
+  });
 });
