@@ -1,0 +1,507 @@
+[
+  {
+    "name": "wave1-lieutenantJG",
+    "result": {
+      "final_score": 22500,
+      "wave_reached": 2,
+      "difficulty_tier": "LieutenantJG",
+      "score_breakdown": {
+        "v": 1,
+        "waves": [
+          {
+            "wave": 1,
+            "start": 0,
+            "end": 14100,
+            "total": 14100,
+            "pts": {
+              "Grunt": 3450,
+              "Elite": 4500,
+              "Guardian": 1800,
+              "Guardian:ram": 1200,
+              "Grunt:dive": 300,
+              "Elite:dive": 600,
+              "Carrier": 1500,
+              "clear": 750
+            }
+          },
+          {
+            "wave": 2,
+            "start": 14100,
+            "end": 22500,
+            "total": 8400,
+            "pts": {
+              "Grunt": 2550,
+              "Elite": 2100,
+              "Grunt:dive": 300,
+              "Guardian:bomb": 600,
+              "Elite:bomb": 2100,
+              "Grunt:bomb": 150,
+              "Guardian": 600
+            }
+          }
+        ]
+      }
+    },
+    "closedWaves": [
+      {
+        "v": 1,
+        "wave": 1,
+        "difficulty": "LieutenantJG",
+        "outcome": "cleared",
+        "dev": false,
+        "pacing": {
+          "durationMs": 53277,
+          "start": {
+            "lives": 3,
+            "guns": 1,
+            "hull": 0
+          },
+          "end": {
+            "lives": 25,
+            "guns": 1,
+            "hull": 1
+          },
+          "bonusLives": 0
+        },
+        "score": {
+          "total": 14100,
+          "runningTotal": 14100,
+          "pts": {
+            "Grunt": 3450,
+            "Elite": 4500,
+            "Guardian": 1800,
+            "Guardian:ram": 1200,
+            "Grunt:dive": 300,
+            "Elite:dive": 600,
+            "Carrier": 1500,
+            "clear": 750
+          }
+        },
+        "powerUps": {
+          "spawned": {
+            "lightning": {
+              "kill": 2
+            },
+            "bomb": {
+              "kill": 1
+            },
+            "hull": {
+              "carrier": 1
+            }
+          },
+          "collected": {
+            "hull": 1
+          },
+          "missed": {
+            "lightning": 2,
+            "bomb": 1
+          }
+        },
+        "rocks": {},
+        "buddy": {},
+        "carrier": {
+          "gruntsLaunched": 8,
+          "armorDeflects": 3,
+          "beamsFired": 6,
+          "beamHits": 1,
+          "attackRuns": 1,
+          "stageReachedMs": {
+            "protected": 3402,
+            "exposed": 32169,
+            "finalStand": 36571
+          }
+        },
+        "rout": {
+          "triggered": false,
+          "atMs": null,
+          "grunts": 0,
+          "caught": 0,
+          "escaped": 0
+        },
+        "combat": {
+          "spawned": {
+            "Grunt": 24,
+            "Elite": 16,
+            "Guardian": 4,
+            "Carrier": 1
+          },
+          "kills": {
+            "Grunt": {
+              "shot": 23,
+              "dive": 1
+            },
+            "Elite": {
+              "shot": 15,
+              "dive": 1
+            },
+            "Guardian": {
+              "shot": 3,
+              "ram": 1
+            },
+            "Carrier": {
+              "shot": 1
+            }
+          },
+          "shotsFired": 138,
+          "shotsHit": 79
+        },
+        "damage": {
+          "hits": {
+            "bullet": {
+              "life": 3
+            },
+            "beam": {
+              "life": 1
+            },
+            "ram": {
+              "life": 1
+            }
+          },
+          "deathCause": null
+        }
+      }
+    ]
+  },
+  {
+    "name": "wave3-lieutenant-actions",
+    "result": {
+      "final_score": 39800,
+      "wave_reached": 4,
+      "difficulty_tier": "Lieutenant",
+      "score_breakdown": {
+        "v": 1,
+        "waves": [
+          {
+            "wave": 3,
+            "start": 0,
+            "end": 22200,
+            "total": 22200,
+            "pts": {
+              "Grunt": 5600,
+              "Elite": 4800,
+              "Guardian": 3200,
+              "Elite:dive": 2400,
+              "Grunt:dive": 400,
+              "Carrier": 2000,
+              "Grunt:rout": 800,
+              "clear": 3000
+            }
+          },
+          {
+            "wave": 4,
+            "start": 22200,
+            "end": 39800,
+            "total": 17600,
+            "pts": {
+              "Grunt": 5200,
+              "Elite": 4800,
+              "Grunt:dive": 1200,
+              "Elite:dive": 3200,
+              "Guardian": 1600,
+              "Guardian:dive": 1600
+            }
+          }
+        ]
+      }
+    },
+    "closedWaves": [
+      {
+        "v": 1,
+        "wave": 3,
+        "difficulty": "Lieutenant",
+        "outcome": "cleared",
+        "dev": true,
+        "pacing": {
+          "durationMs": 33217,
+          "start": {
+            "lives": 3,
+            "guns": 1,
+            "hull": 0
+          },
+          "end": {
+            "lives": 29,
+            "guns": 2,
+            "hull": 2
+          },
+          "bonusLives": 0
+        },
+        "score": {
+          "total": 22200,
+          "runningTotal": 22200,
+          "pts": {
+            "Grunt": 5600,
+            "Elite": 4800,
+            "Guardian": 3200,
+            "Elite:dive": 2400,
+            "Grunt:dive": 400,
+            "Carrier": 2000,
+            "Grunt:rout": 800,
+            "clear": 3000
+          }
+        },
+        "powerUps": {
+          "spawned": {
+            "lightning": {
+              "kill": 2,
+              "dev": 1
+            },
+            "shield": {
+              "dev": 1
+            },
+            "buddy": {
+              "dev": 1
+            },
+            "salvage": {
+              "dev": 1
+            },
+            "hull": {
+              "carrier": 1,
+              "dev": 1
+            }
+          },
+          "collected": {
+            "lightning": 1,
+            "shield": 1,
+            "buddy": 1,
+            "salvage": 1,
+            "hull": 2
+          },
+          "missed": {
+            "lightning": 2
+          },
+          "expired": {
+            "lightning": 1,
+            "shield": 1
+          },
+          "activeMs": {
+            "lightning": 5000,
+            "shield": 5000
+          }
+        },
+        "rocks": {
+          "spawned": {
+            "large": 1,
+            "small": 2
+          },
+          "devSpawned": 2,
+          "broken": {
+            "enemy": 1,
+            "contact": 1
+          },
+          "enemiesStruck": {
+            "Elite": 1
+          },
+          "enemiesDestroyed": {
+            "Elite": 1
+          },
+          "dodge": {
+            "Elite": {
+              "rolls": 2,
+              "dodged": 1,
+              "flak": 1
+            },
+            "Guardian": {
+              "rolls": 2,
+              "dodged": 2,
+              "flak": 2
+            },
+            "Carrier": {
+              "flak": 2
+            }
+          }
+        },
+        "buddy": {
+          "launched": 1,
+          "hits": {
+            "bullet": 3
+          },
+          "shotsDrawn": 6,
+          "kills": {
+            "Grunt": 3,
+            "Elite": 4
+          }
+        },
+        "carrier": {
+          "gruntsLaunched": 7,
+          "armorDeflects": 5,
+          "beamsFired": 3,
+          "stageReachedMs": {
+            "protected": 3854,
+            "exposed": 17818
+          }
+        },
+        "rout": {
+          "triggered": true,
+          "atMs": 26042,
+          "grunts": 2,
+          "caught": 2,
+          "escaped": 0
+        },
+        "combat": {
+          "spawned": {
+            "Grunt": 31,
+            "Elite": 16,
+            "Guardian": 4,
+            "Carrier": 1
+          },
+          "kills": {
+            "Grunt": {
+              "shot": 25,
+              "dive": 1,
+              "rout": 2,
+              "buddy": 3
+            },
+            "Elite": {
+              "shot": 8,
+              "dive": 3,
+              "rock": 1,
+              "buddy": 4
+            },
+            "Guardian": {
+              "shot": 4
+            },
+            "Carrier": {
+              "shot": 1
+            }
+          },
+          "shotsFired": 168,
+          "shotsHit": 65
+        },
+        "damage": {
+          "hits": {
+            "bullet": {
+              "life": 1
+            }
+          },
+          "deathCause": null
+        }
+      }
+    ]
+  },
+  {
+    "name": "wave5-boss-carrier",
+    "result": {
+      "final_score": 42000,
+      "wave_reached": 6,
+      "difficulty_tier": "Commander",
+      "score_breakdown": {
+        "v": 1,
+        "waves": [
+          {
+            "wave": 5,
+            "start": 0,
+            "end": 26400,
+            "total": 26400,
+            "pts": {
+              "Guardian:dive": 7200,
+              "Guardian": 1200,
+              "Carrier": 3000,
+              "clear": 15000
+            }
+          },
+          {
+            "wave": 6,
+            "start": 26400,
+            "end": 42000,
+            "total": 15600,
+            "pts": {
+              "Grunt": 9000,
+              "Grunt:dive": 3000,
+              "Elite": 3600
+            }
+          }
+        ]
+      }
+    },
+    "closedWaves": [
+      {
+        "v": 1,
+        "wave": 5,
+        "difficulty": "Commander",
+        "outcome": "cleared",
+        "dev": true,
+        "pacing": {
+          "durationMs": 33395,
+          "start": {
+            "lives": 3,
+            "guns": 1,
+            "hull": 0
+          },
+          "end": {
+            "lives": 26,
+            "guns": 1,
+            "hull": 1
+          },
+          "bonusLives": 0
+        },
+        "score": {
+          "total": 26400,
+          "runningTotal": 26400,
+          "pts": {
+            "Guardian:dive": 7200,
+            "Guardian": 1200,
+            "Carrier": 3000,
+            "clear": 15000
+          }
+        },
+        "powerUps": {
+          "spawned": {
+            "hull": {
+              "carrier": 1
+            }
+          },
+          "collected": {
+            "hull": 1
+          }
+        },
+        "rocks": {},
+        "buddy": {},
+        "carrier": {
+          "armorDeflects": 2,
+          "beamsFired": 7,
+          "beamHits": 2,
+          "attackRuns": 1,
+          "stageReachedMs": {
+            "protected": 1661,
+            "finalStand": 14706
+          }
+        },
+        "rout": {
+          "triggered": false,
+          "atMs": null,
+          "grunts": 0,
+          "caught": 0,
+          "escaped": 0
+        },
+        "combat": {
+          "spawned": {
+            "Guardian": 4,
+            "Carrier": 1
+          },
+          "kills": {
+            "Guardian": {
+              "shot": 1,
+              "dive": 3
+            },
+            "Carrier": {
+              "shot": 1
+            }
+          },
+          "shotsFired": 80,
+          "shotsHit": 24
+        },
+        "damage": {
+          "hits": {
+            "bullet": {
+              "life": 2
+            },
+            "beam": {
+              "life": 2
+            }
+          },
+          "deathCause": null
+        }
+      }
+    ]
+  }
+]

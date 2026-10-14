@@ -1,8 +1,10 @@
 """Star Swarm ``wave_completed`` event: schema, validation hook, storage (#3250).
 
 The payload is the v1 wire form pinned on epic #3244; the app's engine builds
-it in parallel. ``fixtures/starswarm_wave_stats_v1.json`` is shared with the
-frontend parity test (#3252).
+it in parallel. ``fixtures/starswarm_wave_stats_v1.json`` is a sample payload;
+the registry vocabulary both sides check against is
+``fixtures/starswarm_wave_stats_v1_registries.json`` (#3252,
+``test_starswarm_wave_stats_parity.py``).
 """
 
 from __future__ import annotations
