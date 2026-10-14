@@ -153,11 +153,11 @@ one event per failure, tagged `subsystem` and grouped by a fixed fingerprint.
 The jobs log the failure at WARNING, never ERROR, because the Sentry logging
 integration would turn an ERROR record into a second, untagged event.
 
-| Job                    | `subsystem`               | Fingerprint                        |
-| ---------------------- | ------------------------- | ---------------------------------- |
-| Daily Word retention   | `daily_word.retention`    | `daily-word-retention-prune-failed` |
-| App Store replay       | `purchases.apple_replay`  | `apple-notification-replay-failed`  |
-| Google Play jobs       | `purchases.google_jobs`   | `google-play-jobs-failed`           |
+| Job                  | `subsystem`              | Fingerprint                         |
+| -------------------- | ------------------------ | ----------------------------------- |
+| Daily Word retention | `daily_word.retention`   | `daily-word-retention-prune-failed` |
+| App Store replay     | `purchases.apple_replay` | `apple-notification-replay-failed`  |
+| Google Play jobs     | `purchases.google_jobs`  | `google-play-jobs-failed`           |
 
 ### One reporter
 
@@ -321,6 +321,67 @@ Sentry projects (Project Settings):
       (Org Settings, Subscription / Quota notifications), to the owner email.
 - [ ] Verify afterwards: one issue per `syncWorker.*` fingerprint, none with a
       game id in the title.
+
+## 5b. Game session tags and the replay script (#3277, epic #3273)
+
+Goal: from any Sentry issue, or any `reportBug` record, get to the game's recorded events.
+
+### Client
+
+- `frontend/src/game/_shared/sessionTags.ts`, called from `gameEventClient`, so
+  it covers `useGameSync` and `useGameRecorder` (which wraps it) and every
+  screen. `startGame` and a successful `resumeGame` call
+  `Sentry.setTag` for `game.id`, `game.type` and `game.difficulty`;
+  `completeGame` (which `close`, the unmount and the abandon path all reach) and
+  `discardGame` clear all three. Once per session start or end: never per event,
+  nothing on the gameplay path, no storage, no network.
+- `game.difficulty` is read from the session's start metadata: `difficulty`
+  (Yacht vs, Sudoku), `ai_difficulty` (Hearts) or `difficulty_tier` (Star Swarm).
+  Games with none (Solitaire, Sort, Blackjack, ...) carry only the other two
+  tags. It is written on every start, so a previous game's difficulty never
+  lingers.
+- One session is open per screen, but the hook can replace one with another (a
+  restart) and the killed-process sweep completes old sessions in the background.
+  The tags follow the most recently started session, and a clear only applies
+  when its id is the tagged one, so an older session ending (or the sweep) cannot
+  strip a newer session's tags.
+- `reportBug` adds `game_id` to the record's `context` when a session is open
+  (a `game_id` the caller passes wins). It is a few bytes inside the existing
+  16 KB context cap, so the bug-log volume is unchanged.
+- SyncWorker and recorder Sentry messages keep their fixed text (5a); the tags
+  are in addition to the ids they already carry in `extra`.
+- Cost: `setTag` is in-memory scope state. It adds about 100 bytes (three short
+  tags) to each Sentry event sent while a game is open, and creates no events.
+  No new dial is needed: event volume is still bounded by 5a's throttle and its
+  Sentry-side rate limits.
+
+### Replay script
+
+`backend/scripts/replay_game.py <game_id>` (run from `backend/`) prints the game's
+row (type, timestamps, outcome, score, duration, metadata) and its events in
+`event_index` order as plain text, each marked `lifecycle` (`game_started`,
+`game_ended`, `hand_resolved`) or `replay`, with a `GAP` line wherever
+`event_index` skips and a summary (counts, gaps, whether `game_started` /
+`game_ended` are present). `--max-chars N` sets the payload truncation (0 =
+full). It reads `DATABASE_URL` as the app does, issues SELECTs only (and sets the
+Postgres transaction `READ ONLY`), and never prints the install ID. Exit 1: no
+such game. A game with a gap was not fully recorded: a batch dropped by a cap,
+events still on the device, or a game cut short. Tests:
+`backend/tests/test_replay_game.py`.
+
+### Privacy notes
+
+- `game.id` is a random UUID generated on the device (`generateUUID`). It is not
+  derived from the install ID, device or person; `game.type` and
+  `game.difficulty` are fixed game vocabulary. No personal data is added.
+- It does let someone with database access join a Sentry event to a `games` row
+  and so to that row's install ID. Sentry events stay unjoinable from the install
+  ID on their own (still never sent to Sentry); the join exists only inside our
+  own database, and Delete My Data removes the rows, leaving the tag a dead
+  reference. The Sentry 90-day retention is unchanged.
+- Re-check `docs/privacy-policy.html` and `docs/STORE-PRIVACY-ANSWERS.md` as §8
+  asks; no new data category is collected (diagnostics are already declared as
+  linked to a device-level ID).
 
 ## 6. Triage distinction
 

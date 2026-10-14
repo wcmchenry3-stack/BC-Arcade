@@ -216,6 +216,7 @@ jest.mock("@sentry/react-native", () => ({
   captureException: jest.fn(),
   captureMessage: jest.fn(),
   addBreadcrumb: jest.fn(),
+  setTag: jest.fn(),
   captureFeedback: jest.fn(() => "mock-feedback-event-id"),
   getClient: jest.fn(() => ({})),
   init: jest.fn(),

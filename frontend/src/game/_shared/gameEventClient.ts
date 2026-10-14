@@ -41,6 +41,7 @@ import {
 import { generateUUID } from "./uuid";
 import { onSentryThrottleReset } from "./sentryThrottle";
 import { assertOutcomeAllowed } from "./outcomeGuard";
+import { clearSessionTags, setSessionTags, taggedSessionGameId } from "./sessionTags";
 
 export interface EnqueueEventInput {
   type: string;
@@ -168,13 +169,17 @@ export class GameEventClientImpl implements GameEventClient {
       type: "game_started",
       data: eventData ?? { game_type: gameType, metadata },
     });
+    setSessionTags(gameId, gameType, metadata);
     return gameId;
   }
 
   resumeGame(gameType: string, match?: Record<string, unknown>): string | null {
     const gameId = this.games.adoptOrphan(gameType, Date.now(), match);
     // The player can continue only one; any other orphan of the type is over.
-    if (gameId !== null) this.abandonOrphans(gameType);
+    if (gameId !== null) {
+      this.abandonOrphans(gameType);
+      setSessionTags(gameId, gameType, this.games.get(gameId)?.metadata);
+    }
     return gameId;
   }
 
@@ -265,9 +270,11 @@ export class GameEventClientImpl implements GameEventClient {
       this.games.complete(gameId, summary, options.completedAt),
       "completeGame.mark"
     );
+    clearSessionTags(gameId);
   }
 
   discardGame(gameId: string): void {
+    clearSessionTags(gameId);
     // forget() drops the in-memory record synchronously, so nothing new can be
     // enqueued for this game; deleteByGameId() runs behind any enqueue already
     // queued on the store's lock, so it also removes game_started.
@@ -291,12 +298,16 @@ export class GameEventClientImpl implements GameEventClient {
       return;
     }
     const bugUuid = generateUUID();
+    // The open game, if any, so a bug report leads to its events (#3277).
+    // A game_id the caller passed wins.
+    const openGameId = taggedSessionGameId();
+    const withGame = openGameId ? { game_id: openGameId, ...context } : context;
     this.fireAndForget(
       this.store.enqueueBugLog({
         bug_uuid: bugUuid,
         bug_level: level,
         bug_source: source,
-        payload: { message, context },
+        payload: { message, context: withGame },
       }),
       "reportBug.enqueue"
     );
