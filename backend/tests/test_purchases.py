@@ -44,7 +44,7 @@ from rate_limits import (
     PURCHASE_SESSION_RATE_LIMIT,
     PURCHASE_STORE_KEY_RATE_LIMIT,
 )
-from tests._helpers import count, jwt_games, session_headers, set_admin_token
+from tests._helpers import count, jwt_games, session_headers
 
 HEARTS = "com.buffingchi.games.premium.hearts"
 CASCADE = "com.buffingchi.games.premium.cascade"
@@ -822,57 +822,6 @@ def test_free_games_unaffected_by_purchase_code(
     r = client.post("/games", json={"game_type": game}, headers=session_headers(sid))
     assert r.status_code != 403
     assert jwt_games(client, sid) == []
-
-
-# ---------------------------------------------------------------------------
-# Admin PATCH is_premium (IAP.md §13)
-# ---------------------------------------------------------------------------
-
-_ADMIN = "test-admin-token-840-" + "x" * 16
-
-
-def _catalog_id(client: TestClient, name: str) -> int:
-    items = client.get("/games/catalog").json()["items"]
-    return next(g["id"] for g in items if g["name"] == name)
-
-
-def test_patch_cannot_flip_catalog_game_to_free(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    set_admin_token(client, monkeypatch, _ADMIN)
-    gid = _catalog_id(client, "hearts")
-    headers = {"X-Admin-Token": _ADMIN}
-    r = client.patch(f"/games/catalog/{gid}", json={"is_premium": False}, headers=headers)
-    assert r.status_code == 409
-    assert r.json()["detail"] == "is_premium_migration_only"
-    # Unchanged value and other fields are still editable.
-    r = client.patch(f"/games/catalog/{gid}", json={"is_premium": True}, headers=headers)
-    assert r.status_code == 200 and r.json()["is_premium"] is True
-
-
-async def test_patch_cannot_change_tier_of_game_with_purchases(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    set_admin_token(client, monkeypatch, _ADMIN)
-    async with get_session_factory()() as db:
-        db.add(
-            Purchase(
-                platform="google",
-                store_key="legacy-free-game",
-                product_id="com.buffingchi.games.premium.twenty48",
-                game_slug="twenty48",
-                state="owned",
-                environment="test",
-                verified_at=datetime.now(UTC),
-                state_changed_at=datetime.now(UTC),
-            )
-        )
-        await db.commit()
-    gid = _catalog_id(client, "twenty48")
-    r = client.patch(
-        f"/games/catalog/{gid}", json={"is_premium": True}, headers={"X-Admin-Token": _ADMIN}
-    )
-    assert r.status_code == 409
 
 
 # ---------------------------------------------------------------------------

@@ -84,7 +84,7 @@ async def test_a_load_racing_an_invalidation_is_not_stored(
 
     async def load_then_invalidate(db):
         snap = await real_load(db)
-        catalog_cache.invalidate()  # a PATCH committed while this load ran
+        catalog_cache.invalidate()  # a change committed while this load ran
         return snap
 
     monkeypatch.setattr(catalog_cache, "_load", load_then_invalidate)
@@ -92,23 +92,6 @@ async def test_a_load_racing_an_invalidation_is_not_stored(
     async with factory() as db:
         assert await catalog_cache.get_game_type(db, "yacht") is not None
     assert catalog_cache._snapshot is None
-
-
-async def test_patch_game_type_service_invalidates() -> None:
-    from games.catalog import patch_game_type
-
-    factory = get_session_factory()
-    async with factory() as db:
-        gt = await catalog_cache.get_game_type(db, "blackjack")
-        assert gt is not None
-        assert catalog_cache._snapshot is not None
-        original = gt.category
-        try:
-            await patch_game_type(db, game_type_id=gt.id, is_premium=None, category="zz")
-            assert catalog_cache._snapshot is None
-            assert (await catalog_cache.get_game_type(db, "blackjack")).category == "zz"  # type: ignore[union-attr]
-        finally:
-            await patch_game_type(db, game_type_id=gt.id, is_premium=None, category=original)
 
 
 async def test_a_new_game_type_is_seen_after_invalidation() -> None:

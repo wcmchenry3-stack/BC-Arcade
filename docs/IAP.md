@@ -1196,7 +1196,7 @@ signed JWS fixture made with a test CA for the verifier.
 | `POST /purchases/apple`, `/google`      | `purchases/router.py`, `purchases/schemas.py`                   |
 | Account tokens, Apple store-key parse   | `purchases/apple.py`, `purchases/google.py`                     |
 | Verifier interface and defaults         | `purchases/verifiers.py`                                        |
-| Admin `PATCH is_premium` guard (§13)    | `games/catalog.py` `patch_game_type`                          |
+| Tier changes (§13)                      | Alembic migration only (#3304 removed the admin PATCH route) |
 | Tests                                   | `tests/test_purchases.py`, `tests/test_purchases_migration.py`, `tests/test_entitlement_lookup_perf.py` |
 
 **Verifier interface.** The service never calls a store. The routes get a
@@ -1339,9 +1339,7 @@ game_slug)` order, so two transactions cannot lock rows in opposite orders.
   matching JSON lines go to the `audit` logger. Raw tokens and session IDs
   are never written.
 - `/purchases/*` accepts bodies up to 32 KB (other routes stay at 1 KB).
-- Admin `PATCH /games/catalog/{id}` answers `409 is_premium_migration_only`
-  for an `is_premium` change on a game in the product catalog or with any
-  `purchases` row (§13). Same-value patches and `category` changes still work.
+- Game tier and category change only by Alembic migration (#3304 removed the admin PATCH route). (The former admin PATCH guard, `409 is_premium_migration_only`, went with the route.)
 
 **Measured entitlement lookup (target < 5 ms).**
 `tests/test_entitlement_lookup_perf.py` seeds 20,001 `game_entitlements` rows
@@ -1709,15 +1707,14 @@ separate product decision.
 - **Premium update:** the reviewed binary contains the paywall, the adapter
   and the products. It removes the five slugs from `HIDDEN_GAMES`, and they
   appear as locked tiles. The products are submitted **with that binary**.
-- **No server-side unhide, ever.** `GET /games/catalog`, `is_premium` and the
-  admin `PATCH /games/catalog/{id}` must never make a hidden game visible.
+- **No server-side unhide, ever.** `GET /games/catalog`, `is_premium` and any
+  tier change must never make a hidden game visible.
   Visibility changes only by shipping a new reviewed binary (Guideline 2.3.1).
-- **Admin `PATCH is_premium` hazard.** Flipping a game to free while it has
-  `purchases` would give it away to everyone. Flipping it to premium without a
-  catalog product leaves it unbuyable. The drift tests catch the second in CI,
-  not in production. **Done (#840):** the PATCH refuses an `is_premium` change
-  for a slug in the product catalog, or for any game with a `purchases` row,
-  with `409 is_premium_migration_only`. Such changes are migration-only.
+- **`is_premium` hazard.** Flipping a game to free while it has `purchases`
+  would give it away to everyone. Flipping it to premium without a catalog
+  product leaves it unbuyable. The drift tests catch the second in CI, not in
+  production. **Done (#840, #3304):** the admin PATCH that could do this was
+  removed; game tier and category change only by Alembic migration (#3304 removed the admin PATCH route).
 - **Pre-launch API.** The pre-launch API grants every premium game through
   `ENTITLEMENT_DEV_OVERRIDE`, so purchase testing there proves nothing. Sandbox
   testing needs a backend with the override **off** (§14).

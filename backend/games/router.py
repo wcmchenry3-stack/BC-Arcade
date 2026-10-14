@@ -8,23 +8,18 @@ handler in ``main.py`` with the same ``{"detail": ...}`` body and status an
 
 from __future__ import annotations
 
-import hmac
 import uuid
 from dataclasses import asdict
-from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import DbSession
 from db.models import Game
 from entitlements.dependencies import check_entitlement
-from int_bounds import INT16_MAX
 from limiter import limiter, session_key
 from rate_limits import (
-    CATALOG_ADMIN_IP_RATE_LIMIT,
-    CATALOG_ADMIN_SESSION_RATE_LIMIT,
     CATALOG_RATE_LIMIT,
     GAMES_COMPLETE_IP_RATE_LIMIT,
     GAMES_COMPLETE_SESSION_RATE_LIMIT,
@@ -62,7 +57,6 @@ from .schemas import (
     GameTypeOut,
     LeaderboardEntryOut,
     LeaderboardResponse,
-    PatchGameTypeRequest,
 )
 
 router = APIRouter()
@@ -111,31 +105,6 @@ async def get_catalog(
         content=body.model_dump(),
         headers={"Cache-Control": "public, max-age=300"},
     )
-
-
-@router.patch("/catalog/{game_type_id}", response_model=GameTypeOut)
-@limiter.limit(CATALOG_ADMIN_SESSION_RATE_LIMIT, key_func=session_key)
-@limiter.limit(CATALOG_ADMIN_IP_RATE_LIMIT)
-async def patch_game_type(
-    request: Request,
-    game_type_id: Annotated[int, Path(ge=1, le=INT16_MAX)],
-    body: PatchGameTypeRequest,
-    db: DbSession,
-    x_admin_token: str = Header(default=""),
-) -> GameTypeOut:
-    # Read once at startup: create_app() puts the Settings on app.state.
-    admin_token = request.app.state.settings.admin_api_token.get_secret_value()
-    if not admin_token or not hmac.compare_digest(
-        x_admin_token.encode("utf-8"), admin_token.encode("utf-8")
-    ):
-        raise HTTPException(status_code=403, detail="Forbidden.")
-    gt = await catalog.patch_game_type(
-        db,
-        game_type_id=game_type_id,
-        is_premium=body.is_premium,
-        category=body.category,
-    )
-    return _gt_to_out(gt)
 
 
 # ---------------------------------------------------------------------------

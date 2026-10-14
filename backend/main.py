@@ -91,7 +91,7 @@ _audit_log = logging.getLogger("audit")
 
 # PUT is for PUT /players/me; without it a browser preflight fails on Expo Web (#2758).
 CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
-CORS_ALLOW_HEADERS = ["Content-Type", "X-Session-ID", "X-Admin-Token"]
+CORS_ALLOW_HEADERS = ["Content-Type", "X-Session-ID"]
 CORS_EXPOSE_HEADERS = ["Retry-After"]
 
 # ---------------------------------------------------------------------------

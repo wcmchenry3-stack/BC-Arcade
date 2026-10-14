@@ -29,9 +29,7 @@ Parity rules (the owner decisions on #2997):
 Migrated so far: the app-level settings ``main``, ``limiter`` and
 ``observability.sentry`` read; ``DATABASE_URL`` (``db.base``, read lazily, and
 ``alembic/env.py``); the two daily salts (``daily_word.puzzle`` and
-``daily_challenge.definitions``, still read when imported); ``ADMIN_API_TOKEN``
-(``games.router``, from ``app.state.settings``, so read once at startup rather
-than per request); and ``ENTITLEMENT_DEV_OVERRIDE`` / ``ENTITLEMENT_PRIVATE_KEY``
+``daily_challenge.definitions``, still read when imported); and ``ENTITLEMENT_DEV_OVERRIDE`` / ``ENTITLEMENT_PRIVATE_KEY``
 / ``ENTITLEMENT_PUBLIC_KEY`` (``entitlements.service``, read lazily on first use
 and kept for the process); and the ``APPLE_*`` / ``GOOGLE_*`` store config
 (``purchases._common``, read lazily on first use and kept for the process, so
@@ -49,7 +47,7 @@ not affect them: ``ENTITLEMENT_TOKEN_TTL_HOURS`` (``entitlements.service``),
 ``DB_POOL_TIMEOUT_SECONDS`` — come from ``db.base._settings`` with ``DATABASE_URL``,
 and ``MIGRATION_DATABASE_URL`` is read only by ``alembic/env.py``.
 
-Secrets (``ADMIN_API_TOKEN``, ``RATE_LIMIT_STORAGE_URL``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
+Secrets (``RATE_LIMIT_STORAGE_URL``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
 ``GOOGLE_PLAY_SERVICE_ACCOUNT_JSON``) are ``SecretStr``, so a
 ``repr()`` or log of ``Settings`` shows ``**********``; call ``.get_secret_value()``
 where the value is used.
@@ -67,9 +65,6 @@ DEFAULT_ALLOWED_ORIGINS: tuple[str, ...] = ("http://localhost:8081", "http://loc
 # The Sentry environment when ENVIRONMENT is unset (sentry-sdk's own default is
 # "production", which mis-tagged every dev-API event, #851).
 DEFAULT_SENTRY_ENVIRONMENT = "development"
-
-
-ADMIN_API_TOKEN_MIN_LENGTH = 32
 
 
 class Settings(BaseSettings):
@@ -120,9 +115,6 @@ class Settings(BaseSettings):
     daily_word_salt: str = Field(default="0", alias="DAILY_WORD_SALT")
     daily_challenge_salt: str | None = Field(default=None, alias="DAILY_CHALLENGE_SALT")
 
-    # Admin token for PATCH /games/catalog/{id}; empty → the route always answers 403.
-    # A non-empty value must be at least ADMIN_API_TOKEN_MIN_LENGTH characters (#3304).
-    admin_api_token: SecretStr = Field(default=SecretStr(""), alias="ADMIN_API_TOKEN")
     # The ENTITLEMENT_* fields are read from entitlements.service's own lazy Settings,
     # not app.state.settings; create_app(settings) does not affect them.
     # Raw; ``entitlement_dev_override`` is true only for the word "true", any case.
@@ -214,28 +206,6 @@ class Settings(BaseSettings):
         if isinstance(value, SecretStr):
             return SecretStr(value.get_secret_value().strip())
         return value.strip() if isinstance(value, str) else value
-
-    @field_validator("admin_api_token", mode="before")
-    @classmethod
-    def _admin_token_stripped(cls, value: Any) -> Any:
-        # Stripped before the length check and stored stripped, so the route compares
-        # the same value. Whitespace-only becomes empty: admin disabled.
-        if isinstance(value, SecretStr):
-            return SecretStr(value.get_secret_value().strip())
-        return value.strip() if isinstance(value, str) else value
-
-    @field_validator("admin_api_token")
-    @classmethod
-    def _admin_token_min_length(cls, value: SecretStr) -> SecretStr:
-        # Empty keeps admin disabled; anything else is a real credential and must
-        # be long enough not to be guessable within the route's rate limits.
-        length = len(value.get_secret_value())
-        if 0 < length < ADMIN_API_TOKEN_MIN_LENGTH:
-            raise ValueError(
-                f"ADMIN_API_TOKEN must be at least {ADMIN_API_TOKEN_MIN_LENGTH} characters "
-                f"when set (got {length}); leave it empty to disable the admin route."
-            )
-        return value
 
     @model_validator(mode="after")
     def _command_timeout_outlasts_statement_timeout(self) -> Settings:

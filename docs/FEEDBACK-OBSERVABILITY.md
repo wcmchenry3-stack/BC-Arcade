@@ -139,7 +139,6 @@ Current options include:
 The backend explicitly scrubs:
 
 - `X-Session-ID`;
-- `X-Admin-Token`;
 
 from Sentry events through its event scrubber.
 
