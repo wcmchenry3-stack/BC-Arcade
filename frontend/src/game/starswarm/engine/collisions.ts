@@ -34,6 +34,7 @@ import { aabb, circleCircle, collideCircleAABB } from "./geometry";
 import { nextId, rng } from "./rng";
 import { carrierArmoredIn, mapFilterKeep } from "./roster";
 import { bumpRun, bumpStat } from "./stats";
+import { bumpWave, type WaveStats } from "./waveStats";
 import {
   BOMB_FLASH_DURATION,
   DEFAULT_TUNING,
@@ -134,6 +135,8 @@ export interface CollisionWork {
   buddyShips: readonly BuddyShip[];
   tierStats: Record<EnemyTier, TierStats>;
   runStats: RunStats;
+  /** #3249: the wave's accumulator — Carrier and rout counters bump here beside `runStats`. */
+  waveStats: WaveStats;
   killsSinceLastDrop: number;
   dropJitterTarget: number;
   activePowerUp: StarSwarmState["activePowerUp"];
@@ -146,6 +149,11 @@ export interface CollisionWork {
   hull: HullLevel;
   hullFlashTimer: number;
 }
+
+// #3249: hoisted per-wave counter paths
+const ARMOR_DEFLECTS = ["carrier", "armorDeflects"] as const;
+const BEAM_HITS = ["carrier", "beamHits"] as const;
+const ROUT_CAUGHT = ["rout", "caught"] as const;
 
 function openCollisionWork(state: StarSwarmState): CollisionWork {
   const { player } = state;
@@ -162,6 +170,7 @@ function openCollisionWork(state: StarSwarmState): CollisionWork {
     buddyShips: [...state.buddyShips],
     tierStats: { ...state.tierStats }, // #2487
     runStats: state.runStats, // #2491
+    waveStats: state.waveStats, // #3249
     killsSinceLastDrop: state.killsSinceLastDrop,
     dropJitterTarget: state.dropJitterTarget,
     activePowerUp: state.activePowerUp,
@@ -197,6 +206,7 @@ export function assembleCollisionState(
     asteroids: settledRocks, // #2486
     tierStats: w.tierStats,
     runStats: w.runStats,
+    waveStats: w.waveStats,
     playerBullets: w.playerBullets,
     enemyBullets: w.enemyBullets,
     carrierBeams: w.carrierBeams,
@@ -301,8 +311,14 @@ export function resolvePlayerShots(
     return enemy;
   });
 
-  if (armorDeflects > 0) w.runStats = bumpRun(w.runStats, { armorDeflects });
-  if (routCaught > 0) w.runStats = bumpRun(w.runStats, { routCaught });
+  if (armorDeflects > 0) {
+    w.runStats = bumpRun(w.runStats, { armorDeflects });
+    w.waveStats = bumpWave(w.waveStats, ARMOR_DEFLECTS, armorDeflects); // #3249
+  }
+  if (routCaught > 0) {
+    w.runStats = bumpRun(w.runStats, { routCaught });
+    w.waveStats = bumpWave(w.waveStats, ROUT_CAUGHT, routCaught); // #3249
+  }
 
   // Piercing bullets are removed by the off-screen filter in tickBullets, not here
   w.playerBullets = state.playerBullets
@@ -347,7 +363,10 @@ export function resolveRockContacts(
   );
   w.rocks = struck.rocks;
   w.enemies = struck.enemies;
-  if (struck.deflects > 0) w.runStats = bumpRun(w.runStats, { armorDeflects: struck.deflects });
+  if (struck.deflects > 0) {
+    w.runStats = bumpRun(w.runStats, { armorDeflects: struck.deflects });
+    w.waveStats = bumpWave(w.waveStats, ARMOR_DEFLECTS, struck.deflects); // #3249
+  }
   if (struckTiers.length > 0) {
     const next = { ...w.tierStats };
     for (const tier of struckTiers) bumpStat(next, tier, { struck: 1 });
@@ -469,7 +488,10 @@ export function resolvePickupCollection(
     w.enemies = applyBombBlast(state, w.enemies, w.explosions, w.newDrops, awards, tally);
     w.score = tally.score;
     w.killsSinceLastDrop = tally.killsSinceLastDrop;
-    if (tally.routCaught > 0) w.runStats = bumpRun(w.runStats, { routCaught: tally.routCaught });
+    if (tally.routCaught > 0) {
+      w.runStats = bumpRun(w.runStats, { routCaught: tally.routCaught });
+      w.waveStats = bumpWave(w.waveStats, ROUT_CAUGHT, tally.routCaught); // #3249
+    }
   } else if (collected.type === "buddy") {
     // #1035/#2845: launch Buddy
     w.buddyShips = [...w.buddyShips, makeBuddy({ ...state, enemies: w.enemies }, tuning)];
@@ -594,7 +616,10 @@ export function resolvePlayerHit(
 
   // #2491/#2843: a beam that lands (plating or a life) counts once — it is spent on the
   // ship, so the same beam can never land twice
-  if (hitByBeam && !absorbed) w.runStats = bumpRun(w.runStats, { beamHits: 1 });
+  if (hitByBeam && !absorbed) {
+    w.runStats = bumpRun(w.runStats, { beamHits: 1 });
+    w.waveStats = bumpWave(w.waveStats, BEAM_HITS, 1); // #3249
+  }
   if (hitByShip && rammingEnemyId !== null) {
     w.enemies = w.enemies.map((e) => {
       if (e.id === rammingEnemyId) {
