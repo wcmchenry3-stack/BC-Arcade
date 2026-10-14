@@ -447,6 +447,15 @@ export class PendingGamesStore {
   }
 
   /**
+   * True for a game an earlier app process left behind (read from disk at
+   * init(), not created or adopted by this process). SyncWorker never holds
+   * such a game's events (#3275): nobody is playing it in this process.
+   */
+  isFromPreviousProcess(gameId: string): boolean {
+    return this.fromPreviousProcess.has(gameId);
+  }
+
+  /**
    * Adopt the killed process's session of `gameType` that a screen is
    * restoring (#2654): the most recently active started, still-resumable
    * orphan of that type, optionally only one whose metadata has every

@@ -29,7 +29,8 @@ import * as Sentry from "@sentry/react-native";
 
 import { eventStore, EventStore, QueueStats } from "./eventStore";
 import { bugReportLimiter, BugReportLimiter } from "./bugReportLimiter";
-import { BugLevel, logConfig } from "./eventQueueConfig";
+import { BugLevel, logConfig, type EventTypeOf } from "./eventQueueConfig";
+import type { GameType } from "./types";
 import {
   pendingGamesStore,
   PendingGamesStore,
@@ -48,8 +49,8 @@ import {
   taggedSessionGameId,
 } from "./sessionTags";
 
-export interface EnqueueEventInput {
-  type: string;
+export interface EnqueueEventInput<G extends GameType = GameType> {
+  type: EventTypeOf<G>;
   data?: Record<string, unknown>;
 }
 

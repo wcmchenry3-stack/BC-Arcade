@@ -503,6 +503,22 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
   batches, the bug-log batches and the "all events delivered" check for
   completions from it; a game completed after the snapshot waits for the next
   pass, so its `game_ended` is always sent before its completion.
+  - **No gameplay uploads mid-game (#3275).** Radio wake-ups dominate the
+    network's battery cost, so while the app is in the foreground a session
+    that is open (not completed, and opened or resumed by this process) sends
+    only its lifecycle rows (`game_started`, `hand_resolved`, `game_ended`) on
+    the 30 s schedule. Its gameplay rows are held until the session completes,
+    the app goes to `background` (one releasing flush as the interval is torn
+    down; `inactive` alone releases nothing), or its oldest held row is
+    `GAMEPLAY_HOLD_MAX_MS` (5 min) old. A flush that runs while the app is
+    already in the background holds nothing. A killed process's open session
+    is nobody's game at the next launch, so its held rows go out on the first
+    flush; resumed, it is held again, with the fallback still measured from
+    its oldest row. Held rows stay ordinary live rows: TTL, eviction, per-row
+    backoff, 413 splitting and dead-lettering apply to them unchanged.
+    The cost: with the queue at its cap and the device online, up to about
+    5 min of the current session stays on the device, so eviction removes
+    older rows that much sooner (eviction priority is #3276).
 - `displayNameSync` — one pending leaderboard join or leave (see below).
 - `PendingGamesStore`, `eventStore` and `displayNameSync`
   (`pendingGamesStore.ts`, `eventStore.ts`, `displayNameSync.ts`) are
