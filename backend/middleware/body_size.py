@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from starlette.datastructures import Headers
@@ -14,6 +15,8 @@ LARGE_BODY_PREFIXES = ("/games", "/logs", "/stats")
 # An Apple StoreKit 2 JWS carries its certificate chain, ~4-6 KB (#840).
 PURCHASE_BODY_BYTES = 32 * 1_024
 PURCHASE_BODY_PREFIX = "/purchases"
+# Total time allowed to buffer a body that has no Content-Length.
+BODY_READ_TIMEOUT_SECONDS = 10.0
 
 
 def _max_body_bytes_for(path: str) -> int:
@@ -27,19 +30,59 @@ def _max_body_bytes_for(path: str) -> int:
 
 def _json_error(status: int, detail: str) -> Response:
     return Response(
-        content=json.dumps({"detail": detail}), status_code=status, media_type="application/json"
+        content=json.dumps({"detail": detail}),
+        status_code=status,
+        media_type="application/json",
+        headers={"connection": "close"},
     )
+
+
+async def _read_body(receive: Receive, cap: int) -> tuple[str, list[bytes]]:
+    """Buffer the body; return ``(outcome, chunks)``.
+
+    Outcome is ``ok`` / ``too_big`` / ``timed_out`` / ``disconnected``. Reads and
+    decides only; it never sends.
+    """
+    chunks: list[bytes] = []
+    size = 0
+    try:
+        async with asyncio.timeout(BODY_READ_TIMEOUT_SECONDS):
+            while True:
+                message = await receive()
+                if message["type"] == "http.disconnect":
+                    return "disconnected", chunks
+                chunk = message.get("body", b"")
+                size += len(chunk)
+                if size > cap:
+                    return "too_big", chunks
+                chunks.append(chunk)
+                if not message.get("more_body", False):
+                    return "ok", chunks
+    except TimeoutError:
+        return "timed_out", chunks
 
 
 class MaxBodySizeMiddleware:
     """Reject bodies over the path's cap (pure ASGI, so it can see the body stream).
 
     * A ``Content-Length`` over the cap → 413; one that is not a non-negative
-      integer → 400 (it used to raise, a 500).
-    * No ``Content-Length`` (chunked) on ``/purchases/*`` — which includes the
-      unauthenticated App Store webhook — the body is read here, at most
-      ``cap`` bytes, then handed on; more than that → 413. Other paths keep
-      their previous behavior (no streaming check).
+      integer → 400 (it used to raise, a 500). A request with a
+      ``Transfer-Encoding`` header is treated as having no usable
+      ``Content-Length`` (it is ignored, never trusted) and takes the path below.
+    * No ``Content-Length`` (chunked transfer) on *any* path: the body is read
+      here, at most ``cap`` bytes, then replayed to the app as a single
+      message; more than ``cap`` → 413 before the app sees anything. Buffering
+      (rather than a counting ``receive`` wrapper) is used because a 413 can
+      only be sent while the app has not started its response, and every cap
+      is <= 256 KB so the buffer is small. A body-less request costs one
+      ``receive()`` call and one replayed message.
+    * That read is bounded by ``BODY_READ_TIMEOUT_SECONDS``; a slower body →
+      408 without calling the app. The limit applies to bodies without
+      ``Content-Length`` only (see #3319 for the rest).
+    * Every response sent here carries ``Connection: close``.
+    * A body longer than a *declared* ``Content-Length`` needs no check here:
+      uvicorn's h11/httptools parsers frame the body by the declared length,
+      so surplus bytes never reach ``receive()`` as part of this request.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -51,7 +94,8 @@ class MaxBodySizeMiddleware:
             return
         path: str = scope["path"]
         cap = _max_body_bytes_for(path)
-        content_length = Headers(scope=scope).get("content-length")
+        headers = Headers(scope=scope)
+        content_length = None if "transfer-encoding" in headers else headers.get("content-length")
         if content_length is not None:
             text = content_length.strip()
             if not (text.isascii() and text.isdigit()):
@@ -62,24 +106,17 @@ class MaxBodySizeMiddleware:
                 return
             await self.app(scope, receive, send)
             return
-        if not path.startswith(PURCHASE_BODY_PREFIX):
-            await self.app(scope, receive, send)
+        outcome, chunks = await _read_body(receive, cap)
+        # Responses are sent outside the timeout block so a stalled send can never
+        # trigger a second response.
+        if outcome == "disconnected":
             return
-
-        chunks: list[bytes] = []
-        size = 0
-        while True:
-            message = await receive()
-            if message["type"] == "http.disconnect":
-                return
-            chunk = message.get("body", b"")
-            size += len(chunk)
-            if size > cap:
-                await _json_error(413, "Request body too large.")(scope, receive, send)
-                return
-            chunks.append(chunk)
-            if not message.get("more_body", False):
-                break
+        if outcome == "too_big":
+            await _json_error(413, "Request body too large.")(scope, receive, send)
+            return
+        if outcome == "timed_out":
+            await _json_error(408, "Request body read timed out.")(scope, receive, send)
+            return
         body = b"".join(chunks)
         replayed = False
 
