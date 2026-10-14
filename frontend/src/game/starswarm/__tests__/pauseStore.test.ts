@@ -26,6 +26,9 @@ import {
 } from "../pauseStore";
 import { SAVE_FINGERPRINT, fitsSaveShape, restoreSavedState } from "../saveShape";
 import { loadoutOf } from "../engine/waveStats";
+import { countShipsSpawned } from "../engine/waveCounters";
+import { buddyShot, shot } from "./helpers/waveStatsScenarios";
+import { tickCollisions } from "../engine/collisions";
 import type { StarSwarmState } from "../types";
 
 // A paused run survives the process (#2645). `_resetPauseStoreForTests` stands in for a
@@ -335,11 +338,27 @@ describe("per-wave stats in a save (#3245)", () => {
 
     const restored = getSavedPausedState()?.gameState;
     if (!restored) throw new Error("the older save wasn't restored");
-    expect(restored.waveStats).toEqual(emptyWaveStats({ lives: 2, guns: 2, hull: 1 }));
+    // #3248: fresh stats are seeded with the saved roster as the wave's spawns
+    expect(restored.waveStats).toEqual(
+      countShipsSpawned(emptyWaveStats({ lives: 2, guns: 2, hull: 1 }), s.enemies)
+    );
     expect(restored.lastClosedWave).toBeNull();
     expect(restored.score).toBe(1234);
     // and it plays on
     expect(tick(restored, 16, { playerX: 100, fire: true }).waveStats.pacing.durationMs).toBe(16);
+  });
+
+  it("counts an older save's player shots still in flight as fired, not Buddy's", async () => {
+    const s = run();
+    const inFlight = [shot(100, 300), shot(120, 300), buddyShot(140, 300)];
+    await writeRaw(olderSave({ ...s, playerBullets: inFlight }));
+    await hydratePausedState();
+
+    const restored = getSavedPausedState()?.gameState;
+    if (!restored) throw new Error("the older save wasn't restored");
+    // #3248: a restored shot that lands later counts a hit, so it must count as fired
+    expect(restored.waveStats.combat.shotsFired).toBe(2);
+    expect(restored.playerBullets).toEqual(inFlight);
   });
 
   it("restores a save whose stats don't fit this build's registries, stats started over", async () => {
@@ -406,7 +425,10 @@ describe("per-wave stats in a save (#3245)", () => {
     it.each(cases)("%s", (_label, spoil) => {
       const { s, ws } = fresh();
       const restored = restoreSavedState({ ...s, waveStats: spoil(ws) });
-      expect(restored.waveStats).toEqual(emptyWaveStats(loadoutOf(s.player)));
+      // #3248: fresh stats are seeded with the saved roster as the wave's spawns
+      expect(restored.waveStats).toEqual(
+        countShipsSpawned(emptyWaveStats(loadoutOf(s.player)), s.enemies)
+      );
     });
 
     it("while valid values of those leaves are kept", () => {
@@ -422,6 +444,69 @@ describe("per-wave stats in a save (#3245)", () => {
         damage: { ...ws.damage, deathCause: "beam" },
       } as WS;
       expect(restoreSavedState({ ...s, waveStats: valid }).waveStats).toEqual(valid);
+    });
+  });
+
+  describe("combat.spawned after a restore (#3248)", () => {
+    const tiers = ["Grunt", "Elite", "Guardian", "Carrier"] as const;
+    /** Mid-wave: two ships of the roster already down (they still belong to the wave). */
+    const midWave = (): StarSwarmState => {
+      const s = run();
+      let down = 0;
+      const enemies = s.enemies.map((e) =>
+        e.tier === "Grunt" && down++ < 2 ? { ...e, isAlive: false, hp: 0 } : e
+      );
+      return JSON.parse(JSON.stringify({ ...s, enemies })) as StarSwarmState;
+    };
+    const rosterOf = (s: StarSwarmState) => {
+      const out = { Grunt: 0, Elite: 0, Guardian: 0, Carrier: 0 };
+      for (const e of s.enemies) out[e.tier]++;
+      return out;
+    };
+
+    it("fresh stats count the whole saved roster, so later kills have spawns to match", () => {
+      const s = midWave();
+      const { waveStats: _w, ...older } = s;
+      const restored = restoreSavedState(older as unknown as StarSwarmState);
+      expect(restored.waveStats.combat.spawned).toEqual(rosterOf(s));
+      // shoot down every ship still alive in one collision pass, then close: no tier has more
+      // kills than spawns
+      const alive = restored.enemies.filter((e) => e.isAlive);
+      const shots = alive.map((e, i) => ({
+        id: 900_000 + i,
+        x: e.x,
+        y: e.y,
+        vx: 0,
+        vy: 0,
+        owner: "player" as const,
+        width: 2,
+        height: 2,
+        damage: 99,
+        armorPiercing: true, // through an escorted Carrier's field too
+      }));
+      const after = tickCollisions({ ...restored, playerBullets: shots });
+      expect(after.enemies.some((e) => e.isAlive)).toBe(false);
+      const snap = closeWave(after, "cleared");
+      for (const t of tiers) {
+        const kills = Object.values(snap.combat.kills[t]).reduce((a, n) => a + n, 0);
+        expect(kills).toBe(alive.filter((e) => e.tier === t).length);
+        expect(snap.combat.spawned[t]).toBeGreaterThanOrEqual(kills);
+      }
+    });
+
+    it("kept stats from a build before #3248 (no spawns) are seeded from the roster", () => {
+      const s = midWave();
+      const zero = { Grunt: 0, Elite: 0, Guardian: 0, Carrier: 0 };
+      const ws = { ...s.waveStats, combat: { ...s.waveStats.combat, spawned: zero } };
+      const restored = restoreSavedState({ ...s, waveStats: ws });
+      expect(restored.waveStats.combat.spawned).toEqual(rosterOf(s));
+      expect(restored.waveStats.combat.kills).toEqual(ws.combat.kills); // the rest is kept
+    });
+
+    it("kept stats that already count spawns are left alone", () => {
+      const s = midWave();
+      const ws = bumpWave(s.waveStats, ["combat", "spawned", "Grunt"], 3);
+      expect(restoreSavedState({ ...s, waveStats: ws }).waveStats).toBe(ws);
     });
   });
 

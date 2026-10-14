@@ -33,16 +33,19 @@ import type {
 import type { EarlierScore, ScoreLedger, WaveScore } from "./scoreLedger";
 import {
   WAVE_STATS_VERSION,
+  bumpWave,
   countSpawned,
   emptyWaveStats,
   isWaveStats,
   loadoutOf,
   type WaveRout,
+  type WaveStats,
   type WaveStatsWire,
 } from "./engine/waveStats";
 import { DIFFICULTY_TIERS } from "./engine/tuning";
-import { HIT_CAUSES, POWERUP_SOURCES } from "./engine/registries";
+import { ENEMY_TIERS, HIT_CAUSES, POWERUP_SOURCES } from "./engine/registries";
 import { NO_OVERFLOW, wavesBytes, type ClosedWavesOverflow } from "./engine/closedWaves";
+import { SHOTS_FIRED, countShipsSpawned } from "./engine/waveCounters";
 
 type KeySpec<T> = {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -527,9 +530,15 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
       ? saved.powerUps
       : saved.powerUps.map((p) => (hasSource(p) ? p : { ...p, source: "kill" as const }));
   // fresh stats still count every pickup already falling as spawned, so they balance
-  const waveStats = isWaveStats(saved.waveStats)
-    ? countSpawned(saved.waveStats, unsourced)
-    : countSpawned(emptyWaveStats(loadoutOf(saved.player)), powerUps);
+  // #3248: and the ships of the wave and the shots in flight, when the stats don't count them yet
+  // (withRosterSpawns)
+  const waveStats = withRosterSpawns(
+    isWaveStats(saved.waveStats)
+      ? countSpawned(saved.waveStats, unsourced)
+      : countSpawned(emptyWaveStats(loadoutOf(saved.player)), powerUps),
+    saved.enemies,
+    saved.playerBullets
+  );
   // #3251
   const closedWaves = isClosedWaves(saved.closedWaves) ? saved.closedWaves : [];
   return {
@@ -543,4 +552,22 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
       ? saved.closedWavesOverflow
       : NO_OVERFLOW,
   };
+}
+
+/**
+ * #3248: fresh stats — or kept ones from a build before #3248, whose `combat.spawned` is all 0 —
+ * get the saved roster (every ship of the wave, alive or dead) as their spawns, so the kills
+ * still to come have spawns to match, and the player's shots still in flight as fired, so the
+ * hits still to come keep `shotsHit ≤ shotsFired`. Stats that already count spawns are left alone.
+ */
+function withRosterSpawns(
+  ws: WaveStats,
+  enemies: readonly Enemy[],
+  playerBullets: readonly Bullet[]
+): WaveStats {
+  let spawned = 0;
+  for (const tier of ENEMY_TIERS) spawned += ws.combat.spawned[tier];
+  if (spawned !== 0) return ws;
+  const inFlight = playerBullets.filter((b) => b.source !== "buddy").length;
+  return bumpWave(countShipsSpawned(ws, enemies), SHOTS_FIRED, inFlight);
 }

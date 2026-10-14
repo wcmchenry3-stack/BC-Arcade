@@ -14,8 +14,9 @@
  * the contract test (not the compiler) is what forces it to get a real counter.
  * On the wire, zero counters and then-empty objects are left out (`toWirePayload`).
  *
- * Coverage: #3245 fills `pacing` (and `score`, derived from the ledger at close), #3246 `powerUps`.
- * The other sections are in place and stay 0 until their counter stories (#3247–#3249) fill them.
+ * Coverage: every section is filled — #3245 `pacing` (and `score`, derived from the ledger at
+ * close), #3246 `powerUps`, #3247 `rocks`, #3248 `combat`/`damage`/`buddy` (their paths and
+ * paired bumps in `waveCounters.ts`), #3249 `carrier`/`rout`.
  * The schema is pinned on epic #3244 ("wave_completed v1 schema"); changing its shape is a `v`
  * bump. See docs/games/starswarm.md#per-wave-stats.
  */

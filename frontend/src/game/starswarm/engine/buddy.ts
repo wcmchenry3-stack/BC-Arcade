@@ -24,7 +24,10 @@ import { beamHazards, weaponsFree, type Hazard } from "./extraction";
 import { collideCircleAABB, hashFrac } from "./geometry";
 import { nextBuddyId, seedBuddyIdRange } from "./rng";
 import { carrierArmoredIn } from "./roster";
+import type { BuddyHitCause } from "./registries";
 import { bumpRun } from "./stats";
+import { BUDDY_LAUNCHED, type BuddyCauseCounts } from "./waveCounters";
+import { bumpWave } from "./waveStats";
 import {
   ASTEROID_HIT_FLASH_MS,
   BUDDY_BEAM_DAMAGE,
@@ -411,6 +414,7 @@ export function launchBuddy(
     ...state,
     buddyShips: [...state.buddyShips, makeBuddy(state, tuning)],
     runStats: bumpRun(state.runStats, { buddyLaunched: 1 }),
+    waveStats: bumpWave(state.waveStats, BUDDY_LAUNCHED, 1), // #3248
   };
 }
 
@@ -504,6 +508,11 @@ export function tickBuddyShips(
  * Buddy, and player shots are allied (`shotHarmsAllies`). At 0 HP Buddy explodes and is removed —
  * its unfired bursts go with it, but the shots it already fired fly on (they are separate
  * entities in `playerBullets`).
+ *
+ * #3247/#3248: `hits` counts every shot, beam and rock that landed, by cause (the fatal ones
+ * included); `destroyed` charges each lost Buddy to one cause — the one whose damage, taken in
+ * resolution order (shots, then beams, then rocks), brought its HP to 0. `lost` is their total.
+ * Counting only: what Buddy takes is unchanged.
  */
 export function resolveBuddyHits(
   buddies: readonly BuddyShip[],
@@ -511,14 +520,34 @@ export function resolveBuddyHits(
   beams: readonly CarrierBeam[],
   rocks: Asteroid[],
   explosions: Explosion[]
-): { buddies: BuddyShip[]; enemyBullets: Bullet[]; beams: CarrierBeam[]; lost: number } {
+): {
+  buddies: BuddyShip[];
+  enemyBullets: Bullet[];
+  beams: CarrierBeam[];
+  lost: number;
+  hits: BuddyCauseCounts;
+  destroyed: BuddyCauseCounts;
+  /** Small rocks that shattered on a Buddy (#3247: a `contact` break). */
+  shattered: number;
+} {
   if (buddies.length === 0) {
-    return { buddies: [], enemyBullets: [...enemyBullets], beams: [...beams], lost: 0 };
+    return {
+      buddies: [],
+      enemyBullets: [...enemyBullets],
+      beams: [...beams],
+      lost: 0,
+      hits: NO_BUDDY_HITS,
+      destroyed: NO_BUDDY_HITS,
+      shattered: 0,
+    };
   }
   const spentShots = new Set<number>();
   const spentBeams = new Set<number>();
   const out: BuddyShip[] = [];
   let lost = 0;
+  const hits = { bullet: 0, beam: 0, rock: 0 };
+  const destroyed = { bullet: 0, beam: 0, rock: 0 };
+  let shattered = 0;
   for (const b0 of buddies) {
     let b = b0;
     let damage = 0;
@@ -527,7 +556,9 @@ export function resolveBuddyHits(
       if (!collideCircleAABB(b.x, b.y, BUDDY_HURT_RADIUS, s.x, s.y, s.width, s.height)) continue;
       spentShots.add(s.id);
       damage += s.damage;
+      hits.bullet++;
     }
+    const shotDamage = damage;
     for (const beam of beams) {
       if (spentBeams.has(beam.id)) continue;
       const hit = collideCircleAABB(
@@ -542,13 +573,17 @@ export function resolveBuddyHits(
       if (!hit) continue;
       spentBeams.add(beam.id);
       damage += BUDDY_BEAM_DAMAGE;
+      hits.beam++;
     }
+    const beamDamage = damage - shotDamage;
     const circle = buddyThreatCircle(b);
     for (let ri = 0; ri < rocks.length; ri++) {
       const rock = rocks[ri]!;
       if (b.hitRockIds.includes(rock.id) || !asteroidHits(rock, circle)) continue;
       damage += BUDDY_ROCK_DAMAGE;
+      hits.rock++;
       b = { ...b, hitRockIds: [...b.hitRockIds, rock.id] };
+      if (rock.kind === "small") shattered++;
       rocks[ri] =
         rock.kind === "small"
           ? { ...rock, hp: 0, shattered: true }
@@ -562,6 +597,7 @@ export function resolveBuddyHits(
     if (hp <= 0) {
       explosions.push(spawnExplosion(b.x, b.y, nextBuddyId()));
       lost++;
+      destroyed[lossCause(b.hp, shotDamage, beamDamage)]++;
       continue;
     }
     out.push({ ...b, hp, hitFlashTimer: HIT_FLASH_DURATION });
@@ -573,5 +609,16 @@ export function resolveBuddyHits(
       : [...enemyBullets],
     beams: spentBeams.size ? beams.filter((x) => !spentBeams.has(x.id)) : [...beams],
     lost,
+    hits,
+    destroyed,
+    shattered,
   };
 }
+
+/** #3248: which cause took a lost Buddy's last HP — shots land first, then beams, then rocks. */
+function lossCause(hp: number, shotDamage: number, beamDamage: number): BuddyHitCause {
+  if (shotDamage >= hp) return "bullet";
+  return shotDamage + beamDamage >= hp ? "beam" : "rock";
+}
+
+const NO_BUDDY_HITS: BuddyCauseCounts = Object.freeze({ bullet: 0, beam: 0, rock: 0 });

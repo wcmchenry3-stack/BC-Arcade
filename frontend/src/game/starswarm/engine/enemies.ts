@@ -34,7 +34,8 @@ import { aimVelocity, slotToWorld, waveSlots, type SlotDef } from "./geometry";
 import { rng } from "./rng";
 import { STAGE_RANK, carrierStageIn, carrierStageOf, mapKeep, type TickCtx } from "./roster";
 import { bumpRun } from "./stats";
-import { bumpWave, markRouted, markStageReached, markWaveDev } from "./waveStats";
+import { BUDDY_SHOTS_DRAWN, COMBAT_SPAWNED, DODGE } from "./waveCounters";
+import { bumpWave, markRouted, markStageReached, markWaveDev, type WaveStats } from "./waveStats";
 import {
   BEAM_CHARGE_MS,
   BEAM_WIGGLE_AMPLITUDE,
@@ -396,9 +397,16 @@ interface FireWork {
   buddyShotsDrawn: number;
   /** #3249: Carrier beams released this tick. */
   beamsFired: number;
+  /** The wave's stats, carried through the fire (#3247: the Carrier's flak mirrors into its dodge table). */
+  waveStats: WaveStats;
 }
 
-function openFireWork(state: StarSwarmState, weaponsFree: boolean, cap: number): FireWork {
+function openFireWork(
+  state: StarSwarmState,
+  weaponsFree: boolean,
+  cap: number,
+  waveStats: WaveStats
+): FireWork {
   let live = 0;
   let buddyIncoming = 0;
   for (const b of state.enemyBullets) {
@@ -415,6 +423,7 @@ function openFireWork(state: StarSwarmState, weaponsFree: boolean, cap: number):
     buddyIncoming,
     buddyShotsDrawn: 0,
     beamsFired: 0,
+    waveStats,
   };
 }
 
@@ -499,6 +508,7 @@ function fireShipShots(
         (fw.enemyBullets ??= [...state.enemyBullets]).push(b);
         const stats = (fw.tierStats ??= { ...state.tierStats });
         stats[enemy.tier] = { ...stats[enemy.tier], flak: stats[enemy.tier].flak + 1 };
+        fw.waveStats = bumpWave(fw.waveStats, DODGE[enemy.tier].flak, 1); // #3247
       }
     } else if (fw.live < fw.cap && fw.weaponsFree) {
       (fw.enemyBullets ??= [...state.enemyBullets]).push(b);
@@ -605,7 +615,7 @@ export function tickEnemies(
     waveStats = markStageReached(waveStats, stage, waveStats.pacing.durationMs); // #3249
   }
   const carrierNow = ctx.alive.carrierIdx >= 0 ? roster[ctx.alive.carrierIdx] : undefined;
-  const fw = openFireWork(state, enemyWeaponsFree, bulletCap(state.wave, _ps));
+  const fw = openFireWork(state, enemyWeaponsFree, bulletCap(state.wave, _ps), waveStats);
   const carrierCtx = buildCarrierCtx(state, ctx, stage, carrierNow, fw.buddyIncoming, tuning);
   // (sim prototype, off by default: the exposed Carrier slides its station toward Buddy)
   const tracking = tuning.CARRIER_TRACK_BUDDY_SPEED > 0 && stage !== null && stage !== "protected";
@@ -642,7 +652,9 @@ export function tickEnemies(
   const reinforced = launchReinforcements(state, enemies, stage, ctx, dtMs, tuning);
   enemies = reinforced.enemies;
   let runStats = reinforced.runStats;
+  waveStats = fw.waveStats; // the fire's bumps (#3247: Carrier flak)
   waveStats = bumpWave(waveStats, GRUNTS_LAUNCHED, reinforced.launched); // #3249
+  waveStats = bumpWave(waveStats, COMBAT_SPAWNED.Grunt, reinforced.launched); // #3248
 
   if (routEscaped > 0) {
     runStats = bumpRun(runStats, { routEscaped });
@@ -651,6 +663,7 @@ export function tickEnemies(
   waveStats = bumpWave(waveStats, BEAMS_FIRED, fw.beamsFired);
   waveStats = bumpWave(waveStats, ATTACK_RUNS, attackRuns);
   if (fw.buddyShotsDrawn > 0) runStats = bumpRun(runStats, { buddyShotsDrawn: fw.buddyShotsDrawn }); // #2845
+  waveStats = bumpWave(waveStats, BUDDY_SHOTS_DRAWN, fw.buddyShotsDrawn); // #3248
 
   enemies = applyStragglerRule(state, enemies, routed); // #1031
 

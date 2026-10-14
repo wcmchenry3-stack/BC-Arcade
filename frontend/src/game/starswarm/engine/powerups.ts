@@ -21,6 +21,7 @@ import { applyBombBlast } from "./collisions";
 import { spawnExplosion } from "./entities";
 import { nextId } from "./rng";
 import { mapFilterKeep } from "./roster";
+import { ROCK_BROKEN } from "./waveCounters";
 import {
   bumpWave,
   countPickups,
@@ -184,6 +185,8 @@ function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning)
       score: state.score,
       killsSinceLastDrop: state.killsSinceLastDrop,
       routCaught: 0,
+      // #3247: every rock on screen is the bomb's (settled rocks are all whole)
+      waveStats: bumpWave(state.waveStats, ROCK_BROKEN.bomb, state.asteroids.length),
     };
     const enemies = applyBombBlast(state, state.enemies, newExplosions, drops, awards, tally);
     for (const a of state.asteroids) newExplosions.push(spawnExplosion(a.x, a.y)); // #2486
@@ -194,11 +197,12 @@ function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning)
       enemyBullets: [],
       carrierBeams: [], // #2843: released beams are enemy projectiles too
       powerUps: [...state.powerUps, ...drops],
-      waveStats: countSpawned(state.waveStats, drops), // #3246: Carrier plating
       explosions: newExplosions,
       score: tally.score,
       scoreLedger: recordScore(state.scoreLedger, state.wave, awards), // #2837
       killsSinceLastDrop: tally.killsSinceLastDrop,
+      // #3247/#3248: the blast's rocks and kills; #3246: Carrier plating it dropped
+      waveStats: countSpawned(tally.waveStats, drops),
       bombFlashTimer: BOMB_FLASH_DURATION,
     };
   }

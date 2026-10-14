@@ -194,8 +194,11 @@ describe("StarSwarmScreen — wave_completed events (#3251)", () => {
 
   it("over the run's cap: sends the earliest waves that fit, drops the rest, and reports once", async () => {
     await renderRun();
+    // every wave the same size: a padded score, and no counters (#3248 counts each wave's own
+    // roster in combat.spawned, which differs wave to wave)
     const big = (n: number): WaveStatsWire => ({
       ...closed(n),
+      combat: {},
       score: { total: 1, runningTotal: 1, pts: { [`pad${"x".repeat(3000)}`]: 1 } },
     });
     const one = JSON.stringify(big(10)).length;

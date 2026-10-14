@@ -19,6 +19,7 @@
  * `BREAKDOWN_MAX_BYTES` — well inside the backend's 8 KiB result limit.
  */
 
+import type { KillMethod } from "./engine/registries";
 import type { EnemyTier, StarSwarmState } from "./types";
 
 /** Points by source. */
@@ -43,7 +44,8 @@ export interface ScoreLedger {
   readonly earlier: EarlierScore | null;
 }
 
-export type KillModifier = "dive" | "rout" | "bomb" | "ram";
+/** A kill's ledger modifier — by construction also its kill method (#3248). */
+export type KillModifier = Extract<KillMethod, "dive" | "rout" | "bomb" | "ram">;
 
 /** The wave-clear bonus source. */
 export const WAVE_CLEAR_SOURCE = "clear";
@@ -60,6 +62,19 @@ export function emptyScoreLedger(): ScoreLedger {
 /** The source key for a kill of `tier`, with an optional modifier. */
 export function scoreSource(tier: EnemyTier, mod?: KillModifier): string {
   return mod ? `${tier}:${mod}` : tier;
+}
+
+/**
+ * #3248: how a kill counts in the per-wave stats (`combat.kills[tier][method]`) — its ledger
+ * modifier where it has one (`scoreSource(tier, mod)`), `shot` for a plain shot kill, and the
+ * killer itself for the kills the modifier doesn't describe: a rock, or one of Buddy's shots
+ * (which still score under the shot's ledger source).
+ */
+export function killMethod(
+  mod: KillModifier | undefined,
+  by: "rock" | "buddy" | null = null
+): KillMethod {
+  return by ?? mod ?? "shot";
 }
 
 /** Adds `points` to `awards[source]` (a per-tick collector) and returns `points`. */

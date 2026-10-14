@@ -76,6 +76,7 @@ import { playerVolley, tickPowerUps } from "./powerups";
 import { rng, seedRng } from "./rng";
 import { carrierStageIn, isLeaderTier, tickCtx } from "./roster";
 import { emptyRunStats, emptyTierStats } from "./stats";
+import { SHOTS_FIRED, countShipsSpawned, withDeathCause } from "./waveCounters";
 import {
   bumpWave,
   closeWave,
@@ -270,7 +271,7 @@ function buildWaveState(
     enemyFireDisabled: false,
     missionCompleteTimer: 0,
     scoreLedger: emptyScoreLedger(), // #2837: startNextWave carries the run's ledger over
-    waveStats: emptyWaveStats(loadoutOf(wavePlayer)), // #3245
+    waveStats: countShipsSpawned(emptyWaveStats(loadoutOf(wavePlayer)), enemies), // #3245, #3248: the roster
     lastClosedWave: null, // #3245: startNextWave sets the wave it just closed
     closedWaves: [], // #3251: startNextWave carries the run's closed waves over
     closedWavesOverflow: NO_OVERFLOW, // #3251
@@ -371,6 +372,13 @@ function tickBonusLives(prev: StarSwarmState, next: StarSwarmState): StarSwarmSt
 
   const awarded = Math.min(livesToAward, MAX_LIVES - next.player.lives);
   const newLives = next.player.lives + awarded;
+  // #3248: a rescued ship didn't die — the death cause set by the lethal hit goes again
+  const rescued = next.phase === "GameOver" && newLives > 0;
+  const waveStats = bumpWave(
+    rescued ? withDeathCause(next.waveStats, null) : next.waveStats,
+    BONUS_LIVES_PATH,
+    awarded
+  ); // #3245
 
   // #1078: if the bonus life rescued the player from a same-tick lethal hit, revert GameOver —
   // to the phase the tick started in (#2842: a rescue mid-extraction stays in extraction)
@@ -391,7 +399,7 @@ function tickBonusLives(prev: StarSwarmState, next: StarSwarmState): StarSwarmSt
     },
     bonusLivesAwarded: next.bonusLivesAwarded + awarded,
     bonusLifeSlowMoTimer: BONUS_LIFE_SLOW_MO_DURATION,
-    waveStats: bumpWave(next.waveStats, BONUS_LIVES_PATH, awarded), // #3245
+    waveStats,
   };
 }
 
@@ -435,6 +443,7 @@ function tickPlayer(state: StarSwarmState, dtMs: number, input: StarSwarmInput):
       ...state,
       player: { ...player, shootCooldown: isSuper ? SUPER_SHOOT_COOLDOWN : PLAYER_SHOOT_COOLDOWN },
       playerBullets: [...state.playerBullets, ...volley],
+      waveStats: bumpWave(state.waveStats, SHOTS_FIRED, volley.length), // #3248
     };
   }
 
