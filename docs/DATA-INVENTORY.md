@@ -102,10 +102,11 @@ total only by the budget alerts below.
 **Caps (on write).** These layer on the generic #3298 ceilings (≤ 8 KB per event, ≤ 5,000 events and 1 MiB of compact
 JSON per game, ≤ 16 MiB per session per rolling 24 h, kept as running counters on `games`): the ceilings admit a batch's
 rows first, then the replay and lifecycle caps below apply to what they admitted. Both drop with a 2xx, and both count in
-the response's `dropped`. A replay row a ceiling (per game or per session) drops cuts the game's replay at its index exactly
-as a replay cap does (below; marked `replay_capped`, the same key, since either way a storage limit ended the
-recording), so the stored replay stays a prefix by index; a ceiling that drops only lifecycle rows cuts nothing (its
-lifecycle drops stay as #3314 has them). `POST /games/{id}/events` takes one lock order: the session's advisory lock (#3298,
+the response's `dropped`. **Every server-side drop of a replay row cuts the game's replay at that row's index**: a
+replay cap or the kill switch (below), a #3298 ceiling (per game or per session), or the 8 KB per-event cap. A ceiling
+or size drop is marked `replay_capped`, the same key as a cap, since either way a storage limit ended the recording. The
+stored replay therefore stays a prefix by index with no single gaps. Dropping a lifecycle row (for size, a ceiling or
+`LIFECYCLE_CAP`) cuts nothing; those drops stay as #3314 has them. `POST /games/{id}/events` takes one lock order: the session's advisory lock (#3298,
 `db/locks.py`), then the game row `FOR UPDATE` (so a completion cannot interleave with a replay cut that rewrites the
 game's metadata); one game's batches run one at a time and the caps are exact. A replay cut's delete also takes the
 deleted rows off the #3298 counters, so they keep matching the stored rows. The replay caps keep their own aggregate

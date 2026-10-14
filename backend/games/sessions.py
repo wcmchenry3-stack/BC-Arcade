@@ -246,7 +246,9 @@ async def _admit_events(
     module: GameModule | None,
 ) -> tuple[list[dict[str, Any]], list[int], int, int | None]:
     """Rows to insert, their byte sizes, how many events were dropped (#3298), and
-    the lowest ``event_index`` of a replay event a ceiling dropped (#3292), if any.
+    the lowest ``event_index`` of a replay event dropped here (#3292), if any: by a
+    ceiling or by the per-event size cap. Every server-side drop of a replay row
+    cuts the game's replay there, so the stored replay has no gaps.
 
     Drops an event the game's own check refuses (not counted as dropped), one over
     ``MAX_EVENT_DATA_BYTES``, and every event once a ceiling is reached.
@@ -268,8 +270,7 @@ async def _admit_events(
             or session_bytes >= cfg.max_event_bytes_per_session_day
         ):
             dropped += 1
-            if replay_caps.is_replay_event(name) and (ceiling_cut is None or idx < ceiling_cut):
-                ceiling_cut = idx
+            ceiling_cut = _lower_cut(ceiling_cut, name, idx)
             continue
         if module is not None:
             # The game's own check (#3250): None drops this event, not the batch.
@@ -283,6 +284,7 @@ async def _admit_events(
         size = json_bytes(data)
         if size > cfg.max_event_data_bytes:
             dropped += 1
+            ceiling_cut = _lower_cut(ceiling_cut, name, idx)
             continue
         game_events_n += 1
         game_bytes += size
@@ -297,6 +299,13 @@ async def _admit_events(
             }
         )
     return rows, row_bytes, dropped, ceiling_cut
+
+
+def _lower_cut(cut: int | None, name: str, idx: int) -> int | None:
+    """``cut`` lowered to ``idx`` when a replay (non-lifecycle) row at ``idx`` was dropped."""
+    if replay_caps.is_replay_event(name) and (cut is None or idx < cut):
+        return idx
+    return cut
 
 
 async def _store_events(
@@ -436,10 +445,10 @@ async def _within_caps(
     * ``REPLAY_RECORDING_ENABLED`` false (the kill switch) drops every replay
       row and cuts the same way at the lowest dropped index, so switching it
       back on never leaves a hole.
-    * ``ceiling_cut``: the lowest replay index a #3298 ceiling (per game or per
-      session) dropped in this batch cuts the same way, marked
-      ``REPLAY_CAPPED_KEY``; a ceiling that drops only lifecycle rows cuts
-      nothing.
+    * ``ceiling_cut``: the lowest replay index #3298's admission dropped in this
+      batch (a per-game or per-session ceiling, or the per-event size cap) cuts
+      the same way, marked ``REPLAY_CAPPED_KEY``; dropping only lifecycle rows
+      cuts nothing.
 
     The reason is kept too: ``REPLAY_CAPPED_KEY`` or ``REPLAY_PAUSED_KEY``,
     each written once. Lifecycle rows past ``LIFECYCLE_CAP`` are dropped one by

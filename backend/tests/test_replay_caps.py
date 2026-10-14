@@ -845,3 +845,28 @@ async def test_a_ceiling_that_drops_only_lifecycle_rows_sets_no_cutoff(
     metadata = await _metadata(gid)
     assert REPLAY_CUTOFF_KEY not in metadata and REPLAY_CAPPED_KEY not in metadata
     assert [i for i, _ in await _stored(gid)] == [1, 2]
+
+
+async def test_an_oversized_replay_row_cuts_the_replay_at_its_index(
+    client: TestClient, session_id: str, sent
+) -> None:
+    """A roll over MAX_EVENT_DATA_BYTES (#3298) is dropped and cuts there: the
+    rows above it go, the ones below are kept, so no single gap is left."""
+    gid = _new_game(client, session_id)
+    batch = [_roll(5), _roll(1), _blob(3, 9_000), _roll(4), _roll(2)]
+    body = _post(client, session_id, gid, batch)
+    assert (body["accepted"], body["dropped"]) == (2, 3)
+    assert [i for i, _ in await _stored(gid)] == [1, 2]
+    metadata = await _metadata(gid)
+    assert metadata[REPLAY_CUTOFF_KEY] == 3 and metadata[REPLAY_CAPPED_KEY] is True
+
+
+async def test_an_oversized_lifecycle_row_sets_no_cutoff(
+    client: TestClient, session_id: str, sent
+) -> None:
+    gid = _new_game(client, session_id)
+    big_start = {"event_index": 0, "event_type": "game_started", "data": {"p": "x" * 9_000}}
+    body = _post(client, session_id, gid, [big_start, _roll(1), _roll(2)])
+    assert (body["accepted"], body["dropped"]) == (2, 1)
+    assert REPLAY_CUTOFF_KEY not in await _metadata(gid)
+    assert [i for i, _ in await _stored(gid)] == [1, 2]
