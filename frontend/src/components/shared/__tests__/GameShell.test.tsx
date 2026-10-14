@@ -14,6 +14,7 @@ jest.mock("@react-navigation/native", () => ({
 
 jest.mock("react-i18next", () => ({
   useTranslation: () => ({
+    i18n: { language: "en" },
     t: (key: string) => {
       if (key === "common:nav.back") return "← Back";
       if (key === "common:nav.backLabel") return "Go back to home screen";

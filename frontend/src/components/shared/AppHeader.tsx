@@ -8,6 +8,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useTheme, type Colors } from "../../theme/ThemeContext";
 import { LOGO_TILE_BG, MENU_SHADOW_COLOR, MENU_SHADOW_CSS } from "../../theme/theme.constants";
 import { typography } from "../../theme/typography";
+import { RTL_LOCALES } from "../../i18n/locales";
 import FeedbackWidget from "../FeedbackWidget/FeedbackWidget";
 import FeedbackThanksBanner from "../FeedbackWidget/FeedbackThanksBanner";
 import { ConfirmModal } from "./ConfirmModal";
@@ -128,7 +129,9 @@ export function AppHeader({
 }: AppHeaderProps) {
   const { colors, theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation(["feedback", "common"]);
+  const { t, i18n } = useTranslation(["feedback", "common"]);
+  // Native pins LTR (i18n.ts), so only web can be RTL; there the chevron must mirror.
+  const isRtl = RTL_LOCALES.has(i18n.language);
   const [helpOpen, setHelpOpen] = useState(false);
   const [thanksVisible, setThanksVisible] = useState(false);
   const dismissThanks = useCallback(() => setThanksVisible(false), []);
@@ -307,7 +310,13 @@ export function AppHeader({
             hitSlop={12}
             testID="nav-back"
           >
-            <Text style={[styles.backText, { color: colors.text }]}>{t("common:nav.back")}</Text>
+            <MaterialIcons
+              name="chevron-left"
+              size={32}
+              color={colors.text}
+              style={isRtl ? styles.mirrored : undefined}
+              testID="nav-back-icon"
+            />
           </Pressable>
         ) : (
           <View style={styles.logoSlot}>
@@ -445,18 +454,22 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: LOGO_TILE_BG,
   },
+  // Icon-only (#3211): 44x44 is Apple's minimum tap target (hitSlop adds the
+  // rest for Android's 48dp). The 32pt chevron has ~6pt of empty glyph padding,
+  // so the -8 start margin lines the visible chevron up with the header gutter
+  // and hands the title the extra width.
   backButton: {
-    width: 80,
-    height: 32,
+    width: 44,
+    height: 44,
+    marginStart: -8,
     justifyContent: "center",
-    alignItems: "flex-start",
+    alignItems: "center",
+  },
+  mirrored: {
+    transform: [{ scaleX: -1 }],
   },
   backButtonPressed: {
     opacity: 0.6,
-  },
-  backText: {
-    fontFamily: typography.heading,
-    fontSize: 15,
   },
   title: {
     fontFamily: typography.heading,
