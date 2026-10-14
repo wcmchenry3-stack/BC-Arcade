@@ -1230,7 +1230,7 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `REPLAY_STORAGE_BUDGET_MB` | `250` (1–500): `game_events` budget; Sentry at 50/75/90 % | `games/replay_storage.py` (lazy)              |
 | `DATABASE_PLAN_MB`     | `500` (1–10000): the database plan's limit; Sentry at 50/75/90 % of it | `games/replay_storage.py` (lazy)  |
 | `REPLAY_JOB_HOUR_UTC`  | `9` (0–21): start of the 3-hour off-peak window for the daily prune and budget check | `games/replay_storage.py` (lazy) |
-| `REPLAY_RECORDING_ENABLED` | `true`: `false` drops every replay event on write (lifecycle kept); the no-release kill switch until #3279 | `games/sessions.py` (lazy) |
+| `REPLAY_RECORDING_ENABLED` | `true`: `false` drops every replay event on write (lifecycle kept) and marks the game `replay_paused`; the no-release kill switch until #3279 | `games/sessions.py` (lazy) |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is

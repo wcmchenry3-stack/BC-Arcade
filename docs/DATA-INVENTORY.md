@@ -79,7 +79,9 @@ summaries, owner decision #3317) and `games` rows are never pruned.
 it with measured numbers). Each row costs more than its JSON: tuple header, the other columns and two index entries,
 measured on PG16 at about 230 B per row. The caps charge `ROW_OVERHEAD_BYTES` = 200 B per row on top of the JSON.
 A new event's JSON is sized as `jsonb::text` prints it (`", "` / `": "` separators, UTF-8), which on PG16 matches the
-stored row's `octet_length` byte for byte, so batches add up exactly.
+stored row's `octet_length`, so batches add up exactly. Floats Python prints in exponent form are the one difference:
+jsonb prints them in full (`1e+16` as `10000000000000000`), so they are counted at that length; counting Python's
+form would undercount and let a client past the byte cap.
 
 | Figure                                         | Value                                                                                       |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
@@ -133,7 +135,9 @@ run: one exception per attempt, at most hourly.
 `REPLAY_RETENTION_DAYS` (lower it to free space for new rows at the next run), `REPLAY_STORAGE_BUDGET_MB` (at most 500),
 `DATABASE_PLAN_MB`, `REPLAY_JOB_HOUR_UTC` (0–21, so the window ends by midnight), and the kill switch
 `REPLAY_RECORDING_ENABLED` (default `true`; `false` drops every replay event on write and still stores lifecycle
-events, with 2xx, no flag and no report). The kill switch is the no-release dial until the per-game-type
+events, with 2xx and no report). The first replay event it drops for a game marks that game `replay_paused: true`
+(server-written, once per game), so switching recording back on never resumes that game after the hole; games
+started afterwards record normally. A separate key from `replay_capped`, so the data says why a replay stops. The kill switch is the no-release dial until the per-game-type
 `replay_enabled` / `replay_sample_rate` of #3279. The per-game caps are code constants (a backend deploy).
 
 ## 3. On-device data (never leaves the phone unless stated)

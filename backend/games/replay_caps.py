@@ -12,7 +12,10 @@ than ``max_events`` of them and their bytes (JSON plus ``ROW_OVERHEAD_BYTES``
 per row) stay within ``max_bytes``. The first replay event dropped marks the
 game (``REPLAY_CAPPED_KEY`` in its metadata, server-written only), and every
 later replay event for it is dropped too, so a stored replay has no gaps.
-Over a cap the events are dropped and the batch still succeeds (2xx), so a
+The kill switch (``REPLAY_RECORDING_ENABLED=false``, ``games.sessions``) drops
+every replay event; the first it drops for a game marks that game
+(``REPLAY_PAUSED_KEY``), so switching recording back on never resumes it
+after the hole. Over a cap the events are dropped and the batch still succeeds (2xx), so a
 device drains its queue and never retries. One Sentry warning per game type
 per hour per kind of cap says it happened.
 
@@ -23,8 +26,10 @@ in ``CAPS_BY_GAME_TYPE``. #3278 replaces this with the full event registry.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any
 
 from observability.report import Throttle, report_event
@@ -62,21 +67,26 @@ STARSWARM_CAP = ReplayCap(max_events=200, max_bytes=64 * 1024 + 200 * ROW_OVERHE
 
 # The byte figures below are measured from the app's emitters, in the form the
 # database stores (``jsonb::text``: ", " and ": " separators, UTF-8), with
-# realistic worst-case values, plus ROW_OVERHEAD_BYTES per row.
+# realistic large values, plus ROW_OVERHEAD_BYTES per row.
 
 # owner decision #3317: 2048 sends one ``move`` per swipe; 2,000 events, and
 # bytes sized so 2,000 moves fit with ROW_OVERHEAD_BYTES. A move measures
 # <= 135 B (Twenty48Screen.tsx: direction, score_delta, score_after,
 # highest_tile_after, is_game_over, has_won) + 200 B overhead = 335 B; 345 B
 # leaves 10 B of margin for longer numbers: 2,000 x 345 B = 690,000 B.
-# Lower it again once #3286 compacts moves.
+# Lower it again once #3286 compacts moves. The GameRecorder envelope (``v``,
+# ``unit``, ``t_ms``, ``actor``: about 35-40 B per event) is not in this figure:
+# re-measure when 2048 adopts the recorder (#3286).
 TWENTY48_CAP = ReplayCap(max_events=2_000, max_bytes=2_000 * 345)
 
 # Blackjack (BlackjackGameContext.tsx), per hand: ``bet_placed`` <= 43 B,
 # ``hand_dealt`` <= 173 B (two cards and the dealer's up card), 1-3
-# ``player_action`` <= 61 B each (``hand_resolved`` is lifecycle). Worst case
-# 43 + 173 + 3 x 61 + 5 x 200 B overhead = 1,399 B and 5 events per hand; a
-# long session of 400 hands is 2,000 events and 400 x 1,400 B = 560,000 B.
+# ``player_action`` <= 61 B each (``hand_resolved`` is lifecycle). A typical
+# hand with 3 actions: 43 + 173 + 3 x 61 + 5 x 200 B overhead = 1,399 B and 5
+# events; a long session of 400 typical hands is 2,000 events and
+# 400 x 1,400 B = 560,000 B. The GameRecorder envelope (``v``, ``unit``,
+# ``t_ms``, ``actor``: about 35-40 B per event) is not in this figure:
+# re-measure when Blackjack adopts the recorder (#3284).
 BLACKJACK_CAP = ReplayCap(max_events=2_000, max_bytes=400 * 1_400)
 
 # Cascade: provisional until the Cascade refactor (not measured; owner, #3318).
@@ -133,9 +143,27 @@ def json_bytes(data: Any) -> int:
 
     That is the form Postgres' ``jsonb::text`` takes (what ``stored_event_totals``
     measures with ``octet_length``), so a new event's estimate and the stored
-    row's size agree; jsonb reorders keys, which does not change the length.
+    row's size agree (jsonb reorders keys, which does not change the length),
+    except floats Python prints in exponent form: jsonb prints them in full
+    (``1e+16`` is ``10000000000000000``, ``1.5e+300`` is 301 digits), so they
+    are counted at that length here, or a client could slip past the byte cap.
     """
-    return len(json.dumps(data, ensure_ascii=False, default=str).encode())
+    size = len(json.dumps(data, ensure_ascii=False, default=str).encode())
+    return size + _exponent_float_extra(data)
+
+
+def _exponent_float_extra(data: Any) -> int:
+    """Bytes jsonb prints beyond Python's repr for every exponent-form float in ``data``."""
+    if isinstance(data, float):
+        text = repr(data)
+        if "e" not in text or not math.isfinite(data):
+            return 0
+        return max(0, len(format(Decimal(text), "f")) - len(text))
+    if isinstance(data, dict):
+        return sum(_exponent_float_extra(v) for v in data.values())
+    if isinstance(data, list | tuple):
+        return sum(_exponent_float_extra(v) for v in data)
+    return 0
 
 
 def event_bytes(data: Any) -> int:

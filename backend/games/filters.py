@@ -63,11 +63,19 @@ def without_swept(data: dict[str, Any] | None) -> dict[str, Any]:
 # later replay event for it is dropped, so a stored replay has no gaps.
 # Server-written only, like the sweep flag.
 REPLAY_CAPPED_KEY = "replay_capped"
-_SERVER_FLAGS = frozenset({SWEPT_KEY, REPLAY_CAPPED_KEY})
+# Metadata flag on a game whose replay events the kill switch
+# (REPLAY_RECORDING_ENABLED=false) dropped (#3292): the same effect as
+# REPLAY_CAPPED_KEY, kept apart so the data says why a replay stops.
+REPLAY_PAUSED_KEY = "replay_paused"
+_SERVER_FLAGS = frozenset({SWEPT_KEY, REPLAY_CAPPED_KEY, REPLAY_PAUSED_KEY})
 
 
 def is_replay_capped(metadata: dict[str, Any] | None) -> bool:
     return (metadata or {}).get(REPLAY_CAPPED_KEY) is True
+
+
+def is_replay_paused(metadata: dict[str, Any] | None) -> bool:
+    return (metadata or {}).get(REPLAY_PAUSED_KEY) is True
 
 
 def without_server_flags(data: dict[str, Any] | None) -> dict[str, Any]:

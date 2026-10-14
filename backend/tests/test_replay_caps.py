@@ -16,7 +16,12 @@ from sqlalchemy import delete, select
 from db.base import get_session_factory
 from db.models import EventType, Game, GameEntitlement, GameEvent
 from games import replay_caps, sessions
-from games.filters import REPLAY_CAPPED_KEY, SWEPT_KEY, without_server_flags
+from games.filters import (
+    REPLAY_CAPPED_KEY,
+    REPLAY_PAUSED_KEY,
+    SWEPT_KEY,
+    without_server_flags,
+)
 from games.replay_caps import (
     BLACKJACK_CAP,
     CASCADE_CAP,
@@ -86,6 +91,23 @@ def test_json_bytes_matches_the_jsonb_text_form() -> None:
     assert json_bytes(data) == len('{"dice": [1, 2, 3], "name": "é"}'.encode())
     assert json_bytes(data) == len(json.dumps(data, ensure_ascii=False).encode())
     assert json_bytes({}) == 2
+
+
+@pytest.mark.parametrize(
+    ("data", "jsonb_text"),
+    [
+        # What PG16 prints for each (``SELECT '...'::jsonb::text``).
+        ({"a": 1e16}, '{"a": 10000000000000000}'),
+        ({"a": 1e-05}, '{"a": 0.00001}'),
+        ({"a": -1.2345e-07}, '{"a": -0.00000012345}'),
+        ({"a": 1.5e300}, '{"a": 15' + "0" * 299 + "}"),
+        ({"a": [1e20, {"b": 2.5}]}, '{"a": [100000000000000000000, {"b": 2.5}]}'),
+        ({"a": 123.45678901234567}, '{"a": 123.45678901234567}'),
+    ],
+)
+def test_exponent_floats_are_counted_as_jsonb_prints_them(data: dict, jsonb_text: str) -> None:
+    """Python prints these in exponent form; counting that would undercount the stored row."""
+    assert json_bytes(data) == len(jsonb_text.encode())
 
 
 def test_event_bytes_adds_the_row_overhead() -> None:
@@ -237,9 +259,8 @@ def test_report_cap_reached_is_throttled_per_game_type_and_kind(
 
 
 def test_server_flags_are_stripped_from_client_input() -> None:
-    assert without_server_flags({SWEPT_KEY: True, REPLAY_CAPPED_KEY: True, "mode": "solo"}) == {
-        "mode": "solo"
-    }
+    sent = {SWEPT_KEY: True, REPLAY_CAPPED_KEY: True, REPLAY_PAUSED_KEY: True, "mode": "solo"}
+    assert without_server_flags(sent) == {"mode": "solo"}
 
 
 # ---------------------------------------------------------------------------
@@ -552,11 +573,28 @@ async def test_a_capped_game_skips_the_totals_query_for_replay_only_batches(
     assert len(calls) == 1
 
 
+def _count_marks(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    marks: list[str] = []
+    real = sessions._mark
+
+    def spy(game, key):
+        marks.append(key)
+        real(game, key)
+
+    monkeypatch.setattr(sessions, "_mark", spy)
+    return marks
+
+
+def _switch(monkeypatch: pytest.MonkeyPatch, enabled: bool) -> None:
+    monkeypatch.setattr(sessions, "_settings", Settings.isolated(REPLAY_RECORDING_ENABLED=enabled))
+
+
 async def test_the_kill_switch_drops_replay_and_keeps_lifecycle(
     client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
 ) -> None:
-    monkeypatch.setattr(sessions, "_settings", Settings.isolated(REPLAY_RECORDING_ENABLED=False))
+    _switch(monkeypatch, False)
     calls = _count_totals(monkeypatch)
+    marks = _count_marks(monkeypatch)
     gid = _new_game(client, session_id)
     assert _post(client, session_id, gid, [_roll(1), _roll(2)]) == {
         "accepted": 0,
@@ -567,14 +605,46 @@ async def test_the_kill_switch_drops_replay_and_keeps_lifecycle(
     start = {"event_index": 0, "event_type": "game_started", "data": {}}
     assert _post(client, session_id, gid, [start, _roll(3)])["accepted"] == 1
     assert await _stored(gid) == [(0, "game_started")]
-    # Not a cap: nothing reported, the game not flagged.
+    # Not a cap: nothing reported; the game is marked paused, once.
     assert sent == []
-    assert REPLAY_CAPPED_KEY not in await _metadata(gid)
+    metadata = await _metadata(gid)
+    assert metadata.get(REPLAY_PAUSED_KEY) is True
+    assert REPLAY_CAPPED_KEY not in metadata
+    assert marks == [REPLAY_PAUSED_KEY]
 
-    # Switched back on, the same game records again.
-    monkeypatch.setattr(sessions, "_settings", Settings.isolated(REPLAY_RECORDING_ENABLED=True))
-    assert _post(client, session_id, gid, [_roll(4)])["accepted"] == 1
-    assert [n for _, n in await _stored(gid)] == ["game_started", "roll"]
+
+async def test_switching_back_on_never_resumes_a_paused_game(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
+) -> None:
+    """Off mid-game, then on: that game's later replay rows are not stored (no hole)."""
+    paused = _new_game(client, session_id)
+    assert _post(client, session_id, paused, [_roll(1)])["accepted"] == 1
+    _switch(monkeypatch, False)
+    assert _post(client, session_id, paused, [_roll(2)])["accepted"] == 0
+    _switch(monkeypatch, True)
+    marks = _count_marks(monkeypatch)
+    calls = _count_totals(monkeypatch)
+    assert _post(client, session_id, paused, [_roll(3), _roll(4)])["accepted"] == 0
+    assert [i for i, _ in await _stored(paused)] == [1]
+    assert marks == [] and calls == [] and sent == []
+    # Lifecycle rows still land; a game started after the switch records normally.
+    end = {"event_index": 5, "event_type": "game_ended", "data": {}}
+    assert _post(client, session_id, paused, [end])["accepted"] == 1
+    fresh = _new_game(client, session_id)
+    assert _post(client, session_id, fresh, [_roll(1)])["accepted"] == 1
+
+
+async def test_the_kill_switch_does_not_re_mark_a_capped_game(
+    client: TestClient, session_id: str, monkeypatch: pytest.MonkeyPatch, sent
+) -> None:
+    _cap_yacht(monkeypatch, ReplayCap(max_events=1, max_bytes=1_000_000))
+    gid = _new_game(client, session_id)
+    _post(client, session_id, gid, [_roll(1), _roll(2)])
+    _switch(monkeypatch, False)
+    marks = _count_marks(monkeypatch)
+    assert _post(client, session_id, gid, [_roll(3)])["accepted"] == 0
+    assert marks == []
+    assert REPLAY_PAUSED_KEY not in await _metadata(gid)
 
 
 def test_the_kill_switch_setting(monkeypatch: pytest.MonkeyPatch) -> None:

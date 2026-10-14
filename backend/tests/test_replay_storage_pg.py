@@ -192,7 +192,11 @@ _MOVE = {
 
 
 async def test_the_estimate_matches_the_jsonb_text_length(games) -> None:
-    data = [_MOVE, {"name": "é", "n": [1, 2.5, None, True]}]
+    data = [
+        _MOVE,
+        {"name": "é", "n": [1, 2.5, None, True]},
+        {"big": 1.5e300, "small": -1.2345e-07, "n": [1e16, 1e-05]},
+    ]
     gid = await _game(games, "twenty48", [("move", d) for d in data])
     async with get_session_factory()() as db:
         stored = (

@@ -37,7 +37,9 @@ from games.boards.limits import check_completion_limits, merge_result_metadata
 from games.catalog_cache import GameTypeRow
 from games.filters import (
     REPLAY_CAPPED_KEY,
+    REPLAY_PAUSED_KEY,
     is_replay_capped,
+    is_replay_paused,
     is_swept,
     without_server_flags,
     without_swept,
@@ -300,7 +302,9 @@ async def _within_caps(
     first drop flags the game (``REPLAY_CAPPED_KEY``) so every later replay
     row is dropped too. Lifecycle rows past ``LIFECYCLE_CAP`` are dropped
     without flagging. With ``REPLAY_RECORDING_ENABLED`` false every replay row
-    is dropped (lifecycle rows still land). Costs one aggregate query over the
+    is dropped (lifecycle rows still land), and the first such drop marks the
+    game ``REPLAY_PAUSED_KEY``: switching recording back on never resumes that
+    game after the hole. Costs one aggregate query over the
     game's stored rows (``stored_event_totals``), only when a row in the batch
     needs it. Cap drops are reported, throttled per game type.
     """
@@ -316,17 +320,22 @@ async def _within_caps(
     flagged = False
     recording = _replay_recording_enabled()
     capped = is_replay_capped(game.game_metadata)
+    paused = is_replay_paused(game.game_metadata)
 
     # Replay rows the kill switch or an earlier cut drops need no totals; skip
     # the query when nothing else in the batch needs them either.
     totals = replay_caps.StoredTotals()
-    if life_pos or (replay_pos and recording and not capped):
+    if life_pos or (replay_pos and recording and not (capped or paused)):
         totals = await stored_event_totals(session, game.id)
 
-    if replay_pos and not recording:
+    if replay_pos and (paused or not recording):
         # REPLAY_RECORDING_ENABLED=false: the no-release kill switch (until
-        # #3279). Not a cap: the game is not flagged, and nothing is reported.
+        # #3279). Not a cap, so nothing is reported, but the game is marked once
+        # (unless a cap already cut it) so its replay never resumes after a hole.
         dropped |= replay_set
+        if not (capped or paused):
+            _mark(game, REPLAY_PAUSED_KEY)
+            flagged = True
     elif replay_pos:
         cap = replay_caps.cap_for(type_name)
         if capped:
@@ -342,10 +351,7 @@ async def _within_caps(
             dropped |= replay_set - {replay_pos[k] for k in decision.kept}
             replay_caps.report_cap_reached(game_type, decision, cap)
             if not capped:
-                # Reassign (the JSONB column is not a MutableDict). The row is
-                # held FOR UPDATE, so no concurrent batch or completion races it.
-                game.game_metadata = {**(game.game_metadata or {}), REPLAY_CAPPED_KEY: True}
-                flag_modified(game, "game_metadata")
+                _mark(game, REPLAY_CAPPED_KEY)
                 flagged = True
 
     if life_pos:
@@ -363,6 +369,16 @@ async def _within_caps(
             replay_caps.report_lifecycle_cap_reached(game_type, decision)
 
     return [r for p, r in enumerate(rows) if p not in dropped], flagged
+
+
+def _mark(game: Game, key: str) -> None:
+    """Set server flag ``key`` on ``game``'s metadata (written with the batch's commit).
+
+    Reassigned, not mutated: the JSONB column is not a MutableDict. The row is
+    held FOR UPDATE, so no concurrent batch or completion races it.
+    """
+    game.game_metadata = {**(game.game_metadata or {}), key: True}
+    flag_modified(game, "game_metadata")
 
 
 async def stored_event_totals(
