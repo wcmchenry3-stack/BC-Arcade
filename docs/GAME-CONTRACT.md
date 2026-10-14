@@ -26,6 +26,7 @@ This document is the single reference for adding a new game to BC Arcade. It cov
    - [ESLint boundary](#27-eslint-boundary)
    - [Testing and QA](#28-testing-and-qa)
    - [Engine](#29-engine)
+   - [Recording gameplay](#210-recording-gameplay)
 3. [New-game checklist](#3-new-game-checklist)
 
 ---
@@ -426,6 +427,7 @@ The app side of a game: how it opens and closes its `games` row, what outcome an
 | Generated vocabulary (`GAME_TYPES`, `GAME_OUTCOMES`, `RESULT_OUTCOMES`, `LIFECYCLE_OUTCOMES`, `HAS_WINNER`, `BOARDS`) | `frontend/src/api/vocab.ts` — never edit by hand (§1.1)                                                               |
 | Session lifecycle hook                                                                                                | `frontend/src/game/_shared/useGameSync.ts`                                                                            |
 | Device queue, sync and sweep                                                                                          | `gameEventClient.ts`, `pendingGamesStore.ts`, `syncWorker.ts` in `frontend/src/game/_shared/`                         |
+| Gameplay recorder and its caps (§2.10)                                                                                | `gameRecorder.ts`, `useGameRecorder.ts`, `eventQueueConfig.ts` in `frontend/src/game/_shared/`                        |
 | Result card outcome → `games.outcome`                                                                                 | `frontend/src/game/_shared/recordedOutcome.ts`                                                                        |
 | Outcome guard                                                                                                         | `frontend/src/game/_shared/outcomeGuard.ts`                                                                           |
 | Result card                                                                                                           | `frontend/src/components/shared/GameResultModal.tsx`                                                                  |
@@ -611,6 +613,39 @@ The rules live in `frontend/src/game/<game>/engine.ts`: headless (no React, no s
 - **Counters are restored on load.** An id counter or RNG state kept at module level (Twenty48's `seedNextTileId`, Star Swarm's `engineCounters` / `restoreEngineCounters`) is saved with the game, or derived from it, and put back when the storage module loads it, before the first move.
 
 How a screen wraps the engine (shell, session, saving, pausing, result card) is the screen layer in [`GAMEPLAY_STANDARDS.md` §8](GAMEPLAY_STANDARDS.md#8-screen-layer).
+
+### 2.10 Recording gameplay
+
+**Authority: `frontend/src/game/_shared/gameRecorder.ts`, `useGameRecorder.ts`; caps in `eventQueueConfig.ts`** (#3274, epic #3273). A game that records its play for replay uses the shared recorder. It never builds its own batching, caps or size handling (Star Swarm did, #3244; it moves onto the recorder in #3280).
+
+```ts
+const sync = useGameRecorder("hearts"); // useGameSync + recorder; default policy on_unit_close
+sync.start(eventData, metadata);
+sync.beginUnit(hand); // a round / hand / trick / chunk; numbers from 1 if omitted
+sync.record(
+  "card_played",
+  { c: "QS" },
+  { seat: 2, kind: "cpu", cpu_type: "shark", difficulty: "hard" },
+);
+sync.closeUnit();
+sync.complete(summary, payload);
+```
+
+- **Session.** `useGameRecorder` returns everything `useGameSync` does. Its `complete` / `close` and the unmount end the recorder session, which saves what the recorder still holds **before** the session's `game_ended`.
+  - `start` / `restart` over an open game session end the recorder session (saved to the old game) and open a new one (`t_ms` from 0, units from 1).
+  - `start` with **no** game session open keeps the recorder session in progress: units recorded before `start()` wait in memory (the recorder saves nothing while `canAccept()` says no game is open) and are saved under the new game's id, with their unit numbers and `t_ms` continuing.
+  - `resume` first saves what is waiting (`flush`: the open unit carries on under its number). A failed resume keeps the numbering and the clock. A successful resume over an open game session restarts recording (units from 1, `t_ms` from 0); with no game session open, units recorded before it are kept and saved under the resumed game's id, as with `start`. **A game that resumes passes its own unit number** (`beginUnit(n)`, from its restored state): the recorder cannot know which units the game saved before the app was killed, so its default numbering (from 1) would repeat them. `t_ms` of a resumed session counts from the recorder session's start in this process.
+  - **Between games nothing is recorded.** After `complete` / `close` (or any `endSession`), `record()` and `beginUnit()` do nothing until the next `start` / `resume`: what a game records after its session ended belongs to no game and is dropped, never carried into the next one. The next game numbers its units from 1 and counts `t_ms` from its own start.
+  - A new `gameType` (or policy) ends the old recorder's session and uses a new recorder. While the same game session stays open, the old recorder's events are saved to it and the new recorder carries the `t_ms` clock, the unit numbering and what the session has used of its caps (`sessionBytes`, events taken, full) on, so a switch never resets the per-game cap. With no game open, what the old recorder held is dropped (reported as `dropped_unsent`) and the new recorder starts fresh.
+  - **Unsent events.** Measured events that never reach the queue — the session ends while no game session can take them, the sink refuses them at the end, or the sink fails — are counted as `dropped_unsent`, not as `saved`, and reported.
+  - React StrictMode's extra effect cleanup/setup on mount re-arms the recorder (`rearm()`), so the remount records like a fresh mount.
+- **`data` is taken by ownership.** Pass a fresh, compact object to `record()` and never change it afterwards: the recorder keeps the reference until it is measured and does not copy it. Development builds shallow-freeze it on every `record()` call, kept or not, so a later change throws there. Keep payloads **ASCII** (short keys, compact codes): the cap is a JSON length in UTF-16 code units, while the backend measures `ensure_ascii` bytes, where a non-ASCII character becomes a 6-byte `\uXXXX` escape.
+- **Envelope.** The recorder writes these fields on every event, over any `data` field with the same name: `v` (the type's schema version, `RecordedEventConfig.v`, default 1), `unit`, `t_ms` (ms since the session started) and, where the game passes one, `actor` (`seat`, `kind: "human" | "cpu"`, `cpu_type`, `difficulty`). The parts of a chunked event also carry `part` (0-based) and `parts`.
+- **Send policies.** Under both, a closed unit is measured at the next idle moment (`requestIdleCallback` with `timeout: RECORDER_IDLE_TIMEOUT_MS`, 2 s — React Native's own deadline, so a busy JS thread still runs it within that time; a runtime without it uses `setTimeout(task, 0)`), never inside the gesture or animation callback that closed it. Only the measured form is kept: an oversized event's data is released then, and the session cap trips as early as it can. `on_unit_close` (turn-based games): the measured unit is saved in that same idle task; units closed before it runs are saved together. `on_session_end` (Star Swarm): measured units are held, and the whole session is saved in one call when it ends.
+- **One write per unit.** A save is one `gameEventClient.enqueueEvents` call. The call gives the events contiguous `event_index` values and makes one `eventStore.enqueueMany` write per priority tier the events touch. A unit whose events share a tier costs one AsyncStorage write. A unit that spans tiers costs one write per tier (at most four) until the event registry gives a game's events their tier (#3276, #3278).
+- **Sizes.** Every size is a JSON length (UTF-16 code units, `JSON.stringify(data).length`). Each event is measured once (at idle, or at the session's end for what is still open) against its type's cap, and never again: a save the sink cannot take keeps the measured form. That cap is `gameRecordingConfigs[game].events[type].maxBytes`, else the game's `defaultEventMaxBytes`, and never more than the queue's `MAX_EVENT_PAYLOAD_BYTES`. The session is measured against `sessionMaxBytes`. An oversized event is split into parts when its type sets `chunkField` (the array spread across the parts); otherwise it is dropped. An event that cannot be serialised (a BigInt, a cycle) is dropped as invalid; the rest of the unit is still saved. Once the session cap is reached, the rest of the session is dropped, so what is saved is a clean prefix. Memory is bounded too: measured events held add up to at most `sessionMaxBytes`, and past `sessionMaxBytes / 16` events taken in a session (`memoryEventCeiling`; an envelope alone is longer than 16), or once measuring has filled the session, `record()` keeps nothing more and counts the drop, and nothing more is measured. Unmeasured events are bounded as well: a long open unit hands its events so far to the idle measuring every `RECORDER_MEASURE_EVERY` (64) records, keeping its unit number, and at most `RECORDER_MAX_RAW_EVENTS` (256) unmeasured events are held — past that `record()` drops events (`dropped_memory`) until idle has measured the backlog. `record()` stays allocation-only. Drops are reported once per session, by counts and sizes only (`RecordingDropReport`), through the Sentry throttle (`captureThrottledMessage`, key `gameRecorder.drop.<game_type>`, level warning): at most one report per game type per app session. A recorded event therefore never reaches eventStore's silent `{_truncated: true}` stub. A game with no entry gets `DEFAULT_RECORDING_CONFIG`: 2 KB per event and 64 KB per session (JSON lengths).
+- **Performance rules.** `record()` only pushes to an in-memory array: nothing is serialised, stored, logged or breadcrumbed per event. The recorder owns no timers or intervals (the idle deadline is React Native's).
+- **Later stories.** The server kill switch and sample rate (#3279) plug into `isRecordingEnabled(gameType)`, which the recorder reads once per session and which is always true today. Holding uploads while a game is played is #3275. SyncWorker's upload timing does not change here.
 
 ---
 

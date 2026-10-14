@@ -46,7 +46,11 @@ values in `render.yaml`, then paste the secrets in the dashboard. Keep
 | `PYTHON_VERSION`           | `3.11.0`                                                        | `3.11.0`                                                                | `render.yaml`       |
 | `ENVIRONMENT`              | `production`                                                    | `development`                                                           | `render.yaml`       |
 | `ALLOWED_ORIGINS`          | `https://games.buffingchi.com,https://games-api.buffingchi.com` | `https://dev-games.buffingchi.com,https://dev-games-api.buffingchi.com` | `render.yaml`       |
-| `DATABASE_URL`             | Supabase **session pooler** URL                                 | Render `bc-arcade-db` internal URL                                      | Dashboard secret    |
+| `DATABASE_URL`             | Supabase **session pooler** URL — the app role `bc_app` after the [cut-over](#app-database-role-least-privilege) | Render `bc-arcade-db` internal URL (likewise) | Dashboard secret    |
+| `MIGRATION_DATABASE_URL`   | optional: the privileged (`postgres`) pooler URL Alembic migrates with; unset → `DATABASE_URL` | optional: the database owner's URL; unset → `DATABASE_URL` | Dashboard secret    |
+| `DB_STATEMENT_TIMEOUT_SECONDS` | leave unset (`5`): Postgres cancels a statement after this | ←                                                                 | —                   |
+| `DB_COMMAND_TIMEOUT_SECONDS` | leave unset (`10`): asyncpg gives up on a reply; must exceed the statement timeout | ←                                         | —                   |
+| `DB_POOL_TIMEOUT_SECONDS`  | leave unset (`10`): longest wait for a free pooled connection   | ←                                                                       | —                   |
 | `SENTRY_DSN`               | same DSN in both — events are split by `ENVIRONMENT`            | ←                                                                       | Dashboard secret    |
 | `ENTITLEMENT_PRIVATE_KEY`  | prod RS256 keypair — **never reuse dev's**                      | dev keypair                                                             | Dashboard secret    |
 | `ENTITLEMENT_PUBLIC_KEY`   | ↑                                                               | ↑                                                                       | Dashboard secret    |
@@ -284,16 +288,99 @@ the Data API.
 - **Connection budget**: the API holds a pool of 5 + 5 overflow
   (`backend/db/base.py`), plus one Alembic connection at boot. That fits one
   instance; revisit the pool size before scaling out.
+- **Query bounds** (#3302): every new API connection gets `statement_timeout`
+  = 5 s (`DB_STATEMENT_TIMEOUT_SECONDS`), so Postgres cancels a runaway query
+  rather than letting it pin a pooled connection. It is sent twice: as a
+  connection startup parameter, and as a `SET statement_timeout` the API runs on
+  each new connection, because the session pooler (Supavisor) is not documented
+  to forward startup parameters — the `SET` reaches the server either way.
+  asyncpg stops waiting after 10 s (`DB_COMMAND_TIMEOUT_SECONDS`) if the server
+  or pooler goes quiet, and a request waits at most 10 s for a free connection
+  (`DB_POOL_TIMEOUT_SECONDS`). A route that hits any of them, or whose
+  connection attempt times out, answers `503 {"detail": "database_timeout"}`
+  with `Retry-After: 5` and logs `{"event": "db_timeout"}` (routes that catch
+  database errors themselves keep their own 500 detail). Alembic is not bounded.
+- **Raising the timeouts**: `DB_COMMAND_TIMEOUT_SECONDS` must stay above
+  `DB_STATEMENT_TIMEOUT_SECONDS` (the API refuses to start otherwise), so raise
+  them together. The API's own `SET` overrides the app role's 5 s role-level
+  default (below), so a higher value takes effect for the API; but any other
+  session as `bc_app` (psql, or a connection that skips the API's `SET`) stays
+  capped at 5 s until the script's `ALTER ROLE … SET statement_timeout` value is
+  changed to match and the script re-run.
 - **Project settings** (dashboard, owner): Enforce SSL **on**; Data API **off**
   (Alembic's `public` tables have no RLS — the Data API would expose them to
   anyone with the anon key; the Supabase MCP server uses the Management API and
   is unaffected); GitHub integration unused.
 - **Schema** comes only from Alembic. The API's start command runs
   `alembic upgrade head` on every boot, so merged migrations apply themselves on
-  deploy. To build or check the schema by hand, export `DATABASE_URL` in your own
-  shell and run `alembic upgrade head` from `backend/`.
+  deploy. Alembic connects with `MIGRATION_DATABASE_URL` when it is set and
+  `DATABASE_URL` otherwise. To build or check the schema by hand, export the
+  privileged URL as `MIGRATION_DATABASE_URL` (or, before the cut-over,
+  `DATABASE_URL`) in your own shell and run `alembic upgrade head` from `backend/`.
 - **Free plan pauses after about a week idle and has no backups.** Production
   must be on Pro with daily backups before store submission.
+
+### App database role (least privilege)
+
+Until this cut-over is done the API and Alembic both connect as the privileged
+role (`postgres` on Supabase, the database owner on Render dev), and nothing
+changes: `MIGRATION_DATABASE_URL` unset means Alembic uses `DATABASE_URL`.
+
+After it, the API connects as **`bc_app`**, which can only read and write rows:
+`SELECT`/`INSERT`/`UPDATE`/`DELETE` on every table in `public`, `USAGE`/`SELECT`
+on its sequences, and `SELECT` on `alembic_version`, plus a role-level
+`statement_timeout = 5s` default for any session that does not set its own. It cannot create, alter,
+drop or truncate anything, and owns nothing. Alembic keeps the privileged role
+through `MIGRATION_DATABASE_URL`. Tables a later migration creates are covered
+automatically (`ALTER DEFAULT PRIVILEGES FOR ROLE <migration role>`), as long as
+migrations keep running as that same role. The script is
+[`backend/scripts/create_app_role.sql`](../backend/scripts/create_app_role.sql);
+CI's `test-postgres` job runs it and checks that the role is refused DDL
+(`backend/tests/test_db_postgres_role.py`).
+
+The API needs nothing beyond DML at runtime (checked for #3302): no
+`create_all`, `SET` or temporary tables; row locks (`SELECT … FOR UPDATE`) need
+only `UPDATE`, which it has. The role can still create *temporary* tables,
+because Postgres grants `TEMPORARY` on every database to `PUBLIC`; the API never
+does, and revoking it from `PUBLIC` would affect every role.
+
+Cut-over, per environment (dev first, then prod):
+
+1. **Create the role.** Run the whole script as the privileged role, in the
+   app's database. Supabase: dashboard → SQL editor (it runs as `postgres`), paste
+   the file, run. Render dev: `psql "<owner's external URL>" -f
+   backend/scripts/create_app_role.sql`. It is idempotent and applies all or
+   nothing. If it stops with "can still CREATE in schema public", follow the
+   message (confirm the migration role keeps its own `CREATE`, then `REVOKE
+   CREATE ON SCHEMA public FROM PUBLIC`) and run it again.
+2. **Set its password** — never in the repo or the script: in `psql`,
+   `\password bc_app`; in the Supabase SQL editor, `ALTER ROLE bc_app WITH
+   PASSWORD '<generated>'`. Store it in the password manager.
+3. **Build the app URL.** Copy the current `DATABASE_URL` and change only the
+   user and password. On Supabase's pooler the user is `<role>.<project-ref>`,
+   so `postgres.<ref>` becomes **`bc_app.<ref>`**; host, port **5432** and
+   database stay. Check it connects: `psql "<app URL>" -c "select current_user"`
+   prints `bc_app`.
+4. **On the Render service** (Environment): add `MIGRATION_DATABASE_URL` = the
+   **current** `DATABASE_URL` value (the privileged one), then set
+   `DATABASE_URL` = the app URL from step 3. **Save and deploy**. Alembic now
+   migrates as the privileged role; the API runs as `bc_app`.
+5. **Verify**: the boot log shows `db_connected`; `GET /health/db` → `ok`; a
+   play-through writes rows; in the SQL editor `SELECT usename, count(*) FROM
+   pg_stat_activity WHERE datname = current_database() GROUP BY 1` shows the API's
+   connections under `bc_app`.
+6. **Check the timeout through the pooler**: `psql "<app URL>" -c "SHOW
+   statement_timeout"` (the prod session-pooler URL, as `bc_app.<ref>`) must
+   print `5s`. That is the role-level backstop, proving the pooler hands the role
+   its settings; the API's own connections additionally run `SET
+   statement_timeout` themselves. Anything else (`0`, or a pooler error) — stop and
+   report before relying on the bound.
+
+Rollback: set `DATABASE_URL` back to the `MIGRATION_DATABASE_URL` value and
+redeploy. The role can stay. Rotating the app password: `ALTER ROLE bc_app WITH
+PASSWORD …`, then update `DATABASE_URL` only. A migration that should run as a
+different role than the one in the script's `ALTER DEFAULT PRIVILEGES` leaves its
+new tables without grants for `bc_app` — re-run the script as that role.
 
 ## Health checks
 

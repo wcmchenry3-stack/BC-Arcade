@@ -513,6 +513,12 @@ jobs:
         env:
           RATE_LIMIT_STORAGE_URL: redis://localhost:6379/0
         run: python -m pytest tests/test_limiter_storage.py -v -rs --no-cov
+      - name: Query timeouts and the DML-only app role (Postgres)
+        # Same scratch server: each test creates and drops its own database, and the
+        # role test its own uniquely named role (#3302).
+        env:
+          LEADERBOARD_EXPLAIN_PG_URL: ${{ env.PG_SERVER }}/postgres
+        run: python -m pytest tests/test_db_postgres_role.py -v -rs --no-cov
       - name: Create and migrate the suite database
         env:
           DATABASE_URL: ${{ env.PG_SERVER }}/bcarcade_test

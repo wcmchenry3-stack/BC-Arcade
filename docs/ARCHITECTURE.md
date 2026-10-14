@@ -476,7 +476,13 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
   move costs one write of its own tier, not a re-read of the whole queue. The
   on-disk format is unchanged. `onStats` tells subscribers (the
   capacity-warning toast) the new stats after each change, so nothing polls
-  the queue.
+  the queue. `enqueueMany` (#3274) queues several events in one lock turn
+  and one write per tier touched; `gameEventClient.enqueueEvents` reserves
+  their `event_index` values contiguously and calls it. The gameplay
+  recorder (`gameRecorder.ts` / `useGameRecorder.ts`,
+  [GAME-CONTRACT §2.10](GAME-CONTRACT.md#210-recording-gameplay)) saves each
+  unit of play that way, sized against the per-game caps in
+  `eventQueueConfig.ts`.
 - `SyncWorker` — uploads both: every 30 s (`SYNC_INTERVAL_MS`) while the app
   is active, on foreground and on reconnect (`NetworkContext`), and on demand
   through
@@ -1195,7 +1201,8 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `TRUSTED_PROXY_HOPS`   | `1` (1–10)                                        | `limiter.py`                                            |
 | `LOG_PROXY_HEADERS`    | unset (off; ignored in production)                | `limiter.py`                                            |
 | `RATE_LIMIT_STORAGE_URL` | unset or blank (in-memory counters); `redis://` / `rediss://` shares them | `limiter.py` (`build_limiter`) |
-| `DATABASE_URL`         | unset or blank (no database; the API still boots) | `db/base.py` (on first use), `alembic/env.py`           |
+| `DATABASE_URL`         | unset or blank (no database; the API still boots) | `db/base.py` (on first use), `alembic/env.py` (when `MIGRATION_DATABASE_URL` is unset) |
+| `MIGRATION_DATABASE_URL` | unset or blank (Alembic uses `DATABASE_URL`)    | `alembic/env.py` only — the privileged role; the app role is DML-only (#3302, [RENDER.md](RENDER.md#app-database-role-least-privilege)) |
 | `DAILY_WORD_SALT`      | `0` (empty or non-integer fails the import)       | `daily_word/puzzle.py` (at import)                      |
 | `DAILY_CHALLENGE_SALT` | `0` (blank → `0`; non-integer is hashed)          | `daily_challenge/definitions.py` (at import)            |
 | `ADMIN_API_TOKEN`      | empty (admin `PATCH /games/catalog/{id}` always 403s) | `games/router.py` (at startup, via `app.state.settings`) |
@@ -1216,6 +1223,9 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `STREAK_LOOKBACK_DAYS` | `60` (1–365; also the largest streak reported)    | `daily_challenge/streak.py` (lazy)                      |
 | `APPLE_REPLAY_WINDOW_HOURS` | `48` (1–720)                                 | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`) |
 | `DB_PING_TIMEOUT_SECONDS` | `5.0` (above 0, at most 60)                    | `routes/health.py` (lazy)                               |
+| `DB_STATEMENT_TIMEOUT_SECONDS` | `5.0` (at least 0.001, at most 300; Postgres `statement_timeout`, sent at connect and `SET` on each new connection) | `db/base.py` (with `DATABASE_URL`; Postgres only) |
+| `DB_COMMAND_TIMEOUT_SECONDS` | `10.0` (above 0, at most 600; must exceed the statement timeout) | `db/base.py` (asyncpg `command_timeout`) |
+| `DB_POOL_TIMEOUT_SECONDS` | `10.0` (above 0, at most 120)                  | `db/base.py` (SQLAlchemy `pool_timeout`)                |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is

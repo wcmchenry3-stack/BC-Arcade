@@ -48,8 +48,13 @@ services:
         value: cloudflare
       # Supabase session pooler (*.pooler.supabase.com, port 5432 — never the
       # transaction pooler on 6543, never the Render dev DB). The URL carries
-      # the DB password: dashboard secret only, never committed.
+      # the DB password: dashboard secret only, never committed. After the app-role
+      # cut-over (#3302, RENDER.md) this is the DML-only `bc_app` role's URL.
       - key: DATABASE_URL
+        sync: false
+      # Optional (#3302): the privileged role Alembic migrates as. Unset, Alembic in
+      # startCommand uses DATABASE_URL, as before. Same pooler rules as DATABASE_URL.
+      - key: MIGRATION_DATABASE_URL
         sync: false
       - key: SENTRY_DSN
         sync: false
@@ -72,6 +77,9 @@ services:
       # - key: STREAK_LOOKBACK_DAYS          # 60
       # - key: APPLE_REPLAY_WINDOW_HOURS     # 48
       # - key: DB_PING_TIMEOUT_SECONDS       # 5.0
+      # - key: DB_STATEMENT_TIMEOUT_SECONDS  # 5.0
+      # - key: DB_COMMAND_TIMEOUT_SECONDS    # 10.0
+      # - key: DB_POOL_TIMEOUT_SECONDS       # 10.0
 
   # --- BC Arcade Expo Web static frontend (prod) ---
   - type: web
@@ -144,6 +152,9 @@ services:
       # Render Postgres `bc-arcade-db` (dev only).
       - key: DATABASE_URL
         sync: false
+      # Optional (#3302): the privileged role Alembic migrates as; unset → DATABASE_URL.
+      - key: MIGRATION_DATABASE_URL
+        sync: false
       - key: SENTRY_DSN
         sync: false
       - key: ENTITLEMENT_PRIVATE_KEY
@@ -164,6 +175,9 @@ services:
       # - key: STREAK_LOOKBACK_DAYS          # 60
       # - key: APPLE_REPLAY_WINDOW_HOURS     # 48
       # - key: DB_PING_TIMEOUT_SECONDS       # 5.0
+      # - key: DB_STATEMENT_TIMEOUT_SECONDS  # 5.0
+      # - key: DB_COMMAND_TIMEOUT_SECONDS    # 10.0
+      # - key: DB_POOL_TIMEOUT_SECONDS       # 10.0
 
   # --- Expo Web static frontend (dev environment) ---
   - type: web
