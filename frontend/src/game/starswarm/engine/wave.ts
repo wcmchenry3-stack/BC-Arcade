@@ -76,7 +76,14 @@ import { playerVolley, tickPowerUps } from "./powerups";
 import { rng, seedRng } from "./rng";
 import { carrierStageIn, isLeaderTier, tickCtx } from "./roster";
 import { emptyRunStats, emptyTierStats } from "./stats";
-import { bumpWave, closeWave, emptyWaveStats, loadoutOf, markWaveDev } from "./waveStats";
+import {
+  bumpWave,
+  closeWave,
+  countPickups,
+  emptyWaveStats,
+  loadoutOf,
+  markWaveDev,
+} from "./waveStats";
 import { NO_OVERFLOW, collectClosedWave } from "./closedWaves";
 import {
   BONUS_LIFE_INVINCIBLE_MS,
@@ -317,6 +324,8 @@ export function tick(
   // #3245: the run ended on this wave. Only the tick's final phase counts — tickBonusLives can
   // revert a same-tick GameOver — and GameOver is terminal, so this closes the wave exactly once.
   if (s.phase === "GameOver") {
+    // #3246: pickups still falling when the run ends are the wave's leftovers
+    s = { ...s, waveStats: countPickups(s.waveStats, "leftover", s.powerUps) };
     const died = closeWave(s, "died");
     s = collectClosedWave({ ...s, lastClosedWave: died }, died); // #3251
   }
@@ -464,7 +473,11 @@ function checkPhaseTransitions(state: StarSwarmState, tuning: Tuning): StarSwarm
 
 function startNextWave(state: StarSwarmState, tuning: Tuning): StarSwarmState {
   // #3245: the wave closes before the next one is built; the new wave opens fresh stats
-  const closed = closeWave(state, "cleared");
+  // #3246: buildWaveState drops whatever pickups are left, so they are this wave's leftovers
+  const closed = closeWave(
+    { ...state, waveStats: countPickups(state.waveStats, "leftover", state.powerUps) },
+    "cleared"
+  );
   const next = buildWaveState(
     state.canvasW,
     state.canvasH,

@@ -141,8 +141,10 @@ function sha(state: StarSwarmState): string {
     closedWaves: _closedWaves,
     closedWavesOverflow: _closedWavesOverflow,
     closedWavesBytes: _closedWavesBytes,
-    ...played
+    ...rest
   } = state;
+  // #3246: likewise a pickup's `source` — a label for the stats, never read by play
+  const played = { ...rest, powerUps: rest.powerUps.map(({ source: _source, ...p }) => p) };
   return createHash("sha256")
     .update(JSON.stringify(canonical(played)))
     .digest("hex");

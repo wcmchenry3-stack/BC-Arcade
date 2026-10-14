@@ -14,12 +14,19 @@
  * the contract test (not the compiler) is what forces it to get a real counter.
  * On the wire, zero counters and then-empty objects are left out (`toWirePayload`).
  *
- * Coverage: #3245 fills `pacing` (and `score`, derived from the ledger at close). The other
- * sections are in place and stay 0 until their counter stories (#3246–#3249) fill them.
+ * Coverage: #3245 fills `pacing` (and `score`, derived from the ledger at close), #3246 `powerUps`.
+ * The other sections are in place and stay 0 until their counter stories (#3247–#3249) fill them.
  * The schema is pinned on epic #3244 ("wave_completed v1 schema"); changing its shape is a `v`
  * bump. See docs/games/starswarm.md#per-wave-stats.
  */
-import type { DifficultyTier, GunsLevel, HullLevel, Player, StarSwarmState } from "../types";
+import type {
+  DifficultyTier,
+  GunsLevel,
+  HullLevel,
+  Player,
+  PowerUp,
+  StarSwarmState,
+} from "../types";
 import { waveScorePoints } from "../scoreLedger";
 import {
   ASTEROID_KINDS,
@@ -342,6 +349,29 @@ export function bumpWaveIn(
 ): StarSwarmState {
   if (n === 0) return state;
   return { ...state, waveStats: bumpWave(state.waveStats, path, n) };
+}
+
+/** #3246: a pickup's source; a pickup restored from a save that predates the field is a kill drop. */
+const pickupSource = (p: PowerUp): PowerUpSource => p.source ?? "kill";
+
+/** #3246: one more `spawned[type][source]` for each of `pickups`. */
+export function countSpawned(stats: WaveStats, pickups: readonly PowerUp[]): WaveStats {
+  let out = stats;
+  for (const p of pickups) {
+    out = bumpWave(out, ["powerUps", "spawned", p.type, pickupSource(p)] as WaveCounterPath, 1);
+  }
+  return out;
+}
+
+/** #3246: what became of `pickups` — each is one more `collected` / `missed` / `leftover[type]`. */
+export function countPickups(
+  stats: WaveStats,
+  fate: "collected" | "missed" | "leftover",
+  pickups: readonly PowerUp[]
+): WaveStats {
+  let out = stats;
+  for (const p of pickups) out = bumpWave(out, ["powerUps", fate, p.type] as WaveCounterPath, 1);
+  return out;
 }
 
 /**

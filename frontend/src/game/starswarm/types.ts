@@ -3,6 +3,7 @@ import type {
   ASTEROID_KINDS,
   CARRIER_STAGES,
   ENEMY_TIERS,
+  POWERUP_SOURCES,
   POWERUP_TYPES,
 } from "./engine/registries";
 import type { WaveStats, WaveStatsSnapshot, WaveStatsWire } from "./engine/waveStats";
@@ -27,6 +28,8 @@ export type CarrierStage = (typeof CARRIER_STAGES)[number];
 /** Pickups. lightning/shield are 5 s buffs, buddy/bomb are instant (#980–#1035); salvage and hull
  * are #2488 in-run upgrades: salvage raises the gun level, hull adds plating. */
 export type PowerUpType = (typeof POWERUP_TYPES)[number]; // #3245: see engine/registries.ts
+/** #3246: where a pickup came from (see engine/registries.ts). */
+export type PowerUpSource = (typeof POWERUP_SOURCES)[number];
 
 /** #2488: in-run upgrade ladders. Guns: single → twin → twin + spread. Hull: extra hits absorbed. */
 export type GunsLevel = 1 | 2 | 3;
@@ -324,6 +327,11 @@ export interface PowerUp {
   readonly height: number;
   /** ms until auto-despawn (if not collected). */
   readonly despawnTimer: number;
+  /**
+   * #3246: what spawned it, for the per-wave stats. Absent only on a pickup from a save made
+   * before the field existed (read as "kill"; see saveShape.ts).
+   */
+  readonly source?: PowerUpSource;
 }
 
 /**

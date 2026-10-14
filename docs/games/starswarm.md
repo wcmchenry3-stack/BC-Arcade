@@ -988,8 +988,8 @@ Counters change through
 `["combat", "kills", "Grunt", "shot"]` (a path that isn't a counter doesn't compile), and `n === 0`
 returns the same object. Booleans and nullable fields (`rout.triggered`/`atMs`,
 `carrier.stageReachedMs`) aren't counters, so they have typed setters (`markRouted`,
-`markStageReached`). #3245 fills `pacing`, #3249 `carrier`/`rout`; `powerUps` (#3246),
-`rocks` (#3247) and `combat`/`damage`/`buddy` (#3248) stay 0 until their stories.
+`markStageReached`). #3245 fills `pacing`, #3246 `powerUps`, #3249 `carrier`/`rout`; `rocks`
+(#3247) and `combat`/`damage`/`buddy` (#3248) stay 0 until their stories.
 
 - `pacing.durationMs` is the sum of `tick` dt over every phase of the wave, swoop-in to close
   (the screen's frozen pre-wave countdown isn't ticked, so it isn't counted).
@@ -1000,6 +1000,36 @@ returns the same object. Booleans and nullable fields (`rout.triggered`/`atMs`,
   straggler pause), or a run that opens past wave 1 (the wave jump). The dev panel's infinite
   lives is applied by the canvas, outside the engine: when it undoes a lost life the canvas flags
   the wave itself (`devRevert`, #3251; see [below](#sending-wave_completed-3251)).
+
+**Power-ups** (#3246, `waveStats.powerUps`). Every pickup carries a `source` (`PowerUp.source`,
+passed to `makePickup`), and its life is counted by type:
+
+- `spawned[type][source]` — `kill`: the kill-count drop (`resolvePickupCollection`); `carrier`: hull
+  plating from a dying Carrier (shot, rock or bomb); `rock`: salvage from a broken rock
+  (`settleRocks`); `dev`: a dev-panel power-up (`applyPowerUp`, which has no falling pickup — it
+  counts as spawned from `dev` and `collected` at once, so the books still balance). Some type x
+  source pairs never happen (a bomb is never plating).
+- `collected[type]` — the ship touched it. `missed[type]` — its despawn timer ran out or it fell
+  off the bottom (`tickPowerUps`). `leftover[type]` — still on screen when the wave closed.
+- `expired[type]` — a timed buff (lightning, shield) ran out. `activeMs[type]` — the ms a buff was
+  live this wave. `shieldAbsorbed` — shots (bullets and rocks) the shield soaked this wave; the
+  per-buff `activePowerUp.shieldAbsorbed` is unchanged.
+  A buff replaced by a dev `applyPowerUp` (lightning or shield) isn't counted as `expired`: it
+  didn't run out.
+- **Conservation:** per wave and type, `spawned = collected + missed + leftover` (asserted over
+  seeded multi-wave runs in `waveStats.powerUps.test.ts`).
+- **Wave boundary.** Nothing carries across it, so there is no "carried in" case and no schema
+  field for one: `buildWaveState` starts with no pickups and no active buff. Pickups on screen at
+  a cleared close are `leftover` — counted where they are removed (`endPickupWait`, the #3132
+  safety cap) or, failing that, at `startNextWave` just before the close; a died close counts the
+  pickups on screen when the run ends. A running buff is cut off at the boundary: its ms stay in
+  the wave they happened in, and it isn't `expired` (it didn't run out). A restore with fresh
+  stats counts the pickups already falling as spawned.
+- **Saves.** `source` is optional in a saved pickup and kept out of `SAVE_FINGERPRINT` (the
+  `POWER_UP` spec omits it), so paused runs survive; a pickup without one reads as `kill`. The
+  golden-replay hash leaves `source` out, like `waveStats`.
+- The `[StarSwarm analytics]` `__DEV__` logs are gone; the dev panel's Run stats section shows the
+  current wave's table.
 
 **Carrier and rout (#3249).** Each counter is bumped beside its run-wide twin, so the run totals
 `reinforced`, `routCaught`, `routEscaped`, `armorDeflects` and `beamHits` equal the sum of the
