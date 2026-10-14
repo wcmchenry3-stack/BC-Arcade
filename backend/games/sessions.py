@@ -22,7 +22,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import Text, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
@@ -46,6 +46,13 @@ logger = logging.getLogger(__name__)
 _VALID_OUTCOMES = frozenset(v.value for v in GameOutcome)
 
 _settings: Settings | None = None
+
+
+def _get_settings() -> Settings:
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
 
 
 def _max_result_bytes() -> int:
@@ -87,6 +94,7 @@ class AppendResult:
     accepted: int
     duplicates: int
     rejected: list[str]
+    dropped: int = 0
 
 
 async def _resolve_game_type(session: AsyncSession, name: str) -> GameTypeRow:
@@ -212,7 +220,26 @@ async def append_events(
             {"error": "unknown_event_type", "rejected": sorted(rejected)},
         )
 
+    cfg = _get_settings()
+    dropped = 0
+    # Ceiling (#3298): a game past its stored-event count or bytes stops growing.
+    # Dropped with a 2xx, not an error: the client dead-letters any 4xx, while a 2xx
+    # drains the row. Checked once per batch, so one batch can overshoot by at most
+    # 200 events x MAX_EVENT_DATA_BYTES.
+    stored_events, stored_bytes = (
+        await session.execute(
+            select(
+                func.count(GameEvent.event_index),
+                func.coalesce(func.sum(func.length(cast(GameEvent.data, Text))), 0),
+            ).where(GameEvent.game_id == game.id)
+        )
+    ).one()
+    full = stored_events >= cfg.max_events_per_game or stored_bytes >= cfg.max_event_bytes_per_game
+
     for name, idx, data in candidates:
+        if full:
+            dropped += 1
+            continue
         if module is not None:
             # The game's own check (#3250): None drops this event, not the batch.
             # The client still gets a 2xx, so its queue row drains. Runs after
@@ -220,6 +247,11 @@ async def append_events(
             data = module.validate_event(name, data)
             if data is None:
                 continue
+        # Per-event size cap (#3298): drop the one event with a 2xx. A 413 would
+        # make the client split the batch and dead-letter row by row.
+        if len(json.dumps(data, default=str, separators=(",", ":"))) > cfg.max_event_data_bytes:
+            dropped += 1
+            continue
         valid_indices.append(idx)
         valid_rows.append(
             {
@@ -256,6 +288,7 @@ async def append_events(
         accepted=len(valid_rows) - duplicates,
         duplicates=duplicates,
         rejected=[],
+        dropped=dropped,
     )
 
 

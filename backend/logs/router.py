@@ -28,4 +28,6 @@ async def append_bug_logs(
         session_id=sid,
         logs=[log.model_dump() for log in body.logs],
     )
-    return BugLogBatchResponse(accepted=result.accepted, duplicates=result.duplicates)
+    return BugLogBatchResponse(
+        accepted=result.accepted, duplicates=result.duplicates, dropped=result.dropped
+    )
