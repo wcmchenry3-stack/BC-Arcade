@@ -46,7 +46,7 @@ not affect them: ``ENTITLEMENT_TOKEN_TTL_HOURS`` (``entitlements.service``),
 (``purchases.apple_notifications``, via ``purchases._common``) and
 ``DB_PING_TIMEOUT_SECONDS`` (``routes.health``).
 
-Secrets (``ADMIN_API_TOKEN``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
+Secrets (``ADMIN_API_TOKEN``, ``RATE_LIMIT_STORAGE_URL``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
 ``GOOGLE_PLAY_SERVICE_ACCOUNT_JSON``) are ``SecretStr``, so a
 ``repr()`` or log of ``Settings`` shows ``**********``; call ``.get_secret_value()``
 where the value is used.
@@ -97,6 +97,12 @@ class Settings(BaseSettings):
     # Raw value; ``database_url`` strips it and treats empty as unset. db.base adds
     # the async driver, alembic/env.py strips it.
     database_url_raw: str = Field(default="", alias="DATABASE_URL")
+    # Optional Redis-compatible store (``redis://`` / ``rediss://``) for the rate
+    # limiter's counters (#3301). Unset or blank → in-memory counters. A SecretStr
+    # because the URL can carry a password; ``rate_limit_storage_url`` unwraps it.
+    rate_limit_storage_url_raw: SecretStr = Field(
+        default=SecretStr(""), alias="RATE_LIMIT_STORAGE_URL"
+    )
     # Raw strings, parsed where they are used, so a bad value fails exactly as it
     # did: daily_word.puzzle int()s DAILY_WORD_SALT when imported (an empty or
     # non-integer value raises ValueError), and daily_challenge.definitions.parse_salt
@@ -211,6 +217,11 @@ class Settings(BaseSettings):
     def database_url(self) -> str | None:
         """DATABASE_URL stripped, or ``None`` when it is unset, empty or blank."""
         return self.database_url_raw.strip() or None
+
+    @property
+    def rate_limit_storage_url(self) -> str | None:
+        """RATE_LIMIT_STORAGE_URL stripped, or ``None`` when unset, empty or blank."""
+        return self.rate_limit_storage_url_raw.get_secret_value().strip() or None
 
     @property
     def entitlement_dev_override(self) -> bool:

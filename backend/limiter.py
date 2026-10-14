@@ -314,4 +314,33 @@ def session_key(request: Request) -> str:
     return sid or _real_ip(request)
 
 
-limiter = Limiter(key_func=_real_ip)
+def build_limiter(storage_url: str | None) -> Limiter:
+    """Build the process limiter (#3301).
+
+    ``storage_url`` unset or blank keeps counters in this process's memory. A
+    ``redis://`` / ``rediss://`` URL shares them across restarts and processes.
+    A request must never fail because of the store, so the limiter falls back to
+    in-memory counters while the store is unreachable (and returns to it once it
+    answers again), and an unusable URL logs a warning and uses memory.
+    """
+    if not storage_url:
+        return Limiter(key_func=_real_ip)
+    try:
+        return Limiter(
+            key_func=_real_ip,
+            storage_uri=storage_url,
+            # Fail fast instead of holding a request on a dead store.
+            storage_options={"socket_connect_timeout": 1, "socket_timeout": 1},
+            in_memory_fallback_enabled=True,
+            swallow_errors=True,
+        )
+    except Exception:  # noqa: BLE001 - any bad URI/driver must not stop the app
+        logging.getLogger(__name__).warning(
+            "rate_limit_storage_unusable: RATE_LIMIT_STORAGE_URL rejected; "
+            "using in-memory counters",
+            exc_info=False,
+        )
+        return Limiter(key_func=_real_ip)
+
+
+limiter = build_limiter(Settings().rate_limit_storage_url)
