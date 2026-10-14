@@ -61,6 +61,7 @@ def _detect(tmp_path: pathlib.Path, files: list[str]) -> dict[str, str]:
         (["frontend/ios/Podfile.lock"], "false", "false"),
         (["frontend/ios/Podfile.lock", "frontend/ios/Podfile"], "true", "false"),
         (["frontend/ios/build/generated/x.h"], "false", "false"),
+        (["frontend/ios/Podfile.lock.bak"], "true", "false"),
     ],
 )
 def test_detect_native_file_changes(tmp_path, files, ios, android):
@@ -79,9 +80,87 @@ def test_detect_without_base_is_false():
     assert "ios_files_changed=false" in out and "android_files_changed=false" in out
 
 
+def _run(cwd: pathlib.Path, *args: str) -> tuple[subprocess.CompletedProcess, dict[str, str]]:
+    out = cwd / "out"
+    out.write_text("")
+    proc = subprocess.run(
+        ["bash", str(SCRIPT), *args],
+        check=False,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        env={"GITHUB_OUTPUT": str(out), "PATH": "/usr/bin:/bin"},
+    )
+    return proc, dict(line.split("=", 1) for line in out.read_text().splitlines())
+
+
+def _commit(cwd: pathlib.Path, path: str, msg: str) -> None:
+    p = cwd / path
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(msg)
+    _git(cwd, "add", "-A")
+    _git(cwd, "commit", "-qm", msg)
+
+
+def test_merge_ref_ignores_base_changes_made_after_base_sha(tmp_path):
+    """On a PR merge ref, iOS edits that landed on the base later are not the PR's."""
+    _git(tmp_path, "init", "-q", "-b", "dev")
+    _commit(tmp_path, "README.md", "base")
+    old_base = _git(tmp_path, "rev-parse", "HEAD")
+    _git(tmp_path, "checkout", "-qb", "feature")
+    _commit(tmp_path, "frontend/src/App.tsx", "pr change")
+    _git(tmp_path, "checkout", "-q", "dev")
+    _commit(tmp_path, "frontend/ios/GamingApp/Info.plist", "dev moved")
+    # GitHub's merge ref: first parent = current base tip, second = PR head.
+    _git(tmp_path, "merge", "-q", "--no-ff", "feature", "-m", "merge ref")
+    proc, result = _run(tmp_path, old_base)
+    assert proc.returncode == 0
+    assert result == {"ios_files_changed": "false", "android_files_changed": "false"}
+
+
+def test_merge_ref_detects_the_prs_own_native_edit(tmp_path):
+    _git(tmp_path, "init", "-q", "-b", "dev")
+    _commit(tmp_path, "README.md", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    _git(tmp_path, "checkout", "-qb", "feature")
+    _commit(tmp_path, "frontend/android/app/build.gradle", "pr change")
+    _git(tmp_path, "checkout", "-q", "dev")
+    _git(tmp_path, "merge", "-q", "--no-ff", "feature", "-m", "merge ref")
+    _, result = _run(tmp_path, base)
+    assert result == {"ios_files_changed": "false", "android_files_changed": "true"}
+
+
+def test_unresolvable_base_warns_and_reports_false(tmp_path):
+    _git(tmp_path, "init", "-q")
+    _commit(tmp_path, "README.md", "base")
+    proc, result = _run(tmp_path, "deadbeef" * 5)
+    assert proc.returncode == 0
+    assert "::warning::" in proc.stdout
+    assert result == {"ios_files_changed": "false", "android_files_changed": "false"}
+
+
 def test_build_checks_trigger_on_native_file_changes():
     jobs = yaml.safe_load(CI_YML.read_text(encoding="utf-8"))["jobs"]
-    assert "ios_files_changed == 'true'" in jobs["ios-build-check"]["if"]
-    assert "android_files_changed == 'true'" in jobs["android-build-check"]["if"]
+    detect = jobs["detect-native-changes"]
+    # The job exposes the step's outputs under the names the build checks read.
+    assert detect["outputs"]["ios_files_changed"] == "${{ steps.files.outputs.ios_files_changed }}"
+    assert (
+        detect["outputs"]["android_files_changed"]
+        == "${{ steps.files.outputs.android_files_changed }}"
+    )
+    (step,) = [s for s in detect["steps"] if s.get("id") == "files"]
+    assert step["run"] == "./scripts/detect-native-file-changes.sh"
+    assert step["if"] == "github.event_name == 'pull_request'"
+    assert step["env"] == {"BASE_SHA": "${{ github.event.pull_request.base.sha }}"}
+    assert step["continue-on-error"] is True
+    checkout = next(
+        s for s in detect["steps"] if str(s.get("uses", "")).startswith("actions/checkout")
+    )
+    assert checkout["with"]["fetch-depth"] == 0  # the diff needs full history
+
+    ios_if = jobs["ios-build-check"]["if"]
+    android_if = jobs["android-build-check"]["if"]
+    assert "needs.detect-native-changes.outputs.ios_files_changed == 'true'" in ios_if
+    assert "needs.detect-native-changes.outputs.android_files_changed == 'true'" in android_if
     # Podfile freshness must stay tied to package bumps only.
     assert jobs["podfile-lock-check"]["if"].endswith("has_native_ios == 'true'")
