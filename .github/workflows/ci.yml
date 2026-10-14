@@ -474,6 +474,17 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        # Shared rate-limit store test (#3301). Pinned; the ECR mirror avoids the
+        # Docker Hub pull timeouts noted above.
+        image: public.ecr.aws/docker/library/redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: backend
@@ -496,6 +507,12 @@ jobs:
         run: >-
           python -m pytest tests/test_leaderboard_query_plans.py
           tests/test_leaderboard_indexes_migration.py -v -rs --no-cov
+      - name: Rate-limit counters on a shared store (Redis)
+        # Only this step sets RATE_LIMIT_STORAGE_URL: it would otherwise point every
+        # test's process-wide limiter at the shared store.
+        env:
+          RATE_LIMIT_STORAGE_URL: redis://localhost:6379/0
+        run: python -m pytest tests/test_limiter_storage.py -v -rs --no-cov
       - name: Query timeouts and the DML-only app role (Postgres)
         # Same scratch server: each test creates and drops its own database, and the
         # role test its own uniquely named role (#3302).
