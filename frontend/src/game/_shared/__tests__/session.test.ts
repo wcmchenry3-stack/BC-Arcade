@@ -306,15 +306,51 @@ describe("getOrCreateSessionId", () => {
       expect(order).toEqual(["purge", "store"]);
     });
 
-    it("a failed cache purge step is reported and the re-key still completes", async () => {
-      (AsyncStorage.removeMany as jest.Mock).mockRejectedValueOnce(new Error("disk full"));
-      const sid = await getOrCreateSessionId();
-      expect(sid).not.toBe(legacyId);
-      expect(await AsyncStorage.getItem("game_session_id")).toBe(sid);
-      expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
-        tags: { subsystem: "session", op: "rekey.entitlementCache" },
-      });
-    });
+    it.each([
+      ["entitlementCache", TOKEN_STORAGE_KEY],
+      ["dailyChallengeCache", UPCOMING_KEY],
+      ["legacyScoreQueue", LEGACY_SCORE_QUEUE_KEY],
+      ["lastKnownStreak", LAST_KNOWN_STREAK_KEY],
+    ])(
+      "a failed %s purge stores nothing, never returns the legacy id, and retries next call",
+      async (step, key) => {
+        const removeItem = AsyncStorage.removeItem as jest.Mock;
+        const removeMany = AsyncStorage.removeMany as jest.Mock;
+        const realRemoveItem = removeItem.getMockImplementation()!;
+        const realRemoveMany = removeMany.getMockImplementation()!;
+        let failOnce = true;
+        const failing = () => {
+          if (!failOnce) return false;
+          failOnce = false;
+          return true;
+        };
+        removeItem.mockImplementation((k: string) =>
+          k === key && failing() ? Promise.reject(new Error("disk full")) : realRemoveItem(k)
+        );
+        removeMany.mockImplementation((ks: string[]) =>
+          ks.includes(key) && failing()
+            ? Promise.reject(new Error("disk full"))
+            : realRemoveMany(ks)
+        );
+        await AsyncStorage.setItem(key, "old player's");
+        try {
+          await expect(getOrCreateSessionId()).rejects.toThrow("disk full");
+          expect(await AsyncStorage.getItem("game_session_id")).toBe(legacyId);
+          expect(Sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+            tags: { subsystem: "session", op: `rekey.${step}` },
+          });
+
+          // The next call retries the whole purge, and this time it completes.
+          const sid = await getOrCreateSessionId();
+          expect(sid).not.toBe(legacyId);
+          expect(await AsyncStorage.getItem("game_session_id")).toBe(sid);
+          expect(await AsyncStorage.getItem(key)).toBeNull();
+        } finally {
+          removeItem.mockImplementation(realRemoveItem);
+          removeMany.mockImplementation(realRemoveMany);
+        }
+      }
+    );
 
     it("a failed queue purge stores nothing, never returns the legacy id, and retries next call", async () => {
       const clearAll = jest

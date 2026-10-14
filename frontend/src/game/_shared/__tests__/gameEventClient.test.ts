@@ -342,6 +342,23 @@ describe("GameEventClient", () => {
       ]);
     });
 
+    it("clearAll in a fresh process also drops the game_ended its own load's sweep enqueues (#3325)", async () => {
+      const id = client.startGame("yacht");
+      client.markStarted(id);
+      client.enqueueEvent(id, { type: "roll" });
+      // Killed; the next launch is a day later, so its first load abandons the game.
+      now.mockReturnValue(1_000_000 + DAY);
+
+      const next = await relaunch();
+      await next.client.clearAll(); // the load (and its sweep) happens inside
+      await flushMicrotasks();
+
+      expect(next.games.all()).toEqual([]);
+      expect(
+        await next.store.peek(100, { includeDeadLettered: true, includeFuture: true })
+      ).toEqual([]);
+    });
+
     it("an orphan never reopened is kept on each launch until it is 24 h old, then abandoned", async () => {
       const id = client.startGame("yacht");
       client.markStarted(id);

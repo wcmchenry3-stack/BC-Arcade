@@ -26,7 +26,7 @@ import * as Sentry from "@sentry/react-native";
 
 import { gameEventClient } from "./gameEventClient";
 import { clearLastKnownStreak } from "./lastKnownStreak";
-import { clearLegacyScoreQueue } from "./legacyScoreQueue";
+import { LEGACY_SCORE_QUEUE_KEY } from "./legacyScoreQueue";
 
 /**
  * The cached entitlement JWT (`sub` = the old session id). Same strings as
@@ -47,17 +47,19 @@ export const DAILY_CHALLENGE_CACHE_KEYS = [
 ] as const;
 
 /**
- * Drop the old player's queue and caches. Each failure is reported. The cache
- * steps are best-effort; a failed queue clear rejects, so the caller keeps the
- * legacy id stored (never returned) and retries the whole re-key next call,
- * rather than sending the old player's queue under the new id.
+ * Drop the old player's queue and caches. Every step must succeed: each
+ * failure is reported, then the purge rejects, so the caller keeps the legacy
+ * id stored (never returned) and retries the whole purge on the next call,
+ * rather than carrying the old player's queue or caches over to the new id.
+ * Every step is idempotent, so a retry after a partial purge is safe.
  */
 export async function purgeSessionScopedState(): Promise<void> {
   const steps: [string, () => Promise<void>][] = [
     // Queued games, events and bug logs (pending_games_v1 + the event tiers).
-    // First: it is the one step whose failure fails the re-key.
     ["queue", () => gameEventClient.clearAll()],
-    ["legacyScoreQueue", clearLegacyScoreQueue],
+    // By key: clearLegacyScoreQueue() never rejects, and its orphaned device
+    // keys (#3140) are not this player's (it still runs at every launch).
+    ["legacyScoreQueue", () => AsyncStorage.removeItem(LEGACY_SCORE_QUEUE_KEY)],
     ["entitlementCache", () => AsyncStorage.removeMany([...ENTITLEMENT_CACHE_KEYS])],
     ["lastKnownStreak", clearLastKnownStreak],
     ["dailyChallengeCache", () => AsyncStorage.removeMany([...DAILY_CHALLENGE_CACHE_KEYS])],
@@ -70,6 +72,6 @@ export async function purgeSessionScopedState(): Promise<void> {
       });
     }
   });
-  const queue = results[0]!;
-  if (queue.status === "rejected") throw queue.reason;
+  const failed = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+  if (failed) throw failed.reason;
 }

@@ -943,7 +943,8 @@ sync worker backs off with rows still queued. An id already in storage is
 returned unchanged (no rotation), except an id the removed predictable fallback
 minted (`isLegacyFallbackId`, #3325): it is re-keyed once on read, after the old
 player's queued games, events and bug logs and their cached entitlement token,
-streak and daily-challenge answers are dropped (`sessionRekey.ts`). Each mint adds a `session` breadcrumb naming
+streak and daily-challenge answers are dropped (`sessionRekey.ts`); if any drop
+fails, the legacy id stays stored (never returned) and the next call retries. Each mint adds a `session` breadcrumb naming
 the source, never the id. Game, event and bug-row ids use the same generator.
 The paid-IAP ownership/replay gate and the exact current trust model
 are documented in [../SECURITY.md](../SECURITY.md).
