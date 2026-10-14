@@ -182,6 +182,8 @@ Production, dev and local/CI data are separate:
 
 Alembic is the schema source of truth.
 
+The API's database role is meant to be DML-only (#3302): `backend/scripts/create_app_role.sql` creates `bc_app` with `SELECT`/`INSERT`/`UPDATE`/`DELETE` on the `public` tables and nothing else (no DDL, `TRUNCATE`, `REFERENCES` or `TRIGGER`, no writes to `alembic_version`), and Alembic migrates as the privileged role through `MIGRATION_DATABASE_URL`. Until the owner runs the cut-over in `docs/RENDER.md` ("App database role"), both still connect as the privileged role. Every API connection also carries a 5 s `statement_timeout`, so one slow query cannot hold the pool.
+
 Production safeguards include tests that reject:
 - wiring a `main` service to the Render dev database;
 - setting the entitlement dev override on production.

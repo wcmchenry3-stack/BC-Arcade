@@ -1194,7 +1194,8 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `TRUSTED_PROXY_MODE`   | `cloudflare`                                      | `limiter.py`                                            |
 | `TRUSTED_PROXY_HOPS`   | `1` (1–10)                                        | `limiter.py`                                            |
 | `LOG_PROXY_HEADERS`    | unset (off; ignored in production)                | `limiter.py`                                            |
-| `DATABASE_URL`         | unset or blank (no database; the API still boots) | `db/base.py` (on first use), `alembic/env.py`           |
+| `DATABASE_URL`         | unset or blank (no database; the API still boots) | `db/base.py` (on first use), `alembic/env.py` (when `MIGRATION_DATABASE_URL` is unset) |
+| `MIGRATION_DATABASE_URL` | unset or blank (Alembic uses `DATABASE_URL`)    | `alembic/env.py` only — the privileged role; the app role is DML-only (#3302, [RENDER.md](RENDER.md#app-database-role-least-privilege)) |
 | `DAILY_WORD_SALT`      | `0` (empty or non-integer fails the import)       | `daily_word/puzzle.py` (at import)                      |
 | `DAILY_CHALLENGE_SALT` | `0` (blank → `0`; non-integer is hashed)          | `daily_challenge/definitions.py` (at import)            |
 | `ADMIN_API_TOKEN`      | empty (admin `PATCH /games/catalog/{id}` always 403s) | `games/router.py` (at startup, via `app.state.settings`) |
@@ -1215,6 +1216,9 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `STREAK_LOOKBACK_DAYS` | `60` (1–365; also the largest streak reported)    | `daily_challenge/streak.py` (lazy)                      |
 | `APPLE_REPLAY_WINDOW_HOURS` | `48` (1–720)                                 | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`) |
 | `DB_PING_TIMEOUT_SECONDS` | `5.0` (above 0, at most 60)                    | `routes/health.py` (lazy)                               |
+| `DB_STATEMENT_TIMEOUT_SECONDS` | `5.0` (above 0, at most 300; Postgres `statement_timeout`) | `db/base.py` (with `DATABASE_URL`; Postgres only) |
+| `DB_COMMAND_TIMEOUT_SECONDS` | `10.0` (above 0, at most 600; must exceed the statement timeout) | `db/base.py` (asyncpg `command_timeout`) |
+| `DB_POOL_TIMEOUT_SECONDS` | `10.0` (above 0, at most 120)                  | `db/base.py` (SQLAlchemy `pool_timeout`)                |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is
