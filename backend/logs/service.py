@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -11,7 +10,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.dialect import dialect_insert
+from db.locks import BUG_LOGS_NAMESPACE, lock_session
 from db.models import BugLog
+from payload_size import json_bytes
 from settings import Settings
 
 _settings: Settings | None = None
@@ -48,11 +49,11 @@ async def append_bug_logs(
     would cost its neighbours. Dropped logs return a 2xx and count in ``dropped``.
     """
     cfg = _get_settings()
+    # Serialise this session's appends (Postgres) so the count below is current and the
+    # insert commits in the same transaction: concurrent batches cannot overshoot.
+    await lock_session(session, session_id, BUG_LOGS_NAMESPACE)
     kept = [
-        log
-        for log in logs
-        if len(json.dumps(log.get("context") or {}, default=str, separators=(",", ":")))
-        <= cfg.max_bug_log_context_bytes
+        log for log in logs if json_bytes(log.get("context") or {}) <= cfg.max_bug_log_context_bytes
     ]
     ids: list[uuid.UUID] = [log["id"] for log in kept]
 

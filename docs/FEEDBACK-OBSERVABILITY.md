@@ -245,7 +245,7 @@ The route:
 - accepts up to 50 logs per batch;
 - is rate-limited to **30 requests/minute per session**;
 - de-duplicates by bug UUID;
-- drops (2xx, counted in `dropped`) a log whose `context` exceeds `MAX_BUG_LOG_CONTEXT_BYTES` (4 KiB) and any log past `MAX_BUG_LOGS_PER_SESSION` (500) stored for the session, so one bad log never dead-letters its batch;
+- drops (2xx, counted in `dropped`) a log whose `context` exceeds `MAX_BUG_LOG_CONTEXT_BYTES` (16 KiB, matching the client's own cap) and any log past `MAX_BUG_LOGS_PER_SESSION` (500) stored for the session, so one bad log never dead-letters its batch;
 - stores accepted rows in Postgres `bug_logs`, pruned after `BUG_LOG_RETENTION_DAYS` (90) by a daily job.
 
 Stored fields include:

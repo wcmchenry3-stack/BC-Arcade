@@ -407,6 +407,8 @@ class BugLog(Base):
         Index("bug_logs_session_logged_idx", "session_id", "logged_at"),
         Index("bug_logs_level_logged_idx", "level", "logged_at"),
         Index("bug_logs_source_idx", "source"),
+        # The retention delete (#3298, alembic 0035).
+        Index("bug_logs_received_at_idx", "received_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)

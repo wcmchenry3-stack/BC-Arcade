@@ -28,6 +28,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from db.dialect import dialect_insert, dialect_name
+from db.locks import EVENTS_NAMESPACE, lock_session
 from db.models import Game, GameEvent
 from games import catalog_cache
 from games.boards.limits import check_completion_limits, merge_result_metadata
@@ -37,6 +38,7 @@ from games.legacy_outcomes import might_be_legacy_win, win_update
 from games.protocol import GameModule
 from games.registry import get_module
 from observability.report import report_rejected_result
+from payload_size import json_bytes
 from players.service import remember_legacy_opt_in
 from settings import Settings
 from vocab import GameOutcome
@@ -193,47 +195,100 @@ async def _session_event_bytes(session: AsyncSession, session_id: str) -> int:
     ).scalar_one()
 
 
-async def _store_events(
-    session: AsyncSession,
-    game_id: uuid.UUID,
-    valid_rows: list[dict[str, Any]],
-    valid_indices: list[int],
-    row_bytes: list[int],
-) -> int:
-    """Insert the rows and advance the game's counters in one transaction.
-
-    Returns how many were duplicates (indices already stored); a re-sent event
-    adds nothing to the counters.
-    """
-    existing = (
+async def _stored_indices(
+    session: AsyncSession, game_id: uuid.UUID, indices: list[int]
+) -> set[int]:
+    """Which of ``indices`` the game already has stored."""
+    if not indices:
+        return set()
+    return set(
         (
             await session.execute(
                 select(GameEvent.event_index).where(
-                    GameEvent.game_id == game_id,
-                    GameEvent.event_index.in_(valid_indices),
+                    GameEvent.game_id == game_id, GameEvent.event_index.in_(indices)
                 )
             )
         )
         .scalars()
         .all()
     )
-    existing_set = set(existing)
-    duplicates = sum(1 for i in valid_indices if i in existing_set)
-    await session.execute(_upsert_ignore(session, GameEvent.__table__, valid_rows))
-    if len(valid_rows) > duplicates:
-        new_bytes = sum(
-            size for i, size in zip(valid_indices, row_bytes, strict=True) if i not in existing_set
+
+
+async def _admit_events(
+    session: AsyncSession,
+    game: Game,
+    session_id: str,
+    candidates: list[tuple[str, int, dict[str, Any]]],
+    event_type_map: dict[str, int],
+    module: GameModule | None,
+) -> tuple[list[dict[str, Any]], list[int], int]:
+    """Rows to insert, their byte sizes, and how many events were dropped (#3298).
+
+    Drops an event the game's own check refuses (not counted as dropped), one over
+    ``MAX_EVENT_DATA_BYTES``, and every event once a ceiling is reached.
+    """
+    cfg = _get_settings()
+    # Read after the lock, by column: the ``game`` loaded earlier may be stale.
+    game_events_n, game_bytes = (
+        await session.execute(select(Game.event_count, Game.event_bytes).where(Game.id == game.id))
+    ).one()
+    session_bytes = await _session_event_bytes(session, session_id)
+    rows: list[dict[str, Any]] = []
+    row_bytes: list[int] = []
+    dropped = 0
+    for name, idx, data in candidates:
+        if (
+            game_events_n >= cfg.max_events_per_game
+            or game_bytes >= cfg.max_event_bytes_per_game
+            or session_bytes >= cfg.max_event_bytes_per_session_day
+        ):
+            dropped += 1
+            continue
+        if module is not None:
+            # The game's own check (#3250): None drops this event, not the batch.
+            # The client still gets a 2xx, so its queue row drains. Runs after
+            # the 400 above, so a refused batch reports nothing.
+            data = module.validate_event(name, data)
+            if data is None:
+                continue
+        # Per-event size cap (#3298): drop the one event with a 2xx. A 413 would
+        # make the client split the batch and dead-letter row by row.
+        size = json_bytes(data)
+        if size > cfg.max_event_data_bytes:
+            dropped += 1
+            continue
+        game_events_n += 1
+        game_bytes += size
+        session_bytes += size
+        row_bytes.append(size)
+        rows.append(
+            {
+                "game_id": game.id,
+                "event_index": idx,
+                "event_type_id": event_type_map[name],
+                "data": data,
+            }
         )
-        await session.execute(
-            update(Game)
-            .where(Game.id == game_id)
-            .values(
-                event_bytes=Game.event_bytes + new_bytes,
-                event_count=Game.event_count + (len(valid_rows) - duplicates),
-            )
+    return rows, row_bytes, dropped
+
+
+async def _store_events(
+    session: AsyncSession,
+    game_id: uuid.UUID,
+    rows: list[dict[str, Any]],
+    row_bytes: list[int],
+) -> None:
+    """Insert the rows and advance the game's counters in one transaction."""
+    await session.execute(_upsert_ignore(session, GameEvent.__table__, rows))
+    await session.execute(
+        update(Game)
+        .where(Game.id == game_id)
+        .values(
+            event_bytes=Game.event_bytes + sum(row_bytes),
+            event_count=Game.event_count + len(rows),
         )
+    )
     await session.commit()
-    return duplicates
 
 
 async def append_events(
@@ -251,8 +306,6 @@ async def append_events(
 
     event_type_map = await catalog_cache.event_type_ids(session, game.game_type_id)
 
-    valid_rows: list[dict[str, Any]] = []
-    valid_indices: list[int] = []
     rejected: set[str] = set()
     seen_indices: set[int] = set()
     candidates: list[tuple[str, int, dict[str, Any]]] = []
@@ -277,59 +330,30 @@ async def append_events(
             {"error": "unknown_event_type", "rejected": sorted(rejected)},
         )
 
-    cfg = _get_settings()
-    dropped = 0
     # Ceilings (#3298): a game past its stored-event count or bytes, or a session past
-    # its rolling-24 h event bytes, stops growing. Dropped with a 2xx, not an error:
-    # the client dead-letters any 4xx, while a 2xx drains the row. Read from the
-    # running totals on ``games`` (no scan of ``game_events``) and advanced per event
-    # below, so a batch stops at the ceiling.
-    game_events_n = game.event_count
-    game_bytes = game.event_bytes
-    session_bytes = await _session_event_bytes(session, session_id)
-    row_bytes: list[int] = []
-
-    for name, idx, data in candidates:
-        if (
-            game_events_n >= cfg.max_events_per_game
-            or game_bytes >= cfg.max_event_bytes_per_game
-            or session_bytes >= cfg.max_event_bytes_per_session_day
-        ):
-            dropped += 1
-            continue
-        if module is not None:
-            # The game's own check (#3250): None drops this event, not the batch.
-            # The client still gets a 2xx, so its queue row drains. Runs after
-            # the 400 above, so a refused batch reports nothing.
-            data = module.validate_event(name, data)
-            if data is None:
-                continue
-        # Per-event size cap (#3298): drop the one event with a 2xx. A 413 would
-        # make the client split the batch and dead-letter row by row.
-        size = len(json.dumps(data, default=str, separators=(",", ":")))
-        if size > cfg.max_event_data_bytes:
-            dropped += 1
-            continue
-        game_events_n += 1
-        game_bytes += size
-        session_bytes += size
-        row_bytes.append(size)
-        valid_indices.append(idx)
-        valid_rows.append(
-            {
-                "game_id": game.id,
-                "event_index": idx,
-                "event_type_id": event_type_map[name],
-                "data": data,
-            }
-        )
-
-    duplicates = 0
-    if valid_rows:
-        duplicates = await _store_events(session, game.id, valid_rows, valid_indices, row_bytes)
+    # its rolling-24 h event bytes, stops growing. They are read from the running
+    # totals on ``games`` (no scan of ``game_events``) and advanced per event, so a
+    # batch stops at the ceiling. The per-session advisory lock (Postgres) makes
+    # concurrent appends for one session take turns: the totals are read after the
+    # lock and the insert commits in the same transaction, so they cannot overshoot.
+    # Dropped with a 2xx, not an error: the client dead-letters any 4xx, while a 2xx
+    # drains the row.
+    await lock_session(session, session_id, EVENTS_NAMESPACE)
+    stored = await _stored_indices(session, game.id, [c[1] for c in candidates])
+    duplicates = sum(1 for _, idx, _ in candidates if idx in stored)
+    rows, row_bytes, dropped = await _admit_events(
+        session,
+        game,
+        session_id,
+        [c for c in candidates if c[1] not in stored],
+        event_type_map,
+        module,
+    )
+    if rows:
+        await _store_events(session, game.id, rows, row_bytes)
 
     return AppendResult(
-        accepted=len(valid_rows) - duplicates,
+        accepted=len(rows),
         duplicates=duplicates,
         rejected=[],
         dropped=dropped,

@@ -220,6 +220,64 @@ def test_bug_log_retention_job_is_registered(monkeypatch: pytest.MonkeyPatch) ->
     assert bug_retention.retention_job(lambda: None).reraise_on_crash is True  # type: ignore[arg-type,return-value]
 
 
+# --- batches that cross a ceiling, re-sends, byte measurement ---------------
+
+
+async def test_batch_crossing_the_count_ceiling_is_partly_accepted(
+    client: TestClient, session_id: str, game: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _use(monkeypatch, game_sessions, MAX_EVENTS_PER_GAME=5)
+    r = client.post(f"/games/{game}/events", headers=_headers(session_id), json=_events(0, 8))
+    assert (r.json()["accepted"], r.json()["dropped"]) == (5, 3)
+    assert (await _game_row(game)).event_count == 5
+
+
+async def test_resent_batch_near_the_ceiling_accepts_new_events_up_to_it(
+    client: TestClient, session_id: str, game: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _use(monkeypatch, game_sessions, MAX_EVENTS_PER_GAME=5)
+    h = _headers(session_id)
+    assert (
+        client.post(f"/games/{game}/events", headers=h, json=_events(0, 4)).json()["accepted"] == 4
+    )
+    # events 0-3 are stored; 4-8 are new. Stored ones are duplicates, not charged or dropped.
+    r = client.post(f"/games/{game}/events", headers=h, json=_events(0, 9))
+    assert r.json() == {"accepted": 1, "duplicates": 4, "rejected": [], "dropped": 4}
+    assert (await _game_row(game)).event_count == 5
+
+
+async def test_event_exactly_filling_the_game_byte_ceiling_is_stored_then_growth_stops(
+    client: TestClient, session_id: str, game: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _use(monkeypatch, game_sessions, MAX_EVENT_BYTES_PER_GAME=1024, MAX_EVENT_DATA_BYTES=1024)
+    h = _headers(session_id)
+    r1 = client.post(f"/games/{game}/events", headers=h, json=_events(0, 1, _blob(1024)))
+    assert r1.json()["accepted"] == 1
+    assert (await _game_row(game)).event_bytes == 1024
+    r2 = client.post(f"/games/{game}/events", headers=h, json=_events(1, 1))
+    assert (r2.json()["accepted"], r2.json()["dropped"]) == (0, 1)
+
+
+def test_json_bytes_counts_utf8_bytes_not_characters() -> None:
+    from payload_size import json_bytes
+
+    assert json_bytes({"a": "é"}) == len('{"a":"é"}'.encode())  # 2-byte char, unescaped
+    assert json_bytes({"a": "é"}) == len('{"a":"é"}') + 1
+
+
+def test_multibyte_event_data_is_measured_in_bytes(
+    client: TestClient, session_id: str, game: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _use(monkeypatch, game_sessions, MAX_EVENT_DATA_BYTES=1024)
+    # 600 two-byte chars: 600 characters but over 1024 bytes
+    r = client.post(
+        f"/games/{game}/events",
+        headers=_headers(session_id),
+        json=_events(0, 1, {"b": "é" * 600}),
+    )
+    assert (r.json()["accepted"], r.json()["dropped"]) == (0, 1)
+
+
 # --- running counters and the per-session rolling-24 h ceiling --------------
 
 
@@ -248,7 +306,9 @@ async def test_counters_match_stored_events_and_skip_dropped_and_duplicates(
             (await db.execute(select(GameEvent).where(GameEvent.game_id == row.id))).scalars().all()
         )
     assert row.event_count == len(stored) == 2
-    assert row.event_bytes == sum(len(json.dumps(e.data, separators=(",", ":"))) for e in stored)
+    assert row.event_bytes == sum(
+        len(json.dumps(e.data, separators=(",", ":"), ensure_ascii=False).encode()) for e in stored
+    )
 
 
 async def test_session_past_daily_event_ceiling_stops_growing(

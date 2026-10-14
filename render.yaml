@@ -65,7 +65,7 @@ services:
       # - key: STALE_GAME_AFTER_HOURS        # 24
       # - key: MAX_RESULT_BYTES              # 8192
       # - key: MAX_EVENT_DATA_BYTES          # 8192
-      # - key: MAX_BUG_LOG_CONTEXT_BYTES     # 4096
+      # - key: MAX_BUG_LOG_CONTEXT_BYTES     # 16384
       # - key: MAX_EVENTS_PER_GAME           # 5000
       # - key: MAX_EVENT_BYTES_PER_GAME      # 1048576
       # - key: MAX_EVENT_BYTES_PER_SESSION_DAY  # 16777216
@@ -159,7 +159,7 @@ services:
       # - key: STALE_GAME_AFTER_HOURS        # 24
       # - key: MAX_RESULT_BYTES              # 8192
       # - key: MAX_EVENT_DATA_BYTES          # 8192
-      # - key: MAX_BUG_LOG_CONTEXT_BYTES     # 4096
+      # - key: MAX_BUG_LOG_CONTEXT_BYTES     # 16384
       # - key: MAX_EVENTS_PER_GAME           # 5000
       # - key: MAX_EVENT_BYTES_PER_GAME      # 1048576
       # - key: MAX_EVENT_BYTES_PER_SESSION_DAY  # 16777216

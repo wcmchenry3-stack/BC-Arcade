@@ -156,30 +156,37 @@ class Settings(BaseSettings):
     # the completion envelope always fits and a valid result is never rejected with 413.
     max_result_bytes: int = Field(default=8192, alias="MAX_RESULT_BYTES", ge=1024, le=131_072)
     # Stored-payload caps and ceilings (#3298). Event ``data`` and bug-log ``context``
-    # are measured as compact JSON bytes. The largest known honest payload is Star Swarm
-    # wave_completed (4096 B, WAVE_STATS_MAX_BYTES), so events get 8 KiB (the client
-    # queue's own per-row cap) and bug context 4 KiB. An over-size item is dropped (2xx),
-    # never the whole batch.
+    # are measured as UTF-8 compact JSON bytes (payload_size.json_bytes). The largest
+    # known honest event is Star Swarm wave_completed (4096 B, WAVE_STATS_MAX_BYTES), so
+    # events get 8 KiB (the client queue's own per-row cap). An over-size item is
+    # dropped (2xx), never the whole batch.
     max_event_data_bytes: int = Field(
         default=8192, alias="MAX_EVENT_DATA_BYTES", ge=1024, le=131_072
     )
+    # MUST be >= the client's MAX_BUG_CONTEXT_BYTES (frontend eventQueueConfig.ts, 16 KB;
+    # eventStore truncates to it), or honest contexts are silently dropped.
     max_bug_log_context_bytes: int = Field(
-        default=4096, alias="MAX_BUG_LOG_CONTEXT_BYTES", ge=1024, le=131_072
+        default=16_384, alias="MAX_BUG_LOG_CONTEXT_BYTES", ge=1024, le=131_072
     )
     # Per-game ceilings on stored events (games.sessions). The client queue holds 5000
-    # rows, so a game never legitimately stores more; 1 MiB bounds its bytes.
-    max_events_per_game: int = Field(default=5000, alias="MAX_EVENTS_PER_GAME", ge=1)
+    # rows, so a game never legitimately stores more; 1 MiB bounds its bytes. The
+    # ceilings hold under concurrency: db.locks serialises a session's appends (Postgres).
+    # ``games.event_bytes`` is an INTEGER column, hence the upper bounds.
+    max_events_per_game: int = Field(default=5000, alias="MAX_EVENTS_PER_GAME", ge=1, le=1_000_000)
     max_event_bytes_per_game: int = Field(
-        default=1_048_576, alias="MAX_EVENT_BYTES_PER_GAME", ge=1024
+        default=1_048_576, alias="MAX_EVENT_BYTES_PER_GAME", ge=1024, le=1_073_741_824
     )
-    # Rolling-24 h stored event bytes per session, summed over its games (games.sessions).
-    # Honest fully recorded games are ~40 KB; 16 MiB bounds a session to a few hundred MB/month.
+    # Rolling-24 h stored event bytes per session, summed over its games (games.sessions;
+    # same lock). Honest fully recorded games are ~40 KB; 16 MiB
+    # bounds a session to a few hundred MB/month.
     max_event_bytes_per_session_day: int = Field(
-        default=16_777_216, alias="MAX_EVENT_BYTES_PER_SESSION_DAY", ge=1024
+        default=16_777_216, alias="MAX_EVENT_BYTES_PER_SESSION_DAY", ge=1024, le=2_147_483_647
     )
     # Per-session ceiling on stored bug logs (logs.service); BUG_LOG_RETENTION_DAYS
     # frees room as rows age out (logs.retention).
-    max_bug_logs_per_session: int = Field(default=500, alias="MAX_BUG_LOGS_PER_SESSION", ge=1)
+    max_bug_logs_per_session: int = Field(
+        default=500, alias="MAX_BUG_LOGS_PER_SESSION", ge=1, le=1_000_000
+    )
     bug_log_retention_days: int = Field(default=90, alias="BUG_LOG_RETENTION_DAYS", ge=1, le=3650)
     # How far back the daily-challenge streak looks, and so its cap (daily_challenge.streak).
     streak_lookback_days: int = Field(default=60, alias="STREAK_LOOKBACK_DAYS", ge=1, le=365)
