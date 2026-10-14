@@ -1,4 +1,4 @@
-"""Alembic environment — sync engine, reads DATABASE_URL from env (via ``Settings``).
+"""Alembic environment — sync engine, reads MIGRATION_DATABASE_URL, else DATABASE_URL.
 
 Uses a plain sync SQLAlchemy engine so migrations run against any driver
 (Postgres in prod, SQLite in CI schema-check). The app's runtime engine in
@@ -42,8 +42,10 @@ def _sync_url(raw: str) -> str:
 
 
 # Settings reads no .env file, so the CLI and CI's schema check see only the real
-# environment, as before (#2997).
-_raw = Settings().database_url
+# environment, as before (#2997). MIGRATION_DATABASE_URL (#3302) names the role that
+# may change the schema, so the app's DATABASE_URL role can be DML-only; unset or
+# blank, Alembic uses DATABASE_URL as it always has (docs/RENDER.md).
+_raw = Settings().migration_database_url
 if _raw:
     config.set_main_option("sqlalchemy.url", _sync_url(_raw))
 

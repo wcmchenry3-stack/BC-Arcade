@@ -22,8 +22,9 @@ Where things live:
 - ``middleware/`` — security headers + request log (outermost), body caps (innermost).
 - ``routes/health.py`` — ``/health`` and ``/health/db``; ``routes/debug.py`` — test-only.
 - this module — the lifespan and its background jobs, app-level exception
-  handlers (``EntitlementError``, and ``GameServiceError`` / ``PurchaseError``
-  so routers raise them untranslated), CORS, and the middleware order.
+  handlers (``EntitlementError``, ``GameServiceError`` / ``PurchaseError``
+  so routers raise them untranslated, and the database timeouts → 503), CORS,
+  and the middleware order.
 """
 
 import json
@@ -41,17 +42,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from daily_challenge.router import router as daily_challenge_router
 from daily_word.router import router as daily_word_router
-from db.base import database_url, is_configured
+from db.base import DatabaseTimeoutError, database_url, is_configured
 from entitlements.dependencies import EntitlementError
 from entitlements.router import router as entitlements_router
 from entitlements.service import is_dev_override_active
 from games.router import router as games_router
 from games.sessions import GameServiceError
 from jobs.lifespan import configured_jobs, start_jobs
-from limiter import client_ip, configure_proxy_trust, limiter, log_proxy_trust
+from limiter import (
+    client_ip,
+    configure_proxy_trust,
+    limiter,
+    log_proxy_trust,
+    log_rate_limit_storage,
+)
 from logs.router import router as logs_router
 from me.router import router as me_router
 from middleware.body_size import DEFAULT_MAX_BODY_BYTES, MaxBodySizeMiddleware
@@ -182,6 +190,43 @@ async def _domain_error_handler(
     )
 
 
+# How long a client should wait before retrying after a database timeout.
+DB_TIMEOUT_RETRY_AFTER_SECONDS = 5
+
+
+async def _db_timeout_handler(
+    request: Request, exc: DatabaseTimeoutError | PoolTimeoutError | TimeoutError
+) -> JSONResponse:
+    """A query past its bound, or no free pooled connection, → ``503 database_timeout``.
+
+    ``db.base`` sets the bounds (#3302). A route that catches ``SQLAlchemyError``
+    itself still answers with its own error; this handler covers the rest, which
+    used to surface as an unhandled 500. The log line carries the exception's class
+    only: its message holds the SQL.
+
+    The builtin ``TimeoutError`` is here for the asyncpg timeouts SQLAlchemy does
+    not wrap: opening a connection, or a pool pre-ping, that stalls. No route lets
+    any other ``TimeoutError`` escape (the two ``asyncio.wait_for`` calls around
+    Google acknowledgements catch theirs, and ``/health/db`` catches everything),
+    so this changes no other route's answer.
+    """
+    _audit_log.warning(
+        json.dumps(
+            {
+                "event": "db_timeout",
+                "kind": type(exc).__name__,
+                "method": request.method,
+                "path": request.url.path,
+            }
+        )
+    )
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "database_timeout"},
+        headers={"Retry-After": str(DB_TIMEOUT_RETRY_AFTER_SECONDS)},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
@@ -257,6 +302,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_proxy_trust(settings.proxy_environ())
     log_proxy_trust(settings.log_proxy_headers_requested)
     init_sentry(settings)
+    log_rate_limit_storage()
 
     # The interactive docs (/docs, /redoc) and raw spec (/openapi.json) expose the
     # whole API surface publicly; a consumer game backend doesn't need them live in
@@ -277,6 +323,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_exception_handler(EntitlementError, _entitlement_error_handler)
     app.add_exception_handler(GameServiceError, _domain_error_handler)
     app.add_exception_handler(PurchaseError, _domain_error_handler)
+    app.add_exception_handler(DatabaseTimeoutError, _db_timeout_handler)
+    app.add_exception_handler(PoolTimeoutError, _db_timeout_handler)
+    app.add_exception_handler(TimeoutError, _db_timeout_handler)
     _add_middleware(app, settings)
     return app
 

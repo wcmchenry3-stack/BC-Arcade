@@ -57,7 +57,7 @@ A client being trusted to report a game result does not imply that arbitrary req
 Most personal BC Arcade server data is keyed by `X-Session-ID`.
 
 Current behavior:
-- the app generates/persists a UUID for the installation/session identity;
+- the app generates/persists a UUID for the installation/session identity, minted only from a CSPRNG (#3303): `expo-modules-core` `uuid.v4()`, the native CoreModule on iOS (`UUID()`) and Android (`UUID.randomUUID()`, `SecureRandom`), WebCrypto on web. Hermes has no `crypto` global, so release builds use the native CoreModule. No encryption library is added, so the exempt (OS-only) export-compliance declaration is unchanged. With no CSPRNG the mint throws (`CsprngUnavailableError`) and no id is stored or sent; there is no timestamp/counter fallback (`frontend/src/game/_shared/uuid.ts`, `session.ts`). An id already stored is kept, except one minted by the old predictable fallback (`isLegacyFallbackId`), which is re-keyed once on read from the CSPRNG (failing closed the same way), with the old player's local queue and caches dropped first (`sessionRekey.ts`, #3325); if any drop fails, nothing new is stored and the next call retries, and the legacy id is never returned;
 - `backend/session.py` requires the header where a session is needed;
 - the backend validates that the value parses as a UUID;
 - it is **not** currently an authenticated account credential;
@@ -187,6 +187,8 @@ Production, dev and local/CI data are separate:
 
 Alembic is the schema source of truth.
 
+The API's database role is meant to be DML-only (#3302): `backend/scripts/create_app_role.sql` creates `bc_app` with `SELECT`/`INSERT`/`UPDATE`/`DELETE` on the `public` tables and nothing else (no DDL, `TRUNCATE`, `REFERENCES` or `TRIGGER`, no writes to `alembic_version`), and Alembic migrates as the privileged role through `MIGRATION_DATABASE_URL`. Until the owner runs the cut-over in `docs/RENDER.md` ("App database role"), both still connect as the privileged role. Every new API connection sets a 5 s `statement_timeout` (as a startup parameter and again with an explicit `SET`, since the Supabase pooler may not forward startup parameters), and the app role carries the same value as a role-level default, so one slow query cannot hold the pool.
+
 Production safeguards include tests that reject:
 - wiring a `main` service to the Render dev database;
 - setting the entitlement dev override on production.
@@ -198,8 +200,8 @@ Operational topology is documented in `docs/RENDER.md` and `docs/ARCHITECTURE.md
 Current cross-cutting controls include:
 - Pydantic/FastAPI request validation;
 - SQLAlchemy query construction rather than string-built SQL;
-- request-body size caps;
-- route rate limits (session-keyed and/or IP-keyed depending on the surface);
+- request-body size caps (enforced for all framings, with or without `Content-Length`);
+- route rate limits (session-keyed and/or IP-keyed depending on the surface; session-keyed routes also carry a looser per-IP limit, and an `X-Session-ID` that is not a UUID is never used as a limiter key; the per-IP backstops assume the origin is not directly reachable, #2914);
 - explicit CORS allowlists for browser access;
 - environment-held secrets;
 - Gitleaks/secret scanning in repository workflows;
@@ -213,7 +215,7 @@ A statement that “every endpoint has exactly the same auth or rate-limit model
 - `render`: that right-hand `X-Forwarded-For` entry, else the peer. Never the left-most.
 - `none`: the peer only.
 
-Values are parsed as IP addresses and canonicalised (IPv6 case/zero-compression, IPv4-mapped IPv6 → IPv4; an IPv6 zone ID is rejected); a missing, malformed or duplicated value falls through to the next trusted rule and finally to the peer, never leftward. An unknown mode or an out-of-range hop count stops the app at import; the mode and hop count are logged at startup, and a `CF-Connecting-IP` arriving while the mode ignores it is logged once per process. Buckets are per IPv4 address and per IPv6 **/64**, so an IPv6 client cannot mint buckets by rotating addresses inside its own allocation (the log's `"ip"` keeps the full address). A client-sent `X-Forwarded-For` therefore cannot choose its bucket, and rotating it does not change the bucket (`backend/tests/test_limiter.py`). What a client *can* still do is spread requests over genuinely different addresses or /64s it controls — per-IP limits bound one network location, not one person. The previous resolver took the left-most `X-Forwarded-For` entry; the change moved every per-IP bucket once (limiter storage is in-memory, so counters simply started again).
+Values are parsed as IP addresses and canonicalised (IPv6 case/zero-compression, IPv4-mapped IPv6 → IPv4; an IPv6 zone ID is rejected); a missing, malformed or duplicated value falls through to the next trusted rule and finally to the peer, never leftward. An unknown mode or an out-of-range hop count stops the app at import; the mode and hop count are logged at startup, and a `CF-Connecting-IP` arriving while the mode ignores it is logged once per process. Buckets are per IPv4 address and per IPv6 **/64**, so an IPv6 client cannot mint buckets by rotating addresses inside its own allocation (the log's `"ip"` keeps the full address). A client-sent `X-Forwarded-For` therefore cannot choose its bucket, and rotating it does not change the bucket (`backend/tests/test_limiter.py`). What a client *can* still do is spread requests over genuinely different addresses or /64s it controls — per-IP limits bound one network location, not one person. The previous resolver took the left-most `X-Forwarded-For` entry; the change moved every per-IP bucket once (limiter storage is in-memory unless `RATE_LIMIT_STORAGE_URL` names a shared store, so counters simply started again).
 
 *Residual risk — bypassing Cloudflare.* Each API service also answers on its `*.onrender.com` hostname (Render's subdomain is enabled on both, and CI's backend-health check uses the dev one on purpose). A request sent there that does not pass through a Cloudflare edge could carry a forged `CF-Connecting-IP` and pick its bucket in `cloudflare` mode. Whether it can depends on Render's own edge, which the repository cannot show — the owner confirms it by looking at the raw headers, as described in the owner checks in [docs/RENDER.md](docs/RENDER.md#owner-checks). If a forged value does get through, the mitigations in order are: (1) disable the `onrender.com` subdomain on the prod API (Render service setting; the dev one stays, CI uses it); (2) require a shared-secret header that a Cloudflare Transform Rule adds on the proxied hostname. Restricting the service's inbound IPs to Cloudflare's published ranges is weak if Render's own edge is Cloudflare, since direct requests would then come from Cloudflare addresses too. Per-session and per-store-key limits apply to `/purchases` regardless.
 

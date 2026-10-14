@@ -59,8 +59,8 @@ app-level exception handlers, CORS and the middleware order. Process-wide setup
 lives beside it (#2993): `backend/observability/` (Sentry options, scrub lists,
 `init_sentry()`; logging setup), `backend/middleware/` (`headers_and_log.py`,
 one pure-ASGI layer for the security headers and the JSON request log, outermost;
-`body_size.py`, the per-path body caps, innermost) and `backend/routes/`
-(`/health`, `/health/db`, the test-only `/debug/error`).
+`body_size.py`, the per-path body caps, enforced for all framings, innermost)
+and `backend/routes/` (`/health`, `/health/db`, the test-only `/debug/error`).
 
 **Errors and database sessions in routes (#2993).** Routers raise the domain
 errors untranslated: `GameServiceError` (`games/sessions.py`) and
@@ -476,7 +476,13 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
   move costs one write of its own tier, not a re-read of the whole queue. The
   on-disk format is unchanged. `onStats` tells subscribers (the
   capacity-warning toast) the new stats after each change, so nothing polls
-  the queue.
+  the queue. `enqueueMany` (#3274) queues several events in one lock turn
+  and one write per tier touched; `gameEventClient.enqueueEvents` reserves
+  their `event_index` values contiguously and calls it. The gameplay
+  recorder (`gameRecorder.ts` / `useGameRecorder.ts`,
+  [GAME-CONTRACT §2.10](GAME-CONTRACT.md#210-recording-gameplay)) saves each
+  unit of play that way, sized against the per-game caps in
+  `eventQueueConfig.ts`.
 - `SyncWorker` — uploads both: every 30 s (`SYNC_INTERVAL_MS`) while the app
   is active, on foreground and on reconnect (`NetworkContext`), and on demand
   through
@@ -926,7 +932,27 @@ premium access. An already-open game is allowed to finish under the product rule
 that entitlement changes do not interrupt gameplay.
 
 The current session id is a client-held UUID, not an authenticated account
-credential. The paid-IAP ownership/replay gate and the exact current trust model
+credential. It is still the only thing that proves a caller owns a player's data
+(`/me` reads and deletes by it), so it is minted only from a CSPRNG and fails
+closed (#3303). `generateUUID()` in `frontend/src/game/_shared/uuid.ts` tries
+`expo-modules-core` `uuid.v4()` (the native CoreModule's `uuidv4`: iOS `UUID()`,
+Android `UUID.randomUUID()` over `SecureRandom`; web `crypto.randomUUID`), then
+`globalThis.crypto.randomUUID`, then `globalThis.crypto.getRandomValues` (web
+pages outside a secure context). Hermes, React Native and Expo's runtime install
+no `crypto` global, so on release iOS and Android builds the native CoreModule is
+the source. It is the primitive `expo-crypto` wraps, without adding an
+encryption library to the export-compliance surface. With none of them it throws
+`CsprngUnavailableError`. `getOrCreateSessionId()` (`session.ts`) then stores
+nothing, reports to Sentry once per launch and rethrows; `httpClient` rejects the
+request without sending it, and `syncApi` returns a synthetic status 0 so the
+sync worker backs off with rows still queued. An id already in storage is
+returned unchanged (no rotation), except an id the removed predictable fallback
+minted (`isLegacyFallbackId`, #3325): it is re-keyed once on read, after the old
+player's queued games, events and bug logs and their cached entitlement token,
+streak and daily-challenge answers are dropped (`sessionRekey.ts`); if any drop
+fails, the legacy id stays stored (never returned) and the next call retries. Each mint adds a `session` breadcrumb naming
+the source, never the id. Game, event and bug-row ids use the same generator.
+The paid-IAP ownership/replay gate and the exact current trust model
 are documented in [../SECURITY.md](../SECURITY.md).
 
 ### 10.4 Dev override
@@ -1194,7 +1220,9 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `TRUSTED_PROXY_MODE`   | `cloudflare`                                      | `limiter.py`                                            |
 | `TRUSTED_PROXY_HOPS`   | `1` (1–10)                                        | `limiter.py`                                            |
 | `LOG_PROXY_HEADERS`    | unset (off; ignored in production)                | `limiter.py`                                            |
-| `DATABASE_URL`         | unset or blank (no database; the API still boots) | `db/base.py` (on first use), `alembic/env.py`           |
+| `RATE_LIMIT_STORAGE_URL` | unset or blank (in-memory counters); `redis://` / `rediss://` shares them | `limiter.py` (`build_limiter`) |
+| `DATABASE_URL`         | unset or blank (no database; the API still boots) | `db/base.py` (on first use), `alembic/env.py` (when `MIGRATION_DATABASE_URL` is unset) |
+| `MIGRATION_DATABASE_URL` | unset or blank (Alembic uses `DATABASE_URL`)    | `alembic/env.py` only — the privileged role; the app role is DML-only (#3302, [RENDER.md](RENDER.md#app-database-role-least-privilege)) |
 | `DAILY_WORD_SALT`      | `0` (empty or non-integer fails the import)       | `daily_word/puzzle.py` (at import)                      |
 | `DAILY_CHALLENGE_SALT` | `0` (blank → `0`; non-integer is hashed)          | `daily_challenge/definitions.py` (at import)            |
 | `ADMIN_API_TOKEN`      | empty (admin `PATCH /games/catalog/{id}` always 403s); a non-empty value must be at least 32 characters or boot fails (#3304) | `games/router.py` (at startup, via `app.state.settings`) |
@@ -1215,6 +1243,9 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `STREAK_LOOKBACK_DAYS` | `60` (1–365; also the largest streak reported)    | `daily_challenge/streak.py` (lazy)                      |
 | `APPLE_REPLAY_WINDOW_HOURS` | `48` (1–720)                                 | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`) |
 | `DB_PING_TIMEOUT_SECONDS` | `5.0` (above 0, at most 60)                    | `routes/health.py` (lazy)                               |
+| `DB_STATEMENT_TIMEOUT_SECONDS` | `5.0` (at least 0.001, at most 300; Postgres `statement_timeout`, sent at connect and `SET` on each new connection) | `db/base.py` (with `DATABASE_URL`; Postgres only) |
+| `DB_COMMAND_TIMEOUT_SECONDS` | `10.0` (above 0, at most 600; must exceed the statement timeout) | `db/base.py` (asyncpg `command_timeout`) |
+| `DB_POOL_TIMEOUT_SECONDS` | `10.0` (above 0, at most 120)                  | `db/base.py` (SQLAlchemy `pool_timeout`)                |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is

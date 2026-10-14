@@ -10,10 +10,14 @@
  * waves were left out — and memory and the paused-run save stay bounded however long the run.
  */
 import type { StarSwarmState } from "../types";
-import { WAVE_STATS_MAX_BYTES, toWirePayload, type WaveStatsSnapshot } from "./waveStats";
+import { toWirePayload, type WaveStatsSnapshot } from "./waveStats";
+import { WAVE_STATS_MAX_BYTES, WAVE_STATS_RUN_MAX_BYTES } from "../../_shared/eventQueueConfig";
 
-/** The most a run's `wave_completed` payloads add up to (the sum of their JSON lengths). */
-export const WAVE_STATS_RUN_MAX_BYTES = 64 * 1024;
+/**
+ * The most a run's `wave_completed` payloads add up to (the sum of their JSON lengths). Defined
+ * with the other recording caps in `_shared/eventQueueConfig.ts` (#3274).
+ */
+export { WAVE_STATS_RUN_MAX_BYTES };
 
 /** The closed waves left off `closedWaves`, by count and size only. */
 export interface ClosedWavesOverflow {

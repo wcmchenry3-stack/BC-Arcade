@@ -26,11 +26,16 @@ services:
     # trigger in the dashboard: Settings -> Build & Deploy -> After CI Checks Pass.)
     autoDeployTrigger: checksPass
     buildCommand: pip install -r requirements.txt
-    startCommand: alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 5 --limit-max-requests 10000
+    startCommand: alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 5 --workers 1
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      # Optional (#3301): a redis:// or rediss:// URL shares rate-limit counters
+      # across restarts and instances. Unset = in-memory. Set it in the dashboard
+      # (it can hold a password); needed before ever running more than one worker.
+      # - key: RATE_LIMIT_STORAGE_URL
+      #   sync: false
       - key: ALLOWED_ORIGINS
         value: "https://games.buffingchi.com,https://games-api.buffingchi.com"
       # Tags Sentry events and is the only environment whose crash-free
@@ -43,8 +48,13 @@ services:
         value: cloudflare
       # Supabase session pooler (*.pooler.supabase.com, port 5432 — never the
       # transaction pooler on 6543, never the Render dev DB). The URL carries
-      # the DB password: dashboard secret only, never committed.
+      # the DB password: dashboard secret only, never committed. After the app-role
+      # cut-over (#3302, RENDER.md) this is the DML-only `bc_app` role's URL.
       - key: DATABASE_URL
+        sync: false
+      # Optional (#3302): the privileged role Alembic migrates as. Unset, Alembic in
+      # startCommand uses DATABASE_URL, as before. Same pooler rules as DATABASE_URL.
+      - key: MIGRATION_DATABASE_URL
         sync: false
       - key: SENTRY_DSN
         sync: false
@@ -67,6 +77,9 @@ services:
       # - key: STREAK_LOOKBACK_DAYS          # 60
       # - key: APPLE_REPLAY_WINDOW_HOURS     # 48
       # - key: DB_PING_TIMEOUT_SECONDS       # 5.0
+      # - key: DB_STATEMENT_TIMEOUT_SECONDS  # 5.0
+      # - key: DB_COMMAND_TIMEOUT_SECONDS    # 10.0
+      # - key: DB_POOL_TIMEOUT_SECONDS       # 10.0
 
   # --- BC Arcade Expo Web static frontend (prod) ---
   - type: web
@@ -118,11 +131,16 @@ services:
     buildCommand: pip install -r requirements.txt
     # alembic runs before uvicorn on every boot so schema stays in sync with
     # models shipped on dev. It is idempotent — noop when already current.
-    startCommand: alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 5 --limit-max-requests 10000
+    startCommand: alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 5 --workers 1
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      # Optional (#3301): a redis:// or rediss:// URL shares rate-limit counters
+      # across restarts and instances. Unset = in-memory. Set it in the dashboard
+      # (it can hold a password); needed before ever running more than one worker.
+      # - key: RATE_LIMIT_STORAGE_URL
+      #   sync: false
       - key: ALLOWED_ORIGINS
         value: "https://dev-games.buffingchi.com,https://dev-games-api.buffingchi.com"
       - key: ENVIRONMENT
@@ -133,6 +151,9 @@ services:
         value: cloudflare
       # Render Postgres `bc-arcade-db` (dev only).
       - key: DATABASE_URL
+        sync: false
+      # Optional (#3302): the privileged role Alembic migrates as; unset → DATABASE_URL.
+      - key: MIGRATION_DATABASE_URL
         sync: false
       - key: SENTRY_DSN
         sync: false
@@ -154,6 +175,9 @@ services:
       # - key: STREAK_LOOKBACK_DAYS          # 60
       # - key: APPLE_REPLAY_WINDOW_HOURS     # 48
       # - key: DB_PING_TIMEOUT_SECONDS       # 5.0
+      # - key: DB_STATEMENT_TIMEOUT_SECONDS  # 5.0
+      # - key: DB_COMMAND_TIMEOUT_SECONDS    # 10.0
+      # - key: DB_POOL_TIMEOUT_SECONDS       # 10.0
 
   # --- Expo Web static frontend (dev environment) ---
   - type: web

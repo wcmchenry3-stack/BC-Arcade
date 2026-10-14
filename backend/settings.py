@@ -44,9 +44,12 @@ not affect them: ``ENTITLEMENT_TOKEN_TTL_HOURS`` (``entitlements.service``),
 ``STALE_GAME_AFTER_HOURS`` (``games.sweep``), ``MAX_RESULT_BYTES`` (``games.sessions``),
 ``STREAK_LOOKBACK_DAYS`` (``daily_challenge.streak``), ``APPLE_REPLAY_WINDOW_HOURS``
 (``purchases.apple_notifications``, via ``purchases._common``) and
-``DB_PING_TIMEOUT_SECONDS`` (``routes.health``).
+``DB_PING_TIMEOUT_SECONDS`` (``routes.health``). The three Postgres query bounds
+(#3302) — ``DB_STATEMENT_TIMEOUT_SECONDS``, ``DB_COMMAND_TIMEOUT_SECONDS`` and
+``DB_POOL_TIMEOUT_SECONDS`` — come from ``db.base._settings`` with ``DATABASE_URL``,
+and ``MIGRATION_DATABASE_URL`` is read only by ``alembic/env.py``.
 
-Secrets (``ADMIN_API_TOKEN``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
+Secrets (``ADMIN_API_TOKEN``, ``RATE_LIMIT_STORAGE_URL``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
 ``GOOGLE_PLAY_SERVICE_ACCOUNT_JSON``) are ``SecretStr``, so a
 ``repr()`` or log of ``Settings`` shows ``**********``; call ``.get_secret_value()``
 where the value is used.
@@ -56,7 +59,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 # CORS origins when ALLOWED_ORIGINS is unset or empty: the local Expo dev servers.
@@ -100,6 +103,16 @@ class Settings(BaseSettings):
     # Raw value; ``database_url`` strips it and treats empty as unset. db.base adds
     # the async driver, alembic/env.py strips it.
     database_url_raw: str = Field(default="", alias="DATABASE_URL")
+    # Optional Redis-compatible store (``redis://`` / ``rediss://``) for the rate
+    # limiter's counters (#3301). Unset or blank → in-memory counters. A SecretStr
+    # because the URL can carry a password; ``rate_limit_storage_url`` unwraps it.
+    rate_limit_storage_url_raw: SecretStr = Field(
+        default=SecretStr(""), alias="RATE_LIMIT_STORAGE_URL"
+    )
+    # Alembic's own URL (#3302): a role that may change the schema, while DATABASE_URL
+    # names the app's DML-only role. Unset or blank → Alembic uses DATABASE_URL, as
+    # before. Only ``alembic/env.py`` reads it; the app never does.
+    migration_database_url_raw: str = Field(default="", alias="MIGRATION_DATABASE_URL")
     # Raw strings, parsed where they are used, so a bad value fails exactly as it
     # did: daily_word.puzzle int()s DAILY_WORD_SALT when imported (an empty or
     # non-integer value raises ValueError), and daily_challenge.definitions.parse_salt
@@ -167,6 +180,21 @@ class Settings(BaseSettings):
     db_ping_timeout_seconds: float = Field(
         default=5.0, alias="DB_PING_TIMEOUT_SECONDS", gt=0, le=60
     )
+    # Postgres-only query bounds (#3302), read by db.base when the engine is built.
+    # The server cancels a statement past DB_STATEMENT_TIMEOUT_SECONDS
+    # (``statement_timeout``); asyncpg gives up on a reply after
+    # DB_COMMAND_TIMEOUT_SECONDS (a stalled pooler or network), so it must be the longer
+    # of the two; a request waits at most DB_POOL_TIMEOUT_SECONDS for a free connection.
+    # At least 1 ms: Postgres reads statement_timeout = 0 as "no limit".
+    db_statement_timeout_seconds: float = Field(
+        default=5.0, alias="DB_STATEMENT_TIMEOUT_SECONDS", ge=0.001, le=300
+    )
+    db_command_timeout_seconds: float = Field(
+        default=10.0, alias="DB_COMMAND_TIMEOUT_SECONDS", gt=0, le=600
+    )
+    db_pool_timeout_seconds: float = Field(
+        default=10.0, alias="DB_POOL_TIMEOUT_SECONDS", gt=0, le=120
+    )
 
     @field_validator(
         "apple_bundle_id",
@@ -209,6 +237,16 @@ class Settings(BaseSettings):
             )
         return value
 
+    @model_validator(mode="after")
+    def _command_timeout_outlasts_statement_timeout(self) -> Settings:
+        # The server's cancel (a clean SQLSTATE 57014) must come first; asyncpg's own
+        # timeout is the backstop for a connection that stops answering.
+        if self.db_command_timeout_seconds <= self.db_statement_timeout_seconds:
+            raise ValueError(
+                "DB_COMMAND_TIMEOUT_SECONDS must be greater than DB_STATEMENT_TIMEOUT_SECONDS"
+            )
+        return self
+
     @classmethod
     def isolated(cls, **values: Any) -> Settings:
         """Build ``Settings`` from the keywords alone, ignoring ``os.environ``.
@@ -237,6 +275,16 @@ class Settings(BaseSettings):
     def database_url(self) -> str | None:
         """DATABASE_URL stripped, or ``None`` when it is unset, empty or blank."""
         return self.database_url_raw.strip() or None
+
+    @property
+    def rate_limit_storage_url(self) -> str | None:
+        """RATE_LIMIT_STORAGE_URL stripped, or ``None`` when unset, empty or blank."""
+        return self.rate_limit_storage_url_raw.get_secret_value().strip() or None
+
+    @property
+    def migration_database_url(self) -> str | None:
+        """MIGRATION_DATABASE_URL stripped, falling back to ``database_url`` when blank."""
+        return self.migration_database_url_raw.strip() or self.database_url
 
     @property
     def entitlement_dev_override(self) -> bool:
