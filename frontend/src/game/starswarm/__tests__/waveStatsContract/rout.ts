@@ -1,24 +1,42 @@
 /**
- * Wave-stats contract rows: `rout`. Empty until #3249 adds the
- * rout counters (triggered, when, grunts, caught, escaped).
- *
- * `pending` lists today's registry values and fields one by one — never derived from the
- * registries — so a value added later is neither covered nor pending and the contract test fails.
- * #3249 replaces each pending entry with a row that proves it is counted. See ./contract.ts.
+ * Wave-stats contract rows: `rout` (#3249). See ./contract.ts.
  */
+import { bombedSnapshot, caughtAndEscapedSnapshot } from "../helpers/carrierRoutScenarios";
 import { field, type SectionContract } from "./contract";
 
 export const contract: SectionContract<"rout"> = {
   section: "rout",
-  pending: {
-    stories: ["#3249"],
-    covers: [
-      field("rout", "triggered"),
-      field("rout", "atMs"),
-      field("rout", "grunts"),
-      field("rout", "caught"),
-      field("rout", "escaped"),
-    ],
-  },
-  rows: [],
+  pending: null,
+  rows: [
+    {
+      id: "triggered, atMs and grunts record the rout; caught and escaped split the grunts",
+      covers: [
+        field("rout", "triggered"),
+        field("rout", "atMs"),
+        field("rout", "grunts"),
+        field("rout", "caught"),
+        field("rout", "escaped"),
+      ],
+      scenario: () => caughtAndEscapedSnapshot().snapshot,
+      expect: (snap) => {
+        const r = snap.rout;
+        expect(r.triggered).toBe(true);
+        expect(r.atMs).toBeGreaterThan(0);
+        expect(r.atMs).toBeLessThanOrEqual(snap.pacing.durationMs);
+        expect(r.grunts).toBeGreaterThan(1);
+        expect(r.caught).toBe(1); // shot
+        expect(r.escaped).toBe(r.grunts - 1); // off the top
+        expect(r.caught + r.escaped).toBeLessThanOrEqual(r.grunts);
+      },
+    },
+    {
+      id: "a Smart Bomb catches every fleeing grunt",
+      covers: [field("rout", "caught")],
+      scenario: () => bombedSnapshot().snapshot,
+      expect: (snap) => {
+        expect(snap.rout.caught).toBe(snap.rout.grunts);
+        expect(snap.rout.escaped).toBe(0);
+      },
+    },
+  ],
 };

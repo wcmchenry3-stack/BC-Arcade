@@ -35,7 +35,7 @@ import { rng } from "./rng";
 import { STAGE_RANK, carrierStageIn, carrierStageOf, mapKeep, type TickCtx } from "./roster";
 import { bumpRun } from "./stats";
 import { BUDDY_SHOTS_DRAWN, COMBAT_SPAWNED, DODGE } from "./waveCounters";
-import { bumpWave, markWaveDev, type WaveStats } from "./waveStats";
+import { bumpWave, markRouted, markStageReached, markWaveDev, type WaveStats } from "./waveStats";
 import {
   BEAM_CHARGE_MS,
   BEAM_WIGGLE_AMPLITUDE,
@@ -255,6 +255,13 @@ export function divertShotToBuddy(
   return b;
 }
 
+// #3249: hoisted per-wave counter paths (no allocation on the hot path)
+const GRUNTS_LAUNCHED = ["carrier", "gruntsLaunched"] as const;
+const BEAMS_FIRED = ["carrier", "beamsFired"] as const;
+const ATTACK_RUNS = ["carrier", "attackRuns"] as const;
+const ROUT_GRUNTS = ["rout", "grunts"] as const;
+const ROUT_ESCAPED = ["rout", "escaped"] as const;
+
 /** What `launchReinforcements` hands back: the roster (with any launches appended) and the counters. */
 interface ReinforceResult {
   enemies: readonly Enemy[];
@@ -388,11 +395,18 @@ interface FireWork {
   /** Enemy shots in flight at Buddy (the pressure cap, BUDDY_MAX_INCOMING). */
   buddyIncoming: number;
   buddyShotsDrawn: number;
-  /** #3247: the wave's stats (the Carrier's flak mirrors into its dodge table). */
+  /** #3249: Carrier beams released this tick. */
+  beamsFired: number;
+  /** The wave's stats, carried through the fire (#3247: the Carrier's flak mirrors into its dodge table). */
   waveStats: WaveStats;
 }
 
-function openFireWork(state: StarSwarmState, weaponsFree: boolean, cap: number): FireWork {
+function openFireWork(
+  state: StarSwarmState,
+  weaponsFree: boolean,
+  cap: number,
+  waveStats: WaveStats
+): FireWork {
   let live = 0;
   let buddyIncoming = 0;
   for (const b of state.enemyBullets) {
@@ -408,7 +422,8 @@ function openFireWork(state: StarSwarmState, weaponsFree: boolean, cap: number):
     weaponsFree,
     buddyIncoming,
     buddyShotsDrawn: 0,
-    waveStats: state.waveStats,
+    beamsFired: 0,
+    waveStats,
   };
 }
 
@@ -507,6 +522,7 @@ function fireShipShots(
   // #2843: a released beam is its own entity from here on
   if (result.beam && fw.weaponsFree) {
     (fw.carrierBeams ??= [...state.carrierBeams]).push(result.beam);
+    fw.beamsFired++;
   }
 }
 
@@ -549,6 +565,7 @@ export function tickEnemies(
   // Latched for the wave, and re-applied every tick so a reinforcement still swooping in when it
   // happens runs too, the moment it lands.
   let routed = state.routed;
+  let waveStats = state.waveStats;
   if (
     !routed &&
     !state.routDisabled &&
@@ -557,14 +574,19 @@ export function tickEnemies(
     ctx.alive.nonGrunts === 0
   ) {
     routed = true;
+    waveStats = markRouted(waveStats, waveStats.pacing.durationMs); // #3249
   }
+  let routGrunts = 0; // #3249: grunts set fleeing this tick (a late reinforcement counts when it lands)
   const roster = routed
-    ? state.enemies.map((e) =>
-        e.isAlive && e.tier === "Grunt" && e.phase !== "SwoopIn" && e.phase !== "Fleeing"
-          ? startFleeing(e, state.canvasW, state.difficulty)
-          : e
-      )
+    ? state.enemies.map((e) => {
+        if (e.isAlive && e.tier === "Grunt" && e.phase !== "SwoopIn" && e.phase !== "Fleeing") {
+          routGrunts++;
+          return startFleeing(e, state.canvasW, state.difficulty);
+        }
+        return e;
+      })
     : state.enemies;
+  waveStats = bumpWave(waveStats, ROUT_GRUNTS, routGrunts);
 
   // #926 Dive AI: pick up to diveCap(wave) formation enemies to send diving
   const diveIndices = new Set<number>();
@@ -589,12 +611,16 @@ export function tickEnemies(
   // is the roster's whenever the roster is the tick's own; recomputed otherwise all the same)
   const stage = roster === state.enemies ? carrierStageOf(ctx) : carrierStageIn(roster);
   // #2963: the first alive Carrier — a rout maps grunts only, so its index is the roster's too
+  if (stage !== null && state.phase === "Playing") {
+    waveStats = markStageReached(waveStats, stage, waveStats.pacing.durationMs); // #3249
+  }
   const carrierNow = ctx.alive.carrierIdx >= 0 ? roster[ctx.alive.carrierIdx] : undefined;
-  const fw = openFireWork(state, enemyWeaponsFree, bulletCap(state.wave, _ps));
+  const fw = openFireWork(state, enemyWeaponsFree, bulletCap(state.wave, _ps), waveStats);
   const carrierCtx = buildCarrierCtx(state, ctx, stage, carrierNow, fw.buddyIncoming, tuning);
   // (sim prototype, off by default: the exposed Carrier slides its station toward Buddy)
   const tracking = tuning.CARRIER_TRACK_BUDDY_SPEED > 0 && stage !== null && stage !== "protected";
   let routEscaped = 0; // #2489: fleeing grunts that reached the edge this tick
+  let attackRuns = 0; // #3249: Carrier attack runs that left station this tick
   let enemies: readonly Enemy[] = roster.map((enemy, idx) => {
     const result = tickSingleEnemy(
       enemy,
@@ -613,6 +639,8 @@ export function tickEnemies(
     );
     let e = result.enemy;
     if (enemy.isAlive && enemy.phase === "Fleeing" && !e.isAlive) routEscaped++; // #2489
+    if (e.tier === "Carrier" && e.phase === "AttackRun" && enemy.phase !== "AttackRun")
+      attackRuns++; // #3249
     if (tracking && e.isAlive && e.tier === "Carrier" && e.phase === "Formation") {
       e = trackBuddy(e, state, dtMs, tuning.CARRIER_TRACK_BUDDY_SPEED);
     }
@@ -624,12 +652,18 @@ export function tickEnemies(
   const reinforced = launchReinforcements(state, enemies, stage, ctx, dtMs, tuning);
   enemies = reinforced.enemies;
   let runStats = reinforced.runStats;
+  waveStats = fw.waveStats; // the fire's bumps (#3247: Carrier flak)
+  waveStats = bumpWave(waveStats, GRUNTS_LAUNCHED, reinforced.launched); // #3249
+  waveStats = bumpWave(waveStats, COMBAT_SPAWNED.Grunt, reinforced.launched); // #3248
 
-  if (routEscaped > 0) runStats = bumpRun(runStats, { routEscaped });
+  if (routEscaped > 0) {
+    runStats = bumpRun(runStats, { routEscaped });
+    waveStats = bumpWave(waveStats, ROUT_ESCAPED, routEscaped); // #3249
+  }
+  waveStats = bumpWave(waveStats, BEAMS_FIRED, fw.beamsFired);
+  waveStats = bumpWave(waveStats, ATTACK_RUNS, attackRuns);
   if (fw.buddyShotsDrawn > 0) runStats = bumpRun(runStats, { buddyShotsDrawn: fw.buddyShotsDrawn }); // #2845
-  // #3248: shots drawn by Buddy, and reinforcements (Grunts) entering the wave
-  let waveStats = bumpWave(fw.waveStats, BUDDY_SHOTS_DRAWN, fw.buddyShotsDrawn);
-  waveStats = bumpWave(waveStats, COMBAT_SPAWNED.Grunt, reinforced.launched);
+  waveStats = bumpWave(waveStats, BUDDY_SHOTS_DRAWN, fw.buddyShotsDrawn); // #3248
 
   enemies = applyStragglerRule(state, enemies, routed); // #1031
 
@@ -657,8 +691,8 @@ export function tickEnemies(
     // #2843: only in combat does the Carrier act on (and so "consume") a stage change
     carrierStage: state.phase === "Playing" ? stage : state.carrierStage,
     runStats,
-    routed,
     waveStats,
+    routed,
   };
 }
 

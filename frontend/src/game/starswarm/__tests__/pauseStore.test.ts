@@ -26,7 +26,7 @@ import {
 } from "../pauseStore";
 import { SAVE_FINGERPRINT, fitsSaveShape, restoreSavedState } from "../saveShape";
 import { loadoutOf } from "../engine/waveStats";
-import { countSpawned } from "../engine/waveCounters";
+import { countShipsSpawned } from "../engine/waveCounters";
 import { tickCollisions } from "../engine/collisions";
 import type { StarSwarmState } from "../types";
 
@@ -339,7 +339,7 @@ describe("per-wave stats in a save (#3245)", () => {
     if (!restored) throw new Error("the older save wasn't restored");
     // #3248: fresh stats are seeded with the saved roster as the wave's spawns
     expect(restored.waveStats).toEqual(
-      countSpawned(emptyWaveStats({ lives: 2, guns: 2, hull: 1 }), s.enemies)
+      countShipsSpawned(emptyWaveStats({ lives: 2, guns: 2, hull: 1 }), s.enemies)
     );
     expect(restored.lastClosedWave).toBeNull();
     expect(restored.score).toBe(1234);
@@ -413,7 +413,7 @@ describe("per-wave stats in a save (#3245)", () => {
       const restored = restoreSavedState({ ...s, waveStats: spoil(ws) });
       // #3248: fresh stats are seeded with the saved roster as the wave's spawns
       expect(restored.waveStats).toEqual(
-        countSpawned(emptyWaveStats(loadoutOf(s.player)), s.enemies)
+        countShipsSpawned(emptyWaveStats(loadoutOf(s.player)), s.enemies)
       );
     });
 

@@ -76,8 +76,16 @@ import { playerVolley, tickPowerUps } from "./powerups";
 import { rng, seedRng } from "./rng";
 import { carrierStageIn, isLeaderTier, tickCtx } from "./roster";
 import { emptyRunStats, emptyTierStats } from "./stats";
-import { SHOTS_FIRED, countSpawned, withDeathCause } from "./waveCounters";
-import { bumpWave, closeWave, emptyWaveStats, loadoutOf, markWaveDev } from "./waveStats";
+import { SHOTS_FIRED, countShipsSpawned, withDeathCause } from "./waveCounters";
+import {
+  bumpWave,
+  closeWave,
+  countPickups,
+  emptyWaveStats,
+  loadoutOf,
+  markWaveDev,
+} from "./waveStats";
+import { NO_OVERFLOW, collectClosedWave } from "./closedWaves";
 import {
   BONUS_LIFE_INVINCIBLE_MS,
   BONUS_LIFE_SLOW_MO_DURATION,
@@ -263,8 +271,11 @@ function buildWaveState(
     enemyFireDisabled: false,
     missionCompleteTimer: 0,
     scoreLedger: emptyScoreLedger(), // #2837: startNextWave carries the run's ledger over
-    waveStats: countSpawned(emptyWaveStats(loadoutOf(wavePlayer)), enemies), // #3245, #3248: the roster
+    waveStats: countShipsSpawned(emptyWaveStats(loadoutOf(wavePlayer)), enemies), // #3245, #3248: the roster
     lastClosedWave: null, // #3245: startNextWave sets the wave it just closed
+    closedWaves: [], // #3251: startNextWave carries the run's closed waves over
+    closedWavesOverflow: NO_OVERFLOW, // #3251
+    closedWavesBytes: 0, // #3251
   };
 }
 
@@ -313,7 +324,12 @@ export function tick(
   s = checkPhaseTransitions(s, tuning);
   // #3245: the run ended on this wave. Only the tick's final phase counts — tickBonusLives can
   // revert a same-tick GameOver — and GameOver is terminal, so this closes the wave exactly once.
-  if (s.phase === "GameOver") s = { ...s, lastClosedWave: closeWave(s, "died") };
+  if (s.phase === "GameOver") {
+    // #3246: pickups still falling when the run ends are the wave's leftovers
+    s = { ...s, waveStats: countPickups(s.waveStats, "leftover", s.powerUps) };
+    const died = closeWave(s, "died");
+    s = collectClosedWave({ ...s, lastClosedWave: died }, died); // #3251
+  }
   return s;
 }
 
@@ -466,7 +482,11 @@ function checkPhaseTransitions(state: StarSwarmState, tuning: Tuning): StarSwarm
 
 function startNextWave(state: StarSwarmState, tuning: Tuning): StarSwarmState {
   // #3245: the wave closes before the next one is built; the new wave opens fresh stats
-  const closed = closeWave(state, "cleared");
+  // #3246: buildWaveState drops whatever pickups are left, so they are this wave's leftovers
+  const closed = closeWave(
+    { ...state, waveStats: countPickups(state.waveStats, "leftover", state.powerUps) },
+    "cleared"
+  );
   const next = buildWaveState(
     state.canvasW,
     state.canvasH,
@@ -482,10 +502,17 @@ function startNextWave(state: StarSwarmState, tuning: Tuning): StarSwarmState {
   );
   // the cosmetic banner raised on the last kill finishes its own fade;
   // #2837: the ledger carries across waves
-  return {
-    ...next,
-    missionCompleteTimer: state.missionCompleteTimer,
-    scoreLedger: state.scoreLedger,
-    lastClosedWave: closed,
-  };
+  // #3251: the run's closed waves carry over, this one added
+  return collectClosedWave(
+    {
+      ...next,
+      missionCompleteTimer: state.missionCompleteTimer,
+      scoreLedger: state.scoreLedger,
+      lastClosedWave: closed,
+      closedWaves: state.closedWaves,
+      closedWavesOverflow: state.closedWavesOverflow,
+      closedWavesBytes: state.closedWavesBytes,
+    },
+    closed
+  );
 }

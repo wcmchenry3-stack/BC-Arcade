@@ -1,11 +1,13 @@
 import React from "react";
-import { Text } from "react-native";
+import { StyleSheet, Text } from "react-native";
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import { AppHeader, APP_HEADER_HEIGHT } from "../AppHeader";
 import { isAppOverlayOpen, subscribeAppOverlay } from "../../../hooks/appOverlay";
 
+let mockLanguage = "en";
 jest.mock("react-i18next", () => ({
   useTranslation: () => ({
+    i18n: { language: mockLanguage },
     t: (key: string) => {
       const map: Record<string, string> = {
         "common:nav.back": "← Back",
@@ -71,6 +73,7 @@ jest.mock("@sentry/react-native", () => ({
 }));
 
 beforeEach(() => {
+  mockLanguage = "en";
   mockAddBreadcrumb.mockClear();
   mockCaptureMessage.mockClear();
 });
@@ -118,6 +121,58 @@ describe("AppHeader", () => {
     expect(screen.queryByLabelText("BC Arcade")).toBeNull();
     await fireEvent.press(button);
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  describe("icon-only back button (#3211)", () => {
+    it("renders the chevron icon and no visible Back text", async () => {
+      await render(<AppHeader title="Solitario" onBack={() => {}} />);
+      const icon = screen.getByTestId("nav-back-icon");
+      expect(icon.props.name).toBe("chevron-left");
+      // #3256: same colour as the title, for contrast.
+      expect(icon.props.color).toBe("#e8e8f0");
+      expect(screen.queryByText("← Back")).toBeNull();
+      expect(screen.queryByText("common:nav.back")).toBeNull();
+    });
+
+    it("keeps the button role, testID and default accessibility label", async () => {
+      await render(<AppHeader title="2048" onBack={() => {}} />);
+      const button = screen.getByTestId("nav-back");
+      expect(button.props.accessibilityRole).toBe("button");
+      expect(button.props.accessibilityLabel).toBe("Go back to home screen");
+    });
+
+    it("uses a custom backAccessibilityLabel", async () => {
+      await render(
+        <AppHeader title="Sort" onBack={() => {}} backAccessibilityLabel="Back to levels" />
+      );
+      expect(screen.getByRole("button", { name: "Back to levels" })).toBeTruthy();
+    });
+
+    it("is at least 44x44 with hitSlop 12", async () => {
+      await render(<AppHeader title="2048" onBack={() => {}} />);
+      const button = screen.getByTestId("nav-back");
+      const style = StyleSheet.flatten(
+        typeof button.props.style === "function"
+          ? button.props.style({ pressed: false })
+          : button.props.style
+      );
+      expect(style.width).toBeGreaterThanOrEqual(44);
+      expect(style.height).toBeGreaterThanOrEqual(44);
+      expect(button.props.hitSlop).toBe(12);
+    });
+
+    it("does not mirror the icon in LTR", async () => {
+      await render(<AppHeader title="2048" onBack={() => {}} />);
+      const style = StyleSheet.flatten(screen.getByTestId("nav-back-icon").props.style);
+      expect(style?.transform).toBeUndefined();
+    });
+
+    it("mirrors the icon in an RTL locale", async () => {
+      mockLanguage = "ar";
+      await render(<AppHeader title="2048" onBack={() => {}} />);
+      const style = StyleSheet.flatten(screen.getByTestId("nav-back-icon").props.style);
+      expect(style.transform).toEqual([{ scaleX: -1 }]);
+    });
   });
 
   it("exports APP_HEADER_HEIGHT as a positive number", () => {

@@ -670,7 +670,7 @@ export function rocksStrikeEnemies(
       struck.push(e.tier);
       if (newHp <= 0) {
         explosions.push(spawnExplosion(e.x, e.y));
-        if (e.tier === "Carrier") drops.push(makePickup("hull", e.x, e.y, canvasH)); // #2488
+        if (e.tier === "Carrier") drops.push(makePickup("hull", e.x, e.y, canvasH, "carrier")); // #2488
         (destroyed ??= []).push(e.tier);
         outEnemies[ei] = { ...e, hp: 0, isAlive: false, hitFlashTimer: 0 };
       } else {
@@ -720,7 +720,7 @@ export function settleRocks(
     // Only a rock broken by shots pays out — one that shattered on a hull (the player's or the
     // Carrier's field) would otherwise hand the ship it just hit a free upgrade (#2540 review).
     if (a.kind === "large" && !a.shattered && rng() < SALVAGE_DROP_CHANCE) {
-      drops.push(makePickup("salvage", a.x, a.y, canvasH));
+      drops.push(makePickup("salvage", a.x, a.y, canvasH, "rock"));
     }
     if (a.kind === "large" && !a.shattered) {
       for (const side of [-1, 1] as const) {

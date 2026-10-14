@@ -138,7 +138,7 @@ export function countBuddyHits(
 }
 
 /** Ships that entered the wave: `combat.spawned[tier]` for each. */
-export function countSpawned(ws: WaveStats, enemies: readonly Enemy[]): WaveStats {
+export function countShipsSpawned(ws: WaveStats, enemies: readonly Enemy[]): WaveStats {
   let out = ws;
   for (const e of enemies) out = bumpWave(out, COMBAT_SPAWNED[e.tier], 1);
   return out;

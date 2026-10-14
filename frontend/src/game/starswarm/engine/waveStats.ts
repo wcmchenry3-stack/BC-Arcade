@@ -5,21 +5,29 @@
  * (`emptyWaveStats`, seeded with the ship's loadout), the engine bumps its counters as things
  * happen (`bumpWave`, copy-on-write), and the wave closes exactly once — `"cleared"` when its
  * extraction completes, `"died"` when the run ends on it — into a frozen v1 snapshot
- * (`closeWave`), kept on `state.lastClosedWave`. The screen picks a close up with
- * `waveJustClosed(prev, next)` and sends `toWirePayload(snapshot)` as the `wave_completed`
- * event (#3251).
+ * (`closeWave`), kept on `state.lastClosedWave` (`waveJustClosed(prev, next)` picks a close
+ * up) and appended, as `toWirePayload(snapshot)`, to `state.closedWaves`. The screen sends
+ * those as `wave_completed` events at game over (#3251, waveEvents.ts).
  *
  * Every keyed table is dense by construction: `emptyWaveStats` builds it from the registries
  * (`registries.ts`), so every key is present at 0 — a new registry value included, which is why
  * the contract test (not the compiler) is what forces it to get a real counter.
  * On the wire, zero counters and then-empty objects are left out (`toWirePayload`).
  *
- * Coverage: #3245 fills `pacing` (and `score`, derived from the ledger at close). The other
- * sections are in place and stay 0 until their counter stories (#3246–#3249) fill them.
+ * Coverage: every section is filled — #3245 `pacing` (and `score`, derived from the ledger at
+ * close), #3246 `powerUps`, #3247 `rocks`, #3248 `combat`/`damage`/`buddy` (their paths and
+ * paired bumps in `waveCounters.ts`), #3249 `carrier`/`rout`.
  * The schema is pinned on epic #3244 ("wave_completed v1 schema"); changing its shape is a `v`
  * bump. See docs/games/starswarm.md#per-wave-stats.
  */
-import type { DifficultyTier, GunsLevel, HullLevel, Player, StarSwarmState } from "../types";
+import type {
+  DifficultyTier,
+  GunsLevel,
+  HullLevel,
+  Player,
+  PowerUp,
+  StarSwarmState,
+} from "../types";
 import { waveScorePoints } from "../scoreLedger";
 import {
   ASTEROID_KINDS,
@@ -48,7 +56,6 @@ import {
 export const WAVE_STATS_VERSION = 1;
 /**
  * Serialized size cap for one `toWirePayload` (the backend drops anything larger).
- * @internal No production caller until the screen sends the event (#3251).
  */
 export const WAVE_STATS_MAX_BYTES = 4096;
 
@@ -345,6 +352,49 @@ export function bumpWaveIn(
   return { ...state, waveStats: bumpWave(state.waveStats, path, n) };
 }
 
+/** #3246: a pickup's source; a pickup restored from a save that predates the field is a kill drop. */
+const pickupSource = (p: PowerUp): PowerUpSource => p.source ?? "kill";
+
+/** #3246: one more `spawned[type][source]` for each of `pickups`. */
+export function countSpawned(stats: WaveStats, pickups: readonly PowerUp[]): WaveStats {
+  let out = stats;
+  for (const p of pickups) {
+    out = bumpWave(out, ["powerUps", "spawned", p.type, pickupSource(p)] as WaveCounterPath, 1);
+  }
+  return out;
+}
+
+/** #3246: what became of `pickups` — each is one more `collected` / `missed` / `leftover[type]`. */
+export function countPickups(
+  stats: WaveStats,
+  fate: "collected" | "missed" | "leftover",
+  pickups: readonly PowerUp[]
+): WaveStats {
+  let out = stats;
+  for (const p of pickups) out = bumpWave(out, ["powerUps", fate, p.type] as WaveCounterPath, 1);
+  return out;
+}
+
+/**
+ * #3249: records the ms into the wave a Carrier stage was first reached; a no-op (returns
+ * `stats` itself) once it has one. `bumpWave` only adds to numbers, so the nullable
+ * `carrier.stageReachedMs` gets this typed setter instead (copy-on-write, like `bumpWave`).
+ */
+export function markStageReached(stats: WaveStats, stage: CarrierStage, atMs: number): WaveStats {
+  if (stats.carrier.stageReachedMs[stage] !== null) return stats;
+  const stageReachedMs = { ...stats.carrier.stageReachedMs, [stage]: atMs };
+  return { ...stats, carrier: { ...stats.carrier, stageReachedMs } };
+}
+
+/**
+ * #3249: latches the wave's rout (`triggered`, `atMs` = ms into the wave); a no-op once latched.
+ * The boolean and nullable fields aren't counters, so `bumpWave` can't set them.
+ */
+export function markRouted(stats: WaveStats, atMs: number): WaveStats {
+  if (stats.rout.triggered) return stats;
+  return { ...stats, rout: { ...stats.rout, triggered: true, atMs } };
+}
+
 /** Flags the current wave as touched by the dev panel (a no-op once flagged). */
 export function markWaveDev(state: StarSwarmState): StarSwarmState {
   return state.waveStats.dev ? state : { ...state, waveStats: { ...state.waveStats, dev: true } };
@@ -354,8 +404,13 @@ export function markWaveDev(state: StarSwarmState): StarSwarmState {
 // Closing
 // ---------------------------------------------------------------------------
 
-/** A deep copy, frozen all the way down. */
+/**
+ * A deep copy, frozen all the way down, with every number rounded to an integer: the engine's dt
+ * is fractional in the real frame loop, and the backend takes `StrictInt` (a fractional ms would
+ * drop the whole event). Null and booleans pass through.
+ */
 function frozenCopy<T>(v: T): T {
+  if (typeof v === "number") return Math.round(v) as T;
   if (v === null || typeof v !== "object") return v;
   const out: Record<string, unknown> = {};
   for (const [k, x] of Object.entries(v)) out[k] = frozenCopy(x);
@@ -379,7 +434,7 @@ export function closeWave(state: StarSwarmState, outcome: WaveOutcome): WaveStat
     outcome,
     dev: ws.dev,
     pacing: {
-      durationMs: Math.round(ws.pacing.durationMs),
+      durationMs: ws.pacing.durationMs,
       start: ws.pacing.start,
       end: loadoutOf(state.player),
       bonusLives: ws.pacing.bonusLives,
@@ -399,7 +454,7 @@ export function closeWave(state: StarSwarmState, outcome: WaveOutcome): WaveStat
  * #3245: the snapshot of a wave that closed between `prev` and `next`, else null — compare
  * `routJustStarted` / `upgradeEvents`. Fires once per close: `lastClosedWave` changes identity
  * only when a wave closes.
- * @internal No production caller until the screen sends the event (#3251).
+ * @internal No production caller: the screen sends `closedWaves` at game over (#3251).
  */
 export function waveJustClosed(
   prev: StarSwarmState,
@@ -434,7 +489,6 @@ function sparseSection<T>(section: T): Sparse<T> {
  * as 0). `v`, `wave`, `difficulty`, `outcome`, `dev`, `pacing`, `score`, `rout` and
  * `damage.deathCause` are always sent whole. `carrier.stageReachedMs` is a time, not a counter:
  * a stage reached at 0 ms is sent, one never reached (null) is not.
- * @internal No production caller until the screen sends the event (#3251).
  */
 export function toWirePayload(snap: WaveStatsSnapshot): WaveStatsWire {
   const { stageReachedMs, ...carrierCounts } = snap.carrier;

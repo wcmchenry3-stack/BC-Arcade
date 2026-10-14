@@ -102,6 +102,8 @@ interface DevStatsSnapshot {
   readonly score: number;
   readonly rows: readonly TierDodgeRow[];
   readonly run: RunStats;
+  /** #3246: this wave's power-up lifecycle counters. */
+  readonly powerUps: StarSwarmState["waveStats"]["powerUps"];
 }
 
 function snapshotStats(s: StarSwarmState): DevStatsSnapshot {
@@ -111,6 +113,7 @@ function snapshotStats(s: StarSwarmState): DevStatsSnapshot {
     score: s.score,
     rows: dodgeRateByTier(s),
     run: s.runStats,
+    powerUps: s.waveStats.powerUps,
   };
 }
 
@@ -124,6 +127,17 @@ function tierTableLine(row: TierDodgeRow): string {
   return (
     `${row.tier.padEnd(7)} ${pct(row.base)} ${pct(row.effective)} ` +
     `${col(row.rolls, 5)} ${col(row.dodged, 5)} ${col(rate, 5)} ${col(row.struck, 6)} ${col(row.flak, 4)}`
+  );
+}
+
+const POWERUP_TABLE_HEADER = `${"type".padEnd(9)} spawn coll miss left exp   ms`;
+
+/** #3246: one row of the current wave's power-up table (spawned summed over sources). */
+function powerUpTableLine(p: DevStatsSnapshot["powerUps"], type: PowerUpType): string {
+  const spawned = Object.values(p.spawned[type]).reduce((a, b) => a + b, 0);
+  return (
+    `${type.padEnd(9)} ${col(spawned, 5)} ${col(p.collected[type], 4)} ${col(p.missed[type], 4)} ` +
+    `${col(p.leftover[type], 4)} ${col(p.expired[type], 3)} ${col(Math.round(p.activeMs[type]), 5)}`
   );
 }
 
@@ -380,6 +394,15 @@ function RunStatsSection({ open, canvasRef }: Pick<StarSwarmDevPanelProps, "open
           {stats.rows.map((row) => (
             <Text key={row.tier} style={styles.mono}>
               {tierTableLine(row)}
+            </Text>
+          ))}
+          <Text
+            style={styles.mono}
+          >{`power-ups this wave · shield absorbed ${stats.powerUps.shieldAbsorbed}`}</Text>
+          <Text style={styles.mono}>{POWERUP_TABLE_HEADER}</Text>
+          {POWER_UPS.map((type) => (
+            <Text key={type} style={styles.mono}>
+              {powerUpTableLine(stats.powerUps, type)}
             </Text>
           ))}
           {RUN_STAT_LINES.map(([label, key]) => (

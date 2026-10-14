@@ -75,10 +75,8 @@ const HIDDEN_IN_STORE = [
  * Known, tracked overflows (and confirmed false positives), keyed by screen,
  * locale, overflow kind, element path and exact element text so nothing else is masked.
  *
- * The #3211 entries are real bugs, not false positives: the game header title
- * is squeezed by the fixed-width back button, pills and menu button. REMOVE
- * THEM WHEN #3211 LANDS. An entry that no longer overflows fails the test
- * (stale entry), so this list can only shrink.
+ * An entry that no longer overflows fails the test (stale entry), so this list
+ * can only shrink.
  */
 const ALLOWLIST: {
   screen: string;
@@ -97,54 +95,6 @@ const ALLOWLIST: {
     text: "Palabra Diaria",
     reason:
       "false positive on native: StatTileGrid uses adjustsFontSizeToFit, which shrinks the value on iOS/Android but RN-web ignores it",
-  },
-  {
-    screen: "solitaire",
-    locale: "es",
-    kind: "clip",
-    pathIncludes: "h1 > div > h1",
-    text: "Solitario",
-    reason: "header title squeezed by fixed-width header items — #3211",
-  },
-  {
-    screen: "solitaire",
-    locale: "fr-CA",
-    kind: "clip",
-    pathIncludes: "h1 > div > h1",
-    text: "Solitaire",
-    reason: "header title squeezed by fixed-width header items — #3211",
-  },
-  {
-    screen: "freecell",
-    locale: "es",
-    kind: "clip",
-    pathIncludes: "h1 > div > h1",
-    text: "FreeCell",
-    reason: "header title squeezed by fixed-width header items — #3211",
-  },
-  {
-    screen: "freecell",
-    locale: "fr-CA",
-    kind: "clip",
-    pathIncludes: "h1 > div > h1",
-    text: "FreeCell",
-    reason: "header title squeezed by fixed-width header items — #3211",
-  },
-  {
-    screen: "sort",
-    locale: "es",
-    kind: "clip",
-    pathIncludes: "h1 > div > h1",
-    text: "Puzle de Colores",
-    reason: "header title squeezed by fixed-width header items — #3211",
-  },
-  {
-    screen: "sort",
-    locale: "fr-CA",
-    kind: "clip",
-    pathIncludes: "h1 > div > h1",
-    text: "Tri des couleurs",
-    reason: "header title squeezed by fixed-width header items — #3211",
   },
 ];
 

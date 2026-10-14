@@ -3,9 +3,11 @@ import type {
   ASTEROID_KINDS,
   CARRIER_STAGES,
   ENEMY_TIERS,
+  POWERUP_SOURCES,
   POWERUP_TYPES,
 } from "./engine/registries";
-import type { WaveStats, WaveStatsSnapshot } from "./engine/waveStats";
+import type { WaveStats, WaveStatsSnapshot, WaveStatsWire } from "./engine/waveStats";
+import type { ClosedWavesOverflow } from "./engine/closedWaves";
 
 /**
  * Enemy tiers, lightest to heaviest: Grunt → Elite → Guardian → Carrier. #2843: the escort tier
@@ -26,6 +28,8 @@ export type CarrierStage = (typeof CARRIER_STAGES)[number];
 /** Pickups. lightning/shield are 5 s buffs, buddy/bomb are instant (#980–#1035); salvage and hull
  * are #2488 in-run upgrades: salvage raises the gun level, hull adds plating. */
 export type PowerUpType = (typeof POWERUP_TYPES)[number]; // #3245: see engine/registries.ts
+/** #3246: where a pickup came from (see engine/registries.ts). */
+export type PowerUpSource = (typeof POWERUP_SOURCES)[number];
 
 /** #2488: in-run upgrade ladders. Guns: single → twin → twin + spread. Hull: extra hits absorbed. */
 export type GunsLevel = 1 | 2 | 3;
@@ -323,6 +327,11 @@ export interface PowerUp {
   readonly height: number;
   /** ms until auto-despawn (if not collected). */
   readonly despawnTimer: number;
+  /**
+   * #3246: what spawned it, for the per-wave stats. Absent only on a pickup from a save made
+   * before the field existed (read as "kill"; see saveShape.ts).
+   */
+  readonly source?: PowerUpSource;
 }
 
 /**
@@ -498,6 +507,16 @@ export interface StarSwarmState {
   readonly waveStats: WaveStats;
   /** #3245: the most recently closed wave's frozen snapshot; null until a wave closes. */
   readonly lastClosedWave: WaveStatsSnapshot | null;
+  /**
+   * #3251: every wave this run has closed, oldest first, in wire form (`toWirePayload`). Carries
+   * across waves, reset per run, saved with a paused run; the screen sends them as
+   * `wave_completed` events at game over.
+   */
+  readonly closedWaves: readonly WaveStatsWire[];
+  /** #3251: the closed waves left off `closedWaves` by its caps (see engine/closedWaves.ts). */
+  readonly closedWavesOverflow: ClosedWavesOverflow;
+  /** #3251: the serialized size of `closedWaves`, kept as a running total. */
+  readonly closedWavesBytes: number;
 }
 
 /** Input snapshot consumed by each `tick` call. */
