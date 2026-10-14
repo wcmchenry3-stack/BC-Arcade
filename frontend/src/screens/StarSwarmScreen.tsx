@@ -8,7 +8,9 @@
  *   2. Pause and resume (#2645) — leaving the app or the screen pauses and saves the run with
  *      its engine counters (`pauseStore`); a saved run restores before the game mounts.
  *   3. Instrumentation — `useGameSync("starswarm")`, one session per run; a restored run
- *      resumes the killed process's session (#2654); the run is the leaderboard entry (#2626).
+ *      resumes the killed process's session (#2654); the run is the leaderboard entry (#2626);
+ *      at game over the run's closed waves go out as `wave_completed` events, ahead of
+ *      `game_ended` (#3251).
  *   4. Result + leaderboard (#2516, #2633) — the shared GameResultModal, ranked on the tier
  *      board via `useGameLeaderboard`.
  *   5. Audio and screen-reader cues (#2484–#2490) — `useStarSwarmAudio` and spoken events.
@@ -27,6 +29,7 @@ import {
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
+import * as Sentry from "@sentry/react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useTheme } from "../theme/ThemeContext";
 import { STARSWARM_HULL_BLUE } from "../theme/theme.starswarm";
@@ -52,6 +55,7 @@ import type {
   StarSwarmState,
 } from "../game/starswarm/types";
 import { reportRunStats } from "../game/starswarm/telemetry";
+import { planWaveEvents } from "../game/starswarm/waveEvents";
 import { summarizeScoreLedger } from "../game/starswarm/scoreLedger";
 import { isPreLaunchApiBuild } from "../game/_shared/envFlags";
 import { registerStarSwarmTestHooks } from "../game/starswarm/testHooks";
@@ -177,6 +181,7 @@ function StarSwarmGame() {
     restart: syncRestart,
     markStarted: syncMarkStarted,
     complete: syncComplete,
+    enqueue: syncEnqueue,
     resume: syncResume,
     getGameId: syncGetGameId,
     reportBug: syncReportBug,
@@ -252,9 +257,34 @@ function StarSwarmGame() {
   // game-over state when it calls back, so getState() sees the final tick's counts too.
   // Re-armed on every new game: startRun (difficulty picker, dev panel) bumps resetTick.
   const runStatsReportedRef = useRef(false);
+  // #3251: the run's closed waves are queued once per run, the same way.
+  const wavesSentRef = useRef(false);
   useEffect(() => {
     runStatsReportedRef.current = false;
+    wavesSentRef.current = false;
   }, [resetTick]);
+
+  /**
+   * #3251: queues the run's closed waves (the engine collected them, the paused-run save kept
+   * them) as `wave_completed` events, oldest first, within the payload caps. Nothing is sent
+   * during play. Waves left out are reported once, by counts and sizes.
+   */
+  const sendClosedWaves = useCallback(() => {
+    if (wavesSentRef.current) return;
+    const state = canvasRef.current?.getState();
+    if (!state) return;
+    wavesSentRef.current = true;
+    // `?? []`: never trust the shape of what the canvas hands back for an I/O path
+    const { events, report } = planWaveEvents(state.closedWaves ?? []);
+    for (const event of events) syncEnqueue(event);
+    if (report) {
+      Sentry.captureMessage("starswarm: wave_completed events over the payload caps not sent", {
+        level: "warning",
+        tags: { subsystem: "starswarm.waveStats" },
+        extra: { ...report },
+      });
+    }
+  }, [syncEnqueue]);
 
   const handleGameOver = useCallback(
     (finalScore: number, wave: number) => {
@@ -286,6 +316,8 @@ function StarSwarmGame() {
       const result = ledger
         ? { ...payload, score_breakdown: summarizeScoreLedger(ledger, finalScore) }
         : payload;
+      // #3251: ahead of syncComplete, so the waves' events come before `game_ended`
+      sendClosedWaves();
       const gameId = syncComplete({ outcome, finalScore, result }, payload);
       // The card reads the run's rank on its tier's board (shown when it is the player's best).
       if (gameId) {
@@ -306,7 +338,7 @@ function StarSwarmGame() {
         }
       }
     },
-    [playGameOver, difficulty, syncComplete, syncReportBug, lookupRank]
+    [playGameOver, difficulty, sendClosedWaves, syncComplete, syncReportBug, lookupRank]
   );
 
   // #2490: a boss wave has no on-screen text beyond the banner — play the sting and speak it.

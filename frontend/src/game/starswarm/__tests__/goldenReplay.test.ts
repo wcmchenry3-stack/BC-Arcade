@@ -134,7 +134,13 @@ function canonical(v: unknown): unknown {
 function sha(state: StarSwarmState): string {
   // #3245: the per-wave stats are observations of play, not play state; they stay out of the
   // hash so the recorded gameplay stays comparable (#3252 records them in the fixture).
-  const { waveStats: _waveStats, lastClosedWave: _lastClosedWave, ...played } = state;
+  // #3251: so does the run's list of closed waves.
+  const {
+    waveStats: _waveStats,
+    lastClosedWave: _lastClosedWave,
+    closedWaves: _closedWaves,
+    ...played
+  } = state;
   return createHash("sha256")
     .update(JSON.stringify(canonical(played)))
     .digest("hex");

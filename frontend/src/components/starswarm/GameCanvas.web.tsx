@@ -34,6 +34,7 @@ import {
   PLAYER_W,
 } from "../../game/starswarm/engine";
 import { WAVE_COUNTDOWN_MS } from "../../game/starswarm/engine";
+import { devRevert } from "../../game/starswarm/waveEvents";
 import {
   isUpgradePickup,
   upgradePickupOps,
@@ -1099,11 +1100,12 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(
               });
               let applied = next;
               if (infiniteLivesRef.current && next.player.lives < prevLivesRef.current) {
-                applied = {
+                // #3251: the wave's stats (and a "died" close the revert undoes) are flagged dev
+                applied = devRevert(prev, {
                   ...next,
                   phase: next.phase === "GameOver" ? prevPhaseRef.current : next.phase,
                   player: { ...next.player, lives: prevLivesRef.current, invincibleTimer: 2000 },
-                };
+                });
               }
               stateRef.current = applied;
               if (applied.score !== prevScoreRef.current) {

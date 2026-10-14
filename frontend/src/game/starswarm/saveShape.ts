@@ -31,7 +31,14 @@ import type {
   Vec2,
 } from "./types";
 import type { EarlierScore, ScoreLedger, WaveScore } from "./scoreLedger";
-import { emptyWaveStats, isWaveStats, loadoutOf } from "./engine/waveStats";
+import {
+  WAVE_STATS_VERSION,
+  emptyWaveStats,
+  isWaveStats,
+  loadoutOf,
+  type WaveStatsWire,
+} from "./engine/waveStats";
+import { DIFFICULTY_TIERS } from "./engine/tuning";
 
 type KeySpec<T> = {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -238,10 +245,11 @@ const EARLIER_SCORE: KeySpec<EarlierScore> = {
  * #3245: StarSwarmState fields added after saves existed — observations, not play state. Not in
  * the fingerprint (adding one keeps every existing save) and optional in a save; see the header.
  */
-type AddedStateKey = "waveStats" | "lastClosedWave";
+type AddedStateKey = "waveStats" | "lastClosedWave" | "closedWaves";
 const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
   waveStats: "optional",
   lastClosedWave: "optional",
+  closedWaves: "optional", // #3251
 };
 
 /** A saved state as read back: the ADDED_STATE fields may be missing or from another build. */
@@ -387,12 +395,69 @@ export function fitsSaveShape(v: unknown): v is SavedStarSwarmState {
   );
 }
 
+// #3251: the keys of a closed wave's wire form (WaveStatsWire), all always present
+const WIRE: KeySpec<WaveStatsWire> = {
+  v: "required",
+  wave: "required",
+  difficulty: "required",
+  outcome: "required",
+  dev: "required",
+  pacing: "required",
+  score: "required",
+  powerUps: "required",
+  rocks: "required",
+  buddy: "required",
+  carrier: "required",
+  rout: "required",
+  combat: "required",
+  damage: "required",
+};
+const WIRE_SECTIONS = ["pacing", "score", "powerUps", "rocks", "buddy", "carrier", "combat"];
+
+/** Every leaf under `v` is a non-negative finite number (or, where `extra` allows it, more). */
+function countsOnly(v: unknown, extra: (leaf: unknown) => boolean = () => false): boolean {
+  if (isObject(v)) return Object.values(v).every((x) => countsOnly(x, extra));
+  return (typeof v === "number" && Number.isFinite(v) && v >= 0) || extra(v);
+}
+
+/**
+ * A saved closed wave looks like this build's wire form: its keys, its version, a known
+ * difficulty and outcome, and only counts in its sections. The backend validates the rest.
+ */
+function fitsWire(v: unknown): v is WaveStatsWire {
+  if (!fits(v, WIRE as AnySpec)) return false;
+  const { rout, damage } = v;
+  return (
+    v.v === WAVE_STATS_VERSION &&
+    Number.isInteger(v.wave) &&
+    (v.wave as number) >= 1 &&
+    (DIFFICULTY_TIERS as readonly unknown[]).includes(v.difficulty) &&
+    (v.outcome === "cleared" || v.outcome === "died") &&
+    typeof v.dev === "boolean" &&
+    WIRE_SECTIONS.every((k) => isObject(v[k]) && countsOnly(v[k])) &&
+    isObject(rout) &&
+    countsOnly(rout, (x) => x === null || typeof x === "boolean") &&
+    isObject(damage) &&
+    countsOnly(damage, (x) => x === null || typeof x === "string")
+  );
+}
+
+/** #3251: a saved `closedWaves` — closed waves in wave order (a dev revert can repeat one). */
+function isClosedWaves(v: unknown): v is readonly WaveStatsWire[] {
+  return (
+    allFit(v, fitsWire) &&
+    (v as WaveStatsWire[]).every((w, i, all) => i === 0 || w.wave >= all[i - 1]!.wave)
+  );
+}
+
 /**
  * #3245: the engine state for a save that passed `fitsSaveShape`. An older save (or one from a
  * build whose registries differ) gets fresh wave stats, seeded from the restored ship; the
  * wave's stats then count from the restore on. `lastClosedWave` always restores as null,
  * whatever the save holds: it only marks a close for `waveJustClosed`, and a restored run has
  * nothing to compare it with, so a saved one is ignored rather than validated.
+ * #3251: `closedWaves` restores as saved when it fits, else as `[]` (an older save, or one that
+ * doesn't fit): the waves closed before the save are then not sent, and nothing invalid is.
  */
 export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
   return {
@@ -401,5 +466,6 @@ export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
       ? saved.waveStats
       : emptyWaveStats(loadoutOf(saved.player)),
     lastClosedWave: null,
+    closedWaves: isClosedWaves(saved.closedWaves) ? saved.closedWaves : [],
   };
 }

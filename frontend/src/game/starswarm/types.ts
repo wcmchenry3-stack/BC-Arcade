@@ -5,7 +5,7 @@ import type {
   ENEMY_TIERS,
   POWERUP_TYPES,
 } from "./engine/registries";
-import type { WaveStats, WaveStatsSnapshot } from "./engine/waveStats";
+import type { WaveStats, WaveStatsSnapshot, WaveStatsWire } from "./engine/waveStats";
 
 /**
  * Enemy tiers, lightest to heaviest: Grunt → Elite → Guardian → Carrier. #2843: the escort tier
@@ -498,6 +498,12 @@ export interface StarSwarmState {
   readonly waveStats: WaveStats;
   /** #3245: the most recently closed wave's frozen snapshot; null until a wave closes. */
   readonly lastClosedWave: WaveStatsSnapshot | null;
+  /**
+   * #3251: every wave this run has closed, oldest first, in wire form (`toWirePayload`). Carries
+   * across waves, reset per run, saved with a paused run; the screen sends them as
+   * `wave_completed` events at game over.
+   */
+  readonly closedWaves: readonly WaveStatsWire[];
 }
 
 /** Input snapshot consumed by each `tick` call. */

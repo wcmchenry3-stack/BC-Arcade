@@ -5,9 +5,9 @@
  * (`emptyWaveStats`, seeded with the ship's loadout), the engine bumps its counters as things
  * happen (`bumpWave`, copy-on-write), and the wave closes exactly once — `"cleared"` when its
  * extraction completes, `"died"` when the run ends on it — into a frozen v1 snapshot
- * (`closeWave`), kept on `state.lastClosedWave`. The screen picks a close up with
- * `waveJustClosed(prev, next)` and sends `toWirePayload(snapshot)` as the `wave_completed`
- * event (#3251).
+ * (`closeWave`), kept on `state.lastClosedWave` (`waveJustClosed(prev, next)` picks a close
+ * up) and appended, as `toWirePayload(snapshot)`, to `state.closedWaves`. The screen sends
+ * those as `wave_completed` events at game over (#3251, waveEvents.ts).
  *
  * Every keyed table is dense by construction: `emptyWaveStats` builds it from the registries
  * (`registries.ts`), so every key is present at 0 — a new registry value included, which is why
@@ -48,7 +48,6 @@ import {
 export const WAVE_STATS_VERSION = 1;
 /**
  * Serialized size cap for one `toWirePayload` (the backend drops anything larger).
- * @internal No production caller until the screen sends the event (#3251).
  */
 export const WAVE_STATS_MAX_BYTES = 4096;
 
@@ -399,7 +398,7 @@ export function closeWave(state: StarSwarmState, outcome: WaveOutcome): WaveStat
  * #3245: the snapshot of a wave that closed between `prev` and `next`, else null — compare
  * `routJustStarted` / `upgradeEvents`. Fires once per close: `lastClosedWave` changes identity
  * only when a wave closes.
- * @internal No production caller until the screen sends the event (#3251).
+ * @internal No production caller: the screen sends `closedWaves` at game over (#3251).
  */
 export function waveJustClosed(
   prev: StarSwarmState,
@@ -434,7 +433,6 @@ function sparseSection<T>(section: T): Sparse<T> {
  * as 0). `v`, `wave`, `difficulty`, `outcome`, `dev`, `pacing`, `score`, `rout` and
  * `damage.deathCause` are always sent whole. `carrier.stageReachedMs` is a time, not a counter:
  * a stage reached at 0 ms is sent, one never reached (null) is not.
- * @internal No production caller until the screen sends the event (#3251).
  */
 export function toWirePayload(snap: WaveStatsSnapshot): WaveStatsWire {
   const { stageReachedMs, ...carrierCounts } = snap.carrier;

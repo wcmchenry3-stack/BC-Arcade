@@ -76,7 +76,14 @@ import { playerVolley, tickPowerUps } from "./powerups";
 import { rng, seedRng } from "./rng";
 import { carrierStageIn, isLeaderTier, tickCtx } from "./roster";
 import { emptyRunStats, emptyTierStats } from "./stats";
-import { bumpWave, closeWave, emptyWaveStats, loadoutOf, markWaveDev } from "./waveStats";
+import {
+  bumpWave,
+  closeWave,
+  emptyWaveStats,
+  loadoutOf,
+  markWaveDev,
+  toWirePayload,
+} from "./waveStats";
 import {
   BONUS_LIFE_INVINCIBLE_MS,
   BONUS_LIFE_SLOW_MO_DURATION,
@@ -264,6 +271,7 @@ function buildWaveState(
     scoreLedger: emptyScoreLedger(), // #2837: startNextWave carries the run's ledger over
     waveStats: emptyWaveStats(loadoutOf(wavePlayer)), // #3245
     lastClosedWave: null, // #3245: startNextWave sets the wave it just closed
+    closedWaves: [], // #3251: startNextWave carries the run's closed waves over
   };
 }
 
@@ -312,7 +320,10 @@ export function tick(
   s = checkPhaseTransitions(s, tuning);
   // #3245: the run ended on this wave. Only the tick's final phase counts — tickBonusLives can
   // revert a same-tick GameOver — and GameOver is terminal, so this closes the wave exactly once.
-  if (s.phase === "GameOver") s = { ...s, lastClosedWave: closeWave(s, "died") };
+  if (s.phase === "GameOver") {
+    const died = closeWave(s, "died");
+    s = { ...s, lastClosedWave: died, closedWaves: [...s.closedWaves, toWirePayload(died)] };
+  }
   return s;
 }
 
@@ -478,5 +489,6 @@ function startNextWave(state: StarSwarmState, tuning: Tuning): StarSwarmState {
     missionCompleteTimer: state.missionCompleteTimer,
     scoreLedger: state.scoreLedger,
     lastClosedWave: closed,
+    closedWaves: [...state.closedWaves, toWirePayload(closed)], // #3251
   };
 }
