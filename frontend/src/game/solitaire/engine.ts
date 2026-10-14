@@ -88,7 +88,7 @@ const E2E_SEED_INDEX = 0;
  * via this module's own shuffle) is documented in
  * e2e/maestro/flows/solitaire/drag.yaml.
  */
-function pickSeed(drawMode: DrawMode): number {
+function pickSeed(drawMode: DrawMode): DealPick {
   const bank = drawMode === 1 ? SEED_BANK.draw1 : SEED_BANK.draw3;
   if (bank.length === 0) {
     throw new Error(
@@ -101,7 +101,43 @@ function pickSeed(drawMode: DrawMode): number {
   if (seed === undefined) {
     throw new Error("Seed bank indexing failed");
   }
-  return seed;
+  return { seed, index: idx };
+}
+
+/** A seed drawn for a deal, and its index in the draw mode's seed bank. */
+export interface DealPick {
+  readonly seed: number;
+  readonly index: number;
+}
+
+/**
+ * Draw the seed for the next deal (#3281) so the caller can record it, then
+ * pass `pick.seed` to `dealGame`. Same draw (and test-build rule) as a bare
+ * `dealGame(drawMode)`.
+ */
+export function drawDealSeed(drawMode: DrawMode): DealPick {
+  return pickSeed(drawMode);
+}
+
+/**
+ * Bumped whenever a deal or shuffle change would make a recorded seed deal a
+ * different opening (#3281). Sent in `game_started` so a recorded seed is only
+ * replayed by the engine version that dealt it.
+ */
+export const ENGINE_VERSION = 1;
+
+/**
+ * The deal fields of the `game_started` event (#3281): enough to rebuild the
+ * opening with `dealGame(draw_mode, seed)`. A few dozen bytes. `pick` is
+ * absent for a game restored from a save, which does not store its seed.
+ */
+export function dealEventData(drawMode: DrawMode, pick?: DealPick): Record<string, unknown> {
+  const data: Record<string, unknown> = { draw_mode: drawMode, engine_version: ENGINE_VERSION };
+  if (pick) {
+    data.seed = pick.seed;
+    data.seed_index = pick.index;
+  }
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,7 +162,7 @@ export function createDeck(): Card[] {
  * stock face-down.
  */
 export function dealGame(drawMode: DrawMode, explicitSeed?: number): SolitaireState {
-  const seed = explicitSeed ?? pickSeed(drawMode);
+  const seed = explicitSeed ?? pickSeed(drawMode).seed;
   const deck = fisherYates(createDeck(), createSeededRng(seed));
 
   const tableau: Card[][] = [];
