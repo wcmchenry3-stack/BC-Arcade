@@ -56,9 +56,11 @@
  * the session started) and, where it applies, `actor`; a chunked event's
  * parts add `part` (0-based) and `parts`.
  *
- * Out of scope here: holding uploads while a game is played (#3275), priority
- * from the event registry (#3276, #3278) and the server dial (#3279 — it plugs
- * into `isRecordingEnabled`, read once per session).
+ * Uploads: SyncWorker holds a foreground session's gameplay events until it
+ * completes, the app is backgrounded, or GAMEPLAY_HOLD_MAX_MS passes (#3275,
+ * syncWorker.ts). Out of scope here: priority from the event registry
+ * (#3276, #3278) and the server dial (#3279 — it plugs into
+ * `isRecordingEnabled`, read once per session).
  */
 
 import * as Sentry from "@sentry/react-native";

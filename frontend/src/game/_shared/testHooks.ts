@@ -22,7 +22,7 @@
  *   __gameEventClient_startGame(gameType, meta)  → string (game id)
  *   __gameEventClient_completeGame(id, summary)  → void
  *
- *   __syncWorker_flush()                         → FlushResult
+ *   __syncWorker_flush()                         → FlushResult (releases held rows, #3275)
  *   __syncWorker_getBackoffUntil()               → number (epoch ms, sync)
  *
  *   __logConfig_override(partial)                → void (sync)
@@ -195,7 +195,10 @@ export function registerLogstoreTestHooks(): () => void {
   g.__eventStore_sweepTTL = (now?: number) => eventStore.sweepTTL(now);
   g.__eventStore_setSyntheticDelay = (ms: number) => eventStore.setSyntheticDelay(ms);
 
-  g.__syncWorker_flush = () => syncWorker.flush();
+  // "Drain now": the e2e specs exercise queue mechanics on open games, so the
+  // hook releases what an open session holds (#3275) like a trip to the
+  // background does.
+  g.__syncWorker_flush = () => syncWorker.flush(Date.now(), { releaseHeld: true });
   g.__syncWorker_getBackoffUntil = () => syncWorker.getBackoffUntil();
 
   g.__logConfig_override = (partial) => {

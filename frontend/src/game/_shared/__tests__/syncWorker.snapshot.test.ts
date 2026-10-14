@@ -17,6 +17,13 @@ import { SyncWorker } from "../syncWorker";
 import { logConfig, resetLogConfig } from "../eventQueueConfig";
 import { MockSyncApi, asSyncApi, err, flushMicro, ok } from "./helpers/syncWorkerFixtures";
 
+/**
+ * These tests are about how due rows are uploaded. A session open in the
+ * foreground holds its gameplay rows (#3275, syncWorker.hold.test.ts), so the
+ * ones that flush an open game do it as the trip to the background does.
+ */
+const RELEASE = { releaseHeld: true } as const;
+
 const getItem = AsyncStorage.getItem as jest.Mock;
 
 describe("SyncWorker — one snapshot per pass (#2959)", () => {
@@ -128,12 +135,12 @@ describe("SyncWorker — one snapshot per pass (#2959)", () => {
         return res;
       });
 
-      await worker.flush();
+      await worker.flush(undefined, RELEASE);
       expect(paths()).toEqual(["POST /games", `POST /games/${gid}/events`]);
       expect(games.get(gid)?.completed).toBe(true);
 
       await flushMicro();
-      await worker.flush();
+      await worker.flush(undefined, RELEASE);
       expect(paths()).toEqual([
         "POST /games",
         `POST /games/${gid}/events`,
@@ -199,14 +206,14 @@ describe("SyncWorker — one snapshot per pass (#2959)", () => {
       // Pass 1: created, then its events are refused with a 500 → parked.
       api.onNext((p) => p === "/games", ok());
       api.onNext((p) => p.endsWith("/events"), err(500));
-      await worker.flush(0);
+      await worker.flush(0, RELEASE);
       const parked = await store.peek(100, { includeFuture: true });
       expect(parked.every((r) => r.next_retry_at !== null && r.next_retry_at > 0)).toBe(true);
       // The server loses the game; step 1 will recreate it...
       await games.update(gid, { startedSynced: false });
       // ...and refuses it for good.
       api.onNext((p) => p === "/games", err(400));
-      const pass2 = await worker.flush(1_500);
+      const pass2 = await worker.flush(1_500, RELEASE);
       expect(pass2.deadLettered).toBe(1);
       expect(games.get(gid)).toBeUndefined();
       const rows = await store.peek(100, { includeDeadLettered: true, includeFuture: true });
@@ -215,7 +222,7 @@ describe("SyncWorker — one snapshot per pass (#2959)", () => {
 
       // Long after the backoff: nothing is posted as an orphan.
       api.calls = [];
-      const pass3 = await worker.flush(1_000_000);
+      const pass3 = await worker.flush(1_000_000, RELEASE);
       expect(pass3.deadLettered).toBe(0);
       expect(paths()).toEqual([]);
     });
@@ -280,7 +287,7 @@ describe("SyncWorker — one snapshot per pass (#2959)", () => {
         client.reportBug("warn", "src", "msg");
         await flushMicro();
 
-        const result = await worker.flush(0);
+        const result = await worker.flush(0, RELEASE);
 
         expect(spy).toHaveBeenCalledTimes(1);
         expect(result.backoffMs).toBe(backoffMs);

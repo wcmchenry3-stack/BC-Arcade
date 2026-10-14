@@ -54,14 +54,16 @@ describe("SyncWorker — AppState gating (#2959)", () => {
     jest.useRealTimers();
   });
 
-  it("backgrounded: the interval is torn down and no flush runs", () => {
+  it("backgrounded: one releasing flush (#3275), then the interval is torn down and no flush runs", () => {
     worker.start();
     jest.advanceTimersByTime(logConfig.SYNC_INTERVAL_MS + 1);
     expect(flushSpy).toHaveBeenCalledTimes(1);
 
     appStateListener()("background");
+    expect(flushSpy).toHaveBeenCalledTimes(2);
+    expect(flushSpy).toHaveBeenLastCalledWith(expect.any(Number), { releaseHeld: true });
     jest.advanceTimersByTime(logConfig.SYNC_INTERVAL_MS * 3);
-    expect(flushSpy).toHaveBeenCalledTimes(1);
+    expect(flushSpy).toHaveBeenCalledTimes(2);
   });
 
   it("foregrounded: one immediate flush, then the interval again", () => {
@@ -81,6 +83,39 @@ describe("SyncWorker — AppState gating (#2959)", () => {
     expect(flushSpy).toHaveBeenCalledTimes(2);
     jest.advanceTimersByTime(logConfig.SYNC_INTERVAL_MS + 1);
     expect(flushSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("one releasing flush per trip to the background (#3275): inactive → background → background", () => {
+    worker.start();
+    const listener = appStateListener();
+    listener("inactive"); // iOS passes through inactive on the way out
+    expect(flushSpy).not.toHaveBeenCalled();
+    listener("background");
+    listener("background");
+    expect(flushSpy).toHaveBeenCalledTimes(1);
+    expect(flushSpy).toHaveBeenLastCalledWith(expect.any(Number), { releaseHeld: true });
+
+    listener("active"); // the return flush, not a releasing one
+    expect(flushSpy).toHaveBeenCalledTimes(2);
+    expect(flushSpy).toHaveBeenLastCalledWith();
+    listener("background"); // a new trip: a new releasing flush
+    expect(flushSpy).toHaveBeenCalledTimes(3);
+    expect(flushSpy).toHaveBeenLastCalledWith(expect.any(Number), { releaseHeld: true });
+  });
+
+  it("reports a failed background flush to Sentry (#3275)", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Sentry = require("@sentry/react-native");
+    const boom = new Error("boom");
+    flushSpy.mockRejectedValue(boom);
+    worker.start();
+    appStateListener()("background");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      boom,
+      expect.objectContaining({ tags: { subsystem: "syncWorker", op: "appState.background" } })
+    );
   });
 
   it("`inactive` (an iOS interruption) pauses like `background`", () => {
