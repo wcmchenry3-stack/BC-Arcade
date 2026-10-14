@@ -77,6 +77,9 @@ async function readOrCreateSessionId(): Promise<string> {
       message: "legacy session id re-keyed",
     });
   }
+  // If this store keeps failing after a purge, every later call purges again
+  // (dropping rows enqueued in between). Accepted: the storage failure that
+  // causes it (e.g. a full disk) fails those enqueues too.
   await AsyncStorage.setItem(SESSION_KEY, sid);
   return sid;
 }
