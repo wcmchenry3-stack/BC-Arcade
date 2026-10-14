@@ -30,6 +30,9 @@ EVENTS_NAMESPACE = 3298_01
 BUG_LOGS_NAMESPACE = 3298_02
 
 LOCK_TIMEOUT_SQL = "SET LOCAL lock_timeout = '2s'"
+# SET LOCAL lasts the whole transaction; reset it once the advisory lock is held so a
+# later row-lock wait in the same transaction is not cut short (it would answer 500).
+LOCK_TIMEOUT_RESET_SQL = "SET LOCAL lock_timeout = DEFAULT"
 _LOCK_NOT_AVAILABLE = "55P03"
 
 
@@ -56,6 +59,7 @@ async def lock_session(db: AsyncSession, session_id: str, namespace: int) -> Non
         if _sqlstate(exc) == _LOCK_NOT_AVAILABLE:
             raise SessionBusy(session_id) from exc
         raise
+    await db.execute(text(LOCK_TIMEOUT_RESET_SQL))
 
 
 def _sqlstate(exc: DBAPIError) -> str | None:

@@ -30,11 +30,13 @@ async def test_lock_is_a_no_op_on_sqlite() -> None:
 async def test_lock_issues_a_transaction_scoped_advisory_lock_on_postgres() -> None:
     db = _FakeSession("postgresql")
     await locks.lock_session(db, "sid", locks.BUG_LOGS_NAMESPACE)  # type: ignore[arg-type]
-    timeout, lock = db.executed
-    assert "SET LOCAL lock_timeout" in timeout[0]
+    timeout, lock, reset = db.executed
+    assert timeout[0] == locks.LOCK_TIMEOUT_SQL
     sql, params = lock
     assert "pg_advisory_xact_lock" in sql and "hashtextextended" in sql
     assert params == {"sid": "sid", "ns": locks.BUG_LOGS_NAMESPACE}
+    # the 2 s bound covers the advisory lock only, not later row locks
+    assert reset[0] == locks.LOCK_TIMEOUT_RESET_SQL
 
 
 def test_event_and_bug_log_paths_use_different_namespaces() -> None:
