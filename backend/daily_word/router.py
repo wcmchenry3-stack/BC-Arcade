@@ -45,12 +45,15 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
+from daily_word.normalize import fold
 from daily_word.progress import MAX_GUESSES, GuessOutcome, may_see_answer, record_guess
 from daily_word.puzzle import (
     StalePuzzleId,
     get_answer,
+    get_display,
     get_today_meta,
     get_upcoming,
+    is_supported,
     is_valid_guess,
     parse_puzzle_id,
 )
@@ -65,8 +68,6 @@ from rate_limits import (
     DAILY_WORD_UPCOMING_IP_RATE_LIMIT,
 )
 from session import get_session_id
-
-_SUPPORTED_LANGS = frozenset(("en", "hi"))
 
 # Degrade-open reporting is throttled (#2542 review). The expected trigger is a
 # Postgres blip, and the IP backstop still allows 1200 guesses/hour/IP, so an
@@ -169,9 +170,24 @@ def _cluster_len(word: str, lang: str) -> int:
     return len(_grapheme_clusters(word)) if lang == "hi" else len(word)
 
 
+def _normalize_guess(raw: str, lang: str) -> str:
+    """Hindi: lowercase (a no-op) + NFC. fr/es: accent-fold (ñ stays distinct in es)."""
+    if lang == "hi":
+        return unicodedata.normalize("NFC", raw.lower())
+    if lang in ("fr", "es"):
+        return fold(raw, lang)
+    return raw.lower()
+
+
+# A 5-tile Hindi guess is the longest legitimate input (a few code points per
+# grapheme cluster). The cap bounds the per-character fold/NFC work even when a
+# chunked body skips MaxBodySizeMiddleware's Content-Length check (#3242 review).
+GUESS_MAX_CHARS = 64
+
+
 class GuessRequest(BaseModel):
-    puzzle_id: str
-    guess: str
+    puzzle_id: str = Field(max_length=64)
+    guess: str = Field(max_length=GUESS_MAX_CHARS)
     tz_offset_minutes: int = Field(0, ge=-840, le=840)
 
 
@@ -182,7 +198,7 @@ async def get_today(
     tz_offset_minutes: int = Query(0, ge=-840, le=840),
     lang: str = Query("en"),
 ) -> dict:
-    if lang not in _SUPPORTED_LANGS:
+    if not is_supported(lang):
         raise HTTPException(status_code=422, detail="unsupported_language")
     return get_today_meta(tz_offset_minutes, lang)
 
@@ -200,7 +216,7 @@ async def get_upcoming_route(
     ``puzzle.scramble_answer``): it stops casual spoilers only and is not a
     security control. Same ``lang`` / ``tz_offset_minutes`` rules as ``/today``.
     """
-    if lang not in _SUPPORTED_LANGS:
+    if not is_supported(lang):
         raise HTTPException(status_code=422, detail="unsupported_language")
     return get_upcoming(tz_offset_minutes, lang)
 
@@ -239,9 +255,7 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
 
     answer = get_answer(body.puzzle_id)
 
-    guess = body.guess.lower()  # no-op for Devanagari; NFC handles Hindi normalisation
-    if lang == "hi":
-        guess = unicodedata.normalize("NFC", guess)
+    guess = _normalize_guess(body.guess, lang)
 
     if _cluster_len(guess, lang) != _cluster_len(answer, lang):
         raise HTTPException(status_code=422, detail="wrong_guess_length")
@@ -300,6 +314,8 @@ async def post_guess(request: Request, response: Response, body: GuessRequest) -
         }
 
     result: dict = {"tiles": tiles}
+    if lang in ("fr", "es"):
+        result["display"] = get_display(guess, lang)  # the list's spelling, not the input
     if outcome is not None:
         result["guesses_used"] = outcome.guesses_used
         result["guesses_remaining"] = MAX_GUESSES - outcome.guesses_used
@@ -337,4 +353,6 @@ async def get_answer_route(
     earned = await may_see_answer(db, session_id=sid, puzzle_id=puzzle_id)
     if not earned:
         raise HTTPException(status_code=403, detail="guesses_remaining")
-    return {"answer": answer}
+    # fr/es: `answer` is the folded key and `display` the accented spelling;
+    # en/hi: both are the same word.
+    return {"answer": answer, "display": get_display(answer, parse_puzzle_id(puzzle_id)[1])}

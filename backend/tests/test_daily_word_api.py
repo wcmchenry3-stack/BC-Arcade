@@ -63,7 +63,7 @@ def test_get_today_hindi(client: TestClient) -> None:
 
 
 def test_get_today_unsupported_lang_returns_422(client: TestClient) -> None:
-    r = client.get("/daily-word/today?lang=fr")
+    r = client.get("/daily-word/today?lang=de")
     assert r.status_code == 422
     assert r.json()["detail"] == "unsupported_language"
 
@@ -201,7 +201,7 @@ def test_unversioned_english_puzzle_id_answer_is_stale(client: TestClient) -> No
 
 
 @pytest.mark.parametrize(
-    "bad", ["garbage", "2026-13-01:en:2", "2026-02-30:en:2", "2026-10-13:fr", "2026-10-13:en:2:x"]
+    "bad", ["garbage", "2026-13-01:en:2", "2026-02-30:en:2", "2026-10-13:de", "2026-10-13:en:2:x"]
 )
 def test_malformed_puzzle_id_is_invalid_on_guess_and_answer(client: TestClient, bad: str) -> None:
     r = client.get("/daily-word/answer", headers=_sid_headers(), params={"puzzle_id": bad})
@@ -882,6 +882,6 @@ def test_upcoming_rejects_out_of_range_offset(client: TestClient) -> None:
 
 
 def test_upcoming_unsupported_lang_returns_422(client: TestClient) -> None:
-    r = client.get("/daily-word/upcoming?lang=fr&tz_offset_minutes=0")
+    r = client.get("/daily-word/upcoming?lang=de&tz_offset_minutes=0")
     assert r.status_code == 422
     assert r.json()["detail"] == "unsupported_language"
