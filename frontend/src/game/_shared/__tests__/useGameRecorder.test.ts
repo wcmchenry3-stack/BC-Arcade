@@ -11,6 +11,8 @@ import { useGameRecorder } from "../useGameRecorder";
 /** Every gameEventClient call, in order: [method, gameId, detail]. */
 const mockCalls: [string, string, unknown][] = [];
 let mockNextId = 0;
+/** What gameEventClient.resumeGame returns: null resumes nothing. */
+let mockResumeId: string | null = null;
 
 jest.mock("../gameEventClient", () => ({
   gameEventClient: {
@@ -27,7 +29,7 @@ jest.mock("../gameEventClient", () => ({
     completeGame: (id: string, summary: { outcome: string }) =>
       mockCalls.push(["completeGame", id, summary.outcome]),
     discardGame: (id: string) => mockCalls.push(["discardGame", id, null]),
-    resumeGame: () => null,
+    resumeGame: () => mockResumeId,
     setProgressOutcome: () => undefined,
     reportBug: () => undefined,
   },
@@ -44,6 +46,7 @@ describe("useGameRecorder", () => {
   beforeEach(() => {
     mockCalls.length = 0;
     mockNextId = 0;
+    mockResumeId = null;
   });
 
   it("on_unit_close: saves a closed unit off the call, for the open session", async () => {
@@ -239,6 +242,54 @@ describe("useGameRecorder", () => {
     expect(savedUnits()).toEqual([
       ["g1", 5],
       ["g1", 1],
+    ]);
+  });
+
+  it("a successful resume with no game open keeps the units recorded before it, under the resumed id", async () => {
+    mockResumeId = "orphan";
+    const { result } = await renderHook(() => useGameRecorder("hearts"));
+    await act(() => {
+      result.current.beginUnit(7); // the game's own number, from its restored state
+      result.current.record("card_played");
+      result.current.closeUnit();
+    });
+    await idle(); // no game yet: refused, waiting
+    expect(savedUnits()).toEqual([]);
+    await act(() => {
+      expect(result.current.resume()).toBe(true);
+    });
+    await idle(); // resume() asks for a save of what waited
+    await act(() => {
+      result.current.record("card_played"); // still the game's numbering: unit 8
+      result.current.complete({ outcome: "completed" });
+    });
+    expect(savedUnits()).toEqual([
+      ["orphan", 7],
+      ["orphan", 8],
+    ]);
+  });
+
+  it("a resume over an open game saves that game's units and restarts recording for the resumed one", async () => {
+    const { result } = await renderHook(() =>
+      useGameRecorder("hearts", { policy: "on_session_end" })
+    );
+    await act(() => {
+      result.current.start();
+      result.current.markStarted();
+      result.current.beginUnit(2);
+      result.current.record("card_played");
+    });
+    mockResumeId = "orphan";
+    await act(() => {
+      expect(result.current.resume()).toBe(true);
+      // a resuming game passes its own unit number: the default would restart at 1
+      result.current.beginUnit(5);
+      result.current.record("card_played");
+      result.current.complete({ outcome: "completed" });
+    });
+    expect(savedUnits()).toEqual([
+      ["g1", 2],
+      ["orphan", 5],
     ]);
   });
 });

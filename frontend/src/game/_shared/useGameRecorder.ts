@@ -17,8 +17,12 @@
  *    what was recorded before `start()` is saved under the new game id, with
  *    its unit numbers and `t_ms`.
  *  - `resume` saves what is waiting first (the call may close the open game
- *    session), and restarts recording only if a session was resumed; a
- *    failed resume changes nothing.
+ *    session). A failed resume changes nothing. A successful one restarts
+ *    recording when it replaced an open game session; with none open, units
+ *    recorded before it are kept and saved under the resumed game. The
+ *    recorder cannot know the units the game saved before the app was killed,
+ *    so its default numbering (from 1) would repeat them: a game that resumes
+ *    passes its own unit number to `beginUnit(n)` (from its restored state).
  *  - `complete` / `close` — and the unmount — end the recorder session,
  *    saving what is still in memory before the session's `game_ended`.
  *  - A new `gameType` (or policy) ends the old recorder's session and uses a
@@ -89,14 +93,20 @@ export function useGameRecorder(
   const resume = useCallback(
     (match?: Record<string, unknown>): boolean => {
       // A resume that adopts a session closes the open one: save first.
+      const replacing = getGameId() !== null;
       recorder.flush();
       const resumed = syncResume(match);
-      // Recording restarts at the resume: units from 1, t_ms from now. A
-      // failed resume keeps the numbering and the clock.
-      if (resumed) recorder.startSession();
+      // A failed resume keeps the numbering and the clock. A successful one
+      // over an open game session restarts recording (t_ms from now); with no
+      // game session open, the recorder session in progress carries on and
+      // its waiting units are saved under the resumed game, as `start` does.
+      if (resumed) {
+        if (replacing || !recorder.inSession) recorder.startSession();
+        else recorder.requestSave();
+      }
       return resumed;
     },
-    [recorder, syncResume]
+    [recorder, getGameId, syncResume]
   );
 
   const complete = useCallback(
