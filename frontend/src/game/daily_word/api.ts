@@ -37,13 +37,13 @@ export interface GuessResponse {
    */
   readonly guesses_used?: number;
   readonly guesses_remaining?: number;
-  /** The list's accented spelling of the guess (fr/es only). Not used yet (#3241). */
+  /** The list's accented spelling of the guess (fr/es only): the submitted row shows it (#3241). */
   readonly display?: string;
 }
 
 export interface AnswerResponse {
   readonly answer: string;
-  /** Display form with accents (fr/es); equals `answer` for en/hi. Not used yet (#3241). */
+  /** Display form with accents (fr/es); equals `answer` for en/hi. The reveal shows it (#3241). */
   readonly display?: string;
 }
 

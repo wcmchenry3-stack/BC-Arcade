@@ -32,7 +32,8 @@ function isUpcomingPuzzle(v: unknown): v is UpcomingPuzzle {
     Number.isInteger(p.word_length) &&
     p.word_length > 0 &&
     typeof p.answer_blob === "string" &&
-    p.answer_blob !== ""
+    p.answer_blob !== "" &&
+    (p.display_blob === undefined || typeof p.display_blob === "string")
   );
 }
 
@@ -97,7 +98,8 @@ function utf8Decode(bytes: Uint8Array): string | null {
 }
 
 /**
- * The answer in `answer_blob`: base64-decode, XOR with SHA-256(puzzle_id)
+ * The text in a scrambled blob (`answer_blob`, and `display_blob` the same
+ * way): base64-decode, XOR with SHA-256(puzzle_id)
  * repeated, UTF-8 decode. Null if the blob is not decodable.
  */
 export function decodeAnswerBlob(puzzleId: string, blob: string): string | null {
@@ -130,6 +132,8 @@ export interface OfflinePuzzle {
   readonly puzzle_id: string;
   readonly word_length: number;
   readonly answer: string;
+  /** The answer's accented spelling, decoded from `display_blob` (fr/es, #3241). */
+  readonly display?: string;
 }
 
 /**
@@ -153,7 +157,29 @@ export async function findOfflinePuzzle(
   if (!entry) return "none";
   const answer = decodeAnswerBlob(entry.puzzle_id, entry.answer_blob);
   if (answer === null || Array.from(answer).length !== entry.word_length) return "none";
-  return { puzzle_id: entry.puzzle_id, word_length: entry.word_length, answer };
+  const display = decodedDisplay(entry);
+  return {
+    puzzle_id: entry.puzzle_id,
+    word_length: entry.word_length,
+    answer,
+    ...(display === null ? {} : { display }),
+  };
+}
+
+/**
+ * The accented spelling in an entry's `display_blob` (#3241), decoded like its
+ * answer. Null when there is none or it is not decodable.
+ */
+function decodedDisplay(entry: UpcomingPuzzle): string | null {
+  return entry.display_blob ? decodeAnswerBlob(entry.puzzle_id, entry.display_blob) : null;
+}
+
+/** The cached accented spelling for `puzzleId`, decoded, or null when there is none (#3241). */
+export async function offlineDisplayFor(puzzleId: string): Promise<string | null> {
+  const lang = puzzleId.split(":")[1] ?? "";
+  if (!OFFLINE_LANGUAGES.includes(lang)) return null;
+  const entry = (await loadUpcoming(lang)).find((p) => p.puzzle_id === puzzleId);
+  return entry ? decodedDisplay(entry) : null;
 }
 
 /** The cached answer for `puzzleId`, decoded, or null when it is not cached. */

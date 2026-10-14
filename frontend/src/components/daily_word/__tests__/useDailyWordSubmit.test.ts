@@ -206,6 +206,38 @@ describe("useDailyWordSubmit — final row loss", () => {
   });
 });
 
+describe("useDailyWordSubmit — offline loss reveal (#3241)", () => {
+  async function lostOnDevice(deviceDisplay?: () => Promise<string | null>) {
+    let board = initialState(PUZZLE, 5, "en");
+    for (const w of ["slate", "pious", "mound", "fight", "badge"]) {
+      board = applyServerResult(typed(board, w), tiles(w, "absent"));
+    }
+    board = typed(board, "crane");
+    const stateRef = { current: board as DailyWordState | null };
+    const handlers = {
+      ...makeHandlers(),
+      scoresOnDevice: () => true,
+      deviceAnswer: async () => "pious",
+      ...(deviceDisplay ? { deviceDisplay } : {}),
+    };
+    const hook = await renderHook(() => useDailyWordSubmit(stateRef, makeSync(), handlers));
+    await act(async () => hook.result.current.submit());
+    await act(async () => jest.advanceTimersByTime(FLIP_MS));
+    return handlers;
+  }
+
+  it("reveals the decoded display, not the folded answer", async () => {
+    const handlers = await lostOnDevice(async () => "pîous");
+    expect(handlers.setAnswer).toHaveBeenCalledWith("PÎOUS");
+    expect(dailyWordApi.getAnswer).not.toHaveBeenCalled();
+  });
+
+  it("reveals the answer when there is no display", async () => {
+    const handlers = await lostOnDevice(async () => null);
+    expect(handlers.setAnswer).toHaveBeenCalledWith("PIOUS");
+  });
+});
+
 describe("useDailyWordSubmit — leaving mid-guess", () => {
   function deferred<T>() {
     let resolve!: (v: T) => void;

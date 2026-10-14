@@ -32,7 +32,9 @@ import { useTranslation } from "react-i18next";
 import {
   applyServerResult,
   markComplete,
+  revealWord,
   sessionResult,
+  tilesWithDisplay,
   withServerGuessCount,
 } from "../../game/daily_word/engine";
 import type { DailyWordState } from "../../game/daily_word/types";
@@ -77,6 +79,8 @@ export interface DailyWordSubmitHandlers {
   scoresOnDevice?: (puzzleId: string) => boolean;
   /** The puzzle's answer when it was fetched ahead, else null (#3230). */
   deviceAnswer?: (puzzleId: string) => Promise<string | null>;
+  /** The accented spelling of the fetched-ahead answer, when it has one (#3241). */
+  deviceDisplay?: (puzzleId: string) => Promise<string | null>;
 }
 
 export interface DailyWordSubmit {
@@ -229,9 +233,13 @@ function applyAccepted(
   s: DailyWordState,
   result: GuessResponse,
   /** The answer when the guess was scored on the device (#3230): no fetch. */
-  knownAnswer?: string
+  knownAnswer?: string,
+  /** The answer's accented spelling, with `knownAnswer` (fr/es, #3241). */
+  knownDisplay?: string
 ): ReturnType<typeof setTimeout> {
-  const tileStates = result.tiles.map((tile) => ({ letter: tile.letter, status: tile.status }));
+  // fr/es (#3241): the row shows the list's accented spelling; the tiles keep
+  // the folded letters the colours and the keyboard are computed on.
+  const tileStates = tilesWithDisplay(result.tiles, result.display);
 
   // #2541 — keep the server's count on the state; `guessCount` reads it.
   const afterApply = withServerGuessCount(applyServerResult(s, tileStates), result.guesses_used);
@@ -266,11 +274,11 @@ function applyAccepted(
     if (finalState.won) {
       ctx.playWin();
     } else if (knownAnswer !== undefined) {
-      ctx.setAnswer(knownAnswer.toUpperCase());
+      ctx.setAnswer((knownDisplay ?? knownAnswer).toUpperCase());
     } else {
       try {
         const answerData = await dailyWordApi.getAnswer(s.puzzle_id);
-        ctx.setAnswer(answerData.answer.toUpperCase());
+        ctx.setAnswer(revealWord(answerData));
       } catch {
         // show modal without answer
       }
@@ -340,7 +348,7 @@ async function closeOutFromServer(
   } else {
     try {
       const answerData = await dailyWordApi.getAnswer(finished.puzzle_id);
-      if (ctx.isMounted()) ctx.setAnswer(answerData.answer.toUpperCase());
+      if (ctx.isMounted()) ctx.setAnswer(revealWord(answerData));
     } catch {
       // Modal still opens; it just won't reveal the word.
     }
@@ -370,7 +378,7 @@ export function useDailyWordSubmit(
   const { tzOffset, showToast, resetToToday } = handlers;
   const { setState, setFlippingRowIndex, setRevealPending } = handlers;
   const { setAnswer, startCountdown, playWin } = handlers;
-  const { scoresOnDevice, deviceAnswer } = handlers;
+  const { scoresOnDevice, deviceAnswer, deviceDisplay } = handlers;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -436,10 +444,12 @@ export function useDailyWordSubmit(
         return true;
       }
       if (!mountedRef.current) return true;
-      flipTimerRef.current = applyAccepted(ctx, s, scored.response, answer);
+      const display = deviceDisplay ? await deviceDisplay(s.puzzle_id) : null;
+      if (!mountedRef.current) return true;
+      flipTimerRef.current = applyAccepted(ctx, s, scored.response, answer, display ?? undefined);
       return true;
     },
-    [deviceAnswer, showToast, t, ctx]
+    [deviceAnswer, deviceDisplay, showToast, t, ctx]
   );
 
   const submit = useCallback(async () => {

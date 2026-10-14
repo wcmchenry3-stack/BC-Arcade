@@ -82,6 +82,41 @@ export function applyServerResult(state: DailyWordState, tiles: TileState[]): Da
   };
 }
 
+/**
+ * The guess's tiles as the board stores them (#3241). `display` is the
+ * server's accented spelling of the guess (fr/es); each of its letters is kept
+ * on the tile whose folded `letter` it is spelled from. It is used only when it
+ * has one letter per tile: a spelling that does not line up (a ligature such
+ * as `œ` folds to two letters) falls back to the folded letters.
+ */
+export function tilesWithDisplay(
+  tiles: readonly { letter: string; status: TileStatus }[],
+  display: string | undefined
+): TileState[] {
+  const shown = typeof display === "string" ? Array.from(display.toLowerCase()) : [];
+  const aligned = shown.length === tiles.length;
+  return tiles.map((tile, i) => {
+    const out: TileState = { letter: tile.letter, status: tile.status };
+    const d = aligned ? shown[i] : undefined;
+    if (d && d !== tile.letter) out.display = d;
+    return out;
+  });
+}
+
+/** What a tile shows: its accented spelling when it has one, else its letter. */
+export function tileDisplayLetter(tile: TileState): string {
+  return typeof tile.display === "string" && tile.display !== "" ? tile.display : tile.letter;
+}
+
+/**
+ * The word to reveal for an answer response (#3241): the accented `display`
+ * (fr/es) when the server sent one, else the answer; upper-cased.
+ */
+export function revealWord(response: { answer: string; display?: string }): string {
+  const shown = typeof response.display === "string" && response.display !== "";
+  return (shown ? response.display! : response.answer).toUpperCase();
+}
+
 export function setCurrentRowLetter(state: DailyWordState, letter: string): DailyWordState {
   if (state.is_complete || state.current_row >= MAX_ROWS) return state;
 
@@ -212,7 +247,16 @@ function puzzleNumber(puzzleId: string): number {
   return Math.floor((dateMs - EPOCH_MS) / 86400000) + 1;
 }
 
-export function buildShareText(state: DailyWordState, deepLink: string): string {
+/**
+ * The share text. `title` is the game's name in the player's language (fr/es,
+ * #3241); the emoji grid has no letters, so the header is the only text to
+ * translate. It defaults to the English name.
+ */
+export function buildShareText(
+  state: DailyWordState,
+  deepLink: string,
+  title = "Daily Word"
+): string {
   const n = puzzleNumber(state.puzzle_id);
   const submittedRows = state.rows.filter((r) => r.submitted);
   // The count comes from `guessCount`, not the grid: when the board is behind
@@ -227,5 +271,5 @@ export function buildShareText(state: DailyWordState, deepLink: string): string 
     )
     .join("\n");
 
-  return `Daily Word #${n} — ${result}\n${grid}\n${deepLink}`;
+  return `${title} #${n} — ${result}\n${grid}\n${deepLink}`;
 }
