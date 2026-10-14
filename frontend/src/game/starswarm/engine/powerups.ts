@@ -21,7 +21,13 @@ import { applyBombBlast } from "./collisions";
 import { spawnExplosion } from "./entities";
 import { nextId } from "./rng";
 import { mapFilterKeep } from "./roster";
-import { markWaveDev } from "./waveStats";
+import {
+  bumpWave,
+  countPickups,
+  countSpawned,
+  markWaveDev,
+  type WaveCounterPath,
+} from "./waveStats";
 import {
   BOMB_FLASH_DURATION,
   BULLET_C_H,
@@ -88,28 +94,35 @@ export function upgradeEvents(prev: StarSwarmState, next: StarSwarmState): Upgra
 // ---------------------------------------------------------------------------
 
 export function tickPowerUps(state: StarSwarmState, dtMs: number): StarSwarmState {
+  let waveStats = state.waveStats;
+  let missed: PowerUp[] | null = null; // #3246: despawned or fell off the bottom
   const powerUps = mapFilterKeep(
     state.powerUps,
     (pu) => ({ ...pu, y: pu.y + pu.vy * dtMs, despawnTimer: pu.despawnTimer - dtMs }),
-    (pu) => pu.despawnTimer > 0 && pu.y - pu.height / 2 < state.canvasH
+    (pu) => {
+      if (pu.despawnTimer > 0 && pu.y - pu.height / 2 < state.canvasH) return true;
+      (missed ??= []).push(pu);
+      return false;
+    }
   );
+  const lost = missed as PowerUp[] | null; // (set in the filter callback above)
+  if (lost) waveStats = countPickups(waveStats, "missed", lost);
 
   let activePowerUp = state.activePowerUp;
   if (activePowerUp !== null) {
     const newMs = activePowerUp.remainingMs - dtMs;
+    // #3246: the ms the buff was live this tick belong to this wave (a buff outlives its wave)
+    waveStats = bumpWave(
+      waveStats,
+      ["powerUps", "activeMs", activePowerUp.type] as WaveCounterPath,
+      Math.min(dtMs, activePowerUp.remainingMs)
+    );
     if (newMs <= 0) {
-      if (__DEV__) {
-        const evt =
-          activePowerUp.type === "shield"
-            ? {
-                event: "powerup_expired",
-                type: "shield",
-                bulletsAbsorbed: activePowerUp.shieldAbsorbed,
-              }
-            : { event: "powerup_expired", type: activePowerUp.type };
-
-        console.log("[StarSwarm analytics]", evt);
-      }
+      waveStats = bumpWave(
+        waveStats,
+        ["powerUps", "expired", activePowerUp.type] as WaveCounterPath,
+        1
+      );
       activePowerUp = null;
     } else {
       activePowerUp = { ...activePowerUp, remainingMs: newMs };
@@ -121,11 +134,12 @@ export function tickPowerUps(state: StarSwarmState, dtMs: number): StarSwarmStat
   if (
     powerUps === state.powerUps &&
     activePowerUp === state.activePowerUp &&
-    bombFlashTimer === state.bombFlashTimer
+    bombFlashTimer === state.bombFlashTimer &&
+    waveStats === state.waveStats
   ) {
     return state; // #2963: nothing falling, active or flashing
   }
-  return { ...state, powerUps, activePowerUp, bombFlashTimer };
+  return { ...state, powerUps, activePowerUp, bombFlashTimer, waveStats };
 }
 
 // ---------------------------------------------------------------------------
@@ -138,7 +152,15 @@ export function applyPowerUp(
   tuning: Tuning = DEFAULT_TUNING
 ): StarSwarmState {
   const next = injectPowerUp(state, type, tuning);
-  return next === state ? state : markWaveDev(next); // #3245: a dev-panel action touched the wave
+  if (next === state) return state;
+  // #3245: a dev-panel action touched the wave. #3246: it spawns the power-up and applies it at
+  // once — spawned from "dev" and collected in the same breath, so the books still balance.
+  const waveStats = bumpWave(
+    bumpWave(next.waveStats, ["powerUps", "spawned", type, "dev"] as WaveCounterPath, 1),
+    ["powerUps", "collected", type] as WaveCounterPath,
+    1
+  );
+  return markWaveDev({ ...next, waveStats });
 }
 
 function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning): StarSwarmState {
@@ -172,6 +194,7 @@ function injectPowerUp(state: StarSwarmState, type: PowerUpType, tuning: Tuning)
       enemyBullets: [],
       carrierBeams: [], // #2843: released beams are enemy projectiles too
       powerUps: [...state.powerUps, ...drops],
+      waveStats: countSpawned(state.waveStats, drops), // #3246: Carrier plating
       explosions: newExplosions,
       score: tally.score,
       scoreLedger: recordScore(state.scoreLedger, state.wave, awards), // #2837

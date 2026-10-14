@@ -31,7 +31,8 @@ import type {
   Vec2,
 } from "./types";
 import type { EarlierScore, ScoreLedger, WaveScore } from "./scoreLedger";
-import { emptyWaveStats, isWaveStats, loadoutOf } from "./engine/waveStats";
+import { POWERUP_SOURCES } from "./engine/registries";
+import { countSpawned, emptyWaveStats, isWaveStats, loadoutOf } from "./engine/waveStats";
 
 type KeySpec<T> = {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -143,7 +144,9 @@ const EXPLOSION: KeySpec<Explosion> = {
   frameTimer: "required",
 };
 
-const POWER_UP: KeySpec<PowerUp> = {
+// #3246: `source` is left out of the spec (and so of SAVE_FINGERPRINT) on purpose: adding it would
+// drop every paused run. It is optional in a save (fitsPowerUp) and read as "kill" when absent.
+const POWER_UP: KeySpec<Omit<PowerUp, "source">> = {
   id: "required",
   type: "required",
   x: "required",
@@ -298,6 +301,10 @@ const STATE: KeySpec<Omit<StarSwarmState, AddedStateKey>> = {
   scoreLedger: "required",
 };
 
+const fitsPowerUp = (p: unknown) =>
+  fits(p, { ...POWER_UP, source: "optional" }) &&
+  (p.source === undefined || (POWERUP_SOURCES as readonly unknown[]).includes(p.source));
+
 const SPECS = {
   STATE,
   PLAYER,
@@ -375,7 +382,7 @@ export function fitsSaveShape(v: unknown): v is SavedStarSwarmState {
     allFit(v.enemyBullets, (b) => fits(b, BULLET)) &&
     allFit(v.carrierBeams, (b) => fits(b, CARRIER_BEAM)) &&
     allFit(v.explosions, (e) => fits(e, EXPLOSION)) &&
-    allFit(v.powerUps, (p) => fits(p, POWER_UP)) &&
+    allFit(v.powerUps, fitsPowerUp) &&
     allFit(v.buddyShips, (b) => fits(b, BUDDY_SHIP) && Array.isArray(b.hitRockIds)) &&
     allFit(v.asteroids, (a) => fits(a, ASTEROID)) &&
     (v.activePowerUp === null || fits(v.activePowerUp, ACTIVE_POWER_UP)) &&
@@ -395,11 +402,9 @@ export function fitsSaveShape(v: unknown): v is SavedStarSwarmState {
  * nothing to compare it with, so a saved one is ignored rather than validated.
  */
 export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
-  return {
-    ...saved,
-    waveStats: isWaveStats(saved.waveStats)
-      ? saved.waveStats
-      : emptyWaveStats(loadoutOf(saved.player)),
-    lastClosedWave: null,
-  };
+  // #3246: fresh stats still count the pickups already falling as spawned, so they balance
+  const waveStats = isWaveStats(saved.waveStats)
+    ? saved.waveStats
+    : countSpawned(emptyWaveStats(loadoutOf(saved.player)), saved.powerUps);
+  return { ...saved, waveStats, lastClosedWave: null };
 }

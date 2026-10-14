@@ -26,7 +26,7 @@ beforeEach(() => {
 
 describe("makePickup (#2488)", () => {
   it("builds a falling pickup of the given type with a fresh id and the canvas-sized despawn", () => {
-    const p = makePickup("salvage", 100, 200, CANVAS_H);
+    const p = makePickup("salvage", 100, 200, CANVAS_H, "rock");
     expect(p).toEqual({
       id: 1,
       type: "salvage",
@@ -36,8 +36,9 @@ describe("makePickup (#2488)", () => {
       width: POWERUP_W,
       height: POWERUP_H,
       despawnTimer: powerUpDespawnMs(CANVAS_H),
+      source: "rock",
     });
-    expect(makePickup("hull", 0, 0, CANVAS_H).id).toBe(2);
+    expect(makePickup("hull", 0, 0, CANVAS_H, "carrier").id).toBe(2);
   });
 
   it("powerUpDespawnMs covers the fall to the player row plus a 2 s collection window", () => {

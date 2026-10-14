@@ -28,12 +28,13 @@ import type {
 import { award, scoreSource, type ScorePoints } from "../scoreLedger";
 import { absorbBulletsIntoRocks, rocksStrikeEnemies, settleRocks } from "./asteroids";
 import { makeBuddy, resolveBuddyHits } from "./buddy";
-import { makePickup, pickPowerUpType, powerUpDespawnMs, spawnExplosion } from "./entities";
+import { makePickup, pickPowerUpType, spawnExplosion } from "./entities";
 import { arrivalsAllowed } from "./extraction";
 import { aabb, circleCircle, collideCircleAABB } from "./geometry";
-import { nextId, rng } from "./rng";
+import { rng } from "./rng";
 import { carrierArmoredIn, mapFilterKeep } from "./roster";
 import { bumpRun, bumpStat } from "./stats";
+import { bumpWave, countPickups, countSpawned, type WaveStats } from "./waveStats";
 import {
   BOMB_FLASH_DURATION,
   DEFAULT_TUNING,
@@ -46,7 +47,6 @@ import {
   PLAYER_INVINCIBLE_MS,
   POWERUP_DURATION,
   POWERUP_H,
-  POWERUP_VY,
   POWERUP_W,
   TIER_SCORE,
   difficultyMultiplier,
@@ -145,6 +145,8 @@ export interface CollisionWork {
   guns: GunsLevel;
   hull: HullLevel;
   hullFlashTimer: number;
+  /** #3246: the wave's stats; power-up lifecycle counters bump here, written back at assembly. */
+  waveStats: WaveStats;
 }
 
 function openCollisionWork(state: StarSwarmState): CollisionWork {
@@ -170,6 +172,7 @@ function openCollisionWork(state: StarSwarmState): CollisionWork {
     guns: player.guns,
     hull: player.hull,
     hullFlashTimer: player.hullFlashTimer,
+    waveStats: state.waveStats,
   };
 }
 
@@ -191,6 +194,7 @@ export function assembleCollisionState(
   patch: { readonly player?: Partial<Player>; readonly phase?: StarSwarmState["phase"] } = {}
 ): StarSwarmState {
   const settledRocks = settleRocks(w.rocks, w.explosions, w.newDrops, state.canvasH);
+  if (w.newDrops.length > 0) w.waveStats = countSpawned(w.waveStats, w.newDrops); // #3246
   const next: StarSwarmState = {
     ...state,
     enemies: w.enemies,
@@ -208,6 +212,7 @@ export function assembleCollisionState(
     dropJitterTarget: w.dropJitterTarget,
     activePowerUp: w.activePowerUp,
     bombFlashTimer: w.bombFlashTimer,
+    waveStats: w.waveStats,
     player: {
       ...state.player,
       guns: w.guns,
@@ -282,7 +287,7 @@ export function resolvePlayerShots(
         w.explosions.push(spawnExplosion(enemy.x, enemy.y));
         // #2488: the Carrier always drops hull plating
         if (enemy.tier === "Carrier")
-          w.newDrops.push(makePickup("hull", enemy.x, enemy.y, state.canvasH));
+          w.newDrops.push(makePickup("hull", enemy.x, enemy.y, state.canvasH, "carrier"));
         const base = TIER_SCORE[enemy.tier];
         // #2489: a fleeing grunt pays the dive multiplier — it was getting away
         const onTheMove =
@@ -380,7 +385,7 @@ export function applyBombBlast(
     if (newHp <= 0) {
       explosions.push(spawnExplosion(e.x, e.y));
       // #2488: the Carrier drops plating however it dies
-      if (e.tier === "Carrier") drops.push(makePickup("hull", e.x, e.y, state.canvasH));
+      if (e.tier === "Carrier") drops.push(makePickup("hull", e.x, e.y, state.canvasH, "carrier"));
       if (e.phase === "Fleeing") tally.routCaught++; // #2489: caught is caught, even at 1×
       // no dive multiplier for bomb kills
       tally.score += award(
@@ -421,19 +426,15 @@ export function resolvePickupCollection(
   ) {
     // #1032: X uses Math.random(), not the seeded rng (the known exception, ARCHITECTURE.md §3.2)
     const spawnX = POWERUP_W / 2 + Math.random() * (state.canvasW - POWERUP_W);
-    w.powerUps = [
-      ...w.powerUps, // #2488: keep any upgrade pickups already falling
-      {
-        id: nextId(),
-        type: pickPowerUpType(state.player.lives),
-        x: spawnX,
-        y: POWERUP_H / 2,
-        vy: POWERUP_VY,
-        width: POWERUP_W,
-        height: POWERUP_H,
-        despawnTimer: powerUpDespawnMs(state.canvasH),
-      },
-    ];
+    const drop = makePickup(
+      pickPowerUpType(state.player.lives),
+      spawnX,
+      POWERUP_H / 2,
+      state.canvasH,
+      "kill"
+    );
+    w.powerUps = [...w.powerUps, drop]; // #2488: keep any upgrade pickups already falling
+    w.waveStats = countSpawned(w.waveStats, [drop]); // #3246
     w.killsSinceLastDrop = 0;
     w.dropJitterTarget = triggerKills(state.wave) + Math.floor(rng() * 5) - 2;
   }
@@ -446,14 +447,7 @@ export function resolvePickupCollection(
   const collected = w.powerUps[collectedIdx]!;
   w.powerUps = w.powerUps.filter((_, i) => i !== collectedIdx);
 
-  if (__DEV__) {
-    console.log("[StarSwarm analytics]", {
-      event: "powerup_collected",
-      type: collected.type,
-      wave: state.wave,
-      livesAtCollection: player.lives,
-    });
-  }
+  w.waveStats = countPickups(w.waveStats, "collected", [collected]); // #3246
 
   if (collected.type === "salvage") {
     // #2488: one gun level per crate; nothing at the top of the ladder (and no points)
@@ -566,10 +560,12 @@ export function resolvePlayerHit(
     w.enemyBullets = currentEnemyBullets.filter(
       (b) => !collideCircleAABB(player.x, player.y, PLAYER_HURT_RADIUS, b.x, b.y, b.width, b.height)
     );
+    const soaked = bulletHits.length + (hitByRock ? 1 : 0);
     w.activePowerUp = {
       ...w.activePowerUp!,
-      shieldAbsorbed: w.activePowerUp!.shieldAbsorbed + bulletHits.length + (hitByRock ? 1 : 0),
+      shieldAbsorbed: w.activePowerUp!.shieldAbsorbed + soaked,
     };
+    w.waveStats = bumpWave(w.waveStats, SHIELD_ABSORBED_PATH, soaked); // #3246
   }
 
   // #956/#1029/#1030/#1077: capture the ramming enemy so we can destroy it on collision
@@ -628,6 +624,8 @@ export function resolvePlayerHit(
   w.explosions.push(spawnExplosion(player.x, player.y));
   return newLives <= 0 ? { kind: "dead" } : { kind: "life", lives: newLives };
 }
+
+const SHIELD_ABSORBED_PATH = ["powerUps", "shieldAbsorbed"] as const;
 
 // #2837: `awards` collects this tick's points by source; tick() commits them to the ledger.
 export function tickCollisions(
