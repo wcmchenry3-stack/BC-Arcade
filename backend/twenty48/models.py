@@ -7,9 +7,11 @@ so registering the module validates rows without rejecting any current build.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from int_bounds import Int32, NonNegInt32
+from int_bounds import NonNegInt32
 
 
 class Twenty48Metadata(BaseModel):
@@ -44,10 +46,13 @@ class Twenty48Result(BaseModel):
     final_score: NonNegInt32 | None = None
     highest_tile: int | None = Field(default=None, ge=0)
     move_count: int | None = Field(default=None, ge=0)
-    duration_ms: Int32 | None = None
+    duration_ms: NonNegInt32 | None = None
     outcome: str | None = Field(default=None, max_length=32)
 
-    @field_validator("duration_ms")
+    @field_validator("duration_ms", mode="before")
     @classmethod
-    def _no_duration_is_unknown(cls, v: int | None) -> int | None:
-        return None if v is not None and v <= 0 else v
+    def _no_duration_is_unknown(cls, v: Any) -> Any:
+        # Before the bound, so a clock jump far below -2**31 is "unknown" too, not a 422.
+        if isinstance(v, int) and not isinstance(v, bool) and v <= 0:
+            return None
+        return v

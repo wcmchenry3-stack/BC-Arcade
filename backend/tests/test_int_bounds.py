@@ -205,3 +205,50 @@ def test_admin_route_is_limited_per_ip_across_rotating_sessions(
 
     statuses = [call() for _ in range(allowed + 1)]
     assert statuses == [403] * allowed + [429]
+
+
+# ---------------------------------------------------------------------------
+# Review round 1: stripped admin token, Twenty48 non-positive duration
+# ---------------------------------------------------------------------------
+
+
+def test_admin_token_is_stripped_before_the_length_check() -> None:
+    s = Settings.isolated(ADMIN_API_TOKEN=" " + "k" * 32 + "\n")
+    assert s.admin_api_token.get_secret_value() == "k" * 32
+
+
+def test_padded_admin_token_matches_the_stripped_header(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    padded = Settings.isolated(ADMIN_API_TOKEN=" " + "k" * 32 + "\n")
+    monkeypatch.setattr(client.app.state, "settings", padded)
+    r = client.patch(
+        f"/games/catalog/{INT16_MAX}",
+        headers={"X-Admin-Token": "k" * 32, "X-Session-ID": str(uuid.uuid4())},
+        json={"is_premium": True},
+    )
+    assert r.status_code == 404, r.text  # past the token check
+
+
+def test_whitespace_only_admin_token_leaves_admin_disabled() -> None:
+    assert Settings.isolated(ADMIN_API_TOKEN=" " * 32).admin_api_token.get_secret_value() == ""
+
+
+def test_short_admin_token_with_padding_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="at least 32 characters"):
+        Settings.isolated(ADMIN_API_TOKEN="  " + "k" * 31 + "\n")
+
+
+@pytest.mark.parametrize("value", [-(2**31) - 5, -1, 0])
+def test_twenty48_nonpositive_duration_is_unknown(
+    client: TestClient, session_id: str, value: int
+) -> None:
+    gid = _new_game(client, session_id)
+    r = client.patch(
+        f"/games/{gid}/complete",
+        headers=session_headers(session_id),
+        json={"outcome": "win", "result": {"duration_ms": value}},
+    )
+    assert r.status_code == 200, r.text
+    detail = client.get(f"/games/{gid}", headers=session_headers(session_id)).json()
+    assert detail["metadata"].get("duration_ms") is None

@@ -187,6 +187,15 @@ class Settings(BaseSettings):
             return SecretStr(value.get_secret_value().strip())
         return value.strip() if isinstance(value, str) else value
 
+    @field_validator("admin_api_token", mode="before")
+    @classmethod
+    def _admin_token_stripped(cls, value: Any) -> Any:
+        # Stripped before the length check and stored stripped, so the route compares
+        # the same value. Whitespace-only becomes empty: admin disabled.
+        if isinstance(value, SecretStr):
+            return SecretStr(value.get_secret_value().strip())
+        return value.strip() if isinstance(value, str) else value
+
     @field_validator("admin_api_token")
     @classmethod
     def _admin_token_min_length(cls, value: SecretStr) -> SecretStr:
