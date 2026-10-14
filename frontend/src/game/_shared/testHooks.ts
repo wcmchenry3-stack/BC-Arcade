@@ -22,7 +22,8 @@
  *   __gameEventClient_startGame(gameType, meta)  → string (game id)
  *   __gameEventClient_completeGame(id, summary)  → void
  *
- *   __syncWorker_flush()                         → FlushResult (releases held rows, #3275)
+ *   __syncWorker_flush(opts?)                    → FlushResult (releases held rows unless
+ *                                                  opts.releaseHeld is false, #3275)
  *   __syncWorker_getBackoffUntil()               → number (epoch ms, sync)
  *
  *   __logConfig_override(partial)                → void (sync)
@@ -34,7 +35,7 @@
 import { eventStore, GameEventRow, BugLogRow, QueueStats } from "./eventStore";
 import { logConfig, resetLogConfig, LogConfig, Priority } from "./eventQueueConfig";
 import { gameEventClient } from "./gameEventClient";
-import { syncWorker, FlushResult } from "./syncWorker";
+import { syncWorker, FlushOptions, FlushResult } from "./syncWorker";
 import { generateUUID } from "./uuid";
 import type { CompleteSummary } from "./pendingGamesStore";
 import { areTestHooksEnabled } from "./envFlags";
@@ -86,7 +87,7 @@ interface LogstoreTestHooks {
   ) => void;
   __eventStore_sweepTTL: (now?: number) => Promise<number>;
   __eventStore_setSyntheticDelay: (ms: number) => void;
-  __syncWorker_flush: () => Promise<FlushResult>;
+  __syncWorker_flush: (opts?: FlushOptions) => Promise<FlushResult>;
   __syncWorker_getBackoffUntil: () => number;
   __logConfig_override: (partial: Partial<LogConfig>) => void;
   __logConfig_reset: () => void;
@@ -195,10 +196,13 @@ export function registerLogstoreTestHooks(): () => void {
   g.__eventStore_sweepTTL = (now?: number) => eventStore.sweepTTL(now);
   g.__eventStore_setSyntheticDelay = (ms: number) => eventStore.setSyntheticDelay(ms);
 
-  // "Drain now": the e2e specs exercise queue mechanics on open games, so the
-  // hook releases what an open session holds (#3275) like a trip to the
-  // background does.
-  g.__syncWorker_flush = () => syncWorker.flush(Date.now(), { releaseHeld: true });
+  // "Drain now": the e2e specs exercise queue mechanics on open games, so by
+  // default the hook releases what an open session holds (#3275) like a trip
+  // to the background does. `{ releaseHeld: false }` flushes like the
+  // foreground interval (the crash-recovery spec: a killed session's rows
+  // must go out at relaunch without a release).
+  g.__syncWorker_flush = (opts?: FlushOptions) =>
+    syncWorker.flush(Date.now(), { releaseHeld: true, ...opts });
   g.__syncWorker_getBackoffUntil = () => syncWorker.getBackoffUntil();
 
   g.__logConfig_override = (partial) => {

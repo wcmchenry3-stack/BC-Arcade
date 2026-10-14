@@ -224,21 +224,79 @@ describe("SyncWorker — holding an open session's gameplay events (#3275)", () 
     p.worker.start();
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
+    let gated = false;
     const request = jest.spyOn(api, "request");
-    request.mockImplementationOnce(async (method, path, body) => {
-      await gate; // POST /games is in flight when the app is backgrounded
+    request.mockImplementation(async (method, path, body) => {
+      // The first events POST — after this pass decided to hold — is in
+      // flight when the app is backgrounded.
+      if (!gated && path.endsWith("/events")) {
+        gated = true;
+        await gate;
+      }
       return MockSyncApi.prototype.request.call(api, method, path, body);
     });
 
     const running = p.worker.flush();
-    await flushMicro();
+    for (let i = 0; i < 3 && !gated; i += 1) await flushMicro();
+    expect(gated).toBe(true);
     appState.currentState = "background";
-    appStateListener()("background");
+    appStateListener()("background"); // refused: a flush is running
     release();
     await running;
-    // The foreground pass held the row; the releasing pass after it sends it.
+    // The running pass held the row (it sent game_started only)...
+    expect(postedTypes(gid)).toEqual(["game_started"]);
+    // ...and the releasing pass queued behind it sends it.
     for (let i = 0; i < 3; i += 1) await flushMicro();
     expect(postedTypes(gid)).toEqual(["game_started", "card_played"]);
+  });
+
+  it("a background release during a global backoff sends nothing; the fallback bounds the delay", async () => {
+    const gid = startPlayed();
+    p.client.enqueueEvent(gid, { type: "card_played" });
+    await flushMicro();
+    const oldest = await oldestGameplayAt();
+    api.onNext((path) => path === "/games", {
+      status: 503,
+      ok: false,
+      retryAfterMs: null,
+      body: {},
+    });
+    await p.worker.flush(oldest); // 503 → global backoff
+    expect(p.worker.getBackoffUntil()).toBeGreaterThan(oldest);
+
+    p.worker.start();
+    appStateListener()("background"); // the releasing flush lands in the backoff
+    await flushMicro();
+    expect(postedTypes(gid)).toEqual([]);
+
+    // Back in the foreground after the backoff: held, until the fallback.
+    appState.currentState = "active";
+    const afterBackoff = p.worker.getBackoffUntil();
+    await p.worker.flush(Math.max(afterBackoff, oldest + 1));
+    expect(postedTypes(gid)).toEqual(["game_started"]);
+    await p.worker.flush(Math.max(afterBackoff, oldest + GAMEPLAY_HOLD_MAX_MS));
+    expect(postedTypes(gid)).toEqual(["game_started", "card_played"]);
+  });
+
+  it("a pass that resolves the session after its first snapshot holds in the second one too", async () => {
+    const gid = startPlayed();
+    await p.worker.flush(); // created on the server
+    p.client.enqueueEvent(gid, { type: "card_played" });
+    await flushMicro();
+    // A new worker has not resolved the session id yet; with no pending game
+    // seen at the start of the pass, it does so after the first snapshot and
+    // takes a second one (#3325).
+    const worker = new SyncWorker(p.store, p.games, asSyncApi(api));
+    jest.spyOn(p.games, "all").mockReturnValueOnce([]);
+    const snapshot = jest.spyOn(
+      worker as unknown as { snapshot: (now: number, holding: boolean) => Promise<unknown> },
+      "snapshot"
+    );
+    await worker.flush();
+    expect(snapshot).toHaveBeenCalledTimes(2);
+    expect(snapshot.mock.calls.map((c) => c[1])).toEqual([true, true]);
+    expect(postedTypes(gid)).toEqual(["game_started"]);
+    worker.stop();
   });
 
   it("a flush that runs in the background (a reconnect) does not hold", async () => {

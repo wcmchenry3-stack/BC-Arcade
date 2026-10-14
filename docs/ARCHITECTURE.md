@@ -516,6 +516,9 @@ useGameSync → gameEventClient → PendingGamesStore + eventStore (device)
     flush; resumed, it is held again, with the fallback still measured from
     its oldest row. Held rows stay ordinary live rows: TTL, eviction, per-row
     backoff, 413 splitting and dead-lettering apply to them unchanged.
+    The cost: with the queue at its cap and the device online, up to about
+    5 min of the current session stays on the device, so eviction removes
+    older rows that much sooner (eviction priority is #3276).
 - `displayNameSync` — one pending leaderboard join or leave (see below).
 - `PendingGamesStore`, `eventStore` and `displayNameSync`
   (`pendingGamesStore.ts`, `eventStore.ts`, `displayNameSync.ts`) are
@@ -945,7 +948,27 @@ premium access. An already-open game is allowed to finish under the product rule
 that entitlement changes do not interrupt gameplay.
 
 The current session id is a client-held UUID, not an authenticated account
-credential. The paid-IAP ownership/replay gate and the exact current trust model
+credential. It is still the only thing that proves a caller owns a player's data
+(`/me` reads and deletes by it), so it is minted only from a CSPRNG and fails
+closed (#3303). `generateUUID()` in `frontend/src/game/_shared/uuid.ts` tries
+`expo-modules-core` `uuid.v4()` (the native CoreModule's `uuidv4`: iOS `UUID()`,
+Android `UUID.randomUUID()` over `SecureRandom`; web `crypto.randomUUID`), then
+`globalThis.crypto.randomUUID`, then `globalThis.crypto.getRandomValues` (web
+pages outside a secure context). Hermes, React Native and Expo's runtime install
+no `crypto` global, so on release iOS and Android builds the native CoreModule is
+the source. It is the primitive `expo-crypto` wraps, without adding an
+encryption library to the export-compliance surface. With none of them it throws
+`CsprngUnavailableError`. `getOrCreateSessionId()` (`session.ts`) then stores
+nothing, reports to Sentry once per launch and rethrows; `httpClient` rejects the
+request without sending it, and `syncApi` returns a synthetic status 0 so the
+sync worker backs off with rows still queued. An id already in storage is
+returned unchanged (no rotation), except an id the removed predictable fallback
+minted (`isLegacyFallbackId`, #3325): it is re-keyed once on read, after the old
+player's queued games, events and bug logs and their cached entitlement token,
+streak and daily-challenge answers are dropped (`sessionRekey.ts`); if any drop
+fails, the legacy id stays stored (never returned) and the next call retries. Each mint adds a `session` breadcrumb naming
+the source, never the id. Game, event and bug-row ids use the same generator.
+The paid-IAP ownership/replay gate and the exact current trust model
 are documented in [../SECURITY.md](../SECURITY.md).
 
 ### 10.4 Dev override

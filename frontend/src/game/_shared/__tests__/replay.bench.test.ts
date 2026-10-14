@@ -2,7 +2,7 @@
  * Replay-recording benchmark with CI budgets (#3275, epic #3273): three games
  * played through the real pipeline — GameRecorder → gameEventClient →
  * eventStore → SyncWorker, over the in-memory AsyncStorage mock and a mocked
- * API — against a near-full queue (`SEED_ROWS` of `logConfig.MAX_ROWS`):
+ * API — against a queue at its row cap (`SEED_ROWS` of `logConfig.MAX_ROWS`):
  *
  *   - a full Hearts game: 7 hands, a unit per trick plus one for the pass;
  *   - a 300-move Solitaire game: a unit per move;
@@ -42,13 +42,18 @@ import { SyncWorker } from "../syncWorker";
 import type { GameType } from "../types";
 import { MockSyncApi, asSyncApi, ok } from "./helpers/syncWorkerFixtures";
 
-/** 90% of the row cap: what a long-offline device's queue looks like. */
-const SEED_ROWS = 4_500;
+/**
+ * 98% of the row cap (`logConfig.MAX_ROWS`, 5,000): a long-offline device's
+ * queue. Each game's rows push it over the cap, so saves evict (the oldest
+ * rows first: the seeded ones), and the bench checks that no row of the
+ * session being held is ever evicted.
+ */
+const SEED_ROWS = 4_900;
 const TIERS: PriorityT[] = [0, 1, 2, 3];
 
 /**
  * A generous ceiling on the mean time of one save (the recorder's call into
- * the queue until its write landed), against the near-full queue. Measured
+ * the queue until its write landed), against the queue at its cap. Measured
  * at 1–3 ms in this container; the ceiling is ~10× that, for CI's shared,
  * coverage-instrumented runners. A regression to per-event writes or reads
  * (the #2959 failure mode, 20+ ms per event) still breaks it.
@@ -56,8 +61,13 @@ const TIERS: PriorityT[] = [0, 1, 2, 3];
 const MAX_MEAN_SAVE_MS = 40;
 
 interface Budget {
-  /** Most queue (`event_queue_v1/*`) writes one save may cost. */
+  /** Most queue (`event_queue_v1/*`) writes one save that evicts nothing may cost. */
   readonly queueWritesPerSave: number;
+  /**
+   * Most queue writes one save that evicts may cost: its own tiers plus the
+   * tiers it evicted from, never more than the four tiers.
+   */
+  readonly queueWritesPerEvictingSave: number;
   /** Most pending-games writes one save may cost (the event_index counter). */
   readonly pendingWritesPerSave: number;
   /** Most JSON length (UTF-16 units) the game's recorded `data` may add up to. */
@@ -72,7 +82,8 @@ interface Budget {
  * The CI budgets per game (#3294's input). Byte budgets are the measured
  * value plus ~15% headroom (room for a field or two, not for a new event per
  * move); writes per save and POST counts are structural, so they are exact:
- * one write per tier a save touches, one counter write, and POSTs = 1
+ * one write per tier a save touches (plus, for a save that evicts at the
+ * cap, the tiers it evicted from: at most all four), one counter write, and POSTs = 1
  * (game_started) + one per lifecycle row the game records while open (Hearts'
  * hand_resolved) + ceil(rows / GAME_EVENT_BATCH_SIZE) at the end. The
  * measured values are in docs/PERFORMANCE.md ("Replay recording").
@@ -80,23 +91,26 @@ interface Budget {
 const BUDGETS: Readonly<Record<string, Budget>> = {
   hearts: {
     queueWritesPerSave: 2,
+    queueWritesPerEvictingSave: 4,
     pendingWritesPerSave: 1,
     recordedBytes: 50_000,
-    storageBytesWritten: 48_500_000,
+    storageBytesWritten: 111_000_000,
     eventPosts: 11,
   },
   solitaire: {
     queueWritesPerSave: 1,
+    queueWritesPerEvictingSave: 4,
     pendingWritesPerSave: 1,
     recordedBytes: 20_000,
-    storageBytesWritten: 127_000_000,
+    storageBytesWritten: 189_000_000,
     eventPosts: 3,
   },
   yacht: {
     queueWritesPerSave: 2,
+    queueWritesPerEvictingSave: 4,
     pendingWritesPerSave: 1,
     recordedBytes: 13_000,
-    storageBytesWritten: 10_000_000,
+    storageBytesWritten: 11_300_000,
     eventPosts: 2,
   },
 };
@@ -249,8 +263,14 @@ interface Measured {
   saves: number;
   maxQueueWritesPerSave: number;
   maxPendingWritesPerSave: number;
-  /** A save that wrote more queue keys than the tiers its events touch. */
+  /** A save that evicted nothing but wrote more queue keys than the tiers its events touch. */
   savesOverTiers: number;
+  /** Saves that evicted rows to stay under the cap, and the most queue writes one of them made. */
+  evictingSaves: number;
+  maxQueueWritesPerEvictingSave: number;
+  evictedRows: number;
+  /** The open session's rows that never reached the server (evicted): must be none. */
+  sessionRowsLost: number;
   reads: number;
   recordedBytes: number;
   storageBytesWritten: number;
@@ -324,6 +344,9 @@ async function play(script: Script): Promise<Measured> {
   let maxQueueWritesPerSave = 0;
   let maxPendingWritesPerSave = 0;
   let savesOverTiers = 0;
+  let evictingSaves = 0;
+  let maxQueueWritesPerEvictingSave = 0;
+  let evictedRows = 0;
   let gameplayPostsWhileOpen = 0;
   let events = 0;
 
@@ -332,6 +355,7 @@ async function play(script: Script): Promise<Measured> {
 
   recorder.startSession();
   for (const unit of script.units) {
+    const rowsBefore = (await store.stats()).totalRows;
     getItem.mockClear();
     setItem.mockClear();
     pending.length = 0;
@@ -348,11 +372,18 @@ async function play(script: Script): Promise<Measured> {
     const queueWrites = writes.filter(([k]) => k.startsWith("event_queue_v1/")).length;
     const pendingWrites = writes.filter(([k]) => k === "pending_games_v1").length;
     const tiers = new Set(unit.map((e) => logConfig.priorityForEvent("game_event", e.type)));
-    if (queueWrites > tiers.size) savesOverTiers += 1;
-    maxQueueWritesPerSave = Math.max(maxQueueWritesPerSave, queueWrites);
-    maxPendingWritesPerSave = Math.max(maxPendingWritesPerSave, pendingWrites);
     storageBytesWritten += writes.reduce((n, [, v]) => n + v.length, 0);
     reads += getItem.mock.calls.length;
+    maxPendingWritesPerSave = Math.max(maxPendingWritesPerSave, pendingWrites);
+    const evicted = rowsBefore + unit.length - (await store.stats()).totalRows;
+    if (evicted > 0) {
+      evictingSaves += 1;
+      evictedRows += evicted;
+      maxQueueWritesPerEvictingSave = Math.max(maxQueueWritesPerEvictingSave, queueWrites);
+    } else {
+      if (queueWrites > tiers.size) savesOverTiers += 1;
+      maxQueueWritesPerSave = Math.max(maxQueueWritesPerSave, queueWrites);
+    }
 
     // A 30 s tick after every unit, in the foreground.
     const before = api.calls.length;
@@ -372,6 +403,16 @@ async function play(script: Script): Promise<Measured> {
   await worker.flush();
 
   const posts = api.calls.filter((c) => c.path === `/games/${gameId}/events`);
+  // Every event_index the session reserved (game_started to game_ended)
+  // reached the server: none of its held rows was evicted at the cap.
+  const posted = new Set(
+    posts.flatMap((c) =>
+      (c.body as { events: { event_index: number }[] }).events.map((e) => e.event_index)
+    )
+  );
+  const reserved = events + 2; // + game_started, game_ended
+  let sessionRowsLost = 0;
+  for (let i = 0; i < reserved; i += 1) if (!posted.has(i)) sessionRowsLost += 1;
   const uploadedBytes = posts.reduce((n, c) => n + JSON.stringify(c.body).length, 0);
   const saves = durations.length;
   const meanSaveMs = durations.reduce((a, b) => a + b, 0) / Math.max(saves, 1);
@@ -384,6 +425,10 @@ async function play(script: Script): Promise<Measured> {
     maxQueueWritesPerSave,
     maxPendingWritesPerSave,
     savesOverTiers,
+    evictingSaves,
+    maxQueueWritesPerEvictingSave,
+    evictedRows,
+    sessionRowsLost,
     reads,
     recordedBytes,
     storageBytesWritten,
@@ -410,7 +455,8 @@ describe(`Replay recording benchmark (#3275): three games against a ${SEED_ROWS}
       process.stdout.write(
         `[bench #3275] ${script.name}: ${m.units} units, ${m.events} events, ${m.saves} saves; ` +
           `queue writes/save ≤ ${m.maxQueueWritesPerSave}, pending writes/save ≤ ${m.maxPendingWritesPerSave}, ` +
-          `reads ${m.reads}; recorded ${m.recordedBytes} B, written to storage ${m.storageBytesWritten} B; ` +
+          `evicting saves ${m.evictingSaves} (${m.evictedRows} rows, max ${m.maxQueueWritesPerEvictingSave} writes), ` +
+          `session rows lost ${m.sessionRowsLost}; reads ${m.reads}; recorded ${m.recordedBytes} B, written to storage ${m.storageBytesWritten} B; ` +
           `save ${m.meanSaveMs.toFixed(2)} ms mean / ${m.maxSaveMs.toFixed(2)} ms max; ` +
           `POST events ${m.eventPosts} (${m.uploadedBytes} B), gameplay POSTs while open ${m.gameplayPostsWhileOpen}\n`
       );
@@ -426,6 +472,11 @@ describe(`Replay recording benchmark (#3275): three games against a ${SEED_ROWS}
       expect(m.reads).toBe(0);
       expect(m.savesOverTiers).toBe(0);
       expect(m.maxQueueWritesPerSave).toBeLessThanOrEqual(budget.queueWritesPerSave);
+      expect(m.evictingSaves).toBeGreaterThan(0); // the queue really is at its cap
+      expect(m.maxQueueWritesPerEvictingSave).toBeLessThanOrEqual(
+        budget.queueWritesPerEvictingSave
+      );
+      expect(m.sessionRowsLost).toBe(0);
       expect(m.maxPendingWritesPerSave).toBeLessThanOrEqual(budget.pendingWritesPerSave);
       expect(m.recordedBytes).toBeLessThanOrEqual(budget.recordedBytes);
       expect(m.storageBytesWritten).toBeLessThanOrEqual(budget.storageBytesWritten);

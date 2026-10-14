@@ -1069,7 +1069,7 @@ Epic #3273 records far more of each game (the gameplay recorder, [GAME-CONTRACT 
 
 ### Benchmarks and CI budgets
 
-`replay.bench.test.ts` plays three games through the real pipeline (recorder → `gameEventClient` → `eventStore` → `SyncWorker`, using the in-memory AsyncStorage mock and a mocked API). Each game runs against a near-full queue of 4,500 rows (90% of `MAX_ROWS`). After every unit the bench runs the idle save and a foreground sync pass, which is the worst case: a 30 s tick after every unit. The fixtures are:
+`replay.bench.test.ts` plays three games through the real pipeline (recorder → `gameEventClient` → `eventStore` → `SyncWorker`, using the in-memory AsyncStorage mock and a mocked API). Each game runs against a queue of 4,900 rows (98% of `MAX_ROWS`), so its rows push the queue over the cap and saves evict the oldest rows. The bench checks that no row of the session being held is evicted: every `event_index` it reserved reaches the server. After every unit the bench runs the idle save and a foreground sync pass, which is the worst case: a 30 s tick after every unit. The fixtures are:
 
 - **Hearts:** a full game of 7 hands, with one unit for the pass and one per trick (98 units, 490 events).
 - **Solitaire:** 300 moves, one unit per move.
@@ -1079,13 +1079,13 @@ The count budgets are hard, because the fixture is deterministic. Time has only 
 
 Measured on 2026-10-14 (Node under jest, this container, not a device):
 
-| Game      | Saves | Queue writes / save (budget) | Reads | Recorded bytes (budget) | Bytes written to storage (budget) | Save time, mean / max (ceiling) | `POST …/events` per game (budget) | Gameplay POSTs while open |
-| --------- | ----- | ---------------------------- | ----- | ----------------------- | --------------------------------- | ------------------------------- | --------------------------------- | ------------------------- |
-| Hearts    | 98    | ≤ 2 (2)                      | 0     | 43,085 (50,000)         | 42.2 MB (48.5 MB)                 | 1.8 / 4 ms (40 ms mean)         | 11 (11)                           | 0                         |
-| Solitaire | 300   | 1 (1)                        | 0     | 17,235 (20,000)         | 111.0 MB (127 MB)                 | 1.6 / 6 ms (40 ms mean)         | 3 (3)                             | 0                         |
-| Yacht     | 13    | ≤ 2 (2)                      | 0     | 11,154 (13,000)         | 8.7 MB (10 MB)                    | 2.6 / 3 ms (40 ms mean)         | 2 (2)                             | 0                         |
+| Game      | Saves (evicting) | Queue writes / save: no eviction (budget) / evicting (budget) | Session rows evicted | Reads | Recorded bytes (budget) | Bytes written to storage (budget) | Save time, mean / max (ceiling) | `POST …/events` per game (budget) | Gameplay POSTs while open |
+| --------- | ---------------- | ------------------------------------------------------------- | -------------------- | ----- | ----------------------- | --------------------------------- | ------------------------------- | --------------------------------- | ------------------------- |
+| Hearts    | 98 (78)          | ≤ 2 (2) / ≤ 4 (4)                                             | 0                    | 0     | 43,105 (50,000)         | 96.3 MB (111 MB)                  | 3.9 / 7 ms (40 ms mean)         | 11 (11)                           | 0                         |
+| Solitaire | 300 (200)        | 1 (1) / ≤ 2 (4)                                               | 0                    | 0     | 17,281 (20,000)         | 164.0 MB (189 MB)                 | 2.2 / 5 ms (40 ms mean)         | 3 (3)                             | 0                         |
+| Yacht     | 13 (1)           | ≤ 2 (2) / ≤ 3 (4)                                             | 0                    | 0     | 11,162 (13,000)         | 9.8 MB (11.3 MB)                  | 3.1 / 4 ms (40 ms mean)         | 2 (2)                             | 0                         |
 
-Each save also makes one `pending_games_v1` write, for the `event_index` counter (budget: 1). A save never writes more queue keys than the tiers its events touch. The POST counts are structural: one for `game_started`, one for each lifecycle row recorded while the game is open (Hearts' 7 `hand_resolved`), and `ceil(rows / 200)` at the end. Bytes written to storage are high against a near-full queue because each save rewrites its whole tier. That is the AsyncStorage on-disk format (#2959). It is listed here so the budget file (#3294) can track it.
+Each save also makes one `pending_games_v1` write, for the `event_index` counter (budget: 1). A save that evicts nothing never writes more queue keys than the tiers its events touch. A save that evicts also rewrites the tiers it evicted from, up to all four. The POST counts are structural: one for `game_started`, one for each lifecycle row recorded while the game is open (Hearts' 7 `hand_resolved`), and `ceil(rows / 200)` at the end. Bytes written to storage are high against a queue at its cap because each save rewrites its whole tier, and an evicting save rewrites the tiers it evicted from as well. That is the AsyncStorage on-disk format (#2959). It is listed here so the budget file (#3294) can track it.
 
 Run the bench with `cd frontend && npx jest src/game/_shared/__tests__/replay.bench.test.ts`. It prints one `[bench #3275]` line per game.
 

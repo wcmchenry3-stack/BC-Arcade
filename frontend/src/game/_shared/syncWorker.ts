@@ -12,7 +12,12 @@
  *
  * Flush algorithm (one pass):
  *
- *   0. Wait for the pending games to load from disk, and for the startup
+ *   0. Resolve the session id before anything is sent (#3325, ensureSession):
+ *      a re-key of a legacy id, which drops the old player's queue, finishes
+ *      before this pass sends any game or row read before it, so no old row
+ *      goes out under the new id. No id (no CSPRNG, a failed re-key or a
+ *      storage error) → global backoff, nothing sent.
+ *      And wait for the pending games to load from disk, and for the startup
  *      sweep of a killed process's sessions (#2654) that runs inside the
  *      store's init(): no queued event is read as belonging to a game that
  *      simply isn't loaded yet, and no flush acts on a game the sweep is
@@ -101,7 +106,11 @@ import { isAppInterrupted } from "./appInterrupted";
 import { GAMEPLAY_HOLD_MAX_MS, Priority, logConfig } from "./eventQueueConfig";
 import { BugLogRow, EventStore, GameEventRow, Row, eventStore } from "./eventStore";
 import { PendingGame, PendingGamesStore, pendingGamesStore } from "./pendingGamesStore";
+import { getOrCreateSessionId } from "./session";
 import { SyncApi, SyncResponse, syncApi } from "./syncApi";
+
+/** No session id for this pass (#3303/#3325): backs off like a network failure. */
+const NO_SESSION: SyncResponse = { status: 0, ok: false, retryAfterMs: null, body: null };
 
 export interface FlushResult {
   attempted: number;
@@ -185,11 +194,14 @@ export class SyncWorker {
   private releasePending = false;
   /** The releasing flush of this trip to the background has run. */
   private backgroundFlushed = false;
+  /** The session id was resolved once in this process (see ensureSession). */
+  private sessionChecked = false;
 
   constructor(
     private readonly store: EventStore = eventStore,
     private readonly games: PendingGamesStore = pendingGamesStore,
-    private readonly api: SyncApi = syncApi
+    private readonly api: SyncApi = syncApi,
+    private readonly sessionId: () => Promise<string> = getOrCreateSessionId
   ) {}
 
   // -------------------------------------------------------------------------
@@ -273,6 +285,11 @@ export class SyncWorker {
       if (opts.releaseHeld) this.releasePending = true;
       return { ...EMPTY };
     }
+    // A releasing flush in a global backoff sends nothing either (#3275): the
+    // held rows stay live and go out on the first pass after the backoff
+    // that finds the session completed, the app in the background, or the
+    // oldest row GAMEPLAY_HOLD_MAX_MS old — or at the next launch, where a
+    // killed session is no longer held. So the delay is bounded, never a loss.
     if (now < this.backoffUntil) return { ...EMPTY, backoffMs: this.backoffUntil - now };
     this.flushInProgress = true;
     try {
@@ -280,9 +297,19 @@ export class SyncWorker {
       // Load + startup sweep (see step 0 above).
       await this.games.init();
 
+      // Step 0's session check, only when there is something to send, so an
+      // empty pass reads nothing (#2959): before the creates when any game is
+      // pending, else after the snapshot, which is then taken again — a
+      // re-key may just have dropped the rows it holds.
+      if (this.games.all().length > 0 && !(await this.ensureSession(result, now))) return result;
       if (!(await this.flushGameCreations(result, now))) return result;
+      // Read once per pass (#3275), so both snapshots below hold alike.
       const holding = !opts.releaseHeld && !isAppInterrupted(AppState.currentState);
-      const snapshot = await this.snapshot(now, holding);
+      let snapshot = await this.snapshot(now, holding);
+      if (!this.sessionChecked && (snapshot.byGame.size > 0 || snapshot.bugLogs.length > 0)) {
+        if (!(await this.ensureSession(result, now))) return result;
+        snapshot = await this.snapshot(now, holding);
+      }
       if (!(await this.flushEvents(snapshot, result, now))) return result;
       if (!(await this.flushCompletions(snapshot, result, now))) return result;
       if (!(await this.flushBugLogs(snapshot, result, now))) return result;
@@ -302,6 +329,25 @@ export class SyncWorker {
         });
       }
     }
+  }
+
+  /**
+   * Resolve the session id before anything is sent (#3325): a re-key of a
+   * legacy id drops the old player's queue before it resolves. Once per
+   * process: after one success the stored id is a CSPRNG id, which is never
+   * re-keyed. No id (no CSPRNG, a failed re-key, a storage error) → global
+   * backoff and false, so the pass sends nothing; the next one retries.
+   */
+  private async ensureSession(result: FlushResult, now: number): Promise<boolean> {
+    if (this.sessionChecked) return true;
+    try {
+      await this.sessionId();
+    } catch {
+      await this.transientFailure(NO_SESSION, [], result, now);
+      return false;
+    }
+    this.sessionChecked = true;
+    return true;
   }
 
   /** The one `peek` of a pass, bucketed for steps 2–4. */
@@ -421,7 +467,10 @@ export class SyncWorker {
       }
       // Every chunk was accepted, dropped, parked or dead-lettered — unless a
       // 404 re-flipped startedSynced, in which case the rows are still live,
-      // or rows were held.
+      // or rows were held. Defence in depth: a held game is open, and step 3
+      // only completes a game completed at snapshot time (never held), so the
+      // length check only keeps a future change from completing a game whose
+      // rows are still on the device.
       if (due.length === events.length && this.games.get(gameId)?.startedSynced) {
         snapshot.outstanding.delete(gameId);
       }
@@ -446,7 +495,7 @@ export class SyncWorker {
     const lifecycle: GameEventRow[] = [];
     let oldestHeld = Number.POSITIVE_INFINITY;
     for (const row of events) {
-      if (logConfig.priorityForEvent("game_event", row.event_type) === Priority.LIFECYCLE) {
+      if (row.priority === Priority.LIFECYCLE) {
         lifecycle.push(row);
       } else if (row.created_at < oldestHeld) {
         oldestHeld = row.created_at;

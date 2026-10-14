@@ -10,7 +10,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { registerLogstoreTestHooks, areTestHooksEnabled } from "../testHooks";
 import { eventStore } from "../eventStore";
 import { pendingGamesStore } from "../pendingGamesStore";
+import { syncWorker } from "../syncWorker";
 import { Priority, logConfig, resetLogConfig } from "../eventQueueConfig";
+import { CsprngUnavailableError } from "../uuid";
 
 type G = Record<string, unknown>;
 
@@ -211,6 +213,28 @@ describe("logstore testHooks", () => {
       expect(typeof v).toBe("number");
       expect(v).toBeGreaterThanOrEqual(0);
     });
+
+    it("flush releases held rows by default, and passes { releaseHeld: false } through (#3275)", async () => {
+      const flush = jest.spyOn(syncWorker, "flush").mockResolvedValue({
+        attempted: 0,
+        accepted: 0,
+        duplicates: 0,
+        deadLettered: 0,
+        parked: 0,
+        backoffMs: 0,
+      });
+      const g = globalThis as unknown as {
+        __syncWorker_flush: (opts?: { releaseHeld?: boolean }) => Promise<unknown>;
+      };
+      try {
+        await g.__syncWorker_flush();
+        expect(flush).toHaveBeenLastCalledWith(expect.any(Number), { releaseHeld: true });
+        await g.__syncWorker_flush({ releaseHeld: false });
+        expect(flush).toHaveBeenLastCalledWith(expect.any(Number), { releaseHeld: false });
+      } finally {
+        flush.mockRestore();
+      }
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -263,7 +287,7 @@ describe("logstore testHooks", () => {
       }
     });
 
-    it("seedEvents produces UUID-formatted row IDs when crypto is completely absent", async () => {
+    it("seedEvents refuses to mint row IDs and seeds nothing when no CSPRNG is available (#3303)", async () => {
       Object.defineProperty(globalThis, "crypto", {
         value: undefined,
         configurable: true,
@@ -272,12 +296,10 @@ describe("logstore testHooks", () => {
       const g = globalThis as unknown as {
         __gameEventClient_seedEvents: (spec: { count: number }) => Promise<void>;
       };
-      await g.__gameEventClient_seedEvents({ count: 3 });
-      const rows = await eventStore.peek(10);
-      expect(rows).toHaveLength(3);
-      for (const row of rows) {
-        expect(row.id).toMatch(UUID_RE);
-      }
+      await expect(g.__gameEventClient_seedEvents({ count: 3 })).rejects.toBeInstanceOf(
+        CsprngUnavailableError
+      );
+      expect(await eventStore.peek(10)).toHaveLength(0);
     });
 
     it("seedBugLogs produces UUID-formatted row and bug_uuid IDs via getRandomValues", async () => {
@@ -305,7 +327,7 @@ describe("logstore testHooks", () => {
       }
     });
 
-    it("seedBugLogs produces UUID-formatted row and bug_uuid IDs when crypto is completely absent", async () => {
+    it("seedBugLogs refuses to mint IDs and seeds nothing when no CSPRNG is available (#3303)", async () => {
       Object.defineProperty(globalThis, "crypto", {
         value: undefined,
         configurable: true,
@@ -314,15 +336,10 @@ describe("logstore testHooks", () => {
       const g = globalThis as unknown as {
         __gameEventClient_seedBugLogs: (spec: { count: number }) => Promise<void>;
       };
-      await g.__gameEventClient_seedBugLogs({ count: 2 });
-      const rows = await eventStore.peek(10);
-      expect(rows).toHaveLength(2);
-      for (const row of rows) {
-        expect(row.id).toMatch(UUID_RE);
-        if (row.log_type === "bug_log") {
-          expect(row.bug_uuid).toMatch(UUID_RE);
-        }
-      }
+      await expect(g.__gameEventClient_seedBugLogs({ count: 2 })).rejects.toBeInstanceOf(
+        CsprngUnavailableError
+      );
+      expect(await eventStore.peek(10)).toHaveLength(0);
     });
   });
 });
