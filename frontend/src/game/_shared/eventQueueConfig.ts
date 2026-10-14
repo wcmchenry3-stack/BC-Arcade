@@ -164,6 +164,7 @@ export function resetLogConfig(): void {
  * The `timeout` the recorder's idle save passes to React Native's
  * `requestIdleCallback` (`scheduleIdle`): RN runs the save by then even when
  * the JS thread never idles. RN's own deadline — the recorder keeps no timer.
+ * @internal Only the GameRecorder uses it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
  */
 export const RECORDER_IDLE_TIMEOUT_MS = 2000;
 
@@ -171,6 +172,7 @@ export const RECORDER_IDLE_TIMEOUT_MS = 2000;
  * A long open unit (a real-time chunk) hands its events so far to the idle
  * measuring every this many `record()` calls, keeping its unit number, so its
  * raw events do not pile up until `closeUnit()`.
+ * @internal Only the GameRecorder uses it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
  */
 export const RECORDER_MEASURE_EVERY = 64;
 
@@ -178,6 +180,7 @@ export const RECORDER_MEASURE_EVERY = 64;
  * The most unmeasured events the recorder holds at once. Past it (idle never
  * came to measure the backlog), `record()` drops events, counted as
  * `dropped_memory`, until idle has measured what is held.
+ * @internal Only the GameRecorder uses it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
  */
 export const RECORDER_MAX_RAW_EVENTS = 256;
 
@@ -229,11 +232,17 @@ export const gameRecordingConfigs: Readonly<Partial<Record<GameType, GameRecordi
   },
 };
 
+/**
+ * @internal Only the GameRecorder uses it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
+ */
 export function recordingConfigFor(gameType: GameType): GameRecordingConfig {
   return gameRecordingConfigs[gameType] ?? DEFAULT_RECORDING_CONFIG;
 }
 
-/** The cap one event of `eventType` is held to: never over the queue's per-row cap. */
+/**
+ * The cap one event of `eventType` is held to: never over the queue's per-row cap.
+ * @internal Only the GameRecorder uses it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
+ */
 export function recordingEventCap(config: GameRecordingConfig, eventType: string): number {
   const own = config.events[eventType]?.maxBytes ?? config.defaultEventMaxBytes;
   return Math.min(own, logConfig.MAX_EVENT_PAYLOAD_BYTES);
@@ -243,6 +252,7 @@ export function recordingEventCap(config: GameRecordingConfig, eventType: string
  * Whether a session of `gameType` records at all, read once per session.
  * Always true for now: the server-controlled kill switch / sample rate
  * (#3279) plugs in here.
+ * @internal Only the GameRecorder uses it, and the recorder has no production caller until a game adopts it (#3280; knip --production, #3126).
  */
 export function isRecordingEnabled(_gameType: GameType): boolean {
   return true;

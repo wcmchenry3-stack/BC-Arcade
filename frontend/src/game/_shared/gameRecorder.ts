@@ -86,9 +86,6 @@ export interface RecordActor {
   readonly difficulty?: string;
 }
 
-/** Envelope fields the recorder writes on every event; a `data` field of the same name is overwritten. */
-export const ENVELOPE_KEYS = ["v", "unit", "t_ms", "actor", "part", "parts"] as const;
-
 /** Where saved events go (`useGameRecorder` wires it to `useGameSync`). */
 export interface RecorderSink {
   /** Cheap: whether a game session is open to take events now. */
