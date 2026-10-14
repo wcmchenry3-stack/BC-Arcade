@@ -88,6 +88,49 @@ describe("carrier counters (#3249)", () => {
   });
 });
 
+describe("held and repeated events are not counted (#3249)", () => {
+  it("a beam released while the weapons-free gate is shut isn't a beam fired", () => {
+    // enemy fire off (the dev toggle) holds the release: the charge ends, nothing enters play
+    let s = quietWave(1);
+    const c = carrierOf(s);
+    s = {
+      ...s,
+      player: { ...s.player, invincibleTimer: 1e9 },
+      enemies: s.enemies.map((e) =>
+        e.id === c.id ? { ...e, beamTimer: 100 } : { ...e, shootTimer: 1e9 }
+      ),
+    };
+    expect(s.enemyFireDisabled).toBe(true);
+    for (let i = 0; i < 125; i++) s = tick(s, 16, ASIDE);
+    expect(s.carrierBeams).toHaveLength(0);
+    expect(s.waveStats.carrier.beamsFired).toBe(0);
+  });
+
+  it("a fleeing grunt isn't counted again, and a swooping one only when it lands", () => {
+    const prev = preRout();
+    const swooper = prev.enemies.find((e) => e.isAlive && e.tier === "Grunt")!;
+    const withSwooper = {
+      ...prev,
+      enemies: prev.enemies.map((e) =>
+        e.id === swooper.id ? { ...e, phase: "SwoopIn" as const } : e
+      ),
+    };
+    const total = routGruntCount(prev);
+    let s = routTick(withSwooper);
+    expect(s.waveStats.rout.grunts).toBe(total - 1); // the swooper hasn't been set fleeing
+    s = tick(s, 16, ASIDE);
+    expect(s.waveStats.rout.grunts).toBeLessThanOrEqual(total);
+    expect(s.waveStats.rout.grunts).toBeGreaterThanOrEqual(total - 1);
+    for (let i = 0; i < 400; i++) s = tick(s, 16, ASIDE);
+    expect(s.wave).toBe(prev.wave); // still the same wave's accumulator
+    // everyone who ran is counted exactly once: caught + escaped + still fleeing
+    const stillFleeing = fleeing(s).length;
+    const { grunts, caught, escaped } = s.waveStats.rout;
+    expect(grunts).toBeLessThanOrEqual(total);
+    expect(caught + escaped + stillFleeing).toBe(grunts);
+  });
+});
+
 describe("rout counters (#3249)", () => {
   it("triggers once, with atMs and grunts", () => {
     const prev = preRout();
