@@ -1102,7 +1102,13 @@ The scenarios are in `__tests__/waveStats.combat.test.ts`, with the seeded multi
   `combat.shotsHit` — those bullets that damaged a ship, once per bullet on the first ship it
   damages (a piercing shot through three ships is one hit; a shot the Carrier's field deflects is
   none), so `shotsHit ≤ shotsFired`; `combat.shotsOnRocks` — those bullets spent on rocks. Buddy's
-  shots are not the player's and count in none of the three.
+  shots are not the player's and count in none of the three. The three don't partition
+  `shotsFired`: a piercing shot that hits a ship and is then absorbed by a rock counts in both
+  `shotsHit` and `shotsOnRocks`, so only `shotsHit ≤ shotsFired` holds.
+- After a restore, wave stats that start fresh (an older save, or stats that don't fit this build)
+  — and kept stats from a build before #3248, whose `combat.spawned` is all 0 — take the saved
+  roster, every ship of the wave alive or dead, as `combat.spawned`, so the kills still to come
+  have spawns to match (`restoreSavedState`).
 - `damage.hits[cause][result]` — hits on the player as `resolvePlayerHit` resolves them.
   **Multi-hit rule:** the shield takes every projectile, and each counts — one `shield` hit per
   bullet, rock and beam it absorbed. Anything that gets through costs one plate or one life for the

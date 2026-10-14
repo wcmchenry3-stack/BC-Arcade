@@ -31,7 +31,9 @@ import type {
   Vec2,
 } from "./types";
 import type { EarlierScore, ScoreLedger, WaveScore } from "./scoreLedger";
-import { emptyWaveStats, isWaveStats, loadoutOf } from "./engine/waveStats";
+import { emptyWaveStats, isWaveStats, loadoutOf, type WaveStats } from "./engine/waveStats";
+import { ENEMY_TIERS } from "./engine/registries";
+import { countSpawned } from "./engine/waveCounters";
 
 type KeySpec<T> = {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -395,11 +397,21 @@ export function fitsSaveShape(v: unknown): v is SavedStarSwarmState {
  * nothing to compare it with, so a saved one is ignored rather than validated.
  */
 export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
+  const kept = isWaveStats(saved.waveStats) ? saved.waveStats : null;
   return {
     ...saved,
-    waveStats: isWaveStats(saved.waveStats)
-      ? saved.waveStats
-      : emptyWaveStats(loadoutOf(saved.player)),
+    waveStats: withRosterSpawns(kept ?? emptyWaveStats(loadoutOf(saved.player)), saved.enemies),
     lastClosedWave: null,
   };
+}
+
+/**
+ * #3248: fresh stats — or kept ones from a build before #3248, whose `combat.spawned` is all 0 —
+ * get the saved roster (every ship of the wave, alive or dead) as their spawns, so the kills
+ * still to come have spawns to match. Stats that already count spawns are left alone.
+ */
+function withRosterSpawns(ws: WaveStats, enemies: readonly Enemy[]): WaveStats {
+  let spawned = 0;
+  for (const tier of ENEMY_TIERS) spawned += ws.combat.spawned[tier];
+  return spawned === 0 ? countSpawned(ws, enemies) : ws;
 }
