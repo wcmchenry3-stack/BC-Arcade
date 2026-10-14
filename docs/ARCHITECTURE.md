@@ -1217,8 +1217,9 @@ its range fails `Settings()`, so the API refuses to start. Game rules stay const
 | `APPLE_REPLAY_WINDOW_HOURS` | `48` (1–720)                                 | `purchases/apple_notifications.py` (lazy, via `purchases/_common.py`) |
 | `DB_PING_TIMEOUT_SECONDS` | `5.0` (above 0, at most 60)                    | `routes/health.py` (lazy)                               |
 | `REPLAY_RETENTION_DAYS` | `30` (1–3650): replay event rows older than this are pruned | `games/replay_storage.py` (lazy)               |
-| `REPLAY_STORAGE_BUDGET_MB` | `250` (1–100000): `game_events` budget; Sentry at 50/75/90 % | `games/replay_storage.py` (lazy)          |
-| `REPLAY_JOB_HOUR_UTC`  | `9` (0–23): the off-peak hour the daily prune and budget check start | `games/replay_storage.py` (lazy)        |
+| `REPLAY_STORAGE_BUDGET_MB` | `250` (1–500): `game_events` budget; Sentry at 50/75/90 % | `games/replay_storage.py` (lazy)              |
+| `DATABASE_PLAN_MB`     | `500` (1–10000): the database plan's limit; Sentry at 50/75/90 % of it | `games/replay_storage.py` (lazy)  |
+| `REPLAY_JOB_HOUR_UTC`  | `9` (0–23): start of the 3-hour off-peak window for the daily prune and budget check | `games/replay_storage.py` (lazy) |
 
 `db/base.py` reads `DATABASE_URL` on its first `is_configured()` /
 `get_engine()` call and keeps it for the process, because the engine is
@@ -1274,7 +1275,8 @@ entry, or a decorator that differs from the table.
 | `_TS_WINDOW_LOW` / `_TS_WINDOW_HIGH`    | `games/sessions.py`                                   | 365 days back / 24 hours ahead       |
 | `_MAX_RESULT_BYTES`                     | `games/sessions.py`                                   | `8192`                               |
 | `RETENTION`                             | `daily_word/retention.py`                             | 14 days                              |
-| `DEFAULT_CAP` / `CAPS_BY_GAME_TYPE`     | `games/replay_caps.py`                                | 1000 events / 64 KB per game; Star Swarm 200 / 64 KB |
+| `DEFAULT_CAP` / `CAPS_BY_GAME_TYPE`     | `games/replay_caps.py`                                | 500 events / 160 KB per game (JSON + 200 B/row); Star Swarm 200 / 104 KB; 2048 2,000 / 660 KB |
+| `LIFECYCLE_CAP` / `RETENTION_KEEP_NAMES` | `games/replay_caps.py`                               | 4 started / 4 ended / 1,000 hand_resolved / 384 KB; keep `wave_completed`, `guess_submitted` |
 | `PRUNE_BATCH_SIZE` / `PRUNE_MAX_BATCHES` | `games/replay_storage.py`                            | `5000` rows / `200` batches per run  |
 | `MAX_GUESSES`                           | `daily_word/progress.py`                              | `6`                                  |
 | `LOOKBACK_DAYS`                         | `daily_challenge/streak.py`                           | `60`                                 |

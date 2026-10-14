@@ -4,8 +4,9 @@ Idempotency strategy:
 - Games: client may supply `id`; re-creating with the same id returns existing.
 - Events: `(game_id, event_index)` is the composite PK. We use dialect-aware
   `INSERT ... ON CONFLICT DO NOTHING` so repeat batches are safe.
-- Replay cap (#3292): a game's replay (non-lifecycle) events past its cap in
-  ``games.replay_caps`` are dropped, but the batch still answers 2xx.
+- Caps (#3292): a game's replay and lifecycle events past their caps in
+  ``games.replay_caps`` are dropped, but the batch still answers 2xx. The game
+  row is taken FOR UPDATE, so one game's batches run one at a time.
 - Complete: re-completing a finished game returns its existing state without
   overwriting — except a row closed by the stale-session sweep (#2621), which a
   real completion replaces.
@@ -30,11 +31,17 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from db.dialect import dialect_insert, dialect_name
-from db.models import Game, GameEvent
+from db.models import EventType, Game, GameEvent
 from games import catalog_cache, replay_caps
 from games.boards.limits import check_completion_limits, merge_result_metadata
 from games.catalog_cache import GameTypeRow
-from games.filters import is_swept, without_swept
+from games.filters import (
+    REPLAY_CAPPED_KEY,
+    is_replay_capped,
+    is_swept,
+    without_server_flags,
+    without_swept,
+)
 from games.legacy_outcomes import might_be_legacy_win, win_update
 from games.protocol import GameModule
 from games.registry import get_module
@@ -124,8 +131,8 @@ async def create_game(
         id=client_id or uuid.uuid4(),
         session_id=session_id,
         game_type_id=gt.id,
-        # The sweep flag is server-written only (#2621).
-        game_metadata=without_swept(metadata),
+        # The sweep and replay-cap flags are server-written only (#2621, #3292).
+        game_metadata=without_server_flags(metadata),
         players=players,
     )
     valid_started_at = _validate_client_timestamp(started_at, now) if started_at else None
@@ -180,7 +187,9 @@ async def append_events(
     session_id: str,
     events: list[dict[str, Any]],
 ) -> AppendResult:
-    game = await _get_owned_game(session, game_id, session_id)
+    # FOR UPDATE (#3292): batches for one game run one at a time, so the caps
+    # below read totals no concurrent batch is about to change.
+    game = await _get_owned_game(session, game_id, session_id, for_update=True)
     # A swept row is still open as far as the device is concerned: a long-offline
     # queue flushes its events before the completion that replaces the sweep.
     if game.completed_at is not None and not is_swept(game.game_metadata):
@@ -250,14 +259,16 @@ async def append_events(
         )
         existing_set = set(existing)
         duplicates = sum(1 for i in valid_indices if i in existing_set)
-        # Only rows not already stored count against the replay cap (#3292), so
-        # a retried batch still answers with its duplicates.
+        # Only rows not already stored count against the caps (#3292), so a
+        # retried batch still answers with its duplicates.
         new_rows = [r for r in valid_rows if r["event_index"] not in existing_set]
-        new_rows = await _within_replay_cap(session, game.id, type_name, new_rows, event_type_map)
+        names = {i: n for n, i in event_type_map.items()}
+        new_rows, flagged = await _within_caps(session, game, type_name, new_rows, names)
 
         if new_rows:
             stmt = _upsert_ignore(session, GameEvent.__table__, new_rows)
             await session.execute(stmt)
+        if new_rows or flagged:
             await session.commit()
         inserted = len(new_rows)
 
@@ -268,55 +279,95 @@ async def append_events(
     )
 
 
-async def _within_replay_cap(
+async def _within_caps(
     session: AsyncSession,
-    game_id: uuid.UUID,
+    game: Game,
     type_name: str | None,
     rows: list[dict[str, Any]],
-    event_type_map: dict[str, int],
-) -> list[dict[str, Any]]:
-    """``rows`` less the replay events over the game's cap (#3292).
+    names: dict[int, str],
+) -> tuple[list[dict[str, Any]], bool]:
+    """``rows`` less the events over the game's caps (#3292), and whether the game was flagged.
 
-    Lifecycle rows always pass. Costs one aggregate query (count and summed
-    JSON size of the game's stored replay rows), and only when the batch has
-    a new replay event. Dropped events are reported, throttled per game type.
+    Replay rows past ``replay_caps.cap_for(type_name)`` are dropped, and the
+    first drop flags the game (``REPLAY_CAPPED_KEY``) so every later replay
+    row is dropped too. Lifecycle rows past ``LIFECYCLE_CAP`` are dropped
+    without flagging. Costs one aggregate query over the game's stored rows
+    (``stored_event_totals``), only when the batch has a new row. Drops are
+    reported, throttled per game type.
     """
-    replay_ids = {i for n, i in event_type_map.items() if replay_caps.is_replay_event(n)}
-    replay_pos = [p for p, r in enumerate(rows) if r["event_type_id"] in replay_ids]
-    if not replay_pos:
-        return rows
-    stored_events, stored_bytes = await stored_replay_totals(session, game_id, replay_ids)
-    cap = replay_caps.cap_for(type_name)
-    decision = replay_caps.apply_cap(
-        cap,
-        stored_events,
-        stored_bytes,
-        (replay_caps.event_bytes(rows[p]["data"]) for p in replay_pos),
-    )
-    if not decision.dropped:
-        return rows
-    replay_caps.report_cap_reached(type_name or "unknown", decision, cap)
-    dropped = set(replay_pos) - {replay_pos[k] for k in decision.kept}
-    return [r for p, r in enumerate(rows) if p not in dropped]
+    if not rows:
+        return rows, False
+    game_type = type_name or "unknown"
+    replay_pos = [
+        p for p, r in enumerate(rows) if replay_caps.is_replay_event(names[r["event_type_id"]])
+    ]
+    life_pos = [p for p in range(len(rows)) if p not in set(replay_pos)]
+    totals = await stored_event_totals(session, game.id)
+    dropped: set[int] = set()
+    flagged = False
+
+    if replay_pos:
+        cap = replay_caps.cap_for(type_name)
+        if is_replay_capped(game.game_metadata):
+            decision = replay_caps.truncated(len(replay_pos))
+        else:
+            decision = replay_caps.apply_cap(
+                cap,
+                totals.replay_events,
+                totals.replay_bytes,
+                (replay_caps.event_bytes(rows[p]["data"]) for p in replay_pos),
+            )
+        if decision.dropped:
+            dropped |= set(replay_pos) - {replay_pos[k] for k in decision.kept}
+            replay_caps.report_cap_reached(game_type, decision, cap)
+            if not is_replay_capped(game.game_metadata):
+                # Reassign (the JSONB column is not a MutableDict). The row is
+                # held FOR UPDATE, so no concurrent batch or completion races it.
+                game.game_metadata = {**(game.game_metadata or {}), REPLAY_CAPPED_KEY: True}
+                flag_modified(game, "game_metadata")
+                flagged = True
+
+    if life_pos:
+        decision = replay_caps.apply_lifecycle_cap(
+            replay_caps.LIFECYCLE_CAP,
+            totals.lifecycle_counts,
+            totals.lifecycle_bytes,
+            (
+                (names[rows[p]["event_type_id"]], replay_caps.event_bytes(rows[p]["data"]))
+                for p in life_pos
+            ),
+        )
+        if decision.dropped:
+            dropped |= set(life_pos) - {life_pos[k] for k in decision.kept}
+            replay_caps.report_lifecycle_cap_reached(game_type, decision)
+
+    return [r for p, r in enumerate(rows) if p not in dropped], flagged
 
 
-async def stored_replay_totals(
-    session: AsyncSession, game_id: uuid.UUID, replay_type_ids: set[int]
-) -> tuple[int, int]:
-    """How many replay rows ``game_id`` stores, and their JSON size in bytes."""
+async def stored_event_totals(
+    session: AsyncSession, game_id: uuid.UUID
+) -> replay_caps.StoredTotals:
+    """``game_id``'s stored rows by event type name: counts and bytes (JSON + overhead).
+
+    Grouped by name through ``event_types``, so rows of a deprecated (or since
+    renamed-away) type still count. Read through the primary key's
+    ``game_id`` prefix.
+    """
     if dialect_name(session) == "sqlite":
         size = func.length(GameEvent.data)  # SQLite keeps JSON as text
     else:
         size = func.octet_length(cast(GameEvent.data, Text))
-    row = (
-        await session.execute(
-            select(func.count(), func.coalesce(func.sum(size), 0)).where(
-                GameEvent.game_id == game_id,
-                GameEvent.event_type_id.in_(replay_type_ids),
-            )
-        )
-    ).one()
-    return int(row[0]), int(row[1])
+    rows = await session.execute(
+        select(EventType.name, func.count(), func.coalesce(func.sum(size), 0))
+        .select_from(GameEvent)
+        .join(EventType, EventType.id == GameEvent.event_type_id)
+        .where(GameEvent.game_id == game_id)
+        .group_by(EventType.name)
+    )
+    totals = replay_caps.StoredTotals()
+    for name, count, data_bytes in rows:
+        totals.add(name, int(count), int(data_bytes))
+    return totals
 
 
 async def complete_game(  # noqa: PLR0913 - keyword-only fields of one completion
@@ -347,8 +398,8 @@ async def complete_game(  # noqa: PLR0913 - keyword-only fields of one completio
 
     name = game.game_type.name
     mod = get_module(name)
-    # The sweep flag is server-written only: a result must not set it (#2621).
-    validated_result = without_swept(
+    # The server flags are server-written only: a result must not set them (#2621, #3292).
+    validated_result = without_server_flags(
         await _validate_result(session, game, result, name, mod, final_score)
     )
     # Optional per-game hook: a game whose score is part of its result block

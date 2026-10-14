@@ -15,15 +15,17 @@ from sqlalchemy import select, update
 
 from db.base import get_session_factory
 from db.dialect import dialect_name
-from db.models import EventType, Game, GameEntitlement, GameEvent
+from db.models import EventType, Game, GameEntitlement, GameEvent, GameType
 from games import replay_storage
 from games.replay_storage import (
+    BudgetReading,
     DailyGate,
     StorageSize,
     check_storage_budget,
     crossed_threshold,
     measure_storage,
     prune_replay_events,
+    read_budget,
     replay_storage_job,
     retention_cutoff,
     run_daily,
@@ -55,18 +57,24 @@ def test_retention_cutoff_is_now_minus_the_window() -> None:
 
 def test_settings_defaults_and_bounds(monkeypatch: pytest.MonkeyPatch) -> None:
     s = Settings.isolated()
-    assert (s.replay_retention_days, s.replay_storage_budget_mb, s.replay_job_hour_utc) == (
-        30,
-        250,
-        9,
-    )
+    assert (
+        s.replay_retention_days,
+        s.replay_storage_budget_mb,
+        s.replay_job_hour_utc,
+        s.database_plan_mb,
+    ) == (30, 250, 9, 500)
     for env, bad in (
         ("REPLAY_RETENTION_DAYS", 0),
         ("REPLAY_STORAGE_BUDGET_MB", 0),
+        ("REPLAY_STORAGE_BUDGET_MB", 501),
         ("REPLAY_JOB_HOUR_UTC", 24),
+        ("DATABASE_PLAN_MB", 0),
+        ("DATABASE_PLAN_MB", 10_001),
     ):
         with pytest.raises(ValidationError):
             Settings.isolated(**{env: bad})
+    assert Settings.isolated(REPLAY_STORAGE_BUDGET_MB=500).replay_storage_budget_mb == 500
+    assert Settings.isolated(DATABASE_PLAN_MB=10_000).database_plan_mb == 10_000
     monkeypatch.setenv("REPLAY_RETENTION_DAYS", "7")
     assert Settings().replay_retention_days == 7
 
@@ -76,11 +84,15 @@ def test_module_reads_its_settings_lazily(monkeypatch: pytest.MonkeyPatch) -> No
         replay_storage,
         "_settings",
         Settings.isolated(
-            REPLAY_RETENTION_DAYS=10, REPLAY_STORAGE_BUDGET_MB=3, REPLAY_JOB_HOUR_UTC=2
+            REPLAY_RETENTION_DAYS=10,
+            REPLAY_STORAGE_BUDGET_MB=3,
+            REPLAY_JOB_HOUR_UTC=2,
+            DATABASE_PLAN_MB=8,
         ),
     )
     assert replay_storage.retention() == timedelta(days=10)
     assert replay_storage.budget_bytes() == 3 * MB
+    assert replay_storage.plan_bytes() == 8 * MB
     assert replay_storage.job_hour_utc() == 2
 
 
@@ -90,13 +102,18 @@ def test_get_settings_builds_once(monkeypatch: pytest.MonkeyPatch) -> None:
     assert replay_storage._get_settings() is first
 
 
-def test_daily_gate_opens_once_a_day_from_the_hour() -> None:
+def test_daily_gate_runs_once_a_day_inside_the_window() -> None:
     gate = DailyGate(hour=lambda: 9)
     assert not gate.due(NOW.replace(hour=8, minute=59))
     assert gate.due(NOW.replace(hour=9))
-    gate.done(NOW.replace(hour=9))
+    assert gate.due(NOW.replace(hour=11, minute=59))
+    # Outside the 3-hour window: a process started in the evening waits for tomorrow.
+    assert not gate.due(NOW.replace(hour=12))
     assert not gate.due(NOW.replace(hour=23))
+    gate.done(NOW.replace(hour=9))
+    assert not gate.due(NOW.replace(hour=10))
     assert gate.due(NOW.replace(hour=9) + timedelta(days=1))
+    assert replay_storage.RUN_WINDOW_HOURS == 3
 
 
 # ---------------------------------------------------------------------------
@@ -112,13 +129,13 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any]]]:
 
 
 @pytest.fixture
-def hook(monkeypatch: pytest.MonkeyPatch) -> list[tuple[StorageSize, int]]:
-    calls: list[tuple[StorageSize, int]] = []
+def hook(monkeypatch: pytest.MonkeyPatch) -> list[tuple[StorageSize, BudgetReading]]:
+    calls: list[tuple[StorageSize, BudgetReading]] = []
     real = replay_storage.on_budget_exceeded
 
-    def spy(size: StorageSize, budget: int) -> None:
-        calls.append((size, budget))
-        real(size, budget)
+    def spy(size: StorageSize, reading: BudgetReading) -> None:
+        calls.append((size, reading))
+        real(size, reading)
 
     monkeypatch.setattr(replay_storage, "on_budget_exceeded", spy)
     return calls
@@ -131,9 +148,15 @@ def _measured(events_bytes: int, database_bytes: int = 20 * MB):
     return measure
 
 
-async def _check(events_bytes: int, budget: int = 100 * MB) -> float | None:
+async def _check(
+    events_bytes: int, database_bytes: int = 20 * MB, budget: int = 100 * MB, plan: int = 500 * MB
+) -> float | None:
     async with get_session_factory()() as db:
-        return await check_storage_budget(db, budget=budget, measure=_measured(events_bytes))
+        reading = await check_storage_budget(
+            db, budget=budget, plan=plan, measure=_measured(events_bytes, database_bytes)
+        )
+    assert reading is not None
+    return reading.threshold
 
 
 async def test_budget_under_half_reports_nothing(sent, hook) -> None:
@@ -149,11 +172,15 @@ async def test_budget_reports_one_event_per_threshold(sent, hook, pct: int, leve
     assert msg == f"Replay storage at {pct}% of budget"
     assert kw["level"] == level
     assert kw["fingerprint"] == [replay_storage.BUDGET_FINGERPRINT, str(pct)]
+    assert kw["tags"]["basis"] == "game_events"
     assert kw["contexts"]["replay_storage"] == {
+        "basis": "game_events",
         "game_events_bytes": pct * MB,
-        "database_bytes": 20 * MB,
         "budget_bytes": 100 * MB,
-        "used_ratio": pct / 100,
+        "game_events_ratio": pct / 100,
+        "database_bytes": 20 * MB,
+        "plan_bytes": 500 * MB,
+        "database_ratio": 0.04,
     }
     assert hook == []
 
@@ -165,18 +192,43 @@ async def test_the_90_percent_hook_runs_at_90_and_not_at_89(
     assert hook == []
     with caplog.at_level(logging.WARNING, logger="games.replay_storage"):
         assert await _check(90 * MB) == 0.9
-    assert hook == [(StorageSize(90 * MB, 20 * MB), 100 * MB)]
+    assert len(hook) == 1
+    assert hook[0][0] == StorageSize(90 * MB, 20 * MB)
+    assert hook[0][1].basis == "game_events"
     assert [kw["level"] for _, kw in sent] == ["warning", "error"]
     assert any("#3279" in r.getMessage() for r in caplog.records)
 
 
-async def test_budget_defaults_to_the_configured_value(
+async def test_the_database_against_its_plan_reports_when_it_is_fuller(sent, hook) -> None:
+    """A small game_events in a nearly full database still reports, and at 90 % hooks."""
+    assert await _check(10 * MB, database_bytes=376 * MB) == 0.75  # 75.2 % of 500 MB
+    assert sent[0][1]["tags"]["basis"] == "database"
+    assert hook == []
+    assert await _check(10 * MB, database_bytes=449 * MB) == 0.75  # 89.8 %
+    assert hook == []
+    assert await _check(10 * MB, database_bytes=450 * MB) == 0.9
+    assert len(hook) == 1 and hook[0][1].basis == "database"
+
+
+def test_read_budget_picks_the_higher_ratio() -> None:
+    size = StorageSize(events_bytes=60, database_bytes=80)
+    assert read_budget(size, 100, 100) == BudgetReading("database", 0.8, 0.75)
+    assert read_budget(size, 100, 1000) == BudgetReading("game_events", 0.6, 0.5)
+
+
+async def test_budget_defaults_to_the_configured_values(
     monkeypatch: pytest.MonkeyPatch, sent, hook
 ) -> None:
-    monkeypatch.setattr(replay_storage, "_settings", Settings.isolated(REPLAY_STORAGE_BUDGET_MB=1))
+    monkeypatch.setattr(
+        replay_storage,
+        "_settings",
+        Settings.isolated(REPLAY_STORAGE_BUDGET_MB=1, DATABASE_PLAN_MB=1_000),
+    )
     async with get_session_factory()() as db:
-        assert await check_storage_budget(db, measure=_measured(MB)) == 0.9
-    assert len(hook) == 1 and hook[0][1] == MB
+        reading = await check_storage_budget(db, measure=_measured(MB))
+    assert reading is not None and reading.threshold == 0.9
+    assert sent[0][1]["contexts"]["replay_storage"]["plan_bytes"] == 1_000 * MB
+    assert len(hook) == 1
 
 
 async def test_measure_storage_on_this_database(sent) -> None:
@@ -258,6 +310,56 @@ async def test_prune_deletes_only_old_replay_rows(client: TestClient, session_id
     assert await _game_exists(old) and await _game_exists(fresh)
 
 
+async def _direct_game(game_type: str, names: list[str], when: datetime) -> uuid.UUID:
+    """A game of ``game_type`` with one row per name, all received at ``when``."""
+    async with get_session_factory()() as db:
+        type_id = (
+            await db.execute(select(GameType.id).where(GameType.name == game_type))
+        ).scalar_one()
+        ids = dict(
+            (
+                await db.execute(
+                    select(EventType.name, EventType.id).where(EventType.game_type_id == type_id)
+                )
+            ).all()
+        )
+        game = Game(
+            session_id=str(uuid.uuid4()), game_type_id=type_id, game_metadata={}, players=[]
+        )
+        db.add(game)
+        await db.flush()
+        db.add_all(
+            [
+                GameEvent(
+                    game_id=game.id,
+                    event_index=i,
+                    event_type_id=ids[name],
+                    data={"n": i},
+                    occurred_at=when,
+                )
+                for i, name in enumerate(names)
+            ]
+        )
+        await db.commit()
+        return game.id
+
+
+async def test_prune_never_deletes_the_keep_list(client: TestClient) -> None:
+    """``wave_completed`` and ``guess_submitted`` are summaries kept for good
+    (owner decision #3317); they still count toward the caps."""
+    assert {"wave_completed", "guess_submitted"} <= replay_storage.KEPT_EVENT_NAMES
+    now = datetime.now(UTC)
+    old = now - timedelta(days=400)
+    swarm = await _direct_game(
+        "starswarm", ["game_started", "wave_completed", "wave_completed"], old
+    )
+    word = await _direct_game("daily_word", ["game_started", "guess_submitted", "game_ended"], old)
+    async with get_session_factory()() as db:
+        await prune_replay_events(db, now=now, keep=timedelta(days=30))
+    assert await _kinds(str(swarm)) == ["game_started", "wave_completed", "wave_completed"]
+    assert await _kinds(str(word)) == ["game_started", "guess_submitted", "game_ended"]
+
+
 async def test_prune_runs_in_bounded_batches(client: TestClient, session_id: str) -> None:
     now = datetime.now(UTC)
     gid = _game_with_events(client, session_id, rolls=5)
@@ -321,6 +423,33 @@ async def test_run_daily_prunes_then_checks_the_budget_once_a_day(
     assert len(hook) == 1 and len(sent) == 1
 
 
+async def test_a_run_locked_by_another_instance_is_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    async def locked(db) -> bool:
+        return False
+
+    async def fake_prune(db, **kw) -> int:  # pragma: no cover - must not run
+        calls.append("prune")
+        return 0
+
+    monkeypatch.setattr(replay_storage, "try_run_lock", locked)
+    monkeypatch.setattr(replay_storage, "prune_replay_events", fake_prune)
+    gate = DailyGate(hour=lambda: 9)
+    assert not await run_daily(get_session_factory, gate, now=NOW)
+    assert calls == []
+    # The other instance has today's run: this one does not retry it hourly.
+    assert not gate.due(NOW + timedelta(hours=1))
+
+
+async def test_the_run_lock_is_free_on_sqlite() -> None:
+    async with get_session_factory()() as db:
+        if dialect_name(db) == "sqlite":
+            assert await replay_storage.try_run_lock(db) is True
+
+
 async def test_a_failed_run_is_retried_next_tick(monkeypatch: pytest.MonkeyPatch) -> None:
     attempts = 0
 
@@ -338,7 +467,7 @@ async def test_a_failed_run_is_retried_next_tick(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(replay_storage, "measure_storage", no_measure)
     reported: list[BaseException] = []
     monkeypatch.setattr(report.sentry_sdk, "capture_exception", reported.append)
-    gate = DailyGate(hour=lambda: 0)
+    gate = DailyGate(hour=lambda: datetime.now(UTC).hour)
 
     task = asyncio.create_task(
         replay_storage_job(get_session_factory, interval_s=0.01, gate=gate).loop()

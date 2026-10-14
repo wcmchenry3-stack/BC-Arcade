@@ -57,3 +57,19 @@ def is_swept(metadata: dict[str, Any] | None) -> bool:
 def without_swept(data: dict[str, Any] | None) -> dict[str, Any]:
     """A copy of *data* without the sweep flag (client input, or a row being completed)."""
     return {k: v for k, v in (data or {}).items() if k != SWEPT_KEY}
+
+
+# Metadata flag on a game whose replay events hit their cap (#3292): every
+# later replay event for it is dropped, so a stored replay has no gaps.
+# Server-written only, like the sweep flag.
+REPLAY_CAPPED_KEY = "replay_capped"
+_SERVER_FLAGS = frozenset({SWEPT_KEY, REPLAY_CAPPED_KEY})
+
+
+def is_replay_capped(metadata: dict[str, Any] | None) -> bool:
+    return (metadata or {}).get(REPLAY_CAPPED_KEY) is True
+
+
+def without_server_flags(data: dict[str, Any] | None) -> dict[str, Any]:
+    """A copy of client-sent *data* without any server-written flag (#2621, #3292)."""
+    return {k: v for k, v in (data or {}).items() if k not in _SERVER_FLAGS}

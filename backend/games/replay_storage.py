@@ -6,16 +6,22 @@ bounds, cheapest first:
 
 * the per-game caps in ``games.replay_caps`` (applied on write);
 * retention: replay rows older than ``REPLAY_RETENTION_DAYS`` (default 30) are
-  deleted, in bounded batches. Lifecycle rows (``LIFECYCLE_EVENT_NAMES``) and
-  ``games`` rows are never touched, so history, stats and the boards are
-  unaffected;
+  deleted, in bounded batches. Lifecycle rows (``LIFECYCLE_EVENT_NAMES``), the
+  keep-list (``RETENTION_KEEP_NAMES``: per-game summaries, owner decision
+  #3317) and ``games`` rows are never touched, so history, stats and the
+  boards are unaffected;
 * the budget: ``pg_total_relation_size('game_events')`` against
-  ``REPLAY_STORAGE_BUDGET_MB``, reported to Sentry at 50 / 75 / 90 %.
+  ``REPLAY_STORAGE_BUDGET_MB`` and ``pg_database_size`` against
+  ``DATABASE_PLAN_MB``, whichever is fuller, reported to Sentry at 50 / 75 / 90 %.
 
-Both run once a day, off peak (from ``REPLAY_JOB_HOUR_UTC``), in-process on the
-``PeriodicJob`` framework (``jobs.lifespan``), like Daily Word retention: the
-job wakes hourly and does its work the first time it wakes in or after that
-hour each UTC day. Several instances running it at once is harmless.
+Both run once a day, off peak, in-process on the ``PeriodicJob`` framework
+(``jobs.lifespan``), like Daily Word retention: the job wakes hourly and does
+its work the first time it wakes inside the window ``REPLAY_JOB_HOUR_UTC`` to
+``+ RUN_WINDOW_HOURS`` each UTC day (the window does not wrap past midnight).
+On Postgres the run takes a transaction-level advisory lock on a session of
+its own (``pg_try_advisory_xact_lock``), so a second instance skips the run
+instead of contending; the lock goes when that session closes, however the
+run ends.
 
 Bytes per game, the days of headroom and the knobs are in
 docs/DATA-INVENTORY.md §2a.
@@ -33,21 +39,28 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from db.dialect import dialect_name
 from db.models import EventType, GameEvent
-from games.replay_caps import LIFECYCLE_EVENT_NAMES
+from games.replay_caps import LIFECYCLE_EVENT_NAMES, RETENTION_KEEP_NAMES
 from jobs.periodic import PeriodicJob
 from observability.report import report_event
 from settings import Settings
 
 logger = logging.getLogger(__name__)
 
+# Event types retention never deletes.
+KEPT_EVENT_NAMES: frozenset[str] = LIFECYCLE_EVENT_NAMES | RETENTION_KEEP_NAMES
+
 # Rows deleted per statement, and statements per run: one run removes at most
 # 1M rows, in short transactions that never hold a long lock.
 PRUNE_BATCH_SIZE = 5_000
 PRUNE_MAX_BATCHES = 200
 
-# The job wakes hourly; each run does real work at most once a UTC day.
+# The job wakes hourly; each run does real work at most once a UTC day, and
+# only inside the off-peak window.
 TICK_INTERVAL_S = 60 * 60
 RUN_TIMEOUT_S = 15 * 60
+RUN_WINDOW_HOURS = 3
+# pg_try_advisory_xact_lock key: "3292" + "01".
+ADVISORY_LOCK_KEY = 329_201
 
 # Fractions of the budget that report, lowest first.
 BUDGET_THRESHOLDS: tuple[float, ...] = (0.5, 0.75, 0.9)
@@ -59,7 +72,7 @@ _settings: Settings | None = None
 
 
 def _get_settings() -> Settings:
-    """``REPLAY_*`` (settings.py), read lazily."""
+    """``REPLAY_*`` and ``DATABASE_PLAN_MB`` (settings.py), read lazily."""
     global _settings
     if _settings is None:
         _settings = Settings()
@@ -72,6 +85,10 @@ def retention() -> timedelta:
 
 def budget_bytes() -> int:
     return _get_settings().replay_storage_budget_mb * 1024 * 1024
+
+
+def plan_bytes() -> int:
+    return _get_settings().database_plan_mb * 1024 * 1024
 
 
 def job_hour_utc() -> int:
@@ -98,17 +115,18 @@ async def prune_replay_events(
 ) -> int:
     """Delete replay rows older than ``keep`` (default ``retention()``), in batches.
 
-    Each batch is its own ``DELETE`` of at most ``batch_size`` rows, committed
-    before the next; the loop stops when a batch comes back short or after
-    ``max_batches``, and the next run carries on. Returns the rows deleted.
+    Rows of ``KEPT_EVENT_NAMES`` types are never deleted. Each batch is its own
+    ``DELETE`` of at most ``batch_size`` rows, committed before the next; the
+    loop stops when a batch comes back short or after ``max_batches``, and the
+    next run carries on. Returns the rows deleted.
     """
     cutoff = retention_cutoff(now or datetime.now(UTC), keep or retention())
-    replay_type_ids = select(EventType.id).where(EventType.name.notin_(LIFECYCLE_EVENT_NAMES))
+    prunable_type_ids = select(EventType.id).where(EventType.name.notin_(KEPT_EVENT_NAMES))
     total = 0
     for _ in range(max_batches):
         victims = (
             select(GameEvent.game_id, GameEvent.event_index)
-            .where(GameEvent.occurred_at < cutoff, GameEvent.event_type_id.in_(replay_type_ids))
+            .where(GameEvent.occurred_at < cutoff, GameEvent.event_type_id.in_(prunable_type_ids))
             .limit(batch_size)
         )
         result = await session.execute(
@@ -131,8 +149,11 @@ async def prune_replay_events(
 
 @dataclass(frozen=True)
 class StorageSize:
-    events_bytes: int  # pg_total_relation_size('game_events'): table, indexes, TOAST
-    database_bytes: int  # pg_database_size(current_database())
+    # pg_total_relation_size('game_events'): table, indexes and TOAST. A
+    # high-water mark: deleted rows leave reusable free space, which plain
+    # (auto)VACUUM does not hand back, so this drops only after VACUUM FULL.
+    events_bytes: int
+    database_bytes: int  # pg_database_size(current_database()), the same caveat
 
 
 async def measure_storage(session: AsyncSession) -> StorageSize | None:
@@ -157,8 +178,30 @@ def crossed_threshold(used: int, budget: int) -> float | None:
     return reached[-1] if reached else None
 
 
-def on_budget_exceeded(size: StorageSize, budget: int) -> None:
-    """Called when replay storage reaches 90 % of its budget.
+@dataclass(frozen=True)
+class BudgetReading:
+    """The fuller of the two ratios: ``basis`` is ``"game_events"`` or ``"database"``."""
+
+    basis: str
+    ratio: float
+    threshold: float | None
+
+
+def read_budget(size: StorageSize, budget: int, plan: int) -> BudgetReading:
+    """``game_events`` against the replay budget and the database against the plan."""
+    events_ratio = size.events_bytes / budget
+    database_ratio = size.database_bytes / plan
+    if database_ratio > events_ratio:
+        basis, ratio = "database", database_ratio
+        threshold = crossed_threshold(size.database_bytes, plan)
+    else:
+        basis, ratio = "game_events", events_ratio
+        threshold = crossed_threshold(size.events_bytes, budget)
+    return BudgetReading(basis=basis, ratio=ratio, threshold=threshold)
+
+
+def on_budget_exceeded(size: StorageSize, reading: BudgetReading) -> None:
+    """Called when replay storage or the database reaches 90 % of its limit.
 
     It only reports for now (the 90 % event ``check_storage_budget`` sends).
     TODO(#3279): turn recording down server-side here — lower
@@ -166,11 +209,13 @@ def on_budget_exceeded(size: StorageSize, budget: int) -> None:
     decision #3307) — once #3279 adds those columns.
     """
     logger.warning(
-        "replay storage at or over %d%% of budget (%d of %d bytes); "
+        "storage at or over %d%% (%s at %.1f%%; game_events %d bytes, database %d bytes); "
         "automatic turn-down pending #3279",
         int(EXCEEDED_THRESHOLD * 100),
+        reading.basis,
+        reading.ratio * 100,
         size.events_bytes,
-        budget,
+        size.database_bytes,
     )
 
 
@@ -178,44 +223,50 @@ async def check_storage_budget(
     session: AsyncSession,
     *,
     budget: int | None = None,
+    plan: int | None = None,
     measure: Callable[[AsyncSession], Awaitable[StorageSize | None]] | None = None,
-) -> float | None:
-    """Measure, report the highest threshold crossed, and call the 90 % hook.
+) -> BudgetReading | None:
+    """Measure, report the highest threshold crossed by the fuller ratio, call the 90 % hook.
 
     One Sentry event per run (so per day), grouped per threshold. Returns the
-    threshold crossed, or ``None`` when under 50 % or not measurable.
+    reading, or ``None`` when not measurable.
     """
     budget = budget if budget is not None else budget_bytes()
+    plan = plan if plan is not None else plan_bytes()
     size = await (measure or measure_storage)(session)
     if size is None:
         return None
-    threshold = crossed_threshold(size.events_bytes, budget)
+    reading = read_budget(size, budget, plan)
     logger.info(
-        "replay storage: game_events %d bytes, database %d bytes, budget %d bytes",
+        "replay storage: game_events %d of %d bytes, database %d of %d bytes",
         size.events_bytes,
-        size.database_bytes,
         budget,
+        size.database_bytes,
+        plan,
     )
-    if threshold is None:
-        return None
-    pct = int(threshold * 100)
+    if reading.threshold is None:
+        return reading
+    pct = int(reading.threshold * 100)
     report_event(
         f"Replay storage at {pct}% of budget",
-        level=_LEVELS[threshold],
+        level=_LEVELS[reading.threshold],
         fingerprint=[BUDGET_FINGERPRINT, str(pct)],
-        tags={"subsystem": "games.replay_storage", "threshold": str(pct)},
+        tags={"subsystem": "games.replay_storage", "threshold": str(pct), "basis": reading.basis},
         context={
             "replay_storage": {
+                "basis": reading.basis,
                 "game_events_bytes": size.events_bytes,
-                "database_bytes": size.database_bytes,
                 "budget_bytes": budget,
-                "used_ratio": round(size.events_bytes / budget, 4),
+                "game_events_ratio": round(size.events_bytes / budget, 4),
+                "database_bytes": size.database_bytes,
+                "plan_bytes": plan,
+                "database_ratio": round(size.database_bytes / plan, 4),
             }
         },
     )
-    if threshold >= EXCEEDED_THRESHOLD:
-        on_budget_exceeded(size, budget)
-    return threshold
+    if reading.threshold >= EXCEEDED_THRESHOLD:
+        on_budget_exceeded(size, reading)
+    return reading
 
 
 # ---------------------------------------------------------------------------
@@ -225,16 +276,29 @@ async def check_storage_budget(
 
 @dataclass
 class DailyGate:
-    """Due once per UTC day, from ``hour`` on, until a run succeeds (in-process)."""
+    """Due once per UTC day inside ``hour <= now.hour < hour + RUN_WINDOW_HOURS``,
+    until a run succeeds (an in-process memory)."""
 
     hour: Callable[[], int] = job_hour_utc
     last_run: date | None = field(default=None)
 
     def due(self, now: datetime) -> bool:
-        return now.hour >= self.hour() and self.last_run != now.date()
+        start = self.hour()
+        in_window = start <= now.hour < start + RUN_WINDOW_HOURS
+        return in_window and self.last_run != now.date()
 
     def done(self, now: datetime) -> None:
         self.last_run = now.date()
+
+
+async def try_run_lock(session: AsyncSession) -> bool:
+    """Take the run's advisory lock for ``session``'s transaction; True on SQLite."""
+    if dialect_name(session) == "sqlite":
+        return True
+    got = await session.execute(
+        text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": ADVISORY_LOCK_KEY}
+    )
+    return bool(got.scalar())
 
 
 # The process's gate: a job rebuilt by a new app lifespan keeps today's run.
@@ -247,16 +311,25 @@ async def run_daily(
     *,
     now: datetime | None = None,
 ) -> bool:
-    """Prune, then check the budget — if the gate says today's run is due."""
+    """Prune, then check the budget — if the gate says today's run is due and
+    no other instance holds the lock. Returns whether this call did the run."""
     now = now or datetime.now(UTC)
     if not gate.due(now):
         return False
     # The factory getter is called here, inside the job's error handling, as in
     # daily_word.retention: a malformed DATABASE_URL must not abort startup.
-    async with get_session_factory()() as db:
-        pruned = await prune_replay_events(db, now=now)
-        logger.info("replay retention: pruned %d replay event rows", pruned)
-        await check_storage_budget(db)
+    factory = get_session_factory()
+    # ``lock_db`` holds the advisory lock in its open transaction; closing it
+    # (any exit, a timeout's cancel included) rolls back and releases the lock.
+    async with factory() as lock_db:
+        if not await try_run_lock(lock_db):
+            logger.info("replay storage: another instance is running today's run; skipped")
+            gate.done(now)
+            return False
+        async with factory() as db:
+            pruned = await prune_replay_events(db, now=now)
+            logger.info("replay retention: pruned %d replay event rows", pruned)
+            await check_storage_budget(db)
     gate.done(now)
     return True
 
@@ -270,9 +343,9 @@ def replay_storage_job(
 ) -> PeriodicJob:
     """The hourly tick that runs ``run_daily`` (started by ``jobs.lifespan``).
 
-    A failed run is reported and retried next tick (at most hourly); only a
-    successful run closes the day's gate. Logged at WARNING (an ERROR record
-    would be a second Sentry event).
+    A failed run is reported and retried next tick (at most hourly, inside the
+    window); only a successful or skipped run closes the day's gate. Logged at
+    WARNING (an ERROR record would be a second Sentry event).
     """
     gate = gate or _process_gate
     return PeriodicJob(

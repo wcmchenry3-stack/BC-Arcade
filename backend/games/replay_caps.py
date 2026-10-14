@@ -1,15 +1,20 @@
-"""Per-game caps on stored replay events (#3292, epic #3273).
+"""Per-game caps on stored game events (#3292, epic #3273).
 
 A *replay event* is any game event that is not a lifecycle event
-(``LIFECYCLE_EVENT_NAMES``). Lifecycle rows are what history, sweeps and the
-boards rely on, so they are never capped and never pruned; replay rows are
-the per-move / per-wave detail, which is only worth keeping while it fits the
-storage budget (docs/DATA-INVENTORY.md §2a).
+(``LIFECYCLE_EVENT_NAMES``): the per-move / per-wave detail, which is only
+worth keeping while it fits the storage budget (docs/DATA-INVENTORY.md §2a).
+Lifecycle rows are what history, sweeps and the boards rely on; retention
+never prunes them, so they get their own, looser cap (``LIFECYCLE_CAP``) that
+only a misbehaving client reaches.
 
-``append_events`` stops storing a game's replay events once it holds
-``max_events`` of them or ``max_bytes`` of their JSON. Over the cap the events
-are dropped and the batch still succeeds (2xx), so a device drains its queue
-and never retries. One Sentry warning per game type per hour says it happened.
+``append_events`` stores a game's replay events only while it holds fewer
+than ``max_events`` of them and their bytes (JSON plus ``ROW_OVERHEAD_BYTES``
+per row) stay within ``max_bytes``. The first replay event dropped marks the
+game (``REPLAY_CAPPED_KEY`` in its metadata, server-written only), and every
+later replay event for it is dropped too, so a stored replay has no gaps.
+Over a cap the events are dropped and the batch still succeeds (2xx), so a
+device drains its queue and never retries. One Sentry warning per game type
+per hour per kind of cap says it happened.
 
 The caps are config, not a registry: ``DEFAULT_CAP`` plus per-game overrides
 in ``CAPS_BY_GAME_TYPE``. #3278 replaces this with the full event registry.
@@ -18,38 +23,79 @@ in ``CAPS_BY_GAME_TYPE``. #3278 replaces this with the full event registry.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from typing import Any
 
 from observability.report import Throttle, report_event
 
-# Kept by retention and never capped. Matches the app's P1 queue tier
-# (``LIFECYCLE_EVENTS`` in frontend/src/game/_shared/eventQueueConfig.ts).
+# Never capped as replay and never pruned. Matches the app's P1 queue tier
+# (``LIFECYCLE_EVENTS`` in frontend/src/game/_shared/eventQueueConfig.ts;
+# tests/test_replay_caps.py checks the two stay in step).
 LIFECYCLE_EVENT_NAMES: frozenset[str] = frozenset({"game_started", "game_ended", "hand_resolved"})
+
+# Replay events retention keeps anyway: per-game summaries, not move logs
+# (owner decision #3317). They still count toward the per-game caps.
+RETENTION_KEEP_NAMES: frozenset[str] = frozenset({"wave_completed", "guess_submitted"})
+
+# What one stored row costs beyond its JSON: tuple header, the other columns
+# and the two index entries. Measured on PG16 at about 230 B/row including
+# indexes; 200 is the round figure charged against the byte caps.
+ROW_OVERHEAD_BYTES = 200
 
 
 @dataclass(frozen=True)
 class ReplayCap:
-    """The most replay events, and replay JSON bytes, one game may store."""
+    """The most replay events, and replay bytes (JSON + row overhead), one game may store."""
 
     max_events: int
     max_bytes: int
 
 
-# ~40 KB is the estimate for a fully recorded game (docs/DATA-INVENTORY.md §2a);
-# the default leaves room for a long game without letting one fill the budget.
-DEFAULT_CAP = ReplayCap(max_events=1_000, max_bytes=64 * 1024)
+# 500 events of ~130 B JSON + 200 B overhead ≈ 160 KB. A 13-round Yacht game
+# (≤ 39 rolls + 13 scores) is ~16 KB; a long Cascade game (a few hundred
+# merges) fits too.
+DEFAULT_CAP = ReplayCap(max_events=500, max_bytes=160 * 1024)
 
-# Per game type overrides. Star Swarm sends at most one ``wave_completed`` per
-# wave, each at most 4 KB, and caps a run at 64 KB on the device (#3251).
+# Star Swarm: one ``wave_completed`` per wave, a run of ≤ 200 waves, at most
+# 64 KB of JSON per run on the device (#3251), plus 200 × 200 B overhead.
+STARSWARM_CAP = ReplayCap(max_events=200, max_bytes=64 * 1024 + 200 * ROW_OVERHEAD_BYTES)
+
+# owner decision #3317 (value pending): 2048 sends one ``move`` per swipe, so
+# 2,000 moves at ~130 B JSON + 200 B overhead = 2,000 × 330 B = 660,000 B.
+TWENTY48_CAP = ReplayCap(max_events=2_000, max_bytes=2_000 * 330)
+
 CAPS_BY_GAME_TYPE: dict[str, ReplayCap] = {
-    "starswarm": ReplayCap(max_events=200, max_bytes=64 * 1024),
+    "starswarm": STARSWARM_CAP,
+    "twenty48": TWENTY48_CAP,
 }
 
-# One cap report per game type per hour.
+
+@dataclass(frozen=True)
+class LifecycleCap:
+    """Per-name counts and total bytes of one game's lifecycle rows."""
+
+    max_counts: Mapping[str, int]
+    max_bytes: int
+
+
+# The app sends one ``game_started`` (event_index 0, ``gameEventClient.startGame``)
+# and one ``game_ended`` (``completeGame``) per game id: a restart is a new game
+# id, and a resume adopts the open id without a new ``game_started``. 4 leaves
+# room for retries under new indices without letting a client spam rows that
+# retention never prunes. ``hand_resolved`` is one per Blackjack hand (and per
+# split hand): 1,000 is a very long session. Bytes: 1,000 hand_resolved at
+# ~70 B JSON + 200 B overhead ≈ 270 KB, plus 8 start/end rows at up to 8 KB
+# (the app's ``MAX_EVENT_PAYLOAD_BYTES``) + overhead ≈ 66 KB, so 384 KB.
+LIFECYCLE_CAP = LifecycleCap(
+    max_counts={"game_started": 4, "game_ended": 4, "hand_resolved": 1_000},
+    max_bytes=384 * 1024,
+)
+
+# One cap report per game type per kind per hour.
 CAP_REPORT_WINDOW_S = 60 * 60
 CAP_FINGERPRINT = "games-replay-cap-reached"
+LIFECYCLE_CAP_FINGERPRINT = "games-lifecycle-cap-reached"
 
 
 def is_replay_event(name: str) -> bool:
@@ -63,22 +109,49 @@ def cap_for(game_type: str | None) -> ReplayCap:
     return CAPS_BY_GAME_TYPE.get(game_type, DEFAULT_CAP)
 
 
-def event_bytes(data: Any) -> int:
-    """The size of one event's ``data`` as stored: its JSON text, in bytes.
+def json_bytes(data: Any) -> int:
+    """Compact UTF-8 JSON size of ``data``: a cheap estimate of the stored JSON.
 
-    ``json.dumps``'s default separators match Postgres' ``jsonb::text`` output,
-    which ``stored_replay_totals`` measures with ``octet_length``.
+    Postgres' ``jsonb::text`` (what ``stored_event_totals`` measures) adds a
+    space after each separator, so stored rows read slightly larger.
     """
-    return len(json.dumps(data, default=str).encode())
+    return len(json.dumps(data, ensure_ascii=False, separators=(",", ":"), default=str).encode())
+
+
+def event_bytes(data: Any) -> int:
+    """What one event costs against a byte cap: its JSON plus ``ROW_OVERHEAD_BYTES``."""
+    return json_bytes(data) + ROW_OVERHEAD_BYTES
+
+
+@dataclass
+class StoredTotals:
+    """A game's stored rows: replay count and bytes, lifecycle counts by name and bytes.
+
+    Bytes include ``ROW_OVERHEAD_BYTES`` per row.
+    """
+
+    replay_events: int = 0
+    replay_bytes: int = 0
+    lifecycle_counts: dict[str, int] = field(default_factory=dict)
+    lifecycle_bytes: int = 0
+
+    def add(self, name: str, count: int, data_bytes: int) -> None:
+        total = data_bytes + count * ROW_OVERHEAD_BYTES
+        if is_replay_event(name):
+            self.replay_events += count
+            self.replay_bytes += total
+        else:
+            self.lifecycle_counts[name] = self.lifecycle_counts.get(name, 0) + count
+            self.lifecycle_bytes += total
 
 
 @dataclass(frozen=True)
 class CapDecision:
-    """Which candidates fit: the indices into the list ``apply_cap`` was given."""
+    """Which candidates fit: the indices into the list the cap was given."""
 
     kept: list[int]
     dropped: int
-    reason: str | None  # "events" or "bytes" when anything was dropped
+    reason: str | None  # "events", "bytes", "truncated" or a lifecycle name
 
 
 def apply_cap(
@@ -87,9 +160,9 @@ def apply_cap(
     """Keep replay events, in order, while the game stays within ``cap``.
 
     ``stored_events`` / ``stored_bytes`` are the game's replay totals already
-    in the database; ``sizes`` are the new events' byte sizes in batch order.
-    The first event that would go over a cap ends the game's recording: it
-    and every later one are dropped, so a stored replay has no gaps.
+    in the database; ``sizes`` are the new events' ``event_bytes`` in batch
+    order. The first event that would go over a cap ends the game's
+    recording: it and every later one are dropped.
     """
     kept: list[int] = []
     dropped = 0
@@ -110,13 +183,54 @@ def apply_cap(
     return CapDecision(kept=kept, dropped=dropped, reason=reason)
 
 
-_throttles: dict[str, Throttle] = {}
+def apply_lifecycle_cap(
+    cap: LifecycleCap,
+    stored_counts: Mapping[str, int],
+    stored_bytes: int,
+    items: Iterable[tuple[str, int]],
+) -> CapDecision:
+    """Keep lifecycle rows, in order, while each name's count and the bytes fit.
+
+    Unlike replay, a dropped row does not end the game's recording: a later
+    ``game_ended`` still lands when an earlier, oversized row did not.
+    """
+    kept: list[int] = []
+    dropped = 0
+    reason: str | None = None
+    counts = dict(stored_counts)
+    total = stored_bytes
+    for i, (name, size) in enumerate(items):
+        limit = cap.max_counts.get(name)
+        if limit is not None and counts.get(name, 0) + 1 > limit:
+            dropped += 1
+            reason = reason or name
+            continue
+        if total + size > cap.max_bytes:
+            dropped += 1
+            reason = reason or "bytes"
+            continue
+        counts[name] = counts.get(name, 0) + 1
+        total += size
+        kept.append(i)
+    return CapDecision(kept=kept, dropped=dropped, reason=reason)
+
+
+def truncated(count: int) -> CapDecision:
+    """Every replay event dropped: the game already lost one (no gaps)."""
+    return CapDecision(kept=[], dropped=count, reason="truncated")
+
+
+_throttles: dict[tuple[str, str], Throttle] = {}
+
+
+def _allow(kind: str, game_type: str) -> bool:
+    throttle = _throttles.setdefault((kind, game_type), Throttle(CAP_REPORT_WINDOW_S))
+    return throttle.allow()
 
 
 def report_cap_reached(game_type: str, decision: CapDecision, cap: ReplayCap) -> None:
     """One Sentry warning per game type per hour; counts and caps only, no ids."""
-    throttle = _throttles.setdefault(game_type, Throttle(CAP_REPORT_WINDOW_S))
-    if not throttle.allow():
+    if not _allow("replay", game_type):
         return
     report_event(
         f"POST /games/{{id}}/events: replay cap reached ({game_type})",
@@ -128,6 +242,28 @@ def report_cap_reached(game_type: str, decision: CapDecision, cap: ReplayCap) ->
                 "reason": decision.reason,
                 "dropped": decision.dropped,
                 "max_events": cap.max_events,
+                "max_bytes": cap.max_bytes,
+            }
+        },
+    )
+
+
+def report_lifecycle_cap_reached(
+    game_type: str, decision: CapDecision, cap: LifecycleCap = LIFECYCLE_CAP
+) -> None:
+    """One Sentry warning per game type per hour; counts and caps only, no ids."""
+    if not _allow("lifecycle", game_type):
+        return
+    report_event(
+        f"POST /games/{{id}}/events: lifecycle cap reached ({game_type})",
+        level="warning",
+        fingerprint=[LIFECYCLE_CAP_FINGERPRINT, game_type],
+        tags={"game_type": game_type, "subsystem": "games.replay_caps"},
+        context={
+            "lifecycle_cap": {
+                "reason": decision.reason,
+                "dropped": decision.dropped,
+                "max_counts": dict(cap.max_counts),
                 "max_bytes": cap.max_bytes,
             }
         },

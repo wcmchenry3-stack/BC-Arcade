@@ -45,8 +45,8 @@ not affect them: ``ENTITLEMENT_TOKEN_TTL_HOURS`` (``entitlements.service``),
 ``STREAK_LOOKBACK_DAYS`` (``daily_challenge.streak``), ``APPLE_REPLAY_WINDOW_HOURS``
 (``purchases.apple_notifications``, via ``purchases._common``) and
 ``DB_PING_TIMEOUT_SECONDS`` (``routes.health``). The replay-storage tunables (#3292)
-``REPLAY_RETENTION_DAYS``, ``REPLAY_STORAGE_BUDGET_MB`` and ``REPLAY_JOB_HOUR_UTC`` are
-read the same way, by ``games.replay_storage``.
+``REPLAY_RETENTION_DAYS``, ``REPLAY_STORAGE_BUDGET_MB``, ``REPLAY_JOB_HOUR_UTC`` and
+``DATABASE_PLAN_MB`` are read the same way, by ``games.replay_storage``.
 
 Secrets (``ADMIN_API_TOKEN``, the entitlement keys, ``APPLE_IAP_PRIVATE_KEY`` and
 ``GOOGLE_PLAY_SERVICE_ACCOUNT_JSON``) are ``SecretStr``, so a
@@ -172,8 +172,11 @@ class Settings(BaseSettings):
     # The storage budget for game_events, in MB. Sentry hears at 50/75/90 % of it.
     # Prod Supabase is on the Free plan (500 MB for the whole database).
     replay_storage_budget_mb: int = Field(
-        default=250, alias="REPLAY_STORAGE_BUDGET_MB", ge=1, le=100_000
+        default=250, alias="REPLAY_STORAGE_BUDGET_MB", ge=1, le=500
     )
+    # The database plan's size limit, in MB (Supabase Free: 500). The same job
+    # reports the whole database against it, at the same thresholds.
+    database_plan_mb: int = Field(default=500, alias="DATABASE_PLAN_MB", ge=1, le=10_000)
     # The UTC hour (off peak) from which the daily prune and budget check run.
     replay_job_hour_utc: int = Field(default=9, alias="REPLAY_JOB_HOUR_UTC", ge=0, le=23)
 
