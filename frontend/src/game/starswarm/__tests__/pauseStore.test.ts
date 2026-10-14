@@ -3,12 +3,16 @@ import {
   CANVAS_H,
   CANVAS_W,
   applyPowerUp,
+  bumpWave,
+  closeWave,
+  emptyWaveStats,
   engineCounters,
   initStarSwarm,
   isEngineCounters,
   restoreEngineCounters,
   throwAsteroid,
   tick,
+  waveJustClosed,
 } from "../engine";
 import {
   HYDRATE_TIMEOUT_MS,
@@ -20,7 +24,8 @@ import {
   isPausedStateHydrated,
   savePausedState,
 } from "../pauseStore";
-import { SAVE_FINGERPRINT, fitsSaveShape } from "../saveShape";
+import { SAVE_FINGERPRINT, fitsSaveShape, restoreSavedState } from "../saveShape";
+import { loadoutOf } from "../engine/waveStats";
 import type { StarSwarmState } from "../types";
 
 // A paused run survives the process (#2645). `_resetPauseStoreForTests` stands in for a
@@ -272,5 +277,167 @@ describe("engine — counters", () => {
     expect(isEngineCounters({ nextId: 1.5, seed: 0 })).toBe(false);
     expect(isEngineCounters({ nextId: 1, seed: -1 })).toBe(false);
     expect(isEngineCounters({ nextId: 1, seed: 0xffffffff })).toBe(true);
+  });
+});
+
+describe("per-wave stats in a save (#3245)", () => {
+  /** A run partway through wave 4, with counts on the wave and a closed wave behind it. */
+  function counted(): StarSwarmState {
+    const s = run();
+    let waveStats = bumpWave(s.waveStats, ["combat", "kills", "Elite", "dive"], 3);
+    waveStats = bumpWave(waveStats, ["pacing", "durationMs"], 4321);
+    return { ...s, waveStats, lastClosedWave: closeWave(run(), "cleared") };
+  }
+
+  /** A save as a build before #3245 wrote it: no waveStats, no lastClosedWave. */
+  function olderSave(state: StarSwarmState) {
+    const {
+      waveStats: _w,
+      lastClosedWave: _l,
+      ...older
+    } = JSON.parse(JSON.stringify(state)) as Record<string, unknown>;
+    return {
+      v: 1,
+      fp: SAVE_FINGERPRINT,
+      gameState: older,
+      difficulty: "Commander",
+      counters: COUNTERS,
+    };
+  }
+
+  it("round-trips the wave's counts; the last closed wave always restores as null", async () => {
+    const state = counted();
+    expect(state.lastClosedWave).not.toBeNull();
+    savePausedState({ gameState: state, difficulty: "Commander", counters: COUNTERS });
+    await flush();
+    // the snapshot isn't written to disk at all
+    const onDisk = (await persisted())?.gameState as Record<string, unknown>;
+    expect(onDisk.waveStats).toEqual(state.waveStats);
+    expect("lastClosedWave" in onDisk).toBe(false);
+    _resetPauseStoreForTests();
+
+    await hydratePausedState();
+    const restored = getSavedPausedState()?.gameState;
+    expect(restored?.waveStats).toEqual(state.waveStats);
+    expect(restored?.waveStats.combat.kills.Elite.dive).toBe(3);
+    expect(restored?.waveStats.pacing.durationMs).toBe(4321);
+    expect(restored?.lastClosedWave).toBeNull();
+    // ... so nothing reads as a fresh close on the first tick after the restore
+    expect(
+      waveJustClosed(restored!, tick(restored!, 16, { playerX: 100, fire: false }))
+    ).toBeNull();
+  });
+
+  it("restores an older save without them, with fresh stats from the restored ship", async () => {
+    const s = run();
+    await writeRaw(olderSave({ ...s, player: { ...s.player, lives: 2, guns: 2, hull: 1 } }));
+    await hydratePausedState();
+
+    const restored = getSavedPausedState()?.gameState;
+    if (!restored) throw new Error("the older save wasn't restored");
+    expect(restored.waveStats).toEqual(emptyWaveStats({ lives: 2, guns: 2, hull: 1 }));
+    expect(restored.lastClosedWave).toBeNull();
+    expect(restored.score).toBe(1234);
+    // and it plays on
+    expect(tick(restored, 16, { playerX: 100, fire: true }).waveStats.pacing.durationMs).toBe(16);
+  });
+
+  it("restores a save whose stats don't fit this build's registries, stats started over", async () => {
+    const save = olderSave(counted());
+    const stale = counted().waveStats;
+    const { hull: _gone, ...collected } = stale.powerUps.collected; // a power-up it didn't know
+    const gameState = {
+      ...save.gameState,
+      waveStats: { ...stale, powerUps: { ...stale.powerUps, collected } },
+      lastClosedWave: { not: "a snapshot" },
+    };
+    await writeRaw({ ...save, gameState });
+    await hydratePausedState();
+
+    const restored = getSavedPausedState()?.gameState;
+    expect(restored?.waveStats.combat.kills.Elite.dive).toBe(0);
+    expect(restored?.waveStats.powerUps.collected.hull).toBe(0);
+    expect(restored?.lastClosedWave).toBeNull();
+  });
+
+  describe("a saved waveStats with an invalid leaf restores fresh stats", () => {
+    const fresh = () => {
+      const s = JSON.parse(JSON.stringify(counted())) as StarSwarmState;
+      return { s, ws: s.waveStats };
+    };
+    type WS = StarSwarmState["waveStats"];
+    const withStart = (ws: WS, start: Record<string, unknown>) =>
+      ({ ...ws, pacing: { ...ws.pacing, start: { ...ws.pacing.start, ...start } } }) as unknown;
+    const cases: [string, (ws: WS) => unknown][] = [
+      [
+        "a stage time that is a string",
+        (ws) => ({
+          ...ws,
+          carrier: {
+            ...ws.carrier,
+            stageReachedMs: { ...ws.carrier.stageReachedMs, exposed: "1" },
+          },
+        }),
+      ],
+      [
+        "a negative stage time",
+        (ws) => ({
+          ...ws,
+          carrier: { ...ws.carrier, stageReachedMs: { ...ws.carrier.stageReachedMs, exposed: -5 } },
+        }),
+      ],
+      ["a rout time that is a string", (ws) => ({ ...ws, rout: { ...ws.rout, atMs: "soon" } })],
+      ["a negative rout time", (ws) => ({ ...ws, rout: { ...ws.rout, atMs: -1 } })],
+      [
+        "a death cause outside HIT_CAUSES",
+        (ws) => ({
+          ...ws,
+          damage: { ...ws.damage, deathCause: "laser" },
+        }),
+      ],
+      ["guns 0", (ws) => withStart(ws, { guns: 0 })],
+      ["guns 4", (ws) => withStart(ws, { guns: 4 })],
+      ["guns 1.5", (ws) => withStart(ws, { guns: 1.5 })],
+      ["hull 3", (ws) => withStart(ws, { hull: 3 })],
+      ["hull -1", (ws) => withStart(ws, { hull: -1 })],
+      ["a negative counter", (ws) => ({ ...ws, combat: { ...ws.combat, shotsFired: -1 } })],
+    ];
+
+    it.each(cases)("%s", (_label, spoil) => {
+      const { s, ws } = fresh();
+      const restored = restoreSavedState({ ...s, waveStats: spoil(ws) });
+      expect(restored.waveStats).toEqual(emptyWaveStats(loadoutOf(s.player)));
+    });
+
+    it("while valid values of those leaves are kept", () => {
+      const { s, ws } = fresh();
+      const valid = {
+        ...ws,
+        pacing: { ...ws.pacing, start: { lives: 2, guns: 3, hull: 2 } },
+        carrier: {
+          ...ws.carrier,
+          stageReachedMs: { protected: 0, exposed: 1200.5, finalStand: null },
+        },
+        rout: { ...ws.rout, triggered: true, atMs: 900 },
+        damage: { ...ws.damage, deathCause: "beam" },
+      } as WS;
+      expect(restoreSavedState({ ...s, waveStats: valid }).waveStats).toEqual(valid);
+    });
+  });
+
+  it("restoreSavedState keeps stats that fit and drops the closed wave", () => {
+    const state = JSON.parse(JSON.stringify(counted())) as StarSwarmState;
+    expect(fitsSaveShape(state)).toBe(true);
+    expect(restoreSavedState(state)).toEqual({ ...state, lastClosedWave: null });
+  });
+
+  it("are outside the save fingerprint, so adding them kept every existing save", () => {
+    expect(SAVE_FINGERPRINT).not.toContain("waveStats");
+    expect(SAVE_FINGERPRINT).not.toContain("lastClosedWave");
+  });
+
+  it("a state with a top-level key this build doesn't know still doesn't fit", () => {
+    const s = JSON.parse(JSON.stringify(run())) as Record<string, unknown>;
+    expect(fitsSaveShape({ ...s, waveStatz: {} })).toBe(false);
   });
 });

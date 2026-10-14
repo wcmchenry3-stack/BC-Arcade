@@ -22,6 +22,11 @@
  *  12. `tickPickupWait`         #3132: the pickup wait's clock (its safety cap)
  *  13. `checkPhaseTransitions`  the phase machine, last
  *
+ * Per-wave stats (#3245, `waveStats.ts`): `buildWaveState` opens a fresh `waveStats`; `tick`
+ * adds its dt to the wave's duration; the wave closes into `lastClosedWave` exactly once — as
+ * "cleared" in `startNextWave` (before the next wave is built) or as "died" when a tick ends in
+ * GameOver (after `tickBonusLives`, which can revert a same-tick GameOver).
+ *
  * Phase machine: SwoopIn ──all arrived──▶ Playing ──last kill──▶ [ClearAwaitingPickups, while
  * a pickup is on screen (#3132)] ──▶ Extraction ──ship out──▶ clearTransientCombat ──▶
  * buildWaveState(wave + 1) ──▶ SwoopIn. GameOver is terminal: `tick` returns the state
@@ -71,6 +76,7 @@ import { playerVolley, tickPowerUps } from "./powerups";
 import { rng, seedRng } from "./rng";
 import { carrierStageIn, isLeaderTier, tickCtx } from "./roster";
 import { emptyRunStats, emptyTierStats } from "./stats";
+import { bumpWave, closeWave, emptyWaveStats, loadoutOf, markWaveDev } from "./waveStats";
 import {
   BONUS_LIFE_INVINCIBLE_MS,
   BONUS_LIFE_SLOW_MO_DURATION,
@@ -141,7 +147,7 @@ export function initStarSwarm(
     hullFlashTimer: 0,
   };
 
-  return buildWaveState(
+  const opened = buildWaveState(
     canvasW,
     canvasH,
     wave,
@@ -154,6 +160,8 @@ export function initStarSwarm(
     undefined,
     tuning
   );
+  // #3245: a run that opens past wave 1 is the dev panel's wave jump
+  return wave === 1 ? opened : markWaveDev(opened);
 }
 
 function buildWaveState(
@@ -254,6 +262,8 @@ function buildWaveState(
     enemyFireDisabled: false,
     missionCompleteTimer: 0,
     scoreLedger: emptyScoreLedger(), // #2837: startNextWave carries the run's ledger over
+    waveStats: emptyWaveStats(loadoutOf(wavePlayer)), // #3245
+    lastClosedWave: null, // #3245: startNextWave sets the wave it just closed
   };
 }
 
@@ -272,11 +282,15 @@ export function tick(
   // #2352: purely cosmetic — never gates or slows gameplay, just counts down real time.
   const missionCompleteTimer = decayMissionCompleteTimer(state.missionCompleteTimer, dtMs);
 
+  // #3245: the wave's clock — every tick of every phase, in tick dt
+  const waveStats = bumpWave(state.waveStats, DURATION_PATH, dtMs);
   let s: StarSwarmState =
     bonusLifeSlowMoTimer === state.bonusLifeSlowMoTimer &&
-    missionCompleteTimer === state.missionCompleteTimer
+    missionCompleteTimer === state.missionCompleteTimer &&
+    waveStats === state.waveStats
       ? state
-      : { ...state, bonusLifeSlowMoTimer, missionCompleteTimer };
+      : { ...state, bonusLifeSlowMoTimer, missionCompleteTimer, waveStats };
+  if (devTogglesOn(s)) s = markWaveDev(s); // #3245
   const ctx = tickCtx(state); // #2963
   s = tickPlayer(s, scaledDt, input);
   s = tickAsteroidThreats(s, scaledDt, ctx); // #2487: before the enemy tick so a nudged path or sidestep applies now
@@ -296,7 +310,26 @@ export function tick(
   s = tickExplosions(s, scaledDt);
   s = tickPickupWait(s, scaledDt, state.powerUps); // #3132
   s = checkPhaseTransitions(s, tuning);
+  // #3245: the run ended on this wave. Only the tick's final phase counts — tickBonusLives can
+  // revert a same-tick GameOver — and GameOver is terminal, so this closes the wave exactly once.
+  if (s.phase === "GameOver") s = { ...s, lastClosedWave: closeWave(s, "died") };
   return s;
+}
+
+const DURATION_PATH = ["pacing", "durationMs"] as const;
+const BONUS_LIVES_PATH = ["pacing", "bonusLives"] as const;
+
+/** #3245: a dev-panel toggle that changes how the wave plays is on. */
+function devTogglesOn(s: StarSwarmState): boolean {
+  return (
+    s.playerFireDisabled ||
+    s.enemyFireDisabled ||
+    s.asteroidsDisabled ||
+    s.dodgeDisabled ||
+    s.flakDisabled ||
+    s.routDisabled ||
+    s.pauseStraggler
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -342,6 +375,7 @@ function tickBonusLives(prev: StarSwarmState, next: StarSwarmState): StarSwarmSt
     },
     bonusLivesAwarded: next.bonusLivesAwarded + awarded,
     bonusLifeSlowMoTimer: BONUS_LIFE_SLOW_MO_DURATION,
+    waveStats: bumpWave(next.waveStats, BONUS_LIVES_PATH, awarded), // #3245
   };
 }
 
@@ -422,6 +456,8 @@ function checkPhaseTransitions(state: StarSwarmState, tuning: Tuning): StarSwarm
 }
 
 function startNextWave(state: StarSwarmState, tuning: Tuning): StarSwarmState {
+  // #3245: the wave closes before the next one is built; the new wave opens fresh stats
+  const closed = closeWave(state, "cleared");
   const next = buildWaveState(
     state.canvasW,
     state.canvasH,
@@ -441,5 +477,6 @@ function startNextWave(state: StarSwarmState, tuning: Tuning): StarSwarmState {
     ...next,
     missionCompleteTimer: state.missionCompleteTimer,
     scoreLedger: state.scoreLedger,
+    lastClosedWave: closed,
   };
 }

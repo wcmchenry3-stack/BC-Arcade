@@ -9,7 +9,9 @@
  *   rng         the seeded LCG and the id counters (the run's replay counters)
  *   geometry    Béziers, overlap tests, the formation layout, path factories, aim, `hashFrac`
  *   roster      roster reads (leader tiers, the Carrier's armor and stage), `TickCtx`, `mapKeep`
+ *   registries  the content lists (power-ups, tiers, causes, …) the per-wave stats are keyed by
  *   stats       per-tier and run-wide counters
+ *   waveStats   the per-wave stats record: open, bump, close into a v1 snapshot, wire format
  *   entities    pickups, explosions, the power-up type roll
  *   extraction  the `weaponsFree` / `hazardsLive` gates, live hazards, the autopilot, the reset
  *   asteroids   rocks, their threat contract, and the enemies' response to them
@@ -209,6 +211,45 @@ export { collideCircleAABB, hashFrac, nudgePath, splitRemaining } from "./engine
 export { applyPowerUp, playerVolley, upgradeEvents } from "./engine/powerups";
 export { dodgeChance, dodgeRateByTier, emptyRunStats, emptyTierStats } from "./engine/stats";
 export type { TierDodgeRow } from "./engine/stats";
+export {
+  ASTEROID_KINDS,
+  BUDDY_HIT_CAUSES,
+  CARRIER_STAGES,
+  ENEMY_TIERS,
+  HIT_CAUSES,
+  HIT_RESULTS,
+  KILL_METHODS,
+  POWERUP_SOURCES,
+  POWERUP_TYPES,
+  REGISTRIES,
+  ROCK_BREAKERS,
+} from "./engine/registries";
+export type {
+  BuddyHitCause,
+  HitCause,
+  HitResult,
+  KillMethod,
+  PowerUpSource,
+  RegistryName,
+  RockBreaker,
+} from "./engine/registries";
+export {
+  WAVE_STATS_MAX_BYTES,
+  WAVE_STATS_VERSION,
+  bumpWave,
+  closeWave,
+  emptyWaveStats,
+  toWirePayload,
+  waveJustClosed,
+} from "./engine/waveStats";
+export type {
+  Loadout,
+  WaveCounterPath,
+  WaveOutcome,
+  WaveStats,
+  WaveStatsSnapshot,
+  WaveStatsWire,
+} from "./engine/waveStats";
 export {
   diverCount,
   fleeingCount,

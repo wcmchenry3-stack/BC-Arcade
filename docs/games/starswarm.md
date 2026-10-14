@@ -968,6 +968,106 @@ the run counters, the tier table, wave reached, difficulty and score — counts 
 identifies the player — once per run. `EXPO_PUBLIC_TEST_HOOKS=1` builds also expose
 `globalThis.__starswarm_getRunStats()` for an E2E driver.
 
+## Per-wave stats
+
+(#3245, epic #3244) The run-wide counters above say what happened in a run; the per-wave stats
+say what happened in each wave, for tuning. They are observations only: nothing in play reads
+them.
+
+**Model.** `state.waveStats` (`engine/waveStats.ts`) is the current wave's accumulator, in
+sections that match the `wave_completed` v1 schema pinned on epic #3244: `pacing`, `powerUps`,
+`rocks`, `buddy`, `carrier`, `rout`, `combat` and `damage`, plus a `dev` flag. Every keyed table is
+dense by construction — `emptyWaveStats()` builds it from the registries, so every key is present,
+0 until counted. That also means a new registry value compiles without complaint and simply
+counts 0: the guard that forces a real counter is the contract test (below), not the compiler.
+(The compiler does hold a hand-written `Record` keyed by a registry type to list every value.)
+Counters change through
+`bumpWave(stats, path, n)`, copy-on-write like `bumpRun`: `path` is a typed tuple such as
+`["combat", "kills", "Grunt", "shot"]` (a path that isn't a counter doesn't compile), and `n === 0`
+returns the same object. #3245 fills `pacing`; `powerUps` (#3246), `rocks` (#3247),
+`combat`/`damage`/`buddy` (#3248) and `carrier`/`rout` (#3249) stay 0 until their stories.
+
+- `pacing.durationMs` is the sum of `tick` dt over every phase of the wave, swoop-in to close
+  (the screen's frozen pre-wave countdown isn't ticked, so it isn't counted).
+- `pacing.start` is the ship's loadout (lives, guns, hull) when the wave opened; the snapshot adds
+  `pacing.end`, the loadout when it closed. `pacing.bonusLives` counts bonus lives granted on it.
+- `dev` is set when a dev-panel action touches the wave: `applyPowerUp`, `throwAsteroid` or
+  `killEscorts` doing something, any dev toggle on during a tick (fire, rocks, dodge, flak, rout,
+  straggler pause), or a run that opens past wave 1 (the wave jump). The dev panel's infinite
+  lives is applied by the canvas, outside the engine, and isn't detected yet.
+
+**Registries.** `engine/registries.ts` holds the content lists as `as const` arrays, and the union
+types are derived from them (`PowerUpType`, `EnemyTier`, `AsteroidKind`, `CarrierStage`), so a list
+and its type can't drift. `stats.ts`'s `TIER_ORDER` is `ENEMY_TIERS` itself.
+
+| Registry           | Values                                               |
+| ------------------ | ---------------------------------------------------- |
+| `POWERUP_TYPES`    | `lightning` `shield` `buddy` `bomb` `salvage` `hull` |
+| `POWERUP_SOURCES`  | `kill` `rock` `carrier` `dev`                        |
+| `ENEMY_TIERS`      | `Grunt` `Elite` `Guardian` `Carrier`                 |
+| `ASTEROID_KINDS`   | `large` `small`                                      |
+| `ROCK_BREAKERS`    | `player` `enemy` `bomb` `contact`                    |
+| `HIT_CAUSES`       | `bullet` `rock` `beam` `ram` (what hit the player)   |
+| `BUDDY_HIT_CAUSES` | `bullet` `beam` `rock`                               |
+| `HIT_RESULTS`      | `life` `plating` `shield`                            |
+| `KILL_METHODS`     | `shot` `dive` `rout` `bomb` `ram` `rock` `buddy`     |
+| `CARRIER_STAGES`   | `protected` `exposed` `finalStand`                   |
+
+The values are wire vocabulary: the backend mirrors them (`StarSwarmWaveStats`, #3250), so renaming
+one is a schema change.
+
+**Close points.** A wave closes exactly once, into a frozen snapshot (`closeWave(state, outcome)`)
+kept on `state.lastClosedWave`:
+
+- **cleared** — when its extraction completes, before the next wave is built (`startNextWave`);
+  the next wave opens with fresh `waveStats`.
+- **died** — when a tick's final phase is GameOver. `tickBonusLives` can revert a same-tick
+  GameOver, so the close waits for the end of the tick; GameOver is terminal, so it can't close
+  twice. `damage.deathCause` is null until #3248 records it.
+
+The snapshot is `{v: 1, wave, difficulty, outcome, dev, pacing, score, …sections}`. `score` is read
+from the score ledger, never counted twice: `pts` is that wave's ledger entry (`{}` if it scored
+nothing), `total` its sum, and `runningTotal` the run's score at the close.
+`waveJustClosed(prev, next)` returns the snapshot on the tick a wave closed (compare
+`routJustStarted`); the screen sends it as the `wave_completed` event in #3251.
+
+**Wire rules.** `toWirePayload(snapshot)` keeps every top-level section but drops zero counters
+and objects left empty inside them (the backend reads a missing key as 0). `v`, `wave`,
+`difficulty`, `outcome`, `dev`, `pacing`, `score`, `rout` and `damage.deathCause` are always sent
+whole. `carrier.stageReachedMs` holds times, not counters: a stage never reached (null) is left out,
+one reached at 0 ms is sent. A payload is at most `WAVE_STATS_MAX_BYTES` (4096) serialized; the
+worst case — every counter at 99999, every score source on the wave — measures about 3.7 KB.
+
+**Saves.** `waveStats` is saved with a paused run; `lastClosedWave` is not written to disk, and a
+restore always sets it to null (`restoreSavedState`), whatever an older save holds — a restored
+run has nothing to compare it with, so no close is reported after a restore. Both are
+observations, so they are kept out of `SAVE_FINGERPRINT` (`ADDED_STATE` in `saveShape.ts`):
+adding them didn't discard paused runs. A save without `waveStats` — or with stats that don't fit
+this build (a registry key missing or extra, a negative or non-numeric counter or time, a death
+cause outside `HIT_CAUSES`, guns outside 1–3, hull outside 0–2, or lives that aren't a
+non-negative integer) — restores with fresh stats
+seeded from the restored ship.
+
+### Adding content
+
+Adding a power-up, enemy tier, hit cause or any other registry value:
+
+1. **Registry entry** — add the value to its array in `engine/registries.ts`. The stats tables pick
+   it up on their own (at 0), so the build passes; only hand-written `Record`s keyed by that type
+   fail to compile until they list it. The values are wire vocabulary, pinned by the "hold the v1
+   schema's values" test in `__tests__/waveStats.test.ts`: update it in the same change.
+2. **Counter bump** — count it where it happens with `bumpWave` (on a hot path, hoist the path as
+   a `const` tuple).
+3. **Contract row** — this is the guard. `__tests__/waveStats.contract.test.ts` fails, naming the
+   row file (`__tests__/waveStatsContract/<section>.ts`) that needs a row proving the new value is
+   counted. A section's `pending` list spells out today's values one by one (it is never derived
+   from the registries), so a value added later is never silently pending. A new section field
+   needs a row too.
+4. **Backend enum** — add the value to the backend's `StarSwarmWaveStats` mirror (#3250), or the
+   server logs it as unknown.
+5. **Bump the fixture** — re-record the golden replay fixture if the change alters play, and say so
+   in the PR (see `goldenReplay.test.ts`).
+
 ## Scoring
 
 All positive score awards are multiplied by the selected difficulty multiplier.
@@ -1047,7 +1147,7 @@ restores with a `"Boss"` tier id.
 - **Recorded, not partitioned:** result (`StarSwarmResult`): `outcome`, `wave_reached` and `score_breakdown` (#2837, [above](#per-wave-score-breakdown-2837)) (`difficulty_tier` is repeated there too). The owner reads them back in `metadata` from `GET /games/{id}`.
 - **Max value:** none (#2519 decision 14).
 - **Outcomes:** `has_winner = False`: a run ends when the ship is lost. Game over records `completed` (score-only, no win) with `final_score` and the result `{outcome, wave_reached, difficulty_tier, score_breakdown}` (#2626, #2837). Starting another run while one is open, or leaving the screen, records `abandoned` with no result and no score.
-- **Duration:** `useGameSync`'s active-play window. The screen sends no `durationMs` of its own (never `0`): the engine keeps no play clock. The window restarts when a run begins (`beginRun`), so time on the difficulty picker is not counted.
+- **Duration:** `useGameSync`'s active-play window. The screen sends no `durationMs` of its own (never `0`): the engine keeps no run clock (the per-wave `pacing.durationMs`, [above](#per-wave-stats), is for the wave stats only). The window restarts when a run begins (`beginRun`), so time on the difficulty picker is not counted.
 - **How it reaches the server:** since #2626 the run's own `useGameSync("starswarm")` session row is its leaderboard entry. The row opens when the run begins, with `difficulty_tier` as creation metadata. `SyncWorker` sends `POST /games` and `PATCH /games/{id}/complete`. If the player has a display name (`PUT /players/me`), the row ranks with no further step. Each tier's board shows each named player's best run on that tier once. The legacy `POST /starswarm/score` was removed in #2644. Shared rules: [Leaderboard routes](../GAME-CONTRACT.md#leaderboard-routes-2618).
 - **Where the player sees it:** the result card reads the run's rank on its tier's board through `lookupGameRank` (`GET /games/{id}/rank`). It asks for a display name only when the player has none. The card's "View leaderboard" link and the ⋯ menu open the Leaderboard screen (#2633) on the finished run's tier, else the current tier. Stats (#2635) are in the ⋯ menu. The device keeps the best score (`game/starswarm/bestScore.ts`) for the card's "Best" and "New best". Store builds hide Star Swarm (`HIDDEN_GAMES`, `frontend/src/entitlements/gameVisibility.ts`), so there it has no leaderboard or stats entry point.
 

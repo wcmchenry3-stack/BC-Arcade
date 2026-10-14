@@ -7,6 +7,11 @@
  * save made with the old shape — no manual version bump to forget. A restore also checks
  * each saved object against its spec, so a save that doesn't fit is never handed to the
  * engine.
+ *
+ * #3245: a field added purely as an observation (the per-wave stats) needn't cost a player
+ * their paused run. Such fields are listed in ADDED_STATE instead of STATE: they stay out of
+ * SAVE_FINGERPRINT, a save may lack them, and `restoreSavedState` fills in (or starts over) any
+ * that are missing or don't fit this build. Never put a field the engine's play depends on there.
  */
 
 import type {
@@ -26,6 +31,7 @@ import type {
   Vec2,
 } from "./types";
 import type { EarlierScore, ScoreLedger, WaveScore } from "./scoreLedger";
+import { emptyWaveStats, isWaveStats, loadoutOf } from "./engine/waveStats";
 
 type KeySpec<T> = {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -228,7 +234,22 @@ const EARLIER_SCORE: KeySpec<EarlierScore> = {
   pts: "required",
 };
 
-const STATE: KeySpec<StarSwarmState> = {
+/**
+ * #3245: StarSwarmState fields added after saves existed — observations, not play state. Not in
+ * the fingerprint (adding one keeps every existing save) and optional in a save; see the header.
+ */
+type AddedStateKey = "waveStats" | "lastClosedWave";
+const ADDED_STATE: Readonly<Record<AddedStateKey, "optional">> = {
+  waveStats: "optional",
+  lastClosedWave: "optional",
+};
+
+/** A saved state as read back: the ADDED_STATE fields may be missing or from another build. */
+export type SavedStarSwarmState = Omit<StarSwarmState, AddedStateKey> & {
+  readonly [K in AddedStateKey]?: unknown;
+};
+
+const STATE: KeySpec<Omit<StarSwarmState, AddedStateKey>> = {
   phase: "required",
   wave: "required",
   score: "required",
@@ -304,6 +325,9 @@ export const SAVE_FINGERPRINT = JSON.stringify(SPECS);
 
 type AnySpec = Readonly<Record<string, "required" | "optional">>;
 
+/** What a saved state is checked against: STATE plus the optional ADDED_STATE fields. */
+const STATE_FITS: AnySpec = { ...STATE, ...ADDED_STATE };
+
 function isObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }
@@ -338,9 +362,12 @@ const fitsScoreLedger = (v: unknown) =>
   allFit(v.waves, (w) => fits(w, WAVE_SCORE) && fitsPts(w.pts)) &&
   (v.earlier === null || (fits(v.earlier, EARLIER_SCORE) && fitsPts(v.earlier.pts)));
 
-/** A parsed save's state fits this build's StarSwarmState, all the way down. */
-export function fitsSaveShape(v: unknown): v is StarSwarmState {
-  if (!fits(v, STATE)) return false;
+/**
+ * A parsed save's state fits this build's StarSwarmState, all the way down — except the
+ * ADDED_STATE fields, which `restoreSavedState` settles.
+ */
+export function fitsSaveShape(v: unknown): v is SavedStarSwarmState {
+  if (!fits(v, STATE_FITS)) return false;
   return (
     fits(v.player, PLAYER) &&
     allFit(v.enemies, fitsEnemy) &&
@@ -358,4 +385,21 @@ export function fitsSaveShape(v: unknown): v is StarSwarmState {
     isObject(v.tierStats) &&
     Object.values(v.tierStats).every((t) => fits(t, TIER_STATS))
   );
+}
+
+/**
+ * #3245: the engine state for a save that passed `fitsSaveShape`. An older save (or one from a
+ * build whose registries differ) gets fresh wave stats, seeded from the restored ship; the
+ * wave's stats then count from the restore on. `lastClosedWave` always restores as null,
+ * whatever the save holds: it only marks a close for `waveJustClosed`, and a restored run has
+ * nothing to compare it with, so a saved one is ignored rather than validated.
+ */
+export function restoreSavedState(saved: SavedStarSwarmState): StarSwarmState {
+  return {
+    ...saved,
+    waveStats: isWaveStats(saved.waveStats)
+      ? saved.waveStats
+      : emptyWaveStats(loadoutOf(saved.player)),
+    lastClosedWave: null,
+  };
 }
