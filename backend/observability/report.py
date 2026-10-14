@@ -74,18 +74,52 @@ class Throttle:
             return True
 
 
+# One throttle per (game_type, reason): a client retrying a rejected completion,
+# or a bad build, must not send one Sentry event per request (#3293). The
+# fingerprint is already fixed, so a throttled call loses no grouping.
+_REJECTED_WINDOW_S = 300.0
+_rejected_throttles: dict[tuple[str, str], Throttle] = {}
+_rejected_suppressed: dict[tuple[str, str], int] = {}
+_rejected_throttles_lock = threading.Lock()
+
+
+def _rejected_throttle(game_type: str, reason: str) -> Throttle:
+    key = (game_type, reason)
+    throttle = _rejected_throttles.get(key)
+    if throttle is None:
+        with _rejected_throttles_lock:
+            throttle = _rejected_throttles.get(key)
+            if throttle is None:
+                throttle = _rejected_throttles[key] = Throttle(_REJECTED_WINDOW_S)
+    return throttle
+
+
 def report_rejected_result(game_type: str, reason: str, context: Mapping[str, Any]) -> None:
     """A completion result rejected, or partly dropped, server-side (#2449).
 
     One Sentry issue per game and reason. Shared by ``games.sessions`` (a 400
     on ``/complete``) and the game modules that drop part of an otherwise valid
     result (Yacht's cards), so both always group the same way. Field paths and
-    error types only: no session id and no result values.
+    error types only: no session id and no result values. At most one event per
+    (game type, reason) per five minutes per process (#3293); the count of reports
+    held back since the last one is sent as ``suppressed`` in the next event.
     """
+    key = (game_type, reason)
+    # Under a race the allow() check and the suppressed-count update are not atomic, so a
+    # suppressed count can land one window late. Harmless: it is a diagnostic hint, not a total.
+    if not _rejected_throttle(game_type, reason).allow():
+        with _rejected_throttles_lock:
+            _rejected_suppressed[key] = _rejected_suppressed.get(key, 0) + 1
+        return
+    with _rejected_throttles_lock:
+        suppressed = _rejected_suppressed.pop(key, 0)
+    rejection = dict(context)
+    if suppressed:
+        rejection["suppressed"] = suppressed
     report_event(
         f"PATCH /games/{{id}}/complete rejected: {reason} ({game_type})",
         level="error",
         fingerprint=["games-complete-result-rejected", game_type, reason],
         tags={"game_type": game_type},
-        context={"result_rejection": dict(context)},
+        context={"result_rejection": rejection},
     )

@@ -31,6 +31,8 @@ Draw-1 and Draw-3 share one public leaderboard.
 
 Live deals come from `frontend/src/game/solitaire/seeds.json`, a bank of **provably solvable** seeds generated offline by `backend/scripts/gen_solitaire_seeds.py`. A seed reproduces the same deal deterministically.
 
+**Recorded deal (#3281).** The `game_started` event data carries `seed`, `seed_index` (its place in the draw mode's bank), `draw_mode` and `engine_version` (`ENGINE_VERSION` in `engine.ts`, bumped when a deal change would break a recorded seed), under 100 bytes (asserted in `dealSeed.test.ts`). `dealGame(draw_mode, seed)` rebuilds the opening from them. The screen draws the seed with `drawDealSeed` and passes it to `dealGame`. A saved game does not store its seed, so a restored game that opens a fresh session sends only `draw_mode` and `engine_version`.
+
 ### Recycling the stock
 
 When stock is empty, the waste can be recycled back into stock.
