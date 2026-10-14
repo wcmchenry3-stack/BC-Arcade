@@ -1301,7 +1301,11 @@ has a test that fails until it is done:
    Two parity tests read that file (#3252): the app's `__tests__/waveStats.parity.test.ts` fails
    until it equals `registries.ts` exactly, and the backend's
    `tests/test_starswarm_wave_stats_parity.py` fails until the `Literal` sets cover it — so a value
-   added on one side only fails CI, with a message naming the file to edit.
+   added on one side only fails CI, with a message naming the file to edit. Also add the value to
+   the sample payload, `backend/tests/fixtures/starswarm_wave_stats_v1.json`, in the table its
+   registry is read from (e.g. `powerUps.collected`, `combat.spawned`, `damage.hits`): the
+   backend's `test_the_fixture_has_a_key_from_every_registry` requires each of those key sets to
+   equal its `Literal`.
 6. **Golden fixtures** — re-record the golden replay (`UPDATE_GOLDEN=1`, see
    `goldenReplay.test.ts`) if the change moves a counter in it
    (`__fixtures__/golden-replay-seed42.waves.json`, the replay's closed waves and leaderboard
